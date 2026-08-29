@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-29T13:40:19.425378700+00:00",
+    genDate = "2026-08-29T14:05:45.081034+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8055,12 +8055,11 @@ end function __DIST.z()-- DungeonQuest: khởi tạo window + tabs, nạp core l
 
 
 return function(self)
-	--// Imports
-	local macLib = __DIST.load('i')
-
-	--// Đợi LocalPlayer sẵn sàng trước khi dựng window
-	--// (Maclib đọc LocalPlayer.UserId/DisplayName ngay khi tạo window với ShowUserInfo,
-	--//  script chạy quá nhanh khi inject sẽ khiến LocalPlayer còn nil -> lỗi "UserId".)
+	--// Quan trọng: Maclib capture `Players.LocalPlayer` NGAY KHI require module
+	--// (trong Maclib: `local LocalPlayer = Players.LocalPlayer` ở top-level).
+	--// Nếu script chạy quá nhanh khi inject, LocalPlayer còn nil, và biến bên trong
+	--// Maclib giữ nil vĩnh viễn -> tạo window (ShowUserInfo) crash "attempt to index
+	--// nil with 'UserId'". Vì vậy phải chờ LocalPlayer TRƯỚC KHI require Maclib.
 	local Players = game:GetService("Players")
 	local timeout = os.clock() + 15
 	while not Players.LocalPlayer do
@@ -8071,6 +8070,9 @@ return function(self)
 	if not localPlayer then
 		return warn("[DungeonQuest] Không lấy được LocalPlayer, hủy khởi tạo script.")
 	end
+
+	--// Imports
+	local macLib = __DIST.load('i')
 
 	--// Window
 	local window = macLib:Window({
