@@ -340,6 +340,7 @@ end
 fireFarmSkills = function()
 	if not canFireSkill() then return end
 	if os.clock() - farmLastSkillTime < AUTO_SKILL_INTERVAL then return end
+	if autoSkillMode == "Target Only" then task.wait(0.1) end
 	farmLastSkillTime = os.clock()
 	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
 	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
