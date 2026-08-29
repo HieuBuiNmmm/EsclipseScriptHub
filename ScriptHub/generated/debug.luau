@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-29T15:40:49.464772+00:00",
+    genDate = "2026-08-29T15:56:07.842382500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8193,6 +8193,14 @@ end
 local xpBefore = nil
 local dungeonStartTime = nil
 
+--// Lấy tên hiển thị của player (ưu tiên DisplayName, fallback Name)
+local function getPlayerName()
+	local p = game:GetService("Players").LocalPlayer
+	if not p then return "?" end
+	if p.DisplayName and p.DisplayName ~= "" then return p.DisplayName end
+	return p.Name
+end
+
 --// Lấy XP hiện tại của player (Players.LocalPlayer.XP - IntValue)
 local function getXp()
 	local p = game:GetService("Players").LocalPlayer
@@ -8367,6 +8375,11 @@ local function buildEmbed(reward, meta)
 
 	local fields = {
 		{
+			name = "Player",
+			value = getPlayerName(),
+			inline = true,
+		},
+		{
 			name = "Level",
 			value = level,
 			inline = true,
@@ -8393,7 +8406,7 @@ local function buildEmbed(reward, meta)
 		},
 	}
 
-	local description = "Bạn đã chiến thắng dungeon và nhận được phần thưởng!"
+	local description = "You cleared the dungeon and received your rewards!"
 	if shouldPing(items) then
 		description = description .. "\n\n" .. pingMention
 	end
@@ -8413,14 +8426,14 @@ end
 
 local function sendEmbed(reward, meta)
 	if webhookUrl == "" or string.find(webhookUrl, "^https://discord%.com/api/webhooks/") == nil then
-		return false, "Webhook URL không hợp lệ"
+		return false, "Invalid webhook URL"
 	end
 
 	local payload = buildEmbed(reward, meta)
 	local ok, body = pcall(function()
 		return HttpService:JSONEncode(payload)
 	end)
-	if not ok then return false, "Không mã hoá được payload" end
+	if not ok then return false, "Could not encode payload" end
 
 	local reqOk, response = pcall(function()
 		return request({
@@ -8435,7 +8448,7 @@ local function sendEmbed(reward, meta)
 	end)
 
 	if not reqOk then
-		return false, "Lỗi request: " .. tostring(response)
+		return false, "Request error: " .. tostring(response)
 	end
 
 	if response and response.Success then
@@ -8550,13 +8563,13 @@ function webhook.Init()
 		remotes = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 30)
 	end)
 	if not created or not remotes then
-		warn("[Webhook] Không tìm thấy ReplicatedStorage.remotes")
+		warn("[Webhook] Could not find ReplicatedStorage.remotes")
 		return
 	end
 
 	local rewardRemote = remotes:FindFirstChild("cloneRewardGui")
 	if not rewardRemote then
-		warn("[Webhook] Không tìm thấy remote cloneRewardGui")
+		warn("[Webhook] Could not find remote cloneRewardGui")
 		return
 	end
 
@@ -8581,7 +8594,7 @@ function webhook.Init()
 				duration = duration,
 			})
 			if not ok then
-				notifier.Notify("Webhook WIN", "Gửi thất bại: " .. tostring(msg), 4)
+				notifier.Notify("Webhook WIN", "Send failed: " .. tostring(msg), 4)
 			end
 		end)
 	end)
