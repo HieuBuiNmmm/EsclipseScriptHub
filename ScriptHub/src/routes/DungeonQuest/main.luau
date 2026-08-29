@@ -45,6 +45,7 @@ return function(self)
 		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://18821914323" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
+		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -55,15 +56,26 @@ return function(self)
 	local combatTab = require("@routes/DungeonQuest/tabs/Combat/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local configTab = require("@routes/DungeonQuest/tabs/Config/main")
+	local notificationsTab = require("@routes/DungeonQuest/tabs/Notifications/main")
 
 	speedTab(window, tabs.Speed)
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	configTab(window, tabs.Config)
+	notificationsTab(window, tabs.Notifications)
 
 	--// Phím tắt
 	local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
 	shortcuts.Init()
+
+	--// Webhook Discord (thông báo WIN + Reward)
+	local webhook = require("@routes/DungeonQuest/core/webhook")
+	webhook.Init()
+
+	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
+	local autoHide = require("@routes/DungeonQuest/core/autoHide")
+	autoHide.SetWindow(window)
+	autoHide.Execute()
 
 	--// Khởi chạy
 	tabs.Speed:Select()

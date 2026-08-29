@@ -5,6 +5,7 @@
 --// Imports
 local macLib = require("@packages/Maclib")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local autoHide = require("@routes/DungeonQuest/core/autoHide")
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -147,4 +148,17 @@ return function(window, tab)
 	if currentAuto and currentAuto ~= "" then
 		autoloadLabel:UpdateName("Autoload config: " .. currentAuto)
 	end
+
+	section:Header({ Name = "Auto Hide UI" })
+	section:Toggle({
+		Name = "Hide window after execute",
+		Default = autoHide.IsEnabled(),
+		Callback = function(state)
+			autoHide.SetEnabled(state)
+		end,
+	}, "Toggle_AutoHide")
+
+	section:Label({
+		Text = "Press RightControl to show the window again.",
+	})
 end
