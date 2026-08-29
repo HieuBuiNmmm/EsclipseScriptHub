@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-29T15:26:26.831216100+00:00",
+    genDate = "2026-08-29T15:40:49.464772+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8189,6 +8189,81 @@ local function getItemTierLevel(item)
 	return RARITY_TO_TIER[string.lower(tostring(item.rarity or ""))]
 end
 
+--// Trạng thái đo lường dungeon (XP trước + đồng hồ hoàn thành)
+local xpBefore = nil
+local dungeonStartTime = nil
+
+--// Lấy XP hiện tại của player (Players.LocalPlayer.XP - IntValue)
+local function getXp()
+	local p = game:GetService("Players").LocalPlayer
+	if not p then return nil end
+	local xp = p:FindFirstChild("XP")
+	if xp and xp:IsA("IntValue") then return xp.Value end
+	return nil
+end
+
+--// Tìm kiếm đệ quy instance theo tên (tránh phụ thuộc path cứng)
+local function findChildRecursive(parent, name, maxDepth)
+	maxDepth = maxDepth or 12
+	if maxDepth < 0 then return nil end
+	local direct = parent:FindFirstChild(name)
+	if direct then return direct end
+	for _, child in ipairs(parent:GetChildren()) do
+		local found = findChildRecursive(child, name, maxDepth - 1)
+		if found then return found end
+	end
+	return nil
+end
+
+--// Lấy Level hiện tại: Players.LocalPlayer.PlayerGui.playerStatus.Frame.levelBorder.level (TextLabel)
+local function getLevel()
+	local p = game:GetService("Players").LocalPlayer
+	if not p or not p:FindFirstChild("PlayerGui") then return "?" end
+	local playerStatus = p.PlayerGui:FindFirstChild("playerStatus")
+	if not playerStatus then return "?" end
+	local levelBorder = findChildRecursive(playerStatus, "levelBorder")
+	if not levelBorder then return "?" end
+	local label = levelBorder:FindFirstChild("level")
+	if label and label:IsA("TextLabel") then return label.Text end
+	return "?"
+end
+
+--// Reset bộ đếm: ghi nhận XP trước dungeon (khi đang ở lobby/startButton hiện)
+local function resetRun()
+	xpBefore = getXp()
+	dungeonStartTime = nil
+end
+
+--// Bắt đầu tính thời gian hoàn thành (startButton biến mất -> vào dungeon)
+local function startRun()
+	if not dungeonStartTime then dungeonStartTime = os.clock() end
+	if xpBefore == nil then xpBefore = getXp() end
+end
+
+--// Theo dõi startButton: hiện = lobby (reset), mất = vào dungeon (bắt đầu đếm)
+local function startDungeonWatcher()
+	task.spawn(function()
+		while true do
+			local p = game:GetService("Players").LocalPlayer
+			local gui = p and p:FindFirstChild("PlayerGui")
+			if gui and gui:FindFirstChild("startButton") then
+				resetRun()
+			else
+				startRun()
+			end
+			task.wait(0.5)
+		end
+	end)
+end
+
+--// Định dạng thời gian hoàn thành (giây -> MM:SS)
+local function formatDuration(seconds)
+	seconds = math.max(0, math.floor(seconds or 0))
+	local m = math.floor(seconds / 60)
+	local s = seconds % 60
+	return string.format("%d:%02d", m, s)
+end
+
 --// Persistence (writefile/readfile/isfile có sẵn trong executor)
 local function loadSettings()
 	if not (isfile and isfile(SETTINGS_FILE)) then return end
@@ -8263,7 +8338,7 @@ local function shouldPing(items)
 	return false
 end
 
-local function buildEmbed(reward)
+local function buildEmbed(reward, meta)
 	local gold = tonumber(reward.gold) or 0
 	local items = {}
 	for _, item in ipairs(reward.items or {}) do
@@ -8284,7 +8359,28 @@ local function buildEmbed(reward)
 	end
 	if topRarity then color = RARITY_COLORS[topRarity] end
 
+	meta = meta or {}
+	local level = tostring(meta.level or "?")
+	local expGained = tonumber(meta.expGained)
+	local expText = expGained and string.format("%s XP", tostring(expGained)) or "?"
+	local durationText = formatDuration(meta.duration)
+
 	local fields = {
+		{
+			name = "Level",
+			value = level,
+			inline = true,
+		},
+		{
+			name = "XP Gained",
+			value = expText,
+			inline = true,
+		},
+		{
+			name = "Time",
+			value = durationText,
+			inline = true,
+		},
 		{
 			name = "Gold",
 			value = tostring(gold),
@@ -8315,12 +8411,12 @@ local function buildEmbed(reward)
 	}
 end
 
-local function sendEmbed(reward)
+local function sendEmbed(reward, meta)
 	if webhookUrl == "" or string.find(webhookUrl, "^https://discord%.com/api/webhooks/") == nil then
 		return false, "Webhook URL không hợp lệ"
 	end
 
-	local payload = buildEmbed(reward)
+	local payload = buildEmbed(reward, meta)
 	local ok, body = pcall(function()
 		return HttpService:JSONEncode(payload)
 	end)
@@ -8433,6 +8529,10 @@ function webhook.Send()
 	local ok, msg = sendEmbed({
 		items = { { itemName = "Test Reward", rarity = "common", itemType = "item" } },
 		gold = 0,
+	}, {
+		level = getLevel(),
+		expGained = 0,
+		duration = 0,
 	})
 	if ok then
 		notifier.Notify("Webhook", "Test sent successfully", 3)
@@ -8462,14 +8562,33 @@ function webhook.Init()
 
 	rewardRemote.OnClientEvent:Connect(function(reward)
 		if not enabled then return end
-		local ok, msg = sendEmbed(reward)
-		if not ok then
-			notifier.Notify("Webhook WIN", "Gửi thất bại: " .. tostring(msg), 4)
-		end
+
+		local duration = dungeonStartTime and os.clock() - dungeonStartTime or 0
+
+		task.spawn(function()
+			--// Chờ XP cập nhật sau khi nhận reward rồi mới lấy XP cuối
+			task.wait(1.5)
+
+			local xpAfter = getXp()
+			local expGained = nil
+			if xpBefore ~= nil and xpAfter ~= nil then
+				expGained = math.max(0, xpAfter - xpBefore)
+			end
+
+			local ok, msg = sendEmbed(reward, {
+				level = getLevel(),
+				expGained = expGained,
+				duration = duration,
+			})
+			if not ok then
+				notifier.Notify("Webhook WIN", "Gửi thất bại: " .. tostring(msg), 4)
+			end
+		end)
 	end)
 
 	connected = true
 	notifier.Notify("Webhook", "Webhook notifications ready", 2)
+	startDungeonWatcher()
 end
 
 --// Load settings lúc require
