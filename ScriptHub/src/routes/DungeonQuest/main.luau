@@ -4,6 +4,20 @@ return function(self)
 	--// Imports
 	local macLib = require("@packages/Maclib")
 
+	--// Đợi LocalPlayer sẵn sàng trước khi dựng window
+	--// (Maclib đọc LocalPlayer.UserId/DisplayName ngay khi tạo window với ShowUserInfo,
+	--//  script chạy quá nhanh khi inject sẽ khiến LocalPlayer còn nil -> lỗi "UserId".)
+	local Players = game:GetService("Players")
+	local timeout = os.clock() + 15
+	while not Players.LocalPlayer do
+		if os.clock() > timeout then break end
+		task.wait(0.1)
+	end
+	local localPlayer = Players.LocalPlayer
+	if not localPlayer then
+		return warn("[DungeonQuest] Không lấy được LocalPlayer, hủy khởi tạo script.")
+	end
+
 	--// Window
 	local window = macLib:Window({
 		Title = "DungeonQuest",
