@@ -1,0 +1,4 @@
+# Uncomment the lines below to ignore sensitive or generated files.
+
+# ./generated        # Contains common build artifacts. Prefer using GitHub Releases instead.
+# ./pipeline/.pcmp.json # Often contains API keys or credentials. Do NOT commit this file.

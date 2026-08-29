@@ -1,0 +1,8 @@
+{
+    "aliases": {
+        "packages": "./packages",
+        "core": "./src/core",
+        "modules": "./src/modules",
+        "routes": "./src/routes"
+    }
+}

@@ -1,0 +1,1146 @@
+--==================================================--
+-- CustomSpeed1.1_Maclib_Fixed_v11.lua
+-- PERFORMANCE-FIRST VERSION + MACLIB UI + OFFICIAL API
+--==================================================--
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local player = Players.LocalPlayer
+repeat
+    player = Players.LocalPlayer
+    if not player then task.wait(0.1) end
+until player
+
+--==================================================--
+-- 1. LOAD MACLIB (SỬ DỤNG LINK RELEASE CHÍNH THỨC)
+--==================================================--
+local maclibOk, MacLib = pcall(function()
+    return loadstring(game:HttpGet("https://github.com/biggaboy212/Maclib/releases/latest/download/maclib.txt"))()
+end)
+if not maclibOk then
+    error("[Script#2] MacLib load failed: " .. tostring(MacLib))
+end
+
+local Window = MacLib:Window({
+    Title = "CustomSpeed 1.1",
+    Subtitle = "Performance-First Mode",
+    Size = UDim2.fromOffset(900, 600), 
+    DragStyle = 1,
+    DisabledWindowControls = {},
+    ShowUserInfo = true,
+    Keybind = Enum.KeyCode.RightControl,
+    AcrylicBlur = true,
+})
+
+--==================================================--
+-- HÀM THÔNG BÁO AN TOÀN
+--==================================================--
+local function sendNotify(title, desc, lifetime)
+    local s = pcall(function() MacLib:Notify({ Title = title, Description = desc, Time = lifetime or 3 }) end)
+    if s then return end
+    s = pcall(function() Window:Notify({ Title = title, Description = desc, Time = lifetime or 3 }) end)
+    if s then return end
+    pcall(function() game:GetService("StarterGui"):SetCore("SendNotification", { Title = title, Text = desc, Duration = lifetime or 3 }) end)
+end
+
+--==================================================--
+-- 2. TẠO TABS VÀ TÍCH HỢP CONFIG CHUẨN
+--==================================================--
+local tabGroups = { Main = Window:TabGroup() }
+local tabs = {
+    Speed = tabGroups.Main:Tab({ Name = "Speed", Image = "rbxassetid://10734950309" }),
+    Combat = tabGroups.Main:Tab({ Name = "Combat", Image = "rbxassetid://18821914323" }),
+    Dungeon = tabGroups.Main:Tab({ Name = "Dungeon", Image = "rbxassetid://10734950309" }),
+    Config = tabGroups.Main:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" })
+}
+
+local sections = {
+    Speed = tabs.Speed:Section({ Side = "Left" }),
+    Farm = tabs.Combat:Section({ Side = "Left" }),
+    Combat = tabs.Combat:Section({ Side = "Right" }),
+    Start = tabs.Combat:Section({ Side = "Left" }),
+    Dungeon = tabs.Dungeon:Section({ Side = "Left" })
+}
+
+sections.Speed:Header({ Name = "Movement Speed" })
+sections.Farm:Header({ Name = "Auto Farm" })
+sections.Combat:Header({ Name = "Combat" })
+sections.Start:Header({ Name = "Auto Start Game" })
+sections.Dungeon:Header({ Name = "Auto Join Dungeon" })
+
+-- CẤU HÌNH THƯ MỤC VÀ KHỞI TẠO TAB CONFIG
+MacLib:SetFolder("CustomSpeed_Configs")
+tabs.Config:InsertConfigSection("Left")
+
+--==================================================--
+-- SETTINGS & VARIABLES
+--==================================================--
+local fastSpeed = 50
+local normalSpeed = 16
+local enabled = false
+local humanoid = nil
+
+local TELEPORT_RADIUS = 12
+local HEIGHT_OFFSET = 0
+local FREEZE_TIME = 0.15
+local teleporting = false
+
+local ORBIT_RADIUS = 30
+local ORBIT_HEIGHT = 12
+local ORBIT_SPEED = 180
+
+local AUTO_SKILL_INTERVAL = 2.0
+local AUTO_KEY_HOLD_TIME = 0.05
+local autoSkillEnabled = false
+local autoSkillRunning = false
+local autoSkillMode = "Spam"
+local SKILL_RANGE = 60
+
+local FARM_SCAN_INTERVAL = 0.15
+local FARM_ENGAGE_DISTANCE = 45
+local FARM_TELEPORT_DISTANCE = FARM_ENGAGE_DISTANCE
+local FARM_APPROACH_SPEED = 90
+local FARM_APPROACH_EPSILON = 1.5
+local HOVER_HEIGHT = ORBIT_HEIGHT
+local farmEnabled = false
+local farmMode = "Orbit"
+local farmTarget = nil
+local farmAngle = 0
+local farmApproaching = false
+local farmOldAutoRotate = true
+local farmRunning = false
+local farmLastSkillTime = 0
+
+local autoStartEnabled = false
+local autoStartRunning = false
+local autoStartTriggered = false
+local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
+local autoStartConditionText = 'game:GetService("Players").LocalPlayer.PlayerGui.startButton'
+local autoStartConditionFn = nil
+local autoStartCommandFn = nil
+
+local AUTO_RETRY_MIN_ITEMS = 2
+local autoRetryEnabled = false
+local autoRetryRunning = false
+local autoRetryTriggered = false
+local autoRetryCommand = [==[
+local Event = game:GetService("ReplicatedStorage").remotes.replayDungeon
+Event:FireServer(
+    {
+        dungeonProgress = "",
+        dungeonStarted = false,
+        hardcore = false,
+        dungeonFinished = false,
+        dungeonName = "Enchanted Forest",
+        isHardcore = false,
+        fightingBoss = false
+    }
+)
+]==]
+local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
+local autoRetryCommandFn = nil
+local autoRetryHolderFn = nil
+
+local GUI_UPDATE_INTERVAL = 0.5
+local dungeon = nil
+local trackedRooms = {}
+local trackedEnemies = {}
+local roomConnections = {}
+local enemyConnections = {}
+local pendingModels = {}
+local enemyCount = 0
+
+--==================================================--
+-- CHARACTER SETUP
+--==================================================--
+local function setupCharacter(character)
+    if not character then return end
+    local newHumanoid = character:WaitForChild("Humanoid", 10)
+    if not newHumanoid then return end
+
+    humanoid = newHumanoid
+    normalSpeed = humanoid.WalkSpeed
+    if enabled then humanoid.WalkSpeed = fastSpeed end
+end
+
+if player.Character and player.Character.Parent then
+    setupCharacter(player.Character)
+else
+    local character = player.CharacterAdded:Wait()
+    if character then setupCharacter(character) end
+end
+
+--==================================================--
+-- FORWARD DECLARATIONS
+--==================================================--
+local cleanupEnemies
+local getNearestEnemy
+local startAutoSkill, stopAutoSkill, teleportToNearestEnemy, initializeRooms
+local startAutoFarm, stopAutoFarm
+local moveFarmTarget, leaveFarmTarget, fireFarmSkills, farmTeleportTo
+local startAutoStart, stopAutoStart
+local startAutoRetry, stopAutoRetry
+local resetDungeon
+
+--==================================================--
+-- CORE LOGIC
+--==================================================--
+local function getModelRoot(model)
+    if not model or not model:IsA("Model") then return nil end
+    local root = model:FindFirstChild("HumanoidRootPart")
+    if root and root:IsA("BasePart") then return root end
+    if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
+    for _, object in ipairs(model:GetDescendants()) do
+        if object:IsA("BasePart") then return object end
+    end
+    return nil
+end
+
+local function isValidEnemy(model)
+    if not model or not model:IsA("Model") or not model.Parent or model == player.Character then return false end
+    local enemyHumanoid = model:FindFirstChildOfClass("Humanoid")
+    if not enemyHumanoid or enemyHumanoid.Health <= 0 then return false end
+    return getModelRoot(model) ~= nil
+end
+
+local function disconnectEnemyConnections(enemy)
+    local connections = enemyConnections[enemy]
+    if not connections then return end
+    if connections.Died then connections.Died:Disconnect(); connections.Died = nil end
+    enemyConnections[enemy] = nil
+end
+
+local function untrackEnemy(enemy)
+    if not enemy or not trackedEnemies[enemy] then return end
+    pendingModels[enemy] = nil
+    trackedEnemies[enemy] = nil
+    enemyCount -= 1
+    disconnectEnemyConnections(enemy)
+end
+
+local function trackEnemy(enemy)
+    if not isValidEnemy(enemy) or trackedEnemies[enemy] then return end
+    local root = getModelRoot(enemy)
+    local enemyHumanoid = enemy:FindFirstChildOfClass("Humanoid")
+    if not root or not enemyHumanoid then return end
+
+    trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid }
+    enemyCount += 1
+    enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
+end
+
+local function waitAndTrackModel(model)
+    if not model then return end
+    if isValidEnemy(model) then trackEnemy(model); return end
+    if pendingModels[model] then return end
+    pendingModels[model] = true
+    task.spawn(function()
+        local timeout = os.clock() + 3
+        while model.Parent and os.clock() < timeout do
+            if isValidEnemy(model) then
+                pendingModels[model] = nil
+                trackEnemy(model)
+                return
+            end
+            task.wait(0.1)
+        end
+        pendingModels[model] = nil
+        if model.Parent and isValidEnemy(model) then trackEnemy(model) end
+    end)
+end
+
+local function trackRoom(room)
+    if not room or trackedRooms[room] then return end
+    trackedRooms[room] = true
+    for _, object in ipairs(room:GetDescendants()) do
+        if object:IsA("Model") and isValidEnemy(object) then trackEnemy(object) end
+    end
+    roomConnections[room] = {
+        Added = room.DescendantAdded:Connect(function(object)
+            if object:IsA("Model") then
+                waitAndTrackModel(object)
+            elseif object:IsA("Humanoid") then
+                local possibleModel = object:FindFirstAncestorOfClass("Model")
+                if possibleModel then waitAndTrackModel(possibleModel) end
+            end
+        end),
+        Removed = room.DescendantRemoving:Connect(function(object)
+            if object:IsA("Model") then untrackEnemy(object) end
+        end)
+    }
+end
+
+initializeRooms = function()
+    if not dungeon then dungeon = workspace:WaitForChild("dungeon", 30) end
+    if not dungeon then return false end
+
+    for _, room in ipairs(dungeon:GetChildren()) do
+        if room:IsA("Folder") or room:IsA("Model") then trackRoom(room) end
+    end
+    return true
+end
+
+local function resetDungeon()
+    if not dungeon then return end
+    for room, conns in pairs(roomConnections) do
+        if conns.Added then pcall(function() conns.Added:Disconnect() end) end
+        if conns.Removed then pcall(function() conns.Removed:Disconnect() end) end
+    end
+    roomConnections = {}
+    trackedRooms = {}
+    for enemy in pairs(trackedEnemies) do
+        disconnectEnemyConnections(enemy)
+    end
+    trackedEnemies = {}
+    enemyCount = 0
+    pendingModels = {}
+    if farmTarget then leaveFarmTarget() end
+    dungeon = nil
+end
+
+cleanupEnemies = function()
+    for enemy, data in pairs(trackedEnemies) do
+        if not enemy or not enemy.Parent then untrackEnemy(enemy)
+        else
+            local enemyHumanoid = data.Humanoid or enemy:FindFirstChildOfClass("Humanoid")
+            data.Humanoid = enemyHumanoid
+            if not enemyHumanoid or enemyHumanoid.Health <= 0 then untrackEnemy(enemy)
+            else
+                local root = data.Root
+                if not root or not root.Parent then
+                    root = getModelRoot(enemy)
+                    if root then data.Root = root else untrackEnemy(enemy) end
+                end
+            end
+        end
+    end
+end
+
+getNearestEnemy = function()
+    local character = player.Character
+    if not character or not character.Parent then return nil end
+    local playerRoot = character:FindFirstChild("HumanoidRootPart")
+    if not playerRoot then return nil end
+
+    local nearest, nearestDistance = nil, math.huge
+    for enemy, data in pairs(trackedEnemies) do
+        if enemy and enemy.Parent and data and data.Root and data.Root.Parent then
+            local distance = (playerRoot.Position - data.Root.Position).Magnitude
+            if distance < nearestDistance then
+                nearestDistance = distance
+                nearest = { Model = enemy, Root = data.Root, Distance = distance }
+            end
+        end
+    end
+    return nearest
+end
+
+--==================================================--
+-- 3. MACLIB UI CONTROLS (Thêm Flags đầy đủ cho Config)
+--==================================================--
+-- Fix: MacLib Slider Load chỉ cập nhật UI (SetValue ignorecallback=true),
+-- nên patch UpdateValue để sau khi load vẫn gọi lại Callback => backend đồng bộ
+local function patchSliderLoadCallback(sliderElement)
+    if not sliderElement or type(sliderElement.UpdateValue) ~= "function" then return sliderElement end
+    local originalUpdateValue = sliderElement.UpdateValue
+    sliderElement.UpdateValue = function(self, Value)
+        originalUpdateValue(self, Value)
+        local settings = self.Settings
+        if settings and settings.Callback then
+            task.spawn(function()
+                pcall(settings.Callback, tonumber(Value))
+            end)
+        end
+    end
+    return sliderElement
+end
+
+sections.Speed:Toggle({
+    Name = "Fast Speed", 
+    Default = enabled,
+    Callback = function(state)
+        enabled = state
+        if humanoid and humanoid.Parent then humanoid.WalkSpeed = enabled and fastSpeed or normalSpeed end
+    end
+}, "Toggle_FastSpeed") 
+
+patchSliderLoadCallback(sections.Speed:Slider({
+    Name = "Custom Fast Speed",
+    Default = 50,
+    Minimum = 16,
+    Maximum = 100,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(Value)
+        fastSpeed = Value
+        if enabled and humanoid and humanoid.Parent then 
+            humanoid.WalkSpeed = fastSpeed 
+        end
+    end,
+}, "Slider_FastSpeed")) 
+
+sections.Combat:Toggle({
+    Name = "Auto Skill (Q + E)", 
+    Default = autoSkillEnabled,
+    Callback = function(state)
+        autoSkillEnabled = state
+        if autoSkillEnabled then
+            startAutoSkill()
+            sendNotify("Auto Skill", "Auto Q+E Started", 2)
+        else
+            stopAutoSkill()
+            sendNotify("Auto Skill", "Auto Q+E Stopped", 2)
+        end
+    end
+}, "Toggle_AutoSkill") 
+
+local skillIntervalSlider = patchSliderLoadCallback(sections.Combat:Slider({
+    Name = "Skill Interval",
+    Default = AUTO_SKILL_INTERVAL,
+    Minimum = 0.1,
+    Maximum = 10,
+    DisplayMethod = "Round",
+    Precision = 1,
+    Suffix = "s",
+    Callback = function(Value)
+        AUTO_SKILL_INTERVAL = Value
+    end
+}, "Slider_SkillInterval"))
+
+local applySkillModeVisibility
+local autoSkillModeDropdown = sections.Combat:Dropdown({
+    Name = "Auto Skill Mode",
+    Options = { "Spam", "Target Only" },
+    Default = 1,
+    Required = true,
+    Callback = function(option)
+        if option then autoSkillMode = option end
+        applySkillModeVisibility()
+    end
+}, "Dropdown_AutoSkillMode")
+
+local skillRangeSlider = patchSliderLoadCallback(sections.Combat:Slider({
+    Name = "Skill Range",
+    Default = SKILL_RANGE,
+    Minimum = 5,
+    Maximum = 200,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(Value)
+        SKILL_RANGE = Value
+    end
+}, "Slider_SkillRange"))
+
+applySkillModeVisibility = function()
+    local targetOnly = autoSkillMode == "Target Only"
+    pcall(function() skillRangeSlider:SetVisibility(targetOnly) end)
+end
+applySkillModeVisibility()
+
+sections.Farm:Toggle({
+    Name = "Auto Farm",
+    Default = farmEnabled,
+    Callback = function(state)
+        if state then
+            startAutoFarm()
+            sendNotify("Auto Farm", "Auto Farm Started", 2)
+        else
+            stopAutoFarm()
+            sendNotify("Auto Farm", "Auto Farm Stopped", 2)
+        end
+    end
+}, "Toggle_AutoFarm")
+
+local applyFarmModeVisibility
+sections.Farm:Dropdown({
+    Name = "Farm Mode",
+    Options = { "Orbit", "Hover" },
+    Default = 1,
+    Required = true,
+    Callback = function(option)
+        if option then farmMode = option end
+        applyFarmModeVisibility()
+    end
+}, "Dropdown_FarmMode")
+
+local orbitRadiusSlider = patchSliderLoadCallback(sections.Farm:Slider({
+    Name = "Orbit Radius",
+    Default = ORBIT_RADIUS,
+    Minimum = 5,
+    Maximum = 100,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(Value)
+        ORBIT_RADIUS = Value
+    end
+}, "Slider_OrbitRadius"))
+
+local orbitSpeedSlider = patchSliderLoadCallback(sections.Farm:Slider({
+    Name = "Orbit Speed",
+    Default = ORBIT_SPEED,
+    Minimum = 30,
+    Maximum = 600,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(Value)
+        ORBIT_SPEED = Value
+    end
+}, "Slider_OrbitSpeed"))
+
+local orbitHeightSlider = patchSliderLoadCallback(sections.Farm:Slider({
+    Name = "Orbit Height",
+    Default = ORBIT_HEIGHT,
+    Minimum = 0,
+    Maximum = 100,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(Value)
+        ORBIT_HEIGHT = Value
+    end
+}, "Slider_OrbitHeight"))
+
+local hoverHeightSlider = patchSliderLoadCallback(sections.Farm:Slider({
+    Name = "Hover Height",
+    Default = HOVER_HEIGHT,
+    Minimum = 0,
+    Maximum = 100,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(Value)
+        HOVER_HEIGHT = Value
+    end
+}, "Slider_HoverHeight"))
+
+patchSliderLoadCallback(sections.Farm:Slider({
+    Name = "Teleport Distance",
+    Default = FARM_TELEPORT_DISTANCE,
+    Minimum = 5,
+    Maximum = 300,
+    DisplayMethod = "Round",
+    Precision = 0,
+    Callback = function(Value)
+        FARM_TELEPORT_DISTANCE = Value
+    end
+}, "Slider_TeleportDistance"))
+
+applyFarmModeVisibility = function()
+    local isOrbit = farmMode ~= "Hover"
+    pcall(function() orbitRadiusSlider:SetVisibility(isOrbit) end)
+    pcall(function() orbitSpeedSlider:SetVisibility(isOrbit) end)
+    pcall(function() orbitHeightSlider:SetVisibility(isOrbit) end)
+    pcall(function() hoverHeightSlider:SetVisibility(not isOrbit) end)
+end
+applyFarmModeVisibility()
+
+--==================================================--
+-- AUTO START GAME (giá trị tĩnh từ RemoteStart.txt, nhúng sẵn trong script)
+--==================================================--
+local function validateConditionText(text)
+    local s, fn = pcall(loadstring, "return " .. text)
+    if s and type(fn) == "function" then return fn end
+    return nil
+end
+
+autoStartConditionFn = validateConditionText(autoStartConditionText)
+if not autoStartConditionFn then
+    autoStartConditionFn = function()
+        return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("startButton")
+    end
+end
+
+local s2, cmdFn2 = pcall(loadstring, autoStartCommand)
+if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
+
+sections.Start:Toggle({
+    Name = "Auto Start",
+    Default = autoStartEnabled,
+    Callback = function(state)
+        autoStartEnabled = state
+        if autoStartEnabled then
+            startAutoStart()
+            sendNotify("Auto Start", "Waiting for start button...", 2)
+        else
+            stopAutoStart()
+            sendNotify("Auto Start", "Stopped", 2)
+        end
+    end
+}, "Toggle_AutoStart")
+
+--==================================================--
+-- AUTO RETRY (giá trị tĩnh từ RemoteRetry.txt, nhúng sẵn trong script)
+--==================================================--
+local sRetryCmd, compiledRetryCmd = pcall(loadstring, autoRetryCommand)
+if sRetryCmd and type(compiledRetryCmd) == "function" then autoRetryCommandFn = compiledRetryCmd end
+
+autoRetryHolderFn = validateConditionText(autoRetryHolderPath)
+if not autoRetryHolderFn then
+    autoRetryHolderFn = function()
+        return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("rewardGuiHolder") and player.PlayerGui.rewardGuiHolder:FindFirstChild("holder")
+    end
+end
+
+sections.Start:Toggle({
+    Name = "Auto Retry",
+    Default = autoRetryEnabled,
+    Callback = function(state)
+        autoRetryEnabled = state
+        if autoRetryEnabled then
+            startAutoRetry()
+            sendNotify("Auto Retry", "Watching reward holder...", 2)
+        else
+            stopAutoRetry()
+            sendNotify("Auto Retry", "Stopped", 2)
+        end
+    end
+}, "Toggle_AutoRetry")
+
+sections.Combat:Button({
+    Name = "Teleport Nearest (Key: R)",
+    Callback = function()
+        task.spawn(function()
+            teleportToNearestEnemy()
+        end)
+    end
+})
+
+--==================================================--
+-- AUTO JOIN DUNGEON (tạo phòng + bắt đầu dungeon)
+--==================================================--
+local autoJoinEnabled = false
+local autoJoinRunning = false
+local selectedDungeon = "Desert Temple"
+local selectedDifficulty = "Easy"
+local hardcoreEnabled = false
+local autoJoinDelay = 3
+
+local LOBBY_PLACE_IDS_AJ = {
+    [77649408247578] = true,
+    [3220968688] = true,
+    [2414851778] = true
+}
+
+local function inLobbyPlace()
+    return LOBBY_PLACE_IDS_AJ[game.PlaceId] == true
+end
+
+local function joinDungeonNow()
+    if autoJoinRunning then return end
+    autoJoinRunning = true
+    task.spawn(function()
+        local ok, err = pcall(function()
+            local remotes = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 15)
+            if not remotes then error("remotes not found") end
+
+            pcall(function()
+                remotes:WaitForChild("createLobby", 10):InvokeServer(selectedDungeon, selectedDifficulty, 0, hardcoreEnabled, true, false)
+            end)
+            task.wait(autoJoinDelay)
+
+            pcall(function()
+                remotes:WaitForChild("addPlayerToWhitelist", 10):FireServer(player.Name)
+            end)
+            task.wait(autoJoinDelay)
+
+            local waitClock = 0
+            while waitClock < 10 do
+                local lobby = workspace:FindFirstChild("games") and workspace.games:FindFirstChild("inLobby")
+                if lobby then break end
+                task.wait(0.5)
+                waitClock = waitClock + 0.5
+            end
+
+            task.wait(autoJoinDelay)
+            pcall(function()
+                remotes:WaitForChild("startDungeon", 10):FireServer()
+            end)
+        end)
+        if ok then
+            sendNotify("Auto Join", "Joined: " .. selectedDungeon, 3)
+        else
+            sendNotify("Auto Join", "Join failed: " .. tostring(err), 4)
+        end
+        autoJoinRunning = false
+    end)
+end
+
+local function joinDungeonWatcher()
+    while true do
+        task.wait(0.5)
+        if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() then
+            joinDungeonNow()
+        end
+    end
+end
+
+sections.Dungeon:Toggle({
+    Name = "Auto Join Dungeon",
+    Default = autoJoinEnabled,
+    Callback = function(state)
+        autoJoinEnabled = state
+        if autoJoinEnabled then
+            sendNotify("Auto Join", "Enabled", 2)
+        else
+            sendNotify("Auto Join", "Stopped", 2)
+        end
+    end
+}, "Toggle_AutoJoin")
+
+sections.Dungeon:Dropdown({
+    Name = "Dungeon",
+    Options = {
+        "Desert Temple", "Winter Outpost", "Pirate Island", "King's Castle",
+        "The Underworld", "Samurai Palace", "The Canals", "Ghastly Harbor",
+        "Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
+        "Aquatic Temple", "Enchanted Forest"
+    },
+    Default = 1,
+    Required = true,
+    Callback = function(option)
+        if option then selectedDungeon = option end
+    end
+}, "Dropdown_Dungeon")
+
+sections.Dungeon:Dropdown({
+    Name = "Difficulty",
+    Options = { "Easy", "Medium", "Hard", "Insane", "Nightmare" },
+    Default = 1,
+    Required = true,
+    Callback = function(option)
+        if option then selectedDifficulty = option end
+    end
+}, "Dropdown_Difficulty")
+
+sections.Dungeon:Toggle({
+    Name = "Hardcore",
+    Default = hardcoreEnabled,
+    Callback = function(state)
+        hardcoreEnabled = state
+    end
+}, "Toggle_HardcoreAJ")
+
+sections.Dungeon:Slider({
+    Name = "Delay",
+    Default = autoJoinDelay,
+    Minimum = 0,
+    Maximum = 15,
+    DisplayMethod = "Round",
+    Precision = 1,
+    Suffix = "s",
+    Callback = function(Value)
+        autoJoinDelay = Value
+    end
+}, "Slider_JoinDelay")
+
+sections.Dungeon:Button({
+    Name = "Join Now",
+    Callback = function()
+        task.spawn(function() joinDungeonNow() end)
+    end
+})
+
+task.spawn(joinDungeonWatcher)
+
+--==================================================--
+-- BEHAVIOR LOGIC
+--==================================================--
+local speedConnection = nil
+local function connectSpeedListener()
+    if speedConnection then speedConnection:Disconnect(); speedConnection = nil end
+    if not humanoid or not humanoid.Parent then return end
+    speedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+        if enabled and humanoid and humanoid.Parent and humanoid.WalkSpeed ~= fastSpeed then
+            humanoid.WalkSpeed = fastSpeed
+        end
+    end)
+end
+connectSpeedListener()
+
+player.CharacterAdded:Connect(function(character)
+    farmTarget = nil; farmAngle = 0; farmApproaching = false; farmOldAutoRotate = true
+    autoStartTriggered = false
+    if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
+    if not character then return end
+    setupCharacter(character); connectSpeedListener()
+end)
+
+RunService.Heartbeat:Connect(function(deltaTime)
+    local ok, err = pcall(function()
+        if farmEnabled and not teleporting then
+            moveFarmTarget(deltaTime)
+        end
+    end)
+    if not ok then warn("[Heartbeat] error:", tostring(err)) end
+end)
+
+local function getLockedSkillTarget()
+    if farmEnabled and farmTarget and trackedEnemies[farmTarget] then
+        local data = trackedEnemies[farmTarget]
+        if data.Root and data.Root.Parent then return data.Root end
+    end
+    return nil
+end
+
+local function canFireSkill()
+    if autoSkillMode ~= "Target Only" then return true end
+    local root = getLockedSkillTarget()
+    if not root then return false end
+    local character = player.Character
+    local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+    if not playerRoot then return false end
+    return (playerRoot.Position - root.Position).Magnitude <= SKILL_RANGE
+end
+
+startAutoSkill = function()
+    if autoSkillRunning then return end
+    autoSkillRunning = true
+    task.spawn(function()
+        while autoSkillEnabled do
+            local ok, err = pcall(function()
+                if canFireSkill() then
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+                    task.wait(AUTO_KEY_HOLD_TIME)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+                    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+                else
+                    task.wait(0.2)
+                end
+            end)
+            if not ok then warn("[AutoSkill] error:", tostring(err)) end
+            if not autoSkillEnabled then break end
+            task.wait(AUTO_SKILL_INTERVAL)
+        end
+        autoSkillRunning = false
+    end)
+end
+
+stopAutoSkill = function() autoSkillEnabled = false end
+
+--==================================================--
+-- 3.5 AUTO FARM LOGIC (Orbit / Hover)
+--==================================================--
+leaveFarmTarget = function()
+    if not farmTarget then return end
+    farmTarget = nil
+    farmApproaching = false
+    if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
+end
+
+fireFarmSkills = function()
+    if not canFireSkill() then return end
+    if os.clock() - farmLastSkillTime < AUTO_SKILL_INTERVAL then return end
+    farmLastSkillTime = os.clock()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.delay(AUTO_KEY_HOLD_TIME, function()
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    end)
+end
+
+local function getOrbitPosition(center, angle)
+    return center + Vector3.new(math.cos(angle) * ORBIT_RADIUS, ORBIT_HEIGHT, math.sin(angle) * ORBIT_RADIUS)
+end
+
+moveFarmTarget = function(deltaTime)
+    local enemy = farmTarget
+    if not enemy or not trackedEnemies[enemy] or not trackedEnemies[enemy].Root or not trackedEnemies[enemy].Root.Parent then
+        leaveFarmTarget()
+        return
+    end
+    local character = player.Character
+    local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+    if not character or not playerRoot or not playerRoot.Parent then leaveFarmTarget(); return end
+
+    local center = trackedEnemies[enemy].Root.Position
+    local targetPosition
+    if farmMode == "Hover" then
+        farmApproaching = false
+        targetPosition = center + Vector3.new(0, HOVER_HEIGHT, 0)
+    else
+        farmAngle = (farmAngle + math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
+        targetPosition = getOrbitPosition(center, farmAngle)
+        if farmApproaching then
+            local toPoint = targetPosition - playerRoot.Position
+            local dist = toPoint.Magnitude
+            if dist <= FARM_APPROACH_EPSILON then
+                farmApproaching = false
+            else
+                targetPosition = playerRoot.Position + toPoint.Unit * math.min(dist, FARM_APPROACH_SPEED * deltaTime)
+            end
+        end
+    end
+
+    character:PivotTo(CFrame.lookAt(targetPosition, center))
+    playerRoot.AssemblyLinearVelocity = Vector3.zero
+    playerRoot.AssemblyAngularVelocity = Vector3.zero
+end
+
+farmTeleportTo = function(enemy)
+    if teleporting then return end
+    local character = player.Character
+    local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+    local currentHumanoid = character and character:FindFirstChild("Humanoid")
+    local data = trackedEnemies[enemy]
+    if not character or not playerRoot or not currentHumanoid or not data or not data.Root or not data.Root.Parent then return end
+
+    local enemyRoot = data.Root
+    local oldAnchored = playerRoot.Anchored
+    teleporting = true
+
+    local s, err = pcall(function()
+        currentHumanoid.AutoRotate = false
+        playerRoot.Anchored = true
+        playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+        local targetPosition = getOrbitPosition(enemyRoot.Position, farmAngle)
+
+        character:PivotTo(CFrame.lookAt(targetPosition, enemyRoot.Position))
+        playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+        task.wait(FREEZE_TIME)
+
+        if playerRoot and playerRoot.Parent and currentHumanoid and currentHumanoid.Parent then
+            playerRoot.Anchored = oldAnchored
+        end
+    end)
+    if not s then warn("[AutoFarm] teleport error:", tostring(err)) end
+    teleporting = false
+end
+
+startAutoFarm = function()
+    if farmRunning then return end
+    farmRunning = true
+    farmEnabled = true
+
+    task.spawn(function()
+        if not dungeon and not initializeRooms() then
+            farmEnabled = false
+            farmRunning = false
+            sendNotify("Auto Farm", "Failed to load dungeon.", 3)
+            return
+        end
+
+        while farmEnabled do
+            local ok, err = pcall(function()
+                cleanupEnemies()
+                if not farmTarget then
+                    local nearest = getNearestEnemy()
+                    if nearest and nearest.Model and nearest.Root and nearest.Root.Parent then
+                        farmTarget = nearest.Model
+                        if humanoid and humanoid.Parent then
+                            farmOldAutoRotate = humanoid.AutoRotate
+                            humanoid.AutoRotate = false
+                        end
+                        if nearest.Distance > FARM_TELEPORT_DISTANCE then
+                            farmTeleportTo(farmTarget)
+                            farmApproaching = false
+                        else
+                            farmApproaching = true
+                        end
+                    else
+                        if not dungeon then initializeRooms() end
+                        task.wait(0.5)
+                    end
+                else
+                    local data = trackedEnemies[farmTarget]
+                    if not farmTarget.Parent or not data or not data.Root or not data.Root.Parent then
+                        leaveFarmTarget()
+                    else
+                        fireFarmSkills()
+                    end
+                end
+            end)
+            if not ok then warn("[AutoFarm] error:", tostring(err)) end
+            if not farmEnabled then break end
+            task.wait(FARM_SCAN_INTERVAL)
+        end
+
+        leaveFarmTarget()
+        farmRunning = false
+    end)
+end
+
+stopAutoFarm = function()
+    farmEnabled = false
+    farmTarget = nil
+    farmAngle = 0
+    farmApproaching = false
+    if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
+end
+
+teleportToNearestEnemy = function()
+    if teleporting then return end
+    teleporting = true
+
+    local s, err = pcall(function()
+        local character = player.Character
+        local currentHumanoid = character and character:FindFirstChild("Humanoid")
+        local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+        if not character or not currentHumanoid or not playerRoot then return end
+        if not dungeon and not initializeRooms() then return end
+
+        cleanupEnemies()
+        local nearest = getNearestEnemy()
+        if not nearest then
+            sendNotify("Teleport", "No enemy found.", 3)
+            return
+        end
+
+        local enemy, enemyRoot = nearest.Model, nearest.Root
+        if not enemy or not enemy.Parent or not enemyRoot or not enemyRoot.Parent then return end
+
+        local oldAnchored, oldAutoRotate = playerRoot.Anchored, currentHumanoid.AutoRotate
+        currentHumanoid.AutoRotate = false; playerRoot.Anchored = true
+        playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+        local direction = playerRoot.Position - enemyRoot.Position
+        direction = direction.Magnitude < 0.01 and Vector3.new(0, 0, -1) or direction.Unit
+        local targetPosition = enemyRoot.Position + direction * TELEPORT_RADIUS + Vector3.new(0, HEIGHT_OFFSET, 0)
+        
+        character:PivotTo(CFrame.lookAt(targetPosition, enemyRoot.Position))
+        playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+        task.wait(FREEZE_TIME)
+
+        if playerRoot and playerRoot.Parent and currentHumanoid and currentHumanoid.Parent then
+            playerRoot.Anchored, currentHumanoid.AutoRotate = oldAnchored, oldAutoRotate
+        end
+        if playerRoot and playerRoot.Parent and enemyRoot and enemyRoot.Parent then
+            character:PivotTo(CFrame.lookAt(playerRoot.Position, enemyRoot.Position))
+        end
+
+        sendNotify("Teleport", "Teleported to " .. enemy.Name, 2)
+    end)
+    if not s then warn("[Teleport] error:", tostring(err)) end
+    teleporting = false
+end
+
+--==================================================--
+-- AUTO START GAME LOGIC (chờ startButton rồi fire remote)
+--==================================================--
+startAutoStart = function()
+    if autoStartRunning then return end
+    autoStartRunning = true
+    autoStartTriggered = false
+    task.spawn(function()
+        while autoStartEnabled do
+            local met = false
+            if autoStartConditionFn then
+                local sCond, res = pcall(autoStartConditionFn)
+                met = sCond and res ~= nil
+            end
+            if met and not autoStartTriggered then
+                autoStartTriggered = true
+                if autoStartCommandFn then
+                    local sCmd, err = pcall(autoStartCommandFn)
+                    if sCmd then
+                        sendNotify("Auto Start", "Game started!", 3)
+                    else
+                        sendNotify("Auto Start", "Trigger failed: " .. tostring(err), 3)
+                    end
+                else
+                    sendNotify("Auto Start", "Remote command invalid", 3)
+                end
+            end
+            if not autoStartEnabled then break end
+            task.wait(1)
+        end
+        autoStartRunning = false
+    end)
+end
+
+stopAutoStart = function()
+    autoStartEnabled = false
+end
+
+--==================================================--
+-- AUTO RETRY LOGIC (holder >= 2 item => fire replayDungeon)
+--==================================================--
+startAutoRetry = function()
+    if autoRetryRunning then return end
+    autoRetryRunning = true
+    autoRetryTriggered = false
+    task.spawn(function()
+        while autoRetryEnabled do
+            local count = 0
+            if autoRetryHolderFn then
+                local sok, holder = pcall(autoRetryHolderFn)
+                if sok and typeof(holder) == "Instance" and holder.Parent then
+                    count = #holder:GetChildren()
+                end
+            end
+            if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
+                autoRetryTriggered = true
+                if autoRetryCommandFn then
+                    local sCmd, err = pcall(autoRetryCommandFn)
+                    if sCmd then
+                        sendNotify("Auto Retry", "Retrying dungeon!", 3)
+                    else
+                        sendNotify("Auto Retry", "Trigger failed: " .. tostring(err), 3)
+                    end
+                else
+                    sendNotify("Auto Retry", "Remote command invalid", 3)
+                end
+            elseif count < AUTO_RETRY_MIN_ITEMS then
+                autoRetryTriggered = false
+            end
+            if not autoRetryEnabled then break end
+            task.wait(0.75)
+        end
+        autoRetryRunning = false
+    end)
+end
+
+stopAutoRetry = function()
+    autoRetryEnabled = false
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.R then
+        task.spawn(function()
+            teleportToNearestEnemy()
+        end)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(GUI_UPDATE_INTERVAL)
+        local currentDungeon = workspace:FindFirstChild("dungeon")
+        if dungeon and currentDungeon ~= dungeon then
+            resetDungeon()
+        elseif not dungeon and currentDungeon then
+            initializeRooms()
+        end
+    end
+end)
+
+task.spawn(function()
+    local success, errorMessage = pcall(function() return initializeRooms() end)
+    if not success then
+        warn("[EnemyTracker] Initialization error:", errorMessage)
+    end
+end)
+
+--==================================================--
+-- 4. CHỌN TAB & LOAD CONFIG TỰ ĐỘNG THEO SAMPLE
+--==================================================--
+-- Đã fix lỗi chọn tên tab
+task.spawn(function()
+    local ok, err = pcall(function()
+        tabs.Speed:Select()
+        MacLib:LoadAutoLoadConfig()
+    end)
+    if ok then
+        print("[Script#2] Loaded OK - Auto Farm + Auto Start + Auto Retry available")
+    else
+        warn("[Script#2] Init/config error:", tostring(err))
+        pcall(function() MacLib:Notify({ Title = "Script#2", Description = "Init error: " .. tostring(err), Time = 5 }) end)
+    end
+end)

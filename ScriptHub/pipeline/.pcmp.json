@@ -1,0 +1,52 @@
+{
+    "openComposedOutput": true,
+
+    "deployment": {
+        "enabled": true,
+        "github": {
+            "enabled": false,
+            "apiKey": "API_KEY_HERE",
+            "owner": "REPOSITORY_OWNER_HERE",
+            "repo": "REPOSITORY_NAME_HERE"
+        }
+    },
+
+    "buildConfigs": [
+        {
+            "name": "Debug",
+
+            "promptVersion": false,
+            "promptDeploy": false,
+
+            "frame": "pipeline/frame.luau",
+            "darkluaConfig": "pipeline/.darklua_debug.json",
+            "input": "src/main.luau",
+            "output": "generated/debug.luau"
+        },
+
+        {
+            "name": "Beta",
+
+            "promptVersion": true,
+            "promptDeploy": true,
+            "prerelease": true,
+
+            "frame": "pipeline/frame.luau",
+            "darkluaConfig": "pipeline/.darklua.json",
+            "input": "src/main.luau",
+            "output": "generated/beta.luau"
+        },
+
+        {
+            "name": "Release",
+            
+            "promptVersion": true,
+            "promptDeploy": true,
+
+            "frame": "pipeline/frame.luau",
+            "darkluaConfig": "pipeline/.darklua.json",
+            "input": "src/main.luau",
+            "output": "generated/release.luau"
+        }
+    ]
+}
