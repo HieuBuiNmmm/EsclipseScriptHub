@@ -41,9 +41,10 @@ return function(self)
 	--// Tabs
 	local tabGroup = window:TabGroup()
 	local tabs = {
-		Speed = tabGroup:Tab({ Name = "Speed", Image = "rbxassetid://10734950309" }),
-		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://18821914323" }),
-		Dungeon = tabGroup:Tab({ Name = "Dungeon", Image = "rbxassetid://10734950309" }),
+		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
+		Farm = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
+		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
+		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
 		State = tabGroup:Tab({ Name = "State", Image = "rbxassetid://10734950309" }),
@@ -56,13 +57,15 @@ return function(self)
 	local speedTab = require("@routes/DungeonQuest/tabs/Speed/main")
 	local combatTab = require("@routes/DungeonQuest/tabs/Combat/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
+	local visualTab = require("@routes/DungeonQuest/tabs/Visual/main")
 	local configTab = require("@routes/DungeonQuest/tabs/Config/main")
 	local notificationsTab = require("@routes/DungeonQuest/tabs/Notifications/main")
 	local stateTab = require("@routes/DungeonQuest/tabs/State/main")
 
-	speedTab(window, tabs.Speed)
-	combatTab(window, tabs.Combat)
+	speedTab(window, tabs.Player)
+	combatTab(window, tabs.Farm)
 	dungeonTab(window, tabs.Dungeon)
+	visualTab(window, tabs.Visual)
 	configTab(window, tabs.Config)
 	notificationsTab(window, tabs.Notifications)
 	stateTab(window, tabs.State)
@@ -88,6 +91,6 @@ return function(self)
 	autoHide.Execute()
 
 	--// Khởi chạy
-	tabs.Speed:Select()
+	tabs.Player:Select()
 	macLib:LoadAutoLoadConfig()
 end

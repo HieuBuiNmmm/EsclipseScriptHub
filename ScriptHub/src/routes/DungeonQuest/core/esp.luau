@@ -2,15 +2,13 @@
 -- Chỉ highlight các object trùng tên với model projectile trong
 -- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
+--// Imports
+local shared = require("@routes/DungeonQuest/core/shared")
+
 --// Table
 local esp = {}
 
 --// Configuration
---// ReplicatedStorage.enemyProjectiles là kho lưu model template của enemy.
---// Ta đọc tên các model đó làm danh sách projectile; khi model cùng tên
---// xuất hiện trong Workspace thì highlight đúng vật đang bay.
-local PROJECTILE_FOLDER = "enemyProjectiles"
-
 local BOX_COLOR = Color3.fromRGB(255, 0, 0)
 local LINE_THICKNESS = 0.05
 local SURFACE_TRANSPARENCY = 0.8
@@ -37,19 +35,9 @@ local function createBox(targetObj)
 	end
 end
 
---// Load danh sách tên projectile từ ReplicatedStorage.enemyProjectiles
---// (bao gồm Model, MeshPart, Part).
+--// Load danh sách tên projectile từ shared (ReplicatedStorage.enemyProjectiles).
 local function refreshProjectileNames()
-	projectileNames = {}
-	local rs = game:GetService("ReplicatedStorage")
-	local folder = rs:FindFirstChild(PROJECTILE_FOLDER)
-	if not folder then return end
-	for _, obj in ipairs(folder:GetChildren()) do
-		local cls = obj.ClassName
-		if cls == "Model" or cls == "MeshPart" or cls == "Part" then
-			projectileNames[obj.Name] = true
-		end
-	end
+	projectileNames = shared.GetEnemyProjectileNames()
 end
 
 --// Chỉ highlight object trùng tên với danh sách projectile, kể cả khi

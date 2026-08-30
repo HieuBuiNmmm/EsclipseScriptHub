@@ -38,6 +38,10 @@ local HOVER_HEIGHT = ORBIT_HEIGHT
 --// Bật/tắt chế độ blacklist quái khi chọn mục tiêu (true = bật, false = tắt -> chọn mọi quái)
 local BLACKLIST_ENABLED = true
 
+--// Folder trong ReplicatedStorage chứa toàn bộ model/projectile của enemy.
+--// Dùng chung cho Highlight Hitbox (ESP) và Basic Orbit Dodge.
+local PROJECTILE_FOLDER = "enemyProjectiles"
+
 --// Danh sách tên quái KHÔNG được chọn làm mục tiêu (retarget/ban đầu).
 --// Chỉnh sửa trực tiếp tại đây.
 --// VD: BLACKLIST_ENEMIES = { "Northern Mage", "Northern Spearman" }
@@ -764,6 +768,22 @@ function shared.GetEnemyNames()
 	for name in pairs(names) do table.insert(out, name) end
 	table.sort(out)
 	return out
+end
+
+--// Trả về set tên projectile của enemy từ ReplicatedStorage.enemyProjectiles
+--// (bao gồm Model, MeshPart, Part). Dùng chung cho ESP và Basic Orbit Dodge.
+function shared.GetEnemyProjectileNames()
+	local names = {}
+	local rs = game:GetService("ReplicatedStorage")
+	local folder = rs:FindFirstChild(PROJECTILE_FOLDER)
+	if not folder then return names end
+	for _, obj in ipairs(folder:GetChildren()) do
+		local cls = obj.ClassName
+		if cls == "Model" or cls == "MeshPart" or cls == "Part" then
+			names[obj.Name] = true
+		end
+	end
+	return names
 end
 
 --// Tunable constants accessors (UI tabs cập nhật qua đây)

@@ -34,12 +34,10 @@ local PREDICTIVE_NAMES = {
 
 --// Bán kính vùng detect quanh player (stud) - hành lang phía trước hướng đi
 local DETECT_RADIUS = 15
---// Góc mở "phía trước hướng đi" (độ, 2 chiều) để coi hazard là phía trước
-local FRONT_ANGLE = 120
 --// Cooldown chống lật hướng liên tục (giây)
 local FLIP_COOLDOWN = 0.15
---// Khoảng nhìn phía trước theo tiếp tuyến (stud) để phát hiện hazard sắp va chạm
-local LOOK_AHEAD = 20
+--// Số node phía trước (theo hướng đi) để coi là "có nguy hiểm đang tới"
+local FLIP_LOOKAHEAD = 6
 --// Số frame liên tiếp không có hazard trước khi reset hướng orbit về bình thường
 local ALL_CLEAR_FRAMES = 5
 --// Cooldown giữa các lần nhảy tới node an toàn (giây)
@@ -82,6 +80,8 @@ local basicDodge = {}
 
 --// State
 local enabled = false
+--// Chế độ hoạt động: "All" = mọi lúc, "Boss" = chỉ khi đang boss
+local dodgeMode = "All"
 local connection = nil
 local lastFlipTime = 0
 local lastJumpTime = 0
@@ -89,6 +89,8 @@ local noHazardCount = 0
 local trackedColumns = {}
 local debugVisuals = false
 local detectorVisuals = false
+--// Hình dạng detector: "Cone" (hình nón trước mặt) hoặc "Circle" (vòng tròn)
+local detectorMode = "Circle"
 local renderLoopRunning = false
 
 --// Vị trí tâm (X/Y/Z) của object trong Workspace.
@@ -153,9 +155,12 @@ end
 
 local function refreshColumns()
 	local Workspace = game:GetService("Workspace")
+	--// Hợp danh sách tên cần né: tự-add (BASIC_DODGE_NAMES) + toàn bộ projectile
+	--// của enemy từ shared (ReplicatedStorage.enemyProjectiles).
+	local projectileNames = shared.GetEnemyProjectileNames()
 	local seen = {}
 	for _, child in ipairs(Workspace:GetChildren()) do
-		if BASIC_DODGE_NAMES[child.Name] then
+		if BASIC_DODGE_NAMES[child.Name] or projectileNames[child.Name] then
 			tryTrackObject(child, seen, PREDICTIVE_NAMES[child.Name] == true)
 		end
 	end
@@ -190,32 +195,13 @@ local function horizontalDistance(a, b)
 	return math.sqrt(dx * dx + dz * dz)
 end
 
---// Có hazard nào nằm trong hành lang phía trước hướng đi (theo tangent) ?
-local function hasHazardAhead(playerPos, bossPos, effDir, hazards)
-	local radius = shared.GetOrbitRadius()
-	if not radius or radius <= 0 then return false end
-	local radial = playerPos - bossPos
-	local ang = math.atan2(radial.Z, radial.X)
-	--// tiếp tuyến tại điểm player: đạo hàm (cosθ,sinθ) = (-sinθ, cosθ), nhân effDir
-	local tx = -math.sin(ang) * effDir
-	local tz = math.cos(ang) * effDir
-	local tangent = Vector3.new(tx, 0, tz)
-	local cosHalf = math.cos(math.rad(FRONT_ANGLE / 2))
-	for _, h in ipairs(hazards) do
-		local toH = Vector3.new(h.X - playerPos.X, 0, h.Z - playerPos.Z)
-		local mag = toH.Magnitude
-		if mag > 0.001 then
-			local unit = toH.Unit
-			local along = tangent:Dot(unit)
-			if along >= cosHalf then
-				--// chiếu lên hướng đi (proj) + khoảng cách lệch khỏi quỹ đạo (perp)
-				local proj = mag * along
-				local perp = math.sqrt(math.max(mag * mag - proj * proj, 0))
-				if proj <= LOOK_AHEAD and perp <= DETECT_RADIUS then
-					return true
-				end
-			end
-		end
+--// Có node nguy hiểm nào trong FLIP_LOOKAHEAD node phía trước theo hướng đi ?
+--// Dựa trên danger map (cùng nguồn với jump), nên quyết định flip được thống nhất.
+local function dangerAhead(danger, curIdx, effDir)
+	for i = 1, FLIP_LOOKAHEAD do
+		local idx = (curIdx + effDir * i) % N
+		if idx < 0 then idx = idx + N end
+		if danger[idx] then return true end
 	end
 	return false
 end
@@ -451,10 +437,29 @@ local function renderArc(parent, bossPos, radius, height, danger)
 end
 
 --// Vùng detect phía trước hướng đi (hình quạt: bán kính DETECT_RADIUS,
---// góc FRONT_ANGLE quanh tiếp tuyến của orbit tại vị trí player).
+--// góc mở cố định quanh tiếp tuyến của orbit tại vị trí player).
+local DETECTOR_ANGLE = 120
+local CIRCLE_SECTIONS = 32
+local function renderCircle(parent, playerPos)
+	local p = Vector3.new(playerPos.X, playerPos.Y, playerPos.Z)
+	for i = 0, CIRCLE_SECTIONS - 1 do
+		local t1 = i / CIRCLE_SECTIONS
+		local t2 = (i + 1) / CIRCLE_SECTIONS
+		local a1 = t1 * math.pi * 2
+		local a2 = t2 * math.pi * 2
+		local p1 = p + Vector3.new(math.cos(a1) * DETECT_RADIUS, 0, math.sin(a1) * DETECT_RADIUS)
+		local p2 = p + Vector3.new(math.cos(a2) * DETECT_RADIUS, 0, math.sin(a2) * DETECT_RADIUS)
+		drawSegment(parent, p1, p2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
+	end
+end
+
 local function renderDetector(parent, playerPos, bossPos)
 	local radius = shared.GetOrbitRadius()
 	if not radius or radius <= 0 then return end
+	if detectorMode == "Circle" then
+		renderCircle(parent, playerPos)
+		return
+	end
 	local effDir = shared.GetBasicOrbitDirection()
 	if not effDir then effDir = shared.GetFarmOrbitDirection() or 1 end
 	local radial = playerPos - bossPos
@@ -463,13 +468,12 @@ local function renderDetector(parent, playerPos, bossPos)
 	local tx = -math.sin(ang) * effDir
 	local tz = math.cos(ang) * effDir
 	local tangent = Vector3.new(tx, 0, tz)
-	local half = math.rad(FRONT_ANGLE / 2)
+	local half = math.rad(DETECTOR_ANGLE / 2)
 
 	--// Hai cạnh quạt
 	local a2 = Vector3.new(tangent.X * math.cos(half) - tangent.Z * math.sin(half), 0, tangent.X * math.sin(half) + tangent.Z * math.cos(half)) * DETECT_RADIUS
 	local b1 = Vector3.new(tangent.X * math.cos(-half) - tangent.Z * math.sin(-half), 0, tangent.X * math.sin(-half) + tangent.Z * math.cos(-half)) * DETECT_RADIUS
 	local p = Vector3.new(playerPos.X, playerPos.Y, playerPos.Z)
-	local pA1 = p + a1
 	local pA2 = p + a2
 	local pB1 = p + b1
 	drawSegment(parent, p, pA2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
@@ -564,6 +568,8 @@ local function basicStep()
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	if not character or not playerRoot or not playerRoot.Parent then return end
 	if shared.GetFarmMode() ~= "Orbit" then return end
+	--// Chế độ Boss Only: bỏ qua khi chưa trong boss room
+	if dodgeMode == "Boss" and not shared.IsBossActive() then return end
 
 	local center = shared.GetOrbitCenter()
 	if not center then return end
@@ -595,22 +601,26 @@ local function basicStep()
 	end
 	noHazardCount = 0
 
-	if hasHazardAhead(playerPos, center, effDir, hazards) then
+	--// Xây danger map 1 lần, dùng chung cho quyết định flip và jump node an toàn.
+	local height = shared.GetOrbitHeight() or 0
+	local toPlayer = playerPos - center
+	local curIdx = degToIdx(math.deg(math.atan2(toPlayer.Z, toPlayer.X)))
+	local danger = buildDangerMap(center, shared.GetOrbitRadius(), height)
+
+	if dangerAhead(danger, curIdx, effDir) then
 		if now - lastFlipTime > FLIP_COOLDOWN then
 			local newDir = -effDir
 			shared.SetBasicOrbitDirection(newDir)
 			lastFlipTime = now
-			--// kẹt 2 phía: flip xong vẫn hazard trước hướng mới -> nhảy node an toàn
-			if hasHazardAhead(playerPos, center, newDir, hazards) and now - lastJumpTime > JUMP_COOLDOWN then
+			--// kẹt 2 phía: vẫn nguy hiểm trước hướng mới -> nhảy node an toàn
+			if dangerAhead(danger, curIdx, newDir) and now - lastJumpTime > JUMP_COOLDOWN then
 				lastJumpTime = now
 				jumpToSafeNode(center)
 			end
 		elseif now - lastJumpTime > JUMP_COOLDOWN then
-			--// trong cooldown flip mà vẫn còn hazard trước -> nhảy node an toàn
-			if hasHazardAhead(playerPos, center, effDir, hazards) then
-				lastJumpTime = now
-				jumpToSafeNode(center)
-			end
+			--// trong cooldown flip mà vẫn còn nguy hiểm trước -> nhảy node an toàn
+			lastJumpTime = now
+			jumpToSafeNode(center)
 		end
 	end
 end
@@ -640,20 +650,20 @@ function basicDodge.IsEnabled()
 	return enabled
 end
 
+function basicDodge.GetMode()
+	return dodgeMode
+end
+
+function basicDodge.SetMode(mode)
+	if mode == "Boss" or mode == "All" then dodgeMode = mode end
+end
+
 function basicDodge.GetDetectRadius()
 	return DETECT_RADIUS
 end
 
 function basicDodge.SetDetectRadius(value)
 	DETECT_RADIUS = value
-end
-
-function basicDodge.GetFrontAngle()
-	return FRONT_ANGLE
-end
-
-function basicDodge.SetFrontAngle(value)
-	FRONT_ANGLE = value
 end
 
 function basicDodge.GetFlipCooldown()
@@ -670,14 +680,6 @@ end
 
 function basicDodge.SetJumpCooldown(value)
 	JUMP_COOLDOWN = value
-end
-
-function basicDodge.GetLookAhead()
-	return LOOK_AHEAD
-end
-
-function basicDodge.SetLookAhead(value)
-	LOOK_AHEAD = value
 end
 
 function basicDodge.GetDangerRadius()
@@ -742,6 +744,14 @@ end
 
 function basicDodge.IsDetectorVisuals()
 	return detectorVisuals
+end
+
+function basicDodge.GetDetectorMode()
+	return detectorMode
+end
+
+function basicDodge.SetDetectorMode(mode)
+	if mode == "Cone" or mode == "Circle" then detectorMode = mode end
 end
 
 return basicDodge
