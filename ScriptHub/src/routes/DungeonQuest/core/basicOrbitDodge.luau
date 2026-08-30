@@ -49,9 +49,9 @@ local ALL_CLEAR_FRAMES = 5
 local JUMP_COOLDOWN = 0.3
 
 --// ---- Danger map (kế thừa Smart Dodge) ----
---// PADDING quanh hitbox thật (OBB) để được coi là dead zone. Không còn là bán
---// kính cố định: volume nguy hiểm khớp kích thước từng object; fallback sphere.
-local DANGER_RADIUS = 16
+--// PADDING quanh hitbox thật (OBB) để được coi là dead zone. Hard-code nhỏ vì
+--// volume nguy hiểm khớp kích thước từng object; fallback sphere khi không OBB.
+local DANGER_RADIUS = 1
 --// Bán kính hazard thực của object predictive (stud): chiều rộng dải dead zone và
 --// bán kính góc của danger interval trên orbit
 local PREDICTIVE_OBJECT_RADIUS = 10
@@ -802,14 +802,6 @@ end
 
 function basicDodge.SetJumpCooldown(value)
 	JUMP_COOLDOWN = value
-end
-
-function basicDodge.GetDangerRadius()
-	return DANGER_RADIUS
-end
-
-function basicDodge.SetDangerRadius(value)
-	DANGER_RADIUS = value
 end
 
 function basicDodge.GetAllClearFrames()

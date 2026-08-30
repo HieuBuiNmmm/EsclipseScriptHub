@@ -28,4 +28,24 @@ return function(window, tab)
 			shared.SetFastSpeed(Value)
 		end),
 	}, "Slider_FastSpeed"))
+
+	section:Header({ Name = "Teleport" })
+
+	section:Button({
+		Name = "Teleport Nearest (Key: R)",
+		Callback = function()
+			task.spawn(function()
+				shared.TeleportToNearestEnemy()
+			end)
+		end,
+	})
+
+	section:Button({
+		Name = "Teleport Behind Farthest (Key: C)",
+		Callback = function()
+			task.spawn(function()
+				shared.TeleportBehindFarthestEnemy()
+			end)
+		end,
+	})
 end

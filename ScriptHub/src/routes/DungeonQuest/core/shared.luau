@@ -115,6 +115,7 @@ local enemyCount = 0
 --// Forward declarations
 local cleanupEnemies
 local getNearestEnemy
+local getFarthestEnemy
 local initializeRooms
 local resetDungeon
 local leaveFarmTarget
@@ -299,6 +300,34 @@ getNearestEnemy = function()
 	return best
 end
 
+getFarthestEnemy = function()
+	local character = player.Character
+	if not character or not character.Parent then return nil end
+	local playerRoot = character:FindFirstChild("HumanoidRootPart")
+	if not playerRoot then return nil end
+
+	local best, bestDistance = nil, -1
+	local fallback, fallbackDistance = nil, -1
+	for enemy, data in pairs(trackedEnemies) do
+		if enemy and enemy.Parent and data and data.Root and data.Root.Parent then
+			local distance = (playerRoot.Position - data.Root.Position).Magnitude
+			if isBlacklisted(enemy.Name) then
+				--// blacklist: chỉ nhắm khi không còn enemy bình thường nào tồn tại
+				if distance > fallbackDistance then
+					fallbackDistance = distance
+					fallback = { Model = enemy, Root = data.Root, Distance = distance }
+				end
+			elseif distance > bestDistance then
+				bestDistance = distance
+				best = { Model = enemy, Root = data.Root, Distance = distance }
+			end
+		end
+	end
+	--// hết enemy bình thường -> chấp nhận enemy trong blacklist
+	if not best then return fallback end
+	return best
+end
+
 --// Skill helpers
 local function getLockedSkillTarget()
 	if farmEnabled and farmTarget and trackedEnemies[farmTarget] then
@@ -468,6 +497,101 @@ function shared.TeleportToNearestEnemy()
 		end
 
 		notifier.Notify("Teleport", "Teleported to " .. enemy.Name, 2)
+	end)
+	if not s then warn("[Teleport] error:", tostring(err)) end
+	teleporting = false
+end
+
+--// Teleport về sau kẻ địch XA NHẤT (phím C). Điểm tới được validate:
+--// - Không lún xuống đất (ép Y theo floor bên dưới).
+--// - Không nằm trong tường (probe ray từ enemy tới điểm, thử xê sang 2 bên).
+local function rotateDir(dir, ang)
+	local cosA = math.cos(ang)
+	local sinA = math.sin(ang)
+	return Vector3.new(dir.X * cosA - dir.Z * sinA, 0, dir.X * sinA + dir.Z * cosA)
+end
+
+local function findValidTeleportSpot(character, enemy, enemyRoot, behindDir, raw)
+	local Workspace = game:GetService("Workspace")
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character, enemy, enemyRoot }
+	params.IgnoreWater = true
+
+	--// 1) Ép sàn: không bị lún dưới mặt đất.
+	local ground = Workspace:Raycast(raw + Vector3.new(0, 15, 0), Vector3.new(0, -40, 0), params)
+	local yBase = ground and ground.Position.Y + 0.5 or raw.Y
+
+	--// 2) Chống xuyên tường: thử các hướng xê quanh "đằng sau" tới khi không bị chặn.
+	local sweeps = {
+		behindDir,
+		rotateDir(behindDir, math.rad(25)),
+		rotateDir(behindDir, -math.rad(25)),
+		rotateDir(behindDir, math.rad(50)),
+		rotateDir(behindDir, -math.rad(50)),
+		rotateDir(behindDir, math.rad(80)),
+		rotateDir(behindDir, -math.rad(80)),
+	}
+	for _, d in ipairs(sweeps) do
+		local candidate = Vector3.new(enemyRoot.Position.X + d.X * TELEPORT_RADIUS, yBase, enemyRoot.Position.Z + d.Z * TELEPORT_RADIUS)
+		local probe = Workspace:Raycast(enemyRoot.Position + Vector3.new(0, 2, 0), candidate - enemyRoot.Position, params)
+		local blocked = probe and (probe.Position - candidate).Magnitude > 1.5
+		if not blocked then return candidate end
+	end
+	return nil
+end
+
+function shared.TeleportBehindFarthestEnemy()
+	if teleporting then return end
+	teleporting = true
+
+	local s, err = pcall(function()
+		local character = player.Character
+		local currentHumanoid = character and character:FindFirstChild("Humanoid")
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+		if not character or not currentHumanoid or not playerRoot then return end
+		if not dungeon and not initializeRooms() then return end
+
+		cleanupEnemies()
+		local farthest = getFarthestEnemy()
+		if not farthest then
+			notifier.Notify("Teleport", "No enemy found.", 3)
+			return
+		end
+
+		local enemy, enemyRoot = farthest.Model, farthest.Root
+		if not enemy or not enemy.Parent or not enemyRoot or not enemyRoot.Parent then return end
+		if not character.PrimaryPart then character.PrimaryPart = playerRoot end
+
+		--// "đằng sau" = ngược hướng enemy đang nhìn (backstab); fallback ngược phía player.
+		local behindDir = -enemyRoot.CFrame.LookVector
+		behindDir = behindDir.Magnitude > 0.1 and behindDir or (enemyRoot.Position - playerRoot.Position).Unit
+		if (enemyRoot.Position + behindDir * TELEPORT_RADIUS - playerRoot.Position).Magnitude < (enemyRoot.Position - playerRoot.Position).Magnitude then
+			--// "đằng sau" lại gần player hơn mặt trước -> dùng hướng ngược (xa player hơn)
+			behindDir = -behindDir
+		end
+		local raw = enemyRoot.Position + behindDir * TELEPORT_RADIUS
+
+		local target = findValidTeleportSpot(character, enemy, enemyRoot, behindDir, raw) or raw
+
+		local oldAnchored, oldAutoRotate = playerRoot.Anchored, currentHumanoid.AutoRotate
+		currentHumanoid.AutoRotate = false; playerRoot.Anchored = true
+		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+		character:PivotTo(CFrame.lookAt(target, enemyRoot.Position))
+		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+		task.wait(FREEZE_TIME)
+
+		if playerRoot and playerRoot.Parent and currentHumanoid and currentHumanoid.Parent then
+			playerRoot.Anchored, currentHumanoid.AutoRotate = oldAnchored, oldAutoRotate
+		end
+		if playerRoot and playerRoot.Parent and enemyRoot and enemyRoot.Parent then
+			character:PivotTo(CFrame.lookAt(playerRoot.Position, enemyRoot.Position))
+		end
+
+		notifier.Notify("Teleport", "Behind " .. enemy.Name, 2)
 	end)
 	if not s then warn("[Teleport] error:", tostring(err)) end
 	teleporting = false

@@ -244,15 +244,6 @@ return function(window, tab)
 	end
 	applySkillModeVisibility()
 
-	combatSection:Button({
-		Name = "Teleport Nearest (Key: R)",
-		Callback = function()
-			task.spawn(function()
-				shared.TeleportToNearestEnemy()
-			end)
-		end,
-	})
-
 	combatSection:Toggle({
 		Name = "Basic Orbit Dodge",
 		Default = false,
@@ -311,18 +302,6 @@ return function(window, tab)
 			basicOrbitDodge.SetPanicCooldown(Value)
 		end),
 	}, "Slider_BasicPanicCooldown"))
-
-	ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Danger Margin",
-		Default = basicOrbitDodge.GetDangerRadius(),
-		Minimum = 1,
-		Maximum = 50,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetDangerRadius(Value)
-		end),
-	}, "Slider_BasicDangerRadius"))
 
 	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Dodge Flip Cooldown",

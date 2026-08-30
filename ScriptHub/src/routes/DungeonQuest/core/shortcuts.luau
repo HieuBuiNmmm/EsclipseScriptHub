@@ -1,4 +1,4 @@
--- Phím tắt R: teleport tới kẻ địch gần nhất (dành cho Tab Combat).
+-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -20,6 +20,10 @@ function shortcuts.Init()
 		if input.KeyCode == Enum.KeyCode.R then
 			task.spawn(function()
 				shared.TeleportToNearestEnemy()
+			end)
+		elseif input.KeyCode == Enum.KeyCode.C then
+			task.spawn(function()
+				shared.TeleportBehindFarthestEnemy()
 			end)
 		end
 	end)
