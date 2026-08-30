@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T11:24:54.107328100+00:00",
+    genDate = "2026-08-30T11:35:32.465202300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8036,13 +8036,15 @@ local function renderDetector(parent, playerPos, bossPos)
 end
 
 --// Vẽ toàn bộ visuals cho 1 khung hình (xóa cũ, vẽ mới).
+--// Tách riêng: Detector Visuals chỉ vẽ vòng detect/panic; Dead Zone Visuals
+--// mới vẽ sphere kinematic + tia predictive + cung danger.
 local function renderVisuals(bossPos, radius, height)
 	clearVisuals()
-	if not debugVisuals then return end
+	if not debugVisuals and not detectorVisuals then return end
 	local parent = Instance.new("Folder")
 	parent.Name = VISUALS_FOLDER
 	parent.Parent = game:GetService("Workspace")
-	local danger = buildDangerMap(bossPos, radius, height)
+	local danger = nil
 	if detectorVisuals then
 		local character = player.Character
 		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
@@ -8050,18 +8052,21 @@ local function renderVisuals(bossPos, radius, height)
 			renderDetector(parent, playerRoot.Position, bossPos)
 		end
 	end
-	renderKinematicBalls(parent)
-	renderPredictiveRays(parent)
-	renderArc(parent, bossPos, radius, height, danger)
+	if debugVisuals then
+		danger = buildDangerMap(bossPos, radius, height)
+		renderKinematicBalls(parent)
+		renderPredictiveRays(parent)
+		renderArc(parent, bossPos, radius, height, danger)
+	end
 end
 
---// Loop vẽ visuals độc lập (chạy khi bật Dead Zone Visuals, kể cả chưa bật dodge).
+--// Loop vẽ visuals độc lập (chạy khi bật Dead Zone Visuals hoặc Detector Visuals).
 local function ensureRenderLoop()
 	if renderLoopRunning then return end
 	renderLoopRunning = true
 	task.spawn(function()
 		while true do
-			if debugVisuals then
+			if debugVisuals or detectorVisuals then
 				pcall(function()
 					local center = shared.GetOrbitCenter()
 					if center then
@@ -8078,6 +8083,14 @@ local function ensureRenderLoop()
 			task.wait(VISUALS_REFRESH_INTERVAL)
 		end
 	end)
+end
+
+local function updateRenderLoop()
+	if debugVisuals or detectorVisuals then
+		ensureRenderLoop()
+	else
+		clearVisuals()
+	end
 end
 
 --// Khi bị kẹp: nhảy tới node an toàn nhất trên vòng orbit (thay cho skip cứng).
@@ -8302,11 +8315,7 @@ end
 
 function basicDodge.SetDebugVisuals(value)
 	debugVisuals = value == true
-	if debugVisuals then
-		ensureRenderLoop()
-	else
-		clearVisuals()
-	end
+	updateRenderLoop()
 end
 
 function basicDodge.IsDebugVisuals()
@@ -8315,10 +8324,7 @@ end
 
 function basicDodge.SetDetectorVisuals(value)
 	detectorVisuals = value == true
-	if not debugVisuals and detectorVisuals then
-		debugVisuals = true
-		ensureRenderLoop()
-	end
+	updateRenderLoop()
 end
 
 function basicDodge.IsDetectorVisuals()
