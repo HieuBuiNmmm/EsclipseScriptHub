@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T23:11:33.134025800+00:00",
+    genDate = "2026-08-30T23:16:19.854257600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -5992,7 +5992,7 @@ local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
 local SHORTCUT_TELEPORT_HEIGHT = 0
-local SHORTCUT_ORBIT_DURATION = 0.2
+local SHORTCUT_ORBIT_DURATION = 0.25
 local SHORTCUT_ORBIT_SPEED = 0
 
 local FARM_SCAN_INTERVAL = 0.15
