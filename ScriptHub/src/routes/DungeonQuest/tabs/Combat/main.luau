@@ -58,8 +58,8 @@ return function(window, tab)
 	local orbitSpeedSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Orbit Speed",
 		Default = shared.GetOrbitSpeed(),
-		Minimum = 16,
-		Maximum = 24,
+		Minimum = 24,
+		Maximum = 96,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)

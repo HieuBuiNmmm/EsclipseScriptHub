@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T23:16:19.854257600+00:00",
+    genDate = "2026-08-30T23:27:05.484779100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8708,8 +8708,8 @@ return function(window, tab)
 	local orbitSpeedSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Orbit Speed",
 		Default = shared.GetOrbitSpeed(),
-		Minimum = 16,
-		Maximum = 24,
+		Minimum = 24,
+		Maximum = 96,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
