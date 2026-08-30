@@ -313,9 +313,9 @@ return function(window, tab)
 	}, "Slider_BasicPanicCooldown"))
 
 	ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Danger Radius",
+		Name = "Dodge Danger Margin",
 		Default = basicOrbitDodge.GetDangerRadius(),
-		Minimum = 5,
+		Minimum = 1,
 		Maximum = 50,
 		DisplayMethod = "Round",
 		Precision = 0,

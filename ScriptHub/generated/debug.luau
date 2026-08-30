@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T11:35:32.465202300+00:00",
+    genDate = "2026-08-30T12:03:06.567641600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7583,7 +7583,8 @@ local ALL_CLEAR_FRAMES = 5
 local JUMP_COOLDOWN = 0.3
 
 --// ---- Danger map (kế thừa Smart Dodge) ----
---// Phạm vi nguy hiểm quanh mỗi cục kinematic (khoảng cách từ điểm orbit tới cục)
+--// PADDING quanh hitbox thật (OBB) để được coi là dead zone. Không còn là bán
+--// kính cố định: volume nguy hiểm khớp kích thước từng object; fallback sphere.
 local DANGER_RADIUS = 16
 --// Bán kính hazard thực của object predictive (stud): chiều rộng dải dead zone và
 --// bán kính góc của danger interval trên orbit
@@ -7674,6 +7675,39 @@ local function getObjectVelocity(col)
 	return vel
 end
 
+--// OBB (CFrame + Size) thật của hitbox để dead zone khớp hình dạng từng đối tượng.
+local function getOBB(obj)
+	if obj:IsA("BasePart") then
+		return obj.CFrame, obj.Size
+	end
+	if obj:IsA("Model") then
+		local ok, cframe, size = pcall(function()
+			return obj:GetBoundingBox()
+		end)
+		if ok and cframe and size then return cframe, size end
+	end
+	return nil
+end
+
+--// Khoảng cách từ điểm tới OBB (dùng trong isSampleDanger: dead khi <= padding).
+local function pointToOBBDistance(pt, obbCFrame, obbSize)
+	local localPt = obbCFrame:Inverse() * pt
+	local hx = obbSize.X / 2
+	local hy = obbSize.Y / 2
+	local hz = obbSize.Z / 2
+	local dx = math.max(math.abs(localPt.X) - hx, 0)
+	local dy = math.max(math.abs(localPt.Y) - hy, 0)
+	local dz = math.max(math.abs(localPt.Z) - hz, 0)
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+--// Bán kính phủ ngang của object (cho bề rộng dải dead zone predictive).
+local function coveringRadius(size)
+	local hx = size.X / 2
+	local hz = size.Z / 2
+	return math.sqrt(hx * hx + hz * hz)
+end
+
 --// Phát hiện object mới xuất hiện / loại bỏ object biến mất (quản lý membership).
 local function tryTrackObject(child, seen, predicted)
 	seen[child] = true
@@ -7681,12 +7715,17 @@ local function tryTrackObject(child, seen, predicted)
 	if not entry then
 		local pos = getObjectPosition(child)
 		if pos then
+			local obbCFrame, obbSize = getOBB(child)
+			local radius = obbSize and coveringRadius(obbSize)
 			trackedColumns[child] = {
 				Instance = child,
 				Position = pos,
 				OldPosition = pos,
 				Predicted = predicted,
 				Age = 1,
+				OBBFrame = obbCFrame,
+				OBBSize = obbSize,
+				Radius = radius,
 			}
 		end
 	else
@@ -7725,6 +7764,13 @@ local function updateColumnPositions(now)
 				col.OldPosition = col.Position
 				col.Position = pos
 				col.LastUpdate = now
+				--// OBB bám theo vị trí/rotation hiện tại của hitbox
+				local obbCFrame, obbSize = getOBB(col.Instance)
+				if obbCFrame and obbSize then
+					col.OBBFrame = obbCFrame
+					col.OBBSize = obbSize
+					col.Radius = col.Radius or coveringRadius(obbSize)
+				end
 			end
 		end
 	end
@@ -7811,13 +7857,15 @@ local function markDangerInterval(danger, centerDeg, halfWidthDeg)
 end
 
 --// Predictive: mỗi object bay thẳng đóng góp danger interval tại góc orbit nơi
---// tia bay (giới hạn PREDICT_WINDOW) cắt quỹ đạo.
+--// tia bay (giới hạn PREDICT_WINDOW) cắt quỹ đạo. Bề rộng interval theo kích
+--// thước thật của object (col.Radius) + padding; fallback PREDICTIVE_OBJECT_RADIUS.
 local function markPredictiveDangers(danger, bossPos, radius)
-	local halfWidthDeg = math.deg(PREDICTIVE_OBJECT_RADIUS / math.max(radius, 1))
+	local safeRadius = math.max(radius, 1)
 	for _, col in pairs(trackedColumns) do
 		if col and col.Predicted and col.Position then
 			local vel = getObjectVelocity(col)
 			if vel and vel.Magnitude > MIN_SPEED_THRESHOLD then
+				local halfWidthDeg = math.deg(((col.Radius or PREDICTIVE_OBJECT_RADIUS) + DANGER_RADIUS) / safeRadius)
 				local maxDist = vel.Magnitude * PREDICT_WINDOW
 				local intersections = lineCircleIntersections(col.Position, vel.Unit, bossPos, radius, maxDist)
 				if intersections then
@@ -7832,11 +7880,19 @@ local function markPredictiveDangers(danger, bossPos, radius)
 end
 
 --// Điểm orbit tại idx có nằm trong phạm vi nguy hiểm của cục kinematic nào.
+--// Dùng OBB thật (khớp hitbox dài/ngang/xiên) + padding DANGER_RADIUS;
+--// fallback sphere quanh tâm khi không lấy được OBB.
 local function isSampleDanger(bossPos, radius, height, idx)
 	local point = orbitPoint(bossPos, radius, idxToRad(idx), height)
 	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Predicted and horizontalDistance(point, col.Position) < DANGER_RADIUS then
-			return true
+		if col and col.Position and not col.Predicted then
+			if col.OBBFrame and col.OBBSize then
+				if pointToOBBDistance(point, col.OBBFrame, col.OBBSize) <= DANGER_RADIUS then
+					return true
+				end
+			elseif horizontalDistance(point, col.Position) < DANGER_RADIUS then
+				return true
+			end
 		end
 	end
 	return false
@@ -7931,21 +7987,28 @@ local function drawSegment(parent, a, b, thickness, transparent, color)
 	end
 end
 
---// Bóng nguy hiểm quanh cục kinematic (bán kính DANGER_RADIUS)
+--// Dead zone của cục kinematic: OBB thật inflated padding DANGER_RADIUS
+--// (fallback sphere quanh tâm khi không có OBB).
 local function renderKinematicBalls(parent)
 	for _, col in pairs(trackedColumns) do
 		if col and col.Position and not col.Predicted then
 			local part = createVisualPart(parent, 0.65)
-			part.Shape = Enum.PartType.Ball
-			part.Size = Vector3.new(DANGER_RADIUS * 2, DANGER_RADIUS * 2, DANGER_RADIUS * 2)
-			part.CFrame = CFrame.new(col.Position)
+			if col.OBBFrame and col.OBBSize then
+				part.Shape = Enum.PartType.Block
+				part.Size = col.OBBSize + Vector3.new(DANGER_RADIUS, DANGER_RADIUS, DANGER_RADIUS) * 2
+				part.CFrame = col.OBBFrame
+			else
+				part.Shape = Enum.PartType.Ball
+				part.Size = Vector3.new(DANGER_RADIUS * 2, DANGER_RADIUS * 2, DANGER_RADIUS * 2)
+				part.CFrame = CFrame.new(col.Position)
+			end
 			part.Color = VISUALS_BALL_COLOR
 		end
 	end
 end
 
---// Tia dead zone của object predictive: dải rộng 2D (2×PREDICTIVE_OBJECT_RADIUS)
---// dọc theo hướng bay, dài speed×PREDICT_WINDOW.
+--// Tia dead zone của object predictive: dải rộng theo kích thước hitbox thật
+--// (+padding), dọc theo hướng bay, dài speed×PREDICT_WINDOW.
 local function renderPredictiveRays(parent)
 	for _, col in pairs(trackedColumns) do
 		if col and col.Predicted and col.Position then
@@ -7958,7 +8021,8 @@ local function renderPredictiveRays(parent)
 				local part = createVisualPart(parent, 0.35)
 				part.Shape = Enum.PartType.Block
 				part.Color = VISUALS_RAY_COLOR
-				part.Size = Vector3.new(PREDICTIVE_OBJECT_RADIUS * 2, 0.5, len)
+				local width = ((col.Radius or PREDICTIVE_OBJECT_RADIUS) + DANGER_RADIUS) * 2
+				part.Size = Vector3.new(width, 0.5, len)
 				part.CFrame = CFrame.lookAt(mid, endpoint)
 			end
 		end
@@ -8828,9 +8892,9 @@ return function(window, tab)
 	}, "Slider_BasicPanicCooldown"))
 
 	ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Danger Radius",
+		Name = "Dodge Danger Margin",
 		Default = basicOrbitDodge.GetDangerRadius(),
-		Minimum = 5,
+		Minimum = 1,
 		Maximum = 50,
 		DisplayMethod = "Round",
 		Precision = 0,
