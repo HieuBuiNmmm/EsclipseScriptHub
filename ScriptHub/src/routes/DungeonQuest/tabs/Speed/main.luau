@@ -40,6 +40,18 @@ return function(window, tab)
 		end,
 	})
 
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "R Teleport Distance",
+		Default = shared.GetNearestTeleportDistance(),
+		Minimum = 1,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetNearestTeleportDistance(value)
+		end),
+	}, "Slider_TeleportNearestDistance"))
+
 	section:Button({
 		Name = "Teleport Behind Farthest (Key: C)",
 		Callback = function()
@@ -48,4 +60,17 @@ return function(window, tab)
 			end)
 		end,
 	})
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "C Teleport Distance",
+		Default = shared.GetFarthestTeleportDistance(),
+		Minimum = 1,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetFarthestTeleportDistance(value)
+		end),
+	}, "Slider_TeleportFarthestDistance"))
+
 end

@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T22:06:18.038461800+00:00",
+    genDate = "2026-08-30T23:11:33.134025800+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -5974,8 +5974,6 @@ local VirtualInputManager = services.VirtualInputManager
 local player = services.player
 
 --// Constants
-local TELEPORT_RADIUS = 12
-local HEIGHT_OFFSET = 0
 local FREEZE_TIME = 0.15
 
 local ORBIT_RADIUS = 30
@@ -5993,6 +5991,9 @@ local BOSS_HEIGHT_OFFSET = 0
 local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
+local SHORTCUT_TELEPORT_HEIGHT = 0
+local SHORTCUT_ORBIT_DURATION = 0.2
+local SHORTCUT_ORBIT_SPEED = 0
 
 local FARM_SCAN_INTERVAL = 0.15
 local FARM_ENGAGE_DISTANCE = 45
@@ -6050,6 +6051,9 @@ local farmApproaching = false
 local farmOldAutoRotate = true
 local farmRunning = false
 local farmLastSkillTime = 0
+local shortcutOrbitId = 0
+local nearestTeleportDistance = 12
+local farthestTeleportDistance = 12
 --// Bước góc (độ) mỗi lần tele trong farm mode "Orbit Tele" (real alias là rad sau đó)
 local orbitTeleStepDeg = 15
 --// Thời điểm lần nhảy góc gần nhất (điều khiển nhịp ORBIT_TELE_INTERVAL)
@@ -6398,16 +6402,18 @@ moveFarmTarget = function(deltaTime)
 	playerRoot.AssemblyAngularVelocity = Vector3.zero
 end
 
-farmTeleportTo = function(enemy)
+--// Teleport tới vị trí orbit dùng khi Auto Farm nhận mục tiêu mới. Phím tắt
+--// cũng dùng chính phép dịch chuyển này để giữ hành vi nhất quán với Auto Farm.
+local function teleportToFarmOrbit(enemy, restoreAutoRotate, targetPosition)
 	if teleporting then return end
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	local currentHumanoid = character and character:FindFirstChild("Humanoid")
 	local data = trackedEnemies[enemy]
-	if not character or not playerRoot or not currentHumanoid or not data or not data.Root or not data.Root.Parent then return end
+	if not character or not playerRoot or not currentHumanoid or not data or not data.Root or not data.Root.Parent then return false end
 
 	local enemyRoot = data.Root
-	local oldAnchored = playerRoot.Anchored
+	local oldAnchored, oldAutoRotate = playerRoot.Anchored, currentHumanoid.AutoRotate
 	if not character.PrimaryPart then character.PrimaryPart = playerRoot end
 	teleporting = true
 
@@ -6416,7 +6422,7 @@ farmTeleportTo = function(enemy)
 		playerRoot.Anchored = true
 		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
 
-		local targetPosition = getOrbitPosition(enemyRoot.Position, farmAngle)
+		targetPosition = targetPosition or getOrbitPosition(enemyRoot.Position, farmAngle)
 
 		character:PivotTo(CFrame.lookAt(targetPosition, enemyRoot.Position))
 		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
@@ -6425,10 +6431,49 @@ farmTeleportTo = function(enemy)
 
 		if playerRoot and playerRoot.Parent and currentHumanoid and currentHumanoid.Parent then
 			playerRoot.Anchored = oldAnchored
+			if restoreAutoRotate then currentHumanoid.AutoRotate = oldAutoRotate end
 		end
 	end)
-	if not s then warn("[AutoFarm] teleport error:", tostring(err)) end
+	if not s then warn("[Teleport] orbit teleport error:", tostring(err)) end
 	teleporting = false
+	return s
+end
+
+farmTeleportTo = function(enemy)
+	teleportToFarmOrbit(enemy, false)
+end
+
+--// Giữ mục tiêu theo đúng nhịp Orbit / Orbit Tele của Auto Farm trong một
+--// khoảng ngắn sau khi dùng phím tắt. Không đụng tới farmTarget nên không
+--// làm thay đổi trạng thái Auto Farm đang chạy.
+local function maintainShortcutOrbit(enemy, orbitId, angle, radius, height, duration, speed)
+	local deadline = os.clock() + duration
+	local previousTime = os.clock()
+
+	while orbitId == shortcutOrbitId and os.clock() < deadline do
+		local data = trackedEnemies[enemy]
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if not data or not data.Root or not data.Root.Parent or not character or not playerRoot or not playerRoot.Parent then
+			return
+		end
+		if not character.PrimaryPart then character.PrimaryPart = playerRoot end
+		if not character.PrimaryPart then return end
+
+		local now = os.clock()
+		local deltaTime = now - previousTime
+		previousTime = now
+		local center = data.Root.Position
+		local targetPosition
+
+		angle = (angle + math.rad(speed) * deltaTime) % (math.pi * 2)
+		targetPosition = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
+
+		character:PivotTo(CFrame.lookAt(targetPosition, center))
+		playerRoot.AssemblyLinearVelocity = Vector3.zero
+		playerRoot.AssemblyAngularVelocity = Vector3.zero
+		RunService.Heartbeat:Wait()
+	end
 end
 
 fireFarmSkills = function()
@@ -6444,149 +6489,59 @@ fireFarmSkills = function()
 	end)
 end
 
---// Teleport (Combat tab)
-function shared.TeleportToNearestEnemy()
+--// Teleport phím tắt dùng cùng điểm orbit ban đầu của Auto Farm.
+local function getShortcutTeleportPosition(enemyRoot, playerRoot, mode, distance, height)
+	local direction
+	if mode == "Behind" then
+		direction = -enemyRoot.CFrame.LookVector
+	else
+		direction = playerRoot.Position - enemyRoot.Position
+	end
+
+	direction = Vector3.new(direction.X, 0, direction.Z)
+	if direction.Magnitude < 0.01 then direction = Vector3.new(0, 0, -1) end
+	direction = direction.Unit
+	local angle = math.atan2(direction.Z, direction.X)
+	local position = enemyRoot.Position + Vector3.new(direction.X * distance, height, direction.Z * distance)
+	return position, angle
+end
+
+local function teleportToSelectedEnemy(selector, mode, distance, height, orbitDuration, orbitSpeed)
 	if teleporting then return end
-	teleporting = true
 
 	local s, err = pcall(function()
-		local character = player.Character
-		local currentHumanoid = character and character:FindFirstChild("Humanoid")
-		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-
-		if not character or not currentHumanoid or not playerRoot then return end
 		if not dungeon and not initializeRooms() then return end
-
 		cleanupEnemies()
-		local nearest = getNearestEnemy()
-		if not nearest then
+
+		local target = selector()
+		if not target then
 			notifier.Notify("Teleport", "No enemy found.", 3)
 			return
 		end
 
-		local enemy, enemyRoot = nearest.Model, nearest.Root
-		if not enemy or not enemy.Parent or not enemyRoot or not enemyRoot.Parent then return end
-		if not character.PrimaryPart then character.PrimaryPart = playerRoot end
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if not playerRoot then return end
+		local position, angle = getShortcutTeleportPosition(target.Root, playerRoot, mode, distance, height)
 
-		local oldAnchored, oldAutoRotate = playerRoot.Anchored, currentHumanoid.AutoRotate
-		currentHumanoid.AutoRotate = false; playerRoot.Anchored = true
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		local direction = playerRoot.Position - enemyRoot.Position
-		direction = direction.Magnitude < 0.01 and Vector3.new(0, 0, -1) or direction.Unit
-		local targetPosition = enemyRoot.Position + direction * TELEPORT_RADIUS + Vector3.new(0, HEIGHT_OFFSET, 0)
-
-		character:PivotTo(CFrame.lookAt(targetPosition, enemyRoot.Position))
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		task.wait(FREEZE_TIME)
-
-		if playerRoot and playerRoot.Parent and currentHumanoid and currentHumanoid.Parent then
-			playerRoot.Anchored, currentHumanoid.AutoRotate = oldAnchored, oldAutoRotate
+		if teleportToFarmOrbit(target.Model, true, position) then
+			notifier.Notify("Teleport", "Teleported to " .. target.Model.Name, 2)
+			shortcutOrbitId += 1
+			local orbitId = shortcutOrbitId
+			task.spawn(function()
+				maintainShortcutOrbit(target.Model, orbitId, angle, distance, height, orbitDuration, orbitSpeed)
+			end)
 		end
-		if playerRoot and playerRoot.Parent and enemyRoot and enemyRoot.Parent then
-			character:PivotTo(CFrame.lookAt(playerRoot.Position, enemyRoot.Position))
-		end
-
-		notifier.Notify("Teleport", "Teleported to " .. enemy.Name, 2)
 	end)
-	if not s then warn("[Teleport] error:", tostring(err)) end
-	teleporting = false
+	if not s then warn("[Teleport] shortcut error:", tostring(err)) end
 end
 
---// Teleport về sau kẻ địch XA NHẤT (phím C). Điểm tới được validate:
---// - Không lún xuống đất (ép Y theo floor bên dưới).
---// - Không nằm trong tường (probe ray từ enemy tới điểm, thử xê sang 2 bên).
-local function rotateDir(dir, ang)
-	local cosA = math.cos(ang)
-	local sinA = math.sin(ang)
-	return Vector3.new(dir.X * cosA - dir.Z * sinA, 0, dir.X * sinA + dir.Z * cosA)
-end
-
-local function findValidTeleportSpot(character, enemy, enemyRoot, behindDir, raw)
-	local Workspace = game:GetService("Workspace")
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character, enemy, enemyRoot }
-	params.IgnoreWater = true
-
-	--// 1) Ép sàn: không bị lún dưới mặt đất.
-	local ground = Workspace:Raycast(raw + Vector3.new(0, 15, 0), Vector3.new(0, -40, 0), params)
-	local yBase = ground and ground.Position.Y + 0.5 or raw.Y
-
-	--// 2) Chống xuyên tường: thử các hướng xê quanh "đằng sau" tới khi không bị chặn.
-	local sweeps = {
-		behindDir,
-		rotateDir(behindDir, math.rad(25)),
-		rotateDir(behindDir, -math.rad(25)),
-		rotateDir(behindDir, math.rad(50)),
-		rotateDir(behindDir, -math.rad(50)),
-		rotateDir(behindDir, math.rad(80)),
-		rotateDir(behindDir, -math.rad(80)),
-	}
-	for _, d in ipairs(sweeps) do
-		local candidate = Vector3.new(enemyRoot.Position.X + d.X * TELEPORT_RADIUS, yBase, enemyRoot.Position.Z + d.Z * TELEPORT_RADIUS)
-		local probe = Workspace:Raycast(enemyRoot.Position + Vector3.new(0, 2, 0), candidate - enemyRoot.Position, params)
-		local blocked = probe and (probe.Position - candidate).Magnitude > 1.5
-		if not blocked then return candidate end
-	end
-	return nil
+function shared.TeleportToNearestEnemy()
+	teleportToSelectedEnemy(getNearestEnemy, "Nearest", nearestTeleportDistance, SHORTCUT_TELEPORT_HEIGHT, SHORTCUT_ORBIT_DURATION, SHORTCUT_ORBIT_SPEED)
 end
 
 function shared.TeleportBehindFarthestEnemy()
-	if teleporting then return end
-	teleporting = true
-
-	local s, err = pcall(function()
-		local character = player.Character
-		local currentHumanoid = character and character:FindFirstChild("Humanoid")
-		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-
-		if not character or not currentHumanoid or not playerRoot then return end
-		if not dungeon and not initializeRooms() then return end
-
-		cleanupEnemies()
-		local farthest = getFarthestEnemy()
-		if not farthest then
-			notifier.Notify("Teleport", "No enemy found.", 3)
-			return
-		end
-
-		local enemy, enemyRoot = farthest.Model, farthest.Root
-		if not enemy or not enemy.Parent or not enemyRoot or not enemyRoot.Parent then return end
-		if not character.PrimaryPart then character.PrimaryPart = playerRoot end
-
-		--// "đằng sau" = ngược hướng enemy đang nhìn (backstab); fallback ngược phía player.
-		local behindDir = -enemyRoot.CFrame.LookVector
-		behindDir = behindDir.Magnitude > 0.1 and behindDir or (enemyRoot.Position - playerRoot.Position).Unit
-		if (enemyRoot.Position + behindDir * TELEPORT_RADIUS - playerRoot.Position).Magnitude < (enemyRoot.Position - playerRoot.Position).Magnitude then
-			--// "đằng sau" lại gần player hơn mặt trước -> dùng hướng ngược (xa player hơn)
-			behindDir = -behindDir
-		end
-		local raw = enemyRoot.Position + behindDir * TELEPORT_RADIUS
-
-		local target = findValidTeleportSpot(character, enemy, enemyRoot, behindDir, raw) or raw
-
-		local oldAnchored, oldAutoRotate = playerRoot.Anchored, currentHumanoid.AutoRotate
-		currentHumanoid.AutoRotate = false; playerRoot.Anchored = true
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		character:PivotTo(CFrame.lookAt(target, enemyRoot.Position))
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		task.wait(FREEZE_TIME)
-
-		if playerRoot and playerRoot.Parent and currentHumanoid and currentHumanoid.Parent then
-			playerRoot.Anchored, currentHumanoid.AutoRotate = oldAnchored, oldAutoRotate
-		end
-		if playerRoot and playerRoot.Parent and enemyRoot and enemyRoot.Parent then
-			character:PivotTo(CFrame.lookAt(playerRoot.Position, enemyRoot.Position))
-		end
-
-		notifier.Notify("Teleport", "Behind " .. enemy.Name, 2)
-	end)
-	if not s then warn("[Teleport] error:", tostring(err)) end
-	teleporting = false
+	teleportToSelectedEnemy(getFarthestEnemy, "Behind", farthestTeleportDistance, SHORTCUT_TELEPORT_HEIGHT, SHORTCUT_ORBIT_DURATION, SHORTCUT_ORBIT_SPEED)
 end
 
 --// Speed state (Speed tab thao tác lên đây)
@@ -6610,6 +6565,22 @@ end
 
 function shared.GetFastSpeed()
 	return fastSpeed
+end
+
+function shared.GetNearestTeleportDistance()
+	return nearestTeleportDistance
+end
+
+function shared.SetNearestTeleportDistance(value)
+	nearestTeleportDistance = tonumber(value) or nearestTeleportDistance
+end
+
+function shared.GetFarthestTeleportDistance()
+	return farthestTeleportDistance
+end
+
+function shared.SetFarthestTeleportDistance(value)
+	farthestTeleportDistance = tonumber(value) or farthestTeleportDistance
 end
 
 --// Humanoid setup
@@ -7294,6 +7265,18 @@ return function(window, tab)
 		end,
 	})
 
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "R Teleport Distance",
+		Default = shared.GetNearestTeleportDistance(),
+		Minimum = 1,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetNearestTeleportDistance(value)
+		end),
+	}, "Slider_TeleportNearestDistance"))
+
 	section:Button({
 		Name = "Teleport Behind Farthest (Key: C)",
 		Callback = function()
@@ -7302,6 +7285,19 @@ return function(window, tab)
 			end)
 		end,
 	})
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "C Teleport Distance",
+		Default = shared.GetFarthestTeleportDistance(),
+		Minimum = 1,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetFarthestTeleportDistance(value)
+		end),
+	}, "Slider_TeleportFarthestDistance"))
+
 end
 end function __DIST.h()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
 
