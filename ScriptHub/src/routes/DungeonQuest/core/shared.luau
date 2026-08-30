@@ -22,6 +22,11 @@ local ORBIT_RADIUS = 30
 local ORBIT_HEIGHT = 12
 local ORBIT_SPEED = 180
 
+--// Khoảng thời gian (giây) giữa các lần nhảy góc trong farm mode "Orbit Tele".
+--// Giữa các nhảy nhân vật vẫn được PivotTo giữ vị trí mới (không ghost), chỉ có
+--// góc farmAngle tăng theo bước mỗi khoảng này.
+local ORBIT_TELE_INTERVAL = 0.15
+
 --// Offset cộng thêm vào orbit height khi ở boss room
 local BOSS_HEIGHT_OFFSET = 0
 
@@ -85,14 +90,19 @@ local farmApproaching = false
 local farmOldAutoRotate = true
 local farmRunning = false
 local farmLastSkillTime = 0
+--// Bước góc (độ) mỗi lần tele trong farm mode "Orbit Tele" (real alias là rad sau đó)
+local orbitTeleStepDeg = 15
+--// Thời điểm lần nhảy góc gần nhất (điều khiển nhịp ORBIT_TELE_INTERVAL)
+local lastTeleStepTime = 0
 
 local retargetEnabled = false
 local retargetInterval = 5
 local retargetMethod = "Auto"
+--// Cách chọn mục tiêu của Auto Retarget: "Nearest" (gần nhất) hoặc "Farthest" (xa nhất)
+local retargetMode = "Nearest"
 local orbitReverseEnabled = false
 local farmOrbitDirection = 1
 local basicOrbitDirection = nil
-local farmLastRetargetTime = 0
 local blacklistEnemies = {}
 for _, name in ipairs(BLACKLIST_ENEMIES) do
 	if type(name) == "string" and name ~= "" then
@@ -386,6 +396,28 @@ moveFarmTarget = function(deltaTime)
 	if farmMode == "Hover" then
 		farmApproaching = false
 		targetPosition = center + Vector3.new(0, HOVER_HEIGHT, 0)
+	elseif farmMode == "Orbit Tele" then
+		--// Giả lập quỹ đạo bằng tele rời rạc: không move mượt (speed quỹ đạo = 0),
+		--// chỉ tăng góc theo từng bước cố định mỗi ORBIT_TELE_INTERVAL. Nhưng vẫn
+		--// PivotTo mỗi frame (như orbit thường) để giữ vị trí thật, tránh ghost.
+		if teleporting then return end
+		local effDir = basicOrbitDirection or farmOrbitDirection
+		if not farmApproaching then
+			if os.clock() - lastTeleStepTime >= ORBIT_TELE_INTERVAL then
+				farmAngle = (farmAngle + effDir * math.rad(orbitTeleStepDeg)) % (math.pi * 2)
+				lastTeleStepTime = os.clock()
+			end
+		end
+		targetPosition = getOrbitPosition(center, farmAngle)
+		if farmApproaching then
+			local toPoint = targetPosition - playerRoot.Position
+			local dist = toPoint.Magnitude
+			if dist <= FARM_APPROACH_EPSILON then
+				farmApproaching = false
+			else
+				targetPosition = playerRoot.Position + toPoint.Unit * math.min(dist, FARM_APPROACH_SPEED * deltaTime)
+			end
+		end
 	else
 		local effDir = basicOrbitDirection or farmOrbitDirection
 		farmAngle = (farmAngle + effDir * math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
@@ -694,6 +726,14 @@ function shared.SetRetargetMethod(value)
 	retargetMethod = value or "Auto"
 end
 
+function shared.GetRetargetMode()
+	return retargetMode
+end
+
+function shared.SetRetargetMode(value)
+	if value == "Nearest" or value == "Farthest" then retargetMode = value end
+end
+
 function shared.GetOrbitReverseEnabled()
 	return orbitReverseEnabled
 end
@@ -772,36 +812,52 @@ end
 
 function shared.FarmPickTarget()
 	cleanupEnemies()
+
+	local function pickBest()
+		return (retargetMode == "Farthest") and getFarthestEnemy() or getNearestEnemy()
+	end
+
+	local pick
 	if farmTarget then
-		if retargetEnabled and trackedEnemies[farmTarget] and trackedEnemies[farmTarget].Root and trackedEnemies[farmTarget].Root.Parent then
-			local now = os.clock()
-			if now - farmLastRetargetTime >= retargetInterval then
-				farmLastRetargetTime = now
-				if orbitReverseEnabled then farmOrbitDirection = -farmOrbitDirection end
-				leaveFarmTarget()
+		local cur = trackedEnemies[farmTarget]
+		if cur and cur.Root and cur.Root.Parent then
+			--// Realtime retarget: mục tiêu hiện tại còn sống, mỗi lần quét so ngay
+			--// với đối tượng TỐT NHẤT hiện có (Nearest/Farthest theo mode). Không chờ
+			--// interval — xuất hiện đối tượng hơn liền switch qua nó.
+			if retargetEnabled then
+				pick = pickBest()
+				if pick and pick.Model ~= farmTarget then
+					if orbitReverseEnabled then farmOrbitDirection = -farmOrbitDirection end
+					leaveFarmTarget()
+				else
+					return true
+				end
+			else
+				return true
 			end
 		end
 	end
 	if farmTarget then return true end
-	local nearest = getNearestEnemy()
-	if nearest and nearest.Model and nearest.Root and nearest.Root.Parent then
-		farmTarget = nearest.Model
-		farmLastRetargetTime = os.clock()
+	pick = pickBest()
+	if pick and pick.Model and pick.Root and pick.Root.Parent then
+		farmTarget = pick.Model
 		if humanoid and humanoid.Parent then
 			farmOldAutoRotate = humanoid.AutoRotate
 			humanoid.AutoRotate = false
-		end
-		if nearest.Distance > FARM_ENGAGE_DISTANCE then
-			farmTeleportTo(farmTarget)
-			farmApproaching = false
-		else
-			farmApproaching = true
 		end
 		if retargetMethod == "Tele" then
 			farmTeleportTo(farmTarget)
 			farmApproaching = false
 		elseif retargetMethod == "Tween" then
 			farmApproaching = true
+		else
+			--// "Auto": tele khi còn quá xa (chưa trong phạm vi engage), còn lại tiếp cận.
+			if pick.Distance > FARM_ENGAGE_DISTANCE then
+				farmTeleportTo(farmTarget)
+				farmApproaching = false
+			else
+				farmApproaching = true
+			end
 		end
 		return true
 	end
@@ -945,6 +1001,14 @@ end
 
 function shared.SetOrbitSpeed(value)
 	ORBIT_SPEED = value
+end
+
+function shared.GetOrbitTeleStep()
+	return orbitTeleStepDeg
+end
+
+function shared.SetOrbitTeleStep(value)
+	orbitTeleStepDeg = value
 end
 
 function shared.GetOrbitHeight()

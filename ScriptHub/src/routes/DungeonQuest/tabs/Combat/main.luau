@@ -9,7 +9,6 @@ local farm = require("@routes/DungeonQuest/core/farm")
 local autoStart = require("@routes/DungeonQuest/core/autoStart")
 local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
-local notifier = require("@routes/DungeonQuest/core/notifier")
 local basicOrbitDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
 local deathLog = require("@routes/DungeonQuest/core/deathLog")
 
@@ -18,26 +17,6 @@ return function(window, tab)
 	local farmSection = tab:Section({ Side = "Left" })
 	local combatSection = tab:Section({ Side = "Right" })
 	local startSection = tab:Section({ Side = "Left" })
-
-	--// Helper: Input + Button để thêm skill vào 1 list dodge theo API
-	local function makeSkillAdder(section, label, addFn, flagName)
-		local inputEl = section:Input({
-			Name = label,
-			Placeholder = "Ten skill...",
-		}, flagName)
-		section:Button({
-			Name = "  + Add " .. label,
-			Callback = function()
-				local txt = (inputEl:GetInput() or ""):gsub("^%s+", ""):gsub("%s+$", "")
-				if txt ~= "" then
-					addFn(txt)
-					notifier.Notify("Skill Adder", label .. ": +" .. txt, 2)
-				else
-					notifier.Notify("Skill Adder", "Nhap ten skill", 2)
-				end
-			end,
-		})
-	end
 
 	farmSection:Header({ Name = "Auto Farm" })
 	combatSection:Header({ Name = "Combat" })
@@ -55,7 +34,7 @@ return function(window, tab)
 	local applyFarmModeVisibility
 	farmSection:Dropdown({
 		Name = "Farm Mode",
-		Options = { "Orbit", "Hover" },
+		Options = { "Orbit", "Orbit Tele", "Hover" },
 		Default = 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
@@ -79,14 +58,26 @@ return function(window, tab)
 	local orbitSpeedSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Orbit Speed",
 		Default = shared.GetOrbitSpeed(),
-		Minimum = 30,
-		Maximum = 600,
+		Minimum = 16,
+		Maximum = 24,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
 			shared.SetOrbitSpeed(Value)
 		end),
 	}, "Slider_OrbitSpeed"))
+
+	local orbitTeleStepSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
+		Name = "Orbit Tele Step",
+		Default = shared.GetOrbitTeleStep(),
+		Minimum = 5,
+		Maximum = 90,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetOrbitTeleStep(Value)
+		end),
+	}, "Slider_OrbitTeleStep"))
 
 	local orbitHeightSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Orbit Height",
@@ -152,19 +143,6 @@ return function(window, tab)
 		end),
 	}, "Toggle_Retarget")
 
-	ui.PatchSliderLoadCallback(farmSection:Slider({
-		Name = "Auto Retarget Interval",
-		Default = shared.GetRetargetInterval(),
-		Minimum = 0.5,
-		Maximum = 30,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			shared.SetRetargetInterval(Value)
-		end),
-	}, "Slider_RetargetInterval"))
-
 	farmSection:Dropdown({
 		Name = "Retarget Method",
 		Options = { "Auto", "Tele", "Tween" },
@@ -175,6 +153,16 @@ return function(window, tab)
 		end),
 	}, "Dropdown_RetargetMethod")
 
+	farmSection:Dropdown({
+		Name = "Retarget Mode",
+		Options = { "Nearest", "Farthest" },
+		Default = 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			if option then shared.SetRetargetMode(option) end
+		end),
+	}, "Dropdown_RetargetMode")
+
 	farmSection:Toggle({
 		Name = "Reverse Orbit on Retarget",
 		Default = shared.GetOrbitReverseEnabled(),
@@ -184,11 +172,15 @@ return function(window, tab)
 	}, "Toggle_OrbitReverse")
 
 	applyFarmModeVisibility = function()
-		local isOrbit = shared.GetFarmMode() ~= "Hover"
-		pcall(function() orbitRadiusSlider:SetVisibility(isOrbit) end)
+		local mode = shared.GetFarmMode()
+		local isOrbit = mode == "Orbit"
+		local isOrbitTele = mode == "Orbit Tele"
+		local isOrbitLike = isOrbit or isOrbitTele
+		pcall(function() orbitRadiusSlider:SetVisibility(isOrbitLike) end)
 		pcall(function() orbitSpeedSlider:SetVisibility(isOrbit) end)
-		pcall(function() orbitHeightSlider:SetVisibility(isOrbit) end)
-		pcall(function() hoverHeightSlider:SetVisibility(not isOrbit) end)
+		pcall(function() orbitTeleStepSlider:SetVisibility(isOrbitTele) end)
+		pcall(function() orbitHeightSlider:SetVisibility(isOrbitLike) end)
+		pcall(function() hoverHeightSlider:SetVisibility(not isOrbitLike) end)
 	end
 	applyFarmModeVisibility()
 
@@ -279,6 +271,18 @@ return function(window, tab)
 	}, "Slider_BasicDetectRadius"))
 
 	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Danger Margin",
+		Default = basicOrbitDodge.GetDangerRadius(),
+		Minimum = 1,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetDangerRadius(Value)
+		end),
+	}, "Slider_BasicDangerMargin"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Panic Radius",
 		Default = basicOrbitDodge.GetPanicRadius(),
 		Minimum = 3,
@@ -328,11 +332,6 @@ return function(window, tab)
 			basicOrbitDodge.SetJumpCooldown(Value)
 		end),
 	}, "Slider_BasicJumpCooldown"))
-
-	combatSection:Header({ Name = "Dodge Skill Lists" })
-	makeSkillAdder(combatSection, "Basic Orbit Skill", function(v) basicOrbitDodge.AddBasicDodgeName(v) end, "Input_AddBasicSkill")
-	makeSkillAdder(combatSection, "Kinematic Skill", function(v) basicOrbitDodge.AddKinematicName(v) end, "Input_AddKinematicSkill")
-	makeSkillAdder(combatSection, "Predictive Skill", function(v) basicOrbitDodge.AddPredictiveName(v) end, "Input_AddPredictiveSkill")
 
 	combatSection:Toggle({
 		Name = "Death Log",

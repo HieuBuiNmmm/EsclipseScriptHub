@@ -21,7 +21,7 @@ return function(window, tab)
 		Name = "Custom Fast Speed",
 		Default = shared.GetFastSpeed(),
 		Minimum = 16,
-		Maximum = 100,
+		Maximum = 24,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
