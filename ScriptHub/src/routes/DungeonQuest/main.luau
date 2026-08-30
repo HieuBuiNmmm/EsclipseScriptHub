@@ -46,6 +46,7 @@ return function(self)
 		Dungeon = tabGroup:Tab({ Name = "Dungeon", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
+		State = tabGroup:Tab({ Name = "State", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -57,12 +58,14 @@ return function(self)
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local configTab = require("@routes/DungeonQuest/tabs/Config/main")
 	local notificationsTab = require("@routes/DungeonQuest/tabs/Notifications/main")
+	local stateTab = require("@routes/DungeonQuest/tabs/State/main")
 
 	speedTab(window, tabs.Speed)
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	configTab(window, tabs.Config)
 	notificationsTab(window, tabs.Notifications)
+	stateTab(window, tabs.State)
 
 	--// Phím tắt
 	local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
@@ -72,15 +75,7 @@ return function(self)
 	local webhook = require("@routes/DungeonQuest/core/webhook")
 	webhook.Init()
 
-	--// Smart Dodge (tránh cột-skill như firstBossCrissCross)
-	local shared = require("@routes/DungeonQuest/core/shared")
-	local dodge = require("@routes/DungeonQuest/core/dodge")
-	dodge.OnDodgeChange(function(isDodging)
-		shared.SetDodging(isDodging)
-	end)
-	dodge.Init()
-
-	--// Basic Orbit Dodge (kiểu dodge đảo hướng orbit cho chiêu tốc độ bình thường)
+	--// Basic Orbit Dodge (tracking 2 loại hazard + safe-node, kế thừa Smart Dodge)
 	require("@routes/DungeonQuest/core/basicOrbitDodge")
 
 	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)

@@ -22,6 +22,9 @@ local ORBIT_RADIUS = 30
 local ORBIT_HEIGHT = 12
 local ORBIT_SPEED = 180
 
+--// Offset cộng thêm vào orbit height khi ở boss room
+local BOSS_HEIGHT_OFFSET = 0
+
 local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
@@ -31,6 +34,14 @@ local FARM_ENGAGE_DISTANCE = 45
 local FARM_APPROACH_SPEED = 90
 local FARM_APPROACH_EPSILON = 1.5
 local HOVER_HEIGHT = ORBIT_HEIGHT
+
+--// Bật/tắt chế độ blacklist quái khi chọn mục tiêu (true = bật, false = tắt -> chọn mọi quái)
+local BLACKLIST_ENABLED = true
+
+--// Danh sách tên quái KHÔNG được chọn làm mục tiêu (retarget/ban đầu).
+--// Chỉnh sửa trực tiếp tại đây.
+--// VD: BLACKLIST_ENEMIES = { "Northern Mage", "Northern Spearman" }
+local BLACKLIST_ENEMIES = {"Northern Warrior"}
 
 local GUI_UPDATE_INTERVAL = 0.5
 
@@ -54,6 +65,14 @@ local dungeonStartTime = nil
 local bossActive = false
 local bossCallbacks = {}
 
+--// Lưu trạng thái retarget trước khi vào boss để khôi phục khi rời boss
+local retargetSavedDuringBoss = nil
+
+--// Maintain orbit height khi đánh boss: giữ cố định độ cao bằng cách bù offset
+--// khi boss hạ thấp vị trí (track pos Y của boss)
+local maintainBossHeight = false
+local bossStartY = nil
+
 local farmEnabled = false
 local farmMode = "Orbit"
 local farmTarget = nil
@@ -70,6 +89,12 @@ local orbitReverseEnabled = false
 local farmOrbitDirection = 1
 local basicOrbitDirection = nil
 local farmLastRetargetTime = 0
+local blacklistEnemies = {}
+for _, name in ipairs(BLACKLIST_ENEMIES) do
+	if type(name) == "string" and name ~= "" then
+		table.insert(blacklistEnemies, name)
+	end
+end
 
 local autoSkillEnabled = false
 local autoSkillRunning = false
@@ -234,23 +259,40 @@ cleanupEnemies = function()
 	end
 end
 
+local function isBlacklisted(name)
+	if not BLACKLIST_ENABLED then return false end
+	for _, n in ipairs(blacklistEnemies) do
+		if n == name then return true end
+	end
+	return false
+end
+
 getNearestEnemy = function()
 	local character = player.Character
 	if not character or not character.Parent then return nil end
 	local playerRoot = character:FindFirstChild("HumanoidRootPart")
 	if not playerRoot then return nil end
 
-	local nearest, nearestDistance = nil, math.huge
+	local best, bestDistance = nil, math.huge
+	local fallback, fallbackDistance = nil, math.huge
 	for enemy, data in pairs(trackedEnemies) do
 		if enemy and enemy.Parent and data and data.Root and data.Root.Parent then
 			local distance = (playerRoot.Position - data.Root.Position).Magnitude
-			if distance < nearestDistance then
-				nearestDistance = distance
-				nearest = { Model = enemy, Root = data.Root, Distance = distance }
+			if isBlacklisted(enemy.Name) then
+				--// blacklist: chỉ nhắm khi không còn enemy bình thường nào tồn tại
+				if distance < fallbackDistance then
+					fallbackDistance = distance
+					fallback = { Model = enemy, Root = data.Root, Distance = distance }
+				end
+			elseif distance < bestDistance then
+				bestDistance = distance
+				best = { Model = enemy, Root = data.Root, Distance = distance }
 			end
 		end
 	end
-	return nearest
+	--// hết enemy bình thường -> chấp nhận đánh enemy trong blacklist
+	if not best then return fallback end
+	return best
 end
 
 --// Skill helpers
@@ -281,7 +323,16 @@ leaveFarmTarget = function()
 end
 
 local function getOrbitPosition(center, angle)
-	return center + Vector3.new(math.cos(angle) * ORBIT_RADIUS, ORBIT_HEIGHT, math.sin(angle) * ORBIT_RADIUS)
+	local height = ORBIT_HEIGHT
+	if bossActive and center then
+		height = height + BOSS_HEIGHT_OFFSET
+		if maintainBossHeight then
+			if not bossStartY then bossStartY = center.Y end
+			local drop = bossStartY - center.Y
+			if drop > 0 then height = height + drop end
+		end
+	end
+	return center + Vector3.new(math.cos(angle) * ORBIT_RADIUS, height, math.sin(angle) * ORBIT_RADIUS)
 end
 
 moveFarmTarget = function(deltaTime)
@@ -689,6 +740,32 @@ function shared.GetAutoSkillMode()
 	return autoSkillMode
 end
 
+--// Trả về danh sách tên các loại enemy có trong màn (dungeon + đang track)
+function shared.GetEnemyNames()
+	local names = {}
+	local function add(name)
+		if name and name ~= "" and name ~= player.Name then names[name] = true end
+	end
+	if dungeon then
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				for _, obj in ipairs(room:GetDescendants()) do
+					if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+						add(obj.Name)
+					end
+				end
+			end
+		end
+	end
+	for enemy in pairs(trackedEnemies) do
+		add(enemy.Name)
+	end
+	local out = {}
+	for name in pairs(names) do table.insert(out, name) end
+	table.sort(out)
+	return out
+end
+
 --// Tunable constants accessors (UI tabs cập nhật qua đây)
 function shared.GetSkillInterval()
 	return AUTO_SKILL_INTERVAL
@@ -732,6 +809,38 @@ end
 
 function shared.SetOrbitHeight(value)
 	ORBIT_HEIGHT = value
+end
+
+--// Y hiện tại của boss đang farm (để bù offset khi boss hạ độ cao)
+local function currentFarmTargetY()
+	local data = farmTarget and trackedEnemies[farmTarget]
+	if data and data.Root and data.Root.Parent then return data.Root.Position.Y end
+	return nil
+end
+
+--// Maintain orbit height khi đánh boss
+function shared.GetMaintainBossHeight()
+	return maintainBossHeight
+end
+
+function shared.SetMaintainBossHeight(value)
+	maintainBossHeight = value == true
+	if maintainBossHeight then
+		if bossActive then
+			bossStartY = currentFarmTargetY() or bossStartY
+		end
+	else
+		bossStartY = nil
+	end
+end
+
+--// Offset cộng thêm vào orbit height khi ở boss room
+function shared.GetBossHeightOffset()
+	return BOSS_HEIGHT_OFFSET
+end
+
+function shared.SetBossHeightOffset(value)
+	BOSS_HEIGHT_OFFSET = tonumber(value) or 0
 end
 
 function shared.GetHoverHeight()
@@ -836,6 +945,17 @@ local bossHealthRef = nil
 local function setBossActive(active)
 	if bossActive == active then return end
 	bossActive = active
+	if active then
+		retargetSavedDuringBoss = retargetEnabled
+		retargetEnabled = false
+		if maintainBossHeight then bossStartY = currentFarmTargetY() end
+	else
+		if retargetSavedDuringBoss ~= nil then
+			retargetEnabled = retargetSavedDuringBoss
+			retargetSavedDuringBoss = nil
+		end
+		bossStartY = nil
+	end
 	for i = #bossCallbacks, 1, -1 do
 		pcall(bossCallbacks[i], bossActive)
 	end

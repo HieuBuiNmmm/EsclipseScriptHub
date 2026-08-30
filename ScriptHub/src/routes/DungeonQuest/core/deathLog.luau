@@ -2,7 +2,7 @@
 -- Công cụ ĐIỀU TRA: khi player chết, log ra console thông tin nguyên nhân
 -- tử vong (lastCombatant, vị trí, và các object nghi ngờ là hazard quanh
 -- điểm chết). Dùng để xác định "thứ gì thực sự gây chết" trước khi gắn
--- vào Smart Dodge. Chưa tự động né.
+-- vào danh sách hazard dodge. Chưa tự động né.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")

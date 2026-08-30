@@ -11,7 +11,6 @@ local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local esp = require("@routes/DungeonQuest/core/esp")
-local dodge = require("@routes/DungeonQuest/core/dodge")
 local basicOrbitDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
 local deathLog = require("@routes/DungeonQuest/core/deathLog")
 
@@ -20,10 +19,6 @@ return function(window, tab)
 	local farmSection = tab:Section({ Side = "Left" })
 	local combatSection = tab:Section({ Side = "Right" })
 	local startSection = tab:Section({ Side = "Left" })
-
-	--// Slider dodge (Boss Radius) — khai báo sớm để applyFarmModeVisibility
-	--// (định nghĩa ở dưới) capture đúng biến local, không phải global.
-	local dodgeRadiusSlider
 
 	--// Helper: Input + Button để thêm skill vào 1 list dodge theo API
 	local function makeSkillAdder(section, label, addFn, flagName)
@@ -106,6 +101,26 @@ return function(window, tab)
 		end),
 	}, "Slider_OrbitHeight"))
 
+	farmSection:Toggle({
+		Name = "Maintain Orbit Height on Boss",
+		Default = shared.GetMaintainBossHeight(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetMaintainBossHeight(state)
+		end),
+	}, "Toggle_MaintainBossHeight")
+
+	ui.PatchSliderLoadCallback(farmSection:Slider({
+		Name = "Boss Height Offset",
+		Default = shared.GetBossHeightOffset(),
+		Minimum = -100,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetBossHeightOffset(Value)
+		end),
+	}, "Slider_BossHeightOffset"))
+
 	local hoverHeightSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Hover Height",
 		Default = shared.GetHoverHeight(),
@@ -141,7 +156,7 @@ return function(window, tab)
 	ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Auto Retarget Interval",
 		Default = shared.GetRetargetInterval(),
-		Minimum = 1,
+		Minimum = 0.5,
 		Maximum = 30,
 		DisplayMethod = "Round",
 		Precision = 1,
@@ -175,8 +190,6 @@ return function(window, tab)
 		pcall(function() orbitSpeedSlider:SetVisibility(isOrbit) end)
 		pcall(function() orbitHeightSlider:SetVisibility(isOrbit) end)
 		pcall(function() hoverHeightSlider:SetVisibility(not isOrbit) end)
-		--// Boss Radius dodge chỉ hiển thị khi Farm Mode = Hover
-		pcall(function() dodgeRadiusSlider:SetVisibility(not isOrbit) end)
 	end
 	applyFarmModeVisibility()
 
@@ -250,41 +263,107 @@ return function(window, tab)
 	}, "Toggle_HighlightHitboxes")
 
 	combatSection:Toggle({
-		Name = "Smart Dodge",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			dodge.Toggle(state)
-			if state then
-				local other = macLib.Options["Toggle_BasicOrbitDodge"]
-				if other then other:UpdateState(false) end
-			end
-		end),
-	}, "Toggle_SmartDodge")
-
-	combatSection:Toggle({
 		Name = "Basic Orbit Dodge",
 		Default = false,
 		Callback = autoSave.Wrap(function(state)
 			basicOrbitDodge.Toggle(state)
-			if state then
-				local other = macLib.Options["Toggle_SmartDodge"]
-				if other then other:UpdateState(false) end
-			end
 		end),
 	}, "Toggle_BasicOrbitDodge")
 
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Detect Radius",
+		Default = basicOrbitDodge.GetDetectRadius(),
+		Minimum = 5,
+		Maximum = 50,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetDetectRadius(Value)
+		end),
+	}, "Slider_BasicDetectRadius"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Look Ahead",
+		Default = basicOrbitDodge.GetLookAhead(),
+		Minimum = 5,
+		Maximum = 60,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetLookAhead(Value)
+		end),
+	}, "Slider_BasicLookAhead"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Front Angle",
+		Default = basicOrbitDodge.GetFrontAngle(),
+		Minimum = 20,
+		Maximum = 180,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetFrontAngle(Value)
+		end),
+	}, "Slider_BasicFrontAngle"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Danger Radius",
+		Default = basicOrbitDodge.GetDangerRadius(),
+		Minimum = 5,
+		Maximum = 50,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetDangerRadius(Value)
+		end),
+	}, "Slider_BasicDangerRadius"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Flip Cooldown",
+		Default = basicOrbitDodge.GetFlipCooldown(),
+		Minimum = 0.05,
+		Maximum = 1,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetFlipCooldown(Value)
+		end),
+	}, "Slider_BasicFlipCooldown"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Jump Cooldown",
+		Default = basicOrbitDodge.GetJumpCooldown(),
+		Minimum = 0.1,
+		Maximum = 2,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetJumpCooldown(Value)
+		end),
+	}, "Slider_BasicJumpCooldown"))
+
 	combatSection:Header({ Name = "Dodge Skill Lists" })
 	makeSkillAdder(combatSection, "Basic Orbit Skill", function(v) basicOrbitDodge.AddBasicDodgeName(v) end, "Input_AddBasicSkill")
-	makeSkillAdder(combatSection, "Kinematic Skill", function(v) dodge.AddColumnName(v) end, "Input_AddKinematicSkill")
-	makeSkillAdder(combatSection, "Predictive Skill", function(v) dodge.AddStraightDodgeName(v) end, "Input_AddPredictiveSkill")
+	makeSkillAdder(combatSection, "Kinematic Skill", function(v) basicOrbitDodge.AddKinematicName(v) end, "Input_AddKinematicSkill")
+	makeSkillAdder(combatSection, "Predictive Skill", function(v) basicOrbitDodge.AddPredictiveName(v) end, "Input_AddPredictiveSkill")
 
 	combatSection:Toggle({
 		Name = "Dead Zone Visuals",
-		Default = dodge.IsDebugVisuals(),
+		Default = basicOrbitDodge.IsDebugVisuals(),
 		Callback = autoSave.Wrap(function(state)
-			dodge.SetDebugVisuals(state)
+			basicOrbitDodge.SetDebugVisuals(state)
 		end),
 	}, "Toggle_DeadZoneVisuals")
+
+	combatSection:Toggle({
+		Name = "Detector Visuals",
+		Default = basicOrbitDodge.IsDetectorVisuals(),
+		Callback = autoSave.Wrap(function(state)
+			basicOrbitDodge.SetDetectorVisuals(state)
+		end),
+	}, "Toggle_DetectorVisuals")
 
 	combatSection:Toggle({
 		Name = "Death Log",
@@ -293,31 +372,6 @@ return function(window, tab)
 			deathLog.Toggle(state)
 		end),
 	}, "Toggle_DeathLog")
-
-	ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Interval",
-		Default = dodge.GetRecalcInterval(),
-		Minimum = 0.05,
-		Maximum = 0.3,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			dodge.SetRecalcInterval(Value)
-		end),
-	}, "Slider_DodgeInterval"))
-
-	dodgeRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Boss Radius",
-		Default = dodge.GetBossRadius(),
-		Minimum = 5,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			dodge.SetBossRadius(Value)
-		end),
-	}, "Slider_DodgeBossRadius"))
 
 	applyFarmModeVisibility()
 
@@ -337,6 +391,15 @@ return function(window, tab)
 			autoRetry.Toggle(state)
 		end),
 	}, "Toggle_AutoRetry")
+
+	startSection:Button({
+		Name = "Manual Retry",
+		Callback = function()
+			task.spawn(function()
+				autoRetry.RetryNow()
+			end)
+		end,
+	})
 
 	startSection:Toggle({
 		Name = "Retry on Time Low",

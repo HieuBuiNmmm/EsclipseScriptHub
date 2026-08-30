@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T03:29:24.337410300+00:00",
+    genDate = "2026-08-30T08:21:22.757057500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6269,6 +6269,9 @@ local ORBIT_RADIUS = 30
 local ORBIT_HEIGHT = 12
 local ORBIT_SPEED = 180
 
+--// Offset cộng thêm vào orbit height khi ở boss room
+local BOSS_HEIGHT_OFFSET = 0
+
 local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
@@ -6278,6 +6281,14 @@ local FARM_ENGAGE_DISTANCE = 45
 local FARM_APPROACH_SPEED = 90
 local FARM_APPROACH_EPSILON = 1.5
 local HOVER_HEIGHT = ORBIT_HEIGHT
+
+--// Bật/tắt chế độ blacklist quái khi chọn mục tiêu (true = bật, false = tắt -> chọn mọi quái)
+local BLACKLIST_ENABLED = true
+
+--// Danh sách tên quái KHÔNG được chọn làm mục tiêu (retarget/ban đầu).
+--// Chỉnh sửa trực tiếp tại đây.
+--// VD: BLACKLIST_ENEMIES = { "Northern Mage", "Northern Spearman" }
+local BLACKLIST_ENEMIES = {"Northern Warrior"}
 
 local GUI_UPDATE_INTERVAL = 0.5
 
@@ -6301,6 +6312,14 @@ local dungeonStartTime = nil
 local bossActive = false
 local bossCallbacks = {}
 
+--// Lưu trạng thái retarget trước khi vào boss để khôi phục khi rời boss
+local retargetSavedDuringBoss = nil
+
+--// Maintain orbit height khi đánh boss: giữ cố định độ cao bằng cách bù offset
+--// khi boss hạ thấp vị trí (track pos Y của boss)
+local maintainBossHeight = false
+local bossStartY = nil
+
 local farmEnabled = false
 local farmMode = "Orbit"
 local farmTarget = nil
@@ -6317,6 +6336,12 @@ local orbitReverseEnabled = false
 local farmOrbitDirection = 1
 local basicOrbitDirection = nil
 local farmLastRetargetTime = 0
+local blacklistEnemies = {}
+for _, name in ipairs(BLACKLIST_ENEMIES) do
+	if type(name) == "string" and name ~= "" then
+		table.insert(blacklistEnemies, name)
+	end
+end
 
 local autoSkillEnabled = false
 local autoSkillRunning = false
@@ -6481,23 +6506,40 @@ cleanupEnemies = function()
 	end
 end
 
+local function isBlacklisted(name)
+	if not BLACKLIST_ENABLED then return false end
+	for _, n in ipairs(blacklistEnemies) do
+		if n == name then return true end
+	end
+	return false
+end
+
 getNearestEnemy = function()
 	local character = player.Character
 	if not character or not character.Parent then return nil end
 	local playerRoot = character:FindFirstChild("HumanoidRootPart")
 	if not playerRoot then return nil end
 
-	local nearest, nearestDistance = nil, math.huge
+	local best, bestDistance = nil, math.huge
+	local fallback, fallbackDistance = nil, math.huge
 	for enemy, data in pairs(trackedEnemies) do
 		if enemy and enemy.Parent and data and data.Root and data.Root.Parent then
 			local distance = (playerRoot.Position - data.Root.Position).Magnitude
-			if distance < nearestDistance then
-				nearestDistance = distance
-				nearest = { Model = enemy, Root = data.Root, Distance = distance }
+			if isBlacklisted(enemy.Name) then
+				--// blacklist: chỉ nhắm khi không còn enemy bình thường nào tồn tại
+				if distance < fallbackDistance then
+					fallbackDistance = distance
+					fallback = { Model = enemy, Root = data.Root, Distance = distance }
+				end
+			elseif distance < bestDistance then
+				bestDistance = distance
+				best = { Model = enemy, Root = data.Root, Distance = distance }
 			end
 		end
 	end
-	return nearest
+	--// hết enemy bình thường -> chấp nhận đánh enemy trong blacklist
+	if not best then return fallback end
+	return best
 end
 
 --// Skill helpers
@@ -6528,7 +6570,16 @@ leaveFarmTarget = function()
 end
 
 local function getOrbitPosition(center, angle)
-	return center + Vector3.new(math.cos(angle) * ORBIT_RADIUS, ORBIT_HEIGHT, math.sin(angle) * ORBIT_RADIUS)
+	local height = ORBIT_HEIGHT
+	if bossActive and center then
+		height = height + BOSS_HEIGHT_OFFSET
+		if maintainBossHeight then
+			if not bossStartY then bossStartY = center.Y end
+			local drop = bossStartY - center.Y
+			if drop > 0 then height = height + drop end
+		end
+	end
+	return center + Vector3.new(math.cos(angle) * ORBIT_RADIUS, height, math.sin(angle) * ORBIT_RADIUS)
 end
 
 moveFarmTarget = function(deltaTime)
@@ -6936,6 +6987,32 @@ function shared.GetAutoSkillMode()
 	return autoSkillMode
 end
 
+--// Trả về danh sách tên các loại enemy có trong màn (dungeon + đang track)
+function shared.GetEnemyNames()
+	local names = {}
+	local function add(name)
+		if name and name ~= "" and name ~= player.Name then names[name] = true end
+	end
+	if dungeon then
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				for _, obj in ipairs(room:GetDescendants()) do
+					if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+						add(obj.Name)
+					end
+				end
+			end
+		end
+	end
+	for enemy in pairs(trackedEnemies) do
+		add(enemy.Name)
+	end
+	local out = {}
+	for name in pairs(names) do table.insert(out, name) end
+	table.sort(out)
+	return out
+end
+
 --// Tunable constants accessors (UI tabs cập nhật qua đây)
 function shared.GetSkillInterval()
 	return AUTO_SKILL_INTERVAL
@@ -6979,6 +7056,38 @@ end
 
 function shared.SetOrbitHeight(value)
 	ORBIT_HEIGHT = value
+end
+
+--// Y hiện tại của boss đang farm (để bù offset khi boss hạ độ cao)
+local function currentFarmTargetY()
+	local data = farmTarget and trackedEnemies[farmTarget]
+	if data and data.Root and data.Root.Parent then return data.Root.Position.Y end
+	return nil
+end
+
+--// Maintain orbit height khi đánh boss
+function shared.GetMaintainBossHeight()
+	return maintainBossHeight
+end
+
+function shared.SetMaintainBossHeight(value)
+	maintainBossHeight = value == true
+	if maintainBossHeight then
+		if bossActive then
+			bossStartY = currentFarmTargetY() or bossStartY
+		end
+	else
+		bossStartY = nil
+	end
+end
+
+--// Offset cộng thêm vào orbit height khi ở boss room
+function shared.GetBossHeightOffset()
+	return BOSS_HEIGHT_OFFSET
+end
+
+function shared.SetBossHeightOffset(value)
+	BOSS_HEIGHT_OFFSET = tonumber(value) or 0
 end
 
 function shared.GetHoverHeight()
@@ -7083,6 +7192,17 @@ local bossHealthRef = nil
 local function setBossActive(active)
 	if bossActive == active then return end
 	bossActive = active
+	if active then
+		retargetSavedDuringBoss = retargetEnabled
+		retargetEnabled = false
+		if maintainBossHeight then bossStartY = currentFarmTargetY() end
+	else
+		if retargetSavedDuringBoss ~= nil then
+			retargetEnabled = retargetSavedDuringBoss
+			retargetSavedDuringBoss = nil
+		end
+		bossStartY = nil
+	end
 	for i = #bossCallbacks, 1, -1 do
 		pcall(bossCallbacks[i], bossActive)
 	end
@@ -7497,18 +7617,41 @@ local timeRetryEnabled = false
 local timeRetryThreshold = 60
 local timeRetryTriggered = false
 local autoRetryCommand = [==[
-local Event = game:GetService("ReplicatedStorage").remotes.replayDungeon
-Event:FireServer(
-	{
-		dungeonProgress = "",
-		dungeonStarted = false,
-		hardcore = false,
-		dungeonFinished = false,
-		dungeonName = "Enchanted Forest",
-		isHardcore = false,
-		fightingBoss = false
-	}
-)
+local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")
+
+local payload = {}
+local function collectValue(name)
+	local value = workspace:FindFirstChild(name)
+	if value and value:IsA("ValueBase") then
+		payload[name] = value.Value
+	end
+end
+
+collectValue("dungeonName")
+collectValue("dungeonProgress")
+collectValue("dungeonStarted")
+
+local hardcore = workspace:FindFirstChild("hardcore")
+if hardcore and hardcore:IsA("BoolValue") then
+	payload.hardcore = hardcore.Value
+	payload.isHardcore = hardcore.Value
+end
+
+local dungeon = workspace:FindFirstChild("dungeon")
+if dungeon then
+	for _, value in ipairs(dungeon:GetChildren()) do
+		if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+	end
+	local bossRoom = dungeon:FindFirstChild("bossRoom")
+	if bossRoom then
+		for _, value in ipairs(bossRoom:GetChildren()) do
+			if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+		end
+	end
+end
+
+if not payload.dungeonName then return end
+ReplayDungeon:FireServer(payload)
 ]==]
 local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
 local autoRetryCommandFn = nil
@@ -7627,23 +7770,26 @@ function autoRetry.GetTimeLimit()
 	return TIME_LIMIT
 end
 
+function autoRetry.RetryNow()
+	task.spawn(function()
+		fireRetry()
+	end)
+end
+
 return autoRetry
 end function __DIST.t()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
--- Quét từng child (1 level) của Workspace mỗi 0.5s.
--- Chỉ add ESP cho part có tên `hitBox` nếu bên trong child đó có.
+-- Chỉ highlight các object trùng tên với model projectile trong
+-- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
 --// Table
 
 local esp = {}
 
 --// Configuration
-local HITBOX_NAME = "hitBox"
-
---// Các skill đặc biệt không có part `hitBox` bên trong, highlight trực tiếp object
-local SKILL_NAMES = {
-	["firstBossCrissCross"] = true,
-	["firstBossSeekingSpikes"] = true,
-}
+--// ReplicatedStorage.enemyProjectiles là kho lưu model template của enemy.
+--// Ta đọc tên các model đó làm danh sách projectile; khi model cùng tên
+--// xuất hiện trong Workspace thì highlight đúng vật đang bay.
+local PROJECTILE_FOLDER = "enemyProjectiles"
 
 local BOX_COLOR = Color3.fromRGB(255, 0, 0)
 local LINE_THICKNESS = 0.05
@@ -7655,6 +7801,7 @@ local SCAN_INTERVAL = 0.5
 --// State
 local enabled = false
 local scanThread = nil
+local projectileNames = {}
 
 --// Helpers
 local function createBox(targetObj)
@@ -7670,19 +7817,35 @@ local function createBox(targetObj)
 	end
 end
 
---// Thêm ESP cho root nếu bản thân nó là hitBox/skill đặc biệt, và cho mọi part
---// tên `hitBox` hoặc skill đặc biệt nằm trong hậu duệ của root.
+--// Load danh sách tên projectile từ ReplicatedStorage.enemyProjectiles
+--// (bao gồm Model, MeshPart, Part).
+local function refreshProjectileNames()
+	projectileNames = {}
+	local rs = game:GetService("ReplicatedStorage")
+	local folder = rs:FindFirstChild(PROJECTILE_FOLDER)
+	if not folder then return end
+	for _, obj in ipairs(folder:GetChildren()) do
+		local cls = obj.ClassName
+		if cls == "Model" or cls == "MeshPart" or cls == "Part" then
+			projectileNames[obj.Name] = true
+		end
+	end
+end
+
+--// Chỉ highlight object trùng tên với danh sách projectile, kể cả khi
+--// nằm sâu trong hậu duệ của một object Workspace.
 local function addHitboxes(root)
-	if root.Name == HITBOX_NAME or SKILL_NAMES[root.Name] then
+	if projectileNames[root.Name] then
 		createBox(root)
 	end
 	for _, obj in ipairs(root:GetDescendants()) do
-		if obj.Name == HITBOX_NAME or SKILL_NAMES[obj.Name] then
+		if projectileNames[obj.Name] then
 			createBox(obj)
 		end
 	end
 end
 
+--// Xóa mọi box ESP giống đã vẽ trong Workspace.
 local function removeESPFolder()
 	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
 		local box = obj:FindFirstChild(ESP_NAME)
@@ -7703,7 +7866,8 @@ function esp.Toggle(state)
 			local Workspace = game:GetService("Workspace")
 			while enabled do
 				local ok, err = pcall(function()
-					--// Quét từng child (1 level) của Workspace; add ESP nếu trong đó có part hitBox
+					--// Load danh sách projectile từ storage; quét Workspace và vẽ hitbox
+					refreshProjectileNames()
 					for _, child in ipairs(Workspace:GetChildren()) do
 						addHitboxes(child)
 					end
@@ -7719,6 +7883,7 @@ function esp.Toggle(state)
 		end)
 	else
 		if scanThread then task.cancel(scanThread); scanThread = nil end
+		projectileNames = {}
 		local ok = pcall(removeESPFolder)
 		if not ok then warn("[ESP] cleanup error") end
 	end
@@ -7729,17 +7894,17 @@ function esp.IsEnabled()
 end
 
 return esp
-end function __DIST.u()-- Predictive Orbit Avoidance (Smart Dodge) cho DungeonQuest.
--- Player được biểu diễn bằng góc θ trên vòng tròn quỹ đạo quanh boss
--- (bán kính BOSS_RADIUS). Mỗi lần quét, xây Danger Map từ các cục nguy
--- hiểm (vd firstBossCrissCross) đang tồn tại, tìm khoảng an toàn lớn
--- nhất trên 360°, rồi teleport player tới góc an toàn.
---
--- Độ cao: khi bắt đầu dodge, giữ nguyên độ cao hiện tại của player và
--- duy trì suốt phiên dodge (không nhảy xuống thấp, không bị trôi).
--- Bán kính được RESOLVE theo Farm Mode:
---   - Farm Mode = Orbit: dùng thẳng ORBIT_RADIUS của Auto Farm.
---   - Farm Mode = Hover : dùng BOSS_RADIUS (slider "Boss Radius").
+end function __DIST.u()-- Basic Orbit Dodge cho DungeonQuest (tích hợp tracking + safe-node từ Smart Dodge).
+-- Kiểu dodge đơn giản: KHÔNG tắt orbit, player chạy orbit bình thường.
+-- Hệ thống TRACKING TOÀN BỘ đối tượng cần né theo 2 loại:
+--   - KINEMATIC (chậm/đứng yên) : chặn quỹ đạo quanh vị trí cục (DANGER_RADIUS).
+--   - PREDICTIVE (bay thẳng nhanh): chặn interval nơi tia bay (velocity/window)
+--                                   cắt vòng orbit.
+-- Khi phát hiện hazard ở PHÍA TRƯỚC hướng đi -> đảo chiều orbit.
+-- Khi bị KẸP 2 phía (flip xong vẫn hazard trước, hoặc đang trong cooldown flip
+-- mà vẫn gặp hazard) -> KHÔNG skip cứng theo SKIP_ANGLE nữa mà TÍNH NODE AN TOÀN
+-- NHẤT (safety score trên danger map) rồi nhảy tới đó.
+-- Tận dụng cơ chế orbit có sẵn (shared.basicOrbitDirection đè hướng hiệu dụng).
 
 --// Imports
 
@@ -7748,48 +7913,55 @@ local shared = __DIST.load('l')
 
 --// References
 local player = services.player
+local RunService = services.RunService
 
 --// Configuration
---// Loại 1 - KINEMATIC (chậm, xoay/quanh): coi vị trí tâm tức thời của cục là
---// vùng nguy hiểm (chặn orbit trong DANGER_RADIUS). Child trực tiếp Workspace.
-local COLUMN_NAMES = {
+--// Danh sách chiêu/hazard cần tránh (tự add). Mọi tên ở đây được tracking;
+--// những tên có trong PREDICTIVE_NAMES thì xử lý kiểu dự đoán quỹ đạo bay.
+local BASIC_DODGE_NAMES = {
 	["firstBossCrissCross"] = true,
 	["secondBossMovingBeam"] = true,
-}
-
---// Loại 2 - PREDICTIVE (di chuyển thẳng nhanh): dự đoán trajectory đường
---// thẳng (velocity hoặc 2 frame position), coi toàn bộ quỹ đạo bay cắt orbit
---// là danger interval (theo orbit_avoidance_algorithm.txt). Bạn tự add skill
---// thuộc kiểu này vào đây.
-local STRAIGHT_DODGE_NAMES = {
 	["firstBossSeekingSpikes"] = true,
 }
 
---// Bán kính quỹ đạo quanh boss (dùng khi Farm Mode = Hover).
---// Độ cao được giữ theo độ cao hiện tại của player khi bắt đầu dodge.
-local BOSS_RADIUS = 25
+--// Các tên thuộc loại PREDICTIVE (bay thẳng nhanh); còn lại mặc định KINEMATIC.
+local PREDICTIVE_NAMES = {
+	["firstBossSeekingSpikes"] = true,
+}
 
---// Phạm vi nguy hiểm quanh mỗi cục (khoảng cách từ điểm orbit tới cục)
+--// Bán kính vùng detect quanh player (stud) - hành lang phía trước hướng đi
+local DETECT_RADIUS = 15
+--// Góc mở "phía trước hướng đi" (độ, 2 chiều) để coi hazard là phía trước
+local FRONT_ANGLE = 120
+--// Cooldown chống lật hướng liên tục (giây)
+local FLIP_COOLDOWN = 0.15
+--// Khoảng nhìn phía trước theo tiếp tuyến (stud) để phát hiện hazard sắp va chạm
+local LOOK_AHEAD = 20
+--// Số frame liên tiếp không có hazard trước khi reset hướng orbit về bình thường
+local ALL_CLEAR_FRAMES = 5
+--// Cooldown giữa các lần nhảy tới node an toàn (giây)
+local JUMP_COOLDOWN = 0.3
+
+--// ---- Danger map (kế thừa Smart Dodge) ----
+--// Phạm vi nguy hiểm quanh mỗi cục kinematic (khoảng cách từ điểm orbit tới cục)
 local DANGER_RADIUS = 16
-
---// Bán kính hazard thực của object predictive (stud). Quyết định chiều rộng
---// của dải dead zone (2×radius) và bán kính góc của danger interval trên orbit.
+--// Bán kính hazard thực của object predictive (stud): chiều rộng dải dead zone và
+--// bán kính góc của danger interval trên orbit
 local PREDICTIVE_OBJECT_RADIUS = 10
-
 --// Prediction window (giây): dead zone của object bay thẳng phủ theo trajectory
---// trong X giây tới (chỉ chiều phía trước theo velocity). Quãng đường quét =
---// speed * PREDICT_WINDOW.
 local PREDICT_WINDOW = 3
-
---// Safety Score (chọn chỗ an toàn nhất trên orbit)
---// Khoảng cách tối thiểu (số node) tới dead zone để coi node là "đủ an toàn";
---// nếu player đang ở node an toàn nhưng gần mép hơn mức này -> nhích vào giữa.
+--// Safety Score: margin tối thiểu tới dead zone để node "đủ an toàn"
 local MIN_SAFE_MARGIN = 8
---// Cap khoảng cách tới dead zone khi chấm điểm (tránh chênh lệch cực lớn trong
---// run rất dài).
+--// Cap khoảng cách tới dead zone khi chấm điểm (tránh chênh lệch cực lớn)
 local MAX_MARGIN_CAP = 30
---// Chênh lệch điểm tối thiểu để quyết định tele (giữ ổn định, tránh nhảy liên tục).
+--// Chênh lệch điểm tối thiểu để quyết định nhảy (giữ ổn định)
 local SWITCH_THRESHOLD = 6
+--// Vận tốc tối thiểu để suy trajectory đáng tin cậy (stud/s)
+local MIN_SPEED_THRESHOLD = 5
+--// Độ phân giải góc quét (độ)
+local SAMPLE_STEP = 2
+--// Số mẫu góc trên 360°
+local N = math.floor(360 / SAMPLE_STEP)
 
 --// Hiển thị trực quan dead zone (debug): folder chứa các part vẽ.
 local VISUALS_FOLDER = "DeadZone_Visuals"
@@ -7797,54 +7969,27 @@ local VISUALS_SMOOTHNESS = 12
 local VISUALS_BALL_COLOR = Color3.fromRGB(255, 60, 60)
 local VISUALS_ARC_COLOR = Color3.fromRGB(255, 40, 40)
 local VISUALS_RAY_COLOR = Color3.fromRGB(255, 180, 40)
+local VISUALS_DETECTOR_COLOR = Color3.fromRGB(60, 180, 255)
 
---// Nếu đọc được velocity (đơn vị stud/s) nhưng quá nhỏ (near zero), không đủ
---// yếu tố hướng -> không tính được trajectory đáng tin cậy.
-local MIN_SPEED_THRESHOLD = 5
-
---// Độ phân giải góc quét (độ)
-local SAMPLE_STEP = 2
-
-local SCAN_INTERVAL = 0.1
-local RECALC_INTERVAL = 0.1
-
---// Số mẫu góc trên 360°
-local N = math.floor(360 / SAMPLE_STEP)
+--// Tốc độ làm tươi visuals (giây)
+local VISUALS_REFRESH_INTERVAL = 0.1
 
 --// Table
-local dodge = {}
+local basicDodge = {}
 
 --// State
 local enabled = false
-local dodging = false
-local activeColumns = {}
-local activeColumnsMeta = {}
-local straightObjects = {}
-local loopRunning = false
-local callbacks = {}
-local currentHeight = 0
+local connection = nil
+local lastFlipTime = 0
+local lastJumpTime = 0
+local noHazardCount = 0
+local trackedColumns = {}
 local debugVisuals = false
+local detectorVisuals = false
+local renderLoopRunning = false
 
-function dodge.OnDodgeChange(callback)
-	table.insert(callbacks, callback)
-end
-
-local function notifyDodgeChange()
-	for _, cb in ipairs(callbacks) do
-		pcall(cb, dodging)
-	end
-end
-
---// Resolve bán kính quỹ đạo dodge theo Farm Mode.
-local function getDodgeRadius()
-	if shared.GetFarmMode() == "Hover" then
-		return BOSS_RADIUS
-	end
-	return shared.GetOrbitRadius()
-end
-
---// Vị trí tâm (X/Z) của object trong Workspace.
-local function getColumnPosition(obj)
+--// Vị trí tâm (X/Y/Z) của object trong Workspace.
+local function getObjectPosition(obj)
 	if not obj then return nil end
 	if obj:IsA("BasePart") then
 		local ok, pos = pcall(function() return obj.Position end)
@@ -7852,11 +7997,9 @@ local function getColumnPosition(obj)
 		return nil
 	end
 	local ok, primary = pcall(function() return obj.PrimaryPart end)
-	if ok and primary and primary:IsA("BasePart") then
-		return primary.Position
-	end
-	for _, child in ipairs(obj:GetChildren()) do
-		if child:IsA("BasePart") then return child.Position end
+	if ok and primary and primary:IsA("BasePart") then return primary.Position end
+	for _, c in ipairs(obj:GetChildren()) do
+		if c:IsA("BasePart") then return c.Position end
 	end
 	return nil
 end
@@ -7864,7 +8007,7 @@ end
 --// Hướng bay + tốc độ (stud/s) của object di chuyển thẳng (predictive).
 --// Ưu tiên velocity của BasePart; fallback suy từ 2 frame position gần nhất.
 local function getObjectVelocity(col)
-	local obj = col.Instance
+	local obj = col and col.Instance
 	local vel = nil
 	if obj and obj:IsA("BasePart") then
 		local ok, v = pcall(function()
@@ -7886,52 +8029,53 @@ local function getObjectVelocity(col)
 end
 
 --// Phát hiện object mới xuất hiện / loại bỏ object biến mất (quản lý membership).
---// Hỗ trợ cả 2 kiểu: kinematic (COLUMN_NAMES) và predictive (STRAIGHT_DODGE_NAMES).
+local function tryTrackObject(child, seen, predicted)
+	seen[child] = true
+	local entry = trackedColumns[child]
+	if not entry then
+		local pos = getObjectPosition(child)
+		if pos then
+			trackedColumns[child] = {
+				Instance = child,
+				Position = pos,
+				OldPosition = pos,
+				Predicted = predicted,
+				Age = 1,
+			}
+		end
+	else
+		entry.Predicted = entry.Predicted or predicted
+	end
+end
+
 local function refreshColumns()
 	local Workspace = game:GetService("Workspace")
 	local seen = {}
 	for _, child in ipairs(Workspace:GetChildren()) do
-		if COLUMN_NAMES[child.Name] or STRAIGHT_DODGE_NAMES[child.Name] then
-			seen[child] = true
-			local predicted = STRAIGHT_DODGE_NAMES[child.Name] == true
-			local entry = activeColumns[child]
-			if not entry then
-				local pos = getColumnPosition(child)
-				if pos then
-					activeColumns[child] = {
-						Instance = child,
-						Position = pos,
-						OldPosition = pos,
-						Predicted = predicted,
-						Age = 1,
-					}
-				end
-			else
-				entry.Predicted = entry.Predicted or predicted
-			end
+		if BASIC_DODGE_NAMES[child.Name] then
+			tryTrackObject(child, seen, PREDICTIVE_NAMES[child.Name] == true)
 		end
 	end
-	for inst in pairs(activeColumns) do
+	for inst in pairs(trackedColumns) do
 		if not seen[inst] or not inst.Parent then
-			activeColumns[inst] = nil
+			trackedColumns[inst] = nil
 		end
 	end
 end
 
 --// Cập nhật vị trí object mỗi lần tính toán (bám theo chuyển động nhanh).
---// Lưu OldPosition + Age để suy hướng di chuyển khi cần (predictive).
 local function updateColumnPositions(now)
-	for _, col in pairs(activeColumns) do
+	for _, col in pairs(trackedColumns) do
 		if col and col.Instance then
-			local pos = getColumnPosition(col.Instance)
+			local pos = getObjectPosition(col.Instance)
 			if pos then
 				if col.OldPosition then
-					col.Age = (now or os.clock()) - (col.LastUpdate or 0)
+					col.Age = now - (col.LastUpdate or 0)
 					if col.Age < 1e-3 then col.Age = 1e-3 end
 				end
 				col.OldPosition = col.Position
 				col.Position = pos
-				col.LastUpdate = now or os.clock()
+				col.LastUpdate = now
 			end
 		end
 	end
@@ -7943,7 +8087,59 @@ local function horizontalDistance(a, b)
 	return math.sqrt(dx * dx + dz * dz)
 end
 
---// Điểm trên quỹ đạo quanh boss ứng với góc, độ cao cố định height.
+--// Có hazard nào nằm trong hành lang phía trước hướng đi (theo tangent) ?
+local function hasHazardAhead(playerPos, bossPos, effDir, hazards)
+	local radius = shared.GetOrbitRadius()
+	if not radius or radius <= 0 then return false end
+	local radial = playerPos - bossPos
+	local ang = math.atan2(radial.Z, radial.X)
+	--// tiếp tuyến tại điểm player: đạo hàm (cosθ,sinθ) = (-sinθ, cosθ), nhân effDir
+	local tx = -math.sin(ang) * effDir
+	local tz = math.cos(ang) * effDir
+	local tangent = Vector3.new(tx, 0, tz)
+	local cosHalf = math.cos(math.rad(FRONT_ANGLE / 2))
+	for _, h in ipairs(hazards) do
+		local toH = Vector3.new(h.X - playerPos.X, 0, h.Z - playerPos.Z)
+		local mag = toH.Magnitude
+		if mag > 0.001 then
+			local unit = toH.Unit
+			local along = tangent:Dot(unit)
+			if along >= cosHalf then
+				--// chiếu lên hướng đi (proj) + khoảng cách lệch khỏi quỹ đạo (perp)
+				local proj = mag * along
+				local perp = math.sqrt(math.max(mag * mag - proj * proj, 0))
+				if proj <= LOOK_AHEAD and perp <= DETECT_RADIUS then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+--// Tele player tới góc theta (rad) trên orbit quanh center (đồng bộ farmAngle).
+local function teleportToAngle(center, theta)
+	local character = player.Character
+	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+	if not character or not playerRoot or not playerRoot.Parent then return end
+	if not character.PrimaryPart then character.PrimaryPart = playerRoot end
+
+	local radius = shared.GetOrbitRadius() or 0
+	local height = shared.GetOrbitHeight() or 0
+	local targetPos = center + Vector3.new(math.cos(theta) * radius, height, math.sin(theta) * radius)
+
+	local humanoid = character:FindFirstChild("Humanoid")
+	local oldAutoRotate = humanoid and humanoid.AutoRotate
+	if humanoid then humanoid.AutoRotate = false end
+	character:PivotTo(CFrame.lookAt(targetPos, center))
+	playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+	if humanoid then humanoid.AutoRotate = oldAutoRotate end
+
+	--// đồng bộ farmAngle để moveFarmTarget tiếp tục đúng
+	shared.SetOrbitAngle(theta)
+end
+
+--// ---- Danger map (chọn node an toàn nhất trên orbit) ----
 local function orbitPoint(center, radius, angle, height)
 	return Vector3.new(center.X + math.cos(angle) * radius, height, center.Z + math.sin(angle) * radius)
 end
@@ -7956,8 +8152,7 @@ local function idxToRad(idx)
 	return math.rad(idx * SAMPLE_STEP)
 end
 
---// Line-circle intersection: tia từ P theo dir (unit), giới hạn phía trước
---// maxDist = speed*PREDICT_WINDOW. Trả về điểm cắt orbit có 0 <= t <= maxDist.
+--// Line-circle intersection: tia từ P theo dir (unit), giới hạn maxDist.
 local function lineCircleIntersections(P, dir, C, R, maxDist)
 	local oc = P - C
 	local a = dir:Dot(dir)
@@ -7979,20 +8174,17 @@ local function lineCircleIntersections(P, dir, C, R, maxDist)
 	return intersects
 end
 
---// Đánh dấu danger interval quanh một góc (deg) trên danger map.
 local function markDangerInterval(danger, centerDeg, halfWidthDeg)
 	for deg = centerDeg - halfWidthDeg, centerDeg + halfWidthDeg do
 		danger[degToIdx(deg)] = true
 	end
 end
 
---// Predictive: mỗi object thuộc diện "di chuyển thẳng nhanh" đóng góp danger
---// interval tại góc orbit nơi tia bay (giới hạn PREDICT_WINDOW) cắt quỹ đạo.
---// Bán kính interval tính theo stud (PREDICTIVE_OBJECT_RADIUS) để khớp với
---// dải dead zone được vẽ.
+--// Predictive: mỗi object bay thẳng đóng góp danger interval tại góc orbit nơi
+--// tia bay (giới hạn PREDICT_WINDOW) cắt quỹ đạo.
 local function markPredictiveDangers(danger, bossPos, radius)
 	local halfWidthDeg = math.deg(PREDICTIVE_OBJECT_RADIUS / math.max(radius, 1))
-	for _, col in pairs(activeColumns) do
+	for _, col in pairs(trackedColumns) do
 		if col and col.Predicted and col.Position then
 			local vel = getObjectVelocity(col)
 			if vel and vel.Magnitude > MIN_SPEED_THRESHOLD then
@@ -8009,10 +8201,10 @@ local function markPredictiveDangers(danger, bossPos, radius)
 	end
 end
 
---// Điểm orbit tại idx có nằm trong phạm vi nguy hiểm của cục nào không.
+--// Điểm orbit tại idx có nằm trong phạm vi nguy hiểm của cục kinematic nào.
 local function isSampleDanger(bossPos, radius, height, idx)
 	local point = orbitPoint(bossPos, radius, idxToRad(idx), height)
-	for _, col in pairs(activeColumns) do
+	for _, col in pairs(trackedColumns) do
 		if col and col.Position and not col.Predicted and horizontalDistance(point, col.Position) < DANGER_RADIUS then
 			return true
 		end
@@ -8020,8 +8212,8 @@ local function isSampleDanger(bossPos, radius, height, idx)
 	return false
 end
 
---// Xây Danger Map: hybrid 2 loại dodge trên cùng mảng danger[]. Kinematic
---// chặn quanh cục (isSampleDanger); predictive chặn interval quanh điểm cắt.
+--// Xây Danger Map: hybrid 2 loại trên cùng mảng danger[]. Kinematic chặn quanh
+--// cục (isSampleDanger); predictive chặn interval quanh điểm cắt.
 local function buildDangerMap(bossPos, radius, height)
 	local danger = {}
 	for i = 0, N - 1 do
@@ -8031,7 +8223,6 @@ local function buildDangerMap(bossPos, radius, height)
 	return danger
 end
 
---// ---------- Safety Score (chọn chỗ an toàn nhất) ----------
 --// Khoảng cách (số node) từ idx tới dead zone gần nhất, cap ở MAX_MARGIN_CAP.
 local function marginToDanger(danger, idx)
 	if danger[idx] then return 0 end
@@ -8060,14 +8251,13 @@ local function safeRunWidth(danger, idx)
 	return width
 end
 
---// Điểm an toàn của node: ưu tiên khoảng cách tới dead zone (margin), phá quãng
---// bằng độ rộng run. Càng xa biên + trong run càng rộng -> điểm càng cao.
+--// Điểm an toàn của node: ưu tiên margin tới dead zone, phá quãng bằng run width.
 local function safetyScore(danger, idx)
 	if danger[idx] then return -1 end
 	return marginToDanger(danger, idx) * 1000 + math.min(safeRunWidth(danger, idx), MAX_MARGIN_CAP)
 end
 
---// Node an toàn nhất trên toàn orbit (điểm cao nhất). Trả về idx + điểm của nó.
+--// Node an toàn nhất trên toàn orbit (điểm cao nhất). Trả về idx + điểm.
 local function bestSafeIndex(danger, curIdx)
 	local bestIdx, bestScore = curIdx, safetyScore(danger, curIdx)
 	for idx = 0, N - 1 do
@@ -8078,25 +8268,6 @@ local function bestSafeIndex(danger, curIdx)
 		end
 	end
 	return bestIdx, bestScore
-end
-
---// Teleport player tới góc (idx) trên quỹ đạo quanh boss, mặt hướng boss.
---// Dùng height cố định (không bám playerPos.Y) để duy trì độ cao.
-local function teleportToAngle(bossPos, radius, height, idx)
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	if not character or not playerRoot or not playerRoot.Parent then return end
-	if not character.PrimaryPart then character.PrimaryPart = playerRoot end
-
-	local targetPos = orbitPoint(bossPos, radius, idxToRad(idx), height)
-	local humanoid = character:FindFirstChild("Humanoid")
-	local oldAutoRotate = humanoid and humanoid.AutoRotate
-	if humanoid then humanoid.AutoRotate = false end
-
-	character:PivotTo(CFrame.lookAt(targetPos, bossPos))
-	playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-	if humanoid then humanoid.AutoRotate = oldAutoRotate end
 end
 
 --// ---------- Dead zone visuals (debug) ----------
@@ -8132,7 +8303,7 @@ end
 
 --// Bóng nguy hiểm quanh cục kinematic (bán kính DANGER_RADIUS)
 local function renderKinematicBalls(parent)
-	for _, col in pairs(activeColumns) do
+	for _, col in pairs(trackedColumns) do
 		if col and col.Position and not col.Predicted then
 			local part = createVisualPart(parent, 0.65)
 			part.Shape = Enum.PartType.Ball
@@ -8144,9 +8315,9 @@ local function renderKinematicBalls(parent)
 end
 
 --// Tia dead zone của object predictive: dải rộng 2D (2×PREDICTIVE_OBJECT_RADIUS)
---// dọc theo hướng bay, dài speed×PREDICT_WINDOW - thể hiện vùng mặt đất quét qua.
+--// dọc theo hướng bay, dài speed×PREDICT_WINDOW.
 local function renderPredictiveRays(parent)
-	for _, col in pairs(activeColumns) do
+	for _, col in pairs(trackedColumns) do
 		if col and col.Predicted and col.Position then
 			local vel = getObjectVelocity(col)
 			if vel and vel.Magnitude > MIN_SPEED_THRESHOLD then
@@ -8176,345 +8347,113 @@ local function renderArc(parent, bossPos, radius, height, danger)
 	end
 end
 
-local function renderVisuals(bossPos, radius, height, danger)
-	clearVisuals()
-	if not debugVisuals then return end
-	local parent = Instance.new("Folder")
-	parent.Name = VISUALS_FOLDER
-	parent.Parent = game:GetService("Workspace")
-	renderKinematicBalls(parent)
-	renderPredictiveRays(parent)
-	renderArc(parent, bossPos, radius, height, danger)
-end
-
---// Tính toán + teleport mỗi lần quét.
-local function updateDodge()
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	if not character or not playerRoot or not playerRoot.Parent then return end
-	local playerPos = playerRoot.Position
-	local bossPos = shared.GetFarmTargetPosition()
-	if not bossPos then
-		if dodging then dodging = false; notifyDodgeChange() end
-		return
-	end
-
-	updateColumnPositions(os.clock())
-
-	--// Resolve bán kính quỹ đạo dodge theo Farm Mode
-	local radius = getDodgeRadius()
-
-	--// Dead zone visuals (debug): build + vẽ bất kể đang dodge hay không
-	if debugVisuals then
-		local visHeight = (dodging and currentHeight > 0) and currentHeight or playerPos.Y
-		local visDanger = buildDangerMap(bossPos, radius, visHeight)
-		renderVisuals(bossPos, radius, visHeight, visDanger)
-	end
-
-	--// Có object nào đang đe dọa vành đai quỹ đạo quanh boss không?
-	local threat = false
-	for _, col in pairs(activeColumns) do
-		if col and col.Position then
-			if not col.Predicted then
-				if math.abs(horizontalDistance(bossPos, col.Position) - radius) <= DANGER_RADIUS then
-					threat = true
-					break
-				end
-			else
-				--// Predictive: miễn object còn tồn tại trong activeColumns (chưa bị
-				--// refreshColumns loại) là giữ dodge + stop orbit, bất kể velocity.
-				threat = true
-				break
-			end
-		end
-	end
-
-	if not threat then
-		if dodging then dodging = false; notifyDodgeChange() end
-		return
-	end
-
-	if not dodging then
-		dodging = true
-		--// Giữ độ cao hiện tại của player khi bắt đầu dodge (tránh nhảy xuống thấp)
-		currentHeight = playerPos.Y
-		notifyDodgeChange()
-	end
-
-	--// Góc hiện tại của player trên orbit (tính từ vị trí ngang hiện tại)
-	local toPlayer = playerPos - bossPos
-	local curIdx = degToIdx(math.deg(math.atan2(toPlayer.Z, toPlayer.X)))
-
-	local danger = buildDangerMap(bossPos, radius, currentHeight)
-
-	--// Chọn theo Safety Score + giữ ổn định (hysteresis)
-	local curScore = safetyScore(danger, curIdx)
-	local bestIdx, bestScore = bestSafeIndex(danger, curIdx)
-	local curMargin = marginToDanger(danger, curIdx)
-
-	local shouldTele = false
-	if curScore < 0 then
-		--// đang trong dead zone -> buộc né
-		shouldTele = true
-	elseif curMargin < MIN_SAFE_MARGIN and bestIdx ~= curIdx then
-		--// an toàn nhưng quá sát mép dead zone -> nhích vào chỗ an toàn hơn
-		shouldTele = true
-	elseif (bestScore - curScore) > SWITCH_THRESHOLD then
-		--// chỗ khác tốt hơn hẳn -> đổi
-		shouldTele = true
-	end
-
-	if shouldTele and bestIdx ~= curIdx then
-		teleportToAngle(bossPos, radius, currentHeight, bestIdx)
-	end
-end
-
---// Render dead zone visuals độc lập (khi chỉ bật visuals, chưa bật Smart Dodge)
-local function updateVisuals()
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	local bossPos = shared.GetFarmTargetPosition()
-	if not bossPos then
-		clearVisuals()
-		return
-	end
-	local radius = getDodgeRadius()
-	local height = (playerRoot and dodging and currentHeight > 0) and currentHeight or (playerRoot and playerRoot.Position.Y) or 0
-	local danger = buildDangerMap(bossPos, radius, height)
-	renderVisuals(bossPos, radius, height, danger)
-end
-
---// Methods
-function dodge.Init()
-	if loopRunning then return end
-	loopRunning = true
-
-	task.spawn(function()
-		while true do
-			if enabled or debugVisuals then
-				pcall(refreshColumns)
-			end
-			task.wait(SCAN_INTERVAL)
-		end
-	end)
-
-	task.spawn(function()
-		while true do
-			if enabled then
-				updateDodge()
-			elseif debugVisuals then
-				pcall(updateVisuals)
-			end
-			task.wait(RECALC_INTERVAL)
-		end
-	end)
-end
-
-function dodge.Toggle(state)
-	enabled = state == true
-	if not enabled then
-		dodging = false
-		notifyDodgeChange()
-		activeColumns = {}
-		clearVisuals()
-	end
-end
-
-function dodge.IsEnabled()
-	return enabled
-end
-
-function dodge.IsDodging()
-	return dodging
-end
-
-function dodge.GetBossRadius()
-	return BOSS_RADIUS
-end
-
-function dodge.SetBossRadius(value)
-	BOSS_RADIUS = value
-end
-
-function dodge.GetDangerRadius()
-	return DANGER_RADIUS
-end
-
-function dodge.SetDangerRadius(value)
-	DANGER_RADIUS = value
-end
-
-function dodge.GetRecalcInterval()
-	return RECALC_INTERVAL
-end
-
-function dodge.SetRecalcInterval(value)
-	RECALC_INTERVAL = value
-end
-
-function dodge.GetPredictWindow()
-	return PREDICT_WINDOW
-end
-
-function dodge.SetPredictWindow(value)
-	PREDICT_WINDOW = value
-end
-
-function dodge.SetDebugVisuals(value)
-	debugVisuals = value == true
-	if not debugVisuals then clearVisuals() end
-end
-
-function dodge.IsDebugVisuals()
-	return debugVisuals
-end
-
---// API quản lý danh sách skill theo từng kiểu dodge
-function dodge.AddColumnName(name)
-	if name and type(name) == "string" then COLUMN_NAMES[name] = true end
-end
-
-function dodge.AddStraightDodgeName(name)
-	if name and type(name) == "string" then STRAIGHT_DODGE_NAMES[name] = true end
-end
-
-function dodge.GetColumnNames()
-	local out = {}
-	for k in pairs(COLUMN_NAMES) do table.insert(out, k) end
-	table.sort(out)
-	return out
-end
-
-function dodge.GetStraightDodgeNames()
-	local out = {}
-	for k in pairs(STRAIGHT_DODGE_NAMES) do table.insert(out, k) end
-	table.sort(out)
-	return out
-end
-
-return dodge
-end function __DIST.v()-- Basic Orbit Dodge cho DungeonQuest.
--- Kiểu dodge đơn giản dành cho chiêu boss tốc độ BÌNH THƯỜNG: KHÔNG tắt orbit,
--- player cứ chạy orbit như bình thường. Có vùng detect quanh player
--- (DETECT_RADIUS); khi phát hiện hazard ở PHÍA TRƯỚC hướng đi -> đảo chiều orbit.
--- Nếu sau khi đảo vẫn phát hiện hazard phía trước hướng mới (kẹt 2 phía) ->
--- tele SKIP một góc (SKIP_ANGLE) để thoát.
--- Tận dụng cơ chế orbit có sẵn (shared.basicOrbitDirection đè hướng hiệu dụng).
-
---// Imports
-
-local services = __DIST.load('k')
-local shared = __DIST.load('l')
-
---// References
-local player = services.player
-local RunService = services.RunService
-
---// Configuration
---// Danh sách chiêu/hazard thuộc kiểu "tốc độ bình thường" (tự add).
-local BASIC_DODGE_NAMES = {
-	["firstBossCrissCross"] = true,
-	["secondBossMovingBeam"] = true,
-}
-
---// Bán kính vùng detect quanh player (stud)
-local DETECT_RADIUS = 15
---// Góc mở "phía trước hướng đi" (độ, 2 chiều) để coi hazard là phía trước
-local FRONT_ANGLE = 120
---// Góc skip khi kẹt 2 phía (độ)
-local SKIP_ANGLE = 90
---// Cooldown chống lật hướng liên tục (giây)
-local FLIP_COOLDOWN = 0.15
---// Cooldown giữa các lần tele skip (giây)
-local SKIP_COOLDOWN = 0.3
-
---// Table
-local basicDodge = {}
-
---// State
-local enabled = false
-local connection = nil
-local lastFlipTime = 0
-local lastSkipTime = 0
-
-local function getObjectPosition(obj)
-	if not obj then return nil end
-	if obj:IsA("BasePart") then
-		local ok, pos = pcall(function() return obj.Position end)
-		if ok then return pos end
-		return nil
-	end
-	local ok, primary = pcall(function() return obj.PrimaryPart end)
-	if ok and primary and primary:IsA("BasePart") then return primary.Position end
-	for _, c in ipairs(obj:GetChildren()) do
-		if c:IsA("BasePart") then return c.Position end
-	end
-	return nil
-end
-
---// Quét object thuộc BASIC_DODGE_NAMES (child-level Workspace) trả danh sách vị trí
-local function scanHazards()
-	local Workspace = game:GetService("Workspace")
-	local out = {}
-	for _, c in ipairs(Workspace:GetChildren()) do
-		if BASIC_DODGE_NAMES[c.Name] then
-			local pos = getObjectPosition(c)
-			if pos then table.insert(out, pos) end
-		end
-	end
-	return out
-end
-
-local function horizontalDist(a, b)
-	local dx = b.X - a.X
-	local dz = b.Z - a.Z
-	return math.sqrt(dx * dx + dz * dz)
-end
-
---// Có hazard nào nằm trong DETECT_RADIUS và phía trước (theo tangent hướng dir) ?
-local function hasHazardAhead(playerPos, bossPos, effDir, hazards)
+--// Vùng detect phía trước hướng đi (hình quạt: bán kính DETECT_RADIUS,
+--// góc FRONT_ANGLE quanh tiếp tuyến của orbit tại vị trí player).
+local function renderDetector(parent, playerPos, bossPos)
 	local radius = shared.GetOrbitRadius()
-	if not radius or radius <= 0 then return false end
+	if not radius or radius <= 0 then return end
+	local effDir = shared.GetBasicOrbitDirection()
+	if not effDir then effDir = shared.GetFarmOrbitDirection() or 1 end
 	local radial = playerPos - bossPos
 	local ang = math.atan2(radial.Z, radial.X)
 	--// tiếp tuyến tại điểm player: đạo hàm (cosθ,sinθ) = (-sinθ, cosθ), nhân effDir
 	local tx = -math.sin(ang) * effDir
 	local tz = math.cos(ang) * effDir
 	local tangent = Vector3.new(tx, 0, tz)
-	local cosHalf = math.cos(math.rad(FRONT_ANGLE / 2))
-	for _, h in ipairs(hazards) do
-		if horizontalDist(playerPos, h) <= DETECT_RADIUS then
-			local toH = h - playerPos
-			toH = Vector3.new(toH.X, 0, toH.Z)
-			local mag = toH.Magnitude
-			if mag > 0.001 and tangent:Dot(toH.Unit) >= cosHalf then
-				return true
-			end
-		end
+	local half = math.rad(FRONT_ANGLE / 2)
+
+	--// Hai cạnh quạt
+	local a2 = Vector3.new(tangent.X * math.cos(half) - tangent.Z * math.sin(half), 0, tangent.X * math.sin(half) + tangent.Z * math.cos(half)) * DETECT_RADIUS
+	local b1 = Vector3.new(tangent.X * math.cos(-half) - tangent.Z * math.sin(-half), 0, tangent.X * math.sin(-half) + tangent.Z * math.cos(-half)) * DETECT_RADIUS
+	local p = Vector3.new(playerPos.X, playerPos.Y, playerPos.Z)
+	local pA1 = p + a1
+	local pA2 = p + a2
+	local pB1 = p + b1
+	drawSegment(parent, p, pA2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
+	drawSegment(parent, p, pB1, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
+	--// Cung trước
+	local sections = 16
+	for i = 0, sections - 1 do
+		local t1 = i / sections
+		local t2 = (i + 1) / sections
+		local arcT1 = -half + (2 * half) * t1
+		local arcT2 = -half + (2 * half) * t2
+		local p1 = p + Vector3.new(tangent.X * math.cos(arcT1) - tangent.Z * math.sin(arcT1), 0, tangent.X * math.sin(arcT1) + tangent.Z * math.cos(arcT1)) * DETECT_RADIUS
+		local p2 = p + Vector3.new(tangent.X * math.cos(arcT2) - tangent.Z * math.sin(arcT2), 0, tangent.X * math.sin(arcT2) + tangent.Z * math.cos(arcT2)) * DETECT_RADIUS
+		drawSegment(parent, p1, p2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
 	end
-	return false
 end
 
---// Tele player tới góc theta (rad) trên orbit quanh center (bỏ qua SKIP_ANGLE)
-local function teleportToAngle(center, theta)
+--// Vẽ toàn bộ visuals cho 1 khung hình (xóa cũ, vẽ mới).
+local function renderVisuals(bossPos, radius, height)
+	clearVisuals()
+	if not debugVisuals then return end
+	local parent = Instance.new("Folder")
+	parent.Name = VISUALS_FOLDER
+	parent.Parent = game:GetService("Workspace")
+	local danger = buildDangerMap(bossPos, radius, height)
+	if detectorVisuals then
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if playerRoot and playerRoot.Parent then
+			renderDetector(parent, playerRoot.Position, bossPos)
+		end
+	end
+	renderKinematicBalls(parent)
+	renderPredictiveRays(parent)
+	renderArc(parent, bossPos, radius, height, danger)
+end
+
+--// Loop vẽ visuals độc lập (chạy khi bật Dead Zone Visuals, kể cả chưa bật dodge).
+local function ensureRenderLoop()
+	if renderLoopRunning then return end
+	renderLoopRunning = true
+	task.spawn(function()
+		while true do
+			if debugVisuals then
+				pcall(function()
+					local center = shared.GetOrbitCenter()
+					if center then
+						refreshColumns()
+						updateColumnPositions(os.clock())
+						local radius = shared.GetOrbitRadius()
+						local height = shared.GetOrbitHeight() or 0
+						if radius and radius > 0 then
+							renderVisuals(center, radius, height)
+						end
+					end
+				end)
+			end
+			task.wait(VISUALS_REFRESH_INTERVAL)
+		end
+	end)
+end
+
+--// Khi bị kẹp: nhảy tới node an toàn nhất trên vòng orbit (thay cho skip cứng).
+local function jumpToSafeNode(center)
+	local radius = shared.GetOrbitRadius()
+	if not radius or radius <= 0 then return end
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	if not character or not playerRoot or not playerRoot.Parent then return end
-	if not character.PrimaryPart then character.PrimaryPart = playerRoot end
 
-	local radius = shared.GetOrbitRadius() or 0
 	local height = shared.GetOrbitHeight() or 0
-	local targetPos = center + Vector3.new(math.cos(theta) * radius, height, math.sin(theta) * radius)
+	local toPlayer = playerRoot.Position - center
+	local curIdx = degToIdx(math.deg(math.atan2(toPlayer.Z, toPlayer.X)))
+	local danger = buildDangerMap(center, radius, height)
+	local bestIdx, bestScore = bestSafeIndex(danger, curIdx)
+	if bestScore >= 0 and bestIdx ~= curIdx then
+		teleportToAngle(center, idxToRad(bestIdx))
+	end
+end
 
-	local humanoid = character:FindFirstChild("Humanoid")
-	local oldAutoRotate = humanoid and humanoid.AutoRotate
-	if humanoid then humanoid.AutoRotate = false end
-	character:PivotTo(CFrame.lookAt(targetPos, center))
-	playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-	if humanoid then humanoid.AutoRotate = oldAutoRotate end
-
-	--// đồng bộ farmAngle để moveFarmTarget tiếp tục đúng
-	shared.SetOrbitAngle(theta)
+--// Danh sách vị trí hazard đang được track (cho flip detection).
+local function collectHazardPositions()
+	local out = {}
+	for _, col in pairs(trackedColumns) do
+		if col and col.Position then table.insert(out, col.Position) end
+	end
+	return out
 end
 
 local function basicStep()
@@ -8536,34 +8475,38 @@ local function basicStep()
 		shared.SetBasicOrbitDirection(effDir)
 	end
 
-	local hazards = scanHazards()
+	--// tracking + cập nhật vị trí toàn bộ đối tượng cần né
+	refreshColumns()
+	updateColumnPositions(now)
+
+	local hazards = collectHazardPositions()
 	if #hazards == 0 then
-		--// hết nguy hiểm -> trả hướng về bình thường của farm
-		shared.SetBasicOrbitDirection(nil)
+		--// hazard biến mất tạm thời (beam đổi parent/primary part) không reset ngay;
+		--// chỉ trả hướng về bình thường sau ALL_CLEAR_FRAMES frame liên tiếp
+		noHazardCount = noHazardCount + 1
+		if noHazardCount >= ALL_CLEAR_FRAMES then
+			shared.SetBasicOrbitDirection(nil)
+			noHazardCount = 0
+		end
 		return
 	end
+	noHazardCount = 0
 
 	if hasHazardAhead(playerPos, center, effDir, hazards) then
 		if now - lastFlipTime > FLIP_COOLDOWN then
 			local newDir = -effDir
 			shared.SetBasicOrbitDirection(newDir)
 			lastFlipTime = now
-			--// kẹt 2 phía: sau khi đảo vẫn có hazard phía trước hướng mới -> skip
-			if hasHazardAhead(playerPos, center, newDir, hazards) and now - lastSkipTime > SKIP_COOLDOWN then
-				lastSkipTime = now
-				local radial = playerPos - center
-				local theta = math.atan2(radial.Z, radial.X)
-				local skipRad = math.rad(SKIP_ANGLE) * newDir
-				teleportToAngle(center, theta + skipRad)
+			--// kẹt 2 phía: flip xong vẫn hazard trước hướng mới -> nhảy node an toàn
+			if hasHazardAhead(playerPos, center, newDir, hazards) and now - lastJumpTime > JUMP_COOLDOWN then
+				lastJumpTime = now
+				jumpToSafeNode(center)
 			end
-		elseif now - lastSkipTime > SKIP_COOLDOWN then
-			--// trong cooldown flip mà vẫn còn hazard trước -> thử skip
+		elseif now - lastJumpTime > JUMP_COOLDOWN then
+			--// trong cooldown flip mà vẫn còn hazard trước -> nhảy node an toàn
 			if hasHazardAhead(playerPos, center, effDir, hazards) then
-				lastSkipTime = now
-				local radial = playerPos - center
-				local theta = math.atan2(radial.Z, radial.X)
-				local skipRad = math.rad(SKIP_ANGLE) * effDir
-				teleportToAngle(center, theta + skipRad)
+				lastJumpTime = now
+				jumpToSafeNode(center)
 			end
 		end
 	end
@@ -8572,6 +8515,9 @@ end
 function basicDodge.Toggle(state)
 	enabled = state == true
 	if enabled then
+		lastFlipTime = 0
+		lastJumpTime = 0
+		noHazardCount = 0
 		if not connection then
 			connection = RunService.Heartbeat:Connect(function()
 				basicStep()
@@ -8582,6 +8528,7 @@ function basicDodge.Toggle(state)
 			connection:Disconnect()
 			connection = nil
 		end
+		trackedColumns = {}
 		shared.SetBasicOrbitDirection(nil)
 	end
 end
@@ -8606,16 +8553,60 @@ function basicDodge.SetFrontAngle(value)
 	FRONT_ANGLE = value
 end
 
-function basicDodge.GetSkipAngle()
-	return SKIP_ANGLE
+function basicDodge.GetFlipCooldown()
+	return FLIP_COOLDOWN
 end
 
-function basicDodge.SetSkipAngle(value)
-	SKIP_ANGLE = value
+function basicDodge.SetFlipCooldown(value)
+	FLIP_COOLDOWN = value
 end
 
+function basicDodge.GetJumpCooldown()
+	return JUMP_COOLDOWN
+end
+
+function basicDodge.SetJumpCooldown(value)
+	JUMP_COOLDOWN = value
+end
+
+function basicDodge.GetLookAhead()
+	return LOOK_AHEAD
+end
+
+function basicDodge.SetLookAhead(value)
+	LOOK_AHEAD = value
+end
+
+function basicDodge.GetDangerRadius()
+	return DANGER_RADIUS
+end
+
+function basicDodge.SetDangerRadius(value)
+	DANGER_RADIUS = value
+end
+
+function basicDodge.GetAllClearFrames()
+	return ALL_CLEAR_FRAMES
+end
+
+function basicDodge.SetAllClearFrames(value)
+	ALL_CLEAR_FRAMES = value
+end
+
+--// Quản lý danh sách skill dodge
 function basicDodge.AddBasicDodgeName(name)
 	if name and type(name) == "string" then BASIC_DODGE_NAMES[name] = true end
+end
+
+function basicDodge.AddKinematicName(name)
+	if name and type(name) == "string" then BASIC_DODGE_NAMES[name] = true end
+end
+
+function basicDodge.AddPredictiveName(name)
+	if name and type(name) == "string" then
+		BASIC_DODGE_NAMES[name] = true
+		PREDICTIVE_NAMES[name] = true
+	end
 end
 
 function basicDodge.GetBasicDodgeNames()
@@ -8625,12 +8616,36 @@ function basicDodge.GetBasicDodgeNames()
 	return out
 end
 
-return basicDodge
-end function __DIST.w()-- Death Logger cho DungeonQuest.
+function basicDodge.SetDebugVisuals(value)
+	debugVisuals = value == true
+	if debugVisuals then
+		ensureRenderLoop()
+	else
+		clearVisuals()
+	end
+end
+
+function basicDodge.IsDebugVisuals()
+	return debugVisuals
+end
+
+function basicDodge.SetDetectorVisuals(value)
+	detectorVisuals = value == true
+	if not debugVisuals and detectorVisuals then
+		debugVisuals = true
+		ensureRenderLoop()
+	end
+end
+
+function basicDodge.IsDetectorVisuals()
+	return detectorVisuals
+end
+
+return basicDodge end function __DIST.v()-- Death Logger cho DungeonQuest.
 -- Công cụ ĐIỀU TRA: khi player chết, log ra console thông tin nguyên nhân
 -- tử vong (lastCombatant, vị trí, và các object nghi ngờ là hazard quanh
 -- điểm chết). Dùng để xác định "thứ gì thực sự gây chết" trước khi gắn
--- vào Smart Dodge. Chưa tự động né.
+-- vào danh sách hazard dodge. Chưa tự động né.
 
 --// Imports
 
@@ -8799,7 +8814,7 @@ function deathLog.IsEnabled()
 end
 
 return deathLog
-end function __DIST.x()-- Tab Combat (DungeonQuest): Farm, Combat, Auto Start/Retry.
+end function __DIST.w()-- Tab Combat (DungeonQuest): Farm, Combat, Auto Start/Retry.
 
 --// Imports
 
@@ -8813,19 +8828,14 @@ local autoRetry = __DIST.load('s')
 local autoSave = __DIST.load('n')
 local notifier = __DIST.load('j')
 local esp = __DIST.load('t')
-local dodge = __DIST.load('u')
-local basicOrbitDodge = __DIST.load('v')
-local deathLog = __DIST.load('w')
+local basicOrbitDodge = __DIST.load('u')
+local deathLog = __DIST.load('v')
 
 return function(window, tab)
 	--// Sections
 	local farmSection = tab:Section({ Side = "Left" })
 	local combatSection = tab:Section({ Side = "Right" })
 	local startSection = tab:Section({ Side = "Left" })
-
-	--// Slider dodge (Boss Radius) — khai báo sớm để applyFarmModeVisibility
-	--// (định nghĩa ở dưới) capture đúng biến local, không phải global.
-	local dodgeRadiusSlider
 
 	--// Helper: Input + Button để thêm skill vào 1 list dodge theo API
 	local function makeSkillAdder(section, label, addFn, flagName)
@@ -8908,6 +8918,26 @@ return function(window, tab)
 		end),
 	}, "Slider_OrbitHeight"))
 
+	farmSection:Toggle({
+		Name = "Maintain Orbit Height on Boss",
+		Default = shared.GetMaintainBossHeight(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetMaintainBossHeight(state)
+		end),
+	}, "Toggle_MaintainBossHeight")
+
+	ui.PatchSliderLoadCallback(farmSection:Slider({
+		Name = "Boss Height Offset",
+		Default = shared.GetBossHeightOffset(),
+		Minimum = -100,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetBossHeightOffset(Value)
+		end),
+	}, "Slider_BossHeightOffset"))
+
 	local hoverHeightSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Hover Height",
 		Default = shared.GetHoverHeight(),
@@ -8943,7 +8973,7 @@ return function(window, tab)
 	ui.PatchSliderLoadCallback(farmSection:Slider({
 		Name = "Auto Retarget Interval",
 		Default = shared.GetRetargetInterval(),
-		Minimum = 1,
+		Minimum = 0.5,
 		Maximum = 30,
 		DisplayMethod = "Round",
 		Precision = 1,
@@ -8977,8 +9007,6 @@ return function(window, tab)
 		pcall(function() orbitSpeedSlider:SetVisibility(isOrbit) end)
 		pcall(function() orbitHeightSlider:SetVisibility(isOrbit) end)
 		pcall(function() hoverHeightSlider:SetVisibility(not isOrbit) end)
-		--// Boss Radius dodge chỉ hiển thị khi Farm Mode = Hover
-		pcall(function() dodgeRadiusSlider:SetVisibility(not isOrbit) end)
 	end
 	applyFarmModeVisibility()
 
@@ -9052,41 +9080,107 @@ return function(window, tab)
 	}, "Toggle_HighlightHitboxes")
 
 	combatSection:Toggle({
-		Name = "Smart Dodge",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			dodge.Toggle(state)
-			if state then
-				local other = macLib.Options["Toggle_BasicOrbitDodge"]
-				if other then other:UpdateState(false) end
-			end
-		end),
-	}, "Toggle_SmartDodge")
-
-	combatSection:Toggle({
 		Name = "Basic Orbit Dodge",
 		Default = false,
 		Callback = autoSave.Wrap(function(state)
 			basicOrbitDodge.Toggle(state)
-			if state then
-				local other = macLib.Options["Toggle_SmartDodge"]
-				if other then other:UpdateState(false) end
-			end
 		end),
 	}, "Toggle_BasicOrbitDodge")
 
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Detect Radius",
+		Default = basicOrbitDodge.GetDetectRadius(),
+		Minimum = 5,
+		Maximum = 50,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetDetectRadius(Value)
+		end),
+	}, "Slider_BasicDetectRadius"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Look Ahead",
+		Default = basicOrbitDodge.GetLookAhead(),
+		Minimum = 5,
+		Maximum = 60,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetLookAhead(Value)
+		end),
+	}, "Slider_BasicLookAhead"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Front Angle",
+		Default = basicOrbitDodge.GetFrontAngle(),
+		Minimum = 20,
+		Maximum = 180,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetFrontAngle(Value)
+		end),
+	}, "Slider_BasicFrontAngle"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Danger Radius",
+		Default = basicOrbitDodge.GetDangerRadius(),
+		Minimum = 5,
+		Maximum = 50,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetDangerRadius(Value)
+		end),
+	}, "Slider_BasicDangerRadius"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Flip Cooldown",
+		Default = basicOrbitDodge.GetFlipCooldown(),
+		Minimum = 0.05,
+		Maximum = 1,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetFlipCooldown(Value)
+		end),
+	}, "Slider_BasicFlipCooldown"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Jump Cooldown",
+		Default = basicOrbitDodge.GetJumpCooldown(),
+		Minimum = 0.1,
+		Maximum = 2,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetJumpCooldown(Value)
+		end),
+	}, "Slider_BasicJumpCooldown"))
+
 	combatSection:Header({ Name = "Dodge Skill Lists" })
 	makeSkillAdder(combatSection, "Basic Orbit Skill", function(v) basicOrbitDodge.AddBasicDodgeName(v) end, "Input_AddBasicSkill")
-	makeSkillAdder(combatSection, "Kinematic Skill", function(v) dodge.AddColumnName(v) end, "Input_AddKinematicSkill")
-	makeSkillAdder(combatSection, "Predictive Skill", function(v) dodge.AddStraightDodgeName(v) end, "Input_AddPredictiveSkill")
+	makeSkillAdder(combatSection, "Kinematic Skill", function(v) basicOrbitDodge.AddKinematicName(v) end, "Input_AddKinematicSkill")
+	makeSkillAdder(combatSection, "Predictive Skill", function(v) basicOrbitDodge.AddPredictiveName(v) end, "Input_AddPredictiveSkill")
 
 	combatSection:Toggle({
 		Name = "Dead Zone Visuals",
-		Default = dodge.IsDebugVisuals(),
+		Default = basicOrbitDodge.IsDebugVisuals(),
 		Callback = autoSave.Wrap(function(state)
-			dodge.SetDebugVisuals(state)
+			basicOrbitDodge.SetDebugVisuals(state)
 		end),
 	}, "Toggle_DeadZoneVisuals")
+
+	combatSection:Toggle({
+		Name = "Detector Visuals",
+		Default = basicOrbitDodge.IsDetectorVisuals(),
+		Callback = autoSave.Wrap(function(state)
+			basicOrbitDodge.SetDetectorVisuals(state)
+		end),
+	}, "Toggle_DetectorVisuals")
 
 	combatSection:Toggle({
 		Name = "Death Log",
@@ -9095,31 +9189,6 @@ return function(window, tab)
 			deathLog.Toggle(state)
 		end),
 	}, "Toggle_DeathLog")
-
-	ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Interval",
-		Default = dodge.GetRecalcInterval(),
-		Minimum = 0.05,
-		Maximum = 0.3,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			dodge.SetRecalcInterval(Value)
-		end),
-	}, "Slider_DodgeInterval"))
-
-	dodgeRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Boss Radius",
-		Default = dodge.GetBossRadius(),
-		Minimum = 5,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			dodge.SetBossRadius(Value)
-		end),
-	}, "Slider_DodgeBossRadius"))
 
 	applyFarmModeVisibility()
 
@@ -9139,6 +9208,15 @@ return function(window, tab)
 			autoRetry.Toggle(state)
 		end),
 	}, "Toggle_AutoRetry")
+
+	startSection:Button({
+		Name = "Manual Retry",
+		Callback = function()
+			task.spawn(function()
+				autoRetry.RetryNow()
+			end)
+		end,
+	})
 
 	startSection:Toggle({
 		Name = "Retry on Time Low",
@@ -9161,7 +9239,7 @@ return function(window, tab)
 		end),
 	}, "Slider_RetryTimeThreshold"))
 end
-end function __DIST.y()-- Auto Join Dungeon cho DungeonQuest: tạo phòng + whitelist + start dungeon khi ở lobby.
+end function __DIST.x()-- Auto Join Dungeon cho DungeonQuest: tạo phòng + whitelist + start dungeon khi ở lobby.
 
 --// Imports
 
@@ -9276,12 +9354,12 @@ end
 task.spawn(joinDungeonWatcher)
 
 return autoJoin
-end function __DIST.z()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon.
+end function __DIST.y()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon.
 
 --// Imports
 
 local ui = __DIST.load('m')
-local autoJoin = __DIST.load('y')
+local autoJoin = __DIST.load('x')
 local autoSave = __DIST.load('n')
 
 local DUNGEONS = {
@@ -9353,7 +9431,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.A()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end function __DIST.z()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -9428,7 +9506,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.B()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.A()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -9436,7 +9514,7 @@ end function __DIST.B()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('i')
 local autoSave = __DIST.load('n')
-local autoHide = __DIST.load('A')
+local autoHide = __DIST.load('z')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -9593,7 +9671,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.C()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.B()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -10089,12 +10167,12 @@ end
 loadSettings()
 
 return webhook
-end function __DIST.D()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.C()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('C')
+local webhook = __DIST.load('B')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -10159,6 +10237,55 @@ return function(window, tab)
 
 	pingSection:Label({
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
+	})
+end
+end function __DIST.D()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+
+--// Imports
+
+local shared = __DIST.load('l')
+
+local BOSS_LABEL = "Boss Active"
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "Trạng thái" })
+
+	local bossLabel = section:Label({
+		Text = BOSS_LABEL .. ": " .. (shared.IsBossActive() and "Có" or "Không"),
+	})
+
+	local function updateBoss(active)
+		local color = active and "0, 255, 0" or "255, 80, 80"
+		bossLabel:UpdateName(BOSS_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. (active and "Có" or "Không") .. "</font>")
+	end
+
+	updateBoss(shared.IsBossActive())
+
+	shared.OnBossActiveChanged(function(active)
+		updateBoss(active)
+	end)
+
+	task.spawn(function()
+		while task.wait(0.5) do
+			updateBoss(shared.IsBossActive())
+		end
+	end)
+
+	section:Header({ Name = "Thông tin màn" })
+	section:Button({
+		Name = "Log Enemy Types to Console",
+		Callback = function()
+			local names = shared.GetEnemyNames()
+			print("[DungeonQuest] Enemy types trong màn (" .. #names .. "):")
+			if #names == 0 then
+				print("  (không có enemy nào được tìm thấy)")
+			else
+				for _, name in ipairs(names) do
+					print("  - " .. name)
+				end
+			end
+		end,
 	})
 end
 end function __DIST.E()-- Phím tắt R: teleport tới kẻ địch gần nhất (dành cho Tab Combat).
@@ -10239,6 +10366,7 @@ return function(self)
 		Dungeon = tabGroup:Tab({ Name = "Dungeon", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
+		State = tabGroup:Tab({ Name = "State", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -10246,42 +10374,36 @@ return function(self)
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local speedTab = __DIST.load('o')
-	local combatTab = __DIST.load('x')
-	local dungeonTab = __DIST.load('z')
-	local configTab = __DIST.load('B')
-	local notificationsTab = __DIST.load('D')
+	local combatTab = __DIST.load('w')
+	local dungeonTab = __DIST.load('y')
+	local configTab = __DIST.load('A')
+	local notificationsTab = __DIST.load('C')
+	local stateTab = __DIST.load('D')
 
 	speedTab(window, tabs.Speed)
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	configTab(window, tabs.Config)
 	notificationsTab(window, tabs.Notifications)
+	stateTab(window, tabs.State)
 
 	--// Phím tắt
 	local shortcuts = __DIST.load('E')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('C')
+	local webhook = __DIST.load('B')
 	webhook.Init()
-
-	--// Smart Dodge (tránh cột-skill như firstBossCrissCross)
-	local shared = __DIST.load('l')
-	local dodge = __DIST.load('u')
-	dodge.OnDodgeChange(function(isDodging)
-		shared.SetDodging(isDodging)
-	end)
-	dodge.Init()
-__DIST.load('v')
+__DIST.load('u')
 
 	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
 	
 
-local deathLog = __DIST.load('w')
+local deathLog = __DIST.load('v')
 	deathLog.Init()
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('A')
+	local autoHide = __DIST.load('z')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 

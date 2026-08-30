@@ -18,18 +18,41 @@ local timeRetryEnabled = false
 local timeRetryThreshold = 60
 local timeRetryTriggered = false
 local autoRetryCommand = [==[
-local Event = game:GetService("ReplicatedStorage").remotes.replayDungeon
-Event:FireServer(
-	{
-		dungeonProgress = "",
-		dungeonStarted = false,
-		hardcore = false,
-		dungeonFinished = false,
-		dungeonName = "Enchanted Forest",
-		isHardcore = false,
-		fightingBoss = false
-	}
-)
+local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")
+
+local payload = {}
+local function collectValue(name)
+	local value = workspace:FindFirstChild(name)
+	if value and value:IsA("ValueBase") then
+		payload[name] = value.Value
+	end
+end
+
+collectValue("dungeonName")
+collectValue("dungeonProgress")
+collectValue("dungeonStarted")
+
+local hardcore = workspace:FindFirstChild("hardcore")
+if hardcore and hardcore:IsA("BoolValue") then
+	payload.hardcore = hardcore.Value
+	payload.isHardcore = hardcore.Value
+end
+
+local dungeon = workspace:FindFirstChild("dungeon")
+if dungeon then
+	for _, value in ipairs(dungeon:GetChildren()) do
+		if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+	end
+	local bossRoom = dungeon:FindFirstChild("bossRoom")
+	if bossRoom then
+		for _, value in ipairs(bossRoom:GetChildren()) do
+			if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+		end
+	end
+end
+
+if not payload.dungeonName then return end
+ReplayDungeon:FireServer(payload)
 ]==]
 local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
 local autoRetryCommandFn = nil
@@ -146,6 +169,12 @@ end
 
 function autoRetry.GetTimeLimit()
 	return TIME_LIMIT
+end
+
+function autoRetry.RetryNow()
+	task.spawn(function()
+		fireRetry()
+	end)
 end
 
 return autoRetry
