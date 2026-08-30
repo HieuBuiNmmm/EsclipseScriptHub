@@ -5,6 +5,7 @@
 --// Imports
 local macLib = require("@packages/Maclib")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+local shared = require("@routes/DungeonQuest/core/shared")
 
 --// Services
 local HttpService = game:GetService("HttpService")
@@ -76,7 +77,6 @@ end
 
 --// Trạng thái đo lường dungeon (XP trước + đồng hồ hoàn thành)
 local xpBefore = nil
-local dungeonStartTime = nil
 
 --// Lấy tên hiển thị của player (ưu tiên DisplayName, fallback Name)
 local function getPlayerName()
@@ -124,12 +124,12 @@ end
 --// Reset bộ đếm: ghi nhận XP trước dungeon (khi đang ở lobby/startButton hiện)
 local function resetRun()
 	xpBefore = getXp()
-	dungeonStartTime = nil
+	shared.SetDungeonStartTime(nil)
 end
 
 --// Bắt đầu tính thời gian hoàn thành (startButton biến mất -> vào dungeon)
 local function startRun()
-	if not dungeonStartTime then dungeonStartTime = os.clock() end
+	if not shared.GetDungeonStartTime() then shared.SetDungeonStartTime(os.clock()) end
 	if xpBefore == nil then xpBefore = getXp() end
 end
 
@@ -461,7 +461,7 @@ function webhook.Init()
 	rewardRemote.OnClientEvent:Connect(function(reward)
 		if not enabled then return end
 
-		local duration = dungeonStartTime and os.clock() - dungeonStartTime or 0
+		local duration = shared.GetDungeonStartTime() and shared.GetDungeonElapsed() or 0
 
 		task.spawn(function()
 			--// Chờ XP cập nhật sau khi nhận reward rồi mới lấy XP cuối

@@ -46,6 +46,14 @@ local normalSpeed = 16
 
 local teleporting = false
 
+local dodging = false
+
+local dungeonStartTime = nil
+
+--// Boss state (dựa trên GUI bossHealth xuất hiện khi có boss trong room)
+local bossActive = false
+local bossCallbacks = {}
+
 local farmEnabled = false
 local farmMode = "Orbit"
 local farmTarget = nil
@@ -54,6 +62,14 @@ local farmApproaching = false
 local farmOldAutoRotate = true
 local farmRunning = false
 local farmLastSkillTime = 0
+
+local retargetEnabled = false
+local retargetInterval = 5
+local retargetMethod = "Auto"
+local orbitReverseEnabled = false
+local farmOrbitDirection = 1
+local basicOrbitDirection = nil
+local farmLastRetargetTime = 0
 
 local autoSkillEnabled = false
 local autoSkillRunning = false
@@ -269,6 +285,7 @@ local function getOrbitPosition(center, angle)
 end
 
 moveFarmTarget = function(deltaTime)
+	if dodging then return end
 	local enemy = farmTarget
 	if not enemy or not trackedEnemies[enemy] or not trackedEnemies[enemy].Root or not trackedEnemies[enemy].Root.Parent then
 		leaveFarmTarget()
@@ -286,7 +303,8 @@ moveFarmTarget = function(deltaTime)
 		farmApproaching = false
 		targetPosition = center + Vector3.new(0, HOVER_HEIGHT, 0)
 	else
-		farmAngle = (farmAngle + math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
+		local effDir = basicOrbitDirection or farmOrbitDirection
+		farmAngle = (farmAngle + effDir * math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
 		targetPosition = getOrbitPosition(center, farmAngle)
 		if farmApproaching then
 			local toPoint = targetPosition - playerRoot.Position
@@ -473,6 +491,96 @@ function shared.SetFarmEnabled(value)
 	farmEnabled = value
 end
 
+function shared.GetRetargetEnabled()
+	return retargetEnabled
+end
+
+function shared.SetRetargetEnabled(value)
+	retargetEnabled = value == true
+end
+
+function shared.GetRetargetInterval()
+	return retargetInterval
+end
+
+function shared.SetRetargetInterval(value)
+	retargetInterval = tonumber(value) or retargetInterval
+end
+
+function shared.GetRetargetMethod()
+	return retargetMethod
+end
+
+function shared.SetRetargetMethod(value)
+	retargetMethod = value or "Auto"
+end
+
+function shared.GetOrbitReverseEnabled()
+	return orbitReverseEnabled
+end
+
+function shared.SetOrbitReverseEnabled(value)
+	orbitReverseEnabled = value == true
+end
+
+--// Basic Orbit Dodge: điều khiển hướng orbit hiệu dụng (nil = dùng farmOrbitDirection)
+function shared.SetBasicOrbitDirection(value)
+	basicOrbitDirection = value
+end
+
+function shared.GetBasicOrbitDirection()
+	return basicOrbitDirection
+end
+
+function shared.FlipBasicOrbitDirection()
+	if basicOrbitDirection then basicOrbitDirection = -basicOrbitDirection end
+end
+
+function shared.GetFarmOrbitDirection()
+	return farmOrbitDirection
+end
+
+function shared.GetOrbitAngle()
+	return farmAngle
+end
+
+function shared.SetOrbitAngle(value)
+	farmAngle = (((value % (math.pi * 2)) + math.pi * 2) % (math.pi * 2))
+end
+
+--// Vị trí tâm + độ cao orbit hiện tại (để tele skip)
+function shared.GetOrbitCenter()
+	if not farmTarget or not trackedEnemies[farmTarget] then return nil end
+	local data = trackedEnemies[farmTarget]
+	if data.Root and data.Root.Parent then return data.Root.Position end
+	return nil
+end
+
+function shared.GetOrbitHeight()
+	return ORBIT_HEIGHT
+end
+
+function shared.SetDodging(value)
+	dodging = value == true
+end
+
+function shared.IsDodging()
+	return dodging
+end
+
+function shared.GetDungeonStartTime()
+	return dungeonStartTime
+end
+
+function shared.SetDungeonStartTime(value)
+	dungeonStartTime = value
+end
+
+function shared.GetDungeonElapsed()
+	if not dungeonStartTime then return nil end
+	return os.clock() - dungeonStartTime
+end
+
 function shared.ClearFarmTarget()
 	leaveFarmTarget()
 end
@@ -485,10 +593,21 @@ end
 
 function shared.FarmPickTarget()
 	cleanupEnemies()
+	if farmTarget then
+		if retargetEnabled and trackedEnemies[farmTarget] and trackedEnemies[farmTarget].Root and trackedEnemies[farmTarget].Root.Parent then
+			local now = os.clock()
+			if now - farmLastRetargetTime >= retargetInterval then
+				farmLastRetargetTime = now
+				if orbitReverseEnabled then farmOrbitDirection = -farmOrbitDirection end
+				leaveFarmTarget()
+			end
+		end
+	end
 	if farmTarget then return true end
 	local nearest = getNearestEnemy()
 	if nearest and nearest.Model and nearest.Root and nearest.Root.Parent then
 		farmTarget = nearest.Model
+		farmLastRetargetTime = os.clock()
 		if humanoid and humanoid.Parent then
 			farmOldAutoRotate = humanoid.AutoRotate
 			humanoid.AutoRotate = false
@@ -497,6 +616,12 @@ function shared.FarmPickTarget()
 			farmTeleportTo(farmTarget)
 			farmApproaching = false
 		else
+			farmApproaching = true
+		end
+		if retargetMethod == "Tele" then
+			farmTeleportTo(farmTarget)
+			farmApproaching = false
+		elseif retargetMethod == "Tween" then
 			farmApproaching = true
 		end
 		return true
@@ -520,6 +645,15 @@ end
 function shared.FarmTargetAlive()
 	local data = trackedEnemies[farmTarget]
 	return farmTarget and farmTarget.Parent and data and data.Root and data.Root.Parent
+end
+
+--// Vị trí farm target hiện tại (boss/đối tượng farm) để dodge giữ hướng nhìn.
+--// Trả về Vector3 hoặc nil nếu không có.
+function shared.GetFarmTargetPosition()
+	if not farmTarget or not trackedEnemies[farmTarget] then return nil end
+	local data = trackedEnemies[farmTarget]
+	if data.Root and data.Root.Parent then return data.Root.Position end
+	return nil
 end
 
 function shared.GetHumanoid()
@@ -679,6 +813,69 @@ task.spawn(function()
 	local success, errorMessage = pcall(function() return initializeRooms() end)
 	if not success then
 		warn("[EnemyTracker] Initialization error:", errorMessage)
+	end
+end)
+
+--// Boss state API
+function shared.IsBossActive()
+	return bossActive
+end
+
+function shared.OnBossActiveChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(bossCallbacks, callback)
+	return function()
+		for i, cb in ipairs(bossCallbacks) do
+			if cb == callback then table.remove(bossCallbacks, i) break end
+		end
+	end
+end
+
+--// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
+local bossHealthRef = nil
+local function setBossActive(active)
+	if bossActive == active then return end
+	bossActive = active
+	for i = #bossCallbacks, 1, -1 do
+		pcall(bossCallbacks[i], bossActive)
+	end
+end
+
+local function scanBossGui()
+	if not player then return end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then
+		bossHealthRef = nil
+		setBossActive(false)
+		return
+	end
+	local found = playerGui:FindFirstChild("bossHealth", true)
+	if found then
+		if found ~= bossHealthRef then
+			bossHealthRef = found
+			if bossHealthRef:IsA("GuiObject") or bossHealthRef:IsA("ScreenGui") then
+				bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui)
+			end
+		end
+		setBossActive(not (type(found.Enabled) == "boolean") or found.Enabled == true)
+	else
+		bossHealthRef = nil
+		setBossActive(false)
+	end
+end
+
+task.spawn(function()
+	if not player then return end
+	local playerGui = player:WaitForChild("PlayerGui", 30)
+	if not playerGui then return end
+
+	playerGui.DescendantAdded:Connect(scanBossGui)
+	playerGui.DescendantRemoving:Connect(scanBossGui)
+	scanBossGui()
+
+	--// Poll an toàn phòng trường hợp DescendantRemoving bỏ sót khi GUI bị xóa cục bộ
+	while task.wait(0.5) do
+		scanBossGui()
 	end
 end)
 

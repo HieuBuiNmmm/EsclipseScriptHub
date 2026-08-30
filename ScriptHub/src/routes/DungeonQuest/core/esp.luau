@@ -1,15 +1,17 @@
 -- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
--- Quét Workspace mỗi 0.5s, vẽ viền đỏ cho các mục tiêu hitbox.
--- Khi tắt: dừng quét và xóa toàn bộ box đã tạo.
+-- Quét từng child (1 level) của Workspace mỗi 0.5s.
+-- Chỉ add ESP cho part có tên `hitBox` nếu bên trong child đó có.
 
 --// Table
 local esp = {}
 
 --// Configuration
-local targetNames = {
-	["poisonCircle"] = true,
-	["spearmanHitbox"] = true,
-	["battleMageOrb"] = true,
+local HITBOX_NAME = "hitBox"
+
+--// Các skill đặc biệt không có part `hitBox` bên trong, highlight trực tiếp object
+local SKILL_NAMES = {
+	["firstBossCrissCross"] = true,
+	["firstBossSeekingSpikes"] = true,
 }
 
 local BOX_COLOR = Color3.fromRGB(255, 0, 0)
@@ -37,14 +39,16 @@ local function createBox(targetObj)
 	end
 end
 
-local function applyESP(obj)
-	if targetNames[obj.Name] then
-		createBox(obj)
-		return
+--// Thêm ESP cho root nếu bản thân nó là hitBox/skill đặc biệt, và cho mọi part
+--// tên `hitBox` hoặc skill đặc biệt nằm trong hậu duệ của root.
+local function addHitboxes(root)
+	if root.Name == HITBOX_NAME or SKILL_NAMES[root.Name] then
+		createBox(root)
 	end
-
-	if obj.Name == "hitBox" and obj.Parent and obj.Parent.Name == "mushroomWizardShot" then
-		createBox(obj)
+	for _, obj in ipairs(root:GetDescendants()) do
+		if obj.Name == HITBOX_NAME or SKILL_NAMES[obj.Name] then
+			createBox(obj)
+		end
 	end
 end
 
@@ -63,13 +67,14 @@ function esp.Toggle(state)
 	enabled = state
 
 	if enabled then
-		if scanThread then scanThread:Cancel() end
+		if scanThread then task.cancel(scanThread); scanThread = nil end
 		scanThread = task.spawn(function()
 			local Workspace = game:GetService("Workspace")
 			while enabled do
 				local ok, err = pcall(function()
-					for _, obj in ipairs(Workspace:GetDescendants()) do
-						applyESP(obj)
+					--// Quét từng child (1 level) của Workspace; add ESP nếu trong đó có part hitBox
+					for _, child in ipairs(Workspace:GetChildren()) do
+						addHitboxes(child)
 					end
 				end)
 				if not ok then
@@ -82,7 +87,7 @@ function esp.Toggle(state)
 			end
 		end)
 	else
-		if scanThread then scanThread:Cancel(); scanThread = nil end
+		if scanThread then task.cancel(scanThread); scanThread = nil end
 		local ok = pcall(removeESPFolder)
 		if not ok then warn("[ESP] cleanup error") end
 	end

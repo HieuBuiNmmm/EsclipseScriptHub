@@ -1,0 +1,530 @@
+MÔ TẢ CƠ CHẾ GAME + GIẢI PHÁP THUẬT TOÁN TÌM VỊ TRÍ AN TOÀN
+================================================================
+
+1. MÔ TẢ VẤN ĐỀ
+----------------
+
+Game có một khu vực hình tròn (arena) và một quỹ đạo hình tròn bên trong.
+
+- Vòng xanh dương bên ngoài:
+  Là giới hạn/khu vực của gameplay.
+
+- Vòng xanh đậm bên trong:
+  Là quỹ đạo mà Player có thể đứng và di chuyển trên đó.
+
+- Player:
+  Là một dot màu xanh lá.
+  Player luôn nằm trên đường tròn quỹ đạo.
+  Player KHÔNG cần di chuyển với tốc độ vật lý thông thường.
+  Theo yêu cầu hiện tại, Player có khả năng TELEPORT tức thời đến bất kỳ
+  vị trí nào trên quỹ đạo.
+
+- Arrow:
+  Là các mũi tên màu hồng, đóng vai trò hazard/projectile.
+  Mỗi arrow spawn ở bên ngoài khu vực gameplay, sau đó bay theo một
+  quỹ đạo THẲNG xuyên qua arena.
+  Vị trí spawn và hướng bay có tính ngẫu nhiên.
+
+- Spawn pattern:
+  Arrow không spawn cùng lúc.
+  Một arrow được spawn khoảng MỖI 1 GIÂY.
+  Vì vậy nhiều arrow có thể cùng tồn tại trên màn hình:
+  Arrow mới vẫn có thể spawn trong khi các arrow trước đó chưa biến mất.
+
+
+2. BÀI TOÁN CẦN GIẢI
+--------------------
+
+Tại mỗi thời điểm, cần tìm một vị trí an toàn trên circular orbit để Player
+có thể teleport tới.
+
+Mục tiêu:
+
+    Tìm góc θ trên quỹ đạo sao cho Player ít có khả năng bị arrow đâm nhất
+    trong một khoảng thời gian sắp tới.
+
+Không cần tính:
+- tốc độ di chuyển của Player;
+- thời gian Player chạy tới vị trí mới;
+- đường đi của Player.
+
+Lý do: Player teleport tức thời nên có thể chuyển trực tiếp từ góc hiện tại
+sang bất kỳ góc nào trên orbit.
+
+
+3. BIỂU DIỄN PLAYER BẰNG GÓC
+----------------------------
+
+Thay vì xử lý Player bằng X/Y tự do, chỉ cần xử lý một biến góc θ.
+
+Cho:
+    Center = tâm của orbit
+    R      = bán kính orbit
+    θ      = góc của Player
+
+Vị trí Player:
+
+    X = CenterX + cos(θ) * R
+    Y = CenterY + sin(θ) * R
+
+Do đó bài toán tìm vị trí Player trở thành:
+
+    "Tìm góc θ an toàn nhất trên toàn bộ 360 độ."
+
+
+4. MÔ HÌNH ARROW
+----------------
+
+Mỗi arrow cần tối thiểu các thông tin:
+
+    Position  = vị trí hiện tại của arrow
+    Direction = vector hướng bay
+    Speed     = tốc độ bay
+    Size      = kích thước/hitbox
+    SpawnTime = thời điểm spawn (nếu cần)
+
+Quỹ đạo của arrow có thể biểu diễn:
+
+    P(t) = Position + Direction * Speed * t
+
+Arrow bay theo đường thẳng.
+
+
+5. TÍNH ĐIỂM ARROW SẼ CẮT QUỸ ĐẠO
+-----------------------------------
+
+Orbit là đường tròn.
+Arrow là đường thẳng.
+
+Cần tìm giao điểm giữa:
+
+    Arrow trajectory
+    và
+    Circular orbit
+
+Nếu arrow cắt orbit, ta có thể xác định:
+
+    - vị trí giao nhau;
+    - góc θ tương ứng trên orbit;
+    - thời gian còn lại trước khi arrow tới giao điểm.
+
+Về mặt toán học, với tâm orbit C và bán kính R:
+
+    |Position + Direction * Speed * t - C|² = R²
+
+Giải phương trình này để tìm t.
+
+Nếu có nghiệm t > 0 phù hợp, arrow sẽ đi qua orbit trong tương lai.
+
+Sau khi tìm được điểm giao P, tính góc:
+
+    θ = atan2(P.y - Center.y, P.x - Center.x)
+
+Đây là góc trên orbit mà arrow sẽ gây nguy hiểm.
+
+
+6. KHÔNG CHỈ ĐÁNH DẤU MỘT GÓC
+------------------------------
+
+Không nên coi chỉ đúng một góc θ là nguy hiểm.
+
+Player và arrow đều có kích thước/hitbox.
+Ngoài ra nên có safety margin.
+
+Ví dụ arrow dự kiến cắt orbit tại:
+
+    θ = 137°
+
+Thì vùng nguy hiểm có thể được mở rộng thành:
+
+    125° - 149°
+
+hoặc một khoảng lớn hơn tùy kích thước object và safety margin.
+
+Do đó mỗi arrow tạo ra một DANGER INTERVAL trên orbit.
+
+
+7. PREDICTIVE DANGER MAP
+------------------------
+
+Tạo một bản đồ nguy hiểm trên toàn bộ 360° của orbit.
+
+Ví dụ có thể sample:
+
+    0°, 1°, 2°, ... 359°
+
+hoặc dùng độ phân giải cao hơn nếu cần.
+
+Với mỗi góc θ:
+
+    Kiểm tra xem trong khoảng thời gian dự đoán sắp tới
+    có arrow nào sẽ đi qua vị trí này hay không.
+
+Ví dụ:
+
+    Prediction window = 2-3 giây
+
+Trong khoảng này, có thể tồn tại nhiều arrow:
+
+    Arrow 1 -> nguy hiểm ở 30° sau 0.4s
+    Arrow 2 -> nguy hiểm ở 150° sau 0.8s
+    Arrow 3 -> nguy hiểm ở 80° sau 1.3s
+    Arrow 4 -> nguy hiểm ở 250° sau 1.9s
+
+Kết quả tạo thành Danger Map:
+
+    0° ------------------------------- 360°
+          DANGER       DANGER
+          █████        ███████
+         20-40°        70-95°
+
+                           DANGER
+                           140-170°
+
+
+8. SAFE INTERVAL
+----------------
+
+Sau khi tạo Danger Map, đảo lại để tìm các vùng an toàn.
+
+Ví dụ:
+
+    DANGER:
+        20° - 40°
+        70° - 95°
+        140° - 170°
+        240° - 270°
+
+    SAFE:
+        0° - 20°
+        40° - 70°
+        95° - 140°
+        170° - 240°
+        270° - 360°
+
+Thay vì chọn một điểm ngẫu nhiên trong vùng SAFE, nên ưu tiên vùng
+an toàn lớn và chọn vị trí gần trung tâm của vùng đó.
+
+Ví dụ:
+
+    SAFE = 170° - 240°
+
+Chọn:
+
+    θ = 205°
+
+Điều này tạo ra khoảng đệm an toàn ở cả hai phía.
+
+
+9. SAFETY SCORE
+---------------
+
+Có thể nâng cấp thuật toán bằng cách chấm điểm cho từng góc.
+
+Ví dụ:
+
+    SafetyScore(θ)
+
+Điểm cao:
+    - Xa các arrow trajectory.
+    - Không có arrow dự kiến đi qua trong prediction window.
+    - Có khoảng cách lớn tới các danger interval.
+
+Điểm thấp:
+    - Gần trajectory của arrow.
+    - Có arrow sắp tới.
+    - Nằm trong danger interval.
+
+Ví dụ:
+
+    θ       Score
+    ----------------
+    0°        72
+    20°       81
+    40°        5
+    60°       70
+    80°       92   <- rất tốt
+    100°      85
+    120°      10
+    140°       2
+    160°      75
+    180°      90
+
+Chọn:
+
+    θ = 80°
+
+Sau đó teleport Player tới góc này.
+
+
+10. PREDICTION WINDOW
+---------------------
+
+Do arrow spawn mỗi khoảng 1 giây, không cần dự đoán vô hạn.
+
+Có thể dùng:
+
+    Prediction window = 2-3 giây
+
+Ví dụ 3 giây sẽ bao phủ:
+    - các arrow hiện tại;
+    - arrow mới spawn;
+    - khoảng thời gian của một vài lần spawn tiếp theo.
+
+Lưu ý:
+
+Arrow đã spawn:
+    -> Có thể dự đoán chính xác trajectory nếu biết position,
+       direction và speed.
+
+Arrow CHƯA spawn:
+    -> Nếu vị trí/hướng hoàn toàn random thì không thể biết chính xác
+       nó sẽ nguy hiểm ở đâu trước khi spawn.
+    -> Chỉ có thể xử lý theo xác suất/pattern nếu game có thông tin
+       hoặc pattern đủ để dự đoán.
+
+
+11. TẦN SUẤT TÍNH TOÁN
+----------------------
+
+Arrow spawn mỗi 1 giây không có nghĩa thuật toán chỉ nên chạy mỗi 1 giây.
+
+Có thể:
+
+    Recalculate mỗi 0.1 - 0.2 giây
+
+Trong mỗi lần:
+
+    1. Lấy tất cả arrow đang tồn tại.
+    2. Tính trajectory của từng arrow.
+    3. Tính giao điểm với orbit.
+    4. Tính collision angle + ETA.
+    5. Tạo danger intervals.
+    6. Tạo safety score/map.
+    7. Chọn safe position tốt nhất.
+    8. Teleport Player nếu vị trí hiện tại không còn đủ an toàn.
+
+
+12. KHÔNG NÊN TELEPORT VÔ ĐIỀU KIỆN
+------------------------------------
+
+Không nhất thiết cứ mỗi lần tính toán là phải teleport.
+
+Ví dụ:
+
+    Current θ = 120°
+    SafetyScore = 95
+
+    Best θ = 125°
+    SafetyScore = 97
+
+Không cần teleport chỉ vì 125° tốt hơn một chút.
+
+Có thể đặt ngưỡng:
+
+    Nếu BestScore - CurrentScore > Threshold:
+        Teleport
+
+Điều này giúp Player ổn định hơn và tránh nhảy vị trí liên tục.
+
+
+13. CÁC TRƯỜNG HỢP CẦN XỬ LÝ
+----------------------------
+
+A. Arrow không cắt orbit:
+    -> Không trực tiếp đe dọa Player trên orbit.
+    -> Có thể bỏ qua hoặc cho risk rất thấp.
+
+B. Arrow cắt orbit một lần:
+    -> Tạo một danger interval quanh giao điểm.
+
+C. Arrow đang rất gần orbit:
+    -> ETA nhỏ -> risk cao.
+
+D. Nhiều arrow cắt orbit gần nhau:
+    -> Merge các danger intervals thành một danger zone lớn.
+
+E. Toàn bộ orbit gần như nguy hiểm:
+    -> Chọn vị trí có SafetyScore cao nhất thay vì yêu cầu SAFE tuyệt đối.
+
+F. Arrow chưa spawn:
+    -> Không thể biết chính xác trajectory nếu RNG hoàn toàn ngẫu nhiên.
+
+
+14. THUẬT TOÁN TỔNG QUÁT
+------------------------
+
+    LOOP (mỗi 0.1-0.2 giây):
+
+        1. Lấy danh sách tất cả arrow hiện tại.
+
+        2. Với mỗi arrow:
+               - Lấy position
+               - Lấy direction
+               - Lấy speed
+               - Tính line-circle intersection
+               - Nếu có giao điểm:
+                     tính collision angle θ
+                     tính ETA
+                     tạo danger interval
+               - Nếu không:
+                     bỏ qua
+
+        3. Merge các danger intervals gần nhau.
+
+        4. Tạo Safety Map trên 360°.
+
+        5. Với mỗi candidate angle:
+               tính SafetyScore.
+
+        6. Tìm angle có SafetyScore cao nhất.
+
+        7. So sánh với vị trí hiện tại.
+
+        8. Nếu vị trí hiện tại không an toàn hoặc target mới tốt hơn
+           đủ nhiều:
+               Teleport Player tới target angle.
+
+        9. Chờ lần tính toán tiếp theo.
+
+
+15. PSEUDOCODE
+--------------
+
+    while game_running:
+
+        arrows = GetActiveArrows()
+
+        danger_zones = []
+
+        for arrow in arrows:
+
+            intersection = CalculateLineCircleIntersection(
+                arrow,
+                orbit
+            )
+
+            if intersection.exists:
+
+                angle = GetOrbitAngle(intersection.point)
+                eta   = intersection.time
+
+                interval = CalculateDangerInterval(
+                    angle,
+                    arrow.size,
+                    player.size,
+                    safety_margin
+                )
+
+                danger_zones.add({
+                    angle_start,
+                    angle_end,
+                    eta
+                })
+
+        danger_zones = MergeDangerZones(danger_zones)
+
+        best_angle = FindSafestAngle(
+            danger_zones,
+            prediction_window
+        )
+
+        current_score = GetSafetyScore(current_angle)
+        best_score    = GetSafetyScore(best_angle)
+
+        if current_score < MIN_SAFE_SCORE
+           or best_score - current_score > SWITCH_THRESHOLD:
+
+            TeleportPlayerToOrbitAngle(best_angle)
+
+        Wait(0.1 - 0.2 seconds)
+
+
+16. GIẢI PHÁP ĐƯỢC ĐỀ XUẤT
+---------------------------
+
+Giải pháp phù hợp nhất với cơ chế game hiện tại:
+
+    PREDICTIVE ORBIT AVOIDANCE
+    +
+    DANGER MAP / SAFE INTERVAL
+    +
+    INSTANT TELEPORT
+
+Đặc điểm:
+
+    - Player chỉ cần được biểu diễn bằng một góc θ.
+    - Không cần pathfinding.
+    - Không cần mô phỏng tốc độ di chuyển Player.
+    - Không cần AI/ML.
+    - Dựa chủ yếu trên hình học đường thẳng - đường tròn.
+    - Có thể dự đoán trước các arrow đã spawn.
+    - Có thể tính toán nhiều arrow đang tồn tại cùng lúc.
+    - Có thể chạy lại thuật toán nhiều lần mỗi giây.
+    - Có thể mở rộng bằng safety margin và scoring.
+
+
+17. Ý TƯỞNG CỐT LÕI
+-------------------
+
+Toàn bộ vấn đề có thể rút gọn thành:
+
+    Arrow:
+        đường thẳng + tốc độ + vị trí
+              ↓
+        dự đoán thời gian
+              ↓
+        tìm nơi nó cắt orbit
+              ↓
+        chuyển thành góc θ
+              ↓
+        tạo vùng DANGER
+
+    Tất cả arrow
+              ↓
+        DANGER MAP
+              ↓
+        SAFE INTERVALS
+              ↓
+        SAFETY SCORE
+              ↓
+        BEST θ
+              ↓
+        TELEPORT PLAYER
+
+
+18. THÔNG SỐ BAN ĐẦU ĐỀ XUẤT
+----------------------------
+
+    Arrow spawn interval:
+        ~1 giây
+
+    Recalculation interval:
+        ~0.1 - 0.2 giây
+
+    Prediction window:
+        ~2 - 3 giây
+
+    Orbit sampling:
+        360 điểm (1°/điểm) là lựa chọn đơn giản ban đầu
+
+    Safety margin:
+        Tùy hitbox thực tế, nên bắt đầu nhỏ rồi tăng dần
+
+    Player movement:
+        Không cần mô phỏng vì Player teleport tức thời
+
+
+KẾT LUẬN
+========
+
+Đây là một bài toán tránh hazard trên một chiều tự do (góc θ) thay vì
+một bài toán movement 2D.
+
+Vì Player có thể teleport tức thời đến bất kỳ điểm nào trên orbit, giải pháp
+hiệu quả là liên tục dự đoán các arrow đang tồn tại, xác định nơi và thời
+điểm chúng cắt circular orbit, biến các điểm đó thành các vùng nguy hiểm,
+sau đó tìm vùng an toàn nhất trên toàn bộ 360° và teleport Player tới đó.
+
+Arrow spawn mỗi 1 giây chỉ ảnh hưởng đến số lượng projectile đồng thời;
+không làm thay đổi mô hình toán học chính.

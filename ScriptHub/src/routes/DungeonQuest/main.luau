@@ -72,6 +72,21 @@ return function(self)
 	local webhook = require("@routes/DungeonQuest/core/webhook")
 	webhook.Init()
 
+	--// Smart Dodge (tránh cột-skill như firstBossCrissCross)
+	local shared = require("@routes/DungeonQuest/core/shared")
+	local dodge = require("@routes/DungeonQuest/core/dodge")
+	dodge.OnDodgeChange(function(isDodging)
+		shared.SetDodging(isDodging)
+	end)
+	dodge.Init()
+
+	--// Basic Orbit Dodge (kiểu dodge đảo hướng orbit cho chiêu tốc độ bình thường)
+	require("@routes/DungeonQuest/core/basicOrbitDodge")
+
+	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
+	local deathLog = require("@routes/DungeonQuest/core/deathLog")
+	deathLog.Init()
+
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	local autoHide = require("@routes/DungeonQuest/core/autoHide")
 	autoHide.SetWindow(window)

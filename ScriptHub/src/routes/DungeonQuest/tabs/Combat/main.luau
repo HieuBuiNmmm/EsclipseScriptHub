@@ -1,6 +1,7 @@
 -- Tab Combat (DungeonQuest): Farm, Combat, Auto Start/Retry.
 
 --// Imports
+local macLib = require("@packages/Maclib")
 local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 local combat = require("@routes/DungeonQuest/core/combat")
@@ -8,13 +9,41 @@ local farm = require("@routes/DungeonQuest/core/farm")
 local autoStart = require("@routes/DungeonQuest/core/autoStart")
 local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local notifier = require("@routes/DungeonQuest/core/notifier")
 local esp = require("@routes/DungeonQuest/core/esp")
+local dodge = require("@routes/DungeonQuest/core/dodge")
+local basicOrbitDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
+local deathLog = require("@routes/DungeonQuest/core/deathLog")
 
 return function(window, tab)
 	--// Sections
 	local farmSection = tab:Section({ Side = "Left" })
 	local combatSection = tab:Section({ Side = "Right" })
 	local startSection = tab:Section({ Side = "Left" })
+
+	--// Slider dodge (Boss Radius) — khai báo sớm để applyFarmModeVisibility
+	--// (định nghĩa ở dưới) capture đúng biến local, không phải global.
+	local dodgeRadiusSlider
+
+	--// Helper: Input + Button để thêm skill vào 1 list dodge theo API
+	local function makeSkillAdder(section, label, addFn, flagName)
+		local inputEl = section:Input({
+			Name = label,
+			Placeholder = "Ten skill...",
+		}, flagName)
+		section:Button({
+			Name = "  + Add " .. label,
+			Callback = function()
+				local txt = (inputEl:GetInput() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+				if txt ~= "" then
+					addFn(txt)
+					notifier.Notify("Skill Adder", label .. ": +" .. txt, 2)
+				else
+					notifier.Notify("Skill Adder", "Nhap ten skill", 2)
+				end
+			end,
+		})
+	end
 
 	farmSection:Header({ Name = "Auto Farm" })
 	combatSection:Header({ Name = "Combat" })
@@ -101,12 +130,53 @@ return function(window, tab)
 		end),
 	}, "Slider_TeleportDistance"))
 
+	farmSection:Toggle({
+		Name = "Auto Retarget",
+		Default = shared.GetRetargetEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetRetargetEnabled(state)
+		end),
+	}, "Toggle_Retarget")
+
+	ui.PatchSliderLoadCallback(farmSection:Slider({
+		Name = "Auto Retarget Interval",
+		Default = shared.GetRetargetInterval(),
+		Minimum = 1,
+		Maximum = 30,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetRetargetInterval(Value)
+		end),
+	}, "Slider_RetargetInterval"))
+
+	farmSection:Dropdown({
+		Name = "Retarget Method",
+		Options = { "Auto", "Tele", "Tween" },
+		Default = 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			if option then shared.SetRetargetMethod(option) end
+		end),
+	}, "Dropdown_RetargetMethod")
+
+	farmSection:Toggle({
+		Name = "Reverse Orbit on Retarget",
+		Default = shared.GetOrbitReverseEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetOrbitReverseEnabled(state)
+		end),
+	}, "Toggle_OrbitReverse")
+
 	applyFarmModeVisibility = function()
 		local isOrbit = shared.GetFarmMode() ~= "Hover"
 		pcall(function() orbitRadiusSlider:SetVisibility(isOrbit) end)
 		pcall(function() orbitSpeedSlider:SetVisibility(isOrbit) end)
 		pcall(function() orbitHeightSlider:SetVisibility(isOrbit) end)
 		pcall(function() hoverHeightSlider:SetVisibility(not isOrbit) end)
+		--// Boss Radius dodge chỉ hiển thị khi Farm Mode = Hover
+		pcall(function() dodgeRadiusSlider:SetVisibility(not isOrbit) end)
 	end
 	applyFarmModeVisibility()
 
@@ -179,6 +249,78 @@ return function(window, tab)
 		end),
 	}, "Toggle_HighlightHitboxes")
 
+	combatSection:Toggle({
+		Name = "Smart Dodge",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			dodge.Toggle(state)
+			if state then
+				local other = macLib.Options["Toggle_BasicOrbitDodge"]
+				if other then other:UpdateState(false) end
+			end
+		end),
+	}, "Toggle_SmartDodge")
+
+	combatSection:Toggle({
+		Name = "Basic Orbit Dodge",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			basicOrbitDodge.Toggle(state)
+			if state then
+				local other = macLib.Options["Toggle_SmartDodge"]
+				if other then other:UpdateState(false) end
+			end
+		end),
+	}, "Toggle_BasicOrbitDodge")
+
+	combatSection:Header({ Name = "Dodge Skill Lists" })
+	makeSkillAdder(combatSection, "Basic Orbit Skill", function(v) basicOrbitDodge.AddBasicDodgeName(v) end, "Input_AddBasicSkill")
+	makeSkillAdder(combatSection, "Kinematic Skill", function(v) dodge.AddColumnName(v) end, "Input_AddKinematicSkill")
+	makeSkillAdder(combatSection, "Predictive Skill", function(v) dodge.AddStraightDodgeName(v) end, "Input_AddPredictiveSkill")
+
+	combatSection:Toggle({
+		Name = "Dead Zone Visuals",
+		Default = dodge.IsDebugVisuals(),
+		Callback = autoSave.Wrap(function(state)
+			dodge.SetDebugVisuals(state)
+		end),
+	}, "Toggle_DeadZoneVisuals")
+
+	combatSection:Toggle({
+		Name = "Death Log",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			deathLog.Toggle(state)
+		end),
+	}, "Toggle_DeathLog")
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Dodge Interval",
+		Default = dodge.GetRecalcInterval(),
+		Minimum = 0.05,
+		Maximum = 0.3,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			dodge.SetRecalcInterval(Value)
+		end),
+	}, "Slider_DodgeInterval"))
+
+	dodgeRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Boss Radius",
+		Default = dodge.GetBossRadius(),
+		Minimum = 5,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			dodge.SetBossRadius(Value)
+		end),
+	}, "Slider_DodgeBossRadius"))
+
+	applyFarmModeVisibility()
+
 	--// Auto Start / Retry
 	startSection:Toggle({
 		Name = "Auto Start",
@@ -195,4 +337,25 @@ return function(window, tab)
 			autoRetry.Toggle(state)
 		end),
 	}, "Toggle_AutoRetry")
+
+	startSection:Toggle({
+		Name = "Retry on Time Low",
+		Default = autoRetry.GetTimeRetryEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoRetry.SetTimeRetryEnabled(state)
+		end),
+	}, "Toggle_RetryTimeLow")
+
+	ui.PatchSliderLoadCallback(startSection:Slider({
+		Name = "Retry Time Threshold",
+		Default = autoRetry.GetTimeRetryThreshold(),
+		Minimum = 5,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			autoRetry.SetTimeRetryThreshold(Value)
+		end),
+	}, "Slider_RetryTimeThreshold"))
 end
