@@ -34,6 +34,11 @@ local PREDICTIVE_NAMES = {
 
 --// Bán kính vùng detect quanh player (stud) - hành lang phía trước hướng đi
 local DETECT_RADIUS = 15
+--// Bán kính vùng PANIC: hazard quá gần player (bất kể hướng, bất kể cooldown
+--// flip) -> tele thẳng tới node an toàn nhất (last-resort cho projectile cực nhanh)
+local PANIC_RADIUS = 8
+--// Cooldown giữa các lần panic tele (giây) - tránh spam tele mỗi heartbeat
+local PANIC_COOLDOWN = 0.2
 --// Cooldown chống lật hướng liên tục (giây)
 local FLIP_COOLDOWN = 0.15
 --// Số node phía trước (theo hướng đi) để coi là "có nguy hiểm đang tới"
@@ -71,6 +76,7 @@ local VISUALS_BALL_COLOR = Color3.fromRGB(255, 60, 60)
 local VISUALS_ARC_COLOR = Color3.fromRGB(255, 40, 40)
 local VISUALS_RAY_COLOR = Color3.fromRGB(255, 180, 40)
 local VISUALS_DETECTOR_COLOR = Color3.fromRGB(60, 180, 255)
+local VISUALS_PANIC_COLOR = Color3.fromRGB(255, 220, 60)
 
 --// Tốc độ làm tươi visuals (giây)
 local VISUALS_REFRESH_INTERVAL = 0.1
@@ -85,6 +91,7 @@ local dodgeMode = "All"
 local connection = nil
 local lastFlipTime = 0
 local lastJumpTime = 0
+local lastPanicTime = 0
 local noHazardCount = 0
 local trackedColumns = {}
 local debugVisuals = false
@@ -440,16 +447,16 @@ end
 --// góc mở cố định quanh tiếp tuyến của orbit tại vị trí player).
 local DETECTOR_ANGLE = 120
 local CIRCLE_SECTIONS = 32
-local function renderCircle(parent, playerPos)
+local function renderCircleAt(parent, playerPos, radius, color)
 	local p = Vector3.new(playerPos.X, playerPos.Y, playerPos.Z)
 	for i = 0, CIRCLE_SECTIONS - 1 do
 		local t1 = i / CIRCLE_SECTIONS
 		local t2 = (i + 1) / CIRCLE_SECTIONS
 		local a1 = t1 * math.pi * 2
 		local a2 = t2 * math.pi * 2
-		local p1 = p + Vector3.new(math.cos(a1) * DETECT_RADIUS, 0, math.sin(a1) * DETECT_RADIUS)
-		local p2 = p + Vector3.new(math.cos(a2) * DETECT_RADIUS, 0, math.sin(a2) * DETECT_RADIUS)
-		drawSegment(parent, p1, p2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
+		local p1 = p + Vector3.new(math.cos(a1) * radius, 0, math.sin(a1) * radius)
+		local p2 = p + Vector3.new(math.cos(a2) * radius, 0, math.sin(a2) * radius)
+		drawSegment(parent, p1, p2, 0.12, 0.3, color)
 	end
 end
 
@@ -457,7 +464,8 @@ local function renderDetector(parent, playerPos, bossPos)
 	local radius = shared.GetOrbitRadius()
 	if not radius or radius <= 0 then return end
 	if detectorMode == "Circle" then
-		renderCircle(parent, playerPos)
+		renderCircleAt(parent, playerPos, DETECT_RADIUS, VISUALS_DETECTOR_COLOR)
+		renderCircleAt(parent, playerPos, PANIC_RADIUS, VISUALS_PANIC_COLOR)
 		return
 	end
 	local effDir = shared.GetBasicOrbitDirection()
@@ -489,6 +497,8 @@ local function renderDetector(parent, playerPos, bossPos)
 		local p2 = p + Vector3.new(tangent.X * math.cos(arcT2) - tangent.Z * math.sin(arcT2), 0, tangent.X * math.sin(arcT2) + tangent.Z * math.cos(arcT2)) * DETECT_RADIUS
 		drawSegment(parent, p1, p2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
 	end
+	--// Vùng PANIC: vòng tròn nhỏ màu vàng (dù chọn mode nào)
+	renderCircleAt(parent, playerPos, PANIC_RADIUS, VISUALS_PANIC_COLOR)
 end
 
 --// Vẽ toàn bộ visuals cho 1 khung hình (xóa cũ, vẽ mới).
@@ -563,6 +573,16 @@ local function collectHazardPositions()
 	return out
 end
 
+--// Có hazard nào đang nằm trong vùng PANIC quanh player (khoảng cách ngang) ?
+local function panicHazardNearby(playerPos)
+	for _, col in pairs(trackedColumns) do
+		if col and col.Position and horizontalDistance(playerPos, col.Position) < PANIC_RADIUS then
+			return true
+		end
+	end
+	return false
+end
+
 local function basicStep()
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
@@ -607,6 +627,14 @@ local function basicStep()
 	local curIdx = degToIdx(math.deg(math.atan2(toPlayer.Z, toPlayer.X)))
 	local danger = buildDangerMap(center, shared.GetOrbitRadius(), height)
 
+	--// PANIC: hazard lọt vào vùng cấm sát player -> tele thẳng node an toàn
+	--// (bất chấp logic flip/kẹp, chỉ giữ cooldown riêng chống spam).
+	if panicHazardNearby(playerPos) and now - lastPanicTime > PANIC_COOLDOWN then
+		lastPanicTime = now
+		jumpToSafeNode(center)
+		return
+	end
+
 	if dangerAhead(danger, curIdx, effDir) then
 		if now - lastFlipTime > FLIP_COOLDOWN then
 			local newDir = -effDir
@@ -630,6 +658,7 @@ function basicDodge.Toggle(state)
 	if enabled then
 		lastFlipTime = 0
 		lastJumpTime = 0
+		lastPanicTime = 0
 		noHazardCount = 0
 		if not connection then
 			connection = RunService.Heartbeat:Connect(function()
@@ -664,6 +693,22 @@ end
 
 function basicDodge.SetDetectRadius(value)
 	DETECT_RADIUS = value
+end
+
+function basicDodge.GetPanicRadius()
+	return PANIC_RADIUS
+end
+
+function basicDodge.SetPanicRadius(value)
+	PANIC_RADIUS = value
+end
+
+function basicDodge.GetPanicCooldown()
+	return PANIC_COOLDOWN
+end
+
+function basicDodge.SetPanicCooldown(value)
+	PANIC_COOLDOWN = value
 end
 
 function basicDodge.GetFlipCooldown()

@@ -10,14 +10,14 @@ _G.ScriptHub_UI = nil
 --// Variables
 local routes = {
 	{
-		Name = "Universal",
-		Load = require("@routes/Universal/main"),
-	},
-
-	{
 		Name = "DungeonQuest",
 		Load = require("@routes/DungeonQuest/main"),
 		UniverseId = 9931749389,
+		Places = {
+			77649408247578,
+			3220968688,
+			2414851778,
+		},
 	},
 
 	{
@@ -29,6 +29,12 @@ local routes = {
 		},
 	},
 }
+
+--// Chờ game info sẵn sàng (tránh inject sớm làm GameId/PlaceId chưa đúng -> route không khớp)
+for _ = 1, 300 do
+	if game.GameId ~= 0 and game.PlaceId ~= 0 then break end
+	task.wait(0.1)
+end
 
 --// Initialize
 for _, route in pairs(routes) do
@@ -44,5 +50,3 @@ for _, route in pairs(routes) do
 		return route:Load()
 	end
 end
-
-routes[1]:Load() -- Fall back to Universal if no route was loaded.

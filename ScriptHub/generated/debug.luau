@@ -9,301 +9,14 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T09:15:19.330103+00:00",
+    genDate = "2026-08-30T11:24:54.107328100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
 
 --// Types
 type Window__DARKLUA_TYPE_a = { Visible: boolean? }
-local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()local flags = {}
-
-function flags:Export()
-    local result = {}
-
-    for key, component in pairs(self) do
-        if typeof(component) == "Instance" or type(component) == "table" then
-            local success, value = pcall(function()
-                -- return component.Value
-            end)
-
-            if success and value ~= nil then
-                result[key] = value
-            end
-        end
-    end
-
-    return result
-end
-
-function flags:Import(data)
-	for key, value in pairs(data) do
-		local component = self[key]
-
-		if component and component.Value ~= nil then
-			local success = pcall(function()
-				-- component:SetValue(value)
-			end)
-
-			if not success then
-				warn(`Failed to import value for flag "{key}"`)
-			end
-		end
-	end
-end
-
-function flags:Reset()
-	for k in pairs(self) do
-		self[k] = nil
-	end
-end
-
-return flags end function __DIST.b()
-local binder = {}
-
-function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
-	for property, value in pairs(properties) do
-		if excludes and table.find(excludes, property) then
-			continue
-		end
-
-		pcall(function()
-			object[property] = value
-		end)
-	end
-
-	return object
-end
-
-function binder.Wrap(
-	object: { [string]: any },
-	bindings: { [string]: (any) -> () },
-	excludes: { [number]: any }?,
-	instance: Instance?
-): any
-	local proxy = {}
-
-	setmetatable(proxy, {
-		__index = function(_, key)
-			if object[key] ~= nil then
-				return object[key]
-			elseif instance then
-				local ok, value = pcall(function()
-					return instance[key]
-				end)
-
-				if ok then
-					return value
-				end
-			end
-
-			return
-		end,
-
-		__newindex = function(_, key, value)
-			local handler = bindings[key]
-
-			if handler then
-				handler(value)
-
-				if not (excludes and table.find(excludes, key)) then
-					object[key] = value
-				end
-			elseif instance then
-				local ok, _ = pcall(function()
-					instance[key] = value
-				end)
-
-				if not ok then
-					object[key] = value
-				end
-			else
-				object[key] = value
-			end
-		end,
-	})
-
-	return proxy
-end
-
-return binder
-end function __DIST.c()
---// Imports
-
-
-
-local binder = __DIST.load('b')
-
---// Variables
-local interface = {}
-
---// Initialize
-function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_TYPE_a
-	properties = properties or {}
-	print("Made a window")
-
-	local object = binder.Wrap(properties, {
-		Visible = function(value: boolean)
-			print("Set window visibility to:", value)
-		end,
-	})
-
-	return binder.Apply(properties, object)
-end
-
-return interface
-end function __DIST.d()--// Imports
-
-local binder = __DIST.load('b')
-
---// Variables
-local esp = {}
-
---// Initialize
-return binder.Wrap(esp, {
-	Enabled = function(value: boolean)
-		print(`{value and "Enabled" or "Disabled"} ESP.`)
-	end,
-}) :: { Enabled: boolean }
-end function __DIST.e()--// Imports
-
-local flags = __DIST.load('a')
-local interface = __DIST.load('c')
-local esp = __DIST.load('d')
-
---// Initialize
-local window = interface:Window({
-	Visible = true,
-})
-
-return {
-	Flags = flags,
-	Esp = esp,
-	Interface = interface,
-	Window = window,
-
-	Tabs = {
-		Home = function(self)
-			-- ....
-
-			-- return tab
-		end,
-
-		Visuals = function(self)
-			-- ....
-
-			-- return tab
-		end,
-
-		Settings = function(self)
-			-- ....
-
-			-- return tab
-		end,
-
-		Config = function(self)
-			-- ....
-
-			-- return tab
-		end,
-	},
-}
-end function __DIST.f()--// Variables
-
-local utility = {}
-
---// Initialize
-function utility.GetPlayer(): Player?
-	local success, result = pcall(function()
-		return game:GetService("Players")
-	end)
-
-	return success and (result :: Players).LocalPlayer
-end
-
-function utility.GetCharacter(player: Player?): Model?
-	local success, result = pcall(function()
-		return player and player.Character
-	end)
-
-	return success and result
-end
-
-function utility.GetHumanoid(player: Player?): Humanoid?
-	local success, result = pcall(function()
-		local character = utility.GetCharacter(player)
-		
-		return character and character:FindFirstChildOfClass("Humanoid")
-	end)
-
-	return success and result
-end
-
-return utility
-end function __DIST.g()--// Functions
-
-local function cast(service: string): any
-	return game:GetService(service)
-end
-
---// Initialize
-return {
-	Players = cast("Players") :: Players,
-}
-end function __DIST.h()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
-
-
-return function(self)
-	--// Imports
-	local base = __DIST.load('e')
-	local utility = __DIST.load('f')
-	local services = __DIST.load('g')
-
-	--// References
-	local flags = base.Flags
-	local esp = base.Esp
-	local interface = base.Interface
-	local window = base.Window
-	local tabs = base.Tabs
-
-	local localPlayer = utility.GetPlayer()
-
-	local players = services.Players
-
-	--// UI
-	do -- Home
-		tabs.Home(self)
-	end
-
-	do -- Exploits
-		local tab = window:Tab({ Name = "Exploits" })
-
-		tab:Toggle({
-			Name = "Flight",
-		})
-	end
-
-	do -- Visuals
-		tabs.Visuals(self)
-	end
-
-	do -- Settings
-		local tab = tabs.Settings(self)
-
-		tab:Toggle({
-			Name = "Dark Mode",
-		})
-	end
-
-	do -- Config
-		tabs.Config(self)
-	end
-
-	--// Initialize
-	window.Title = self.Name
-end
-end function __DIST.i()
-local MacLib = { 
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()local MacLib = { 
 	Options = {}, 
 	Folder = "Maclib", 
 	GetService = function(service)
@@ -6182,7 +5895,7 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib end function __DIST.j()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
+return MacLib end function __DIST.b()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
 -- Nhận Window tham chiếu qua SetWindow (vì Window được tạo sau khi require module).
 
 --// Variables
@@ -6217,7 +5930,7 @@ function notifier.Notify(title, desc, lifetime)
 end
 
 return notifier
-end function __DIST.k()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
+end function __DIST.c()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
 
 --// Services
 
@@ -6244,14 +5957,14 @@ return {
 	VirtualInputManager = VirtualInputManager,
 	player = player,
 }
-end function __DIST.l()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
+end function __DIST.d()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
 -- speed, skill, và các helper di chuyển farm. Các module chuyên biệt
 -- (combat, farm, autoStart...) thao tác lên module này để tránh circular dependency.
 
 --// Imports
 
-local services = __DIST.load('k')
-local notifier = __DIST.load('j')
+local services = __DIST.load('c')
+local notifier = __DIST.load('b')
 
 --// References
 local Players = services.Players
@@ -7268,7 +6981,7 @@ end)
 
 --// Table
 return shared
-end function __DIST.m()-- Tiện ích UI dùng chung cho các tab DungeonQuest (Maclib).
+end function __DIST.e()-- Tiện ích UI dùng chung cho các tab DungeonQuest (Maclib).
 
 --// Table
 
@@ -7292,13 +7005,13 @@ function ui.PatchSliderLoadCallback(sliderElement)
 end
 
 return ui
-end function __DIST.n()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
+end function __DIST.f()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
 -- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
 
 --// Imports
 
-local macLib = __DIST.load('i')
-local notifier = __DIST.load('j')
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('b')
 
 --// Table
 local autoSave = {}
@@ -7350,13 +7063,13 @@ function autoSave.Wrap(callback)
 end
 
 return autoSave
-end function __DIST.o()-- Tab Speed (DungeonQuest).
+end function __DIST.g()-- Tab Speed (DungeonQuest).
 
 --// Imports
 
-local shared = __DIST.load('l')
-local ui = __DIST.load('m')
-local autoSave = __DIST.load('n')
+local shared = __DIST.load('d')
+local ui = __DIST.load('e')
+local autoSave = __DIST.load('f')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -7382,13 +7095,13 @@ return function(window, tab)
 		end),
 	}, "Slider_FastSpeed"))
 end
-end function __DIST.p()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
+end function __DIST.h()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
 
 --// Imports
 
-local services = __DIST.load('k')
-local shared = __DIST.load('l')
-local notifier = __DIST.load('j')
+local services = __DIST.load('c')
+local shared = __DIST.load('d')
+local notifier = __DIST.load('b')
 
 --// References
 local VirtualInputManager = services.VirtualInputManager
@@ -7449,12 +7162,12 @@ function combat.ToggleAutoSkill(state)
 end
 
 return combat
-end function __DIST.q()-- Auto Farm cho DungeonQuest (Orbit / Hover). Chạy vòng lặp săn kẻ địch gần nhất.
+end function __DIST.i()-- Auto Farm cho DungeonQuest (Orbit / Hover). Chạy vòng lặp săn kẻ địch gần nhất.
 
 --// Imports
 
-local shared = __DIST.load('l')
-local notifier = __DIST.load('j')
+local shared = __DIST.load('d')
+local notifier = __DIST.load('b')
 
 --// Table
 local farm = {}
@@ -7523,13 +7236,13 @@ function farm.Toggle(state)
 end
 
 return farm
-end function __DIST.r()-- Auto Start Game cho DungeonQuest: chờ startButton xuất hiện rồi fire remote start.
+end function __DIST.j()-- Auto Start Game cho DungeonQuest: chờ startButton xuất hiện rồi fire remote start.
 
 --// Imports
 
-local services = __DIST.load('k')
-local shared = __DIST.load('l')
-local notifier = __DIST.load('j')
+local services = __DIST.load('c')
+local shared = __DIST.load('d')
+local notifier = __DIST.load('b')
 
 --// References
 local player = services.player
@@ -7616,20 +7329,18 @@ shared.OnRespawn(function()
 end)
 
 return autoStart
-end function __DIST.s()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+end function __DIST.k()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
-local services = __DIST.load('k')
-local shared = __DIST.load('l')
-local notifier = __DIST.load('j')
+local services = __DIST.load('c')
+local notifier = __DIST.load('b')
 
 --// References
 local player = services.player
 
 --// State
 local AUTO_RETRY_MIN_ITEMS = 2
-local TIME_LIMIT = 720 --// 12 phút tính ra giây
 local autoRetryEnabled = false
 local autoRetryRunning = false
 local autoRetryTriggered = false
@@ -7694,6 +7405,34 @@ if not autoRetryHolderFn then
 	end
 end
 
+--// Đọc thẳng giá trị thời gian còn lại từ UI game: PlayerGui.timeLeftGui.Frame.time
+local function readTimeLeft()
+	local ok, inst = pcall(function()
+		local PlayerGui = player:FindFirstChild("PlayerGui")
+		local gui = PlayerGui and PlayerGui:FindFirstChild("timeLeftGui")
+		local frame = gui and gui:FindFirstChild("Frame")
+		return frame and frame:FindFirstChild("time")
+	end)
+	if not ok or typeof(inst) ~= "Instance" then return nil end
+
+	--// Ưu tiên ValueBase (NumberValue...), nếu không thì đọc Text của TextLabel
+	local raw
+	if inst:IsA("ValueBase") then
+		raw = inst.Value
+	else
+		raw = inst.Text
+	end
+	if type(raw) == "number" then return raw end
+	if type(raw) == "string" then
+		local cleaned = raw:gsub("%s+", ""):gsub("^%[", ""):gsub("%]$", "")
+		local m, s = cleaned:match("^(%d+):(%d+)$")
+		if m and s then return tonumber(m) * 60 + tonumber(s) end
+		local sec = tonumber(cleaned)
+		if sec then return sec end
+	end
+	return nil
+end
+
 --// Table
 local autoRetry = {}
 
@@ -7735,14 +7474,13 @@ function autoRetry.Start()
 				autoRetryTriggered = false
 			end
 
-			--// Điều kiện hết giờ (tách riêng): còn < X giây thì retry
+			--// Điều kiện hết giờ (tách riêng): UI còn < X giây thì retry
 			if timeRetryEnabled then
-				local elapsed = shared.GetDungeonElapsed()
-				local remaining = elapsed and (TIME_LIMIT - elapsed)
+				local remaining = readTimeLeft()
 				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
 					timeRetryTriggered = true
 					fireRetry()
-				elseif not remaining or remaining >= timeRetryThreshold then
+				elseif remaining and remaining >= timeRetryThreshold then
 					timeRetryTriggered = false
 				end
 			end
@@ -7786,10 +7524,6 @@ function autoRetry.GetTimeRetryThreshold()
 	return timeRetryThreshold
 end
 
-function autoRetry.GetTimeLimit()
-	return TIME_LIMIT
-end
-
 function autoRetry.RetryNow()
 	task.spawn(function()
 		fireRetry()
@@ -7797,7 +7531,7 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.t()-- Basic Orbit Dodge cho DungeonQuest (tích hợp tracking + safe-node từ Smart Dodge).
+end function __DIST.l()-- Basic Orbit Dodge cho DungeonQuest (tích hợp tracking + safe-node từ Smart Dodge).
 -- Kiểu dodge đơn giản: KHÔNG tắt orbit, player chạy orbit bình thường.
 -- Hệ thống TRACKING TOÀN BỘ đối tượng cần né theo 2 loại:
 --   - KINEMATIC (chậm/đứng yên) : chặn quỹ đạo quanh vị trí cục (DANGER_RADIUS).
@@ -7811,8 +7545,8 @@ end function __DIST.t()-- Basic Orbit Dodge cho DungeonQuest (tích hợp tracki
 
 --// Imports
 
-local services = __DIST.load('k')
-local shared = __DIST.load('l')
+local services = __DIST.load('c')
+local shared = __DIST.load('d')
 
 --// References
 local player = services.player
@@ -7834,6 +7568,11 @@ local PREDICTIVE_NAMES = {
 
 --// Bán kính vùng detect quanh player (stud) - hành lang phía trước hướng đi
 local DETECT_RADIUS = 15
+--// Bán kính vùng PANIC: hazard quá gần player (bất kể hướng, bất kể cooldown
+--// flip) -> tele thẳng tới node an toàn nhất (last-resort cho projectile cực nhanh)
+local PANIC_RADIUS = 8
+--// Cooldown giữa các lần panic tele (giây) - tránh spam tele mỗi heartbeat
+local PANIC_COOLDOWN = 0.2
 --// Cooldown chống lật hướng liên tục (giây)
 local FLIP_COOLDOWN = 0.15
 --// Số node phía trước (theo hướng đi) để coi là "có nguy hiểm đang tới"
@@ -7871,6 +7610,7 @@ local VISUALS_BALL_COLOR = Color3.fromRGB(255, 60, 60)
 local VISUALS_ARC_COLOR = Color3.fromRGB(255, 40, 40)
 local VISUALS_RAY_COLOR = Color3.fromRGB(255, 180, 40)
 local VISUALS_DETECTOR_COLOR = Color3.fromRGB(60, 180, 255)
+local VISUALS_PANIC_COLOR = Color3.fromRGB(255, 220, 60)
 
 --// Tốc độ làm tươi visuals (giây)
 local VISUALS_REFRESH_INTERVAL = 0.1
@@ -7885,6 +7625,7 @@ local dodgeMode = "All"
 local connection = nil
 local lastFlipTime = 0
 local lastJumpTime = 0
+local lastPanicTime = 0
 local noHazardCount = 0
 local trackedColumns = {}
 local debugVisuals = false
@@ -8240,16 +7981,16 @@ end
 --// góc mở cố định quanh tiếp tuyến của orbit tại vị trí player).
 local DETECTOR_ANGLE = 120
 local CIRCLE_SECTIONS = 32
-local function renderCircle(parent, playerPos)
+local function renderCircleAt(parent, playerPos, radius, color)
 	local p = Vector3.new(playerPos.X, playerPos.Y, playerPos.Z)
 	for i = 0, CIRCLE_SECTIONS - 1 do
 		local t1 = i / CIRCLE_SECTIONS
 		local t2 = (i + 1) / CIRCLE_SECTIONS
 		local a1 = t1 * math.pi * 2
 		local a2 = t2 * math.pi * 2
-		local p1 = p + Vector3.new(math.cos(a1) * DETECT_RADIUS, 0, math.sin(a1) * DETECT_RADIUS)
-		local p2 = p + Vector3.new(math.cos(a2) * DETECT_RADIUS, 0, math.sin(a2) * DETECT_RADIUS)
-		drawSegment(parent, p1, p2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
+		local p1 = p + Vector3.new(math.cos(a1) * radius, 0, math.sin(a1) * radius)
+		local p2 = p + Vector3.new(math.cos(a2) * radius, 0, math.sin(a2) * radius)
+		drawSegment(parent, p1, p2, 0.12, 0.3, color)
 	end
 end
 
@@ -8257,7 +7998,8 @@ local function renderDetector(parent, playerPos, bossPos)
 	local radius = shared.GetOrbitRadius()
 	if not radius or radius <= 0 then return end
 	if detectorMode == "Circle" then
-		renderCircle(parent, playerPos)
+		renderCircleAt(parent, playerPos, DETECT_RADIUS, VISUALS_DETECTOR_COLOR)
+		renderCircleAt(parent, playerPos, PANIC_RADIUS, VISUALS_PANIC_COLOR)
 		return
 	end
 	local effDir = shared.GetBasicOrbitDirection()
@@ -8289,6 +8031,8 @@ local function renderDetector(parent, playerPos, bossPos)
 		local p2 = p + Vector3.new(tangent.X * math.cos(arcT2) - tangent.Z * math.sin(arcT2), 0, tangent.X * math.sin(arcT2) + tangent.Z * math.cos(arcT2)) * DETECT_RADIUS
 		drawSegment(parent, p1, p2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
 	end
+	--// Vùng PANIC: vòng tròn nhỏ màu vàng (dù chọn mode nào)
+	renderCircleAt(parent, playerPos, PANIC_RADIUS, VISUALS_PANIC_COLOR)
 end
 
 --// Vẽ toàn bộ visuals cho 1 khung hình (xóa cũ, vẽ mới).
@@ -8363,6 +8107,16 @@ local function collectHazardPositions()
 	return out
 end
 
+--// Có hazard nào đang nằm trong vùng PANIC quanh player (khoảng cách ngang) ?
+local function panicHazardNearby(playerPos)
+	for _, col in pairs(trackedColumns) do
+		if col and col.Position and horizontalDistance(playerPos, col.Position) < PANIC_RADIUS then
+			return true
+		end
+	end
+	return false
+end
+
 local function basicStep()
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
@@ -8407,6 +8161,14 @@ local function basicStep()
 	local curIdx = degToIdx(math.deg(math.atan2(toPlayer.Z, toPlayer.X)))
 	local danger = buildDangerMap(center, shared.GetOrbitRadius(), height)
 
+	--// PANIC: hazard lọt vào vùng cấm sát player -> tele thẳng node an toàn
+	--// (bất chấp logic flip/kẹp, chỉ giữ cooldown riêng chống spam).
+	if panicHazardNearby(playerPos) and now - lastPanicTime > PANIC_COOLDOWN then
+		lastPanicTime = now
+		jumpToSafeNode(center)
+		return
+	end
+
 	if dangerAhead(danger, curIdx, effDir) then
 		if now - lastFlipTime > FLIP_COOLDOWN then
 			local newDir = -effDir
@@ -8430,6 +8192,7 @@ function basicDodge.Toggle(state)
 	if enabled then
 		lastFlipTime = 0
 		lastJumpTime = 0
+		lastPanicTime = 0
 		noHazardCount = 0
 		if not connection then
 			connection = RunService.Heartbeat:Connect(function()
@@ -8464,6 +8227,22 @@ end
 
 function basicDodge.SetDetectRadius(value)
 	DETECT_RADIUS = value
+end
+
+function basicDodge.GetPanicRadius()
+	return PANIC_RADIUS
+end
+
+function basicDodge.SetPanicRadius(value)
+	PANIC_RADIUS = value
+end
+
+function basicDodge.GetPanicCooldown()
+	return PANIC_COOLDOWN
+end
+
+function basicDodge.SetPanicCooldown(value)
+	PANIC_COOLDOWN = value
 end
 
 function basicDodge.GetFlipCooldown()
@@ -8554,7 +8333,7 @@ function basicDodge.SetDetectorMode(mode)
 	if mode == "Cone" or mode == "Circle" then detectorMode = mode end
 end
 
-return basicDodge end function __DIST.u()-- Death Logger cho DungeonQuest.
+return basicDodge end function __DIST.m()-- Death Logger cho DungeonQuest.
 -- Công cụ ĐIỀU TRA: khi player chết, log ra console thông tin nguyên nhân
 -- tử vong (lastCombatant, vị trí, và các object nghi ngờ là hazard quanh
 -- điểm chết). Dùng để xác định "thứ gì thực sự gây chết" trước khi gắn
@@ -8562,7 +8341,7 @@ return basicDodge end function __DIST.u()-- Death Logger cho DungeonQuest.
 
 --// Imports
 
-local services = __DIST.load('k')
+local services = __DIST.load('c')
 local player = services.player
 
 --// Configuration
@@ -8727,21 +8506,21 @@ function deathLog.IsEnabled()
 end
 
 return deathLog
-end function __DIST.v()-- Tab Auto Farm (DungeonQuest): Farm, Combat, Auto Start/Retry.
+end function __DIST.n()-- Tab Auto Farm (DungeonQuest): Farm, Combat, Auto Start/Retry.
 
 --// Imports
 
-local macLib = __DIST.load('i')
-local shared = __DIST.load('l')
-local ui = __DIST.load('m')
-local combat = __DIST.load('p')
-local farm = __DIST.load('q')
-local autoStart = __DIST.load('r')
-local autoRetry = __DIST.load('s')
-local autoSave = __DIST.load('n')
-local notifier = __DIST.load('j')
-local basicOrbitDodge = __DIST.load('t')
-local deathLog = __DIST.load('u')
+local macLib = __DIST.load('a')
+local shared = __DIST.load('d')
+local ui = __DIST.load('e')
+local combat = __DIST.load('h')
+local farm = __DIST.load('i')
+local autoStart = __DIST.load('j')
+local autoRetry = __DIST.load('k')
+local autoSave = __DIST.load('f')
+local notifier = __DIST.load('b')
+local basicOrbitDodge = __DIST.load('l')
+local deathLog = __DIST.load('m')
 
 return function(window, tab)
 	--// Sections
@@ -9018,6 +8797,31 @@ return function(window, tab)
 	}, "Slider_BasicDetectRadius"))
 
 	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Panic Radius",
+		Default = basicOrbitDodge.GetPanicRadius(),
+		Minimum = 3,
+		Maximum = 30,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetPanicRadius(Value)
+		end),
+	}, "Slider_BasicPanicRadius"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Panic Cooldown",
+		Default = basicOrbitDodge.GetPanicCooldown(),
+		Minimum = 0.05,
+		Maximum = 1,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetPanicCooldown(Value)
+		end),
+	}, "Slider_BasicPanicCooldown"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Dodge Danger Radius",
 		Default = basicOrbitDodge.GetDangerRadius(),
 		Minimum = 5,
@@ -9117,22 +8921,227 @@ return function(window, tab)
 		end),
 	}, "Slider_RetryTimeThreshold"))
 end
-end function __DIST.w()-- Auto Join Dungeon cho DungeonQuest: tạo phòng + whitelist + start dungeon khi ở lobby.
+end function __DIST.o()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+-- Map thường: fetch động qua remote getDungeonStats (có cache).
+-- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
+
+--// Data
+
+local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
+
+local DUNGEONS = {
+	"Desert Temple",
+	"Winter Outpost",
+	"Pirate Island",
+	"King's Castle",
+	"The Underworld",
+	"Samurai Palace",
+	"The Canals",
+	"Ghastly Harbor",
+	"Steampunk Sewers",
+	"Orbital Outpost",
+	"Volcanic Chambers",
+	"Aquatic Temple",
+	"Enchanted Forest",
+	"Egg Island",
+	"Krampus",
+	"Tutorial Dungeon",
+}
+
+local SPECIAL_DUNGEONS = {
+	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
+	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
+	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
+}
+
+--// Table
+local dungeonCatalog = {}
+
+--// Cache
+local statsCache = {}
+local dynamicDungeons = nil
+
+--// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
+local HttpService = game:GetService("HttpService")
+local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
+
+local function persistMapList(list)
+	if not (isfile and writefile and makefolder and isfolder) then return end
+	pcall(function()
+		if not isfolder("Maclib") then makefolder("Maclib") end
+	end)
+	pcall(function()
+		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
+	end)
+end
+
+local function loadPersistedMapList()
+	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
+	end)
+	if not ok or typeof(data) ~= "table" then return nil end
+
+	local list = {}
+	for _, name in ipairs(data) do
+		if type(name) == "string" and #name > 0 then
+			table.insert(list, name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+local function mergeDungeonLists(primary)
+	local seen = {}
+	local merged = {}
+	for _, name in ipairs(primary or {}) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	for _, name in ipairs(DUNGEONS) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	return merged
+end
+
+--// Helpers
+local function findScrollingFrame()
+	local player = game:GetService("Players").LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local queueGui = playerGui:FindFirstChild("queueGui")
+	if not queueGui then return nil end
+	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
+	if not chooseDungeon then return nil end
+	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
+	if not backgroundFillLeft then return nil end
+	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
+end
+
+local function collectDungeonsFromUi()
+	local scrollingFrame = findScrollingFrame()
+	if not scrollingFrame then return nil end
+
+	local list = {}
+	for _, child in ipairs(scrollingFrame:GetChildren()) do
+		if child:IsA("ImageLabel") and #child.Name > 0 then
+			table.insert(list, child.Name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+--// Methods
+function dungeonCatalog.GetDungeons()
+	if dynamicDungeons then return dynamicDungeons end
+
+	local uiList = collectDungeonsFromUi()
+	if uiList then
+		local merged = mergeDungeonLists(uiList)
+		dynamicDungeons = merged
+		persistMapList(merged)
+		return merged
+	end
+
+	local persisted = loadPersistedMapList()
+	if persisted then
+		local merged = mergeDungeonLists(persisted)
+		dynamicDungeons = merged
+		return merged
+	end
+
+	return DUNGEONS
+end
+
+function dungeonCatalog.RefreshDungeons()
+	dynamicDungeons = nil
+	return dungeonCatalog.GetDungeons()
+end
+
+function dungeonCatalog.GetDungeonStats(name)
+	if type(name) ~= "string" or #name == 0 then return nil end
+	if statsCache[name] ~= nil then return statsCache[name] end
+
+	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
+	if not getStats then return nil end
+
+	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
+	if ok and typeof(result) == "table" then
+		statsCache[name] = result
+		return result
+	end
+	return nil
+end
+
+function dungeonCatalog.GetAllowedDifficulties(name)
+	if type(name) ~= "string" then return DIFFICULTIES end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.Difficulties end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	local allowed = {}
+	if stats then
+		for _, difficulty in ipairs(DIFFICULTIES) do
+			if stats[difficulty] then table.insert(allowed, difficulty) end
+		end
+	end
+	if #allowed > 0 then return allowed end
+	return DIFFICULTIES
+end
+
+function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
+	if type(difficulty) ~= "string" then return false end
+	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
+		if option == difficulty then return true end
+	end
+	return false
+end
+
+function dungeonCatalog.GetLevelReq(name, difficulty)
+	if type(name) ~= "string" then return 0 end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.LevelReq or 0 end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	if stats and type(difficulty) == "string" and stats[difficulty] then
+		return tonumber(stats[difficulty].levelReq) or 0
+	end
+	return 0
+end
+
+--// Table
+dungeonCatalog.DUNGEONS = DUNGEONS
+dungeonCatalog.DIFFICULTIES = DIFFICULTIES
+
+return dungeonCatalog end function __DIST.p()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+-- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
-local services = __DIST.load('k')
-local shared = __DIST.load('l')
-local notifier = __DIST.load('j')
+local services = __DIST.load('c')
+local notifier = __DIST.load('b')
+local dungeonCatalog = __DIST.load('o')
 
 local playerName = services.player.Name
 
 --// State
 local autoJoinEnabled = false
 local autoJoinRunning = false
+local autoJoinCancel = false
 local selectedDungeon = "Desert Temple"
 local selectedDifficulty = "Easy"
 local hardcoreEnabled = false
+local privateEnabled = true
+local waveDefenceEnabled = false
 local autoJoinDelay = 3
 
 local LOBBY_PLACE_IDS_AJ = {
@@ -9141,28 +9150,52 @@ local LOBBY_PLACE_IDS_AJ = {
 	[2414851778] = true,
 }
 
+--// Callbacks (UI đăng ký để refresh difficulty dropdown theo map)
+local dungeonChangedCallbacks = {}
+
 --// Helpers
 local function inLobbyPlace()
 	return LOBBY_PLACE_IDS_AJ[game.PlaceId] == true
 end
 
+local function fireDungeonChanged()
+	for _, callback in ipairs(dungeonChangedCallbacks) do
+		pcall(callback, selectedDungeon, dungeonCatalog.GetAllowedDifficulties(selectedDungeon))
+	end
+end
+
 local function joinDungeonNow()
 	if autoJoinRunning then return end
 	autoJoinRunning = true
+	autoJoinCancel = false
 	task.spawn(function()
 		local ok, err = pcall(function()
 			local remotes = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 15)
 			if not remotes then error("remotes not found") end
 
+			local levelReq = dungeonCatalog.GetLevelReq(selectedDungeon, selectedDifficulty)
 			pcall(function()
-				remotes:WaitForChild("createLobby", 10):InvokeServer(selectedDungeon, selectedDifficulty, 0, hardcoreEnabled, true, false)
+				remotes:WaitForChild("createLobby", 10):InvokeServer(
+					selectedDungeon,
+					selectedDifficulty,
+					levelReq,
+					hardcoreEnabled,
+					privateEnabled,
+					waveDefenceEnabled
+				)
 			end)
+			if autoJoinCancel then return end
 			task.wait(autoJoinDelay)
+			if autoJoinCancel then return end
 
-			pcall(function()
-				remotes:WaitForChild("addPlayerToWhitelist", 10):FireServer(playerName)
-			end)
-			task.wait(autoJoinDelay)
+			if privateEnabled then
+				pcall(function()
+					remotes:WaitForChild("addPlayerToWhitelist", 10):FireServer(playerName)
+				end)
+				if autoJoinCancel then return end
+				task.wait(autoJoinDelay)
+				if autoJoinCancel then return end
+			end
 
 			local waitClock = 0
 			while waitClock < 10 do
@@ -9170,19 +9203,23 @@ local function joinDungeonNow()
 				if lobby then break end
 				task.wait(0.5)
 				waitClock = waitClock + 0.5
+				if autoJoinCancel then return end
 			end
+			if autoJoinCancel then return end
 
 			task.wait(autoJoinDelay)
+			if autoJoinCancel then return end
 			pcall(function()
 				remotes:WaitForChild("startDungeon", 10):FireServer()
 			end)
 		end)
+		autoJoinRunning = false
+		if autoJoinCancel then return end
 		if ok then
 			notifier.Notify("Auto Join", "Joined: " .. selectedDungeon, 3)
 		else
 			notifier.Notify("Auto Join", "Join failed: " .. tostring(err), 4)
 		end
-		autoJoinRunning = false
 	end)
 end
 
@@ -9204,24 +9241,58 @@ function autoJoin.Toggle(state)
 	if autoJoinEnabled then
 		notifier.Notify("Auto Join", "Enabled", 2)
 	else
+		autoJoinCancel = true
 		notifier.Notify("Auto Join", "Stopped", 2)
 	end
 end
 
 function autoJoin.SetDungeon(name)
-	if name then selectedDungeon = name end
+	if type(name) ~= "string" or #name == 0 then return end
+	selectedDungeon = name
+	if not dungeonCatalog.IsDifficultyAllowed(selectedDungeon, selectedDifficulty) then
+		local allowed = dungeonCatalog.GetAllowedDifficulties(selectedDungeon)
+		if #allowed > 0 then selectedDifficulty = allowed[1] end
+	end
+	fireDungeonChanged()
 end
 
 function autoJoin.SetDifficulty(name)
-	if name then selectedDifficulty = name end
+	if type(name) ~= "string" then return end
+	if dungeonCatalog.IsDifficultyAllowed(selectedDungeon, name) then
+		selectedDifficulty = name
+	end
 end
 
 function autoJoin.SetHardcore(state)
 	hardcoreEnabled = state
 end
 
+function autoJoin.SetPrivate(state)
+	privateEnabled = state
+end
+
+function autoJoin.SetWaveDefence(state)
+	waveDefenceEnabled = state
+end
+
 function autoJoin.SetDelay(value)
 	autoJoinDelay = value
+end
+
+function autoJoin.GetSelectedDungeon()
+	return selectedDungeon
+end
+
+function autoJoin.GetSelectedDifficulty()
+	return selectedDifficulty
+end
+
+function autoJoin.GetAllowedDifficulties()
+	return dungeonCatalog.GetAllowedDifficulties(selectedDungeon)
+end
+
+function autoJoin.OnDungeonChanged(callback)
+	if type(callback) == "function" then table.insert(dungeonChangedCallbacks, callback) end
 end
 
 autoJoin.JoinNow = function()
@@ -9231,23 +9302,15 @@ end
 --// Initialize: watcher
 task.spawn(joinDungeonWatcher)
 
-return autoJoin
-end function __DIST.x()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon.
+return autoJoin end function __DIST.q()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+-- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
-local ui = __DIST.load('m')
-local autoJoin = __DIST.load('w')
-local autoSave = __DIST.load('n')
-
-local DUNGEONS = {
-	"Desert Temple", "Winter Outpost", "Pirate Island", "King's Castle",
-	"The Underworld", "Samurai Palace", "The Canals", "Ghastly Harbor",
-	"Steampunk Sewers", "Orbital Outpost", "Volcanic Chambers",
-	"Aquatic Temple", "Enchanted Forest",
-}
-
-local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
+local ui = __DIST.load('e')
+local autoJoin = __DIST.load('p')
+local autoSave = __DIST.load('f')
+local dungeonCatalog = __DIST.load('o')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -9261,9 +9324,9 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoJoin")
 
-	section:Dropdown({
+	local dungeonDropdown = section:Dropdown({
 		Name = "Dungeon",
-		Options = DUNGEONS,
+		Options = dungeonCatalog.GetDungeons(),
 		Default = 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
@@ -9271,13 +9334,50 @@ return function(window, tab)
 		end),
 	}, "Dropdown_Dungeon")
 
-	section:Dropdown({
+	section:Button({
+		Name = "Refresh Map List",
+		Callback = function()
+			task.spawn(function()
+				local newList = dungeonCatalog.RefreshDungeons()
+				if not newList or #newList == 0 then return end
+				pcall(function()
+					dungeonDropdown:ClearOptions()
+					dungeonDropdown:InsertOptions(newList)
+				end)
+				local current = autoJoin.GetSelectedDungeon()
+				if not table.find(newList, current) then
+					autoJoin.SetDungeon(newList[1])
+				end
+				pcall(function()
+					dungeonDropdown:UpdateSelection(autoJoin.GetSelectedDungeon())
+				end)
+			end)
+		end,
+	})
+
+	local levelReqLabel = section:Label({
+		Text = "Recommended Level: ...",
+	}, "Label_RecommendedLevel")
+
+	local function updateLevelLabel()
+		pcall(function()
+			local levelReq = dungeonCatalog.GetLevelReq(
+				autoJoin.GetSelectedDungeon(),
+				autoJoin.GetSelectedDifficulty()
+			)
+			levelReqLabel:UpdateName("Recommended Level: " .. tostring(levelReq))
+		end)
+	end
+	updateLevelLabel()
+
+	local difficultyDropdown = section:Dropdown({
 		Name = "Difficulty",
-		Options = DIFFICULTIES,
+		Options = autoJoin.GetAllowedDifficulties(),
 		Default = 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
 			autoJoin.SetDifficulty(option)
+			updateLevelLabel()
 		end),
 	}, "Dropdown_Difficulty")
 
@@ -9288,6 +9388,22 @@ return function(window, tab)
 			autoJoin.SetHardcore(state)
 		end),
 	}, "Toggle_HardcoreAJ")
+
+	section:Toggle({
+		Name = "Private Room",
+		Default = true,
+		Callback = autoSave.Wrap(function(state)
+			autoJoin.SetPrivate(state)
+		end),
+	}, "Toggle_PrivateAJ")
+
+	section:Toggle({
+		Name = "Wave Defence",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoJoin.SetWaveDefence(state)
+		end),
+	}, "Toggle_WaveDefenceAJ")
 
 	ui.PatchSliderLoadCallback(section:Slider({
 		Name = "Delay",
@@ -9308,14 +9424,23 @@ return function(window, tab)
 			autoJoin.JoinNow()
 		end,
 	})
-end
-end function __DIST.y()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
+
+	-- Đồng bộ difficulty dropdown khi đổi map (cũng chạy khi config load).
+	autoJoin.OnDungeonChanged(function(dungeon, allowed)
+		pcall(function()
+			difficultyDropdown:ClearOptions()
+			difficultyDropdown:InsertOptions(allowed)
+			difficultyDropdown:UpdateSelection(autoJoin.GetSelectedDifficulty())
+		end)
+		updateLevelLabel()
+	end)
+end end function __DIST.r()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
 -- Chỉ highlight các object trùng tên với model projectile trong
 -- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
 --// Imports
 
-local shared = __DIST.load('l')
+local shared = __DIST.load('d')
 
 --// Table
 local esp = {}
@@ -9414,13 +9539,13 @@ function esp.IsEnabled()
 end
 
 return esp
-end function __DIST.z()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+end function __DIST.s()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 
-local autoSave = __DIST.load('n')
-local esp = __DIST.load('y')
-local basicOrbitDodge = __DIST.load('t')
+local autoSave = __DIST.load('f')
+local esp = __DIST.load('r')
+local basicOrbitDodge = __DIST.load('l')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -9465,13 +9590,13 @@ return function(window, tab)
 			end
 		end),
 	}, "Dropdown_DetectorShape")
-end end function __DIST.A()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end end function __DIST.t()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
 
-local macLib = __DIST.load('i')
-local notifier = __DIST.load('j')
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('b')
 
 --// Services
 local HttpService = game:GetService("HttpService")
@@ -9540,15 +9665,15 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.B()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.u()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
 --// Imports
 
-local macLib = __DIST.load('i')
-local autoSave = __DIST.load('n')
-local autoHide = __DIST.load('A')
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('f')
+local autoHide = __DIST.load('t')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -9705,15 +9830,15 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.C()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.v()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
 --// Imports
 
-local macLib = __DIST.load('i')
-local notifier = __DIST.load('j')
-local shared = __DIST.load('l')
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('b')
+local shared = __DIST.load('d')
 
 --// Services
 local HttpService = game:GetService("HttpService")
@@ -10201,12 +10326,12 @@ end
 loadSettings()
 
 return webhook
-end function __DIST.D()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.w()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('C')
+local webhook = __DIST.load('v')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -10273,11 +10398,11 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.E()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.x()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
-local shared = __DIST.load('l')
+local shared = __DIST.load('d')
 
 local BOSS_LABEL = "Boss Active"
 
@@ -10322,12 +10447,12 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.F()-- Phím tắt R: teleport tới kẻ địch gần nhất (dành cho Tab Combat).
+end function __DIST.y()-- Phím tắt R: teleport tới kẻ địch gần nhất (dành cho Tab Combat).
 
 --// Imports
 
-local services = __DIST.load('k')
-local shared = __DIST.load('l')
+local services = __DIST.load('c')
+local shared = __DIST.load('d')
 
 --// References
 local UserInputService = services.UserInputService
@@ -10351,7 +10476,7 @@ function shortcuts.Init()
 end
 
 return shortcuts
-end function __DIST.G()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.z()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -10372,7 +10497,7 @@ return function(self)
 	end
 
 	--// Imports
-	local macLib = __DIST.load('i')
+	local macLib = __DIST.load('a')
 
 	--// Window
 	local window = macLib:Window({
@@ -10386,7 +10511,7 @@ return function(self)
 		AcrylicBlur = true,
 	})
 
-	local notifier = __DIST.load('j')
+	local notifier = __DIST.load('b')
 	notifier:SetWindow(window)
 
 	--// Đăng ký UI vào registry để unload UI cũ trước mỗi lần execute script mới
@@ -10408,13 +10533,13 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local speedTab = __DIST.load('o')
-	local combatTab = __DIST.load('v')
-	local dungeonTab = __DIST.load('x')
-	local visualTab = __DIST.load('z')
-	local configTab = __DIST.load('B')
-	local notificationsTab = __DIST.load('D')
-	local stateTab = __DIST.load('E')
+	local speedTab = __DIST.load('g')
+	local combatTab = __DIST.load('n')
+	local dungeonTab = __DIST.load('q')
+	local visualTab = __DIST.load('s')
+	local configTab = __DIST.load('u')
+	local notificationsTab = __DIST.load('w')
+	local stateTab = __DIST.load('x')
 
 	speedTab(window, tabs.Player)
 	combatTab(window, tabs.Farm)
@@ -10425,22 +10550,22 @@ return function(self)
 	stateTab(window, tabs.State)
 
 	--// Phím tắt
-	local shortcuts = __DIST.load('F')
+	local shortcuts = __DIST.load('y')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('C')
+	local webhook = __DIST.load('v')
 	webhook.Init()
-__DIST.load('t')
+__DIST.load('l')
 
 	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
 	
 
-local deathLog = __DIST.load('u')
+local deathLog = __DIST.load('m')
 	deathLog.Init()
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('A')
+	local autoHide = __DIST.load('t')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -10448,14 +10573,249 @@ local deathLog = __DIST.load('u')
 	tabs.Player:Select()
 	macLib:LoadAutoLoadConfig()
 end
+end function __DIST.A()
+local flags = {}
+
+function flags:Export()
+    local result = {}
+
+    for key, component in pairs(self) do
+        if typeof(component) == "Instance" or type(component) == "table" then
+            local success, value = pcall(function()
+                -- return component.Value
+            end)
+
+            if success and value ~= nil then
+                result[key] = value
+            end
+        end
+    end
+
+    return result
+end
+
+function flags:Import(data)
+	for key, value in pairs(data) do
+		local component = self[key]
+
+		if component and component.Value ~= nil then
+			local success = pcall(function()
+				-- component:SetValue(value)
+			end)
+
+			if not success then
+				warn(`Failed to import value for flag "{key}"`)
+			end
+		end
+	end
+end
+
+function flags:Reset()
+	for k in pairs(self) do
+		self[k] = nil
+	end
+end
+
+return flags end function __DIST.B()
+local binder = {}
+
+function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
+	for property, value in pairs(properties) do
+		if excludes and table.find(excludes, property) then
+			continue
+		end
+
+		pcall(function()
+			object[property] = value
+		end)
+	end
+
+	return object
+end
+
+function binder.Wrap(
+	object: { [string]: any },
+	bindings: { [string]: (any) -> () },
+	excludes: { [number]: any }?,
+	instance: Instance?
+): any
+	local proxy = {}
+
+	setmetatable(proxy, {
+		__index = function(_, key)
+			if object[key] ~= nil then
+				return object[key]
+			elseif instance then
+				local ok, value = pcall(function()
+					return instance[key]
+				end)
+
+				if ok then
+					return value
+				end
+			end
+
+			return
+		end,
+
+		__newindex = function(_, key, value)
+			local handler = bindings[key]
+
+			if handler then
+				handler(value)
+
+				if not (excludes and table.find(excludes, key)) then
+					object[key] = value
+				end
+			elseif instance then
+				local ok, _ = pcall(function()
+					instance[key] = value
+				end)
+
+				if not ok then
+					object[key] = value
+				end
+			else
+				object[key] = value
+			end
+		end,
+	})
+
+	return proxy
+end
+
+return binder
+end function __DIST.C()
+--// Imports
+
+
+
+local binder = __DIST.load('B')
+
+--// Variables
+local interface = {}
+
+--// Initialize
+function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_TYPE_a
+	properties = properties or {}
+	print("Made a window")
+
+	local object = binder.Wrap(properties, {
+		Visible = function(value: boolean)
+			print("Set window visibility to:", value)
+		end,
+	})
+
+	return binder.Apply(properties, object)
+end
+
+return interface
+end function __DIST.D()--// Imports
+
+local binder = __DIST.load('B')
+
+--// Variables
+local esp = {}
+
+--// Initialize
+return binder.Wrap(esp, {
+	Enabled = function(value: boolean)
+		print(`{value and "Enabled" or "Disabled"} ESP.`)
+	end,
+}) :: { Enabled: boolean }
+end function __DIST.E()--// Imports
+
+local flags = __DIST.load('A')
+local interface = __DIST.load('C')
+local esp = __DIST.load('D')
+
+--// Initialize
+local window = interface:Window({
+	Visible = true,
+})
+
+return {
+	Flags = flags,
+	Esp = esp,
+	Interface = interface,
+	Window = window,
+
+	Tabs = {
+		Home = function(self)
+			-- ....
+
+			-- return tab
+		end,
+
+		Visuals = function(self)
+			-- ....
+
+			-- return tab
+		end,
+
+		Settings = function(self)
+			-- ....
+
+			-- return tab
+		end,
+
+		Config = function(self)
+			-- ....
+
+			-- return tab
+		end,
+	},
+}
+end function __DIST.F()--// Variables
+
+local utility = {}
+
+--// Initialize
+function utility.GetPlayer(): Player?
+	local success, result = pcall(function()
+		return game:GetService("Players")
+	end)
+
+	return success and (result :: Players).LocalPlayer
+end
+
+function utility.GetCharacter(player: Player?): Model?
+	local success, result = pcall(function()
+		return player and player.Character
+	end)
+
+	return success and result
+end
+
+function utility.GetHumanoid(player: Player?): Humanoid?
+	local success, result = pcall(function()
+		local character = utility.GetCharacter(player)
+		
+		return character and character:FindFirstChildOfClass("Humanoid")
+	end)
+
+	return success and result
+end
+
+return utility
+end function __DIST.G()--// Functions
+
+local function cast(service: string): any
+	return game:GetService(service)
+end
+
+--// Initialize
+return {
+	Players = cast("Players") :: Players,
+}
 end function __DIST.H()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('e')
-	local utility = __DIST.load('f')
-	local services = __DIST.load('g')
+	local base = __DIST.load('E')
+	local utility = __DIST.load('F')
+	local services = __DIST.load('G')
 
 	--// References
 	local flags = base.Flags
@@ -10513,14 +10873,14 @@ _G.ScriptHub_UI = nil
 --// Variables
 local routes = {
 	{
-		Name = "Universal",
-		Load = __DIST.load('h'),
-	},
-
-	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('G'),
+		Load = __DIST.load('z'),
 		UniverseId = 9931749389,
+		Places = {
+			77649408247578,
+			3220968688,
+			2414851778,
+		},
 	},
 
 	{
@@ -10532,6 +10892,12 @@ local routes = {
 		},
 	},
 }
+
+--// Chờ game info sẵn sàng (tránh inject sớm làm GameId/PlaceId chưa đúng -> route không khớp)
+for _ = 1, 300 do
+	if game.GameId ~= 0 and game.PlaceId ~= 0 then break end
+	task.wait(0.1)
+end
 
 --// Initialize
 for _, route in pairs(routes) do
@@ -10547,5 +10913,3 @@ for _, route in pairs(routes) do
 		return route:Load()
 	end
 end
-
-routes[1]:Load() -- Fall back to Universal if no route was loaded.

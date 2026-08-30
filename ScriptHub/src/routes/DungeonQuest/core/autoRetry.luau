@@ -2,7 +2,6 @@
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
-local shared = require("@routes/DungeonQuest/core/shared")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 
 --// References
@@ -10,7 +9,6 @@ local player = services.player
 
 --// State
 local AUTO_RETRY_MIN_ITEMS = 2
-local TIME_LIMIT = 720 --// 12 phút tính ra giây
 local autoRetryEnabled = false
 local autoRetryRunning = false
 local autoRetryTriggered = false
@@ -75,6 +73,34 @@ if not autoRetryHolderFn then
 	end
 end
 
+--// Đọc thẳng giá trị thời gian còn lại từ UI game: PlayerGui.timeLeftGui.Frame.time
+local function readTimeLeft()
+	local ok, inst = pcall(function()
+		local PlayerGui = player:FindFirstChild("PlayerGui")
+		local gui = PlayerGui and PlayerGui:FindFirstChild("timeLeftGui")
+		local frame = gui and gui:FindFirstChild("Frame")
+		return frame and frame:FindFirstChild("time")
+	end)
+	if not ok or typeof(inst) ~= "Instance" then return nil end
+
+	--// Ưu tiên ValueBase (NumberValue...), nếu không thì đọc Text của TextLabel
+	local raw
+	if inst:IsA("ValueBase") then
+		raw = inst.Value
+	else
+		raw = inst.Text
+	end
+	if type(raw) == "number" then return raw end
+	if type(raw) == "string" then
+		local cleaned = raw:gsub("%s+", ""):gsub("^%[", ""):gsub("%]$", "")
+		local m, s = cleaned:match("^(%d+):(%d+)$")
+		if m and s then return tonumber(m) * 60 + tonumber(s) end
+		local sec = tonumber(cleaned)
+		if sec then return sec end
+	end
+	return nil
+end
+
 --// Table
 local autoRetry = {}
 
@@ -116,14 +142,13 @@ function autoRetry.Start()
 				autoRetryTriggered = false
 			end
 
-			--// Điều kiện hết giờ (tách riêng): còn < X giây thì retry
+			--// Điều kiện hết giờ (tách riêng): UI còn < X giây thì retry
 			if timeRetryEnabled then
-				local elapsed = shared.GetDungeonElapsed()
-				local remaining = elapsed and (TIME_LIMIT - elapsed)
+				local remaining = readTimeLeft()
 				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
 					timeRetryTriggered = true
 					fireRetry()
-				elseif not remaining or remaining >= timeRetryThreshold then
+				elseif remaining and remaining >= timeRetryThreshold then
 					timeRetryTriggered = false
 				end
 			end
@@ -165,10 +190,6 @@ end
 
 function autoRetry.GetTimeRetryThreshold()
 	return timeRetryThreshold
-end
-
-function autoRetry.GetTimeLimit()
-	return TIME_LIMIT
 end
 
 function autoRetry.RetryNow()

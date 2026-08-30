@@ -288,6 +288,31 @@ return function(window, tab)
 	}, "Slider_BasicDetectRadius"))
 
 	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Panic Radius",
+		Default = basicOrbitDodge.GetPanicRadius(),
+		Minimum = 3,
+		Maximum = 30,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetPanicRadius(Value)
+		end),
+	}, "Slider_BasicPanicRadius"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Panic Cooldown",
+		Default = basicOrbitDodge.GetPanicCooldown(),
+		Minimum = 0.05,
+		Maximum = 1,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			basicOrbitDodge.SetPanicCooldown(Value)
+		end),
+	}, "Slider_BasicPanicCooldown"))
+
+	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Dodge Danger Radius",
 		Default = basicOrbitDodge.GetDangerRadius(),
 		Minimum = 5,
