@@ -5,6 +5,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local farm = require("@routes/DungeonQuest/core/farm")
+local macLib = require("@packages/Maclib")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -77,11 +78,22 @@ return function(window, tab)
 	--// Auto Farm toggle qua phím tắt
 	section:Header({ Name = "Auto Farm" })
 
+	local function toggleAutoFarmFromKey()
+		local newState = not shared.IsFarmEnabled()
+		--// Đồng bộ UI toggle Auto Farm ở tab Combat (nếu có) - drive farm qua callback của nó
+		local opt = macLib.Options and macLib.Options["Toggle_AutoFarm"]
+		if opt and opt.UpdateState then
+			opt:UpdateState(newState)
+		else
+			farm.Toggle(newState)
+		end
+	end
+
 	section:Keybind({
 		Name = "Toggle Auto Farm",
 		Default = Enum.KeyCode.X,
 		Callback = function()
-			farm.Toggle(not shared.IsFarmEnabled())
+			toggleAutoFarmFromKey()
 		end,
 	}, "Keybind_AutoFarm")
 

@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-31T09:30:50.187819900+00:00",
+    genDate = "2026-08-31T09:36:03.756433600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7461,6 +7461,7 @@ local shared = __DIST.load('d')
 local ui = __DIST.load('e')
 local autoSave = __DIST.load('f')
 local farm = __DIST.load('g')
+local macLib = __DIST.load('a')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -7533,11 +7534,22 @@ return function(window, tab)
 	--// Auto Farm toggle qua phím tắt
 	section:Header({ Name = "Auto Farm" })
 
+	local function toggleAutoFarmFromKey()
+		local newState = not shared.IsFarmEnabled()
+		--// Đồng bộ UI toggle Auto Farm ở tab Combat (nếu có) - drive farm qua callback của nó
+		local opt = macLib.Options and macLib.Options["Toggle_AutoFarm"]
+		if opt and opt.UpdateState then
+			opt:UpdateState(newState)
+		else
+			farm.Toggle(newState)
+		end
+	end
+
 	section:Keybind({
 		Name = "Toggle Auto Farm",
 		Default = Enum.KeyCode.X,
 		Callback = function()
-			farm.Toggle(not shared.IsFarmEnabled())
+			toggleAutoFarmFromKey()
 		end,
 	}, "Keybind_AutoFarm")
 
