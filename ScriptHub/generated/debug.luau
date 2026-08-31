@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-31T09:36:03.756433600+00:00",
+    genDate = "2026-08-31T10:10:55.505321600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6061,6 +6061,11 @@ local farmLastSkillTime = 0
 local shortcutOrbitId = 0
 local nearestTeleportDistance = 12
 local farthestTeleportDistance = 12
+--// Khoảng cách tele tới phía trước barrier gần nhất (Workspace/dungeon/<room>).
+--// Cho phép giá trị ÂM để đổi sang phía bên kia khi hướng tiếp cận bị ngược.
+local barrierTeleportDistance = 10
+--// Mã orbit barrier hiện tại để huỷ vòng giữ quỹ đạo cũ khi tele lại.
+local barrierOrbitId = 0
 --// Bước góc (độ) mỗi lần tele trong farm mode "Orbit Tele" (real alias là rad sau đó)
 local orbitTeleStepDeg = 15
 --// Thời điểm lần nhảy góc gần nhất (điều khiển nhịp ORBIT_TELE_INTERVAL)
@@ -6569,6 +6574,144 @@ end
 
 function shared.TeleportBehindFarthestEnemy()
 	teleportToSelectedEnemy(getFarthestEnemy, "Behind", farthestTeleportDistance, SHORTCUT_TELEPORT_HEIGHT, SHORTCUT_ORBIT_DURATION, SHORTCUT_ORBIT_SPEED)
+end
+
+--// ---- Barrier teleport (Workspace/dungeon/<room>) ----
+--// Tìm root part của 1 barrier (Part hoặc Model) theo tên chứa "barrier".
+local function getBarrierRoot(obj)
+	if obj:IsA("BasePart") then return obj end
+	if obj:IsA("Model") then
+		local root = obj:FindFirstChild("HumanoidRootPart")
+		if root and root:IsA("BasePart") then return root end
+		if obj.PrimaryPart and obj.PrimaryPart:IsA("BasePart") then return obj.PrimaryPart end
+		for _, d in ipairs(obj:GetDescendants()) do
+			if d:IsA("BasePart") then return d end
+		end
+	end
+	return nil
+end
+
+--// Barrier gần player nhất trong toàn bộ dungeon (mọi room). Trả về root part.
+local function getNearestBarrier(playerPos)
+	if not dungeon then return nil end
+	local nearest, nearestDist = nil, math.huge
+	for _, desc in ipairs(dungeon:GetDescendants()) do
+		if string.find(string.lower(desc.Name), "barrier", 1, true) then
+			local root = getBarrierRoot(desc)
+			if root then
+				local d = (root.Position - playerPos).Magnitude
+				if d < nearestDist then
+					nearestDist = d
+					nearest = root
+				end
+			end
+		end
+	end
+	return nearest
+end
+
+--// Giữ player tại vị trí orbit quanh barrier trong thời gian ngắn, cùng kiểu
+--// với maintainShortcutOrbit của phím tắt R/C (tele vào điểm rồi giữ/hover).
+local function maintainBarrierOrbit(orbitId, center, angle, radius, height, duration, speed)
+	local deadline = os.clock() + duration
+	local previousTime = os.clock()
+
+	while orbitId == barrierOrbitId and os.clock() < deadline do
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if not character or not playerRoot or not playerRoot.Parent then return end
+		if not character.PrimaryPart then character.PrimaryPart = playerRoot end
+		if not character.PrimaryPart then return end
+
+		local now = os.clock()
+		local deltaTime = now - previousTime
+		previousTime = now
+
+		angle = (angle + math.rad(speed) * deltaTime) % (math.pi * 2)
+		local targetPosition = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
+
+		character:PivotTo(CFrame.lookAt(targetPosition, center))
+		playerRoot.AssemblyLinearVelocity = Vector3.zero
+		playerRoot.AssemblyAngularVelocity = Vector3.zero
+		RunService.Heartbeat:Wait()
+	end
+end
+
+--// Tele player tới phía trước barrier gần nhất, cùng kiểu teleport với phím tắt R/C
+--// (dùng chung phép PivotTo vào điểm orbit + giữ quỹ đạo ngắn).
+--// barrierTeleportDistance cho phép giá trị ÂM để tele sang phía bên kia khi bị ngược.
+function shared.TeleportFrontOfNearestBarrier()
+	if teleporting then return end
+	teleporting = true
+
+	local s, err = pcall(function()
+		if shared.IsInLobby() then return end
+		if not dungeon and not initializeRooms() then return end
+
+		local character = player.Character
+		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+		if not character or not playerRoot or not playerRoot.Parent then return end
+		if character.PrimaryPart then character.PrimaryPart = playerRoot end
+
+		local barrierRoot = getNearestBarrier(playerRoot.Position)
+		if not barrierRoot then
+			notifier.Notify("Teleport", "No barrier found.", 3)
+			return
+		end
+
+		local center = barrierRoot.Position
+		--// "Phía trước" = phía player đang đứng so với barrier. Giá trị distance âm sẽ
+		--// nhân hướng tiếp cận với -1 để tele sang phía đối diện khi bị ngược.
+		local approach = playerRoot.Position - center
+		approach = Vector3.new(approach.X, 0, approach.Z)
+		if approach.Magnitude < 0.01 then approach = Vector3.new(0, 0, -1) end
+		approach = approach.Unit
+
+		local sign = barrierTeleportDistance < 0 and -1 or 1
+		local radius = math.abs(barrierTeleportDistance)
+		if radius < 1 then radius = 1 end
+		local height = SHORTCUT_TELEPORT_HEIGHT
+
+		--// Hướng lệch thực tế từ barrier tới điểm bắt đầu (tính theo dấu distance).
+		local offsetDir = Vector3.new(approach.X * sign, 0, approach.Z * sign)
+		local angle = math.atan2(offsetDir.Z, offsetDir.X)
+		local targetPosition = center + offsetDir * radius
+
+		local humanoid = character:FindFirstChild("Humanoid")
+		local oldAutoRotate = humanoid and humanoid.AutoRotate
+		local oldAnchored = playerRoot.Anchored
+		if humanoid then humanoid.AutoRotate = false end
+		playerRoot.Anchored = true
+		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+		character:PivotTo(CFrame.lookAt(targetPosition, center))
+		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
+
+		task.wait(FREEZE_TIME)
+
+		if playerRoot and playerRoot.Parent and humanoid and humanoid.Parent then
+			playerRoot.Anchored = oldAnchored
+			humanoid.AutoRotate = oldAutoRotate
+		end
+
+		barrierOrbitId += 1
+		local orbitId = barrierOrbitId
+		task.spawn(function()
+			maintainBarrierOrbit(orbitId, center, angle, radius, height, SHORTCUT_ORBIT_DURATION, SHORTCUT_ORBIT_SPEED)
+		end)
+
+		notifier.Notify("Teleport", "Teleported in front of barrier (" .. barrierRoot.Name .. ")", 2)
+	end)
+	if not s then warn("[Teleport] barrier error:", tostring(err)) end
+	teleporting = false
+end
+
+function shared.GetBarrierTeleportDistance()
+	return barrierTeleportDistance
+end
+
+function shared.SetBarrierTeleportDistance(value)
+	barrierTeleportDistance = tonumber(value) or barrierTeleportDistance
 end
 
 --// Speed state (Speed tab thao tác lên đây)
@@ -7530,6 +7673,28 @@ return function(window, tab)
 			shared.SetFarthestTeleportDistance(value)
 		end),
 	}, "Slider_TeleportFarthestDistance"))
+
+	section:Keybind({
+		Name = "Teleport Front of Barrier",
+		Default = Enum.KeyCode.B,
+		Callback = function()
+			task.spawn(function()
+				shared.TeleportFrontOfNearestBarrier()
+			end)
+		end,
+	}, "Keybind_TeleportBarrier")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Barrier Teleport Distance",
+		Default = shared.GetBarrierTeleportDistance(),
+		Minimum = -50,
+		Maximum = 50,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetBarrierTeleportDistance(value)
+		end),
+	}, "Slider_TeleportBarrierDistance"))
 
 	--// Auto Farm toggle qua phím tắt
 	section:Header({ Name = "Auto Farm" })

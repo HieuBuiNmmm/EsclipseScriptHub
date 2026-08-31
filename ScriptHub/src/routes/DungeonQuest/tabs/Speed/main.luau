@@ -75,6 +75,28 @@ return function(window, tab)
 		end),
 	}, "Slider_TeleportFarthestDistance"))
 
+	section:Keybind({
+		Name = "Teleport Front of Barrier",
+		Default = Enum.KeyCode.B,
+		Callback = function()
+			task.spawn(function()
+				shared.TeleportFrontOfNearestBarrier()
+			end)
+		end,
+	}, "Keybind_TeleportBarrier")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Barrier Teleport Distance",
+		Default = shared.GetBarrierTeleportDistance(),
+		Minimum = -50,
+		Maximum = 50,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetBarrierTeleportDistance(value)
+		end),
+	}, "Slider_TeleportBarrierDistance"))
+
 	--// Auto Farm toggle qua phím tắt
 	section:Header({ Name = "Auto Farm" })
 
