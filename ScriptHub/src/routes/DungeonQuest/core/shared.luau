@@ -265,6 +265,23 @@ initializeRooms = function()
 	for _, room in ipairs(dungeon:GetChildren()) do
 		if room:IsA("Folder") or room:IsA("Model") then trackRoom(room) end
 	end
+
+	--// Theo dõi cấp DUNGEON (không chỉ từng room): bắt được kẻ địch/room được thêm
+	--// vào sau khi init (phòng sinh sau, respawn trong room chưa được track...).
+	--// Không dùng DescendantAdded riêng cho từng room để tránh phát hiện trùng.
+	roomConnections[dungeon] = {
+		Added = dungeon.DescendantAdded:Connect(function(object)
+			if object:IsA("Model") then
+				waitAndTrackModel(object)
+			elseif object:IsA("Humanoid") then
+				local possibleModel = object:FindFirstAncestorOfClass("Model")
+				if possibleModel then waitAndTrackModel(possibleModel) end
+			end
+		end),
+		Removed = dungeon.DescendantRemoving:Connect(function(object)
+			if object:IsA("Model") then untrackEnemy(object) end
+		end),
+	}
 	return true
 end
 
@@ -1317,6 +1334,36 @@ task.spawn(function()
 	local success, errorMessage = pcall(function() return initializeRooms() end)
 	if not success then
 		warn("[EnemyTracker] Initialization error:", errorMessage)
+	end
+end)
+
+--// Re-scan định kỳ: reconcile trackedEnemies với nội dung dungeon hiện tại.
+--// Đảm bảo bắt được kẻ địch mà cơ chế event (DescendantAdded) bỏ lỡ do timing
+--// (Humanoid Health = 0 lúc sinh, room tạo sau init...) -> hết "không thấy kẻ địch".
+local lastRescan = 0
+local RESCAN_INTERVAL = 2
+task.spawn(function()
+	while true do
+		task.wait(RESCAN_INTERVAL)
+		local now = os.clock()
+		if now - lastRescan < RESCAN_INTERVAL then continue end
+		lastRescan = now
+		if not dungeon then continue end
+		local ok = pcall(function()
+			for _, room in ipairs(dungeon:GetChildren()) do
+				if room:IsA("Folder") or room:IsA("Model") then
+					for _, object in ipairs(room:GetDescendants()) do
+						if object:IsA("Model") then
+							waitAndTrackModel(object)
+						end
+					end
+				end
+			end
+			cleanupEnemies()
+		end)
+		if not ok then
+			warn("[EnemyTracker] rescan error")
+		end
 	end
 end)
 
