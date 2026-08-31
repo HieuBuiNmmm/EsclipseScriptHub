@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-31T06:31:24.558737700+00:00",
+    genDate = "2026-08-31T06:57:25.974403500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6908,6 +6908,11 @@ function shared.GetEnemyNames()
 	return out
 end
 
+--// Số enemy còn sống đang track trong màn (cập nhật thời gian thực)
+function shared.GetEnemyCount()
+	return enemyCount
+end
+
 --// Trả về set tên projectile của enemy từ ReplicatedStorage.enemyProjectiles
 --// (bao gồm Model, MeshPart, Part). Dùng chung cho ESP và Basic Orbit Dodge.
 function shared.GetEnemyProjectileNames()
@@ -11449,6 +11454,20 @@ return function(window, tab)
 		updateBossIndex()
 	end)
 
+	local enemyCountLabel = section:Label({
+		Text = "Enemies: 0",
+	})
+
+	local function updateEnemyCount()
+		if not shared.IsInLobby() and not shared.GetCurrentDungeonName() then
+			enemyCountLabel:UpdateName("Enemies: <font color='rgb(160, 160, 160)'>--</font>")
+			return
+		end
+		local count = shared.GetEnemyCount()
+		local color = count > 0 and "0, 255, 0" or "255, 80, 80"
+		enemyCountLabel:UpdateName("Enemies: <font color='rgb(" .. color .. ")'>" .. count .. "</font>")
+	end
+
 	section:Header({ Name = "Timer" })
 
 	local timeLeftLabel = section:Label({
@@ -11468,6 +11487,8 @@ return function(window, tab)
 		timeLeftLabel:UpdateName(TIMER_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. formatted .. "</font>")
 	end
 
+	updateEnemyCount()
+
 	updateTimeLeft()
 
 	--// Forward declaration: updateLobby được định nghĩa phía dưới nhưng poll loop
@@ -11478,6 +11499,7 @@ return function(window, tab)
 		while task.wait(0.5) do
 			updateBoss(shared.IsBossActive())
 			updateBossIndex()
+			updateEnemyCount()
 			updateLobby()
 			updateTimeLeft()
 		end

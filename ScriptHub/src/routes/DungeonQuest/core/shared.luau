@@ -944,6 +944,11 @@ function shared.GetEnemyNames()
 	return out
 end
 
+--// Số enemy còn sống đang track trong màn (cập nhật thời gian thực)
+function shared.GetEnemyCount()
+	return enemyCount
+end
+
 --// Trả về set tên projectile của enemy từ ReplicatedStorage.enemyProjectiles
 --// (bao gồm Model, MeshPart, Part). Dùng chung cho ESP và Basic Orbit Dodge.
 function shared.GetEnemyProjectileNames()
