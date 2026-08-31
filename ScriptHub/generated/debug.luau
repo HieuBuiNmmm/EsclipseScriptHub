@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-31T11:57:57.014317600+00:00",
+    genDate = "2026-08-31T12:09:16.298824300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6660,12 +6660,13 @@ function shared.TeleportFrontOfNearestBarrier()
 		end
 
 		local center = barrierRoot.Position
-		--// "Phía trước" = phía player đang đứng so với barrier. Giá trị distance âm sẽ
-		--// nhân hướng tiếp cận với -1 để tele sang phía đối diện khi bị ngược.
-		local approach = playerRoot.Position - center
-		approach = Vector3.new(approach.X, 0, approach.Z)
-		if approach.Magnitude < 0.01 then approach = Vector3.new(0, 0, -1) end
-		approach = approach.Unit
+		--// "Phía trước" = theo hướng facing cố định của barrier (LookVector), để cùng 1
+		--// barrier luôn tele về đúng 1 vị trí bất kể player tiếp cận từ hướng nào.
+		--// Giá trị distance âm sẽ đảo hướng để tele sang phía bên kia khi bị ngược.
+		local forward = barrierRoot.CFrame.LookVector
+		forward = Vector3.new(forward.X, 0, forward.Z)
+		if forward.Magnitude < 0.01 then forward = Vector3.new(0, 0, -1) end
+		forward = forward.Unit
 
 		local sign = barrierTeleportDistance < 0 and -1 or 1
 		local radius = math.abs(barrierTeleportDistance)
@@ -6673,7 +6674,7 @@ function shared.TeleportFrontOfNearestBarrier()
 		local height = SHORTCUT_TELEPORT_HEIGHT
 
 		--// Hướng lệch thực tế từ barrier tới điểm bắt đầu (tính theo dấu distance).
-		local offsetDir = Vector3.new(approach.X * sign, 0, approach.Z * sign)
+		local offsetDir = Vector3.new(forward.X * sign, 0, forward.Z * sign)
 		local angle = math.atan2(offsetDir.Z, offsetDir.X)
 		local targetPosition = center + offsetDir * radius
 
