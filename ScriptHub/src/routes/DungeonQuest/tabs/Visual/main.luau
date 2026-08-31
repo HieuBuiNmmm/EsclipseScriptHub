@@ -17,6 +17,14 @@ return function(window, tab)
 		end),
 	}, "Toggle_HighlightHitboxes")
 
+	section:Toggle({
+		Name = "Player Real Hitbox",
+		Default = esp.IsPlayerHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.TogglePlayerHitbox(state)
+		end),
+	}, "Toggle_PlayerRealHitbox")
+
 	section:Header({ Name = "Dodge Visuals" })
 
 	section:Toggle({

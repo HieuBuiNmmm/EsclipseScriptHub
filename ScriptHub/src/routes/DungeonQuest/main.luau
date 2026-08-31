@@ -81,6 +81,9 @@ return function(self)
 	--// Basic Orbit Dodge (tracking 2 loại hazard + safe-node, kế thừa Smart Dodge)
 	require("@routes/DungeonQuest/core/basicOrbitDodge")
 
+	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
+	local contextual = require("@routes/DungeonQuest/core/contextual")
+
 	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
 	local deathLog = require("@routes/DungeonQuest/core/deathLog")
 	deathLog.Init()
@@ -93,4 +96,8 @@ return function(self)
 	--// Khởi chạy
 	tabs.Player:Select()
 	macLib:LoadAutoLoadConfig()
+
+	--// Nạp context data SAU khi config (kể cả autoload) được load, để context đọc đúng
+	--// dữ liệu đã lưu thay vì fallback về global.
+	contextual.Init()
 end

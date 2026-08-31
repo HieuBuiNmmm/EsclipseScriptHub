@@ -710,6 +710,22 @@ function basicDodge.SetAllClearFrames(value)
 	ALL_CLEAR_FRAMES = value
 end
 
+function basicDodge.GetFlipLookAhead()
+	return FLIP_LOOKAHEAD
+end
+
+function basicDodge.SetFlipLookAhead(value)
+	FLIP_LOOKAHEAD = value
+end
+
+function basicDodge.GetInactiveDelay()
+	return INACTIVE_DELAY
+end
+
+function basicDodge.SetInactiveDelay(value)
+	INACTIVE_DELAY = value
+end
+
 function basicDodge.SetDebugVisuals(value)
 	debugVisuals = value == true
 	updateRenderLoop()
@@ -734,6 +750,56 @@ end
 
 function basicDodge.SetDetectorMode(mode)
 	if mode == "Cone" or mode == "Circle" then detectorMode = mode end
+end
+
+--// ---- Preset đã cấu hình hardcode trong source ----
+--// "Custom" = giữ nguyên các giá trị chỉnh tay hiện tại (mặc định).
+--// "Ultra Instinct" = né hoàn hảo nhất có thể: phát hiện sớm, biên an toàn rộng,
+--// cooldown tối thiểu, nhạy với mọi hazard, phục hồi hướng orbit cực nhanh.
+local DODGE_PRESETS = {
+	["Custom"] = {},
+	["Ultra Instinct"] = {
+		Mode = "All",
+		DetectRadius = 45,
+		DangerRadius = 4,
+		PanicRadius = 25,
+		PanicCooldown = 0.05,
+		FlipCooldown = 0.05,
+		JumpCooldown = 0.1,
+		FlipLookAhead = 10,
+		AllClearFrames = 1,
+		InactiveDelay = 0.1,
+	},
+}
+
+local currentPreset = "Custom"
+
+function basicDodge.ApplyPreset(name)
+	if not DODGE_PRESETS[name] then return false end
+	currentPreset = name
+	local p = DODGE_PRESETS[name]
+	if p.Mode then basicDodge.SetMode(p.Mode) end
+	if p.DetectRadius then basicDodge.SetDetectRadius(p.DetectRadius) end
+	if p.DangerRadius then basicDodge.SetDangerRadius(p.DangerRadius) end
+	if p.PanicRadius then basicDodge.SetPanicRadius(p.PanicRadius) end
+	if p.PanicCooldown then basicDodge.SetPanicCooldown(p.PanicCooldown) end
+	if p.FlipCooldown then basicDodge.SetFlipCooldown(p.FlipCooldown) end
+	if p.JumpCooldown then basicDodge.SetJumpCooldown(p.JumpCooldown) end
+	if p.FlipLookAhead then basicDodge.SetFlipLookAhead(p.FlipLookAhead) end
+	if p.AllClearFrames then basicDodge.SetAllClearFrames(p.AllClearFrames) end
+	if p.InactiveDelay then basicDodge.SetInactiveDelay(p.InactiveDelay) end
+	return true
+end
+
+function basicDodge.GetPreset()
+	return currentPreset
+end
+
+function basicDodge.GetPresetNames()
+	local out = {}
+	for k in pairs(DODGE_PRESETS) do table.insert(out, k) end
+	table.sort(out)
+	return out
 end
 
 return basicDodge

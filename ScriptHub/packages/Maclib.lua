@@ -1,6 +1,7 @@
 local MacLib = { 
 	Options = {}, 
 	Folder = "Maclib", 
+	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
@@ -5527,7 +5528,8 @@ function MacLib:Window(Settings)
 		local fullPath = MacLib.Folder .. "/settings/" .. Path .. ".json"
 
 		local data = {
-			objects = {}
+			objects = {},
+			contextData = MacLib.contextData or {},
 		}
 
 		for flag, option in next, MacLib.Options do
@@ -5558,6 +5560,8 @@ function MacLib:Window(Settings)
 
 		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
 		if not success then return false, "Unable to decode JSON data." end
+
+		MacLib.contextData = decoded.contextData or {}
 
 		for _, option in next, decoded.objects do
 			if ClassParser[option.type] then

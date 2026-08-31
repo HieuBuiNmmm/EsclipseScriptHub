@@ -3,6 +3,7 @@
 -- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
 --// Imports
+local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 
 --// Table
@@ -13,6 +14,9 @@ local BOX_COLOR = Color3.fromRGB(255, 0, 0)
 local LINE_THICKNESS = 0.05
 local SURFACE_TRANSPARENCY = 0.8
 
+local PLAYER_BOX_COLOR = Color3.fromRGB(0, 255, 0)
+local PLAYER_BOX_NAME = "PlayerHitbox_ESP"
+
 local ESP_NAME = "Hitbox_ESP"
 local SCAN_INTERVAL = 0.5
 
@@ -20,6 +24,10 @@ local SCAN_INTERVAL = 0.5
 local enabled = false
 local scanThread = nil
 local projectileNames = {}
+
+local playerBoxEnabled = false
+local playerBoxThread = nil
+local player = services.player
 
 --// Helpers
 local function createBox(targetObj)
@@ -99,6 +107,66 @@ end
 
 function esp.IsEnabled()
 	return enabled
+end
+
+--// Highlight hitbox THẬT của player (quanh HumanoidRootPart) để phân biệt với
+--// "ghost" (bản nhân vật ảo hiển thị khi teleport orbit). Màu xanh lá, khác hẳn
+--// hitbox enemy đỏ. Tự bám theo nhân vật khi respawn.
+local function attachPlayerBox()
+	local character = player and player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root.Parent then return end
+	if root:FindFirstChild(PLAYER_BOX_NAME) then return end
+
+	local box = Instance.new("SelectionBox")
+	box.Name = PLAYER_BOX_NAME
+	box.Adornee = root
+	box.Color3 = PLAYER_BOX_COLOR
+	box.LineThickness = LINE_THICKNESS * 4
+	box.SurfaceColor3 = PLAYER_BOX_COLOR
+	box.SurfaceTransparency = SURFACE_TRANSPARENCY
+	box.Parent = root
+end
+
+local function clearPlayerBox()
+	if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
+	local function clearCharacter(character)
+		if not character then return end
+		for _, desc in ipairs(character:GetDescendants()) do
+			if desc.Name == PLAYER_BOX_NAME then desc:Destroy() end
+		end
+	end
+	clearCharacter(player and player.Character)
+	for _, p in ipairs(services.Players:GetPlayers()) do
+		clearCharacter(p.Character)
+	end
+end
+
+function esp.TogglePlayerHitbox(state)
+	if state == playerBoxEnabled then return end
+	playerBoxEnabled = state
+
+	if playerBoxEnabled then
+		if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
+		playerBoxThread = task.spawn(function()
+			while playerBoxEnabled do
+				local ok, err = pcall(attachPlayerBox)
+				if not ok then
+					if os.clock() - (esp.lastPlayerWarn or 0) > 5 then
+						esp.lastPlayerWarn = os.clock()
+						warn("[PlayerHitbox] error:", tostring(err))
+					end
+				end
+				task.wait(SCAN_INTERVAL)
+			end
+		end)
+	else
+		clearPlayerBox()
+	end
+end
+
+function esp.IsPlayerHitboxEnabled()
+	return playerBoxEnabled
 end
 
 return esp

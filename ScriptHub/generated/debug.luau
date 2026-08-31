@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-30T23:27:05.484779100+00:00",
+    genDate = "2026-08-31T03:47:18.909040600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -19,6 +19,7 @@ type Window__DARKLUA_TYPE_a = { Visible: boolean? }
 local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()local MacLib = { 
 	Options = {}, 
 	Folder = "Maclib", 
+	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
@@ -5545,7 +5546,8 @@ function MacLib:Window(Settings)
 		local fullPath = MacLib.Folder .. "/settings/" .. Path .. ".json"
 
 		local data = {
-			objects = {}
+			objects = {},
+			contextData = MacLib.contextData or {},
 		}
 
 		for flag, option in next, MacLib.Options do
@@ -5576,6 +5578,8 @@ function MacLib:Window(Settings)
 
 		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
 		if not success then return false, "Unable to decode JSON data." end
+
+		MacLib.contextData = decoded.contextData or {}
 
 		for _, option in next, decoded.objects do
 			if ClassParser[option.type] then
@@ -5992,7 +5996,7 @@ local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
 local SHORTCUT_TELEPORT_HEIGHT = 0
-local SHORTCUT_ORBIT_DURATION = 0.25
+local SHORTCUT_ORBIT_DURATION = 0.3
 local SHORTCUT_ORBIT_SPEED = 0
 
 local FARM_SCAN_INTERVAL = 0.15
@@ -6034,6 +6038,12 @@ local dungeonStartTime = nil
 --// Boss state (dựa trên GUI bossHealth xuất hiện khi có boss trong room)
 local bossActive = false
 local bossCallbacks = {}
+
+--// Chỉ số boss hiện tại trong 1 dungeon (thường 1 dungeon có 3 boss).
+--// Tăng 1 mỗi lần IsBossActive chuyển false -> true (boss 1 = 1); reset về 0
+--// khi vào dungeon mới.
+local bossIndex = 0
+local bossIndexCallbacks = {}
 
 --// Lưu trạng thái retarget trước khi vào boss để khôi phục khi rời boss
 local retargetSavedDuringBoss = nil
@@ -6085,6 +6095,12 @@ local roomConnections = {}
 local enemyConnections = {}
 local pendingModels = {}
 local enemyCount = 0
+
+--// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
+--// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
+--// tên dungeon thật -> luôn chọn instance có Value là chuỗi không rỗng.
+local currentDungeonName = nil
+local dungeonNameCallbacks = {}
 
 --// Forward declarations
 local cleanupEnemies
@@ -6193,6 +6209,11 @@ end
 initializeRooms = function()
 	if not dungeon then dungeon = workspace:WaitForChild("dungeon", 30) end
 	if not dungeon then return false end
+
+	bossIndex = 0
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
 
 	for _, room in ipairs(dungeon:GetChildren()) do
 		if room:IsA("Folder") or room:IsA("Model") then trackRoom(room) end
@@ -7057,6 +7078,36 @@ task.spawn(function()
 	end
 end)
 
+--// Dungeon name watcher: theo dõi tên dungeon thật (trong 2 instance dungeonName).
+--// Chọn instance workspace.dungeonName thực sự mang tên dungeon (chuỗi không rỗng),
+--// vì trong Workspace có 2 instance tên "dungeonName" và chỉ 1 cái có value.
+local function readDungeonName()
+	local Workspace = game:GetService("Workspace")
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj.Name == "dungeonName" and obj:IsA("ValueBase") then
+			local value = obj.Value
+			if type(value) == "string" and value ~= "" then
+				return value
+			end
+		end
+	end
+	return nil
+end
+
+task.spawn(function()
+	while true do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local name = readDungeonName()
+		if name ~= currentDungeonName then
+			currentDungeonName = name
+			if name then shared.ResetBossIndex() end
+			for i = #dungeonNameCallbacks, 1, -1 do
+				pcall(dungeonNameCallbacks[i], name)
+			end
+		end
+	end
+end)
+
 task.spawn(function()
 	local success, errorMessage = pcall(function() return initializeRooms() end)
 	if not success then
@@ -7079,12 +7130,60 @@ function shared.OnBossActiveChanged(callback)
 	end
 end
 
+function shared.GetCurrentBossIndex()
+	return bossIndex
+end
+
+--// Xác định loại mục tiêu đang farm để áp setting combat theo context:
+--// "Mob" (quái thường) hoặc "Boss1"/"Boss2"/"Boss3" theo thứ tự boss hiện tại.
+function shared.GetCombatTargetKey()
+	if not bossActive then return "Mob" end
+	local idx = math.clamp(bossIndex, 1, 3)
+	return "Boss" .. tostring(idx)
+end
+
+function shared.ResetBossIndex()
+	bossIndex = 0
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
+end
+
+function shared.OnBossIndexChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(bossIndexCallbacks, callback)
+	return function()
+		for i, cb in ipairs(bossIndexCallbacks) do
+			if cb == callback then table.remove(bossIndexCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Dungeon name ----
+function shared.GetCurrentDungeonName()
+	return currentDungeonName
+end
+
+function shared.OnDungeonNameChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(dungeonNameCallbacks, callback)
+	return function()
+		for i, cb in ipairs(dungeonNameCallbacks) do
+			if cb == callback then table.remove(dungeonNameCallbacks, i) break end
+		end
+	end
+end
+
 --// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
 local bossHealthRef = nil
 local function setBossActive(active)
 	if bossActive == active then return end
 	bossActive = active
 	if active then
+		bossIndex += 1
+		for i = #bossIndexCallbacks, 1, -1 do
+			pcall(bossIndexCallbacks[i], bossIndex)
+		end
 		retargetSavedDuringBoss = retargetEnabled
 		retargetEnabled = false
 		if maintainBossHeight then bossStartY = currentFarmTargetY() end
@@ -8448,6 +8547,22 @@ function basicDodge.SetAllClearFrames(value)
 	ALL_CLEAR_FRAMES = value
 end
 
+function basicDodge.GetFlipLookAhead()
+	return FLIP_LOOKAHEAD
+end
+
+function basicDodge.SetFlipLookAhead(value)
+	FLIP_LOOKAHEAD = value
+end
+
+function basicDodge.GetInactiveDelay()
+	return INACTIVE_DELAY
+end
+
+function basicDodge.SetInactiveDelay(value)
+	INACTIVE_DELAY = value
+end
+
 function basicDodge.SetDebugVisuals(value)
 	debugVisuals = value == true
 	updateRenderLoop()
@@ -8472,6 +8587,56 @@ end
 
 function basicDodge.SetDetectorMode(mode)
 	if mode == "Cone" or mode == "Circle" then detectorMode = mode end
+end
+
+--// ---- Preset đã cấu hình hardcode trong source ----
+--// "Custom" = giữ nguyên các giá trị chỉnh tay hiện tại (mặc định).
+--// "Ultra Instinct" = né hoàn hảo nhất có thể: phát hiện sớm, biên an toàn rộng,
+--// cooldown tối thiểu, nhạy với mọi hazard, phục hồi hướng orbit cực nhanh.
+local DODGE_PRESETS = {
+	["Custom"] = {},
+	["Ultra Instinct"] = {
+		Mode = "All",
+		DetectRadius = 45,
+		DangerRadius = 4,
+		PanicRadius = 25,
+		PanicCooldown = 0.05,
+		FlipCooldown = 0.05,
+		JumpCooldown = 0.1,
+		FlipLookAhead = 10,
+		AllClearFrames = 1,
+		InactiveDelay = 0.1,
+	},
+}
+
+local currentPreset = "Custom"
+
+function basicDodge.ApplyPreset(name)
+	if not DODGE_PRESETS[name] then return false end
+	currentPreset = name
+	local p = DODGE_PRESETS[name]
+	if p.Mode then basicDodge.SetMode(p.Mode) end
+	if p.DetectRadius then basicDodge.SetDetectRadius(p.DetectRadius) end
+	if p.DangerRadius then basicDodge.SetDangerRadius(p.DangerRadius) end
+	if p.PanicRadius then basicDodge.SetPanicRadius(p.PanicRadius) end
+	if p.PanicCooldown then basicDodge.SetPanicCooldown(p.PanicCooldown) end
+	if p.FlipCooldown then basicDodge.SetFlipCooldown(p.FlipCooldown) end
+	if p.JumpCooldown then basicDodge.SetJumpCooldown(p.JumpCooldown) end
+	if p.FlipLookAhead then basicDodge.SetFlipLookAhead(p.FlipLookAhead) end
+	if p.AllClearFrames then basicDodge.SetAllClearFrames(p.AllClearFrames) end
+	if p.InactiveDelay then basicDodge.SetInactiveDelay(p.InactiveDelay) end
+	return true
+end
+
+function basicDodge.GetPreset()
+	return currentPreset
+end
+
+function basicDodge.GetPresetNames()
+	local out = {}
+	for k in pairs(DODGE_PRESETS) do table.insert(out, k) end
+	table.sort(out)
+	return out
 end
 
 return basicDodge end function __DIST.m()-- Death Logger cho DungeonQuest.
@@ -8647,7 +8812,236 @@ function deathLog.IsEnabled()
 end
 
 return deathLog
-end function __DIST.n()-- Tab Auto Farm (DungeonQuest): Farm, Combat, Auto Start/Retry.
+end function __DIST.n()-- Contextual Auto-Farm settings cho DungeonQuest.
+-- Cho phép cấu hình riêng nhóm Auto Farm (Farm Mode, sliders orbit/hover/tele,
+-- retarget, boss-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
+-- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
+-- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (shared).
+
+--// Imports
+
+local shared = __DIST.load('d')
+local notifier = __DIST.load('b')
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('f')
+
+--// Table
+local contextual = {}
+
+--// Metadata field -> get/set trên shared (Auto Farm group)
+local FIELD_DEFS = {
+	FarmMode = { get = function() return shared.GetFarmMode() end, set = function(v) shared.SetFarmMode(v) end },
+	OrbitRadius = { get = function() return shared.GetOrbitRadius() end, set = function(v) shared.SetOrbitRadius(v) end },
+	OrbitSpeed = { get = function() return shared.GetOrbitSpeed() end, set = function(v) shared.SetOrbitSpeed(v) end },
+	OrbitTeleStep = { get = function() return shared.GetOrbitTeleStep() end, set = function(v) shared.SetOrbitTeleStep(v) end },
+	OrbitHeight = { get = function() return shared.GetOrbitHeight() end, set = function(v) shared.SetOrbitHeight(v) end },
+	HoverHeight = { get = function() return shared.GetHoverHeight() end, set = function(v) shared.SetHoverHeight(v) end },
+	TeleportDistance = { get = function() return shared.GetFarmEngageDistance() end, set = function(v) shared.SetFarmEngageDistance(v) end },
+	AutoRetarget = { get = function() return shared.GetRetargetEnabled() end, set = function(v) shared.SetRetargetEnabled(v) end },
+	RetargetMethod = { get = function() return shared.GetRetargetMethod() end, set = function(v) shared.SetRetargetMethod(v) end },
+	RetargetMode = { get = function() return shared.GetRetargetMode() end, set = function(v) shared.SetRetargetMode(v) end },
+	ReverseOrbitOnRetarget = { get = function() return shared.GetOrbitReverseEnabled() end, set = function(v) shared.SetOrbitReverseEnabled(v) end },
+	MaintainBossHeight = { get = function() return shared.GetMaintainBossHeight() end, set = function(v) shared.SetMaintainBossHeight(v) end },
+	BossHeightOffset = { get = function() return shared.GetBossHeightOffset() end, set = function(v) shared.SetBossHeightOffset(v) end },
+}
+
+local DISPLAY_TO_KEY = {
+	["Normal"] = "Mob",
+	["Boss 1"] = "Boss1",
+	["Boss 2"] = "Boss2",
+	["Boss 3"] = "Boss3",
+}
+local KEY_TO_DISPLAY = {
+	["Mob"] = "Normal",
+	["Boss1"] = "Boss 1",
+	["Boss2"] = "Boss 2",
+	["Boss3"] = "Boss 3",
+}
+
+--// Storage: data[dungeon][target][field] = value
+--// Sống trong config đang chọn (nhúng vào file config .json qua MacLib.contextData)
+local data = {}
+local lastDataRef = nil
+local activeConfig = nil
+local configChangedCallback = nil
+
+--// Cho phép tab đăng ký callback khi đổi config (để làm mới UI context)
+function contextual.OnConfigChanged(cb)
+	configChangedCallback = cb
+end
+
+--// Nạp dữ liệu từ config đang chọn. Trả về true nếu vừa đổi config / đổi data context.
+function contextual.ReloadFromConfig()
+	local macData = macLib.contextData or {}
+	local newActive = autoSave.GetActive()
+
+	local configChanged = newActive ~= activeConfig
+	--// MacLib:LoadConfig tạo bảng contextData MỚI -> phát hiện khi data vừa được nạp (kể cả
+	--// khi tên config không đổi, vd autoload) để refresh UI + re-apply context.
+	local dataChanged = macData ~= lastDataRef
+
+	data = macData
+	lastDataRef = macData
+	activeConfig = newActive
+
+	if (configChanged or dataChanged) and configChangedCallback then
+		pcall(configChangedCallback, newActive)
+	end
+	return configChanged or dataChanged
+end
+
+--// Đồng bộ dữ liệu lên MacLib để mỗi lần save config là lưu kèm contextData
+local function bindMacLib()
+	macLib.contextData = data
+end
+
+--// Lưu dữ liệu vào config đang chọn
+local function persist()
+	bindMacLib()
+	autoSave.SaveNow()
+end
+
+--// Đảm bảo context có đầy đủ tất cả field (điền mặc định = global fallback nếu thiếu)
+--// Trả về true nếu có field được khởi tạo mới.
+local function ensureContextComplete(dungeon, targetKey)
+	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
+	if not KEY_TO_DISPLAY[targetKey] then return end
+
+	data[dungeon] = data[dungeon] or {}
+	data[dungeon][targetKey] = data[dungeon][targetKey] or {}
+	local ctx = data[dungeon][targetKey]
+
+	local changed = false
+	for f in pairs(FIELD_DEFS) do
+		if ctx[f] == nil then
+			ctx[f] = FIELD_DEFS[f].get()
+			changed = true
+		end
+	end
+	return changed
+end
+
+--// Ghi override cho context cụ thể (context luôn đầy đủ 13 field)
+function contextual.SetField(dungeon, targetKey, field, value)
+	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
+	if not KEY_TO_DISPLAY[targetKey] then return end
+	if not FIELD_DEFS[field] then return end
+
+	ensureContextComplete(dungeon, targetKey)
+	data[dungeon][targetKey][field] = value
+	persist()
+end
+
+--// Xóa hết override của 1 context (về global)
+function contextual.ClearContext(dungeon, targetKey)
+	if data[dungeon] and data[dungeon][targetKey] then
+		data[dungeon][targetKey] = nil
+		if next(data[dungeon]) == nil then data[dungeon] = nil end
+		persist()
+	end
+end
+
+--// Đọc giá trị 1 field CỦA context (override nếu có, ngược lại global hiện tại)
+function contextual.GetField(dungeon, targetKey, field)
+	local def = FIELD_DEFS[field]
+	if not def then return nil end
+	if data[dungeon] and data[dungeon][targetKey] and data[dungeon][targetKey][field] ~= nil then
+		return data[dungeon][targetKey][field]
+	end
+	return def.get()
+end
+
+--// Đọc BỘ giá trị của 1 context (đã fallback global)
+function contextual.GetContext(dungeon, targetKey)
+	local out = {}
+	for field in pairs(FIELD_DEFS) do
+		out[field] = contextual.GetField(dungeon, targetKey, field)
+	end
+	return out
+end
+
+--// Áp bộ giá trị của 1 context vào shared (để farm dùng)
+function contextual.ApplyContext(dungeon, targetKey)
+	local ctx = contextual.GetContext(dungeon, targetKey)
+	for field, def in pairs(FIELD_DEFS) do
+		def.set(ctx[field])
+	end
+end
+
+--// Áp context HIỆN TẠI (dungeon đang chơi + mục tiêu đang farm) lên shared.
+function contextual.ApplyCurrent()
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = shared.GetCombatTargetKey()
+	contextual.ApplyContext(dungeon, targetKey)
+	return dungeon, targetKey
+end
+
+--// Metadata
+function contextual.GetFields()
+	local out = {}
+	for field in pairs(FIELD_DEFS) do table.insert(out, field) end
+	return out
+end
+
+function contextual.GetTargets()
+	local out = {}
+	for _, key in ipairs({ "Mob", "Boss1", "Boss2", "Boss3" }) do
+		table.insert(out, { Key = key, Display = KEY_TO_DISPLAY[key] })
+	end
+	return out
+end
+
+function contextual.GetDisplayForTarget(key)
+	return KEY_TO_DISPLAY[key]
+end
+
+--// Auto-switch watcher: lắng nghe dungeon/boss đổi -> áp context hiện tại + thông báo.
+local lastApplied = nil
+local lastDungeon = nil
+local function findAndApply(force)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = shared.GetCombatTargetKey()
+
+	--// Rời dungeon hoặc chưa vào -> reset cache để lần vào lại được áp dụng lại context
+	if not dungeon then
+		lastDungeon = nil
+		lastApplied = nil
+		return
+	end
+
+	--// Đảm bảo áp lại khi cùng dungeon cùng target (vd vừa vào lại dungeon)
+	if not force and dungeon == lastDungeon and targetKey == lastApplied then return end
+
+	contextual.ApplyContext(dungeon, targetKey)
+
+	if targetKey ~= "Mob" then
+		notifier.Notify("Auto Farm Context", dungeon .. " - " .. KEY_TO_DISPLAY[targetKey], 2)
+	end
+	lastApplied = targetKey
+	lastDungeon = dungeon
+end
+
+function contextual.Init()
+	contextual.ReloadFromConfig()
+	bindMacLib()
+
+	shared.OnDungeonNameChanged(function() findAndApply(false) end)
+	shared.OnBossIndexChanged(function() findAndApply(false) end)
+
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			--// Đổi config -> nạp lại dữ liệu context của config mới (+ re-apply)
+			if contextual.ReloadFromConfig() then
+				findAndApply(true)
+			end
+			findAndApply(false)
+		end
+	end)
+end
+
+return contextual
+end function __DIST.o()-- Tab Auto Farm (DungeonQuest): Farm, Combat, Auto Start/Retry.
 
 --// Imports
 
@@ -8661,6 +9055,7 @@ local autoRetry = __DIST.load('k')
 local autoSave = __DIST.load('f')
 local basicOrbitDodge = __DIST.load('l')
 local deathLog = __DIST.load('m')
+local contextual = __DIST.load('n')
 
 return function(window, tab)
 	--// Sections
@@ -8672,8 +9067,8 @@ return function(window, tab)
 	combatSection:Header({ Name = "Combat" })
 	startSection:Header({ Name = "Auto Start Game" })
 
-	--// Farm
-	farmSection:Toggle({
+	--// Farm (nhóm Auto Farm: per-context theo dungeon x target)
+	local autoFarmToggle = farmSection:Toggle({
 		Name = "Auto Farm",
 		Default = shared.IsFarmEnabled(),
 		Callback = autoSave.Wrap(function(state)
@@ -8681,148 +9076,233 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoFarm")
 
+	--// Auto Farm Context (per dungeon x per mob/boss)
+	farmSection:Header({ Name = "Auto Farm Context" })
+
+	local activeCtxLabel = farmSection:Label({ Text = "" })
+	local function updateActiveCtxLabel()
+		local dungeon = shared.GetCurrentDungeonName()
+		local targetKey = shared.GetCombatTargetKey()
+		activeCtxLabel:UpdateName("Active: <font color='rgb(120,200,255)'>" .. (dungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(targetKey))
+	end
+
+	local editDungeon = shared.GetCurrentDungeonName()
+	local editTarget = "Mob"
+
+	local isSyncing = false
 	local applyFarmModeVisibility
-	farmSection:Dropdown({
+	local refreshContextControls
+	local setEditControlsVisible
+	local editCtxLabel
+	local farmModeDropdown
+	local orbitRadiusSlider
+	local orbitSpeedSlider
+	local orbitTeleStepSlider
+	local orbitHeightSlider
+	local maintainBossHeightToggle
+	local bossHeightOffsetSlider
+	local hoverHeightSlider
+	local teleportDistanceSlider
+	local autoRetargetToggle
+	local retargetMethodDropdown
+	local retargetModeDropdown
+	local reverseOrbitToggle
+	local resetCtxButton
+
+	local function isActiveContext()
+		return editDungeon == shared.GetCurrentDungeonName() and editTarget == shared.GetCombatTargetKey()
+	end
+
+	local editTargetDropdown = farmSection:Dropdown({
+		Name = "Edit Target",
+		Options = { "Normal", "Boss 1", "Boss 2", "Boss 3" },
+		Default = 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			local map = { ["Normal"] = "Mob", ["Boss 1"] = "Boss1", ["Boss 2"] = "Boss2", ["Boss 3"] = "Boss3" }
+			editTarget = map[option] or "Mob"
+			refreshContextControls()
+		end),
+	}, "Dropdown_FarmTarget")
+
+	resetCtxButton = farmSection:Button({
+		Name = "Reset Context to Global",
+		Callback = autoSave.Wrap(function()
+			contextual.ClearContext(editDungeon, editTarget)
+			refreshContextControls()
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	})
+
+	editCtxLabel = farmSection:Label({ Text = "" })
+
+	farmModeDropdown = farmSection:Dropdown({
 		Name = "Farm Mode",
 		Options = { "Orbit", "Orbit Tele", "Hover" },
 		Default = 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
-			if option then shared.SetFarmMode(option) end
+			if not option or isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "FarmMode", option)
 			applyFarmModeVisibility()
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
 	}, "Dropdown_FarmMode")
 
-	local orbitRadiusSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
+	orbitRadiusSlider = farmSection:Slider({
 		Name = "Orbit Radius",
-		Default = shared.GetOrbitRadius(),
+		Default = contextual.GetField(editDungeon, editTarget, "OrbitRadius"),
 		Minimum = 5,
 		Maximum = 100,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
-			shared.SetOrbitRadius(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "OrbitRadius", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_OrbitRadius"))
+	}, "Slider_OrbitRadius")
 
-	local orbitSpeedSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
+	orbitSpeedSlider = farmSection:Slider({
 		Name = "Orbit Speed",
-		Default = shared.GetOrbitSpeed(),
+		Default = contextual.GetField(editDungeon, editTarget, "OrbitSpeed"),
 		Minimum = 24,
 		Maximum = 96,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
-			shared.SetOrbitSpeed(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "OrbitSpeed", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_OrbitSpeed"))
+	}, "Slider_OrbitSpeed")
 
-	local orbitTeleStepSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
+	orbitTeleStepSlider = farmSection:Slider({
 		Name = "Orbit Tele Step",
-		Default = shared.GetOrbitTeleStep(),
+		Default = contextual.GetField(editDungeon, editTarget, "OrbitTeleStep"),
 		Minimum = 5,
 		Maximum = 90,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
-			shared.SetOrbitTeleStep(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "OrbitTeleStep", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_OrbitTeleStep"))
+	}, "Slider_OrbitTeleStep")
 
-	local orbitHeightSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
+	orbitHeightSlider = farmSection:Slider({
 		Name = "Orbit Height",
-		Default = shared.GetOrbitHeight(),
+		Default = contextual.GetField(editDungeon, editTarget, "OrbitHeight"),
 		Minimum = 0,
 		Maximum = 100,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
-			shared.SetOrbitHeight(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "OrbitHeight", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_OrbitHeight"))
+	}, "Slider_OrbitHeight")
 
-	farmSection:Toggle({
+	maintainBossHeightToggle = farmSection:Toggle({
 		Name = "Maintain Orbit Height on Boss",
-		Default = shared.GetMaintainBossHeight(),
+		Default = contextual.GetField(editDungeon, editTarget, "MaintainBossHeight"),
 		Callback = autoSave.Wrap(function(state)
-			shared.SetMaintainBossHeight(state)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "MaintainBossHeight", state)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
 	}, "Toggle_MaintainBossHeight")
 
-	ui.PatchSliderLoadCallback(farmSection:Slider({
+	bossHeightOffsetSlider = farmSection:Slider({
 		Name = "Boss Height Offset",
-		Default = shared.GetBossHeightOffset(),
+		Default = contextual.GetField(editDungeon, editTarget, "BossHeightOffset"),
 		Minimum = -100,
 		Maximum = 100,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
-			shared.SetBossHeightOffset(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "BossHeightOffset", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_BossHeightOffset"))
+	}, "Slider_BossHeightOffset")
 
-	local hoverHeightSlider = ui.PatchSliderLoadCallback(farmSection:Slider({
+	hoverHeightSlider = farmSection:Slider({
 		Name = "Hover Height",
-		Default = shared.GetHoverHeight(),
+		Default = contextual.GetField(editDungeon, editTarget, "HoverHeight"),
 		Minimum = 0,
 		Maximum = 100,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
-			shared.SetHoverHeight(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "HoverHeight", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_HoverHeight"))
+	}, "Slider_HoverHeight")
 
-	ui.PatchSliderLoadCallback(farmSection:Slider({
+	teleportDistanceSlider = farmSection:Slider({
 		Name = "Teleport Distance",
-		Default = shared.GetFarmEngageDistance(),
+		Default = contextual.GetField(editDungeon, editTarget, "TeleportDistance"),
 		Minimum = 5,
 		Maximum = 300,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(Value)
-			shared.SetFarmEngageDistance(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "TeleportDistance", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_TeleportDistance"))
+	}, "Slider_TeleportDistance")
 
-	farmSection:Toggle({
+	autoRetargetToggle = farmSection:Toggle({
 		Name = "Auto Retarget",
-		Default = shared.GetRetargetEnabled(),
+		Default = contextual.GetField(editDungeon, editTarget, "AutoRetarget"),
 		Callback = autoSave.Wrap(function(state)
-			shared.SetRetargetEnabled(state)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "AutoRetarget", state)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
 	}, "Toggle_Retarget")
 
-	farmSection:Dropdown({
+	retargetMethodDropdown = farmSection:Dropdown({
 		Name = "Retarget Method",
 		Options = { "Auto", "Tele", "Tween" },
 		Default = 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
-			if option then shared.SetRetargetMethod(option) end
+			if not option or isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "RetargetMethod", option)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
 	}, "Dropdown_RetargetMethod")
 
-	farmSection:Dropdown({
+	retargetModeDropdown = farmSection:Dropdown({
 		Name = "Retarget Mode",
 		Options = { "Nearest", "Farthest" },
 		Default = 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
-			if option then shared.SetRetargetMode(option) end
+			if not option or isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "RetargetMode", option)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
 	}, "Dropdown_RetargetMode")
 
-	farmSection:Toggle({
+	reverseOrbitToggle = farmSection:Toggle({
 		Name = "Reverse Orbit on Retarget",
-		Default = shared.GetOrbitReverseEnabled(),
+		Default = contextual.GetField(editDungeon, editTarget, "ReverseOrbitOnRetarget"),
 		Callback = autoSave.Wrap(function(state)
-			shared.SetOrbitReverseEnabled(state)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "ReverseOrbitOnRetarget", state)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
 	}, "Toggle_OrbitReverse")
 
 	applyFarmModeVisibility = function()
-		local mode = shared.GetFarmMode()
+		local mode = contextual.GetField(editDungeon, editTarget, "FarmMode")
 		local isOrbit = mode == "Orbit"
 		local isOrbitTele = mode == "Orbit Tele"
 		local isOrbitLike = isOrbit or isOrbitTele
@@ -8832,9 +9312,83 @@ return function(window, tab)
 		pcall(function() orbitHeightSlider:SetVisibility(isOrbitLike) end)
 		pcall(function() hoverHeightSlider:SetVisibility(not isOrbitLike) end)
 	end
-	applyFarmModeVisibility()
+
+	refreshContextControls = function()
+		isSyncing = true
+		pcall(function() farmModeDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "FarmMode")) end)
+		pcall(function() orbitRadiusSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitRadius")) end)
+		pcall(function() orbitSpeedSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitSpeed")) end)
+		pcall(function() orbitTeleStepSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitTeleStep")) end)
+		pcall(function() orbitHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitHeight")) end)
+		pcall(function() maintainBossHeightToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "MaintainBossHeight")) end)
+		pcall(function() bossHeightOffsetSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "BossHeightOffset")) end)
+		pcall(function() hoverHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "HoverHeight")) end)
+		pcall(function() teleportDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "TeleportDistance")) end)
+		pcall(function() autoRetargetToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "AutoRetarget")) end)
+		pcall(function() retargetMethodDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "RetargetMethod")) end)
+		pcall(function() retargetModeDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "RetargetMode")) end)
+		pcall(function() reverseOrbitToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "ReverseOrbitOnRetarget")) end)
+		isSyncing = false
+		pcall(function() editCtxLabel:UpdateName("Editing: <font color='rgb(150,255,150)'>" .. (editDungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(editTarget)) end)
+		applyFarmModeVisibility()
+	end
+
+	setEditControlsVisible = function(visible)
+		pcall(function() farmModeDropdown:SetVisibility(visible) end)
+		pcall(function() orbitRadiusSlider:SetVisibility(visible) end)
+		pcall(function() orbitSpeedSlider:SetVisibility(visible) end)
+		pcall(function() orbitTeleStepSlider:SetVisibility(visible) end)
+		pcall(function() orbitHeightSlider:SetVisibility(visible) end)
+		pcall(function() maintainBossHeightToggle:SetVisibility(visible) end)
+		pcall(function() bossHeightOffsetSlider:SetVisibility(visible) end)
+		pcall(function() hoverHeightSlider:SetVisibility(visible) end)
+		pcall(function() teleportDistanceSlider:SetVisibility(visible) end)
+		pcall(function() autoRetargetToggle:SetVisibility(visible) end)
+		pcall(function() retargetMethodDropdown:SetVisibility(visible) end)
+		pcall(function() retargetModeDropdown:SetVisibility(visible) end)
+		pcall(function() reverseOrbitToggle:SetVisibility(visible) end)
+		pcall(function() resetCtxButton:SetVisibility(visible) end)
+		if visible then applyFarmModeVisibility() end
+	end
+
+	--// Mỗi lần load vào màn chơi (dungeon mới): Edit Target về "Normal" + re-sync Auto Farm
+	local function resetToMob()
+		editTarget = "Mob"
+		pcall(function() editTargetDropdown:UpdateSelection("Normal") end)
+		pcall(function() autoFarmToggle:UpdateState(shared.IsFarmEnabled()) end)
+		refreshContextControls()
+	end
+
+	local prevDungeonInGame = editDungeon ~= nil
+	local function onDungeonChanged()
+		local newName = shared.GetCurrentDungeonName()
+		local nowInGame = newName ~= nil
+		editDungeon = newName
+		if nowInGame and not prevDungeonInGame then
+			resetToMob()
+		end
+		prevDungeonInGame = nowInGame
+		updateActiveCtxLabel()
+		refreshContextControls()
+		setEditControlsVisible(nowInGame)
+	end
+	shared.OnDungeonNameChanged(onDungeonChanged)
+	shared.OnBossIndexChanged(updateActiveCtxLabel)
+	contextual.OnConfigChanged(function()
+		editDungeon = shared.GetCurrentDungeonName()
+		updateActiveCtxLabel()
+		refreshContextControls()
+		setEditControlsVisible(editDungeon ~= nil)
+	end)
+
+	updateActiveCtxLabel()
+	refreshContextControls()
+	setEditControlsVisible(editDungeon ~= nil)
 
 	--// Combat
+	combatSection:Header({ Name = "Skill" })
+
+	local applySkillModeVisibility
 	combatSection:Toggle({
 		Name = "Auto Skill (Q + E)",
 		Default = shared.IsAutoSkillEnabled(),
@@ -8843,24 +9397,10 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoSkill")
 
-	ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Skill Interval",
-		Default = shared.GetSkillInterval(),
-		Minimum = 0.1,
-		Maximum = 10,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			shared.SetSkillInterval(Value)
-		end),
-	}, "Slider_SkillInterval"))
-
-	local applySkillModeVisibility
 	combatSection:Dropdown({
 		Name = "Auto Skill Mode",
 		Options = { "Spam", "Target Only" },
-		Default = 1,
+		Default = (shared.GetAutoSkillMode() == "Target Only" and 2) or 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
 			if option then shared.SetAutoSkillMode(option) end
@@ -8880,6 +9420,19 @@ return function(window, tab)
 		end),
 	}, "Slider_SkillRange"))
 
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Skill Interval",
+		Default = shared.GetSkillInterval(),
+		Minimum = 0.1,
+		Maximum = 10,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetSkillInterval(Value)
+		end),
+	}, "Slider_SkillInterval"))
+
 	applySkillModeVisibility = function()
 		local targetOnly = shared.GetAutoSkillMode() == "Target Only"
 		pcall(function() skillRangeSlider:SetVisibility(targetOnly) end)
@@ -8894,7 +9447,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_BasicOrbitDodge")
 
-	combatSection:Dropdown({
+	local dodgeModeDropdown = combatSection:Dropdown({
 		Name = "Dodge Mode",
 		Options = { "All", "Boss Only" },
 		Default = (basicOrbitDodge.GetMode() == "Boss" and 2) or 1,
@@ -8908,7 +9461,7 @@ return function(window, tab)
 		end),
 	}, "Dropdown_DodgeMode")
 
-	ui.PatchSliderLoadCallback(combatSection:Slider({
+	local detectRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Dodge Detect Radius",
 		Default = basicOrbitDodge.GetDetectRadius(),
 		Minimum = 5,
@@ -8920,7 +9473,7 @@ return function(window, tab)
 		end),
 	}, "Slider_BasicDetectRadius"))
 
-	ui.PatchSliderLoadCallback(combatSection:Slider({
+	local dangerMarginSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Dodge Danger Margin",
 		Default = basicOrbitDodge.GetDangerRadius(),
 		Minimum = 1,
@@ -8932,7 +9485,7 @@ return function(window, tab)
 		end),
 	}, "Slider_BasicDangerMargin"))
 
-	ui.PatchSliderLoadCallback(combatSection:Slider({
+	local panicRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Panic Radius",
 		Default = basicOrbitDodge.GetPanicRadius(),
 		Minimum = 3,
@@ -8944,7 +9497,7 @@ return function(window, tab)
 		end),
 	}, "Slider_BasicPanicRadius"))
 
-	ui.PatchSliderLoadCallback(combatSection:Slider({
+	local panicCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Panic Cooldown",
 		Default = basicOrbitDodge.GetPanicCooldown(),
 		Minimum = 0.05,
@@ -8957,7 +9510,7 @@ return function(window, tab)
 		end),
 	}, "Slider_BasicPanicCooldown"))
 
-	ui.PatchSliderLoadCallback(combatSection:Slider({
+	local flipCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Dodge Flip Cooldown",
 		Default = basicOrbitDodge.GetFlipCooldown(),
 		Minimum = 0.05,
@@ -8970,7 +9523,7 @@ return function(window, tab)
 		end),
 	}, "Slider_BasicFlipCooldown"))
 
-	ui.PatchSliderLoadCallback(combatSection:Slider({
+	local jumpCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Dodge Jump Cooldown",
 		Default = basicOrbitDodge.GetJumpCooldown(),
 		Minimum = 0.1,
@@ -8982,6 +9535,30 @@ return function(window, tab)
 			basicOrbitDodge.SetJumpCooldown(Value)
 		end),
 	}, "Slider_BasicJumpCooldown"))
+
+	combatSection:Dropdown({
+		Name = "Dodge Preset",
+		Options = basicOrbitDodge.GetPresetNames(),
+		Default = (function()
+			local names = basicOrbitDodge.GetPresetNames()
+			local cur = basicOrbitDodge.GetPreset()
+			for i, n in ipairs(names) do
+				if n == cur then return i end
+			end
+			return 1
+		end)(),
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			basicOrbitDodge.ApplyPreset(option)
+			pcall(function() dodgeModeDropdown:UpdateSelection(basicOrbitDodge.GetMode() == "Boss" and "Boss Only" or "All") end)
+			pcall(function() detectRadiusSlider:UpdateValue(basicOrbitDodge.GetDetectRadius()) end)
+			pcall(function() dangerMarginSlider:UpdateValue(basicOrbitDodge.GetDangerRadius()) end)
+			pcall(function() panicRadiusSlider:UpdateValue(basicOrbitDodge.GetPanicRadius()) end)
+			pcall(function() panicCooldownSlider:UpdateValue(basicOrbitDodge.GetPanicCooldown()) end)
+			pcall(function() flipCooldownSlider:UpdateValue(basicOrbitDodge.GetFlipCooldown()) end)
+			pcall(function() jumpCooldownSlider:UpdateValue(basicOrbitDodge.GetJumpCooldown()) end)
+		end),
+	}, "Dropdown_DodgePreset")
 
 	combatSection:Toggle({
 		Name = "Death Log",
@@ -9040,7 +9617,7 @@ return function(window, tab)
 		end),
 	}, "Slider_RetryTimeThreshold"))
 end
-end function __DIST.o()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+end function __DIST.p()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -9241,14 +9818,14 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.p()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+return dungeonCatalog end function __DIST.q()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('c')
 local notifier = __DIST.load('b')
-local dungeonCatalog = __DIST.load('o')
+local dungeonCatalog = __DIST.load('p')
 
 local playerName = services.player.Name
 
@@ -9421,15 +9998,15 @@ end
 --// Initialize: watcher
 task.spawn(joinDungeonWatcher)
 
-return autoJoin end function __DIST.q()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+return autoJoin end function __DIST.r()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('e')
-local autoJoin = __DIST.load('p')
+local autoJoin = __DIST.load('q')
 local autoSave = __DIST.load('f')
-local dungeonCatalog = __DIST.load('o')
+local dungeonCatalog = __DIST.load('p')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -9553,12 +10130,13 @@ return function(window, tab)
 		end)
 		updateLevelLabel()
 	end)
-end end function __DIST.r()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
+end end function __DIST.s()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
 -- Chỉ highlight các object trùng tên với model projectile trong
 -- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
 --// Imports
 
+local services = __DIST.load('c')
 local shared = __DIST.load('d')
 
 --// Table
@@ -9569,6 +10147,9 @@ local BOX_COLOR = Color3.fromRGB(255, 0, 0)
 local LINE_THICKNESS = 0.05
 local SURFACE_TRANSPARENCY = 0.8
 
+local PLAYER_BOX_COLOR = Color3.fromRGB(0, 255, 0)
+local PLAYER_BOX_NAME = "PlayerHitbox_ESP"
+
 local ESP_NAME = "Hitbox_ESP"
 local SCAN_INTERVAL = 0.5
 
@@ -9576,6 +10157,10 @@ local SCAN_INTERVAL = 0.5
 local enabled = false
 local scanThread = nil
 local projectileNames = {}
+
+local playerBoxEnabled = false
+local playerBoxThread = nil
+local player = services.player
 
 --// Helpers
 local function createBox(targetObj)
@@ -9657,13 +10242,73 @@ function esp.IsEnabled()
 	return enabled
 end
 
+--// Highlight hitbox THẬT của player (quanh HumanoidRootPart) để phân biệt với
+--// "ghost" (bản nhân vật ảo hiển thị khi teleport orbit). Màu xanh lá, khác hẳn
+--// hitbox enemy đỏ. Tự bám theo nhân vật khi respawn.
+local function attachPlayerBox()
+	local character = player and player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root.Parent then return end
+	if root:FindFirstChild(PLAYER_BOX_NAME) then return end
+
+	local box = Instance.new("SelectionBox")
+	box.Name = PLAYER_BOX_NAME
+	box.Adornee = root
+	box.Color3 = PLAYER_BOX_COLOR
+	box.LineThickness = LINE_THICKNESS * 4
+	box.SurfaceColor3 = PLAYER_BOX_COLOR
+	box.SurfaceTransparency = SURFACE_TRANSPARENCY
+	box.Parent = root
+end
+
+local function clearPlayerBox()
+	if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
+	local function clearCharacter(character)
+		if not character then return end
+		for _, desc in ipairs(character:GetDescendants()) do
+			if desc.Name == PLAYER_BOX_NAME then desc:Destroy() end
+		end
+	end
+	clearCharacter(player and player.Character)
+	for _, p in ipairs(services.Players:GetPlayers()) do
+		clearCharacter(p.Character)
+	end
+end
+
+function esp.TogglePlayerHitbox(state)
+	if state == playerBoxEnabled then return end
+	playerBoxEnabled = state
+
+	if playerBoxEnabled then
+		if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
+		playerBoxThread = task.spawn(function()
+			while playerBoxEnabled do
+				local ok, err = pcall(attachPlayerBox)
+				if not ok then
+					if os.clock() - (esp.lastPlayerWarn or 0) > 5 then
+						esp.lastPlayerWarn = os.clock()
+						warn("[PlayerHitbox] error:", tostring(err))
+					end
+				end
+				task.wait(SCAN_INTERVAL)
+			end
+		end)
+	else
+		clearPlayerBox()
+	end
+end
+
+function esp.IsPlayerHitboxEnabled()
+	return playerBoxEnabled
+end
+
 return esp
-end function __DIST.s()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+end function __DIST.t()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 
 local autoSave = __DIST.load('f')
-local esp = __DIST.load('r')
+local esp = __DIST.load('s')
 local basicOrbitDodge = __DIST.load('l')
 
 return function(window, tab)
@@ -9677,6 +10322,14 @@ return function(window, tab)
 			esp.Toggle(state)
 		end),
 	}, "Toggle_HighlightHitboxes")
+
+	section:Toggle({
+		Name = "Player Real Hitbox",
+		Default = esp.IsPlayerHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.TogglePlayerHitbox(state)
+		end),
+	}, "Toggle_PlayerRealHitbox")
 
 	section:Header({ Name = "Dodge Visuals" })
 
@@ -9709,7 +10362,7 @@ return function(window, tab)
 			end
 		end),
 	}, "Dropdown_DetectorShape")
-end end function __DIST.t()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end end function __DIST.u()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -9784,7 +10437,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.u()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.v()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -9792,7 +10445,7 @@ end function __DIST.u()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('f')
-local autoHide = __DIST.load('t')
+local autoHide = __DIST.load('u')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -9949,7 +10602,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.v()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.w()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -10445,12 +11098,12 @@ end
 loadSettings()
 
 return webhook
-end function __DIST.w()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.x()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('v')
+local webhook = __DIST.load('w')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -10517,25 +11170,27 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.x()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.y()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
 local shared = __DIST.load('d')
 
 local BOSS_LABEL = "Boss Active"
+local BOSS_INDEX_LABEL = "Boss"
+local DUNGEON_LABEL = "Dungeon"
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "Trạng thái" })
+	section:Header({ Name = "Status" })
 
 	local bossLabel = section:Label({
-		Text = BOSS_LABEL .. ": " .. (shared.IsBossActive() and "Có" or "Không"),
+		Text = BOSS_LABEL .. ": " .. (shared.IsBossActive() and "Yes" or "No"),
 	})
 
 	local function updateBoss(active)
 		local color = active and "0, 255, 0" or "255, 80, 80"
-		bossLabel:UpdateName(BOSS_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. (active and "Có" or "Không") .. "</font>")
+		bossLabel:UpdateName(BOSS_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. (active and "Yes" or "No") .. "</font>")
 	end
 
 	updateBoss(shared.IsBossActive())
@@ -10544,20 +11199,55 @@ return function(window, tab)
 		updateBoss(active)
 	end)
 
+	local bossIndexLabel = section:Label({
+		Text = BOSS_INDEX_LABEL .. ": 0",
+	})
+
+	local function updateBossIndex()
+		bossIndexLabel:UpdateName(BOSS_INDEX_LABEL .. ": " .. shared.GetCurrentBossIndex())
+	end
+
+	updateBossIndex()
+
+	shared.OnBossIndexChanged(function()
+		updateBossIndex()
+	end)
+
 	task.spawn(function()
 		while task.wait(0.5) do
 			updateBoss(shared.IsBossActive())
+			updateBossIndex()
 		end
 	end)
 
-	section:Header({ Name = "Thông tin màn" })
+	section:Header({ Name = "Level Info" })
+
+	local dungeonLabel = section:Label({
+		Text = DUNGEON_LABEL .. ": Unknown",
+	})
+
+	local function updateDungeon()
+		local name = shared.GetCurrentDungeonName()
+		if name then
+			dungeonLabel:UpdateName(DUNGEON_LABEL .. ": " .. name)
+		else
+			dungeonLabel:UpdateName(DUNGEON_LABEL .. ": <font color='rgb(255, 80, 80)'>Unknown</font>")
+		end
+	end
+
+	updateDungeon()
+
+	shared.OnDungeonNameChanged(function()
+		updateDungeon()
+	end)
+
 	section:Button({
 		Name = "Log Enemy Types to Console",
 		Callback = function()
 			local names = shared.GetEnemyNames()
-			print("[DungeonQuest] Enemy types trong màn (" .. #names .. "):")
+			print("[DungeonQuest] Enemy types in map (" .. #names .. "):")
 			if #names == 0 then
-				print("  (không có enemy nào được tìm thấy)")
+				print("  (no enemies found)")
 			else
 				for _, name in ipairs(names) do
 					print("  - " .. name)
@@ -10566,7 +11256,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.y()-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
+end function __DIST.z()-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
 
 --// Imports
 
@@ -10599,7 +11289,7 @@ function shortcuts.Init()
 end
 
 return shortcuts
-end function __DIST.z()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.A()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -10657,12 +11347,12 @@ return function(self)
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local speedTab = __DIST.load('g')
-	local combatTab = __DIST.load('n')
-	local dungeonTab = __DIST.load('q')
-	local visualTab = __DIST.load('s')
-	local configTab = __DIST.load('u')
-	local notificationsTab = __DIST.load('w')
-	local stateTab = __DIST.load('x')
+	local combatTab = __DIST.load('o')
+	local dungeonTab = __DIST.load('r')
+	local visualTab = __DIST.load('t')
+	local configTab = __DIST.load('v')
+	local notificationsTab = __DIST.load('x')
+	local stateTab = __DIST.load('y')
 
 	speedTab(window, tabs.Player)
 	combatTab(window, tabs.Farm)
@@ -10673,30 +11363,37 @@ return function(self)
 	stateTab(window, tabs.State)
 
 	--// Phím tắt
-	local shortcuts = __DIST.load('y')
+	local shortcuts = __DIST.load('z')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('v')
+	local webhook = __DIST.load('w')
 	webhook.Init()
 __DIST.load('l')
 
-	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
+	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
 
-local deathLog = __DIST.load('m')
+local contextual = __DIST.load('n')
+
+	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
+	local deathLog = __DIST.load('m')
 	deathLog.Init()
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('t')
+	local autoHide = __DIST.load('u')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
 	--// Khởi chạy
 	tabs.Player:Select()
 	macLib:LoadAutoLoadConfig()
+
+	--// Nạp context data SAU khi config (kể cả autoload) được load, để context đọc đúng
+	--// dữ liệu đã lưu thay vì fallback về global.
+	contextual.Init()
 end
-end function __DIST.A()
+end function __DIST.B()
 local flags = {}
 
 function flags:Export()
@@ -10739,7 +11436,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.B()
+return flags end function __DIST.C()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -10808,12 +11505,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.C()
+end function __DIST.D()
 --// Imports
 
 
 
-local binder = __DIST.load('B')
+local binder = __DIST.load('C')
 
 --// Variables
 local interface = {}
@@ -10833,9 +11530,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.D()--// Imports
+end function __DIST.E()--// Imports
 
-local binder = __DIST.load('B')
+local binder = __DIST.load('C')
 
 --// Variables
 local esp = {}
@@ -10846,11 +11543,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.E()--// Imports
+end function __DIST.F()--// Imports
 
-local flags = __DIST.load('A')
-local interface = __DIST.load('C')
-local esp = __DIST.load('D')
+local flags = __DIST.load('B')
+local interface = __DIST.load('D')
+local esp = __DIST.load('E')
 
 --// Initialize
 local window = interface:Window({
@@ -10889,7 +11586,7 @@ return {
 		end,
 	},
 }
-end function __DIST.F()--// Variables
+end function __DIST.G()--// Variables
 
 local utility = {}
 
@@ -10921,7 +11618,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.G()--// Functions
+end function __DIST.H()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -10931,14 +11628,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.H()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.I()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('E')
-	local utility = __DIST.load('F')
-	local services = __DIST.load('G')
+	local base = __DIST.load('F')
+	local utility = __DIST.load('G')
+	local services = __DIST.load('H')
 
 	--// References
 	local flags = base.Flags
@@ -10997,7 +11694,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('z'),
+		Load = __DIST.load('A'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -11008,7 +11705,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('H'),
+		Load = __DIST.load('I'),
 		Places = {
 			123456789,
 			987654321,

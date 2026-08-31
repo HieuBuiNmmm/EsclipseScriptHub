@@ -32,7 +32,7 @@ local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
 local SHORTCUT_TELEPORT_HEIGHT = 0
-local SHORTCUT_ORBIT_DURATION = 0.25
+local SHORTCUT_ORBIT_DURATION = 0.3
 local SHORTCUT_ORBIT_SPEED = 0
 
 local FARM_SCAN_INTERVAL = 0.15
@@ -74,6 +74,12 @@ local dungeonStartTime = nil
 --// Boss state (dựa trên GUI bossHealth xuất hiện khi có boss trong room)
 local bossActive = false
 local bossCallbacks = {}
+
+--// Chỉ số boss hiện tại trong 1 dungeon (thường 1 dungeon có 3 boss).
+--// Tăng 1 mỗi lần IsBossActive chuyển false -> true (boss 1 = 1); reset về 0
+--// khi vào dungeon mới.
+local bossIndex = 0
+local bossIndexCallbacks = {}
 
 --// Lưu trạng thái retarget trước khi vào boss để khôi phục khi rời boss
 local retargetSavedDuringBoss = nil
@@ -125,6 +131,12 @@ local roomConnections = {}
 local enemyConnections = {}
 local pendingModels = {}
 local enemyCount = 0
+
+--// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
+--// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
+--// tên dungeon thật -> luôn chọn instance có Value là chuỗi không rỗng.
+local currentDungeonName = nil
+local dungeonNameCallbacks = {}
 
 --// Forward declarations
 local cleanupEnemies
@@ -233,6 +245,11 @@ end
 initializeRooms = function()
 	if not dungeon then dungeon = workspace:WaitForChild("dungeon", 30) end
 	if not dungeon then return false end
+
+	bossIndex = 0
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
 
 	for _, room in ipairs(dungeon:GetChildren()) do
 		if room:IsA("Folder") or room:IsA("Model") then trackRoom(room) end
@@ -1097,6 +1114,36 @@ task.spawn(function()
 	end
 end)
 
+--// Dungeon name watcher: theo dõi tên dungeon thật (trong 2 instance dungeonName).
+--// Chọn instance workspace.dungeonName thực sự mang tên dungeon (chuỗi không rỗng),
+--// vì trong Workspace có 2 instance tên "dungeonName" và chỉ 1 cái có value.
+local function readDungeonName()
+	local Workspace = game:GetService("Workspace")
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj.Name == "dungeonName" and obj:IsA("ValueBase") then
+			local value = obj.Value
+			if type(value) == "string" and value ~= "" then
+				return value
+			end
+		end
+	end
+	return nil
+end
+
+task.spawn(function()
+	while true do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local name = readDungeonName()
+		if name ~= currentDungeonName then
+			currentDungeonName = name
+			if name then shared.ResetBossIndex() end
+			for i = #dungeonNameCallbacks, 1, -1 do
+				pcall(dungeonNameCallbacks[i], name)
+			end
+		end
+	end
+end)
+
 task.spawn(function()
 	local success, errorMessage = pcall(function() return initializeRooms() end)
 	if not success then
@@ -1119,12 +1166,60 @@ function shared.OnBossActiveChanged(callback)
 	end
 end
 
+function shared.GetCurrentBossIndex()
+	return bossIndex
+end
+
+--// Xác định loại mục tiêu đang farm để áp setting combat theo context:
+--// "Mob" (quái thường) hoặc "Boss1"/"Boss2"/"Boss3" theo thứ tự boss hiện tại.
+function shared.GetCombatTargetKey()
+	if not bossActive then return "Mob" end
+	local idx = math.clamp(bossIndex, 1, 3)
+	return "Boss" .. tostring(idx)
+end
+
+function shared.ResetBossIndex()
+	bossIndex = 0
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
+end
+
+function shared.OnBossIndexChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(bossIndexCallbacks, callback)
+	return function()
+		for i, cb in ipairs(bossIndexCallbacks) do
+			if cb == callback then table.remove(bossIndexCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Dungeon name ----
+function shared.GetCurrentDungeonName()
+	return currentDungeonName
+end
+
+function shared.OnDungeonNameChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(dungeonNameCallbacks, callback)
+	return function()
+		for i, cb in ipairs(dungeonNameCallbacks) do
+			if cb == callback then table.remove(dungeonNameCallbacks, i) break end
+		end
+	end
+end
+
 --// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
 local bossHealthRef = nil
 local function setBossActive(active)
 	if bossActive == active then return end
 	bossActive = active
 	if active then
+		bossIndex += 1
+		for i = #bossIndexCallbacks, 1, -1 do
+			pcall(bossIndexCallbacks[i], bossIndex)
+		end
 		retargetSavedDuringBoss = retargetEnabled
 		retargetEnabled = false
 		if maintainBossHeight then bossStartY = currentFarmTargetY() end
