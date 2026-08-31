@@ -9,6 +9,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local macLib = require("@packages/Maclib")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 
 --// Table
 local contextual = {}
@@ -103,6 +104,25 @@ local function ensureContextComplete(dungeon, targetKey)
 		end
 	end
 	return changed
+end
+
+--// Tự khởi tạo context base cho TOÀN BỘ map x target khi khởi tạo script.
+--// Đảm bảo mọi dungeon trong catalog đều có sẵn đủ 12 field (= giá trị global hiện tại)
+--// thay vì chỉ tạo khi người dùng bắt đầu chỉnh sửa. Không ghi đè override đã lưu.
+function contextual.SeedAllDefaults()
+	local targets = { "Mob", "Boss1", "Boss2", "Boss3" }
+	local seededAny = false
+	for _, dungeon in ipairs(dungeonCatalog.GetDungeons()) do
+		for _, targetKey in ipairs(targets) do
+			if ensureContextComplete(dungeon, targetKey) then
+				seededAny = true
+			end
+		end
+	end
+	if seededAny then
+		persist()
+	end
+	return seededAny
 end
 
 --// Ghi override cho context cụ thể (context luôn đầy đủ 12 field)
@@ -210,6 +230,7 @@ end
 
 function contextual.Init()
 	contextual.ReloadFromConfig()
+	contextual.SeedAllDefaults()
 	bindMacLib()
 
 	shared.OnDungeonNameChanged(function() findAndApply(false) end)

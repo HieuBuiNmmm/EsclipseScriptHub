@@ -3,6 +3,7 @@
 --// Imports
 local shared = require("@routes/DungeonQuest/core/shared")
 local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
+local basicDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -79,6 +80,35 @@ return function(window, tab)
 
 	updateTimeLeft()
 
+	section:Header({ Name = "Dodge" })
+
+	local hazardCountLabel = section:Label({
+		Text = "Hazards: 0",
+	})
+
+	local function updateHazardCount()
+		local count = basicDodge.GetHazardCount()
+		local color = count > 0 and "0, 255, 0" or "160, 160, 160"
+		hazardCountLabel:UpdateName("Hazards: <font color='rgb(" .. color .. ")'>" .. count .. "</font>")
+	end
+
+	updateHazardCount()
+
+	section:Button({
+		Name = "Log Dodge Hazards to Console",
+		Callback = function()
+			local names = basicDodge.GetHazardNames()
+			print("[DungeonQuest] Dodge hazards being tracked (" .. #names .. "):")
+			if #names == 0 then
+				print("  (none - dodge scanner sees nothing)")
+			else
+				for _, name in ipairs(names) do
+					print("  - " .. name)
+				end
+			end
+		end,
+	})
+
 	--// Forward declaration: updateLobby được định nghĩa phía dưới nhưng poll loop
 	--// ở đây chạy trước -> nếu không khai báo trước sẽ thành global nil.
 	local updateLobby
@@ -88,6 +118,7 @@ return function(window, tab)
 			updateBoss(shared.IsBossActive())
 			updateBossIndex()
 			updateEnemyCount()
+			updateHazardCount()
 			updateLobby()
 			updateTimeLeft()
 		end

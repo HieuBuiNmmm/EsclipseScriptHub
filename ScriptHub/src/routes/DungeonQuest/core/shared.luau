@@ -16,9 +16,9 @@ local player = services.player
 --// Constants
 local FREEZE_TIME = 0.15
 
-local ORBIT_RADIUS = 30
-local ORBIT_HEIGHT = 12
-local ORBIT_SPEED = 180
+local ORBIT_RADIUS = 50
+local ORBIT_HEIGHT = 24
+local ORBIT_SPEED = 40
 
 --// Khoảng thời gian (giây) giữa các lần nhảy góc trong farm mode "Orbit Tele".
 --// Giữa các nhảy nhân vật vẫn được PivotTo giữ vị trí mới (không ghost), chỉ có

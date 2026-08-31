@@ -127,15 +127,15 @@ local function getOBB(obj)
 end
 
 --// Khoảng cách từ điểm tới OBB (dùng trong isSampleDanger: dead khi <= padding).
---// Chỉ tính trên mặt phẳng NGANG (X/Z), bỏ trục đứng (Y) để thay đổi orbit height
---// không làm dodge bỏ sót hazard.
 local function pointToOBBDistance(pt, obbCFrame, obbSize)
 	local localPt = obbCFrame:Inverse() * pt
 	local hx = obbSize.X / 2
+	local hy = obbSize.Y / 2
 	local hz = obbSize.Z / 2
 	local dx = math.max(math.abs(localPt.X) - hx, 0)
+	local dy = math.max(math.abs(localPt.Y) - hy, 0)
 	local dz = math.max(math.abs(localPt.Z) - hz, 0)
-	return math.sqrt(dx * dx + dz * dz)
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
 --// Phát hiện object mới xuất hiện / loại bỏ object biến mất (quản lý membership).
@@ -550,8 +550,6 @@ local function panicHazardNearby(playerPos)
 end
 
 local function basicStep()
-	--// Chỉ né khi đang trong dungeon; không chạy ngoài lobby (không có hazard).
-	if shared.IsInLobby() then return end
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	if not character or not playerRoot or not playerRoot.Parent then return end
@@ -712,46 +710,6 @@ function basicDodge.SetAllClearFrames(value)
 	ALL_CLEAR_FRAMES = value
 end
 
-function basicDodge.GetFlipLookAhead()
-	return FLIP_LOOKAHEAD
-end
-
-function basicDodge.SetFlipLookAhead(value)
-	FLIP_LOOKAHEAD = value
-end
-
---// ---- Chẩn đoán hazard (State tab) ----
---// Số hazard đang track còn hoạt động (chưa Inactive) - đúng thứ danger map dùng.
-function basicDodge.GetHazardCount()
-	local count = 0
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive then count = count + 1 end
-	end
-	return count
-end
-
---// Tên các hazard đang track (unique, sắp xếp) để đối chiếu với những gì thấy trong game.
-function basicDodge.GetHazardNames()
-	local names = {}
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive and col.Instance then
-			names[col.Instance.Name] = true
-		end
-	end
-	local out = {}
-	for name in pairs(names) do table.insert(out, name) end
-	table.sort(out)
-	return out
-end
-
-function basicDodge.GetInactiveDelay()
-	return INACTIVE_DELAY
-end
-
-function basicDodge.SetInactiveDelay(value)
-	INACTIVE_DELAY = value
-end
-
 function basicDodge.SetDebugVisuals(value)
 	debugVisuals = value == true
 	updateRenderLoop()
@@ -776,56 +734,6 @@ end
 
 function basicDodge.SetDetectorMode(mode)
 	if mode == "Cone" or mode == "Circle" then detectorMode = mode end
-end
-
---// ---- Preset đã cấu hình hardcode trong source ----
---// "Custom" = giữ nguyên các giá trị chỉnh tay hiện tại (mặc định).
---// "Ultra Instinct" = né hoàn hảo nhất có thể: phát hiện sớm, biên an toàn rộng,
---// cooldown tối thiểu, nhạy với mọi hazard, phục hồi hướng orbit cực nhanh.
-local DODGE_PRESETS = {
-	["Custom"] = {},
-	["Ultra Instinct"] = {
-		Mode = "All",
-		DetectRadius = 45,
-		DangerRadius = 4,
-		PanicRadius = 25,
-		PanicCooldown = 0.05,
-		FlipCooldown = 0.05,
-		JumpCooldown = 0.1,
-		FlipLookAhead = 10,
-		AllClearFrames = 1,
-		InactiveDelay = 0.1,
-	},
-}
-
-local currentPreset = "Custom"
-
-function basicDodge.ApplyPreset(name)
-	if not DODGE_PRESETS[name] then return false end
-	currentPreset = name
-	local p = DODGE_PRESETS[name]
-	if p.Mode then basicDodge.SetMode(p.Mode) end
-	if p.DetectRadius then basicDodge.SetDetectRadius(p.DetectRadius) end
-	if p.DangerRadius then basicDodge.SetDangerRadius(p.DangerRadius) end
-	if p.PanicRadius then basicDodge.SetPanicRadius(p.PanicRadius) end
-	if p.PanicCooldown then basicDodge.SetPanicCooldown(p.PanicCooldown) end
-	if p.FlipCooldown then basicDodge.SetFlipCooldown(p.FlipCooldown) end
-	if p.JumpCooldown then basicDodge.SetJumpCooldown(p.JumpCooldown) end
-	if p.FlipLookAhead then basicDodge.SetFlipLookAhead(p.FlipLookAhead) end
-	if p.AllClearFrames then basicDodge.SetAllClearFrames(p.AllClearFrames) end
-	if p.InactiveDelay then basicDodge.SetInactiveDelay(p.InactiveDelay) end
-	return true
-end
-
-function basicDodge.GetPreset()
-	return currentPreset
-end
-
-function basicDodge.GetPresetNames()
-	local out = {}
-	for k in pairs(DODGE_PRESETS) do table.insert(out, k) end
-	table.sort(out)
-	return out
 end
 
 return basicDodge
