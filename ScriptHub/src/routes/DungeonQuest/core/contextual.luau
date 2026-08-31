@@ -1,6 +1,6 @@
 -- Contextual Auto-Farm settings cho DungeonQuest.
 -- Cho phép cấu hình riêng nhóm Auto Farm (Farm Mode, sliders orbit/hover/tele,
--- retarget, boss-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
+-- retarget, maintain-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
 -- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
 -- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (shared).
 
@@ -27,7 +27,6 @@ local FIELD_DEFS = {
 	RetargetMode = { get = function() return shared.GetRetargetMode() end, set = function(v) shared.SetRetargetMode(v) end },
 	ReverseOrbitOnRetarget = { get = function() return shared.GetOrbitReverseEnabled() end, set = function(v) shared.SetOrbitReverseEnabled(v) end },
 	MaintainBossHeight = { get = function() return shared.GetMaintainBossHeight() end, set = function(v) shared.SetMaintainBossHeight(v) end },
-	BossHeightOffset = { get = function() return shared.GetBossHeightOffset() end, set = function(v) shared.SetBossHeightOffset(v) end },
 }
 
 local DISPLAY_TO_KEY = {
@@ -106,7 +105,7 @@ local function ensureContextComplete(dungeon, targetKey)
 	return changed
 end
 
---// Ghi override cho context cụ thể (context luôn đầy đủ 13 field)
+--// Ghi override cho context cụ thể (context luôn đầy đủ 12 field)
 function contextual.SetField(dungeon, targetKey, field, value)
 	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
 	if not KEY_TO_DISPLAY[targetKey] then return end
@@ -119,6 +118,7 @@ end
 
 --// Xóa hết override của 1 context (về global)
 function contextual.ClearContext(dungeon, targetKey)
+	if type(dungeon) ~= "string" or #dungeon == 0 then return end
 	if data[dungeon] and data[dungeon][targetKey] then
 		data[dungeon][targetKey] = nil
 		if next(data[dungeon]) == nil then data[dungeon] = nil end
@@ -130,8 +130,10 @@ end
 function contextual.GetField(dungeon, targetKey, field)
 	local def = FIELD_DEFS[field]
 	if not def then return nil end
-	if data[dungeon] and data[dungeon][targetKey] and data[dungeon][targetKey][field] ~= nil then
-		return data[dungeon][targetKey][field]
+	--// Ngoài dungeon (tên nil/rỗng) -> không có context -> dùng global hiện tại
+	if type(dungeon) == "string" and #dungeon > 0 then
+		local ctx = data[dungeon] and data[dungeon][targetKey]
+		if ctx and ctx[field] ~= nil then return ctx[field] end
 	end
 	return def.get()
 end
@@ -212,6 +214,7 @@ function contextual.Init()
 
 	shared.OnDungeonNameChanged(function() findAndApply(false) end)
 	shared.OnBossIndexChanged(function() findAndApply(false) end)
+	shared.OnBossActiveChanged(function() findAndApply(false) end)
 
 	task.spawn(function()
 		while true do

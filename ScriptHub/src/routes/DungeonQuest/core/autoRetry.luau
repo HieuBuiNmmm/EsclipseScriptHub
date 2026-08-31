@@ -126,23 +126,26 @@ function autoRetry.Start()
 	autoRetryTriggered = false
 	timeRetryTriggered = false
 	task.spawn(function()
-		while autoRetryEnabled do
-			local count = 0
-			if autoRetryHolderFn then
-				local sok, holder = pcall(autoRetryHolderFn)
-				if sok and typeof(holder) == "Instance" and holder.Parent then
-					count = #holder:GetChildren()
+		while autoRetryEnabled or timeRetryEnabled do
+			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
+			if autoRetryEnabled then
+				local count = 0
+				if autoRetryHolderFn then
+					local sok, holder = pcall(autoRetryHolderFn)
+					if sok and typeof(holder) == "Instance" and holder.Parent then
+						count = #holder:GetChildren()
+					end
+				end
+				if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
+					autoRetryTriggered = true
+					fireRetry()
+				elseif count < AUTO_RETRY_MIN_ITEMS then
+					autoRetryTriggered = false
 				end
 			end
-			--// Điều kiện reward (>= 2 item)
-			if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
-				autoRetryTriggered = true
-				fireRetry()
-			elseif count < AUTO_RETRY_MIN_ITEMS then
-				autoRetryTriggered = false
-			end
 
-			--// Điều kiện hết giờ (tách riêng): UI còn < X giây thì retry
+			--// Điều kiện hết giờ (chạy độc lập khi bật Retry on Time Low):
+			--// UI còn < X giây thì retry
 			if timeRetryEnabled then
 				local remaining = readTimeLeft()
 				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
@@ -153,7 +156,7 @@ function autoRetry.Start()
 				end
 			end
 
-			if not autoRetryEnabled then break end
+			if not autoRetryEnabled and not timeRetryEnabled then break end
 			task.wait(0.75)
 		end
 		autoRetryRunning = false
@@ -178,6 +181,13 @@ end
 
 function autoRetry.SetTimeRetryEnabled(value)
 	timeRetryEnabled = value == true
+	if timeRetryEnabled then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching time left...", 2)
+	else
+		notifier.Notify("Auto Retry", "Time retry stopped", 2)
+	end
 end
 
 function autoRetry.GetTimeRetryEnabled()
@@ -190,6 +200,11 @@ end
 
 function autoRetry.GetTimeRetryThreshold()
 	return timeRetryThreshold
+end
+
+--// Đọc thời gian còn lại (giây) như đúng logic time-low đang dùng (UI playerGui.timeLeftGui.Frame.<time>)
+function autoRetry.GetTimeLeft()
+	return readTimeLeft()
 end
 
 function autoRetry.RetryNow()

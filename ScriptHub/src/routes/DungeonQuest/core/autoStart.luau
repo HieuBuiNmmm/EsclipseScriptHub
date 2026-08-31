@@ -1,36 +1,24 @@
--- Auto Start Game cho DungeonQuest: chờ startButton xuất hiện rồi fire remote start.
+-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
+-- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
+-- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
 
 --// Imports
-local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local notifier = require("@routes/DungeonQuest/core/notifier")
-
---// References
-local player = services.player
 
 --// State
 local autoStartEnabled = false
 local autoStartRunning = false
 local autoStartTriggered = false
 local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
-local autoStartConditionText = 'game:GetService("Players").LocalPlayer.PlayerGui.startButton'
-local autoStartConditionFn = nil
 local autoStartCommandFn = nil
 
---// Helpers
-local function validateConditionText(text)
-	local s, fn = pcall(loadstring, "return " .. text)
-	if s and type(fn) == "function" then return fn end
-	return nil
+--// Điều kiện kích hoạt: đang ở lobby (startButton hiện, ngoài dungeon) do shared tính
+local function lobbyCondition()
+	return shared.IsInLobby()
 end
 
-autoStartConditionFn = validateConditionText(autoStartConditionText)
-if not autoStartConditionFn then
-	autoStartConditionFn = function()
-		return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("startButton")
-	end
-end
-
+--// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
 local s2, cmdFn2 = pcall(loadstring, autoStartCommand)
 if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
 
@@ -44,11 +32,9 @@ function autoStart.Start()
 	autoStartTriggered = false
 	task.spawn(function()
 		while autoStartEnabled do
-			local met = false
-			if autoStartConditionFn then
-				local sCond, res = pcall(autoStartConditionFn)
-				met = sCond and res ~= nil
-			end
+			local sCond, res = pcall(lobbyCondition)
+			local met = sCond and res == true
+
 			if met and not autoStartTriggered then
 				autoStartTriggered = true
 				if autoStartCommandFn then
@@ -62,6 +48,12 @@ function autoStart.Start()
 					notifier.Notify("Auto Start", "Remote command invalid", 3)
 				end
 			end
+
+			--// Hết lobby (vào dungeon / đang chơi) -> cho phép kích lại ở lobby lần sau
+			if not met and autoStartTriggered then
+				autoStartTriggered = false
+			end
+
 			if not autoStartEnabled then break end
 			task.wait(1)
 		end
@@ -77,7 +69,7 @@ function autoStart.Toggle(state)
 	autoStartEnabled = state
 	if state then
 		autoStart.Start()
-		notifier.Notify("Auto Start", "Waiting for start button...", 2)
+		notifier.Notify("Auto Start", "Waiting for lobby...", 2)
 	else
 		autoStart.Stop()
 		notifier.Notify("Auto Start", "Stopped", 2)

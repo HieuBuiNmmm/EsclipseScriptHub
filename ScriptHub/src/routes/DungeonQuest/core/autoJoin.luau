@@ -5,6 +5,7 @@
 local services = require("@routes/DungeonQuest/core/services")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
+local shared = require("@routes/DungeonQuest/core/shared")
 
 local playerName = services.player.Name
 
@@ -101,7 +102,7 @@ end
 local function joinDungeonWatcher()
 	while true do
 		task.wait(0.5)
-		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() then
+		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and shared.IsInLobby() then
 			joinDungeonNow()
 		end
 	end

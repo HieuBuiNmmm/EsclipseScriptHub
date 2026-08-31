@@ -2044,7 +2044,7 @@ function MacLib:Window(Settings)
 							local newValue = math.clamp(value, SliderFunctions.Settings.Minimum, SliderFunctions.Settings.Maximum)
 							SetValue(newValue)
 						else
-							sliderValue.Text = ValueDisplayMethod(sliderValue)
+							sliderValue.Text = ValueDisplayMethod(finalValue)
 						end
 
 						if SliderFunctions.Settings.onInputComplete then

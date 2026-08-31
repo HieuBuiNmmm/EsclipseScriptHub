@@ -2,10 +2,12 @@
 
 --// Imports
 local shared = require("@routes/DungeonQuest/core/shared")
+local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
 local DUNGEON_LABEL = "Dungeon"
+local TIMER_LABEL = "Time Left"
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -40,10 +42,37 @@ return function(window, tab)
 		updateBossIndex()
 	end)
 
+	section:Header({ Name = "Timer" })
+
+	local timeLeftLabel = section:Label({
+		Text = TIMER_LABEL .. ": --",
+	})
+
+	local function updateTimeLeft()
+		local remaining = autoRetry.GetTimeLeft()
+		if not remaining then
+			timeLeftLabel:UpdateName(TIMER_LABEL .. ": <font color='rgb(160, 160, 160)'>--</font>")
+			return
+		end
+		local total = math.floor(remaining)
+		local formatted = string.format("%d:%02d", math.floor(total / 60), total % 60)
+		local low = autoRetry.GetTimeRetryEnabled() and remaining < autoRetry.GetTimeRetryThreshold()
+		local color = low and "255, 80, 80" or "0, 255, 0"
+		timeLeftLabel:UpdateName(TIMER_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. formatted .. "</font>")
+	end
+
+	updateTimeLeft()
+
+	--// Forward declaration: updateLobby được định nghĩa phía dưới nhưng poll loop
+	--// ở đây chạy trước -> nếu không khai báo trước sẽ thành global nil.
+	local updateLobby
+
 	task.spawn(function()
 		while task.wait(0.5) do
 			updateBoss(shared.IsBossActive())
 			updateBossIndex()
+			updateLobby()
+			updateTimeLeft()
 		end
 	end)
 
@@ -66,6 +95,24 @@ return function(window, tab)
 
 	shared.OnDungeonNameChanged(function()
 		updateDungeon()
+	end)
+
+	section:Header({ Name = "Lobby / Dungeon" })
+
+	local lobbyLabel = section:Label({
+		Text = "Lobby: Unknown",
+	})
+
+	updateLobby = function()
+		local inLobby = shared.IsInLobby()
+		local color = inLobby and "0, 255, 0" or "255, 80, 80"
+		lobbyLabel:UpdateName("Lobby: <font color='rgb(" .. color .. ")'>" .. (inLobby and "Yes" or "No") .. "</font>")
+	end
+
+	updateLobby()
+
+	shared.OnLobbyChanged(function()
+		updateLobby()
 	end)
 
 	section:Button({

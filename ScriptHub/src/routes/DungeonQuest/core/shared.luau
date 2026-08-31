@@ -25,9 +25,6 @@ local ORBIT_SPEED = 180
 --// góc farmAngle tăng theo bước mỗi khoảng này.
 local ORBIT_TELE_INTERVAL = 0.15
 
---// Offset cộng thêm vào orbit height khi ở boss room
-local BOSS_HEIGHT_OFFSET = 0
-
 local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
@@ -134,9 +131,18 @@ local enemyCount = 0
 
 --// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
 --// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
---// tên dungeon thật -> luôn chọn instance có Value là chuỗi không rỗng.
+--// dungeon thật; giá trị còn lại là placeholder ("unknown") hoặc rỗng khi ở lobby
+--// -> chỉ nhận chuỗi KHÁC placeholder (xem readDungeonName).
 local currentDungeonName = nil
 local dungeonNameCallbacks = {}
+
+--// Giá trị placeholder của workspace.dungeonName khi chưa vào dungeon (lobby).
+local DUNGEON_NAME_PLACEHOLDER = "unknown"
+
+--// Trạng thái LOBBY vs DUNGEON. Lobby = chưa có tên dungeon thật
+--// (workspace.dungeonName placeholder "unknown"/rỗng). Có tên thật -> trong dungeon.
+local inLobby = true
+local lobbyCallbacks = {}
 
 --// Forward declarations
 local cleanupEnemies
@@ -389,7 +395,6 @@ end
 local function getOrbitPosition(center, angle)
 	local height = ORBIT_HEIGHT
 	if bossActive and center then
-		height = height + BOSS_HEIGHT_OFFSET
 		if maintainBossHeight then
 			if not bossStartY then bossStartY = center.Y end
 			local drop = bossStartY - center.Y
@@ -567,6 +572,7 @@ local function teleportToSelectedEnemy(selector, mode, distance, height, orbitDu
 	if teleporting then return end
 
 	local s, err = pcall(function()
+		if shared.IsInLobby() then return end
 		if not dungeon and not initializeRooms() then return end
 		cleanupEnemies()
 
@@ -854,7 +860,7 @@ function shared.FarmPickTarget()
 end
 
 function shared.FarmStep(deltaTime)
-	if farmEnabled and not teleporting then moveFarmTarget(deltaTime) end
+	if not inLobby and farmEnabled and not teleporting then moveFarmTarget(deltaTime) end
 end
 
 function shared.FarmFireSkills()
@@ -1030,15 +1036,6 @@ function shared.SetMaintainBossHeight(value)
 	end
 end
 
---// Offset cộng thêm vào orbit height khi ở boss room
-function shared.GetBossHeightOffset()
-	return BOSS_HEIGHT_OFFSET
-end
-
-function shared.SetBossHeightOffset(value)
-	BOSS_HEIGHT_OFFSET = tonumber(value) or 0
-end
-
 function shared.GetHoverHeight()
 	return HOVER_HEIGHT
 end
@@ -1114,16 +1111,18 @@ task.spawn(function()
 	end
 end)
 
---// Dungeon name watcher: theo dõi tên dungeon thật (trong 2 instance dungeonName).
---// Chọn instance workspace.dungeonName thực sự mang tên dungeon (chuỗi không rỗng),
---// vì trong Workspace có 2 instance tên "dungeonName" và chỉ 1 cái có value.
+--// Dungeon name watcher: theo dõi tên dungeon thật. Ở lobby workspace.dungeonName
+--// mang placeholder "unknown" (hoặc rỗng) -> coi như CHƯA vào dungeon (trả nil).
 local function readDungeonName()
 	local Workspace = game:GetService("Workspace")
 	for _, obj in ipairs(Workspace:GetDescendants()) do
 		if obj.Name == "dungeonName" and obj:IsA("ValueBase") then
 			local value = obj.Value
-			if type(value) == "string" and value ~= "" then
-				return value
+			if type(value) == "string" then
+				local trimmed = string.gsub(value, "%s+", "")
+				if trimmed ~= "" and string.lower(trimmed) ~= DUNGEON_NAME_PLACEHOLDER then
+					return value
+				end
 			end
 		end
 	end
@@ -1139,6 +1138,27 @@ task.spawn(function()
 			if name then shared.ResetBossIndex() end
 			for i = #dungeonNameCallbacks, 1, -1 do
 				pcall(dungeonNameCallbacks[i], name)
+			end
+		end
+	end
+end)
+
+--// Xác định trạng thái lobby dựa trên tên dungeon: có tên dungeon thật = đang ở
+--// trong dungeon; chưa có (placeholder "unknown"/rỗng) = lobby. Không phụ thuộc
+--// nút start ngoài UI.
+local function determineLobbyState()
+	return not (currentDungeonName and #currentDungeonName > 0)
+end
+
+--// Lobby watcher: lobby = startButton hiện diện khi đang ở ngoài dungeon
+task.spawn(function()
+	while true do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local lobby = determineLobbyState()
+		if lobby ~= inLobby then
+			inLobby = lobby
+			for i = #lobbyCallbacks, 1, -1 do
+				pcall(lobbyCallbacks[i], inLobby)
 			end
 		end
 	end
@@ -1206,6 +1226,21 @@ function shared.OnDungeonNameChanged(callback)
 	return function()
 		for i, cb in ipairs(dungeonNameCallbacks) do
 			if cb == callback then table.remove(dungeonNameCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Lobby / Dungeon state ----
+function shared.IsInLobby()
+	return inLobby
+end
+
+function shared.OnLobbyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(lobbyCallbacks, callback)
+	return function()
+		for i, cb in ipairs(lobbyCallbacks) do
+			if cb == callback then table.remove(lobbyCallbacks, i) break end
 		end
 	end
 end

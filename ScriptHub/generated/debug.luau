@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-31T03:47:18.909040600+00:00",
+    genDate = "2026-08-31T06:31:24.558737700+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -2062,7 +2062,7 @@ function MacLib:Window(Settings)
 							local newValue = math.clamp(value, SliderFunctions.Settings.Minimum, SliderFunctions.Settings.Maximum)
 							SetValue(newValue)
 						else
-							sliderValue.Text = ValueDisplayMethod(sliderValue)
+							sliderValue.Text = ValueDisplayMethod(finalValue)
 						end
 
 						if SliderFunctions.Settings.onInputComplete then
@@ -5989,9 +5989,6 @@ local ORBIT_SPEED = 180
 --// góc farmAngle tăng theo bước mỗi khoảng này.
 local ORBIT_TELE_INTERVAL = 0.15
 
---// Offset cộng thêm vào orbit height khi ở boss room
-local BOSS_HEIGHT_OFFSET = 0
-
 local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
 local SKILL_RANGE = 60
@@ -6098,9 +6095,18 @@ local enemyCount = 0
 
 --// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
 --// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
---// tên dungeon thật -> luôn chọn instance có Value là chuỗi không rỗng.
+--// dungeon thật; giá trị còn lại là placeholder ("unknown") hoặc rỗng khi ở lobby
+--// -> chỉ nhận chuỗi KHÁC placeholder (xem readDungeonName).
 local currentDungeonName = nil
 local dungeonNameCallbacks = {}
+
+--// Giá trị placeholder của workspace.dungeonName khi chưa vào dungeon (lobby).
+local DUNGEON_NAME_PLACEHOLDER = "unknown"
+
+--// Trạng thái LOBBY vs DUNGEON. Lobby = chưa có tên dungeon thật
+--// (workspace.dungeonName placeholder "unknown"/rỗng). Có tên thật -> trong dungeon.
+local inLobby = true
+local lobbyCallbacks = {}
 
 --// Forward declarations
 local cleanupEnemies
@@ -6353,7 +6359,6 @@ end
 local function getOrbitPosition(center, angle)
 	local height = ORBIT_HEIGHT
 	if bossActive and center then
-		height = height + BOSS_HEIGHT_OFFSET
 		if maintainBossHeight then
 			if not bossStartY then bossStartY = center.Y end
 			local drop = bossStartY - center.Y
@@ -6531,6 +6536,7 @@ local function teleportToSelectedEnemy(selector, mode, distance, height, orbitDu
 	if teleporting then return end
 
 	local s, err = pcall(function()
+		if shared.IsInLobby() then return end
 		if not dungeon and not initializeRooms() then return end
 		cleanupEnemies()
 
@@ -6818,7 +6824,7 @@ function shared.FarmPickTarget()
 end
 
 function shared.FarmStep(deltaTime)
-	if farmEnabled and not teleporting then moveFarmTarget(deltaTime) end
+	if not inLobby and farmEnabled and not teleporting then moveFarmTarget(deltaTime) end
 end
 
 function shared.FarmFireSkills()
@@ -6994,15 +7000,6 @@ function shared.SetMaintainBossHeight(value)
 	end
 end
 
---// Offset cộng thêm vào orbit height khi ở boss room
-function shared.GetBossHeightOffset()
-	return BOSS_HEIGHT_OFFSET
-end
-
-function shared.SetBossHeightOffset(value)
-	BOSS_HEIGHT_OFFSET = tonumber(value) or 0
-end
-
 function shared.GetHoverHeight()
 	return HOVER_HEIGHT
 end
@@ -7078,16 +7075,18 @@ task.spawn(function()
 	end
 end)
 
---// Dungeon name watcher: theo dõi tên dungeon thật (trong 2 instance dungeonName).
---// Chọn instance workspace.dungeonName thực sự mang tên dungeon (chuỗi không rỗng),
---// vì trong Workspace có 2 instance tên "dungeonName" và chỉ 1 cái có value.
+--// Dungeon name watcher: theo dõi tên dungeon thật. Ở lobby workspace.dungeonName
+--// mang placeholder "unknown" (hoặc rỗng) -> coi như CHƯA vào dungeon (trả nil).
 local function readDungeonName()
 	local Workspace = game:GetService("Workspace")
 	for _, obj in ipairs(Workspace:GetDescendants()) do
 		if obj.Name == "dungeonName" and obj:IsA("ValueBase") then
 			local value = obj.Value
-			if type(value) == "string" and value ~= "" then
-				return value
+			if type(value) == "string" then
+				local trimmed = string.gsub(value, "%s+", "")
+				if trimmed ~= "" and string.lower(trimmed) ~= DUNGEON_NAME_PLACEHOLDER then
+					return value
+				end
 			end
 		end
 	end
@@ -7103,6 +7102,27 @@ task.spawn(function()
 			if name then shared.ResetBossIndex() end
 			for i = #dungeonNameCallbacks, 1, -1 do
 				pcall(dungeonNameCallbacks[i], name)
+			end
+		end
+	end
+end)
+
+--// Xác định trạng thái lobby dựa trên tên dungeon: có tên dungeon thật = đang ở
+--// trong dungeon; chưa có (placeholder "unknown"/rỗng) = lobby. Không phụ thuộc
+--// nút start ngoài UI.
+local function determineLobbyState()
+	return not (currentDungeonName and #currentDungeonName > 0)
+end
+
+--// Lobby watcher: lobby = startButton hiện diện khi đang ở ngoài dungeon
+task.spawn(function()
+	while true do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local lobby = determineLobbyState()
+		if lobby ~= inLobby then
+			inLobby = lobby
+			for i = #lobbyCallbacks, 1, -1 do
+				pcall(lobbyCallbacks[i], inLobby)
 			end
 		end
 	end
@@ -7170,6 +7190,21 @@ function shared.OnDungeonNameChanged(callback)
 	return function()
 		for i, cb in ipairs(dungeonNameCallbacks) do
 			if cb == callback then table.remove(dungeonNameCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Lobby / Dungeon state ----
+function shared.IsInLobby()
+	return inLobby
+end
+
+function shared.OnLobbyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(lobbyCallbacks, callback)
+	return function()
+		for i, cb in ipairs(lobbyCallbacks) do
+			if cb == callback then table.remove(lobbyCallbacks, i) break end
 		end
 	end
 end
@@ -7427,6 +7462,12 @@ function combat.StartAutoSkill()
 				continue
 			end
 
+			--// Chỉ bấm skill khi đang ở trong dungeon (không spam Q+E ngoài lobby)
+			if shared.IsInLobby() then
+				task.wait(shared.GetSkillInterval())
+				continue
+			end
+
 			local ok, err = pcall(function()
 				if shared.CanFireSkill() then
 					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
@@ -7484,10 +7525,28 @@ function farm.Start()
 	local lastWarnClock = 0
 
 	task.spawn(function()
+		--// Chờ rời lobby (đã vào dungeon) trước khi scan để không abort sớm khi
+		--// bật Auto Farm ngay từ màn hình chờ. Timeout 30s cho load chậm.
+		local waited = 0
+		while shared.IsInLobby() and shared.IsFarmEnabled() do
+			task.wait(0.5)
+			waited = waited + 0.5
+			if waited >= 30 then
+				shared.SetFarmEnabled(false)
+				shared.SetFarmRunning(false)
+				notifier.Notify("Auto Farm", "Still in lobby — aborted. Toggle again inside the dungeon.", 4)
+				return
+			end
+		end
+		if not shared.IsFarmEnabled() then
+			shared.SetFarmRunning(false)
+			return
+		end
+
 		if not shared.ReadyDungeon() then
 			shared.SetFarmEnabled(false)
 			shared.SetFarmRunning(false)
-			notifier.Notify("Auto Farm", "Failed to load dungeon.", 3)
+			notifier.Notify("Auto Farm", "Failed to detect dungeon.", 3)
 			return
 		end
 
@@ -7539,40 +7598,28 @@ function farm.Toggle(state)
 end
 
 return farm
-end function __DIST.j()-- Auto Start Game cho DungeonQuest: chờ startButton xuất hiện rồi fire remote start.
+end function __DIST.j()-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
+-- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
+-- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
 
 --// Imports
 
-local services = __DIST.load('c')
 local shared = __DIST.load('d')
 local notifier = __DIST.load('b')
-
---// References
-local player = services.player
 
 --// State
 local autoStartEnabled = false
 local autoStartRunning = false
 local autoStartTriggered = false
 local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
-local autoStartConditionText = 'game:GetService("Players").LocalPlayer.PlayerGui.startButton'
-local autoStartConditionFn = nil
 local autoStartCommandFn = nil
 
---// Helpers
-local function validateConditionText(text)
-	local s, fn = pcall(loadstring, "return " .. text)
-	if s and type(fn) == "function" then return fn end
-	return nil
+--// Điều kiện kích hoạt: đang ở lobby (startButton hiện, ngoài dungeon) do shared tính
+local function lobbyCondition()
+	return shared.IsInLobby()
 end
 
-autoStartConditionFn = validateConditionText(autoStartConditionText)
-if not autoStartConditionFn then
-	autoStartConditionFn = function()
-		return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("startButton")
-	end
-end
-
+--// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
 local s2, cmdFn2 = pcall(loadstring, autoStartCommand)
 if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
 
@@ -7586,11 +7633,9 @@ function autoStart.Start()
 	autoStartTriggered = false
 	task.spawn(function()
 		while autoStartEnabled do
-			local met = false
-			if autoStartConditionFn then
-				local sCond, res = pcall(autoStartConditionFn)
-				met = sCond and res ~= nil
-			end
+			local sCond, res = pcall(lobbyCondition)
+			local met = sCond and res == true
+
 			if met and not autoStartTriggered then
 				autoStartTriggered = true
 				if autoStartCommandFn then
@@ -7604,6 +7649,12 @@ function autoStart.Start()
 					notifier.Notify("Auto Start", "Remote command invalid", 3)
 				end
 			end
+
+			--// Hết lobby (vào dungeon / đang chơi) -> cho phép kích lại ở lobby lần sau
+			if not met and autoStartTriggered then
+				autoStartTriggered = false
+			end
+
 			if not autoStartEnabled then break end
 			task.wait(1)
 		end
@@ -7619,7 +7670,7 @@ function autoStart.Toggle(state)
 	autoStartEnabled = state
 	if state then
 		autoStart.Start()
-		notifier.Notify("Auto Start", "Waiting for start button...", 2)
+		notifier.Notify("Auto Start", "Waiting for lobby...", 2)
 	else
 		autoStart.Stop()
 		notifier.Notify("Auto Start", "Stopped", 2)
@@ -7631,8 +7682,7 @@ shared.OnRespawn(function()
 	autoStartTriggered = false
 end)
 
-return autoStart
-end function __DIST.k()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStart end function __DIST.k()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -7761,23 +7811,26 @@ function autoRetry.Start()
 	autoRetryTriggered = false
 	timeRetryTriggered = false
 	task.spawn(function()
-		while autoRetryEnabled do
-			local count = 0
-			if autoRetryHolderFn then
-				local sok, holder = pcall(autoRetryHolderFn)
-				if sok and typeof(holder) == "Instance" and holder.Parent then
-					count = #holder:GetChildren()
+		while autoRetryEnabled or timeRetryEnabled do
+			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
+			if autoRetryEnabled then
+				local count = 0
+				if autoRetryHolderFn then
+					local sok, holder = pcall(autoRetryHolderFn)
+					if sok and typeof(holder) == "Instance" and holder.Parent then
+						count = #holder:GetChildren()
+					end
+				end
+				if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
+					autoRetryTriggered = true
+					fireRetry()
+				elseif count < AUTO_RETRY_MIN_ITEMS then
+					autoRetryTriggered = false
 				end
 			end
-			--// Điều kiện reward (>= 2 item)
-			if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
-				autoRetryTriggered = true
-				fireRetry()
-			elseif count < AUTO_RETRY_MIN_ITEMS then
-				autoRetryTriggered = false
-			end
 
-			--// Điều kiện hết giờ (tách riêng): UI còn < X giây thì retry
+			--// Điều kiện hết giờ (chạy độc lập khi bật Retry on Time Low):
+			--// UI còn < X giây thì retry
 			if timeRetryEnabled then
 				local remaining = readTimeLeft()
 				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
@@ -7788,7 +7841,7 @@ function autoRetry.Start()
 				end
 			end
 
-			if not autoRetryEnabled then break end
+			if not autoRetryEnabled and not timeRetryEnabled then break end
 			task.wait(0.75)
 		end
 		autoRetryRunning = false
@@ -7813,6 +7866,13 @@ end
 
 function autoRetry.SetTimeRetryEnabled(value)
 	timeRetryEnabled = value == true
+	if timeRetryEnabled then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching time left...", 2)
+	else
+		notifier.Notify("Auto Retry", "Time retry stopped", 2)
+	end
 end
 
 function autoRetry.GetTimeRetryEnabled()
@@ -7825,6 +7885,11 @@ end
 
 function autoRetry.GetTimeRetryThreshold()
 	return timeRetryThreshold
+end
+
+--// Đọc thời gian còn lại (giây) như đúng logic time-low đang dùng (UI playerGui.timeLeftGui.Frame.<time>)
+function autoRetry.GetTimeLeft()
+	return readTimeLeft()
 end
 
 function autoRetry.RetryNow()
@@ -8387,6 +8452,8 @@ local function panicHazardNearby(playerPos)
 end
 
 local function basicStep()
+	--// Chỉ né khi đang trong dungeon; không chạy ngoài lobby (không có hazard).
+	if shared.IsInLobby() then return end
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	if not character or not playerRoot or not playerRoot.Parent then return end
@@ -8639,11 +8706,17 @@ function basicDodge.GetPresetNames()
 	return out
 end
 
-return basicDodge end function __DIST.m()-- Death Logger cho DungeonQuest.
--- Công cụ ĐIỀU TRA: khi player chết, log ra console thông tin nguyên nhân
--- tử vong (lastCombatant, vị trí, và các object nghi ngờ là hazard quanh
--- điểm chết). Dùng để xác định "thứ gì thực sự gây chết" trước khi gắn
--- vào danh sách hazard dodge. Chưa tự động né.
+return basicDodge end function __DIST.m()-- Death Logger v2 cho DungeonQuest (executor-level hook).
+-- Mục tiêu: biết CHÍNH XÁC nguyên nhân chết thay vì đoán theo vị trí.
+--
+-- Chiến lược phát hiện (theo độ chính xác giảm dần):
+--   1. Hook `Humanoid.TakeDamage` (global, cài 1 lần ở Init). Mỗi đòn damage
+--      trúng nhân vật local đều ghi lại {thời điểm, amount, source, vị trí}.
+--      Đòn cuối cùng trong KILL_WINDOW (giây) trước lúc chết = killing blow.
+--   2. Đọc engine props `LastHurtPart` / `LastHurtByHumanoid` + `lastCombatant`
+--      (legacy) NGAY tại thời điểm chết — bắt được damage do server đè trực
+--      tiếp Health mà không đi qua TakeDamage (vd: killplane, fall damage).
+--   3. Quét object nghi ngờ quanh điểm chết CHỈ làm tham khảo (ưu tiên thấp).
 
 --// Imports
 
@@ -8651,11 +8724,14 @@ local services = __DIST.load('c')
 local player = services.player
 
 --// Configuration
+--// Tổng số damage record giữ lại (ring buffer, giữ lịch sử gần nhất)
+local MAX_RECORDS = 64
 --// Bán kính quét các object nghi ngờ quanh điểm chết (chỉ tính trong bán kính này)
 local LOG_RADIUS = 25
-
 --// Số candidate top hiển thị trong danh sách tham khảo
 local TOP_N = 3
+--// Khoảng (giây) giữa lúc chết và đòn TakeDamage gần nhất để coi là "killing blow"
+local KILL_WINDOW = 2.0
 
 --// Các pattern tên nghi ngờ là hazard/skill (khớp chuỗi con, không phân biệt hoa thường)
 local CANDIDATE_PATTERNS = {
@@ -8668,8 +8744,170 @@ local deathLog = {}
 
 --// State
 local enabled = false
+local hookInstalled = false
+local diedConnection = nil
+local damageRecords = {}
+local lastWarnClock = 0
 
+--// Wrap closure để hook (một số executor bắt buộc C closure trên hook C function)
+local wrapClosure = nil
+if type(newcclosure) == "function" then
+	wrapClosure = newcclosure
+else
+	wrapClosure = function(f) return f end
+end
+
+local function getLocalHumanoid()
+	if not player then return nil end
+	local character = player.Character
+	if not character or not character.Parent then return nil end
+	return character:FindFirstChildOfClass("Humanoid")
+end
+
+--// Tìm tên player sở hữu `source` (PvP) bằng cách đi lên chuỗi ancestor
+local function resolveOwnerName(source)
+	if not source then return nil end
+	local ok, name = pcall(function()
+		local Players = services.Players
+		local ancestor = source
+		local guard = 0
+		while ancestor and ancestor.Parent and guard < 8 do
+			local plr = Players:GetPlayerFromCharacter(ancestor)
+			if plr then return plr.Name end
+			ancestor = ancestor.Parent
+			guard += 1
+		end
+		return nil
+	end)
+	return ok and name or nil
+end
+
+--// Liệt kê nguồn gây damage dưới dạng chuỗi (name + owner/tool + class + path)
+local function describeSource(source)
+	if not source then return "nil" end
+	local name = nil
+	local owner = nil
+	local toolName = nil
+	local cls = nil
+	local path = nil
+	pcall(function() name = source.Name end)
+	pcall(function() cls = source.ClassName end)
+	pcall(function()
+		local ancestor = source.Parent
+		local guard = 0
+		while ancestor and ancestor.Parent and guard < 8 do
+			if not toolName and ancestor:IsA("Tool") then toolName = ancestor.Name end
+			ancestor = ancestor.Parent
+			guard += 1
+		end
+	end)
+	pcall(function() path = source:GetFullName() end)
+	owner = resolveOwnerName(source)
+
+	local out = name and name ~= "" and name or "?"
+	if toolName then out = out .. " / " .. toolName end
+	if owner then out = out .. " (by " .. owner .. ")" end
+	out = out .. " [" .. (cls or "?") .. "]"
+	if path and path ~= "" then out = out .. " {" .. path .. "}" end
+	return out
+end
+
+--// Tạo record damage từ hook. Trả về rec để hook cập nhật healthAfter sau damage.
+local function makeRecord(victim, amount, source)
+	if type(amount) ~= "number" then return nil end
+	local rec = {
+		time = os.clock(),
+		amount = amount,
+		healthAfter = nil,
+		source = source,
+		victimPos = nil,
+		sourcePos = nil,
+		dist = nil,
+	}
+	if victim and victim.Parent then
+		pcall(function()
+			local root = victim.Parent:FindFirstChild("HumanoidRootPart")
+			if root and root:IsA("BasePart") then rec.victimPos = root.Position end
+		end)
+	end
+	if source then
+		pcall(function()
+			if source:IsA("BasePart") then
+				rec.sourcePos = source.Position
+			elseif source:IsA("Model") then
+				local p = source.PrimaryPart
+				if p and p:IsA("BasePart") then rec.sourcePos = p.Position end
+			end
+		end)
+		if rec.sourcePos and rec.victimPos then
+			rec.dist = (rec.sourcePos - rec.victimPos).Magnitude
+		end
+	end
+
+	if #damageRecords >= MAX_RECORDS then
+		table.remove(damageRecords, 1)
+	end
+	table.insert(damageRecords, rec)
+	return rec
+end
+
+--// Cài hook `TakeDamage` GLOBAL cho mọi Humanoid, chỉ record khi victim là ta.
+--// Đã hook thì giữ nguyên qua các lần respawn (character mới vẫn dùng chung method).
+local function installTakeDamageHook()
+	if hookInstalled then return true end
+	if type(hookfunction) ~= "function" then return false end
+
+	local ok = pcall(function()
+		local prototype = Instance.new("Humanoid")
+		local original = prototype.TakeDamage
+		hookInstalled = hookfunction(original, wrapClosure(function(self, ...)
+			if enabled and self and self == getLocalHumanoid() then
+				local args = {...}
+				local rec = makeRecord(self, args[1], args[2])
+				local results = { original(self, ...) }
+				if rec then pcall(function() rec.healthAfter = self.Health end) end
+				return unpack(results)
+			end
+			return original(self, ...)
+		end)) ~= nil
+		prototype:Destroy()
+	end)
+
+	if not ok then hookInstalled = false end
+	if not hookInstalled then
+		local now = os.clock()
+		if now - lastWarnClock > 5 then
+			lastWarnClock = now
+			warn("[DeathLog] Hook TakeDamage failed -> chỉ dùng engine props + scan tham khảo.")
+		end
+	end
+	return hookInstalled
+end
+
+--// Đọc engine props xác định kẻ đã đánh phát cuối (chạy sát lúc chết)
+local function engineKillerInfo(humanoid)
+	local info = {}
+	if not humanoid then return info end
+	pcall(function()
+		local v = humanoid.lastCombatant
+		if v then
+			if v.Parent then info.lastCombatant = v.Parent.Name else info.lastCombatant = tostring(v) end
+		end
+	end)
+	pcall(function()
+		local v = humanoid.LastHurtByHumanoid
+		if v and v.Parent then info.lastHurtByHumanoid = v.Parent.Name else info.lastHurtByHumanoid = tostring(v) end
+	end)
+	pcall(function()
+		local v = humanoid.LastHurtPart
+		if v then info.lastHurtPart = v.Name end
+	end)
+	return info
+end
+
+--// Các pattern/hàm scan vật thể quanh điểm chết (tham khảo)
 local function matchesCandidate(name)
+	if not name then return false end
 	local lower = name:lower()
 	for _, p in ipairs(CANDIDATE_PATTERNS) do
 		if lower:find(p:lower(), 1, true) then return true end
@@ -8678,9 +8916,13 @@ local function matchesCandidate(name)
 end
 
 local function describeObject(obj)
-	local kind = obj:IsA("BasePart") and "Part" or obj.ClassName
-	local name = obj.Name
+	local kind = nil
+	local name = nil
 	local rootPos = nil
+	pcall(function()
+		kind = obj:IsA("BasePart") and "Part" or obj.ClassName
+		name = obj.Name
+	end)
 	if obj:IsA("BasePart") then
 		rootPos = obj.Position
 	elseif obj:IsA("Model") then
@@ -8700,7 +8942,6 @@ local function scanCandidates(deathPos)
 	local Workspace = game:GetService("Workspace")
 	local hits = {}
 	for _, child in ipairs(Workspace:GetChildren()) do
-		--// Chỉ xét child level 1; folder bỏ qua luôn
 		if not child:IsA("Folder") and matchesCandidate(child.Name) then
 			local name, kind, pos = describeObject(child)
 			if pos then
@@ -8712,70 +8953,64 @@ local function scanCandidates(deathPos)
 	return hits
 end
 
---// Chọn 1 nguyên nhân có khả năng cao nhất: ưu tiên trùng lastCombatant,
---// nếu không thì lấy candidate gần điểm chết nhất.
-local function pickMostLikely(hits, combatantName)
-	if combatantName and combatantName ~= "none" then
-		for _, h in ipairs(hits) do
-			local nm = h.name:lower()
-			local tx = combatantName:lower()
-			if nm:find(tx, 1, true) then return h, "lastCombatant" end
-		end
-	end
-	if #hits > 0 then return hits[1], "closest" end
-	return nil, "none"
+local function formatRecord(deathTime, rec)
+	local amount = rec.amount or 0
+	local ago = deathTime - (rec.time or deathTime)
+	local dist = rec.dist and string.format("dist=%.1f", rec.dist) or "dist=?"
+	local healthAfter = rec.healthAfter and string.format("remaining=%.1f", rec.healthAfter) or "remaining=?"
+	return string.format("[DEATH-LOG]   | %-8.1f HP | %7.2fs before death | %s | %s | %s",
+		amount, ago, dist, healthAfter, describeSource(rec.source))
 end
 
-local function logDeath(deathPos, character)
+local function logDeath(deathPos, humanoid)
 	if not enabled then return end
-	local healthInfo = ""
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		healthInfo = string.format(" (health=%.1f)", humanoid.Health)
-	end
-
-	local lastCombatantInfo = "none"
-	--// lastCombatant có thể không tồn tại trong môi trường game -> bọc pcall
-	local ok, lc = pcall(function()
-		local v = humanoid and humanoid.lastCombatant
-		if v and v:IsA("BasePart") and v.Parent then return v.Parent.Name end
-		if v then return tostring(v) end
-		return nil
-	end)
-	if ok and lc then
-		lastCombatantInfo = lc
-	end
+	local deathTime = os.clock()
 
 	print("[DEATH-LOG] ========================================")
-	print("[DEATH-LOG] Player died at " .. tostring(deathPos) .. healthInfo)
-	print("[DEATH-LOG] lastCombatant: " .. tostring(lastCombatantInfo))
+	print("[DEATH-LOG] PLAYER DIED")
+	print("[DEATH-LOG]   position: " .. tostring(deathPos))
 
+	--// 1) Engine props: nguồn chính xác nhất nếu server tự đè Health
+	local info = engineKillerInfo(humanoid)
+	print("[DEATH-LOG] engine killsource:")
+	print("[DEATH-LOG]   lastHurtPart      = " .. tostring(info.lastHurtPart or "none"))
+	print("[DEATH-LOG]   lastHurtByHumanoid = " .. tostring(info.lastHurtByHumanoid or "none"))
+	print("[DEATH-LOG]   lastCombatant     = " .. tostring(info.lastCombatant or "none"))
+
+	--// 2) Hook records: killing blow
+	local lastRec = damageRecords[#damageRecords]
+	local hasRecent = lastRec and (deathTime - lastRec.time) <= KILL_WINDOW
+	if hasRecent then
+		print("[DEATH-LOG] >> KILLING BLOW (last TakeDamage within " .. KILL_WINDOW .. "s):")
+		print("[DEATH-LOG]    " .. formatRecord(deathTime, lastRec))
+	elseif #damageRecords > 0 then
+		print("[DEATH-LOG] >> No TakeDamage hit within " .. KILL_WINDOW
+			.. "s of death -> có thể do fall / killplane / damage do server đặt trực tiếp Health"
+			.. " (xem engine killsource bên trên).")
+	else
+		print("[DEATH-LOG] >> No TakeDamage records captured (game không damage qua client).")
+	end
+
+	--// Liệt kê 3 hit gần nhất (để thấy chuỗi damage trước khi chết)
+	local count = math.min(#damageRecords, 3)
+	if count > 0 then
+		print("[DEATH-LOG] last " .. count .. " damage hits:")
+		for i = #damageRecords - count + 1, #damageRecords do
+			print(formatRecord(deathTime, damageRecords[i]))
+		end
+	end
+
+	--// 3) Tham khảo hazard quanh điểm chết (ưu tiên thấp)
 	local hits = scanCandidates(deathPos)
-	--// Thu hẹp: chỉ giữ candidate trong bán kính
 	local inRange = {}
 	for _, h in ipairs(hits) do
 		if h.dist <= LOG_RADIUS then table.insert(inRange, h) end
 	end
-	hits = inRange
-
-	local cause, basis = pickMostLikely(hits, lastCombatantInfo)
-
-	print("[DEATH-LOG] ========================================")
-	print("[DEATH-LOG] Player died at " .. tostring(deathPos) .. healthInfo)
-	print("[DEATH-LOG] lastCombatant: " .. tostring(lastCombatantInfo))
-
-	if cause then
-		local reason = basis == "lastCombatant" and "matched lastCombatant" or "closest to death point"
-		print(string.format("[DEATH-LOG] >> MOST LIKELY CAUSE: %s (%s, dist=%.1f) [%s]", cause.name, cause.kind, cause.dist, reason))
-	else
-		print("[DEATH-LOG] >> MOST LIKELY CAUSE: none (no candidate hazard within " .. LOG_RADIUS .. " stud)")
-	end
-
-	local n = math.min(#hits, TOP_N)
+	local n = math.min(#inRange, TOP_N)
 	if n > 0 then
-		print("[DEATH-LOG] Top " .. n .. " candidates nearby:")
+		print("[DEATH-LOG] reference hazard near death (khoảng " .. LOG_RADIUS .. " stud):")
 		for i = 1, n do
-			local h = hits[i]
+			local h = inRange[i]
 			print(string.format("[DEATH-LOG]   %d) %-40s %-10s dist=%.1f", i, h.name, h.kind, h.dist))
 		end
 	end
@@ -8783,38 +9018,51 @@ local function logDeath(deathPos, character)
 end
 
 function deathLog.Init()
-	if player and player.Character and player.Character.Parent then
-		local hum = player.Character:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.Died:Connect(function()
-				local root = player.Character:FindFirstChild("HumanoidRootPart")
-				logDeath(root and root.Position or Vector3.zero, player.Character)
+	installTakeDamageHook()
+
+	local function bindCharacter(character)
+		if not character or not character.Parent then return end
+		local hum = character:FindFirstChildOfClass("Humanoid")
+		if not hum then
+			task.spawn(function()
+				local h = character:WaitForChild("Humanoid", 10)
+				if h then bindCharacter(character) end
 			end)
+			return
 		end
+		if diedConnection then
+			pcall(function() diedConnection:Disconnect() end)
+			diedConnection = nil
+		end
+		diedConnection = hum.Died:Connect(function()
+			local root = character:FindFirstChild("HumanoidRootPart")
+			logDeath(root and root.Position or Vector3.zero, hum)
+		end)
 	end
 
-	player.CharacterAdded:Connect(function(character)
-		local hum = character:WaitForChild("Humanoid", 10)
-		if not hum then return end
-		hum.Died:Connect(function()
-			local root = character:FindFirstChild("HumanoidRootPart")
-			logDeath(root and root.Position or Vector3.zero, character)
-		end)
-	end)
+	if player then
+		local initial = player.Character
+		if initial then
+			bindCharacter(initial)
+		end
+		player.CharacterAdded:Connect(bindCharacter)
+	end
 end
 
 function deathLog.Toggle(state)
 	enabled = state == true
+	if enabled then
+		installTakeDamageHook()
+	end
 end
 
 function deathLog.IsEnabled()
 	return enabled
 end
 
-return deathLog
-end function __DIST.n()-- Contextual Auto-Farm settings cho DungeonQuest.
+return deathLog end function __DIST.n()-- Contextual Auto-Farm settings cho DungeonQuest.
 -- Cho phép cấu hình riêng nhóm Auto Farm (Farm Mode, sliders orbit/hover/tele,
--- retarget, boss-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
+-- retarget, maintain-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
 -- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
 -- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (shared).
 
@@ -8842,7 +9090,6 @@ local FIELD_DEFS = {
 	RetargetMode = { get = function() return shared.GetRetargetMode() end, set = function(v) shared.SetRetargetMode(v) end },
 	ReverseOrbitOnRetarget = { get = function() return shared.GetOrbitReverseEnabled() end, set = function(v) shared.SetOrbitReverseEnabled(v) end },
 	MaintainBossHeight = { get = function() return shared.GetMaintainBossHeight() end, set = function(v) shared.SetMaintainBossHeight(v) end },
-	BossHeightOffset = { get = function() return shared.GetBossHeightOffset() end, set = function(v) shared.SetBossHeightOffset(v) end },
 }
 
 local DISPLAY_TO_KEY = {
@@ -8921,7 +9168,7 @@ local function ensureContextComplete(dungeon, targetKey)
 	return changed
 end
 
---// Ghi override cho context cụ thể (context luôn đầy đủ 13 field)
+--// Ghi override cho context cụ thể (context luôn đầy đủ 12 field)
 function contextual.SetField(dungeon, targetKey, field, value)
 	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
 	if not KEY_TO_DISPLAY[targetKey] then return end
@@ -8934,6 +9181,7 @@ end
 
 --// Xóa hết override của 1 context (về global)
 function contextual.ClearContext(dungeon, targetKey)
+	if type(dungeon) ~= "string" or #dungeon == 0 then return end
 	if data[dungeon] and data[dungeon][targetKey] then
 		data[dungeon][targetKey] = nil
 		if next(data[dungeon]) == nil then data[dungeon] = nil end
@@ -8945,8 +9193,10 @@ end
 function contextual.GetField(dungeon, targetKey, field)
 	local def = FIELD_DEFS[field]
 	if not def then return nil end
-	if data[dungeon] and data[dungeon][targetKey] and data[dungeon][targetKey][field] ~= nil then
-		return data[dungeon][targetKey][field]
+	--// Ngoài dungeon (tên nil/rỗng) -> không có context -> dùng global hiện tại
+	if type(dungeon) == "string" and #dungeon > 0 then
+		local ctx = data[dungeon] and data[dungeon][targetKey]
+		if ctx and ctx[field] ~= nil then return ctx[field] end
 	end
 	return def.get()
 end
@@ -9027,6 +9277,7 @@ function contextual.Init()
 
 	shared.OnDungeonNameChanged(function() findAndApply(false) end)
 	shared.OnBossIndexChanged(function() findAndApply(false) end)
+	shared.OnBossActiveChanged(function() findAndApply(false) end)
 
 	task.spawn(function()
 		while true do
@@ -9100,7 +9351,6 @@ return function(window, tab)
 	local orbitTeleStepSlider
 	local orbitHeightSlider
 	local maintainBossHeightToggle
-	local bossHeightOffsetSlider
 	local hoverHeightSlider
 	local teleportDistanceSlider
 	local autoRetargetToggle
@@ -9215,20 +9465,6 @@ return function(window, tab)
 		end),
 	}, "Toggle_MaintainBossHeight")
 
-	bossHeightOffsetSlider = farmSection:Slider({
-		Name = "Boss Height Offset",
-		Default = contextual.GetField(editDungeon, editTarget, "BossHeightOffset"),
-		Minimum = -100,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "BossHeightOffset", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_BossHeightOffset")
-
 	hoverHeightSlider = farmSection:Slider({
 		Name = "Hover Height",
 		Default = contextual.GetField(editDungeon, editTarget, "HoverHeight"),
@@ -9321,7 +9557,6 @@ return function(window, tab)
 		pcall(function() orbitTeleStepSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitTeleStep")) end)
 		pcall(function() orbitHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitHeight")) end)
 		pcall(function() maintainBossHeightToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "MaintainBossHeight")) end)
-		pcall(function() bossHeightOffsetSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "BossHeightOffset")) end)
 		pcall(function() hoverHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "HoverHeight")) end)
 		pcall(function() teleportDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "TeleportDistance")) end)
 		pcall(function() autoRetargetToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "AutoRetarget")) end)
@@ -9340,7 +9575,6 @@ return function(window, tab)
 		pcall(function() orbitTeleStepSlider:SetVisibility(visible) end)
 		pcall(function() orbitHeightSlider:SetVisibility(visible) end)
 		pcall(function() maintainBossHeightToggle:SetVisibility(visible) end)
-		pcall(function() bossHeightOffsetSlider:SetVisibility(visible) end)
 		pcall(function() hoverHeightSlider:SetVisibility(visible) end)
 		pcall(function() teleportDistanceSlider:SetVisibility(visible) end)
 		pcall(function() autoRetargetToggle:SetVisibility(visible) end)
@@ -9374,6 +9608,7 @@ return function(window, tab)
 	end
 	shared.OnDungeonNameChanged(onDungeonChanged)
 	shared.OnBossIndexChanged(updateActiveCtxLabel)
+	shared.OnBossActiveChanged(updateActiveCtxLabel)
 	contextual.OnConfigChanged(function()
 		editDungeon = shared.GetCurrentDungeonName()
 		updateActiveCtxLabel()
@@ -9826,6 +10061,7 @@ return dungeonCatalog end function __DIST.q()-- Auto Join Dungeon cho DungeonQue
 local services = __DIST.load('c')
 local notifier = __DIST.load('b')
 local dungeonCatalog = __DIST.load('p')
+local shared = __DIST.load('d')
 
 local playerName = services.player.Name
 
@@ -9922,7 +10158,7 @@ end
 local function joinDungeonWatcher()
 	while true do
 		task.wait(0.5)
-		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() then
+		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and shared.IsInLobby() then
 			joinDungeonNow()
 		end
 	end
@@ -10738,20 +10974,18 @@ local function startRun()
 	if xpBefore == nil then xpBefore = getXp() end
 end
 
---// Theo dõi startButton: hiện = lobby (reset), mất = vào dungeon (bắt đầu đếm)
+--// Theo dõi trạng thái lobby/dungeon qua shared (startButton + dungName):
+--// lobby = reset bộ đếm XP, vào dungeon = bắt đầu tính thời gian hoàn thành.
 local function startDungeonWatcher()
-	task.spawn(function()
-		while true do
-			local p = game:GetService("Players").LocalPlayer
-			local gui = p and p:FindFirstChild("PlayerGui")
-			if gui and gui:FindFirstChild("startButton") then
-				resetRun()
-			else
-				startRun()
-			end
-			task.wait(0.5)
+	local function onLobbyChanged(lobby)
+		if lobby then
+			resetRun()
+		else
+			startRun()
 		end
-	end)
+	end
+	onLobbyChanged(shared.IsInLobby())
+	shared.OnLobbyChanged(onLobbyChanged)
 end
 
 --// Định dạng thời gian hoàn thành (giây -> MM:SS)
@@ -11175,10 +11409,12 @@ end function __DIST.y()-- Tab State (DungeonQuest): hiển thị trạng thái t
 --// Imports
 
 local shared = __DIST.load('d')
+local autoRetry = __DIST.load('k')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
 local DUNGEON_LABEL = "Dungeon"
+local TIMER_LABEL = "Time Left"
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -11213,10 +11449,37 @@ return function(window, tab)
 		updateBossIndex()
 	end)
 
+	section:Header({ Name = "Timer" })
+
+	local timeLeftLabel = section:Label({
+		Text = TIMER_LABEL .. ": --",
+	})
+
+	local function updateTimeLeft()
+		local remaining = autoRetry.GetTimeLeft()
+		if not remaining then
+			timeLeftLabel:UpdateName(TIMER_LABEL .. ": <font color='rgb(160, 160, 160)'>--</font>")
+			return
+		end
+		local total = math.floor(remaining)
+		local formatted = string.format("%d:%02d", math.floor(total / 60), total % 60)
+		local low = autoRetry.GetTimeRetryEnabled() and remaining < autoRetry.GetTimeRetryThreshold()
+		local color = low and "255, 80, 80" or "0, 255, 0"
+		timeLeftLabel:UpdateName(TIMER_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. formatted .. "</font>")
+	end
+
+	updateTimeLeft()
+
+	--// Forward declaration: updateLobby được định nghĩa phía dưới nhưng poll loop
+	--// ở đây chạy trước -> nếu không khai báo trước sẽ thành global nil.
+	local updateLobby
+
 	task.spawn(function()
 		while task.wait(0.5) do
 			updateBoss(shared.IsBossActive())
 			updateBossIndex()
+			updateLobby()
+			updateTimeLeft()
 		end
 	end)
 
@@ -11239,6 +11502,24 @@ return function(window, tab)
 
 	shared.OnDungeonNameChanged(function()
 		updateDungeon()
+	end)
+
+	section:Header({ Name = "Lobby / Dungeon" })
+
+	local lobbyLabel = section:Label({
+		Text = "Lobby: Unknown",
+	})
+
+	updateLobby = function()
+		local inLobby = shared.IsInLobby()
+		local color = inLobby and "0, 255, 0" or "255, 80, 80"
+		lobbyLabel:UpdateName("Lobby: <font color='rgb(" .. color .. ")'>" .. (inLobby and "Yes" or "No") .. "</font>")
+	end
+
+	updateLobby()
+
+	shared.OnLobbyChanged(function()
+		updateLobby()
 	end)
 
 	section:Button({

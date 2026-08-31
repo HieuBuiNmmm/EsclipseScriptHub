@@ -550,6 +550,8 @@ local function panicHazardNearby(playerPos)
 end
 
 local function basicStep()
+	--// Chỉ né khi đang trong dungeon; không chạy ngoài lobby (không có hazard).
+	if shared.IsInLobby() then return end
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	if not character or not playerRoot or not playerRoot.Parent then return end

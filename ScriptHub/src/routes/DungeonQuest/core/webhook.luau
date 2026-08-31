@@ -133,20 +133,18 @@ local function startRun()
 	if xpBefore == nil then xpBefore = getXp() end
 end
 
---// Theo dõi startButton: hiện = lobby (reset), mất = vào dungeon (bắt đầu đếm)
+--// Theo dõi trạng thái lobby/dungeon qua shared (startButton + dungName):
+--// lobby = reset bộ đếm XP, vào dungeon = bắt đầu tính thời gian hoàn thành.
 local function startDungeonWatcher()
-	task.spawn(function()
-		while true do
-			local p = game:GetService("Players").LocalPlayer
-			local gui = p and p:FindFirstChild("PlayerGui")
-			if gui and gui:FindFirstChild("startButton") then
-				resetRun()
-			else
-				startRun()
-			end
-			task.wait(0.5)
+	local function onLobbyChanged(lobby)
+		if lobby then
+			resetRun()
+		else
+			startRun()
 		end
-	end)
+	end
+	onLobbyChanged(shared.IsInLobby())
+	shared.OnLobbyChanged(onLobbyChanged)
 end
 
 --// Định dạng thời gian hoàn thành (giây -> MM:SS)

@@ -26,6 +26,12 @@ function combat.StartAutoSkill()
 				continue
 			end
 
+			--// Chỉ bấm skill khi đang ở trong dungeon (không spam Q+E ngoài lobby)
+			if shared.IsInLobby() then
+				task.wait(shared.GetSkillInterval())
+				continue
+			end
+
 			local ok, err = pcall(function()
 				if shared.CanFireSkill() then
 					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)

@@ -56,7 +56,6 @@ return function(window, tab)
 	local orbitTeleStepSlider
 	local orbitHeightSlider
 	local maintainBossHeightToggle
-	local bossHeightOffsetSlider
 	local hoverHeightSlider
 	local teleportDistanceSlider
 	local autoRetargetToggle
@@ -171,20 +170,6 @@ return function(window, tab)
 		end),
 	}, "Toggle_MaintainBossHeight")
 
-	bossHeightOffsetSlider = farmSection:Slider({
-		Name = "Boss Height Offset",
-		Default = contextual.GetField(editDungeon, editTarget, "BossHeightOffset"),
-		Minimum = -100,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "BossHeightOffset", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_BossHeightOffset")
-
 	hoverHeightSlider = farmSection:Slider({
 		Name = "Hover Height",
 		Default = contextual.GetField(editDungeon, editTarget, "HoverHeight"),
@@ -277,7 +262,6 @@ return function(window, tab)
 		pcall(function() orbitTeleStepSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitTeleStep")) end)
 		pcall(function() orbitHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitHeight")) end)
 		pcall(function() maintainBossHeightToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "MaintainBossHeight")) end)
-		pcall(function() bossHeightOffsetSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "BossHeightOffset")) end)
 		pcall(function() hoverHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "HoverHeight")) end)
 		pcall(function() teleportDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "TeleportDistance")) end)
 		pcall(function() autoRetargetToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "AutoRetarget")) end)
@@ -296,7 +280,6 @@ return function(window, tab)
 		pcall(function() orbitTeleStepSlider:SetVisibility(visible) end)
 		pcall(function() orbitHeightSlider:SetVisibility(visible) end)
 		pcall(function() maintainBossHeightToggle:SetVisibility(visible) end)
-		pcall(function() bossHeightOffsetSlider:SetVisibility(visible) end)
 		pcall(function() hoverHeightSlider:SetVisibility(visible) end)
 		pcall(function() teleportDistanceSlider:SetVisibility(visible) end)
 		pcall(function() autoRetargetToggle:SetVisibility(visible) end)
@@ -330,6 +313,7 @@ return function(window, tab)
 	end
 	shared.OnDungeonNameChanged(onDungeonChanged)
 	shared.OnBossIndexChanged(updateActiveCtxLabel)
+	shared.OnBossActiveChanged(updateActiveCtxLabel)
 	contextual.OnConfigChanged(function()
 		editDungeon = shared.GetCurrentDungeonName()
 		updateActiveCtxLabel()

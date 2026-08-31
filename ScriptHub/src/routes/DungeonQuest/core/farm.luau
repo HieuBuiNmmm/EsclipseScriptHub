@@ -16,10 +16,28 @@ function farm.Start()
 	local lastWarnClock = 0
 
 	task.spawn(function()
+		--// Chờ rời lobby (đã vào dungeon) trước khi scan để không abort sớm khi
+		--// bật Auto Farm ngay từ màn hình chờ. Timeout 30s cho load chậm.
+		local waited = 0
+		while shared.IsInLobby() and shared.IsFarmEnabled() do
+			task.wait(0.5)
+			waited = waited + 0.5
+			if waited >= 30 then
+				shared.SetFarmEnabled(false)
+				shared.SetFarmRunning(false)
+				notifier.Notify("Auto Farm", "Still in lobby — aborted. Toggle again inside the dungeon.", 4)
+				return
+			end
+		end
+		if not shared.IsFarmEnabled() then
+			shared.SetFarmRunning(false)
+			return
+		end
+
 		if not shared.ReadyDungeon() then
 			shared.SetFarmEnabled(false)
 			shared.SetFarmRunning(false)
-			notifier.Notify("Auto Farm", "Failed to load dungeon.", 3)
+			notifier.Notify("Auto Farm", "Failed to detect dungeon.", 3)
 			return
 		end
 
