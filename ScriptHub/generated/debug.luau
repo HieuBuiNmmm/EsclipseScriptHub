@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-31T10:10:55.505321600+00:00",
+    genDate = "2026-08-31T11:57:57.014317600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7687,8 +7687,8 @@ return function(window, tab)
 	ui.PatchSliderLoadCallback(section:Slider({
 		Name = "Barrier Teleport Distance",
 		Default = shared.GetBarrierTeleportDistance(),
-		Minimum = -50,
-		Maximum = 50,
+		Minimum = -100,
+		Maximum = 100,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(value)

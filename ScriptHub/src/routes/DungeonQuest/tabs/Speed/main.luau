@@ -88,8 +88,8 @@ return function(window, tab)
 	ui.PatchSliderLoadCallback(section:Slider({
 		Name = "Barrier Teleport Distance",
 		Default = shared.GetBarrierTeleportDistance(),
-		Minimum = -50,
-		Maximum = 50,
+		Minimum = -100,
+		Maximum = 100,
 		DisplayMethod = "Round",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(value)
