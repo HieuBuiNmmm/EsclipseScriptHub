@@ -80,9 +80,32 @@ return function(window, tab)
 		end),
 	}, "Dropdown_FarmTarget")
 
+	--// Nút Reset dễ ấn nhầm, đổi sang cơ chế 2 bước: click lần 1 -> arm "Confirm?",
+	--// click lần 2 trong thời hạn -> mới thực sự reset. Tự disarm sau ARM_TIMEOUT
+	--// hoặc khi đổi context.
+	local resetArmed = false
+	local resetDisarmTimer = nil
+	local RESET_NAME = "Reset Context to Global"
+	local RESET_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Reset?</font>"
+	local RESET_TIMEOUT = 3
+	local function disarmReset()
+		if not resetArmed then return end
+		resetArmed = false
+		if resetDisarmTimer then task.cancel(resetDisarmTimer); resetDisarmTimer = nil end
+		pcall(function() resetCtxButton:UpdateName(RESET_NAME) end)
+	end
+
 	resetCtxButton = farmSection:Button({
-		Name = "Reset Context to Global",
+		Name = RESET_NAME,
 		Callback = autoSave.Wrap(function()
+			if not resetArmed then
+				resetArmed = true
+				if resetDisarmTimer then task.cancel(resetDisarmTimer) end
+				resetDisarmTimer = task.delay(RESET_TIMEOUT, disarmReset)
+				pcall(function() resetCtxButton:UpdateName(RESET_CONFIRM_NAME) end)
+				return
+			end
+			disarmReset()
 			contextual.ClearContext(editDungeon, editTarget)
 			refreshContextControls()
 			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
@@ -256,6 +279,7 @@ return function(window, tab)
 
 	refreshContextControls = function()
 		isSyncing = true
+		disarmReset()
 		pcall(function() farmModeDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "FarmMode")) end)
 		pcall(function() orbitRadiusSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitRadius")) end)
 		pcall(function() orbitSpeedSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitSpeed")) end)

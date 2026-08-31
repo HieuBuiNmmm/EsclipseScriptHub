@@ -4,6 +4,7 @@
 local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local farm = require("@routes/DungeonQuest/core/farm")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -72,5 +73,16 @@ return function(window, tab)
 			shared.SetFarthestTeleportDistance(value)
 		end),
 	}, "Slider_TeleportFarthestDistance"))
+
+	--// Auto Farm toggle qua phím tắt
+	section:Header({ Name = "Auto Farm" })
+
+	section:Keybind({
+		Name = "Toggle Auto Farm",
+		Default = Enum.KeyCode.X,
+		Callback = function()
+			farm.Toggle(not shared.IsFarmEnabled())
+		end,
+	}, "Keybind_AutoFarm")
 
 end

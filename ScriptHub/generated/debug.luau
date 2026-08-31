@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-08-31T09:05:32.868274800+00:00",
+    genDate = "2026-08-31T09:30:50.187819900+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7361,157 +7361,7 @@ function autoSave.Wrap(callback)
 end
 
 return autoSave
-end function __DIST.g()-- Tab Speed (DungeonQuest).
-
---// Imports
-
-local shared = __DIST.load('d')
-local ui = __DIST.load('e')
-local autoSave = __DIST.load('f')
-
-return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "Movement Speed" })
-
-	section:Toggle({
-		Name = "Fast Speed",
-		Default = shared.IsSpeedEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			shared.SetSpeedEnabled(state)
-		end),
-	}, "Toggle_FastSpeed")
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Custom Fast Speed",
-		Default = shared.GetFastSpeed(),
-		Minimum = 16,
-		Maximum = 24,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			shared.SetFastSpeed(Value)
-		end),
-	}, "Slider_FastSpeed"))
-
-	section:Header({ Name = "Teleport" })
-
-	section:Button({
-		Name = "Teleport Nearest (Key: R)",
-		Callback = function()
-			task.spawn(function()
-				shared.TeleportToNearestEnemy()
-			end)
-		end,
-	})
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "R Teleport Distance",
-		Default = shared.GetNearestTeleportDistance(),
-		Minimum = 1,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			shared.SetNearestTeleportDistance(value)
-		end),
-	}, "Slider_TeleportNearestDistance"))
-
-	section:Button({
-		Name = "Teleport Behind Farthest (Key: C)",
-		Callback = function()
-			task.spawn(function()
-				shared.TeleportBehindFarthestEnemy()
-			end)
-		end,
-	})
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "C Teleport Distance",
-		Default = shared.GetFarthestTeleportDistance(),
-		Minimum = 1,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			shared.SetFarthestTeleportDistance(value)
-		end),
-	}, "Slider_TeleportFarthestDistance"))
-
-end
-end function __DIST.h()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
-
---// Imports
-
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
-local notifier = __DIST.load('b')
-
---// References
-local VirtualInputManager = services.VirtualInputManager
-
---// Table
-local combat = {}
-
---// Methods
-function combat.StartAutoSkill()
-	if shared.GetAutoSkillRunning() then return end
-	shared.SetAutoSkillRunning(true)
-
-	local lastWarnClock = 0
-
-	task.spawn(function()
-		while shared.IsAutoSkillEnabled() do
-			local humanoid = shared.GetHumanoid()
-			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then
-				task.wait(shared.GetSkillInterval())
-				continue
-			end
-
-			--// Chỉ bấm skill khi đang ở trong dungeon (không spam Q+E ngoài lobby)
-			if shared.IsInLobby() then
-				task.wait(shared.GetSkillInterval())
-				continue
-			end
-
-			local ok, err = pcall(function()
-				if shared.CanFireSkill() then
-					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-					task.wait(shared.GetKeyHoldTime())
-					VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-					VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-				else
-					task.wait(0.2)
-				end
-			end)
-			if not ok and os.clock() - lastWarnClock > 5 then
-				lastWarnClock = os.clock()
-				warn("[AutoSkill] error:", tostring(err))
-			end
-			if not shared.IsAutoSkillEnabled() then break end
-			task.wait(shared.GetSkillInterval())
-		end
-		shared.SetAutoSkillRunning(false)
-	end)
-end
-
-function combat.StopAutoSkill()
-	shared.SetAutoSkillEnabled(false)
-end
-
-function combat.ToggleAutoSkill(state)
-	shared.SetAutoSkillEnabled(state)
-	if state then
-		combat.StartAutoSkill()
-		notifier.Notify("Auto Skill", "Auto Q+E Started", 2)
-	else
-		combat.StopAutoSkill()
-		notifier.Notify("Auto Skill", "Auto Q+E Stopped", 2)
-	end
-end
-
-return combat
-end function __DIST.i()-- Auto Farm cho DungeonQuest (Orbit / Hover). Chạy vòng lặp săn kẻ địch gần nhất.
+end function __DIST.g()-- Auto Farm cho DungeonQuest (Orbit / Hover). Chạy vòng lặp săn kẻ địch gần nhất.
 
 --// Imports
 
@@ -7603,6 +7453,168 @@ function farm.Toggle(state)
 end
 
 return farm
+end function __DIST.h()-- Tab Speed (DungeonQuest).
+
+--// Imports
+
+local shared = __DIST.load('d')
+local ui = __DIST.load('e')
+local autoSave = __DIST.load('f')
+local farm = __DIST.load('g')
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "Movement Speed" })
+
+	section:Toggle({
+		Name = "Fast Speed",
+		Default = shared.IsSpeedEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetSpeedEnabled(state)
+		end),
+	}, "Toggle_FastSpeed")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Custom Fast Speed",
+		Default = shared.GetFastSpeed(),
+		Minimum = 16,
+		Maximum = 24,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetFastSpeed(Value)
+		end),
+	}, "Slider_FastSpeed"))
+
+	section:Header({ Name = "Teleport" })
+
+	section:Button({
+		Name = "Teleport Nearest (Key: R)",
+		Callback = function()
+			task.spawn(function()
+				shared.TeleportToNearestEnemy()
+			end)
+		end,
+	})
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "R Teleport Distance",
+		Default = shared.GetNearestTeleportDistance(),
+		Minimum = 1,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetNearestTeleportDistance(value)
+		end),
+	}, "Slider_TeleportNearestDistance"))
+
+	section:Button({
+		Name = "Teleport Behind Farthest (Key: C)",
+		Callback = function()
+			task.spawn(function()
+				shared.TeleportBehindFarthestEnemy()
+			end)
+		end,
+	})
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "C Teleport Distance",
+		Default = shared.GetFarthestTeleportDistance(),
+		Minimum = 1,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			shared.SetFarthestTeleportDistance(value)
+		end),
+	}, "Slider_TeleportFarthestDistance"))
+
+	--// Auto Farm toggle qua phím tắt
+	section:Header({ Name = "Auto Farm" })
+
+	section:Keybind({
+		Name = "Toggle Auto Farm",
+		Default = Enum.KeyCode.X,
+		Callback = function()
+			farm.Toggle(not shared.IsFarmEnabled())
+		end,
+	}, "Keybind_AutoFarm")
+
+end
+end function __DIST.i()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
+
+--// Imports
+
+local services = __DIST.load('c')
+local shared = __DIST.load('d')
+local notifier = __DIST.load('b')
+
+--// References
+local VirtualInputManager = services.VirtualInputManager
+
+--// Table
+local combat = {}
+
+--// Methods
+function combat.StartAutoSkill()
+	if shared.GetAutoSkillRunning() then return end
+	shared.SetAutoSkillRunning(true)
+
+	local lastWarnClock = 0
+
+	task.spawn(function()
+		while shared.IsAutoSkillEnabled() do
+			local humanoid = shared.GetHumanoid()
+			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then
+				task.wait(shared.GetSkillInterval())
+				continue
+			end
+
+			--// Chỉ bấm skill khi đang ở trong dungeon (không spam Q+E ngoài lobby)
+			if shared.IsInLobby() then
+				task.wait(shared.GetSkillInterval())
+				continue
+			end
+
+			local ok, err = pcall(function()
+				if shared.CanFireSkill() then
+					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+					task.wait(shared.GetKeyHoldTime())
+					VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+					VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+				else
+					task.wait(0.2)
+				end
+			end)
+			if not ok and os.clock() - lastWarnClock > 5 then
+				lastWarnClock = os.clock()
+				warn("[AutoSkill] error:", tostring(err))
+			end
+			if not shared.IsAutoSkillEnabled() then break end
+			task.wait(shared.GetSkillInterval())
+		end
+		shared.SetAutoSkillRunning(false)
+	end)
+end
+
+function combat.StopAutoSkill()
+	shared.SetAutoSkillEnabled(false)
+end
+
+function combat.ToggleAutoSkill(state)
+	shared.SetAutoSkillEnabled(state)
+	if state then
+		combat.StartAutoSkill()
+		notifier.Notify("Auto Skill", "Auto Q+E Started", 2)
+	else
+		combat.StopAutoSkill()
+		notifier.Notify("Auto Skill", "Auto Q+E Stopped", 2)
+	end
+end
+
+return combat
 end function __DIST.j()-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
 -- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
 -- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
@@ -9550,8 +9562,8 @@ end function __DIST.p()-- Tab Auto Farm (DungeonQuest): Farm, Combat, Auto Start
 local macLib = __DIST.load('a')
 local shared = __DIST.load('d')
 local ui = __DIST.load('e')
-local combat = __DIST.load('h')
-local farm = __DIST.load('i')
+local combat = __DIST.load('i')
+local farm = __DIST.load('g')
 local autoStart = __DIST.load('j')
 local autoRetry = __DIST.load('k')
 local autoSave = __DIST.load('f')
@@ -9626,9 +9638,32 @@ return function(window, tab)
 		end),
 	}, "Dropdown_FarmTarget")
 
+	--// Nút Reset dễ ấn nhầm, đổi sang cơ chế 2 bước: click lần 1 -> arm "Confirm?",
+	--// click lần 2 trong thời hạn -> mới thực sự reset. Tự disarm sau ARM_TIMEOUT
+	--// hoặc khi đổi context.
+	local resetArmed = false
+	local resetDisarmTimer = nil
+	local RESET_NAME = "Reset Context to Global"
+	local RESET_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Reset?</font>"
+	local RESET_TIMEOUT = 3
+	local function disarmReset()
+		if not resetArmed then return end
+		resetArmed = false
+		if resetDisarmTimer then task.cancel(resetDisarmTimer); resetDisarmTimer = nil end
+		pcall(function() resetCtxButton:UpdateName(RESET_NAME) end)
+	end
+
 	resetCtxButton = farmSection:Button({
-		Name = "Reset Context to Global",
+		Name = RESET_NAME,
 		Callback = autoSave.Wrap(function()
+			if not resetArmed then
+				resetArmed = true
+				if resetDisarmTimer then task.cancel(resetDisarmTimer) end
+				resetDisarmTimer = task.delay(RESET_TIMEOUT, disarmReset)
+				pcall(function() resetCtxButton:UpdateName(RESET_CONFIRM_NAME) end)
+				return
+			end
+			disarmReset()
 			contextual.ClearContext(editDungeon, editTarget)
 			refreshContextControls()
 			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
@@ -9802,6 +9837,7 @@ return function(window, tab)
 
 	refreshContextControls = function()
 		isSyncing = true
+		disarmReset()
 		pcall(function() farmModeDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "FarmMode")) end)
 		pcall(function() orbitRadiusSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitRadius")) end)
 		pcall(function() orbitSpeedSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitSpeed")) end)
@@ -11725,7 +11761,7 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local speedTab = __DIST.load('g')
+	local speedTab = __DIST.load('h')
 	local combatTab = __DIST.load('p')
 	local dungeonTab = __DIST.load('r')
 	local visualTab = __DIST.load('t')
