@@ -39,9 +39,6 @@ function shortcuts.Init()
 			task.spawn(function()
 				shared.TeleportBehindFarthestEnemy()
 			end)
-		elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.Q then
-			--// Tính năng ẩn (không cần toggle): ấn E hoặc Q = cùng kích hoạt E + Q.
-			fireCombo()
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			--// Ẩn: chuột phải cũng cùng kích hoạt E + Q.
 			fireCombo()
