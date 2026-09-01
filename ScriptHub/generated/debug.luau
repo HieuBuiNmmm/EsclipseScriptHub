@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-01T12:01:08.451058600+00:00",
+    genDate = "2026-09-01T22:53:28.239625400+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -10375,11 +10375,13 @@ return function(window, tab)
 		end),
 	}, "Slider_RetryTimeThreshold"))
 end
-end function __DIST.q()-- AutoFarm Pathfinder (v2): dùng PathfindingService của Roblox để di chuyển.
--- Hai luồng chạy song song:
---  * Pathfinding Move: giữ khoảng cách an toàn (standDistance) với kẻ địch gần nhất.
---  * Auto Skill: tự spam Q+E khi kẻ địch gần nhất nằm trong tầm skillRange.
--- Visual debug (ô đỏ tại điểm tới + highlight kẻ gần nhất) nằm ngay trong tab này.
+end function __DIST.q()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên state.
+--  * Scan 1 lần all enemy -> lock target kẻ địch gần nhất (highlight lock target).
+--  * CHASE (chưa trong tầm): Pathfinding chạy thẳng tới vị trí kẻ địch bị lock.
+--    Heartbeat check khoảng cách player <-> enemy lock realtime.
+--  * HOLD (lọt vào tầm skillRange): hủy pathfinding, đứng yên ở chính vị trí hiện tại
+--    (orbit tĩnh, tâm là kẻ địch lock, speed 0, giữ nguyên height) + quay mặt enemy
+--    + Auto Skill spam Q+E liên tục.
 -- Tách biệt hoàn toàn với AutoFarm v1 (orbit).
 
 --// Imports
@@ -10399,30 +10401,44 @@ local autoFarmPathfinder = {}
 --// Configuration (state)
 local enabled = false
 local running = false
-local standDistance = 15
 local skillRange = 15
 local moveSpeed = 50
-local repathInterval = 0.75
+local retargetInterval = 1.0
 local skillEnabled = true
 local skillInterval = 2.0
+local skillMode = "Both" --// "Both" = Q+E cùng lúc, "Alternate" = Q -> E -> Q -> E
+local skillTurn = 0 --// dùng cho mode Alternate (0 = Q, 1 = E)
 local visualDebug = true
 
 --// Runtime
 local moveConnection = nil
 local skillConnection = nil
-local repathTimer = 0
 local lastSkillTime = 0
 local dunReady = false
 local currentPath = nil
 local waypointIndex = 1
 local pathComputed = false
-local standTarget = nil
+local chaseTarget = nil
 local autoRotateOwner = false
 local autoRotateHumanoid = nil
 local oldAutoRotate = nil
 local debugTargetPart = nil
 local debugEnemyHighlight = nil
-local debugEnemyModel = nil
+local debugPathParts = {} --// các sphere xanh lá show path
+local holdAngle = nil
+local holdRadius = nil
+local lockedTargetModel = nil
+local chaseModel = nil
+local chasePathTargetModel = nil
+local retargetTimer = 0
+--// Stuck detection: phát hiện đứng im dù path đang chạy -> tự nhảy gỡ kẹt
+--// (vật cản thấp/kệ mép mà path không đánh dấu Jump waypoint).
+local stuckCheckPos = nil
+local stuckCheckTimer = 0
+local stuckJumpCooldown = 0
+local STUCK_DIST = 0.3 --// chuyển động < 0.3 stud sau cửa sổ => kẹt
+local STUCK_WINDOW = 0.6 --// giây đứng im trước khi nhảy
+local STUCK_JUMP_COOLDOWN = 0.6 --// chống spam nhảy liên tục
 
 --// Helpers
 local function getPlayerRoot()
@@ -10432,116 +10448,76 @@ local function getPlayerRoot()
 	return nil
 end
 
---// Lấy kẻ địch gần nhất theo khoảng cách tới player.
+--// Đọc vị trí của root an toàn (đề phòng root bị destroy/rm giữa chừng lúc enemy chết
+--// -> tránh throw lỗi làm abort stepMovement, gây "state=CHASE nhưng không di chuyển").
+local function getSafePosition(part)
+	if not part or not part.Parent then return nil end
+	local ok, pos = pcall(function()
+		return part.Position
+	end)
+	if not ok or not pos then return nil end
+	return pos
+end
+
+--// Chống kẹt "path none": nếu ComputeAsync trả NoPath cho 1 enemy (thường do enemy
+--// kẹt sau tường/vật thể/terrain, spawn trong góc không có lối), ta tạm "ban" enemy đó
+--// vài giây để retarget sang enemy khác có thể tới được, tránh kẹt mãi 1 con.
+local pathFailBlacklist = {} --// [Model] = os.clock() lúc hết hạn ban
+local PATH_FAIL_BAN_SECONDS = 3
+
+local function banPathFailEnemy(model)
+	if model then pathFailBlacklist[model] = os.clock() + PATH_FAIL_BAN_SECONDS end
+end
+
+local function isEnemyPathBanned(model)
+	if not model then return false end
+	local untilTime = pathFailBlacklist[model]
+	if untilTime and untilTime > os.clock() then return true end
+	if untilTime then pathFailBlacklist[model] = nil end --// hết hạn -> cho retry lại
+	return false
+end
+
+local function getBannedCount()
+	local t = os.clock()
+	local n = 0
+	for _, untilTime in pairs(pathFailBlacklist) do
+		if untilTime > t then n += 1 end
+	end
+	return n
+end
+
+--// Lấy kẻ địch gần nhất theo khoảng cách tới player (bỏ qua enemy đang bị ban).
 local function getNearestEnemy()
 	local playerRoot = getPlayerRoot()
 	if not playerRoot then return nil end
+	local playerPos = getSafePosition(playerRoot)
+	if not playerPos then return nil end
 	local nearest = nil
 	local nearestDist = math.huge
 	for _, data in ipairs(shared.GetTrackedEnemyData()) do
-		if data and data.Root and data.Root.Parent then
-			local dist = (data.Root.Position - playerRoot.Position).Magnitude
-			if dist < nearestDist then
-				nearestDist = dist
-				nearest = data
+		if data and data.Root and data.Root.Parent and not isEnemyPathBanned(data.Model) then
+			local rootPos = getSafePosition(data.Root)
+			if rootPos then
+				local dist = (rootPos - playerPos).Magnitude
+				if dist < nearestDist then
+					nearestDist = dist
+					nearest = data
+				end
 			end
 		end
 	end
 	return nearest
 end
 
---// Vị trí đứng ổn định: phía người chơi hiện tại, cách vị trí kẻ địch một khoảng x.
-local function computeStandPosition(enemyRoot, playerRoot)
-	if not enemyRoot or not playerRoot then return nil end
-	local toPlayer = Vector3.new(playerRoot.Position.X - enemyRoot.Position.X, 0, playerRoot.Position.Z - enemyRoot.Position.Z)
-	local dir = toPlayer.Magnitude > 0.01 and toPlayer.Unit or Vector3.new(1, 0, 0)
-	return Vector3.new(enemyRoot.Position.X + dir.X * standDistance, playerRoot.Position.Y, enemyRoot.Position.Z + dir.Z * standDistance)
-end
-
---// Tính path bằng PathfindingService từ vị trí player tới vị trí đứng mục tiêu.
-local function computePath()
-	local playerRoot = getPlayerRoot()
-	if not playerRoot then return end
-	local enemy = getNearestEnemy()
-	if not enemy or not enemy.Root or not enemy.Root.Parent then
-		currentPath = nil
-		pathComputed = false
-		return
+--// Lấy data theo model cụ thể (dùng cho enemy bị khóa trong HOLD).
+local function getEnemyByModel(model)
+	if not model then return nil end
+	for _, data in ipairs(shared.GetTrackedEnemyData()) do
+		if data and data.Model == model and data.Root and data.Root.Parent then
+			return data
+		end
 	end
-	local target = computeStandPosition(enemy.Root, playerRoot)
-	if not target then return end
-
-	standTarget = target
-	local start = playerRoot.Position
-
-	--// Dọn path cũ trước khi tạo path mới
-	if currentPath then pcall(function() currentPath:Destroy() end) end
-
-	local path = PathfindingService:CreatePath({
-		AgentRadius = 2,
-		AgentHeight = 5,
-		AgentCanJump = true,
-		AgentCanClimb = false,
-		AgentMaxSlope = 45,
-		WaypointSpacing = 3,
-		Costs = {},
-	})
-
-	local ok = pcall(function()
-		path:ComputeAsync(start, target)
-	end)
-	if not ok then
-		path:Destroy()
-		currentPath = nil
-		pathComputed = false
-		return
-	end
-
-	path.Blocked:Connect(function()
-		currentPath = nil
-		pathComputed = false
-		repathTimer = 0
-	end)
-
-	currentPath = path
-	waypointIndex = 1
-	local waypoints = path:GetWaypoints()
-	pathComputed = path.Status == Enum.PathStatus.Success and #waypoints > 0
-	if not pathComputed then
-		path:Destroy()
-		currentPath = nil
-	end
-end
-
---// Bắn combo Q+E (giống Auto Skill).
-local function fireSkills()
-	if not skillEnabled then return end
-	if os.clock() - lastSkillTime < skillInterval then return end
-	local humanoid = shared.GetHumanoid()
-	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then return end
-	if shared.IsInLobby() then return end
-	lastSkillTime = os.clock()
-	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-	task.delay(shared.GetKeyHoldTime(), function()
-		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-	end)
-end
-
---// Luồng Auto Skill: chỉ spam skill khi kẻ địch gần nhất trong tầm skillRange.
-local function skillLoop()
-	if shared.IsInLobby() then return end
-	if not dunReady then return end
-	local playerRoot = getPlayerRoot()
-	if not playerRoot then return end
-	local enemy = getNearestEnemy()
-	if not enemy or not enemy.Root or not enemy.Root.Parent then return end
-	--// Khoảng cách cast skill chỉ tính trên mặt phẳng XZ (bỏ độ cao Y)
-	local flat = Vector3.new(enemy.Root.Position.X - playerRoot.Position.X, 0, enemy.Root.Position.Z - playerRoot.Position.Z)
-	if flat.Magnitude <= skillRange then
-		fireSkills()
-	end
+	return nil
 end
 
 --// Khôi phục AutoRotate lúc tắt luồng hoặc khi đổi nhân vật.
@@ -10567,15 +10543,166 @@ local function ensureAutoRotateDisabled()
 	autoRotateOwner = true
 end
 
---// Quay mặt về kẻ địch gần nhất (chỉ xoay trên trục Y).
-local function faceNearestEnemy()
-	local enemy = getNearestEnemy()
+--// Bật lại AutoRotate cho CHASE: MoveTo sẽ tự xoay nhân vật theo hướng đi,
+--// đúng hành vi Click-to-Move của Roblox. Tắt lại ở HOLD để xoay thủ công.
+local function ensureAutoRotateEnabled()
+	if not autoRotateOwner then return end
+	local humanoid = autoRotateHumanoid or shared.GetHumanoid()
+	if humanoid and humanoid.Parent then humanoid.AutoRotate = true end
+	autoRotateOwner = false
+	autoRotateHumanoid = nil
+	oldAutoRotate = nil
+end
+
+--// MoveSpeed slider map sang Humanoid.WalkSpeed (tốc độ di chuyển của MoveTo).
+local oldWalkSpeed = nil
+local function applyMoveSpeed(speed)
+	local humanoid = shared.GetHumanoid()
+	if not humanoid or not humanoid.Parent then return end
+	if oldWalkSpeed == nil then oldWalkSpeed = humanoid.WalkSpeed end
+	humanoid.WalkSpeed = speed
+end
+
+local function restoreWalkSpeed()
+	if oldWalkSpeed == nil then return end
+	local humanoid = shared.GetHumanoid()
+	if humanoid and humanoid.Parent then humanoid.WalkSpeed = oldWalkSpeed end
+	oldWalkSpeed = nil
+end
+
+local PATH_PARAMS = {
+	AgentRadius = 2,
+	AgentHeight = 5,
+	AgentCanJump = true,
+	AgentCanClimb = false,
+	--// Nới độ dốc tối đa: enemy trên cao (bậc/dốc) thường > 45 độ khiến
+	--// PathfindingService trả NoPath. 85 độ cho phép bám dốc/rìa cao hơn.
+	AgentMaxSlope = 85,
+	WaypointSpacing = 3,
+	Costs = {},
+}
+
+--// CHASE: path từ vị trí player tới thẳng vị trí kẻ địch gần nhất (retarget theo interval).
+local pathRetryCooldown = 0
+local noPathSince = nil --// thời điểm bắt đầu fallback MoveTo (khi path không tính được)
+local NO_PATH_BAN_AFTER = 4 --// kẹt fallback lâu quá -> đổi mục tiêu
+
+--// Trả về true nếu đã có path, false nếu không tính được (NoPath / chưa đủ cooldown).
+local function computeChasePath()
+	--// Hạn chế gọi ComputeAsync quá dày khi path liên tục fail.
+	if os.clock() < pathRetryCooldown then return false end
 	local playerRoot = getPlayerRoot()
-	if not enemy or not enemy.Root or not enemy.Root.Parent or not playerRoot then return end
-	local flat = Vector3.new(enemy.Root.Position.X - playerRoot.Position.X, 0, enemy.Root.Position.Z - playerRoot.Position.Z)
-	if flat.Magnitude < 0.01 then return end
-	playerRoot.CFrame = CFrame.lookAt(playerRoot.Position, playerRoot.Position + flat.Unit)
-	playerRoot.AssemblyAngularVelocity = Vector3.zero
+	if not playerRoot then return false end
+	local playerPos = getSafePosition(playerRoot)
+	if not playerPos then return false end
+	local enemy = getNearestEnemy()
+	local targetPos = enemy and getSafePosition(enemy.Root) or nil
+	if not enemy or not targetPos then
+		currentPath = nil
+		pathComputed = false
+		chaseTarget = nil
+		chasePathTargetModel = nil
+		return false
+	end
+
+	local start = playerPos
+	--// Enemy đứng trên cao -> Root của nó cao hơn mặt navmesh, ComputeAsync thẳng tới
+	--// đó hay NoPath (navmesh đề-của trả NoPath khi đích không snap được vào ô nối).
+	--// Thử nhiều đích theo thứ tự ưu tiên, cái nào ComputeAsync thành công thì dùng:
+	--//  1) enemy.Root (chạy thẳng lên đúng enemy)
+	--//  2) "chân" enemy: cùng XZ, cao độ = player -> chạy tới là vào HOLD (HOLD tính XZ)
+	--//  3) lùi 5 stud về phía player khỏi chân enemy -> nới thêm dung sai snap navmesh
+	local candidates = { targetPos }
+	local foot = Vector3.new(targetPos.X, playerPos.Y, targetPos.Z)
+	candidates[2] = foot
+	local backXZ = Vector3.new(targetPos.X - playerPos.X, 0, targetPos.Z - playerPos.Z)
+	if backXZ.Magnitude > 1 then
+		candidates[3] = backXZ.Unit * -5 + foot
+	end
+
+	if currentPath then pcall(function() currentPath:Destroy() end) end
+	local path = nil
+	local target = nil
+	for i = 1, #candidates do
+		local candidate = candidates[i]
+		path = PathfindingService:CreatePath(PATH_PARAMS)
+		local ok = pcall(function()
+			path:ComputeAsync(start, candidate)
+		end)
+		if ok and path.Status == Enum.PathStatus.Success and #path:GetWaypoints() > 0 then
+			target = candidate
+			break
+		end
+		path:Destroy()
+		path = nil
+	end
+	if not path or not target then
+		currentPath = nil
+		pathComputed = false
+		chaseTarget = nil
+		chasePathTargetModel = nil
+		pathRetryCooldown = os.clock() + 0.5
+		return false
+	end
+
+	chaseTarget = target
+	chasePathTargetModel = enemy.Model
+	path.Blocked:Connect(function()
+		currentPath = nil
+		pathComputed = false
+		retargetTimer = 0
+	end)
+
+	currentPath = path
+	waypointIndex = 1
+	pathComputed = true
+	return true
+end
+
+--// Bắn combo Q+E (giống Auto Skill).
+--// Mode "Both": bấm Q+E cùng lúc mỗi interval.
+--// Mode "Alternate": luân phiên Q -> E -> Q -> E ... mỗi interval 1 phím.
+local function fireSkills()
+	if not skillEnabled then return end
+	if os.clock() - lastSkillTime < skillInterval then return end
+	local humanoid = shared.GetHumanoid()
+	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then return end
+	if shared.IsInLobby() then return end
+	lastSkillTime = os.clock()
+
+	local function pressKey(key)
+		VirtualInputManager:SendKeyEvent(true, key, false, game)
+		task.delay(shared.GetKeyHoldTime(), function()
+			VirtualInputManager:SendKeyEvent(false, key, false, game)
+		end)
+	end
+
+	if skillMode == "Alternate" then
+		local key = (skillTurn == 0) and Enum.KeyCode.Q or Enum.KeyCode.E
+		skillTurn = 1 - skillTurn
+		pressKey(key)
+	else
+		pressKey(Enum.KeyCode.Q)
+		pressKey(Enum.KeyCode.E)
+	end
+end
+
+--// Luồng Auto Skill: spam khi kẻ địch (nearest nếu CHASE / lock nếu HOLD) trong tầm
+--// skillRange (khoảng cách phẳng XZ).
+local function skillLoop()
+	if shared.IsInLobby() then return end
+	if not dunReady then return end
+	if not skillEnabled then return end
+	local playerRoot = getPlayerRoot()
+	if not playerRoot then return end
+	local enemy = getEnemyByModel(lockedTargetModel) or getNearestEnemy()
+	local enemyPos = enemy and getSafePosition(enemy.Root) or nil
+	local playerPos = getSafePosition(playerRoot)
+	if not enemyPos or not playerPos then return end
+	local flat = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
+	if flat.Magnitude <= skillRange then
+		fireSkills()
+	end
 end
 
 --// ---------- Visual debug ----------
@@ -10596,34 +10723,100 @@ local function ensureDebugTargetPart()
 	return debugTargetPart
 end
 
---// Cập nhật ô đỏ tại điểm tới + highlight kẻ địch gần nhất.
+--// Highlight dùng CHUNG 1 instance làm con workspace + đổi qua Adornee mỗi frame.
+--// Lý do: nếu làm con của model enemy thì enemy chết -> model bị destroy -> highlight
+--// chết theo và để lại instance rác gây lỗi "destroyed" ở frame sau (highlight 1s rồi hết).
+local function ensureDebugHighlight()
+	if debugEnemyHighlight and debugEnemyHighlight.Parent then return debugEnemyHighlight end
+	if debugEnemyHighlight then
+		pcall(function() debugEnemyHighlight:Destroy() end)
+		debugEnemyHighlight = nil
+	end
+	debugEnemyHighlight = Instance.new("Highlight")
+	debugEnemyHighlight.Name = "PathfinderEnemy_Debug"
+	debugEnemyHighlight.FillColor = Color3.fromRGB(255, 200, 0)
+	debugEnemyHighlight.FillTransparency = 0.5
+	debugEnemyHighlight.OutlineColor = Color3.fromRGB(255, 0, 0)
+	debugEnemyHighlight.OutlineTransparency = 0
+	debugEnemyHighlight.Parent = workspace
+	return debugEnemyHighlight
+end
+
+--// Cập nhật ô đỏ tại điểm đuổi (enemy khi CHASE) + highlight kẻ địch gần nhất.
 local function updateDebugVisuals()
 	if shared.IsInLobby() then return end
 	if not visualDebug then return end
 
-	if standTarget then
+	if chaseTarget then
 		local part = ensureDebugTargetPart()
-		part.CFrame = CFrame.new(standTarget)
+		part.CFrame = CFrame.new(chaseTarget)
 	elseif debugTargetPart and debugTargetPart.Parent then
 		debugTargetPart.CFrame = CFrame.new(0, -1000, 0)
 	end
 
-	local enemy = getNearestEnemy()
-	local model = enemy and enemy.Model or nil
+	--// Highlight target hiện tại: lock (HOLD) nếu có, ngược lại nearest (CHASE).
+	local model = nil
+	if lockedTargetModel then
+		local locked = getEnemyByModel(lockedTargetModel)
+		model = locked and locked.Model or nil
+	end
+	if not model then
+		local nearest = getNearestEnemy()
+		model = nearest and nearest.Model or nil
+	end
+	local highlight = ensureDebugHighlight()
 	if not model or not model.Parent then
-		if debugEnemyHighlight then debugEnemyHighlight.Enabled = false end
+		highlight.Enabled = false
 		return
 	end
-	if debugEnemyModel ~= model then
-		if debugEnemyHighlight then debugEnemyHighlight.Parent = nil end
-		debugEnemyHighlight = Instance.new("Highlight")
-		debugEnemyHighlight.Name = "PathfinderEnemy_Debug"
-		debugEnemyHighlight.FillColor = Color3.fromRGB(255, 200, 0)
-		debugEnemyHighlight.FillTransparency = 0.5
-		debugEnemyHighlight.OutlineColor = Color3.fromRGB(255, 0, 0)
-		debugEnemyHighlight.OutlineTransparency = 0
-		debugEnemyHighlight.Parent = model
-		debugEnemyModel = model
+	highlight.Adornee = model
+	highlight.Enabled = true
+end
+
+--// Render path bằng các sphere xanh lá tại từng waypoint.
+--// Chỉ rebuild khi path đổi (currentPath mới), tránh destroy/create mỗi frame.
+local DEBUG_PATH_SPHERE_SIZE = 0.9
+local debugPathCachePath = nil
+local function updateDebugPathSpheres()
+	if not visualDebug then
+		if #debugPathParts > 0 then
+			for _, part in ipairs(debugPathParts) do
+				pcall(function() part:Destroy() end)
+			end
+			table.clear(debugPathParts)
+		end
+		return nil
+	end
+	if currentPath == debugPathCachePath then return nil end
+
+	for _, part in ipairs(debugPathParts) do
+		pcall(function() part:Destroy() end)
+	end
+	table.clear(debugPathParts)
+	debugPathCachePath = currentPath
+
+	if not currentPath or not pathComputed then return nil end
+
+	local ok, waypoints = pcall(function() return currentPath:GetWaypoints() end)
+	if not ok or not waypoints then return nil end
+	for i = 1, #waypoints do
+		local wp = waypoints[i]
+		if wp then
+			local sphere = Instance.new("Part")
+			sphere.Name = "PathfinderPath_Debug"
+			sphere.Anchored = true
+			sphere.CanCollide = false
+			sphere.CanQuery = false
+			sphere.CanTouch = false
+			sphere.Size = Vector3.new(DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE)
+			sphere.Shape = Enum.PartType.Ball
+			sphere.Transparency = 0.3
+			sphere.Color = Color3.fromRGB(0, 255, 120)
+			sphere.Material = Enum.Material.Neon
+			sphere.CFrame = CFrame.new(wp.Position)
+			sphere.Parent = workspace
+			debugPathParts[#debugPathParts + 1] = sphere
+		end
 	end
 end
 
@@ -10636,10 +10829,20 @@ local function cleanupDebugVisuals()
 		pcall(function() debugEnemyHighlight:Destroy() end)
 		debugEnemyHighlight = nil
 	end
-	debugEnemyModel = nil
+	for _, part in ipairs(debugPathParts) do
+		pcall(function() part:Destroy() end)
+	end
+	table.clear(debugPathParts)
+	debugPathCachePath = nil
 end
 
---// Di chuyển player dọc theo waypoints của path (giữ khoảng cách an toàn).
+--// Reset trạng thái phát hiện kẹt khi thoát khỏi pha di chuyển theo path.
+local function resetStuckCheck()
+	stuckCheckPos = nil
+	stuckCheckTimer = 0
+end
+
+--// Di chuyển: CHASE theo trạng thái, HOLD khi enemy trong tầm.
 local function stepMovement(deltaTime)
 	if shared.IsInLobby() then return end
 	if not dunReady then return end
@@ -10651,18 +10854,138 @@ local function stepMovement(deltaTime)
 		pathComputed = false
 		return
 	end
-	ensureAutoRotateDisabled()
-	updateDebugVisuals()
+updateDebugVisuals()
+	updateDebugPathSpheres()
 
-	if not pathComputed or not currentPath then
-		--// Đứng gần vị trí mục tiêu → quay mặt về kẻ địch gần nhất
-		if standTarget and (Vector3.new(playerRoot.Position.X - standTarget.X, 0, playerRoot.Position.Z - standTarget.Z)).Magnitude <= standDistance + 2 then
-			faceNearestEnemy()
+	--// CHASE: retarget liên tục theo interval (chọn nearest). Chỉ LOCK khi lọt vào tầm (HOLD).
+	local enemy
+	if lockedTargetModel then
+		--// Đang HOLD -> bám enemy đã lock, không retarget.
+		enemy = getEnemyByModel(lockedTargetModel)
+		if not enemy then
+			lockedTargetModel = nil
+			holdAngle = nil
+			holdRadius = nil
 		end
-		repathTimer += deltaTime
-		if repathTimer >= repathInterval then
-			repathTimer = 0
-			computePath()
+	end
+	if not enemy then
+		--// CHASE: retarget theo retargetInterval.
+		retargetTimer += deltaTime
+		--// chaseModel đang trỏ enemy bị ban (NoPath) -> bắt buộc chọn lại ngay.
+		if chaseModel and isEnemyPathBanned(chaseModel) then
+			chaseModel = nil
+			retargetTimer = retargetInterval
+		end
+		if retargetTimer >= retargetInterval or not chaseModel then
+			retargetTimer = 0
+			local nearest = getNearestEnemy()
+			chaseModel = nearest and nearest.Model or nil
+		end
+		enemy = getEnemyByModel(chaseModel) or getNearestEnemy()
+	end
+	if not enemy or not enemy.Root or not enemy.Root.Parent then
+		--// Không có target -> đứng yên, đợi retarget lần sau.
+		if currentPath then pcall(function() currentPath:Destroy() end) end
+		currentPath = nil
+		pathComputed = false
+		chaseTarget = nil
+		pcall(function() humanoid:MoveTo(getSafePosition(playerRoot)) end)
+		return
+	end
+
+	local enemyPos = enemy and getSafePosition(enemy.Root) or nil
+	local playerPos = getSafePosition(playerRoot)
+	if not enemyPos or not playerPos then
+		return
+	end
+
+	local flat = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
+	if flat.Magnitude <= skillRange then
+		--// HOLD: lọt tầm -> LOCK target này, orbit tốc độ thấp — center = enemy lock,
+		--// giữ khoảng cách (holdRadius) + góc (holdAngle) đúng như lúc vào HOLD,
+		--// xích ra/lùi theo enemy. Không retarget.
+		ensureAutoRotateDisabled()
+		--// Huỷ MoveTo của CHASE trước đó để không chống đối việc set CFrame thủ công.
+		pcall(function() humanoid:MoveTo(playerPos) end)
+		if not lockedTargetModel then lockedTargetModel = enemy.Model end
+		if currentPath then pcall(function() currentPath:Destroy() end) end
+		currentPath = nil
+		pathComputed = false
+		chaseTarget = nil
+		resetStuckCheck()
+		--// Capture góc & bán kính từ vị trí hiện tại lúc vào HOLD.
+		--// Dùng offset = playerPos - enemyPos (hướng từ enemy tới player) để
+		--// orbitPos == vị trí player hiện tại, tránh bị dội ngược phía đối diện.
+		local offsetXZ = Vector3.new(playerPos.X - enemyPos.X, 0, playerPos.Z - enemyPos.Z)
+		if not holdAngle then
+			holdAngle = math.atan2(offsetXZ.Z, offsetXZ.X)
+			holdRadius = offsetXZ.Magnitude
+		end
+		--// Vị trí mong muốn trên quỹ đạo quanh enemy (theo enemy di chuyển)
+		local orbitPos = Vector3.new(
+			enemyPos.X + math.cos(holdAngle) * holdRadius,
+			playerPos.Y,
+			enemyPos.Z + math.sin(holdAngle) * holdRadius
+		)
+		--// Xích mượt về orbitPos (đứng yên nếu đã đúng vị trí, theo enemy nếu enemy di chuyển)
+		local pos = playerPos
+		local toOrbit = Vector3.new(orbitPos.X - pos.X, 0, orbitPos.Z - pos.Z)
+		local dist = toOrbit.Magnitude
+		local thisStep = moveSpeed * math.max(deltaTime, 1 / 60)
+		local newPos = pos
+		if dist > 0.01 then
+			if dist <= thisStep then
+				newPos = Vector3.new(orbitPos.X, pos.Y, orbitPos.Z)
+			else
+				newPos = pos + toOrbit.Unit * thisStep
+			end
+		end
+		playerRoot.CFrame = CFrame.lookAt(newPos, enemyPos)
+		playerRoot.AssemblyLinearVelocity = Vector3.zero
+		playerRoot.AssemblyAngularVelocity = Vector3.zero
+		return
+	end
+
+	--// CHASE: pathfinding tới thẳng vị trí nearest (retarget theo interval).
+	--// Ra khỏi tầm -> giải phóng lock, quay lại chế độ retarget.
+	holdAngle = nil
+	holdRadius = nil
+	lockedTargetModel = nil
+	--// Path stale khi target hiện tại KHÁC target của path (enemy cũ chết / retarget
+	--// sang con khác) -> hủy path ngay để recompute sang target mới, không đi tiếp
+	--// theo path cũ dẫn tới chỗ xác (gây "state=CHASE nhưng không di chuyển").
+	if currentPath and chasePathTargetModel and chasePathTargetModel ~= enemy.Model then
+		pcall(function() currentPath:Destroy() end)
+		currentPath = nil
+		pathComputed = false
+	end
+	if not pathComputed or not currentPath then
+		local ok = computeChasePath()
+		if ok then
+			noPathSince = nil
+			resetStuckCheck()
+			return --// đã có path, frame sau đi theo waypoint
+		end
+
+		--// NoPath với enemy hiện tại: thử chạy thẳng tới "chân" enemy (cùng XZ, cao độ
+		--// = player) bằng MoveTo — humanoid tự đi + leo dốc/nhảy được địa hình cao
+		--// mà navmesh không nối, tiến tới thì HOLD (tính XZ) sẽ kích hoạt.
+		ensureAutoRotateEnabled()
+		applyMoveSpeed(moveSpeed)
+		local enemyRootPos = enemy and enemy.Root and getSafePosition(enemy.Root)
+		if enemyRootPos then
+			local footPos = Vector3.new(enemyRootPos.X, playerPos.Y, enemyRootPos.Z)
+			humanoid:MoveTo(footPos)
+		end
+
+		--// Theo dõi thời gian kẹt: vẫn không có đường sau N giây -> ban enemy,
+		--// retarget sang con khác để không đứng im mãi.
+		if not noPathSince then noPathSince = os.clock() end
+		if os.clock() - noPathSince > NO_PATH_BAN_AFTER then
+			banPathFailEnemy(enemy.Model)
+			noPathSince = nil
+			chaseModel = nil
+			retargetTimer = retargetInterval
 		end
 		return
 	end
@@ -10678,38 +11001,55 @@ local function stepMovement(deltaTime)
 		return
 	end
 
+	--// Di chuyển theo chuẩn Click-to-Move: Humanoid:MoveTo + AutoRotate bật,
+	--// nhân vật tự đi + tự quay theo hướng di chuyển (animation, va chạm).
+	ensureAutoRotateEnabled()
+	applyMoveSpeed(moveSpeed)
+
 	local wp = waypoints[waypointIndex]
 	local dest = wp.Position
-	local pos = playerRoot.Position
-	local toDest = dest - pos
-	toDest = Vector3.new(toDest.X, 0, toDest.Z)
+	local pos = playerPos
+	local toDest = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
 	local dist = toDest.Magnitude
-	local tolerate = (wp.Action == Enum.PathWaypointAction.Jump and 1.2) or 1.5
+	local tolerate = (wp.Action == Enum.PathWaypointAction.Jump and 2.5) or 2.0
 
 	if dist <= tolerate then
 		waypointIndex += 1
+		--// Waypoint Jump: bảo humanoid nhảy qua chướng ngại.
+		if wp.Action == Enum.PathWaypointAction.Jump then
+			humanoid.Jump = true
+		end
+		resetStuckCheck()
 		return
 	end
 
-	local step = math.min(dist, moveSpeed * math.max(deltaTime, 1 / 60))
-	local nextPos = pos + toDest.Unit * step
-	playerRoot.CFrame = CFrame.lookAt(nextPos, pos + toDest.Unit)
-	playerRoot.AssemblyLinearVelocity = Vector3.zero
-	playerRoot.AssemblyAngularVelocity = Vector3.zero
+	humanoid:MoveTo(dest)
+
+	--// Stuck detection: path có nhưng nhân vật đứng im (kẹt vật cản thấp mà path
+	--// không đánh dấu Jump) -> tự nhảy để leo qua. Nếu âm lượng vẫn ổn -> tiếp tục.
+	if stuckCheckPos then
+		local moved = (playerPos - stuckCheckPos).Magnitude
+		if moved > STUCK_DIST then
+			stuckCheckPos = playerPos
+			stuckCheckTimer = 0
+		else
+			stuckCheckTimer += deltaTime
+			if stuckCheckTimer >= STUCK_WINDOW and os.clock() >= stuckJumpCooldown then
+				humanoid.Jump = true
+				stuckJumpCooldown = os.clock() + STUCK_JUMP_COOLDOWN
+				stuckCheckTimer = 0
+			end
+		end
+	else
+		stuckCheckPos = playerPos
+		stuckCheckTimer = 0
+	end
 end
 
 --// ---------- Accessors (tab UI dùng) ----------
 
 function autoFarmPathfinder.IsEnabled()
 	return enabled
-end
-
-function autoFarmPathfinder.GetStandDistance()
-	return standDistance
-end
-
-function autoFarmPathfinder.SetStandDistance(value)
-	standDistance = tonumber(value) or standDistance
 end
 
 function autoFarmPathfinder.GetSkillRange()
@@ -10728,12 +11068,12 @@ function autoFarmPathfinder.SetMoveSpeed(value)
 	moveSpeed = tonumber(value) or moveSpeed
 end
 
-function autoFarmPathfinder.GetRepathInterval()
-	return repathInterval
+function autoFarmPathfinder.GetRetargetInterval()
+	return retargetInterval
 end
 
-function autoFarmPathfinder.SetRepathInterval(value)
-	repathInterval = tonumber(value) or repathInterval
+function autoFarmPathfinder.SetRetargetInterval(value)
+	retargetInterval = tonumber(value) or retargetInterval
 end
 
 function autoFarmPathfinder.IsSkillEnabled()
@@ -10750,6 +11090,16 @@ end
 
 function autoFarmPathfinder.SetSkillInterval(value)
 	skillInterval = tonumber(value) or skillInterval
+end
+
+function autoFarmPathfinder.GetSkillMode()
+	return skillMode
+end
+
+function autoFarmPathfinder.SetSkillMode(value)
+	if value == "Both" or value == "Alternate" then
+		skillMode = value
+	end
 end
 
 function autoFarmPathfinder.IsVisualDebugEnabled()
@@ -10771,7 +11121,7 @@ function autoFarmPathfinder.Toggle(state)
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		if skillConnection then skillConnection:Disconnect(); skillConnection = nil end
 		running = true
-		repathTimer = 0
+		retargetTimer = 0
 		lastSkillTime = 0
 		--// Khởi tạo tracking enemy trong dungeon (không block luồng chính)
 		if not dunReady then
@@ -10790,10 +11140,23 @@ function autoFarmPathfinder.Toggle(state)
 		if skillConnection then skillConnection:Disconnect(); skillConnection = nil end
 		running = false
 		restoreAutoRotate()
+		restoreWalkSpeed()
+		local h = shared.GetHumanoid()
+		local r = getPlayerRoot()
+		if h and h.Parent and r and r.Parent then pcall(function() h:MoveTo(getSafePosition(r)) end) end
 		if currentPath then pcall(function() currentPath:Destroy() end) end
 		currentPath = nil
 		pathComputed = false
-		standTarget = nil
+		chaseTarget = nil
+		holdAngle = nil
+		holdRadius = nil
+		lockedTargetModel = nil
+		chaseModel = nil
+		chasePathTargetModel = nil
+		retargetTimer = 0
+		noPathSince = nil
+		pathFailBlacklist = {}
+		resetStuckCheck()
 		cleanupDebugVisuals()
 	end
 end
@@ -10802,14 +11165,123 @@ function autoFarmPathfinder.IsRunning()
 	return running
 end
 
-return autoFarmPathfinder end function __DIST.r()-- Tab AutoFarm Pathfinder (v2): hai luồng song song — Pathfinding Move giữ
--- khoảng cách an toàn với kẻ địch gần nhất, Auto Skill spam Q+E trong tầm Skill Range.
--- Gồm Visual Debug (ô đỏ điểm tới + highlight kẻ gần nhất).
+--// Trả về thông tin debug realtime (dùng cho debug panel trên UI).
+function autoFarmPathfinder.GetDebugInfo()
+	local playerRoot = getPlayerRoot()
+	local enemy = getNearestEnemy()
+	local locked = lockedTargetModel and getEnemyByModel(lockedTargetModel) --// target bị khóa
+	local display = locked or enemy
+	local phase = "IDLE"
+	local enemyName = "-"
+	local enemyDist = 0
+	local enemyFlat = 0
+	local lockedName = "-"
+
+	if locked then lockedName = locked.Model and locked.Model.Name or "-" end
+	if display and display.Root and display.Root.Parent then
+		local displayPos = getSafePosition(display.Root)
+		local playerPos = getSafePosition(playerRoot)
+		enemyName = display.Model and display.Model.Name or "-"
+		if displayPos and playerPos then
+			enemyDist = (displayPos - playerPos).Magnitude
+			local flat = Vector3.new(displayPos.X - playerPos.X, 0, displayPos.Z - playerPos.Z)
+			enemyFlat = flat.Magnitude
+		end
+		phase = enemyFlat <= skillRange and "HOLD" or "CHASE"
+	end
+
+	return {
+		phase = phase,
+		enemyName = enemyName,
+		enemyDist = enemyDist,
+		enemyFlat = enemyFlat,
+		lockedName = lockedName,
+		locked = locked ~= nil,
+		skillRange = skillRange,
+		holdAngle = holdAngle,
+		holdRadius = holdRadius,
+		pathComputed = pathComputed,
+		chaseTarget = chaseTarget,
+		dunReady = dunReady,
+		enabled = enabled,
+		pathBanned = getBannedCount(),
+		noPathSince = noPathSince,
+	}
+end
+
+return autoFarmPathfinder end function __DIST.r()-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
+
+--// Imports
+
+local services = __DIST.load('c')
+local shared = __DIST.load('d')
+
+--// References
+local UserInputService = services.UserInputService
+local VirtualInputManager = services.VirtualInputManager
+
+--// Table
+local shortcuts = {}
+
+--// Bật/tắt tính năng ẩn: chuột phải kích hoạt combo Q+E.
+local comboEnabled = false
+
+function shortcuts.IsMouseComboEnabled()
+	return comboEnabled
+end
+
+function shortcuts.SetMouseComboEnabled(value)
+	comboEnabled = value == true
+end
+
+--// Kích hoạt combo E+Q (giống Auto Skill): gửi Q+E giữ theo chu kỳ hold.
+--// Khi kích hoạt từ E vật lý / chuột phải, game tự nhận phím chính, nên chỉ cần
+--// bấm thêm phím còn lại giữ đúng chu kỳ hold để 2 phím bắt đúng thời điểm.
+local function fireCombo()
+	task.spawn(function()
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+		task.wait(shared.GetKeyHoldTime())
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+	end)
+end
+
+--// Initialize
+function shortcuts.Init()
+	if shortcuts.inited then return end
+	shortcuts.inited = true
+
+	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.KeyCode == Enum.KeyCode.R then
+			task.spawn(function()
+				shared.TeleportToNearestEnemy()
+			end)
+		elseif input.KeyCode == Enum.KeyCode.C then
+			task.spawn(function()
+				shared.TeleportBehindFarthestEnemy()
+			end)
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+			--// Ẩn: chuột phải kích hoạt E + Q (chỉ khi toggle bật).
+			if comboEnabled then
+				fireCombo()
+			end
+		end
+	end)
+end
+
+return shortcuts
+end function __DIST.s()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
+-- CHASE: pathfinding chạy thẳng tới kẻ địch gần nhất khi ngoài tầm.
+-- HOLD: khi trong tầm skill range, giữ khoảng cách bằng orbit tốc độ 0 (đứng yên + quay mặt
+-- enemy) và tự spam Q+E. Kèm Visual Debug (ô đỏ điểm đuổi + highlight kẻ gần nhất).
 
 --// Imports
 
 local autoSave = __DIST.load('f')
 local autoFarmPathfinder = __DIST.load('q')
+local shortcuts = __DIST.load('r')
 local ui = __DIST.load('e')
 
 return function(window, tab)
@@ -10824,19 +11296,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderFarm")
 
-	section:Header({ Name = "Position Logic" })
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Stand Distance (x)",
-		Default = autoFarmPathfinder.GetStandDistance(),
-		Minimum = 1,
-		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			autoFarmPathfinder.SetStandDistance(Value)
-		end),
-	}, "Slider_PathfinderStandDistance"))
+	section:Header({ Name = "Movement" })
 
 	ui.PatchSliderLoadCallback(section:Slider({
 		Name = "Move Speed",
@@ -10851,16 +11311,16 @@ return function(window, tab)
 	}, "Slider_PathfinderMoveSpeed"))
 
 	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Repath Interval",
-		Default = autoFarmPathfinder.GetRepathInterval(),
+		Name = "Retarget Interval",
+		Default = autoFarmPathfinder.GetRetargetInterval(),
 		Minimum = 0.2,
-		Maximum = 2,
+		Maximum = 5,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(Value)
-			autoFarmPathfinder.SetRepathInterval(Value)
+			autoFarmPathfinder.SetRetargetInterval(Value)
 		end),
-	}, "Slider_PathfinderRepath"))
+	}, "Slider_PathfinderRetarget"))
 
 	section:Header({ Name = "Skills" })
 
@@ -10871,6 +11331,29 @@ return function(window, tab)
 			autoFarmPathfinder.SetSkillEnabled(state)
 		end),
 	}, "Toggle_PathfinderSkill")
+
+	section:Dropdown({
+		Name = "Skill Mode",
+		Options = { "Both (Q+E cùng lúc)", "Alternate (Q -> E -> Q -> E)" },
+		Default = (autoFarmPathfinder.GetSkillMode() == "Alternate" and 2) or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			if not option then return end
+			if option:find("Alternate") then
+				autoFarmPathfinder.SetSkillMode("Alternate")
+			else
+				autoFarmPathfinder.SetSkillMode("Both")
+			end
+		end),
+	}, "Dropdown_PathfinderSkillMode")
+
+	section:Toggle({
+		Name = "Right Click Combo (Q+E)",
+		Default = shortcuts.IsMouseComboEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shortcuts.SetMouseComboEnabled(state)
+		end),
+	}, "Toggle_PathfinderMouseCombo")
 
 	ui.PatchSliderLoadCallback(section:Slider({
 		Name = "Skill Range",
@@ -10905,8 +11388,52 @@ return function(window, tab)
 			autoFarmPathfinder.SetVisualDebug(state)
 		end),
 	}, "Toggle_PathfinderDebug")
-end
-end function __DIST.s()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+
+	section:Header({ Name = "State Monitor" })
+
+	local stateLabel = section:Label({ Text = "Initializing..." })
+
+	local PHASE_COLORS = {
+		CHASE = "0, 255, 255",
+		HOLD = "255, 200, 0",
+		IDLE = "160, 160, 160",
+	}
+
+	local function formatBool(v)
+		return v and "<font color='rgb(0,255,0)'>Yes</font>" or "<font color='rgb(255,80,80)'>No</font>"
+	end
+
+	local function updateStateLabel()
+		local ok, info = pcall(autoFarmPathfinder.GetDebugInfo)
+		if not ok or not info then return end
+		local phaseColor = PHASE_COLORS[info.phase] or "160, 160, 160"
+		local angle = info.holdAngle
+		local angleStr = angle and string.format("%.1fdeg", math.deg(angle)) or "-"
+		local radiusStr = info.holdRadius and string.format("%.1f", info.holdRadius) or "-"
+		local text = table.concat({
+			"State: <font color='rgb(" .. phaseColor .. ")'>" .. info.phase .. "</font>\n",
+			"Locked: " .. (info.locked and ("<font color='rgb(255,200,0)'>" .. info.lockedName .. "</font>") or "No") .. "\n",
+			"Current: " .. info.enemyName .. "\n",
+			"Dist 3D: " .. string.format("%.1f", info.enemyDist) .. "\n",
+			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / SkillRange " .. info.skillRange .. "\n",
+			"Orbit: angle " .. angleStr .. " / radius " .. radiusStr .. "\n",
+			"Path: " .. (info.pathComputed and "active" or "none") .. "\n",
+			"Path Banned: " .. (info.pathBanned or 0) .. " / Fallback " .. (info.noPathSince and "on" or "off") .. "\n",
+			"Tracking: " .. formatBool(info.dunReady) .. " / Enabled " .. formatBool(info.enabled),
+		})
+		pcall(function()
+			stateLabel:UpdateName(text)
+		end)
+	end
+
+	updateStateLabel()
+
+	task.spawn(function()
+		while task.wait(0.25) do
+			updateStateLabel()
+		end
+	end)
+end end function __DIST.t()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
@@ -11087,13 +11614,13 @@ end
 --// Initialize: watcher
 task.spawn(joinDungeonWatcher)
 
-return autoJoin end function __DIST.t()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+return autoJoin end function __DIST.u()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('e')
-local autoJoin = __DIST.load('s')
+local autoJoin = __DIST.load('t')
 local autoSave = __DIST.load('f')
 local dungeonCatalog = __DIST.load('n')
 
@@ -11219,7 +11746,7 @@ return function(window, tab)
 		end)
 		updateLevelLabel()
 	end)
-end end function __DIST.u()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
+end end function __DIST.v()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
 -- Chỉ highlight các object trùng tên với model projectile trong
 -- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
@@ -11537,7 +12064,7 @@ function esp.SetEnemyHitboxScale(scale)
 end
 
 return esp
-end function __DIST.v()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.w()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -11678,13 +12205,13 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.w()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+end function __DIST.x()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 	
 local autoSave = __DIST.load('f')
-	local esp = __DIST.load('u')
-	local enemyEsp = __DIST.load('v')
+	local esp = __DIST.load('v')
+	local enemyEsp = __DIST.load('w')
 	local basicOrbitDodge = __DIST.load('l')
 	local ui = __DIST.load('e')
 
@@ -11843,7 +12370,7 @@ return function(window, tab)
 		end),
 	}, "Dropdown_DetectorShape")
 end
-end function __DIST.x()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end function __DIST.y()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -11918,7 +12445,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.y()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.z()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -11926,7 +12453,7 @@ end function __DIST.y()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('f')
-local autoHide = __DIST.load('x')
+local autoHide = __DIST.load('y')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -12083,7 +12610,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.z()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.A()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -12671,12 +13198,12 @@ end
 loadSettings()
 
 return webhook
-end function __DIST.A()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.B()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('z')
+local webhook = __DIST.load('A')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -12743,7 +13270,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.B()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.C()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
@@ -12924,56 +13451,6 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.C()-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
-
---// Imports
-
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
-
---// References
-local UserInputService = services.UserInputService
-local VirtualInputManager = services.VirtualInputManager
-
---// Table
-local shortcuts = {}
-
---// Kích hoạt combo E+Q (giống Auto Skill): gửi Q+E giữ theo chu kỳ hold.
---// Khi kích hoạt từ E vật lý / chuột phải, game tự nhận phím chính, nên chỉ cần
---// bấm thêm phím còn lại giữ đúng chu kỳ hold để 2 phím bắt đúng thời điểm.
-local function fireCombo()
-	task.spawn(function()
-		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-		task.wait(shared.GetKeyHoldTime())
-		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-	end)
-end
-
---// Initialize
-function shortcuts.Init()
-	if shortcuts.inited then return end
-	shortcuts.inited = true
-
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
-		if input.KeyCode == Enum.KeyCode.R then
-			task.spawn(function()
-				shared.TeleportToNearestEnemy()
-			end)
-		elseif input.KeyCode == Enum.KeyCode.C then
-			task.spawn(function()
-				shared.TeleportBehindFarthestEnemy()
-			end)
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-			--// Ẩn: chuột phải cũng cùng kích hoạt E + Q.
-			fireCombo()
-		end
-	end)
-end
-
-return shortcuts
 end function __DIST.D()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
@@ -13034,12 +13511,12 @@ return function(self)
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local speedTab = __DIST.load('h')
 	local combatTab = __DIST.load('p')
-	local autoFarmPathfinderTab = __DIST.load('r')
-	local dungeonTab = __DIST.load('t')
-	local visualTab = __DIST.load('w')
-	local configTab = __DIST.load('y')
-	local notificationsTab = __DIST.load('A')
-	local stateTab = __DIST.load('B')
+	local autoFarmPathfinderTab = __DIST.load('s')
+	local dungeonTab = __DIST.load('u')
+	local visualTab = __DIST.load('x')
+	local configTab = __DIST.load('z')
+	local notificationsTab = __DIST.load('B')
+	local stateTab = __DIST.load('C')
 
 	speedTab(window, tabs.Player)
 	combatTab(window, tabs.Farm)
@@ -13051,14 +13528,14 @@ return function(self)
 	stateTab(window, tabs.State)
 
 	--// Phím tắt
-	local shortcuts = __DIST.load('C')
+	local shortcuts = __DIST.load('r')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('z')
+	local webhook = __DIST.load('A')
 	webhook.Init()
 __DIST.load('l')
-__DIST.load('v')
+__DIST.load('w')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
@@ -13072,7 +13549,7 @@ local contextual = __DIST.load('o')
 	deathLog.Init()
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('x')
+	local autoHide = __DIST.load('y')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
