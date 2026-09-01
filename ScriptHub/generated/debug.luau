@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-01T05:43:35.572051+00:00",
+    genDate = "2026-09-01T09:44:23.500729300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -10708,8 +10708,15 @@ local SURFACE_TRANSPARENCY = 0.8
 local PLAYER_BOX_COLOR = Color3.fromRGB(0, 255, 0)
 local PLAYER_BOX_NAME = "PlayerHitbox_ESP"
 
+local ENEMY_BOX_COLOR = Color3.fromRGB(255, 0, 0)
+local ENEMY_BOX_NAME = "EnemyHitbox_ESP"
+
 local ESP_NAME = "Hitbox_ESP"
 local SCAN_INTERVAL = 0.5
+
+--// Hitbox mode constants
+local HITBOX_MODE_REAL = "Real"
+local HITBOX_MODE_CUSTOM = "Custom"
 
 --// State
 local enabled = false
@@ -10718,7 +10725,14 @@ local projectileNames = {}
 
 local playerBoxEnabled = false
 local playerBoxThread = nil
+local playerBoxMode = HITBOX_MODE_REAL
+local playerBoxScale = 1.5
 local player = services.player
+
+local enemyBoxEnabled = false
+local enemyBoxThread = nil
+local enemyBoxMode = HITBOX_MODE_REAL
+local enemyBoxScale = 1.5
 
 --// Helpers
 local function createBox(targetObj)
@@ -10800,6 +10814,61 @@ function esp.IsEnabled()
 	return enabled
 end
 
+--// Tạo SelectionBox bám vào một adornee (Root hoặc proxy part).
+local function createSelectionBox(boxName, adornee, color)
+	local box = Instance.new("SelectionBox")
+	box.Name = boxName
+	box.Adornee = adornee
+	box.Color3 = color
+	box.LineThickness = LINE_THICKNESS * 4
+	box.SurfaceColor3 = color
+	box.SurfaceTransparency = SURFACE_TRANSPARENCY
+	box.Parent = adornee
+end
+
+--// Cập nhật box cho một Root theo mode hiện tại.
+--// REAL: SelectionBox bám trực tiếp Root (kích thước thật).
+--// CUSTOM: proxy part vô hình kích thước = Root.Size * scale, bám theo Root.
+local function updateEntityBox(boxName, root, color, mode, scale)
+	if not root or not root.Parent then return end
+	local proxyName = boxName .. "_Proxy"
+	local existingBox = root:FindFirstChild(boxName)
+	local existingProxy = root:FindFirstChild(proxyName)
+
+	if mode == HITBOX_MODE_CUSTOM then
+		if existingBox and existingBox:IsA("SelectionBox") and existingBox.Adornee == root then
+			existingBox:Destroy()
+		end
+
+		if not existingProxy then
+			existingProxy = Instance.new("Part")
+			existingProxy.Name = proxyName
+			existingProxy.Anchored = true
+			existingProxy.CanCollide = false
+			existingProxy.CanQuery = false
+			existingProxy.CanTouch = false
+			existingProxy.Transparency = 1
+			existingProxy.Parent = root
+			createSelectionBox(boxName, existingProxy, color)
+		end
+
+		local rootSize = root.Size
+		local maxDim = math.max(math.abs(rootSize.X), math.abs(rootSize.Y), math.abs(rootSize.Z))
+		local customSize = math.max(maxDim * scale, 1)
+		existingProxy.Size = Vector3.new(customSize, customSize, customSize)
+		existingProxy.CFrame = root.CFrame
+	else
+		if existingProxy then existingProxy:Destroy() end
+		if existingBox and existingBox:IsA("SelectionBox") and existingBox.Adornee ~= root then
+			existingBox:Destroy()
+			existingBox = nil
+		end
+		if not existingBox or not existingBox:IsA("SelectionBox") or existingBox.Adornee ~= root then
+			createSelectionBox(boxName, root, color)
+		end
+	end
+end
+
 --// Highlight hitbox THẬT của player (quanh HumanoidRootPart) để phân biệt với
 --// "ghost" (bản nhân vật ảo hiển thị khi teleport orbit). Màu xanh lá, khác hẳn
 --// hitbox enemy đỏ. Tự bám theo nhân vật khi respawn.
@@ -10807,16 +10876,7 @@ local function attachPlayerBox()
 	local character = player and player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root or not root.Parent then return end
-	if root:FindFirstChild(PLAYER_BOX_NAME) then return end
-
-	local box = Instance.new("SelectionBox")
-	box.Name = PLAYER_BOX_NAME
-	box.Adornee = root
-	box.Color3 = PLAYER_BOX_COLOR
-	box.LineThickness = LINE_THICKNESS * 4
-	box.SurfaceColor3 = PLAYER_BOX_COLOR
-	box.SurfaceTransparency = SURFACE_TRANSPARENCY
-	box.Parent = root
+	updateEntityBox(PLAYER_BOX_NAME, root, PLAYER_BOX_COLOR, playerBoxMode, playerBoxScale)
 end
 
 local function clearPlayerBox()
@@ -10824,7 +10884,9 @@ local function clearPlayerBox()
 	local function clearCharacter(character)
 		if not character then return end
 		for _, desc in ipairs(character:GetDescendants()) do
-			if desc.Name == PLAYER_BOX_NAME then desc:Destroy() end
+			if desc.Name == PLAYER_BOX_NAME or desc.Name == PLAYER_BOX_NAME .. "_Proxy" then
+				desc:Destroy()
+			end
 		end
 	end
 	clearCharacter(player and player.Character)
@@ -10848,7 +10910,7 @@ function esp.TogglePlayerHitbox(state)
 						warn("[PlayerHitbox] error:", tostring(err))
 					end
 				end
-				task.wait(SCAN_INTERVAL)
+				services.RunService.Heartbeat:Wait()
 			end
 		end)
 	else
@@ -10858,6 +10920,89 @@ end
 
 function esp.IsPlayerHitboxEnabled()
 	return playerBoxEnabled
+end
+
+function esp.GetPlayerHitboxMode()
+	return playerBoxMode
+end
+
+function esp.SetPlayerHitboxMode(mode)
+	if mode ~= HITBOX_MODE_REAL and mode ~= HITBOX_MODE_CUSTOM then return end
+	playerBoxMode = mode
+end
+
+function esp.GetPlayerHitboxScale()
+	return playerBoxScale
+end
+
+function esp.SetPlayerHitboxScale(scale)
+	playerBoxScale = scale
+end
+
+--// Highlight hitbox THẬT của từng enemy đang track (quanh Root) khi ENGAGE.
+--// Màu đỏ, dày như player hitbox, dùng chung cơ chế SelectionBox nhưng tự
+--// bám theo enemy model khi di chuyển/spawn.
+local function attachEnemyBoxes()
+	for _, data in ipairs(shared.GetTrackedEnemyData()) do
+		local root = data.Root
+		if root and root.Parent then
+			updateEntityBox(ENEMY_BOX_NAME, root, ENEMY_BOX_COLOR, enemyBoxMode, enemyBoxScale)
+		end
+	end
+end
+
+local function clearEnemyBoxes()
+	if enemyBoxThread then task.cancel(enemyBoxThread); enemyBoxThread = nil end
+	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+		local box = obj:FindFirstChild(ENEMY_BOX_NAME)
+		local proxy = obj:FindFirstChild(ENEMY_BOX_NAME .. "_Proxy")
+		if box then box:Destroy() end
+		if proxy then proxy:Destroy() end
+	end
+end
+
+function esp.ToggleEnemyHitbox(state)
+	if state == enemyBoxEnabled then return end
+	enemyBoxEnabled = state
+
+	if enemyBoxEnabled then
+		if enemyBoxThread then task.cancel(enemyBoxThread); enemyBoxThread = nil end
+		enemyBoxThread = task.spawn(function()
+			while enemyBoxEnabled do
+				local ok, err = pcall(attachEnemyBoxes)
+				if not ok then
+					if os.clock() - (esp.lastEnemyWarn or 0) > 5 then
+						esp.lastEnemyWarn = os.clock()
+						warn("[EnemyHitbox] error:", tostring(err))
+					end
+				end
+				services.RunService.Heartbeat:Wait()
+			end
+		end)
+	else
+		clearEnemyBoxes()
+	end
+end
+
+function esp.IsEnemyHitboxEnabled()
+	return enemyBoxEnabled
+end
+
+function esp.GetEnemyHitboxMode()
+	return enemyBoxMode
+end
+
+function esp.SetEnemyHitboxMode(mode)
+	if mode ~= HITBOX_MODE_REAL and mode ~= HITBOX_MODE_CUSTOM then return end
+	enemyBoxMode = mode
+end
+
+function esp.GetEnemyHitboxScale()
+	return enemyBoxScale
+end
+
+function esp.SetEnemyHitboxScale(scale)
+	enemyBoxScale = scale
 end
 
 return esp
@@ -10880,23 +11025,53 @@ local FILL_TRANSPARENCY = 0.55
 local ESP_NAME = "Enemy_ESP"
 local SCAN_INTERVAL = 0.5
 
+--// Màu cho highlight (tên hiển thị -> màu thật).
+--// Đồng bộ với danh sách option trong tab Visual.
+local COLOR_PALETTE = {
+	Orange = Color3.fromRGB(255, 170, 0),
+	Red = Color3.fromRGB(255, 0, 0),
+	Yellow = Color3.fromRGB(255, 255, 0),
+	Green = Color3.fromRGB(0, 255, 0),
+	Cyan = Color3.fromRGB(0, 255, 255),
+	Blue = Color3.fromRGB(0, 120, 255),
+	Magenta = Color3.fromRGB(255, 0, 255),
+	White = Color3.fromRGB(255, 255, 255),
+}
+
 --// State
 local enabled = false
 local scanThread = nil
+local selectedColorName = "Orange"
 
 --// Helpers
+local function getFillColor()
+	return COLOR_PALETTE[selectedColorName] or FILL_COLOR
+end
+
 local function createHighlight(model)
 	if not model or not model:IsA("Model") then return end
 	if not model:FindFirstChild(ESP_NAME) then
 		local hl = Instance.new("Highlight")
 		hl.Name = ESP_NAME
 		hl.Adornee = model
-		hl.FillColor = FILL_COLOR
+		hl.FillColor = getFillColor()
 		hl.FillTransparency = FILL_TRANSPARENCY
-		hl.OutlineColor = FILL_COLOR
+		hl.OutlineColor = getFillColor()
 		hl.OutlineTransparency = 1
 		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		hl.Parent = model
+	end
+end
+
+--// Cập nhật màu cho highlight đã vẽ sẵn (gọi khi đổi màu).
+local function updateAllHighlightColors()
+	local color = getFillColor()
+	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+		local hl = obj:FindFirstChild(ESP_NAME)
+		if hl and hl:IsA("Highlight") then
+			hl.FillColor = color
+			hl.OutlineColor = color
+		end
 	end
 end
 
@@ -10952,6 +11127,25 @@ function enemyEsp.IsEnabled()
 	return enabled
 end
 
+function enemyEsp.GetColorNames()
+	local names = {}
+	for name in pairs(COLOR_PALETTE) do table.insert(names, name) end
+	table.sort(names)
+	return names
+end
+
+function enemyEsp.GetSelectedColor()
+	return selectedColorName
+end
+
+function enemyEsp.SetSelectedColor(name)
+	if not COLOR_PALETTE[name] then return end
+	if name == selectedColorName then return end
+	selectedColorName = name
+	local ok = pcall(updateAllHighlightColors)
+	if not ok then warn("[EnemyESP] recolor error") end
+end
+
 return enemyEsp
 end function __DIST.u()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
@@ -10961,38 +11155,134 @@ local autoSave = __DIST.load('f')
 	local esp = __DIST.load('s')
 	local enemyEsp = __DIST.load('t')
 	local basicOrbitDodge = __DIST.load('l')
+	local ui = __DIST.load('e')
+
+--// Hitbox mode options
+local HITBOX_OPTIONS = { "Custom Hitbox", "Real Hitbox" }
+local function hitboxModeToIndex(mode)
+	return (mode == "Custom" and 1) or 2
+end
+local function hitboxLabelToMode(label)
+	return (label == HITBOX_OPTIONS[1] and "Custom") or "Real"
+end
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "Hitbox" })
+	local applyHitboxVisibility
 
-	section:Toggle({
-		Name = "Highlight Hitboxes",
+	local playerSection = tab:Section({ Side = "Left" })
+	playerSection:Header({ Name = "Player" })
+
+	playerSection:Toggle({
+		Name = "Hitbox",
+		Default = esp.IsPlayerHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.TogglePlayerHitbox(state)
+		end),
+	}, "Toggle_PlayerHitbox")
+
+	playerSection:Dropdown({
+		Name = "Hitbox Mode",
+		Options = HITBOX_OPTIONS,
+		Default = hitboxModeToIndex(esp.GetPlayerHitboxMode()),
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			esp.SetPlayerHitboxMode(hitboxLabelToMode(option))
+			applyHitboxVisibility()
+		end),
+	}, "Dropdown_PlayerHitboxMode")
+
+	local playerSizeSlider = ui.PatchSliderLoadCallback(playerSection:Slider({
+		Name = "Hitbox Size",
+		Default = esp.GetPlayerHitboxScale(),
+		Minimum = 1,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetPlayerHitboxScale(Value)
+		end),
+	}, "Slider_PlayerHitboxSize"))
+
+	local enemySection = tab:Section({ Side = "Left" })
+	enemySection:Header({ Name = "Enemy" })
+
+	enemySection:Toggle({
+		Name = "Projectile Hitboxes",
 		Default = false,
 		Callback = autoSave.Wrap(function(state)
 			esp.Toggle(state)
 		end),
 	}, "Toggle_HighlightHitboxes")
 
-	section:Toggle({
-		Name = "Player Real Hitbox",
-		Default = esp.IsPlayerHitboxEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.TogglePlayerHitbox(state)
-		end),
-	}, "Toggle_PlayerRealHitbox")
-
-	section:Toggle({
-		Name = "Enemy ESP",
+	enemySection:Toggle({
+		Name = "Model Highlight",
 		Default = enemyEsp.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			enemyEsp.Toggle(state)
 		end),
 	}, "Toggle_EnemyESP")
 
-	section:Header({ Name = "Dodge Visuals" })
+	local highlightColors = enemyEsp.GetColorNames()
+	local currentColor = enemyEsp.GetSelectedColor()
+	local colorDefaultIndex = 1
+	for i, name in ipairs(highlightColors) do
+		if name == currentColor then
+			colorDefaultIndex = i
+			break
+		end
+	end
 
-	section:Toggle({
+	enemySection:Dropdown({
+		Name = "Highlight Color",
+		Options = highlightColors,
+		Default = colorDefaultIndex,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			enemyEsp.SetSelectedColor(option)
+		end),
+	}, "Dropdown_HighlightColor")
+
+	enemySection:Toggle({
+		Name = "Hitbox",
+		Default = esp.IsEnemyHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleEnemyHitbox(state)
+		end),
+	}, "Toggle_EnemyHitbox")
+
+	enemySection:Dropdown({
+		Name = "Hitbox Mode",
+		Options = HITBOX_OPTIONS,
+		Default = hitboxModeToIndex(esp.GetEnemyHitboxMode()),
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			esp.SetEnemyHitboxMode(hitboxLabelToMode(option))
+			applyHitboxVisibility()
+		end),
+	}, "Dropdown_EnemyHitboxMode")
+
+	local enemySizeSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
+		Name = "Hitbox Size",
+		Default = esp.GetEnemyHitboxScale(),
+		Minimum = 1,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetEnemyHitboxScale(Value)
+		end),
+	}, "Slider_EnemyHitboxSize"))
+
+	applyHitboxVisibility = function()
+		pcall(function() playerSizeSlider:SetVisibility(esp.GetPlayerHitboxMode() == "Custom") end)
+		pcall(function() enemySizeSlider:SetVisibility(esp.GetEnemyHitboxMode() == "Custom") end)
+	end
+	applyHitboxVisibility()
+
+	local dodgeSection = tab:Section({ Side = "Left" })
+	dodgeSection:Header({ Name = "Dodge Visuals" })
+
+	dodgeSection:Toggle({
 		Name = "Dead Zone Visuals",
 		Default = basicOrbitDodge.IsDebugVisuals(),
 		Callback = autoSave.Wrap(function(state)
@@ -11000,7 +11290,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_DeadZoneVisuals")
 
-	section:Toggle({
+	dodgeSection:Toggle({
 		Name = "Detector Visuals",
 		Default = basicOrbitDodge.IsDetectorVisuals(),
 		Callback = autoSave.Wrap(function(state)
@@ -11008,7 +11298,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_DetectorVisuals")
 
-	section:Dropdown({
+	dodgeSection:Dropdown({
 		Name = "Detector Shape",
 		Options = { "Circle", "Cone" },
 		Default = (basicOrbitDodge.GetDetectorMode() == "Cone" and 2) or 1,
@@ -11021,7 +11311,8 @@ return function(window, tab)
 			end
 		end),
 	}, "Dropdown_DetectorShape")
-end end function __DIST.v()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end
+end function __DIST.v()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -12111,9 +12402,23 @@ local shared = __DIST.load('d')
 
 --// References
 local UserInputService = services.UserInputService
+local VirtualInputManager = services.VirtualInputManager
 
 --// Table
 local shortcuts = {}
+
+--// Kích hoạt combo E+Q (giống Auto Skill): gửi Q+E giữ theo chu kỳ hold.
+--// Khi kích hoạt từ E vật lý / chuột phải, game tự nhận phím chính, nên chỉ cần
+--// bấm thêm phím còn lại giữ đúng chu kỳ hold để 2 phím bắt đúng thời điểm.
+local function fireCombo()
+	task.spawn(function()
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+		task.wait(shared.GetKeyHoldTime())
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+	end)
+end
 
 --// Initialize
 function shortcuts.Init()
@@ -12130,6 +12435,12 @@ function shortcuts.Init()
 			task.spawn(function()
 				shared.TeleportBehindFarthestEnemy()
 			end)
+		elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.Q then
+			--// Tính năng ẩn (không cần toggle): ấn E hoặc Q = cùng kích hoạt E + Q.
+			fireCombo()
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+			--// Ẩn: chuột phải cũng cùng kích hoạt E + Q.
+			fireCombo()
 		end
 	end)
 end

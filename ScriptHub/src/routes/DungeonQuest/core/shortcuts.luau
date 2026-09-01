@@ -6,9 +6,23 @@ local shared = require("@routes/DungeonQuest/core/shared")
 
 --// References
 local UserInputService = services.UserInputService
+local VirtualInputManager = services.VirtualInputManager
 
 --// Table
 local shortcuts = {}
+
+--// Kích hoạt combo E+Q (giống Auto Skill): gửi Q+E giữ theo chu kỳ hold.
+--// Khi kích hoạt từ E vật lý / chuột phải, game tự nhận phím chính, nên chỉ cần
+--// bấm thêm phím còn lại giữ đúng chu kỳ hold để 2 phím bắt đúng thời điểm.
+local function fireCombo()
+	task.spawn(function()
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+		task.wait(shared.GetKeyHoldTime())
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+	end)
+end
 
 --// Initialize
 function shortcuts.Init()
@@ -25,6 +39,12 @@ function shortcuts.Init()
 			task.spawn(function()
 				shared.TeleportBehindFarthestEnemy()
 			end)
+		elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.Q then
+			--// Tính năng ẩn (không cần toggle): ấn E hoặc Q = cùng kích hoạt E + Q.
+			fireCombo()
+		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+			--// Ẩn: chuột phải cũng cùng kích hoạt E + Q.
+			fireCombo()
 		end
 	end)
 end
