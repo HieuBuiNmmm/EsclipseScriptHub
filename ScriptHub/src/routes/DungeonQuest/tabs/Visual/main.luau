@@ -1,9 +1,10 @@
 -- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
-local autoSave = require("@routes/DungeonQuest/core/autoSave")
-local esp = require("@routes/DungeonQuest/core/esp")
-local basicOrbitDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
+	local autoSave = require("@routes/DungeonQuest/core/autoSave")
+	local esp = require("@routes/DungeonQuest/core/esp")
+	local enemyEsp = require("@routes/DungeonQuest/core/enemyEsp")
+	local basicOrbitDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -24,6 +25,14 @@ return function(window, tab)
 			esp.TogglePlayerHitbox(state)
 		end),
 	}, "Toggle_PlayerRealHitbox")
+
+	section:Toggle({
+		Name = "Enemy ESP",
+		Default = enemyEsp.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			enemyEsp.Toggle(state)
+		end),
+	}, "Toggle_EnemyESP")
 
 	section:Header({ Name = "Dodge Visuals" })
 

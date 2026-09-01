@@ -27,14 +27,73 @@ local pingTiers = { "Tier6" } -- danh sách tier đã chọn (Secret = Tier6)
 
 --// Color theo rarity (Discord embed Decimal color)
 local RARITY_COLORS = {
-	common = 9807270,
-	uncommon = 43520,
-	rare = 3447003,
-	epic = 10181046,
-	legendary = 15844367,
-	mythic = 15277667,
+	common = 9807270,      -- Xám
+	uncommon = 43520,      -- Xanh lá
+	rare = 3447003,        -- Xanh dương
+	epic = 10181046,       -- Tím
+	legendary = 16766720,  -- Vàng
+	--// Cấp cao nhất (ultimate): game có thể gọi bằng nhiều tên, map chung về ĐỎ
+	secret = 15158332,
+	ultimate = 15158332,
+	mythic = 15158332,
+}
+--// Thứ tự cấp rarity (càng về sau càng cao) để lấy màu cao nhất
+local RARITY_ORDER = {
+	common = 1,
+	uncommon = 2,
+	rare = 3,
+	epic = 4,
+	legendary = 5,
+	secret = 6,
+	ultimate = 6,
+	mythic = 6,
 }
 local DEFAULT_COLOR = 10181046
+
+--// Đồ hiếm đặc biệt: mỗi map Nightmare có "bộ giáp xịn" với prefix tên riêng
+--// (vd Northenland -> "Valhalla"). Item có prefix này -> nổi bật (⭐). Match theo tên
+--// map hiện tại (substring, không phân biệt hoa/thường). Set tĩnh, luôn bật.
+local SPECIAL_ARMOR_BY_MAP = {
+	{ match = "northen", prefix = "Valhalla" },
+	{ match = "northern", prefix = "Valhalla" },
+}
+--// Màu đồng nhấn cho item đặc biệt trong embed
+local SPECIAL_COLOR = 16766720 -- Vàng
+
+--// Lấy prefix giáp xịn của map hiện tại (dựa trên GetCurrentDungeonName), nếu có.
+local function getSpecialPrefix()
+	local dungeon = shared.GetCurrentDungeonName()
+	if not dungeon or dungeon == "" then return nil end
+	local lower = string.lower(dungeon)
+	for _, entry in ipairs(SPECIAL_ARMOR_BY_MAP) do
+		if string.find(lower, entry.match, 1, true) then
+			return entry.prefix
+		end
+	end
+	return nil
+end
+
+--// Item có "đồ hiếm" (cần nổi bật) hay không:
+--//  1. tên bắt đầu bằng prefix giáp xịn của map hiện tại (vd "Valhalla...")
+--//  2. HOẶC rarity thuộc cấp cao nhất: legendary / ultimate (secret, mythic)
+--//     Game có thể gọi "ultimate" bằng nhiều tên (secret/mythic) -> map chung.
+--// Luôn bật, không cần toggle.
+local SPECIAL_RARITIES = {
+	legendary = true,
+	secret = true,
+	ultimate = true,
+	mythic = true,
+}
+local function isSpecialItem(item)
+	if not item then return false end
+	if SPECIAL_RARITIES[tostring(item.rarity or ""):lower()] then return true end
+	local prefix = getSpecialPrefix()
+	if prefix and prefix ~= "" then
+		local name = tostring(item.itemName or "")
+		return string.sub(name, 1, #prefix) == prefix
+	end
+	return false
+end
 
 --// Dropdown Tier: Secret được coi là Tier6 (mức cao nhất)
 local PING_TIER_OPTIONS = { "Tier1", "Tier2", "Tier3", "Tier4", "Tier5", "Tier6" }
@@ -78,12 +137,12 @@ end
 --// Trạng thái đo lường dungeon (XP trước + đồng hồ hoàn thành)
 local xpBefore = nil
 
---// Lấy tên hiển thị của player (ưu tiên DisplayName, fallback Name)
+--// Lấy tên hiển thị của player (username Name, fallback DisplayName)
 local function getPlayerName()
 	local p = game:GetService("Players").LocalPlayer
 	if not p then return "?" end
-	if p.DisplayName and p.DisplayName ~= "" then return p.DisplayName end
-	return p.Name
+	if p.Name and p.Name ~= "" then return p.Name end
+	return p.DisplayName or "?"
 end
 
 --// Lấy XP hiện tại của player (Players.LocalPlayer.XP - IntValue)
@@ -121,16 +180,34 @@ local function getLevel()
 	return "?"
 end
 
+--// Retry lấy XP trước dungeon cho tới khi có (tránh nil do timing/XP chưa sẵn sàng).
+--// Chạy 1 lần rồi thoát; nếu vẫn chưa có thì thử lại sau – gọi lại từ nơi khác nếu cần.
+local xpBeforeTaskRunning = false
+local function ensureXpBefore()
+	if xpBefore ~= nil or xpBeforeTaskRunning then return end
+	xpBeforeTaskRunning = true
+	task.spawn(function()
+		local timeout = os.clock() + 8
+		while xpBefore == nil and os.clock() < timeout do
+			xpBefore = getXp()
+			if xpBefore ~= nil then break end
+			task.wait(0.25)
+		end
+		xpBeforeTaskRunning = false
+	end)
+end
+
 --// Reset bộ đếm: ghi nhận XP trước dungeon (khi đang ở lobby/startButton hiện)
 local function resetRun()
 	xpBefore = getXp()
+	if xpBefore == nil then ensureXpBefore() end
 	shared.SetDungeonStartTime(nil)
 end
 
 --// Bắt đầu tính thời gian hoàn thành (startButton biến mất -> vào dungeon)
 local function startRun()
 	if not shared.GetDungeonStartTime() then shared.SetDungeonStartTime(os.clock()) end
-	if xpBefore == nil then xpBefore = getXp() end
+	if xpBefore == nil then ensureXpBefore() end
 end
 
 --// Theo dõi trạng thái lobby/dungeon qua shared (startButton + dungName):
@@ -199,10 +276,11 @@ local function buildItemsText(items)
 	local lines = {}
 	for _, item in ipairs(items or {}) do
 		local name = item.itemName or "Unknown"
+		local special = isSpecialItem(item)
+		if special then name = "⭐ " .. name end
 		local meta = {}
 		if item.itemType and item.itemType ~= "gold" then table.insert(meta, item.itemType) end
 		if item.rarity then table.insert(meta, item.rarity) end
-		if item.tier then table.insert(meta, item.tier) end
 		if #meta > 0 then
 			table.insert(lines, string.format("%s (%s)", tostring(name), table.concat(meta, ", ")))
 		else
@@ -239,37 +317,56 @@ local function buildEmbed(reward, meta)
 	end
 
 	local color = DEFAULT_COLOR
+	local hasSpecial = false
+	local specialTop = nil
 	local topRarity
+	local function higherRarity(a, b)
+		if a == nil then return b end
+		if b == nil then return a end
+		return (RARITY_ORDER[a] or 0) >= (RARITY_ORDER[b] or 0) and a or b
+	end
 	for _, item in ipairs(items) do
-		local rarity = tostring(item.rarity or "")
+		local rarity = tostring(item.rarity or ""):lower()
+		if isSpecialItem(item) then
+			hasSpecial = true
+			specialTop = higherRarity(specialTop, rarity)
+		end
 		if RARITY_COLORS[rarity] ~= nil then
-			if topRarity == nil or RARITY_COLORS[rarity] > RARITY_COLORS[topRarity] then
-				topRarity = rarity
-			end
+			topRarity = higherRarity(topRarity, rarity)
 		end
 	end
-	if topRarity then color = RARITY_COLORS[topRarity] end
+	if hasSpecial then
+		color = specialTop and (RARITY_COLORS[specialTop] or SPECIAL_COLOR) or SPECIAL_COLOR
+	elseif topRarity then
+		color = RARITY_COLORS[topRarity]
+	end
 
 	meta = meta or {}
 	local level = tostring(meta.level or "?")
 	local expGained = tonumber(meta.expGained)
-	local expText = expGained and string.format("%s XP", tostring(expGained)) or "?"
+	local expText = expGained and string.format("+%s XP", tostring(expGained)) or "?"
 	local durationText = formatDuration(meta.duration)
+
+	local summary = {}
+	if expGained then table.insert(summary, expText) end
+	if gold > 0 then table.insert(summary, string.format("+%s gold", tostring(gold))) end
+	local summaryText = #summary > 0 and table.concat(summary, "  ") or ""
+
+	local rewardsText = #items > 0 and buildItemsText(items) or "None"
+	local rewardsValue = rewardsText
+	if summaryText ~= "" then
+		rewardsValue = summaryText .. (rewardsText ~= "None" and ("\n" .. rewardsText) or "")
+	end
 
 	local fields = {
 		{
 			name = "Player",
-			value = getPlayerName(),
+			value = string.format("%s (lv %s)", getPlayerName(), level),
 			inline = true,
 		},
 		{
-			name = "Level",
-			value = level,
-			inline = true,
-		},
-		{
-			name = "XP Gained",
-			value = expText,
+			name = "Map",
+			value = shared.GetCurrentDungeonName() or "Unknown",
 			inline = true,
 		},
 		{
@@ -278,14 +375,9 @@ local function buildEmbed(reward, meta)
 			inline = true,
 		},
 		{
-			name = "Gold",
-			value = tostring(gold),
-			inline = true,
-		},
-		{
 			name = "Rewards",
-			value = #items > 0 and buildItemsText(items) or "None",
-			inline = true,
+			value = rewardsValue,
+			inline = false,
 		},
 	}
 
@@ -458,6 +550,8 @@ function webhook.Init()
 
 	rewardRemote.OnClientEvent:Connect(function(reward)
 		if not enabled then return end
+
+		ensureXpBefore()
 
 		local duration = shared.GetDungeonStartTime() and shared.GetDungeonElapsed() or 0
 

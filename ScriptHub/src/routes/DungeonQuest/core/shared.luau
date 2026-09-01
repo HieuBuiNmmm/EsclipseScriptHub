@@ -1110,6 +1110,17 @@ function shared.GetEnemyCount()
 	return enemyCount
 end
 
+--// Trả về mảng dữ liệu enemy đang track (Model, Root, Humanoid) để ESP Enemy dùng.
+function shared.GetTrackedEnemyData()
+	local out = {}
+	for model, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			out[#out + 1] = data
+		end
+	end
+	return out
+end
+
 --// Trả về set tên projectile của enemy từ ReplicatedStorage.enemyProjectiles
 --// (bao gồm Model, MeshPart, Part). Dùng chung cho ESP và Basic Orbit Dodge.
 function shared.GetEnemyProjectileNames()

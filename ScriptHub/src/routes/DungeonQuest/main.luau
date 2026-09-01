@@ -81,6 +81,9 @@ return function(self)
 	--// Basic Orbit Dodge (tracking 2 loại hazard + safe-node, kế thừa Smart Dodge)
 	require("@routes/DungeonQuest/core/basicOrbitDodge")
 
+	--// ESP Enemy (highlight mob trong dungeon)
+	require("@routes/DungeonQuest/core/enemyEsp")
+
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	local contextual = require("@routes/DungeonQuest/core/contextual")
 
