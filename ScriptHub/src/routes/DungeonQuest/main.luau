@@ -43,6 +43,7 @@ return function(self)
 	local tabs = {
 		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
 		Farm = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
+		Pathfinder = tabGroup:Tab({ Name = "AutoFarm Pathfinder", Image = "rbxassetid://10734950309" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
 		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
@@ -56,6 +57,7 @@ return function(self)
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local speedTab = require("@routes/DungeonQuest/tabs/Speed/main")
 	local combatTab = require("@routes/DungeonQuest/tabs/Combat/main")
+	local autoFarmPathfinderTab = require("@routes/DungeonQuest/tabs/AutoFarmPathfinder/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local visualTab = require("@routes/DungeonQuest/tabs/Visual/main")
 	local configTab = require("@routes/DungeonQuest/tabs/Config/main")
@@ -64,6 +66,7 @@ return function(self)
 
 	speedTab(window, tabs.Player)
 	combatTab(window, tabs.Farm)
+	autoFarmPathfinderTab(window, tabs.Pathfinder)
 	dungeonTab(window, tabs.Dungeon)
 	visualTab(window, tabs.Visual)
 	configTab(window, tabs.Config)
