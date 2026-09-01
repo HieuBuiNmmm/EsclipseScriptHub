@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-01T09:44:23.500729300+00:00",
+    genDate = "2026-09-01T09:51:27.269935800+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -12435,9 +12435,6 @@ function shortcuts.Init()
 			task.spawn(function()
 				shared.TeleportBehindFarthestEnemy()
 			end)
-		elseif input.KeyCode == Enum.KeyCode.E or input.KeyCode == Enum.KeyCode.Q then
-			--// Tính năng ẩn (không cần toggle): ấn E hoặc Q = cùng kích hoạt E + Q.
-			fireCombo()
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			--// Ẩn: chuột phải cũng cùng kích hoạt E + Q.
 			fireCombo()
