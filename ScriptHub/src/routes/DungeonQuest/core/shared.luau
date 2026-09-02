@@ -5,6 +5,7 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 --// References
 local Players = services.Players
@@ -41,8 +42,7 @@ local HOVER_HEIGHT = ORBIT_HEIGHT
 --// Bật/tắt chế độ blacklist quái khi chọn mục tiêu (true = bật, false = tắt -> chọn mọi quái)
 local BLACKLIST_ENABLED = true
 
---// Folder trong ReplicatedStorage chứa toàn bộ model/projectile của enemy.
---// Dùng chung cho Highlight Hitbox (ESP) và Basic Orbit Dodge.
+--// Folder in ReplicatedStorage that contains enemy projectile models for ESP.
 local PROJECTILE_FOLDER = "enemyProjectiles"
 
 --// Danh sách tên quái KHÔNG được chọn làm mục tiêu (retarget/ban đầu).
@@ -114,7 +114,6 @@ local retargetMethod = "Auto"
 local retargetMode = "Nearest"
 local orbitReverseEnabled = false
 local farmOrbitDirection = 1
-local basicOrbitDirection = nil
 local blacklistEnemies = {}
 for _, name in ipairs(BLACKLIST_ENEMIES) do
 	if type(name) == "string" and name ~= "" then
@@ -162,6 +161,13 @@ local fireFarmSkills
 
 --// Respawn hooks (các module khác đăng ký để reset trạng thái khi respawn)
 local respawnCallbacks = {}
+local cleanupConnections = {}
+local speedConnection = nil
+
+local function trackCleanupConnection(connection)
+	if connection then table.insert(cleanupConnections, connection) end
+	return connection
+end
 
 function shared.OnRespawn(callback)
 	table.insert(respawnCallbacks, callback)
@@ -449,10 +455,9 @@ moveFarmTarget = function(deltaTime)
 		--// chỉ tăng góc theo từng bước cố định mỗi ORBIT_TELE_INTERVAL. Nhưng vẫn
 		--// PivotTo mỗi frame (như orbit thường) để giữ vị trí thật, tránh ghost.
 		if teleporting then return end
-		local effDir = basicOrbitDirection or farmOrbitDirection
 		if not farmApproaching then
 			if os.clock() - lastTeleStepTime >= ORBIT_TELE_INTERVAL then
-				farmAngle = (farmAngle + effDir * math.rad(orbitTeleStepDeg)) % (math.pi * 2)
+				farmAngle = (farmAngle + farmOrbitDirection * math.rad(orbitTeleStepDeg)) % (math.pi * 2)
 				lastTeleStepTime = os.clock()
 			end
 		end
@@ -467,8 +472,7 @@ moveFarmTarget = function(deltaTime)
 			end
 		end
 	else
-		local effDir = basicOrbitDirection or farmOrbitDirection
-		farmAngle = (farmAngle + effDir * math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
+		farmAngle = (farmAngle + farmOrbitDirection * math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
 		targetPosition = getOrbitPosition(center, farmAngle)
 		if farmApproaching then
 			local toPoint = targetPosition - playerRoot.Position
@@ -808,7 +812,6 @@ function shared.SetFarthestTeleportDistance(value)
 end
 
 --// Humanoid setup
-local speedConnection = nil
 local function connectSpeedListener()
 	if speedConnection then
 		speedConnection:Disconnect()
@@ -895,19 +898,6 @@ end
 
 function shared.SetOrbitReverseEnabled(value)
 	orbitReverseEnabled = value == true
-end
-
---// Basic Orbit Dodge: điều khiển hướng orbit hiệu dụng (nil = dùng farmOrbitDirection)
-function shared.SetBasicOrbitDirection(value)
-	basicOrbitDirection = value
-end
-
-function shared.GetBasicOrbitDirection()
-	return basicOrbitDirection
-end
-
-function shared.FlipBasicOrbitDirection()
-	if basicOrbitDirection then basicOrbitDirection = -basicOrbitDirection end
 end
 
 function shared.GetFarmOrbitDirection()
@@ -1121,8 +1111,7 @@ function shared.GetTrackedEnemyData()
 	return out
 end
 
---// Trả về set tên projectile của enemy từ ReplicatedStorage.enemyProjectiles
---// (bao gồm Model, MeshPart, Part). Dùng chung cho ESP và Basic Orbit Dodge.
+--// Returns enemy projectile names from ReplicatedStorage.enemyProjectiles for ESP.
 function shared.GetEnemyProjectileNames()
 	local names = {}
 	local rs = game:GetService("ReplicatedStorage")
@@ -1240,12 +1229,12 @@ if player and player.Character and player.Character.Parent then
 else
 	local character = player and player.CharacterAdded and task.spawn(function()
 		local char = player.CharacterAdded:Wait()
-		if char then shared.SetHumanoid(char); connectSpeedListener() end
+		if char and lifecycle.IsActive() then shared.SetHumanoid(char); connectSpeedListener() end
 	end)
 end
 
 if player then
-	player.CharacterAdded:Connect(function(character)
+	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
 		local ok, err = pcall(function()
 			farmTarget = nil; farmAngle = 0; farmApproaching = false; farmOldAutoRotate = true
 			if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
@@ -1258,11 +1247,11 @@ if player then
 			end
 		end)
 		if not ok then warn("[Shared] respawn handler error:", tostring(err)) end
-	end)
+	end))
 end
 
 local lastHeartbeatWarn = 0
-RunService.Heartbeat:Connect(function(deltaTime)
+trackCleanupConnection(RunService.Heartbeat:Connect(function(deltaTime)
 	local ok, err = pcall(function()
 		shared.FarmStep(deltaTime)
 	end)
@@ -1273,11 +1262,11 @@ RunService.Heartbeat:Connect(function(deltaTime)
 			warn("[Heartbeat] error:", tostring(err))
 		end
 	end
-end)
+end))
 
 --// Dungeon watcher
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(GUI_UPDATE_INTERVAL)
 		local currentDungeon = workspace:FindFirstChild("dungeon")
 		if dungeon and currentDungeon ~= dungeon then
@@ -1307,7 +1296,7 @@ local function readDungeonName()
 end
 
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(GUI_UPDATE_INTERVAL)
 		local name = readDungeonName()
 		if name ~= currentDungeonName then
@@ -1329,7 +1318,7 @@ end
 
 --// Lobby watcher: lobby = startButton hiện diện khi đang ở ngoài dungeon
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(GUI_UPDATE_INTERVAL)
 		local lobby = determineLobbyState()
 		if lobby ~= inLobby then
@@ -1354,7 +1343,7 @@ end)
 local lastRescan = 0
 local RESCAN_INTERVAL = 2
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(RESCAN_INTERVAL)
 		local now = os.clock()
 		if now - lastRescan < RESCAN_INTERVAL then continue end
@@ -1489,11 +1478,14 @@ local function scanBossGui()
 	if found then
 		if found ~= bossHealthRef then
 			bossHealthRef = found
-			if bossHealthRef:IsA("GuiObject") or bossHealthRef:IsA("ScreenGui") then
-				bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui)
+			if bossHealthRef:IsA("ScreenGui") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui))
+			elseif bossHealthRef:IsA("GuiObject") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Visible"):Connect(scanBossGui))
 			end
 		end
-		setBossActive(not (type(found.Enabled) == "boolean") or found.Enabled == true)
+		local visible = if found:IsA("ScreenGui") then found.Enabled elseif found:IsA("GuiObject") then found.Visible else true
+		setBossActive(visible)
 	else
 		bossHealthRef = nil
 		setBossActive(false)
@@ -1505,14 +1497,23 @@ task.spawn(function()
 	local playerGui = player:WaitForChild("PlayerGui", 30)
 	if not playerGui then return end
 
-	playerGui.DescendantAdded:Connect(scanBossGui)
-	playerGui.DescendantRemoving:Connect(scanBossGui)
+	trackCleanupConnection(playerGui.DescendantAdded:Connect(scanBossGui))
+	trackCleanupConnection(playerGui.DescendantRemoving:Connect(scanBossGui))
 	scanBossGui()
 
 	--// Poll an toàn phòng trường hợp DescendantRemoving bỏ sót khi GUI bị xóa cục bộ
-	while task.wait(0.5) do
+	while lifecycle.IsActive() and task.wait(0.5) do
 		scanBossGui()
 	end
+end)
+
+lifecycle.Register(function()
+	if speedConnection then speedConnection:Disconnect(); speedConnection = nil end
+	for _, connection in ipairs(cleanupConnections) do
+		pcall(function() connection:Disconnect() end)
+	end
+	table.clear(cleanupConnections)
+	resetDungeon()
 end)
 
 --// Table

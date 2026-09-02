@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-01T22:53:28.239625400+00:00",
+    genDate = "2026-09-02T00:18:24.101795100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -5899,7 +5899,46 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib end function __DIST.b()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
+return MacLib end function __DIST.b()-- Owns resources that must be released when the hub is unloaded or executed again.
+
+local lifecycle = {
+	cleaned = false,
+	callbacks = {},
+}
+
+function lifecycle.Register(callback)
+	if type(callback) ~= "function" then return function() end end
+	if lifecycle.cleaned then
+		pcall(callback)
+		return function() end
+	end
+
+	table.insert(lifecycle.callbacks, callback)
+	return function()
+		for index, registered in ipairs(lifecycle.callbacks) do
+			if registered == callback then
+				table.remove(lifecycle.callbacks, index)
+				break
+			end
+		end
+	end
+end
+
+function lifecycle.Cleanup()
+	if lifecycle.cleaned then return end
+	lifecycle.cleaned = true
+	for index = #lifecycle.callbacks, 1, -1 do
+		pcall(lifecycle.callbacks[index])
+	end
+	table.clear(lifecycle.callbacks)
+end
+
+function lifecycle.IsActive()
+	return not lifecycle.cleaned
+end
+
+return lifecycle
+end function __DIST.c()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
 -- Nhận Window tham chiếu qua SetWindow (vì Window được tạo sau khi require module).
 
 --// Variables
@@ -5934,7 +5973,7 @@ function notifier.Notify(title, desc, lifetime)
 end
 
 return notifier
-end function __DIST.c()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
+end function __DIST.d()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
 
 --// Services
 
@@ -5961,14 +6000,15 @@ return {
 	VirtualInputManager = VirtualInputManager,
 	player = player,
 }
-end function __DIST.d()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
+end function __DIST.e()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
 -- speed, skill, và các helper di chuyển farm. Các module chuyên biệt
 -- (combat, farm, autoStart...) thao tác lên module này để tránh circular dependency.
 
 --// Imports
 
-local services = __DIST.load('c')
-local notifier = __DIST.load('b')
+local services = __DIST.load('d')
+local notifier = __DIST.load('c')
+local lifecycle = __DIST.load('b')
 
 --// References
 local Players = services.Players
@@ -6005,8 +6045,7 @@ local HOVER_HEIGHT = ORBIT_HEIGHT
 --// Bật/tắt chế độ blacklist quái khi chọn mục tiêu (true = bật, false = tắt -> chọn mọi quái)
 local BLACKLIST_ENABLED = true
 
---// Folder trong ReplicatedStorage chứa toàn bộ model/projectile của enemy.
---// Dùng chung cho Highlight Hitbox (ESP) và Basic Orbit Dodge.
+--// Folder in ReplicatedStorage that contains enemy projectile models for ESP.
 local PROJECTILE_FOLDER = "enemyProjectiles"
 
 --// Danh sách tên quái KHÔNG được chọn làm mục tiêu (retarget/ban đầu).
@@ -6078,7 +6117,6 @@ local retargetMethod = "Auto"
 local retargetMode = "Nearest"
 local orbitReverseEnabled = false
 local farmOrbitDirection = 1
-local basicOrbitDirection = nil
 local blacklistEnemies = {}
 for _, name in ipairs(BLACKLIST_ENEMIES) do
 	if type(name) == "string" and name ~= "" then
@@ -6126,6 +6164,13 @@ local fireFarmSkills
 
 --// Respawn hooks (các module khác đăng ký để reset trạng thái khi respawn)
 local respawnCallbacks = {}
+local cleanupConnections = {}
+local speedConnection = nil
+
+local function trackCleanupConnection(connection)
+	if connection then table.insert(cleanupConnections, connection) end
+	return connection
+end
 
 function shared.OnRespawn(callback)
 	table.insert(respawnCallbacks, callback)
@@ -6413,10 +6458,9 @@ moveFarmTarget = function(deltaTime)
 		--// chỉ tăng góc theo từng bước cố định mỗi ORBIT_TELE_INTERVAL. Nhưng vẫn
 		--// PivotTo mỗi frame (như orbit thường) để giữ vị trí thật, tránh ghost.
 		if teleporting then return end
-		local effDir = basicOrbitDirection or farmOrbitDirection
 		if not farmApproaching then
 			if os.clock() - lastTeleStepTime >= ORBIT_TELE_INTERVAL then
-				farmAngle = (farmAngle + effDir * math.rad(orbitTeleStepDeg)) % (math.pi * 2)
+				farmAngle = (farmAngle + farmOrbitDirection * math.rad(orbitTeleStepDeg)) % (math.pi * 2)
 				lastTeleStepTime = os.clock()
 			end
 		end
@@ -6431,8 +6475,7 @@ moveFarmTarget = function(deltaTime)
 			end
 		end
 	else
-		local effDir = basicOrbitDirection or farmOrbitDirection
-		farmAngle = (farmAngle + effDir * math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
+		farmAngle = (farmAngle + farmOrbitDirection * math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
 		targetPosition = getOrbitPosition(center, farmAngle)
 		if farmApproaching then
 			local toPoint = targetPosition - playerRoot.Position
@@ -6772,7 +6815,6 @@ function shared.SetFarthestTeleportDistance(value)
 end
 
 --// Humanoid setup
-local speedConnection = nil
 local function connectSpeedListener()
 	if speedConnection then
 		speedConnection:Disconnect()
@@ -6859,19 +6901,6 @@ end
 
 function shared.SetOrbitReverseEnabled(value)
 	orbitReverseEnabled = value == true
-end
-
---// Basic Orbit Dodge: điều khiển hướng orbit hiệu dụng (nil = dùng farmOrbitDirection)
-function shared.SetBasicOrbitDirection(value)
-	basicOrbitDirection = value
-end
-
-function shared.GetBasicOrbitDirection()
-	return basicOrbitDirection
-end
-
-function shared.FlipBasicOrbitDirection()
-	if basicOrbitDirection then basicOrbitDirection = -basicOrbitDirection end
 end
 
 function shared.GetFarmOrbitDirection()
@@ -7085,8 +7114,7 @@ function shared.GetTrackedEnemyData()
 	return out
 end
 
---// Trả về set tên projectile của enemy từ ReplicatedStorage.enemyProjectiles
---// (bao gồm Model, MeshPart, Part). Dùng chung cho ESP và Basic Orbit Dodge.
+--// Returns enemy projectile names from ReplicatedStorage.enemyProjectiles for ESP.
 function shared.GetEnemyProjectileNames()
 	local names = {}
 	local rs = game:GetService("ReplicatedStorage")
@@ -7204,12 +7232,12 @@ if player and player.Character and player.Character.Parent then
 else
 	local character = player and player.CharacterAdded and task.spawn(function()
 		local char = player.CharacterAdded:Wait()
-		if char then shared.SetHumanoid(char); connectSpeedListener() end
+		if char and lifecycle.IsActive() then shared.SetHumanoid(char); connectSpeedListener() end
 	end)
 end
 
 if player then
-	player.CharacterAdded:Connect(function(character)
+	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
 		local ok, err = pcall(function()
 			farmTarget = nil; farmAngle = 0; farmApproaching = false; farmOldAutoRotate = true
 			if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
@@ -7222,11 +7250,11 @@ if player then
 			end
 		end)
 		if not ok then warn("[Shared] respawn handler error:", tostring(err)) end
-	end)
+	end))
 end
 
 local lastHeartbeatWarn = 0
-RunService.Heartbeat:Connect(function(deltaTime)
+trackCleanupConnection(RunService.Heartbeat:Connect(function(deltaTime)
 	local ok, err = pcall(function()
 		shared.FarmStep(deltaTime)
 	end)
@@ -7237,11 +7265,11 @@ RunService.Heartbeat:Connect(function(deltaTime)
 			warn("[Heartbeat] error:", tostring(err))
 		end
 	end
-end)
+end))
 
 --// Dungeon watcher
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(GUI_UPDATE_INTERVAL)
 		local currentDungeon = workspace:FindFirstChild("dungeon")
 		if dungeon and currentDungeon ~= dungeon then
@@ -7271,7 +7299,7 @@ local function readDungeonName()
 end
 
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(GUI_UPDATE_INTERVAL)
 		local name = readDungeonName()
 		if name ~= currentDungeonName then
@@ -7293,7 +7321,7 @@ end
 
 --// Lobby watcher: lobby = startButton hiện diện khi đang ở ngoài dungeon
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(GUI_UPDATE_INTERVAL)
 		local lobby = determineLobbyState()
 		if lobby ~= inLobby then
@@ -7318,7 +7346,7 @@ end)
 local lastRescan = 0
 local RESCAN_INTERVAL = 2
 task.spawn(function()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(RESCAN_INTERVAL)
 		local now = os.clock()
 		if now - lastRescan < RESCAN_INTERVAL then continue end
@@ -7453,11 +7481,14 @@ local function scanBossGui()
 	if found then
 		if found ~= bossHealthRef then
 			bossHealthRef = found
-			if bossHealthRef:IsA("GuiObject") or bossHealthRef:IsA("ScreenGui") then
-				bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui)
+			if bossHealthRef:IsA("ScreenGui") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui))
+			elseif bossHealthRef:IsA("GuiObject") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Visible"):Connect(scanBossGui))
 			end
 		end
-		setBossActive(not (type(found.Enabled) == "boolean") or found.Enabled == true)
+		local visible = if found:IsA("ScreenGui") then found.Enabled elseif found:IsA("GuiObject") then found.Visible else true
+		setBossActive(visible)
 	else
 		bossHealthRef = nil
 		setBossActive(false)
@@ -7469,19 +7500,28 @@ task.spawn(function()
 	local playerGui = player:WaitForChild("PlayerGui", 30)
 	if not playerGui then return end
 
-	playerGui.DescendantAdded:Connect(scanBossGui)
-	playerGui.DescendantRemoving:Connect(scanBossGui)
+	trackCleanupConnection(playerGui.DescendantAdded:Connect(scanBossGui))
+	trackCleanupConnection(playerGui.DescendantRemoving:Connect(scanBossGui))
 	scanBossGui()
 
 	--// Poll an toàn phòng trường hợp DescendantRemoving bỏ sót khi GUI bị xóa cục bộ
-	while task.wait(0.5) do
+	while lifecycle.IsActive() and task.wait(0.5) do
 		scanBossGui()
 	end
 end)
 
+lifecycle.Register(function()
+	if speedConnection then speedConnection:Disconnect(); speedConnection = nil end
+	for _, connection in ipairs(cleanupConnections) do
+		pcall(function() connection:Disconnect() end)
+	end
+	table.clear(cleanupConnections)
+	resetDungeon()
+end)
+
 --// Table
 return shared
-end function __DIST.e()-- Tiện ích UI dùng chung cho các tab DungeonQuest (Maclib).
+end function __DIST.f()-- Tiện ích UI dùng chung cho các tab DungeonQuest (Maclib).
 
 --// Table
 
@@ -7505,13 +7545,13 @@ function ui.PatchSliderLoadCallback(sliderElement)
 end
 
 return ui
-end function __DIST.f()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
+end function __DIST.g()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
 -- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
 
 --// Imports
 
 local macLib = __DIST.load('a')
-local notifier = __DIST.load('b')
+local notifier = __DIST.load('c')
 
 --// Table
 local autoSave = {}
@@ -7563,12 +7603,12 @@ function autoSave.Wrap(callback)
 end
 
 return autoSave
-end function __DIST.g()-- Auto Farm cho DungeonQuest (Orbit / Hover). Chạy vòng lặp săn kẻ địch gần nhất.
+end function __DIST.h()-- Auto Farm cho DungeonQuest (Orbit / Hover). Chạy vòng lặp săn kẻ địch gần nhất.
 
 --// Imports
 
-local shared = __DIST.load('d')
-local notifier = __DIST.load('b')
+local shared = __DIST.load('e')
+local notifier = __DIST.load('c')
 
 --// Table
 local farm = {}
@@ -7655,14 +7695,14 @@ function farm.Toggle(state)
 end
 
 return farm
-end function __DIST.h()-- Tab Speed (DungeonQuest).
+end function __DIST.i()-- Tab Speed (DungeonQuest).
 
 --// Imports
 
-local shared = __DIST.load('d')
-local ui = __DIST.load('e')
-local autoSave = __DIST.load('f')
-local farm = __DIST.load('g')
+local shared = __DIST.load('e')
+local ui = __DIST.load('f')
+local autoSave = __DIST.load('g')
+local farm = __DIST.load('h')
 local macLib = __DIST.load('a')
 
 return function(window, tab)
@@ -7778,13 +7818,13 @@ return function(window, tab)
 	}, "Keybind_AutoFarm")
 
 end
-end function __DIST.i()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
+end function __DIST.j()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
 
 --// Imports
 
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
-local notifier = __DIST.load('b')
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
+local notifier = __DIST.load('c')
 
 --// References
 local VirtualInputManager = services.VirtualInputManager
@@ -7851,1139 +7891,7 @@ function combat.ToggleAutoSkill(state)
 end
 
 return combat
-end function __DIST.j()-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
--- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
--- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
-
---// Imports
-
-local shared = __DIST.load('d')
-local notifier = __DIST.load('b')
-
---// State
-local autoStartEnabled = false
-local autoStartRunning = false
-local autoStartTriggered = false
-local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
-local autoStartCommandFn = nil
-
---// Điều kiện kích hoạt: đang ở lobby (startButton hiện, ngoài dungeon) do shared tính
-local function lobbyCondition()
-	return shared.IsInLobby()
-end
-
---// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
-local s2, cmdFn2 = pcall(loadstring, autoStartCommand)
-if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
-
---// Table
-local autoStart = {}
-
---// Methods
-function autoStart.Start()
-	if autoStartRunning then return end
-	autoStartRunning = true
-	autoStartTriggered = false
-	task.spawn(function()
-		while autoStartEnabled do
-			local sCond, res = pcall(lobbyCondition)
-			local met = sCond and res == true
-
-			if met and not autoStartTriggered then
-				autoStartTriggered = true
-				if autoStartCommandFn then
-					local sCmd, err = pcall(autoStartCommandFn)
-					if sCmd then
-						notifier.Notify("Auto Start", "Game started!", 3)
-					else
-						notifier.Notify("Auto Start", "Trigger failed: " .. tostring(err), 3)
-					end
-				else
-					notifier.Notify("Auto Start", "Remote command invalid", 3)
-				end
-			end
-
-			--// Hết lobby (vào dungeon / đang chơi) -> cho phép kích lại ở lobby lần sau
-			if not met and autoStartTriggered then
-				autoStartTriggered = false
-			end
-
-			if not autoStartEnabled then break end
-			task.wait(1)
-		end
-		autoStartRunning = false
-	end)
-end
-
-function autoStart.Stop()
-	autoStartEnabled = false
-end
-
-function autoStart.Toggle(state)
-	autoStartEnabled = state
-	if state then
-		autoStart.Start()
-		notifier.Notify("Auto Start", "Waiting for lobby...", 2)
-	else
-		autoStart.Stop()
-		notifier.Notify("Auto Start", "Stopped", 2)
-	end
-end
-
---// Reset trigger mỗi khi respawn
-shared.OnRespawn(function()
-	autoStartTriggered = false
-end)
-
-return autoStart end function __DIST.k()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
-
---// Imports
-
-local services = __DIST.load('c')
-local notifier = __DIST.load('b')
-
---// References
-local player = services.player
-
---// State
-local AUTO_RETRY_MIN_ITEMS = 2
-local autoRetryEnabled = false
-local autoRetryRunning = false
-local autoRetryTriggered = false
-local timeRetryEnabled = false
-local timeRetryThreshold = 60
-local timeRetryTriggered = false
-local autoRetryCommand = [==[
-local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")
-
-local payload = {}
-local function collectValue(name)
-	local value = workspace:FindFirstChild(name)
-	if value and value:IsA("ValueBase") then
-		payload[name] = value.Value
-	end
-end
-
-collectValue("dungeonName")
-collectValue("dungeonProgress")
-collectValue("dungeonStarted")
-
-local hardcore = workspace:FindFirstChild("hardcore")
-if hardcore and hardcore:IsA("BoolValue") then
-	payload.hardcore = hardcore.Value
-	payload.isHardcore = hardcore.Value
-end
-
-local dungeon = workspace:FindFirstChild("dungeon")
-if dungeon then
-	for _, value in ipairs(dungeon:GetChildren()) do
-		if value:IsA("ValueBase") then payload[value.Name] = value.Value end
-	end
-	local bossRoom = dungeon:FindFirstChild("bossRoom")
-	if bossRoom then
-		for _, value in ipairs(bossRoom:GetChildren()) do
-			if value:IsA("ValueBase") then payload[value.Name] = value.Value end
-		end
-	end
-end
-
-if not payload.dungeonName then return end
-ReplayDungeon:FireServer(payload)
-]==]
-local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
-local autoRetryCommandFn = nil
-local autoRetryHolderFn = nil
-
---// Helpers (validation dùng loadstring, giữ logic gốc)
-local function validateConditionText(text)
-	local s, fn = pcall(loadstring, "return " .. text)
-	if s and type(fn) == "function" then return fn end
-	return nil
-end
-
-local sRetryCmd, compiledRetryCmd = pcall(loadstring, autoRetryCommand)
-if sRetryCmd and type(compiledRetryCmd) == "function" then autoRetryCommandFn = compiledRetryCmd end
-
-autoRetryHolderFn = validateConditionText(autoRetryHolderPath)
-if not autoRetryHolderFn then
-	autoRetryHolderFn = function()
-		return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("rewardGuiHolder") and player.PlayerGui.rewardGuiHolder:FindFirstChild("holder")
-	end
-end
-
---// Đọc thẳng giá trị thời gian còn lại từ UI game: PlayerGui.timeLeftGui.Frame.time
-local function readTimeLeft()
-	local ok, inst = pcall(function()
-		local PlayerGui = player:FindFirstChild("PlayerGui")
-		local gui = PlayerGui and PlayerGui:FindFirstChild("timeLeftGui")
-		local frame = gui and gui:FindFirstChild("Frame")
-		return frame and frame:FindFirstChild("time")
-	end)
-	if not ok or typeof(inst) ~= "Instance" then return nil end
-
-	--// Ưu tiên ValueBase (NumberValue...), nếu không thì đọc Text của TextLabel
-	local raw
-	if inst:IsA("ValueBase") then
-		raw = inst.Value
-	else
-		raw = inst.Text
-	end
-	if type(raw) == "number" then return raw end
-	if type(raw) == "string" then
-		local cleaned = raw:gsub("%s+", ""):gsub("^%[", ""):gsub("%]$", "")
-		local m, s = cleaned:match("^(%d+):(%d+)$")
-		if m and s then return tonumber(m) * 60 + tonumber(s) end
-		local sec = tonumber(cleaned)
-		if sec then return sec end
-	end
-	return nil
-end
-
---// Table
-local autoRetry = {}
-
---// Fire remote retry, trả về true nếu thành công
-local function fireRetry()
-	if not autoRetryCommandFn then
-		notifier.Notify("Auto Retry", "Remote command invalid", 3)
-		return false
-	end
-	local sCmd, err = pcall(autoRetryCommandFn)
-	if sCmd then
-		notifier.Notify("Auto Retry", "Retrying dungeon!", 3)
-		return true
-	end
-	notifier.Notify("Auto Retry", "Trigger failed: " .. tostring(err), 3)
-	return false
-end
-
---// Methods
-function autoRetry.Start()
-	if autoRetryRunning then return end
-	autoRetryRunning = true
-	autoRetryTriggered = false
-	timeRetryTriggered = false
-	task.spawn(function()
-		while autoRetryEnabled or timeRetryEnabled do
-			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
-			if autoRetryEnabled then
-				local count = 0
-				if autoRetryHolderFn then
-					local sok, holder = pcall(autoRetryHolderFn)
-					if sok and typeof(holder) == "Instance" and holder.Parent then
-						count = #holder:GetChildren()
-					end
-				end
-				if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
-					autoRetryTriggered = true
-					fireRetry()
-				elseif count < AUTO_RETRY_MIN_ITEMS then
-					autoRetryTriggered = false
-				end
-			end
-
-			--// Điều kiện hết giờ (chạy độc lập khi bật Retry on Time Low):
-			--// UI còn < X giây thì retry
-			if timeRetryEnabled then
-				local remaining = readTimeLeft()
-				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
-					timeRetryTriggered = true
-					fireRetry()
-				elseif remaining and remaining >= timeRetryThreshold then
-					timeRetryTriggered = false
-				end
-			end
-
-			if not autoRetryEnabled and not timeRetryEnabled then break end
-			task.wait(0.75)
-		end
-		autoRetryRunning = false
-	end)
-end
-
-function autoRetry.Stop()
-	autoRetryEnabled = false
-end
-
-function autoRetry.Toggle(state)
-	autoRetryEnabled = state
-	if state then
-		timeRetryTriggered = false
-		autoRetry.Start()
-		notifier.Notify("Auto Retry", "Watching reward holder...", 2)
-	else
-		autoRetry.Stop()
-		notifier.Notify("Auto Retry", "Stopped", 2)
-	end
-end
-
-function autoRetry.SetTimeRetryEnabled(value)
-	timeRetryEnabled = value == true
-	if timeRetryEnabled then
-		timeRetryTriggered = false
-		autoRetry.Start()
-		notifier.Notify("Auto Retry", "Watching time left...", 2)
-	else
-		notifier.Notify("Auto Retry", "Time retry stopped", 2)
-	end
-end
-
-function autoRetry.GetTimeRetryEnabled()
-	return timeRetryEnabled
-end
-
-function autoRetry.SetTimeRetryThreshold(value)
-	timeRetryThreshold = value
-end
-
-function autoRetry.GetTimeRetryThreshold()
-	return timeRetryThreshold
-end
-
---// Đọc thời gian còn lại (giây) như đúng logic time-low đang dùng (UI playerGui.timeLeftGui.Frame.<time>)
-function autoRetry.GetTimeLeft()
-	return readTimeLeft()
-end
-
-function autoRetry.RetryNow()
-	task.spawn(function()
-		fireRetry()
-	end)
-end
-
-return autoRetry
-end function __DIST.l()-- Basic Orbit Dodge cho DungeonQuest (tích hợp tracking + safe-node từ Smart Dodge).
--- Kiểu dodge đơn giản: KHÔNG tắt orbit, player chạy orbit bình thường.
--- Dead zone = CHÍNH XÁC giao diện "Highlight Hitbox": mọi object trong Workspace có
--- tên trùng projectile enemy (ReplicatedStorage.enemyProjectiles) đều là dead zone,
--- xử lý như hitbox thật (OBB). Không phân biệt kinematic/predictive, không dự đoán
--- trajectory — tối giản đúng những gì Highlight Hitbox vẽ được.
--- Khi phát hiện hazard ở PHÍA TRƯỚC hướng đi -> đảo chiều orbit.
--- Khi bị KẸP 2 phía -> TÍNH NODE AN TOÀN NHẤT (safety score trên danger map) rồi nhảy tới đó.
-
---// Imports
-
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
-
---// References
-local player = services.player
-local RunService = services.RunService
-
---// Configuration
---// Bán kính vùng detect quanh player (stud) - hành lang phía trước hướng đi
-local DETECT_RADIUS = 15
---// Bán kính vùng PANIC: hazard quá gần player (bất kể hướng, bất kể cooldown
---// flip) -> tele thẳng tới node an toàn nhất (last-resort cho projectile cực nhanh)
-local PANIC_RADIUS = 8
---// Cooldown giữa các lần panic tele (giây) - tránh spam tele mỗi heartbeat
-local PANIC_COOLDOWN = 0.2
---// Cooldown chống lật hướng liên tục (giây)
-local FLIP_COOLDOWN = 0.15
---// Số node phía trước (theo hướng đi) để coi là "có nguy hiểm đang tới"
-local FLIP_LOOKAHEAD = 6
---// Số frame liên tiếp không có hazard trước khi reset hướng orbit về bình thường
-local ALL_CLEAR_FRAMES = 5
---// Cooldown giữa các lần nhảy tới node an toàn (giây)
-local JUMP_COOLDOWN = 0.3
---// Thời gian object invisible liên tục trước khi coi là "hết sát thương" (giây).
---// Chiêu thường fade ra (Transparency->1) nhưng model còn tồn tại 1 lúc; lúc đó
---// vô hại -> không đếm vào dead zone. Ngưỡng nhỏ để chống nhấp nháy giả.
-local INACTIVE_DELAY = 0.15
-
---// ---- Danger map (kế thừa Smart Dodge) ----
---// PADDING quanh hitbox thật (OBB) để được coi là dead zone. Volume nguy hiểm khớp
---// kích thước từng object; fallback sphere khi không OBB.
-DANGER_RADIUS = 1
---// Cap khoảng cách tới dead zone khi chấm điểm (tránh chênh lệch cực lớn)
-local MAX_MARGIN_CAP = 30
---// Độ phân giải góc quét (độ)
-local SAMPLE_STEP = 2
---// Số mẫu góc trên 360°
-local N = math.floor(360 / SAMPLE_STEP)
-
---// Hiển thị trực quan dead zone (debug): folder chứa các part vẽ.
-local VISUALS_FOLDER = "DeadZone_Visuals"
-local VISUALS_BALL_COLOR = Color3.fromRGB(255, 60, 60)
-local VISUALS_ARC_COLOR = Color3.fromRGB(255, 40, 40)
-local VISUALS_DETECTOR_COLOR = Color3.fromRGB(60, 180, 255)
-local VISUALS_PANIC_COLOR = Color3.fromRGB(255, 220, 60)
-
---// Tốc độ làm tươi visuals (giây)
-local VISUALS_REFRESH_INTERVAL = 0.1
-
---// Table
-local basicDodge = {}
-
---// State
-local enabled = false
---// Chế độ hoạt động: "All" = mọi lúc, "Boss" = chỉ khi đang boss
-local dodgeMode = "All"
-local connection = nil
-local lastFlipTime = 0
-local lastJumpTime = 0
-local lastPanicTime = 0
-local noHazardCount = 0
-local trackedColumns = {}
-local debugVisuals = false
-local detectorVisuals = false
---// Hình dạng detector: "Cone" (hình nón trước mặt) hoặc "Circle" (vòng tròn)
-local detectorMode = "Circle"
-local renderLoopRunning = false
-
---// Vị trí tâm (X/Y/Z) của object trong Workspace.
-local function getObjectPosition(obj)
-	if not obj then return nil end
-	if obj:IsA("BasePart") then
-		local ok, pos = pcall(function() return obj.Position end)
-		if ok then return pos end
-		return nil
-	end
-	local ok, primary = pcall(function() return obj.PrimaryPart end)
-	if ok and primary and primary:IsA("BasePart") then return primary.Position end
-	for _, c in ipairs(obj:GetChildren()) do
-		if c:IsA("BasePart") then return c.Position end
-	end
-	return nil
-end
-
---// Còn "hiển thị" (đang có khả năng gây sát thương) ?
---//  - BasePart: Transparency < 1.
---//  - Model: có part trong suốt, hoặc particle/beam/trail/decal đang Enabled.
---// Không thấy nữa = vô hại (không nên tính vào dead zone).
-local function objectIsVisible(obj)
-	if obj:IsA("BasePart") then
-		return (obj.Transparency or 1) < 1
-	end
-	for _, d in ipairs(obj:GetDescendants()) do
-		if d:IsA("BasePart") then
-			if (d.Transparency or 0) < 1 then return true end
-		elseif d:IsA("ParticleEmitter") or d:IsA("Beam") or d:IsA("Trail") then
-			if d.Enabled then return true end
-		elseif d:IsA("Decal") then
-			if (d.Transparency or 0) < 1 then return true end
-		end
-	end
-	return false
-end
-
---// OBB (CFrame + Size) thật của hitbox để dead zone khớp hình dạng từng đối tượng.
-local function getOBB(obj)
-	if obj:IsA("BasePart") then
-		return obj.CFrame, obj.Size
-	end
-	if obj:IsA("Model") then
-		local ok, cframe, size = pcall(function()
-			return obj:GetBoundingBox()
-		end)
-		if ok and cframe and size then return cframe, size end
-	end
-	return nil
-end
-
---// Khoảng cách từ điểm tới OBB (dùng trong isSampleDanger: dead khi <= padding).
---// Chỉ tính trên mặt phẳng NGANG (X/Z), bỏ trục đứng (Y) để thay đổi orbit height
---// không làm dodge bỏ sót hazard.
-local function pointToOBBDistance(pt, obbCFrame, obbSize)
-	local localPt = obbCFrame:Inverse() * pt
-	local hx = obbSize.X / 2
-	local hz = obbSize.Z / 2
-	local dx = math.max(math.abs(localPt.X) - hx, 0)
-	local dz = math.max(math.abs(localPt.Z) - hz, 0)
-	return math.sqrt(dx * dx + dz * dz)
-end
-
---// Phát hiện object mới xuất hiện / loại bỏ object biến mất (quản lý membership).
-local function tryTrackObject(child, seen)
-	seen[child] = true
-	local entry = trackedColumns[child]
-	if not entry then
-		local pos = getObjectPosition(child)
-		if pos then
-			local obbCFrame, obbSize = getOBB(child)
-			trackedColumns[child] = {
-				Instance = child,
-				Position = pos,
-				OBBFrame = obbCFrame,
-				OBBSize = obbSize,
-				Inactive = false,
-				InvisibleSince = nil,
-			}
-		end
-	end
-end
-
-local function refreshColumns()
-	local Workspace = game:GetService("Workspace")
-	--// Dead zone = mọi object trong Workspace tên trùng projectile enemy (như ESP),
-	--// kể cả nằm sâu trong hậu duệ của một object Workspace.
-	local projectileNames = shared.GetEnemyProjectileNames()
-	local seen = {}
-	for _, child in ipairs(Workspace:GetChildren()) do
-		if projectileNames[child.Name] then
-			tryTrackObject(child, seen)
-		end
-		for _, obj in ipairs(child:GetDescendants()) do
-			if projectileNames[obj.Name] then
-				tryTrackObject(obj, seen)
-			end
-		end
-	end
-	for inst in pairs(trackedColumns) do
-		if not seen[inst] or not inst.Parent then
-			trackedColumns[inst] = nil
-		end
-	end
-end
-
---// Cập nhật vị trí object mỗi lần tính toán (bám theo chuyển động nhanh).
-local function updateColumnPositions(now)
-	for _, col in pairs(trackedColumns) do
-		if col and col.Instance then
-			local pos = getObjectPosition(col.Instance)
-			if pos then
-				col.Position = pos
-				--// Trạng thái "vô hại": mất đi 1 phần thì vô hại ngay, mất hẳn (invisible
-				--// liên tục đủ lâu) mới bỏ hẳn khỏi dead zone để chống nhấp nháy.
-				if objectIsVisible(col.Instance) then
-					col.InvisibleSince = nil
-				elseif not col.InvisibleSince then
-					col.InvisibleSince = now
-				end
-				col.Inactive = col.InvisibleSince ~= nil and (now - col.InvisibleSince) >= INACTIVE_DELAY
-				--// OBB bám theo vị trí/rotation hiện tại của hitbox
-				local obbCFrame, obbSize = getOBB(col.Instance)
-				if obbCFrame and obbSize then
-					col.OBBFrame = obbCFrame
-					col.OBBSize = obbSize
-				end
-			end
-		end
-	end
-end
-
-local function horizontalDistance(a, b)
-	local dx = b.X - a.X
-	local dz = b.Z - a.Z
-	return math.sqrt(dx * dx + dz * dz)
-end
-
---// Có node nguy hiểm nào trong FLIP_LOOKAHEAD node phía trước theo hướng đi ?
---// Dựa trên danger map (cùng nguồn với jump), nên quyết định flip được thống nhất.
-local function dangerAhead(danger, curIdx, effDir)
-	for i = 1, FLIP_LOOKAHEAD do
-		local idx = (curIdx + effDir * i) % N
-		if idx < 0 then idx = idx + N end
-		if danger[idx] then return true end
-	end
-	return false
-end
-
---// Tele player tới góc theta (rad) trên orbit quanh center (đồng bộ farmAngle).
-local function teleportToAngle(center, theta)
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	if not character or not playerRoot or not playerRoot.Parent then return end
-	if not character.PrimaryPart then character.PrimaryPart = playerRoot end
-
-	local radius = shared.GetOrbitRadius() or 0
-	local height = shared.GetOrbitHeight() or 0
-	local targetPos = center + Vector3.new(math.cos(theta) * radius, height, math.sin(theta) * radius)
-
-	local humanoid = character:FindFirstChild("Humanoid")
-	local oldAutoRotate = humanoid and humanoid.AutoRotate
-	if humanoid then humanoid.AutoRotate = false end
-	character:PivotTo(CFrame.lookAt(targetPos, center))
-	playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-	if humanoid then humanoid.AutoRotate = oldAutoRotate end
-
-	--// đồng bộ farmAngle để moveFarmTarget tiếp tục đúng
-	shared.SetOrbitAngle(theta)
-end
-
---// ---- Danger map (chọn node an toàn nhất trên orbit) ----
-local function orbitPoint(center, radius, angle, height)
-	return Vector3.new(center.X + math.cos(angle) * radius, height, center.Z + math.sin(angle) * radius)
-end
-
-local function degToIdx(deg)
-	return math.floor((((deg % 360) + 360) % 360) / SAMPLE_STEP) % N
-end
-
-local function idxToRad(idx)
-	return math.rad(idx * SAMPLE_STEP)
-end
-
---// Điểm orbit tại idx có nằm trong phạm vi nguy hiểm của hitbox nào.
---// Dùng OBB thật (khớp hitbox dài/ngang/xiên) + padding DANGER_RADIUS;
---// fallback sphere quanh tâm khi không lấy được OBB.
-local function isSampleDanger(bossPos, radius, height, idx)
-	local point = orbitPoint(bossPos, radius, idxToRad(idx), height)
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive then
-			if col.OBBFrame and col.OBBSize then
-				if pointToOBBDistance(point, col.OBBFrame, col.OBBSize) <= DANGER_RADIUS then
-					return true
-				end
-			elseif horizontalDistance(point, col.Position) < DANGER_RADIUS then
-				return true
-			end
-		end
-	end
-	return false
-end
-
---// Xây Danger Map: mọi tracked object (dead zone = hitbox ESP) chặn quanh vị trí.
-local function buildDangerMap(bossPos, radius, height)
-	local danger = {}
-	for i = 0, N - 1 do
-		danger[i] = isSampleDanger(bossPos, radius, height, i)
-	end
-	return danger
-end
-
---// Khoảng cách (số node) từ idx tới dead zone gần nhất, cap ở MAX_MARGIN_CAP.
-local function marginToDanger(danger, idx)
-	if danger[idx] then return 0 end
-	local margin = 0
-	while margin < MAX_MARGIN_CAP do
-		if danger[(idx + margin) % N] or danger[(idx - margin + N) % N] then break end
-		margin = margin + 1
-	end
-	return margin
-end
-
---// Độ dài run an toàn (số node, kể cả wrap) chứa idx.
-local function safeRunWidth(danger, idx)
-	if danger[idx] then return 0 end
-	local width = 1
-	local prev = (idx - 1 + N) % N
-	while prev ~= idx and not danger[prev] do
-		width = width + 1
-		prev = (prev - 1 + N) % N
-	end
-	local nxt = (idx + 1) % N
-	while nxt ~= idx and not danger[nxt] do
-		width = width + 1
-		nxt = (nxt + 1) % N
-	end
-	return width
-end
-
---// Điểm an toàn của node: ưu tiên margin tới dead zone, phá quãng bằng run width.
-local function safetyScore(danger, idx)
-	if danger[idx] then return -1 end
-	return marginToDanger(danger, idx) * 1000 + math.min(safeRunWidth(danger, idx), MAX_MARGIN_CAP)
-end
-
---// Node an toàn nhất trên toàn orbit (điểm cao nhất). Trả về idx + điểm.
-local function bestSafeIndex(danger, curIdx)
-	local bestIdx, bestScore = curIdx, safetyScore(danger, curIdx)
-	for idx = 0, N - 1 do
-		local s = safetyScore(danger, idx)
-		if s > bestScore then
-			bestScore = s
-			bestIdx = idx
-		end
-	end
-	return bestIdx, bestScore
-end
-
---// ---------- Dead zone visuals (debug) ----------
-
-local function clearVisuals()
-	local parent = game:GetService("Workspace"):FindFirstChild(VISUALS_FOLDER)
-	if parent then parent:Destroy() end
-end
-
-local function createVisualPart(parent, transparent)
-	local p = Instance.new("Part")
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanTouch = false
-	p.CanQuery = false
-	p.Material = Enum.Material.Neon
-	p.Transparency = transparent or 0.5
-	p.CastShadow = false
-	p.Parent = parent
-	return p
-end
-
-local function drawSegment(parent, a, b, thickness, transparent, color)
-	local mid = a + (b - a) * 0.5
-	local part = createVisualPart(parent, transparent)
-	part.Shape = Enum.PartType.Block
-	part.Color = color
-	part.Size = Vector3.new(thickness, thickness, (a - b).Magnitude)
-	if (a - b).Magnitude > 0.001 then
-		part.CFrame = CFrame.lookAt(mid, b)
-	end
-end
-
---// Dead zone = chính xác hitbox ESP vẽ được: OBB thật inflated padding
---// DANGER_RADIUS (fallback sphere quanh tâm khi không có OBB).
-local function renderDeadZoneBalls(parent)
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive then
-			local part = createVisualPart(parent, 0.65)
-			if col.OBBFrame and col.OBBSize then
-				part.Shape = Enum.PartType.Block
-				part.Size = col.OBBSize + Vector3.new(DANGER_RADIUS, DANGER_RADIUS, DANGER_RADIUS) * 2
-				part.CFrame = col.OBBFrame
-			else
-				part.Shape = Enum.PartType.Ball
-				part.Size = Vector3.new(DANGER_RADIUS * 2, DANGER_RADIUS * 2, DANGER_RADIUS * 2)
-				part.CFrame = CFrame.new(col.Position)
-			end
-			part.Color = VISUALS_BALL_COLOR
-		end
-	end
-end
-
---// Vành đai cung dangerous trên orbit (các góc bị chặn trong danger map)
-local function renderArc(parent, bossPos, radius, height, danger)
-	for idx = 0, N - 1 do
-		if danger[idx] then
-			local nxt = (idx + 1) % N
-			local p1 = orbitPoint(bossPos, radius, idxToRad(idx), height)
-			local p2 = orbitPoint(bossPos, radius, idxToRad(nxt), height)
-			drawSegment(parent, p1, p2, 0.9, 0.5, VISUALS_ARC_COLOR)
-		end
-	end
-end
-
---// Vùng detect phía trước hướng đi (hình quạt: bán kính DETECT_RADIUS,
---// góc mở cố định quanh tiếp tuyến của orbit tại vị trí player).
-local DETECTOR_ANGLE = 120
-local CIRCLE_SECTIONS = 32
-local function renderCircleAt(parent, playerPos, radius, color)
-	local p = Vector3.new(playerPos.X, playerPos.Y, playerPos.Z)
-	for i = 0, CIRCLE_SECTIONS - 1 do
-		local t1 = i / CIRCLE_SECTIONS
-		local t2 = (i + 1) / CIRCLE_SECTIONS
-		local a1 = t1 * math.pi * 2
-		local a2 = t2 * math.pi * 2
-		local p1 = p + Vector3.new(math.cos(a1) * radius, 0, math.sin(a1) * radius)
-		local p2 = p + Vector3.new(math.cos(a2) * radius, 0, math.sin(a2) * radius)
-		drawSegment(parent, p1, p2, 0.12, 0.3, color)
-	end
-end
-
-local function renderDetector(parent, playerPos, bossPos)
-	local radius = shared.GetOrbitRadius()
-	if not radius or radius <= 0 then return end
-	if detectorMode == "Circle" then
-		renderCircleAt(parent, playerPos, DETECT_RADIUS, VISUALS_DETECTOR_COLOR)
-		renderCircleAt(parent, playerPos, PANIC_RADIUS, VISUALS_PANIC_COLOR)
-		return
-	end
-	local effDir = shared.GetBasicOrbitDirection()
-	if not effDir then effDir = shared.GetFarmOrbitDirection() or 1 end
-	local radial = playerPos - bossPos
-	local ang = math.atan2(radial.Z, radial.X)
-	--// tiếp tuyến tại điểm player: đạo hàm (cosθ,sinθ) = (-sinθ, cosθ), nhân effDir
-	local tx = -math.sin(ang) * effDir
-	local tz = math.cos(ang) * effDir
-	local tangent = Vector3.new(tx, 0, tz)
-	local half = math.rad(DETECTOR_ANGLE / 2)
-
-	--// Hai cạnh quạt
-	local a2 = Vector3.new(tangent.X * math.cos(half) - tangent.Z * math.sin(half), 0, tangent.X * math.sin(half) + tangent.Z * math.cos(half)) * DETECT_RADIUS
-	local b1 = Vector3.new(tangent.X * math.cos(-half) - tangent.Z * math.sin(-half), 0, tangent.X * math.sin(-half) + tangent.Z * math.cos(-half)) * DETECT_RADIUS
-	local p = Vector3.new(playerPos.X, playerPos.Y, playerPos.Z)
-	local pA2 = p + a2
-	local pB1 = p + b1
-	drawSegment(parent, p, pA2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
-	drawSegment(parent, p, pB1, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
-	--// Cung trước
-	local sections = 16
-	for i = 0, sections - 1 do
-		local t1 = i / sections
-		local t2 = (i + 1) / sections
-		local arcT1 = -half + (2 * half) * t1
-		local arcT2 = -half + (2 * half) * t2
-		local p1 = p + Vector3.new(tangent.X * math.cos(arcT1) - tangent.Z * math.sin(arcT1), 0, tangent.X * math.sin(arcT1) + tangent.Z * math.cos(arcT1)) * DETECT_RADIUS
-		local p2 = p + Vector3.new(tangent.X * math.cos(arcT2) - tangent.Z * math.sin(arcT2), 0, tangent.X * math.sin(arcT2) + tangent.Z * math.cos(arcT2)) * DETECT_RADIUS
-		drawSegment(parent, p1, p2, 0.12, 0.3, VISUALS_DETECTOR_COLOR)
-	end
-	--// Vùng PANIC: vòng tròn nhỏ màu vàng (dù chọn mode nào)
-	renderCircleAt(parent, playerPos, PANIC_RADIUS, VISUALS_PANIC_COLOR)
-end
-
---// Vẽ toàn bộ visuals cho 1 khung hình (xóa cũ, vẽ mới).
---// Tách riêng: Detector Visuals chỉ vẽ vòng detect/panic; Dead Zone Visuals
---// mới vẽ sphere kinematic + tia predictive + cung danger.
-local function renderVisuals(bossPos, radius, height)
-	clearVisuals()
-	if not debugVisuals and not detectorVisuals then return end
-	local parent = Instance.new("Folder")
-	parent.Name = VISUALS_FOLDER
-	parent.Parent = game:GetService("Workspace")
-	local danger = nil
-	if detectorVisuals then
-		local character = player.Character
-		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if playerRoot and playerRoot.Parent then
-			renderDetector(parent, playerRoot.Position, bossPos)
-		end
-	end
-	if debugVisuals then
-		danger = buildDangerMap(bossPos, radius, height)
-		renderDeadZoneBalls(parent)
-		renderArc(parent, bossPos, radius, height, danger)
-	end
-end
-
---// Loop vẽ visuals độc lập (chạy khi bật Dead Zone Visuals hoặc Detector Visuals).
-local function ensureRenderLoop()
-	if renderLoopRunning then return end
-	renderLoopRunning = true
-	task.spawn(function()
-		while true do
-			if debugVisuals or detectorVisuals then
-				pcall(function()
-					local center = shared.GetOrbitCenter()
-					if center then
-						refreshColumns()
-						updateColumnPositions(os.clock())
-						local radius = shared.GetOrbitRadius()
-						local height = shared.GetOrbitHeight() or 0
-						if radius and radius > 0 then
-							renderVisuals(center, radius, height)
-						end
-					end
-				end)
-			end
-			task.wait(VISUALS_REFRESH_INTERVAL)
-		end
-	end)
-end
-
-local function updateRenderLoop()
-	if debugVisuals or detectorVisuals then
-		ensureRenderLoop()
-	else
-		clearVisuals()
-	end
-end
-
---// Khi bị kẹp: nhảy tới node an toàn nhất trên vòng orbit (thay cho skip cứng).
-local function jumpToSafeNode(center)
-	local radius = shared.GetOrbitRadius()
-	if not radius or radius <= 0 then return end
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	if not character or not playerRoot or not playerRoot.Parent then return end
-
-	local height = shared.GetOrbitHeight() or 0
-	local toPlayer = playerRoot.Position - center
-	local curIdx = degToIdx(math.deg(math.atan2(toPlayer.Z, toPlayer.X)))
-	local danger = buildDangerMap(center, radius, height)
-	local bestIdx, bestScore = bestSafeIndex(danger, curIdx)
-	if bestScore >= 0 and bestIdx ~= curIdx then
-		teleportToAngle(center, idxToRad(bestIdx))
-	end
-end
-
---// Danh sách vị trí hazard đang được track (cho flip detection).
-local function collectHazardPositions()
-	local out = {}
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive then table.insert(out, col.Position) end
-	end
-	return out
-end
-
---// Có hazard nào đang nằm trong vùng PANIC quanh player (khoảng cách ngang) ?
-local function panicHazardNearby(playerPos)
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive and horizontalDistance(playerPos, col.Position) < PANIC_RADIUS then
-			return true
-		end
-	end
-	return false
-end
-
-local function basicStep()
-	--// Chỉ né khi đang trong dungeon; không chạy ngoài lobby (không có hazard).
-	if shared.IsInLobby() then return end
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	if not character or not playerRoot or not playerRoot.Parent then return end
-	local mode = shared.GetFarmMode()
-	if mode ~= "Orbit" and mode ~= "Orbit Tele" then return end
-	--// Chế độ Boss Only: bỏ qua khi chưa trong boss room
-	if dodgeMode == "Boss" and not shared.IsBossActive() then return end
-
-	local center = shared.GetOrbitCenter()
-	if not center then return end
-
-	local playerPos = playerRoot.Position
-	local now = os.clock()
-
-	--// hướng hiệu dụng (khởi tạo nếu chưa)
-	local effDir = shared.GetBasicOrbitDirection()
-	if not effDir then
-		effDir = shared.GetFarmOrbitDirection() or 1
-		shared.SetBasicOrbitDirection(effDir)
-	end
-
-	--// tracking + cập nhật vị trí toàn bộ đối tượng cần né
-	refreshColumns()
-	updateColumnPositions(now)
-
-	local hazards = collectHazardPositions()
-	if #hazards == 0 then
-		--// hazard biến mất tạm thời (beam đổi parent/primary part) không reset ngay;
-		--// chỉ trả hướng về bình thường sau ALL_CLEAR_FRAMES frame liên tiếp
-		noHazardCount = noHazardCount + 1
-		if noHazardCount >= ALL_CLEAR_FRAMES then
-			shared.SetBasicOrbitDirection(nil)
-			noHazardCount = 0
-		end
-		return
-	end
-	noHazardCount = 0
-
-	--// Xây danger map 1 lần, dùng chung cho quyết định flip và jump node an toàn.
-	local height = shared.GetOrbitHeight() or 0
-	local toPlayer = playerPos - center
-	local curIdx = degToIdx(math.deg(math.atan2(toPlayer.Z, toPlayer.X)))
-	local danger = buildDangerMap(center, shared.GetOrbitRadius(), height)
-
-	--// PANIC: hazard lọt vào vùng cấm sát player -> tele thẳng node an toàn
-	--// (bất chấp logic flip/kẹp, chỉ giữ cooldown riêng chống spam).
-	if panicHazardNearby(playerPos) and now - lastPanicTime > PANIC_COOLDOWN then
-		lastPanicTime = now
-		jumpToSafeNode(center)
-		return
-	end
-
-	if dangerAhead(danger, curIdx, effDir) then
-		if now - lastFlipTime > FLIP_COOLDOWN then
-			local newDir = -effDir
-			shared.SetBasicOrbitDirection(newDir)
-			lastFlipTime = now
-			--// kẹt 2 phía: vẫn nguy hiểm trước hướng mới -> nhảy node an toàn
-			if dangerAhead(danger, curIdx, newDir) and now - lastJumpTime > JUMP_COOLDOWN then
-				lastJumpTime = now
-				jumpToSafeNode(center)
-			end
-		elseif now - lastJumpTime > JUMP_COOLDOWN then
-			--// trong cooldown flip mà vẫn còn nguy hiểm trước -> nhảy node an toàn
-			lastJumpTime = now
-			jumpToSafeNode(center)
-		end
-	end
-end
-
-function basicDodge.Toggle(state)
-	enabled = state == true
-	if enabled then
-		lastFlipTime = 0
-		lastJumpTime = 0
-		lastPanicTime = 0
-		noHazardCount = 0
-		if not connection then
-			connection = RunService.Heartbeat:Connect(function()
-				basicStep()
-			end)
-		end
-	else
-		if connection then
-			connection:Disconnect()
-			connection = nil
-		end
-		trackedColumns = {}
-		shared.SetBasicOrbitDirection(nil)
-	end
-end
-
-function basicDodge.IsEnabled()
-	return enabled
-end
-
-function basicDodge.GetMode()
-	return dodgeMode
-end
-
-function basicDodge.SetMode(mode)
-	if mode == "Boss" or mode == "All" then dodgeMode = mode end
-end
-
-function basicDodge.GetDetectRadius()
-	return DETECT_RADIUS
-end
-
-function basicDodge.SetDetectRadius(value)
-	DETECT_RADIUS = value
-end
-
-function basicDodge.GetPanicRadius()
-	return PANIC_RADIUS
-end
-
-function basicDodge.SetPanicRadius(value)
-	PANIC_RADIUS = value
-end
-
-function basicDodge.GetPanicCooldown()
-	return PANIC_COOLDOWN
-end
-
-function basicDodge.SetPanicCooldown(value)
-	PANIC_COOLDOWN = value
-end
-
-function basicDodge.GetFlipCooldown()
-	return FLIP_COOLDOWN
-end
-
-function basicDodge.SetFlipCooldown(value)
-	FLIP_COOLDOWN = value
-end
-
-function basicDodge.GetJumpCooldown()
-	return JUMP_COOLDOWN
-end
-
-function basicDodge.SetJumpCooldown(value)
-	JUMP_COOLDOWN = value
-end
-
-function basicDodge.GetDangerRadius()
-	return DANGER_RADIUS
-end
-
-function basicDodge.SetDangerRadius(value)
-	DANGER_RADIUS = value
-end
-
-function basicDodge.GetAllClearFrames()
-	return ALL_CLEAR_FRAMES
-end
-
-function basicDodge.SetAllClearFrames(value)
-	ALL_CLEAR_FRAMES = value
-end
-
-function basicDodge.GetFlipLookAhead()
-	return FLIP_LOOKAHEAD
-end
-
-function basicDodge.SetFlipLookAhead(value)
-	FLIP_LOOKAHEAD = value
-end
-
---// ---- Chẩn đoán hazard (State tab) ----
---// Số hazard đang track còn hoạt động (chưa Inactive) - đúng thứ danger map dùng.
-function basicDodge.GetHazardCount()
-	local count = 0
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive then count = count + 1 end
-	end
-	return count
-end
-
---// Tên các hazard đang track (unique, sắp xếp) để đối chiếu với những gì thấy trong game.
-function basicDodge.GetHazardNames()
-	local names = {}
-	for _, col in pairs(trackedColumns) do
-		if col and col.Position and not col.Inactive and col.Instance then
-			names[col.Instance.Name] = true
-		end
-	end
-	local out = {}
-	for name in pairs(names) do table.insert(out, name) end
-	table.sort(out)
-	return out
-end
-
-function basicDodge.GetInactiveDelay()
-	return INACTIVE_DELAY
-end
-
-function basicDodge.SetInactiveDelay(value)
-	INACTIVE_DELAY = value
-end
-
-function basicDodge.SetDebugVisuals(value)
-	debugVisuals = value == true
-	updateRenderLoop()
-end
-
-function basicDodge.IsDebugVisuals()
-	return debugVisuals
-end
-
-function basicDodge.SetDetectorVisuals(value)
-	detectorVisuals = value == true
-	updateRenderLoop()
-end
-
-function basicDodge.IsDetectorVisuals()
-	return detectorVisuals
-end
-
-function basicDodge.GetDetectorMode()
-	return detectorMode
-end
-
-function basicDodge.SetDetectorMode(mode)
-	if mode == "Cone" or mode == "Circle" then detectorMode = mode end
-end
-
---// ---- Preset đã cấu hình hardcode trong source ----
---// "Custom" = giữ nguyên các giá trị chỉnh tay hiện tại (mặc định).
---// "Ultra Instinct" = né hoàn hảo nhất có thể: phát hiện sớm, biên an toàn rộng,
---// cooldown tối thiểu, nhạy với mọi hazard, phục hồi hướng orbit cực nhanh.
-local DODGE_PRESETS = {
-	["Custom"] = {},
-	["Ultra Instinct"] = {
-		Mode = "All",
-		DetectRadius = 45,
-		DangerRadius = 4,
-		PanicRadius = 25,
-		PanicCooldown = 0.05,
-		FlipCooldown = 0.05,
-		JumpCooldown = 0.1,
-		FlipLookAhead = 10,
-		AllClearFrames = 1,
-		InactiveDelay = 0.1,
-	},
-}
-
-local currentPreset = "Custom"
-
-function basicDodge.ApplyPreset(name)
-	if not DODGE_PRESETS[name] then return false end
-	currentPreset = name
-	local p = DODGE_PRESETS[name]
-	if p.Mode then basicDodge.SetMode(p.Mode) end
-	if p.DetectRadius then basicDodge.SetDetectRadius(p.DetectRadius) end
-	if p.DangerRadius then basicDodge.SetDangerRadius(p.DangerRadius) end
-	if p.PanicRadius then basicDodge.SetPanicRadius(p.PanicRadius) end
-	if p.PanicCooldown then basicDodge.SetPanicCooldown(p.PanicCooldown) end
-	if p.FlipCooldown then basicDodge.SetFlipCooldown(p.FlipCooldown) end
-	if p.JumpCooldown then basicDodge.SetJumpCooldown(p.JumpCooldown) end
-	if p.FlipLookAhead then basicDodge.SetFlipLookAhead(p.FlipLookAhead) end
-	if p.AllClearFrames then basicDodge.SetAllClearFrames(p.AllClearFrames) end
-	if p.InactiveDelay then basicDodge.SetInactiveDelay(p.InactiveDelay) end
-	return true
-end
-
-function basicDodge.GetPreset()
-	return currentPreset
-end
-
-function basicDodge.GetPresetNames()
-	local out = {}
-	for k in pairs(DODGE_PRESETS) do table.insert(out, k) end
-	table.sort(out)
-	return out
-end
-
-return basicDodge end function __DIST.m()-- Death Logger v2 cho DungeonQuest (executor-level hook).
+end function __DIST.k()-- Death Logger v2 cho DungeonQuest (executor-level hook).
 -- Mục tiêu: biết CHÍNH XÁC nguyên nhân chết thay vì đoán theo vị trí.
 --
 -- Chiến lược phát hiện (theo độ chính xác giảm dần):
@@ -8997,7 +7905,8 @@ return basicDodge end function __DIST.m()-- Death Logger v2 cho DungeonQuest (ex
 
 --// Imports
 
-local services = __DIST.load('c')
+local services = __DIST.load('d')
+local lifecycle = __DIST.load('b')
 local player = services.player
 
 --// Configuration
@@ -9022,6 +7931,7 @@ local deathLog = {}
 --// State
 local enabled = false
 local hookInstalled = false
+local characterAddedConnection = nil
 local diedConnection = nil
 local damageRecords = {}
 local lastWarnClock = 0
@@ -9322,7 +8232,7 @@ function deathLog.Init()
 		if initial then
 			bindCharacter(initial)
 		end
-		player.CharacterAdded:Connect(bindCharacter)
+		characterAddedConnection = player.CharacterAdded:Connect(bindCharacter)
 	end
 end
 
@@ -9337,7 +8247,14 @@ function deathLog.IsEnabled()
 	return enabled
 end
 
-return deathLog end function __DIST.n()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+lifecycle.Register(function()
+	enabled = false
+	if diedConnection then pcall(function() diedConnection:Disconnect() end); diedConnection = nil end
+	if characterAddedConnection then pcall(function() characterAddedConnection:Disconnect() end); characterAddedConnection = nil end
+end)
+
+return deathLog
+end function __DIST.l()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -9538,7 +8455,7 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.o()-- Contextual Auto-Farm settings cho DungeonQuest.
+return dungeonCatalog end function __DIST.m()-- Contextual Auto-Farm settings cho DungeonQuest.
 -- Cho phép cấu hình riêng nhóm Auto Farm (Farm Mode, sliders orbit/hover/tele,
 -- retarget, maintain-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
 -- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
@@ -9546,11 +8463,12 @@ return dungeonCatalog end function __DIST.o()-- Contextual Auto-Farm settings ch
 
 --// Imports
 
-local shared = __DIST.load('d')
-local notifier = __DIST.load('b')
+local shared = __DIST.load('e')
+local notifier = __DIST.load('c')
 local macLib = __DIST.load('a')
-local autoSave = __DIST.load('f')
-local dungeonCatalog = __DIST.load('n')
+local autoSave = __DIST.load('g')
+local dungeonCatalog = __DIST.load('l')
+local lifecycle = __DIST.load('b')
 
 --// Table
 local contextual = {}
@@ -9779,7 +8697,7 @@ function contextual.Init()
 	shared.OnBossActiveChanged(function() findAndApply(false) end)
 
 	task.spawn(function()
-		while true do
+		while lifecycle.IsActive() do
 			task.wait(0.5)
 			--// Đổi config -> nạp lại dữ liệu context của config mới (+ re-apply)
 			if contextual.ReloadFromConfig() then
@@ -9791,31 +8709,26 @@ function contextual.Init()
 end
 
 return contextual
-end function __DIST.p()-- Tab Auto Farm (DungeonQuest): Farm, Combat, Auto Start/Retry.
+end function __DIST.n()-- Tab Auto Farm (DungeonQuest): Farm and Combat.
 
 --// Imports
 
 local macLib = __DIST.load('a')
-local shared = __DIST.load('d')
-local ui = __DIST.load('e')
-local combat = __DIST.load('i')
-local farm = __DIST.load('g')
-local autoStart = __DIST.load('j')
-local autoRetry = __DIST.load('k')
-local autoSave = __DIST.load('f')
-local basicOrbitDodge = __DIST.load('l')
-local deathLog = __DIST.load('m')
-local contextual = __DIST.load('o')
+local shared = __DIST.load('e')
+local ui = __DIST.load('f')
+local combat = __DIST.load('j')
+local farm = __DIST.load('h')
+local autoSave = __DIST.load('g')
+local deathLog = __DIST.load('k')
+local contextual = __DIST.load('m')
 
 return function(window, tab)
 	--// Sections
 	local farmSection = tab:Section({ Side = "Left" })
 	local combatSection = tab:Section({ Side = "Right" })
-	local startSection = tab:Section({ Side = "Left" })
 
 	farmSection:Header({ Name = "Auto Farm" })
 	combatSection:Header({ Name = "Combat" })
-	startSection:Header({ Name = "Auto Start Game" })
 
 	--// Farm (nhóm Auto Farm: per-context theo dungeon x target)
 	local autoFarmToggle = farmSection:Toggle({
@@ -10198,127 +9111,6 @@ return function(window, tab)
 	applySkillModeVisibility()
 
 	combatSection:Toggle({
-		Name = "Basic Orbit Dodge",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			basicOrbitDodge.Toggle(state)
-		end),
-	}, "Toggle_BasicOrbitDodge")
-
-	local dodgeModeDropdown = combatSection:Dropdown({
-		Name = "Dodge Mode",
-		Options = { "All", "Boss Only" },
-		Default = (basicOrbitDodge.GetMode() == "Boss" and 2) or 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if option == "Boss Only" then
-				basicOrbitDodge.SetMode("Boss")
-			else
-				basicOrbitDodge.SetMode("All")
-			end
-		end),
-	}, "Dropdown_DodgeMode")
-
-	local detectRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Detect Radius",
-		Default = basicOrbitDodge.GetDetectRadius(),
-		Minimum = 5,
-		Maximum = 50,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetDetectRadius(Value)
-		end),
-	}, "Slider_BasicDetectRadius"))
-
-	local dangerMarginSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Danger Margin",
-		Default = basicOrbitDodge.GetDangerRadius(),
-		Minimum = 1,
-		Maximum = 15,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetDangerRadius(Value)
-		end),
-	}, "Slider_BasicDangerMargin"))
-
-	local panicRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Panic Radius",
-		Default = basicOrbitDodge.GetPanicRadius(),
-		Minimum = 3,
-		Maximum = 30,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetPanicRadius(Value)
-		end),
-	}, "Slider_BasicPanicRadius"))
-
-	local panicCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Panic Cooldown",
-		Default = basicOrbitDodge.GetPanicCooldown(),
-		Minimum = 0.05,
-		Maximum = 1,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetPanicCooldown(Value)
-		end),
-	}, "Slider_BasicPanicCooldown"))
-
-	local flipCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Flip Cooldown",
-		Default = basicOrbitDodge.GetFlipCooldown(),
-		Minimum = 0.05,
-		Maximum = 1,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetFlipCooldown(Value)
-		end),
-	}, "Slider_BasicFlipCooldown"))
-
-	local jumpCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Jump Cooldown",
-		Default = basicOrbitDodge.GetJumpCooldown(),
-		Minimum = 0.1,
-		Maximum = 2,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetJumpCooldown(Value)
-		end),
-	}, "Slider_BasicJumpCooldown"))
-
-	combatSection:Dropdown({
-		Name = "Dodge Preset",
-		Options = basicOrbitDodge.GetPresetNames(),
-		Default = (function()
-			local names = basicOrbitDodge.GetPresetNames()
-			local cur = basicOrbitDodge.GetPreset()
-			for i, n in ipairs(names) do
-				if n == cur then return i end
-			end
-			return 1
-		end)(),
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			basicOrbitDodge.ApplyPreset(option)
-			pcall(function() dodgeModeDropdown:UpdateSelection(basicOrbitDodge.GetMode() == "Boss" and "Boss Only" or "All") end)
-			pcall(function() detectRadiusSlider:UpdateValue(basicOrbitDodge.GetDetectRadius()) end)
-			pcall(function() dangerMarginSlider:UpdateValue(basicOrbitDodge.GetDangerRadius()) end)
-			pcall(function() panicRadiusSlider:UpdateValue(basicOrbitDodge.GetPanicRadius()) end)
-			pcall(function() panicCooldownSlider:UpdateValue(basicOrbitDodge.GetPanicCooldown()) end)
-			pcall(function() flipCooldownSlider:UpdateValue(basicOrbitDodge.GetFlipCooldown()) end)
-			pcall(function() jumpCooldownSlider:UpdateValue(basicOrbitDodge.GetJumpCooldown()) end)
-		end),
-	}, "Dropdown_DodgePreset")
-
-	combatSection:Toggle({
 		Name = "Death Log",
 		Default = false,
 		Callback = autoSave.Wrap(function(state)
@@ -10327,55 +9119,8 @@ return function(window, tab)
 	}, "Toggle_DeathLog")
 
 	applyFarmModeVisibility()
-
-	--// Auto Start / Retry
-	startSection:Toggle({
-		Name = "Auto Start",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoStart.Toggle(state)
-		end),
-	}, "Toggle_AutoStart")
-
-	startSection:Toggle({
-		Name = "Auto Retry",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoRetry.Toggle(state)
-		end),
-	}, "Toggle_AutoRetry")
-
-	startSection:Button({
-		Name = "Manual Retry",
-		Callback = function()
-			task.spawn(function()
-				autoRetry.RetryNow()
-			end)
-		end,
-	})
-
-	startSection:Toggle({
-		Name = "Retry on Time Low",
-		Default = autoRetry.GetTimeRetryEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoRetry.SetTimeRetryEnabled(state)
-		end),
-	}, "Toggle_RetryTimeLow")
-
-	ui.PatchSliderLoadCallback(startSection:Slider({
-		Name = "Retry Time Threshold",
-		Default = autoRetry.GetTimeRetryThreshold(),
-		Minimum = 5,
-		Maximum = 120,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			autoRetry.SetTimeRetryThreshold(Value)
-		end),
-	}, "Slider_RetryTimeThreshold"))
 end
-end function __DIST.q()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên state.
+end function __DIST.o()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên state.
 --  * Scan 1 lần all enemy -> lock target kẻ địch gần nhất (highlight lock target).
 --  * CHASE (chưa trong tầm): Pathfinding chạy thẳng tới vị trí kẻ địch bị lock.
 --    Heartbeat check khoảng cách player <-> enemy lock realtime.
@@ -10386,8 +9131,9 @@ end function __DIST.q()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên 
 
 --// Imports
 
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
+local lifecycle = __DIST.load('b')
 
 --// References
 local RunService = services.RunService
@@ -11209,12 +9955,18 @@ function autoFarmPathfinder.GetDebugInfo()
 	}
 end
 
-return autoFarmPathfinder end function __DIST.r()-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
+lifecycle.Register(function()
+	autoFarmPathfinder.Toggle(false)
+end)
+
+return autoFarmPathfinder
+end function __DIST.p()-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
 
 --// Imports
 
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
+local lifecycle = __DIST.load('b')
 
 --// References
 local UserInputService = services.UserInputService
@@ -11225,6 +9977,7 @@ local shortcuts = {}
 
 --// Bật/tắt tính năng ẩn: chuột phải kích hoạt combo Q+E.
 local comboEnabled = false
+local inputConnection = nil
 
 function shortcuts.IsMouseComboEnabled()
 	return comboEnabled
@@ -11252,7 +10005,7 @@ function shortcuts.Init()
 	if shortcuts.inited then return end
 	shortcuts.inited = true
 
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		if input.KeyCode == Enum.KeyCode.R then
 			task.spawn(function()
@@ -11271,18 +10024,23 @@ function shortcuts.Init()
 	end)
 end
 
+lifecycle.Register(function()
+	if inputConnection then inputConnection:Disconnect(); inputConnection = nil end
+	shortcuts.inited = false
+end)
+
 return shortcuts
-end function __DIST.s()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
+end function __DIST.q()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
 -- CHASE: pathfinding chạy thẳng tới kẻ địch gần nhất khi ngoài tầm.
 -- HOLD: khi trong tầm skill range, giữ khoảng cách bằng orbit tốc độ 0 (đứng yên + quay mặt
 -- enemy) và tự spam Q+E. Kèm Visual Debug (ô đỏ điểm đuổi + highlight kẻ gần nhất).
 
 --// Imports
 
-local autoSave = __DIST.load('f')
-local autoFarmPathfinder = __DIST.load('q')
-local shortcuts = __DIST.load('r')
-local ui = __DIST.load('e')
+local autoSave = __DIST.load('g')
+local autoFarmPathfinder = __DIST.load('o')
+local shortcuts = __DIST.load('p')
+local ui = __DIST.load('f')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -11433,15 +10191,16 @@ return function(window, tab)
 			updateStateLabel()
 		end
 	end)
-end end function __DIST.t()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end end function __DIST.r()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
-local services = __DIST.load('c')
-local notifier = __DIST.load('b')
-local dungeonCatalog = __DIST.load('n')
-local shared = __DIST.load('d')
+local services = __DIST.load('d')
+local notifier = __DIST.load('c')
+local dungeonCatalog = __DIST.load('l')
+local shared = __DIST.load('e')
+local lifecycle = __DIST.load('b')
 
 local playerName = services.player.Name
 
@@ -11536,7 +10295,7 @@ local function joinDungeonNow()
 end
 
 local function joinDungeonWatcher()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(0.5)
 		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and shared.IsInLobby() then
 			joinDungeonNow()
@@ -11614,19 +10373,329 @@ end
 --// Initialize: watcher
 task.spawn(joinDungeonWatcher)
 
-return autoJoin end function __DIST.u()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+lifecycle.Register(function()
+	autoJoin.Toggle(false)
+end)
+
+return autoJoin
+end function __DIST.s()-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
+-- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
+-- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
+
+--// Imports
+
+local shared = __DIST.load('e')
+local notifier = __DIST.load('c')
+
+--// State
+local autoStartEnabled = false
+local autoStartRunning = false
+local autoStartTriggered = false
+local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
+local autoStartCommandFn = nil
+
+--// Điều kiện kích hoạt: đang ở lobby (startButton hiện, ngoài dungeon) do shared tính
+local function lobbyCondition()
+	return shared.IsInLobby()
+end
+
+--// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
+local s2, cmdFn2 = pcall(loadstring, autoStartCommand)
+if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
+
+--// Table
+local autoStart = {}
+
+--// Methods
+function autoStart.Start()
+	if autoStartRunning then return end
+	autoStartRunning = true
+	autoStartTriggered = false
+	task.spawn(function()
+		while autoStartEnabled do
+			local sCond, res = pcall(lobbyCondition)
+			local met = sCond and res == true
+
+			if met and not autoStartTriggered then
+				autoStartTriggered = true
+				if autoStartCommandFn then
+					local sCmd, err = pcall(autoStartCommandFn)
+					if sCmd then
+						notifier.Notify("Auto Start", "Game started!", 3)
+					else
+						notifier.Notify("Auto Start", "Trigger failed: " .. tostring(err), 3)
+					end
+				else
+					notifier.Notify("Auto Start", "Remote command invalid", 3)
+				end
+			end
+
+			--// Hết lobby (vào dungeon / đang chơi) -> cho phép kích lại ở lobby lần sau
+			if not met and autoStartTriggered then
+				autoStartTriggered = false
+			end
+
+			if not autoStartEnabled then break end
+			task.wait(1)
+		end
+		autoStartRunning = false
+	end)
+end
+
+function autoStart.Stop()
+	autoStartEnabled = false
+end
+
+function autoStart.Toggle(state)
+	autoStartEnabled = state
+	if state then
+		autoStart.Start()
+		notifier.Notify("Auto Start", "Waiting for lobby...", 2)
+	else
+		autoStart.Stop()
+		notifier.Notify("Auto Start", "Stopped", 2)
+	end
+end
+
+--// Reset trigger mỗi khi respawn
+shared.OnRespawn(function()
+	autoStartTriggered = false
+end)
+
+return autoStart end function __DIST.t()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+
+--// Imports
+
+local services = __DIST.load('d')
+local notifier = __DIST.load('c')
+
+--// References
+local player = services.player
+
+--// State
+local AUTO_RETRY_MIN_ITEMS = 2
+local autoRetryEnabled = false
+local autoRetryRunning = false
+local autoRetryTriggered = false
+local timeRetryEnabled = false
+local timeRetryThreshold = 60
+local timeRetryTriggered = false
+local autoRetryCommand = [==[
+local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")
+
+local payload = {}
+local function collectValue(name)
+	local value = workspace:FindFirstChild(name)
+	if value and value:IsA("ValueBase") then
+		payload[name] = value.Value
+	end
+end
+
+collectValue("dungeonName")
+collectValue("dungeonProgress")
+collectValue("dungeonStarted")
+
+local hardcore = workspace:FindFirstChild("hardcore")
+if hardcore and hardcore:IsA("BoolValue") then
+	payload.hardcore = hardcore.Value
+	payload.isHardcore = hardcore.Value
+end
+
+local dungeon = workspace:FindFirstChild("dungeon")
+if dungeon then
+	for _, value in ipairs(dungeon:GetChildren()) do
+		if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+	end
+	local bossRoom = dungeon:FindFirstChild("bossRoom")
+	if bossRoom then
+		for _, value in ipairs(bossRoom:GetChildren()) do
+			if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+		end
+	end
+end
+
+if not payload.dungeonName then return end
+ReplayDungeon:FireServer(payload)
+]==]
+local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
+local autoRetryCommandFn = nil
+local autoRetryHolderFn = nil
+
+--// Helpers (validation dùng loadstring, giữ logic gốc)
+local function validateConditionText(text)
+	local s, fn = pcall(loadstring, "return " .. text)
+	if s and type(fn) == "function" then return fn end
+	return nil
+end
+
+local sRetryCmd, compiledRetryCmd = pcall(loadstring, autoRetryCommand)
+if sRetryCmd and type(compiledRetryCmd) == "function" then autoRetryCommandFn = compiledRetryCmd end
+
+autoRetryHolderFn = validateConditionText(autoRetryHolderPath)
+if not autoRetryHolderFn then
+	autoRetryHolderFn = function()
+		return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("rewardGuiHolder") and player.PlayerGui.rewardGuiHolder:FindFirstChild("holder")
+	end
+end
+
+--// Đọc thẳng giá trị thời gian còn lại từ UI game: PlayerGui.timeLeftGui.Frame.time
+local function readTimeLeft()
+	local ok, inst = pcall(function()
+		local PlayerGui = player:FindFirstChild("PlayerGui")
+		local gui = PlayerGui and PlayerGui:FindFirstChild("timeLeftGui")
+		local frame = gui and gui:FindFirstChild("Frame")
+		return frame and frame:FindFirstChild("time")
+	end)
+	if not ok or typeof(inst) ~= "Instance" then return nil end
+
+	--// Ưu tiên ValueBase (NumberValue...), nếu không thì đọc Text của TextLabel
+	local raw
+	if inst:IsA("ValueBase") then
+		raw = inst.Value
+	else
+		raw = inst.Text
+	end
+	if type(raw) == "number" then return raw end
+	if type(raw) == "string" then
+		local cleaned = raw:gsub("%s+", ""):gsub("^%[", ""):gsub("%]$", "")
+		local m, s = cleaned:match("^(%d+):(%d+)$")
+		if m and s then return tonumber(m) * 60 + tonumber(s) end
+		local sec = tonumber(cleaned)
+		if sec then return sec end
+	end
+	return nil
+end
+
+--// Table
+local autoRetry = {}
+
+--// Fire remote retry, trả về true nếu thành công
+local function fireRetry()
+	if not autoRetryCommandFn then
+		notifier.Notify("Auto Retry", "Remote command invalid", 3)
+		return false
+	end
+	local sCmd, err = pcall(autoRetryCommandFn)
+	if sCmd then
+		notifier.Notify("Auto Retry", "Retrying dungeon!", 3)
+		return true
+	end
+	notifier.Notify("Auto Retry", "Trigger failed: " .. tostring(err), 3)
+	return false
+end
+
+--// Methods
+function autoRetry.Start()
+	if autoRetryRunning then return end
+	autoRetryRunning = true
+	autoRetryTriggered = false
+	timeRetryTriggered = false
+	task.spawn(function()
+		while autoRetryEnabled or timeRetryEnabled do
+			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
+			if autoRetryEnabled then
+				local count = 0
+				if autoRetryHolderFn then
+					local sok, holder = pcall(autoRetryHolderFn)
+					if sok and typeof(holder) == "Instance" and holder.Parent then
+						count = #holder:GetChildren()
+					end
+				end
+				if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
+					autoRetryTriggered = true
+					fireRetry()
+				elseif count < AUTO_RETRY_MIN_ITEMS then
+					autoRetryTriggered = false
+				end
+			end
+
+			--// Điều kiện hết giờ (chạy độc lập khi bật Retry on Time Low):
+			--// UI còn < X giây thì retry
+			if timeRetryEnabled then
+				local remaining = readTimeLeft()
+				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
+					timeRetryTriggered = true
+					fireRetry()
+				elseif remaining and remaining >= timeRetryThreshold then
+					timeRetryTriggered = false
+				end
+			end
+
+			if not autoRetryEnabled and not timeRetryEnabled then break end
+			task.wait(0.75)
+		end
+		autoRetryRunning = false
+	end)
+end
+
+function autoRetry.Stop()
+	autoRetryEnabled = false
+end
+
+function autoRetry.Toggle(state)
+	autoRetryEnabled = state
+	if state then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching reward holder...", 2)
+	else
+		autoRetry.Stop()
+		notifier.Notify("Auto Retry", "Stopped", 2)
+	end
+end
+
+function autoRetry.SetTimeRetryEnabled(value)
+	timeRetryEnabled = value == true
+	if timeRetryEnabled then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching time left...", 2)
+	else
+		notifier.Notify("Auto Retry", "Time retry stopped", 2)
+	end
+end
+
+function autoRetry.GetTimeRetryEnabled()
+	return timeRetryEnabled
+end
+
+function autoRetry.SetTimeRetryThreshold(value)
+	timeRetryThreshold = value
+end
+
+function autoRetry.GetTimeRetryThreshold()
+	return timeRetryThreshold
+end
+
+--// Đọc thời gian còn lại (giây) như đúng logic time-low đang dùng (UI playerGui.timeLeftGui.Frame.<time>)
+function autoRetry.GetTimeLeft()
+	return readTimeLeft()
+end
+
+function autoRetry.RetryNow()
+	task.spawn(function()
+		fireRetry()
+	end)
+end
+
+return autoRetry
+end function __DIST.u()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
-local ui = __DIST.load('e')
-local autoJoin = __DIST.load('t')
-local autoSave = __DIST.load('f')
-local dungeonCatalog = __DIST.load('n')
+local ui = __DIST.load('f')
+local autoJoin = __DIST.load('r')
+local autoStart = __DIST.load('s')
+local autoRetry = __DIST.load('t')
+local autoSave = __DIST.load('g')
+local dungeonCatalog = __DIST.load('l')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
+	local runSection = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Auto Join Dungeon" })
+	runSection:Header({ Name = "Dungeon Run Automation" })
 
 	section:Toggle({
 		Name = "Auto Join Dungeon",
@@ -11737,6 +10806,52 @@ return function(window, tab)
 		end,
 	})
 
+	runSection:Toggle({
+		Name = "Auto Start",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoStart.Toggle(state)
+		end),
+	}, "Toggle_AutoStart")
+
+	runSection:Toggle({
+		Name = "Auto Retry",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoRetry.Toggle(state)
+		end),
+	}, "Toggle_AutoRetry")
+
+	runSection:Button({
+		Name = "Manual Retry",
+		Callback = function()
+			task.spawn(function()
+				autoRetry.RetryNow()
+			end)
+		end,
+	})
+
+	runSection:Toggle({
+		Name = "Retry on Time Low",
+		Default = autoRetry.GetTimeRetryEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoRetry.SetTimeRetryEnabled(state)
+		end),
+	}, "Toggle_RetryTimeLow")
+
+	ui.PatchSliderLoadCallback(runSection:Slider({
+		Name = "Retry Time Threshold",
+		Default = autoRetry.GetTimeRetryThreshold(),
+		Minimum = 5,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			autoRetry.SetTimeRetryThreshold(Value)
+		end),
+	}, "Slider_RetryTimeThreshold"))
+
 	-- Đồng bộ difficulty dropdown khi đổi map (cũng chạy khi config load).
 	autoJoin.OnDungeonChanged(function(dungeon, allowed)
 		pcall(function()
@@ -11746,14 +10861,15 @@ return function(window, tab)
 		end)
 		updateLevelLabel()
 	end)
-end end function __DIST.v()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
+end
+end function __DIST.v()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
 -- Chỉ highlight các object trùng tên với model projectile trong
 -- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
 --// Imports
 
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
 
 --// Table
 local esp = {}
@@ -12071,8 +11187,8 @@ end function __DIST.w()-- ESP Enemy (Highlight) cho DungeonQuest.
 
 --// Imports
 
-local services = __DIST.load('c')
-local shared = __DIST.load('d')
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
 
 --// Table
 local enemyEsp = {}
@@ -12209,11 +11325,10 @@ end function __DIST.x()-- Tab Visual (DungeonQuest): các tính năng hiển th�
 
 --// Imports
 	
-local autoSave = __DIST.load('f')
+local autoSave = __DIST.load('g')
 	local esp = __DIST.load('v')
 	local enemyEsp = __DIST.load('w')
-	local basicOrbitDodge = __DIST.load('l')
-	local ui = __DIST.load('e')
+	local ui = __DIST.load('f')
 
 --// Hitbox mode options
 local HITBOX_OPTIONS = { "Custom Hitbox", "Real Hitbox" }
@@ -12337,38 +11452,6 @@ return function(window, tab)
 	end
 	applyHitboxVisibility()
 
-	local dodgeSection = tab:Section({ Side = "Left" })
-	dodgeSection:Header({ Name = "Dodge Visuals" })
-
-	dodgeSection:Toggle({
-		Name = "Dead Zone Visuals",
-		Default = basicOrbitDodge.IsDebugVisuals(),
-		Callback = autoSave.Wrap(function(state)
-			basicOrbitDodge.SetDebugVisuals(state)
-		end),
-	}, "Toggle_DeadZoneVisuals")
-
-	dodgeSection:Toggle({
-		Name = "Detector Visuals",
-		Default = basicOrbitDodge.IsDetectorVisuals(),
-		Callback = autoSave.Wrap(function(state)
-			basicOrbitDodge.SetDetectorVisuals(state)
-		end),
-	}, "Toggle_DetectorVisuals")
-
-	dodgeSection:Dropdown({
-		Name = "Detector Shape",
-		Options = { "Circle", "Cone" },
-		Default = (basicOrbitDodge.GetDetectorMode() == "Cone" and 2) or 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if option == "Cone" then
-				basicOrbitDodge.SetDetectorMode("Cone")
-			else
-				basicOrbitDodge.SetDetectorMode("Circle")
-			end
-		end),
-	}, "Dropdown_DetectorShape")
 end
 end function __DIST.y()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
@@ -12376,7 +11459,7 @@ end function __DIST.y()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ sc
 --// Imports
 
 local macLib = __DIST.load('a')
-local notifier = __DIST.load('b')
+local notifier = __DIST.load('c')
 
 --// Services
 local HttpService = game:GetService("HttpService")
@@ -12452,7 +11535,7 @@ end function __DIST.z()-- Tab Config (DungeonQuest): tự build config section d
 --// Imports
 
 local macLib = __DIST.load('a')
-local autoSave = __DIST.load('f')
+local autoSave = __DIST.load('g')
 local autoHide = __DIST.load('y')
 
 return function(window, tab)
@@ -12617,8 +11700,9 @@ end function __DIST.A()-- Webhook Discord cho DungeonQuest: gửi thông báo WI
 --// Imports
 
 local macLib = __DIST.load('a')
-local notifier = __DIST.load('b')
-local shared = __DIST.load('d')
+local notifier = __DIST.load('c')
+local shared = __DIST.load('e')
+local lifecycle = __DIST.load('b')
 
 --// Services
 local HttpService = game:GetService("HttpService")
@@ -12633,6 +11717,8 @@ local webhook = {}
 local webhookUrl = ""
 local enabled = false
 local connected = false
+local rewardConnection = nil
+local disconnectDungeonWatcher = nil
 
 local pingEnabled = false
 local pingMention = ""
@@ -12826,6 +11912,7 @@ end
 --// Theo dõi trạng thái lobby/dungeon qua shared (startButton + dungName):
 --// lobby = reset bộ đếm XP, vào dungeon = bắt đầu tính thời gian hoàn thành.
 local function startDungeonWatcher()
+	if disconnectDungeonWatcher then return end
 	local function onLobbyChanged(lobby)
 		if lobby then
 			resetRun()
@@ -12834,7 +11921,7 @@ local function startDungeonWatcher()
 		end
 	end
 	onLobbyChanged(shared.IsInLobby())
-	shared.OnLobbyChanged(onLobbyChanged)
+	disconnectDungeonWatcher = shared.OnLobbyChanged(onLobbyChanged)
 end
 
 --// Định dạng thời gian hoàn thành (giây -> MM:SS)
@@ -13161,7 +12248,7 @@ function webhook.Init()
 		return
 	end
 
-	rewardRemote.OnClientEvent:Connect(function(reward)
+	rewardConnection = rewardRemote.OnClientEvent:Connect(function(reward)
 		if not enabled then return end
 
 		ensureXpBefore()
@@ -13196,6 +12283,12 @@ end
 
 --// Load settings lúc require
 loadSettings()
+
+lifecycle.Register(function()
+	if rewardConnection then rewardConnection:Disconnect(); rewardConnection = nil end
+	if disconnectDungeonWatcher then disconnectDungeonWatcher(); disconnectDungeonWatcher = nil end
+	connected = false
+end)
 
 return webhook
 end function __DIST.B()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
@@ -13274,9 +12367,8 @@ end function __DIST.C()-- Tab State (DungeonQuest): hiển thị trạng thái t
 
 --// Imports
 
-local shared = __DIST.load('d')
-local autoRetry = __DIST.load('k')
-local basicDodge = __DIST.load('l')
+local shared = __DIST.load('e')
+local autoRetry = __DIST.load('t')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -13353,35 +12445,6 @@ return function(window, tab)
 
 	updateTimeLeft()
 
-	section:Header({ Name = "Dodge" })
-
-	local hazardCountLabel = section:Label({
-		Text = "Hazards: 0",
-	})
-
-	local function updateHazardCount()
-		local count = basicDodge.GetHazardCount()
-		local color = count > 0 and "0, 255, 0" or "160, 160, 160"
-		hazardCountLabel:UpdateName("Hazards: <font color='rgb(" .. color .. ")'>" .. count .. "</font>")
-	end
-
-	updateHazardCount()
-
-	section:Button({
-		Name = "Log Dodge Hazards to Console",
-		Callback = function()
-			local names = basicDodge.GetHazardNames()
-			print("[DungeonQuest] Dodge hazards being tracked (" .. #names .. "):")
-			if #names == 0 then
-				print("  (none - dodge scanner sees nothing)")
-			else
-				for _, name in ipairs(names) do
-					print("  - " .. name)
-				end
-			end
-		end,
-	})
-
 	--// Forward declaration: updateLobby được định nghĩa phía dưới nhưng poll loop
 	--// ở đây chạy trước -> nếu không khai báo trước sẽ thành global nil.
 	local updateLobby
@@ -13391,7 +12454,6 @@ return function(window, tab)
 			updateBoss(shared.IsBossActive())
 			updateBossIndex()
 			updateEnemyCount()
-			updateHazardCount()
 			updateLobby()
 			updateTimeLeft()
 		end
@@ -13473,6 +12535,7 @@ return function(self)
 
 	--// Imports
 	local macLib = __DIST.load('a')
+	local lifecycle = __DIST.load('b')
 
 	--// Window
 	local window = macLib:Window({
@@ -13486,11 +12549,18 @@ return function(self)
 		AcrylicBlur = true,
 	})
 
-	local notifier = __DIST.load('b')
+	local notifier = __DIST.load('c')
 	notifier:SetWindow(window)
 
 	--// Đăng ký UI vào registry để unload UI cũ trước mỗi lần execute script mới
 	_G.ScriptHub_UI = window
+	_G.ScriptHub_Cleanup = function()
+		lifecycle.Cleanup()
+	end
+	window.onUnloaded(function()
+		lifecycle.Cleanup()
+		if _G.ScriptHub_UI == window then _G.ScriptHub_UI = nil end
+	end)
 
 	--// Tabs
 	local tabGroup = window:TabGroup()
@@ -13509,9 +12579,9 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local speedTab = __DIST.load('h')
-	local combatTab = __DIST.load('p')
-	local autoFarmPathfinderTab = __DIST.load('s')
+	local speedTab = __DIST.load('i')
+	local combatTab = __DIST.load('n')
+	local autoFarmPathfinderTab = __DIST.load('q')
 	local dungeonTab = __DIST.load('u')
 	local visualTab = __DIST.load('x')
 	local configTab = __DIST.load('z')
@@ -13528,24 +12598,21 @@ return function(self)
 	stateTab(window, tabs.State)
 
 	--// Phím tắt
-	local shortcuts = __DIST.load('r')
+	local shortcuts = __DIST.load('p')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
 	local webhook = __DIST.load('A')
 	webhook.Init()
-__DIST.load('l')
 __DIST.load('w')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
 
-
-
-local contextual = __DIST.load('o')
+local contextual = __DIST.load('m')
 
 	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
-	local deathLog = __DIST.load('m')
+	local deathLog = __DIST.load('k')
 	deathLog.Init()
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
@@ -13850,8 +12917,15 @@ return function(self)
 end
 end end-- This is an autoloader, you can make this a GUI if you want.
 
---// Unload UI cũ mỗi lần execute script mới (tránh trùng cửa sổ)
+--// Dừng logic cũ trước khi unload UI, tránh listener/vòng lặp bị nhân đôi khi execute lại.
 
+local oldCleanup = _G.ScriptHub_Cleanup
+if typeof(oldCleanup) == "function" then
+	pcall(oldCleanup)
+end
+_G.ScriptHub_Cleanup = nil
+
+--// Unload UI cũ mỗi lần execute script mới (tránh trùng cửa sổ)
 local oldUI = _G.ScriptHub_UI
 if typeof(oldUI) == "table" and typeof(oldUI.Unload) == "function" then
 	pcall(oldUI.Unload, oldUI)

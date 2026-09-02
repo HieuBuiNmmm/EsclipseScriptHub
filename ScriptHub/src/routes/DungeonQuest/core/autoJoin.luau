@@ -6,6 +6,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 local shared = require("@routes/DungeonQuest/core/shared")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 local playerName = services.player.Name
 
@@ -100,7 +101,7 @@ local function joinDungeonNow()
 end
 
 local function joinDungeonWatcher()
-	while true do
+	while lifecycle.IsActive() do
 		task.wait(0.5)
 		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and shared.IsInLobby() then
 			joinDungeonNow()
@@ -177,5 +178,9 @@ end
 
 --// Initialize: watcher
 task.spawn(joinDungeonWatcher)
+
+lifecycle.Register(function()
+	autoJoin.Toggle(false)
+end)
 
 return autoJoin

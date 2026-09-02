@@ -12,6 +12,7 @@
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local player = services.player
 
 --// Configuration
@@ -36,6 +37,7 @@ local deathLog = {}
 --// State
 local enabled = false
 local hookInstalled = false
+local characterAddedConnection = nil
 local diedConnection = nil
 local damageRecords = {}
 local lastWarnClock = 0
@@ -336,7 +338,7 @@ function deathLog.Init()
 		if initial then
 			bindCharacter(initial)
 		end
-		player.CharacterAdded:Connect(bindCharacter)
+		characterAddedConnection = player.CharacterAdded:Connect(bindCharacter)
 	end
 end
 
@@ -350,5 +352,11 @@ end
 function deathLog.IsEnabled()
 	return enabled
 end
+
+lifecycle.Register(function()
+	enabled = false
+	if diedConnection then pcall(function() diedConnection:Disconnect() end); diedConnection = nil end
+	if characterAddedConnection then pcall(function() characterAddedConnection:Disconnect() end); characterAddedConnection = nil end
+end)
 
 return deathLog

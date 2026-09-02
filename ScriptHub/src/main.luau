@@ -1,5 +1,12 @@
 -- This is an autoloader, you can make this a GUI if you want.
 
+--// Dừng logic cũ trước khi unload UI, tránh listener/vòng lặp bị nhân đôi khi execute lại.
+local oldCleanup = _G.ScriptHub_Cleanup
+if typeof(oldCleanup) == "function" then
+	pcall(oldCleanup)
+end
+_G.ScriptHub_Cleanup = nil
+
 --// Unload UI cũ mỗi lần execute script mới (tránh trùng cửa sổ)
 local oldUI = _G.ScriptHub_UI
 if typeof(oldUI) == "table" and typeof(oldUI.Unload) == "function" then

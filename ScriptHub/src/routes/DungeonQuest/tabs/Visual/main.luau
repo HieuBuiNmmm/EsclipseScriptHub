@@ -4,7 +4,6 @@
 	local autoSave = require("@routes/DungeonQuest/core/autoSave")
 	local esp = require("@routes/DungeonQuest/core/esp")
 	local enemyEsp = require("@routes/DungeonQuest/core/enemyEsp")
-	local basicOrbitDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
 	local ui = require("@routes/DungeonQuest/core/ui")
 
 --// Hitbox mode options
@@ -129,36 +128,4 @@ return function(window, tab)
 	end
 	applyHitboxVisibility()
 
-	local dodgeSection = tab:Section({ Side = "Left" })
-	dodgeSection:Header({ Name = "Dodge Visuals" })
-
-	dodgeSection:Toggle({
-		Name = "Dead Zone Visuals",
-		Default = basicOrbitDodge.IsDebugVisuals(),
-		Callback = autoSave.Wrap(function(state)
-			basicOrbitDodge.SetDebugVisuals(state)
-		end),
-	}, "Toggle_DeadZoneVisuals")
-
-	dodgeSection:Toggle({
-		Name = "Detector Visuals",
-		Default = basicOrbitDodge.IsDetectorVisuals(),
-		Callback = autoSave.Wrap(function(state)
-			basicOrbitDodge.SetDetectorVisuals(state)
-		end),
-	}, "Toggle_DetectorVisuals")
-
-	dodgeSection:Dropdown({
-		Name = "Detector Shape",
-		Options = { "Circle", "Cone" },
-		Default = (basicOrbitDodge.GetDetectorMode() == "Cone" and 2) or 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if option == "Cone" then
-				basicOrbitDodge.SetDetectorMode("Cone")
-			else
-				basicOrbitDodge.SetDetectorMode("Circle")
-			end
-		end),
-	}, "Dropdown_DetectorShape")
 end

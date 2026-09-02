@@ -10,6 +10,7 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 --// References
 local RunService = services.RunService
@@ -830,5 +831,9 @@ function autoFarmPathfinder.GetDebugInfo()
 		noPathSince = noPathSince,
 	}
 end
+
+lifecycle.Register(function()
+	autoFarmPathfinder.Toggle(false)
+end)
 
 return autoFarmPathfinder

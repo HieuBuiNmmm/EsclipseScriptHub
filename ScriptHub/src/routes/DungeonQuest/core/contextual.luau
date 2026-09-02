@@ -10,6 +10,7 @@ local notifier = require("@routes/DungeonQuest/core/notifier")
 local macLib = require("@packages/Maclib")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 --// Table
 local contextual = {}
@@ -238,7 +239,7 @@ function contextual.Init()
 	shared.OnBossActiveChanged(function() findAndApply(false) end)
 
 	task.spawn(function()
-		while true do
+		while lifecycle.IsActive() do
 			task.wait(0.5)
 			--// Đổi config -> nạp lại dữ liệu context của config mới (+ re-apply)
 			if contextual.ReloadFromConfig() then

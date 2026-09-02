@@ -4,12 +4,16 @@
 --// Imports
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoJoin = require("@routes/DungeonQuest/core/autoJoin")
+local autoStart = require("@routes/DungeonQuest/core/autoStart")
+local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
+	local runSection = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Auto Join Dungeon" })
+	runSection:Header({ Name = "Dungeon Run Automation" })
 
 	section:Toggle({
 		Name = "Auto Join Dungeon",
@@ -119,6 +123,52 @@ return function(window, tab)
 			autoJoin.JoinNow()
 		end,
 	})
+
+	runSection:Toggle({
+		Name = "Auto Start",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoStart.Toggle(state)
+		end),
+	}, "Toggle_AutoStart")
+
+	runSection:Toggle({
+		Name = "Auto Retry",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoRetry.Toggle(state)
+		end),
+	}, "Toggle_AutoRetry")
+
+	runSection:Button({
+		Name = "Manual Retry",
+		Callback = function()
+			task.spawn(function()
+				autoRetry.RetryNow()
+			end)
+		end,
+	})
+
+	runSection:Toggle({
+		Name = "Retry on Time Low",
+		Default = autoRetry.GetTimeRetryEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoRetry.SetTimeRetryEnabled(state)
+		end),
+	}, "Toggle_RetryTimeLow")
+
+	ui.PatchSliderLoadCallback(runSection:Slider({
+		Name = "Retry Time Threshold",
+		Default = autoRetry.GetTimeRetryThreshold(),
+		Minimum = 5,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			autoRetry.SetTimeRetryThreshold(Value)
+		end),
+	}, "Slider_RetryTimeThreshold"))
 
 	-- Đồng bộ difficulty dropdown khi đổi map (cũng chạy khi config load).
 	autoJoin.OnDungeonChanged(function(dungeon, allowed)

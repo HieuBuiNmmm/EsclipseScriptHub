@@ -1,4 +1,4 @@
--- Tab Auto Farm (DungeonQuest): Farm, Combat, Auto Start/Retry.
+-- Tab Auto Farm (DungeonQuest): Farm and Combat.
 
 --// Imports
 local macLib = require("@packages/Maclib")
@@ -6,10 +6,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 local combat = require("@routes/DungeonQuest/core/combat")
 local farm = require("@routes/DungeonQuest/core/farm")
-local autoStart = require("@routes/DungeonQuest/core/autoStart")
-local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
-local basicOrbitDodge = require("@routes/DungeonQuest/core/basicOrbitDodge")
 local deathLog = require("@routes/DungeonQuest/core/deathLog")
 local contextual = require("@routes/DungeonQuest/core/contextual")
 
@@ -17,11 +14,9 @@ return function(window, tab)
 	--// Sections
 	local farmSection = tab:Section({ Side = "Left" })
 	local combatSection = tab:Section({ Side = "Right" })
-	local startSection = tab:Section({ Side = "Left" })
 
 	farmSection:Header({ Name = "Auto Farm" })
 	combatSection:Header({ Name = "Combat" })
-	startSection:Header({ Name = "Auto Start Game" })
 
 	--// Farm (nhóm Auto Farm: per-context theo dungeon x target)
 	local autoFarmToggle = farmSection:Toggle({
@@ -404,127 +399,6 @@ return function(window, tab)
 	applySkillModeVisibility()
 
 	combatSection:Toggle({
-		Name = "Basic Orbit Dodge",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			basicOrbitDodge.Toggle(state)
-		end),
-	}, "Toggle_BasicOrbitDodge")
-
-	local dodgeModeDropdown = combatSection:Dropdown({
-		Name = "Dodge Mode",
-		Options = { "All", "Boss Only" },
-		Default = (basicOrbitDodge.GetMode() == "Boss" and 2) or 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if option == "Boss Only" then
-				basicOrbitDodge.SetMode("Boss")
-			else
-				basicOrbitDodge.SetMode("All")
-			end
-		end),
-	}, "Dropdown_DodgeMode")
-
-	local detectRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Detect Radius",
-		Default = basicOrbitDodge.GetDetectRadius(),
-		Minimum = 5,
-		Maximum = 50,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetDetectRadius(Value)
-		end),
-	}, "Slider_BasicDetectRadius"))
-
-	local dangerMarginSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Danger Margin",
-		Default = basicOrbitDodge.GetDangerRadius(),
-		Minimum = 1,
-		Maximum = 15,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetDangerRadius(Value)
-		end),
-	}, "Slider_BasicDangerMargin"))
-
-	local panicRadiusSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Panic Radius",
-		Default = basicOrbitDodge.GetPanicRadius(),
-		Minimum = 3,
-		Maximum = 30,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetPanicRadius(Value)
-		end),
-	}, "Slider_BasicPanicRadius"))
-
-	local panicCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Panic Cooldown",
-		Default = basicOrbitDodge.GetPanicCooldown(),
-		Minimum = 0.05,
-		Maximum = 1,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetPanicCooldown(Value)
-		end),
-	}, "Slider_BasicPanicCooldown"))
-
-	local flipCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Flip Cooldown",
-		Default = basicOrbitDodge.GetFlipCooldown(),
-		Minimum = 0.05,
-		Maximum = 1,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetFlipCooldown(Value)
-		end),
-	}, "Slider_BasicFlipCooldown"))
-
-	local jumpCooldownSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Dodge Jump Cooldown",
-		Default = basicOrbitDodge.GetJumpCooldown(),
-		Minimum = 0.1,
-		Maximum = 2,
-		DisplayMethod = "Round",
-		Precision = 2,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			basicOrbitDodge.SetJumpCooldown(Value)
-		end),
-	}, "Slider_BasicJumpCooldown"))
-
-	combatSection:Dropdown({
-		Name = "Dodge Preset",
-		Options = basicOrbitDodge.GetPresetNames(),
-		Default = (function()
-			local names = basicOrbitDodge.GetPresetNames()
-			local cur = basicOrbitDodge.GetPreset()
-			for i, n in ipairs(names) do
-				if n == cur then return i end
-			end
-			return 1
-		end)(),
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			basicOrbitDodge.ApplyPreset(option)
-			pcall(function() dodgeModeDropdown:UpdateSelection(basicOrbitDodge.GetMode() == "Boss" and "Boss Only" or "All") end)
-			pcall(function() detectRadiusSlider:UpdateValue(basicOrbitDodge.GetDetectRadius()) end)
-			pcall(function() dangerMarginSlider:UpdateValue(basicOrbitDodge.GetDangerRadius()) end)
-			pcall(function() panicRadiusSlider:UpdateValue(basicOrbitDodge.GetPanicRadius()) end)
-			pcall(function() panicCooldownSlider:UpdateValue(basicOrbitDodge.GetPanicCooldown()) end)
-			pcall(function() flipCooldownSlider:UpdateValue(basicOrbitDodge.GetFlipCooldown()) end)
-			pcall(function() jumpCooldownSlider:UpdateValue(basicOrbitDodge.GetJumpCooldown()) end)
-		end),
-	}, "Dropdown_DodgePreset")
-
-	combatSection:Toggle({
 		Name = "Death Log",
 		Default = false,
 		Callback = autoSave.Wrap(function(state)
@@ -533,51 +407,4 @@ return function(window, tab)
 	}, "Toggle_DeathLog")
 
 	applyFarmModeVisibility()
-
-	--// Auto Start / Retry
-	startSection:Toggle({
-		Name = "Auto Start",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoStart.Toggle(state)
-		end),
-	}, "Toggle_AutoStart")
-
-	startSection:Toggle({
-		Name = "Auto Retry",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoRetry.Toggle(state)
-		end),
-	}, "Toggle_AutoRetry")
-
-	startSection:Button({
-		Name = "Manual Retry",
-		Callback = function()
-			task.spawn(function()
-				autoRetry.RetryNow()
-			end)
-		end,
-	})
-
-	startSection:Toggle({
-		Name = "Retry on Time Low",
-		Default = autoRetry.GetTimeRetryEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoRetry.SetTimeRetryEnabled(state)
-		end),
-	}, "Toggle_RetryTimeLow")
-
-	ui.PatchSliderLoadCallback(startSection:Slider({
-		Name = "Retry Time Threshold",
-		Default = autoRetry.GetTimeRetryThreshold(),
-		Minimum = 5,
-		Maximum = 120,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			autoRetry.SetTimeRetryThreshold(Value)
-		end),
-	}, "Slider_RetryTimeThreshold"))
 end

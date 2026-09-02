@@ -3,6 +3,7 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 --// References
 local UserInputService = services.UserInputService
@@ -13,6 +14,7 @@ local shortcuts = {}
 
 --// Bật/tắt tính năng ẩn: chuột phải kích hoạt combo Q+E.
 local comboEnabled = false
+local inputConnection = nil
 
 function shortcuts.IsMouseComboEnabled()
 	return comboEnabled
@@ -40,7 +42,7 @@ function shortcuts.Init()
 	if shortcuts.inited then return end
 	shortcuts.inited = true
 
-	UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		if input.KeyCode == Enum.KeyCode.R then
 			task.spawn(function()
@@ -58,5 +60,10 @@ function shortcuts.Init()
 		end
 	end)
 end
+
+lifecycle.Register(function()
+	if inputConnection then inputConnection:Disconnect(); inputConnection = nil end
+	shortcuts.inited = false
+end)
 
 return shortcuts

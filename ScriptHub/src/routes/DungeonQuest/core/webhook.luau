@@ -6,6 +6,7 @@
 local macLib = require("@packages/Maclib")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local shared = require("@routes/DungeonQuest/core/shared")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 --// Services
 local HttpService = game:GetService("HttpService")
@@ -20,6 +21,8 @@ local webhook = {}
 local webhookUrl = ""
 local enabled = false
 local connected = false
+local rewardConnection = nil
+local disconnectDungeonWatcher = nil
 
 local pingEnabled = false
 local pingMention = ""
@@ -213,6 +216,7 @@ end
 --// Theo dõi trạng thái lobby/dungeon qua shared (startButton + dungName):
 --// lobby = reset bộ đếm XP, vào dungeon = bắt đầu tính thời gian hoàn thành.
 local function startDungeonWatcher()
+	if disconnectDungeonWatcher then return end
 	local function onLobbyChanged(lobby)
 		if lobby then
 			resetRun()
@@ -221,7 +225,7 @@ local function startDungeonWatcher()
 		end
 	end
 	onLobbyChanged(shared.IsInLobby())
-	shared.OnLobbyChanged(onLobbyChanged)
+	disconnectDungeonWatcher = shared.OnLobbyChanged(onLobbyChanged)
 end
 
 --// Định dạng thời gian hoàn thành (giây -> MM:SS)
@@ -548,7 +552,7 @@ function webhook.Init()
 		return
 	end
 
-	rewardRemote.OnClientEvent:Connect(function(reward)
+	rewardConnection = rewardRemote.OnClientEvent:Connect(function(reward)
 		if not enabled then return end
 
 		ensureXpBefore()
@@ -583,5 +587,11 @@ end
 
 --// Load settings lúc require
 loadSettings()
+
+lifecycle.Register(function()
+	if rewardConnection then rewardConnection:Disconnect(); rewardConnection = nil end
+	if disconnectDungeonWatcher then disconnectDungeonWatcher(); disconnectDungeonWatcher = nil end
+	connected = false
+end)
 
 return webhook

@@ -19,6 +19,7 @@ return function(self)
 
 	--// Imports
 	local macLib = require("@packages/Maclib")
+	local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 	--// Window
 	local window = macLib:Window({
@@ -37,6 +38,13 @@ return function(self)
 
 	--// Đăng ký UI vào registry để unload UI cũ trước mỗi lần execute script mới
 	_G.ScriptHub_UI = window
+	_G.ScriptHub_Cleanup = function()
+		lifecycle.Cleanup()
+	end
+	window.onUnloaded(function()
+		lifecycle.Cleanup()
+		if _G.ScriptHub_UI == window then _G.ScriptHub_UI = nil end
+	end)
 
 	--// Tabs
 	local tabGroup = window:TabGroup()
@@ -80,9 +88,6 @@ return function(self)
 	--// Webhook Discord (thông báo WIN + Reward)
 	local webhook = require("@routes/DungeonQuest/core/webhook")
 	webhook.Init()
-
-	--// Basic Orbit Dodge (tracking 2 loại hazard + safe-node, kế thừa Smart Dodge)
-	require("@routes/DungeonQuest/core/basicOrbitDodge")
 
 	--// ESP Enemy (highlight mob trong dungeon)
 	require("@routes/DungeonQuest/core/enemyEsp")
