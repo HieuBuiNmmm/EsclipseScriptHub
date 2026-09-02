@@ -1,8 +1,9 @@
--- Contextual Auto-Farm settings cho DungeonQuest.
--- Cho phép cấu hình riêng nhóm Auto Farm (Farm Mode, sliders orbit/hover/tele,
--- retarget, maintain-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
+-- Contextual AutoFarm Pathfinder settings (v2) cho DungeonQuest.
+-- Cho phép cấu hình riêng nhóm Auto Farm (Move Speed, Retarget Interval, Skill
+-- Range/Interval/Enabled/Mode, field prefix "Pathfinder...") theo DUNGEON x
+-- LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
 -- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
--- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (shared).
+-- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (autoFarmPathfinder).
 
 --// Imports
 local shared = require("@routes/DungeonQuest/core/shared")
@@ -11,24 +12,19 @@ local macLib = require("@packages/Maclib")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local autoFarmPathfinder = require("@routes/DungeonQuest/core/autoFarmPathfinder")
 
 --// Table
 local contextual = {}
 
---// Metadata field -> get/set trên shared (Auto Farm group)
+--// Metadata field -> get/set trên autoFarmPathfinder (group AutoFarm Pathfinder v2).
 local FIELD_DEFS = {
-	FarmMode = { get = function() return shared.GetFarmMode() end, set = function(v) shared.SetFarmMode(v) end },
-	OrbitRadius = { get = function() return shared.GetOrbitRadius() end, set = function(v) shared.SetOrbitRadius(v) end },
-	OrbitSpeed = { get = function() return shared.GetOrbitSpeed() end, set = function(v) shared.SetOrbitSpeed(v) end },
-	OrbitTeleStep = { get = function() return shared.GetOrbitTeleStep() end, set = function(v) shared.SetOrbitTeleStep(v) end },
-	OrbitHeight = { get = function() return shared.GetOrbitHeight() end, set = function(v) shared.SetOrbitHeight(v) end },
-	HoverHeight = { get = function() return shared.GetHoverHeight() end, set = function(v) shared.SetHoverHeight(v) end },
-	TeleportDistance = { get = function() return shared.GetFarmEngageDistance() end, set = function(v) shared.SetFarmEngageDistance(v) end },
-	AutoRetarget = { get = function() return shared.GetRetargetEnabled() end, set = function(v) shared.SetRetargetEnabled(v) end },
-	RetargetMethod = { get = function() return shared.GetRetargetMethod() end, set = function(v) shared.SetRetargetMethod(v) end },
-	RetargetMode = { get = function() return shared.GetRetargetMode() end, set = function(v) shared.SetRetargetMode(v) end },
-	ReverseOrbitOnRetarget = { get = function() return shared.GetOrbitReverseEnabled() end, set = function(v) shared.SetOrbitReverseEnabled(v) end },
-	MaintainBossHeight = { get = function() return shared.GetMaintainBossHeight() end, set = function(v) shared.SetMaintainBossHeight(v) end },
+	PathfinderMoveSpeed = { get = function() return autoFarmPathfinder.GetMoveSpeed() end, set = function(v) autoFarmPathfinder.SetMoveSpeed(v) end },
+	PathfinderRetargetInterval = { get = function() return autoFarmPathfinder.GetRetargetInterval() end, set = function(v) autoFarmPathfinder.SetRetargetInterval(v) end },
+	PathfinderSkillRange = { get = function() return autoFarmPathfinder.GetSkillRange() end, set = function(v) autoFarmPathfinder.SetSkillRange(v) end },
+	PathfinderSkillInterval = { get = function() return autoFarmPathfinder.GetSkillInterval() end, set = function(v) autoFarmPathfinder.SetSkillInterval(v) end },
+	PathfinderSkillEnabled = { get = function() return autoFarmPathfinder.IsSkillEnabled() end, set = function(v) autoFarmPathfinder.SetSkillEnabled(v) end },
+	PathfinderSkillMode = { get = function() return autoFarmPathfinder.GetSkillMode() end, set = function(v) autoFarmPathfinder.SetSkillMode(v) end },
 }
 
 local DISPLAY_TO_KEY = {
@@ -49,11 +45,12 @@ local KEY_TO_DISPLAY = {
 local data = {}
 local lastDataRef = nil
 local activeConfig = nil
-local configChangedCallback = nil
+local configChangedCallbacks = {}
 
---// Cho phép tab đăng ký callback khi đổi config (để làm mới UI context)
+--// Các tab đăng ký callback khi đổi config (để làm mới UI context). Hỗ trợ nhiều tab.
 function contextual.OnConfigChanged(cb)
-	configChangedCallback = cb
+	if type(cb) ~= "function" then return end
+	table.insert(configChangedCallbacks, cb)
 end
 
 --// Nạp dữ liệu từ config đang chọn. Trả về true nếu vừa đổi config / đổi data context.
@@ -70,8 +67,10 @@ function contextual.ReloadFromConfig()
 	lastDataRef = macData
 	activeConfig = newActive
 
-	if (configChanged or dataChanged) and configChangedCallback then
-		pcall(configChangedCallback, newActive)
+	if (configChanged or dataChanged) and #configChangedCallbacks > 0 then
+		for _, cb in ipairs(configChangedCallbacks) do
+			pcall(cb, newActive)
+		end
 	end
 	return configChanged or dataChanged
 end
@@ -108,7 +107,7 @@ local function ensureContextComplete(dungeon, targetKey)
 end
 
 --// Tự khởi tạo context base cho TOÀN BỘ map x target khi khởi tạo script.
---// Đảm bảo mọi dungeon trong catalog đều có sẵn đủ 12 field (= giá trị global hiện tại)
+--// Đảm bảo mọi dungeon trong catalog đều có sẵn đủ field (= giá trị global hiện tại)
 --// thay vì chỉ tạo khi người dùng bắt đầu chỉnh sửa. Không ghi đè override đã lưu.
 function contextual.SeedAllDefaults()
 	local targets = { "Mob", "Boss1", "Boss2", "Boss3" }
@@ -126,7 +125,7 @@ function contextual.SeedAllDefaults()
 	return seededAny
 end
 
---// Ghi override cho context cụ thể (context luôn đầy đủ 12 field)
+--// Ghi override cho context cụ thể (context luôn đầy đủ tất cả field)
 function contextual.SetField(dungeon, targetKey, field, value)
 	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
 	if not KEY_TO_DISPLAY[targetKey] then return end

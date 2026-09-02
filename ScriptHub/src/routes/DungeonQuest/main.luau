@@ -50,8 +50,7 @@ return function(self)
 	local tabGroup = window:TabGroup()
 	local tabs = {
 		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
-		Farm = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
-		Pathfinder = tabGroup:Tab({ Name = "AutoFarm Pathfinder", Image = "rbxassetid://10734950309" }),
+		Pathfinder = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
 		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
@@ -64,7 +63,6 @@ return function(self)
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local speedTab = require("@routes/DungeonQuest/tabs/Speed/main")
-	local combatTab = require("@routes/DungeonQuest/tabs/Combat/main")
 	local autoFarmPathfinderTab = require("@routes/DungeonQuest/tabs/AutoFarmPathfinder/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local visualTab = require("@routes/DungeonQuest/tabs/Visual/main")
@@ -73,7 +71,6 @@ return function(self)
 	local stateTab = require("@routes/DungeonQuest/tabs/State/main")
 
 	speedTab(window, tabs.Player)
-	combatTab(window, tabs.Farm)
 	autoFarmPathfinderTab(window, tabs.Pathfinder)
 	dungeonTab(window, tabs.Dungeon)
 	visualTab(window, tabs.Visual)
@@ -94,10 +91,6 @@ return function(self)
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	local contextual = require("@routes/DungeonQuest/core/contextual")
-
-	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
-	local deathLog = require("@routes/DungeonQuest/core/deathLog")
-	deathLog.Init()
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	local autoHide = require("@routes/DungeonQuest/core/autoHide")

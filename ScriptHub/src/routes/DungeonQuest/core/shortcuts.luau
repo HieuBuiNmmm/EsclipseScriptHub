@@ -1,4 +1,4 @@
--- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
+-- Phím tắt: chuột phải kích hoạt combo Q+E (toggle enabled qua tab Auto Farm).
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -44,15 +44,7 @@ function shortcuts.Init()
 
 	inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
-		if input.KeyCode == Enum.KeyCode.R then
-			task.spawn(function()
-				shared.TeleportToNearestEnemy()
-			end)
-		elseif input.KeyCode == Enum.KeyCode.C then
-			task.spawn(function()
-				shared.TeleportBehindFarthestEnemy()
-			end)
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
 			--// Ẩn: chuột phải kích hoạt E + Q (chỉ khi toggle bật).
 			if comboEnabled then
 				fireCombo()

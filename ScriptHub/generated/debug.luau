@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-02T00:18:24.101795100+00:00",
+    genDate = "2026-09-02T02:08:36.685401700+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6001,57 +6001,22 @@ return {
 	player = player,
 }
 end function __DIST.e()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
--- speed, skill, và các helper di chuyển farm. Các module chuyên biệt
--- (combat, farm, autoStart...) thao tác lên module này để tránh circular dependency.
+-- speed và các API cho module chuyên biệt (autoFarmPathfinder, webhook, ESP...)
+-- thao tác lên module này để tránh circular dependency.
 
 --// Imports
 
 local services = __DIST.load('d')
-local notifier = __DIST.load('c')
 local lifecycle = __DIST.load('b')
 
 --// References
-local Players = services.Players
-local UserInputService = services.UserInputService
-local RunService = services.RunService
-local VirtualInputManager = services.VirtualInputManager
 local player = services.player
 
 --// Constants
-local FREEZE_TIME = 0.15
-
-local ORBIT_RADIUS = 50
-local ORBIT_HEIGHT = 24
-local ORBIT_SPEED = 40
-
---// Khoảng thời gian (giây) giữa các lần nhảy góc trong farm mode "Orbit Tele".
---// Giữa các nhảy nhân vật vẫn được PivotTo giữ vị trí mới (không ghost), chỉ có
---// góc farmAngle tăng theo bước mỗi khoảng này.
-local ORBIT_TELE_INTERVAL = 0.15
-
-local AUTO_SKILL_INTERVAL = 2.0
 local AUTO_KEY_HOLD_TIME = 0.05
-local SKILL_RANGE = 60
-local SHORTCUT_TELEPORT_HEIGHT = 0
-local SHORTCUT_ORBIT_DURATION = 0.3
-local SHORTCUT_ORBIT_SPEED = 0
-
-local FARM_SCAN_INTERVAL = 0.15
-local FARM_ENGAGE_DISTANCE = 45
-local FARM_APPROACH_SPEED = 90
-local FARM_APPROACH_EPSILON = 1.5
-local HOVER_HEIGHT = ORBIT_HEIGHT
-
---// Bật/tắt chế độ blacklist quái khi chọn mục tiêu (true = bật, false = tắt -> chọn mọi quái)
-local BLACKLIST_ENABLED = true
 
 --// Folder in ReplicatedStorage that contains enemy projectile models for ESP.
 local PROJECTILE_FOLDER = "enemyProjectiles"
-
---// Danh sách tên quái KHÔNG được chọn làm mục tiêu (retarget/ban đầu).
---// Chỉnh sửa trực tiếp tại đây.
---// VD: BLACKLIST_ENEMIES = { "Northern Mage", "Northern Spearman" }
-local BLACKLIST_ENEMIES = {"Northern Warrior"}
 
 local GUI_UPDATE_INTERVAL = 0.5
 
@@ -6065,10 +6030,6 @@ local enabled = false
 local fastSpeed = 50
 local normalSpeed = 16
 
-local teleporting = false
-
-local dodging = false
-
 local dungeonStartTime = nil
 
 --// Boss state (dựa trên GUI bossHealth xuất hiện khi có boss trong room)
@@ -6080,53 +6041,6 @@ local bossCallbacks = {}
 --// khi vào dungeon mới.
 local bossIndex = 0
 local bossIndexCallbacks = {}
-
---// Lưu trạng thái retarget trước khi vào boss để khôi phục khi rời boss
-local retargetSavedDuringBoss = nil
-
---// Maintain orbit height khi đánh boss: giữ cố định độ cao bằng cách bù offset
---// khi boss hạ thấp vị trí (track pos Y của boss)
-local maintainBossHeight = false
-local bossStartY = nil
-
-local farmEnabled = false
-local farmMode = "Orbit"
-local farmTarget = nil
-local farmAngle = 0
-local farmApproaching = false
-local farmOldAutoRotate = true
-local farmRunning = false
-local farmLastSkillTime = 0
-local shortcutOrbitId = 0
-local nearestTeleportDistance = 12
-local farthestTeleportDistance = 12
---// Khoảng cách tele tới phía trước barrier gần nhất (Workspace/dungeon/<room>).
---// Cho phép giá trị ÂM để đổi sang phía bên kia khi hướng tiếp cận bị ngược.
-local barrierTeleportDistance = 10
---// Mã orbit barrier hiện tại để huỷ vòng giữ quỹ đạo cũ khi tele lại.
-local barrierOrbitId = 0
---// Bước góc (độ) mỗi lần tele trong farm mode "Orbit Tele" (real alias là rad sau đó)
-local orbitTeleStepDeg = 15
---// Thời điểm lần nhảy góc gần nhất (điều khiển nhịp ORBIT_TELE_INTERVAL)
-local lastTeleStepTime = 0
-
-local retargetEnabled = false
-local retargetInterval = 5
-local retargetMethod = "Auto"
---// Cách chọn mục tiêu của Auto Retarget: "Nearest" (gần nhất) hoặc "Farthest" (xa nhất)
-local retargetMode = "Nearest"
-local orbitReverseEnabled = false
-local farmOrbitDirection = 1
-local blacklistEnemies = {}
-for _, name in ipairs(BLACKLIST_ENEMIES) do
-	if type(name) == "string" and name ~= "" then
-		table.insert(blacklistEnemies, name)
-	end
-end
-
-local autoSkillEnabled = false
-local autoSkillRunning = false
-local autoSkillMode = "Spam"
 
 local dungeon = nil
 local trackedRooms = {}
@@ -6153,14 +6067,8 @@ local lobbyCallbacks = {}
 
 --// Forward declarations
 local cleanupEnemies
-local getNearestEnemy
-local getFarthestEnemy
 local initializeRooms
 local resetDungeon
-local leaveFarmTarget
-local moveFarmTarget
-local farmTeleportTo
-local fireFarmSkills
 
 --// Respawn hooks (các module khác đăng ký để reset trạng thái khi respawn)
 local respawnCallbacks = {}
@@ -6308,7 +6216,6 @@ resetDungeon = function()
 	trackedEnemies = {}
 	enemyCount = 0
 	pendingModels = {}
-	if farmTarget then leaveFarmTarget() end
 	dungeon = nil
 end
 
@@ -6332,449 +6239,6 @@ cleanupEnemies = function()
 	end
 end
 
-local function isBlacklisted(name)
-	if not BLACKLIST_ENABLED then return false end
-	for _, n in ipairs(blacklistEnemies) do
-		if n == name then return true end
-	end
-	return false
-end
-
-getNearestEnemy = function()
-	local character = player.Character
-	if not character or not character.Parent then return nil end
-	local playerRoot = character:FindFirstChild("HumanoidRootPart")
-	if not playerRoot then return nil end
-
-	local best, bestDistance = nil, math.huge
-	local fallback, fallbackDistance = nil, math.huge
-	for enemy, data in pairs(trackedEnemies) do
-		if enemy and enemy.Parent and data and data.Root and data.Root.Parent then
-			local distance = (playerRoot.Position - data.Root.Position).Magnitude
-			if isBlacklisted(enemy.Name) then
-				--// blacklist: chỉ nhắm khi không còn enemy bình thường nào tồn tại
-				if distance < fallbackDistance then
-					fallbackDistance = distance
-					fallback = { Model = enemy, Root = data.Root, Distance = distance }
-				end
-			elseif distance < bestDistance then
-				bestDistance = distance
-				best = { Model = enemy, Root = data.Root, Distance = distance }
-			end
-		end
-	end
-	--// hết enemy bình thường -> chấp nhận đánh enemy trong blacklist
-	if not best then return fallback end
-	return best
-end
-
-getFarthestEnemy = function()
-	local character = player.Character
-	if not character or not character.Parent then return nil end
-	local playerRoot = character:FindFirstChild("HumanoidRootPart")
-	if not playerRoot then return nil end
-
-	local best, bestDistance = nil, -1
-	local fallback, fallbackDistance = nil, -1
-	for enemy, data in pairs(trackedEnemies) do
-		if enemy and enemy.Parent and data and data.Root and data.Root.Parent then
-			local distance = (playerRoot.Position - data.Root.Position).Magnitude
-			if isBlacklisted(enemy.Name) then
-				--// blacklist: chỉ nhắm khi không còn enemy bình thường nào tồn tại
-				if distance > fallbackDistance then
-					fallbackDistance = distance
-					fallback = { Model = enemy, Root = data.Root, Distance = distance }
-				end
-			elseif distance > bestDistance then
-				bestDistance = distance
-				best = { Model = enemy, Root = data.Root, Distance = distance }
-			end
-		end
-	end
-	--// hết enemy bình thường -> chấp nhận enemy trong blacklist
-	if not best then return fallback end
-	return best
-end
-
---// Skill helpers
-local function getLockedSkillTarget()
-	if farmEnabled and farmTarget and trackedEnemies[farmTarget] then
-		local data = trackedEnemies[farmTarget]
-		if data.Root and data.Root.Parent then return data.Root end
-	end
-	return nil
-end
-
-local function canFireSkill()
-	if autoSkillMode ~= "Target Only" then return true end
-	local root = getLockedSkillTarget()
-	if not root then return false end
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	if not playerRoot then return false end
-	return (playerRoot.Position - root.Position).Magnitude <= SKILL_RANGE
-end
-
---// Farm movement helpers
-leaveFarmTarget = function()
-	if not farmTarget then return end
-	farmTarget = nil
-	farmApproaching = false
-	if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
-end
-
-local function getOrbitPosition(center, angle)
-	local height = ORBIT_HEIGHT
-	if bossActive and center then
-		if maintainBossHeight then
-			if not bossStartY then bossStartY = center.Y end
-			local drop = bossStartY - center.Y
-			if drop > 0 then height = height + drop end
-		end
-	end
-	return center + Vector3.new(math.cos(angle) * ORBIT_RADIUS, height, math.sin(angle) * ORBIT_RADIUS)
-end
-
-moveFarmTarget = function(deltaTime)
-	if dodging then return end
-	local enemy = farmTarget
-	if not enemy or not trackedEnemies[enemy] or not trackedEnemies[enemy].Root or not trackedEnemies[enemy].Root.Parent then
-		leaveFarmTarget()
-		return
-	end
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	if not character or not playerRoot or not playerRoot.Parent then leaveFarmTarget(); return end
-	if not character.PrimaryPart then character.PrimaryPart = playerRoot end
-	if not character.PrimaryPart then leaveFarmTarget(); return end
-
-	local center = trackedEnemies[enemy].Root.Position
-	local targetPosition
-	if farmMode == "Hover" then
-		farmApproaching = false
-		targetPosition = center + Vector3.new(0, HOVER_HEIGHT, 0)
-	elseif farmMode == "Orbit Tele" then
-		--// Giả lập quỹ đạo bằng tele rời rạc: không move mượt (speed quỹ đạo = 0),
-		--// chỉ tăng góc theo từng bước cố định mỗi ORBIT_TELE_INTERVAL. Nhưng vẫn
-		--// PivotTo mỗi frame (như orbit thường) để giữ vị trí thật, tránh ghost.
-		if teleporting then return end
-		if not farmApproaching then
-			if os.clock() - lastTeleStepTime >= ORBIT_TELE_INTERVAL then
-				farmAngle = (farmAngle + farmOrbitDirection * math.rad(orbitTeleStepDeg)) % (math.pi * 2)
-				lastTeleStepTime = os.clock()
-			end
-		end
-		targetPosition = getOrbitPosition(center, farmAngle)
-		if farmApproaching then
-			local toPoint = targetPosition - playerRoot.Position
-			local dist = toPoint.Magnitude
-			if dist <= FARM_APPROACH_EPSILON then
-				farmApproaching = false
-			else
-				targetPosition = playerRoot.Position + toPoint.Unit * math.min(dist, FARM_APPROACH_SPEED * deltaTime)
-			end
-		end
-	else
-		farmAngle = (farmAngle + farmOrbitDirection * math.rad(ORBIT_SPEED) * deltaTime) % (math.pi * 2)
-		targetPosition = getOrbitPosition(center, farmAngle)
-		if farmApproaching then
-			local toPoint = targetPosition - playerRoot.Position
-			local dist = toPoint.Magnitude
-			if dist <= FARM_APPROACH_EPSILON then
-				farmApproaching = false
-			else
-				targetPosition = playerRoot.Position + toPoint.Unit * math.min(dist, FARM_APPROACH_SPEED * deltaTime)
-			end
-		end
-	end
-
-	character:PivotTo(CFrame.lookAt(targetPosition, center))
-	playerRoot.AssemblyLinearVelocity = Vector3.zero
-	playerRoot.AssemblyAngularVelocity = Vector3.zero
-end
-
---// Teleport tới vị trí orbit dùng khi Auto Farm nhận mục tiêu mới. Phím tắt
---// cũng dùng chính phép dịch chuyển này để giữ hành vi nhất quán với Auto Farm.
-local function teleportToFarmOrbit(enemy, restoreAutoRotate, targetPosition)
-	if teleporting then return end
-	local character = player.Character
-	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-	local currentHumanoid = character and character:FindFirstChild("Humanoid")
-	local data = trackedEnemies[enemy]
-	if not character or not playerRoot or not currentHumanoid or not data or not data.Root or not data.Root.Parent then return false end
-
-	local enemyRoot = data.Root
-	local oldAnchored, oldAutoRotate = playerRoot.Anchored, currentHumanoid.AutoRotate
-	if not character.PrimaryPart then character.PrimaryPart = playerRoot end
-	teleporting = true
-
-	local s, err = pcall(function()
-		currentHumanoid.AutoRotate = false
-		playerRoot.Anchored = true
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		targetPosition = targetPosition or getOrbitPosition(enemyRoot.Position, farmAngle)
-
-		character:PivotTo(CFrame.lookAt(targetPosition, enemyRoot.Position))
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		task.wait(FREEZE_TIME)
-
-		if playerRoot and playerRoot.Parent and currentHumanoid and currentHumanoid.Parent then
-			playerRoot.Anchored = oldAnchored
-			if restoreAutoRotate then currentHumanoid.AutoRotate = oldAutoRotate end
-		end
-	end)
-	if not s then warn("[Teleport] orbit teleport error:", tostring(err)) end
-	teleporting = false
-	return s
-end
-
-farmTeleportTo = function(enemy)
-	teleportToFarmOrbit(enemy, false)
-end
-
---// Giữ mục tiêu theo đúng nhịp Orbit / Orbit Tele của Auto Farm trong một
---// khoảng ngắn sau khi dùng phím tắt. Không đụng tới farmTarget nên không
---// làm thay đổi trạng thái Auto Farm đang chạy.
-local function maintainShortcutOrbit(enemy, orbitId, angle, radius, height, duration, speed)
-	local deadline = os.clock() + duration
-	local previousTime = os.clock()
-
-	while orbitId == shortcutOrbitId and os.clock() < deadline do
-		local data = trackedEnemies[enemy]
-		local character = player.Character
-		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if not data or not data.Root or not data.Root.Parent or not character or not playerRoot or not playerRoot.Parent then
-			return
-		end
-		if not character.PrimaryPart then character.PrimaryPart = playerRoot end
-		if not character.PrimaryPart then return end
-
-		local now = os.clock()
-		local deltaTime = now - previousTime
-		previousTime = now
-		local center = data.Root.Position
-		local targetPosition
-
-		angle = (angle + math.rad(speed) * deltaTime) % (math.pi * 2)
-		targetPosition = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
-
-		character:PivotTo(CFrame.lookAt(targetPosition, center))
-		playerRoot.AssemblyLinearVelocity = Vector3.zero
-		playerRoot.AssemblyAngularVelocity = Vector3.zero
-		RunService.Heartbeat:Wait()
-	end
-end
-
-fireFarmSkills = function()
-	if not canFireSkill() then return end
-	if os.clock() - farmLastSkillTime < AUTO_SKILL_INTERVAL then return end
-	if autoSkillMode == "Target Only" then task.wait(0.1) end
-	farmLastSkillTime = os.clock()
-	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-	task.delay(AUTO_KEY_HOLD_TIME, function()
-		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-	end)
-end
-
---// Teleport phím tắt dùng cùng điểm orbit ban đầu của Auto Farm.
-local function getShortcutTeleportPosition(enemyRoot, playerRoot, mode, distance, height)
-	local direction
-	if mode == "Behind" then
-		direction = -enemyRoot.CFrame.LookVector
-	else
-		direction = playerRoot.Position - enemyRoot.Position
-	end
-
-	direction = Vector3.new(direction.X, 0, direction.Z)
-	if direction.Magnitude < 0.01 then direction = Vector3.new(0, 0, -1) end
-	direction = direction.Unit
-	local angle = math.atan2(direction.Z, direction.X)
-	local position = enemyRoot.Position + Vector3.new(direction.X * distance, height, direction.Z * distance)
-	return position, angle
-end
-
-local function teleportToSelectedEnemy(selector, mode, distance, height, orbitDuration, orbitSpeed)
-	if teleporting then return end
-
-	local s, err = pcall(function()
-		if shared.IsInLobby() then return end
-		if not dungeon and not initializeRooms() then return end
-		cleanupEnemies()
-
-		local target = selector()
-		if not target then
-			notifier.Notify("Teleport", "No enemy found.", 3)
-			return
-		end
-
-		local character = player.Character
-		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if not playerRoot then return end
-		local position, angle = getShortcutTeleportPosition(target.Root, playerRoot, mode, distance, height)
-
-		if teleportToFarmOrbit(target.Model, true, position) then
-			notifier.Notify("Teleport", "Teleported to " .. target.Model.Name, 2)
-			shortcutOrbitId += 1
-			local orbitId = shortcutOrbitId
-			task.spawn(function()
-				maintainShortcutOrbit(target.Model, orbitId, angle, distance, height, orbitDuration, orbitSpeed)
-			end)
-		end
-	end)
-	if not s then warn("[Teleport] shortcut error:", tostring(err)) end
-end
-
-function shared.TeleportToNearestEnemy()
-	teleportToSelectedEnemy(getNearestEnemy, "Nearest", nearestTeleportDistance, SHORTCUT_TELEPORT_HEIGHT, SHORTCUT_ORBIT_DURATION, SHORTCUT_ORBIT_SPEED)
-end
-
-function shared.TeleportBehindFarthestEnemy()
-	teleportToSelectedEnemy(getFarthestEnemy, "Behind", farthestTeleportDistance, SHORTCUT_TELEPORT_HEIGHT, SHORTCUT_ORBIT_DURATION, SHORTCUT_ORBIT_SPEED)
-end
-
---// ---- Barrier teleport (Workspace/dungeon/<room>) ----
---// Tìm root part của 1 barrier (Part hoặc Model) theo tên chứa "barrier".
-local function getBarrierRoot(obj)
-	if obj:IsA("BasePart") then return obj end
-	if obj:IsA("Model") then
-		local root = obj:FindFirstChild("HumanoidRootPart")
-		if root and root:IsA("BasePart") then return root end
-		if obj.PrimaryPart and obj.PrimaryPart:IsA("BasePart") then return obj.PrimaryPart end
-		for _, d in ipairs(obj:GetDescendants()) do
-			if d:IsA("BasePart") then return d end
-		end
-	end
-	return nil
-end
-
---// Barrier gần player nhất trong toàn bộ dungeon (mọi room). Trả về root part.
-local function getNearestBarrier(playerPos)
-	if not dungeon then return nil end
-	local nearest, nearestDist = nil, math.huge
-	for _, desc in ipairs(dungeon:GetDescendants()) do
-		if string.find(string.lower(desc.Name), "barrier", 1, true) then
-			local root = getBarrierRoot(desc)
-			if root then
-				local d = (root.Position - playerPos).Magnitude
-				if d < nearestDist then
-					nearestDist = d
-					nearest = root
-				end
-			end
-		end
-	end
-	return nearest
-end
-
---// Giữ player tại vị trí orbit quanh barrier trong thời gian ngắn, cùng kiểu
---// với maintainShortcutOrbit của phím tắt R/C (tele vào điểm rồi giữ/hover).
-local function maintainBarrierOrbit(orbitId, center, angle, radius, height, duration, speed)
-	local deadline = os.clock() + duration
-	local previousTime = os.clock()
-
-	while orbitId == barrierOrbitId and os.clock() < deadline do
-		local character = player.Character
-		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if not character or not playerRoot or not playerRoot.Parent then return end
-		if not character.PrimaryPart then character.PrimaryPart = playerRoot end
-		if not character.PrimaryPart then return end
-
-		local now = os.clock()
-		local deltaTime = now - previousTime
-		previousTime = now
-
-		angle = (angle + math.rad(speed) * deltaTime) % (math.pi * 2)
-		local targetPosition = center + Vector3.new(math.cos(angle) * radius, height, math.sin(angle) * radius)
-
-		character:PivotTo(CFrame.lookAt(targetPosition, center))
-		playerRoot.AssemblyLinearVelocity = Vector3.zero
-		playerRoot.AssemblyAngularVelocity = Vector3.zero
-		RunService.Heartbeat:Wait()
-	end
-end
-
---// Tele player tới phía trước barrier gần nhất, cùng kiểu teleport với phím tắt R/C
---// (dùng chung phép PivotTo vào điểm orbit + giữ quỹ đạo ngắn).
---// barrierTeleportDistance cho phép giá trị ÂM để tele sang phía bên kia khi bị ngược.
-function shared.TeleportFrontOfNearestBarrier()
-	if teleporting then return end
-	teleporting = true
-
-	local s, err = pcall(function()
-		if shared.IsInLobby() then return end
-		if not dungeon and not initializeRooms() then return end
-
-		local character = player.Character
-		local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
-		if not character or not playerRoot or not playerRoot.Parent then return end
-		if character.PrimaryPart then character.PrimaryPart = playerRoot end
-
-		local barrierRoot = getNearestBarrier(playerRoot.Position)
-		if not barrierRoot then
-			notifier.Notify("Teleport", "No barrier found.", 3)
-			return
-		end
-
-		local center = barrierRoot.Position
-		--// "Phía trước" = theo hướng facing cố định của barrier (LookVector), để cùng 1
-		--// barrier luôn tele về đúng 1 vị trí bất kể player tiếp cận từ hướng nào.
-		--// Giá trị distance âm sẽ đảo hướng để tele sang phía bên kia khi bị ngược.
-		local forward = barrierRoot.CFrame.LookVector
-		forward = Vector3.new(forward.X, 0, forward.Z)
-		if forward.Magnitude < 0.01 then forward = Vector3.new(0, 0, -1) end
-		forward = forward.Unit
-
-		local sign = barrierTeleportDistance < 0 and -1 or 1
-		local radius = math.abs(barrierTeleportDistance)
-		if radius < 1 then radius = 1 end
-		local height = SHORTCUT_TELEPORT_HEIGHT
-
-		--// Hướng lệch thực tế từ barrier tới điểm bắt đầu (tính theo dấu distance).
-		local offsetDir = Vector3.new(forward.X * sign, 0, forward.Z * sign)
-		local angle = math.atan2(offsetDir.Z, offsetDir.X)
-		local targetPosition = center + offsetDir * radius
-
-		local humanoid = character:FindFirstChild("Humanoid")
-		local oldAutoRotate = humanoid and humanoid.AutoRotate
-		local oldAnchored = playerRoot.Anchored
-		if humanoid then humanoid.AutoRotate = false end
-		playerRoot.Anchored = true
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		character:PivotTo(CFrame.lookAt(targetPosition, center))
-		playerRoot.AssemblyLinearVelocity, playerRoot.AssemblyAngularVelocity = Vector3.zero, Vector3.zero
-
-		task.wait(FREEZE_TIME)
-
-		if playerRoot and playerRoot.Parent and humanoid and humanoid.Parent then
-			playerRoot.Anchored = oldAnchored
-			humanoid.AutoRotate = oldAutoRotate
-		end
-
-		barrierOrbitId += 1
-		local orbitId = barrierOrbitId
-		task.spawn(function()
-			maintainBarrierOrbit(orbitId, center, angle, radius, height, SHORTCUT_ORBIT_DURATION, SHORTCUT_ORBIT_SPEED)
-		end)
-
-		notifier.Notify("Teleport", "Teleported in front of barrier (" .. barrierRoot.Name .. ")", 2)
-	end)
-	if not s then warn("[Teleport] barrier error:", tostring(err)) end
-	teleporting = false
-end
-
-function shared.GetBarrierTeleportDistance()
-	return barrierTeleportDistance
-end
-
-function shared.SetBarrierTeleportDistance(value)
-	barrierTeleportDistance = tonumber(value) or barrierTeleportDistance
-end
-
 --// Speed state (Speed tab thao tác lên đây)
 function shared.SetFastSpeed(value)
 	fastSpeed = value
@@ -6796,22 +6260,6 @@ end
 
 function shared.GetFastSpeed()
 	return fastSpeed
-end
-
-function shared.GetNearestTeleportDistance()
-	return nearestTeleportDistance
-end
-
-function shared.SetNearestTeleportDistance(value)
-	nearestTeleportDistance = tonumber(value) or nearestTeleportDistance
-end
-
-function shared.GetFarthestTeleportDistance()
-	return farthestTeleportDistance
-end
-
-function shared.SetFarthestTeleportDistance(value)
-	farthestTeleportDistance = tonumber(value) or farthestTeleportDistance
 end
 
 --// Humanoid setup
@@ -6838,103 +6286,6 @@ function shared.SetHumanoid(character)
 	if enabled then humanoid.WalkSpeed = fastSpeed end
 end
 
---// Farm state accessors
-function shared.IsFarmEnabled()
-	return farmEnabled
-end
-
-function shared.GetFarmMode()
-	return farmMode
-end
-
-function shared.SetFarmMode(mode)
-	farmMode = mode
-end
-
-function shared.GetFarmRunning()
-	return farmRunning
-end
-
-function shared.SetFarmRunning(value)
-	farmRunning = value
-end
-
-function shared.SetFarmEnabled(value)
-	farmEnabled = value
-end
-
-function shared.GetRetargetEnabled()
-	return retargetEnabled
-end
-
-function shared.SetRetargetEnabled(value)
-	retargetEnabled = value == true
-end
-
-function shared.GetRetargetInterval()
-	return retargetInterval
-end
-
-function shared.SetRetargetInterval(value)
-	retargetInterval = tonumber(value) or retargetInterval
-end
-
-function shared.GetRetargetMethod()
-	return retargetMethod
-end
-
-function shared.SetRetargetMethod(value)
-	retargetMethod = value or "Auto"
-end
-
-function shared.GetRetargetMode()
-	return retargetMode
-end
-
-function shared.SetRetargetMode(value)
-	if value == "Nearest" or value == "Farthest" then retargetMode = value end
-end
-
-function shared.GetOrbitReverseEnabled()
-	return orbitReverseEnabled
-end
-
-function shared.SetOrbitReverseEnabled(value)
-	orbitReverseEnabled = value == true
-end
-
-function shared.GetFarmOrbitDirection()
-	return farmOrbitDirection
-end
-
-function shared.GetOrbitAngle()
-	return farmAngle
-end
-
-function shared.SetOrbitAngle(value)
-	farmAngle = (((value % (math.pi * 2)) + math.pi * 2) % (math.pi * 2))
-end
-
---// Vị trí tâm + độ cao orbit hiện tại (để tele skip)
-function shared.GetOrbitCenter()
-	if not farmTarget or not trackedEnemies[farmTarget] then return nil end
-	local data = trackedEnemies[farmTarget]
-	if data.Root and data.Root.Parent then return data.Root.Position end
-	return nil
-end
-
-function shared.GetOrbitHeight()
-	return ORBIT_HEIGHT
-end
-
-function shared.SetDodging(value)
-	dodging = value == true
-end
-
-function shared.IsDodging()
-	return dodging
-end
-
 function shared.GetDungeonStartTime()
 	return dungeonStartTime
 end
@@ -6948,128 +6299,14 @@ function shared.GetDungeonElapsed()
 	return os.clock() - dungeonStartTime
 end
 
-function shared.ClearFarmTarget()
-	leaveFarmTarget()
-end
-
---// Farm internals (farm.luau sử dụng)
+--// Ensures dungeon tracking is ready (autoFarmPathfinder dùng).
 function shared.ReadyDungeon()
 	if not dungeon and not initializeRooms() then return false end
 	return true
 end
 
-function shared.FarmPickTarget()
-	cleanupEnemies()
-
-	local function pickBest()
-		return (retargetMode == "Farthest") and getFarthestEnemy() or getNearestEnemy()
-	end
-
-	local pick
-	if farmTarget then
-		local cur = trackedEnemies[farmTarget]
-		if cur and cur.Root and cur.Root.Parent then
-			--// Realtime retarget: mục tiêu hiện tại còn sống, mỗi lần quét so ngay
-			--// với đối tượng TỐT NHẤT hiện có (Nearest/Farthest theo mode). Không chờ
-			--// interval — xuất hiện đối tượng hơn liền switch qua nó.
-			if retargetEnabled then
-				pick = pickBest()
-				if pick and pick.Model ~= farmTarget then
-					if orbitReverseEnabled then farmOrbitDirection = -farmOrbitDirection end
-					leaveFarmTarget()
-				else
-					return true
-				end
-			else
-				return true
-			end
-		end
-	end
-	if farmTarget then return true end
-	pick = pickBest()
-	if pick and pick.Model and pick.Root and pick.Root.Parent then
-		farmTarget = pick.Model
-		if humanoid and humanoid.Parent then
-			farmOldAutoRotate = humanoid.AutoRotate
-			humanoid.AutoRotate = false
-		end
-		if retargetMethod == "Tele" then
-			farmTeleportTo(farmTarget)
-			farmApproaching = false
-		elseif retargetMethod == "Tween" then
-			farmApproaching = true
-		else
-			--// "Auto": tele khi còn quá xa (chưa trong phạm vi engage), còn lại tiếp cận.
-			if pick.Distance > FARM_ENGAGE_DISTANCE then
-				farmTeleportTo(farmTarget)
-				farmApproaching = false
-			else
-				farmApproaching = true
-			end
-		end
-		return true
-	end
-	if not dungeon then initializeRooms() end
-	return false
-end
-
-function shared.FarmStep(deltaTime)
-	if not inLobby and farmEnabled and not teleporting then moveFarmTarget(deltaTime) end
-end
-
-function shared.FarmFireSkills()
-	if farmTarget and trackedEnemies[farmTarget] then fireFarmSkills() end
-end
-
-function shared.CanFireSkill()
-	return canFireSkill()
-end
-
-function shared.FarmTargetAlive()
-	local data = trackedEnemies[farmTarget]
-	return farmTarget and farmTarget.Parent and data and data.Root and data.Root.Parent
-end
-
---// Vị trí farm target hiện tại (boss/đối tượng farm) để dodge giữ hướng nhìn.
---// Trả về Vector3 hoặc nil nếu không có.
-function shared.GetFarmTargetPosition()
-	if not farmTarget or not trackedEnemies[farmTarget] then return nil end
-	local data = trackedEnemies[farmTarget]
-	if data.Root and data.Root.Parent then return data.Root.Position end
-	return nil
-end
-
 function shared.GetHumanoid()
 	return humanoid
-end
-
-function shared.RestoreAutoRotate()
-	if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
-end
-
---// Auto skill state
-function shared.IsAutoSkillEnabled()
-	return autoSkillEnabled
-end
-
-function shared.SetAutoSkillEnabled(value)
-	autoSkillEnabled = value
-end
-
-function shared.GetAutoSkillRunning()
-	return autoSkillRunning
-end
-
-function shared.SetAutoSkillRunning(value)
-	autoSkillRunning = value
-end
-
-function shared.SetAutoSkillMode(mode)
-	autoSkillMode = mode
-end
-
-function shared.GetAutoSkillMode()
-	return autoSkillMode
 end
 
 --// Trả về danh sách tên các loại enemy có trong màn (dungeon + đang track)
@@ -7129,100 +6366,8 @@ function shared.GetEnemyProjectileNames()
 	return names
 end
 
---// Tunable constants accessors (UI tabs cập nhật qua đây)
-function shared.GetSkillInterval()
-	return AUTO_SKILL_INTERVAL
-end
-
-function shared.SetSkillInterval(value)
-	AUTO_SKILL_INTERVAL = value
-end
-
-function shared.GetSkillRange()
-	return SKILL_RANGE
-end
-
-function shared.SetSkillRange(value)
-	SKILL_RANGE = value
-end
-
 function shared.GetKeyHoldTime()
 	return AUTO_KEY_HOLD_TIME
-end
-
-function shared.GetOrbitRadius()
-	return ORBIT_RADIUS
-end
-
-function shared.SetOrbitRadius(value)
-	ORBIT_RADIUS = value
-end
-
-function shared.GetOrbitSpeed()
-	return ORBIT_SPEED
-end
-
-function shared.SetOrbitSpeed(value)
-	ORBIT_SPEED = value
-end
-
-function shared.GetOrbitTeleStep()
-	return orbitTeleStepDeg
-end
-
-function shared.SetOrbitTeleStep(value)
-	orbitTeleStepDeg = value
-end
-
-function shared.GetOrbitHeight()
-	return ORBIT_HEIGHT
-end
-
-function shared.SetOrbitHeight(value)
-	ORBIT_HEIGHT = value
-end
-
---// Y hiện tại của boss đang farm (để bù offset khi boss hạ độ cao)
-local function currentFarmTargetY()
-	local data = farmTarget and trackedEnemies[farmTarget]
-	if data and data.Root and data.Root.Parent then return data.Root.Position.Y end
-	return nil
-end
-
---// Maintain orbit height khi đánh boss
-function shared.GetMaintainBossHeight()
-	return maintainBossHeight
-end
-
-function shared.SetMaintainBossHeight(value)
-	maintainBossHeight = value == true
-	if maintainBossHeight then
-		if bossActive then
-			bossStartY = currentFarmTargetY() or bossStartY
-		end
-	else
-		bossStartY = nil
-	end
-end
-
-function shared.GetHoverHeight()
-	return HOVER_HEIGHT
-end
-
-function shared.SetHoverHeight(value)
-	HOVER_HEIGHT = value
-end
-
-function shared.GetFarmEngageDistance()
-	return FARM_ENGAGE_DISTANCE
-end
-
-function shared.SetFarmEngageDistance(value)
-	FARM_ENGAGE_DISTANCE = value
-end
-
-function shared.GetFarmScanInterval()
-	return FARM_SCAN_INTERVAL
 end
 
 --// Initialization: character hiện tại + listeners
@@ -7239,8 +6384,6 @@ end
 if player then
 	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
 		local ok, err = pcall(function()
-			farmTarget = nil; farmAngle = 0; farmApproaching = false; farmOldAutoRotate = true
-			if humanoid and humanoid.Parent then humanoid.AutoRotate = farmOldAutoRotate end
 			if not character then return end
 			shared.SetHumanoid(character)
 			connectSpeedListener()
@@ -7252,20 +6395,6 @@ if player then
 		if not ok then warn("[Shared] respawn handler error:", tostring(err)) end
 	end))
 end
-
-local lastHeartbeatWarn = 0
-trackCleanupConnection(RunService.Heartbeat:Connect(function(deltaTime)
-	local ok, err = pcall(function()
-		shared.FarmStep(deltaTime)
-	end)
-	if not ok then
-		local now = os.clock()
-		if now - lastHeartbeatWarn > 5 then
-			lastHeartbeatWarn = now
-			warn("[Heartbeat] error:", tostring(err))
-		end
-	end
-end))
 
 --// Dungeon watcher
 task.spawn(function()
@@ -7389,7 +6518,7 @@ function shared.GetCurrentBossIndex()
 	return bossIndex
 end
 
---// Xác định loại mục tiêu đang farm để áp setting combat theo context:
+--// Xác định loại mục tiêu đang đánh để áp setting theo context:
 --// "Mob" (quái thường) hoặc "Boss1"/"Boss2"/"Boss3" theo thứ tự boss hiện tại.
 function shared.GetCombatTargetKey()
 	if not bossActive then return "Mob" end
@@ -7454,15 +6583,6 @@ local function setBossActive(active)
 		for i = #bossIndexCallbacks, 1, -1 do
 			pcall(bossIndexCallbacks[i], bossIndex)
 		end
-		retargetSavedDuringBoss = retargetEnabled
-		retargetEnabled = false
-		if maintainBossHeight then bossStartY = currentFarmTargetY() end
-	else
-		if retargetSavedDuringBoss ~= nil then
-			retargetEnabled = retargetSavedDuringBoss
-			retargetSavedDuringBoss = nil
-		end
-		bossStartY = nil
 	end
 	for i = #bossCallbacks, 1, -1 do
 		pcall(bossCallbacks[i], bossActive)
@@ -7603,1524 +6723,7 @@ function autoSave.Wrap(callback)
 end
 
 return autoSave
-end function __DIST.h()-- Auto Farm cho DungeonQuest (Orbit / Hover). Chạy vòng lặp săn kẻ địch gần nhất.
-
---// Imports
-
-local shared = __DIST.load('e')
-local notifier = __DIST.load('c')
-
---// Table
-local farm = {}
-
---// Methods
-function farm.Start()
-	if shared.GetFarmRunning() then return end
-	shared.SetFarmRunning(true)
-	shared.SetFarmEnabled(true)
-
-	local lastWarnClock = 0
-
-	task.spawn(function()
-		--// Chờ rời lobby (đã vào dungeon) trước khi scan để không abort sớm khi
-		--// bật Auto Farm ngay từ màn hình chờ. Timeout 30s cho load chậm.
-		local waited = 0
-		while shared.IsInLobby() and shared.IsFarmEnabled() do
-			task.wait(0.5)
-			waited = waited + 0.5
-			if waited >= 30 then
-				shared.SetFarmEnabled(false)
-				shared.SetFarmRunning(false)
-				notifier.Notify("Auto Farm", "Still in lobby — aborted. Toggle again inside the dungeon.", 4)
-				return
-			end
-		end
-		if not shared.IsFarmEnabled() then
-			shared.SetFarmRunning(false)
-			return
-		end
-
-		if not shared.ReadyDungeon() then
-			shared.SetFarmEnabled(false)
-			shared.SetFarmRunning(false)
-			notifier.Notify("Auto Farm", "Failed to detect dungeon.", 3)
-			return
-		end
-
-		while shared.IsFarmEnabled() do
-			local humanoid = shared.GetHumanoid()
-			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then
-				task.wait(shared.GetFarmScanInterval())
-				continue
-			end
-
-			local ok, err = pcall(function()
-				if not shared.FarmPickTarget() then
-					task.wait(0.5)
-				else
-					if not shared.FarmTargetAlive() then
-						shared.ClearFarmTarget()
-					else
-						shared.FarmFireSkills()
-					end
-				end
-			end)
-			if not ok and os.clock() - lastWarnClock > 5 then
-				lastWarnClock = os.clock()
-				warn("[AutoFarm] error:", tostring(err))
-			end
-			if not shared.IsFarmEnabled() then break end
-			task.wait(shared.GetFarmScanInterval())
-		end
-
-		shared.ClearFarmTarget()
-		shared.SetFarmRunning(false)
-	end)
-end
-
-function farm.Stop()
-	shared.SetFarmEnabled(false)
-	shared.ClearFarmTarget()
-	shared.RestoreAutoRotate()
-end
-
-function farm.Toggle(state)
-	if state then
-		farm.Start()
-		notifier.Notify("Auto Farm", "Auto Farm Started", 2)
-	else
-		farm.Stop()
-		notifier.Notify("Auto Farm", "Auto Farm Stopped", 2)
-	end
-end
-
-return farm
-end function __DIST.i()-- Tab Speed (DungeonQuest).
-
---// Imports
-
-local shared = __DIST.load('e')
-local ui = __DIST.load('f')
-local autoSave = __DIST.load('g')
-local farm = __DIST.load('h')
-local macLib = __DIST.load('a')
-
-return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "Movement Speed" })
-
-	section:Toggle({
-		Name = "Fast Speed",
-		Default = shared.IsSpeedEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			shared.SetSpeedEnabled(state)
-		end),
-	}, "Toggle_FastSpeed")
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Custom Fast Speed",
-		Default = shared.GetFastSpeed(),
-		Minimum = 16,
-		Maximum = 24,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			shared.SetFastSpeed(Value)
-		end),
-	}, "Slider_FastSpeed"))
-
-	section:Header({ Name = "Teleport" })
-
-	section:Button({
-		Name = "Teleport Nearest (Key: R)",
-		Callback = function()
-			task.spawn(function()
-				shared.TeleportToNearestEnemy()
-			end)
-		end,
-	})
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "R Teleport Distance",
-		Default = shared.GetNearestTeleportDistance(),
-		Minimum = 1,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			shared.SetNearestTeleportDistance(value)
-		end),
-	}, "Slider_TeleportNearestDistance"))
-
-	section:Button({
-		Name = "Teleport Behind Farthest (Key: C)",
-		Callback = function()
-			task.spawn(function()
-				shared.TeleportBehindFarthestEnemy()
-			end)
-		end,
-	})
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "C Teleport Distance",
-		Default = shared.GetFarthestTeleportDistance(),
-		Minimum = 1,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			shared.SetFarthestTeleportDistance(value)
-		end),
-	}, "Slider_TeleportFarthestDistance"))
-
-	section:Keybind({
-		Name = "Teleport Front of Barrier",
-		Default = Enum.KeyCode.B,
-		Callback = function()
-			task.spawn(function()
-				shared.TeleportFrontOfNearestBarrier()
-			end)
-		end,
-	}, "Keybind_TeleportBarrier")
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Barrier Teleport Distance",
-		Default = shared.GetBarrierTeleportDistance(),
-		Minimum = -100,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			shared.SetBarrierTeleportDistance(value)
-		end),
-	}, "Slider_TeleportBarrierDistance"))
-
-	--// Auto Farm toggle qua phím tắt
-	section:Header({ Name = "Auto Farm" })
-
-	local function toggleAutoFarmFromKey()
-		local newState = not shared.IsFarmEnabled()
-		--// Đồng bộ UI toggle Auto Farm ở tab Combat (nếu có) - drive farm qua callback của nó
-		local opt = macLib.Options and macLib.Options["Toggle_AutoFarm"]
-		if opt and opt.UpdateState then
-			opt:UpdateState(newState)
-		else
-			farm.Toggle(newState)
-		end
-	end
-
-	section:Keybind({
-		Name = "Toggle Auto Farm",
-		Default = Enum.KeyCode.X,
-		Callback = function()
-			toggleAutoFarmFromKey()
-		end,
-	}, "Keybind_AutoFarm")
-
-end
-end function __DIST.j()-- Auto Skill (Q+E) cho DungeonQuest. Quản lý vòng lặp bấm phím, dựa trên shared state.
-
---// Imports
-
-local services = __DIST.load('d')
-local shared = __DIST.load('e')
-local notifier = __DIST.load('c')
-
---// References
-local VirtualInputManager = services.VirtualInputManager
-
---// Table
-local combat = {}
-
---// Methods
-function combat.StartAutoSkill()
-	if shared.GetAutoSkillRunning() then return end
-	shared.SetAutoSkillRunning(true)
-
-	local lastWarnClock = 0
-
-	task.spawn(function()
-		while shared.IsAutoSkillEnabled() do
-			local humanoid = shared.GetHumanoid()
-			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then
-				task.wait(shared.GetSkillInterval())
-				continue
-			end
-
-			--// Chỉ bấm skill khi đang ở trong dungeon (không spam Q+E ngoài lobby)
-			if shared.IsInLobby() then
-				task.wait(shared.GetSkillInterval())
-				continue
-			end
-
-			local ok, err = pcall(function()
-				if shared.CanFireSkill() then
-					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
-					VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-					task.wait(shared.GetKeyHoldTime())
-					VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
-					VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-				else
-					task.wait(0.2)
-				end
-			end)
-			if not ok and os.clock() - lastWarnClock > 5 then
-				lastWarnClock = os.clock()
-				warn("[AutoSkill] error:", tostring(err))
-			end
-			if not shared.IsAutoSkillEnabled() then break end
-			task.wait(shared.GetSkillInterval())
-		end
-		shared.SetAutoSkillRunning(false)
-	end)
-end
-
-function combat.StopAutoSkill()
-	shared.SetAutoSkillEnabled(false)
-end
-
-function combat.ToggleAutoSkill(state)
-	shared.SetAutoSkillEnabled(state)
-	if state then
-		combat.StartAutoSkill()
-		notifier.Notify("Auto Skill", "Auto Q+E Started", 2)
-	else
-		combat.StopAutoSkill()
-		notifier.Notify("Auto Skill", "Auto Q+E Stopped", 2)
-	end
-end
-
-return combat
-end function __DIST.k()-- Death Logger v2 cho DungeonQuest (executor-level hook).
--- Mục tiêu: biết CHÍNH XÁC nguyên nhân chết thay vì đoán theo vị trí.
---
--- Chiến lược phát hiện (theo độ chính xác giảm dần):
---   1. Hook `Humanoid.TakeDamage` (global, cài 1 lần ở Init). Mỗi đòn damage
---      trúng nhân vật local đều ghi lại {thời điểm, amount, source, vị trí}.
---      Đòn cuối cùng trong KILL_WINDOW (giây) trước lúc chết = killing blow.
---   2. Đọc engine props `LastHurtPart` / `LastHurtByHumanoid` + `lastCombatant`
---      (legacy) NGAY tại thời điểm chết — bắt được damage do server đè trực
---      tiếp Health mà không đi qua TakeDamage (vd: killplane, fall damage).
---   3. Quét object nghi ngờ quanh điểm chết CHỈ làm tham khảo (ưu tiên thấp).
-
---// Imports
-
-local services = __DIST.load('d')
-local lifecycle = __DIST.load('b')
-local player = services.player
-
---// Configuration
---// Tổng số damage record giữ lại (ring buffer, giữ lịch sử gần nhất)
-local MAX_RECORDS = 64
---// Bán kính quét các object nghi ngờ quanh điểm chết (chỉ tính trong bán kính này)
-local LOG_RADIUS = 25
---// Số candidate top hiển thị trong danh sách tham khảo
-local TOP_N = 3
---// Khoảng (giây) giữa lúc chết và đòn TakeDamage gần nhất để coi là "killing blow"
-local KILL_WINDOW = 2.0
-
---// Các pattern tên nghi ngờ là hazard/skill (khớp chuỗi con, không phân biệt hoa thường)
-local CANDIDATE_PATTERNS = {
-	"firstBoss", "CrissCross", "Spike", "Hitbox", "hitBox",
-	"Skill", "Orb", "Spear", "Poison", "Arrow", "Projectile",
-}
-
---// Table
-local deathLog = {}
-
---// State
-local enabled = false
-local hookInstalled = false
-local characterAddedConnection = nil
-local diedConnection = nil
-local damageRecords = {}
-local lastWarnClock = 0
-
---// Wrap closure để hook (một số executor bắt buộc C closure trên hook C function)
-local wrapClosure = nil
-if type(newcclosure) == "function" then
-	wrapClosure = newcclosure
-else
-	wrapClosure = function(f) return f end
-end
-
-local function getLocalHumanoid()
-	if not player then return nil end
-	local character = player.Character
-	if not character or not character.Parent then return nil end
-	return character:FindFirstChildOfClass("Humanoid")
-end
-
---// Tìm tên player sở hữu `source` (PvP) bằng cách đi lên chuỗi ancestor
-local function resolveOwnerName(source)
-	if not source then return nil end
-	local ok, name = pcall(function()
-		local Players = services.Players
-		local ancestor = source
-		local guard = 0
-		while ancestor and ancestor.Parent and guard < 8 do
-			local plr = Players:GetPlayerFromCharacter(ancestor)
-			if plr then return plr.Name end
-			ancestor = ancestor.Parent
-			guard += 1
-		end
-		return nil
-	end)
-	return ok and name or nil
-end
-
---// Liệt kê nguồn gây damage dưới dạng chuỗi (name + owner/tool + class + path)
-local function describeSource(source)
-	if not source then return "nil" end
-	local name = nil
-	local owner = nil
-	local toolName = nil
-	local cls = nil
-	local path = nil
-	pcall(function() name = source.Name end)
-	pcall(function() cls = source.ClassName end)
-	pcall(function()
-		local ancestor = source.Parent
-		local guard = 0
-		while ancestor and ancestor.Parent and guard < 8 do
-			if not toolName and ancestor:IsA("Tool") then toolName = ancestor.Name end
-			ancestor = ancestor.Parent
-			guard += 1
-		end
-	end)
-	pcall(function() path = source:GetFullName() end)
-	owner = resolveOwnerName(source)
-
-	local out = name and name ~= "" and name or "?"
-	if toolName then out = out .. " / " .. toolName end
-	if owner then out = out .. " (by " .. owner .. ")" end
-	out = out .. " [" .. (cls or "?") .. "]"
-	if path and path ~= "" then out = out .. " {" .. path .. "}" end
-	return out
-end
-
---// Tạo record damage từ hook. Trả về rec để hook cập nhật healthAfter sau damage.
-local function makeRecord(victim, amount, source)
-	if type(amount) ~= "number" then return nil end
-	local rec = {
-		time = os.clock(),
-		amount = amount,
-		healthAfter = nil,
-		source = source,
-		victimPos = nil,
-		sourcePos = nil,
-		dist = nil,
-	}
-	if victim and victim.Parent then
-		pcall(function()
-			local root = victim.Parent:FindFirstChild("HumanoidRootPart")
-			if root and root:IsA("BasePart") then rec.victimPos = root.Position end
-		end)
-	end
-	if source then
-		pcall(function()
-			if source:IsA("BasePart") then
-				rec.sourcePos = source.Position
-			elseif source:IsA("Model") then
-				local p = source.PrimaryPart
-				if p and p:IsA("BasePart") then rec.sourcePos = p.Position end
-			end
-		end)
-		if rec.sourcePos and rec.victimPos then
-			rec.dist = (rec.sourcePos - rec.victimPos).Magnitude
-		end
-	end
-
-	if #damageRecords >= MAX_RECORDS then
-		table.remove(damageRecords, 1)
-	end
-	table.insert(damageRecords, rec)
-	return rec
-end
-
---// Cài hook `TakeDamage` GLOBAL cho mọi Humanoid, chỉ record khi victim là ta.
---// Đã hook thì giữ nguyên qua các lần respawn (character mới vẫn dùng chung method).
-local function installTakeDamageHook()
-	if hookInstalled then return true end
-	if type(hookfunction) ~= "function" then return false end
-
-	local ok = pcall(function()
-		local prototype = Instance.new("Humanoid")
-		local original = prototype.TakeDamage
-		hookInstalled = hookfunction(original, wrapClosure(function(self, ...)
-			if enabled and self and self == getLocalHumanoid() then
-				local args = {...}
-				local rec = makeRecord(self, args[1], args[2])
-				local results = { original(self, ...) }
-				if rec then pcall(function() rec.healthAfter = self.Health end) end
-				return unpack(results)
-			end
-			return original(self, ...)
-		end)) ~= nil
-		prototype:Destroy()
-	end)
-
-	if not ok then hookInstalled = false end
-	if not hookInstalled then
-		local now = os.clock()
-		if now - lastWarnClock > 5 then
-			lastWarnClock = now
-			warn("[DeathLog] Hook TakeDamage failed -> chỉ dùng engine props + scan tham khảo.")
-		end
-	end
-	return hookInstalled
-end
-
---// Đọc engine props xác định kẻ đã đánh phát cuối (chạy sát lúc chết)
-local function engineKillerInfo(humanoid)
-	local info = {}
-	if not humanoid then return info end
-	pcall(function()
-		local v = humanoid.lastCombatant
-		if v then
-			if v.Parent then info.lastCombatant = v.Parent.Name else info.lastCombatant = tostring(v) end
-		end
-	end)
-	pcall(function()
-		local v = humanoid.LastHurtByHumanoid
-		if v and v.Parent then info.lastHurtByHumanoid = v.Parent.Name else info.lastHurtByHumanoid = tostring(v) end
-	end)
-	pcall(function()
-		local v = humanoid.LastHurtPart
-		if v then info.lastHurtPart = v.Name end
-	end)
-	return info
-end
-
---// Các pattern/hàm scan vật thể quanh điểm chết (tham khảo)
-local function matchesCandidate(name)
-	if not name then return false end
-	local lower = name:lower()
-	for _, p in ipairs(CANDIDATE_PATTERNS) do
-		if lower:find(p:lower(), 1, true) then return true end
-	end
-	return false
-end
-
-local function describeObject(obj)
-	local kind = nil
-	local name = nil
-	local rootPos = nil
-	pcall(function()
-		kind = obj:IsA("BasePart") and "Part" or obj.ClassName
-		name = obj.Name
-	end)
-	if obj:IsA("BasePart") then
-		rootPos = obj.Position
-	elseif obj:IsA("Model") then
-		local p = obj.PrimaryPart
-		if p and p:IsA("BasePart") then
-			rootPos = p.Position
-		else
-			for _, c in ipairs(obj:GetChildren()) do
-				if c:IsA("BasePart") then rootPos = c.Position; break end
-			end
-		end
-	end
-	return name, kind, rootPos
-end
-
-local function scanCandidates(deathPos)
-	local Workspace = game:GetService("Workspace")
-	local hits = {}
-	for _, child in ipairs(Workspace:GetChildren()) do
-		if not child:IsA("Folder") and matchesCandidate(child.Name) then
-			local name, kind, pos = describeObject(child)
-			if pos then
-				table.insert(hits, { name = name, kind = kind, dist = (pos - deathPos).Magnitude, lvl = 0 })
-			end
-		end
-	end
-	table.sort(hits, function(a, b) return a.dist < b.dist end)
-	return hits
-end
-
-local function formatRecord(deathTime, rec)
-	local amount = rec.amount or 0
-	local ago = deathTime - (rec.time or deathTime)
-	local dist = rec.dist and string.format("dist=%.1f", rec.dist) or "dist=?"
-	local healthAfter = rec.healthAfter and string.format("remaining=%.1f", rec.healthAfter) or "remaining=?"
-	return string.format("[DEATH-LOG]   | %-8.1f HP | %7.2fs before death | %s | %s | %s",
-		amount, ago, dist, healthAfter, describeSource(rec.source))
-end
-
-local function logDeath(deathPos, humanoid)
-	if not enabled then return end
-	local deathTime = os.clock()
-
-	print("[DEATH-LOG] ========================================")
-	print("[DEATH-LOG] PLAYER DIED")
-	print("[DEATH-LOG]   position: " .. tostring(deathPos))
-
-	--// 1) Engine props: nguồn chính xác nhất nếu server tự đè Health
-	local info = engineKillerInfo(humanoid)
-	print("[DEATH-LOG] engine killsource:")
-	print("[DEATH-LOG]   lastHurtPart      = " .. tostring(info.lastHurtPart or "none"))
-	print("[DEATH-LOG]   lastHurtByHumanoid = " .. tostring(info.lastHurtByHumanoid or "none"))
-	print("[DEATH-LOG]   lastCombatant     = " .. tostring(info.lastCombatant or "none"))
-
-	--// 2) Hook records: killing blow
-	local lastRec = damageRecords[#damageRecords]
-	local hasRecent = lastRec and (deathTime - lastRec.time) <= KILL_WINDOW
-	if hasRecent then
-		print("[DEATH-LOG] >> KILLING BLOW (last TakeDamage within " .. KILL_WINDOW .. "s):")
-		print("[DEATH-LOG]    " .. formatRecord(deathTime, lastRec))
-	elseif #damageRecords > 0 then
-		print("[DEATH-LOG] >> No TakeDamage hit within " .. KILL_WINDOW
-			.. "s of death -> có thể do fall / killplane / damage do server đặt trực tiếp Health"
-			.. " (xem engine killsource bên trên).")
-	else
-		print("[DEATH-LOG] >> No TakeDamage records captured (game không damage qua client).")
-	end
-
-	--// Liệt kê 3 hit gần nhất (để thấy chuỗi damage trước khi chết)
-	local count = math.min(#damageRecords, 3)
-	if count > 0 then
-		print("[DEATH-LOG] last " .. count .. " damage hits:")
-		for i = #damageRecords - count + 1, #damageRecords do
-			print(formatRecord(deathTime, damageRecords[i]))
-		end
-	end
-
-	--// 3) Tham khảo hazard quanh điểm chết (ưu tiên thấp)
-	local hits = scanCandidates(deathPos)
-	local inRange = {}
-	for _, h in ipairs(hits) do
-		if h.dist <= LOG_RADIUS then table.insert(inRange, h) end
-	end
-	local n = math.min(#inRange, TOP_N)
-	if n > 0 then
-		print("[DEATH-LOG] reference hazard near death (khoảng " .. LOG_RADIUS .. " stud):")
-		for i = 1, n do
-			local h = inRange[i]
-			print(string.format("[DEATH-LOG]   %d) %-40s %-10s dist=%.1f", i, h.name, h.kind, h.dist))
-		end
-	end
-	print("[DEATH-LOG] ========================================")
-end
-
-function deathLog.Init()
-	installTakeDamageHook()
-
-	local function bindCharacter(character)
-		if not character or not character.Parent then return end
-		local hum = character:FindFirstChildOfClass("Humanoid")
-		if not hum then
-			task.spawn(function()
-				local h = character:WaitForChild("Humanoid", 10)
-				if h then bindCharacter(character) end
-			end)
-			return
-		end
-		if diedConnection then
-			pcall(function() diedConnection:Disconnect() end)
-			diedConnection = nil
-		end
-		diedConnection = hum.Died:Connect(function()
-			local root = character:FindFirstChild("HumanoidRootPart")
-			logDeath(root and root.Position or Vector3.zero, hum)
-		end)
-	end
-
-	if player then
-		local initial = player.Character
-		if initial then
-			bindCharacter(initial)
-		end
-		characterAddedConnection = player.CharacterAdded:Connect(bindCharacter)
-	end
-end
-
-function deathLog.Toggle(state)
-	enabled = state == true
-	if enabled then
-		installTakeDamageHook()
-	end
-end
-
-function deathLog.IsEnabled()
-	return enabled
-end
-
-lifecycle.Register(function()
-	enabled = false
-	if diedConnection then pcall(function() diedConnection:Disconnect() end); diedConnection = nil end
-	if characterAddedConnection then pcall(function() characterAddedConnection:Disconnect() end); characterAddedConnection = nil end
-end)
-
-return deathLog
-end function __DIST.l()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
--- Map thường: fetch động qua remote getDungeonStats (có cache).
--- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
-
---// Data
-
-local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
-
-local DUNGEONS = {
-	"Desert Temple",
-	"Winter Outpost",
-	"Pirate Island",
-	"King's Castle",
-	"The Underworld",
-	"Samurai Palace",
-	"The Canals",
-	"Ghastly Harbor",
-	"Steampunk Sewers",
-	"Orbital Outpost",
-	"Volcanic Chambers",
-	"Aquatic Temple",
-	"Enchanted Forest",
-	"Egg Island",
-	"Krampus",
-	"Tutorial Dungeon",
-}
-
-local SPECIAL_DUNGEONS = {
-	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
-	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
-	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
-}
-
---// Table
-local dungeonCatalog = {}
-
---// Cache
-local statsCache = {}
-local dynamicDungeons = nil
-
---// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
-local HttpService = game:GetService("HttpService")
-local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
-
-local function persistMapList(list)
-	if not (isfile and writefile and makefolder and isfolder) then return end
-	pcall(function()
-		if not isfolder("Maclib") then makefolder("Maclib") end
-	end)
-	pcall(function()
-		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
-	end)
-end
-
-local function loadPersistedMapList()
-	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
-	local ok, data = pcall(function()
-		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
-	end)
-	if not ok or typeof(data) ~= "table" then return nil end
-
-	local list = {}
-	for _, name in ipairs(data) do
-		if type(name) == "string" and #name > 0 then
-			table.insert(list, name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
-local function mergeDungeonLists(primary)
-	local seen = {}
-	local merged = {}
-	for _, name in ipairs(primary or {}) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	for _, name in ipairs(DUNGEONS) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	return merged
-end
-
---// Helpers
-local function findScrollingFrame()
-	local player = game:GetService("Players").LocalPlayer
-	if not player then return nil end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then return nil end
-	local queueGui = playerGui:FindFirstChild("queueGui")
-	if not queueGui then return nil end
-	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
-	if not chooseDungeon then return nil end
-	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
-	if not backgroundFillLeft then return nil end
-	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
-end
-
-local function collectDungeonsFromUi()
-	local scrollingFrame = findScrollingFrame()
-	if not scrollingFrame then return nil end
-
-	local list = {}
-	for _, child in ipairs(scrollingFrame:GetChildren()) do
-		if child:IsA("ImageLabel") and #child.Name > 0 then
-			table.insert(list, child.Name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
---// Methods
-function dungeonCatalog.GetDungeons()
-	if dynamicDungeons then return dynamicDungeons end
-
-	local uiList = collectDungeonsFromUi()
-	if uiList then
-		local merged = mergeDungeonLists(uiList)
-		dynamicDungeons = merged
-		persistMapList(merged)
-		return merged
-	end
-
-	local persisted = loadPersistedMapList()
-	if persisted then
-		local merged = mergeDungeonLists(persisted)
-		dynamicDungeons = merged
-		return merged
-	end
-
-	return DUNGEONS
-end
-
-function dungeonCatalog.RefreshDungeons()
-	dynamicDungeons = nil
-	return dungeonCatalog.GetDungeons()
-end
-
-function dungeonCatalog.GetDungeonStats(name)
-	if type(name) ~= "string" or #name == 0 then return nil end
-	if statsCache[name] ~= nil then return statsCache[name] end
-
-	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
-	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
-	if not getStats then return nil end
-
-	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
-	if ok and typeof(result) == "table" then
-		statsCache[name] = result
-		return result
-	end
-	return nil
-end
-
-function dungeonCatalog.GetAllowedDifficulties(name)
-	if type(name) ~= "string" then return DIFFICULTIES end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.Difficulties end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	local allowed = {}
-	if stats then
-		for _, difficulty in ipairs(DIFFICULTIES) do
-			if stats[difficulty] then table.insert(allowed, difficulty) end
-		end
-	end
-	if #allowed > 0 then return allowed end
-	return DIFFICULTIES
-end
-
-function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
-	if type(difficulty) ~= "string" then return false end
-	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
-		if option == difficulty then return true end
-	end
-	return false
-end
-
-function dungeonCatalog.GetLevelReq(name, difficulty)
-	if type(name) ~= "string" then return 0 end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.LevelReq or 0 end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	if stats and type(difficulty) == "string" and stats[difficulty] then
-		return tonumber(stats[difficulty].levelReq) or 0
-	end
-	return 0
-end
-
---// Table
-dungeonCatalog.DUNGEONS = DUNGEONS
-dungeonCatalog.DIFFICULTIES = DIFFICULTIES
-
-return dungeonCatalog end function __DIST.m()-- Contextual Auto-Farm settings cho DungeonQuest.
--- Cho phép cấu hình riêng nhóm Auto Farm (Farm Mode, sliders orbit/hover/tele,
--- retarget, maintain-height) theo DUNGEON x LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
--- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
--- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (shared).
-
---// Imports
-
-local shared = __DIST.load('e')
-local notifier = __DIST.load('c')
-local macLib = __DIST.load('a')
-local autoSave = __DIST.load('g')
-local dungeonCatalog = __DIST.load('l')
-local lifecycle = __DIST.load('b')
-
---// Table
-local contextual = {}
-
---// Metadata field -> get/set trên shared (Auto Farm group)
-local FIELD_DEFS = {
-	FarmMode = { get = function() return shared.GetFarmMode() end, set = function(v) shared.SetFarmMode(v) end },
-	OrbitRadius = { get = function() return shared.GetOrbitRadius() end, set = function(v) shared.SetOrbitRadius(v) end },
-	OrbitSpeed = { get = function() return shared.GetOrbitSpeed() end, set = function(v) shared.SetOrbitSpeed(v) end },
-	OrbitTeleStep = { get = function() return shared.GetOrbitTeleStep() end, set = function(v) shared.SetOrbitTeleStep(v) end },
-	OrbitHeight = { get = function() return shared.GetOrbitHeight() end, set = function(v) shared.SetOrbitHeight(v) end },
-	HoverHeight = { get = function() return shared.GetHoverHeight() end, set = function(v) shared.SetHoverHeight(v) end },
-	TeleportDistance = { get = function() return shared.GetFarmEngageDistance() end, set = function(v) shared.SetFarmEngageDistance(v) end },
-	AutoRetarget = { get = function() return shared.GetRetargetEnabled() end, set = function(v) shared.SetRetargetEnabled(v) end },
-	RetargetMethod = { get = function() return shared.GetRetargetMethod() end, set = function(v) shared.SetRetargetMethod(v) end },
-	RetargetMode = { get = function() return shared.GetRetargetMode() end, set = function(v) shared.SetRetargetMode(v) end },
-	ReverseOrbitOnRetarget = { get = function() return shared.GetOrbitReverseEnabled() end, set = function(v) shared.SetOrbitReverseEnabled(v) end },
-	MaintainBossHeight = { get = function() return shared.GetMaintainBossHeight() end, set = function(v) shared.SetMaintainBossHeight(v) end },
-}
-
-local DISPLAY_TO_KEY = {
-	["Normal"] = "Mob",
-	["Boss 1"] = "Boss1",
-	["Boss 2"] = "Boss2",
-	["Boss 3"] = "Boss3",
-}
-local KEY_TO_DISPLAY = {
-	["Mob"] = "Normal",
-	["Boss1"] = "Boss 1",
-	["Boss2"] = "Boss 2",
-	["Boss3"] = "Boss 3",
-}
-
---// Storage: data[dungeon][target][field] = value
---// Sống trong config đang chọn (nhúng vào file config .json qua MacLib.contextData)
-local data = {}
-local lastDataRef = nil
-local activeConfig = nil
-local configChangedCallback = nil
-
---// Cho phép tab đăng ký callback khi đổi config (để làm mới UI context)
-function contextual.OnConfigChanged(cb)
-	configChangedCallback = cb
-end
-
---// Nạp dữ liệu từ config đang chọn. Trả về true nếu vừa đổi config / đổi data context.
-function contextual.ReloadFromConfig()
-	local macData = macLib.contextData or {}
-	local newActive = autoSave.GetActive()
-
-	local configChanged = newActive ~= activeConfig
-	--// MacLib:LoadConfig tạo bảng contextData MỚI -> phát hiện khi data vừa được nạp (kể cả
-	--// khi tên config không đổi, vd autoload) để refresh UI + re-apply context.
-	local dataChanged = macData ~= lastDataRef
-
-	data = macData
-	lastDataRef = macData
-	activeConfig = newActive
-
-	if (configChanged or dataChanged) and configChangedCallback then
-		pcall(configChangedCallback, newActive)
-	end
-	return configChanged or dataChanged
-end
-
---// Đồng bộ dữ liệu lên MacLib để mỗi lần save config là lưu kèm contextData
-local function bindMacLib()
-	macLib.contextData = data
-end
-
---// Lưu dữ liệu vào config đang chọn
-local function persist()
-	bindMacLib()
-	autoSave.SaveNow()
-end
-
---// Đảm bảo context có đầy đủ tất cả field (điền mặc định = global fallback nếu thiếu)
---// Trả về true nếu có field được khởi tạo mới.
-local function ensureContextComplete(dungeon, targetKey)
-	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
-	if not KEY_TO_DISPLAY[targetKey] then return end
-
-	data[dungeon] = data[dungeon] or {}
-	data[dungeon][targetKey] = data[dungeon][targetKey] or {}
-	local ctx = data[dungeon][targetKey]
-
-	local changed = false
-	for f in pairs(FIELD_DEFS) do
-		if ctx[f] == nil then
-			ctx[f] = FIELD_DEFS[f].get()
-			changed = true
-		end
-	end
-	return changed
-end
-
---// Tự khởi tạo context base cho TOÀN BỘ map x target khi khởi tạo script.
---// Đảm bảo mọi dungeon trong catalog đều có sẵn đủ 12 field (= giá trị global hiện tại)
---// thay vì chỉ tạo khi người dùng bắt đầu chỉnh sửa. Không ghi đè override đã lưu.
-function contextual.SeedAllDefaults()
-	local targets = { "Mob", "Boss1", "Boss2", "Boss3" }
-	local seededAny = false
-	for _, dungeon in ipairs(dungeonCatalog.GetDungeons()) do
-		for _, targetKey in ipairs(targets) do
-			if ensureContextComplete(dungeon, targetKey) then
-				seededAny = true
-			end
-		end
-	end
-	if seededAny then
-		persist()
-	end
-	return seededAny
-end
-
---// Ghi override cho context cụ thể (context luôn đầy đủ 12 field)
-function contextual.SetField(dungeon, targetKey, field, value)
-	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
-	if not KEY_TO_DISPLAY[targetKey] then return end
-	if not FIELD_DEFS[field] then return end
-
-	ensureContextComplete(dungeon, targetKey)
-	data[dungeon][targetKey][field] = value
-	persist()
-end
-
---// Xóa hết override của 1 context (về global)
-function contextual.ClearContext(dungeon, targetKey)
-	if type(dungeon) ~= "string" or #dungeon == 0 then return end
-	if data[dungeon] and data[dungeon][targetKey] then
-		data[dungeon][targetKey] = nil
-		if next(data[dungeon]) == nil then data[dungeon] = nil end
-		persist()
-	end
-end
-
---// Đọc giá trị 1 field CỦA context (override nếu có, ngược lại global hiện tại)
-function contextual.GetField(dungeon, targetKey, field)
-	local def = FIELD_DEFS[field]
-	if not def then return nil end
-	--// Ngoài dungeon (tên nil/rỗng) -> không có context -> dùng global hiện tại
-	if type(dungeon) == "string" and #dungeon > 0 then
-		local ctx = data[dungeon] and data[dungeon][targetKey]
-		if ctx and ctx[field] ~= nil then return ctx[field] end
-	end
-	return def.get()
-end
-
---// Đọc BỘ giá trị của 1 context (đã fallback global)
-function contextual.GetContext(dungeon, targetKey)
-	local out = {}
-	for field in pairs(FIELD_DEFS) do
-		out[field] = contextual.GetField(dungeon, targetKey, field)
-	end
-	return out
-end
-
---// Áp bộ giá trị của 1 context vào shared (để farm dùng)
-function contextual.ApplyContext(dungeon, targetKey)
-	local ctx = contextual.GetContext(dungeon, targetKey)
-	for field, def in pairs(FIELD_DEFS) do
-		def.set(ctx[field])
-	end
-end
-
---// Áp context HIỆN TẠI (dungeon đang chơi + mục tiêu đang farm) lên shared.
-function contextual.ApplyCurrent()
-	local dungeon = shared.GetCurrentDungeonName()
-	local targetKey = shared.GetCombatTargetKey()
-	contextual.ApplyContext(dungeon, targetKey)
-	return dungeon, targetKey
-end
-
---// Metadata
-function contextual.GetFields()
-	local out = {}
-	for field in pairs(FIELD_DEFS) do table.insert(out, field) end
-	return out
-end
-
-function contextual.GetTargets()
-	local out = {}
-	for _, key in ipairs({ "Mob", "Boss1", "Boss2", "Boss3" }) do
-		table.insert(out, { Key = key, Display = KEY_TO_DISPLAY[key] })
-	end
-	return out
-end
-
-function contextual.GetDisplayForTarget(key)
-	return KEY_TO_DISPLAY[key]
-end
-
---// Auto-switch watcher: lắng nghe dungeon/boss đổi -> áp context hiện tại + thông báo.
-local lastApplied = nil
-local lastDungeon = nil
-local function findAndApply(force)
-	local dungeon = shared.GetCurrentDungeonName()
-	local targetKey = shared.GetCombatTargetKey()
-
-	--// Rời dungeon hoặc chưa vào -> reset cache để lần vào lại được áp dụng lại context
-	if not dungeon then
-		lastDungeon = nil
-		lastApplied = nil
-		return
-	end
-
-	--// Đảm bảo áp lại khi cùng dungeon cùng target (vd vừa vào lại dungeon)
-	if not force and dungeon == lastDungeon and targetKey == lastApplied then return end
-
-	contextual.ApplyContext(dungeon, targetKey)
-
-	if targetKey ~= "Mob" then
-		notifier.Notify("Auto Farm Context", dungeon .. " - " .. KEY_TO_DISPLAY[targetKey], 2)
-	end
-	lastApplied = targetKey
-	lastDungeon = dungeon
-end
-
-function contextual.Init()
-	contextual.ReloadFromConfig()
-	contextual.SeedAllDefaults()
-	bindMacLib()
-
-	shared.OnDungeonNameChanged(function() findAndApply(false) end)
-	shared.OnBossIndexChanged(function() findAndApply(false) end)
-	shared.OnBossActiveChanged(function() findAndApply(false) end)
-
-	task.spawn(function()
-		while lifecycle.IsActive() do
-			task.wait(0.5)
-			--// Đổi config -> nạp lại dữ liệu context của config mới (+ re-apply)
-			if contextual.ReloadFromConfig() then
-				findAndApply(true)
-			end
-			findAndApply(false)
-		end
-	end)
-end
-
-return contextual
-end function __DIST.n()-- Tab Auto Farm (DungeonQuest): Farm and Combat.
-
---// Imports
-
-local macLib = __DIST.load('a')
-local shared = __DIST.load('e')
-local ui = __DIST.load('f')
-local combat = __DIST.load('j')
-local farm = __DIST.load('h')
-local autoSave = __DIST.load('g')
-local deathLog = __DIST.load('k')
-local contextual = __DIST.load('m')
-
-return function(window, tab)
-	--// Sections
-	local farmSection = tab:Section({ Side = "Left" })
-	local combatSection = tab:Section({ Side = "Right" })
-
-	farmSection:Header({ Name = "Auto Farm" })
-	combatSection:Header({ Name = "Combat" })
-
-	--// Farm (nhóm Auto Farm: per-context theo dungeon x target)
-	local autoFarmToggle = farmSection:Toggle({
-		Name = "Auto Farm",
-		Default = shared.IsFarmEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			farm.Toggle(state)
-		end),
-	}, "Toggle_AutoFarm")
-
-	--// Auto Farm Context (per dungeon x per mob/boss)
-	farmSection:Header({ Name = "Auto Farm Context" })
-
-	local activeCtxLabel = farmSection:Label({ Text = "" })
-	local function updateActiveCtxLabel()
-		local dungeon = shared.GetCurrentDungeonName()
-		local targetKey = shared.GetCombatTargetKey()
-		activeCtxLabel:UpdateName("Active: <font color='rgb(120,200,255)'>" .. (dungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(targetKey))
-	end
-
-	local editDungeon = shared.GetCurrentDungeonName()
-	local editTarget = "Mob"
-
-	local isSyncing = false
-	local applyFarmModeVisibility
-	local refreshContextControls
-	local setEditControlsVisible
-	local editCtxLabel
-	local farmModeDropdown
-	local orbitRadiusSlider
-	local orbitSpeedSlider
-	local orbitTeleStepSlider
-	local orbitHeightSlider
-	local maintainBossHeightToggle
-	local hoverHeightSlider
-	local teleportDistanceSlider
-	local autoRetargetToggle
-	local retargetMethodDropdown
-	local retargetModeDropdown
-	local reverseOrbitToggle
-	local resetCtxButton
-
-	local function isActiveContext()
-		return editDungeon == shared.GetCurrentDungeonName() and editTarget == shared.GetCombatTargetKey()
-	end
-
-	local editTargetDropdown = farmSection:Dropdown({
-		Name = "Edit Target",
-		Options = { "Normal", "Boss 1", "Boss 2", "Boss 3" },
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			local map = { ["Normal"] = "Mob", ["Boss 1"] = "Boss1", ["Boss 2"] = "Boss2", ["Boss 3"] = "Boss3" }
-			editTarget = map[option] or "Mob"
-			refreshContextControls()
-		end),
-	}, "Dropdown_FarmTarget")
-
-	--// Nút Reset dễ ấn nhầm, đổi sang cơ chế 2 bước: click lần 1 -> arm "Confirm?",
-	--// click lần 2 trong thời hạn -> mới thực sự reset. Tự disarm sau ARM_TIMEOUT
-	--// hoặc khi đổi context.
-	local resetArmed = false
-	local resetDisarmTimer = nil
-	local RESET_NAME = "Reset Context to Global"
-	local RESET_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Reset?</font>"
-	local RESET_TIMEOUT = 3
-	local function disarmReset()
-		if not resetArmed then return end
-		resetArmed = false
-		if resetDisarmTimer then task.cancel(resetDisarmTimer); resetDisarmTimer = nil end
-		pcall(function() resetCtxButton:UpdateName(RESET_NAME) end)
-	end
-
-	resetCtxButton = farmSection:Button({
-		Name = RESET_NAME,
-		Callback = autoSave.Wrap(function()
-			if not resetArmed then
-				resetArmed = true
-				if resetDisarmTimer then task.cancel(resetDisarmTimer) end
-				resetDisarmTimer = task.delay(RESET_TIMEOUT, disarmReset)
-				pcall(function() resetCtxButton:UpdateName(RESET_CONFIRM_NAME) end)
-				return
-			end
-			disarmReset()
-			contextual.ClearContext(editDungeon, editTarget)
-			refreshContextControls()
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	})
-
-	editCtxLabel = farmSection:Label({ Text = "" })
-
-	farmModeDropdown = farmSection:Dropdown({
-		Name = "Farm Mode",
-		Options = { "Orbit", "Orbit Tele", "Hover" },
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if not option or isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "FarmMode", option)
-			applyFarmModeVisibility()
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Dropdown_FarmMode")
-
-	orbitRadiusSlider = farmSection:Slider({
-		Name = "Orbit Radius",
-		Default = contextual.GetField(editDungeon, editTarget, "OrbitRadius"),
-		Minimum = 5,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "OrbitRadius", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_OrbitRadius")
-
-	orbitSpeedSlider = farmSection:Slider({
-		Name = "Orbit Speed",
-		Default = contextual.GetField(editDungeon, editTarget, "OrbitSpeed"),
-		Minimum = 24,
-		Maximum = 96,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "OrbitSpeed", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_OrbitSpeed")
-
-	orbitTeleStepSlider = farmSection:Slider({
-		Name = "Orbit Tele Step",
-		Default = contextual.GetField(editDungeon, editTarget, "OrbitTeleStep"),
-		Minimum = 5,
-		Maximum = 90,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "OrbitTeleStep", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_OrbitTeleStep")
-
-	orbitHeightSlider = farmSection:Slider({
-		Name = "Orbit Height",
-		Default = contextual.GetField(editDungeon, editTarget, "OrbitHeight"),
-		Minimum = 0,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "OrbitHeight", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_OrbitHeight")
-
-	maintainBossHeightToggle = farmSection:Toggle({
-		Name = "Maintain Orbit Height on Boss",
-		Default = contextual.GetField(editDungeon, editTarget, "MaintainBossHeight"),
-		Callback = autoSave.Wrap(function(state)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "MaintainBossHeight", state)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Toggle_MaintainBossHeight")
-
-	hoverHeightSlider = farmSection:Slider({
-		Name = "Hover Height",
-		Default = contextual.GetField(editDungeon, editTarget, "HoverHeight"),
-		Minimum = 0,
-		Maximum = 100,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "HoverHeight", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_HoverHeight")
-
-	teleportDistanceSlider = farmSection:Slider({
-		Name = "Teleport Distance",
-		Default = contextual.GetField(editDungeon, editTarget, "TeleportDistance"),
-		Minimum = 5,
-		Maximum = 300,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "TeleportDistance", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_TeleportDistance")
-
-	autoRetargetToggle = farmSection:Toggle({
-		Name = "Auto Retarget",
-		Default = contextual.GetField(editDungeon, editTarget, "AutoRetarget"),
-		Callback = autoSave.Wrap(function(state)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "AutoRetarget", state)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Toggle_Retarget")
-
-	retargetMethodDropdown = farmSection:Dropdown({
-		Name = "Retarget Method",
-		Options = { "Auto", "Tele", "Tween" },
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if not option or isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "RetargetMethod", option)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Dropdown_RetargetMethod")
-
-	retargetModeDropdown = farmSection:Dropdown({
-		Name = "Retarget Mode",
-		Options = { "Nearest", "Farthest" },
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if not option or isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "RetargetMode", option)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Dropdown_RetargetMode")
-
-	reverseOrbitToggle = farmSection:Toggle({
-		Name = "Reverse Orbit on Retarget",
-		Default = contextual.GetField(editDungeon, editTarget, "ReverseOrbitOnRetarget"),
-		Callback = autoSave.Wrap(function(state)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "ReverseOrbitOnRetarget", state)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Toggle_OrbitReverse")
-
-	applyFarmModeVisibility = function()
-		local mode = contextual.GetField(editDungeon, editTarget, "FarmMode")
-		local isOrbit = mode == "Orbit"
-		local isOrbitTele = mode == "Orbit Tele"
-		local isOrbitLike = isOrbit or isOrbitTele
-		pcall(function() orbitRadiusSlider:SetVisibility(isOrbitLike) end)
-		pcall(function() orbitSpeedSlider:SetVisibility(isOrbit) end)
-		pcall(function() orbitTeleStepSlider:SetVisibility(isOrbitTele) end)
-		pcall(function() orbitHeightSlider:SetVisibility(isOrbitLike) end)
-		pcall(function() hoverHeightSlider:SetVisibility(not isOrbitLike) end)
-	end
-
-	refreshContextControls = function()
-		isSyncing = true
-		disarmReset()
-		pcall(function() farmModeDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "FarmMode")) end)
-		pcall(function() orbitRadiusSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitRadius")) end)
-		pcall(function() orbitSpeedSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitSpeed")) end)
-		pcall(function() orbitTeleStepSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitTeleStep")) end)
-		pcall(function() orbitHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "OrbitHeight")) end)
-		pcall(function() maintainBossHeightToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "MaintainBossHeight")) end)
-		pcall(function() hoverHeightSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "HoverHeight")) end)
-		pcall(function() teleportDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "TeleportDistance")) end)
-		pcall(function() autoRetargetToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "AutoRetarget")) end)
-		pcall(function() retargetMethodDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "RetargetMethod")) end)
-		pcall(function() retargetModeDropdown:UpdateSelection(contextual.GetField(editDungeon, editTarget, "RetargetMode")) end)
-		pcall(function() reverseOrbitToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "ReverseOrbitOnRetarget")) end)
-		isSyncing = false
-		pcall(function() editCtxLabel:UpdateName("Editing: <font color='rgb(150,255,150)'>" .. (editDungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(editTarget)) end)
-		applyFarmModeVisibility()
-	end
-
-	setEditControlsVisible = function(visible)
-		pcall(function() farmModeDropdown:SetVisibility(visible) end)
-		pcall(function() orbitRadiusSlider:SetVisibility(visible) end)
-		pcall(function() orbitSpeedSlider:SetVisibility(visible) end)
-		pcall(function() orbitTeleStepSlider:SetVisibility(visible) end)
-		pcall(function() orbitHeightSlider:SetVisibility(visible) end)
-		pcall(function() maintainBossHeightToggle:SetVisibility(visible) end)
-		pcall(function() hoverHeightSlider:SetVisibility(visible) end)
-		pcall(function() teleportDistanceSlider:SetVisibility(visible) end)
-		pcall(function() autoRetargetToggle:SetVisibility(visible) end)
-		pcall(function() retargetMethodDropdown:SetVisibility(visible) end)
-		pcall(function() retargetModeDropdown:SetVisibility(visible) end)
-		pcall(function() reverseOrbitToggle:SetVisibility(visible) end)
-		pcall(function() resetCtxButton:SetVisibility(visible) end)
-		if visible then applyFarmModeVisibility() end
-	end
-
-	--// Mỗi lần load vào màn chơi (dungeon mới): Edit Target về "Normal" + re-sync Auto Farm
-	local function resetToMob()
-		editTarget = "Mob"
-		pcall(function() editTargetDropdown:UpdateSelection("Normal") end)
-		pcall(function() autoFarmToggle:UpdateState(shared.IsFarmEnabled()) end)
-		refreshContextControls()
-	end
-
-	local prevDungeonInGame = editDungeon ~= nil
-	local function onDungeonChanged()
-		local newName = shared.GetCurrentDungeonName()
-		local nowInGame = newName ~= nil
-		editDungeon = newName
-		if nowInGame and not prevDungeonInGame then
-			resetToMob()
-		end
-		prevDungeonInGame = nowInGame
-		updateActiveCtxLabel()
-		refreshContextControls()
-		setEditControlsVisible(nowInGame)
-	end
-	shared.OnDungeonNameChanged(onDungeonChanged)
-	shared.OnBossIndexChanged(updateActiveCtxLabel)
-	shared.OnBossActiveChanged(updateActiveCtxLabel)
-	contextual.OnConfigChanged(function()
-		editDungeon = shared.GetCurrentDungeonName()
-		updateActiveCtxLabel()
-		refreshContextControls()
-		setEditControlsVisible(editDungeon ~= nil)
-	end)
-
-	updateActiveCtxLabel()
-	refreshContextControls()
-	setEditControlsVisible(editDungeon ~= nil)
-
-	--// Combat
-	combatSection:Header({ Name = "Skill" })
-
-	local applySkillModeVisibility
-	combatSection:Toggle({
-		Name = "Auto Skill (Q + E)",
-		Default = shared.IsAutoSkillEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			combat.ToggleAutoSkill(state)
-		end),
-	}, "Toggle_AutoSkill")
-
-	combatSection:Dropdown({
-		Name = "Auto Skill Mode",
-		Options = { "Spam", "Target Only" },
-		Default = (shared.GetAutoSkillMode() == "Target Only" and 2) or 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if option then shared.SetAutoSkillMode(option) end
-			applySkillModeVisibility()
-		end),
-	}, "Dropdown_AutoSkillMode")
-
-	local skillRangeSlider = ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Skill Range",
-		Default = shared.GetSkillRange(),
-		Minimum = 5,
-		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			shared.SetSkillRange(Value)
-		end),
-	}, "Slider_SkillRange"))
-
-	ui.PatchSliderLoadCallback(combatSection:Slider({
-		Name = "Skill Interval",
-		Default = shared.GetSkillInterval(),
-		Minimum = 0.1,
-		Maximum = 10,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			shared.SetSkillInterval(Value)
-		end),
-	}, "Slider_SkillInterval"))
-
-	applySkillModeVisibility = function()
-		local targetOnly = shared.GetAutoSkillMode() == "Target Only"
-		pcall(function() skillRangeSlider:SetVisibility(targetOnly) end)
-	end
-	applySkillModeVisibility()
-
-	combatSection:Toggle({
-		Name = "Death Log",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			deathLog.Toggle(state)
-		end),
-	}, "Toggle_DeathLog")
-
-	applyFarmModeVisibility()
-end
-end function __DIST.o()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên state.
+end function __DIST.h()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên state.
 --  * Scan 1 lần all enemy -> lock target kẻ địch gần nhất (highlight lock target).
 --  * CHASE (chưa trong tầm): Pathfinding chạy thẳng tới vị trí kẻ địch bị lock.
 --    Heartbeat check khoảng cách player <-> enemy lock realtime.
@@ -9177,14 +6780,18 @@ local lockedTargetModel = nil
 local chaseModel = nil
 local chasePathTargetModel = nil
 local retargetTimer = 0
---// Stuck detection: phát hiện đứng im dù path đang chạy -> tự nhảy gỡ kẹt
+--// Stuck detection: phát hiện đứng im dù path đang chạy -> chạy chuỗi gỡ kẹt:
+--// nhảy -> strafe trái -> strafe phải -> reset player (Health=0 để game respawn).
 --// (vật cản thấp/kệ mép mà path không đánh dấu Jump waypoint).
 local stuckCheckPos = nil
 local stuckCheckTimer = 0
-local stuckJumpCooldown = 0
-local STUCK_DIST = 0.3 --// chuyển động < 0.3 stud sau cửa sổ => kẹt
-local STUCK_WINDOW = 0.6 --// giây đứng im trước khi nhảy
-local STUCK_JUMP_COOLDOWN = 0.6 --// chống spam nhảy liên tục
+local stuckStage = 0 --// 0=chưa xử lý, 1=đã nhảy, 2=đang strafe trái, 3=đang strafe phải, 4=đã reset
+local stuckStrafeDir = 0 --// -1 = trái, 1 = phải
+local stuckStrafeEndTime = 0
+local STUCK_DIST = 0.3 --// tiến tới < 0.3 stud (ngang, không tính Y) sau cửa sổ => kẹt
+local STUCK_WINDOW = 0.6 --// giây đứng im trước khi chuyển bước xử lý kẹt
+local STUCK_STRAFE_DIST = 5 --// độ lệch sang trái/phải khỏi waypoint
+local STUCK_STRAFE_HOLD = 1.0 --// giây duy trì hướng strafe trước khi kiểm tra lại
 
 --// Helpers
 local function getPlayerRoot()
@@ -9586,6 +7193,31 @@ end
 local function resetStuckCheck()
 	stuckCheckPos = nil
 	stuckCheckTimer = 0
+	stuckStage = 0
+	stuckStrafeDir = 0
+end
+
+--// Bước hành động tiếp theo của chuỗi gỡ kẹt: nhảy -> strafe trái -> strafe phải
+--// -> reset player (giết nhân vật để game respawn về spawn room).
+local function advanceStuckAction(humanoid)
+	if stuckStage == 0 then
+		stuckStage = 1
+		humanoid.Jump = true
+	elseif stuckStage == 1 then
+		stuckStage = 2
+		stuckStrafeDir = -1
+		stuckStrafeEndTime = os.clock() + STUCK_STRAFE_HOLD
+	elseif stuckStage == 2 then
+		stuckStage = 3
+		stuckStrafeDir = 1
+		stuckStrafeEndTime = os.clock() + STUCK_STRAFE_HOLD
+	elseif stuckStage == 3 then
+		stuckStage = 4
+		if humanoid and humanoid.Parent then
+			humanoid.Health = 0
+		end
+		resetStuckCheck()
+	end
 end
 
 --// Di chuyển: CHASE theo trạng thái, HOLD khi enemy trong tầm.
@@ -9759,6 +7391,15 @@ updateDebugVisuals()
 	local dist = toDest.Magnitude
 	local tolerate = (wp.Action == Enum.PathWaypointAction.Jump and 2.5) or 2.0
 
+	--// Stuck: lệch hướng sang trái/phải khỏi waypoint để vòng qua vật cản.
+	if stuckStage >= 2 and os.clock() < stuckStrafeEndTime and dist > 0.01 then
+		local dir = toDest.Unit
+		local perp = Vector3.new(-dir.Z, 0, dir.X)
+		dest = dest + perp * (stuckStrafeDir * STUCK_STRAFE_DIST)
+		toDest = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
+		dist = toDest.Magnitude
+	end
+
 	if dist <= tolerate then
 		waypointIndex += 1
 		--// Waypoint Jump: bảo humanoid nhảy qua chướng ngại.
@@ -9772,18 +7413,23 @@ updateDebugVisuals()
 	humanoid:MoveTo(dest)
 
 	--// Stuck detection: path có nhưng nhân vật đứng im (kẹt vật cản thấp mà path
-	--// không đánh dấu Jump) -> tự nhảy để leo qua. Nếu âm lượng vẫn ổn -> tiếp tục.
+	--// không đánh dấu Jump) -> chạy chuỗi gỡ: nhảy -> strafe trái -> strafe phải
+	--// -> reset player. Dừng ngay khi tự tiến tới được (so khoảng cách NGANG để
+	--// nhảy lên tại chỗ không bị tính nhầm là đã thoát kẹt).
 	if stuckCheckPos then
-		local moved = (playerPos - stuckCheckPos).Magnitude
+		local delta = playerPos - stuckCheckPos
+		local moved = Vector3.new(delta.X, 0, delta.Z).Magnitude
 		if moved > STUCK_DIST then
 			stuckCheckPos = playerPos
 			stuckCheckTimer = 0
+			stuckStage = 0
+			stuckStrafeDir = 0
 		else
 			stuckCheckTimer += deltaTime
-			if stuckCheckTimer >= STUCK_WINDOW and os.clock() >= stuckJumpCooldown then
-				humanoid.Jump = true
-				stuckJumpCooldown = os.clock() + STUCK_JUMP_COOLDOWN
+			if stuckCheckTimer >= STUCK_WINDOW then
+				stuckCheckPos = playerPos
 				stuckCheckTimer = 0
+				advanceStuckAction(humanoid)
 			end
 		end
 	else
@@ -9960,7 +7606,517 @@ lifecycle.Register(function()
 end)
 
 return autoFarmPathfinder
-end function __DIST.p()-- Phím tắt R: teleport tới kẻ địch gần nhất. C: teleport về sau kẻ địch xa nhất.
+end function __DIST.i()-- Tab Speed (DungeonQuest).
+
+--// Imports
+
+local shared = __DIST.load('e')
+local ui = __DIST.load('f')
+local autoSave = __DIST.load('g')
+local autoFarmPathfinder = __DIST.load('h')
+local macLib = __DIST.load('a')
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "Movement Speed" })
+
+	section:Toggle({
+		Name = "Fast Speed",
+		Default = shared.IsSpeedEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetSpeedEnabled(state)
+		end),
+	}, "Toggle_FastSpeed")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Custom Fast Speed",
+		Default = shared.GetFastSpeed(),
+		Minimum = 16,
+		Maximum = 24,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetFastSpeed(Value)
+		end),
+	}, "Slider_FastSpeed"))
+
+	--// Auto Farm (Pathfinder v2) toggle qua phím tắt
+	section:Header({ Name = "Auto Farm" })
+
+	local function toggleAutoFarmFromKey()
+		local newState = not autoFarmPathfinder.IsEnabled()
+		--// Đồng bộ UI toggle Auto Farm ở tab Auto Farm - drive farm qua callback của nó
+		local opt = macLib.Options and macLib.Options["Toggle_PathfinderFarm"]
+		if opt and opt.UpdateState then
+			opt:UpdateState(newState)
+		else
+			autoFarmPathfinder.Toggle(newState)
+		end
+	end
+
+	section:Keybind({
+		Name = "Toggle Auto Farm",
+		Default = Enum.KeyCode.X,
+		Callback = function()
+			toggleAutoFarmFromKey()
+		end,
+	}, "Keybind_AutoFarm")
+
+end end function __DIST.j()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+-- Map thường: fetch động qua remote getDungeonStats (có cache).
+-- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
+
+--// Data
+
+local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
+
+local DUNGEONS = {
+	"Desert Temple",
+	"Winter Outpost",
+	"Pirate Island",
+	"King's Castle",
+	"The Underworld",
+	"Samurai Palace",
+	"The Canals",
+	"Ghastly Harbor",
+	"Steampunk Sewers",
+	"Orbital Outpost",
+	"Volcanic Chambers",
+	"Aquatic Temple",
+	"Enchanted Forest",
+	"Egg Island",
+	"Krampus",
+	"Tutorial Dungeon",
+}
+
+local SPECIAL_DUNGEONS = {
+	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
+	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
+	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
+}
+
+--// Table
+local dungeonCatalog = {}
+
+--// Cache
+local statsCache = {}
+local dynamicDungeons = nil
+
+--// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
+local HttpService = game:GetService("HttpService")
+local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
+
+local function persistMapList(list)
+	if not (isfile and writefile and makefolder and isfolder) then return end
+	pcall(function()
+		if not isfolder("Maclib") then makefolder("Maclib") end
+	end)
+	pcall(function()
+		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
+	end)
+end
+
+local function loadPersistedMapList()
+	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
+	end)
+	if not ok or typeof(data) ~= "table" then return nil end
+
+	local list = {}
+	for _, name in ipairs(data) do
+		if type(name) == "string" and #name > 0 then
+			table.insert(list, name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+local function mergeDungeonLists(primary)
+	local seen = {}
+	local merged = {}
+	for _, name in ipairs(primary or {}) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	for _, name in ipairs(DUNGEONS) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	return merged
+end
+
+--// Helpers
+local function findScrollingFrame()
+	local player = game:GetService("Players").LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local queueGui = playerGui:FindFirstChild("queueGui")
+	if not queueGui then return nil end
+	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
+	if not chooseDungeon then return nil end
+	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
+	if not backgroundFillLeft then return nil end
+	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
+end
+
+local function collectDungeonsFromUi()
+	local scrollingFrame = findScrollingFrame()
+	if not scrollingFrame then return nil end
+
+	local list = {}
+	for _, child in ipairs(scrollingFrame:GetChildren()) do
+		if child:IsA("ImageLabel") and #child.Name > 0 then
+			table.insert(list, child.Name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+--// Methods
+function dungeonCatalog.GetDungeons()
+	if dynamicDungeons then return dynamicDungeons end
+
+	local uiList = collectDungeonsFromUi()
+	if uiList then
+		local merged = mergeDungeonLists(uiList)
+		dynamicDungeons = merged
+		persistMapList(merged)
+		return merged
+	end
+
+	local persisted = loadPersistedMapList()
+	if persisted then
+		local merged = mergeDungeonLists(persisted)
+		dynamicDungeons = merged
+		return merged
+	end
+
+	return DUNGEONS
+end
+
+function dungeonCatalog.RefreshDungeons()
+	dynamicDungeons = nil
+	return dungeonCatalog.GetDungeons()
+end
+
+function dungeonCatalog.GetDungeonStats(name)
+	if type(name) ~= "string" or #name == 0 then return nil end
+	if statsCache[name] ~= nil then return statsCache[name] end
+
+	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
+	if not getStats then return nil end
+
+	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
+	if ok and typeof(result) == "table" then
+		statsCache[name] = result
+		return result
+	end
+	return nil
+end
+
+function dungeonCatalog.GetAllowedDifficulties(name)
+	if type(name) ~= "string" then return DIFFICULTIES end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.Difficulties end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	local allowed = {}
+	if stats then
+		for _, difficulty in ipairs(DIFFICULTIES) do
+			if stats[difficulty] then table.insert(allowed, difficulty) end
+		end
+	end
+	if #allowed > 0 then return allowed end
+	return DIFFICULTIES
+end
+
+function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
+	if type(difficulty) ~= "string" then return false end
+	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
+		if option == difficulty then return true end
+	end
+	return false
+end
+
+function dungeonCatalog.GetLevelReq(name, difficulty)
+	if type(name) ~= "string" then return 0 end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.LevelReq or 0 end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	if stats and type(difficulty) == "string" and stats[difficulty] then
+		return tonumber(stats[difficulty].levelReq) or 0
+	end
+	return 0
+end
+
+--// Table
+dungeonCatalog.DUNGEONS = DUNGEONS
+dungeonCatalog.DIFFICULTIES = DIFFICULTIES
+
+return dungeonCatalog end function __DIST.k()-- Contextual AutoFarm Pathfinder settings (v2) cho DungeonQuest.
+-- Cho phép cấu hình riêng nhóm Auto Farm (Move Speed, Retarget Interval, Skill
+-- Range/Interval/Enabled/Mode, field prefix "Pathfinder...") theo DUNGEON x
+-- LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
+-- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
+-- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (autoFarmPathfinder).
+
+--// Imports
+
+local shared = __DIST.load('e')
+local notifier = __DIST.load('c')
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('g')
+local dungeonCatalog = __DIST.load('j')
+local lifecycle = __DIST.load('b')
+local autoFarmPathfinder = __DIST.load('h')
+
+--// Table
+local contextual = {}
+
+--// Metadata field -> get/set trên autoFarmPathfinder (group AutoFarm Pathfinder v2).
+local FIELD_DEFS = {
+	PathfinderMoveSpeed = { get = function() return autoFarmPathfinder.GetMoveSpeed() end, set = function(v) autoFarmPathfinder.SetMoveSpeed(v) end },
+	PathfinderRetargetInterval = { get = function() return autoFarmPathfinder.GetRetargetInterval() end, set = function(v) autoFarmPathfinder.SetRetargetInterval(v) end },
+	PathfinderSkillRange = { get = function() return autoFarmPathfinder.GetSkillRange() end, set = function(v) autoFarmPathfinder.SetSkillRange(v) end },
+	PathfinderSkillInterval = { get = function() return autoFarmPathfinder.GetSkillInterval() end, set = function(v) autoFarmPathfinder.SetSkillInterval(v) end },
+	PathfinderSkillEnabled = { get = function() return autoFarmPathfinder.IsSkillEnabled() end, set = function(v) autoFarmPathfinder.SetSkillEnabled(v) end },
+	PathfinderSkillMode = { get = function() return autoFarmPathfinder.GetSkillMode() end, set = function(v) autoFarmPathfinder.SetSkillMode(v) end },
+}
+
+local DISPLAY_TO_KEY = {
+	["Normal"] = "Mob",
+	["Boss 1"] = "Boss1",
+	["Boss 2"] = "Boss2",
+	["Boss 3"] = "Boss3",
+}
+local KEY_TO_DISPLAY = {
+	["Mob"] = "Normal",
+	["Boss1"] = "Boss 1",
+	["Boss2"] = "Boss 2",
+	["Boss3"] = "Boss 3",
+}
+
+--// Storage: data[dungeon][target][field] = value
+--// Sống trong config đang chọn (nhúng vào file config .json qua MacLib.contextData)
+local data = {}
+local lastDataRef = nil
+local activeConfig = nil
+local configChangedCallbacks = {}
+
+--// Các tab đăng ký callback khi đổi config (để làm mới UI context). Hỗ trợ nhiều tab.
+function contextual.OnConfigChanged(cb)
+	if type(cb) ~= "function" then return end
+	table.insert(configChangedCallbacks, cb)
+end
+
+--// Nạp dữ liệu từ config đang chọn. Trả về true nếu vừa đổi config / đổi data context.
+function contextual.ReloadFromConfig()
+	local macData = macLib.contextData or {}
+	local newActive = autoSave.GetActive()
+
+	local configChanged = newActive ~= activeConfig
+	--// MacLib:LoadConfig tạo bảng contextData MỚI -> phát hiện khi data vừa được nạp (kể cả
+	--// khi tên config không đổi, vd autoload) để refresh UI + re-apply context.
+	local dataChanged = macData ~= lastDataRef
+
+	data = macData
+	lastDataRef = macData
+	activeConfig = newActive
+
+	if (configChanged or dataChanged) and #configChangedCallbacks > 0 then
+		for _, cb in ipairs(configChangedCallbacks) do
+			pcall(cb, newActive)
+		end
+	end
+	return configChanged or dataChanged
+end
+
+--// Đồng bộ dữ liệu lên MacLib để mỗi lần save config là lưu kèm contextData
+local function bindMacLib()
+	macLib.contextData = data
+end
+
+--// Lưu dữ liệu vào config đang chọn
+local function persist()
+	bindMacLib()
+	autoSave.SaveNow()
+end
+
+--// Đảm bảo context có đầy đủ tất cả field (điền mặc định = global fallback nếu thiếu)
+--// Trả về true nếu có field được khởi tạo mới.
+local function ensureContextComplete(dungeon, targetKey)
+	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
+	if not KEY_TO_DISPLAY[targetKey] then return end
+
+	data[dungeon] = data[dungeon] or {}
+	data[dungeon][targetKey] = data[dungeon][targetKey] or {}
+	local ctx = data[dungeon][targetKey]
+
+	local changed = false
+	for f in pairs(FIELD_DEFS) do
+		if ctx[f] == nil then
+			ctx[f] = FIELD_DEFS[f].get()
+			changed = true
+		end
+	end
+	return changed
+end
+
+--// Tự khởi tạo context base cho TOÀN BỘ map x target khi khởi tạo script.
+--// Đảm bảo mọi dungeon trong catalog đều có sẵn đủ field (= giá trị global hiện tại)
+--// thay vì chỉ tạo khi người dùng bắt đầu chỉnh sửa. Không ghi đè override đã lưu.
+function contextual.SeedAllDefaults()
+	local targets = { "Mob", "Boss1", "Boss2", "Boss3" }
+	local seededAny = false
+	for _, dungeon in ipairs(dungeonCatalog.GetDungeons()) do
+		for _, targetKey in ipairs(targets) do
+			if ensureContextComplete(dungeon, targetKey) then
+				seededAny = true
+			end
+		end
+	end
+	if seededAny then
+		persist()
+	end
+	return seededAny
+end
+
+--// Ghi override cho context cụ thể (context luôn đầy đủ tất cả field)
+function contextual.SetField(dungeon, targetKey, field, value)
+	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
+	if not KEY_TO_DISPLAY[targetKey] then return end
+	if not FIELD_DEFS[field] then return end
+
+	ensureContextComplete(dungeon, targetKey)
+	data[dungeon][targetKey][field] = value
+	persist()
+end
+
+--// Xóa hết override của 1 context (về global)
+function contextual.ClearContext(dungeon, targetKey)
+	if type(dungeon) ~= "string" or #dungeon == 0 then return end
+	if data[dungeon] and data[dungeon][targetKey] then
+		data[dungeon][targetKey] = nil
+		if next(data[dungeon]) == nil then data[dungeon] = nil end
+		persist()
+	end
+end
+
+--// Đọc giá trị 1 field CỦA context (override nếu có, ngược lại global hiện tại)
+function contextual.GetField(dungeon, targetKey, field)
+	local def = FIELD_DEFS[field]
+	if not def then return nil end
+	--// Ngoài dungeon (tên nil/rỗng) -> không có context -> dùng global hiện tại
+	if type(dungeon) == "string" and #dungeon > 0 then
+		local ctx = data[dungeon] and data[dungeon][targetKey]
+		if ctx and ctx[field] ~= nil then return ctx[field] end
+	end
+	return def.get()
+end
+
+--// Đọc BỘ giá trị của 1 context (đã fallback global)
+function contextual.GetContext(dungeon, targetKey)
+	local out = {}
+	for field in pairs(FIELD_DEFS) do
+		out[field] = contextual.GetField(dungeon, targetKey, field)
+	end
+	return out
+end
+
+--// Áp bộ giá trị của 1 context vào shared (để farm dùng)
+function contextual.ApplyContext(dungeon, targetKey)
+	local ctx = contextual.GetContext(dungeon, targetKey)
+	for field, def in pairs(FIELD_DEFS) do
+		def.set(ctx[field])
+	end
+end
+
+--// Áp context HIỆN TẠI (dungeon đang chơi + mục tiêu đang farm) lên shared.
+function contextual.ApplyCurrent()
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = shared.GetCombatTargetKey()
+	contextual.ApplyContext(dungeon, targetKey)
+	return dungeon, targetKey
+end
+
+--// Metadata
+function contextual.GetFields()
+	local out = {}
+	for field in pairs(FIELD_DEFS) do table.insert(out, field) end
+	return out
+end
+
+function contextual.GetTargets()
+	local out = {}
+	for _, key in ipairs({ "Mob", "Boss1", "Boss2", "Boss3" }) do
+		table.insert(out, { Key = key, Display = KEY_TO_DISPLAY[key] })
+	end
+	return out
+end
+
+function contextual.GetDisplayForTarget(key)
+	return KEY_TO_DISPLAY[key]
+end
+
+--// Auto-switch watcher: lắng nghe dungeon/boss đổi -> áp context hiện tại + thông báo.
+local lastApplied = nil
+local lastDungeon = nil
+local function findAndApply(force)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = shared.GetCombatTargetKey()
+
+	--// Rời dungeon hoặc chưa vào -> reset cache để lần vào lại được áp dụng lại context
+	if not dungeon then
+		lastDungeon = nil
+		lastApplied = nil
+		return
+	end
+
+	--// Đảm bảo áp lại khi cùng dungeon cùng target (vd vừa vào lại dungeon)
+	if not force and dungeon == lastDungeon and targetKey == lastApplied then return end
+
+	contextual.ApplyContext(dungeon, targetKey)
+
+	if targetKey ~= "Mob" then
+		notifier.Notify("Auto Farm Context", dungeon .. " - " .. KEY_TO_DISPLAY[targetKey], 2)
+	end
+	lastApplied = targetKey
+	lastDungeon = dungeon
+end
+
+function contextual.Init()
+	contextual.ReloadFromConfig()
+	contextual.SeedAllDefaults()
+	bindMacLib()
+
+	shared.OnDungeonNameChanged(function() findAndApply(false) end)
+	shared.OnBossIndexChanged(function() findAndApply(false) end)
+	shared.OnBossActiveChanged(function() findAndApply(false) end)
+
+	task.spawn(function()
+		while lifecycle.IsActive() do
+			task.wait(0.5)
+			--// Đổi config -> nạp lại dữ liệu context của config mới (+ re-apply)
+			if contextual.ReloadFromConfig() then
+				findAndApply(true)
+			end
+			findAndApply(false)
+		end
+	end)
+end
+
+return contextual
+end function __DIST.l()-- Phím tắt: chuột phải kích hoạt combo Q+E (toggle enabled qua tab Auto Farm).
 
 --// Imports
 
@@ -10007,15 +8163,7 @@ function shortcuts.Init()
 
 	inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
-		if input.KeyCode == Enum.KeyCode.R then
-			task.spawn(function()
-				shared.TeleportToNearestEnemy()
-			end)
-		elseif input.KeyCode == Enum.KeyCode.C then
-			task.spawn(function()
-				shared.TeleportBehindFarthestEnemy()
-			end)
-		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
 			--// Ẩn: chuột phải kích hoạt E + Q (chỉ khi toggle bật).
 			if comboEnabled then
 				fireCombo()
@@ -10030,7 +8178,7 @@ lifecycle.Register(function()
 end)
 
 return shortcuts
-end function __DIST.q()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
+end function __DIST.m()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
 -- CHASE: pathfinding chạy thẳng tới kẻ địch gần nhất khi ngoài tầm.
 -- HOLD: khi trong tầm skill range, giữ khoảng cách bằng orbit tốc độ 0 (đứng yên + quay mặt
 -- enemy) và tự spam Q+E. Kèm Visual Debug (ô đỏ điểm đuổi + highlight kẻ gần nhất).
@@ -10038,13 +8186,15 @@ end function __DIST.q()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
 --// Imports
 
 local autoSave = __DIST.load('g')
-local autoFarmPathfinder = __DIST.load('o')
-local shortcuts = __DIST.load('p')
+local autoFarmPathfinder = __DIST.load('h')
+local shared = __DIST.load('e')
+local contextual = __DIST.load('k')
+local shortcuts = __DIST.load('l')
 local ui = __DIST.load('f')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "AutoFarm Pathfinder" })
+	section:Header({ Name = "Auto Farm" })
 
 	section:Toggle({
 		Name = "Enable Pathfinder Farm",
@@ -10054,57 +8204,6 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderFarm")
 
-	section:Header({ Name = "Movement" })
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Move Speed",
-		Default = autoFarmPathfinder.GetMoveSpeed(),
-		Minimum = 10,
-		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			autoFarmPathfinder.SetMoveSpeed(Value)
-		end),
-	}, "Slider_PathfinderMoveSpeed"))
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Retarget Interval",
-		Default = autoFarmPathfinder.GetRetargetInterval(),
-		Minimum = 0.2,
-		Maximum = 5,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			autoFarmPathfinder.SetRetargetInterval(Value)
-		end),
-	}, "Slider_PathfinderRetarget"))
-
-	section:Header({ Name = "Skills" })
-
-	section:Toggle({
-		Name = "Auto Skill (Q+E)",
-		Default = autoFarmPathfinder.IsSkillEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoFarmPathfinder.SetSkillEnabled(state)
-		end),
-	}, "Toggle_PathfinderSkill")
-
-	section:Dropdown({
-		Name = "Skill Mode",
-		Options = { "Both (Q+E cùng lúc)", "Alternate (Q -> E -> Q -> E)" },
-		Default = (autoFarmPathfinder.GetSkillMode() == "Alternate" and 2) or 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			if not option then return end
-			if option:find("Alternate") then
-				autoFarmPathfinder.SetSkillMode("Alternate")
-			else
-				autoFarmPathfinder.SetSkillMode("Both")
-			end
-		end),
-	}, "Dropdown_PathfinderSkillMode")
-
 	section:Toggle({
 		Name = "Right Click Combo (Q+E)",
 		Default = shortcuts.IsMouseComboEnabled(),
@@ -10112,30 +8211,6 @@ return function(window, tab)
 			shortcuts.SetMouseComboEnabled(state)
 		end),
 	}, "Toggle_PathfinderMouseCombo")
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Skill Range",
-		Default = autoFarmPathfinder.GetSkillRange(),
-		Minimum = 1,
-		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			autoFarmPathfinder.SetSkillRange(Value)
-		end),
-	}, "Slider_PathfinderSkillRange"))
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Skill Interval",
-		Default = autoFarmPathfinder.GetSkillInterval(),
-		Minimum = 0.2,
-		Maximum = 10,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			autoFarmPathfinder.SetSkillInterval(Value)
-		end),
-	}, "Slider_PathfinderSkillInterval"))
 
 	section:Header({ Name = "Visual Debug" })
 
@@ -10191,14 +8266,235 @@ return function(window, tab)
 			updateStateLabel()
 		end
 	end)
-end end function __DIST.r()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+
+	--// AutoFarm Pathfinder Context (per dungeon x per target).
+	--
+	--// Cấu hình riêng Move Speed / Retarget Interval / Skill Range / Skill Interval /
+	--// Skill Enabled / Skill Mode theo DUNGEON x LOẠI MỤC TIÊU (Normal / Boss 1/2/3),
+	--// y như Auto Farm Context. Lưu chung blob contextData qua core/contextual.
+	--// Fallback về global (autoFarmPathfinder) khi context chưa có override.
+	local ctxSection = tab:Section({ Side = "Right" })
+	ctxSection:Header({ Name = "AutoFarm Pathfinder Context" })
+
+	local activeCtxLabel = ctxSection:Label({ Text = "" })
+	local function updateActiveCtxLabel()
+		local dungeon = shared.GetCurrentDungeonName()
+		local targetKey = shared.GetCombatTargetKey()
+		activeCtxLabel:UpdateName("Active: <font color='rgb(120,200,255)'>" .. (dungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(targetKey))
+	end
+
+	local editDungeon = shared.GetCurrentDungeonName()
+	local editTarget = "Mob"
+
+	local isSyncing = false
+	local refreshContextControls
+	local setEditControlsVisible
+	local editCtxLabel
+	local editTargetDropdown
+	local moveSpeedSlider
+	local retargetIntervalSlider
+	local skillRangeSlider
+	local skillIntervalSlider
+	local skillEnabledToggle
+	local skillModeDropdown
+	local resetCtxButton
+
+	local function isActiveContext()
+		return editDungeon == shared.GetCurrentDungeonName() and editTarget == shared.GetCombatTargetKey()
+	end
+
+	editTargetDropdown = ctxSection:Dropdown({
+		Name = "Edit Target",
+		Options = { "Normal", "Boss 1", "Boss 2", "Boss 3" },
+		Default = 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			local map = { ["Normal"] = "Mob", ["Boss 1"] = "Boss1", ["Boss 2"] = "Boss2", ["Boss 3"] = "Boss3" }
+			editTarget = map[option] or "Mob"
+			refreshContextControls()
+		end),
+	}, "Dropdown_PathfinderTarget")
+
+	--// Nút Reset dễ ấn nhầm -> cơ chế 2 bước (arm Confirm -> click lần 2 trong hạn).
+	local resetArmed = false
+	local resetDisarmTimer = nil
+	local RESET_NAME = "Reset Context to Global"
+	local RESET_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Reset?</font>"
+	local RESET_TIMEOUT = 3
+	local function disarmReset()
+		if not resetArmed then return end
+		resetArmed = false
+		if resetDisarmTimer then task.cancel(resetDisarmTimer); resetDisarmTimer = nil end
+		pcall(function() resetCtxButton:UpdateName(RESET_NAME) end)
+	end
+
+	resetCtxButton = ctxSection:Button({
+		Name = RESET_NAME,
+		Callback = autoSave.Wrap(function()
+			if not resetArmed then
+				resetArmed = true
+				if resetDisarmTimer then task.cancel(resetDisarmTimer) end
+				resetDisarmTimer = task.delay(RESET_TIMEOUT, disarmReset)
+				pcall(function() resetCtxButton:UpdateName(RESET_CONFIRM_NAME) end)
+				return
+			end
+			disarmReset()
+			contextual.ClearContext(editDungeon, editTarget)
+			refreshContextControls()
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	})
+
+	editCtxLabel = ctxSection:Label({ Text = "" })
+
+	moveSpeedSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Move Speed",
+		Default = contextual.GetField(editDungeon, editTarget, "PathfinderMoveSpeed"),
+		Minimum = 10,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "PathfinderMoveSpeed", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Slider_PathfinderCtxMoveSpeed"))
+
+	retargetIntervalSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Retarget Interval",
+		Default = contextual.GetField(editDungeon, editTarget, "PathfinderRetargetInterval"),
+		Minimum = 0.2,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "PathfinderRetargetInterval", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Slider_PathfinderCtxRetarget"))
+
+	skillRangeSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Skill Range",
+		Default = contextual.GetField(editDungeon, editTarget, "PathfinderSkillRange"),
+		Minimum = 1,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "PathfinderSkillRange", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Slider_PathfinderCtxSkillRange"))
+
+	skillIntervalSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Skill Interval",
+		Default = contextual.GetField(editDungeon, editTarget, "PathfinderSkillInterval"),
+		Minimum = 0.2,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "PathfinderSkillInterval", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Slider_PathfinderCtxSkillInterval"))
+
+	skillEnabledToggle = ctxSection:Toggle({
+		Name = "Skill Enabled",
+		Default = contextual.GetField(editDungeon, editTarget, "PathfinderSkillEnabled"),
+		Callback = autoSave.Wrap(function(state)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "PathfinderSkillEnabled", state)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Toggle_PathfinderCtxSkillEnabled")
+
+	local SKILL_MODE_OPTIONS = { "Both (Q+E cùng lúc)", "Alternate (Q -> E -> Q -> E)" }
+	local function skillModeToOption(mode)
+		if mode == "Alternate" then return SKILL_MODE_OPTIONS[2] end
+		return SKILL_MODE_OPTIONS[1]
+	end
+
+	skillModeDropdown = ctxSection:Dropdown({
+		Name = "Skill Mode",
+		Options = SKILL_MODE_OPTIONS,
+		Default = skillModeToOption(contextual.GetField(editDungeon, editTarget, "PathfinderSkillMode")) == SKILL_MODE_OPTIONS[2] and 2 or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			if not option or isSyncing then return end
+			local mode = option:find("Alternate") and "Alternate" or "Both"
+			contextual.SetField(editDungeon, editTarget, "PathfinderSkillMode", mode)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Dropdown_PathfinderCtxSkillMode")
+
+	refreshContextControls = function()
+		isSyncing = true
+		disarmReset()
+		pcall(function() moveSpeedSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderMoveSpeed")) end)
+		pcall(function() retargetIntervalSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderRetargetInterval")) end)
+		pcall(function() skillRangeSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderSkillRange")) end)
+		pcall(function() skillIntervalSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderSkillInterval")) end)
+		pcall(function() skillEnabledToggle:UpdateState(contextual.GetField(editDungeon, editTarget, "PathfinderSkillEnabled")) end)
+		pcall(function() skillModeDropdown:UpdateSelection(skillModeToOption(contextual.GetField(editDungeon, editTarget, "PathfinderSkillMode"))) end)
+		isSyncing = false
+		pcall(function() editCtxLabel:UpdateName("Editing: <font color='rgb(150,255,150)'>" .. (editDungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(editTarget)) end)
+	end
+
+	setEditControlsVisible = function(visible)
+		pcall(function() moveSpeedSlider:SetVisibility(visible) end)
+		pcall(function() retargetIntervalSlider:SetVisibility(visible) end)
+		pcall(function() skillRangeSlider:SetVisibility(visible) end)
+		pcall(function() skillIntervalSlider:SetVisibility(visible) end)
+		pcall(function() skillEnabledToggle:SetVisibility(visible) end)
+		pcall(function() skillModeDropdown:SetVisibility(visible) end)
+		pcall(function() resetCtxButton:SetVisibility(visible) end)
+	end
+
+	local function resetToMob()
+		editTarget = "Mob"
+		pcall(function() editTargetDropdown:UpdateSelection("Normal") end)
+		refreshContextControls()
+	end
+
+	local prevDungeonInGame = editDungeon ~= nil
+	local function onDungeonChanged()
+		local newName = shared.GetCurrentDungeonName()
+		local nowInGame = newName ~= nil
+		editDungeon = newName
+		if nowInGame and not prevDungeonInGame then
+			resetToMob()
+		end
+		prevDungeonInGame = nowInGame
+		updateActiveCtxLabel()
+		refreshContextControls()
+		setEditControlsVisible(nowInGame)
+	end
+	shared.OnDungeonNameChanged(onDungeonChanged)
+	shared.OnBossIndexChanged(updateActiveCtxLabel)
+	shared.OnBossActiveChanged(updateActiveCtxLabel)
+	contextual.OnConfigChanged(function()
+		editDungeon = shared.GetCurrentDungeonName()
+		updateActiveCtxLabel()
+		refreshContextControls()
+		setEditControlsVisible(editDungeon ~= nil)
+	end)
+
+	updateActiveCtxLabel()
+	refreshContextControls()
+	setEditControlsVisible(editDungeon ~= nil)
+end end function __DIST.n()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('d')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('l')
+local dungeonCatalog = __DIST.load('j')
 local shared = __DIST.load('e')
 local lifecycle = __DIST.load('b')
 
@@ -10378,7 +8674,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.s()-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
+end function __DIST.o()-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
 -- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
 -- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
 
@@ -10462,7 +8758,7 @@ shared.OnRespawn(function()
 	autoStartTriggered = false
 end)
 
-return autoStart end function __DIST.t()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStart end function __DIST.p()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -10679,17 +8975,17 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.u()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.q()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('f')
-local autoJoin = __DIST.load('r')
-local autoStart = __DIST.load('s')
-local autoRetry = __DIST.load('t')
+local autoJoin = __DIST.load('n')
+local autoStart = __DIST.load('o')
+local autoRetry = __DIST.load('p')
 local autoSave = __DIST.load('g')
-local dungeonCatalog = __DIST.load('l')
+local dungeonCatalog = __DIST.load('j')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -10862,7 +9158,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.v()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
+end function __DIST.r()-- Highlight hitbox (ESP SelectionBox) cho DungeonQuest.
 -- Chỉ highlight các object trùng tên với model projectile trong
 -- ReplicatedStorage.enemyProjectiles, khi chúng xuất hiện trong Workspace.
 
@@ -11180,7 +9476,7 @@ function esp.SetEnemyHitboxScale(scale)
 end
 
 return esp
-end function __DIST.w()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.s()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -11321,13 +9617,13 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.x()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+end function __DIST.t()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 	
 local autoSave = __DIST.load('g')
-	local esp = __DIST.load('v')
-	local enemyEsp = __DIST.load('w')
+	local esp = __DIST.load('r')
+	local enemyEsp = __DIST.load('s')
 	local ui = __DIST.load('f')
 
 --// Hitbox mode options
@@ -11453,7 +9749,7 @@ return function(window, tab)
 	applyHitboxVisibility()
 
 end
-end function __DIST.y()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end function __DIST.u()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -11528,7 +9824,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.z()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.v()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -11536,7 +9832,7 @@ end function __DIST.z()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('g')
-local autoHide = __DIST.load('y')
+local autoHide = __DIST.load('u')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -11693,7 +9989,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.A()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.w()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -12291,12 +10587,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.B()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.x()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('A')
+local webhook = __DIST.load('w')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -12363,12 +10659,12 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.C()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.y()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
 local shared = __DIST.load('e')
-local autoRetry = __DIST.load('t')
+local autoRetry = __DIST.load('p')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -12513,7 +10809,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.D()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.z()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -12566,8 +10862,7 @@ return function(self)
 	local tabGroup = window:TabGroup()
 	local tabs = {
 		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
-		Farm = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
-		Pathfinder = tabGroup:Tab({ Name = "AutoFarm Pathfinder", Image = "rbxassetid://10734950309" }),
+		Pathfinder = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
 		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
@@ -12580,16 +10875,14 @@ return function(self)
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local speedTab = __DIST.load('i')
-	local combatTab = __DIST.load('n')
-	local autoFarmPathfinderTab = __DIST.load('q')
-	local dungeonTab = __DIST.load('u')
-	local visualTab = __DIST.load('x')
-	local configTab = __DIST.load('z')
-	local notificationsTab = __DIST.load('B')
-	local stateTab = __DIST.load('C')
+	local autoFarmPathfinderTab = __DIST.load('m')
+	local dungeonTab = __DIST.load('q')
+	local visualTab = __DIST.load('t')
+	local configTab = __DIST.load('v')
+	local notificationsTab = __DIST.load('x')
+	local stateTab = __DIST.load('y')
 
 	speedTab(window, tabs.Player)
-	combatTab(window, tabs.Farm)
 	autoFarmPathfinderTab(window, tabs.Pathfinder)
 	dungeonTab(window, tabs.Dungeon)
 	visualTab(window, tabs.Visual)
@@ -12598,25 +10891,21 @@ return function(self)
 	stateTab(window, tabs.State)
 
 	--// Phím tắt
-	local shortcuts = __DIST.load('p')
+	local shortcuts = __DIST.load('l')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('A')
+	local webhook = __DIST.load('w')
 	webhook.Init()
-__DIST.load('w')
+__DIST.load('s')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
 
-local contextual = __DIST.load('m')
-
-	--// Death Logger (điều tra nguyên nhân chết -> khảo sát hazard)
-	local deathLog = __DIST.load('k')
-	deathLog.Init()
+local contextual = __DIST.load('k')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('y')
+	local autoHide = __DIST.load('u')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -12628,7 +10917,7 @@ local contextual = __DIST.load('m')
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.E()
+end function __DIST.A()
 local flags = {}
 
 function flags:Export()
@@ -12671,7 +10960,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.F()
+return flags end function __DIST.B()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -12740,12 +11029,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.G()
+end function __DIST.C()
 --// Imports
 
 
 
-local binder = __DIST.load('F')
+local binder = __DIST.load('B')
 
 --// Variables
 local interface = {}
@@ -12765,9 +11054,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.H()--// Imports
+end function __DIST.D()--// Imports
 
-local binder = __DIST.load('F')
+local binder = __DIST.load('B')
 
 --// Variables
 local esp = {}
@@ -12778,11 +11067,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.I()--// Imports
+end function __DIST.E()--// Imports
 
-local flags = __DIST.load('E')
-local interface = __DIST.load('G')
-local esp = __DIST.load('H')
+local flags = __DIST.load('A')
+local interface = __DIST.load('C')
+local esp = __DIST.load('D')
 
 --// Initialize
 local window = interface:Window({
@@ -12821,7 +11110,7 @@ return {
 		end,
 	},
 }
-end function __DIST.J()--// Variables
+end function __DIST.F()--// Variables
 
 local utility = {}
 
@@ -12853,7 +11142,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.K()--// Functions
+end function __DIST.G()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -12863,14 +11152,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.L()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.H()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('I')
-	local utility = __DIST.load('J')
-	local services = __DIST.load('K')
+	local base = __DIST.load('E')
+	local utility = __DIST.load('F')
+	local services = __DIST.load('G')
 
 	--// References
 	local flags = base.Flags
@@ -12936,7 +11225,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('D'),
+		Load = __DIST.load('z'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -12947,7 +11236,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('L'),
+		Load = __DIST.load('H'),
 		Places = {
 			123456789,
 			987654321,

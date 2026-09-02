@@ -54,14 +54,18 @@ local lockedTargetModel = nil
 local chaseModel = nil
 local chasePathTargetModel = nil
 local retargetTimer = 0
---// Stuck detection: phát hiện đứng im dù path đang chạy -> tự nhảy gỡ kẹt
+--// Stuck detection: phát hiện đứng im dù path đang chạy -> chạy chuỗi gỡ kẹt:
+--// nhảy -> strafe trái -> strafe phải -> reset player (Health=0 để game respawn).
 --// (vật cản thấp/kệ mép mà path không đánh dấu Jump waypoint).
 local stuckCheckPos = nil
 local stuckCheckTimer = 0
-local stuckJumpCooldown = 0
-local STUCK_DIST = 0.3 --// chuyển động < 0.3 stud sau cửa sổ => kẹt
-local STUCK_WINDOW = 0.6 --// giây đứng im trước khi nhảy
-local STUCK_JUMP_COOLDOWN = 0.6 --// chống spam nhảy liên tục
+local stuckStage = 0 --// 0=chưa xử lý, 1=đã nhảy, 2=đang strafe trái, 3=đang strafe phải, 4=đã reset
+local stuckStrafeDir = 0 --// -1 = trái, 1 = phải
+local stuckStrafeEndTime = 0
+local STUCK_DIST = 0.3 --// tiến tới < 0.3 stud (ngang, không tính Y) sau cửa sổ => kẹt
+local STUCK_WINDOW = 0.6 --// giây đứng im trước khi chuyển bước xử lý kẹt
+local STUCK_STRAFE_DIST = 5 --// độ lệch sang trái/phải khỏi waypoint
+local STUCK_STRAFE_HOLD = 1.0 --// giây duy trì hướng strafe trước khi kiểm tra lại
 
 --// Helpers
 local function getPlayerRoot()
@@ -463,6 +467,31 @@ end
 local function resetStuckCheck()
 	stuckCheckPos = nil
 	stuckCheckTimer = 0
+	stuckStage = 0
+	stuckStrafeDir = 0
+end
+
+--// Bước hành động tiếp theo của chuỗi gỡ kẹt: nhảy -> strafe trái -> strafe phải
+--// -> reset player (giết nhân vật để game respawn về spawn room).
+local function advanceStuckAction(humanoid)
+	if stuckStage == 0 then
+		stuckStage = 1
+		humanoid.Jump = true
+	elseif stuckStage == 1 then
+		stuckStage = 2
+		stuckStrafeDir = -1
+		stuckStrafeEndTime = os.clock() + STUCK_STRAFE_HOLD
+	elseif stuckStage == 2 then
+		stuckStage = 3
+		stuckStrafeDir = 1
+		stuckStrafeEndTime = os.clock() + STUCK_STRAFE_HOLD
+	elseif stuckStage == 3 then
+		stuckStage = 4
+		if humanoid and humanoid.Parent then
+			humanoid.Health = 0
+		end
+		resetStuckCheck()
+	end
 end
 
 --// Di chuyển: CHASE theo trạng thái, HOLD khi enemy trong tầm.
@@ -636,6 +665,15 @@ updateDebugVisuals()
 	local dist = toDest.Magnitude
 	local tolerate = (wp.Action == Enum.PathWaypointAction.Jump and 2.5) or 2.0
 
+	--// Stuck: lệch hướng sang trái/phải khỏi waypoint để vòng qua vật cản.
+	if stuckStage >= 2 and os.clock() < stuckStrafeEndTime and dist > 0.01 then
+		local dir = toDest.Unit
+		local perp = Vector3.new(-dir.Z, 0, dir.X)
+		dest = dest + perp * (stuckStrafeDir * STUCK_STRAFE_DIST)
+		toDest = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
+		dist = toDest.Magnitude
+	end
+
 	if dist <= tolerate then
 		waypointIndex += 1
 		--// Waypoint Jump: bảo humanoid nhảy qua chướng ngại.
@@ -649,18 +687,23 @@ updateDebugVisuals()
 	humanoid:MoveTo(dest)
 
 	--// Stuck detection: path có nhưng nhân vật đứng im (kẹt vật cản thấp mà path
-	--// không đánh dấu Jump) -> tự nhảy để leo qua. Nếu âm lượng vẫn ổn -> tiếp tục.
+	--// không đánh dấu Jump) -> chạy chuỗi gỡ: nhảy -> strafe trái -> strafe phải
+	--// -> reset player. Dừng ngay khi tự tiến tới được (so khoảng cách NGANG để
+	--// nhảy lên tại chỗ không bị tính nhầm là đã thoát kẹt).
 	if stuckCheckPos then
-		local moved = (playerPos - stuckCheckPos).Magnitude
+		local delta = playerPos - stuckCheckPos
+		local moved = Vector3.new(delta.X, 0, delta.Z).Magnitude
 		if moved > STUCK_DIST then
 			stuckCheckPos = playerPos
 			stuckCheckTimer = 0
+			stuckStage = 0
+			stuckStrafeDir = 0
 		else
 			stuckCheckTimer += deltaTime
-			if stuckCheckTimer >= STUCK_WINDOW and os.clock() >= stuckJumpCooldown then
-				humanoid.Jump = true
-				stuckJumpCooldown = os.clock() + STUCK_JUMP_COOLDOWN
+			if stuckCheckTimer >= STUCK_WINDOW then
+				stuckCheckPos = playerPos
 				stuckCheckTimer = 0
+				advanceStuckAction(humanoid)
 			end
 		end
 	else
