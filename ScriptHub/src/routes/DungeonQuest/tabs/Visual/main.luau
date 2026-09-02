@@ -57,22 +57,36 @@ return function(window, tab)
 	enemySection:Header({ Name = "Enemy" })
 
 	enemySection:Toggle({
-		Name = "Attack Hitbox",
-		Default = false,
+		Name = "Show Hitbox Skill",
+		Default = esp.IsSkillHitboxEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			esp.Toggle(state)
+			esp.ToggleSkillHitbox(state)
 		end),
-	}, "Toggle_HighlightHitboxes")
+	}, "Toggle_SkillHitbox")
 
-	enemySection:Dropdown({
-		Name = "Hitbox Filter",
-		Options = { "precast", "Projectile", "All" },
-		Default = (esp.GetHitboxMode() == "precast" and 1) or (esp.GetHitboxMode() == "Projectile" and 2) or 3,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			esp.SetHitboxMode(option)
+	enemySection:Toggle({
+		Name = "Show Hitbox Skill (Auto)",
+		Default = esp.IsAutoSkillHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleAutoSkillHitbox(state)
 		end),
-	}, "Dropdown_HitboxFilter")
+	}, "Toggle_AutoSkillHitbox")
+
+	local autoHitboxLabel = enemySection:Label({
+		Text = "Detected: 0 | Active: 0",
+	})
+
+	local function updateAutoHitboxLabel()
+		local detected, active = esp.GetAutoSkillHitboxInfo()
+		autoHitboxLabel:UpdateName(("Detected: <font color='rgb(0, 255, 0)'>%d</font> | Active: <font color='rgb(255, 200, 0)'>%d</font>")
+			:format(detected, active))
+	end
+
+	task.spawn(function()
+		while task.wait(0.5) do
+			updateAutoHitboxLabel()
+		end
+	end)
 
 	enemySection:Toggle({
 		Name = "Model Highlight",

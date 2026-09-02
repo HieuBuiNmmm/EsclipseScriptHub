@@ -132,6 +132,19 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoStart")
 
+	ui.PatchSliderLoadCallback(runSection:Slider({
+		Name = "Start Delay",
+		Default = autoStart.GetDelay(),
+		Minimum = 0,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			autoStart.SetDelay(Value)
+		end),
+	}, "Slider_AutoStartDelay"))
+
 	runSection:Toggle({
 		Name = "Auto Retry",
 		Default = false,

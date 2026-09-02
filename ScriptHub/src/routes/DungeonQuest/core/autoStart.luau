@@ -10,6 +10,7 @@ local notifier = require("@routes/DungeonQuest/core/notifier")
 local autoStartEnabled = false
 local autoStartRunning = false
 local autoStartTriggered = false
+local autoStartDelay = 3
 local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
 local autoStartCommandFn = nil
 
@@ -37,6 +38,16 @@ function autoStart.Start()
 
 			if met and not autoStartTriggered then
 				autoStartTriggered = true
+				--// Chờ delay để asset load xong; nếu bị tắt giữa chừng thì bỏ qua.
+				local waited = 0
+				while waited < autoStartDelay and autoStartEnabled do
+					task.wait(0.1)
+					waited = waited + 0.1
+				end
+				if not autoStartEnabled then
+					autoStartTriggered = false
+					break
+				end
 				if autoStartCommandFn then
 					local sCmd, err = pcall(autoStartCommandFn)
 					if sCmd then
@@ -63,6 +74,15 @@ end
 
 function autoStart.Stop()
 	autoStartEnabled = false
+end
+
+--// Delay (giây) chờ thêm sau khi vào lobby trước khi fire start — chờ asset load xong.
+function autoStart.SetDelay(value)
+	autoStartDelay = tonumber(value) or 3
+end
+
+function autoStart.GetDelay()
+	return autoStartDelay
 end
 
 function autoStart.Toggle(state)
