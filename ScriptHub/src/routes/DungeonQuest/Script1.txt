@@ -1,36 +1,217 @@
-local map = workspace:WaitForChild("Map")
-local borders = map:WaitForChild("borders", 5)
-local mapChildren = map:GetChildren()
-local container143 = mapChildren[143]
+-- Script Path: game:GetService("ReplicatedStorage").modules.PrecastHitbox
+-- Took 0.01s to decompile.
+-- Executor: Madium (2.0.0)
 
--- Hàm xử lý ép hiện hình
-local function forceVisible(container)
-    if not container then return end
-    
-    -- Dùng GetDescendants() để quét sạch mọi part lồng bên trong
-    for _, object in ipairs(container:GetDescendants()) do
-        -- Chỉ xử lý nếu nó là BasePart và độ trong suốt đang lớn hơn 0
-        if object:IsA("BasePart") and object.Transparency ~= 0 then
-            object.Transparency = 0
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Utility = ReplicatedStorage:WaitForChild("Utility")
+local BridgeNet2_m = require(Utility:WaitForChild("BridgeNet2"))
+local TweenService_m = require(Utility:WaitForChild("TweenService"))
+local Trove_m = require(Utility:WaitForChild("Trove"))
+local _ = require(Utility:WaitForChild("Robug"))
+local v5 = BridgeNet2_m.ReferenceBridge("precastHitbox")
+local v6 = BridgeNet2_m.ReferenceIdentifier("action")
+local v7 = RunService:IsClient()
+local v8 = RunService:IsServer()
+local t = {}
+
+local function detectTerrain(u1: CFrame) -- line: 18
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterType = Enum.RaycastFilterType.Include
+    raycastParams.FilterDescendantsInstances = { workspace.Terrain }
+    raycastParams.IgnoreWater = false
+    local v10 = workspace:Raycast(
+        u1.Position + Vector3.new(0, 5, 0),
+        Vector3.new(0, -15, 0),
+        raycastParams
+    )
+
+    if v10 then
+        local RightVector = u1.RightVector
+        local Normal = v10.Normal
+
+        return CFrame.fromMatrix(v10.Position, RightVector, Normal, (RightVector:Cross(Normal)))
+    end
+
+    return u1
+end
+
+local function createHitbox(u2: CFrame, vec1: Vector3, s1: string, u3: userdata?) -- line: 37
+    local Part = Instance.new("Part")
+    Part.Material = "Neon"
+    Part.Anchored = true
+    Part.CanTouch = false
+    Part.CanQuery = false
+    Part.CanCollide = false
+    Part.Transparency = 1
+    Part.Shape = s1
+    Part.Size = vec1
+    Part.CFrame = u2
+    Part.Parent = workspace
+
+    if u3 then
+        for key, val in u3 do
+            Part[key] = val
         end
     end
-end
 
-if not container143 then
-    warn("Không tìm thấy phần tử thứ 143 trong Map.")
-end
-
-if not borders then
-    warn("Không tìm thấy 'borders' trong Map.")
-end
-
-print("Bắt đầu ép buộc hiện hình liên tục...")
-
--- Dùng task.spawn để vòng lặp này chạy ngầm mà không làm treo các script khác bên dưới (nếu có)
-task.spawn(function()
-    -- Vòng lặp chạy liên tục mỗi 0.5 giây
-    while task.wait(0.5) do
-        forceVisible(container143)
-        forceVisible(borders)
+    if s1 == "Cylinder" then
+        Part.CFrame = Part.CFrame * CFrame.Angles(0, 0, 1.5707963267948966)
     end
-end)
+
+    return Part
+end
+
+local function tweenHitbox(arg1, arg2, arg3, arg4) -- line: 63
+    -- upvalues:
+    --  [1] TweenService_m (copy)
+
+    TweenService_m.tween(
+        arg1,
+        { Transparency = 0.1 },
+        { Time = 0.15 - arg4, Style = "Sine", Dir = "Out" }
+    )
+    task.delay(arg3 - arg4, function() -- line: 68
+        -- upvalues:
+        --  [1] TweenService_m (ref)
+        --  [2] arg1 (copy)
+        --  [3] arg2 (copy)
+
+        TweenService_m.tween(
+            arg1,
+            { Transparency = 0 },
+            { Time = 0.1, Style = "Sine", Dir = "Out" }
+        )
+        task.wait(0.15)
+        TweenService_m.tween(
+            arg1,
+            { Transparency = 1 },
+            { Time = 0.1, Style = "Sine", Dir = "Out" }
+        )
+        task.wait(0.1)
+        arg2:Clean()
+    end)
+end
+
+function t.Cube(
+    u4: CFrame,
+    vec2: Vector3,
+    n1: number,
+    n2: number,
+    u5: userdata
+) -- line: 85
+    -- upvalues:
+    --  [1] v8 (copy)
+    --  [2] v5 (copy)
+    --  [3] BridgeNet2_m (copy)
+    --  [4] v6 (copy)
+    --  [5] detectTerrain (copy)
+    --  [6] Trove_m (copy)
+    --  [7] tweenHitbox (copy)
+
+    if v8 then
+        v5:Fire(
+            BridgeNet2_m.AllPlayers(),
+            {
+                [v6] = "Cube",
+                cframe = u4,
+                size = vec2,
+                delayUntilAttack = n1,
+                startTime = n2,
+                properties = u5
+            }
+        )
+
+        return
+    end
+
+    local v15 = workspace:GetServerTimeNow() - n2
+    local v16 = detectTerrain(u4)
+    local Part_1 = Instance.new("Part")
+    Part_1.Material = "Neon"
+    Part_1.Anchored = true
+    Part_1.CanTouch = false
+    Part_1.CanQuery = false
+    Part_1.CanCollide = false
+    Part_1.Transparency = 1
+    Part_1.Shape = "Block"
+    Part_1.Size = vec2
+    Part_1.CFrame = v16
+    Part_1.Parent = workspace
+
+    if u5 then
+        for key_1, val_1 in u5 do
+            Part_1[key_1] = val_1
+        end
+    end
+
+    local v17 = Part_1
+    local v18 = Trove_m.new()
+    v18:Add(v17)
+    tweenHitbox(v17, v18, n1, v15)
+end
+
+function t.Circle(
+    vec3: Vector3,
+    n3: number,
+    n4: number,
+    n5: number,
+    u6: userdata
+) -- line: 108
+    -- upvalues:
+    --  [1] v8 (copy)
+    --  [2] v5 (copy)
+    --  [3] BridgeNet2_m (copy)
+    --  [4] v6 (copy)
+    --  [5] detectTerrain (copy)
+    --  [6] createHitbox (copy)
+    --  [7] Trove_m (copy)
+    --  [8] tweenHitbox (copy)
+
+    if v8 then
+        v5:Fire(
+            BridgeNet2_m.AllPlayers(),
+            {
+                [v6] = "Circle",
+                position = vec3,
+                radius = n3,
+                delayUntilAttack = n4,
+                startTime = n5,
+                properties = u6
+            }
+        )
+
+        return
+    end
+
+    local v21 = workspace:GetServerTimeNow() - n5
+    local v25 = createHitbox(
+        detectTerrain(CFrame.new(vec3)),
+        Vector3.new(0.5, n3 * 2, n3 * 2),
+        "Cylinder",
+        u6
+    )
+    local v26 = Trove_m.new()
+    v26:Add(v25)
+    tweenHitbox(v25, v26, n4, v21)
+end
+
+if v7 then
+    v5:Connect(function(arg5) -- line: 132
+        -- upvalues:
+        --  [1] v6 (copy)
+        --  [2] t (copy)
+
+        local v27 = arg5.cframe or arg5.position
+        local v28 = arg5.size or arg5.radius
+        t[arg5[v6]](
+            v27,
+            v28,
+            arg5.delayUntilAttack,
+            arg5.startTime,
+            arg5.properties
+        )
+    end)
+end
+
+return t

@@ -57,7 +57,7 @@ return function(window, tab)
 	enemySection:Header({ Name = "Enemy" })
 
 	enemySection:Toggle({
-		Name = "Projectile Hitboxes",
+		Name = "Attack Hitbox",
 		Default = false,
 		Callback = autoSave.Wrap(function(state)
 			esp.Toggle(state)
@@ -66,8 +66,8 @@ return function(window, tab)
 
 	enemySection:Dropdown({
 		Name = "Hitbox Filter",
-		Options = { "All", "Projectile" },
-		Default = (esp.GetHitboxMode() == "All" and 1) or 2,
+		Options = { "precast", "Projectile", "All" },
+		Default = (esp.GetHitboxMode() == "precast" and 1) or (esp.GetHitboxMode() == "Projectile" and 2) or 3,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
 			esp.SetHitboxMode(option)
