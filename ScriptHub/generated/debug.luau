@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-02T02:08:36.685401700+00:00",
+    genDate = "2026-09-02T03:02:14.878249+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -9187,11 +9187,18 @@ local SCAN_INTERVAL = 0.5
 --// Hitbox mode constants
 local HITBOX_MODE_REAL = "Real"
 local HITBOX_MODE_CUSTOM = "Custom"
+local HITBOX_MODE_PROJECTILE = "Projectile"
+local HITBOX_MODE_ALL = "All"
+
+--// Tên object "hitBox" nằm bên trong skill model, dùng cho chế độ "All"
+local HITBOX_CHILD_NAME = "hitBox"
 
 --// State
 local enabled = false
 local scanThread = nil
 local projectileNames = {}
+local hitboxMode = HITBOX_MODE_PROJECTILE
+local hitBoxCache = setmetatable({}, { __mode = "k" })
 
 local playerBoxEnabled = false
 local playerBoxThread = nil
@@ -9225,13 +9232,43 @@ end
 
 --// Chỉ highlight object trùng tên với danh sách projectile, kể cả khi
 --// nằm sâu trong hậu duệ của một object Workspace.
-local function addHitboxes(root)
-	if projectileNames[root.Name] then
-		createBox(root)
-	end
+--// CHẾ ĐỘ "All": highlight thêm các skill model trong Workspace có chứa object "hitBox".
+local function hasHitBoxDescendant(root)
+	if not root then return false end
+	local cached = hitBoxCache[root]
+	if cached ~= nil then return cached end
+
+	local found = false
 	for _, obj in ipairs(root:GetDescendants()) do
-		if projectileNames[obj.Name] then
-			createBox(obj)
+		if obj.Name == HITBOX_CHILD_NAME then
+			found = true
+			break
+		end
+	end
+	hitBoxCache[root] = found
+	return found
+end
+
+local function addHitboxes(root)
+	if hitboxMode == HITBOX_MODE_ALL then
+		if hasHitBoxDescendant(root) then
+			createBox(root)
+		end
+		for _, obj in ipairs(root:GetDescendants()) do
+			if projectileNames[obj.Name] then
+				createBox(obj)
+			elseif hasHitBoxDescendant(obj) then
+				createBox(obj)
+			end
+		end
+	else
+		if projectileNames[root.Name] then
+			createBox(root)
+		end
+		for _, obj in ipairs(root:GetDescendants()) do
+			if projectileNames[obj.Name] then
+				createBox(obj)
+			end
 		end
 	end
 end
@@ -9275,6 +9312,7 @@ function esp.Toggle(state)
 	else
 		if scanThread then task.cancel(scanThread); scanThread = nil end
 		projectileNames = {}
+		table.clear(hitBoxCache)
 		local ok = pcall(removeESPFolder)
 		if not ok then warn("[ESP] cleanup error") end
 	end
@@ -9282,6 +9320,19 @@ end
 
 function esp.IsEnabled()
 	return enabled
+end
+
+function esp.GetHitboxMode()
+	return hitboxMode
+end
+
+function esp.SetHitboxMode(mode)
+	if mode ~= HITBOX_MODE_ALL and mode ~= HITBOX_MODE_PROJECTILE then return end
+	hitboxMode = mode
+	if enabled then
+		table.clear(hitBoxCache)
+		pcall(removeESPFolder)
+	end
 end
 
 --// Tạo SelectionBox bám vào một adornee (Root hoặc proxy part).
@@ -9617,13 +9668,185 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.t()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+end function __DIST.t()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
+-- Script1: ép hiện hình liên tục các phần map bị ẩn/thuỷ tinh.
+-- Script2: dọn dẹp vật thể rác (decoration) ở lớp ngoài cùng của Map.
+-- Script3: radar hitbox quét quanh nhân vật, xóa part có độ cao (Y) > 80.
+
+--// Imports
+
+local services = __DIST.load('d')
+
+--// Table
+local mapOptimizer = {}
+
+--// State
+local enabled = false
+local cleanupThread = nil
+local visibilityThread = nil
+local radarThread = nil
+
+local CLEANUP_INTERVAL = 2
+local FORCE_VISIBLE_INTERVAL = 0.5
+local RADAR_INTERVAL = 0.2
+local RADAR_HITBOX_SIZE = Vector3.new(20, 200, 20)
+local RADAR_MIN_Y = 80
+
+--// DANH SÁCH 1: Xóa nếu tên object ở Depth 1 khớp chính xác
+local DEPTH1_NAMES_TO_DELETE = {
+	["Stone"] = true,
+	["Dead Tree"] = true,
+	["Eye Rune"] = true,
+	["Meshes/Ice shard"] = true,
+	["Small snow patch"] = true,
+	["snow patch"] = true,
+	["Meshes/Root4"] = true,
+	["snow machine"] = true,
+	["Meshes/Ice3"] = true,
+	["Meshes/ice plates_Circle.004"] = true,
+}
+
+--// DANH SÁCH 2: Xóa object Depth 1 nếu BÊN TRONG nó có chứa tên này
+local DESCENDANT_NAMES_TO_TARGET = {
+	["Wooden plank"] = true,
+	["Meshes/Root4"] = true,
+}
+
+local function getMap()
+	return workspace:WaitForChild("Map", 5)
+end
+
+--// Dọn dẹp vật thể rác ở Depth 1 (Script2)
+local function cleanUpMap()
+	local map = getMap()
+	if not map then return end
+
+	for _, child in ipairs(map:GetChildren()) do
+		local shouldDelete = DEPTH1_NAMES_TO_DELETE[child.Name]
+		if not shouldDelete then
+			for _, descendant in ipairs(child:GetDescendants()) do
+				if DESCENDANT_NAMES_TO_TARGET[descendant.Name] then
+					shouldDelete = true
+					break
+				end
+			end
+		end
+		if shouldDelete then
+			child:Destroy()
+		end
+	end
+end
+
+--// Ép hiện hình cho một container (Script1)
+local function forceVisible(container)
+	if not container then return end
+	for _, object in ipairs(container:GetDescendants()) do
+		if object:IsA("BasePart") and object.Transparency ~= 0 then
+			object.Transparency = 0
+		end
+	end
+end
+
+--// Radar hitbox: quét quanh nhân vật và xóa part cao (Y > RADAR_MIN_Y) (Script3)
+local function runRadar()
+	local player = services.player
+	if not player then return end
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local map = getMap()
+	if not map then return end
+
+	local filterList = {}
+	local borders = map:FindFirstChild("borders")
+	local container143 = map:GetChildren()[143]
+	if borders then table.insert(filterList, borders) end
+	if container143 then table.insert(filterList, container143) end
+
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Include
+	overlapParams.FilterDescendantsInstances = filterList
+
+	local hitboxCFrame = hrp.CFrame * CFrame.new(0, 100, 0)
+	local partsInHitbox = workspace:GetPartBoundsInBox(hitboxCFrame, RADAR_HITBOX_SIZE, overlapParams)
+
+	for _, hitPart in ipairs(partsInHitbox) do
+		if hitPart.Name ~= "borders" and hitPart.Name ~= "Baseplate" then
+			if hitPart.CFrame.Position.Y > RADAR_MIN_Y then
+				hitPart:Destroy()
+			end
+		end
+	end
+end
+
+function mapOptimizer.Toggle(state)
+	if state == enabled then return end
+	enabled = state
+
+	if enabled then
+		local ok, err = pcall(cleanUpMap)
+		if not ok then
+			warn("[MapOptimizer] cleanup error:", tostring(err))
+		end
+
+		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
+		cleanupThread = task.spawn(function()
+			while enabled do
+				task.wait(CLEANUP_INTERVAL)
+				local ok, err = pcall(cleanUpMap)
+				if not ok then
+					warn("[MapOptimizer] cleanup error:", tostring(err))
+				end
+			end
+		end)
+
+		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
+		visibilityThread = task.spawn(function()
+			while enabled do
+				local ok, err = pcall(function()
+					local map = getMap()
+					local container143 = map and map:GetChildren()[143]
+					local borders = map and map:FindFirstChild("borders")
+					forceVisible(container143)
+					forceVisible(borders)
+				end)
+				if not ok then
+					warn("[MapOptimizer] visibility error:", tostring(err))
+				end
+				task.wait(FORCE_VISIBLE_INTERVAL)
+			end
+		end)
+
+		if radarThread then task.cancel(radarThread); radarThread = nil end
+		radarThread = task.spawn(function()
+			while enabled do
+				local ok, err = pcall(runRadar)
+				if not ok then
+					warn("[MapOptimizer] radar error:", tostring(err))
+				end
+				task.wait(RADAR_INTERVAL)
+			end
+		end)
+	else
+		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
+		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
+		if radarThread then task.cancel(radarThread); radarThread = nil end
+	end
+end
+
+function mapOptimizer.IsEnabled()
+	return enabled
+end
+
+return mapOptimizer end function __DIST.u()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 	
 local autoSave = __DIST.load('g')
 	local esp = __DIST.load('r')
 	local enemyEsp = __DIST.load('s')
+	local mapOptimizer = __DIST.load('t')
 	local ui = __DIST.load('f')
 
 --// Hitbox mode options
@@ -9682,6 +9905,16 @@ return function(window, tab)
 			esp.Toggle(state)
 		end),
 	}, "Toggle_HighlightHitboxes")
+
+	enemySection:Dropdown({
+		Name = "Hitbox Filter",
+		Options = { "All", "Projectile" },
+		Default = (esp.GetHitboxMode() == "All" and 1) or 2,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			esp.SetHitboxMode(option)
+		end),
+	}, "Dropdown_HitboxFilter")
 
 	enemySection:Toggle({
 		Name = "Model Highlight",
@@ -9748,8 +9981,19 @@ return function(window, tab)
 	end
 	applyHitboxVisibility()
 
+	local mapSection = tab:Section({ Side = "Right" })
+	mapSection:Header({ Name = "Map" })
+
+	mapSection:Toggle({
+		Name = "Map Optimizer",
+		Default = mapOptimizer.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			mapOptimizer.Toggle(state)
+		end),
+	}, "Toggle_MapOptimizer")
+
 end
-end function __DIST.u()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end function __DIST.v()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -9824,7 +10068,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.v()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.w()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -9832,7 +10076,7 @@ end function __DIST.v()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('g')
-local autoHide = __DIST.load('u')
+local autoHide = __DIST.load('v')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -9989,7 +10233,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.w()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.x()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -10587,12 +10831,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.x()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.y()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('w')
+local webhook = __DIST.load('x')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -10659,7 +10903,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.y()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.z()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
@@ -10809,7 +11053,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.z()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.A()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -10877,10 +11121,10 @@ return function(self)
 	local speedTab = __DIST.load('i')
 	local autoFarmPathfinderTab = __DIST.load('m')
 	local dungeonTab = __DIST.load('q')
-	local visualTab = __DIST.load('t')
-	local configTab = __DIST.load('v')
-	local notificationsTab = __DIST.load('x')
-	local stateTab = __DIST.load('y')
+	local visualTab = __DIST.load('u')
+	local configTab = __DIST.load('w')
+	local notificationsTab = __DIST.load('y')
+	local stateTab = __DIST.load('z')
 
 	speedTab(window, tabs.Player)
 	autoFarmPathfinderTab(window, tabs.Pathfinder)
@@ -10895,7 +11139,7 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('w')
+	local webhook = __DIST.load('x')
 	webhook.Init()
 __DIST.load('s')
 
@@ -10905,7 +11149,7 @@ __DIST.load('s')
 local contextual = __DIST.load('k')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('u')
+	local autoHide = __DIST.load('v')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -10917,7 +11161,7 @@ local contextual = __DIST.load('k')
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.A()
+end function __DIST.B()
 local flags = {}
 
 function flags:Export()
@@ -10960,7 +11204,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.B()
+return flags end function __DIST.C()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -11029,12 +11273,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.C()
+end function __DIST.D()
 --// Imports
 
 
 
-local binder = __DIST.load('B')
+local binder = __DIST.load('C')
 
 --// Variables
 local interface = {}
@@ -11054,9 +11298,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.D()--// Imports
+end function __DIST.E()--// Imports
 
-local binder = __DIST.load('B')
+local binder = __DIST.load('C')
 
 --// Variables
 local esp = {}
@@ -11067,11 +11311,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.E()--// Imports
+end function __DIST.F()--// Imports
 
-local flags = __DIST.load('A')
-local interface = __DIST.load('C')
-local esp = __DIST.load('D')
+local flags = __DIST.load('B')
+local interface = __DIST.load('D')
+local esp = __DIST.load('E')
 
 --// Initialize
 local window = interface:Window({
@@ -11110,7 +11354,7 @@ return {
 		end,
 	},
 }
-end function __DIST.F()--// Variables
+end function __DIST.G()--// Variables
 
 local utility = {}
 
@@ -11142,7 +11386,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.G()--// Functions
+end function __DIST.H()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -11152,14 +11396,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.H()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.I()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('E')
-	local utility = __DIST.load('F')
-	local services = __DIST.load('G')
+	local base = __DIST.load('F')
+	local utility = __DIST.load('G')
+	local services = __DIST.load('H')
 
 	--// References
 	local flags = base.Flags
@@ -11225,7 +11469,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('z'),
+		Load = __DIST.load('A'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -11236,7 +11480,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('H'),
+		Load = __DIST.load('I'),
 		Places = {
 			123456789,
 			987654321,

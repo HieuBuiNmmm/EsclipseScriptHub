@@ -1,0 +1,59 @@
+local map = workspace:WaitForChild("Map")
+local count = 0
+
+-- DANH SÁCH 1: Xóa nếu tên của object ở lớp ngoài cùng (Depth 1) khớp chính xác
+local depth1NamesToDelete = {
+    ["Stone"] = true,
+    ["Dead Tree"] = true,
+    ["Eye Rune"] = true,
+    ["Meshes/Ice shard"] = true,
+    ["Small snow patch"] = true,
+    ["snow patch"] = true,
+    ["Meshes/Root4"] = true,
+    ["snow machine"] = true,
+    ["Meshes/Ice3"] = true,
+    ["Meshes/ice plates_Circle.004"] = true,
+}
+
+-- DANH SÁCH 2: Xóa object lớp ngoài (Depth 1) nếu BÊN TRONG nó có chứa các tên này
+local descendantNamesToTarget = {
+    ["Wooden plank"] = true,
+    ["Meshes/Root4"] = true,
+}
+
+-- Quét qua tất cả các object ở lớp ngoài cùng (Depth 1) của Map
+for _, child in ipairs(map:GetChildren()) do
+    
+    local shouldDelete = false
+    local reason = "" -- Biến này để lưu lý do xóa, giúp bạn dễ kiểm tra trong Output
+    
+    -- 1. Kiểm tra điều kiện 1 (Khớp tên Depth 1)
+    if depth1NamesToDelete[child.Name] then
+        shouldDelete = true
+        reason = "Khớp tên chính xác ở Depth 1"
+    else
+        -- 2. Kiểm tra điều kiện 2 (Quét sâu vào trong nếu điều kiện 1 không khớp)
+        for _, descendant in ipairs(child:GetDescendants()) do
+            if descendantNamesToTarget[descendant.Name] then
+                shouldDelete = true
+                reason = "Bên trong có chứa object con tên là: '" .. descendant.Name .. "'"
+                break -- Đã tìm thấy lý do để xóa rồi thì ngưng quét các child khác cho nhẹ máy
+            end
+        end
+    end
+    
+    -- Nếu đạt 1 trong 2 điều kiện, tiến hành xóa nguyên cả khối Depth 1
+    if shouldDelete then
+        local deletedName = child.Name
+        child:Destroy()
+        count = count + 1
+        print("🗑️ Đã xóa: [" .. deletedName .. "] - Lý do: " .. reason)
+    end
+    
+end
+
+if count > 0 then
+    print("✅ Hoàn tất! Đã dọn dẹp tổng cộng " .. count .. " objects ở Depth 1.")
+else
+    print("⚠️ Không tìm thấy object nào khớp với 2 danh sách trên.")
+end

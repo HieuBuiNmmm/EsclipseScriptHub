@@ -26,11 +26,18 @@ local SCAN_INTERVAL = 0.5
 --// Hitbox mode constants
 local HITBOX_MODE_REAL = "Real"
 local HITBOX_MODE_CUSTOM = "Custom"
+local HITBOX_MODE_PROJECTILE = "Projectile"
+local HITBOX_MODE_ALL = "All"
+
+--// Tên object "hitBox" nằm bên trong skill model, dùng cho chế độ "All"
+local HITBOX_CHILD_NAME = "hitBox"
 
 --// State
 local enabled = false
 local scanThread = nil
 local projectileNames = {}
+local hitboxMode = HITBOX_MODE_PROJECTILE
+local hitBoxCache = setmetatable({}, { __mode = "k" })
 
 local playerBoxEnabled = false
 local playerBoxThread = nil
@@ -64,13 +71,43 @@ end
 
 --// Chỉ highlight object trùng tên với danh sách projectile, kể cả khi
 --// nằm sâu trong hậu duệ của một object Workspace.
-local function addHitboxes(root)
-	if projectileNames[root.Name] then
-		createBox(root)
-	end
+--// CHẾ ĐỘ "All": highlight thêm các skill model trong Workspace có chứa object "hitBox".
+local function hasHitBoxDescendant(root)
+	if not root then return false end
+	local cached = hitBoxCache[root]
+	if cached ~= nil then return cached end
+
+	local found = false
 	for _, obj in ipairs(root:GetDescendants()) do
-		if projectileNames[obj.Name] then
-			createBox(obj)
+		if obj.Name == HITBOX_CHILD_NAME then
+			found = true
+			break
+		end
+	end
+	hitBoxCache[root] = found
+	return found
+end
+
+local function addHitboxes(root)
+	if hitboxMode == HITBOX_MODE_ALL then
+		if hasHitBoxDescendant(root) then
+			createBox(root)
+		end
+		for _, obj in ipairs(root:GetDescendants()) do
+			if projectileNames[obj.Name] then
+				createBox(obj)
+			elseif hasHitBoxDescendant(obj) then
+				createBox(obj)
+			end
+		end
+	else
+		if projectileNames[root.Name] then
+			createBox(root)
+		end
+		for _, obj in ipairs(root:GetDescendants()) do
+			if projectileNames[obj.Name] then
+				createBox(obj)
+			end
 		end
 	end
 end
@@ -114,6 +151,7 @@ function esp.Toggle(state)
 	else
 		if scanThread then task.cancel(scanThread); scanThread = nil end
 		projectileNames = {}
+		table.clear(hitBoxCache)
 		local ok = pcall(removeESPFolder)
 		if not ok then warn("[ESP] cleanup error") end
 	end
@@ -121,6 +159,19 @@ end
 
 function esp.IsEnabled()
 	return enabled
+end
+
+function esp.GetHitboxMode()
+	return hitboxMode
+end
+
+function esp.SetHitboxMode(mode)
+	if mode ~= HITBOX_MODE_ALL and mode ~= HITBOX_MODE_PROJECTILE then return end
+	hitboxMode = mode
+	if enabled then
+		table.clear(hitBoxCache)
+		pcall(removeESPFolder)
+	end
 end
 
 --// Tạo SelectionBox bám vào một adornee (Root hoặc proxy part).

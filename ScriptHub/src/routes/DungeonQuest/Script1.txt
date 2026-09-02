@@ -1,0 +1,36 @@
+local map = workspace:WaitForChild("Map")
+local borders = map:WaitForChild("borders", 5)
+local mapChildren = map:GetChildren()
+local container143 = mapChildren[143]
+
+-- Hàm xử lý ép hiện hình
+local function forceVisible(container)
+    if not container then return end
+    
+    -- Dùng GetDescendants() để quét sạch mọi part lồng bên trong
+    for _, object in ipairs(container:GetDescendants()) do
+        -- Chỉ xử lý nếu nó là BasePart và độ trong suốt đang lớn hơn 0
+        if object:IsA("BasePart") and object.Transparency ~= 0 then
+            object.Transparency = 0
+        end
+    end
+end
+
+if not container143 then
+    warn("Không tìm thấy phần tử thứ 143 trong Map.")
+end
+
+if not borders then
+    warn("Không tìm thấy 'borders' trong Map.")
+end
+
+print("Bắt đầu ép buộc hiện hình liên tục...")
+
+-- Dùng task.spawn để vòng lặp này chạy ngầm mà không làm treo các script khác bên dưới (nếu có)
+task.spawn(function()
+    -- Vòng lặp chạy liên tục mỗi 0.5 giây
+    while task.wait(0.5) do
+        forceVisible(container143)
+        forceVisible(borders)
+    end
+end)

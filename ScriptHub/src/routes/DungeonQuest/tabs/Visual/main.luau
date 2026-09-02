@@ -4,6 +4,7 @@
 	local autoSave = require("@routes/DungeonQuest/core/autoSave")
 	local esp = require("@routes/DungeonQuest/core/esp")
 	local enemyEsp = require("@routes/DungeonQuest/core/enemyEsp")
+	local mapOptimizer = require("@routes/DungeonQuest/core/mapOptimizer")
 	local ui = require("@routes/DungeonQuest/core/ui")
 
 --// Hitbox mode options
@@ -62,6 +63,16 @@ return function(window, tab)
 			esp.Toggle(state)
 		end),
 	}, "Toggle_HighlightHitboxes")
+
+	enemySection:Dropdown({
+		Name = "Hitbox Filter",
+		Options = { "All", "Projectile" },
+		Default = (esp.GetHitboxMode() == "All" and 1) or 2,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			esp.SetHitboxMode(option)
+		end),
+	}, "Dropdown_HitboxFilter")
 
 	enemySection:Toggle({
 		Name = "Model Highlight",
@@ -127,5 +138,16 @@ return function(window, tab)
 		pcall(function() enemySizeSlider:SetVisibility(esp.GetEnemyHitboxMode() == "Custom") end)
 	end
 	applyHitboxVisibility()
+
+	local mapSection = tab:Section({ Side = "Right" })
+	mapSection:Header({ Name = "Map" })
+
+	mapSection:Toggle({
+		Name = "Map Optimizer",
+		Default = mapOptimizer.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			mapOptimizer.Toggle(state)
+		end),
+	}, "Toggle_MapOptimizer")
 
 end
