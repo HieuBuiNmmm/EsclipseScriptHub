@@ -1,10 +1,10 @@
 -- ESP hitbox cho DungeonQuest.
--- Đang làm mới: chỉ giữ Player/Enemy Hitbox (Real/Custom) là hoạt động.
--- Phần Show Hitbox Skill (enemy) sẽ được viết lại trong bước tiếp theo.
+-- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
+local dodgeNode = require("@routes/DungeonQuest/core/dodgeNode")
 
 --// Table
 local esp = {}
@@ -18,6 +18,28 @@ local PLAYER_BOX_NAME = "PlayerHitbox_ESP"
 
 local ENEMY_BOX_COLOR = Color3.fromRGB(255, 0, 0)
 local ENEMY_BOX_NAME = "EnemyHitbox_ESP"
+
+--// [SmartDodge] telegraph = child "precast"; khi player trong vùng precast -> teleport ra ngoài.
+local SKILL_DODGE_NAMES = {
+	["northernMageShot"] = true,
+	["northernWarriorCircleStrike"] = true,
+	["northernWarriorLineStrike"] = true,
+	["spearmanStrike"] = true,
+	["spearmanStrikeHitbox"] = true,
+}
+--// Khoảng dịch (studs) đẩy player vượt biên vùng thêm đúng giá trị này (1-4), giữ NHỎ
+--// để tránh anticheat phát hiện tele. Điều chỉnh qua slider ở UI.
+local SKILL_DODGE_DISTANCE = 2
+--// Bán kính vùng báo (bubble) quanh player. Nếu telegraph của skill chạm/trùng vùng này
+--// (bất kể player ở đâu trong telegraph) -> dodge. Rộng hơn = né sớm hơn.
+local SKILL_DODGE_ZONE_RADIUS = 4
+--// Chỉ dodge khi player dưới ngưỡng máu này (0 = luôn dodge).
+local SKILL_DODGE_MAX_HEALTH = 0
+--// Cooldown toàn cục mặc định (giây) giữa 2 lần dodge bất kể skill nào, tránh tele liên tục.
+local SKILL_DODGE_GLOBAL_COOLDOWN = 1
+--// Vòng an toàn (safety) thêm vào phía trên vòng trigger, để điểm tele luôn nằm ngoài vùng nguy hiểm.
+local SKILL_DODGE_SAFETY_MARGIN = 3
+local SKILL_SCAN_INTERVAL = 0.01
 
 --// Hitbox mode constants
 local HITBOX_MODE_REAL = "Real"
@@ -34,6 +56,22 @@ local enemyBoxEnabled = false
 local enemyBoxThread = nil
 local enemyBoxMode = HITBOX_MODE_REAL
 local enemyBoxScale = 1.5
+
+--// State [Show Dodge Zone - bubble cầu quanh player]
+local dodgeZoneEnabled = false
+local dodgeZoneThread = nil
+local dodgeZoneRadius = SKILL_DODGE_ZONE_RADIUS
+--// Vòng an toàn (safety) — phải lớn hơn trigger. Điểm an toàn luôn nằm ngoài vòng này.
+local dodgeZoneSafetyRadius = SKILL_DODGE_ZONE_RADIUS + SKILL_DODGE_SAFETY_MARGIN
+--// State [Show Dodge Safety - bubble đỏ quanh precast]
+local dodgeSafetyEnabled = false
+local dodgeSafetyThread = nil
+
+--// State [SmartDodge]
+local smartDodgeEnabled = false
+local smartDodgeThread = nil
+local skillDodgeGlobalCooldown = SKILL_DODGE_GLOBAL_COOLDOWN
+local lastGlobalDodgeAt = 0
 
 --// Tạo SelectionBox bám vào một adornee (Root hoặc proxy part).
 local function createSelectionBox(boxName, adornee, color)
@@ -226,615 +264,420 @@ function esp.SetEnemyHitboxScale(scale)
 	enemyBoxScale = scale
 end
 
---// ===== Show Hitbox Skill (enemy) — dạng 1: chiêu cast từ enemy =====
---// Cách nhận diện: skill model có chứa marker "precast" (telegraph) — precast làm chủ.
---// Cách hiển thị: phủ theo MESH THẬT — clone nguyên đối tượng (giữ MeshId/Shape/Union),
---// set màu Neon + trong suốt + bám theo CFrame/Size từng frame.
+--// ========== [Show Skill Hitbox] Phủ skill bằng proxy mesh part (trong suốt) ==========
+--// Clone toàn bộ model skill -> giữ nguyên hình dạng MeshPart thật, làm trong suốt
+--// neon để hiển thị hitbox. Không đổi màu/tự ẩn theo thời gian.
 
---// Config
-local SKILL_BOX_COLOR = Color3.fromRGB(255, 200, 0)
-local SKILL_PROXY_TRANSPARENCY = 0.6
-local SKILL_PROXY_PREFIX = "SkillHitbox_Mesh_"
-local SKILL_SCAN_INTERVAL = 0.1
-local SKILL_TRANSPARENCY_VISIBLE_THRESHOLD = 0.55
-
---// Tên object dùng để nhận diện skill model. "precast" làm chủ (dạng 1);
---// hitBox/hitBot giữ làm marker phụ để bắt skill model.
-local SKILL_MARKER_NAMES = {
-	["precast"] = true,
-	["hitBot"] = true,
+--// Danh sách skill cần vẽ proxy.
+local SKILL_PROJECTILE_NAMES = {
+	["northernMageShot"] = true,
+	["northernWarriorCircleStrike"] = true,
+	["northernWarriorLineStrike"] = true,
+	["spearmanStrike"] = true,
+	["spearmanStrikeHitbox"] = true,
 }
+local SKILL_ESP_COLOR = Color3.fromRGB(255, 230, 0)
+local SKILL_ESP_NAME = "SkillESP"
 
---// Dạng 2 — skill summon trên bản đồ: danh sách tên cố định. Render:
---// Model -> Highlight bám mesh; part đơn lẻ -> box; ngoại lệ (orb hình cầu) -> mesh proxy.
-local SUMMON_SKILL_NAMES = {
-	["firstBossCrissCross"] = true,
-	["firstBossBigSpike"] = true,
-	["firstBossSeekingSpikes"] = true,
-	["secondBossMovingBeam"] = true,
-}
+--// State proxy cho từng model (điểm neo để giữ vị trí trùng mỗi frame).
+local skillBoxEnabled = false
+local skillBoxThread = nil
 
---// Tên child chứa hitbox của orb (MeshPart) — box đúng object này.
-local SUMMON_HITBOX_CHILD_NAME = "ColorblindRune"
-
-local SUMMON_SKILL_MESH_PART_NAMES = {
-	["secondBossGreenOrb"] = true,
-	["secondBossRedOrb"] = true,
-	["secondBossYellowOrb"] = true,
-}
-local SUMMON_BOX_PREFIX = "SkillHitbox_SummonBox_"
-local SUMMON_BOX_TRANSPARENCY = 0.5
-local SUMMON_BOX_SCALE = 1.05
-local SUMMON_HIGHLIGHT_TRANSPARENCY = 0.45
-local SUMMON_HIGHLIGHT_OUTLINE_TRANSPARENCY = 0.2
-
---// State
-local skillHitboxEnabled = false
-local skillScanThread = nil
-local skillMarkerCache = setmetatable({}, { __mode = "k" })
-local skillLifeConnections = setmetatable({}, { __mode = "k" })
-local skillProxyState = setmetatable({}, { __mode = "k" })
-local skillDebugSeen = setmetatable({}, { __mode = "k" })
-
---// Resolve BasePart thật từ một object (Part/MeshPart/UnionOperation hoặc Model chứa part).
-local function resolveSkillPart(obj)
-	if obj:IsA("BasePart") then return obj end
-	if obj:IsA("Model") then
-		local primary = obj.PrimaryPart
-		if primary then return primary end
-		for _, desc in ipairs(obj:GetDescendants()) do
-			if desc:IsA("BasePart") then return desc end
+--// Tạo 1 MeshPart proxy bọc theo mesh thật của model skill (lấy MeshId/Scale/
+--// TextureID từ MeshPart đầu tiên trong model). Trả về proxy MeshPart.
+local function createSkillProxy(model)
+	local template = nil
+	for _, desc in ipairs(model:GetDescendants()) do
+		if desc:IsA("MeshPart") then
+			template = desc
+			break
 		end
 	end
-	return nil
-end
-
---// Tạo proxy phủ theo mesh: clone nguyên đối tượng (giữ mesh/shape/union thật),
---// đổi màu Neon + trong suốt, không va chạm, tự bám theo CFrame/Size.
-local function createMeshProxy(target, color)
-	if not target:IsA("BasePart") then return nil end
-
-	local existing = skillProxyState[target]
-	if existing and existing.Proxy and existing.Proxy.Parent then
-		return existing.Proxy
+	local proxy
+	if template then
+		proxy = template:Clone()
+	else
+		proxy = Instance.new("MeshPart")
+		proxy.Size = model:GetExtentsSize()
 	end
-
-	local proxy = target:Clone()
-	proxy.Name = SKILL_PROXY_PREFIX .. target.Name
+	proxy.Name = SKILL_ESP_NAME
 	proxy.Anchored = true
 	proxy.CanCollide = false
 	proxy.CanQuery = false
 	proxy.CanTouch = false
 	proxy.Material = Enum.Material.Neon
-	proxy.Color = color
-	proxy.CFrame = target.CFrame
-	proxy.Transparency = SKILL_PROXY_TRANSPARENCY
-	proxy.Parent = target
-
-	--// Xóa texture/decal để màu Neon phủ đồng đều lên mesh thật
-	for _, desc in ipairs(proxy:GetDescendants()) do
-		if desc:IsA("SurfaceAppearance") or desc:IsA("Texture") or desc:IsA("Decal") then
-			desc:Destroy()
-		end
-	end
-
-	local conns = {
-		target:GetPropertyChangedSignal("CFrame"):Connect(function()
-			if proxy and proxy.Parent then proxy.CFrame = target.CFrame end
-		end),
-		target:GetPropertyChangedSignal("Size"):Connect(function()
-			if proxy and proxy.Parent then proxy.Size = target.Size end
-		end),
-	}
-	skillProxyState[target] = { Proxy = proxy, Connections = conns }
+	proxy.Transparency = 0.8
+	proxy.Color = SKILL_ESP_COLOR
 	return proxy
 end
 
---// Bật/tắt hiển thị proxy (dùng Transparency)
-local function setSkillProxyVisible(proxy, visible)
-	if not proxy then return end
-	proxy.Transparency = if visible then SKILL_PROXY_TRANSPARENCY else 1
+--// Giữ proxy khớp vị trí/hướng với model gốc mỗi khi quét thấy.
+local function syncSkillProxy(proxy, model)
+	proxy.CFrame = model:GetPivot()
 end
 
---// Dạng 2 — tạo box phủ tạm thời: Part Block Neon trong suốt, bám theo CFrame/Size.
-local function createSummonBox(target, color)
-	if not target:IsA("BasePart") then return nil end
-
-	local existing = skillProxyState[target]
-	if existing and existing.Proxy and existing.Proxy.Parent then
-		return existing.Proxy
+--// Tạo proxy nếu chưa có, rồi đồng bộ vị trí với model gốc.
+local function createSkillBox(model)
+	local proxy = model:FindFirstChild(SKILL_ESP_NAME)
+	if not proxy then
+		proxy = createSkillProxy(model)
+		proxy.Parent = model
 	end
-
-	local box = Instance.new("Part")
-	box.Name = SUMMON_BOX_PREFIX .. target.Name
-	box.Shape = Enum.PartType.Block
-	box.Anchored = true
-	box.CanCollide = false
-	box.CanQuery = false
-	box.CanTouch = false
-	box.Material = Enum.Material.Neon
-	box.Color = color
-	box.Transparency = SUMMON_BOX_TRANSPARENCY
-	box.Size = target.Size * SUMMON_BOX_SCALE
-	box.CFrame = target.CFrame
-	box.Parent = target
-
-	local conns = {
-		target:GetPropertyChangedSignal("CFrame"):Connect(function()
-			if box and box.Parent then box.CFrame = target.CFrame end
-		end),
-		target:GetPropertyChangedSignal("Size"):Connect(function()
-			if box and box.Parent then box.Size = target.Size * SUMMON_BOX_SCALE end
-		end),
-	}
-	skillProxyState[target] = { Proxy = box, Connections = conns }
-	return box
+	syncSkillProxy(proxy, model)
 end
 
---// Dạng 2 — Highlight cho Model (như secondBossMovingBeam): 1 Highlight bám đúng
---// mesh từng part, tự động theo chuyển động/xoay (render native, gần như 0 lag),
---// thay box GetBoundingBox (bự + lệch) và phủ mesh clone (lag).
-local function createSummonModelHighlight(model, color)
-	if not model:IsA("Model") then return nil end
-
-	local existing = skillProxyState[model]
-	if existing and existing.Proxy and existing.Proxy.Parent then
-		return existing.Proxy
-	end
-
-	local highlight = Instance.new("Highlight")
-	highlight.Name = SUMMON_BOX_PREFIX .. model.Name
-	highlight.Adornee = model
-	highlight.FillColor = color
-	highlight.FillTransparency = SUMMON_HIGHLIGHT_TRANSPARENCY
-	highlight.OutlineColor = color
-	highlight.OutlineTransparency = SUMMON_HIGHLIGHT_OUTLINE_TRANSPARENCY
-	highlight.Parent = model
-
-	skillProxyState[model] = { Proxy = highlight, Connections = {} }
-	return highlight
-end
-
---// Theo dõi vòng đời precast: HIỆN ngay khi part xuất hiện, ẨN khi fade-out cuối chiêu.
-local function watchSkillLife(part, proxy)
-	if not part or not proxy or skillLifeConnections[part] then return end
-	setSkillProxyVisible(proxy, true)
-	skillLifeConnections[part] = part:GetPropertyChangedSignal("Transparency"):Connect(function()
-		if part.Transparency > SKILL_TRANSPARENCY_VISIBLE_THRESHOLD and proxy and proxy.Parent then
-			setSkillProxyVisible(proxy, false)
-		end
-	end)
-end
-
---// Nhận diện skill model dạng 1: model có chứa marker precast/hitBox/hitBot bên trong.
-local function hasSkillMarker(root)
-	if not root then return false end
-	local cached = skillMarkerCache[root]
-	if cached ~= nil then return cached end
-
-	local found = false
-	for _, obj in ipairs(root:GetDescendants()) do
-		if SKILL_MARKER_NAMES[obj.Name] then
-			found = true
-			break
-		end
-	end
-	skillMarkerCache[root] = found
-	return found
-end
-
---// Thêm proxy phủ mesh cho tất cả marker precast trong một skill model.
-local function addSkillHitboxes(skillModel)
-	for _, obj in ipairs(skillModel:GetDescendants()) do
-		if SKILL_MARKER_NAMES[obj.Name] then
-			local target = resolveSkillPart(obj)
-			if target then
-				local proxy = createMeshProxy(target, SKILL_BOX_COLOR)
-				if proxy then
-					watchSkillLife(target, proxy)
-				end
-			end
-		end
-	end
-end
-
---// Hàm trả tên skill summon mà `name` chứa (khớp mọi cấp nesting, chịu hậu tố clone).
-local function matchSummonName(name)
-	for skillName in pairs(SUMMON_SKILL_NAMES) do
-		if string.find(name, skillName, 1, true) then
-			return skillName
-		end
-	end
-	return nil
-end
-
---// Log chẩn đoán chỉ 1 lần cho mỗi object (spawn mới sẽ log lại).
-local function skillDebugLog(obj, message)
-	if skillDebugSeen[obj] then return end
-	skillDebugSeen[obj] = true
-	warn("[SkillHitbox] " .. obj:GetFullName() .. " :: " .. message)
-end
-
---// Quét Workspace: mọi chiêu cast đều xuất hiện trong Workspace. Tìm skill model
---// (có marker) ở mọi cấp, kể cả bị lồng trong object khác.
+--// Quét Workspace tìm skill theo tên và vẽ proxy.
 local function scanSkillHitboxes()
 	local Workspace = game:GetService("Workspace")
-	for _, child in ipairs(Workspace:GetChildren()) do
-		if hasSkillMarker(child) then
-			addSkillHitboxes(child)
-		end
-		for _, obj in ipairs(child:GetDescendants()) do
-			if hasSkillMarker(obj) then
-				addSkillHitboxes(obj)
-			end
-		end
+	local function handleRoot(root)
+		if not SKILL_PROJECTILE_NAMES[root.Name] then return end
+		createSkillBox(root)
 	end
-
-	--// Dạng 2: tìm object trong Workspace mà TÊN CÓ CHỨA một trong SUMMON_SKILL_NAMES
-	--// (khớp contains để bắt cả trường hợp clone đổi hậu tố như "secondBossGreenOrb (1)").
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		local matchedSkill = matchSummonName(obj.Name)
-		if matchedSkill then
-			--// Model -> Highlight bám mesh; orb (chứa child ColorblindRune) -> box đúng child;
-			--// còn lại -> box theo part.
-			if SUMMON_SKILL_MESH_PART_NAMES[matchedSkill] then
-				local orbPart = obj.Name == SUMMON_HITBOX_CHILD_NAME and obj or nil
-				if not orbPart then
-					for _, desc in ipairs(obj:GetDescendants()) do
-						if desc.Name == SUMMON_HITBOX_CHILD_NAME then
-							orbPart = desc
-							break
-						end
-					end
-				end
-				if orbPart then
-					skillDebugLog(obj, ("khớp %q | class=%s | child ColorblindRune: %s | size=%s")
-						:format(matchedSkill, obj.ClassName, orbPart:GetFullName(), tostring(orbPart.Size)))
-					createSummonBox(orbPart, SKILL_BOX_COLOR)
-				else
-					skillDebugLog(obj, ("khớp %q | KHÔNG tìm thấy child %q — liệt kê descendants:")
-						:format(matchedSkill, SUMMON_HITBOX_CHILD_NAME))
-					for _, desc in ipairs(obj:GetDescendants()) do
-						warn("[SkillHitbox]   ancestor=" .. desc:GetFullName())
-					end
-				end
-			elseif obj:IsA("Model") then
-				skillDebugLog(obj, ("khớp %q | Model -> Highlight (children=%d)")
-					:format(matchedSkill, #obj:GetChildren()))
-				createSummonModelHighlight(obj, SKILL_BOX_COLOR)
-			else
-				local target = resolveSkillPart(obj)
-				if target then
-					skillDebugLog(obj, ("khớp %q | part -> box | class=%s | size=%s")
-						:format(matchedSkill, target.ClassName, tostring(target.Size)))
-					createSummonBox(target, SKILL_BOX_COLOR)
-				else
-					skillDebugLog(obj, ("khớp %q | KHÔNG resolve được BasePart") :format(matchedSkill))
+	for _, child in ipairs(Workspace:GetChildren()) do
+		handleRoot(child)
+		if not SKILL_PROJECTILE_NAMES[child.Name] then
+			for _, desc in ipairs(child:GetDescendants()) do
+				if SKILL_PROJECTILE_NAMES[desc.Name] then
+					handleRoot(desc)
+					break
 				end
 			end
 		end
 	end
 end
 
---// Dọn toàn bộ trạng thái skill hitbox (thread, cache, connection, proxy).
-local function cleanupSkillHitbox()
-	if skillScanThread then task.cancel(skillScanThread); skillScanThread = nil end
-	table.clear(skillMarkerCache)
-	for _, connection in pairs(skillLifeConnections) do
-		pcall(function() connection:Disconnect() end)
-	end
-	table.clear(skillLifeConnections)
-	for target, state in pairs(skillProxyState) do
-		for _, conn in ipairs(state.Connections) do
-			pcall(function() conn:Disconnect() end)
-		end
-		if state.Proxy then
-			pcall(function() state.Proxy:Destroy() end)
-		end
-	end
-	table.clear(skillProxyState)
-	table.clear(skillDebugSeen)
-
-	--// Dọn các proxy còn sót trong Workspace theo prefix (phòng trường hợp bỏ sót cache)
-	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+local function clearSkillBoxes()
+	if skillBoxThread then task.cancel(skillBoxThread); skillBoxThread = nil end
+	local Workspace = game:GetService("Workspace")
+	for _, obj in ipairs(Workspace:GetDescendants()) do
 		for _, child in ipairs(obj:GetChildren()) do
-			if string.sub(child.Name, 1, #SKILL_PROXY_PREFIX) == SKILL_PROXY_PREFIX
-				or string.sub(child.Name, 1, #SUMMON_BOX_PREFIX) == SUMMON_BOX_PREFIX then
+			if child.Name == SKILL_ESP_NAME then child:Destroy() end
+		end
+	end
+end
+
+function esp.ToggleSkillHitbox(state)
+	if state == skillBoxEnabled then return end
+	skillBoxEnabled = state
+	if skillBoxEnabled then
+		if skillBoxThread then task.cancel(skillBoxThread); skillBoxThread = nil end
+		skillBoxThread = task.spawn(function()
+			while skillBoxEnabled do
+				local ok, err = pcall(scanSkillHitboxes)
+				if not ok and os.clock() - (esp.lastSkillWarnH or 0) > 5 then
+					esp.lastSkillWarnH = os.clock()
+					warn("[SkillHitbox] error:", tostring(err))
+				end
+				task.wait(SKILL_SCAN_INTERVAL)
+			end
+		end)
+	else
+		clearSkillBoxes()
+	end
+end
+
+function esp.IsSkillHitboxEnabled()
+	return skillBoxEnabled
+end
+
+--// ========== [SmartDodge] Auto-dodge ==========
+
+--// Cache >> skillDodgeState[model] = { lastDodgeAt }; weak-key.
+local skillDodgeState = setmetatable({}, { __mode = "k" })
+--// Teleport cooldown giữa 2 lần dodge của cùng model (giây).
+local SKILL_DODGE_INTERVAL = 0.3
+--// Khoảng dịch runtime (studs), chỉnh qua slider (1-4).
+local skillDodgeDistance = SKILL_DODGE_DISTANCE
+
+--// Tìm telegraph: child "precast" (BasePart).
+local function findSkillTelegraph(root)
+	local precast = root:FindFirstChild("precast")
+	return (precast and precast:IsA("BasePart")) and precast or nil
+end
+
+--// Kiểm tra toàn bộ descendant BasePart của model skill có đang ẩn (transparency=1)
+--// hay không. Nếu tất cả đều ẩn -> chiêu coi như không còn hiệu lực -> bỏ qua (không né).
+local function isSkillInvisible(model)
+	local any = false
+	for _, desc in ipairs(model:GetDescendants()) do
+		if desc:IsA("BasePart") and not desc:IsA("Terrain") then
+			any = true
+			if desc.Transparency < 1 then return false end
+		end
+	end
+	return any
+end
+
+--// Kiểm tra vùng báo (bubble hình cầu quanh player, bán kính SKILL_DODGE_ZONE_RADIUS) có giao
+--// với khối (AABB) của precast không. Khoảng cách ngắn nhất từ tâm bubble tới bề mặt khối
+--// (trong local space, nên precast xoay cũng đúng) <= radius -> có giao. Thuần hình học,
+--// không phụ thuộc physics/CanQuery.
+local function zoneIntersectsPrecast(precast, playerCenter)
+	local half = precast.Size / 2
+	local localPos = precast.CFrame:PointToObjectSpace(playerCenter)
+	local dx = math.max(math.abs(localPos.X) - half.X, 0)
+	local dy = math.max(math.abs(localPos.Y) - half.Y, 0)
+	local dz = math.max(math.abs(localPos.Z) - half.Z, 0)
+	local closestSq = dx * dx + dy * dy + dz * dz
+	return closestSq <= (dodgeZoneRadius * dodgeZoneRadius)
+end
+
+--// Vị trí an toàn: đẩy player vượt biên vùng precast thêm skillDodgeDistance studs (giữ Y).
+local function findSafePosition(precast, rootPart)
+	local center = precast.Position
+	local toPlayer = rootPart.Position - center
+	local dir = Vector3.new(toPlayer.X, 0, toPlayer.Z)
+	if dir.Magnitude < 0.001 then
+		dir = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
+		if dir.Magnitude < 0.001 then dir = Vector3.new(1, 0, 0) end
+	end
+	dir = dir.Unit
+	local half = (precast.Size.X + precast.Size.Z) / 4
+	local distToEdge = math.max(half, 1)
+	--// Vòng an toàn: đẩy điểm đích ra ngoài vòng safety (lớn hơn vòng trigger)
+	--// + thêm biên né, đảm bảo không tele vào vùng nguy hiểm của precast.
+	local safePos = center + dir * (distToEdge + dodgeZoneSafetyRadius + skillDodgeDistance)
+	return Vector3.new(safePos.X, rootPart.Position.Y, safePos.Z)
+end
+
+--// Teleport toàn bộ character ra chỗ an toàn (giữ hướng, dịch tương đối -> nhỏ cho anticheat).
+--// LƯU Ý: cộng offset vào position (CFrame + Vector3) giữ hướng trong world space.
+--// Không dùng (CFrame * CFrame.new(delta)) vì phép nhân dịch theo local space của rootPart,
+--// gây lệch hướng -> player bị kéo về gần chỗ cũ.
+local function teleportAway(rootPart, safePos)
+	local character = rootPart.Parent
+	if not character then return end
+	character:SetPrimaryPartCFrame(rootPart.CFrame + (safePos - rootPart.Position))
+end
+
+--// Xử lý 1 model skill: nếu player trong vùng precast -> teleport ra ngoài (cooldown).
+local function handleSkillRoot(root)
+	if not SKILL_DODGE_NAMES[root.Name] then return end
+	--// Bỏ qua nếu toàn bộ Part trong skill đã ẩn (transparency=1) -> chiêu không còn hiệu lực.
+	if isSkillInvisible(root) then return end
+
+	local castState = skillDodgeState[root]
+	if castState and castState[1] and (os.clock() - castState[1]) < SKILL_DODGE_INTERVAL then return end
+	--// Cooldown toàn cục: tránh tele liên tục giữa các lần dodge bất kể skill nào.
+	if (os.clock() - lastGlobalDodgeAt) < skillDodgeGlobalCooldown then return end
+
+	local precast = findSkillTelegraph(root)
+	if not precast then return end
+	local character = services.player.Character
+	if not character then return end
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart or not rootPart.Parent then return end
+
+	if SKILL_DODGE_MAX_HEALTH > 0 then
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid and humanoid.Health > SKILL_DODGE_MAX_HEALTH then return end
+	end
+
+	if zoneIntersectsPrecast(precast, rootPart.Position) then
+		--// Ưu tiên tele tới node an toàn (xanh) gần nhất nếu có; fallback về hướng cũ.
+		local target = dodgeNode.FindSafeSpot(character)
+		if not target then
+			target = findSafePosition(precast, rootPart)
+		end
+		teleportAway(rootPart, target)
+		skillDodgeState[root] = { os.clock() }
+		lastGlobalDodgeAt = os.clock()
+	end
+end
+
+--// Quét Workspace tìm skill theo tên và dodge.
+local function scanSkillDodges()
+	local Workspace = game:GetService("Workspace")
+	local function handleRoot(root)
+		if not SKILL_DODGE_NAMES[root.Name] then
+			for _, desc in ipairs(root:GetDescendants()) do
+				if SKILL_DODGE_NAMES[desc.Name] and desc:FindFirstChild("precast") then
+					handleSkillRoot(desc)
+					break
+				end
+			end
+		else
+			handleSkillRoot(root)
+		end
+	end
+	for _, child in ipairs(Workspace:GetChildren()) do
+		handleRoot(child)
+	end
+end
+
+local function clearSkillDodges()
+	if smartDodgeThread then task.cancel(smartDodgeThread); smartDodgeThread = nil end
+	table.clear(skillDodgeState)
+end
+
+function esp.ToggleSmartDodge(state)
+	if state == smartDodgeEnabled then return end
+	smartDodgeEnabled = state
+	if smartDodgeEnabled then
+		if smartDodgeThread then task.cancel(smartDodgeThread); smartDodgeThread = nil end
+		smartDodgeThread = task.spawn(function()
+			while smartDodgeEnabled do
+				local ok, err = pcall(scanSkillDodges)
+				if not ok and os.clock() - (esp.lastSkillWarnD or 0) > 5 then
+					esp.lastSkillWarnD = os.clock()
+					warn("[SmartDodge] error:", tostring(err))
+				end
+				task.wait(SKILL_SCAN_INTERVAL)
+			end
+		end)
+	else
+		clearSkillDodges()
+	end
+end
+
+function esp.IsSmartDodgeEnabled()
+	return smartDodgeEnabled
+end
+
+--// Đặt/bớt khoảng dịch tele khi dodge (studs). Clamp 1-4 để tránh anticheat.
+function esp.SetSkillDodgeDistance(value)
+	skillDodgeDistance = math.clamp(value or SKILL_DODGE_DISTANCE, 1, 4)
+end
+
+function esp.GetSkillDodgeDistance()
+	return skillDodgeDistance
+end
+
+--// Đặt cooldown toàn cục (giây) giữa 2 lần dodge. Clamp 0-5 để tránh anticheat.
+function esp.SetSmartDodgeCooldown(value)
+	skillDodgeGlobalCooldown = math.clamp(value or SKILL_DODGE_GLOBAL_COOLDOWN, 0, 5)
+end
+
+function esp.GetSmartDodgeCooldown()
+	return skillDodgeGlobalCooldown
+end
+
+--// ========== [Show Dodge Zone] Trực quan 2 vòng né ==========
+--// Vòng trigger (cyan, quanh player, bán kính dodgeZoneRadius): ngưỡng kích hoạt né.
+--// Vòng safety (đỏ, quanh mỗi precast, bán kính dodgeZoneSafetyRadius): vùng mà điểm
+--// an toàn sau khi né phải nằm ngoài.
+
+local DODGE_ZONE_NAME = "DodgeZone_ESP"
+local DODGE_ZONE_COLOR = Color3.fromRGB(0, 255, 255)
+local DODGE_SAFETY_NAME = "DodgeSafety_ESP"
+local DODGE_SAFETY_COLOR = Color3.fromRGB(255, 60, 60)
+
+--// Tạo/cập nhật một bubble cầu tại vị trí thế giới tuyệt đối (parent = Workspace).
+local function showBubble(name, color, center, radius)
+	local bubble = workspace:FindFirstChild(name)
+	if not bubble then
+		bubble = Instance.new("Part")
+		bubble.Name = name
+		bubble.Shape = Enum.PartType.Ball
+		bubble.Transparency = 0.75
+		bubble.Anchored = true
+		bubble.CanCollide = false
+		bubble.CanQuery = false
+		bubble.CanTouch = false
+		bubble.Material = Enum.Material.Neon
+		bubble.Color = color
+		bubble.Parent = workspace
+	end
+	bubble.Size = Vector3.one * (radius * 2)
+	bubble.CFrame = CFrame.new(center)
+end
+
+--// Xoá bubble vòng trigger (cyan) quanh player.
+local function clearZoneBubble()
+	local Workspace = game:GetService("Workspace")
+	local bubble = Workspace:FindFirstChild(DODGE_ZONE_NAME)
+	if bubble then bubble:Destroy() end
+end
+
+--// Xoá các bubble vòng safety (đỏ) quanh precast.
+local function clearSafetyBubbles()
+	local Workspace = game:GetService("Workspace")
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		for _, child in ipairs(obj:GetChildren()) do
+			if string.find(child.Name, DODGE_SAFETY_NAME, 1, true) then
 				child:Destroy()
 			end
 		end
 	end
 end
 
-function esp.ToggleSkillHitbox(state)
-	if state == skillHitboxEnabled then return end
-	skillHitboxEnabled = state
-
-	if skillHitboxEnabled then
-		cleanupSkillHitbox()
-		skillScanThread = task.spawn(function()
-			local Workspace = game:GetService("Workspace")
-			while skillHitboxEnabled do
-				local ok, err = pcall(scanSkillHitboxes)
-				if not ok then
-					if os.clock() - (esp.lastSkillWarn or 0) > 5 then
-						esp.lastSkillWarn = os.clock()
-						warn("[SkillHitbox] error:", tostring(err))
-					end
+function esp.ToggleDodgeZone(state)
+	if state == dodgeZoneEnabled then return end
+	dodgeZoneEnabled = state
+	if dodgeZoneEnabled then
+		if dodgeZoneThread then task.cancel(dodgeZoneThread); dodgeZoneThread = nil end
+		dodgeZoneThread = task.spawn(function()
+			while dodgeZoneEnabled do
+				local character = player.Character
+				local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+				if rootPart then
+					showBubble(DODGE_ZONE_NAME, DODGE_ZONE_COLOR, rootPart.Position, dodgeZoneRadius)
 				end
-				task.wait(SKILL_SCAN_INTERVAL)
+				task.wait(SKILL_SCAN_INTERVAL * 2)
 			end
 		end)
 	else
-		cleanupSkillHitbox()
+		clearZoneBubble()
 	end
 end
 
-function esp.IsSkillHitboxEnabled()
-	return skillHitboxEnabled
+function esp.IsDodgeZoneEnabled()
+	return dodgeZoneEnabled
 end
 
---// ===== Auto Attack Tracker (chế độ tự động — tách riêng khỏi name-based) =====
---// Chỉ highlight object MỚI xuất hiện khi đang có enemy (in combat).
---// Idle -> re-baseline toàn Workspace làm "nền tĩnh"; object sống quá
---// AUTO_BASELINE_EXPIRE giây trong combat -> coi như tĩnh, gỡ highlight.
---// Filter loại: player char, Model chứa Humanoid, tên trùng enemy, proxy của ta.
-
-local AUTO_HIGHLIGHT_COLOR = SKILL_BOX_COLOR
-local AUTO_HIGHLIGHT_PREFIX = "SkillHitbox_Auto_"
-local AUTO_SCAN_INTERVAL = 0.1
-local AUTO_BASELINE_EXPIRE = 10
-local AUTO_SELECTION_TRANSPARENCY = 0.8
-local AUTO_SELECTION_LINE_THICKNESS = 0.2
-
-local autoTrackerEnabled = false
-local autoTrackerThread = nil
-local autoBaseline = setmetatable({}, { __mode = "k" }) -- object -> đã có sẵn/tĩnh
-local autoFirstSeen = setmetatable({}, { __mode = "k" }) -- object -> lần đầu gặp trong combat
-local autoHighlightState = setmetatable({}, { __mode = "k" }) -- object -> SelectionBox
-local autoAssigned = setmetatable({}, { __mode = "k" }) -- object đã gán box -> không gán lại
-local autoTotalDetected = 0 -- tổng object mới phát hiện (đòn đánh tiềm năng)
-local autoLobbyDisconnect = nil -- disconnect OnLobbyChanged
-
-local function createAutoSelectionBox(target, color)
-	local existing = autoHighlightState[target]
-	if existing and existing.Parent then return existing end
-
-	local box = Instance.new("SelectionBox")
-	box.Name = AUTO_HIGHLIGHT_PREFIX .. target.Name
-	box.Adornee = target
-	box.Color3 = color
-	box.LineThickness = LINE_THICKNESS * 4
-	box.SurfaceColor3 = color
-	box.SurfaceTransparency = AUTO_SELECTION_TRANSPARENCY
-	box.Parent = target
-	autoHighlightState[target] = box
-	return box
-end
-
-local function removeAutoSelectionBox(target)
-	local box = autoHighlightState[target]
-	if box then pcall(function() box:Destroy() end) end
-	autoHighlightState[target] = nil
-end
-
---// Dọn TẤT CẢ SelectionBox của một attack object (base/descendants).
-local function cleanupAutoAttackBoxes(attackObj)
-	local targets = {}
-	targets[attackObj] = true
-	if attackObj:IsA("Model") then
-		for _, desc in ipairs(attackObj:GetDescendants()) do
-			targets[desc] = true
-		end
-	end
-	for target in pairs(targets) do
-		if autoHighlightState[target] then
-			removeAutoSelectionBox(target)
-		end
-	end
-end
-
---// Danh sách tên child BẠN KHÔNG VẼ SelectionBox dù đó là BasePart.
---// Bỏ qua hoàn toàn, không box.
-local AUTO_SELECTION_EXCLUDE_NAMES = {
-	["primary"] = true,
-}
-
---// Resolve tất cả BasePart cần gắn SelectionBox: ưu tiên child "precast",
---// nếu không có thì tất cả BasePart con (trừ child trong EXCEPTION).
-local function resolveAutoSelectionTargets(obj)
-	local targets = {}
-	if not (obj:IsA("BasePart") or obj:IsA("Model")) then return targets end
-
-	if obj:IsA("BasePart") then
-		table.insert(targets, obj)
-		return targets
-	end
-
-	--// Model: tìm precast trước; nếu không có, lấy toàn bộ BasePart con (trừ exception).
-	for _, desc in ipairs(obj:GetDescendants()) do
-		if desc.Name == "precast" and desc:IsA("BasePart") then
-			table.insert(targets, desc)
-			return targets
-		end
-	end
-	for _, desc in ipairs(obj:GetDescendants()) do
-		if desc:IsA("BasePart") and not AUTO_SELECTION_EXCLUDE_NAMES[desc.Name] then
-			table.insert(targets, desc)
-		end
-	end
-	return targets
-end
-
---// Danh sách tên object KHÔNG VẼ SelectionBox dù có BasePart con.
---// Overlay effect / helper → bỏ qua hoàn toàn.
-local AUTO_SKIP_OBJECT_NAMES = {
-	["npcDeathEffect"] = true,
-	["playerDeathEffect"] = true,
-}
-
-local function shouldSkipAutoObject(obj, enemyNames)
-	if not (obj:IsA("BasePart") or obj:IsA("Model")) then return true end
-	if player.Character and obj:IsDescendantOf(player.Character) then return true end
-	if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then return true end
-	if enemyNames[obj.Name] then return true end
-	if string.find(obj.Name, "SkillHitbox_", 1, true) then return true end
-	if AUTO_SKIP_OBJECT_NAMES[obj.Name] then return true end
-	return false
-end
-
-local function runAutoScan()
-	local Workspace = game:GetService("Workspace")
-	local now = os.clock()
-	local inCombat = #shared.GetTrackedEnemyData() > 0 and not shared.IsInLobby()
-
-	if not inCombat then
-		--// Idle: gấp mọi child cấp 1 hiện có vào baseline, dọn box cũ.
-		for _, obj in ipairs(Workspace:GetChildren()) do
-			autoBaseline[obj] = true
-		end
-		--// Thu thập targets trước, rồi mới dọn.
-		local targets = {}
-		for target in pairs(autoHighlightState) do
-			targets[#targets + 1] = target
-		end
-		for _, target in ipairs(targets) do
-			removeAutoSelectionBox(target)
-		end
-		table.clear(autoFirstSeen)
-		return
-	end
-
-	local enemyNames = {}
-	for _, name in ipairs(shared.GetEnemyNames()) do
-		enemyNames[name] = true
-	end
-
-	for _, obj in ipairs(Workspace:GetChildren()) do
-		if autoBaseline[obj] then continue end
-		--// Đã gán box rồi -> không gán lại; chỉ kiểm tra hết hạn để gỡ.
-		if autoAssigned[obj] then
-			if now - autoFirstSeen[obj] > AUTO_BASELINE_EXPIRE then
-				cleanupAutoAttackBoxes(obj)
-				autoBaseline[obj] = true
-				autoFirstSeen[obj] = nil
-				autoAssigned[obj] = nil
-			end
-			continue
-		end
-		if shouldSkipAutoObject(obj, enemyNames) then
-			autoBaseline[obj] = true
-		else
-			if not autoFirstSeen[obj] then
-				autoFirstSeen[obj] = now
-				autoTotalDetected += 1
-			end
-			local selTargets = resolveAutoSelectionTargets(obj)
-			for _, selTarget in ipairs(selTargets) do
-				createAutoSelectionBox(selTarget, AUTO_HIGHLIGHT_COLOR)
-			end
-			if obj:IsA("Model") then
-				for _, d in ipairs(obj:GetDescendants()) do
-					autoBaseline[d] = true
-				end
-			end
-			autoAssigned[obj] = true
-		end
-	end
-end
-
-local function cleanupAutoTracker()
-	if autoTrackerThread then task.cancel(autoTrackerThread); autoTrackerThread = nil end
-	if autoLobbyDisconnect then pcall(autoLobbyDisconnect); autoLobbyDisconnect = nil end
-	--// Thu thập targets trước, rồi mới dọn (tránh modify table khi iterate).
-	local targets = {}
-	for target in pairs(autoHighlightState) do
-		targets[#targets + 1] = target
-	end
-	for _, target in ipairs(targets) do
-		removeAutoSelectionBox(target)
-	end
-	table.clear(autoHighlightState)
-	table.clear(autoBaseline)
-	table.clear(autoFirstSeen)
-	table.clear(autoAssigned)
-	autoTotalDetected = 0
-
-	for _, o in ipairs(game:GetService("Workspace"):GetDescendants()) do
-		for _, c in ipairs(o:GetChildren()) do
-			if string.sub(c.Name, 1, #AUTO_HIGHLIGHT_PREFIX) == AUTO_HIGHLIGHT_PREFIX then
-				c:Destroy()
-			end
-		end
-	end
-end
-
---// Snapshot baseline: mọi child cấp 1 hiện có coi là "nền tĩnh" — các object mới
---// xuất hiện sau đó mới được xét. Gọi ở chỗ bắt đầu game (khi rời lobby).
-local function rebuildAutoBaseline()
-	local Workspace = game:GetService("Workspace")
-	table.clear(autoBaseline)
-	table.clear(autoFirstSeen)
-	table.clear(autoAssigned)
-	--// Thu thập targets trước, rồi mới dọn.
-	local targets = {}
-	for target in pairs(autoHighlightState) do
-		targets[#targets + 1] = target
-	end
-	for _, target in ipairs(targets) do
-		removeAutoSelectionBox(target)
-	end
-	table.clear(autoHighlightState)
-	autoTotalDetected = 0
-	for _, obj in ipairs(Workspace:GetChildren()) do
-		autoBaseline[obj] = true
-	end
-end
-
-function esp.ToggleAutoSkillHitbox(state)
-	if state == autoTrackerEnabled then return end
-	autoTrackerEnabled = state
-
-	if autoTrackerEnabled then
-		cleanupAutoTracker()
-
-		--// Tín hiệu "start game": khi rời lobby (vào dungeon) -> chụp baseline mới.
-		--// Chỉ 1 lần/game; object xuất hiện đúng lúc này là đòn đánh tiềm năng.
-		autoLobbyDisconnect = shared.OnLobbyChanged(function(inLobby)
-			if not inLobby and autoTrackerEnabled then
-				rebuildAutoBaseline()
-			end
-		end)
-
-		rebuildAutoBaseline()
-		autoTrackerThread = task.spawn(function()
-			while autoTrackerEnabled do
-				local ok, err = pcall(runAutoScan)
-				if not ok then
-					if os.clock() - (esp.lastAutoWarn or 0) > 5 then
-						esp.lastAutoWarn = os.clock()
-						warn("[AutoHitbox] error:", tostring(err))
+--// Vòng safety (đỏ): quét skill có precast, vẽ bubble đỏ quanh mỗi precast.
+function esp.ToggleDodgeSafety(state)
+	if state == dodgeSafetyEnabled then return end
+	dodgeSafetyEnabled = state
+	if dodgeSafetyEnabled then
+		if dodgeSafetyThread then task.cancel(dodgeSafetyThread); dodgeSafetyThread = nil end
+		dodgeSafetyThread = task.spawn(function()
+			while dodgeSafetyEnabled do
+				local Workspace = game:GetService("Workspace")
+				local function handle(root)
+					if SKILL_DODGE_NAMES[root.Name] then
+						local precast = root:FindFirstChild("precast")
+						if precast and precast:IsA("BasePart") then
+							local bubbleName = DODGE_SAFETY_NAME .. "_" .. tostring(precast:GetDebugId())
+							showBubble(bubbleName, DODGE_SAFETY_COLOR, precast.Position, dodgeZoneSafetyRadius)
+						end
 					end
 				end
-				task.wait(AUTO_SCAN_INTERVAL)
+				for _, child in ipairs(Workspace:GetChildren()) do
+					handle(child)
+					for _, desc in ipairs(child:GetDescendants()) do
+						if SKILL_DODGE_NAMES[desc.Name] then handle(desc) end
+					end
+				end
+				task.wait(SKILL_SCAN_INTERVAL * 2)
 			end
 		end)
 	else
-		cleanupAutoTracker()
+		clearSafetyBubbles()
 	end
 end
 
-function esp.IsAutoSkillHitboxEnabled()
-	return autoTrackerEnabled
+function esp.IsDodgeSafetyEnabled()
+	return dodgeSafetyEnabled
 end
 
---// Trả thông tin Auto Tracker: tổng đòn đánh đã detect + số đang highlight hiện tại.
-function esp.GetAutoSkillHitboxInfo()
-	local active = 0
-	for _ in pairs(autoHighlightState) do
-		active += 1
-	end
-	return autoTotalDetected, active
+--// Đặt bán kính (tầm) bubble quanh player. Clamp 1-10 studs.
+function esp.SetDodgeZoneRadius(value)
+	dodgeZoneRadius = math.clamp(value or SKILL_DODGE_ZONE_RADIUS, 1, 10)
+end
+
+function esp.GetDodgeZoneRadius()
+	return dodgeZoneRadius
+end
+
+--// Đặt bán kính vòng an toàn (safety) — phải >= vòng trigger. Clamp 2-15 studs.
+function esp.SetDodgeZoneSafetyRadius(value)
+	dodgeZoneSafetyRadius = math.max(value or (dodgeZoneRadius + SKILL_DODGE_SAFETY_MARGIN), dodgeZoneRadius)
+	dodgeZoneSafetyRadius = math.clamp(dodgeZoneSafetyRadius, 2, 15)
+end
+
+function esp.GetDodgeZoneSafetyRadius()
+	return dodgeZoneSafetyRadius
 end
 
 return esp

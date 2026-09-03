@@ -5,6 +5,7 @@
 	local esp = require("@routes/DungeonQuest/core/esp")
 	local enemyEsp = require("@routes/DungeonQuest/core/enemyEsp")
 	local mapOptimizer = require("@routes/DungeonQuest/core/mapOptimizer")
+	local dodgeNode = require("@routes/DungeonQuest/core/dodgeNode")
 	local ui = require("@routes/DungeonQuest/core/ui")
 
 --// Hitbox mode options
@@ -55,38 +56,6 @@ return function(window, tab)
 
 	local enemySection = tab:Section({ Side = "Left" })
 	enemySection:Header({ Name = "Enemy" })
-
-	enemySection:Toggle({
-		Name = "Show Hitbox Skill",
-		Default = esp.IsSkillHitboxEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.ToggleSkillHitbox(state)
-		end),
-	}, "Toggle_SkillHitbox")
-
-	enemySection:Toggle({
-		Name = "Show Hitbox Skill (Auto)",
-		Default = esp.IsAutoSkillHitboxEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.ToggleAutoSkillHitbox(state)
-		end),
-	}, "Toggle_AutoSkillHitbox")
-
-	local autoHitboxLabel = enemySection:Label({
-		Text = "Detected: 0 | Active: 0",
-	})
-
-	local function updateAutoHitboxLabel()
-		local detected, active = esp.GetAutoSkillHitboxInfo()
-		autoHitboxLabel:UpdateName(("Detected: <font color='rgb(0, 255, 0)'>%d</font> | Active: <font color='rgb(255, 200, 0)'>%d</font>")
-			:format(detected, active))
-	end
-
-	task.spawn(function()
-		while task.wait(0.5) do
-			updateAutoHitboxLabel()
-		end
-	end)
 
 	enemySection:Toggle({
 		Name = "Model Highlight",
@@ -147,9 +116,100 @@ return function(window, tab)
 		end),
 	}, "Slider_EnemyHitboxSize"))
 
+	enemySection:Toggle({
+		Name = "Show Skill Hitbox",
+		Default = esp.IsSkillHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleSkillHitbox(state)
+		end),
+	}, "Toggle_SkillHitbox")
+
+	local skillDodgeSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
+		Name = "Dodge Distance",
+		Default = esp.GetSkillDodgeDistance(),
+		Minimum = 1,
+		Maximum = 4,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetSkillDodgeDistance(Value)
+		end),
+	}, "Slider_SkillDodgeDistance"))
+
+	local dodgeCooldownSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
+		Name = "Dodge Cooldown",
+		Default = esp.GetSmartDodgeCooldown(),
+		Minimum = 0,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetSmartDodgeCooldown(Value)
+		end),
+	}, "Slider_SmartDodgeCooldown"))
+
+	enemySection:Toggle({
+		Name = "SmartDodge",
+		Default = esp.IsSmartDodgeEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleSmartDodge(state)
+		end),
+	}, "Toggle_SmartDodge")
+
+	enemySection:Toggle({
+		Name = "Show Dodge Zone",
+		Default = esp.IsDodgeZoneEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleDodgeZone(state)
+			applyHitboxVisibility()
+		end),
+	}, "Toggle_DodgeZone")
+
+	enemySection:Toggle({
+		Name = "Show Dodge Safety",
+		Default = esp.IsDodgeSafetyEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleDodgeSafety(state)
+		end),
+	}, "Toggle_DodgeSafety")
+
+	enemySection:Toggle({
+		Name = "Show Dodge Nodes",
+		Default = dodgeNode.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			dodgeNode.Toggle(state)
+		end),
+	}, "Toggle_DodgeNodes")
+
+	local dodgeZoneSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
+		Name = "Dodge Zone Radius",
+		Default = esp.GetDodgeZoneRadius(),
+		Minimum = 1,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetDodgeZoneRadius(Value)
+		end),
+	}, "Slider_DodgeZoneRadius"))
+
+	local dodgeZoneSafetySlider = ui.PatchSliderLoadCallback(enemySection:Slider({
+		Name = "Dodge Zone Safety",
+		Default = esp.GetDodgeZoneSafetyRadius(),
+		Minimum = 2,
+		Maximum = 15,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetDodgeZoneSafetyRadius(Value)
+		end),
+	}, "Slider_DodgeZoneSafetyRadius"))
+
 	applyHitboxVisibility = function()
 		pcall(function() playerSizeSlider:SetVisibility(esp.GetPlayerHitboxMode() == "Custom") end)
 		pcall(function() enemySizeSlider:SetVisibility(esp.GetEnemyHitboxMode() == "Custom") end)
+		pcall(function() dodgeZoneSlider:SetVisibility(esp.IsDodgeZoneEnabled()) end)
+		pcall(function() dodgeZoneSafetySlider:SetVisibility(esp.IsDodgeZoneEnabled()) end)
 	end
 	applyHitboxVisibility()
 
