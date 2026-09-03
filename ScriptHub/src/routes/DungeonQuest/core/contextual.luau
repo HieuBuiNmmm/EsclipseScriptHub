@@ -19,7 +19,6 @@ local contextual = {}
 
 --// Metadata field -> get/set trên autoFarmPathfinder (group AutoFarm Pathfinder v2).
 local FIELD_DEFS = {
-	PathfinderMoveSpeed = { get = function() return autoFarmPathfinder.GetMoveSpeed() end, set = function(v) autoFarmPathfinder.SetMoveSpeed(v) end },
 	PathfinderRetargetInterval = { get = function() return autoFarmPathfinder.GetRetargetInterval() end, set = function(v) autoFarmPathfinder.SetRetargetInterval(v) end },
 	PathfinderSkillRange = { get = function() return autoFarmPathfinder.GetSkillRange() end, set = function(v) autoFarmPathfinder.SetSkillRange(v) end },
 	PathfinderSkillInterval = { get = function() return autoFarmPathfinder.GetSkillInterval() end, set = function(v) autoFarmPathfinder.SetSkillInterval(v) end },
@@ -237,14 +236,15 @@ function contextual.Init()
 	shared.OnBossIndexChanged(function() findAndApply(false) end)
 	shared.OnBossActiveChanged(function() findAndApply(false) end)
 
+	--// Poll ít hơn: dungeon/boss đổi đã được xử lý bằng event callbacks trên, poll chỉ
+	--// còn để bắt thay đổi config file từ bên ngoài -> giảm CPU nền.
 	task.spawn(function()
 		while lifecycle.IsActive() do
-			task.wait(0.5)
+			task.wait(1.0)
 			--// Đổi config -> nạp lại dữ liệu context của config mới (+ re-apply)
 			if contextual.ReloadFromConfig() then
 				findAndApply(true)
 			end
-			findAndApply(false)
 		end
 	end)
 end

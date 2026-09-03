@@ -10,6 +10,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local contextual = require("@routes/DungeonQuest/core/contextual")
 local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
 local ui = require("@routes/DungeonQuest/core/ui")
+local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -41,7 +42,138 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderDebug")
 
-	section:Header({ Name = "State Monitor" })
+	section:Header({ Name = "Anchor (Nopath Reach)" })
+
+	--// Anchor chia theo MAP (dungeon). Dropdown chọn map để quản lý anchor của map đó.
+	--// Mỗi map có danh sách anchor riêng, lưu riêng file anchors.json.
+	local function buildAnchorMapOptions()
+		local names = {}
+		local seen = {}
+		local cur = autoFarmPathfinder.GetCurrentAnchorMap()
+		if cur and #cur > 0 then table.insert(names, cur); seen[cur] = true end
+		for _, n in ipairs(dungeonCatalog.GetDungeons()) do
+			if type(n) == "string" and #n > 0 and not seen[n] then seen[n] = true; table.insert(names, n) end
+		end
+		return names
+	end
+
+	local anchorMapOptions = buildAnchorMapOptions()
+	local selectedAnchorMap = autoFarmPathfinder.GetCurrentAnchorMap()
+	if not selectedAnchorMap then selectedAnchorMap = anchorMapOptions[1] end
+
+	local function indexOfOption(opts, name)
+		if not name then return 1 end
+		for i, n in ipairs(opts) do if n == name then return i end end
+		return 1
+	end
+
+	local refreshAnchorLabel
+
+	local anchorMapDropdown = section:Dropdown({
+		Name = "Map (Edit Anchors)",
+		Options = anchorMapOptions,
+		Default = indexOfOption(anchorMapOptions, selectedAnchorMap),
+		Required = true,
+		Callback = function(option)
+			selectedAnchorMap = option
+			refreshAnchorLabel()
+		end,
+	}, "Dropdown_PathfinderAnchorMap")
+
+	local anchorLabel = section:Label({ Text = "No anchors set" })
+
+	refreshAnchorLabel = function()
+		local list = autoFarmPathfinder.GetAnchors(selectedAnchorMap)
+		if #list == 0 then
+			anchorLabel:UpdateName("Map: " .. tostring(selectedAnchorMap or "-") .. "\nNo anchors set")
+			return
+		end
+		local parts = {}
+		for i, a in ipairs(list) do
+			table.insert(parts, (("%d.R%d"):format(i, a.room)))
+		end
+		anchorLabel:UpdateName("Map: " .. tostring(selectedAnchorMap or "-") .. "\nOrder: " .. table.concat(parts, " "))
+	end
+
+	section:Button({
+		Name = "Add Anchor at Current Room",
+		Callback = function()
+			local mapToUse = selectedAnchorMap or autoFarmPathfinder.GetCurrentAnchorMap()
+			local num = autoFarmPathfinder.SetAnchor(mapToUse)
+			if num then
+				window:Notify({ Title = "Auto Farm", Description = ("Anchor #%d added"):format(num) })
+			else
+				window:Notify({ Title = "Auto Farm", Description = "Chưa xác định room/map, không thêm anchor" })
+			end
+			refreshAnchorLabel()
+		end,
+	})
+
+	local inputAnchorNum
+	section:Input({
+		Name = "Anchor Number to Remove",
+		Placeholder = "number",
+		AcceptedCharacters = "Numeric",
+		Callback = function(v)
+			inputAnchorNum = v
+		end,
+	})
+
+	section:Button({
+		Name = "Remove Anchor",
+		Callback = function()
+			local num = inputAnchorNum and tonumber(inputAnchorNum)
+			local mapToUse = selectedAnchorMap
+			if num and mapToUse and autoFarmPathfinder.RemoveAnchor(mapToUse, num) then
+				window:Notify({ Title = "Auto Farm", Description = ("Removed anchor #%d"):format(num) })
+			else
+				window:Notify({ Title = "Auto Farm", Description = "Không tìm thấy anchor #" .. tostring(inputAnchorNum) })
+			end
+			refreshAnchorLabel()
+		end,
+	})
+
+	section:Button({
+		Name = "Clear Anchors for Selected Map",
+		Callback = function()
+			local mapToUse = selectedAnchorMap
+			if mapToUse then
+				autoFarmPathfinder.ClearAllAnchors(mapToUse)
+				window:Notify({ Title = "Auto Farm", Description = ("Cleared anchors: %s"):format(mapToUse) })
+			end
+			refreshAnchorLabel()
+		end,
+	})
+
+	section:Toggle({
+		Name = "Show Anchor Markers",
+		Default = autoFarmPathfinder.IsAnchorMarkersEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarmPathfinder.SetAnchorMarkers(state)
+		end),
+	}, "Toggle_PathfinderAnchorMarkers")
+
+	section:Toggle({
+		Name = "Respawn On No Path",
+		Default = autoFarmPathfinder.IsRespawnOnNoPathEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarmPathfinder.SetRespawnOnNoPath(state)
+		end),
+	}, "Toggle_PathfinderSelfKill")
+
+	--// Khi vào/ra dungeon (map hiện tại đổi) -> chọn map hiện tại trong dropdown + cập nhật label.
+	shared.OnDungeonNameChanged(function()
+		local cur = autoFarmPathfinder.GetCurrentAnchorMap()
+		if cur and #cur > 0 then
+			selectedAnchorMap = cur
+			pcall(function() anchorMapDropdown:UpdateSelection(cur) end)
+		end
+		refreshAnchorLabel()
+	end)
+
+	refreshAnchorLabel()
+
+	section:Header({ Name = "Debug" })
 
 	local stateLabel = section:Label({ Text = "Initializing..." })
 
@@ -62,15 +194,20 @@ return function(window, tab)
 		local angle = info.holdAngle
 		local angleStr = angle and string.format("%.1fdeg", math.deg(angle)) or "-"
 		local radiusStr = info.holdRadius and string.format("%.1f", info.holdRadius) or "-"
+		local roomIdx = shared.GetCurrentRoomIndex()
+		local bossIdx = shared.GetCurrentBossIndex()
+		local enemyCount = shared.GetEnemyCount()
+		local roomStr = (roomIdx and roomIdx > 0) and tostring(roomIdx) or "-"
+		local bossStr = (bossIdx and bossIdx > 0) and tostring(bossIdx) or "-"
 		local text = table.concat({
 			"State: <font color='rgb(" .. phaseColor .. ")'>" .. info.phase .. "</font>\n",
+			"Room: " .. roomStr .. " / Boss: " .. bossStr .. " / Enemies: " .. tostring(enemyCount) .. "\n",
 			"Locked: " .. (info.locked and ("<font color='rgb(255,200,0)'>" .. info.lockedName .. "</font>") or "No") .. "\n",
 			"Current: " .. info.enemyName .. "\n",
 			"Dist 3D: " .. string.format("%.1f", info.enemyDist) .. "\n",
 			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / SkillRange " .. info.skillRange .. "\n",
 			"Orbit: angle " .. angleStr .. " / radius " .. radiusStr .. "\n",
-			"Path: " .. (info.pathComputed and "active" or "none") .. "\n",
-			"Path Banned: " .. (info.pathBanned or 0) .. " / Fallback " .. (info.noPathSince and "on" or "off") .. "\n",
+			"Path: " .. (info.pathComputed and (info.isAnchor and "<font color='rgb(0,255,0)'>anchor</font>" or "active") or "none") .. "\n",
 			"Tracking: " .. formatBool(info.dunReady) .. " / Enabled " .. formatBool(info.enabled),
 		})
 		pcall(function()
@@ -110,7 +247,6 @@ return function(window, tab)
 	local setEditControlsVisible
 	local editCtxLabel
 	local editTargetDropdown
-	local moveSpeedSlider
 	local retargetIntervalSlider
 	local skillRangeSlider
 	local skillIntervalSlider
@@ -165,20 +301,6 @@ return function(window, tab)
 	})
 
 	editCtxLabel = ctxSection:Label({ Text = "" })
-
-	moveSpeedSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
-		Name = "Move Speed",
-		Default = contextual.GetField(editDungeon, editTarget, "PathfinderMoveSpeed"),
-		Minimum = 10,
-		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "PathfinderMoveSpeed", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_PathfinderCtxMoveSpeed"))
 
 	retargetIntervalSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
 		Name = "Retarget Interval",
@@ -254,7 +376,6 @@ return function(window, tab)
 	refreshContextControls = function()
 		isSyncing = true
 		disarmReset()
-		pcall(function() moveSpeedSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderMoveSpeed")) end)
 		pcall(function() retargetIntervalSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderRetargetInterval")) end)
 		pcall(function() skillRangeSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderSkillRange")) end)
 		pcall(function() skillIntervalSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "PathfinderSkillInterval")) end)
@@ -265,7 +386,6 @@ return function(window, tab)
 	end
 
 	setEditControlsVisible = function(visible)
-		pcall(function() moveSpeedSlider:SetVisibility(visible) end)
 		pcall(function() retargetIntervalSlider:SetVisibility(visible) end)
 		pcall(function() skillRangeSlider:SetVisibility(visible) end)
 		pcall(function() skillIntervalSlider:SetVisibility(visible) end)

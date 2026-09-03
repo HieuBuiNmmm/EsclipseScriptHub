@@ -29,15 +29,21 @@ local normalSpeed = 16
 
 local dungeonStartTime = nil
 
---// Boss state (dựa trên GUI bossHealth xuất hiện khi có boss trong room)
+--// Boss state (dựa trên "boss room": room chỉ chứa đúng 1 enemy).
+--// Boss room = room có duy nhất 1 quái; bossActive = đang ở boss room.
 local bossActive = false
 local bossCallbacks = {}
+local bossRoomRef = nil --// room model của boss hiện tại (tránh đếm lại cùng room)
 
 --// Chỉ số boss hiện tại trong 1 dungeon (thường 1 dungeon có 3 boss).
---// Tăng 1 mỗi lần IsBossActive chuyển false -> true (boss 1 = 1); reset về 0
---// khi vào dungeon mới.
+--// Tăng 1 mỗi lần bước vào boss room mới (boss 1 = 1); reset về 0 khi vào dungeon mới.
 local bossIndex = 0
 local bossIndexCallbacks = {}
+
+--// Room index: số room hiện tại, lấy từ TÊN room có quái ("room<so>").
+--// Reset khi vào dungeon mới.
+local roomIndex = 0
+local roomIndexCallbacks = {}
 
 local dungeon = nil
 local trackedRooms = {}
@@ -66,6 +72,7 @@ local lobbyCallbacks = {}
 local cleanupEnemies
 local initializeRooms
 local resetDungeon
+local refreshRoomIndex
 
 --// Respawn hooks (các module khác đăng ký để reset trạng thái khi respawn)
 local respawnCallbacks = {}
@@ -115,13 +122,27 @@ local function untrackEnemy(enemy)
 	disconnectEnemyConnections(enemy)
 end
 
+--// Tìm room (con trực tiếp của dungeon) chứa model.
+local function getEnemyRoom(model)
+	if not dungeon or not model then return nil end
+	local parent = model.Parent
+	while parent do
+		if parent == dungeon then return nil end
+		if parent.Parent == dungeon and (parent:IsA("Folder") or parent:IsA("Model")) then
+			return parent
+		end
+		parent = parent.Parent
+	end
+	return nil
+end
+
 local function trackEnemy(enemy)
 	if not isValidEnemy(enemy) or trackedEnemies[enemy] then return end
 	local root = getModelRoot(enemy)
 	local enemyHumanoid = enemy:FindFirstChildOfClass("Humanoid")
 	if not root or not enemyHumanoid then return end
 
-	trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid }
+	trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid, Room = getEnemyRoom(enemy) }
 	enemyCount += 1
 	enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
 end
@@ -174,6 +195,11 @@ initializeRooms = function()
 	bossIndex = 0
 	for i = #bossIndexCallbacks, 1, -1 do
 		pcall(bossIndexCallbacks[i], bossIndex)
+	end
+
+	roomIndex = 0
+	for i = #roomIndexCallbacks, 1, -1 do
+		pcall(roomIndexCallbacks[i], roomIndex)
 	end
 
 	for _, room in ipairs(dungeon:GetChildren()) do
@@ -403,6 +429,8 @@ task.spawn(function()
 		elseif not dungeon and currentDungeon then
 			initializeRooms()
 		end
+		--// Cập nhật room hiện tại khi dungeon/enemy thay đổi.
+		refreshRoomIndex()
 	end
 end)
 
@@ -536,6 +564,56 @@ function shared.OnBossIndexChanged(callback)
 	return function()
 		for i, cb in ipairs(bossIndexCallbacks) do
 			if cb == callback then table.remove(bossIndexCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Room index ----
+
+--// Đọc số room từ tên (room1 -> 1, room12 -> 12...). Trả 0 nếu không khớp.
+local function parseRoomNumber(name)
+	if type(name) ~= "string" then return 0 end
+	local number = string.match(name, "^room(%d+)$")
+	if not number then return 0 end
+	return tonumber(number) or 0
+end
+
+--// Tính room hiện tại: room chứa enemy đang track còn sống.
+--// Game clear theo kiểu tuần tự: xong quái room này mới spawn quái room sau, nên
+--// tại 1 thời điểm chỉ có đúng 1 room có quái -> room của bất kỳ quái đang track
+--// chính là room hiện tại (không cần scan theo khoảng cách).
+--// Room nhận diện qua TÊN "room<so>" (room1, room2...). Không có enemy/dungeon -> 0.
+local function computeRoomIndex()
+	if not dungeon then return 0 end
+	for model, data in pairs(trackedEnemies) do
+		if data and data.Room then
+			local idx = parseRoomNumber(data.Room.Name)
+			if idx > 0 then return idx end
+		end
+	end
+	return 0
+end
+
+--// Đồng bộ roomIndex hiện tại, fire callback nếu đổi.
+refreshRoomIndex = function()
+	local newIndex = computeRoomIndex()
+	if newIndex == roomIndex then return end
+	roomIndex = newIndex
+	for i = #roomIndexCallbacks, 1, -1 do
+		pcall(roomIndexCallbacks[i], roomIndex)
+	end
+end
+
+function shared.GetCurrentRoomIndex()
+	return roomIndex
+end
+
+function shared.OnRoomIndexChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(roomIndexCallbacks, callback)
+	return function()
+		for i, cb in ipairs(roomIndexCallbacks) do
+			if cb == callback then table.remove(roomIndexCallbacks, i) break end
 		end
 	end
 end
