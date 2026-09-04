@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-04T09:15:13.520011300+00:00",
+    genDate = "2026-09-04T23:53:17.675285300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7840,6 +7840,13 @@ local function stepMovement(deltaTime)
 		enemy = getEnemyByModel(chaseModel)
 		if not enemy then
 			chaseModel = nil
+			--// Fallback: không có chaseModel nhưng vẫn có enemy đang track (ví dụ sau
+			--// respawn, tập enemy không đổi nên OnEnemyChanged không fire) → chọn lại ngay.
+			local nearest = getNearestEnemy()
+			if nearest then
+				chaseModel = nearest.Model
+				enemy = nearest
+			end
 		end
 	end
 	cachedNearestEnemy = enemy
@@ -10211,16 +10218,30 @@ end function __DIST.s()-- Auto Sell (DungeonQuest): bán vật phẩm trong inve
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
 
---// Table
+--// Imports
 
+local lifecycle = __DIST.load('b')
+local notifier = __DIST.load('c')
+local shared = __DIST.load('e')
+
+--// Lobby placeId — ngoài các place này ra thì đều là dungeon
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
+
+--// Table
 local autoSell = {}
 
 --// State
+local autoSellEnabled = false
+local dungeonSellTriggered = false
 local excludeEquipped = true
 local rarityFilter = {} -- set: rarity string -> true
 local typeFilter = {} -- set: type string -> true
+local levelReqExactFilter = {} -- set: level number -> true (chọn đích danh các mốc)
+local levelReqMode = "None" -- "None" = exact multi, "Below" = ≤, "Above" = ≥
 local prefix = "" -- lọc item có tên bắt đầu bằng prefix (bỏ qua case)
-local levelReqMax = 0 -- lọc item có level yêu cầu <= levelReqMax (>0 mới áp dụng)
 local sellRunning = false
 
 --// Các category có trong inventory (từ log reloadInvy)
@@ -10233,6 +10254,15 @@ local CATEGORY_TYPES = {
 
 --// Cấp hiếm hợp lệ (để biết option nào là rarity)
 local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
+
+--// Các mốc Level Req tĩnh cho dropdown multi-select
+local LEVEL_REQ_OPTIONS = {
+	"1", "5", "15", "25", "35", "45", "55", "65", "75", "85",
+	"95", "105", "115", "125", "135", "145", "155", "165", "175", "185",
+}
+
+--// Chế độ lọc Level Req: None = chọn đích danh, Below = ≤, Above = ≥
+local LEVEL_REQ_MODE_OPTIONS = { "None", "Below", "Above" }
 
 --// Độ hiếm -> số 0..5 (dùng để map item.rarity sang RarityValue)
 local RARITY_ORDER = {
@@ -10404,8 +10434,26 @@ function autoSell.ShouldSellItem(item)
 		end
 	end
 
-	if levelReqMax and levelReqMax > 0 and (item.LevelReq or 0) > levelReqMax then
-		return false
+	if next(levelReqExactFilter) then
+		local lvl = item.LevelReq or 0
+		if levelReqMode == "Below" then
+			-- Bán item có LevelReq ≤ mốc đã chọn (lấy max trong set)
+			local threshold
+			for v in pairs(levelReqExactFilter) do
+				if not threshold or v > threshold then threshold = v end
+			end
+			if threshold and lvl > threshold then return false end
+		elseif levelReqMode == "Above" then
+			-- Bán item có LevelReq ≥ mốc đã chọn (lấy min trong set)
+			local threshold
+			for v in pairs(levelReqExactFilter) do
+				if not threshold or v < threshold then threshold = v end
+			end
+			if threshold and lvl < threshold then return false end
+		else
+			-- None: chỉ bán đúng các mốc đã tick
+			if not levelReqExactFilter[lvl] then return false end
+		end
 	end
 
 	return true
@@ -10417,8 +10465,8 @@ function autoSell.HasAnyFilter()
 	return (
 		next(rarityFilter) ~= nil
 		or next(typeFilter) ~= nil
+		or next(levelReqExactFilter) ~= nil
 		or (prefix and #prefix > 0)
-		or (levelReqMax and levelReqMax > 0)
 		or (not excludeEquipped)
 	)
 end
@@ -10476,7 +10524,6 @@ function autoSell.SellItems()
 	return result
 end
 
---// Điều khiển bộ lọc
 function autoSell.SetPrefixName(value)
 	prefix = (type(value) == "string" and value) or ""
 end
@@ -10485,12 +10532,16 @@ function autoSell.GetPrefixName()
 	return prefix
 end
 
-function autoSell.SetLevelReqMax(value)
-	levelReqMax = tonumber(value) or 0
+function autoSell.SetLevelReqMode(value)
+	if value == "Below" or value == "Above" then
+		levelReqMode = value
+	else
+		levelReqMode = "None"
+	end
 end
 
-function autoSell.GetLevelReqMax()
-	return levelReqMax
+function autoSell.GetLevelReqMode()
+	return levelReqMode
 end
 
 function autoSell.SetExcludeEquipped(state)
@@ -10529,6 +10580,92 @@ function autoSell.GetTypeFilter()
 	return out
 end
 
+--// Level Req Exact filter dạng mảng các chuỗi đã chọn (vd {"1","15","145"})
+function autoSell.SetLevelReqExactFilter(selected)
+	levelReqExactFilter = {}
+	if type(selected) == "table" then
+		for _, v in ipairs(selected) do
+			local n = tonumber(v)
+			if n then levelReqExactFilter[n] = true end
+		end
+	end
+end
+
+function autoSell.GetLevelReqExactFilter()
+	local out = {}
+	for lvl in pairs(levelReqExactFilter) do table.insert(out, tostring(lvl)) end
+	return out
+end
+
+--// Auto Sell Toggle & Dungeon Start Watcher
+local function isDungeon()
+	return not LOBBY_PLACE_IDS[game.PlaceId]
+end
+
+local function triggerDungeonStartSell()
+	if not autoSellEnabled then return end
+	if dungeonSellTriggered then return end
+	if not isDungeon() then return end
+	if not autoSell.HasAnyFilter() then return end
+
+	dungeonSellTriggered = true
+	task.spawn(function()
+		-- Chờ 2.5s để server load dữ liệu inventory sau khi teleport/vào dungeon
+		task.wait(2.5)
+		if not autoSellEnabled or not isDungeon() then return end
+
+		local result = autoSell.SellItems()
+		if result and result.sold and result.sold > 0 then
+			notifier.Notify("AutoSell", ("Auto-sold %d item(s) on dungeon start."):format(result.sold), 3)
+		end
+	end)
+end
+
+function autoSell.Toggle(state)
+	autoSellEnabled = state and true or false
+	if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+		triggerDungeonStartSell()
+	end
+end
+
+function autoSell.IsEnabled()
+	return autoSellEnabled
+end
+
+--// Lắng nghe thay đổi dungeon để reset cờ và trigger bán cho run mới
+shared.OnDungeonNameChanged(function(name)
+	dungeonSellTriggered = false
+	if name then
+		triggerDungeonStartSell()
+	end
+end)
+
+shared.OnLobbyChanged(function(inLobby)
+	if not inLobby then
+		dungeonSellTriggered = false
+		triggerDungeonStartSell()
+	else
+		dungeonSellTriggered = false
+	end
+end)
+
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(1)
+		if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+			triggerDungeonStartSell()
+		end
+	end
+end)
+
+lifecycle.Register(function()
+	autoSellEnabled = false
+end)
+
+--// Export constants
+autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
+autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
+
 return autoSell
 end function __DIST.t()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
@@ -10541,13 +10678,106 @@ local autoSell = __DIST.load('s')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "AutoSell" })
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "AutoSell" })
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Filter Summary" })
+
+	--// Right Section Labels (Filter Summary)
+	local summaryStatusLabel = rightSection:Label({ Text = "Status: --" })
+	local summarySafetyLabel = rightSection:Label({ Text = "Safety: --" })
+	local summaryTriggerLabel = rightSection:Label({ Text = "Trigger: <font color='rgb(200,200,255)'>On Dungeon Start</font>" })
+	local summaryRarityLabel = rightSection:Label({ Text = "Rarities: --" })
+	local summaryTypeLabel = rightSection:Label({ Text = "Item Types: --" })
+	local summaryLevelLabel = rightSection:Label({ Text = "Level Req: --" })
+	local summaryPrefixLabel = rightSection:Label({ Text = "Prefix: --" })
+	local summaryEquippedLabel = rightSection:Label({ Text = "Exclude Equipped: --" })
+
+	local function updateSummary()
+		-- Status
+		local isAuto = autoSell.IsEnabled()
+		local statusColor = isAuto and "0, 255, 0" or "255, 80, 80"
+		local statusText = isAuto and "Enabled" or "Disabled"
+		pcall(function()
+			summaryStatusLabel:UpdateName("Status: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
+		end)
+
+		-- Safety Status
+		local hasFilter = autoSell.HasAnyFilter()
+		local safetyColor = hasFilter and "0, 255, 0" or "255, 80, 80"
+		local safetyText = hasFilter and "✓ Active (Configured)" or "⚠ NO filter selected"
+		pcall(function()
+			summarySafetyLabel:UpdateName("Safety: <font color='rgb(" .. safetyColor .. ")'>" .. safetyText .. "</font>")
+		end)
+
+		-- Rarities
+		local rarities = autoSell.GetRarityFilter()
+		local rarityText = #rarities > 0 and table.concat(rarities, ", ") or "All (No filter)"
+		local rarityColor = #rarities > 0 and "255, 220, 120" or "160, 160, 160"
+		pcall(function()
+			summaryRarityLabel:UpdateName("Rarities: <font color='rgb(" .. rarityColor .. ")'>" .. rarityText .. "</font>")
+		end)
+
+		-- Types
+		local types = autoSell.GetTypeFilter()
+		local typeText = #types > 0 and table.concat(types, ", ") or "All (No filter)"
+		local typeColor = #types > 0 and "255, 220, 120" or "160, 160, 160"
+		pcall(function()
+			summaryTypeLabel:UpdateName("Item Types: <font color='rgb(" .. typeColor .. ")'>" .. typeText .. "</font>")
+		end)
+
+		-- Level Req
+		local mode = autoSell.GetLevelReqMode()
+		local exactLevels = autoSell.GetLevelReqExactFilter()
+		table.sort(exactLevels, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
+		local levelText = "All (No filter)"
+		local levelColor = "160, 160, 160"
+		if #exactLevels > 0 then
+			levelColor = "255, 220, 120"
+			if mode == "Below" then
+				levelText = "Below (≤ " .. exactLevels[#exactLevels] .. ")"
+			elseif mode == "Above" then
+				levelText = "Above (≥ " .. exactLevels[1] .. ")"
+			else
+				levelText = "Exact (" .. table.concat(exactLevels, ", ") .. ")"
+			end
+		end
+		pcall(function()
+			summaryLevelLabel:UpdateName("Level Req: <font color='rgb(" .. levelColor .. ")'>" .. levelText .. "</font>")
+		end)
+
+		-- Prefix
+		local prefix = autoSell.GetPrefixName()
+		local prefixText = (#prefix > 0) and ('"' .. prefix .. '"') or "None"
+		local prefixColor = (#prefix > 0) and "255, 220, 120" or "160, 160, 160"
+		pcall(function()
+			summaryPrefixLabel:UpdateName("Prefix: <font color='rgb(" .. prefixColor .. ")'>" .. prefixText .. "</font>")
+		end)
+
+		-- Exclude Equipped
+		local exclude = autoSell.GetExcludeEquipped()
+		local excludeColor = exclude and "0, 255, 0" or "255, 80, 80"
+		local excludeText = exclude and "Yes (Protected)" or "No (May Sell)"
+		pcall(function()
+			summaryEquippedLabel:UpdateName("Exclude Equipped: <font color='rgb(" .. excludeColor .. ")'>" .. excludeText .. "</font>")
+		end)
+	end
+
+	--// Left Section Controls
+	leftSection:Toggle({
+		Name = "Auto Sell on Dungeon Start",
+		Default = autoSell.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSell.Toggle(state)
+			updateSummary()
+		end),
+	}, "Toggle_AutoSellEnabled")
 
 	local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
 	local TYPE_OPTIONS = { "Weapons", "Helmets", "Chests", "Abilities" }
 
-	section:Dropdown({
+	leftSection:Dropdown({
 		Name = "Rarity Filter",
 		Options = RARITY_OPTIONS,
 		Default = autoSell.GetRarityFilter(),
@@ -10557,10 +10787,11 @@ return function(window, tab)
 			local list = {}
 			for rarity in pairs(selected) do table.insert(list, rarity) end
 			autoSell.SetRarityFilter(list)
+			updateSummary()
 		end),
 	}, "Dropdown_AutoSellRarity")
 
-	section:Dropdown({
+	leftSection:Dropdown({
 		Name = "Item Type Filter",
 		Options = TYPE_OPTIONS,
 		Default = autoSell.GetTypeFilter(),
@@ -10570,42 +10801,76 @@ return function(window, tab)
 			local list = {}
 			for itemType in pairs(selected) do table.insert(list, itemType) end
 			autoSell.SetTypeFilter(list)
+			updateSummary()
 		end),
 	}, "Dropdown_AutoSellType")
 
-	section:Input({
+	local levelReqDropdown -- forward declaration để mode callback có thể truy cập
+
+	local currentMode = autoSell.GetLevelReqMode()
+	local currentModeIndex = table.find(autoSell.LEVEL_REQ_MODE_OPTIONS, currentMode) or 1
+	leftSection:Dropdown({
+		Name = "Level Req Mode",
+		Options = autoSell.LEVEL_REQ_MODE_OPTIONS,
+		Default = currentModeIndex,
+		Multi = false,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			autoSell.SetLevelReqMode(selected)
+			if levelReqDropdown then
+				local isMulti = (selected == "None")
+				levelReqDropdown.Settings.Multi = isMulti
+				levelReqDropdown.Settings.Required = not isMulti
+				levelReqDropdown:UpdateSelection({})
+			end
+			updateSummary()
+		end),
+	}, "Dropdown_AutoSellLevelReqMode")
+
+	levelReqDropdown = leftSection:Dropdown({
+		Name = "Level Req Filter",
+		Options = autoSell.LEVEL_REQ_OPTIONS,
+		Default = autoSell.GetLevelReqExactFilter(),
+		Multi = currentMode == "None",
+		Required = currentMode ~= "None",
+		Search = true,
+		Callback = autoSave.Wrap(function(selected)
+			local list = {}
+			if type(selected) == "table" then
+				for level in pairs(selected) do table.insert(list, level) end
+			elseif type(selected) == "string" then
+				table.insert(list, selected)
+			end
+			autoSell.SetLevelReqExactFilter(list)
+			updateSummary()
+		end),
+	}, "Dropdown_AutoSellLevelReq")
+
+	leftSection:Input({
 		Name = "Prefix Name (starts with)",
 		Default = autoSell.GetPrefixName(),
 		Placeholder = "e.g. Runic",
 		AcceptedCharacters = "All",
 		Callback = autoSave.Wrap(function(value)
 			autoSell.SetPrefixName(value)
+			updateSummary()
 		end),
 	}, "Input_AutoSellPrefix")
 
-	section:Input({
-		Name = "Max Level Req (≤)",
-		Default = tostring(autoSell.GetLevelReqMax()),
-		Placeholder = "e.g. 130",
-		AcceptedCharacters = "Numeric",
-		Callback = autoSave.Wrap(function(value)
-			autoSell.SetLevelReqMax(tonumber(value) or 0)
-		end),
-	}, "Input_AutoSellLevelReq")
-
-	section:Toggle({
+	leftSection:Toggle({
 		Name = "Exclude Equipped Items",
 		Default = autoSell.GetExcludeEquipped(),
 		Callback = autoSave.Wrap(function(state)
 			autoSell.SetExcludeEquipped(state)
+			updateSummary()
 		end),
 	}, "Toggle_AutoSellExcludeEquipped")
 
-	local resultLabel = section:Label({
+	local resultLabel = leftSection:Label({
 		Text = "No search made yet.",
 	}, "Label_AutoSellResult")
 
-	section:Button({
+	leftSection:Button({
 		Name = "Search",
 		Callback = function()
 			task.spawn(function()
@@ -10631,7 +10896,7 @@ return function(window, tab)
 		end,
 	})
 
-	section:Button({
+	leftSection:Button({
 		Name = "Sell Now",
 		Callback = function()
 			task.spawn(function()
@@ -10692,6 +10957,9 @@ return function(window, tab)
 			end)
 		end,
 	})
+
+	-- Khởi tạo hiển thị summary lần đầu
+	updateSummary()
 end
 end function __DIST.u()-- DodgeNode: lưới node xung quanh player dùng làm bản đồ an toàn cho SmartDodge.
 -- Node nằm trong vùng precast của skill -> màu đỏ (nguy hiểm).

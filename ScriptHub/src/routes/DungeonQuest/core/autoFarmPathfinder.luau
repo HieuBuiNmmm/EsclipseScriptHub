@@ -1014,6 +1014,13 @@ local function stepMovement(deltaTime)
 		enemy = getEnemyByModel(chaseModel)
 		if not enemy then
 			chaseModel = nil
+			--// Fallback: không có chaseModel nhưng vẫn có enemy đang track (ví dụ sau
+			--// respawn, tập enemy không đổi nên OnEnemyChanged không fire) → chọn lại ngay.
+			local nearest = getNearestEnemy()
+			if nearest then
+				chaseModel = nearest.Model
+				enemy = nearest
+			end
 		end
 	end
 	cachedNearestEnemy = enemy
