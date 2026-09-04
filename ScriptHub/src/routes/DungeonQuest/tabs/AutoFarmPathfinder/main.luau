@@ -13,10 +13,11 @@ local ui = require("@routes/DungeonQuest/core/ui")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "Auto Farm" })
+	--// Bảng Auto Farm: bật/tắt + combo chuột
+	local farmSection = tab:Section({ Side = "Left" })
+	farmSection:Header({ Name = "Auto Farm" })
 
-	section:Toggle({
+	farmSection:Toggle({
 		Name = "Enable Pathfinder Farm",
 		Default = autoFarmPathfinder.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
@@ -24,7 +25,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderFarm")
 
-	section:Toggle({
+	farmSection:Toggle({
 		Name = "Right Click Combo (Q+E)",
 		Default = shortcuts.IsMouseComboEnabled(),
 		Callback = autoSave.Wrap(function(state)
@@ -32,17 +33,29 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderMouseCombo")
 
-	section:Header({ Name = "Visual Debug" })
+	--// Bảng Fallback: 2 cơ chế khi nopath enemy
+	local fallbackSection = tab:Section({ Side = "Left" })
+	fallbackSection:Header({ Name = "Fallback" })
 
-	section:Toggle({
-		Name = "Show Debug Overlays",
-		Default = autoFarmPathfinder.IsVisualDebugEnabled(),
+	fallbackSection:Toggle({
+		Name = "Anchor Fallback",
+		Default = autoFarmPathfinder.IsAnchorFallbackEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			autoFarmPathfinder.SetVisualDebug(state)
+			autoFarmPathfinder.SetAnchorFallback(state)
 		end),
-	}, "Toggle_PathfinderDebug")
+	}, "Toggle_PathfinderAnchorFallback")
 
-	section:Header({ Name = "Anchor (Nopath Reach)" })
+	fallbackSection:Toggle({
+		Name = "Respawn On No Path",
+		Default = autoFarmPathfinder.IsRespawnOnNoPathEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarmPathfinder.SetRespawnOnNoPath(state)
+		end),
+	}, "Toggle_PathfinderSelfKill")
+
+	--// Bảng Anchor Manager: quản lý anchor theo map
+	local anchorSection = tab:Section({ Side = "Left" })
+	anchorSection:Header({ Name = "Anchor Manager" })
 
 	--// Anchor chia theo MAP (dungeon). Dropdown chọn map để quản lý anchor của map đó.
 	--// Mỗi map có danh sách anchor riêng, lưu riêng file anchors.json.
@@ -69,7 +82,7 @@ return function(window, tab)
 
 	local refreshAnchorLabel
 
-	local anchorMapDropdown = section:Dropdown({
+	local anchorMapDropdown = anchorSection:Dropdown({
 		Name = "Map (Edit Anchors)",
 		Options = anchorMapOptions,
 		Default = indexOfOption(anchorMapOptions, selectedAnchorMap),
@@ -80,7 +93,7 @@ return function(window, tab)
 		end,
 	}, "Dropdown_PathfinderAnchorMap")
 
-	local anchorLabel = section:Label({ Text = "No anchors set" })
+	local anchorLabel = anchorSection:Label({ Text = "No anchors set" })
 
 	refreshAnchorLabel = function()
 		local list = autoFarmPathfinder.GetAnchors(selectedAnchorMap)
@@ -95,7 +108,7 @@ return function(window, tab)
 		anchorLabel:UpdateName("Map: " .. tostring(selectedAnchorMap or "-") .. "\nOrder: " .. table.concat(parts, " "))
 	end
 
-	section:Button({
+	anchorSection:Button({
 		Name = "Add Anchor at Current Room",
 		Callback = function()
 			local mapToUse = selectedAnchorMap or autoFarmPathfinder.GetCurrentAnchorMap()
@@ -110,7 +123,7 @@ return function(window, tab)
 	})
 
 	local inputAnchorNum
-	section:Input({
+	anchorSection:Input({
 		Name = "Anchor Number to Remove",
 		Placeholder = "number",
 		AcceptedCharacters = "Numeric",
@@ -119,7 +132,7 @@ return function(window, tab)
 		end,
 	})
 
-	section:Button({
+	anchorSection:Button({
 		Name = "Remove Anchor",
 		Callback = function()
 			local num = inputAnchorNum and tonumber(inputAnchorNum)
@@ -133,7 +146,7 @@ return function(window, tab)
 		end,
 	})
 
-	section:Button({
+	anchorSection:Button({
 		Name = "Clear Anchors for Selected Map",
 		Callback = function()
 			local mapToUse = selectedAnchorMap
@@ -145,21 +158,13 @@ return function(window, tab)
 		end,
 	})
 
-	section:Toggle({
+	anchorSection:Toggle({
 		Name = "Show Anchor Markers",
 		Default = autoFarmPathfinder.IsAnchorMarkersEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			autoFarmPathfinder.SetAnchorMarkers(state)
 		end),
 	}, "Toggle_PathfinderAnchorMarkers")
-
-	section:Toggle({
-		Name = "Respawn On No Path",
-		Default = autoFarmPathfinder.IsRespawnOnNoPathEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoFarmPathfinder.SetRespawnOnNoPath(state)
-		end),
-	}, "Toggle_PathfinderSelfKill")
 
 	--// Khi vào/ra dungeon (map hiện tại đổi) -> chọn map hiện tại trong dropdown + cập nhật label.
 	shared.OnDungeonNameChanged(function()
@@ -173,9 +178,23 @@ return function(window, tab)
 
 	refreshAnchorLabel()
 
-	section:Header({ Name = "Debug" })
+	--// Bảng Visual Debug
+	local visualSection = tab:Section({ Side = "Left" })
+	visualSection:Header({ Name = "Visual Debug" })
 
-	local stateLabel = section:Label({ Text = "Initializing..." })
+	visualSection:Toggle({
+		Name = "Show Debug Overlays",
+		Default = autoFarmPathfinder.IsVisualDebugEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarmPathfinder.SetVisualDebug(state)
+		end),
+	}, "Toggle_PathfinderDebug")
+
+	--// Bảng Debug: trạng thái realtime
+	local debugSection = tab:Section({ Side = "Left" })
+	debugSection:Header({ Name = "Debug" })
+
+	local stateLabel = debugSection:Label({ Text = "Initializing..." })
 
 	local PHASE_COLORS = {
 		CHASE = "0, 255, 255",

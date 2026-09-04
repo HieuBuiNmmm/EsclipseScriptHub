@@ -264,83 +264,50 @@ function esp.SetEnemyHitboxScale(scale)
 	enemyBoxScale = scale
 end
 
---// ========== [Show Skill Hitbox] Phủ skill bằng proxy mesh part (trong suốt) ==========
---// Clone toàn bộ model skill -> giữ nguyên hình dạng MeshPart thật, làm trong suốt
---// neon để hiển thị hitbox. Không đổi màu/tự ẩn theo thời gian.
+--// ========== [Show Skill Hitbox] Vẽ SelectionBox đỏ cho skill trong Workspace ==========
+--// Scan toàn bộ descendants của Workspace (loại excluded classes),
+--// vẽ SelectionBox đỏ đơn giản trên mỗi BasePart.
 
---// Danh sách skill cần vẽ proxy.
-local SKILL_PROJECTILE_NAMES = {
-	["northernMageShot"] = true,
-	["northernWarriorCircleStrike"] = true,
-	["northernWarriorLineStrike"] = true,
-	["spearmanStrike"] = true,
-	["spearmanStrikeHitbox"] = true,
-}
-local SKILL_ESP_COLOR = Color3.fromRGB(255, 230, 0)
+local SKILL_ESP_COLOR = Color3.fromRGB(255, 0, 0)
 local SKILL_ESP_NAME = "SkillESP"
 
---// State proxy cho từng model (điểm neo để giữ vị trí trùng mỗi frame).
+--// ClassName bị loại bỏ khi scan (không phải skill).
+local SKILL_ESP_EXCLUDED_CLASSES = {
+	["Folder"] = true,
+	["Camera"] = true,
+	["Terrain"] = true,
+	["TerrainRegion"] = true,
+	["StringValue"] = true,
+	["IntValue"] = true,
+	["BoolValue"] = true,
+}
+
 local skillBoxEnabled = false
 local skillBoxThread = nil
 
---// Tạo 1 MeshPart proxy bọc theo mesh thật của model skill (lấy MeshId/Scale/
---// TextureID từ MeshPart đầu tiên trong model). Trả về proxy MeshPart.
-local function createSkillProxy(model)
-	local template = nil
-	for _, desc in ipairs(model:GetDescendants()) do
-		if desc:IsA("MeshPart") then
-			template = desc
-			break
-		end
-	end
-	local proxy
-	if template then
-		proxy = template:Clone()
-	else
-		proxy = Instance.new("MeshPart")
-		proxy.Size = model:GetExtentsSize()
-	end
-	proxy.Name = SKILL_ESP_NAME
-	proxy.Anchored = true
-	proxy.CanCollide = false
-	proxy.CanQuery = false
-	proxy.CanTouch = false
-	proxy.Material = Enum.Material.Neon
-	proxy.Transparency = 0.8
-	proxy.Color = SKILL_ESP_COLOR
-	return proxy
+--// Tạo SelectionBox đỏ đơn giản trên BasePart nếu chưa có.
+local function createSkillBox(part)
+	if part:FindFirstChild(SKILL_ESP_NAME) then return end
+	local box = Instance.new("SelectionBox")
+	box.Name = SKILL_ESP_NAME
+	box.Adornee = part
+	box.Color3 = SKILL_ESP_COLOR
+	box.SurfaceColor3 = SKILL_ESP_COLOR
+	box.SurfaceTransparency = 0.8
+	box.Parent = part
 end
 
---// Giữ proxy khớp vị trí/hướng với model gốc mỗi khi quét thấy.
-local function syncSkillProxy(proxy, model)
-	proxy.CFrame = model:GetPivot()
-end
-
---// Tạo proxy nếu chưa có, rồi đồng bộ vị trí với model gốc.
-local function createSkillBox(model)
-	local proxy = model:FindFirstChild(SKILL_ESP_NAME)
-	if not proxy then
-		proxy = createSkillProxy(model)
-		proxy.Parent = model
-	end
-	syncSkillProxy(proxy, model)
-end
-
---// Quét Workspace tìm skill theo tên và vẽ proxy.
+--// Quét toàn bộ descendants, loại excluded classes, vẽ SelectionBox trên BasePart.
 local function scanSkillHitboxes()
 	local Workspace = game:GetService("Workspace")
-	local function handleRoot(root)
-		if not SKILL_PROJECTILE_NAMES[root.Name] then return end
-		createSkillBox(root)
-	end
 	for _, child in ipairs(Workspace:GetChildren()) do
-		handleRoot(child)
-		if not SKILL_PROJECTILE_NAMES[child.Name] then
-			for _, desc in ipairs(child:GetDescendants()) do
-				if SKILL_PROJECTILE_NAMES[desc.Name] then
-					handleRoot(desc)
-					break
-				end
+		if SKILL_ESP_EXCLUDED_CLASSES[child.ClassName] then continue end
+		if child:IsA("BasePart") then
+			createSkillBox(child)
+		end
+		for _, desc in ipairs(child:GetDescendants()) do
+			if desc:IsA("BasePart") and not SKILL_ESP_EXCLUDED_CLASSES[desc.ClassName] then
+				createSkillBox(desc)
 			end
 		end
 	end
@@ -349,10 +316,9 @@ end
 local function clearSkillBoxes()
 	if skillBoxThread then task.cancel(skillBoxThread); skillBoxThread = nil end
 	local Workspace = game:GetService("Workspace")
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		for _, child in ipairs(obj:GetChildren()) do
-			if child.Name == SKILL_ESP_NAME then child:Destroy() end
-		end
+	for _, desc in ipairs(Workspace:GetDescendants()) do
+		local box = desc:FindFirstChild(SKILL_ESP_NAME)
+		if box then box:Destroy() end
 	end
 end
 
