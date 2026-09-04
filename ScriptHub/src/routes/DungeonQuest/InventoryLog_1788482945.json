@@ -1,0 +1,2561 @@
+{
+    "ReturnedData": {
+        "1": {
+            "helmets": {
+                "helmet_5": {
+                    "currentUpgrade": 126989,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349312615",
+                    "physicalPower": 6160747,
+                    "sellPrice": 2051260578,
+                    "maxUpgrades": 126989,
+                    "name": "Jotunn Warrior Helmet",
+                    "UniqueItemID": "24c6a9c7-8edf-422f-afc1-08ac6d3f22eb",
+                    "health": 126963558,
+                    "spellPower": 521,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_21": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250430160",
+                    "physicalPower": 503,
+                    "sellPrice": 90000000,
+                    "maxUpgrades": 29348,
+                    "name": "Molten Forged Mage Helmet",
+                    "UniqueItemID": "806dd593-cb7e-4fde-a15e-01e0a028a8c6",
+                    "health": 9222414,
+                    "spellPower": 454806,
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "helmet_32": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349312784",
+                    "physicalPower": 1027,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 130888,
+                    "name": "Jotunn Guardian Helmet",
+                    "UniqueItemID": "894ffb37-d30f-4db6-aa4b-84a01aa46de5",
+                    "health": 208814851,
+                    "spellPower": 1008,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_18": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4111012588",
+                    "physicalPower": 388,
+                    "sellPrice": 9000000,
+                    "maxUpgrades": 4702,
+                    "name": "Industrial Mage Helmet",
+                    "UniqueItemID": "4191ee02-ad67-48a2-a764-1717e6cabbe2",
+                    "health": 431098,
+                    "spellPower": 29256,
+                    "equipped": false,
+                    "levelReq": 125
+                },
+                "helmet_7": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4111012204",
+                    "physicalPower": 31361,
+                    "sellPrice": 9000000,
+                    "maxUpgrades": 4625,
+                    "name": "Industrial Warrior Helmet",
+                    "UniqueItemID": "71b1082a-860f-4cca-9bd7-92c487908111",
+                    "health": 444627,
+                    "spellPower": 395,
+                    "equipped": false,
+                    "levelReq": 125
+                },
+                "helmet_31": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250430475",
+                    "physicalPower": 432690,
+                    "sellPrice": 90000000,
+                    "maxUpgrades": 28469,
+                    "name": "Molten Forged Warrior Helmet",
+                    "UniqueItemID": "7c789c88-5b8e-4a2d-bbd5-6a5a20b8acf7",
+                    "health": 9048163,
+                    "spellPower": 484,
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "helmet_56": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "http://www.roblox.com/asset/?id=4510339259",
+                    "physicalPower": 1753,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 11884,
+                    "name": "Nature Guardian Helmet +30",
+                    "UniqueItemID": "344d7440-aa2b-4f5e-a0e2-233367090ff9",
+                    "health": 2965837,
+                    "spellPower": 1690,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "helmet_60": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "http://www.roblox.com/asset/?id=4452307374",
+                    "physicalPower": 1781,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 12014,
+                    "name": "Heavenly Guardian Helmet +30",
+                    "UniqueItemID": "00997c6f-f1a3-4e18-bb04-b9f53587fdcb",
+                    "health": 3068310,
+                    "spellPower": 1794,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "helmet_1": {
+                    "currentUpgrade": 138447,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8352073326",
+                    "physicalPower": 7085237,
+                    "sellPrice": 2223130578,
+                    "maxUpgrades": 138447,
+                    "name": "Valhalla Warrior Helmet",
+                    "UniqueItemID": "1233a087-7668-411f-8ba8-3d99cca8df2e",
+                    "health": 162297818,
+                    "spellPower": 490,
+                    "equipped": true,
+                    "levelReq": 186
+                },
+                "helmet_37": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250430475",
+                    "physicalPower": 474339,
+                    "sellPrice": 90000000,
+                    "maxUpgrades": 28791,
+                    "name": "Molten Forged Warrior Helmet",
+                    "UniqueItemID": "f69a3ee9-188c-4b6b-9d7c-6d10ac2d157b",
+                    "health": 9162824,
+                    "spellPower": 511,
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "helmet_13": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250430797",
+                    "physicalPower": 965,
+                    "sellPrice": 80000000,
+                    "maxUpgrades": 24216,
+                    "name": "Burned Guardian Helmet",
+                    "UniqueItemID": "93f4abf7-2d51-4487-b897-22c59cd029b1",
+                    "health": 9593461,
+                    "spellPower": 1034,
+                    "equipped": false,
+                    "levelReq": 150
+                },
+                "helmet_29": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349312205",
+                    "physicalPower": 3677999,
+                    "sellPrice": 140000000,
+                    "maxUpgrades": 99848,
+                    "name": "Midgardian Warrior Helmet",
+                    "UniqueItemID": "5538ecf5-70b8-47d4-aa40-b067a81bd84a",
+                    "health": 91812438,
+                    "spellPower": 525,
+                    "equipped": false,
+                    "levelReq": 180
+                },
+                "helmet_24": {
+                    "currentUpgrade": 28638,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250430475",
+                    "physicalPower": 723732,
+                    "sellPrice": 515995578,
+                    "maxUpgrades": 28638,
+                    "name": "Molten Forged Warrior Helmet",
+                    "UniqueItemID": "c7fb7169-a6b1-4fde-bf49-1177be86287d",
+                    "health": 9733509,
+                    "spellPower": 519,
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "helmet_35": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=6187497907",
+                    "physicalPower": 981,
+                    "sellPrice": 110000000,
+                    "maxUpgrades": 43804,
+                    "name": "Riptide Guardian Helmet",
+                    "UniqueItemID": "d596512f-3071-478d-8fe9-687291d939b0",
+                    "health": 33820343,
+                    "spellPower": 978,
+                    "equipped": false,
+                    "levelReq": 165
+                },
+                "helmet_14": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://6871200060",
+                    "physicalPower": 2188761,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 77927,
+                    "name": "Crystalline Warrior Helmet",
+                    "UniqueItemID": "49bdb66b-1237-4fbf-b802-adef1da30250",
+                    "health": 52680705,
+                    "spellPower": 476,
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "helmet_25": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://6871200261",
+                    "physicalPower": 996,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 78028,
+                    "name": "Crystalline Guardian Helmet",
+                    "UniqueItemID": "db171abc-3fa5-408b-82dd-0b8d8a93f907",
+                    "health": 87966512,
+                    "spellPower": 994,
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "helmet_2": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://8349312615",
+                    "physicalPower": 4376227,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 122207,
+                    "name": "Jotunn Warrior Helmet",
+                    "UniqueItemID": "f762eaf4-91c8-4f08-b760-4b53243b03ae",
+                    "health": 118959021,
+                    "spellPower": 482,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_4": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4626315033",
+                    "physicalPower": 475,
+                    "sellPrice": 65000000,
+                    "maxUpgrades": 18886,
+                    "name": "Commander's Mage Helmet",
+                    "UniqueItemID": "7dbce886-ca1a-4bf5-a15f-14a03ff11351",
+                    "health": 3742416,
+                    "spellPower": 188791,
+                    "equipped": false,
+                    "levelReq": 145
+                },
+                "helmet_26": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=6187498386",
+                    "physicalPower": 1023555,
+                    "sellPrice": 110000000,
+                    "maxUpgrades": 43349,
+                    "name": "Riptide Warrior Helmet",
+                    "UniqueItemID": "8fbd4c99-0258-469a-ae39-4f06212eba19",
+                    "health": 23524739,
+                    "spellPower": 508,
+                    "equipped": false,
+                    "levelReq": 165
+                },
+                "helmet_16": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://8349312615",
+                    "physicalPower": 4496599,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 125963,
+                    "name": "Jotunn Warrior Helmet",
+                    "UniqueItemID": "393def03-622d-4fbf-ad57-bbece48a89d3",
+                    "health": 115088734,
+                    "spellPower": 507,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_19": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349312703",
+                    "physicalPower": 490,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 130102,
+                    "name": "Jotunn Mage Helmet",
+                    "UniqueItemID": "2b867114-8940-4964-871f-d0aed4fc9c89",
+                    "health": 130203291,
+                    "spellPower": 4859675,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_55": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4284622497",
+                    "physicalPower": 1236,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 11723,
+                    "name": "Inventor's Mage Helmet +30",
+                    "UniqueItemID": "79990963-687d-46f8-bfc5-f536943fa6ab",
+                    "health": 2173876,
+                    "spellPower": 104623,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "helmet_23": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349312615",
+                    "physicalPower": 4722549,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 134850,
+                    "name": "Jotunn Warrior Helmet",
+                    "UniqueItemID": "bfe0a14e-d641-4fb2-944e-d9d8fd811072",
+                    "health": 122247465,
+                    "spellPower": 524,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_6": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://6871200160",
+                    "physicalPower": 510,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 78108,
+                    "name": "Crystalline Mage Helmet",
+                    "UniqueItemID": "95bdd2b0-7a6d-499d-b215-b573026683d9",
+                    "health": 52591179,
+                    "spellPower": 2196585,
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "helmet_38": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4111012204",
+                    "physicalPower": 28892,
+                    "sellPrice": 9000000,
+                    "maxUpgrades": 4446,
+                    "name": "Industrial Warrior Helmet",
+                    "UniqueItemID": "029ac4cd-8cbf-4e2c-934b-f20e63d4e07c",
+                    "health": 422032,
+                    "spellPower": 393,
+                    "equipped": false,
+                    "levelReq": 125
+                },
+                "helmet_36": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4510339003",
+                    "physicalPower": 1245,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 12759,
+                    "name": "Nature Mage Helmet +30",
+                    "UniqueItemID": "93105d52-90a8-4f76-a954-25967ecf9204",
+                    "health": 2167826,
+                    "spellPower": 97610,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "helmet_65": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "http://www.roblox.com/asset/?id=4452307374",
+                    "physicalPower": 1711,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 11451,
+                    "name": "Heavenly Guardian Helmet +30",
+                    "UniqueItemID": "6db18bd5-fe84-4a82-835a-da69d3e7c2a9",
+                    "health": 2837277,
+                    "spellPower": 1787,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "helmet_20": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349312615",
+                    "physicalPower": 4642204,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 134360,
+                    "name": "Jotunn Warrior Helmet",
+                    "UniqueItemID": "ce5d7ce1-c24d-4a8f-9d1a-4ac08e3560fc",
+                    "health": 133226005,
+                    "spellPower": 477,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_9": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://8349312318",
+                    "physicalPower": 525,
+                    "sellPrice": 140000000,
+                    "maxUpgrades": 101285,
+                    "name": "Midgardian Mage Helmet",
+                    "UniqueItemID": "b6652c2d-d200-40c8-90f8-593da209d52e",
+                    "health": 81083282,
+                    "spellPower": 3342427,
+                    "equipped": false,
+                    "levelReq": 180
+                },
+                "helmet_40": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://8349312615",
+                    "physicalPower": 4296992,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 118241,
+                    "name": "Jotunn Warrior Helmet",
+                    "UniqueItemID": "0129c2e0-b025-4779-acc6-f90d79729b55",
+                    "health": 117481099,
+                    "spellPower": 488,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_28": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349312703",
+                    "physicalPower": 504,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 127764,
+                    "name": "Jotunn Mage Helmet",
+                    "UniqueItemID": "a38b9674-dce5-4f43-b26c-f774748710f7",
+                    "health": 130201405,
+                    "spellPower": 4705852,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "helmet_53": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "http://www.roblox.com/asset/?id=4510339139",
+                    "physicalPower": 91047,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 12243,
+                    "name": "Nature Warrior Helmet +30",
+                    "UniqueItemID": "7e16a32a-851d-407c-aa99-4934fd48cf6a",
+                    "health": 2101802,
+                    "spellPower": 1200,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "helmet_12": {
+                    "currentUpgrade": 22814,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4626315123",
+                    "physicalPower": 448082,
+                    "sellPrice": 403635578,
+                    "maxUpgrades": 22814,
+                    "name": "Alien Warrior Helmet",
+                    "UniqueItemID": "41d1d789-b827-44ac-85c5-26e2ebfa26aa",
+                    "health": 4794403,
+                    "spellPower": 484,
+                    "equipped": false,
+                    "levelReq": 145
+                },
+                "helmet_44": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=6187498386",
+                    "physicalPower": 1055643,
+                    "sellPrice": 110000000,
+                    "maxUpgrades": 46809,
+                    "name": "Riptide Warrior Helmet",
+                    "UniqueItemID": "c39d2329-b457-4eca-9aa7-084de747498f",
+                    "health": 22950067,
+                    "spellPower": 514,
+                    "equipped": false,
+                    "levelReq": 165
+                }
+            },
+            "abilities": {
+                "ability_67": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Curse all enemies in front of you dealing damage over time. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338450",
+                    "name": "Demonic Curse",
+                    "UniqueItemID": "3fa47424-169e-4751-b94a-c43d03110ac4",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_18": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Summon agony orbs that fly at nearby enemies and explode. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://6874804465",
+                    "name": "Agony Orbs",
+                    "UniqueItemID": "69e20557-b31d-47a8-8801-042a7f586fd6",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 175
+                },
+                "ability_45": {
+                    "rarity": "epic",
+                    "sellPrice": 19333333,
+                    "description": "Summon an infernal orb and launch it forward. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299619",
+                    "name": "Infernal Blast",
+                    "UniqueItemID": "23b0bdd3-2dde-4c08-9770-40ffc6539bd0",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_84": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Create giant ice spikes and shoot them forward. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207983948",
+                    "name": "Ice Crash",
+                    "UniqueItemID": "4258fd2a-2ac2-4af6-acf1-42baf81babfc",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_65": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Stomp the ground creating a shockwave to damage all nearby enemies. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299205",
+                    "name": "Ground Stomp",
+                    "UniqueItemID": "f2b1f7ca-1bf1-46c4-b3d8-c94a3f0ec1e9",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_74": {
+                    "rarity": "epic",
+                    "sellPrice": 8000000,
+                    "description": "Create chromatic beams around you dealing damage to all enemies within range(Scales with spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4111033824",
+                    "name": "Chromatic Rain",
+                    "UniqueItemID": "3f5b55d8-8925-44e1-b0c3-7d9d58fe4e68",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 124
+                },
+                "ability_14": {
+                    "rarity": "epic",
+                    "sellPrice": 60000000,
+                    "description": "Throw a grenade forward that explodes upon contact dealing damage to all nearby enemies. (Scales with Physical Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4626316715",
+                    "name": "Vortex Grenade",
+                    "UniqueItemID": "4e737d89-d0c3-4465-b9c0-fc33e0a5cf9a",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 145
+                },
+                "ability_70": {
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "description": "Call down an explosive sword from the sky. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=5251637214",
+                    "name": "Blade Fall",
+                    "UniqueItemID": "a161d203-d573-456a-8676-4e4f1dd8d98f",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 155
+                },
+                "ability_5": {
+                    "rarity": "epic",
+                    "sellPrice": 60000000,
+                    "description": "Shoot a spinning energy orb forward hitting all enemies in its path. (Scales with Spell Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4626316892",
+                    "name": "Energy Orb",
+                    "UniqueItemID": "217b8408-efd4-4c0d-840d-e7e2ce1056f4",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 145
+                },
+                "ability_23": {
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "description": "Fire a piercing Amethyst blastwave forward. (Scales with SPELL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=5251636956",
+                    "name": "Amethyst Blast",
+                    "UniqueItemID": "7c5cbd95-771a-4b9e-b0e4-8b864e67092c",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 155
+                },
+                "ability_37": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Throw spheres of ice towards all enemies in your range. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207983645",
+                    "name": "Ice Barrage",
+                    "UniqueItemID": "01b059af-23c0-4f58-8cce-e1985925010e",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_62": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Quickly swing twice damaging all enemies in front of you. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338216",
+                    "name": "Twin Slash",
+                    "UniqueItemID": "ba5ccbd7-3b46-418a-9f06-fa84bfd497ce",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_33": {
+                    "rarity": "epic",
+                    "sellPrice": 60000000,
+                    "description": "Throw a mine that explodes shortly after. (Scales with Physical Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4626316807",
+                    "name": "Explosive Mine",
+                    "UniqueItemID": "a730bd6a-cecd-482c-b3e8-753349715224",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 145
+                },
+                "ability_16": {
+                    "rarity": "epic",
+                    "sellPrice": 900000,
+                    "description": "Throw forth lava crescents which deal damage on initial hit followed by a delayed explosion. (Scales with Physical power)",
+                    "imageId": "rbxassetid://3276265493",
+                    "name": "Lava Lash",
+                    "UniqueItemID": "6f8df940-7134-4391-86a8-24dbfc9ef192",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 90
+                },
+                "ability_32": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Create giant ice spikes and shoot them forward. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207983948",
+                    "name": "Ice Crash",
+                    "UniqueItemID": "5f30a55a-3541-4334-b51b-9d858b899c39",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_60": {
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "description": "Perform a series of Lava blasts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=5251638063",
+                    "name": "Lava Barrage",
+                    "UniqueItemID": "1411d1c3-2ead-4eb0-82ae-70eddde5d7cf",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 155
+                },
+                "ability_44": {
+                    "rarity": "epic",
+                    "sellPrice": 14000000,
+                    "description": "Channel power into your fist and release it with a mighty punch. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4284636463",
+                    "name": "Explosive Punch",
+                    "UniqueItemID": "a356507e-059c-4c62-8150-5429d433e172",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_127": {
+                    "rarity": "epic",
+                    "sellPrice": 60000000,
+                    "description": "Fire 3 explosive orbs forward. (Scales with Spell Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4626316551",
+                    "name": "Mystery Matter",
+                    "UniqueItemID": "c356c5a6-7d7e-4980-8342-1a9441db3477",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 140
+                },
+                "ability_71": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Summon Ice Spikes from the ground to pierce all enemies within. (Scales with SPELL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207984085",
+                    "name": "Ice Spikes",
+                    "UniqueItemID": "38232bd6-fb57-4535-b413-a3a58791d439",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_55": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Stomp the ground creating a shockwave to damage all nearby enemies. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299205",
+                    "name": "Ground Stomp",
+                    "UniqueItemID": "296d88ae-a926-48b4-875c-0a589591678e",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_49": {
+                    "rarity": "epic",
+                    "sellPrice": 30000000,
+                    "description": "Quickly swing twice damaging all enemies in front of you. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338216",
+                    "name": "Twin Slash",
+                    "UniqueItemID": "850c380a-3c1b-4a52-be90-e33387d51cc5",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_1": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Create giant ice spikes and shoot them forward. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207983948",
+                    "name": "Ice Crash",
+                    "UniqueItemID": "763527bb-201c-4cb8-bc1f-76ea08dd36da",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_68": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon an orb to rain destruction down upon nearby enemies and then explode. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4284635863",
+                    "name": "Orb Of Destruction",
+                    "UniqueItemID": "dae4786e-f1b3-4316-aa88-9a9630b9f5aa",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_17": {
+                    "rarity": "epic",
+                    "sellPrice": 60000000,
+                    "description": "Throw a grenade forward that explodes upon contact dealing damage to all nearby enemies. (Scales with Physical Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4626316715",
+                    "name": "Vortex Grenade",
+                    "UniqueItemID": "cfae933b-30e0-46c8-b4dd-a5a5d76c4501",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 145
+                },
+                "ability_72": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Create giant ice spikes and shoot them forward. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207983948",
+                    "name": "Ice Crash",
+                    "UniqueItemID": "54ae3be4-d9dd-4b7d-95d5-0faa3337c1be",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_87": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Throw spheres of ice towards all enemies in your range. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207983645",
+                    "name": "Ice Barrage",
+                    "UniqueItemID": "c6655747-4627-4572-ad63-d1f2b6e45b09",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_30": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Shock all enemies in front of you with a lightning strike. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://6874804760",
+                    "name": "Lightning Burst",
+                    "UniqueItemID": "8ad88c5b-da7d-494e-9320-1480f1035afc",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 175
+                },
+                "ability_112": {
+                    "rarity": "epic",
+                    "sellPrice": 20000000,
+                    "description": "Summon an infernal orb and launch it forward. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299619",
+                    "name": "Infernal Blast",
+                    "UniqueItemID": "692f8e13-f665-4c9c-8d70-f7a7807d899f",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_3": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Create a violent expanding vortex of wind. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://6874804146",
+                    "name": "Wind Blast",
+                    "UniqueItemID": "29aaef8f-5a32-46e1-81fa-f7283eae00ce",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 175
+                },
+                "ability_11": {
+                    "rarity": "rare",
+                    "sellPrice": 100000000,
+                    "description": "Pierce the area in front of you with sharp roots. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://6874804342",
+                    "name": "Piercing Roots",
+                    "UniqueItemID": "31b66502-ea85-4ffe-aaff-8d841850391f",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 170
+                },
+                "ability_81": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Throw spheres of ice towards all enemies in your range. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=6207983645",
+                    "name": "Ice Barrage",
+                    "UniqueItemID": "30f9dcae-928f-4df7-bd40-83b2a5794394",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 165
+                },
+                "ability_53": {
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "description": "Create a violent expanding vortex of wind. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://6874804146",
+                    "name": "Wind Blast",
+                    "UniqueItemID": "f5092f36-65cd-42d5-a92b-bc4896a5786e",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 175
+                },
+                "ability_77": {
+                    "rarity": "epic",
+                    "sellPrice": 60000000,
+                    "description": "Shoot a spinning energy orb forward hitting all enemies in its path. (Scales with Spell Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4626316892",
+                    "name": "Energy Orb",
+                    "UniqueItemID": "9eabc93b-59dd-430b-a7af-c273edd75ff1",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 145
+                },
+                "ability_22": {
+                    "rarity": "rare",
+                    "sellPrice": 100000000,
+                    "description": "Pierce the area in front of you with sharp roots. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://6874804342",
+                    "name": "Piercing Roots",
+                    "UniqueItemID": "6d1028ae-9a81-4e60-ad5b-8edd1b98a3c5",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 170
+                },
+                "ability_75": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "7b85eb9a-27be-405c-81d6-8a54b8955012",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_20": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "52dad849-b4e7-446b-9e53-12c565889ca3",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": true
+                    },
+                    "levelReq": 185
+                },
+                "ability_47": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a water geyser damaging all nearby enemies. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349314058",
+                    "name": "Geyser",
+                    "UniqueItemID": "803148bb-4352-424d-ad85-df716b14ca68",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_7": {
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "description": "Gain a movement speed boost and increase PHYSICAL damage by 80%.",
+                    "imageId": "http://www.roblox.com/asset/?id=5251638613",
+                    "name": "Inner Rage",
+                    "UniqueItemID": "4eabaada-5d3a-4a9b-a862-b9c497fbc7b4",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 150
+                },
+                "ability_13": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Drain the life of all enemies within the cursed area. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349313894",
+                    "name": "Soul Drain",
+                    "UniqueItemID": "75b8f5d4-e165-4951-9a8d-67342ce1da50",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_15": {
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "description": "Perform a series of Lava blasts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=5251638063",
+                    "name": "Lava Barrage",
+                    "UniqueItemID": "973894d4-788e-4542-93eb-ea7582eb8df1",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 155
+                },
+                "ability_2": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a water geyser damaging all nearby enemies. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349314058",
+                    "name": "Geyser",
+                    "UniqueItemID": "4f80ad96-7c8d-44bd-87e2-13c91fa63919",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_9": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "ee706930-b3ed-4064-8a22-2b9a6fec67f4",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_40": {
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "description": "Gain a movement speed boost and increase SPELL damage by 80%.",
+                    "imageId": "http://www.roblox.com/asset/?id=5251638369",
+                    "name": "Inner Focus",
+                    "UniqueItemID": "dbe79f92-1016-48a4-9199-435978a0fa34",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 150
+                },
+                "ability_35": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Drain the life of all enemies within the cursed area. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349313894",
+                    "name": "Soul Drain",
+                    "UniqueItemID": "bc2d7f3b-7bfa-4314-862a-d120dc4d4f21",
+                    "equipped": {
+                        "q": false,
+                        "e2": true,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_89": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Channel power into your fist and release it with a mighty punch. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4284636463",
+                    "name": "Explosive Punch",
+                    "UniqueItemID": "a8a892c3-56b2-4f5a-82b6-8d14b303474c",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_88": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon an orb to rain destruction down upon nearby enemies and then explode. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4284635863",
+                    "name": "Orb Of Destruction",
+                    "UniqueItemID": "73ff7e0a-8bd5-4a73-a8c7-51107e1b673c",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_12": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "be4e5260-cd8b-4b74-8a20-5c225052c83d",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_95": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon two spinning beams to damage all enemies nearby. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338336",
+                    "name": "Electric Grinder",
+                    "UniqueItemID": "7b7f978e-7229-429a-b3bf-76cd91ac678b",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_93": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon 5 arrows and launch them forward. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299440",
+                    "name": "Arrow Barrage",
+                    "UniqueItemID": "953a79e5-6f75-481c-925e-a5c78a7ec862",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_8": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Drain the life of all enemies within the cursed area. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349313894",
+                    "name": "Soul Drain",
+                    "UniqueItemID": "85818d4e-ad82-4a0c-bd17-b5e5e25356c3",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_98": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Curse all enemies in front of you dealing damage over time. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338450",
+                    "name": "Demonic Curse",
+                    "UniqueItemID": "772b1450-7bac-4e07-96ed-4bedb91e2d4f",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_106": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Stomp the ground creating a shockwave to damage all nearby enemies. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299205",
+                    "name": "Ground Stomp",
+                    "UniqueItemID": "1e838568-27a5-49e6-a17a-9433c1aafd7d",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_90": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Quickly swing twice damaging all enemies in front of you. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338216",
+                    "name": "Twin Slash",
+                    "UniqueItemID": "bc40abe0-d463-406a-836f-1c8ffcbe5ab4",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_66": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a water geyser damaging all nearby enemies. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349314058",
+                    "name": "Geyser",
+                    "UniqueItemID": "fbed00c0-94ce-419d-ad37-f254b4c76ab3",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_58": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "79e995b7-0783-427c-ab26-81056adc7f33",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_76": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Stomp the ground creating a shockwave to damage all nearby enemies. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299205",
+                    "name": "Ground Stomp",
+                    "UniqueItemID": "d64d6431-f31c-4202-83a4-791e34f07d92",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_6": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "b6597a12-64a9-482a-b753-c7ebdfd84d17",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_105": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Cast a lightning beam which chains from enemy to enemy. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299003",
+                    "name": "Chain Lightning",
+                    "UniqueItemID": "7f354006-e4b6-45ad-a908-e0de3430f8b4",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_46": {
+                    "rarity": "legendary",
+                    "sellPrice": 80000000,
+                    "description": "Gain a movement speed boost and increase SPELL damage by 90%.",
+                    "imageId": "http://www.roblox.com/asset/?id=5251638369",
+                    "name": "Enhanced Inner Focus",
+                    "UniqueItemID": "5b62334e-3908-43b6-95f7-4282e89e2e1a",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": true,
+                        "e": false
+                    },
+                    "levelReq": 150
+                },
+                "ability_52": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "40fc3dd8-9712-46ad-a637-172d6b290d3f",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_36": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a water geyser damaging all nearby enemies. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349314058",
+                    "name": "Geyser",
+                    "UniqueItemID": "7fe8ce6f-834f-48f4-9677-f1a6f3ade484",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_28": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "a470205a-0839-47cc-8087-d7b7676bf65b",
+                    "equipped": {
+                        "q": true,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_27": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "3cd711ae-3bce-4f2c-982c-22fe01cf82d2",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_57": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "0dcb8d31-995f-4c22-860a-2c6e4ce10925",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_99": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon 5 arrows and launch them forward. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299440",
+                    "name": "Arrow Barrage",
+                    "UniqueItemID": "c340ba81-b813-4ea1-a774-deed0c3f071a",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_56": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a water geyser damaging all nearby enemies. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349314058",
+                    "name": "Geyser",
+                    "UniqueItemID": "01c693eb-1e1a-404f-8b16-cf425724c177",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_10": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Drain the life of all enemies within the cursed area. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349313894",
+                    "name": "Soul Drain",
+                    "UniqueItemID": "43a745ce-57a7-4893-8109-d02f59da5dcc",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_48": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "f46bd8f8-696b-446f-9c03-0c969be8e286",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_82": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Channel power into your fist and release it with a mighty punch. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4284636463",
+                    "name": "Explosive Punch",
+                    "UniqueItemID": "ffaedd87-788c-4bc2-b1b4-d988b9091389",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_92": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Curse all enemies in front of you dealing damage over time. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338450",
+                    "name": "Demonic Curse",
+                    "UniqueItemID": "eb306d72-8b60-47e3-b476-70d9c75833a1",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_4": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "d156edf9-fd3f-48b2-a42e-f5a71287e25b",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_42": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Drain the life of all enemies within the cursed area. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349313894",
+                    "name": "Soul Drain",
+                    "UniqueItemID": "08346adf-c636-4806-90e2-09ca12cebc89",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_41": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "921d8159-60fa-413c-8c98-1178060265e6",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_34": {
+                    "rarity": "rare",
+                    "sellPrice": 100000000,
+                    "description": "Blast a cone of frost forward. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=8349313309",
+                    "name": "Frost Cone",
+                    "UniqueItemID": "99f6f8de-9404-4a98-99bf-193f72941bb4",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 180
+                },
+                "ability_73": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Curse all enemies in front of you dealing damage over time. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338450",
+                    "name": "Demonic Curse",
+                    "UniqueItemID": "94dfa46a-a0d7-49f1-8b43-f3828da8e5d0",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_59": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "913f6ecc-fea3-4cf7-bc47-7ce014ad07f1",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_83": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon an orb to rain destruction down upon nearby enemies and then explode. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4284635863",
+                    "name": "Orb Of Destruction",
+                    "UniqueItemID": "5add4339-5078-4beb-99d7-a6f2eee30bd3",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_86": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "366109d1-891e-4cc7-bd24-eb4d64b98802",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_61": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Launch multiple gale bursts forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313462",
+                    "name": "Gale Barrage",
+                    "UniqueItemID": "f6d30216-dd7e-417c-aca7-807a69f0b57a",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_43": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "07158dcf-09cd-48d0-b405-59bf1040cd55",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_103": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Cast a lightning beam which chains from enemy to enemy. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299003",
+                    "name": "Chain Lightning",
+                    "UniqueItemID": "660aa9f4-2631-4659-80da-5a233e4db22e",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_85": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon an orb to rain destruction down upon nearby enemies and then explode. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4284635863",
+                    "name": "Orb Of Destruction",
+                    "UniqueItemID": "dbdaf36f-9158-48e4-ad07-0f9bab929440",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_69": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "94145c6f-631f-4ed7-9f32-ecc37f86ecef",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_29": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a giant flaming shuriken and launch it forward. (Scales with PHYSICAL Power)",
+                    "imageId": "rbxassetid://8349313620",
+                    "name": "Flame Shuriken",
+                    "UniqueItemID": "7900a5be-0ee6-4e57-b206-cce6a4e2a5d8",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_91": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Quickly swing twice damaging all enemies in front of you. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338216",
+                    "name": "Twin Slash",
+                    "UniqueItemID": "17db8199-8b86-4553-992e-d32ea0e203bd",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_78": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Cast a lightning beam which chains from enemy to enemy. (Scales with Spell power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299003",
+                    "name": "Chain Lightning",
+                    "UniqueItemID": "9a811141-a6f1-45cd-9ffb-53c3251e3ce2",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_101": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Stomp the ground creating a shockwave to damage all nearby enemies. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299205",
+                    "name": "Ground Stomp",
+                    "UniqueItemID": "be9af8b3-2c28-4708-9294-2db759cf572b",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_64": {
+                    "rarity": "epic",
+                    "sellPrice": 110000000,
+                    "description": "Summon a water geyser damaging all nearby enemies. (Scales with SPELL Power)",
+                    "imageId": "rbxassetid://8349314058",
+                    "name": "Geyser",
+                    "UniqueItemID": "0f3fc4f0-caf7-47cb-a991-7feff215fad9",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 185
+                },
+                "ability_97": {
+                    "rarity": "epic",
+                    "sellPrice": 33333333,
+                    "description": "Summon 5 arrows and launch them forward. (Scales with Physical power)",
+                    "imageId": "http://www.roblox.com/asset/?id=4452299440",
+                    "name": "Arrow Barrage",
+                    "UniqueItemID": "b99bca48-3811-4a2e-afd2-f02c61a17325",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 130
+                },
+                "ability_50": {
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "description": "Blast multiple shards forward which explode shortly after. (Scales with PHYSICAL Power)",
+                    "imageId": "http://www.roblox.com/asset/?id=5251637482",
+                    "name": "Molten Shards",
+                    "UniqueItemID": "b5b2edca-8ec6-4640-8455-2565409ea8c1",
+                    "equipped": {
+                        "q": false,
+                        "e2": false,
+                        "q2": false,
+                        "e": false
+                    },
+                    "levelReq": 150
+                }
+            },
+            "keys": {
+                "10": true,
+                "11": true,
+                "30": true,
+                "20": true,
+                "26": true,
+                "27": true,
+                "8": true,
+                "25": true,
+                "28": true,
+                "29": true,
+                "9": true,
+                "15": true,
+                "4": true,
+                "19": true,
+                "1": true,
+                "21": true,
+                "3": true,
+                "2": true,
+                "5": true,
+                "18": true,
+                "7": true,
+                "6": true,
+                "14": true,
+                "24": true,
+                "16": true,
+                "17": true,
+                "13": true,
+                "12": true,
+                "22": true,
+                "23": true
+            },
+            "weapons": {
+                "weapon_22": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1012,
+                    "maxUpgrades": 385787,
+                    "name": "Runic Mace",
+                    "spellPower": 54554240,
+                    "imageId": "rbxassetid://8349310505",
+                    "UniqueItemID": "9abdb053-e511-4eda-90d0-a5f8152262ab",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_9": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1015,
+                    "maxUpgrades": 376768,
+                    "name": "Runic Mace",
+                    "spellPower": 54144958,
+                    "imageId": "rbxassetid://8349310505",
+                    "UniqueItemID": "e303dfba-c06a-418e-ac2f-eab827ae9118",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_44": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 33333333,
+                    "enchantment": "none",
+                    "physicalDamage": 1292863,
+                    "maxUpgrades": 58229,
+                    "name": "Bioforged Quickblade +30",
+                    "spellPower": 2522,
+                    "imageId": "http://www.roblox.com/asset/?id=4284690067",
+                    "UniqueItemID": "ad426fba-58a0-4877-99e5-c9c864349108",
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "weapon_31": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 998,
+                    "maxUpgrades": 350117,
+                    "name": "Viking Sceptre",
+                    "spellPower": 50458947,
+                    "imageId": "rbxassetid://8349310334",
+                    "UniqueItemID": "dc539238-e9a9-4622-ae3a-9090a777288c",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_23": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1042,
+                    "maxUpgrades": 345530,
+                    "name": "Viking Sceptre",
+                    "spellPower": 47045200,
+                    "imageId": "rbxassetid://8349310334",
+                    "UniqueItemID": "19c4ddfb-406b-48d9-8bbd-19c67f5db5dc",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_16": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 47231231,
+                    "maxUpgrades": 350627,
+                    "name": "Ice Greatspear",
+                    "spellPower": 985,
+                    "imageId": "rbxassetid://8349309516",
+                    "UniqueItemID": "1a9c767f-6130-4082-86a2-be1b67e57bf3",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_28": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 953,
+                    "maxUpgrades": 371751,
+                    "name": "Runic Mace",
+                    "spellPower": 51079620,
+                    "imageId": "rbxassetid://8349310505",
+                    "UniqueItemID": "17dd12cc-73ec-4c5a-8af4-ce5788f48d30",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_51": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "enchantment": "none",
+                    "physicalDamage": 3738800,
+                    "maxUpgrades": 85729,
+                    "name": "Darkstone Greatsword",
+                    "spellPower": 978,
+                    "imageId": "http://www.roblox.com/asset/?id=5250374941",
+                    "UniqueItemID": "24d5cd1b-fe6a-4317-8125-87e6fe683a17",
+                    "equipped": false,
+                    "levelReq": 150
+                },
+                "weapon_49": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 33333333,
+                    "enchantment": "none",
+                    "physicalDamage": 1261771,
+                    "maxUpgrades": 55637,
+                    "name": "Bioforged Quickblade +30",
+                    "spellPower": 2570,
+                    "imageId": "http://www.roblox.com/asset/?id=4284690067",
+                    "UniqueItemID": "c868216b-b7f0-4e03-b34d-829c4e202ecf",
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "weapon_62": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 33333333,
+                    "enchantment": "none",
+                    "physicalDamage": 2658,
+                    "maxUpgrades": 56721,
+                    "name": "Bioforged Cog Spellblade +30",
+                    "spellPower": 1311975,
+                    "imageId": "http://www.roblox.com/asset/?id=4284691511",
+                    "UniqueItemID": "e2514378-824a-4779-b4ce-b0a5c1d4dc99",
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "weapon_6": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1050,
+                    "maxUpgrades": 375089,
+                    "name": "Viking Sceptre",
+                    "spellPower": 48200453,
+                    "imageId": "rbxassetid://8349310334",
+                    "UniqueItemID": "e45e9f73-b9af-4416-a276-19587ae21ad5",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_30": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 33333333,
+                    "enchantment": "none",
+                    "physicalDamage": 2652,
+                    "maxUpgrades": 55758,
+                    "name": "Earth Staff +30",
+                    "spellPower": 1230531,
+                    "imageId": "http://www.roblox.com/asset/?id=4510337654",
+                    "UniqueItemID": "c3ecf0c5-b1be-4fea-955f-a576ddd6f551",
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "weapon_56": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 100000000,
+                    "enchantment": "none",
+                    "physicalDamage": 10206565,
+                    "maxUpgrades": 147838,
+                    "name": "Serpent Pike",
+                    "spellPower": 973,
+                    "imageId": "http://www.roblox.com/asset/?id=6187577702",
+                    "UniqueItemID": "7200279e-3c98-4c56-98fb-aa16f41da07a",
+                    "equipped": false,
+                    "levelReq": 165
+                },
+                "weapon_127": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "enchantment": "none",
+                    "physicalDamage": 994,
+                    "maxUpgrades": 118288,
+                    "name": "Dual Hellfire Blades",
+                    "spellPower": 5875057,
+                    "imageId": "http://www.roblox.com/asset/?id=5250370880",
+                    "UniqueItemID": "e94b88f9-6dbd-47e3-8241-5ebd6e739915",
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "weapon_12": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 125000000,
+                    "enchantment": "none",
+                    "physicalDamage": 27637157,
+                    "maxUpgrades": 288490,
+                    "name": "Overgrown War Scythe",
+                    "spellPower": 960,
+                    "imageId": "rbxassetid://6871201358",
+                    "UniqueItemID": "5a080774-9156-4965-9709-bd88124d9909",
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "weapon_4": {
+                    "currentUpgrade": 394313,
+                    "rarity": "rare",
+                    "sellPrice": 6051120578,
+                    "enchantment": "none",
+                    "physicalDamage": 63422459,
+                    "maxUpgrades": 394313,
+                    "name": "Frost Giant Greataxe",
+                    "spellPower": 981,
+                    "imageId": "rbxassetid://8349309782",
+                    "UniqueItemID": "732f31f4-ca55-4ff3-a8ec-d5e8b1491e2b",
+                    "equipped": true,
+                    "levelReq": 185
+                },
+                "weapon_18": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1043,
+                    "maxUpgrades": 386609,
+                    "name": "Runic Mace",
+                    "spellPower": 53599096,
+                    "imageId": "rbxassetid://8349310505",
+                    "UniqueItemID": "fd90d8b0-ab31-4113-96a3-648a03f0f338",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_3": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 956,
+                    "maxUpgrades": 352108,
+                    "name": "Viking Sceptre",
+                    "spellPower": 50200135,
+                    "imageId": "rbxassetid://8349310334",
+                    "UniqueItemID": "c16b0ca5-e219-4db7-b44c-47d2ab7082b2",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_39": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 80000000,
+                    "enchantment": "none",
+                    "physicalDamage": 4545670,
+                    "maxUpgrades": 108044,
+                    "name": "Magma Infused Waraxe",
+                    "spellPower": 1045,
+                    "imageId": "http://www.roblox.com/asset/?id=5250374077",
+                    "UniqueItemID": "ec143703-9bd2-4ef0-878d-999bb0095b24",
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "weapon_21": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1009,
+                    "maxUpgrades": 389111,
+                    "name": "Runic Mace",
+                    "spellPower": 53427037,
+                    "imageId": "rbxassetid://8349310505",
+                    "UniqueItemID": "f96c21c3-272a-4b5b-bf56-aa290dc182ae",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_5": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 56026667,
+                    "maxUpgrades": 376386,
+                    "name": "Norse Greataxe",
+                    "spellPower": 1000,
+                    "imageId": "rbxassetid://8349309617",
+                    "UniqueItemID": "e053d503-8d31-4e25-b2f9-99408ff4fca1",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_40": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 40000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1576733,
+                    "maxUpgrades": 57177,
+                    "name": "Dual Solar Blades",
+                    "spellPower": 1047,
+                    "imageId": "http://www.roblox.com/asset/?id=4626316085",
+                    "UniqueItemID": "2f692ee2-6e91-48aa-a9fd-f4a80f1082a8",
+                    "equipped": false,
+                    "levelReq": 140
+                },
+                "weapon_25": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 55000000,
+                    "enchantment": "none",
+                    "physicalDamage": 1010,
+                    "maxUpgrades": 60077,
+                    "name": "Moon Crystal Spell Blade",
+                    "spellPower": 1979672,
+                    "imageId": "http://www.roblox.com/asset/?id=4626315652",
+                    "UniqueItemID": "0245a817-0f8d-4c5d-9dfc-00cf184ecbca",
+                    "equipped": false,
+                    "levelReq": 145
+                },
+                "weapon_36": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 33333333,
+                    "enchantment": "none",
+                    "physicalDamage": 1285064,
+                    "maxUpgrades": 58572,
+                    "name": "Bioforged Quickblade +30",
+                    "spellPower": 2512,
+                    "imageId": "http://www.roblox.com/asset/?id=4284690067",
+                    "UniqueItemID": "5c53e320-607f-4cfd-98f1-cdaa4c9db011",
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "weapon_1": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 7500000,
+                    "enchantment": "none",
+                    "physicalDamage": 429568,
+                    "maxUpgrades": 20257,
+                    "name": "Bioforged Greataxe",
+                    "spellPower": 1037,
+                    "imageId": "http://www.roblox.com/asset/?id=4110988298",
+                    "UniqueItemID": "efdb9bc6-fef1-419d-8365-d0e74c71d846",
+                    "equipped": false,
+                    "levelReq": 125
+                },
+                "weapon_2": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "sellPrice": 140000000,
+                    "enchantment": "none",
+                    "physicalDamage": 54753372,
+                    "maxUpgrades": 368620,
+                    "name": "Norse Greataxe",
+                    "spellPower": 952,
+                    "imageId": "rbxassetid://8349309617",
+                    "UniqueItemID": "11e83b08-bb98-40fa-a9c4-e786e6563f1f",
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "weapon_34": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "sellPrice": 33333333,
+                    "enchantment": "none",
+                    "physicalDamage": 1305324,
+                    "maxUpgrades": 56653,
+                    "name": "Banished Greatsword +30",
+                    "spellPower": 2583,
+                    "imageId": "http://www.roblox.com/asset/?id=4452305229",
+                    "UniqueItemID": "e960991f-1600-4293-860a-402b90f88dcb",
+                    "equipped": false,
+                    "levelReq": 130
+                }
+            },
+            "chests": {
+                "chest_24": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=6187579049",
+                    "physicalPower": 957,
+                    "sellPrice": 110000000,
+                    "maxUpgrades": 43464,
+                    "name": "Riptide Guardian Armor",
+                    "UniqueItemID": "b144e0ea-c802-4092-895c-d0569512ae38",
+                    "health": 34713327,
+                    "spellPower": 1044,
+                    "equipped": false,
+                    "levelReq": 165
+                },
+                "chest_22": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "http://www.roblox.com/asset/?id=4284625160",
+                    "physicalPower": 98578,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 11760,
+                    "name": "Inventor's Warrior Armor +30",
+                    "UniqueItemID": "d4284add-16bc-4a04-a28d-8f4491fae852",
+                    "health": 2013650,
+                    "spellPower": 1217,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "chest_32": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=6187578883",
+                    "physicalPower": 1026590,
+                    "sellPrice": 110000000,
+                    "maxUpgrades": 44536,
+                    "name": "Riptide Warrior Armor",
+                    "UniqueItemID": "ff97fea4-dfaf-4ba7-8878-ee854cee8e7a",
+                    "health": 23295350,
+                    "spellPower": 484,
+                    "equipped": false,
+                    "levelReq": 165
+                },
+                "chest_4": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=6187579049",
+                    "physicalPower": 981,
+                    "sellPrice": 110000000,
+                    "maxUpgrades": 45200,
+                    "name": "Riptide Guardian Armor",
+                    "UniqueItemID": "9bc86fc9-a10e-409a-aefd-58a008944ea9",
+                    "health": 35583380,
+                    "spellPower": 1020,
+                    "equipped": false,
+                    "levelReq": 165
+                },
+                "chest_35": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349311592",
+                    "physicalPower": 1048,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 128652,
+                    "name": "Jotunn Guardian Armor",
+                    "UniqueItemID": "d6cee3ce-bee1-4d90-94d0-63fcbfb21728",
+                    "health": 195083302,
+                    "spellPower": 1050,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "chest_25": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250432778",
+                    "physicalPower": 503,
+                    "sellPrice": 90000000,
+                    "maxUpgrades": 28394,
+                    "name": "Molten Forged Mage Armor",
+                    "UniqueItemID": "8e3532be-6fb1-45ab-bd84-2b50a8c50dc7",
+                    "health": 9087561,
+                    "spellPower": 460619,
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "chest_28": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349311592",
+                    "physicalPower": 981,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 125148,
+                    "name": "Jotunn Guardian Armor",
+                    "UniqueItemID": "b50a5c17-f616-4573-907a-a3b1dae30c16",
+                    "health": 206971705,
+                    "spellPower": 1037,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "chest_8": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=6187578883",
+                    "physicalPower": 1085328,
+                    "sellPrice": 110000000,
+                    "maxUpgrades": 46674,
+                    "name": "Riptide Warrior Armor",
+                    "UniqueItemID": "dc018a4d-364a-4b57-91f7-738610400adf",
+                    "health": 23246276,
+                    "spellPower": 497,
+                    "equipped": false,
+                    "levelReq": 165
+                },
+                "chest_37": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250432530",
+                    "physicalPower": 1013,
+                    "sellPrice": 90000000,
+                    "maxUpgrades": 29457,
+                    "name": "Molten Forged Guardian Armor",
+                    "UniqueItemID": "ce4ca9aa-3578-4251-9a1c-d9e54bf36c5b",
+                    "health": 15224914,
+                    "spellPower": 1014,
+                    "equipped": false,
+                    "levelReq": 155
+                },
+                "chest_5": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=5250433628",
+                    "physicalPower": 479,
+                    "sellPrice": 80000000,
+                    "maxUpgrades": 26086,
+                    "name": "Burned Mage Armor",
+                    "UniqueItemID": "3f8e9963-7485-4c7f-bdd0-4af1fe079b7b",
+                    "health": 6758068,
+                    "spellPower": 332211,
+                    "equipped": false,
+                    "levelReq": 150
+                },
+                "chest_36": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "http://www.roblox.com/asset/?id=4284624125",
+                    "physicalPower": 1226,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 12396,
+                    "name": "Inventor's Mage Armor +30",
+                    "UniqueItemID": "e9f4e955-856e-430c-81e2-efc418365682",
+                    "health": 2021730,
+                    "spellPower": 93364,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "chest_15": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://6871198282",
+                    "physicalPower": 2131501,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 71398,
+                    "name": "Crystalline Warrior Armor",
+                    "UniqueItemID": "12e686c3-dd0c-4af3-9419-9a64a131cada",
+                    "health": 49548823,
+                    "spellPower": 521,
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "chest_33": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://6871198282",
+                    "physicalPower": 2170925,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 72163,
+                    "name": "Crystalline Warrior Armor",
+                    "UniqueItemID": "b5edaa4a-4e56-421d-9fea-02f6b5126ffc",
+                    "health": 48946233,
+                    "spellPower": 503,
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "chest_38": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=4510338578",
+                    "physicalPower": 1253,
+                    "sellPrice": 33333333,
+                    "maxUpgrades": 12316,
+                    "name": "Nature Mage Armor +30",
+                    "UniqueItemID": "64aeceb0-573d-46b1-8a34-2e2dc3be5cbf",
+                    "health": 2190911,
+                    "spellPower": 97607,
+                    "equipped": false,
+                    "levelReq": 130
+                },
+                "chest_1": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "http://www.roblox.com/asset/?id=3734322879",
+                    "physicalPower": 339,
+                    "sellPrice": 3500000,
+                    "maxUpgrades": 2324,
+                    "name": "Hunter's Mage Armor",
+                    "UniqueItemID": "e98e9e5f-e825-44f2-a65f-e6ea815eb0c5",
+                    "health": 176048,
+                    "spellPower": 13776,
+                    "equipped": false,
+                    "levelReq": 115
+                },
+                "chest_13": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://8349311318",
+                    "physicalPower": 4302268,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 115573,
+                    "name": "Jotunn Warrior Armor",
+                    "UniqueItemID": "0e443ec7-cdca-411f-8195-7089318f199f",
+                    "health": 115148829,
+                    "spellPower": 515,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "chest_30": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://6871198434",
+                    "physicalPower": 494,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 68867,
+                    "name": "Crystalline Mage Armor",
+                    "UniqueItemID": "43756e57-dd2c-41f4-bb91-8a192497e8a7",
+                    "health": 49731309,
+                    "spellPower": 1999921,
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "chest_3": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349311592",
+                    "physicalPower": 1006,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 134138,
+                    "name": "Jotunn Guardian Armor",
+                    "UniqueItemID": "f1c80b24-1b26-4ce6-b9e9-950b17e21d57",
+                    "health": 202518400,
+                    "spellPower": 980,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "chest_7": {
+                    "currentUpgrade": 0,
+                    "rarity": "epic",
+                    "imageId": "rbxassetid://8349311318",
+                    "physicalPower": 4645589,
+                    "sellPrice": 150000000,
+                    "maxUpgrades": 132229,
+                    "name": "Jotunn Warrior Armor",
+                    "UniqueItemID": "eb884c1d-a2e3-41cd-9b75-e72b7a632ac3",
+                    "health": 127726372,
+                    "spellPower": 499,
+                    "equipped": false,
+                    "levelReq": 185
+                },
+                "chest_19": {
+                    "currentUpgrade": 127755,
+                    "rarity": "uncommon",
+                    "imageId": "rbxassetid://8352073533",
+                    "physicalPower": 6392671,
+                    "sellPrice": 2062750578,
+                    "maxUpgrades": 127755,
+                    "name": "Valhalla Warrior Armor",
+                    "UniqueItemID": "ee5e065d-1bc0-4d64-8706-437602526cf8",
+                    "health": 138100726,
+                    "spellPower": 522,
+                    "equipped": true,
+                    "levelReq": 186
+                },
+                "chest_27": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://6871198434",
+                    "physicalPower": 524,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 73715,
+                    "name": "Crystalline Mage Armor",
+                    "UniqueItemID": "3d6b50dd-0d46-49cb-bcd1-327466f89df6",
+                    "health": 47062919,
+                    "spellPower": 2030334,
+                    "equipped": false,
+                    "levelReq": 175
+                },
+                "chest_10": {
+                    "currentUpgrade": 0,
+                    "rarity": "rare",
+                    "imageId": "rbxassetid://6871198434",
+                    "physicalPower": 504,
+                    "sellPrice": 130000000,
+                    "maxUpgrades": 68562,
+                    "name": "Crystalline Mage Armor",
+                    "UniqueItemID": "57d35455-02f5-4926-82cc-e213a7cd250b",
+                    "health": 47953763,
+                    "spellPower": 2085693,
+                    "equipped": false,
+                    "levelReq": 175
+                }
+            }
+        }
+    },
+    "Timestamp": "2026-09-04 07:49:05",
+    "Remote": "reloadInvy",
+    "SentArguments": []
+}

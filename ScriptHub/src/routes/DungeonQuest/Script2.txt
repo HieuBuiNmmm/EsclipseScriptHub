@@ -1,0 +1,88 @@
+local HttpService = game:GetService("HttpService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local reloadInvy = ReplicatedStorage:WaitForChild("remotes"):WaitForChild("reloadInvy")
+
+-- 1. Hàm đệ quy để duyệt sâu và "làm sạch" dữ liệu cho JSON
+local function serializeData(data, visited)
+    visited = visited or {}
+    
+    if type(data) == "table" then
+        -- Ngăn chặn lặp vòng vô hạn (Cyclic Reference) khiến game bị crash
+        if visited[data] then return "<Cyclic Reference>" end
+        visited[data] = true
+        
+        local cleanTable = {}
+        for key, value in pairs(data) do
+            -- Ép kiểu key thành string để đảm bảo chuẩn JSON
+            local keyStr = tostring(key)
+            cleanTable[keyStr] = serializeData(value, visited)
+        end
+        return cleanTable
+        
+    elseif type(data) == "userdata" or typeof(data) == "Instance" then
+        -- Định dạng lại các Object của Roblox
+        if typeof(data) == "Instance" then
+            return "<Instance: " .. data.ClassName .. " | " .. data.Name .. ">"
+        else
+            return "<Userdata: " .. typeof(data) .. ">"
+        end
+        
+    elseif type(data) == "function" then
+        return "<Function>"
+        
+    elseif typeof(data) == "Vector3" or typeof(data) == "CFrame" or typeof(data) == "Color3" then
+        return "<" .. typeof(data) .. ": " .. tostring(data) .. ">"
+        
+    else
+        -- Trả về nguyên bản cho string, number, boolean, nil
+        return data
+    end
+end
+
+-- 2. Hook Namecall
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    
+    if self == reloadInvy and method == "InvokeServer" then
+        -- Hứng dữ liệu gửi đi và nhận về
+        local args = {...}
+        local returnValues = {oldNamecall(self, ...)}
+        
+        -- Đóng gói dữ liệu thành một cấu trúc dễ đọc
+        local logData = {
+            Timestamp = os.date("%Y-%m-%d %H:%M:%S"),
+            Remote = "reloadInvy",
+            SentArguments = serializeData(args),
+            ReturnedData = serializeData(returnValues)
+        }
+        
+        -- 3. Chuyển sang JSON và lưu file
+        local success, jsonString = pcall(function()
+            -- Tham số thứ 3 là 'true' để JSON tự động xuống dòng và lùi lề cho đẹp (Pretty Print)
+            return HttpService:JSONEncode(logData, false, true) 
+        end)
+        
+        if success then
+            local fileName = "InventoryLog_" .. os.time() .. ".json"
+            
+            -- Sử dụng hàm writefile của Executor để lưu ra máy tính
+            if writefile then
+                writefile(fileName, jsonString)
+                print("Đã xuất log JSON thành công vào file: " .. fileName)
+            else
+                warn("Executor của bạn không hỗ trợ hàm writefile! In tạm ra F9:")
+                print(jsonString)
+            end
+        else
+            warn("Lỗi khi chuyển đổi dữ liệu sang JSON: ", jsonString)
+        end
+        
+        -- Trả lại dữ liệu để game không bị lỗi
+        return unpack(returnValues)
+    end
+    
+    return oldNamecall(self, ...)
+end)
+
+print("Đã bật Hook duyệt sâu và xuất JSON! Hãy thao tác trong game để remote kích hoạt.")
