@@ -52,6 +52,14 @@ local roomConnections = {}
 local enemyConnections = {}
 local pendingModels = {}
 local enemyCount = 0
+--// Thông báo khi tập enemy track THAY ĐỔI (thêm/xoá). Dùng cho luồng event-driven:
+--// module pathfinder thay vì poll theo interval thì subscribe sự kiện này để recompute target tức thì.
+local enemyChangedCallbacks = {}
+local function fireEnemyChanged()
+	for i = #enemyChangedCallbacks, 1, -1 do
+		pcall(enemyChangedCallbacks[i])
+	end
+end
 
 --// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
 --// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
@@ -120,6 +128,7 @@ local function untrackEnemy(enemy)
 	trackedEnemies[enemy] = nil
 	enemyCount -= 1
 	disconnectEnemyConnections(enemy)
+	fireEnemyChanged()
 end
 
 --// Tìm room (con trực tiếp của dungeon) chứa model.
@@ -145,6 +154,7 @@ local function trackEnemy(enemy)
 	trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid, Room = getEnemyRoom(enemy) }
 	enemyCount += 1
 	enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
+	fireEnemyChanged()
 end
 
 local function waitAndTrackModel(model)
@@ -372,6 +382,18 @@ function shared.GetTrackedEnemyData()
 		end
 	end
 	return out
+end
+
+--// Event-driven: đăng ký callback chạy khi tập enemy track thay đổi (thêm/xoá).
+--// Trả về hàm huỷ callback.
+function shared.OnEnemyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(enemyChangedCallbacks, callback)
+	return function()
+		for i, cb in ipairs(enemyChangedCallbacks) do
+			if cb == callback then table.remove(enemyChangedCallbacks, i) break end
+		end
+	end
 end
 
 --// Returns enemy projectile names from ReplicatedStorage.enemyProjectiles for ESP.

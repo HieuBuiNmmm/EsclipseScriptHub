@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-03T22:32:33.200996600+00:00",
+    genDate = "2026-09-04T03:25:15.726079600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6055,6 +6055,14 @@ local roomConnections = {}
 local enemyConnections = {}
 local pendingModels = {}
 local enemyCount = 0
+--// Thông báo khi tập enemy track THAY ĐỔI (thêm/xoá). Dùng cho luồng event-driven:
+--// module pathfinder thay vì poll theo interval thì subscribe sự kiện này để recompute target tức thì.
+local enemyChangedCallbacks = {}
+local function fireEnemyChanged()
+	for i = #enemyChangedCallbacks, 1, -1 do
+		pcall(enemyChangedCallbacks[i])
+	end
+end
 
 --// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
 --// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
@@ -6123,6 +6131,7 @@ local function untrackEnemy(enemy)
 	trackedEnemies[enemy] = nil
 	enemyCount -= 1
 	disconnectEnemyConnections(enemy)
+	fireEnemyChanged()
 end
 
 --// Tìm room (con trực tiếp của dungeon) chứa model.
@@ -6148,6 +6157,7 @@ local function trackEnemy(enemy)
 	trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid, Room = getEnemyRoom(enemy) }
 	enemyCount += 1
 	enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
+	fireEnemyChanged()
 end
 
 local function waitAndTrackModel(model)
@@ -6375,6 +6385,18 @@ function shared.GetTrackedEnemyData()
 		end
 	end
 	return out
+end
+
+--// Event-driven: đăng ký callback chạy khi tập enemy track thay đổi (thêm/xoá).
+--// Trả về hàm huỷ callback.
+function shared.OnEnemyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(enemyChangedCallbacks, callback)
+	return function()
+		for i, cb in ipairs(enemyChangedCallbacks) do
+			if cb == callback then table.remove(enemyChangedCallbacks, i) break end
+		end
+	end
 end
 
 --// Returns enemy projectile names from ReplicatedStorage.enemyProjectiles for ESP.
@@ -6918,7 +6940,7 @@ local enabled = false
 local running = false
 local skillRange = 70
 local moveSpeed = 50
-local retargetInterval = 1.0
+	local retargetInterval = 1.0 --// giữ cho accessor/UI cũ không lỗi; không còn điều khiển poll (event-driven)
 local skillEnabled = true
 local skillInterval = 0.5
 local skillMode = "Alternate" --// "Both" = Q+E cùng lúc, "Alternate" = Q -> E -> Q -> E
@@ -6926,6 +6948,8 @@ local skillTurn = 0 --// dùng cho mode Alternate (0 = Q, 1 = E)
 
 --// Runtime
 local moveConnection = nil
+local enemyChangedConnection = nil --// sự kiện enemy đổi -> reselect target (event-driven)
+local respawnConnection = nil --// reset trạng thái khi nhân vật respawn
 local lastSkillTime = 0
 local cachedNearestEnemy = nil --// cache enemy gần nhất trong 1 frame (tránh gọi getNearestEnemy nhiều lần)
 local cachedNearestValid = false
@@ -6946,13 +6970,30 @@ local holdRadius = nil
 local lockedTargetModel = nil
 local chaseModel = nil
 local chasePathTargetModel = nil
-local retargetTimer = 0
 local pathIsAnchor = false --// path hiện tại là đi tới anchor (không phải enemy)
+local pathAnchorDest = nil --// vị trí đích anchor của path hiện tại (để phát hiện đích bị "flap"/đổi giữa chừng)
+local anchorWalking = false --// ĐANG Ở LUỒNG DI CHUYỂN ANCHOR RIÊNG: vẽ path anchor 1 lần rồi đi thẳng tới đích,
+--// KHÔNG can thiệp (không chuyển HOLD khi enemy vào tầm, không rebuild, không retarget). Chỉ thoát khi
+--// tới đích / hết anchor / respawn / disable.
+local anchorStuckPos = nil --// vị trí theo dõi kẹt trong luồng anchor
+local anchorStuckTimer = 0 --// thời gian đứng im trong luồng anchor
+local ANCHOR_STUCK_WINDOW = 3.0 --// giây: đứng im quá lâu khi đi anchor thì rebuild path 1 lần
 --// Anchor chain (có lock): khi nopath tới enemy, pathfinder khóa vào anchor (anchorChainIndex)
 --// và đi tới nơi; chỉ advance sang anchor kế theo thứ tự đặt khi đã TỚI anchor hiện tại mà vẫn
 --// nopath (tránh spam đổi target / vẽ path lung tung). anchorChainMap nhớ map đang duyệt.
 local anchorChainMap = nil --// map mà chain đang duyệt
 local anchorChainIndex = 0 --// index anchor đang KHOÁ (target hiện tại)
+--// Gate path build theo STATE (không theo time cooldown): chỉ build path khi thật sự cần.
+--// Spam trước đây do khi nopath, computeChasePath retry cùng enemy mỗi frame vô hạn. Giải pháp:
+--// nhớ target (enemy + vị trí đích) của lần build FAIL gần nhất; KHÔNG retry build path tới cùng
+--// target unreachable (player/enemy chưa dịch chuyển đáng kể) -> đứng yên/đi anchor thay vì spam.
+--// Chỉ build lại khi: target đổi, hoặc vị trí đích đã dịch chuyển > REPATH_TOL.
+local lastFailedModel = nil --// enemy model của lần build path fail gần nhất
+local lastFailedDest = nil --// vị trí đích (enemy) của lần build fail gần nhất
+local REPATH_TOL = 3 --// stud: đích dịch chuyển trên mức này thì đủ điều kiện build lại
+--// Chống self-kill lặp liên tục khi thật sự không path được (kill xong respawn -> lại thử).
+local lastSelfKillTime = 0
+local SELF_KILL_COOLDOWN = 2.0
 --// Stuck detection: phát hiện đứng im dù path đang chạy -> chạy chuỗi gỡ kẹt:
 --// nhảy -> strafe trái -> strafe phải -> reset player (Health=0 để game respawn).
 --// (vật cản thấp/kệ mép mà path không đánh dấu Jump waypoint).
@@ -7092,8 +7133,13 @@ local function sweepNearbyAnchors(playerPos)
 	local mapName = shared.GetCurrentDungeonName()
 	local list = (type(mapName) == "string" and anchors[mapName]) or nil
 	if not list then return false end
+	local current = shared.GetCurrentRoomIndex()
+	current = (type(current) == "number" and current) or -1
 	local changed = false
 	for _, a in ipairs(list) do
+		--// Gate THEO ROOM: chỉ đánh dấu visited khi ĐÚNG room của anchor (anchor room nào tới đó
+		--// mới tính). Lúc chuyển room (current<=0) không đánh dấu bất kỳ anchor nào.
+		if a.room ~= current then continue end
 		local d = a.pos and playerPos and (a.pos - playerPos).Magnitude or math.huge
 		if not a.visited and d > nearAnchorTol then
 			a.wasFar = true
@@ -7125,39 +7171,44 @@ local function findNextAnchor()
 	local current = shared.GetCurrentRoomIndex()
 	current = (type(current) == "number" and current) or -1
 
+	--// Gate THEO ROOM: chỉ dùng anchor khi ĐANG TRONG đúng 1 room đang có quái (current == room anchor).
+	--// current = room của enemy đang track; lúc CHUYỂN ROOM (xong quái room này, chờ quái room sau)
+	--// thì không còn quái -> current = 0 -> KHÔNG được dùng anchor nào (tránh nhảy target sang
+	--// anchor room khác khi chưa tới đó). Anchor room nào chỉ áp dụng khi current == room đó.
+	if current <= 0 then
+		anchorChainIndex = 0
+		return nil
+	end
+
 	local function distTo(a)
 		return (playerPos and a.pos and (a.pos - playerPos).Magnitude) or math.huge
 	end
 
-	--// Đang khoá 1 anchor hợp lệ (chưa visited) -> KIỂM TRA ĐÃ TỚI CHƯA.
+	--// Đang khoá 1 anchor hợp lệ -> chỉ hợp lệ khi VẪN đúng room hiện tại (nếu đổi room thì hủy lock).
 	local target = (anchorChainIndex >= 1 and anchorChainIndex <= #list) and list[anchorChainIndex] or nil
-	if target and not target.visited then
+	if target and not target.visited and target.room == current then
 		if distTo(target) > nearAnchorTol then
 			--// Chưa tới -> GIỮ NGUYÊN anchor đang nhắm (không spam đổi target).
-			if visualDebug then warn(("[PathAnchor] lock idx=%d (dist %.1f) -> keep"):format(anchorChainIndex, distTo(target))) end
+			if visualDebug then warn(("[PathAnchor] lock idx=%d (room=%d/cur=%d) -> keep"):format(anchorChainIndex, target.room, current)) end
 			return target.pos
 		end
 		--// Đã tới anchor này -> đánh dấu visited (không target lại) + đổi màu marker.
 		target.visited = true
 		refreshAnchorMarkers()
-		if visualDebug then warn(("[PathAnchor] reached idx=%d -> visited"):format(anchorChainIndex)) end
+		if visualDebug then warn(("[PathAnchor] reached idx=%d (room=%d/cur=%d) -> visited"):format(anchorChainIndex, target.room, current)) end
 	end
 
-	--// Chọn target MỚI: anchor kế tiếp theo thứ tự đặt (không quay đầu), ưu tiên room >= current,
-	--// bỏ qua anchor đang đứng cạnh (vừa tới / chỗ đang đứng) và anchor đã visited.
-	local bestRoom = nil
-	local bestAny = nil
+	--// Chọn target MỚI: chỉ anchor trong ĐÚNG room hiện tại (anchor room nào thì tới đó mới dùng),
+	--// theo thứ tự đặt (không quay đầu), bỏ qua anchor đang đứng cạnh + anchor đã visited.
+	local best = nil
 	for i = anchorChainIndex + 1, #list do
 		local a = list[i]
-		if not a.visited and distTo(a) > nearAnchorTol then
-			if not bestAny then bestAny = i end
-			if a.room >= current then
-				bestRoom = i
-				break
-			end
+		if not a.visited and a.room == current and distTo(a) > nearAnchorTol then
+			best = i
+			break
 		end
 	end
-	anchorChainIndex = bestRoom or bestAny or 0
+	anchorChainIndex = best or 0
 	if visualDebug then warn(("[PathAnchor] advance -> idx=%d (of %d)"):format(anchorChainIndex, #list)) end
 	if anchorChainIndex == 0 then return nil end
 	return list[anchorChainIndex].pos
@@ -7176,10 +7227,29 @@ local function tryBuildPath(start, dest, mountModel, isAnchor)
 			chaseTarget = dest
 			chasePathTargetModel = mountModel
 			pathIsAnchor = isAnchor == true
+			--// Build path thành công -> xoá marker target fail trước đó, cho phép build lại khi cần.
+			lastFailedModel = nil
+			lastFailedDest = nil
+			if isAnchor then pathAnchorDest = dest end
+			--// Path BỊ CHẶN (blocked). Với path ANCHOR: CHỈ tear-down khi THỰC SỰ KẸT (stuckStage>=1,
+			--// tức không tiến được trong STUCK_WINDOW). PathfindingService có thể fire Blocked với
+			--// failedWaypointIndex = nil/0 (block tổng quát) -> nếu bỏ path theo index sẽ tear-down
+			--// MỖI FRAME -> rebuild path anchor liên tục cùng 1 đích (spam "REBUILD" + "Lock keep",
+			--// nhân vật "đi rồi cố về" lặp lại). Vì vậy KHÔNG tear-down theo index; đích ổn định,
+			--// chỉ rebuild khi kẹt thật (stuck detection) hoặc khi đi hết waypoint (advance).
 			path.Blocked:Connect(function()
+				if isAnchor then
+					if stuckStage >= 1 then
+						if visualDebug then warn("[PathAnchor] anchor path blocked + đang kẹt -> rebuild") end
+						currentPath = nil
+						pathComputed = false
+						pathAnchorDest = nil
+					end
+					return
+				end
 				currentPath = nil
 				pathComputed = false
-				retargetTimer = 0
+				pathAnchorDest = nil
 			end)
 			currentPath = path
 			waypointIndex = 1
@@ -7216,9 +7286,16 @@ local function computeChasePath(enemy, targetPos)
 	--// 1) Thử path tới enemy (params chính → relaxed). Thành công -> reset chuỗi anchor
 	--// (đã có path tới enemy, lần nopath sau bắt đầu lại anchor đầu).
 	if tryBuildPath(start, targetPos, enemy.Model, false) then
-		anchorChainMap = nil
-		anchorChainIndex = 0
-		if visualDebug then warn("[PathAnchor] enemy path OK -> reset anchor chain") end
+		--// Có path tới enemy -> KHÔNG ở luồng anchor nữa (chase bình thường).
+		anchorWalking = false
+		--// Chỉ reset + log khi chain anchor thực sự đang active (đang fallback). Nếu chain đã
+		--// rỗng từ đầu (đang CHASE bình thường chưa rơi vô fallback) thì không có gì để reset,
+		--// tránh spam "enemy path OK -> reset anchor chain" mỗi lần build path tới enemy.
+		if anchorChainMap ~= nil or anchorChainIndex > 0 then
+			anchorChainMap = nil
+			anchorChainIndex = 0
+			if visualDebug then warn("[PathAnchor] enemy path OK -> reset anchor chain") end
+		end
 		return true
 	end
 
@@ -7228,6 +7305,8 @@ local function computeChasePath(enemy, targetPos)
 		local ok = tryBuildPath(start, anchorPos, nil, true)
 		if visualDebug then warn(("[PathAnchor] -> anchor idx=%d (%s)"):format(anchorChainIndex, ok and "OK" or "FAIL")) end
 		if ok then
+			--// BẮT ĐẦU luồng di chuyển anchor riêng: path anchor đã vẽ 1 lần, đi thẳng tới đích.
+			anchorWalking = true
 			return true
 		end
 	end
@@ -7238,9 +7317,17 @@ local function computeChasePath(enemy, targetPos)
 	chaseTarget = nil
 	chasePathTargetModel = nil
 	pathIsAnchor = false
+	pathAnchorDest = nil
+	anchorWalking = false
+	--// Nhớ target FAIL này để không retry build path vô hạn cùng enemy (spam). Chỉ build lại khi
+	--// enemy đổi hoặc đích đã dịch chuyển > REPATH_TOL (xem gate trong stepMovement).
+	lastFailedModel = enemy.Model
+	lastFailedDest = targetPos
 	if visualDebug then warn("[PathAnchor] no enemy path, no anchor -> " .. (respawnOnNoPath and "self-kill" or "stand")) end
-	--// Self-kill (respawn) chỉ khi bật toggle. Tắt -> đứng yên, đợi retarget lần sau.
-	if respawnOnNoPath then
+	--// Self-kill (respawn) chỉ khi bật toggle, và CÓ COOLDOWN để không kill lặp liên tục mỗi frame
+	--// khi thật sự không path được (kill -> respawn -> thử lại sau quãng nghỉ).
+	if respawnOnNoPath and os.clock() - lastSelfKillTime >= SELF_KILL_COOLDOWN then
+		lastSelfKillTime = os.clock()
 		local h = shared.GetHumanoid()
 		if h and h.Parent then h.Health = 0 end
 	end
@@ -7275,34 +7362,8 @@ local function fireSkills()
 	end
 end
 
---// Luồng Auto Skill: spam khi kẻ địch (nearest nếu CHASE / lock nếu HOLD) trong tầm
---// skillRange (khoảng cách phẳng XZ). Dùng enemy đã cache trong frame để tránh
---// gọi getNearestEnemy lần nữa.
-local function skillLoop()
-	if shared.IsInLobby() then return end
-	if not dunReady then return end
-	if not skillEnabled then return end
-	local playerRoot = getPlayerRoot()
-	if not playerRoot then return end
-	local enemy
-	if lockedTargetModel then
-		enemy = getEnemyByModel(lockedTargetModel)
-	end
-	if not enemy then
-		if cachedNearestValid then
-			enemy = cachedNearestEnemy
-		else
-			enemy = getNearestEnemy()
-		end
-	end
-	local enemyPos = enemy and getSafePosition(enemy.Root) or nil
-	local playerPos = getSafePosition(playerRoot)
-	if not enemyPos or not playerPos then return end
-	local flat = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
-	if flat.Magnitude <= skillRange then
-		fireSkills()
-	end
-end
+--// (Skill-fire đã gộp vào pipeline frame của stepMovement — tái dùng enemy/vị trí đã resolve,
+--// chỉ 1 lần resolve + 1 lần đo khoảng cách mỗi frame, không spam scan.)
 
 --// ---------- Visual debug ----------
 
@@ -7509,6 +7570,59 @@ local function resetStuckCheck()
 	stuckStrafeDir = 0
 end
 
+--// ---------- Event-driven: chọn/chuyển target theo sự kiện (không poll theo interval) ----------
+
+--// Chọn lại nearest target MỘT LẦN (do sự kiện enemy đổi trigger). Nếu target model khác
+--// target hiện tại thì hủy path cũ (frame sau sẽ rebuild sang target mới). Giải phóng lock HOLD
+--// nếu enemy bị lock đã biến mất. Trả về model mục tiêu mới (hoặc nil).
+	local function reselectTarget()
+	local playerRoot = getPlayerRoot()
+	if not playerRoot then return end
+	local nearest = getNearestEnemy()
+	cachedNearestEnemy = nearest
+	cachedNearestValid = nearest ~= nil
+	--// ĐANG Ở LUỒNG ANCHOR WALK: chỉ cập nhật cache target, KHÔNG đụng tới path anchor đang đi
+	--// (enemy spawn/die trong lúc di chuyển tới anchor KHÔNG được làm gián đoạn path). Khi thoát
+	--// luồng anchor sẽ reselect lại bình thường.
+	if anchorWalking then return chaseModel end
+	local newModel = nearest and nearest.Model or nil
+	if newModel ~= chaseModel then
+		chaseModel = newModel
+		--// Target đổi -> path cũ lỗi thời, hủy để frame kế rebuild sang target mới.
+		if currentPath then pcall(function() currentPath:Destroy() end) end
+		currentPath = nil
+		pathComputed = false
+		chasePathTargetModel = nil
+		--// Đang HOLD mà enemy lock đã mất -> giải phóng lock.
+		if lockedTargetModel and not getEnemyByModel(lockedTargetModel) then
+			lockedTargetModel = nil
+			holdAngle = nil
+			holdRadius = nil
+		end
+	end
+	return chaseModel
+end
+
+--// Sự kiện tập enemy track thay đổi (thêm/xoá) -> reselect target tức thì, không chờ poll.
+local function onEnemyChanged()
+	if not enabled or not running then return end
+	reselectTarget()
+end
+
+--// Nhân vật respawn (tự kill / chết) -> dọn path cũ + target cũ, chờ reselect sau.
+	local function onRespawn()
+	currentPath = nil
+	pathComputed = false
+	pathIsAnchor = false
+	anchorWalking = false
+	chasePathTargetModel = nil
+	chaseModel = nil
+	lockedTargetModel = nil
+	holdAngle = nil
+	holdRadius = nil
+	resetStuckCheck()
+end
+
 --// Bước hành động tiếp theo của chuỗi gỡ kẹt: nhảy -> strafe trái -> strafe phải
 --// -> reset player (giết nhân vật để game respawn về spawn room).
 local function advanceStuckAction(humanoid)
@@ -7532,6 +7646,99 @@ local function advanceStuckAction(humanoid)
 	end
 end
 
+--// LUỒNG DI CHUYỂN ANCHOR RIÊNG (fallback): vẽ path anchor 1 lần rồi đi thẳng tới đích theo
+--// pathfinder (theo địa hình). KHÔNG xử lý enemy, không chuyển HOLD khi enemy vào tầm, không
+--// rebuild path giữa chừng. Khi tới anchor -> advance sang anchor kế (cùng room) + vẽ path mới.
+--// Hết anchor -> thoát luồng, trả về xử lý chung (stand / self-kill theo respawnOnNoPath).
+local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
+	local playerPos = getSafePosition(playerRoot)
+	if not playerPos then return end
+
+	local function exitAnchorFlow()
+		anchorWalking = false
+		anchorStuckPos = nil
+		anchorStuckTimer = 0
+	end
+
+	--// Chưa có path anchor đang đi -> vẽ path 1 lần rồi bắt đầu đi.
+	if not currentPath or not pathComputed then
+		local anchorPos = findNextAnchor()
+		if not anchorPos then
+			--// Hết anchor hợp lệ trong room hiện tại -> thoát luồng anchor.
+			if visualDebug then warn("[PathAnchor] hết anchor -> thoát luồng anchor walk") end
+			exitAnchorFlow()
+			return
+		end
+		if tryBuildPath(playerPos, anchorPos, nil, true) then
+			anchorStuckPos = nil
+			anchorStuckTimer = 0
+			return --// vừa vẽ xong, frame sau đi theo waypoint
+		end
+		--// Nopath tới anchor này -> thoát luồng anchor.
+		if visualDebug then warn("[PathAnchor] nopath tới anchor -> thoát luồng anchor walk") end
+		exitAnchorFlow()
+		return
+	end
+
+	local waypoints = currentPath:GetWaypoints()
+	if not waypoints or #waypoints == 0 then
+		currentPath = nil
+		pathComputed = false
+		return
+	end
+	if waypointIndex > #waypoints then
+		--// Đi hết waypoint = ĐÃ TỚI anchor đích. Đánh dấu visited TRỰC TIẾP (không cần đo lại
+		--// khoảng cách — because path dẫn tới đúng vị trí anchor, không bị lệch vài stud như check
+		--// distTo trong findNextAnchor gây rebuild lặp). Frame kế findNextAnchor() sẽ advance.
+		local mapName = shared.GetCurrentDungeonName()
+		local list = (type(mapName) == "string" and anchors[mapName]) or nil
+		if list and anchorChainIndex >= 1 and anchorChainIndex <= #list and not list[anchorChainIndex].visited then
+			list[anchorChainIndex].visited = true
+			refreshAnchorMarkers()
+			if visualDebug then warn(("[PathAnchor] TỚI anchor idx=%d -> visited"):format(anchorChainIndex)) end
+		end
+		pathComputed = false
+		return
+	end
+
+	--// Đi theo waypoint giống CHASE (Click-to-Move, pathfinder theo địa hình).
+	ensureAutoRotateEnabled()
+	local wp = waypoints[waypointIndex]
+	local dest = wp.Position
+	local pos = playerPos
+	local toDest = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
+	local dist = toDest.Magnitude
+	local tolerate = (wp.Action == Enum.PathWaypointAction.Jump and 2.5) or 2.0
+
+	if dist <= tolerate then
+		waypointIndex += 1
+		if wp.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+		return
+	end
+
+	humanoid:MoveTo(dest)
+
+	--// Kẹt nhẹ: đứng im quá lâu thì để frame sau rebuild 1 lần (vòng vật cản). KHÔNG dùng chuỗi gỡ
+	--// phức tạp / self-respawn của luồng chung vì anchor chỉ cần hoàn thành 1 path di chuyển tới đích.
+	if anchorStuckPos then
+		if (playerPos - anchorStuckPos).Magnitude > 0.5 then
+			anchorStuckPos = playerPos
+			anchorStuckTimer = 0
+		else
+			anchorStuckTimer += deltaTime
+			if anchorStuckTimer >= ANCHOR_STUCK_WINDOW then
+				anchorStuckPos = nil
+				anchorStuckTimer = 0
+				currentPath = nil
+				pathComputed = false
+			end
+		end
+	else
+		anchorStuckPos = playerPos
+		anchorStuckTimer = 0
+	end
+end
+
 --// Di chuyển: CHASE theo trạng thái, HOLD khi enemy trong tầm.
 local function stepMovement(deltaTime)
 	if shared.IsInLobby() then return end
@@ -7551,7 +7758,16 @@ local function stepMovement(deltaTime)
 		updateDebugPathSpheres()
 	end
 
-	--// CHASE: retarget liên tục theo interval (chọn nearest). Chỉ LOCK khi lọt vào tầm (HOLD).
+	--// LUỒNG DI CHUYỂN ANCHOR RIÊNG: khi đang fallback anchor, chuyển hẳn sang hàm chuyên biệt,
+	--// KHÔNG chạy CHASE/HOLD (không xử lý enemy khi đang đi tới anchor). Nếu đang trong luồng này thì
+	--// bỏ qua mọi logic khác để "vẽ path 1 lần, đi thẳng tới đích" — không spam, không can thiệp.
+	if anchorWalking then
+		stepAnchorWalking(deltaTime, humanoid, playerRoot)
+		return
+	end
+
+	--// Target được duy trì EVENT-DRIVEN qua shared.OnEnemyChanged -> reselectTarget().
+	--// Heartbeat CHỈ thực thi (follow path / HOLD), KHÔNG poll scan hay đổi target theo interval.
 	local enemy
 	if lockedTargetModel then
 		--// Đang HOLD -> bám enemy đã lock, không retarget.
@@ -7563,21 +7779,17 @@ local function stepMovement(deltaTime)
 		end
 	end
 	if not enemy then
-		--// CHASE: retarget theo retargetInterval.
-		retargetTimer += deltaTime
-		if retargetTimer >= retargetInterval or not chaseModel then
-			retargetTimer = 0
-			local nearest = getNearestEnemy()
-			cachedNearestEnemy = nearest
-			cachedNearestValid = nearest ~= nil
-			chaseModel = nearest and nearest.Model or nil
+		--// enemy theo chaseModel (đã cập nhật bởi event). Nếu model cũ mất mà event chưa tới thì
+		--// xoá chaseModel để reselect sau; KHÔNG scan lại mỗi frame.
+		enemy = getEnemyByModel(chaseModel)
+		if not enemy then
+			chaseModel = nil
 		end
-		enemy = getEnemyByModel(chaseModel) or getNearestEnemy()
 	end
 	cachedNearestEnemy = enemy
 	cachedNearestValid = enemy ~= nil
 	if not enemy or not enemy.Root or not enemy.Root.Parent then
-		--// Không có target -> đứng yên, đợi retarget lần sau.
+		--// Không có target -> đứng yên. Event OnEnemyChanged sẽ reselect khi có enemy mới.
 		if currentPath then pcall(function() currentPath:Destroy() end) end
 		currentPath = nil
 		pathComputed = false
@@ -7603,12 +7815,15 @@ local function stepMovement(deltaTime)
 		--// giữ khoảng cách (holdRadius) + góc (holdAngle) đúng như lúc vào HOLD,
 		--// xích ra/lùi theo enemy. Không retarget.
 		ensureAutoRotateDisabled()
+		--// Skill-fire: tái dùng enemy + vị trí đã resolve trong frame này (không resolve lại 2 lần/frame).
+		if skillEnabled then fireSkills() end
 		--// Huỷ MoveTo của CHASE trước đó để không chống đối việc set CFrame thủ công.
 		pcall(function() humanoid:MoveTo(playerPos) end)
 		if not lockedTargetModel then lockedTargetModel = enemy.Model end
 		if currentPath then pcall(function() currentPath:Destroy() end) end
 		currentPath = nil
 		pathComputed = false
+		pathAnchorDest = nil
 		chaseTarget = nil
 		resetStuckCheck()
 		--// Capture góc & bán kính từ vị trí hiện tại lúc vào HOLD.
@@ -7652,18 +7867,29 @@ local function stepMovement(deltaTime)
 	--// Path stale khi target hiện tại KHÁC target của path (enemy cũ chết / retarget
 	--// sang con khác) -> hủy path ngay để recompute sang target mới, không đi tiếp
 	--// theo path cũ dẫn tới chỗ xác (gây "state=CHASE nhưng không di chuyển").
-	if currentPath and chasePathTargetModel and chasePathTargetModel ~= enemy.Model then
+	--// LƯU Ý: chỉ áp dụng cho path ENEMY (chasePathTargetModel là model enemy). Path ANCHOR
+	--// được build với chasePathTargetModel = nil; nếu để điều kiện này chạy thì `nil ~= enemy.Model`
+	--// luôn đúng -> path anchor bị destroy + rebuild lại từ đầu MỖI FRAME -> nhân vật "đi 1 chút
+	--// rồi vòng về đầu path" lặp lại. Vì vậy bỏ qua khi pathIsAnchor.
+	if not pathIsAnchor and currentPath and chasePathTargetModel and chasePathTargetModel ~= enemy.Model then
 		pcall(function() currentPath:Destroy() end)
 		currentPath = nil
 		pathComputed = false
 	end
 	if not pathComputed or not currentPath then
-		local ok = computeChasePath(enemy, enemyPos)
-		if ok then
-			resetStuckCheck()
-			return --// đã có path, frame sau đi theo waypoint
+		--// Gate theo STATE: chỉ build path khi thật sự cần (target đổi / đích đã dịch chuyển đáng kể
+		--// / chưa từng fail target này). Chặn retry-build vô hạn cùng 1 enemy nopath -> hết spam.
+		local sameFailedTarget = lastFailedModel ~= nil and lastFailedModel == enemy.Model
+			and lastFailedDest ~= nil and (enemyPos - lastFailedDest).Magnitude <= REPATH_TOL
+		if not sameFailedTarget then
+			local ok = computeChasePath(enemy, enemyPos)
+			if ok then
+				resetStuckCheck()
+				return --// đã có path, frame sau đi theo waypoint
+			end
+			--// computeChasePath tự kill player khi cả 2 lần fail -> không cần xử lý thêm.
+			return
 		end
-		--// computeChasePath tự kill player khi cả 2 lần fail -> không cần xử lý thêm.
 		return
 	end
 
@@ -7674,6 +7900,9 @@ local function stepMovement(deltaTime)
 		return
 	end
 	if waypointIndex > #waypoints then
+		if visualDebug and pathIsAnchor then
+			warn(("[PathAnchor] anchor path HOÀN THÀNH (đã đi hết waypoint idx=%d) -> advance"):format(waypointIndex))
+		end
 		pathComputed = false
 		return
 	end
@@ -7727,6 +7956,14 @@ local function stepMovement(deltaTime)
 			if stuckCheckTimer >= STUCK_WINDOW then
 				stuckCheckPos = playerPos
 				stuckCheckTimer = 0
+				--// Kẹt thật sự (không tiến được). Nếu đang đi path ANCHOR thì dọn path để frame kế
+				--// rebuild lại từ vị trí hiện tại (sau bước gỡ kẹt), vòng quanh vật cản thật sự.
+				if pathIsAnchor then
+					currentPath = nil
+					pathComputed = false
+					pathAnchorDest = nil
+					if visualDebug then warn("[PathAnchor] stuck while anchor path -> dọn path để re-route") end
+				end
 				advanceStuckAction(humanoid)
 			end
 		end
@@ -7931,25 +8168,40 @@ function autoFarmPathfinder.Toggle(state)
 	if enabled then
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		running = true
-		retargetTimer = 0
 		lastSkillTime = 0
 		cachedNearestEnemy = nil
 		cachedNearestValid = false
 		pathIsAnchor = false
+		lastFailedModel = nil
+		lastFailedDest = nil
+		lastSelfKillTime = 0
+		chaseModel = nil
+		--// Event-driven: reselect target khi tập enemy thay đổi + reset khi respawn.
+		if not enemyChangedConnection then
+			enemyChangedConnection = shared.OnEnemyChanged(onEnemyChanged)
+		end
+		if not respawnConnection then
+			respawnConnection = shared.OnRespawn(onRespawn)
+		end
 		--// Khởi tạo tracking enemy trong dungeon (không block luồng chính)
 		if not dunReady then
 			task.spawn(function()
 				if shared.ReadyDungeon() then dunReady = true end
 			end)
 		end
+		--// Seed target ban đầu: nếu đang có enemy (bật giữa trận) thì chọn nearest ngay.
+		task.defer(reselectTarget)
 		--// Gộp movement + skill vào 1 Heartbeat để giảm số connection/frame.
 		moveConnection = RunService.Heartbeat:Connect(function(deltaTime)
-			pcall(stepMovement, deltaTime)
-			pcall(skillLoop, deltaTime)
+			pcall(function()
+				stepMovement(deltaTime)
+			end)
 		end)
 	else
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		running = false
+		if enemyChangedConnection then enemyChangedConnection(); enemyChangedConnection = nil end
+		if respawnConnection then respawnConnection(); respawnConnection = nil end
 		restoreAutoRotate()
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
@@ -7964,7 +8216,7 @@ function autoFarmPathfinder.Toggle(state)
 		chaseModel = nil
 		chasePathTargetModel = nil
 		pathIsAnchor = false
-		retargetTimer = 0
+		anchorWalking = false
 		cachedNearestEnemy = nil
 		cachedNearestValid = false
 		resetStuckCheck()
@@ -9743,7 +9995,494 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.r()-- DodgeNode: lưới node xung quanh player dùng làm bản đồ an toàn cho SmartDodge.
+end function __DIST.r()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+-- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
+-- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
+-- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
+
+--// Table
+
+local autoSell = {}
+
+--// State
+local excludeEquipped = true
+local rarityFilter = {} -- set: rarity string -> true
+local typeFilter = {} -- set: type string -> true
+local prefix = "" -- lọc item có tên bắt đầu bằng prefix (bỏ qua case)
+local levelReqMax = 0 -- lọc item có level yêu cầu <= levelReqMax (>0 mới áp dụng)
+local sellRunning = false
+
+--// Các category có trong inventory (từ log reloadInvy)
+local CATEGORY_TYPES = {
+	weapons = "Weapons",
+	helmets = "Helmets",
+	chests = "Chests",
+	abilities = "Abilities",
+}
+
+--// Cấp hiếm hợp lệ (để biết option nào là rarity)
+local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
+
+--// Độ hiếm -> số 0..5 (dùng để map item.rarity sang RarityValue)
+local RARITY_ORDER = {
+	Common = 0,
+	Uncommon = 1,
+	Rare = 2,
+	Epic = 3,
+	Legendary = 4,
+	Mythic = 5,
+}
+local isRarityOption = {}
+for _, r in ipairs(RARITY_OPTIONS) do isRarityOption[r] = true end
+
+--// Map rarity dạng tùy ý (chữ thường "epic", hoa "EPIC", lẫn lộn...) -> dạng chuẩn.
+--// Dữ liệu từ game là chữ thường (epic/rare/legendary) nên cần chuẩn hóa để khớp với
+--// option dropdown (viết hoa chữ cái đầu) khi so sánh filter.
+local RARITY_BY_KEY = {}
+for _, r in ipairs(RARITY_OPTIONS) do
+	RARITY_BY_KEY[string.lower(r)] = r
+end
+
+local function normalizeRarity(value)
+	if type(value) ~= "string" then return nil end
+	return RARITY_BY_KEY[string.lower(value)]
+end
+
+--// Sell action - mặc định:
+--//   gom theo category rồi fire remote `sellItemEvent`.
+--//   Nhận: (categoryMap: { [singular] = {index,...} }, items) -> trả (ok, gold)
+local function defaultSellAction(categoryMap)
+	local remote
+	pcall(function()
+		remote = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 5)
+			:WaitForChild("sellItemEvent", 5)
+	end)
+	if not remote then return false, 0 end
+
+	--// Chỉ gửi category có ít nhất 1 index. Không sửa key để tránh lệch với server.
+	local payload = {}
+	for singular, list in pairs(categoryMap) do
+		if type(list) == "table" and #list > 0 then
+			payload[singular] = list
+		end
+	end
+
+	if next(payload) == nil then return false, 0 end
+
+	local ok = pcall(function()
+		remote:FireServer(payload)
+	end)
+	if not ok then return false, 0 end
+	return true, 0
+end
+
+local sellAction = defaultSellAction
+
+function autoSell.SetSellAction(callback)
+	if type(callback) == "function" then sellAction = callback end
+end
+
+--// Đọc inventory từ remote `reloadInvy` (RemoteFunction InvokeServer).
+--// Dữ liệu thật có thể bọc nhiều lớp (vd { ["1"] = { categories... } }) và có thể
+--// khác nhau giữa các lần. Vì vậy ta flatten đệ quy: nhận diện 1 "item" bằng dấu hiệu
+--// (table có sellPrice/UniqueItemID/rarity), và coi mọi category đã biết là 1 item.
+--// Mỗi item lưu cả `Index` (số thứ tự lấy từ key `category_số`, dùng để bán qua
+--// sellItemEvent) và `Category` (singular key: weapon/helmet/chest/ability).
+--// Trả về mảng item.
+local function fetchInventoryItems()
+	local ok, rs = pcall(function()
+		return game:GetService("ReplicatedStorage"):WaitForChild("remotes", 5):WaitForChild("reloadInvy", 5)
+	end)
+	if not ok or not rs then return nil, "Could not find remote reloadInvy" end
+
+	local ok2, data = pcall(function()
+		return rs:InvokeServer()
+	end)
+	if not ok2 or data == nil then return nil, "Could not read inventory" end
+
+	local items = {}
+	local seen = {} -- tránh lặp vô hạn khi có cyclic reference
+
+	local function isItemTable(t)
+		return t.sellPrice ~= nil or t.UniqueItemID ~= nil or t.rarity ~= nil
+	end
+
+	--// Parse index + singular category từ key item dạng "weapon_49", "helmet_5", ...
+	--// -> trả ("weapon", 49). Không khớp dạng -> trả (nil, nil).
+	local function parseItemKey(key)
+		local s = tostring(key)
+		local index = tonumber(s:match("_(%d+)$"))
+		if not index then return nil, nil end
+		local singular = s:match("^(.-)_%d+$")
+		return singular, index
+	end
+
+	local function addItem(node, pluralCat, singularKey, index)
+		local equipped = false
+		if type(node.equipped) == "boolean" then
+			equipped = node.equipped
+		elseif type(node.equipped) == "table" then
+			for _, eq in pairs(node.equipped) do
+				if eq == true then equipped = true break end
+			end
+		end
+		local rarityNorm = normalizeRarity(node.rarity) or "Common"
+		table.insert(items, {
+			Type = CATEGORY_TYPES[pluralCat] or pluralCat or "Unknown",
+			Category = singularKey or pluralCat,
+			Index = index,
+			Name = tostring(node.name or node.UniqueItemID or "?"),
+			Rarity = rarityNorm,
+			RarityValue = RARITY_ORDER[rarityNorm],
+			SellPrice = tonumber(node.sellPrice) or 0,
+			UniqueItemID = node.UniqueItemID,
+			Equipped = equipped,
+			LevelReq = tonumber(node.levelReq) or 0,
+			Raw = node,
+		})
+	end
+
+	--// Duyệt đệ quy. `pluralCat` = plural category (weapons/helmets/... /nil).
+	--// `singularKey` = singular category cho sellItemEvent (weapon/helmet/... /nil).
+	--// `index` = số thứ tự item trong category (từ key `category_số`).
+	local function walk(node, pluralCat, singularKey, index)
+		if type(node) ~= "table" then return end
+		if seen[node] then return end
+		seen[node] = true
+
+		if isItemTable(node) then
+			addItem(node, pluralCat, singularKey, index)
+			return
+		end
+
+		for key, value in pairs(node) do
+			if CATEGORY_TYPES[key] then
+				walk(value, key, nil, nil)
+			elseif type(value) == "table" and isItemTable(value) then
+				local sg, idx = parseItemKey(key)
+				walk(value, pluralCat, sg, idx)
+			else
+				walk(value, pluralCat, singularKey, index)
+			end
+		end
+	end
+
+	walk(data, nil, nil, nil)
+	return items
+end
+
+--// Kiểm tra 1 item có đủ điều kiện bán không
+function autoSell.ShouldSellItem(item)
+	if not item then return false end
+
+	if excludeEquipped and item.Equipped then return false end
+
+	if next(rarityFilter) and isRarityOption[item.Rarity] and not rarityFilter[item.Rarity] then
+		return false
+	end
+
+	if next(typeFilter) and item.Type and not typeFilter[item.Type] then
+		return false
+	end
+
+	if prefix and #prefix > 0 then
+		local lowerName = string.lower(item.Name or "")
+		local lowerPrefix = string.lower(prefix)
+		if string.sub(lowerName, 1, #lowerPrefix) ~= lowerPrefix then
+			return false
+		end
+	end
+
+	if levelReqMax and levelReqMax > 0 and (item.LevelReq or 0) > levelReqMax then
+		return false
+	end
+
+	return true
+end
+
+--// Có ít nhất 1 điều kiện lọc đang active hay không.
+--// Dùng để cảnh báo khi user sắp bán mà không có filter nào (rủi ro bán sạch).
+function autoSell.HasAnyFilter()
+	return (
+		next(rarityFilter) ~= nil
+		or next(typeFilter) ~= nil
+		or (prefix and #prefix > 0)
+		or (levelReqMax and levelReqMax > 0)
+		or (not excludeEquipped)
+	)
+end
+
+--// Đếm tổng số item khớp điều kiện (gọi khi bấm nút Search, không bán).
+--// Trả về { total, matching, byCategory, error }
+function autoSell.CountMatches()
+	local items, err = fetchInventoryItems()
+	if not items then
+		return { total = 0, matching = 0, error = err or "Error reading inventory" }
+	end
+
+	local matching = 0
+	local byCategory = {}
+	for _, item in ipairs(items) do
+		byCategory[item.Type] = (byCategory[item.Type] or 0) + 1
+		if autoSell.ShouldSellItem(item) then matching += 1 end
+	end
+
+	return { total = #items, matching = matching, byCategory = byCategory }
+end
+
+--// Bán toàn bộ item khớp điều kiện (gọi khi bấm nút). Trả kết quả { sold, skipped, gold }
+function autoSell.SellItems()
+	if sellRunning then return nil end
+	sellRunning = true
+
+	local result = { sold = 0, skipped = 0, gold = 0, error = nil }
+	local items, err = fetchInventoryItems()
+	if not items then
+		result.error = err or "Error reading inventory"
+		sellRunning = false
+		return result
+	end
+
+	--// Gom các item khớp lọc theo category (singular key của sellItemEvent).
+	local categoryMap = {}
+	for _, item in ipairs(items) do
+		if autoSell.ShouldSellItem(item) then
+			if item.Index then
+				result.sold += 1
+				local sg = item.Category or item.Type
+				categoryMap[sg] = categoryMap[sg] or {}
+				table.insert(categoryMap[sg], item.Index)
+			end
+		else
+			result.skipped += 1
+		end
+	end
+
+	local ok, gold = pcall(sellAction, categoryMap)
+	if ok and gold and type(gold) == "number" then result.gold = gold end
+
+	sellRunning = false
+	return result
+end
+
+--// Điều khiển bộ lọc
+function autoSell.SetPrefixName(value)
+	prefix = (type(value) == "string" and value) or ""
+end
+
+function autoSell.GetPrefixName()
+	return prefix
+end
+
+function autoSell.SetLevelReqMax(value)
+	levelReqMax = tonumber(value) or 0
+end
+
+function autoSell.GetLevelReqMax()
+	return levelReqMax
+end
+
+function autoSell.SetExcludeEquipped(state)
+	excludeEquipped = state
+end
+
+function autoSell.GetExcludeEquipped()
+	return excludeEquipped
+end
+
+--// Rarity filter dạng mảng các chuỗi đã chọn
+function autoSell.SetRarityFilter(selected)
+	rarityFilter = {}
+	if type(selected) == "table" then
+		for _, r in ipairs(selected) do rarityFilter[r] = true end
+	end
+end
+
+function autoSell.GetRarityFilter()
+	local out = {}
+	for r in pairs(rarityFilter) do table.insert(out, r) end
+	return out
+end
+
+--// Type filter dạng mảng các chuỗi đã chọn
+function autoSell.SetTypeFilter(selected)
+	typeFilter = {}
+	if type(selected) == "table" then
+		for _, t in ipairs(selected) do typeFilter[t] = true end
+	end
+end
+
+function autoSell.GetTypeFilter()
+	local out = {}
+	for t in pairs(typeFilter) do table.insert(out, t) end
+	return out
+end
+
+return autoSell
+end function __DIST.s()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+-- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
+-- after a confirmation dialog.
+
+--// Imports
+
+local autoSave = __DIST.load('g')
+local autoSell = __DIST.load('r')
+local notifier = __DIST.load('c')
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "AutoSell" })
+
+	local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
+	local TYPE_OPTIONS = { "Weapons", "Helmets", "Chests", "Abilities" }
+
+	section:Dropdown({
+		Name = "Rarity Filter",
+		Options = RARITY_OPTIONS,
+		Default = autoSell.GetRarityFilter(),
+		Multi = true,
+		Required = false,
+		Callback = autoSave.Wrap(function(selected)
+			local list = {}
+			for rarity in pairs(selected) do table.insert(list, rarity) end
+			autoSell.SetRarityFilter(list)
+		end),
+	}, "Dropdown_AutoSellRarity")
+
+	section:Dropdown({
+		Name = "Item Type Filter",
+		Options = TYPE_OPTIONS,
+		Default = autoSell.GetTypeFilter(),
+		Multi = true,
+		Required = false,
+		Callback = autoSave.Wrap(function(selected)
+			local list = {}
+			for itemType in pairs(selected) do table.insert(list, itemType) end
+			autoSell.SetTypeFilter(list)
+		end),
+	}, "Dropdown_AutoSellType")
+
+	section:Input({
+		Name = "Prefix Name (starts with)",
+		Default = autoSell.GetPrefixName(),
+		Placeholder = "e.g. Runic",
+		AcceptedCharacters = "All",
+		Callback = autoSave.Wrap(function(value)
+			autoSell.SetPrefixName(value)
+		end),
+	}, "Input_AutoSellPrefix")
+
+	section:Input({
+		Name = "Max Level Req (≤)",
+		Default = tostring(autoSell.GetLevelReqMax()),
+		Placeholder = "e.g. 130",
+		AcceptedCharacters = "Numeric",
+		Callback = autoSave.Wrap(function(value)
+			autoSell.SetLevelReqMax(tonumber(value) or 0)
+		end),
+	}, "Input_AutoSellLevelReq")
+
+	section:Toggle({
+		Name = "Exclude Equipped Items",
+		Default = autoSell.GetExcludeEquipped(),
+		Callback = autoSave.Wrap(function(state)
+			autoSell.SetExcludeEquipped(state)
+		end),
+	}, "Toggle_AutoSellExcludeEquipped")
+
+	local resultLabel = section:Label({
+		Text = "No search made yet.",
+	}, "Label_AutoSellResult")
+
+	section:Button({
+		Name = "Search",
+		Callback = function()
+			task.spawn(function()
+				pcall(function() resultLabel:UpdateName("Reading inventory...") end)
+				local result = autoSell.CountMatches()
+				if not result then return end
+				if result.error then
+					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. result.error .. "</font>") end)
+					return
+				end
+				local text = ("Found <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching items.\n")
+					:format(result.matching, result.total)
+				local first = true
+				for _, cat in ipairs({ "Weapons", "Helmets", "Chests", "Abilities" }) do
+					local n = result.byCategory and result.byCategory[cat]
+					if n then
+						if first then text ..= cat .. ": " .. n else text ..= " • " .. cat .. ": " .. n end
+						first = false
+					end
+				end
+				pcall(function() resultLabel:UpdateName(text) end)
+			end)
+		end,
+	})
+
+	section:Button({
+		Name = "Sell Now",
+		Callback = function()
+			task.spawn(function()
+				pcall(function() resultLabel:UpdateName("Reading inventory...") end)
+
+				local preview = autoSell.CountMatches()
+				if not preview then
+					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>A sale is already running.</font>") end)
+					return
+				end
+				if preview.error then
+					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. preview.error .. "</font>") end)
+					return
+				end
+
+				local hasFilter = autoSell.HasAnyFilter()
+				local warning = ""
+				if not hasFilter then
+					warning = '\n\n<font color="rgb(255,80,80)"><b>⚠ NO filter selected!</b> This will sell the ENTIRE inventory (except equipped items).</font>'
+				end
+
+				local desc = ("Sell <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching item(s) with current filters."):format(preview.matching, preview.total)
+				desc = desc .. warning .. "\n\nAre you sure?"
+
+				window:Dialog({
+					Title = "Confirm Sale",
+					Description = desc,
+					Buttons = {
+						{
+							Name = "Confirm",
+							Callback = function()
+								task.spawn(function()
+									pcall(function() resultLabel:UpdateName("Reading inventory...") end)
+									notifier.Notify("AutoSell", "Selling...", 2)
+
+									local result = autoSell.SellItems()
+									if not result then
+										pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>A sale is already running.</font>") end)
+										return
+									end
+
+									if result.error then
+										pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. result.error .. "</font>") end)
+										return
+									end
+
+									local text = ("Done: <font color='rgb(0,255,0)'>%d</font> sold, <font color='rgb(255,200,0)'>%d</font> skipped, <font color='rgb(255,220,120)'>%s</font> gold earned.")
+										:format(result.sold, result.skipped, tostring(result.gold))
+									pcall(function() resultLabel:UpdateName(text) end)
+								end)
+							end,
+						},
+						{
+							Name = "Cancel",
+						},
+					},
+				})
+			end)
+		end,
+	})
+end
+end function __DIST.t()-- DodgeNode: lưới node xung quanh player dùng làm bản đồ an toàn cho SmartDodge.
 -- Node nằm trong vùng precast của skill -> màu đỏ (nguy hiểm).
 -- Node nằm ngoài mọi precast -> màu xanh (an toàn) + là ứng viên để tele tới.
 
@@ -9959,14 +10698,14 @@ function dodgeNodes.FindSafeSpot(character)
 end
 
 return dodgeNodes
-end function __DIST.s()-- ESP hitbox cho DungeonQuest.
+end function __DIST.u()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
 
 local services = __DIST.load('d')
 local shared = __DIST.load('e')
-local dodgeNode = __DIST.load('r')
+local dodgeNode = __DIST.load('t')
 
 --// Table
 local esp = {}
@@ -10643,7 +11382,7 @@ function esp.GetDodgeZoneSafetyRadius()
 end
 
 return esp
-end function __DIST.t()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.v()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -10784,7 +11523,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.u()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
+end function __DIST.w()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
 -- Script1: ép hiện hình liên tục các phần map bị ẩn/thuỷ tinh.
 -- Script2: dọn dẹp vật thể rác (decoration) ở lớp ngoài cùng của Map.
 -- Script3: radar hitbox quét quanh nhân vật, xóa part có độ cao (Y) > 80.
@@ -10955,15 +11694,15 @@ function mapOptimizer.IsEnabled()
 	return enabled
 end
 
-return mapOptimizer end function __DIST.v()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+return mapOptimizer end function __DIST.x()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 	
 local autoSave = __DIST.load('g')
-	local esp = __DIST.load('s')
-	local enemyEsp = __DIST.load('t')
-	local mapOptimizer = __DIST.load('u')
-	local dodgeNode = __DIST.load('r')
+	local esp = __DIST.load('u')
+	local enemyEsp = __DIST.load('v')
+	local mapOptimizer = __DIST.load('w')
+	local dodgeNode = __DIST.load('t')
 	local ui = __DIST.load('f')
 
 --// Hitbox mode options
@@ -11183,7 +11922,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.w()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end function __DIST.y()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -11258,7 +11997,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.x()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.z()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -11266,7 +12005,7 @@ end function __DIST.x()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('g')
-local autoHide = __DIST.load('w')
+local autoHide = __DIST.load('y')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -11423,7 +12162,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.y()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.A()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -12021,12 +12760,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.z()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.B()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('y')
+local webhook = __DIST.load('A')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -12093,7 +12832,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.A()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.C()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
@@ -12243,7 +12982,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.B()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.D()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -12298,6 +13037,7 @@ return function(self)
 		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
 		Pathfinder = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
+		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
 		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
@@ -12311,14 +13051,16 @@ return function(self)
 	local speedTab = __DIST.load('i')
 	local autoFarmPathfinderTab = __DIST.load('m')
 	local dungeonTab = __DIST.load('q')
-	local visualTab = __DIST.load('v')
-	local configTab = __DIST.load('x')
-	local notificationsTab = __DIST.load('z')
-	local stateTab = __DIST.load('A')
+	local inventoryTab = __DIST.load('s')
+	local visualTab = __DIST.load('x')
+	local configTab = __DIST.load('z')
+	local notificationsTab = __DIST.load('B')
+	local stateTab = __DIST.load('C')
 
 	speedTab(window, tabs.Player)
 	autoFarmPathfinderTab(window, tabs.Pathfinder)
 	dungeonTab(window, tabs.Dungeon)
+	inventoryTab(window, tabs.Inventory)
 	visualTab(window, tabs.Visual)
 	configTab(window, tabs.Config)
 	notificationsTab(window, tabs.Notifications)
@@ -12329,9 +13071,9 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('y')
+	local webhook = __DIST.load('A')
 	webhook.Init()
-__DIST.load('t')
+__DIST.load('v')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
@@ -12339,7 +13081,7 @@ __DIST.load('t')
 local contextual = __DIST.load('k')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('w')
+	local autoHide = __DIST.load('y')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -12351,7 +13093,7 @@ local contextual = __DIST.load('k')
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.C()
+end function __DIST.E()
 local flags = {}
 
 function flags:Export()
@@ -12394,7 +13136,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.D()
+return flags end function __DIST.F()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -12463,12 +13205,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.E()
+end function __DIST.G()
 --// Imports
 
 
 
-local binder = __DIST.load('D')
+local binder = __DIST.load('F')
 
 --// Variables
 local interface = {}
@@ -12488,9 +13230,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.F()--// Imports
+end function __DIST.H()--// Imports
 
-local binder = __DIST.load('D')
+local binder = __DIST.load('F')
 
 --// Variables
 local esp = {}
@@ -12501,11 +13243,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.G()--// Imports
+end function __DIST.I()--// Imports
 
-local flags = __DIST.load('C')
-local interface = __DIST.load('E')
-local esp = __DIST.load('F')
+local flags = __DIST.load('E')
+local interface = __DIST.load('G')
+local esp = __DIST.load('H')
 
 --// Initialize
 local window = interface:Window({
@@ -12544,7 +13286,7 @@ return {
 		end,
 	},
 }
-end function __DIST.H()--// Variables
+end function __DIST.J()--// Variables
 
 local utility = {}
 
@@ -12576,7 +13318,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.I()--// Functions
+end function __DIST.K()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -12586,14 +13328,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.J()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.L()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('G')
-	local utility = __DIST.load('H')
-	local services = __DIST.load('I')
+	local base = __DIST.load('I')
+	local utility = __DIST.load('J')
+	local services = __DIST.load('K')
 
 	--// References
 	local flags = base.Flags
@@ -12659,7 +13401,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('B'),
+		Load = __DIST.load('D'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -12670,7 +13412,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('J'),
+		Load = __DIST.load('L'),
 		Places = {
 			123456789,
 			987654321,

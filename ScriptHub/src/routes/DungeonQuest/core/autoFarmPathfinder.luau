@@ -114,7 +114,7 @@ local enabled = false
 local running = false
 local skillRange = 70
 local moveSpeed = 50
-local retargetInterval = 1.0
+	local retargetInterval = 1.0 --// giữ cho accessor/UI cũ không lỗi; không còn điều khiển poll (event-driven)
 local skillEnabled = true
 local skillInterval = 0.5
 local skillMode = "Alternate" --// "Both" = Q+E cùng lúc, "Alternate" = Q -> E -> Q -> E
@@ -122,6 +122,8 @@ local skillTurn = 0 --// dùng cho mode Alternate (0 = Q, 1 = E)
 
 --// Runtime
 local moveConnection = nil
+local enemyChangedConnection = nil --// sự kiện enemy đổi -> reselect target (event-driven)
+local respawnConnection = nil --// reset trạng thái khi nhân vật respawn
 local lastSkillTime = 0
 local cachedNearestEnemy = nil --// cache enemy gần nhất trong 1 frame (tránh gọi getNearestEnemy nhiều lần)
 local cachedNearestValid = false
@@ -142,13 +144,30 @@ local holdRadius = nil
 local lockedTargetModel = nil
 local chaseModel = nil
 local chasePathTargetModel = nil
-local retargetTimer = 0
 local pathIsAnchor = false --// path hiện tại là đi tới anchor (không phải enemy)
+local pathAnchorDest = nil --// vị trí đích anchor của path hiện tại (để phát hiện đích bị "flap"/đổi giữa chừng)
+local anchorWalking = false --// ĐANG Ở LUỒNG DI CHUYỂN ANCHOR RIÊNG: vẽ path anchor 1 lần rồi đi thẳng tới đích,
+--// KHÔNG can thiệp (không chuyển HOLD khi enemy vào tầm, không rebuild, không retarget). Chỉ thoát khi
+--// tới đích / hết anchor / respawn / disable.
+local anchorStuckPos = nil --// vị trí theo dõi kẹt trong luồng anchor
+local anchorStuckTimer = 0 --// thời gian đứng im trong luồng anchor
+local ANCHOR_STUCK_WINDOW = 3.0 --// giây: đứng im quá lâu khi đi anchor thì rebuild path 1 lần
 --// Anchor chain (có lock): khi nopath tới enemy, pathfinder khóa vào anchor (anchorChainIndex)
 --// và đi tới nơi; chỉ advance sang anchor kế theo thứ tự đặt khi đã TỚI anchor hiện tại mà vẫn
 --// nopath (tránh spam đổi target / vẽ path lung tung). anchorChainMap nhớ map đang duyệt.
 local anchorChainMap = nil --// map mà chain đang duyệt
 local anchorChainIndex = 0 --// index anchor đang KHOÁ (target hiện tại)
+--// Gate path build theo STATE (không theo time cooldown): chỉ build path khi thật sự cần.
+--// Spam trước đây do khi nopath, computeChasePath retry cùng enemy mỗi frame vô hạn. Giải pháp:
+--// nhớ target (enemy + vị trí đích) của lần build FAIL gần nhất; KHÔNG retry build path tới cùng
+--// target unreachable (player/enemy chưa dịch chuyển đáng kể) -> đứng yên/đi anchor thay vì spam.
+--// Chỉ build lại khi: target đổi, hoặc vị trí đích đã dịch chuyển > REPATH_TOL.
+local lastFailedModel = nil --// enemy model của lần build path fail gần nhất
+local lastFailedDest = nil --// vị trí đích (enemy) của lần build fail gần nhất
+local REPATH_TOL = 3 --// stud: đích dịch chuyển trên mức này thì đủ điều kiện build lại
+--// Chống self-kill lặp liên tục khi thật sự không path được (kill xong respawn -> lại thử).
+local lastSelfKillTime = 0
+local SELF_KILL_COOLDOWN = 2.0
 --// Stuck detection: phát hiện đứng im dù path đang chạy -> chạy chuỗi gỡ kẹt:
 --// nhảy -> strafe trái -> strafe phải -> reset player (Health=0 để game respawn).
 --// (vật cản thấp/kệ mép mà path không đánh dấu Jump waypoint).
@@ -288,8 +307,13 @@ local function sweepNearbyAnchors(playerPos)
 	local mapName = shared.GetCurrentDungeonName()
 	local list = (type(mapName) == "string" and anchors[mapName]) or nil
 	if not list then return false end
+	local current = shared.GetCurrentRoomIndex()
+	current = (type(current) == "number" and current) or -1
 	local changed = false
 	for _, a in ipairs(list) do
+		--// Gate THEO ROOM: chỉ đánh dấu visited khi ĐÚNG room của anchor (anchor room nào tới đó
+		--// mới tính). Lúc chuyển room (current<=0) không đánh dấu bất kỳ anchor nào.
+		if a.room ~= current then continue end
 		local d = a.pos and playerPos and (a.pos - playerPos).Magnitude or math.huge
 		if not a.visited and d > nearAnchorTol then
 			a.wasFar = true
@@ -321,39 +345,44 @@ local function findNextAnchor()
 	local current = shared.GetCurrentRoomIndex()
 	current = (type(current) == "number" and current) or -1
 
+	--// Gate THEO ROOM: chỉ dùng anchor khi ĐANG TRONG đúng 1 room đang có quái (current == room anchor).
+	--// current = room của enemy đang track; lúc CHUYỂN ROOM (xong quái room này, chờ quái room sau)
+	--// thì không còn quái -> current = 0 -> KHÔNG được dùng anchor nào (tránh nhảy target sang
+	--// anchor room khác khi chưa tới đó). Anchor room nào chỉ áp dụng khi current == room đó.
+	if current <= 0 then
+		anchorChainIndex = 0
+		return nil
+	end
+
 	local function distTo(a)
 		return (playerPos and a.pos and (a.pos - playerPos).Magnitude) or math.huge
 	end
 
-	--// Đang khoá 1 anchor hợp lệ (chưa visited) -> KIỂM TRA ĐÃ TỚI CHƯA.
+	--// Đang khoá 1 anchor hợp lệ -> chỉ hợp lệ khi VẪN đúng room hiện tại (nếu đổi room thì hủy lock).
 	local target = (anchorChainIndex >= 1 and anchorChainIndex <= #list) and list[anchorChainIndex] or nil
-	if target and not target.visited then
+	if target and not target.visited and target.room == current then
 		if distTo(target) > nearAnchorTol then
 			--// Chưa tới -> GIỮ NGUYÊN anchor đang nhắm (không spam đổi target).
-			if visualDebug then warn(("[PathAnchor] lock idx=%d (dist %.1f) -> keep"):format(anchorChainIndex, distTo(target))) end
+			if visualDebug then warn(("[PathAnchor] lock idx=%d (room=%d/cur=%d) -> keep"):format(anchorChainIndex, target.room, current)) end
 			return target.pos
 		end
 		--// Đã tới anchor này -> đánh dấu visited (không target lại) + đổi màu marker.
 		target.visited = true
 		refreshAnchorMarkers()
-		if visualDebug then warn(("[PathAnchor] reached idx=%d -> visited"):format(anchorChainIndex)) end
+		if visualDebug then warn(("[PathAnchor] reached idx=%d (room=%d/cur=%d) -> visited"):format(anchorChainIndex, target.room, current)) end
 	end
 
-	--// Chọn target MỚI: anchor kế tiếp theo thứ tự đặt (không quay đầu), ưu tiên room >= current,
-	--// bỏ qua anchor đang đứng cạnh (vừa tới / chỗ đang đứng) và anchor đã visited.
-	local bestRoom = nil
-	local bestAny = nil
+	--// Chọn target MỚI: chỉ anchor trong ĐÚNG room hiện tại (anchor room nào thì tới đó mới dùng),
+	--// theo thứ tự đặt (không quay đầu), bỏ qua anchor đang đứng cạnh + anchor đã visited.
+	local best = nil
 	for i = anchorChainIndex + 1, #list do
 		local a = list[i]
-		if not a.visited and distTo(a) > nearAnchorTol then
-			if not bestAny then bestAny = i end
-			if a.room >= current then
-				bestRoom = i
-				break
-			end
+		if not a.visited and a.room == current and distTo(a) > nearAnchorTol then
+			best = i
+			break
 		end
 	end
-	anchorChainIndex = bestRoom or bestAny or 0
+	anchorChainIndex = best or 0
 	if visualDebug then warn(("[PathAnchor] advance -> idx=%d (of %d)"):format(anchorChainIndex, #list)) end
 	if anchorChainIndex == 0 then return nil end
 	return list[anchorChainIndex].pos
@@ -372,10 +401,29 @@ local function tryBuildPath(start, dest, mountModel, isAnchor)
 			chaseTarget = dest
 			chasePathTargetModel = mountModel
 			pathIsAnchor = isAnchor == true
+			--// Build path thành công -> xoá marker target fail trước đó, cho phép build lại khi cần.
+			lastFailedModel = nil
+			lastFailedDest = nil
+			if isAnchor then pathAnchorDest = dest end
+			--// Path BỊ CHẶN (blocked). Với path ANCHOR: CHỈ tear-down khi THỰC SỰ KẸT (stuckStage>=1,
+			--// tức không tiến được trong STUCK_WINDOW). PathfindingService có thể fire Blocked với
+			--// failedWaypointIndex = nil/0 (block tổng quát) -> nếu bỏ path theo index sẽ tear-down
+			--// MỖI FRAME -> rebuild path anchor liên tục cùng 1 đích (spam "REBUILD" + "Lock keep",
+			--// nhân vật "đi rồi cố về" lặp lại). Vì vậy KHÔNG tear-down theo index; đích ổn định,
+			--// chỉ rebuild khi kẹt thật (stuck detection) hoặc khi đi hết waypoint (advance).
 			path.Blocked:Connect(function()
+				if isAnchor then
+					if stuckStage >= 1 then
+						if visualDebug then warn("[PathAnchor] anchor path blocked + đang kẹt -> rebuild") end
+						currentPath = nil
+						pathComputed = false
+						pathAnchorDest = nil
+					end
+					return
+				end
 				currentPath = nil
 				pathComputed = false
-				retargetTimer = 0
+				pathAnchorDest = nil
 			end)
 			currentPath = path
 			waypointIndex = 1
@@ -412,9 +460,16 @@ local function computeChasePath(enemy, targetPos)
 	--// 1) Thử path tới enemy (params chính → relaxed). Thành công -> reset chuỗi anchor
 	--// (đã có path tới enemy, lần nopath sau bắt đầu lại anchor đầu).
 	if tryBuildPath(start, targetPos, enemy.Model, false) then
-		anchorChainMap = nil
-		anchorChainIndex = 0
-		if visualDebug then warn("[PathAnchor] enemy path OK -> reset anchor chain") end
+		--// Có path tới enemy -> KHÔNG ở luồng anchor nữa (chase bình thường).
+		anchorWalking = false
+		--// Chỉ reset + log khi chain anchor thực sự đang active (đang fallback). Nếu chain đã
+		--// rỗng từ đầu (đang CHASE bình thường chưa rơi vô fallback) thì không có gì để reset,
+		--// tránh spam "enemy path OK -> reset anchor chain" mỗi lần build path tới enemy.
+		if anchorChainMap ~= nil or anchorChainIndex > 0 then
+			anchorChainMap = nil
+			anchorChainIndex = 0
+			if visualDebug then warn("[PathAnchor] enemy path OK -> reset anchor chain") end
+		end
 		return true
 	end
 
@@ -424,6 +479,8 @@ local function computeChasePath(enemy, targetPos)
 		local ok = tryBuildPath(start, anchorPos, nil, true)
 		if visualDebug then warn(("[PathAnchor] -> anchor idx=%d (%s)"):format(anchorChainIndex, ok and "OK" or "FAIL")) end
 		if ok then
+			--// BẮT ĐẦU luồng di chuyển anchor riêng: path anchor đã vẽ 1 lần, đi thẳng tới đích.
+			anchorWalking = true
 			return true
 		end
 	end
@@ -434,9 +491,17 @@ local function computeChasePath(enemy, targetPos)
 	chaseTarget = nil
 	chasePathTargetModel = nil
 	pathIsAnchor = false
+	pathAnchorDest = nil
+	anchorWalking = false
+	--// Nhớ target FAIL này để không retry build path vô hạn cùng enemy (spam). Chỉ build lại khi
+	--// enemy đổi hoặc đích đã dịch chuyển > REPATH_TOL (xem gate trong stepMovement).
+	lastFailedModel = enemy.Model
+	lastFailedDest = targetPos
 	if visualDebug then warn("[PathAnchor] no enemy path, no anchor -> " .. (respawnOnNoPath and "self-kill" or "stand")) end
-	--// Self-kill (respawn) chỉ khi bật toggle. Tắt -> đứng yên, đợi retarget lần sau.
-	if respawnOnNoPath then
+	--// Self-kill (respawn) chỉ khi bật toggle, và CÓ COOLDOWN để không kill lặp liên tục mỗi frame
+	--// khi thật sự không path được (kill -> respawn -> thử lại sau quãng nghỉ).
+	if respawnOnNoPath and os.clock() - lastSelfKillTime >= SELF_KILL_COOLDOWN then
+		lastSelfKillTime = os.clock()
 		local h = shared.GetHumanoid()
 		if h and h.Parent then h.Health = 0 end
 	end
@@ -471,34 +536,8 @@ local function fireSkills()
 	end
 end
 
---// Luồng Auto Skill: spam khi kẻ địch (nearest nếu CHASE / lock nếu HOLD) trong tầm
---// skillRange (khoảng cách phẳng XZ). Dùng enemy đã cache trong frame để tránh
---// gọi getNearestEnemy lần nữa.
-local function skillLoop()
-	if shared.IsInLobby() then return end
-	if not dunReady then return end
-	if not skillEnabled then return end
-	local playerRoot = getPlayerRoot()
-	if not playerRoot then return end
-	local enemy
-	if lockedTargetModel then
-		enemy = getEnemyByModel(lockedTargetModel)
-	end
-	if not enemy then
-		if cachedNearestValid then
-			enemy = cachedNearestEnemy
-		else
-			enemy = getNearestEnemy()
-		end
-	end
-	local enemyPos = enemy and getSafePosition(enemy.Root) or nil
-	local playerPos = getSafePosition(playerRoot)
-	if not enemyPos or not playerPos then return end
-	local flat = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
-	if flat.Magnitude <= skillRange then
-		fireSkills()
-	end
-end
+--// (Skill-fire đã gộp vào pipeline frame của stepMovement — tái dùng enemy/vị trí đã resolve,
+--// chỉ 1 lần resolve + 1 lần đo khoảng cách mỗi frame, không spam scan.)
 
 --// ---------- Visual debug ----------
 
@@ -705,6 +744,59 @@ local function resetStuckCheck()
 	stuckStrafeDir = 0
 end
 
+--// ---------- Event-driven: chọn/chuyển target theo sự kiện (không poll theo interval) ----------
+
+--// Chọn lại nearest target MỘT LẦN (do sự kiện enemy đổi trigger). Nếu target model khác
+--// target hiện tại thì hủy path cũ (frame sau sẽ rebuild sang target mới). Giải phóng lock HOLD
+--// nếu enemy bị lock đã biến mất. Trả về model mục tiêu mới (hoặc nil).
+	local function reselectTarget()
+	local playerRoot = getPlayerRoot()
+	if not playerRoot then return end
+	local nearest = getNearestEnemy()
+	cachedNearestEnemy = nearest
+	cachedNearestValid = nearest ~= nil
+	--// ĐANG Ở LUỒNG ANCHOR WALK: chỉ cập nhật cache target, KHÔNG đụng tới path anchor đang đi
+	--// (enemy spawn/die trong lúc di chuyển tới anchor KHÔNG được làm gián đoạn path). Khi thoát
+	--// luồng anchor sẽ reselect lại bình thường.
+	if anchorWalking then return chaseModel end
+	local newModel = nearest and nearest.Model or nil
+	if newModel ~= chaseModel then
+		chaseModel = newModel
+		--// Target đổi -> path cũ lỗi thời, hủy để frame kế rebuild sang target mới.
+		if currentPath then pcall(function() currentPath:Destroy() end) end
+		currentPath = nil
+		pathComputed = false
+		chasePathTargetModel = nil
+		--// Đang HOLD mà enemy lock đã mất -> giải phóng lock.
+		if lockedTargetModel and not getEnemyByModel(lockedTargetModel) then
+			lockedTargetModel = nil
+			holdAngle = nil
+			holdRadius = nil
+		end
+	end
+	return chaseModel
+end
+
+--// Sự kiện tập enemy track thay đổi (thêm/xoá) -> reselect target tức thì, không chờ poll.
+local function onEnemyChanged()
+	if not enabled or not running then return end
+	reselectTarget()
+end
+
+--// Nhân vật respawn (tự kill / chết) -> dọn path cũ + target cũ, chờ reselect sau.
+	local function onRespawn()
+	currentPath = nil
+	pathComputed = false
+	pathIsAnchor = false
+	anchorWalking = false
+	chasePathTargetModel = nil
+	chaseModel = nil
+	lockedTargetModel = nil
+	holdAngle = nil
+	holdRadius = nil
+	resetStuckCheck()
+end
+
 --// Bước hành động tiếp theo của chuỗi gỡ kẹt: nhảy -> strafe trái -> strafe phải
 --// -> reset player (giết nhân vật để game respawn về spawn room).
 local function advanceStuckAction(humanoid)
@@ -728,6 +820,99 @@ local function advanceStuckAction(humanoid)
 	end
 end
 
+--// LUỒNG DI CHUYỂN ANCHOR RIÊNG (fallback): vẽ path anchor 1 lần rồi đi thẳng tới đích theo
+--// pathfinder (theo địa hình). KHÔNG xử lý enemy, không chuyển HOLD khi enemy vào tầm, không
+--// rebuild path giữa chừng. Khi tới anchor -> advance sang anchor kế (cùng room) + vẽ path mới.
+--// Hết anchor -> thoát luồng, trả về xử lý chung (stand / self-kill theo respawnOnNoPath).
+local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
+	local playerPos = getSafePosition(playerRoot)
+	if not playerPos then return end
+
+	local function exitAnchorFlow()
+		anchorWalking = false
+		anchorStuckPos = nil
+		anchorStuckTimer = 0
+	end
+
+	--// Chưa có path anchor đang đi -> vẽ path 1 lần rồi bắt đầu đi.
+	if not currentPath or not pathComputed then
+		local anchorPos = findNextAnchor()
+		if not anchorPos then
+			--// Hết anchor hợp lệ trong room hiện tại -> thoát luồng anchor.
+			if visualDebug then warn("[PathAnchor] hết anchor -> thoát luồng anchor walk") end
+			exitAnchorFlow()
+			return
+		end
+		if tryBuildPath(playerPos, anchorPos, nil, true) then
+			anchorStuckPos = nil
+			anchorStuckTimer = 0
+			return --// vừa vẽ xong, frame sau đi theo waypoint
+		end
+		--// Nopath tới anchor này -> thoát luồng anchor.
+		if visualDebug then warn("[PathAnchor] nopath tới anchor -> thoát luồng anchor walk") end
+		exitAnchorFlow()
+		return
+	end
+
+	local waypoints = currentPath:GetWaypoints()
+	if not waypoints or #waypoints == 0 then
+		currentPath = nil
+		pathComputed = false
+		return
+	end
+	if waypointIndex > #waypoints then
+		--// Đi hết waypoint = ĐÃ TỚI anchor đích. Đánh dấu visited TRỰC TIẾP (không cần đo lại
+		--// khoảng cách — because path dẫn tới đúng vị trí anchor, không bị lệch vài stud như check
+		--// distTo trong findNextAnchor gây rebuild lặp). Frame kế findNextAnchor() sẽ advance.
+		local mapName = shared.GetCurrentDungeonName()
+		local list = (type(mapName) == "string" and anchors[mapName]) or nil
+		if list and anchorChainIndex >= 1 and anchorChainIndex <= #list and not list[anchorChainIndex].visited then
+			list[anchorChainIndex].visited = true
+			refreshAnchorMarkers()
+			if visualDebug then warn(("[PathAnchor] TỚI anchor idx=%d -> visited"):format(anchorChainIndex)) end
+		end
+		pathComputed = false
+		return
+	end
+
+	--// Đi theo waypoint giống CHASE (Click-to-Move, pathfinder theo địa hình).
+	ensureAutoRotateEnabled()
+	local wp = waypoints[waypointIndex]
+	local dest = wp.Position
+	local pos = playerPos
+	local toDest = Vector3.new(dest.X - pos.X, 0, dest.Z - pos.Z)
+	local dist = toDest.Magnitude
+	local tolerate = (wp.Action == Enum.PathWaypointAction.Jump and 2.5) or 2.0
+
+	if dist <= tolerate then
+		waypointIndex += 1
+		if wp.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
+		return
+	end
+
+	humanoid:MoveTo(dest)
+
+	--// Kẹt nhẹ: đứng im quá lâu thì để frame sau rebuild 1 lần (vòng vật cản). KHÔNG dùng chuỗi gỡ
+	--// phức tạp / self-respawn của luồng chung vì anchor chỉ cần hoàn thành 1 path di chuyển tới đích.
+	if anchorStuckPos then
+		if (playerPos - anchorStuckPos).Magnitude > 0.5 then
+			anchorStuckPos = playerPos
+			anchorStuckTimer = 0
+		else
+			anchorStuckTimer += deltaTime
+			if anchorStuckTimer >= ANCHOR_STUCK_WINDOW then
+				anchorStuckPos = nil
+				anchorStuckTimer = 0
+				currentPath = nil
+				pathComputed = false
+			end
+		end
+	else
+		anchorStuckPos = playerPos
+		anchorStuckTimer = 0
+	end
+end
+
 --// Di chuyển: CHASE theo trạng thái, HOLD khi enemy trong tầm.
 local function stepMovement(deltaTime)
 	if shared.IsInLobby() then return end
@@ -747,7 +932,16 @@ local function stepMovement(deltaTime)
 		updateDebugPathSpheres()
 	end
 
-	--// CHASE: retarget liên tục theo interval (chọn nearest). Chỉ LOCK khi lọt vào tầm (HOLD).
+	--// LUỒNG DI CHUYỂN ANCHOR RIÊNG: khi đang fallback anchor, chuyển hẳn sang hàm chuyên biệt,
+	--// KHÔNG chạy CHASE/HOLD (không xử lý enemy khi đang đi tới anchor). Nếu đang trong luồng này thì
+	--// bỏ qua mọi logic khác để "vẽ path 1 lần, đi thẳng tới đích" — không spam, không can thiệp.
+	if anchorWalking then
+		stepAnchorWalking(deltaTime, humanoid, playerRoot)
+		return
+	end
+
+	--// Target được duy trì EVENT-DRIVEN qua shared.OnEnemyChanged -> reselectTarget().
+	--// Heartbeat CHỈ thực thi (follow path / HOLD), KHÔNG poll scan hay đổi target theo interval.
 	local enemy
 	if lockedTargetModel then
 		--// Đang HOLD -> bám enemy đã lock, không retarget.
@@ -759,21 +953,17 @@ local function stepMovement(deltaTime)
 		end
 	end
 	if not enemy then
-		--// CHASE: retarget theo retargetInterval.
-		retargetTimer += deltaTime
-		if retargetTimer >= retargetInterval or not chaseModel then
-			retargetTimer = 0
-			local nearest = getNearestEnemy()
-			cachedNearestEnemy = nearest
-			cachedNearestValid = nearest ~= nil
-			chaseModel = nearest and nearest.Model or nil
+		--// enemy theo chaseModel (đã cập nhật bởi event). Nếu model cũ mất mà event chưa tới thì
+		--// xoá chaseModel để reselect sau; KHÔNG scan lại mỗi frame.
+		enemy = getEnemyByModel(chaseModel)
+		if not enemy then
+			chaseModel = nil
 		end
-		enemy = getEnemyByModel(chaseModel) or getNearestEnemy()
 	end
 	cachedNearestEnemy = enemy
 	cachedNearestValid = enemy ~= nil
 	if not enemy or not enemy.Root or not enemy.Root.Parent then
-		--// Không có target -> đứng yên, đợi retarget lần sau.
+		--// Không có target -> đứng yên. Event OnEnemyChanged sẽ reselect khi có enemy mới.
 		if currentPath then pcall(function() currentPath:Destroy() end) end
 		currentPath = nil
 		pathComputed = false
@@ -799,12 +989,15 @@ local function stepMovement(deltaTime)
 		--// giữ khoảng cách (holdRadius) + góc (holdAngle) đúng như lúc vào HOLD,
 		--// xích ra/lùi theo enemy. Không retarget.
 		ensureAutoRotateDisabled()
+		--// Skill-fire: tái dùng enemy + vị trí đã resolve trong frame này (không resolve lại 2 lần/frame).
+		if skillEnabled then fireSkills() end
 		--// Huỷ MoveTo của CHASE trước đó để không chống đối việc set CFrame thủ công.
 		pcall(function() humanoid:MoveTo(playerPos) end)
 		if not lockedTargetModel then lockedTargetModel = enemy.Model end
 		if currentPath then pcall(function() currentPath:Destroy() end) end
 		currentPath = nil
 		pathComputed = false
+		pathAnchorDest = nil
 		chaseTarget = nil
 		resetStuckCheck()
 		--// Capture góc & bán kính từ vị trí hiện tại lúc vào HOLD.
@@ -848,18 +1041,29 @@ local function stepMovement(deltaTime)
 	--// Path stale khi target hiện tại KHÁC target của path (enemy cũ chết / retarget
 	--// sang con khác) -> hủy path ngay để recompute sang target mới, không đi tiếp
 	--// theo path cũ dẫn tới chỗ xác (gây "state=CHASE nhưng không di chuyển").
-	if currentPath and chasePathTargetModel and chasePathTargetModel ~= enemy.Model then
+	--// LƯU Ý: chỉ áp dụng cho path ENEMY (chasePathTargetModel là model enemy). Path ANCHOR
+	--// được build với chasePathTargetModel = nil; nếu để điều kiện này chạy thì `nil ~= enemy.Model`
+	--// luôn đúng -> path anchor bị destroy + rebuild lại từ đầu MỖI FRAME -> nhân vật "đi 1 chút
+	--// rồi vòng về đầu path" lặp lại. Vì vậy bỏ qua khi pathIsAnchor.
+	if not pathIsAnchor and currentPath and chasePathTargetModel and chasePathTargetModel ~= enemy.Model then
 		pcall(function() currentPath:Destroy() end)
 		currentPath = nil
 		pathComputed = false
 	end
 	if not pathComputed or not currentPath then
-		local ok = computeChasePath(enemy, enemyPos)
-		if ok then
-			resetStuckCheck()
-			return --// đã có path, frame sau đi theo waypoint
+		--// Gate theo STATE: chỉ build path khi thật sự cần (target đổi / đích đã dịch chuyển đáng kể
+		--// / chưa từng fail target này). Chặn retry-build vô hạn cùng 1 enemy nopath -> hết spam.
+		local sameFailedTarget = lastFailedModel ~= nil and lastFailedModel == enemy.Model
+			and lastFailedDest ~= nil and (enemyPos - lastFailedDest).Magnitude <= REPATH_TOL
+		if not sameFailedTarget then
+			local ok = computeChasePath(enemy, enemyPos)
+			if ok then
+				resetStuckCheck()
+				return --// đã có path, frame sau đi theo waypoint
+			end
+			--// computeChasePath tự kill player khi cả 2 lần fail -> không cần xử lý thêm.
+			return
 		end
-		--// computeChasePath tự kill player khi cả 2 lần fail -> không cần xử lý thêm.
 		return
 	end
 
@@ -870,6 +1074,9 @@ local function stepMovement(deltaTime)
 		return
 	end
 	if waypointIndex > #waypoints then
+		if visualDebug and pathIsAnchor then
+			warn(("[PathAnchor] anchor path HOÀN THÀNH (đã đi hết waypoint idx=%d) -> advance"):format(waypointIndex))
+		end
 		pathComputed = false
 		return
 	end
@@ -923,6 +1130,14 @@ local function stepMovement(deltaTime)
 			if stuckCheckTimer >= STUCK_WINDOW then
 				stuckCheckPos = playerPos
 				stuckCheckTimer = 0
+				--// Kẹt thật sự (không tiến được). Nếu đang đi path ANCHOR thì dọn path để frame kế
+				--// rebuild lại từ vị trí hiện tại (sau bước gỡ kẹt), vòng quanh vật cản thật sự.
+				if pathIsAnchor then
+					currentPath = nil
+					pathComputed = false
+					pathAnchorDest = nil
+					if visualDebug then warn("[PathAnchor] stuck while anchor path -> dọn path để re-route") end
+				end
 				advanceStuckAction(humanoid)
 			end
 		end
@@ -1127,25 +1342,40 @@ function autoFarmPathfinder.Toggle(state)
 	if enabled then
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		running = true
-		retargetTimer = 0
 		lastSkillTime = 0
 		cachedNearestEnemy = nil
 		cachedNearestValid = false
 		pathIsAnchor = false
+		lastFailedModel = nil
+		lastFailedDest = nil
+		lastSelfKillTime = 0
+		chaseModel = nil
+		--// Event-driven: reselect target khi tập enemy thay đổi + reset khi respawn.
+		if not enemyChangedConnection then
+			enemyChangedConnection = shared.OnEnemyChanged(onEnemyChanged)
+		end
+		if not respawnConnection then
+			respawnConnection = shared.OnRespawn(onRespawn)
+		end
 		--// Khởi tạo tracking enemy trong dungeon (không block luồng chính)
 		if not dunReady then
 			task.spawn(function()
 				if shared.ReadyDungeon() then dunReady = true end
 			end)
 		end
+		--// Seed target ban đầu: nếu đang có enemy (bật giữa trận) thì chọn nearest ngay.
+		task.defer(reselectTarget)
 		--// Gộp movement + skill vào 1 Heartbeat để giảm số connection/frame.
 		moveConnection = RunService.Heartbeat:Connect(function(deltaTime)
-			pcall(stepMovement, deltaTime)
-			pcall(skillLoop, deltaTime)
+			pcall(function()
+				stepMovement(deltaTime)
+			end)
 		end)
 	else
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		running = false
+		if enemyChangedConnection then enemyChangedConnection(); enemyChangedConnection = nil end
+		if respawnConnection then respawnConnection(); respawnConnection = nil end
 		restoreAutoRotate()
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
@@ -1160,7 +1390,7 @@ function autoFarmPathfinder.Toggle(state)
 		chaseModel = nil
 		chasePathTargetModel = nil
 		pathIsAnchor = false
-		retargetTimer = 0
+		anchorWalking = false
 		cachedNearestEnemy = nil
 		cachedNearestValid = false
 		resetStuckCheck()

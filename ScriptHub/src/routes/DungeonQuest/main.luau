@@ -52,6 +52,7 @@ return function(self)
 		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
 		Pathfinder = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
+		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
 		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
@@ -65,6 +66,7 @@ return function(self)
 	local speedTab = require("@routes/DungeonQuest/tabs/Speed/main")
 	local autoFarmPathfinderTab = require("@routes/DungeonQuest/tabs/AutoFarmPathfinder/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
+	local inventoryTab = require("@routes/DungeonQuest/tabs/Inventory/main")
 	local visualTab = require("@routes/DungeonQuest/tabs/Visual/main")
 	local configTab = require("@routes/DungeonQuest/tabs/Config/main")
 	local notificationsTab = require("@routes/DungeonQuest/tabs/Notifications/main")
@@ -73,6 +75,7 @@ return function(self)
 	speedTab(window, tabs.Player)
 	autoFarmPathfinderTab(window, tabs.Pathfinder)
 	dungeonTab(window, tabs.Dungeon)
+	inventoryTab(window, tabs.Inventory)
 	visualTab(window, tabs.Visual)
 	configTab(window, tabs.Config)
 	notificationsTab(window, tabs.Notifications)
