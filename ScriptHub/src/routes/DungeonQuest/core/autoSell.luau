@@ -209,26 +209,32 @@ function autoSell.ShouldSellItem(item)
 		return false
 	end
 
-	if next(levelReqExactFilter) then
-		local lvl = item.LevelReq or 0
-		if levelReqMode == "Below" then
-			-- Bán item có LevelReq ≤ mốc đã chọn (lấy max trong set)
-			local threshold
-			for v in pairs(levelReqExactFilter) do
-				if not threshold or v > threshold then threshold = v end
-			end
-			if threshold and lvl > threshold then return false end
-		elseif levelReqMode == "Above" then
-			-- Bán item có LevelReq ≥ mốc đã chọn (lấy min trong set)
-			local threshold
-			for v in pairs(levelReqExactFilter) do
-				if not threshold or v < threshold then threshold = v end
-			end
-			if threshold and lvl < threshold then return false end
-		else
-			-- None: chỉ bán đúng các mốc đã tick
-			if not levelReqExactFilter[lvl] then return false end
+	--// Level filter: NẾU KHÔNG chọn mốc nào -> fallback an toàn = chính xác level 1.
+	--// KHÔNG BAO GIỜ để trạng thái "none" (không lọc theo level) vì sẽ bán hết inventory.
+	local lvSet = levelReqExactFilter
+	local lvMode = levelReqMode
+	if next(lvSet) == nil then
+		lvSet = { [1] = true }
+		lvMode = "None"
+	end
+	local lvl = item.LevelReq or 0
+	if lvMode == "Below" then
+		-- Bán item có LevelReq ≤ mốc đã chọn (lấy max trong set)
+		local threshold
+		for v in pairs(lvSet) do
+			if not threshold or v > threshold then threshold = v end
 		end
+		if threshold and lvl > threshold then return false end
+	elseif lvMode == "Above" then
+		-- Bán item có LevelReq ≥ mốc đã chọn (lấy min trong set)
+		local threshold
+		for v in pairs(lvSet) do
+			if not threshold or v < threshold then threshold = v end
+		end
+		if threshold and lvl < threshold then return false end
+	else
+		-- None: chỉ bán đúng các mốc đã tick (fallback 1 => chỉ LevelReq == 1)
+		if not lvSet[lvl] then return false end
 	end
 
 	return true
@@ -237,12 +243,9 @@ end
 --// Có ít nhất 1 điều kiện lọc đang active hay không.
 --// Dùng để cảnh báo khi user sắp bán mà không có filter nào (rủi ro bán sạch).
 function autoSell.HasAnyFilter()
-	return (
-		next(rarityFilter) ~= nil
-		or next(typeFilter) ~= nil
-		or next(levelReqExactFilter) ~= nil
-		or (not excludeEquipped)
-	)
+	-- Level filter luôn có giá trị tối thiểu (fallback = 1 khi user không chọn), nên
+	-- không bao giờ ở trạng thái "không có filter" — tránh bán hết inventory.
+	return true
 end
 
 --// Đếm tổng số item khớp điều kiện (gọi khi bấm nút Search, không bán).

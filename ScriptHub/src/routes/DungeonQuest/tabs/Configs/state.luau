@@ -1,4 +1,4 @@
--- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 local shared = require("@routes/DungeonQuest/core/shared")
@@ -10,7 +10,7 @@ local DUNGEON_LABEL = "Dungeon"
 local TIMER_LABEL = "Time Left"
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
+	local section = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Status" })
 
 	local bossLabel = section:Label({

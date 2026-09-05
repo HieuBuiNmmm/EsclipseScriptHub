@@ -520,8 +520,8 @@ local showHitboxVisual = false      -- Hiển thị vòng tròn trực quan hitb
 local hitboxVisualPart = nil        -- Part visual hitbox tròn quanh chân
 local ESCAPE_MARGIN = 4.5           -- Khoảng cách đệm an toàn sau khi ra khỏi mép (studs)
 local RAYCAST_DOWN_DIST = 25        -- Khoảng cách bắn raycast xuống mặt đất (studs)
-local RADIAL_DISTANCES = { 6, 10, 14, 18, 24, 30 }
-local RADIAL_ANGLES = { 0, 45, 90, 135, 180, 225, 270, 315 }
+local RADIAL_DISTANCES = { 6, 10, 14, 18, 22, 26, 30, 36 }
+local RADIAL_ANGLES = { 0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5 }
 
 --// Safe Spot State
 local showSafeMarker = true
@@ -536,9 +536,11 @@ local safeSpotLoopThread = nil
 
 --// Cấu hình Thực thi Né Chiêu (Bài toán 3: Hybrid MoveTo + Micro-Teleport)
 local autoDodgeEnabled = false
+local dodgeMode = "Hybrid"           -- "Hybrid" (MoveTo + Micro-Blink) hoặc "Walk" (Walk Only + Snap)
 local maxTeleportStep = 3.0          -- Bước teleport an toàn tối đa (studs) để chống anti-cheat
 local microBlinkInterval = 0.05      -- Khoảng thời gian giữa các bước nhích MoveTo + Teleport
 local isDodging = false
+local targetDodgeSpot = nil          -- Tọa độ đích đang nhắm đến (được cập nhật động khi bẻ lái)
 local dodgeThread = nil
 local dodgeStatusCallbacks = {}
 
@@ -864,66 +866,73 @@ local function fireDodgeStatus(status)
 	end
 end
 
---// Thực thi né sang Safe Spot bằng cơ chế Hybrid MoveTo + Micro-Teleport
+--// Thực thi né sang Safe Spot bằng cơ chế Hybrid MoveTo + Micro-Teleport (kèm Dynamic Re-routing)
 local function performDodge(safePos, escapeDist)
 	local char = player and player.Character
 	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
 	local humanoid = char and char:FindFirstChild("Humanoid")
 	if not rootPart or not humanoid or humanoid.Health <= 0 then return end
 
-	if isDodging then return end
+	local oldTarget = targetDodgeSpot
+	targetDodgeSpot = safePos
+
+	-- Dynamic Re-routing: Nếu đang né và điểm Safe Spot bị thay đổi (do bị skill khác đè)
+	if isDodging then
+		if oldTarget and (safePos - oldTarget).Magnitude > 0.5 then
+			if logInDanger then
+				print(("[SmartDodge][Dodge] 🔄 Dynamic Re-route: Shifting course to NEW Safe Spot (%.1f studs)...")
+					:format(escapeDist or 0))
+			end
+		end
+		return
+	end
 
 	dodgeThread = task.spawn(function()
 		isDodging = true
 		fireDodgeStatus("Dodging")
 
-		local currentPos = rootPart.Position
-		local totalDist = (safePos - currentPos).Magnitude
-
-		-- Trường hợp 1: Khoảng cách ngắn (<= maxTeleportStep, ví dụ <= 3.0 studs) -> Teleport dứt điểm 1 nhịp
-		if totalDist <= maxTeleportStep then
-			rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
-			if logInDanger then
-				print(("[SmartDodge][Dodge] ⚡ Instant Micro-Teleport (%.1f studs) to Safe Spot!"):format(totalDist))
-			end
-			isDodging = false
-			fireDodgeStatus("Safe")
-			return
-		end
-
-		-- Trường hợp 2: Khoảng cách xa (> 3.0 studs) -> MoveTo kết hợp Micro-Blink
-		if logInDanger then
-			print(("[SmartDodge][Dodge] 🏃 Hybrid MoveTo + Micro-Blink (%.1f studs) to Safe Spot..."):format(totalDist))
-		end
-
 		local startTime = os.clock()
-		local timeout = 2.0 -- Timeout an toàn 2s
+		local timeout = 3.0 -- Timeout an toàn 3s
 
-		while isPlayerInDanger and autoDodgeEnabled and (os.clock() - startTime < timeout) do
+		while isPlayerInDanger and autoDodgeEnabled and targetDodgeSpot and (os.clock() - startTime < timeout) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
-			currentPos = rootPart.Position
-			local distRemaining = (safePos - currentPos).Magnitude
 
-			-- Nếu đã tới cự ly micro-teleport cuối cùng
+			-- Luôn lấy tọa độ đích mới nhất (hỗ trợ bẻ lái tức thì nếu SP cũ bị skill 2 đè lên)
+			local currentTarget = targetDodgeSpot
+			local currentPos = rootPart.Position
+			local distRemaining = (currentTarget - currentPos).Magnitude
+
+			-- Nếu đã tới cự ly micro-teleport cuối cùng -> Teleport dứt điểm vào đích
 			if distRemaining <= maxTeleportStep then
-				rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
-				humanoid:MoveTo(safePos)
+				rootPart.CFrame = CFrame.new(currentTarget, currentTarget + rootPart.CFrame.LookVector)
+				humanoid:MoveTo(currentTarget)
+				if logInDanger then
+					print(("[SmartDodge][Dodge] ⚡ Instant Snap (%.1f studs) to Safe Spot!"):format(distRemaining))
+				end
 				break
 			end
 
-			local dir = (safePos - currentPos).Unit
-			local stepDist = math.min(maxTeleportStep, distRemaining - 0.5)
+			if dodgeMode == "Walk" then
+				-- Mode 2: Đi bộ thuần túy (MoveTo Only) hướng về currentTarget
+				humanoid:MoveTo(currentTarget)
+				task.wait(0.05)
+			else
+				-- Mode 1: Hybrid (MoveTo kết hợp Micro-Blink từng bước nhỏ)
+				local dir = (currentTarget - currentPos).Unit
+				local stepDist = math.min(maxTeleportStep, distRemaining - 0.5)
 
-			humanoid:MoveTo(safePos)
+				humanoid:MoveTo(currentTarget)
 
-			local newPos = currentPos + dir * stepDist
-			local lookTarget = newPos + dir
-			rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
+				local newPos = currentPos + dir * stepDist
+				local lookTarget = newPos + dir
+				rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
 
-			task.wait(microBlinkInterval)
+				task.wait(microBlinkInterval)
+			end
 		end
 
 		isDodging = false
+		targetDodgeSpot = nil
 		fireDodgeStatus("Safe")
 	end)
 end
@@ -984,6 +993,7 @@ local function stopSafeSpotLoop()
 		hitboxVisualPart.Parent = nil
 	end
 	isDodging = false
+	targetDodgeSpot = nil
 	isPlayerInDanger = false
 	currentSafeSpot = nil
 	lockedSafeSpot = nil
@@ -1239,6 +1249,16 @@ function smartDodge.GetMicroBlinkInterval()
 	return microBlinkInterval
 end
 
+function smartDodge.SetDodgeMode(mode)
+	if mode == "Walk" or mode == "Hybrid" then
+		dodgeMode = mode
+	end
+end
+
+function smartDodge.GetDodgeMode()
+	return dodgeMode
+end
+
 lifecycle.Register(function()
 	stopTracking()
 	if safeSpotMarkerPart then
@@ -1254,6 +1274,7 @@ lifecycle.Register(function()
 		dodgeThread = nil
 	end
 	isDodging = false
+	targetDodgeSpot = nil
 end)
 
 return smartDodge

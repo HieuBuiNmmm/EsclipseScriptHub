@@ -60,8 +60,8 @@ return function(window, tab)
 		local mode = autoSell.GetLevelReqMode()
 		local exactLevels = autoSell.GetLevelReqExactFilter()
 		table.sort(exactLevels, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
-		local levelText = "All (No filter)"
-		local levelColor = "160, 160, 160"
+		local levelText = "1 (Safe Fallback)"
+		local levelColor = "255, 160, 80"
 		if #exactLevels > 0 then
 			levelColor = "255, 220, 120"
 			if mode == "Below" then

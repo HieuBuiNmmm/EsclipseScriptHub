@@ -1,4 +1,4 @@
--- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 

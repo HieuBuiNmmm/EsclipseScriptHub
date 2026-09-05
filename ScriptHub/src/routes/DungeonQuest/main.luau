@@ -49,40 +49,28 @@ return function(self)
 	--// Tabs
 	local tabGroup = window:TabGroup()
 	local tabs = {
-		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
-		Pathfinder = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
+		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://18821914323" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
-		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
-		SmartDodge = tabGroup:Tab({ Name = "Smart Dodge", Image = "rbxassetid://10734950309" }),
-		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
-		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
-		State = tabGroup:Tab({ Name = "State", Image = "rbxassetid://10734950309" }),
+		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10734950309" }),
+		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local speedTab = require("@routes/DungeonQuest/tabs/Speed/main")
-	local autoFarmPathfinderTab = require("@routes/DungeonQuest/tabs/AutoFarmPathfinder/main")
+	local combatTab = require("@routes/DungeonQuest/tabs/Combat/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local inventoryTab = require("@routes/DungeonQuest/tabs/Inventory/main")
-	local visualTab = require("@routes/DungeonQuest/tabs/Visual/main")
-	local smartDodgeTab = require("@routes/DungeonQuest/tabs/SmartDodge/main")
-	local configTab = require("@routes/DungeonQuest/tabs/Config/main")
-	local notificationsTab = require("@routes/DungeonQuest/tabs/Notifications/main")
-	local stateTab = require("@routes/DungeonQuest/tabs/State/main")
+	local utilitiesTab = require("@routes/DungeonQuest/tabs/Utilities/main")
+	local configsTab = require("@routes/DungeonQuest/tabs/Configs/main")
 
-	speedTab(window, tabs.Player)
-	autoFarmPathfinderTab(window, tabs.Pathfinder)
+	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
-	visualTab(window, tabs.Visual)
-	smartDodgeTab(window, tabs.SmartDodge)
-	configTab(window, tabs.Config)
-	notificationsTab(window, tabs.Notifications)
-	stateTab(window, tabs.State)
+	utilitiesTab(window, tabs.Utilities)
+	configsTab(window, tabs.Configs)
 
 	--// Phím tắt
 	local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
@@ -104,7 +92,7 @@ return function(self)
 	autoHide.Execute()
 
 	--// Khởi chạy
-	tabs.Player:Select()
+	tabs.Combat:Select()
 	macLib:LoadAutoLoadConfig()
 
 	--// Nạp context data SAU khi config (kể cả autoload) được load, để context đọc đúng

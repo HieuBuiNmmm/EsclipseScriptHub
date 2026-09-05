@@ -1,11 +1,11 @@
--- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 local webhook = require("@routes/DungeonQuest/core/webhook")
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
+	local section = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Discord Webhook" })
 
 	section:Input({
@@ -33,7 +33,7 @@ return function(window, tab)
 		end,
 	})
 
-	local pingSection = tab:Section({ Side = "Left" })
+	local pingSection = tab:Section({ Side = "Right" })
 	pingSection:Header({ Name = "Ping on Drops" })
 
 	pingSection:Toggle({

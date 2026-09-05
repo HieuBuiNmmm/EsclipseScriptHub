@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-05T11:34:48.578079800+00:00",
+    genDate = "2026-09-05T23:10:41.342390100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6764,6 +6764,30 @@ function ui.PatchSliderLoadCallback(sliderElement)
 	return sliderElement
 end
 
+-- Fix: Maclib Dropdown Load gọi UpdateSelection(đã lưu) và IM LẶNG BỎ QUA nếu tên
+-- option không còn trong danh sách hiện tại -> config bị mất khi load lại (đặc biệt
+-- với danh sách dungeon động). Patch UpdateSelection: tự chèn option còn thiếu
+-- (insertMissing=true) hoặc fallback chuyển sang option hợp lệ đầu tiên để không bao
+-- giờ rơi vào trạng thái selection rỗng.
+function ui.PatchDropdownRestore(dropdownElement, insertMissing)
+	if not dropdownElement or type(dropdownElement.UpdateSelection) ~= "function" then return dropdownElement end
+	local originalUpdateSelection = dropdownElement.UpdateSelection
+	dropdownElement.UpdateSelection = function(self, newSelection)
+		if type(newSelection) == "string" and newSelection ~= "" and not self:IsOption(newSelection) then
+			if insertMissing then
+				pcall(function()
+					self:InsertOptions({ newSelection })
+				end)
+			else
+				local firstOption = next(self:GetOptions())
+				if firstOption then newSelection = firstOption end
+			end
+		end
+		originalUpdateSelection(self, newSelection)
+	end
+	return dropdownElement
+end
+
 return ui
 end function __DIST.g()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
 -- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
@@ -6823,7 +6847,39 @@ function autoSave.Wrap(callback)
 end
 
 return autoSave
-end function __DIST.h()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên state.
+end function __DIST.h()-- Coordinator (DungeonQuest): Điều phối loại trừ lẫn nhau giữa các hệ thống
+-- cùng điều khiển nhân vật (SmartDodge vs AutoFarm). Module lá — không require ai
+-- để tránh cycle import bị darklua (bundler) phát hiện.
+
+
+local coordinator = {}
+local features = {}
+
+--// Đăng ký 1 hệ thống có thể bị tắt độc quyền. setEnabled(false) được gọi khi
+--// một hệ thống khác bật lên. isEnabled() trả về trạng thái đang chạy.
+function coordinator.Register(name, setEnabled, isEnabled)
+	if type(name) ~= "string" or type(setEnabled) ~= "function" or type(isEnabled) ~= "function" then return end
+	features[name] = {
+		setEnabled = setEnabled,
+		isEnabled = isEnabled,
+	}
+end
+
+--// Bật độc quyền 1 hệ thống: tự động TẮT toàn bộ hệ thống khác đang chạy trước đó.
+function coordinator.EnableExclusive(name)
+	for otherName, feat in pairs(features) do
+		if otherName ~= name and feat.isEnabled() then
+			pcall(feat.setEnabled, false)
+		end
+	end
+end
+
+function coordinator.IsEnabled(name)
+	local feat = features[name]
+	return feat ~= nil and feat.isEnabled()
+end
+
+return coordinator end function __DIST.i()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên state.
 --  * Scan 1 lần all enemy -> lock target kẻ địch gần nhất (highlight lock target).
 --  * CHASE (chưa trong tầm): Pathfinding di chuyển theo waypoint tới kẻ địch.
 --    Heartbeat check khoảng cách player <-> enemy lock realtime.
@@ -6837,6 +6893,7 @@ end function __DIST.h()-- AutoFarm Pathfinder (v2): cơ chế 2 pha dựa trên 
 local services = __DIST.load('d')
 local shared = __DIST.load('e')
 local lifecycle = __DIST.load('b')
+local coordinator = __DIST.load('h')
 local macLib = __DIST.load('a')
 
 --// Services
@@ -6848,6 +6905,7 @@ local ANCHORS_FILE = macLib.Folder .. "/settings/anchors.json"
 
 --// State persist (khai báo TRƯỚC các hàm load/save để tham chiếu đúng local, không phải global).
 local visualDebug = true
+local debugPathMode = "Sphere" --// cách render path debug: "Sphere" (sphere nhỏ) hoặc "Line" (đường thẳng)
 local respawnOnNoPath = true --// khi cả path enemy + anchor đều fail -> self-kill để respawn
 local anchorFallback = false --// toggle: có dùng anchor để reach (fallback) khi nopath enemy hay không (mặc định tắt)
 local showAnchorMarkers = true --// hiện marker vị trí các anchor đã đặt
@@ -6867,6 +6925,7 @@ local function loadDebugSettings()
 	if ok and type(decoded) == "table" then
 		if decoded.enabled ~= nil then visualDebug = decoded.enabled == true end
 		if decoded.showAnchors ~= nil then showAnchorMarkers = decoded.showAnchors == true end
+		if decoded.mode == "Sphere" or decoded.mode == "Line" then debugPathMode = decoded.mode end
 	end
 end
 
@@ -6876,6 +6935,7 @@ local function saveDebugSettings()
 		writefile(SETTINGS_FILE, HttpService:JSONEncode({
 			enabled = visualDebug,
 			showAnchors = showAnchorMarkers,
+			mode = debugPathMode,
 		}))
 	end)
 end
@@ -6968,7 +7028,9 @@ local autoRotateHumanoid = nil
 local oldAutoRotate = nil
 local debugTargetPart = nil
 local debugEnemyHighlight = nil
-local debugPathParts = {} --// các sphere xanh lá show path
+local debugPathParts = {} --// các sphere xanh lá show path (mode "Sphere")
+local debugPathLines = {} --// các LineHandleAdornment từng đoạn show path (mode "Line")
+local debugPathAdornee = nil --// phần đế cố định (0,0,0) cho LineHandleAdornment
 local debugAnchorParts = {} --// marker (part + label) hiện vị trí anchor đã đặt
 local holdAngle = nil
 local holdRadius = nil
@@ -7554,51 +7616,101 @@ local function updateDebugVisuals()
 	highlight.Enabled = true
 end
 
---// Render path bằng các sphere xanh lá tại từng waypoint.
---// Chỉ rebuild khi path đổi (currentPath mới), tránh destroy/create mỗi frame.
+--// Render path debug theo mode:
+--//  * "Sphere": các sphere xanh lá tại từng waypoint (mode cũ).
+--//  * "Line": LineHandleAdornment nối từng cặp waypoint liên tiếp.
+--// Chỉ rebuild khi path đổi (currentPath mới) hoặc đổi mode, tránh destroy/create mỗi frame.
 local DEBUG_PATH_SPHERE_SIZE = 0.9
+local DEBUG_LINE_THICKNESS = 2
 local debugPathCachePath = nil
-local function updateDebugPathSpheres()
+
+local function destroyPathVisuals(list)
+	for _, obj in ipairs(list) do
+		pcall(function() obj:Destroy() end)
+	end
+	table.clear(list)
+end
+
+local function cleanupPathVisuals()
+	destroyPathVisuals(debugPathParts)
+	destroyPathVisuals(debugPathLines)
+	debugPathCachePath = nil
+end
+
+local function ensureDebugPathAdornee()
+	if debugPathAdornee and debugPathAdornee.Parent then return debugPathAdornee end
+	debugPathAdornee = Instance.new("Part")
+	debugPathAdornee.Name = "PathfinderPathAdornee_Debug"
+	debugPathAdornee.Anchored = true
+	debugPathAdornee.CanCollide = false
+	debugPathAdornee.CanQuery = false
+	debugPathAdornee.CanTouch = false
+	debugPathAdornee.Transparency = 1
+	debugPathAdornee.Size = Vector3.new(1, 1, 1)
+	debugPathAdornee.CFrame = CFrame.new(0, 0, 0)
+	debugPathAdornee.Parent = workspace
+	return debugPathAdornee
+end
+
+local function updateDebugPathVisuals()
 	if not visualDebug then
-		if #debugPathParts > 0 then
-			for _, part in ipairs(debugPathParts) do
-				pcall(function() part:Destroy() end)
-			end
-			table.clear(debugPathParts)
-		end
+		cleanupPathVisuals()
 		return nil
 	end
 	if currentPath == debugPathCachePath then return nil end
 
-	for _, part in ipairs(debugPathParts) do
-		pcall(function() part:Destroy() end)
-	end
-	table.clear(debugPathParts)
-	debugPathCachePath = currentPath
+	cleanupPathVisuals()
 
 	if not currentPath or not pathComputed then return nil end
 
 	local ok, waypoints = pcall(function() return currentPath:GetWaypoints() end)
 	if not ok or not waypoints then return nil end
-	for i = 1, #waypoints do
-		local wp = waypoints[i]
-		if wp then
-			local sphere = Instance.new("Part")
-			sphere.Name = "PathfinderPath_Debug"
-			sphere.Anchored = true
-			sphere.CanCollide = false
-			sphere.CanQuery = false
-			sphere.CanTouch = false
-			sphere.Size = Vector3.new(DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE)
-			sphere.Shape = Enum.PartType.Ball
-			sphere.Transparency = 0.3
-			sphere.Color = Color3.fromRGB(0, 255, 120)
-			sphere.Material = Enum.Material.Neon
-			sphere.CFrame = CFrame.new(wp.Position)
-			sphere.Parent = workspace
-			debugPathParts[#debugPathParts + 1] = sphere
+
+	if debugPathMode == "Line" then
+		local anchor = ensureDebugPathAdornee()
+		for i = 2, #waypoints do
+			local a = waypoints[i - 1]
+			local b = waypoints[i]
+			if a and b and a.Position and b.Position then
+				local dist = (b.Position - a.Position).Magnitude
+				if dist > 0.01 then
+					local line = Instance.new("LineHandleAdornment")
+					line.Name = "PathfinderPath_Debug"
+					line.Adornee = anchor
+					line.Length = dist
+					line.Thickness = DEBUG_LINE_THICKNESS
+					line.Transparency = 0.3
+					line.Color3 = Color3.fromRGB(0, 255, 120)
+					line.ZIndex = 0
+					line.CFrame = CFrame.lookAt(a.Position, b.Position)
+					line.Parent = workspace
+					debugPathLines[#debugPathLines + 1] = line
+				end
+			end
+		end
+	else
+		for i = 1, #waypoints do
+			local wp = waypoints[i]
+			if wp then
+				local sphere = Instance.new("Part")
+				sphere.Name = "PathfinderPath_Debug"
+				sphere.Anchored = true
+				sphere.CanCollide = false
+				sphere.CanQuery = false
+				sphere.CanTouch = false
+				sphere.Size = Vector3.new(DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE)
+				sphere.Shape = Enum.PartType.Ball
+				sphere.Transparency = 0.3
+				sphere.Color = Color3.fromRGB(0, 255, 120)
+				sphere.Material = Enum.Material.Neon
+				sphere.CFrame = CFrame.new(wp.Position)
+				sphere.Parent = workspace
+				debugPathParts[#debugPathParts + 1] = sphere
+			end
 		end
 	end
+
+	debugPathCachePath = currentPath
 end
 
 --// ---------- Anchor markers (đánh dấu vị trí anchor đã đặt) ----------
@@ -7619,11 +7731,11 @@ local function cleanupDebugVisuals()
 		pcall(function() debugEnemyHighlight:Destroy() end)
 		debugEnemyHighlight = nil
 	end
-	for _, part in ipairs(debugPathParts) do
-		pcall(function() part:Destroy() end)
+	cleanupPathVisuals()
+	if debugPathAdornee then
+		pcall(function() debugPathAdornee:Destroy() end)
+		debugPathAdornee = nil
 	end
-	table.clear(debugPathParts)
-	debugPathCachePath = nil
 end
 
 --// Render lại toàn bộ marker theo anchors của MAP hiện tại (không gọi nếu tắt showAnchorMarkers).
@@ -8124,7 +8236,7 @@ local function stepMovement(deltaTime)
 	--// Guard debug: chỉ render khi bật visualDebug (tránh call mỗi frame khi tắt).
 	if visualDebug then
 		updateDebugVisuals()
-		updateDebugPathSpheres()
+		updateDebugPathVisuals()
 	end
 
 	--// LUỒNG DI CHUYỂN ANCHOR RIÊNG: khi đang fallback anchor, chuyển hẳn sang hàm chuyên biệt,
@@ -8270,6 +8382,19 @@ function autoFarmPathfinder.SetVisualDebug(value)
 	visualDebug = value == true
 	saveDebugSettings()
 	if not visualDebug then cleanupDebugVisuals() end
+end
+
+function autoFarmPathfinder.GetDebugPathMode()
+	return debugPathMode
+end
+
+function autoFarmPathfinder.SetDebugPathMode(value)
+	if value ~= "Sphere" and value ~= "Line" then return end
+	if debugPathMode == value then return end
+	debugPathMode = value
+	cleanupPathVisuals()
+	saveDebugSettings()
+	if visualDebug then updateDebugPathVisuals() end
 end
 
 function autoFarmPathfinder.IsRespawnOnNoPathEnabled()
@@ -8422,6 +8547,8 @@ function autoFarmPathfinder.Toggle(state)
 	enabled = state
 
 	if enabled then
+		--// Loại trừ lẫn nhau với SmartDodge (2 hệ thống điều khiển nhân vật, không chạy chung).
+		coordinator.EnableExclusive("AutoFarm")
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		running = true
 		lastSkillTime = 0
@@ -8538,19 +8665,22 @@ task.defer(function()
 	refreshAnchorMarkers()
 end)
 
+--// Đăng ký hệ thống để coordinator có thể tự tắt khi hệ thống khác bật lên.
+coordinator.Register("AutoFarm", autoFarmPathfinder.Toggle, autoFarmPathfinder.IsEnabled)
+
 return autoFarmPathfinder
-end function __DIST.i()-- Tab Speed (DungeonQuest).
+end function __DIST.j()-- Module Player trong tab Combat (DungeonQuest) — trước đây là tab Speed, đã đổi tên theo folder.
 
 --// Imports
 
 local shared = __DIST.load('e')
 local ui = __DIST.load('f')
 local autoSave = __DIST.load('g')
-local autoFarmPathfinder = __DIST.load('h')
+local autoFarmPathfinder = __DIST.load('i')
 local macLib = __DIST.load('a')
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
+	local section = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Movement Speed" })
 
 	section:Toggle({
@@ -8595,7 +8725,7 @@ return function(window, tab)
 		end,
 	}, "Keybind_AutoFarm")
 
-end end function __DIST.j()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+end end function __DIST.k()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -8796,7 +8926,7 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.k()-- Contextual AutoFarm Pathfinder settings (v2) cho DungeonQuest.
+return dungeonCatalog end function __DIST.l()-- Contextual AutoFarm Pathfinder settings (v2) cho DungeonQuest.
 -- Cho phép cấu hình riêng nhóm Auto Farm (Move Speed, Retarget Interval, Skill
 -- Range/Interval/Enabled/Mode, field prefix "Pathfinder...") theo DUNGEON x
 -- LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
@@ -8809,9 +8939,9 @@ local shared = __DIST.load('e')
 local notifier = __DIST.load('c')
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('g')
-local dungeonCatalog = __DIST.load('j')
+local dungeonCatalog = __DIST.load('k')
 local lifecycle = __DIST.load('b')
-local autoFarmPathfinder = __DIST.load('h')
+local autoFarmPathfinder = __DIST.load('i')
 
 --// Table
 local contextual = {}
@@ -9049,7 +9179,7 @@ function contextual.Init()
 end
 
 return contextual
-end function __DIST.l()-- Phím tắt: chuột phải kích hoạt combo Q+E (toggle enabled qua tab Auto Farm).
+end function __DIST.m()-- Phím tắt: chuột phải kích hoạt combo Q+E (toggle enabled qua tab Auto Farm).
 
 --// Imports
 
@@ -9111,7 +9241,7 @@ lifecycle.Register(function()
 end)
 
 return shortcuts
-end function __DIST.m()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
+end function __DIST.n()-- Module Auto Farm Pathfinder trong tab Combat (DungeonQuest): cơ chế 2 pha.
 -- CHASE: pathfinding chạy thẳng tới kẻ địch gần nhất khi ngoài tầm.
 -- HOLD: khi trong tầm skill range, giữ khoảng cách bằng orbit tốc độ 0 (đứng yên + quay mặt
 -- enemy) và tự spam Q+E. Kèm Visual Debug (ô đỏ điểm đuổi + highlight kẻ gần nhất).
@@ -9119,12 +9249,12 @@ end function __DIST.m()-- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
 --// Imports
 
 local autoSave = __DIST.load('g')
-local autoFarmPathfinder = __DIST.load('h')
+local autoFarmPathfinder = __DIST.load('i')
 local shared = __DIST.load('e')
-local contextual = __DIST.load('k')
-local shortcuts = __DIST.load('l')
+local contextual = __DIST.load('l')
+local shortcuts = __DIST.load('m')
 local ui = __DIST.load('f')
-local dungeonCatalog = __DIST.load('j')
+local dungeonCatalog = __DIST.load('k')
 
 return function(window, tab)
 	--// Bảng Auto Farm: bật/tắt + combo chuột
@@ -9196,7 +9326,7 @@ return function(window, tab)
 
 	local refreshAnchorLabel
 
-	local anchorMapDropdown = anchorSection:Dropdown({
+	local anchorMapDropdown = ui.PatchDropdownRestore(anchorSection:Dropdown({
 		Name = "Map (Edit Anchors)",
 		Options = anchorMapOptions,
 		Default = indexOfOption(anchorMapOptions, selectedAnchorMap),
@@ -9205,7 +9335,7 @@ return function(window, tab)
 			selectedAnchorMap = option
 			refreshAnchorLabel()
 		end,
-	}, "Dropdown_PathfinderAnchorMap")
+	}, "Dropdown_PathfinderAnchorMap"), true)
 
 	local anchorLabel = anchorSection:Label({ Text = "No anchors set" })
 
@@ -9293,7 +9423,7 @@ return function(window, tab)
 	refreshAnchorLabel()
 
 	--// Bảng Visual Debug
-	local visualSection = tab:Section({ Side = "Left" })
+	local visualSection = tab:Section({ Side = "Right" })
 	visualSection:Header({ Name = "Visual Debug" })
 
 	visualSection:Toggle({
@@ -9304,8 +9434,19 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderDebug")
 
+	local PATH_MODE_OPTIONS = { "Sphere", "Line" }
+	visualSection:Dropdown({
+		Name = "Debug Path Mode",
+		Options = PATH_MODE_OPTIONS,
+		Default = autoFarmPathfinder.GetDebugPathMode() == "Line" and 2 or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			autoFarmPathfinder.SetDebugPathMode(option)
+		end),
+	}, "Dropdown_PathfinderDebugMode")
+
 	--// Bảng Debug: trạng thái realtime
-	local debugSection = tab:Section({ Side = "Left" })
+	local debugSection = tab:Section({ Side = "Right" })
 	debugSection:Header({ Name = "Debug" })
 
 	local stateLabel = debugSection:Label({ Text = "Initializing..." })
@@ -9559,2359 +9700,7 @@ return function(window, tab)
 	updateActiveCtxLabel()
 	refreshContextControls()
 	setEditControlsVisible(editDungeon ~= nil)
-end end function __DIST.n()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
--- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
-
---// Imports
-
-local services = __DIST.load('d')
-local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('j')
-local shared = __DIST.load('e')
-local lifecycle = __DIST.load('b')
-
-local playerName = services.player.Name
-
---// State
-local autoJoinEnabled = false
-local autoJoinRunning = false
-local autoJoinCancel = false
-local selectedDungeon = "Desert Temple"
-local selectedDifficulty = "Easy"
-local hardcoreEnabled = false
-local privateEnabled = true
-local waveDefenceEnabled = false
-local autoJoinDelay = 3
-
-local LOBBY_PLACE_IDS_AJ = {
-	[77649408247578] = true,
-	[3220968688] = true,
-	[2414851778] = true,
-}
-
---// Callbacks (UI đăng ký để refresh difficulty dropdown theo map)
-local dungeonChangedCallbacks = {}
-
---// Helpers
-local function inLobbyPlace()
-	return LOBBY_PLACE_IDS_AJ[game.PlaceId] == true
-end
-
-local function fireDungeonChanged()
-	for _, callback in ipairs(dungeonChangedCallbacks) do
-		pcall(callback, selectedDungeon, dungeonCatalog.GetAllowedDifficulties(selectedDungeon))
-	end
-end
-
-local function joinDungeonNow()
-	if autoJoinRunning then return end
-	autoJoinRunning = true
-	autoJoinCancel = false
-	task.spawn(function()
-		local ok, err = pcall(function()
-			local remotes = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 15)
-			if not remotes then error("remotes not found") end
-
-			local levelReq = dungeonCatalog.GetLevelReq(selectedDungeon, selectedDifficulty)
-			pcall(function()
-				remotes:WaitForChild("createLobby", 10):InvokeServer(
-					selectedDungeon,
-					selectedDifficulty,
-					levelReq,
-					hardcoreEnabled,
-					privateEnabled,
-					waveDefenceEnabled
-				)
-			end)
-			if autoJoinCancel then return end
-			task.wait(autoJoinDelay)
-			if autoJoinCancel then return end
-
-			if privateEnabled then
-				pcall(function()
-					remotes:WaitForChild("addPlayerToWhitelist", 10):FireServer(playerName)
-				end)
-				if autoJoinCancel then return end
-				task.wait(autoJoinDelay)
-				if autoJoinCancel then return end
-			end
-
-			local waitClock = 0
-			while waitClock < 10 do
-				local lobby = workspace:FindFirstChild("games") and workspace.games:FindFirstChild("inLobby")
-				if lobby then break end
-				task.wait(0.5)
-				waitClock = waitClock + 0.5
-				if autoJoinCancel then return end
-			end
-			if autoJoinCancel then return end
-
-			task.wait(autoJoinDelay)
-			if autoJoinCancel then return end
-			pcall(function()
-				remotes:WaitForChild("startDungeon", 10):FireServer()
-			end)
-		end)
-		autoJoinRunning = false
-		if autoJoinCancel then return end
-		if ok then
-			notifier.Notify("Auto Join", "Joined: " .. selectedDungeon, 3)
-		else
-			notifier.Notify("Auto Join", "Join failed: " .. tostring(err), 4)
-		end
-	end)
-end
-
-local function joinDungeonWatcher()
-	while lifecycle.IsActive() do
-		task.wait(0.5)
-		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and shared.IsInLobby() then
-			joinDungeonNow()
-		end
-	end
-end
-
---// Table
-local autoJoin = {}
-
---// Methods
-function autoJoin.Toggle(state)
-	autoJoinEnabled = state
-	if autoJoinEnabled then
-		notifier.Notify("Auto Join", "Enabled", 2)
-	else
-		autoJoinCancel = true
-		notifier.Notify("Auto Join", "Stopped", 2)
-	end
-end
-
-function autoJoin.SetDungeon(name)
-	if type(name) ~= "string" or #name == 0 then return end
-	selectedDungeon = name
-	if not dungeonCatalog.IsDifficultyAllowed(selectedDungeon, selectedDifficulty) then
-		local allowed = dungeonCatalog.GetAllowedDifficulties(selectedDungeon)
-		if #allowed > 0 then selectedDifficulty = allowed[1] end
-	end
-	fireDungeonChanged()
-end
-
-function autoJoin.SetDifficulty(name)
-	if type(name) ~= "string" then return end
-	if dungeonCatalog.IsDifficultyAllowed(selectedDungeon, name) then
-		selectedDifficulty = name
-	end
-end
-
-function autoJoin.SetHardcore(state)
-	hardcoreEnabled = state
-end
-
-function autoJoin.SetPrivate(state)
-	privateEnabled = state
-end
-
-function autoJoin.SetWaveDefence(state)
-	waveDefenceEnabled = state
-end
-
-function autoJoin.SetDelay(value)
-	autoJoinDelay = value
-end
-
-function autoJoin.GetSelectedDungeon()
-	return selectedDungeon
-end
-
-function autoJoin.GetSelectedDifficulty()
-	return selectedDifficulty
-end
-
-function autoJoin.GetAllowedDifficulties()
-	return dungeonCatalog.GetAllowedDifficulties(selectedDungeon)
-end
-
-function autoJoin.OnDungeonChanged(callback)
-	if type(callback) == "function" then table.insert(dungeonChangedCallbacks, callback) end
-end
-
-autoJoin.JoinNow = function()
-	task.spawn(function() joinDungeonNow() end)
-end
-
---// Initialize: watcher
-task.spawn(joinDungeonWatcher)
-
-lifecycle.Register(function()
-	autoJoin.Toggle(false)
-end)
-
-return autoJoin
-end function __DIST.o()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
--- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
--- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
--- hoạt động dù toggle có bật.
-
---// Imports
-
-local shared = __DIST.load('e')
-local notifier = __DIST.load('c')
-
---// Lobby placeId — ngoài các place này ra thì đều là dungeon
-local LOBBY_PLACE_IDS = {
-	[77649408247578] = true,
-	[115445507767090] = true,
-}
-
---// State
-local autoStartEnabled = false
-local autoStartRunning = false
-local autoStartTriggered = false
-local autoStartDelay = 3
-local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
-local autoStartCommandFn = nil
-
---// Điều kiện kích hoạt: đang ở dungeon (place hiện tại KHÔNG phải placeId lobby).
-local function lobbyCondition()
-	return not LOBBY_PLACE_IDS[game.PlaceId]
-end
-
---// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
-local s2, cmdFn2 = pcall(loadstring, autoStartCommand)
-if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
-
---// Table
-local autoStart = {}
-
---// Callbacks chạy sau khi fire remote start thành công (đánh dấu mốc run bắt đầu).
-local startCallbacks = {}
-
---// Methods
-function autoStart.OnStart(callback)
-	if type(callback) ~= "function" then return function() end end
-	table.insert(startCallbacks, callback)
-	return function()
-		for i, cb in ipairs(startCallbacks) do
-			if cb == callback then table.remove(startCallbacks, i) break end
-		end
-	end
-end
-
-function autoStart.Start()
-	if autoStartRunning then return end
-	autoStartRunning = true
-	autoStartTriggered = false
-	task.spawn(function()
-		while autoStartEnabled do
-			local sCond, res = pcall(lobbyCondition)
-			local met = sCond and res == true
-
-			if met and not autoStartTriggered then
-				autoStartTriggered = true
-				--// Chờ delay để asset load xong; nếu bị tắt giữa chừng thì bỏ qua.
-				local waited = 0
-				while waited < autoStartDelay and autoStartEnabled do
-					task.wait(0.1)
-					waited = waited + 0.1
-				end
-				if not autoStartEnabled then
-					autoStartTriggered = false
-					break
-				end
-				if autoStartCommandFn then
-					local sCmd, err = pcall(autoStartCommandFn)
-					if sCmd then
-						notifier.Notify("Auto Start", "Game started!", 3)
-						for i = #startCallbacks, 1, -1 do
-							pcall(startCallbacks[i])
-						end
-					else
-						notifier.Notify("Auto Start", "Trigger failed: " .. tostring(err), 3)
-					end
-				else
-					notifier.Notify("Auto Start", "Remote command invalid", 3)
-				end
-			end
-
-			if not autoStartEnabled then break end
-			task.wait(1)
-		end
-		autoStartRunning = false
-	end)
-end
-
-function autoStart.Stop()
-	autoStartEnabled = false
-end
-
---// Delay (giây) chờ thêm sau khi vào lobby trước khi fire start — chờ asset load xong.
-function autoStart.SetDelay(value)
-	autoStartDelay = tonumber(value) or 3
-end
-
-function autoStart.GetDelay()
-	return autoStartDelay
-end
-
-function autoStart.Toggle(state)
-	autoStartEnabled = state
-	if state then
-		autoStart.Start()
-	else
-		autoStart.Stop()
-	end
-end
-
---// Vào dungeon = teleport đổi placeId -> script reload -> autoStartTriggered khởi tạo
---// lại = false, nên fire đúng 1 lần mỗi dungeon mà không cần reset qua callback.
---// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
---// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
-
-return autoStart end function __DIST.p()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
--- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
--- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
--- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
-
---// Imports
-
---// Lobby placeId — auto-press chỉ hoạt động tại đây
-
-local LOBBY_PLACE_IDS = {
-	[77649408247578] = true,
-	[115445507767090] = true,
-}
-
---// Có đang ở lobby place không
-local function inLobbyPlace()
-	return LOBBY_PLACE_IDS[game.PlaceId] == true
-end
-
---// State
-local enabled = false
-
---// References
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local GuiService = game:GetService("GuiService")
-
---// Nút Start trong introGui; button tồn tại khi introGui tồn tại (introGui biến mất
---// sau khi bấm -> phải check cả introGui lẫn chính nút).
-local function findStartButton()
-	local player = game:GetService("Players").LocalPlayer
-	if not player then return nil end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then return nil end
-	local introGui = playerGui:FindFirstChild("introGui")
-	if not introGui or not introGui:IsA("ScreenGui") or not introGui.Enabled then return nil end
-	local title = introGui:FindFirstChild("title")
-	if not title then return nil end
-	local frame = title:FindFirstChild("Frame")
-	if not frame then return nil end
-	local button = frame:FindFirstChild("TextButton")
-	if not button or not button:IsA("TextButton") or not button.Visible then return nil end
-	--// Chỉ chấp nhận nút có nhãn chứa "Play" để chắc tìm đúng nút Start.
-	local labelText = ""
-	if button.Text and type(button.Text) == "string" then
-		labelText = button.Text
-	end
-	if not string.find(string.lower(labelText), "play") then return nil end
-	return button
-end
-
---// Mô phỏng chọn nút + nhấn Enter (theo Script3.txt), rồi BỎ CHỌN để thoát trạng
---// thái selection/focus sau khi bấm cho sạch.
-local function pressStartButton(button)
-	pcall(function()
-		GuiService.SelectedObject = button
-	end)
-	task.wait(0.1)
-	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
-	task.wait()
-	VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
-	task.wait(0.1)
-	pcall(function()
-		GuiService.SelectedObject = nil
-	end)
-end
-
---// Loop: bấm lặp lại nút Start tới khi introGui biến mất (đã press được) rồi NGỪNG
---// HẲN. Chống bấm quá sớm do animation: nếu nút chưa sẵn sàng lần đầu, các lần sau
---// bấm tới khi dính. Chỉ hoạt động ở lobby place; vào dungeon ngừng hẳn.
-local function runLoop()
-	task.spawn(function()
-		local hadButton = false
-		while enabled do
-			--// Chỉ hoạt động ở lobby place; vào dungeon ngừng hẳn.
-			if not inLobbyPlace() then
-				task.wait(1)
-				continue
-			end
-
-			local button = findStartButton()
-			if button then
-				--// Bấm; nếu press thành công, introGui biến mất -> vòng sau không thấy nút.
-				pressStartButton(button)
-				hadButton = true
-			elseif hadButton then
-				--// Đã từng bấm mà giờ nút biến mất -> press thành công (introGui đóng).
-				print("[AutoStartLobby] Pressed Start")
-				break
-			end
-
-			if not enabled then break end
-			task.wait(0.2)
-		end
-	end)
-end
-
---// Table
-local autoStartLobby = {}
-
---// Methods
-function autoStartLobby.Toggle(state)
-	enabled = state
-	if enabled then
-		runLoop()
-	end
-end
-
-return autoStartLobby end function __DIST.q()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
-
---// Imports
-
-local services = __DIST.load('d')
-local notifier = __DIST.load('c')
-
---// References
-local player = services.player
-
---// State
-local AUTO_RETRY_MIN_ITEMS = 2
-local autoRetryEnabled = false
-local autoRetryRunning = false
-local autoRetryTriggered = false
-local timeRetryEnabled = false
-local timeRetryThreshold = 60
-local timeRetryTriggered = false
-local autoRetryCommand = [==[
-local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")
-
-local payload = {}
-local function collectValue(name)
-	local value = workspace:FindFirstChild(name)
-	if value and value:IsA("ValueBase") then
-		payload[name] = value.Value
-	end
-end
-
-collectValue("dungeonName")
-collectValue("dungeonProgress")
-collectValue("dungeonStarted")
-
-local hardcore = workspace:FindFirstChild("hardcore")
-if hardcore and hardcore:IsA("BoolValue") then
-	payload.hardcore = hardcore.Value
-	payload.isHardcore = hardcore.Value
-end
-
-local dungeon = workspace:FindFirstChild("dungeon")
-if dungeon then
-	for _, value in ipairs(dungeon:GetChildren()) do
-		if value:IsA("ValueBase") then payload[value.Name] = value.Value end
-	end
-	local bossRoom = dungeon:FindFirstChild("bossRoom")
-	if bossRoom then
-		for _, value in ipairs(bossRoom:GetChildren()) do
-			if value:IsA("ValueBase") then payload[value.Name] = value.Value end
-		end
-	end
-end
-
-if not payload.dungeonName then return end
-ReplayDungeon:FireServer(payload)
-]==]
-local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
-local autoRetryCommandFn = nil
-local autoRetryHolderFn = nil
-
---// Helpers (validation dùng loadstring, giữ logic gốc)
-local function validateConditionText(text)
-	local s, fn = pcall(loadstring, "return " .. text)
-	if s and type(fn) == "function" then return fn end
-	return nil
-end
-
-local sRetryCmd, compiledRetryCmd = pcall(loadstring, autoRetryCommand)
-if sRetryCmd and type(compiledRetryCmd) == "function" then autoRetryCommandFn = compiledRetryCmd end
-
-autoRetryHolderFn = validateConditionText(autoRetryHolderPath)
-if not autoRetryHolderFn then
-	autoRetryHolderFn = function()
-		return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("rewardGuiHolder") and player.PlayerGui.rewardGuiHolder:FindFirstChild("holder")
-	end
-end
-
---// Đọc thẳng giá trị thời gian còn lại từ UI game: PlayerGui.timeLeftGui.Frame.time
-local function readTimeLeft()
-	local ok, inst = pcall(function()
-		local PlayerGui = player:FindFirstChild("PlayerGui")
-		local gui = PlayerGui and PlayerGui:FindFirstChild("timeLeftGui")
-		local frame = gui and gui:FindFirstChild("Frame")
-		return frame and frame:FindFirstChild("time")
-	end)
-	if not ok or typeof(inst) ~= "Instance" then return nil end
-
-	--// Ưu tiên ValueBase (NumberValue...), nếu không thì đọc Text của TextLabel
-	local raw
-	if inst:IsA("ValueBase") then
-		raw = inst.Value
-	else
-		raw = inst.Text
-	end
-	if type(raw) == "number" then return raw end
-	if type(raw) == "string" then
-		local cleaned = raw:gsub("%s+", ""):gsub("^%[", ""):gsub("%]$", "")
-		local m, s = cleaned:match("^(%d+):(%d+)$")
-		if m and s then return tonumber(m) * 60 + tonumber(s) end
-		local sec = tonumber(cleaned)
-		if sec then return sec end
-	end
-	return nil
-end
-
---// Table
-local autoRetry = {}
-
---// Fire remote retry, trả về true nếu thành công
-local function fireRetry()
-	if not autoRetryCommandFn then
-		notifier.Notify("Auto Retry", "Remote command invalid", 3)
-		return false
-	end
-	local sCmd, err = pcall(autoRetryCommandFn)
-	if sCmd then
-		notifier.Notify("Auto Retry", "Retrying dungeon!", 3)
-		return true
-	end
-	notifier.Notify("Auto Retry", "Trigger failed: " .. tostring(err), 3)
-	return false
-end
-
---// Methods
-function autoRetry.Start()
-	if autoRetryRunning then return end
-	autoRetryRunning = true
-	autoRetryTriggered = false
-	timeRetryTriggered = false
-	task.spawn(function()
-		while autoRetryEnabled or timeRetryEnabled do
-			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
-			if autoRetryEnabled then
-				local count = 0
-				if autoRetryHolderFn then
-					local sok, holder = pcall(autoRetryHolderFn)
-					if sok and typeof(holder) == "Instance" and holder.Parent then
-						count = #holder:GetChildren()
-					end
-				end
-				if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
-					autoRetryTriggered = true
-					fireRetry()
-				elseif count < AUTO_RETRY_MIN_ITEMS then
-					autoRetryTriggered = false
-				end
-			end
-
-			--// Điều kiện hết giờ (chạy độc lập khi bật Retry on Time Low):
-			--// UI còn < X giây thì retry
-			if timeRetryEnabled then
-				local remaining = readTimeLeft()
-				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
-					timeRetryTriggered = true
-					fireRetry()
-				elseif remaining and remaining >= timeRetryThreshold then
-					timeRetryTriggered = false
-				end
-			end
-
-			if not autoRetryEnabled and not timeRetryEnabled then break end
-			task.wait(0.75)
-		end
-		autoRetryRunning = false
-	end)
-end
-
-function autoRetry.Stop()
-	autoRetryEnabled = false
-end
-
-function autoRetry.Toggle(state)
-	autoRetryEnabled = state
-	if state then
-		timeRetryTriggered = false
-		autoRetry.Start()
-		notifier.Notify("Auto Retry", "Watching reward holder...", 2)
-	else
-		autoRetry.Stop()
-		notifier.Notify("Auto Retry", "Stopped", 2)
-	end
-end
-
-function autoRetry.SetTimeRetryEnabled(value)
-	timeRetryEnabled = value == true
-	if timeRetryEnabled then
-		timeRetryTriggered = false
-		autoRetry.Start()
-		notifier.Notify("Auto Retry", "Watching time left...", 2)
-	else
-		notifier.Notify("Auto Retry", "Time retry stopped", 2)
-	end
-end
-
-function autoRetry.GetTimeRetryEnabled()
-	return timeRetryEnabled
-end
-
-function autoRetry.SetTimeRetryThreshold(value)
-	timeRetryThreshold = value
-end
-
-function autoRetry.GetTimeRetryThreshold()
-	return timeRetryThreshold
-end
-
---// Đọc thời gian còn lại (giây) như đúng logic time-low đang dùng (UI playerGui.timeLeftGui.Frame.<time>)
-function autoRetry.GetTimeLeft()
-	return readTimeLeft()
-end
-
-function autoRetry.RetryNow()
-	task.spawn(function()
-		fireRetry()
-	end)
-end
-
-return autoRetry
-end function __DIST.r()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
--- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
-
---// Imports
-
-local ui = __DIST.load('f')
-local autoJoin = __DIST.load('n')
-local autoStart = __DIST.load('o')
-local autoStartLobby = __DIST.load('p')
-local autoRetry = __DIST.load('q')
-local autoSave = __DIST.load('g')
-local dungeonCatalog = __DIST.load('j')
-
-return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
-	local runSection = tab:Section({ Side = "Right" })
-	section:Header({ Name = "Auto Join Dungeon" })
-	runSection:Header({ Name = "Dungeon Run Automation" })
-
-	section:Toggle({
-		Name = "Auto Join Dungeon",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoJoin.Toggle(state)
-		end),
-	}, "Toggle_AutoJoin")
-
-	local dungeonDropdown = section:Dropdown({
-		Name = "Dungeon",
-		Options = dungeonCatalog.GetDungeons(),
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			autoJoin.SetDungeon(option)
-		end),
-	}, "Dropdown_Dungeon")
-
-	section:Button({
-		Name = "Refresh Map List",
-		Callback = function()
-			task.spawn(function()
-				local newList = dungeonCatalog.RefreshDungeons()
-				if not newList or #newList == 0 then return end
-				pcall(function()
-					dungeonDropdown:ClearOptions()
-					dungeonDropdown:InsertOptions(newList)
-				end)
-				local current = autoJoin.GetSelectedDungeon()
-				if not table.find(newList, current) then
-					autoJoin.SetDungeon(newList[1])
-				end
-				pcall(function()
-					dungeonDropdown:UpdateSelection(autoJoin.GetSelectedDungeon())
-				end)
-			end)
-		end,
-	})
-
-	local levelReqLabel = section:Label({
-		Text = "Recommended Level: ...",
-	}, "Label_RecommendedLevel")
-
-	local function updateLevelLabel()
-		pcall(function()
-			local levelReq = dungeonCatalog.GetLevelReq(
-				autoJoin.GetSelectedDungeon(),
-				autoJoin.GetSelectedDifficulty()
-			)
-			levelReqLabel:UpdateName("Recommended Level: " .. tostring(levelReq))
-		end)
-	end
-	updateLevelLabel()
-
-	local difficultyDropdown = section:Dropdown({
-		Name = "Difficulty",
-		Options = autoJoin.GetAllowedDifficulties(),
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			autoJoin.SetDifficulty(option)
-			updateLevelLabel()
-		end),
-	}, "Dropdown_Difficulty")
-
-	section:Toggle({
-		Name = "Hardcore",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoJoin.SetHardcore(state)
-		end),
-	}, "Toggle_HardcoreAJ")
-
-	section:Toggle({
-		Name = "Private Room",
-		Default = true,
-		Callback = autoSave.Wrap(function(state)
-			autoJoin.SetPrivate(state)
-		end),
-	}, "Toggle_PrivateAJ")
-
-	section:Toggle({
-		Name = "Wave Defence",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoJoin.SetWaveDefence(state)
-		end),
-	}, "Toggle_WaveDefenceAJ")
-
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Delay",
-		Default = 3,
-		Minimum = 0,
-		Maximum = 15,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			autoJoin.SetDelay(Value)
-		end),
-	}, "Slider_JoinDelay"))
-
-	section:Button({
-		Name = "Join Now",
-		Callback = function()
-			autoJoin.JoinNow()
-		end,
-	})
-
-	runSection:Toggle({
-		Name = "Auto Start",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoStart.Toggle(state)
-		end),
-	}, "Toggle_AutoStart")
-
-	ui.PatchSliderLoadCallback(runSection:Slider({
-		Name = "Start Delay",
-		Default = autoStart.GetDelay(),
-		Minimum = 0,
-		Maximum = 15,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			autoStart.SetDelay(Value)
-		end),
-	}, "Slider_AutoStartDelay"))
-
-	runSection:Toggle({
-		Name = "Auto Start Lobby",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoStartLobby.Toggle(state)
-		end),
-	}, "Toggle_AutoStartLobby")
-
-	runSection:Toggle({
-		Name = "Auto Retry",
-		Default = false,
-		Callback = autoSave.Wrap(function(state)
-			autoRetry.Toggle(state)
-		end),
-	}, "Toggle_AutoRetry")
-
-	runSection:Button({
-		Name = "Manual Retry",
-		Callback = function()
-			task.spawn(function()
-				autoRetry.RetryNow()
-			end)
-		end,
-	})
-
-	runSection:Toggle({
-		Name = "Retry on Time Low",
-		Default = autoRetry.GetTimeRetryEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoRetry.SetTimeRetryEnabled(state)
-		end),
-	}, "Toggle_RetryTimeLow")
-
-	ui.PatchSliderLoadCallback(runSection:Slider({
-		Name = "Retry Time Threshold",
-		Default = autoRetry.GetTimeRetryThreshold(),
-		Minimum = 5,
-		Maximum = 120,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Suffix = "s",
-		Callback = autoSave.Wrap(function(Value)
-			autoRetry.SetTimeRetryThreshold(Value)
-		end),
-	}, "Slider_RetryTimeThreshold"))
-
-	-- Đồng bộ difficulty dropdown khi đổi map (cũng chạy khi config load).
-	autoJoin.OnDungeonChanged(function(dungeon, allowed)
-		pcall(function()
-			difficultyDropdown:ClearOptions()
-			difficultyDropdown:InsertOptions(allowed)
-			difficultyDropdown:UpdateSelection(autoJoin.GetSelectedDifficulty())
-		end)
-		updateLevelLabel()
-	end)
-end
-end function __DIST.s()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
--- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
--- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
--- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
-
---// Imports
-
-local lifecycle = __DIST.load('b')
-local notifier = __DIST.load('c')
-local shared = __DIST.load('e')
-
---// Lobby placeId — ngoài các place này ra thì đều là dungeon
-local LOBBY_PLACE_IDS = {
-	[77649408247578] = true,
-	[115445507767090] = true,
-}
-
---// Table
-local autoSell = {}
-
---// State
-local autoSellEnabled = false
-local dungeonSellTriggered = false
-local excludeEquipped = true
-local rarityFilter = {} -- set: rarity string -> true
-local typeFilter = {} -- set: type string -> true
-local levelReqExactFilter = {} -- set: level number -> true (chọn đích danh các mốc)
-local levelReqMode = "None" -- "None" = exact multi, "Below" = ≤, "Above" = ≥
-local sellRunning = false
-
---// Các category có trong inventory (từ log reloadInvy)
-local CATEGORY_TYPES = {
-	weapons = "Weapons",
-	helmets = "Helmets",
-	chests = "Chests",
-	abilities = "Abilities",
-}
-
---// Cấp hiếm hợp lệ (để biết option nào là rarity)
-local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
-
---// Các mốc Level Req tĩnh cho dropdown multi-select
-local LEVEL_REQ_OPTIONS = {
-	"1", "5", "15", "25", "35", "45", "55", "65", "75", "85",
-	"95", "105", "115", "125", "135", "145", "155", "165", "175", "185",
-}
-
---// Chế độ lọc Level Req: None = chọn đích danh, Below = ≤, Above = ≥
-local LEVEL_REQ_MODE_OPTIONS = { "None", "Below", "Above" }
-
---// Độ hiếm -> số 0..5 (dùng để map item.rarity sang RarityValue)
-local RARITY_ORDER = {
-	Common = 0,
-	Uncommon = 1,
-	Rare = 2,
-	Epic = 3,
-	Legendary = 4,
-	Mythic = 5,
-}
-local isRarityOption = {}
-for _, r in ipairs(RARITY_OPTIONS) do isRarityOption[r] = true end
-
---// Map rarity dạng tùy ý (chữ thường "epic", hoa "EPIC", lẫn lộn...) -> dạng chuẩn.
---// Dữ liệu từ game là chữ thường (epic/rare/legendary) nên cần chuẩn hóa để khớp với
---// option dropdown (viết hoa chữ cái đầu) khi so sánh filter.
-local RARITY_BY_KEY = {}
-for _, r in ipairs(RARITY_OPTIONS) do
-	RARITY_BY_KEY[string.lower(r)] = r
-end
-
-local function normalizeRarity(value)
-	if type(value) ~= "string" then return nil end
-	return RARITY_BY_KEY[string.lower(value)]
-end
-
---// Sell action - mặc định:
---//   gom theo category rồi fire remote `sellItemEvent`.
---//   Nhận: (categoryMap: { [singular] = {index,...} }, items) -> trả (ok, gold)
-local function defaultSellAction(categoryMap)
-	local remote
-	pcall(function()
-		remote = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 5)
-			:WaitForChild("sellItemEvent", 5)
-	end)
-	if not remote then return false, 0 end
-
-	--// Chỉ gửi category có ít nhất 1 index. Không sửa key để tránh lệch với server.
-	local payload = {}
-	for singular, list in pairs(categoryMap) do
-		if type(list) == "table" and #list > 0 then
-			payload[singular] = list
-		end
-	end
-
-	if next(payload) == nil then return false, 0 end
-
-	local ok = pcall(function()
-		remote:FireServer(payload)
-	end)
-	if not ok then return false, 0 end
-	return true, 0
-end
-
-local sellAction = defaultSellAction
-
-function autoSell.SetSellAction(callback)
-	if type(callback) == "function" then sellAction = callback end
-end
-
---// Đọc inventory từ remote `reloadInvy` (RemoteFunction InvokeServer).
---// Dữ liệu thật có thể bọc nhiều lớp (vd { ["1"] = { categories... } }) và có thể
---// khác nhau giữa các lần. Vì vậy ta flatten đệ quy: nhận diện 1 "item" bằng dấu hiệu
---// (table có sellPrice/UniqueItemID/rarity), và coi mọi category đã biết là 1 item.
---// Mỗi item lưu cả `Index` (số thứ tự lấy từ key `category_số`, dùng để bán qua
---// sellItemEvent) và `Category` (singular key: weapon/helmet/chest/ability).
---// Trả về mảng item.
-local function fetchInventoryItems()
-	local ok, rs = pcall(function()
-		return game:GetService("ReplicatedStorage"):WaitForChild("remotes", 5):WaitForChild("reloadInvy", 5)
-	end)
-	if not ok or not rs then return nil, "Could not find remote reloadInvy" end
-
-	local ok2, data = pcall(function()
-		return rs:InvokeServer()
-	end)
-	if not ok2 or data == nil then return nil, "Could not read inventory" end
-
-	local items = {}
-	local seen = {} -- tránh lặp vô hạn khi có cyclic reference
-
-	local function isItemTable(t)
-		return t.sellPrice ~= nil or t.UniqueItemID ~= nil or t.rarity ~= nil
-	end
-
-	--// Parse index + singular category từ key item dạng "weapon_49", "helmet_5", ...
-	--// -> trả ("weapon", 49). Không khớp dạng -> trả (nil, nil).
-	local function parseItemKey(key)
-		local s = tostring(key)
-		local index = tonumber(s:match("_(%d+)$"))
-		if not index then return nil, nil end
-		local singular = s:match("^(.-)_%d+$")
-		return singular, index
-	end
-
-	local function addItem(node, pluralCat, singularKey, index)
-		local equipped = false
-		if type(node.equipped) == "boolean" then
-			equipped = node.equipped
-		elseif type(node.equipped) == "table" then
-			for _, eq in pairs(node.equipped) do
-				if eq == true then equipped = true break end
-			end
-		end
-		local rarityNorm = normalizeRarity(node.rarity) or "Common"
-		table.insert(items, {
-			Type = CATEGORY_TYPES[pluralCat] or pluralCat or "Unknown",
-			Category = singularKey or pluralCat,
-			Index = index,
-			Name = tostring(node.name or node.UniqueItemID or "?"),
-			Rarity = rarityNorm,
-			RarityValue = RARITY_ORDER[rarityNorm],
-			SellPrice = tonumber(node.sellPrice) or 0,
-			UniqueItemID = node.UniqueItemID,
-			Equipped = equipped,
-			LevelReq = tonumber(node.levelReq) or 0,
-			Raw = node,
-		})
-	end
-
-	--// Duyệt đệ quy. `pluralCat` = plural category (weapons/helmets/... /nil).
-	--// `singularKey` = singular category cho sellItemEvent (weapon/helmet/... /nil).
-	--// `index` = số thứ tự item trong category (từ key `category_số`).
-	local function walk(node, pluralCat, singularKey, index)
-		if type(node) ~= "table" then return end
-		if seen[node] then return end
-		seen[node] = true
-
-		if isItemTable(node) then
-			addItem(node, pluralCat, singularKey, index)
-			return
-		end
-
-		for key, value in pairs(node) do
-			if CATEGORY_TYPES[key] then
-				walk(value, key, nil, nil)
-			elseif type(value) == "table" and isItemTable(value) then
-				local sg, idx = parseItemKey(key)
-				walk(value, pluralCat, sg, idx)
-			else
-				walk(value, pluralCat, singularKey, index)
-			end
-		end
-	end
-
-	walk(data, nil, nil, nil)
-	return items
-end
-
---// Kiểm tra 1 item có đủ điều kiện bán không
-function autoSell.ShouldSellItem(item)
-	if not item then return false end
-
-	if excludeEquipped and item.Equipped then return false end
-
-	if next(rarityFilter) and isRarityOption[item.Rarity] and not rarityFilter[item.Rarity] then
-		return false
-	end
-
-	if next(typeFilter) and item.Type and not typeFilter[item.Type] then
-		return false
-	end
-
-	if next(levelReqExactFilter) then
-		local lvl = item.LevelReq or 0
-		if levelReqMode == "Below" then
-			-- Bán item có LevelReq ≤ mốc đã chọn (lấy max trong set)
-			local threshold
-			for v in pairs(levelReqExactFilter) do
-				if not threshold or v > threshold then threshold = v end
-			end
-			if threshold and lvl > threshold then return false end
-		elseif levelReqMode == "Above" then
-			-- Bán item có LevelReq ≥ mốc đã chọn (lấy min trong set)
-			local threshold
-			for v in pairs(levelReqExactFilter) do
-				if not threshold or v < threshold then threshold = v end
-			end
-			if threshold and lvl < threshold then return false end
-		else
-			-- None: chỉ bán đúng các mốc đã tick
-			if not levelReqExactFilter[lvl] then return false end
-		end
-	end
-
-	return true
-end
-
---// Có ít nhất 1 điều kiện lọc đang active hay không.
---// Dùng để cảnh báo khi user sắp bán mà không có filter nào (rủi ro bán sạch).
-function autoSell.HasAnyFilter()
-	return (
-		next(rarityFilter) ~= nil
-		or next(typeFilter) ~= nil
-		or next(levelReqExactFilter) ~= nil
-		or (not excludeEquipped)
-	)
-end
-
---// Đếm tổng số item khớp điều kiện (gọi khi bấm nút Search, không bán).
---// Trả về { total, matching, byCategory, error }
-function autoSell.CountMatches()
-	local items, err = fetchInventoryItems()
-	if not items then
-		return { total = 0, matching = 0, error = err or "Error reading inventory" }
-	end
-
-	local matching = 0
-	local byCategory = {}
-	for _, item in ipairs(items) do
-		byCategory[item.Type] = (byCategory[item.Type] or 0) + 1
-		if autoSell.ShouldSellItem(item) then matching += 1 end
-	end
-
-	return { total = #items, matching = matching, byCategory = byCategory }
-end
-
---// Bán toàn bộ item khớp điều kiện (gọi khi bấm nút). Trả kết quả { sold, skipped, gold }
-function autoSell.SellItems()
-	if sellRunning then return nil end
-	sellRunning = true
-
-	local result = { sold = 0, skipped = 0, gold = 0, error = nil }
-	local items, err = fetchInventoryItems()
-	if not items then
-		result.error = err or "Error reading inventory"
-		sellRunning = false
-		return result
-	end
-
-	--// Gom các item khớp lọc theo category (singular key của sellItemEvent).
-	local categoryMap = {}
-	for _, item in ipairs(items) do
-		if autoSell.ShouldSellItem(item) then
-			if item.Index then
-				result.sold += 1
-				local sg = item.Category or item.Type
-				categoryMap[sg] = categoryMap[sg] or {}
-				table.insert(categoryMap[sg], item.Index)
-			end
-		else
-			result.skipped += 1
-		end
-	end
-
-	local ok, gold = pcall(sellAction, categoryMap)
-	if ok and gold and type(gold) == "number" then result.gold = gold end
-
-	sellRunning = false
-	return result
-end
-
-function autoSell.SetLevelReqMode(value)
-	if value == "Below" or value == "Above" then
-		levelReqMode = value
-	else
-		levelReqMode = "None"
-	end
-end
-
-function autoSell.GetLevelReqMode()
-	return levelReqMode
-end
-
-function autoSell.SetExcludeEquipped(state)
-	excludeEquipped = state
-end
-
-function autoSell.GetExcludeEquipped()
-	return excludeEquipped
-end
-
---// Rarity filter dạng mảng các chuỗi đã chọn
-function autoSell.SetRarityFilter(selected)
-	rarityFilter = {}
-	if type(selected) == "table" then
-		for _, r in ipairs(selected) do rarityFilter[r] = true end
-	end
-end
-
-function autoSell.GetRarityFilter()
-	local out = {}
-	for r in pairs(rarityFilter) do table.insert(out, r) end
-	return out
-end
-
---// Type filter dạng mảng các chuỗi đã chọn
-function autoSell.SetTypeFilter(selected)
-	typeFilter = {}
-	if type(selected) == "table" then
-		for _, t in ipairs(selected) do typeFilter[t] = true end
-	end
-end
-
-function autoSell.GetTypeFilter()
-	local out = {}
-	for t in pairs(typeFilter) do table.insert(out, t) end
-	return out
-end
-
---// Level Req Exact filter dạng mảng các chuỗi đã chọn (vd {"1","15","145"})
-function autoSell.SetLevelReqExactFilter(selected)
-	levelReqExactFilter = {}
-	if type(selected) == "table" then
-		for _, v in ipairs(selected) do
-			local n = tonumber(v)
-			if n then levelReqExactFilter[n] = true end
-		end
-	end
-end
-
-function autoSell.GetLevelReqExactFilter()
-	local out = {}
-	for lvl in pairs(levelReqExactFilter) do table.insert(out, tostring(lvl)) end
-	return out
-end
-
---// Auto Sell Toggle & Dungeon Start Watcher
-local function isDungeon()
-	return not LOBBY_PLACE_IDS[game.PlaceId]
-end
-
-local function triggerDungeonStartSell()
-	if not autoSellEnabled then return end
-	if dungeonSellTriggered then return end
-	if not isDungeon() then return end
-	if not autoSell.HasAnyFilter() then return end
-
-	dungeonSellTriggered = true
-	task.spawn(function()
-		-- Chờ 2.5s để server load dữ liệu inventory sau khi teleport/vào dungeon
-		task.wait(2.5)
-		if not autoSellEnabled or not isDungeon() then return end
-
-		local result = autoSell.SellItems()
-		if result and result.sold and result.sold > 0 then
-			notifier.Notify("AutoSell", ("Auto-sold %d item(s) on dungeon start."):format(result.sold), 3)
-		end
-	end)
-end
-
-function autoSell.Toggle(state)
-	autoSellEnabled = state and true or false
-	if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
-		triggerDungeonStartSell()
-	end
-end
-
-function autoSell.IsEnabled()
-	return autoSellEnabled
-end
-
---// Lắng nghe thay đổi dungeon để reset cờ và trigger bán cho run mới
-shared.OnDungeonNameChanged(function(name)
-	dungeonSellTriggered = false
-	if name then
-		triggerDungeonStartSell()
-	end
-end)
-
-shared.OnLobbyChanged(function(inLobby)
-	if not inLobby then
-		dungeonSellTriggered = false
-		triggerDungeonStartSell()
-	else
-		dungeonSellTriggered = false
-	end
-end)
-
-task.spawn(function()
-	while lifecycle.IsActive() do
-		task.wait(1)
-		if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
-			triggerDungeonStartSell()
-		end
-	end
-end)
-
-lifecycle.Register(function()
-	autoSellEnabled = false
-end)
-
---// Export constants
-autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
-autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
-
-return autoSell
-end function __DIST.t()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
--- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
--- after a confirmation dialog.
-
---// Imports
-
-local autoSave = __DIST.load('g')
-local autoSell = __DIST.load('s')
-local notifier = __DIST.load('c')
-
-return function(window, tab)
-	local leftSection = tab:Section({ Side = "Left" })
-	leftSection:Header({ Name = "AutoSell" })
-
-	local rightSection = tab:Section({ Side = "Right" })
-	rightSection:Header({ Name = "Filter Summary" })
-
-	--// Right Section Labels (Filter Summary)
-	local summaryStatusLabel = rightSection:Label({ Text = "Status: --" })
-	local summarySafetyLabel = rightSection:Label({ Text = "Safety: --" })
-	local summaryTriggerLabel = rightSection:Label({ Text = "Trigger: <font color='rgb(200,200,255)'>On Dungeon Start</font>" })
-	local summaryRarityLabel = rightSection:Label({ Text = "Rarities: --" })
-	local summaryTypeLabel = rightSection:Label({ Text = "Item Types: --" })
-	local summaryLevelLabel = rightSection:Label({ Text = "Level Req: --" })
-	local summaryEquippedLabel = rightSection:Label({ Text = "Exclude Equipped: --" })
-
-	local function updateSummary()
-		-- Status
-		local isAuto = autoSell.IsEnabled()
-		local statusColor = isAuto and "0, 255, 0" or "255, 80, 80"
-		local statusText = isAuto and "Enabled" or "Disabled"
-		pcall(function()
-			summaryStatusLabel:UpdateName("Status: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
-		end)
-
-		-- Safety Status
-		local hasFilter = autoSell.HasAnyFilter()
-		local safetyColor = hasFilter and "0, 255, 0" or "255, 80, 80"
-		local safetyText = hasFilter and "✓ Active (Configured)" or "⚠ NO filter selected"
-		pcall(function()
-			summarySafetyLabel:UpdateName("Safety: <font color='rgb(" .. safetyColor .. ")'>" .. safetyText .. "</font>")
-		end)
-
-		-- Rarities
-		local rarities = autoSell.GetRarityFilter()
-		local rarityText = #rarities > 0 and table.concat(rarities, ", ") or "All (No filter)"
-		local rarityColor = #rarities > 0 and "255, 220, 120" or "160, 160, 160"
-		pcall(function()
-			summaryRarityLabel:UpdateName("Rarities: <font color='rgb(" .. rarityColor .. ")'>" .. rarityText .. "</font>")
-		end)
-
-		-- Types
-		local types = autoSell.GetTypeFilter()
-		local typeText = #types > 0 and table.concat(types, ", ") or "All (No filter)"
-		local typeColor = #types > 0 and "255, 220, 120" or "160, 160, 160"
-		pcall(function()
-			summaryTypeLabel:UpdateName("Item Types: <font color='rgb(" .. typeColor .. ")'>" .. typeText .. "</font>")
-		end)
-
-		-- Level Req
-		local mode = autoSell.GetLevelReqMode()
-		local exactLevels = autoSell.GetLevelReqExactFilter()
-		table.sort(exactLevels, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
-		local levelText = "All (No filter)"
-		local levelColor = "160, 160, 160"
-		if #exactLevels > 0 then
-			levelColor = "255, 220, 120"
-			if mode == "Below" then
-				levelText = "Below (≤ " .. exactLevels[#exactLevels] .. ")"
-			elseif mode == "Above" then
-				levelText = "Above (≥ " .. exactLevels[1] .. ")"
-			else
-				levelText = "Exact (" .. table.concat(exactLevels, ", ") .. ")"
-			end
-		end
-		pcall(function()
-			summaryLevelLabel:UpdateName("Level Req: <font color='rgb(" .. levelColor .. ")'>" .. levelText .. "</font>")
-		end)
-
-		-- Exclude Equipped
-		local exclude = autoSell.GetExcludeEquipped()
-		local excludeColor = exclude and "0, 255, 0" or "255, 80, 80"
-		local excludeText = exclude and "Yes (Protected)" or "No (May Sell)"
-		pcall(function()
-			summaryEquippedLabel:UpdateName("Exclude Equipped: <font color='rgb(" .. excludeColor .. ")'>" .. excludeText .. "</font>")
-		end)
-	end
-
-	--// Left Section Controls
-	leftSection:Toggle({
-		Name = "Auto Sell on Dungeon Start",
-		Default = autoSell.IsEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoSell.Toggle(state)
-			updateSummary()
-		end),
-	}, "Toggle_AutoSellEnabled")
-
-	local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
-	local TYPE_OPTIONS = { "Weapons", "Helmets", "Chests", "Abilities" }
-
-	leftSection:Dropdown({
-		Name = "Rarity Filter",
-		Options = RARITY_OPTIONS,
-		Default = autoSell.GetRarityFilter(),
-		Multi = true,
-		Required = false,
-		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			for rarity in pairs(selected) do table.insert(list, rarity) end
-			autoSell.SetRarityFilter(list)
-			updateSummary()
-		end),
-	}, "Dropdown_AutoSellRarity")
-
-	leftSection:Dropdown({
-		Name = "Item Type Filter",
-		Options = TYPE_OPTIONS,
-		Default = autoSell.GetTypeFilter(),
-		Multi = true,
-		Required = false,
-		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			for itemType in pairs(selected) do table.insert(list, itemType) end
-			autoSell.SetTypeFilter(list)
-			updateSummary()
-		end),
-	}, "Dropdown_AutoSellType")
-
-	local levelReqDropdown -- forward declaration để mode callback có thể truy cập
-
-	local currentMode = autoSell.GetLevelReqMode()
-	local currentModeIndex = table.find(autoSell.LEVEL_REQ_MODE_OPTIONS, currentMode) or 1
-	leftSection:Dropdown({
-		Name = "Level Req Mode",
-		Options = autoSell.LEVEL_REQ_MODE_OPTIONS,
-		Default = currentModeIndex,
-		Multi = false,
-		Required = true,
-		Callback = autoSave.Wrap(function(selected)
-			autoSell.SetLevelReqMode(selected)
-			if levelReqDropdown then
-				local isMulti = (selected == "None")
-				levelReqDropdown.Settings.Multi = isMulti
-				levelReqDropdown.Settings.Required = not isMulti
-				levelReqDropdown:UpdateSelection({})
-			end
-			updateSummary()
-		end),
-	}, "Dropdown_AutoSellLevelReqMode")
-
-	levelReqDropdown = leftSection:Dropdown({
-		Name = "Level Req Filter",
-		Options = autoSell.LEVEL_REQ_OPTIONS,
-		Default = autoSell.GetLevelReqExactFilter(),
-		Multi = currentMode == "None",
-		Required = currentMode ~= "None",
-		Search = true,
-		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			if type(selected) == "table" then
-				for level in pairs(selected) do table.insert(list, level) end
-			elseif type(selected) == "string" then
-				table.insert(list, selected)
-			end
-			autoSell.SetLevelReqExactFilter(list)
-			updateSummary()
-		end),
-	}, "Dropdown_AutoSellLevelReq")
-
-	leftSection:Toggle({
-		Name = "Exclude Equipped Items",
-		Default = autoSell.GetExcludeEquipped(),
-		Callback = autoSave.Wrap(function(state)
-			autoSell.SetExcludeEquipped(state)
-			updateSummary()
-		end),
-	}, "Toggle_AutoSellExcludeEquipped")
-
-	local resultLabel = leftSection:Label({
-		Text = "No search made yet.",
-	}, "Label_AutoSellResult")
-
-	leftSection:Button({
-		Name = "Search",
-		Callback = function()
-			task.spawn(function()
-				pcall(function() resultLabel:UpdateName("Reading inventory...") end)
-				local result = autoSell.CountMatches()
-				if not result then return end
-				if result.error then
-					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. result.error .. "</font>") end)
-					return
-				end
-				local text = ("Found <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching items.\n")
-					:format(result.matching, result.total)
-				local first = true
-				for _, cat in ipairs({ "Weapons", "Helmets", "Chests", "Abilities" }) do
-					local n = result.byCategory and result.byCategory[cat]
-					if n then
-						if first then text ..= cat .. ": " .. n else text ..= " • " .. cat .. ": " .. n end
-						first = false
-					end
-				end
-				pcall(function() resultLabel:UpdateName(text) end)
-			end)
-		end,
-	})
-
-	leftSection:Button({
-		Name = "Sell Now",
-		Callback = function()
-			task.spawn(function()
-				pcall(function() resultLabel:UpdateName("Reading inventory...") end)
-
-				local preview = autoSell.CountMatches()
-				if not preview then
-					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>A sale is already running.</font>") end)
-					return
-				end
-				if preview.error then
-					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. preview.error .. "</font>") end)
-					return
-				end
-
-				local hasFilter = autoSell.HasAnyFilter()
-				local warning = ""
-				if not hasFilter then
-					warning = '\n\n<font color="rgb(255,80,80)"><b>⚠ NO filter selected!</b> This will sell the ENTIRE inventory (except equipped items).</font>'
-				end
-
-				local desc = ("Sell <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching item(s) with current filters."):format(preview.matching, preview.total)
-				desc = desc .. warning .. "\n\nAre you sure?"
-
-				window:Dialog({
-					Title = "Confirm Sale",
-					Description = desc,
-					Buttons = {
-						{
-							Name = "Confirm",
-							Callback = function()
-								task.spawn(function()
-									pcall(function() resultLabel:UpdateName("Reading inventory...") end)
-									notifier.Notify("AutoSell", "Selling...", 2)
-
-									local result = autoSell.SellItems()
-									if not result then
-										pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>A sale is already running.</font>") end)
-										return
-									end
-
-									if result.error then
-										pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. result.error .. "</font>") end)
-										return
-									end
-
-									local text = ("Done: <font color='rgb(0,255,0)'>%d</font> sold, <font color='rgb(255,200,0)'>%d</font> skipped, <font color='rgb(255,220,120)'>%s</font> gold earned.")
-										:format(result.sold, result.skipped, tostring(result.gold))
-									pcall(function() resultLabel:UpdateName(text) end)
-								end)
-							end,
-						},
-						{
-							Name = "Cancel",
-						},
-					},
-				})
-			end)
-		end,
-	})
-
-	-- Khởi tạo hiển thị summary lần đầu
-	updateSummary()
-end
-end function __DIST.u()-- ESP hitbox cho DungeonQuest.
--- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
-
---// Imports
-
-local services = __DIST.load('d')
-local shared = __DIST.load('e')
-
---// Table
-local esp = {}
-
---// Configuration
-local LINE_THICKNESS = 0.05
-local SURFACE_TRANSPARENCY = 0.8
-
-local PLAYER_BOX_COLOR = Color3.fromRGB(0, 255, 0)
-local PLAYER_BOX_NAME = "PlayerHitbox_ESP"
-
-local ENEMY_BOX_COLOR = Color3.fromRGB(255, 0, 0)
-local ENEMY_BOX_NAME = "EnemyHitbox_ESP"
-
---// Chu kỳ quét hiển thị hitbox skill (nhịp cập nhật trực quan).
-local SKILL_SCAN_INTERVAL = 0.01
-
---// Hitbox mode constants
-local HITBOX_MODE_REAL = "Real"
-local HITBOX_MODE_CUSTOM = "Custom"
-
---// State
-local playerBoxEnabled = false
-local playerBoxThread = nil
-local playerBoxMode = HITBOX_MODE_REAL
-local playerBoxScale = 1.5
-local player = services.player
-
-local enemyBoxEnabled = false
-local enemyBoxThread = nil
-local enemyBoxMode = HITBOX_MODE_REAL
-local enemyBoxScale = 1.5
-
---// Tạo SelectionBox bám vào một adornee (Root hoặc proxy part).
-local function createSelectionBox(boxName, adornee, color)
-	local box = Instance.new("SelectionBox")
-	box.Name = boxName
-	box.Adornee = adornee
-	box.Color3 = color
-	box.LineThickness = LINE_THICKNESS * 4
-	box.SurfaceColor3 = color
-	box.SurfaceTransparency = SURFACE_TRANSPARENCY
-	box.Parent = adornee
-end
-
---// Cập nhật box cho một Root theo mode hiện tại.
---// REAL: SelectionBox bám trực tiếp Root (kích thước thật).
---// CUSTOM: proxy part vô hình kích thước = Root.Size * scale, bám theo Root.
-local function updateEntityBox(boxName, root, color, mode, scale)
-	if not root or not root.Parent then return end
-	local proxyName = boxName .. "_Proxy"
-	local existingBox = root:FindFirstChild(boxName)
-	local existingProxy = root:FindFirstChild(proxyName)
-
-	if mode == HITBOX_MODE_CUSTOM then
-		if existingBox and existingBox:IsA("SelectionBox") and existingBox.Adornee == root then
-			existingBox:Destroy()
-		end
-
-		if not existingProxy then
-			existingProxy = Instance.new("Part")
-			existingProxy.Name = proxyName
-			existingProxy.Anchored = true
-			existingProxy.CanCollide = false
-			existingProxy.CanQuery = false
-			existingProxy.CanTouch = false
-			existingProxy.Transparency = 1
-			existingProxy.Parent = root
-			createSelectionBox(boxName, existingProxy, color)
-		end
-
-		local rootSize = root.Size
-		local maxDim = math.max(math.abs(rootSize.X), math.abs(rootSize.Y), math.abs(rootSize.Z))
-		local customSize = math.max(maxDim * scale, 1)
-		existingProxy.Size = Vector3.new(customSize, customSize, customSize)
-		existingProxy.CFrame = root.CFrame
-	else
-		if existingProxy then existingProxy:Destroy() end
-		if existingBox and existingBox:IsA("SelectionBox") and existingBox.Adornee ~= root then
-			existingBox:Destroy()
-			existingBox = nil
-		end
-		if not existingBox or not existingBox:IsA("SelectionBox") or existingBox.Adornee ~= root then
-			createSelectionBox(boxName, root, color)
-		end
-	end
-end
-
---// Highlight hitbox THẬT của player (quanh HumanoidRootPart) để phân biệt với
---// "ghost" (bản nhân vật ảo hiển thị khi teleport orbit). Màu xanh lá, khác hẳn
---// hitbox enemy đỏ. Tự bám theo nhân vật khi respawn.
-local function attachPlayerBox()
-	local character = player and player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	if not root or not root.Parent then return end
-	updateEntityBox(PLAYER_BOX_NAME, root, PLAYER_BOX_COLOR, playerBoxMode, playerBoxScale)
-end
-
-local function clearPlayerBox()
-	if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
-	local function clearCharacter(character)
-		if not character then return end
-		for _, desc in ipairs(character:GetDescendants()) do
-			if desc.Name == PLAYER_BOX_NAME or desc.Name == PLAYER_BOX_NAME .. "_Proxy" then
-				desc:Destroy()
-			end
-		end
-	end
-	clearCharacter(player and player.Character)
-	for _, p in ipairs(services.Players:GetPlayers()) do
-		clearCharacter(p.Character)
-	end
-end
-
-function esp.TogglePlayerHitbox(state)
-	if state == playerBoxEnabled then return end
-	playerBoxEnabled = state
-
-	if playerBoxEnabled then
-		if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
-		playerBoxThread = task.spawn(function()
-			while playerBoxEnabled do
-				local ok, err = pcall(attachPlayerBox)
-				if not ok then
-					if os.clock() - (esp.lastPlayerWarn or 0) > 5 then
-						esp.lastPlayerWarn = os.clock()
-						warn("[PlayerHitbox] error:", tostring(err))
-					end
-				end
-				services.RunService.Heartbeat:Wait()
-			end
-		end)
-	else
-		clearPlayerBox()
-	end
-end
-
-function esp.IsPlayerHitboxEnabled()
-	return playerBoxEnabled
-end
-
-function esp.GetPlayerHitboxMode()
-	return playerBoxMode
-end
-
-function esp.SetPlayerHitboxMode(mode)
-	if mode ~= HITBOX_MODE_REAL and mode ~= HITBOX_MODE_CUSTOM then return end
-	playerBoxMode = mode
-end
-
-function esp.GetPlayerHitboxScale()
-	return playerBoxScale
-end
-
-function esp.SetPlayerHitboxScale(scale)
-	playerBoxScale = scale
-end
-
---// Highlight hitbox THẬT của từng enemy đang track (quanh Root) khi ENGAGE.
---// Màu đỏ, dày như player hitbox, dùng chung cơ chế SelectionBox nhưng tự
---// bám theo enemy model khi di chuyển/spawn.
-local function attachEnemyBoxes()
-	for _, data in ipairs(shared.GetTrackedEnemyData()) do
-		local root = data.Root
-		if root and root.Parent then
-			updateEntityBox(ENEMY_BOX_NAME, root, ENEMY_BOX_COLOR, enemyBoxMode, enemyBoxScale)
-		end
-	end
-end
-
-local function clearEnemyBoxes()
-	if enemyBoxThread then task.cancel(enemyBoxThread); enemyBoxThread = nil end
-	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-		local box = obj:FindFirstChild(ENEMY_BOX_NAME)
-		local proxy = obj:FindFirstChild(ENEMY_BOX_NAME .. "_Proxy")
-		if box then box:Destroy() end
-		if proxy then proxy:Destroy() end
-	end
-end
-
-function esp.ToggleEnemyHitbox(state)
-	if state == enemyBoxEnabled then return end
-	enemyBoxEnabled = state
-
-	if enemyBoxEnabled then
-		if enemyBoxThread then task.cancel(enemyBoxThread); enemyBoxThread = nil end
-		enemyBoxThread = task.spawn(function()
-			while enemyBoxEnabled do
-				local ok, err = pcall(attachEnemyBoxes)
-				if not ok then
-					if os.clock() - (esp.lastEnemyWarn or 0) > 5 then
-						esp.lastEnemyWarn = os.clock()
-						warn("[EnemyHitbox] error:", tostring(err))
-					end
-				end
-				services.RunService.Heartbeat:Wait()
-			end
-		end)
-	else
-		clearEnemyBoxes()
-	end
-end
-
-function esp.IsEnemyHitboxEnabled()
-	return enemyBoxEnabled
-end
-
-function esp.GetEnemyHitboxMode()
-	return enemyBoxMode
-end
-
-function esp.SetEnemyHitboxMode(mode)
-	if mode ~= HITBOX_MODE_REAL and mode ~= HITBOX_MODE_CUSTOM then return end
-	enemyBoxMode = mode
-end
-
-function esp.GetEnemyHitboxScale()
-	return enemyBoxScale
-end
-
-function esp.SetEnemyHitboxScale(scale)
-	enemyBoxScale = scale
-end
-
---// ========== [Show Skill Hitbox] Vẽ SelectionBox đỏ cho skill trong Workspace ==========
---// Before start: snapshot toàn bộ level-1 child của Workspace vào blacklist (static:
---// dungeon folder, boss parts, arena...). Chỉ BasePart mới xuất hiện SAU mốc đó
---// (skill/attack) mới được vẽ.
-
-local SKILL_ESP_COLOR = Color3.fromRGB(255, 0, 0)
-local SKILL_ESP_NAME = "SkillESP"
-
---// Backlist: level-1 child của Workspace đã tồn tại lúc snapshot -> static.
---// Mọi descendant trong nhánh đó mặc định cũng static (check theo cây ancestor,
---// không cần liệt kê từng phần tử con khi snapshot).
-local skillBlackList = {}
---// Mốc snapshot đã xong chưa. Chưa = chưa biết gì là "static" -> không vẽ gì cả.
-local skillBlacklistReady = false
-
-local skillBoxEnabled = false
-local skillBoxThread = nil
-
---// Snapshot: blacklist các level-1 child của Workspace hiện tại.
-local function snapshotSkillBlacklist()
-	table.clear(skillBlackList)
-	local Workspace = game:GetService("Workspace")
-	for _, child in ipairs(Workspace:GetChildren()) do
-		skillBlackList[child] = true
-	end
-	skillBlacklistReady = true
-end
-
---// [1] Before start: blacklist toàn bộ level-1 child hiện có của Workspace
---// (static: dungeon folder, boss parts, arena...) -> không bị vẽ.
-snapshotSkillBlacklist()
-
---// Kiểm tra part có thuộc character của player không (để bỏ qua, không vẽ).
-local function isPlayerPart(part)
-	local character = player.Character
-	if not character then return false end
-	local obj = part
-	while obj do
-		if obj == character then return true end
-		obj = obj.Parent
-	end
-	return false
-end
-
---// Part nằm trong nhánh của level-1 child đã bị blacklist (static) -> không vẽ.
-local function isBlacklistedPart(part)
-	local obj = part
-	while obj do
-		if skillBlackList[obj] then return true end
-		obj = obj.Parent
-	end
-	return false
-end
-
---// Tạo SelectionBox đỏ đơn giản trên BasePart nếu chưa có.
-local function createSkillBox(part)
-	if not skillBlacklistReady then return end
-	if isBlacklistedPart(part) then return end
-	if isPlayerPart(part) then return end
-	if part:FindFirstChild(SKILL_ESP_NAME) then return end
-	local box = Instance.new("SelectionBox")
-	box.Name = SKILL_ESP_NAME
-	box.Adornee = part
-	box.Color3 = SKILL_ESP_COLOR
-	box.SurfaceColor3 = SKILL_ESP_COLOR
-	box.SurfaceTransparency = 0.8
-	box.Parent = part
-end
-
---// Quét toàn bộ descendants, chỉ vẽ BasePart không nằm trong blacklist.
-local function scanSkillHitboxes()
-	if not skillBlacklistReady then return end
-	local Workspace = game:GetService("Workspace")
-	for _, child in ipairs(Workspace:GetChildren()) do
-		if child:IsA("BasePart") then
-			createSkillBox(child)
-		end
-		for _, desc in ipairs(child:GetDescendants()) do
-			if desc:IsA("BasePart") then
-				createSkillBox(desc)
-			end
-		end
-	end
-end
-
-local function clearSkillBoxes()
-	if skillBoxThread then task.cancel(skillBoxThread); skillBoxThread = nil end
-	local Workspace = game:GetService("Workspace")
-	for _, desc in ipairs(Workspace:GetDescendants()) do
-		local box = desc:FindFirstChild(SKILL_ESP_NAME)
-		if box then box:Destroy() end
-	end
-end
-
-function esp.ToggleSkillHitbox(state)
-	if state == skillBoxEnabled then return end
-	skillBoxEnabled = state
-	if skillBoxEnabled then
-		if skillBoxThread then task.cancel(skillBoxThread); skillBoxThread = nil end
-		skillBoxThread = task.spawn(function()
-			while skillBoxEnabled do
-				local ok, err = pcall(scanSkillHitboxes)
-				if not ok and os.clock() - (esp.lastSkillWarnH or 0) > 5 then
-					esp.lastSkillWarnH = os.clock()
-					warn("[SkillHitbox] error:", tostring(err))
-				end
-				task.wait(SKILL_SCAN_INTERVAL)
-			end
-		end)
-	else
-		clearSkillBoxes()
-	end
-end
-
-function esp.IsSkillHitboxEnabled()
-	return skillBoxEnabled
-end
-
-return esp
-end function __DIST.v()-- ESP Enemy (Highlight) cho DungeonQuest.
--- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
--- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
--- hitbox projectile (đỏ) và player hitbox (xanh lá).
-
---// Imports
-
-local services = __DIST.load('d')
-local shared = __DIST.load('e')
-
---// Table
-local enemyEsp = {}
-
---// Configuration
-local FILL_COLOR = Color3.fromRGB(255, 170, 0)
-local FILL_TRANSPARENCY = 0.55
-local ESP_NAME = "Enemy_ESP"
-local SCAN_INTERVAL = 0.5
-
---// Màu cho highlight (tên hiển thị -> màu thật).
---// Đồng bộ với danh sách option trong tab Visual.
-local COLOR_PALETTE = {
-	Orange = Color3.fromRGB(255, 170, 0),
-	Red = Color3.fromRGB(255, 0, 0),
-	Yellow = Color3.fromRGB(255, 255, 0),
-	Green = Color3.fromRGB(0, 255, 0),
-	Cyan = Color3.fromRGB(0, 255, 255),
-	Blue = Color3.fromRGB(0, 120, 255),
-	Magenta = Color3.fromRGB(255, 0, 255),
-	White = Color3.fromRGB(255, 255, 255),
-}
-
---// State
-local enabled = false
-local scanThread = nil
-local selectedColorName = "Orange"
-
---// Helpers
-local function getFillColor()
-	return COLOR_PALETTE[selectedColorName] or FILL_COLOR
-end
-
-local function createHighlight(model)
-	if not model or not model:IsA("Model") then return end
-	if not model:FindFirstChild(ESP_NAME) then
-		local hl = Instance.new("Highlight")
-		hl.Name = ESP_NAME
-		hl.Adornee = model
-		hl.FillColor = getFillColor()
-		hl.FillTransparency = FILL_TRANSPARENCY
-		hl.OutlineColor = getFillColor()
-		hl.OutlineTransparency = 1
-		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		hl.Parent = model
-	end
-end
-
---// Cập nhật màu cho highlight đã vẽ sẵn (gọi khi đổi màu).
-local function updateAllHighlightColors()
-	local color = getFillColor()
-	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-		local hl = obj:FindFirstChild(ESP_NAME)
-		if hl and hl:IsA("Highlight") then
-			hl.FillColor = color
-			hl.OutlineColor = color
-		end
-	end
-end
-
---// Xóa mọi Highlight ESP Enemy giống đã vẽ trong Workspace + nhân vật.
-local function removeAllHighlights()
-	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
-		local hl = obj:FindFirstChild(ESP_NAME)
-		if hl then hl:Destroy() end
-	end
-	for _, p in ipairs(services.Players:GetPlayers()) do
-		local char = p.Character
-		if char then
-			for _, desc in ipairs(char:GetDescendants()) do
-				if desc.Name == ESP_NAME then desc:Destroy() end
-			end
-		end
-	end
-end
-
---// Methods
-function enemyEsp.Toggle(state)
-	if state == enabled then return end
-	enabled = state
-
-	if enabled then
-		if scanThread then task.cancel(scanThread); scanThread = nil end
-		scanThread = task.spawn(function()
-			while enabled do
-				local ok, err = pcall(function()
-					for _, data in ipairs(shared.GetTrackedEnemyData()) do
-						if data.Model and data.Model.Parent then
-							createHighlight(data.Model)
-						end
-					end
-				end)
-				if not ok then
-					if os.clock() - (enemyEsp.lastWarn or 0) > 5 then
-						enemyEsp.lastWarn = os.clock()
-						warn("[EnemyESP] error:", tostring(err))
-					end
-				end
-				task.wait(SCAN_INTERVAL)
-			end
-		end)
-	else
-		if scanThread then task.cancel(scanThread); scanThread = nil end
-		local ok = pcall(removeAllHighlights)
-		if not ok then warn("[EnemyESP] cleanup error") end
-	end
-end
-
-function enemyEsp.IsEnabled()
-	return enabled
-end
-
-function enemyEsp.GetColorNames()
-	local names = {}
-	for name in pairs(COLOR_PALETTE) do table.insert(names, name) end
-	table.sort(names)
-	return names
-end
-
-function enemyEsp.GetSelectedColor()
-	return selectedColorName
-end
-
-function enemyEsp.SetSelectedColor(name)
-	if not COLOR_PALETTE[name] then return end
-	if name == selectedColorName then return end
-	selectedColorName = name
-	local ok = pcall(updateAllHighlightColors)
-	if not ok then warn("[EnemyESP] recolor error") end
-end
-
-return enemyEsp
-end function __DIST.w()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
--- Script1: ép hiện hình liên tục các phần map bị ẩn/thuỷ tinh.
--- Script2: dọn dẹp vật thể rác (decoration) ở lớp ngoài cùng của Map.
--- Script3: radar hitbox quét quanh nhân vật, xóa part có độ cao (Y) > 80.
-
---// Imports
-
-local services = __DIST.load('d')
-
---// Table
-local mapOptimizer = {}
-
---// State
-local enabled = false
-local cleanupThread = nil
-local visibilityThread = nil
-local radarThread = nil
-
-local CLEANUP_INTERVAL = 2
-local FORCE_VISIBLE_INTERVAL = 0.5
-local RADAR_INTERVAL = 0.2
-local RADAR_HITBOX_SIZE = Vector3.new(20, 200, 20)
-local RADAR_MIN_Y = 80
-
---// DANH SÁCH 1: Xóa nếu tên object ở Depth 1 khớp chính xác
-local DEPTH1_NAMES_TO_DELETE = {
-	["Stone"] = true,
-	["Dead Tree"] = true,
-	["Eye Rune"] = true,
-	["Meshes/Ice shard"] = true,
-	["Small snow patch"] = true,
-	["snow patch"] = true,
-	["Meshes/Root4"] = true,
-	["snow machine"] = true,
-	["Meshes/Ice3"] = true,
-	["Meshes/ice plates_Circle.004"] = true,
-}
-
---// DANH SÁCH 2: Xóa object Depth 1 nếu BÊN TRONG nó có chứa tên này
-local DESCENDANT_NAMES_TO_TARGET = {
-	["Wooden plank"] = true,
-	["Meshes/Root4"] = true,
-}
-
-local function getMap()
-	return workspace:WaitForChild("Map", 5)
-end
-
---// Dọn dẹp vật thể rác ở Depth 1 (Script2)
-local function cleanUpMap()
-	local map = getMap()
-	if not map then return end
-
-	for _, child in ipairs(map:GetChildren()) do
-		local shouldDelete = DEPTH1_NAMES_TO_DELETE[child.Name]
-		if not shouldDelete then
-			for _, descendant in ipairs(child:GetDescendants()) do
-				if DESCENDANT_NAMES_TO_TARGET[descendant.Name] then
-					shouldDelete = true
-					break
-				end
-			end
-		end
-		if shouldDelete then
-			child:Destroy()
-		end
-	end
-end
-
---// Ép hiện hình cho một container (Script1)
-local function forceVisible(container)
-	if not container then return end
-	for _, object in ipairs(container:GetDescendants()) do
-		if object:IsA("BasePart") and object.Transparency ~= 0 then
-			object.Transparency = 0
-		end
-	end
-end
-
---// Radar hitbox: quét quanh nhân vật và xóa part cao (Y > RADAR_MIN_Y) (Script3)
-local function runRadar()
-	local player = services.player
-	if not player then return end
-	local character = player.Character
-	local hrp = character and character:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
-
-	local map = getMap()
-	if not map then return end
-
-	local filterList = {}
-	local borders = map:FindFirstChild("borders")
-	local container143 = map:GetChildren()[143]
-	if borders then table.insert(filterList, borders) end
-	if container143 then table.insert(filterList, container143) end
-
-	local overlapParams = OverlapParams.new()
-	overlapParams.FilterType = Enum.RaycastFilterType.Include
-	overlapParams.FilterDescendantsInstances = filterList
-
-	local hitboxCFrame = hrp.CFrame * CFrame.new(0, 100, 0)
-	local partsInHitbox = workspace:GetPartBoundsInBox(hitboxCFrame, RADAR_HITBOX_SIZE, overlapParams)
-
-	for _, hitPart in ipairs(partsInHitbox) do
-		if hitPart.Name ~= "borders" and hitPart.Name ~= "Baseplate" then
-			if hitPart.CFrame.Position.Y > RADAR_MIN_Y then
-				hitPart:Destroy()
-			end
-		end
-	end
-end
-
-function mapOptimizer.Toggle(state)
-	if state == enabled then return end
-	enabled = state
-
-	if enabled then
-		local ok, err = pcall(cleanUpMap)
-		if not ok then
-			warn("[MapOptimizer] cleanup error:", tostring(err))
-		end
-
-		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
-		cleanupThread = task.spawn(function()
-			while enabled do
-				task.wait(CLEANUP_INTERVAL)
-				local ok, err = pcall(cleanUpMap)
-				if not ok then
-					warn("[MapOptimizer] cleanup error:", tostring(err))
-				end
-			end
-		end)
-
-		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
-		visibilityThread = task.spawn(function()
-			while enabled do
-				local ok, err = pcall(function()
-					local map = getMap()
-					local container143 = map and map:GetChildren()[143]
-					local borders = map and map:FindFirstChild("borders")
-					forceVisible(container143)
-					forceVisible(borders)
-				end)
-				if not ok then
-					warn("[MapOptimizer] visibility error:", tostring(err))
-				end
-				task.wait(FORCE_VISIBLE_INTERVAL)
-			end
-		end)
-
-		if radarThread then task.cancel(radarThread); radarThread = nil end
-		radarThread = task.spawn(function()
-			while enabled do
-				local ok, err = pcall(runRadar)
-				if not ok then
-					warn("[MapOptimizer] radar error:", tostring(err))
-				end
-				task.wait(RADAR_INTERVAL)
-			end
-		end)
-	else
-		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
-		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
-		if radarThread then task.cancel(radarThread); radarThread = nil end
-	end
-end
-
-function mapOptimizer.IsEnabled()
-	return enabled
-end
-
-return mapOptimizer end function __DIST.x()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
-
---// Imports
-	
-local autoSave = __DIST.load('g')
-	local esp = __DIST.load('u')
-	local enemyEsp = __DIST.load('v')
-	local mapOptimizer = __DIST.load('w')
-	local ui = __DIST.load('f')
-
---// Hitbox mode options
-local HITBOX_OPTIONS = { "Custom Hitbox", "Real Hitbox" }
-local function hitboxModeToIndex(mode)
-	return (mode == "Custom" and 1) or 2
-end
-local function hitboxLabelToMode(label)
-	return (label == HITBOX_OPTIONS[1] and "Custom") or "Real"
-end
-
-return function(window, tab)
-	local applyHitboxVisibility
-
-	local playerSection = tab:Section({ Side = "Left" })
-	playerSection:Header({ Name = "Player" })
-
-	playerSection:Toggle({
-		Name = "Hitbox",
-		Default = esp.IsPlayerHitboxEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.TogglePlayerHitbox(state)
-		end),
-	}, "Toggle_PlayerHitbox")
-
-	playerSection:Dropdown({
-		Name = "Hitbox Mode",
-		Options = HITBOX_OPTIONS,
-		Default = hitboxModeToIndex(esp.GetPlayerHitboxMode()),
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			esp.SetPlayerHitboxMode(hitboxLabelToMode(option))
-			applyHitboxVisibility()
-		end),
-	}, "Dropdown_PlayerHitboxMode")
-
-	local playerSizeSlider = ui.PatchSliderLoadCallback(playerSection:Slider({
-		Name = "Hitbox Size",
-		Default = esp.GetPlayerHitboxScale(),
-		Minimum = 1,
-		Maximum = 5,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			esp.SetPlayerHitboxScale(Value)
-		end),
-	}, "Slider_PlayerHitboxSize"))
-
-	local enemySection = tab:Section({ Side = "Left" })
-	enemySection:Header({ Name = "Enemy" })
-
-	enemySection:Toggle({
-		Name = "Model Highlight",
-		Default = enemyEsp.IsEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			enemyEsp.Toggle(state)
-		end),
-	}, "Toggle_EnemyESP")
-
-	local highlightColors = enemyEsp.GetColorNames()
-	local currentColor = enemyEsp.GetSelectedColor()
-	local colorDefaultIndex = 1
-	for i, name in ipairs(highlightColors) do
-		if name == currentColor then
-			colorDefaultIndex = i
-			break
-		end
-	end
-
-	enemySection:Dropdown({
-		Name = "Highlight Color",
-		Options = highlightColors,
-		Default = colorDefaultIndex,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			enemyEsp.SetSelectedColor(option)
-		end),
-	}, "Dropdown_HighlightColor")
-
-	enemySection:Toggle({
-		Name = "Hitbox",
-		Default = esp.IsEnemyHitboxEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.ToggleEnemyHitbox(state)
-		end),
-	}, "Toggle_EnemyHitbox")
-
-	enemySection:Dropdown({
-		Name = "Hitbox Mode",
-		Options = HITBOX_OPTIONS,
-		Default = hitboxModeToIndex(esp.GetEnemyHitboxMode()),
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			esp.SetEnemyHitboxMode(hitboxLabelToMode(option))
-			applyHitboxVisibility()
-		end),
-	}, "Dropdown_EnemyHitboxMode")
-
-	local enemySizeSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
-		Name = "Hitbox Size",
-		Default = esp.GetEnemyHitboxScale(),
-		Minimum = 1,
-		Maximum = 5,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			esp.SetEnemyHitboxScale(Value)
-		end),
-	}, "Slider_EnemyHitboxSize"))
-
-	enemySection:Toggle({
-		Name = "Show Skill Hitbox",
-		Default = esp.IsSkillHitboxEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.ToggleSkillHitbox(state)
-		end),
-	}, "Toggle_SkillHitbox")
-
-	applyHitboxVisibility = function()
-		pcall(function() playerSizeSlider:SetVisibility(esp.GetPlayerHitboxMode() == "Custom") end)
-		pcall(function() enemySizeSlider:SetVisibility(esp.GetEnemyHitboxMode() == "Custom") end)
-	end
-	applyHitboxVisibility()
-
-	local mapSection = tab:Section({ Side = "Right" })
-	mapSection:Header({ Name = "Map" })
-
-	mapSection:Toggle({
-		Name = "Map Optimizer",
-		Default = mapOptimizer.IsEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			mapOptimizer.Toggle(state)
-		end),
-	}, "Toggle_MapOptimizer")
-
-end
-end function __DIST.y()-- Smart Dodge (DungeonQuest): Phát hiện vùng nguy hiểm (Threat Detection) dựa trên
+end end function __DIST.o()-- Smart Dodge (DungeonQuest): Phát hiện vùng nguy hiểm (Threat Detection) dựa trên
 -- thuộc tính Material == Enum.Material.Neon của các skill, projectile, và telegraphs.
 -- Giai đoạn 1: Quét, nhận diện hiểm họa ở Workspace (Depth 1) và giám sát trạng thái Fade/Destroy thời gian thực.
 
@@ -12434,8 +10223,8 @@ local showHitboxVisual = false      -- Hiển thị vòng tròn trực quan hitb
 local hitboxVisualPart = nil        -- Part visual hitbox tròn quanh chân
 local ESCAPE_MARGIN = 4.5           -- Khoảng cách đệm an toàn sau khi ra khỏi mép (studs)
 local RAYCAST_DOWN_DIST = 25        -- Khoảng cách bắn raycast xuống mặt đất (studs)
-local RADIAL_DISTANCES = { 6, 10, 14, 18, 24, 30 }
-local RADIAL_ANGLES = { 0, 45, 90, 135, 180, 225, 270, 315 }
+local RADIAL_DISTANCES = { 6, 10, 14, 18, 22, 26, 30, 36 }
+local RADIAL_ANGLES = { 0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5 }
 
 --// Safe Spot State
 local showSafeMarker = true
@@ -12450,9 +10239,11 @@ local safeSpotLoopThread = nil
 
 --// Cấu hình Thực thi Né Chiêu (Bài toán 3: Hybrid MoveTo + Micro-Teleport)
 local autoDodgeEnabled = false
+local dodgeMode = "Hybrid"           -- "Hybrid" (MoveTo + Micro-Blink) hoặc "Walk" (Walk Only + Snap)
 local maxTeleportStep = 3.0          -- Bước teleport an toàn tối đa (studs) để chống anti-cheat
 local microBlinkInterval = 0.05      -- Khoảng thời gian giữa các bước nhích MoveTo + Teleport
 local isDodging = false
+local targetDodgeSpot = nil          -- Tọa độ đích đang nhắm đến (được cập nhật động khi bẻ lái)
 local dodgeThread = nil
 local dodgeStatusCallbacks = {}
 
@@ -12778,66 +10569,73 @@ local function fireDodgeStatus(status)
 	end
 end
 
---// Thực thi né sang Safe Spot bằng cơ chế Hybrid MoveTo + Micro-Teleport
+--// Thực thi né sang Safe Spot bằng cơ chế Hybrid MoveTo + Micro-Teleport (kèm Dynamic Re-routing)
 local function performDodge(safePos, escapeDist)
 	local char = player and player.Character
 	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
 	local humanoid = char and char:FindFirstChild("Humanoid")
 	if not rootPart or not humanoid or humanoid.Health <= 0 then return end
 
-	if isDodging then return end
+	local oldTarget = targetDodgeSpot
+	targetDodgeSpot = safePos
+
+	-- Dynamic Re-routing: Nếu đang né và điểm Safe Spot bị thay đổi (do bị skill khác đè)
+	if isDodging then
+		if oldTarget and (safePos - oldTarget).Magnitude > 0.5 then
+			if logInDanger then
+				print(("[SmartDodge][Dodge] 🔄 Dynamic Re-route: Shifting course to NEW Safe Spot (%.1f studs)...")
+					:format(escapeDist or 0))
+			end
+		end
+		return
+	end
 
 	dodgeThread = task.spawn(function()
 		isDodging = true
 		fireDodgeStatus("Dodging")
 
-		local currentPos = rootPart.Position
-		local totalDist = (safePos - currentPos).Magnitude
-
-		-- Trường hợp 1: Khoảng cách ngắn (<= maxTeleportStep, ví dụ <= 3.0 studs) -> Teleport dứt điểm 1 nhịp
-		if totalDist <= maxTeleportStep then
-			rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
-			if logInDanger then
-				print(("[SmartDodge][Dodge] ⚡ Instant Micro-Teleport (%.1f studs) to Safe Spot!"):format(totalDist))
-			end
-			isDodging = false
-			fireDodgeStatus("Safe")
-			return
-		end
-
-		-- Trường hợp 2: Khoảng cách xa (> 3.0 studs) -> MoveTo kết hợp Micro-Blink
-		if logInDanger then
-			print(("[SmartDodge][Dodge] 🏃 Hybrid MoveTo + Micro-Blink (%.1f studs) to Safe Spot..."):format(totalDist))
-		end
-
 		local startTime = os.clock()
-		local timeout = 2.0 -- Timeout an toàn 2s
+		local timeout = 3.0 -- Timeout an toàn 3s
 
-		while isPlayerInDanger and autoDodgeEnabled and (os.clock() - startTime < timeout) do
+		while isPlayerInDanger and autoDodgeEnabled and targetDodgeSpot and (os.clock() - startTime < timeout) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
-			currentPos = rootPart.Position
-			local distRemaining = (safePos - currentPos).Magnitude
 
-			-- Nếu đã tới cự ly micro-teleport cuối cùng
+			-- Luôn lấy tọa độ đích mới nhất (hỗ trợ bẻ lái tức thì nếu SP cũ bị skill 2 đè lên)
+			local currentTarget = targetDodgeSpot
+			local currentPos = rootPart.Position
+			local distRemaining = (currentTarget - currentPos).Magnitude
+
+			-- Nếu đã tới cự ly micro-teleport cuối cùng -> Teleport dứt điểm vào đích
 			if distRemaining <= maxTeleportStep then
-				rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
-				humanoid:MoveTo(safePos)
+				rootPart.CFrame = CFrame.new(currentTarget, currentTarget + rootPart.CFrame.LookVector)
+				humanoid:MoveTo(currentTarget)
+				if logInDanger then
+					print(("[SmartDodge][Dodge] ⚡ Instant Snap (%.1f studs) to Safe Spot!"):format(distRemaining))
+				end
 				break
 			end
 
-			local dir = (safePos - currentPos).Unit
-			local stepDist = math.min(maxTeleportStep, distRemaining - 0.5)
+			if dodgeMode == "Walk" then
+				-- Mode 2: Đi bộ thuần túy (MoveTo Only) hướng về currentTarget
+				humanoid:MoveTo(currentTarget)
+				task.wait(0.05)
+			else
+				-- Mode 1: Hybrid (MoveTo kết hợp Micro-Blink từng bước nhỏ)
+				local dir = (currentTarget - currentPos).Unit
+				local stepDist = math.min(maxTeleportStep, distRemaining - 0.5)
 
-			humanoid:MoveTo(safePos)
+				humanoid:MoveTo(currentTarget)
 
-			local newPos = currentPos + dir * stepDist
-			local lookTarget = newPos + dir
-			rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
+				local newPos = currentPos + dir * stepDist
+				local lookTarget = newPos + dir
+				rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
 
-			task.wait(microBlinkInterval)
+				task.wait(microBlinkInterval)
+			end
 		end
 
 		isDodging = false
+		targetDodgeSpot = nil
 		fireDodgeStatus("Safe")
 	end)
 end
@@ -12898,6 +10696,7 @@ local function stopSafeSpotLoop()
 		hitboxVisualPart.Parent = nil
 	end
 	isDodging = false
+	targetDodgeSpot = nil
 	isPlayerInDanger = false
 	currentSafeSpot = nil
 	lockedSafeSpot = nil
@@ -13153,6 +10952,16 @@ function smartDodge.GetMicroBlinkInterval()
 	return microBlinkInterval
 end
 
+function smartDodge.SetDodgeMode(mode)
+	if mode == "Walk" or mode == "Hybrid" then
+		dodgeMode = mode
+	end
+end
+
+function smartDodge.GetDodgeMode()
+	return dodgeMode
+end
+
 lifecycle.Register(function()
 	stopTracking()
 	if safeSpotMarkerPart then
@@ -13168,17 +10977,27 @@ lifecycle.Register(function()
 		dodgeThread = nil
 	end
 	isDodging = false
+	targetDodgeSpot = nil
 end)
 
 return smartDodge
-end function __DIST.z()-- Tab SmartDodge (DungeonQuest): Quản lý tính năng né chiêu thông minh.
+end function __DIST.p()-- Module Smart Dodge trong tab Combat (DungeonQuest): quản lý tính năng né chiêu.
 -- Giai đoạn 1, 2 & 3: Threat Detection, Safe Spot Calculation & Dodge Execution.
 
 --// Imports
 
 local ui = __DIST.load('f')
 local autoSave = __DIST.load('g')
-local smartDodge = __DIST.load('y')
+local smartDodge = __DIST.load('o')
+
+--// Dodge Mode options
+local DODGE_MODE_OPTIONS = { "Hybrid (MoveTo + Blink)", "Walk Only (MoveTo + Snap)" }
+local function dodgeModeToIndex(mode)
+	return (mode == "Walk" and 2) or 1
+end
+local function dodgeLabelToMode(label)
+	return (label == DODGE_MODE_OPTIONS[2] and "Walk") or "Hybrid"
+end
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -13281,12 +11100,22 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeThreatDetection")
 
 	leftSection:Toggle({
-		Name = "Auto Dodge Execution (Hybrid MoveTo + Teleport)",
+		Name = "Auto Dodge Execution",
 		Default = smartDodge.IsAutoDodgeEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			smartDodge.SetAutoDodge(state)
 		end),
 	}, "Toggle_SmartDodgeAutoExecution")
+
+	leftSection:Dropdown({
+		Name = "Dodge Movement Mode",
+		Options = DODGE_MODE_OPTIONS,
+		Default = dodgeModeToIndex(smartDodge.GetDodgeMode()),
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			smartDodge.SetDodgeMode(dodgeLabelToMode(option))
+		end),
+	}, "Dropdown_SmartDodgeMode")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Max Teleport Step (studs)",
@@ -13379,245 +11208,2377 @@ return function(window, tab)
 	updateSafeSpotUI(inDang, curSpot, hName, eDist)
 	updateDodgeStatusUI()
 end
-end function __DIST.A()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
--- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
+end function __DIST.q()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Auto Farm (Pathfinder) + Smart Dodge.
+-- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
+
+
+return function(window, tab)
+__DIST.load('j')(window, tab)
+__DIST.load('n')(window, tab)
+__DIST.load('p')(window, tab)
+end end function __DIST.r()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+-- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
-local macLib = __DIST.load('a')
+local services = __DIST.load('d')
 local notifier = __DIST.load('c')
+local dungeonCatalog = __DIST.load('k')
+local shared = __DIST.load('e')
+local lifecycle = __DIST.load('b')
 
---// Services
-local HttpService = game:GetService("HttpService")
+local playerName = services.player.Name
 
---// Constants
-local SETTINGS_FILE = macLib.Folder .. "/settings/autohide.json"
+--// State
+local autoJoinEnabled = false
+local autoJoinRunning = false
+local autoJoinCancel = false
+local selectedDungeon = "Desert Temple"
+local selectedDifficulty = "Easy"
+local hardcoreEnabled = false
+local privateEnabled = true
+local waveDefenceEnabled = false
+local autoJoinDelay = 3
+
+local LOBBY_PLACE_IDS_AJ = {
+	[77649408247578] = true,
+	[3220968688] = true,
+	[2414851778] = true,
+}
+
+--// Callbacks (UI đăng ký để refresh difficulty dropdown theo map)
+local dungeonChangedCallbacks = {}
+
+--// Helpers
+local function inLobbyPlace()
+	return LOBBY_PLACE_IDS_AJ[game.PlaceId] == true
+end
+
+local function fireDungeonChanged()
+	for _, callback in ipairs(dungeonChangedCallbacks) do
+		pcall(callback, selectedDungeon, dungeonCatalog.GetAllowedDifficulties(selectedDungeon))
+	end
+end
+
+local function joinDungeonNow()
+	if autoJoinRunning then return end
+	autoJoinRunning = true
+	autoJoinCancel = false
+	task.spawn(function()
+		local ok, err = pcall(function()
+			local remotes = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 15)
+			if not remotes then error("remotes not found") end
+
+			local levelReq = dungeonCatalog.GetLevelReq(selectedDungeon, selectedDifficulty)
+			pcall(function()
+				remotes:WaitForChild("createLobby", 10):InvokeServer(
+					selectedDungeon,
+					selectedDifficulty,
+					levelReq,
+					hardcoreEnabled,
+					privateEnabled,
+					waveDefenceEnabled
+				)
+			end)
+			if autoJoinCancel then return end
+			task.wait(autoJoinDelay)
+			if autoJoinCancel then return end
+
+			if privateEnabled then
+				pcall(function()
+					remotes:WaitForChild("addPlayerToWhitelist", 10):FireServer(playerName)
+				end)
+				if autoJoinCancel then return end
+				task.wait(autoJoinDelay)
+				if autoJoinCancel then return end
+			end
+
+			local waitClock = 0
+			while waitClock < 10 do
+				local lobby = workspace:FindFirstChild("games") and workspace.games:FindFirstChild("inLobby")
+				if lobby then break end
+				task.wait(0.5)
+				waitClock = waitClock + 0.5
+				if autoJoinCancel then return end
+			end
+			if autoJoinCancel then return end
+
+			task.wait(autoJoinDelay)
+			if autoJoinCancel then return end
+			pcall(function()
+				remotes:WaitForChild("startDungeon", 10):FireServer()
+			end)
+		end)
+		autoJoinRunning = false
+		if autoJoinCancel then return end
+		if ok then
+			notifier.Notify("Auto Join", "Joined: " .. selectedDungeon, 3)
+		else
+			notifier.Notify("Auto Join", "Join failed: " .. tostring(err), 4)
+		end
+	end)
+end
+
+local function joinDungeonWatcher()
+	while lifecycle.IsActive() do
+		task.wait(0.5)
+		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and shared.IsInLobby() then
+			joinDungeonNow()
+		end
+	end
+end
 
 --// Table
-local autoHide = {}
+local autoJoin = {}
+
+--// Methods
+function autoJoin.Toggle(state)
+	autoJoinEnabled = state
+	if autoJoinEnabled then
+		notifier.Notify("Auto Join", "Enabled", 2)
+	else
+		autoJoinCancel = true
+		notifier.Notify("Auto Join", "Stopped", 2)
+	end
+end
+
+function autoJoin.SetDungeon(name)
+	if type(name) ~= "string" or #name == 0 then return end
+	selectedDungeon = name
+	if not dungeonCatalog.IsDifficultyAllowed(selectedDungeon, selectedDifficulty) then
+		local allowed = dungeonCatalog.GetAllowedDifficulties(selectedDungeon)
+		if #allowed > 0 then selectedDifficulty = allowed[1] end
+	end
+	fireDungeonChanged()
+end
+
+function autoJoin.SetDifficulty(name)
+	if type(name) ~= "string" then return end
+	if dungeonCatalog.IsDifficultyAllowed(selectedDungeon, name) then
+		selectedDifficulty = name
+	end
+end
+
+function autoJoin.SetHardcore(state)
+	hardcoreEnabled = state
+end
+
+function autoJoin.SetPrivate(state)
+	privateEnabled = state
+end
+
+function autoJoin.SetWaveDefence(state)
+	waveDefenceEnabled = state
+end
+
+function autoJoin.SetDelay(value)
+	autoJoinDelay = value
+end
+
+function autoJoin.GetSelectedDungeon()
+	return selectedDungeon
+end
+
+function autoJoin.GetSelectedDifficulty()
+	return selectedDifficulty
+end
+
+function autoJoin.GetAllowedDifficulties()
+	return dungeonCatalog.GetAllowedDifficulties(selectedDungeon)
+end
+
+function autoJoin.OnDungeonChanged(callback)
+	if type(callback) == "function" then table.insert(dungeonChangedCallbacks, callback) end
+end
+
+autoJoin.JoinNow = function()
+	task.spawn(function() joinDungeonNow() end)
+end
+
+--// Initialize: watcher
+task.spawn(joinDungeonWatcher)
+
+lifecycle.Register(function()
+	autoJoin.Toggle(false)
+end)
+
+return autoJoin
+end function __DIST.s()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+-- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
+-- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
+-- hoạt động dù toggle có bật.
+
+--// Imports
+
+local shared = __DIST.load('e')
+local notifier = __DIST.load('c')
+
+--// Lobby placeId — ngoài các place này ra thì đều là dungeon
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
+
+--// State
+local autoStartEnabled = false
+local autoStartRunning = false
+local autoStartTriggered = false
+local autoStartDelay = 3
+local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
+local autoStartCommandFn = nil
+
+--// Điều kiện kích hoạt: đang ở dungeon (place hiện tại KHÔNG phải placeId lobby).
+local function lobbyCondition()
+	return not LOBBY_PLACE_IDS[game.PlaceId]
+end
+
+--// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
+local s2, cmdFn2 = pcall(loadstring, autoStartCommand)
+if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
+
+--// Table
+local autoStart = {}
+
+--// Callbacks chạy sau khi fire remote start thành công (đánh dấu mốc run bắt đầu).
+local startCallbacks = {}
+
+--// Methods
+function autoStart.OnStart(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(startCallbacks, callback)
+	return function()
+		for i, cb in ipairs(startCallbacks) do
+			if cb == callback then table.remove(startCallbacks, i) break end
+		end
+	end
+end
+
+function autoStart.Start()
+	if autoStartRunning then return end
+	autoStartRunning = true
+	autoStartTriggered = false
+	task.spawn(function()
+		while autoStartEnabled do
+			local sCond, res = pcall(lobbyCondition)
+			local met = sCond and res == true
+
+			if met and not autoStartTriggered then
+				autoStartTriggered = true
+				--// Chờ delay để asset load xong; nếu bị tắt giữa chừng thì bỏ qua.
+				local waited = 0
+				while waited < autoStartDelay and autoStartEnabled do
+					task.wait(0.1)
+					waited = waited + 0.1
+				end
+				if not autoStartEnabled then
+					autoStartTriggered = false
+					break
+				end
+				if autoStartCommandFn then
+					local sCmd, err = pcall(autoStartCommandFn)
+					if sCmd then
+						notifier.Notify("Auto Start", "Game started!", 3)
+						for i = #startCallbacks, 1, -1 do
+							pcall(startCallbacks[i])
+						end
+					else
+						notifier.Notify("Auto Start", "Trigger failed: " .. tostring(err), 3)
+					end
+				else
+					notifier.Notify("Auto Start", "Remote command invalid", 3)
+				end
+			end
+
+			if not autoStartEnabled then break end
+			task.wait(1)
+		end
+		autoStartRunning = false
+	end)
+end
+
+function autoStart.Stop()
+	autoStartEnabled = false
+end
+
+--// Delay (giây) chờ thêm sau khi vào lobby trước khi fire start — chờ asset load xong.
+function autoStart.SetDelay(value)
+	autoStartDelay = tonumber(value) or 3
+end
+
+function autoStart.GetDelay()
+	return autoStartDelay
+end
+
+function autoStart.Toggle(state)
+	autoStartEnabled = state
+	if state then
+		autoStart.Start()
+	else
+		autoStart.Stop()
+	end
+end
+
+--// Vào dungeon = teleport đổi placeId -> script reload -> autoStartTriggered khởi tạo
+--// lại = false, nên fire đúng 1 lần mỗi dungeon mà không cần reset qua callback.
+--// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
+--// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
+
+return autoStart end function __DIST.t()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+-- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
+-- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
+-- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
+
+--// Imports
+
+--// Lobby placeId — auto-press chỉ hoạt động tại đây
+
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
+
+--// Có đang ở lobby place không
+local function inLobbyPlace()
+	return LOBBY_PLACE_IDS[game.PlaceId] == true
+end
 
 --// State
 local enabled = false
-local window = nil
 
---// Persistence
-local function loadSettings()
-	if not (isfile and isfile(SETTINGS_FILE)) then return end
-	local ok, decoded = pcall(function()
-		return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+--// References
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+--// Nút Start trong introGui; button tồn tại khi introGui tồn tại (introGui biến mất
+--// sau khi bấm -> phải check cả introGui lẫn chính nút).
+local function findStartButton()
+	local player = game:GetService("Players").LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local introGui = playerGui:FindFirstChild("introGui")
+	if not introGui or not introGui:IsA("ScreenGui") or not introGui.Enabled then return nil end
+	local title = introGui:FindFirstChild("title")
+	if not title then return nil end
+	local frame = title:FindFirstChild("Frame")
+	if not frame then return nil end
+	local button = frame:FindFirstChild("TextButton")
+	if not button or not button:IsA("TextButton") or not button.Visible then return nil end
+	--// Chỉ chấp nhận nút có nhãn chứa "Play" để chắc tìm đúng nút Start.
+	local labelText = ""
+	if button.Text and type(button.Text) == "string" then
+		labelText = button.Text
+	end
+	if not string.find(string.lower(labelText), "play") then return nil end
+	return button
+end
+
+--// Mô phỏng chọn nút + nhấn Enter (theo Script3.txt), rồi BỎ CHỌN để thoát trạng
+--// thái selection/focus sau khi bấm cho sạch.
+local function pressStartButton(button)
+	pcall(function()
+		GuiService.SelectedObject = button
 	end)
-	if ok and type(decoded) == "table" then
-		enabled = decoded.enabled == true
+	task.wait(0.1)
+	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+	task.wait()
+	VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+	task.wait(0.1)
+	pcall(function()
+		GuiService.SelectedObject = nil
+	end)
+end
+
+--// Loop: bấm lặp lại nút Start tới khi introGui biến mất (đã press được) rồi NGỪNG
+--// HẲN. Chống bấm quá sớm do animation: nếu nút chưa sẵn sàng lần đầu, các lần sau
+--// bấm tới khi dính. Chỉ hoạt động ở lobby place; vào dungeon ngừng hẳn.
+local function runLoop()
+	task.spawn(function()
+		local hadButton = false
+		while enabled do
+			--// Chỉ hoạt động ở lobby place; vào dungeon ngừng hẳn.
+			if not inLobbyPlace() then
+				task.wait(1)
+				continue
+			end
+
+			local button = findStartButton()
+			if button then
+				--// Bấm; nếu press thành công, introGui biến mất -> vòng sau không thấy nút.
+				pressStartButton(button)
+				hadButton = true
+			elseif hadButton then
+				--// Đã từng bấm mà giờ nút biến mất -> press thành công (introGui đóng).
+				print("[AutoStartLobby] Pressed Start")
+				break
+			end
+
+			if not enabled then break end
+			task.wait(0.2)
+		end
+	end)
+end
+
+--// Table
+local autoStartLobby = {}
+
+--// Methods
+function autoStartLobby.Toggle(state)
+	enabled = state
+	if enabled then
+		runLoop()
 	end
 end
 
-local function saveSettings()
-	if not (isfile and writefile) then return end
-	pcall(function()
-		writefile(SETTINGS_FILE, HttpService:JSONEncode({ enabled = enabled }))
-	end)
-end
-
---// Methods
-function autoHide.SetWindow(newWindow)
-	window = newWindow
-end
-
-function autoHide.SetEnabled(state)
-	enabled = state == true
-	saveSettings()
-end
-
-function autoHide.IsEnabled()
-	return enabled
-end
-
---// Ẩn cửa sổ ngay lập tức (dùng SetState(false) như Maclib minimize, hiện lại bằng keybind)
-function autoHide.Hide()
-	if not enabled or not window then return end
-	local ok = pcall(function()
-		window:SetState(false)
-	end)
-	if not ok then warn("[AutoHide] Không ẩn được window") end
-end
-
---// Chạy sau khi init xong: ẩn ngay nếu được bật
-function autoHide.Execute()
-	if not enabled then return end
-	task.spawn(function()
-		task.wait(0.5)
-		autoHide.Hide()
-	end)
-end
-
---// Load settings lúc require
-loadSettings()
-
-return autoHide
-end function __DIST.B()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
--- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
--- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
+return autoStartLobby end function __DIST.u()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
-local macLib = __DIST.load('a')
+local services = __DIST.load('d')
+local notifier = __DIST.load('c')
+
+--// References
+local player = services.player
+
+--// State
+local AUTO_RETRY_MIN_ITEMS = 2
+local autoRetryEnabled = false
+local autoRetryRunning = false
+local autoRetryTriggered = false
+local timeRetryEnabled = false
+local timeRetryThreshold = 60
+local timeRetryTriggered = false
+local autoRetryCommand = [==[
+local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")
+
+local payload = {}
+local function collectValue(name)
+	local value = workspace:FindFirstChild(name)
+	if value and value:IsA("ValueBase") then
+		payload[name] = value.Value
+	end
+end
+
+collectValue("dungeonName")
+collectValue("dungeonProgress")
+collectValue("dungeonStarted")
+
+local hardcore = workspace:FindFirstChild("hardcore")
+if hardcore and hardcore:IsA("BoolValue") then
+	payload.hardcore = hardcore.Value
+	payload.isHardcore = hardcore.Value
+end
+
+local dungeon = workspace:FindFirstChild("dungeon")
+if dungeon then
+	for _, value in ipairs(dungeon:GetChildren()) do
+		if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+	end
+	local bossRoom = dungeon:FindFirstChild("bossRoom")
+	if bossRoom then
+		for _, value in ipairs(bossRoom:GetChildren()) do
+			if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+		end
+	end
+end
+
+if not payload.dungeonName then return end
+ReplayDungeon:FireServer(payload)
+]==]
+local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
+local autoRetryCommandFn = nil
+local autoRetryHolderFn = nil
+
+--// Helpers (validation dùng loadstring, giữ logic gốc)
+local function validateConditionText(text)
+	local s, fn = pcall(loadstring, "return " .. text)
+	if s and type(fn) == "function" then return fn end
+	return nil
+end
+
+local sRetryCmd, compiledRetryCmd = pcall(loadstring, autoRetryCommand)
+if sRetryCmd and type(compiledRetryCmd) == "function" then autoRetryCommandFn = compiledRetryCmd end
+
+autoRetryHolderFn = validateConditionText(autoRetryHolderPath)
+if not autoRetryHolderFn then
+	autoRetryHolderFn = function()
+		return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("rewardGuiHolder") and player.PlayerGui.rewardGuiHolder:FindFirstChild("holder")
+	end
+end
+
+--// Đọc thẳng giá trị thời gian còn lại từ UI game: PlayerGui.timeLeftGui.Frame.time
+local function readTimeLeft()
+	local ok, inst = pcall(function()
+		local PlayerGui = player:FindFirstChild("PlayerGui")
+		local gui = PlayerGui and PlayerGui:FindFirstChild("timeLeftGui")
+		local frame = gui and gui:FindFirstChild("Frame")
+		return frame and frame:FindFirstChild("time")
+	end)
+	if not ok or typeof(inst) ~= "Instance" then return nil end
+
+	--// Ưu tiên ValueBase (NumberValue...), nếu không thì đọc Text của TextLabel
+	local raw
+	if inst:IsA("ValueBase") then
+		raw = inst.Value
+	else
+		raw = inst.Text
+	end
+	if type(raw) == "number" then return raw end
+	if type(raw) == "string" then
+		local cleaned = raw:gsub("%s+", ""):gsub("^%[", ""):gsub("%]$", "")
+		local m, s = cleaned:match("^(%d+):(%d+)$")
+		if m and s then return tonumber(m) * 60 + tonumber(s) end
+		local sec = tonumber(cleaned)
+		if sec then return sec end
+	end
+	return nil
+end
+
+--// Table
+local autoRetry = {}
+
+--// Fire remote retry, trả về true nếu thành công
+local function fireRetry()
+	if not autoRetryCommandFn then
+		notifier.Notify("Auto Retry", "Remote command invalid", 3)
+		return false
+	end
+	local sCmd, err = pcall(autoRetryCommandFn)
+	if sCmd then
+		notifier.Notify("Auto Retry", "Retrying dungeon!", 3)
+		return true
+	end
+	notifier.Notify("Auto Retry", "Trigger failed: " .. tostring(err), 3)
+	return false
+end
+
+--// Methods
+function autoRetry.Start()
+	if autoRetryRunning then return end
+	autoRetryRunning = true
+	autoRetryTriggered = false
+	timeRetryTriggered = false
+	task.spawn(function()
+		while autoRetryEnabled or timeRetryEnabled do
+			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
+			if autoRetryEnabled then
+				local count = 0
+				if autoRetryHolderFn then
+					local sok, holder = pcall(autoRetryHolderFn)
+					if sok and typeof(holder) == "Instance" and holder.Parent then
+						count = #holder:GetChildren()
+					end
+				end
+				if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
+					autoRetryTriggered = true
+					fireRetry()
+				elseif count < AUTO_RETRY_MIN_ITEMS then
+					autoRetryTriggered = false
+				end
+			end
+
+			--// Điều kiện hết giờ (chạy độc lập khi bật Retry on Time Low):
+			--// UI còn < X giây thì retry
+			if timeRetryEnabled then
+				local remaining = readTimeLeft()
+				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
+					timeRetryTriggered = true
+					fireRetry()
+				elseif remaining and remaining >= timeRetryThreshold then
+					timeRetryTriggered = false
+				end
+			end
+
+			if not autoRetryEnabled and not timeRetryEnabled then break end
+			task.wait(0.75)
+		end
+		autoRetryRunning = false
+	end)
+end
+
+function autoRetry.Stop()
+	autoRetryEnabled = false
+end
+
+function autoRetry.Toggle(state)
+	autoRetryEnabled = state
+	if state then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching reward holder...", 2)
+	else
+		autoRetry.Stop()
+		notifier.Notify("Auto Retry", "Stopped", 2)
+	end
+end
+
+function autoRetry.SetTimeRetryEnabled(value)
+	timeRetryEnabled = value == true
+	if timeRetryEnabled then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching time left...", 2)
+	else
+		notifier.Notify("Auto Retry", "Time retry stopped", 2)
+	end
+end
+
+function autoRetry.GetTimeRetryEnabled()
+	return timeRetryEnabled
+end
+
+function autoRetry.SetTimeRetryThreshold(value)
+	timeRetryThreshold = value
+end
+
+function autoRetry.GetTimeRetryThreshold()
+	return timeRetryThreshold
+end
+
+--// Đọc thời gian còn lại (giây) như đúng logic time-low đang dùng (UI playerGui.timeLeftGui.Frame.<time>)
+function autoRetry.GetTimeLeft()
+	return readTimeLeft()
+end
+
+function autoRetry.RetryNow()
+	task.spawn(function()
+		fireRetry()
+	end)
+end
+
+return autoRetry
+end function __DIST.v()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+-- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
+
+--// Imports
+
+local ui = __DIST.load('f')
+local autoJoin = __DIST.load('r')
+local autoStart = __DIST.load('s')
+local autoStartLobby = __DIST.load('t')
+local autoRetry = __DIST.load('u')
 local autoSave = __DIST.load('g')
-local autoHide = __DIST.load('A')
+local dungeonCatalog = __DIST.load('k')
 
 return function(window, tab)
-	local folder = macLib.Folder
-	local autoloadPath = folder .. "/settings/autoload.txt"
+	local section = tab:Section({ Side = "Left" })
+	local runSection = tab:Section({ Side = "Right" })
 
-	local function getAutoloadName()
-		if isfile and isfile(autoloadPath) then
-			return readfile(autoloadPath)
+	local function indexOf(list, name)
+		for i, v in ipairs(list) do
+			if v == name then return i end
 		end
 		return nil
 	end
+	section:Header({ Name = "Auto Join Dungeon" })
+	runSection:Header({ Name = "Dungeon Run Automation" })
 
-	local function activate(name)
-		autoSave.SetActive(name)
-	end
-
-	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "Configs" })
-
-	local inputPath = nil
-	local configSelection
-	local autoloadLabel
-
-	local function refreshOptions(keep)
-		local options = macLib:RefreshConfigList()
-		configSelection:ClearOptions()
-		configSelection:InsertOptions(options)
-		if keep then
-			if not configSelection:IsOption(keep) then
-				configSelection:InsertOptions({ keep })
-			end
-			configSelection:UpdateSelection(keep)
-		end
-	end
-
-	section:Input({
-		Name = "Config Name",
-		Placeholder = "Name",
-		AcceptedCharacters = "All",
-		Callback = function(input)
-			inputPath = input
-		end,
-	})
-
-	configSelection = section:Dropdown({
-		Name = "Select Config",
-		Multi = false,
-		Required = false,
-		Options = macLib:RefreshConfigList(),
-		Callback = function(value)
-			activate(value)
-		end,
-	})
-
-	--// Auto-select config autoload (nếu đã set) để dropdown luôn chỉ đúng config đang dùng
-	local autoloadName = getAutoloadName()
-	if autoloadName and autoloadName ~= "" then
-		if not configSelection:IsOption(autoloadName) then
-			configSelection:InsertOptions({ autoloadName })
-		end
-		configSelection:UpdateSelection(autoloadName)
-		activate(autoloadName)
-	end
-
-	section:Button({
-		Name = "Create Config",
-		Callback = function()
-			if not inputPath or string.gsub(inputPath, " ", "") == "" then
-				window:Notify({ Title = "Interface", Description = "Config name cannot be empty." })
-				return
-			end
-
-			local success, err = macLib:SaveConfig(inputPath)
-			if not success then
-				window:Notify({ Title = "Interface", Description = "Unable to save config: " .. tostring(err) })
-				return
-			end
-
-			window:Notify({ Title = "Interface", Description = string.format("Created config %q", inputPath) })
-			refreshOptions(inputPath)
-			activate(inputPath)
-		end,
-	})
-
-	section:Button({
-		Name = "Load Config",
-		Callback = function()
-			local name = configSelection.Value
-			local success, err = macLib:LoadConfig(name)
-			if not success then
-				window:Notify({ Title = "Interface", Description = "Unable to load config: " .. tostring(err) })
-				return
-			end
-
-			window:Notify({ Title = "Interface", Description = string.format("Loaded config %q", name) })
-			activate(name)
-		end,
-	})
-
-	section:Button({
-		Name = "Overwrite Config",
-		Callback = function()
-			local name = configSelection.Value
-			local success, err = macLib:SaveConfig(name)
-			if not success then
-				window:Notify({ Title = "Interface", Description = "Unable to overwrite config: " .. tostring(err) })
-				return
-			end
-
-			window:Notify({ Title = "Interface", Description = string.format("Overwrote config %q", name) })
-			activate(name)
-		end,
-	})
-
-	section:Button({
-		Name = "Set as autoload",
-		Callback = function()
-			local name = configSelection.Value
-			if not name then
-				window:Notify({ Title = "Interface", Description = "Please select a config first." })
-				return
-			end
-
-			writefile(autoloadPath, name)
-			autoloadLabel:UpdateName("Autoload config: " .. name)
-			window:Notify({ Title = "Interface", Description = string.format("Set %q as autoload", name) })
-			activate(name)
-		end,
-	})
-
-	section:Button({
-		Name = "Refresh Config List",
-		Callback = function()
-			refreshOptions(configSelection.Value)
-		end,
-	})
-
-	autoloadLabel = section:Label({ Text = "Autoload config: None" })
-	local currentAuto = getAutoloadName()
-	if currentAuto and currentAuto ~= "" then
-		autoloadLabel:UpdateName("Autoload config: " .. currentAuto)
-	end
-
-	section:Header({ Name = "Auto Hide UI" })
 	section:Toggle({
-		Name = "Hide window after execute",
-		Default = autoHide.IsEnabled(),
-		Callback = function(state)
-			autoHide.SetEnabled(state)
-		end,
-	}, "Toggle_AutoHide")
+		Name = "Auto Join Dungeon",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoJoin.Toggle(state)
+		end),
+	}, "Toggle_AutoJoin")
 
-	section:Label({
-		Text = "Press RightControl to show the window again.",
+	local dungeonOptions = dungeonCatalog.GetDungeons()
+	local dungeonDropdown = ui.PatchDropdownRestore(section:Dropdown({
+		Name = "Dungeon",
+		Options = dungeonOptions,
+		Default = indexOf(dungeonOptions, autoJoin.GetSelectedDungeon()) or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			autoJoin.SetDungeon(option)
+		end),
+	}, "Dropdown_Dungeon"), true)
+
+	section:Button({
+		Name = "Refresh Map List",
+		Callback = function()
+			task.spawn(function()
+				local newList = dungeonCatalog.RefreshDungeons()
+				if not newList or #newList == 0 then return end
+				pcall(function()
+					dungeonDropdown:ClearOptions()
+					dungeonDropdown:InsertOptions(newList)
+				end)
+				local current = autoJoin.GetSelectedDungeon()
+				if not table.find(newList, current) then
+					autoJoin.SetDungeon(newList[1])
+				end
+				pcall(function()
+					dungeonDropdown:UpdateSelection(autoJoin.GetSelectedDungeon())
+				end)
+			end)
+		end,
 	})
+
+	local levelReqLabel = section:Label({
+		Text = "Recommended Level: ...",
+	}, "Label_RecommendedLevel")
+
+	local function updateLevelLabel()
+		pcall(function()
+			local levelReq = dungeonCatalog.GetLevelReq(
+				autoJoin.GetSelectedDungeon(),
+				autoJoin.GetSelectedDifficulty()
+			)
+			levelReqLabel:UpdateName("Recommended Level: " .. tostring(levelReq))
+		end)
+	end
+	updateLevelLabel()
+
+	local difficultyOptions = autoJoin.GetAllowedDifficulties()
+	local difficultyDropdown = ui.PatchDropdownRestore(section:Dropdown({
+		Name = "Difficulty",
+		Options = difficultyOptions,
+		Default = indexOf(difficultyOptions, autoJoin.GetSelectedDifficulty()) or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			autoJoin.SetDifficulty(option)
+			updateLevelLabel()
+		end),
+	}, "Dropdown_Difficulty"), false)
+
+	section:Toggle({
+		Name = "Hardcore",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoJoin.SetHardcore(state)
+		end),
+	}, "Toggle_HardcoreAJ")
+
+	section:Toggle({
+		Name = "Private Room",
+		Default = true,
+		Callback = autoSave.Wrap(function(state)
+			autoJoin.SetPrivate(state)
+		end),
+	}, "Toggle_PrivateAJ")
+
+	section:Toggle({
+		Name = "Wave Defence",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoJoin.SetWaveDefence(state)
+		end),
+	}, "Toggle_WaveDefenceAJ")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Delay",
+		Default = 3,
+		Minimum = 0,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			autoJoin.SetDelay(Value)
+		end),
+	}, "Slider_JoinDelay"))
+
+	section:Button({
+		Name = "Join Now",
+		Callback = function()
+			autoJoin.JoinNow()
+		end,
+	})
+
+	runSection:Toggle({
+		Name = "Auto Start",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoStart.Toggle(state)
+		end),
+	}, "Toggle_AutoStart")
+
+	ui.PatchSliderLoadCallback(runSection:Slider({
+		Name = "Start Delay",
+		Default = autoStart.GetDelay(),
+		Minimum = 0,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			autoStart.SetDelay(Value)
+		end),
+	}, "Slider_AutoStartDelay"))
+
+	runSection:Toggle({
+		Name = "Auto Start Lobby",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoStartLobby.Toggle(state)
+		end),
+	}, "Toggle_AutoStartLobby")
+
+	runSection:Toggle({
+		Name = "Auto Retry",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoRetry.Toggle(state)
+		end),
+	}, "Toggle_AutoRetry")
+
+	runSection:Button({
+		Name = "Manual Retry",
+		Callback = function()
+			task.spawn(function()
+				autoRetry.RetryNow()
+			end)
+		end,
+	})
+
+	runSection:Toggle({
+		Name = "Retry on Time Low",
+		Default = autoRetry.GetTimeRetryEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoRetry.SetTimeRetryEnabled(state)
+		end),
+	}, "Toggle_RetryTimeLow")
+
+	ui.PatchSliderLoadCallback(runSection:Slider({
+		Name = "Retry Time Threshold",
+		Default = autoRetry.GetTimeRetryThreshold(),
+		Minimum = 5,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Suffix = "s",
+		Callback = autoSave.Wrap(function(Value)
+			autoRetry.SetTimeRetryThreshold(Value)
+		end),
+	}, "Slider_RetryTimeThreshold"))
+
+	-- Đồng bộ difficulty dropdown khi đổi map (cũng chạy khi config load).
+	autoJoin.OnDungeonChanged(function(dungeon, allowed)
+		pcall(function()
+			difficultyDropdown:ClearOptions()
+			difficultyDropdown:InsertOptions(allowed)
+			difficultyDropdown:UpdateSelection(autoJoin.GetSelectedDifficulty())
+		end)
+		updateLevelLabel()
+	end)
+end
+end function __DIST.w()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+-- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
+-- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
+-- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
+
+--// Imports
+
+local lifecycle = __DIST.load('b')
+local notifier = __DIST.load('c')
+local shared = __DIST.load('e')
+
+--// Lobby placeId — ngoài các place này ra thì đều là dungeon
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
+
+--// Table
+local autoSell = {}
+
+--// State
+local autoSellEnabled = false
+local dungeonSellTriggered = false
+local excludeEquipped = true
+local rarityFilter = {} -- set: rarity string -> true
+local typeFilter = {} -- set: type string -> true
+local levelReqExactFilter = {} -- set: level number -> true (chọn đích danh các mốc)
+local levelReqMode = "None" -- "None" = exact multi, "Below" = ≤, "Above" = ≥
+local sellRunning = false
+
+--// Các category có trong inventory (từ log reloadInvy)
+local CATEGORY_TYPES = {
+	weapons = "Weapons",
+	helmets = "Helmets",
+	chests = "Chests",
+	abilities = "Abilities",
+}
+
+--// Cấp hiếm hợp lệ (để biết option nào là rarity)
+local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
+
+--// Các mốc Level Req tĩnh cho dropdown multi-select
+local LEVEL_REQ_OPTIONS = {
+	"1", "5", "15", "25", "35", "45", "55", "65", "75", "85",
+	"95", "105", "115", "125", "135", "145", "155", "165", "175", "185",
+}
+
+--// Chế độ lọc Level Req: None = chọn đích danh, Below = ≤, Above = ≥
+local LEVEL_REQ_MODE_OPTIONS = { "None", "Below", "Above" }
+
+--// Độ hiếm -> số 0..5 (dùng để map item.rarity sang RarityValue)
+local RARITY_ORDER = {
+	Common = 0,
+	Uncommon = 1,
+	Rare = 2,
+	Epic = 3,
+	Legendary = 4,
+	Mythic = 5,
+}
+local isRarityOption = {}
+for _, r in ipairs(RARITY_OPTIONS) do isRarityOption[r] = true end
+
+--// Map rarity dạng tùy ý (chữ thường "epic", hoa "EPIC", lẫn lộn...) -> dạng chuẩn.
+--// Dữ liệu từ game là chữ thường (epic/rare/legendary) nên cần chuẩn hóa để khớp với
+--// option dropdown (viết hoa chữ cái đầu) khi so sánh filter.
+local RARITY_BY_KEY = {}
+for _, r in ipairs(RARITY_OPTIONS) do
+	RARITY_BY_KEY[string.lower(r)] = r
+end
+
+local function normalizeRarity(value)
+	if type(value) ~= "string" then return nil end
+	return RARITY_BY_KEY[string.lower(value)]
+end
+
+--// Sell action - mặc định:
+--//   gom theo category rồi fire remote `sellItemEvent`.
+--//   Nhận: (categoryMap: { [singular] = {index,...} }, items) -> trả (ok, gold)
+local function defaultSellAction(categoryMap)
+	local remote
+	pcall(function()
+		remote = game:GetService("ReplicatedStorage"):WaitForChild("remotes", 5)
+			:WaitForChild("sellItemEvent", 5)
+	end)
+	if not remote then return false, 0 end
+
+	--// Chỉ gửi category có ít nhất 1 index. Không sửa key để tránh lệch với server.
+	local payload = {}
+	for singular, list in pairs(categoryMap) do
+		if type(list) == "table" and #list > 0 then
+			payload[singular] = list
+		end
+	end
+
+	if next(payload) == nil then return false, 0 end
+
+	local ok = pcall(function()
+		remote:FireServer(payload)
+	end)
+	if not ok then return false, 0 end
+	return true, 0
+end
+
+local sellAction = defaultSellAction
+
+function autoSell.SetSellAction(callback)
+	if type(callback) == "function" then sellAction = callback end
+end
+
+--// Đọc inventory từ remote `reloadInvy` (RemoteFunction InvokeServer).
+--// Dữ liệu thật có thể bọc nhiều lớp (vd { ["1"] = { categories... } }) và có thể
+--// khác nhau giữa các lần. Vì vậy ta flatten đệ quy: nhận diện 1 "item" bằng dấu hiệu
+--// (table có sellPrice/UniqueItemID/rarity), và coi mọi category đã biết là 1 item.
+--// Mỗi item lưu cả `Index` (số thứ tự lấy từ key `category_số`, dùng để bán qua
+--// sellItemEvent) và `Category` (singular key: weapon/helmet/chest/ability).
+--// Trả về mảng item.
+local function fetchInventoryItems()
+	local ok, rs = pcall(function()
+		return game:GetService("ReplicatedStorage"):WaitForChild("remotes", 5):WaitForChild("reloadInvy", 5)
+	end)
+	if not ok or not rs then return nil, "Could not find remote reloadInvy" end
+
+	local ok2, data = pcall(function()
+		return rs:InvokeServer()
+	end)
+	if not ok2 or data == nil then return nil, "Could not read inventory" end
+
+	local items = {}
+	local seen = {} -- tránh lặp vô hạn khi có cyclic reference
+
+	local function isItemTable(t)
+		return t.sellPrice ~= nil or t.UniqueItemID ~= nil or t.rarity ~= nil
+	end
+
+	--// Parse index + singular category từ key item dạng "weapon_49", "helmet_5", ...
+	--// -> trả ("weapon", 49). Không khớp dạng -> trả (nil, nil).
+	local function parseItemKey(key)
+		local s = tostring(key)
+		local index = tonumber(s:match("_(%d+)$"))
+		if not index then return nil, nil end
+		local singular = s:match("^(.-)_%d+$")
+		return singular, index
+	end
+
+	local function addItem(node, pluralCat, singularKey, index)
+		local equipped = false
+		if type(node.equipped) == "boolean" then
+			equipped = node.equipped
+		elseif type(node.equipped) == "table" then
+			for _, eq in pairs(node.equipped) do
+				if eq == true then equipped = true break end
+			end
+		end
+		local rarityNorm = normalizeRarity(node.rarity) or "Common"
+		table.insert(items, {
+			Type = CATEGORY_TYPES[pluralCat] or pluralCat or "Unknown",
+			Category = singularKey or pluralCat,
+			Index = index,
+			Name = tostring(node.name or node.UniqueItemID or "?"),
+			Rarity = rarityNorm,
+			RarityValue = RARITY_ORDER[rarityNorm],
+			SellPrice = tonumber(node.sellPrice) or 0,
+			UniqueItemID = node.UniqueItemID,
+			Equipped = equipped,
+			LevelReq = tonumber(node.levelReq) or 0,
+			Raw = node,
+		})
+	end
+
+	--// Duyệt đệ quy. `pluralCat` = plural category (weapons/helmets/... /nil).
+	--// `singularKey` = singular category cho sellItemEvent (weapon/helmet/... /nil).
+	--// `index` = số thứ tự item trong category (từ key `category_số`).
+	local function walk(node, pluralCat, singularKey, index)
+		if type(node) ~= "table" then return end
+		if seen[node] then return end
+		seen[node] = true
+
+		if isItemTable(node) then
+			addItem(node, pluralCat, singularKey, index)
+			return
+		end
+
+		for key, value in pairs(node) do
+			if CATEGORY_TYPES[key] then
+				walk(value, key, nil, nil)
+			elseif type(value) == "table" and isItemTable(value) then
+				local sg, idx = parseItemKey(key)
+				walk(value, pluralCat, sg, idx)
+			else
+				walk(value, pluralCat, singularKey, index)
+			end
+		end
+	end
+
+	walk(data, nil, nil, nil)
+	return items
+end
+
+--// Kiểm tra 1 item có đủ điều kiện bán không
+function autoSell.ShouldSellItem(item)
+	if not item then return false end
+
+	if excludeEquipped and item.Equipped then return false end
+
+	if next(rarityFilter) and isRarityOption[item.Rarity] and not rarityFilter[item.Rarity] then
+		return false
+	end
+
+	if next(typeFilter) and item.Type and not typeFilter[item.Type] then
+		return false
+	end
+
+	--// Level filter: NẾU KHÔNG chọn mốc nào -> fallback an toàn = chính xác level 1.
+	--// KHÔNG BAO GIỜ để trạng thái "none" (không lọc theo level) vì sẽ bán hết inventory.
+	local lvSet = levelReqExactFilter
+	local lvMode = levelReqMode
+	if next(lvSet) == nil then
+		lvSet = { [1] = true }
+		lvMode = "None"
+	end
+	local lvl = item.LevelReq or 0
+	if lvMode == "Below" then
+		-- Bán item có LevelReq ≤ mốc đã chọn (lấy max trong set)
+		local threshold
+		for v in pairs(lvSet) do
+			if not threshold or v > threshold then threshold = v end
+		end
+		if threshold and lvl > threshold then return false end
+	elseif lvMode == "Above" then
+		-- Bán item có LevelReq ≥ mốc đã chọn (lấy min trong set)
+		local threshold
+		for v in pairs(lvSet) do
+			if not threshold or v < threshold then threshold = v end
+		end
+		if threshold and lvl < threshold then return false end
+	else
+		-- None: chỉ bán đúng các mốc đã tick (fallback 1 => chỉ LevelReq == 1)
+		if not lvSet[lvl] then return false end
+	end
+
+	return true
+end
+
+--// Có ít nhất 1 điều kiện lọc đang active hay không.
+--// Dùng để cảnh báo khi user sắp bán mà không có filter nào (rủi ro bán sạch).
+function autoSell.HasAnyFilter()
+	-- Level filter luôn có giá trị tối thiểu (fallback = 1 khi user không chọn), nên
+	-- không bao giờ ở trạng thái "không có filter" — tránh bán hết inventory.
+	return true
+end
+
+--// Đếm tổng số item khớp điều kiện (gọi khi bấm nút Search, không bán).
+--// Trả về { total, matching, byCategory, error }
+function autoSell.CountMatches()
+	local items, err = fetchInventoryItems()
+	if not items then
+		return { total = 0, matching = 0, error = err or "Error reading inventory" }
+	end
+
+	local matching = 0
+	local byCategory = {}
+	for _, item in ipairs(items) do
+		byCategory[item.Type] = (byCategory[item.Type] or 0) + 1
+		if autoSell.ShouldSellItem(item) then matching += 1 end
+	end
+
+	return { total = #items, matching = matching, byCategory = byCategory }
+end
+
+--// Bán toàn bộ item khớp điều kiện (gọi khi bấm nút). Trả kết quả { sold, skipped, gold }
+function autoSell.SellItems()
+	if sellRunning then return nil end
+	sellRunning = true
+
+	local result = { sold = 0, skipped = 0, gold = 0, error = nil }
+	local items, err = fetchInventoryItems()
+	if not items then
+		result.error = err or "Error reading inventory"
+		sellRunning = false
+		return result
+	end
+
+	--// Gom các item khớp lọc theo category (singular key của sellItemEvent).
+	local categoryMap = {}
+	for _, item in ipairs(items) do
+		if autoSell.ShouldSellItem(item) then
+			if item.Index then
+				result.sold += 1
+				local sg = item.Category or item.Type
+				categoryMap[sg] = categoryMap[sg] or {}
+				table.insert(categoryMap[sg], item.Index)
+			end
+		else
+			result.skipped += 1
+		end
+	end
+
+	local ok, gold = pcall(sellAction, categoryMap)
+	if ok and gold and type(gold) == "number" then result.gold = gold end
+
+	sellRunning = false
+	return result
+end
+
+function autoSell.SetLevelReqMode(value)
+	if value == "Below" or value == "Above" then
+		levelReqMode = value
+	else
+		levelReqMode = "None"
+	end
+end
+
+function autoSell.GetLevelReqMode()
+	return levelReqMode
+end
+
+function autoSell.SetExcludeEquipped(state)
+	excludeEquipped = state
+end
+
+function autoSell.GetExcludeEquipped()
+	return excludeEquipped
+end
+
+--// Rarity filter dạng mảng các chuỗi đã chọn
+function autoSell.SetRarityFilter(selected)
+	rarityFilter = {}
+	if type(selected) == "table" then
+		for _, r in ipairs(selected) do rarityFilter[r] = true end
+	end
+end
+
+function autoSell.GetRarityFilter()
+	local out = {}
+	for r in pairs(rarityFilter) do table.insert(out, r) end
+	return out
+end
+
+--// Type filter dạng mảng các chuỗi đã chọn
+function autoSell.SetTypeFilter(selected)
+	typeFilter = {}
+	if type(selected) == "table" then
+		for _, t in ipairs(selected) do typeFilter[t] = true end
+	end
+end
+
+function autoSell.GetTypeFilter()
+	local out = {}
+	for t in pairs(typeFilter) do table.insert(out, t) end
+	return out
+end
+
+--// Level Req Exact filter dạng mảng các chuỗi đã chọn (vd {"1","15","145"})
+function autoSell.SetLevelReqExactFilter(selected)
+	levelReqExactFilter = {}
+	if type(selected) == "table" then
+		for _, v in ipairs(selected) do
+			local n = tonumber(v)
+			if n then levelReqExactFilter[n] = true end
+		end
+	end
+end
+
+function autoSell.GetLevelReqExactFilter()
+	local out = {}
+	for lvl in pairs(levelReqExactFilter) do table.insert(out, tostring(lvl)) end
+	return out
+end
+
+--// Auto Sell Toggle & Dungeon Start Watcher
+local function isDungeon()
+	return not LOBBY_PLACE_IDS[game.PlaceId]
+end
+
+local function triggerDungeonStartSell()
+	if not autoSellEnabled then return end
+	if dungeonSellTriggered then return end
+	if not isDungeon() then return end
+	if not autoSell.HasAnyFilter() then return end
+
+	dungeonSellTriggered = true
+	task.spawn(function()
+		-- Chờ 2.5s để server load dữ liệu inventory sau khi teleport/vào dungeon
+		task.wait(2.5)
+		if not autoSellEnabled or not isDungeon() then return end
+
+		local result = autoSell.SellItems()
+		if result and result.sold and result.sold > 0 then
+			notifier.Notify("AutoSell", ("Auto-sold %d item(s) on dungeon start."):format(result.sold), 3)
+		end
+	end)
+end
+
+function autoSell.Toggle(state)
+	autoSellEnabled = state and true or false
+	if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+		triggerDungeonStartSell()
+	end
+end
+
+function autoSell.IsEnabled()
+	return autoSellEnabled
+end
+
+--// Lắng nghe thay đổi dungeon để reset cờ và trigger bán cho run mới
+shared.OnDungeonNameChanged(function(name)
+	dungeonSellTriggered = false
+	if name then
+		triggerDungeonStartSell()
+	end
+end)
+
+shared.OnLobbyChanged(function(inLobby)
+	if not inLobby then
+		dungeonSellTriggered = false
+		triggerDungeonStartSell()
+	else
+		dungeonSellTriggered = false
+	end
+end)
+
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(1)
+		if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+			triggerDungeonStartSell()
+		end
+	end
+end)
+
+lifecycle.Register(function()
+	autoSellEnabled = false
+end)
+
+--// Export constants
+autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
+autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
+
+return autoSell
+end function __DIST.x()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+-- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
+-- after a confirmation dialog.
+
+--// Imports
+
+local autoSave = __DIST.load('g')
+local autoSell = __DIST.load('w')
+local notifier = __DIST.load('c')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "AutoSell" })
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Filter Summary" })
+
+	--// Right Section Labels (Filter Summary)
+	local summaryStatusLabel = rightSection:Label({ Text = "Status: --" })
+	local summarySafetyLabel = rightSection:Label({ Text = "Safety: --" })
+	local summaryTriggerLabel = rightSection:Label({ Text = "Trigger: <font color='rgb(200,200,255)'>On Dungeon Start</font>" })
+	local summaryRarityLabel = rightSection:Label({ Text = "Rarities: --" })
+	local summaryTypeLabel = rightSection:Label({ Text = "Item Types: --" })
+	local summaryLevelLabel = rightSection:Label({ Text = "Level Req: --" })
+	local summaryEquippedLabel = rightSection:Label({ Text = "Exclude Equipped: --" })
+
+	local function updateSummary()
+		-- Status
+		local isAuto = autoSell.IsEnabled()
+		local statusColor = isAuto and "0, 255, 0" or "255, 80, 80"
+		local statusText = isAuto and "Enabled" or "Disabled"
+		pcall(function()
+			summaryStatusLabel:UpdateName("Status: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
+		end)
+
+		-- Safety Status
+		local hasFilter = autoSell.HasAnyFilter()
+		local safetyColor = hasFilter and "0, 255, 0" or "255, 80, 80"
+		local safetyText = hasFilter and "✓ Active (Configured)" or "⚠ NO filter selected"
+		pcall(function()
+			summarySafetyLabel:UpdateName("Safety: <font color='rgb(" .. safetyColor .. ")'>" .. safetyText .. "</font>")
+		end)
+
+		-- Rarities
+		local rarities = autoSell.GetRarityFilter()
+		local rarityText = #rarities > 0 and table.concat(rarities, ", ") or "All (No filter)"
+		local rarityColor = #rarities > 0 and "255, 220, 120" or "160, 160, 160"
+		pcall(function()
+			summaryRarityLabel:UpdateName("Rarities: <font color='rgb(" .. rarityColor .. ")'>" .. rarityText .. "</font>")
+		end)
+
+		-- Types
+		local types = autoSell.GetTypeFilter()
+		local typeText = #types > 0 and table.concat(types, ", ") or "All (No filter)"
+		local typeColor = #types > 0 and "255, 220, 120" or "160, 160, 160"
+		pcall(function()
+			summaryTypeLabel:UpdateName("Item Types: <font color='rgb(" .. typeColor .. ")'>" .. typeText .. "</font>")
+		end)
+
+		-- Level Req
+		local mode = autoSell.GetLevelReqMode()
+		local exactLevels = autoSell.GetLevelReqExactFilter()
+		table.sort(exactLevels, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
+		local levelText = "1 (Safe Fallback)"
+		local levelColor = "255, 160, 80"
+		if #exactLevels > 0 then
+			levelColor = "255, 220, 120"
+			if mode == "Below" then
+				levelText = "Below (≤ " .. exactLevels[#exactLevels] .. ")"
+			elseif mode == "Above" then
+				levelText = "Above (≥ " .. exactLevels[1] .. ")"
+			else
+				levelText = "Exact (" .. table.concat(exactLevels, ", ") .. ")"
+			end
+		end
+		pcall(function()
+			summaryLevelLabel:UpdateName("Level Req: <font color='rgb(" .. levelColor .. ")'>" .. levelText .. "</font>")
+		end)
+
+		-- Exclude Equipped
+		local exclude = autoSell.GetExcludeEquipped()
+		local excludeColor = exclude and "0, 255, 0" or "255, 80, 80"
+		local excludeText = exclude and "Yes (Protected)" or "No (May Sell)"
+		pcall(function()
+			summaryEquippedLabel:UpdateName("Exclude Equipped: <font color='rgb(" .. excludeColor .. ")'>" .. excludeText .. "</font>")
+		end)
+	end
+
+	--// Left Section Controls
+	leftSection:Toggle({
+		Name = "Auto Sell on Dungeon Start",
+		Default = autoSell.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSell.Toggle(state)
+			updateSummary()
+		end),
+	}, "Toggle_AutoSellEnabled")
+
+	local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
+	local TYPE_OPTIONS = { "Weapons", "Helmets", "Chests", "Abilities" }
+
+	leftSection:Dropdown({
+		Name = "Rarity Filter",
+		Options = RARITY_OPTIONS,
+		Default = autoSell.GetRarityFilter(),
+		Multi = true,
+		Required = false,
+		Callback = autoSave.Wrap(function(selected)
+			local list = {}
+			for rarity in pairs(selected) do table.insert(list, rarity) end
+			autoSell.SetRarityFilter(list)
+			updateSummary()
+		end),
+	}, "Dropdown_AutoSellRarity")
+
+	leftSection:Dropdown({
+		Name = "Item Type Filter",
+		Options = TYPE_OPTIONS,
+		Default = autoSell.GetTypeFilter(),
+		Multi = true,
+		Required = false,
+		Callback = autoSave.Wrap(function(selected)
+			local list = {}
+			for itemType in pairs(selected) do table.insert(list, itemType) end
+			autoSell.SetTypeFilter(list)
+			updateSummary()
+		end),
+	}, "Dropdown_AutoSellType")
+
+	local levelReqDropdown -- forward declaration để mode callback có thể truy cập
+
+	local currentMode = autoSell.GetLevelReqMode()
+	local currentModeIndex = table.find(autoSell.LEVEL_REQ_MODE_OPTIONS, currentMode) or 1
+	leftSection:Dropdown({
+		Name = "Level Req Mode",
+		Options = autoSell.LEVEL_REQ_MODE_OPTIONS,
+		Default = currentModeIndex,
+		Multi = false,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			autoSell.SetLevelReqMode(selected)
+			if levelReqDropdown then
+				local isMulti = (selected == "None")
+				levelReqDropdown.Settings.Multi = isMulti
+				levelReqDropdown.Settings.Required = not isMulti
+				levelReqDropdown:UpdateSelection({})
+			end
+			updateSummary()
+		end),
+	}, "Dropdown_AutoSellLevelReqMode")
+
+	levelReqDropdown = leftSection:Dropdown({
+		Name = "Level Req Filter",
+		Options = autoSell.LEVEL_REQ_OPTIONS,
+		Default = autoSell.GetLevelReqExactFilter(),
+		Multi = currentMode == "None",
+		Required = currentMode ~= "None",
+		Search = true,
+		Callback = autoSave.Wrap(function(selected)
+			local list = {}
+			if type(selected) == "table" then
+				for level in pairs(selected) do table.insert(list, level) end
+			elseif type(selected) == "string" then
+				table.insert(list, selected)
+			end
+			autoSell.SetLevelReqExactFilter(list)
+			updateSummary()
+		end),
+	}, "Dropdown_AutoSellLevelReq")
+
+	leftSection:Toggle({
+		Name = "Exclude Equipped Items",
+		Default = autoSell.GetExcludeEquipped(),
+		Callback = autoSave.Wrap(function(state)
+			autoSell.SetExcludeEquipped(state)
+			updateSummary()
+		end),
+	}, "Toggle_AutoSellExcludeEquipped")
+
+	local resultLabel = leftSection:Label({
+		Text = "No search made yet.",
+	}, "Label_AutoSellResult")
+
+	leftSection:Button({
+		Name = "Search",
+		Callback = function()
+			task.spawn(function()
+				pcall(function() resultLabel:UpdateName("Reading inventory...") end)
+				local result = autoSell.CountMatches()
+				if not result then return end
+				if result.error then
+					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. result.error .. "</font>") end)
+					return
+				end
+				local text = ("Found <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching items.\n")
+					:format(result.matching, result.total)
+				local first = true
+				for _, cat in ipairs({ "Weapons", "Helmets", "Chests", "Abilities" }) do
+					local n = result.byCategory and result.byCategory[cat]
+					if n then
+						if first then text ..= cat .. ": " .. n else text ..= " • " .. cat .. ": " .. n end
+						first = false
+					end
+				end
+				pcall(function() resultLabel:UpdateName(text) end)
+			end)
+		end,
+	})
+
+	leftSection:Button({
+		Name = "Sell Now",
+		Callback = function()
+			task.spawn(function()
+				pcall(function() resultLabel:UpdateName("Reading inventory...") end)
+
+				local preview = autoSell.CountMatches()
+				if not preview then
+					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>A sale is already running.</font>") end)
+					return
+				end
+				if preview.error then
+					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. preview.error .. "</font>") end)
+					return
+				end
+
+				local hasFilter = autoSell.HasAnyFilter()
+				local warning = ""
+				if not hasFilter then
+					warning = '\n\n<font color="rgb(255,80,80)"><b>⚠ NO filter selected!</b> This will sell the ENTIRE inventory (except equipped items).</font>'
+				end
+
+				local desc = ("Sell <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching item(s) with current filters."):format(preview.matching, preview.total)
+				desc = desc .. warning .. "\n\nAre you sure?"
+
+				window:Dialog({
+					Title = "Confirm Sale",
+					Description = desc,
+					Buttons = {
+						{
+							Name = "Confirm",
+							Callback = function()
+								task.spawn(function()
+									pcall(function() resultLabel:UpdateName("Reading inventory...") end)
+									notifier.Notify("AutoSell", "Selling...", 2)
+
+									local result = autoSell.SellItems()
+									if not result then
+										pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>A sale is already running.</font>") end)
+										return
+									end
+
+									if result.error then
+										pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>Error: " .. result.error .. "</font>") end)
+										return
+									end
+
+									local text = ("Done: <font color='rgb(0,255,0)'>%d</font> sold, <font color='rgb(255,200,0)'>%d</font> skipped, <font color='rgb(255,220,120)'>%s</font> gold earned.")
+										:format(result.sold, result.skipped, tostring(result.gold))
+									pcall(function() resultLabel:UpdateName(text) end)
+								end)
+							end,
+						},
+						{
+							Name = "Cancel",
+						},
+					},
+				})
+			end)
+		end,
+	})
+
+	-- Khởi tạo hiển thị summary lần đầu
+	updateSummary()
+end
+end function __DIST.y()-- ESP hitbox cho DungeonQuest.
+-- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
+
+--// Imports
+
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
+
+--// Table
+local esp = {}
+
+--// Configuration
+local LINE_THICKNESS = 0.05
+local SURFACE_TRANSPARENCY = 0.8
+
+local PLAYER_BOX_COLOR = Color3.fromRGB(0, 255, 0)
+local PLAYER_BOX_NAME = "PlayerHitbox_ESP"
+
+local ENEMY_BOX_COLOR = Color3.fromRGB(255, 0, 0)
+local ENEMY_BOX_NAME = "EnemyHitbox_ESP"
+
+--// Chu kỳ quét hiển thị hitbox skill (nhịp cập nhật trực quan).
+local SKILL_SCAN_INTERVAL = 0.01
+
+--// Hitbox mode constants
+local HITBOX_MODE_REAL = "Real"
+local HITBOX_MODE_CUSTOM = "Custom"
+
+--// State
+local playerBoxEnabled = false
+local playerBoxThread = nil
+local playerBoxMode = HITBOX_MODE_REAL
+local playerBoxScale = 1.5
+local player = services.player
+
+local enemyBoxEnabled = false
+local enemyBoxThread = nil
+local enemyBoxMode = HITBOX_MODE_REAL
+local enemyBoxScale = 1.5
+
+--// Tạo SelectionBox bám vào một adornee (Root hoặc proxy part).
+local function createSelectionBox(boxName, adornee, color)
+	local box = Instance.new("SelectionBox")
+	box.Name = boxName
+	box.Adornee = adornee
+	box.Color3 = color
+	box.LineThickness = LINE_THICKNESS * 4
+	box.SurfaceColor3 = color
+	box.SurfaceTransparency = SURFACE_TRANSPARENCY
+	box.Parent = adornee
+end
+
+--// Cập nhật box cho một Root theo mode hiện tại.
+--// REAL: SelectionBox bám trực tiếp Root (kích thước thật).
+--// CUSTOM: proxy part vô hình kích thước = Root.Size * scale, bám theo Root.
+local function updateEntityBox(boxName, root, color, mode, scale)
+	if not root or not root.Parent then return end
+	local proxyName = boxName .. "_Proxy"
+	local existingBox = root:FindFirstChild(boxName)
+	local existingProxy = root:FindFirstChild(proxyName)
+
+	if mode == HITBOX_MODE_CUSTOM then
+		if existingBox and existingBox:IsA("SelectionBox") and existingBox.Adornee == root then
+			existingBox:Destroy()
+		end
+
+		if not existingProxy then
+			existingProxy = Instance.new("Part")
+			existingProxy.Name = proxyName
+			existingProxy.Anchored = true
+			existingProxy.CanCollide = false
+			existingProxy.CanQuery = false
+			existingProxy.CanTouch = false
+			existingProxy.Transparency = 1
+			existingProxy.Parent = root
+			createSelectionBox(boxName, existingProxy, color)
+		end
+
+		local rootSize = root.Size
+		local maxDim = math.max(math.abs(rootSize.X), math.abs(rootSize.Y), math.abs(rootSize.Z))
+		local customSize = math.max(maxDim * scale, 1)
+		existingProxy.Size = Vector3.new(customSize, customSize, customSize)
+		existingProxy.CFrame = root.CFrame
+	else
+		if existingProxy then existingProxy:Destroy() end
+		if existingBox and existingBox:IsA("SelectionBox") and existingBox.Adornee ~= root then
+			existingBox:Destroy()
+			existingBox = nil
+		end
+		if not existingBox or not existingBox:IsA("SelectionBox") or existingBox.Adornee ~= root then
+			createSelectionBox(boxName, root, color)
+		end
+	end
+end
+
+--// Highlight hitbox THẬT của player (quanh HumanoidRootPart) để phân biệt với
+--// "ghost" (bản nhân vật ảo hiển thị khi teleport orbit). Màu xanh lá, khác hẳn
+--// hitbox enemy đỏ. Tự bám theo nhân vật khi respawn.
+local function attachPlayerBox()
+	local character = player and player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root.Parent then return end
+	updateEntityBox(PLAYER_BOX_NAME, root, PLAYER_BOX_COLOR, playerBoxMode, playerBoxScale)
+end
+
+local function clearPlayerBox()
+	if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
+	local function clearCharacter(character)
+		if not character then return end
+		for _, desc in ipairs(character:GetDescendants()) do
+			if desc.Name == PLAYER_BOX_NAME or desc.Name == PLAYER_BOX_NAME .. "_Proxy" then
+				desc:Destroy()
+			end
+		end
+	end
+	clearCharacter(player and player.Character)
+	for _, p in ipairs(services.Players:GetPlayers()) do
+		clearCharacter(p.Character)
+	end
+end
+
+function esp.TogglePlayerHitbox(state)
+	if state == playerBoxEnabled then return end
+	playerBoxEnabled = state
+
+	if playerBoxEnabled then
+		if playerBoxThread then task.cancel(playerBoxThread); playerBoxThread = nil end
+		playerBoxThread = task.spawn(function()
+			while playerBoxEnabled do
+				local ok, err = pcall(attachPlayerBox)
+				if not ok then
+					if os.clock() - (esp.lastPlayerWarn or 0) > 5 then
+						esp.lastPlayerWarn = os.clock()
+						warn("[PlayerHitbox] error:", tostring(err))
+					end
+				end
+				services.RunService.Heartbeat:Wait()
+			end
+		end)
+	else
+		clearPlayerBox()
+	end
+end
+
+function esp.IsPlayerHitboxEnabled()
+	return playerBoxEnabled
+end
+
+function esp.GetPlayerHitboxMode()
+	return playerBoxMode
+end
+
+function esp.SetPlayerHitboxMode(mode)
+	if mode ~= HITBOX_MODE_REAL and mode ~= HITBOX_MODE_CUSTOM then return end
+	playerBoxMode = mode
+end
+
+function esp.GetPlayerHitboxScale()
+	return playerBoxScale
+end
+
+function esp.SetPlayerHitboxScale(scale)
+	playerBoxScale = scale
+end
+
+--// Highlight hitbox THẬT của từng enemy đang track (quanh Root) khi ENGAGE.
+--// Màu đỏ, dày như player hitbox, dùng chung cơ chế SelectionBox nhưng tự
+--// bám theo enemy model khi di chuyển/spawn.
+local function attachEnemyBoxes()
+	for _, data in ipairs(shared.GetTrackedEnemyData()) do
+		local root = data.Root
+		if root and root.Parent then
+			updateEntityBox(ENEMY_BOX_NAME, root, ENEMY_BOX_COLOR, enemyBoxMode, enemyBoxScale)
+		end
+	end
+end
+
+local function clearEnemyBoxes()
+	if enemyBoxThread then task.cancel(enemyBoxThread); enemyBoxThread = nil end
+	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+		local box = obj:FindFirstChild(ENEMY_BOX_NAME)
+		local proxy = obj:FindFirstChild(ENEMY_BOX_NAME .. "_Proxy")
+		if box then box:Destroy() end
+		if proxy then proxy:Destroy() end
+	end
+end
+
+function esp.ToggleEnemyHitbox(state)
+	if state == enemyBoxEnabled then return end
+	enemyBoxEnabled = state
+
+	if enemyBoxEnabled then
+		if enemyBoxThread then task.cancel(enemyBoxThread); enemyBoxThread = nil end
+		enemyBoxThread = task.spawn(function()
+			while enemyBoxEnabled do
+				local ok, err = pcall(attachEnemyBoxes)
+				if not ok then
+					if os.clock() - (esp.lastEnemyWarn or 0) > 5 then
+						esp.lastEnemyWarn = os.clock()
+						warn("[EnemyHitbox] error:", tostring(err))
+					end
+				end
+				services.RunService.Heartbeat:Wait()
+			end
+		end)
+	else
+		clearEnemyBoxes()
+	end
+end
+
+function esp.IsEnemyHitboxEnabled()
+	return enemyBoxEnabled
+end
+
+function esp.GetEnemyHitboxMode()
+	return enemyBoxMode
+end
+
+function esp.SetEnemyHitboxMode(mode)
+	if mode ~= HITBOX_MODE_REAL and mode ~= HITBOX_MODE_CUSTOM then return end
+	enemyBoxMode = mode
+end
+
+function esp.GetEnemyHitboxScale()
+	return enemyBoxScale
+end
+
+function esp.SetEnemyHitboxScale(scale)
+	enemyBoxScale = scale
+end
+
+--// ========== [Show Skill Hitbox] Vẽ SelectionBox đỏ cho skill trong Workspace ==========
+--// Before start: snapshot toàn bộ level-1 child của Workspace vào blacklist (static:
+--// dungeon folder, boss parts, arena...). Chỉ BasePart mới xuất hiện SAU mốc đó
+--// (skill/attack) mới được vẽ.
+
+local SKILL_ESP_COLOR = Color3.fromRGB(255, 0, 0)
+local SKILL_ESP_NAME = "SkillESP"
+
+--// Backlist: level-1 child của Workspace đã tồn tại lúc snapshot -> static.
+--// Mọi descendant trong nhánh đó mặc định cũng static (check theo cây ancestor,
+--// không cần liệt kê từng phần tử con khi snapshot).
+local skillBlackList = {}
+--// Mốc snapshot đã xong chưa. Chưa = chưa biết gì là "static" -> không vẽ gì cả.
+local skillBlacklistReady = false
+
+local skillBoxEnabled = false
+local skillBoxThread = nil
+
+--// Snapshot: blacklist các level-1 child của Workspace hiện tại.
+local function snapshotSkillBlacklist()
+	table.clear(skillBlackList)
+	local Workspace = game:GetService("Workspace")
+	for _, child in ipairs(Workspace:GetChildren()) do
+		skillBlackList[child] = true
+	end
+	skillBlacklistReady = true
+end
+
+--// [1] Before start: blacklist toàn bộ level-1 child hiện có của Workspace
+--// (static: dungeon folder, boss parts, arena...) -> không bị vẽ.
+snapshotSkillBlacklist()
+
+--// Kiểm tra part có thuộc character của player không (để bỏ qua, không vẽ).
+local function isPlayerPart(part)
+	local character = player.Character
+	if not character then return false end
+	local obj = part
+	while obj do
+		if obj == character then return true end
+		obj = obj.Parent
+	end
+	return false
+end
+
+--// Part nằm trong nhánh của level-1 child đã bị blacklist (static) -> không vẽ.
+local function isBlacklistedPart(part)
+	local obj = part
+	while obj do
+		if skillBlackList[obj] then return true end
+		obj = obj.Parent
+	end
+	return false
+end
+
+--// Tạo SelectionBox đỏ đơn giản trên BasePart nếu chưa có.
+local function createSkillBox(part)
+	if not skillBlacklistReady then return end
+	if isBlacklistedPart(part) then return end
+	if isPlayerPart(part) then return end
+	if part:FindFirstChild(SKILL_ESP_NAME) then return end
+	local box = Instance.new("SelectionBox")
+	box.Name = SKILL_ESP_NAME
+	box.Adornee = part
+	box.Color3 = SKILL_ESP_COLOR
+	box.SurfaceColor3 = SKILL_ESP_COLOR
+	box.SurfaceTransparency = 0.8
+	box.Parent = part
+end
+
+--// Quét toàn bộ descendants, chỉ vẽ BasePart không nằm trong blacklist.
+local function scanSkillHitboxes()
+	if not skillBlacklistReady then return end
+	local Workspace = game:GetService("Workspace")
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if child:IsA("BasePart") then
+			createSkillBox(child)
+		end
+		for _, desc in ipairs(child:GetDescendants()) do
+			if desc:IsA("BasePart") then
+				createSkillBox(desc)
+			end
+		end
+	end
+end
+
+local function clearSkillBoxes()
+	if skillBoxThread then task.cancel(skillBoxThread); skillBoxThread = nil end
+	local Workspace = game:GetService("Workspace")
+	for _, desc in ipairs(Workspace:GetDescendants()) do
+		local box = desc:FindFirstChild(SKILL_ESP_NAME)
+		if box then box:Destroy() end
+	end
+end
+
+function esp.ToggleSkillHitbox(state)
+	if state == skillBoxEnabled then return end
+	skillBoxEnabled = state
+	if skillBoxEnabled then
+		if skillBoxThread then task.cancel(skillBoxThread); skillBoxThread = nil end
+		skillBoxThread = task.spawn(function()
+			while skillBoxEnabled do
+				local ok, err = pcall(scanSkillHitboxes)
+				if not ok and os.clock() - (esp.lastSkillWarnH or 0) > 5 then
+					esp.lastSkillWarnH = os.clock()
+					warn("[SkillHitbox] error:", tostring(err))
+				end
+				task.wait(SKILL_SCAN_INTERVAL)
+			end
+		end)
+	else
+		clearSkillBoxes()
+	end
+end
+
+function esp.IsSkillHitboxEnabled()
+	return skillBoxEnabled
+end
+
+return esp
+end function __DIST.z()-- ESP Enemy (Highlight) cho DungeonQuest.
+-- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
+-- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
+-- hitbox projectile (đỏ) và player hitbox (xanh lá).
+
+--// Imports
+
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
+
+--// Table
+local enemyEsp = {}
+
+--// Configuration
+local FILL_COLOR = Color3.fromRGB(255, 170, 0)
+local FILL_TRANSPARENCY = 0.55
+local ESP_NAME = "Enemy_ESP"
+local SCAN_INTERVAL = 0.5
+
+--// Màu cho highlight (tên hiển thị -> màu thật).
+--// Đồng bộ với danh sách option trong tab Visual.
+local COLOR_PALETTE = {
+	Orange = Color3.fromRGB(255, 170, 0),
+	Red = Color3.fromRGB(255, 0, 0),
+	Yellow = Color3.fromRGB(255, 255, 0),
+	Green = Color3.fromRGB(0, 255, 0),
+	Cyan = Color3.fromRGB(0, 255, 255),
+	Blue = Color3.fromRGB(0, 120, 255),
+	Magenta = Color3.fromRGB(255, 0, 255),
+	White = Color3.fromRGB(255, 255, 255),
+}
+
+--// State
+local enabled = false
+local scanThread = nil
+local selectedColorName = "Orange"
+
+--// Helpers
+local function getFillColor()
+	return COLOR_PALETTE[selectedColorName] or FILL_COLOR
+end
+
+local function createHighlight(model)
+	if not model or not model:IsA("Model") then return end
+	if not model:FindFirstChild(ESP_NAME) then
+		local hl = Instance.new("Highlight")
+		hl.Name = ESP_NAME
+		hl.Adornee = model
+		hl.FillColor = getFillColor()
+		hl.FillTransparency = FILL_TRANSPARENCY
+		hl.OutlineColor = getFillColor()
+		hl.OutlineTransparency = 1
+		hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		hl.Parent = model
+	end
+end
+
+--// Cập nhật màu cho highlight đã vẽ sẵn (gọi khi đổi màu).
+local function updateAllHighlightColors()
+	local color = getFillColor()
+	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+		local hl = obj:FindFirstChild(ESP_NAME)
+		if hl and hl:IsA("Highlight") then
+			hl.FillColor = color
+			hl.OutlineColor = color
+		end
+	end
+end
+
+--// Xóa mọi Highlight ESP Enemy giống đã vẽ trong Workspace + nhân vật.
+local function removeAllHighlights()
+	for _, obj in ipairs(game:GetService("Workspace"):GetDescendants()) do
+		local hl = obj:FindFirstChild(ESP_NAME)
+		if hl then hl:Destroy() end
+	end
+	for _, p in ipairs(services.Players:GetPlayers()) do
+		local char = p.Character
+		if char then
+			for _, desc in ipairs(char:GetDescendants()) do
+				if desc.Name == ESP_NAME then desc:Destroy() end
+			end
+		end
+	end
+end
+
+--// Methods
+function enemyEsp.Toggle(state)
+	if state == enabled then return end
+	enabled = state
+
+	if enabled then
+		if scanThread then task.cancel(scanThread); scanThread = nil end
+		scanThread = task.spawn(function()
+			while enabled do
+				local ok, err = pcall(function()
+					for _, data in ipairs(shared.GetTrackedEnemyData()) do
+						if data.Model and data.Model.Parent then
+							createHighlight(data.Model)
+						end
+					end
+				end)
+				if not ok then
+					if os.clock() - (enemyEsp.lastWarn or 0) > 5 then
+						enemyEsp.lastWarn = os.clock()
+						warn("[EnemyESP] error:", tostring(err))
+					end
+				end
+				task.wait(SCAN_INTERVAL)
+			end
+		end)
+	else
+		if scanThread then task.cancel(scanThread); scanThread = nil end
+		local ok = pcall(removeAllHighlights)
+		if not ok then warn("[EnemyESP] cleanup error") end
+	end
+end
+
+function enemyEsp.IsEnabled()
+	return enabled
+end
+
+function enemyEsp.GetColorNames()
+	local names = {}
+	for name in pairs(COLOR_PALETTE) do table.insert(names, name) end
+	table.sort(names)
+	return names
+end
+
+function enemyEsp.GetSelectedColor()
+	return selectedColorName
+end
+
+function enemyEsp.SetSelectedColor(name)
+	if not COLOR_PALETTE[name] then return end
+	if name == selectedColorName then return end
+	selectedColorName = name
+	local ok = pcall(updateAllHighlightColors)
+	if not ok then warn("[EnemyESP] recolor error") end
+end
+
+return enemyEsp
+end function __DIST.A()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
+-- Script1: ép hiện hình liên tục các phần map bị ẩn/thuỷ tinh.
+-- Script2: dọn dẹp vật thể rác (decoration) ở lớp ngoài cùng của Map.
+-- Script3: radar hitbox quét quanh nhân vật, xóa part có độ cao (Y) > 80.
+
+--// Imports
+
+local services = __DIST.load('d')
+
+--// Table
+local mapOptimizer = {}
+
+--// State
+local enabled = false
+local cleanupThread = nil
+local visibilityThread = nil
+local radarThread = nil
+
+local CLEANUP_INTERVAL = 2
+local FORCE_VISIBLE_INTERVAL = 0.5
+local RADAR_INTERVAL = 0.2
+local RADAR_HITBOX_SIZE = Vector3.new(20, 200, 20)
+local RADAR_MIN_Y = 80
+
+--// DANH SÁCH 1: Xóa nếu tên object ở Depth 1 khớp chính xác
+local DEPTH1_NAMES_TO_DELETE = {
+	["Stone"] = true,
+	["Dead Tree"] = true,
+	["Eye Rune"] = true,
+	["Meshes/Ice shard"] = true,
+	["Small snow patch"] = true,
+	["snow patch"] = true,
+	["Meshes/Root4"] = true,
+	["snow machine"] = true,
+	["Meshes/Ice3"] = true,
+	["Meshes/ice plates_Circle.004"] = true,
+}
+
+--// DANH SÁCH 2: Xóa object Depth 1 nếu BÊN TRONG nó có chứa tên này
+local DESCENDANT_NAMES_TO_TARGET = {
+	["Wooden plank"] = true,
+	["Meshes/Root4"] = true,
+}
+
+local function getMap()
+	return workspace:WaitForChild("Map", 5)
+end
+
+--// Dọn dẹp vật thể rác ở Depth 1 (Script2)
+local function cleanUpMap()
+	local map = getMap()
+	if not map then return end
+
+	for _, child in ipairs(map:GetChildren()) do
+		local shouldDelete = DEPTH1_NAMES_TO_DELETE[child.Name]
+		if not shouldDelete then
+			for _, descendant in ipairs(child:GetDescendants()) do
+				if DESCENDANT_NAMES_TO_TARGET[descendant.Name] then
+					shouldDelete = true
+					break
+				end
+			end
+		end
+		if shouldDelete then
+			child:Destroy()
+		end
+	end
+end
+
+--// Ép hiện hình cho một container (Script1)
+local function forceVisible(container)
+	if not container then return end
+	for _, object in ipairs(container:GetDescendants()) do
+		if object:IsA("BasePart") and object.Transparency ~= 0 then
+			object.Transparency = 0
+		end
+	end
+end
+
+--// Radar hitbox: quét quanh nhân vật và xóa part cao (Y > RADAR_MIN_Y) (Script3)
+local function runRadar()
+	local player = services.player
+	if not player then return end
+	local character = player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	local map = getMap()
+	if not map then return end
+
+	local filterList = {}
+	local borders = map:FindFirstChild("borders")
+	local container143 = map:GetChildren()[143]
+	if borders then table.insert(filterList, borders) end
+	if container143 then table.insert(filterList, container143) end
+
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Include
+	overlapParams.FilterDescendantsInstances = filterList
+
+	local hitboxCFrame = hrp.CFrame * CFrame.new(0, 100, 0)
+	local partsInHitbox = workspace:GetPartBoundsInBox(hitboxCFrame, RADAR_HITBOX_SIZE, overlapParams)
+
+	for _, hitPart in ipairs(partsInHitbox) do
+		if hitPart.Name ~= "borders" and hitPart.Name ~= "Baseplate" then
+			if hitPart.CFrame.Position.Y > RADAR_MIN_Y then
+				hitPart:Destroy()
+			end
+		end
+	end
+end
+
+function mapOptimizer.Toggle(state)
+	if state == enabled then return end
+	enabled = state
+
+	if enabled then
+		local ok, err = pcall(cleanUpMap)
+		if not ok then
+			warn("[MapOptimizer] cleanup error:", tostring(err))
+		end
+
+		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
+		cleanupThread = task.spawn(function()
+			while enabled do
+				task.wait(CLEANUP_INTERVAL)
+				local ok, err = pcall(cleanUpMap)
+				if not ok then
+					warn("[MapOptimizer] cleanup error:", tostring(err))
+				end
+			end
+		end)
+
+		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
+		visibilityThread = task.spawn(function()
+			while enabled do
+				local ok, err = pcall(function()
+					local map = getMap()
+					local container143 = map and map:GetChildren()[143]
+					local borders = map and map:FindFirstChild("borders")
+					forceVisible(container143)
+					forceVisible(borders)
+				end)
+				if not ok then
+					warn("[MapOptimizer] visibility error:", tostring(err))
+				end
+				task.wait(FORCE_VISIBLE_INTERVAL)
+			end
+		end)
+
+		if radarThread then task.cancel(radarThread); radarThread = nil end
+		radarThread = task.spawn(function()
+			while enabled do
+				local ok, err = pcall(runRadar)
+				if not ok then
+					warn("[MapOptimizer] radar error:", tostring(err))
+				end
+				task.wait(RADAR_INTERVAL)
+			end
+		end)
+	else
+		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
+		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
+		if radarThread then task.cancel(radarThread); radarThread = nil end
+	end
+end
+
+function mapOptimizer.IsEnabled()
+	return enabled
+end
+
+return mapOptimizer end function __DIST.B()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+
+--// Imports
+	
+local autoSave = __DIST.load('g')
+	local esp = __DIST.load('y')
+	local enemyEsp = __DIST.load('z')
+	local mapOptimizer = __DIST.load('A')
+	local ui = __DIST.load('f')
+
+--// Hitbox mode options
+local HITBOX_OPTIONS = { "Custom Hitbox", "Real Hitbox" }
+local function hitboxModeToIndex(mode)
+	return (mode == "Custom" and 1) or 2
+end
+local function hitboxLabelToMode(label)
+	return (label == HITBOX_OPTIONS[1] and "Custom") or "Real"
+end
+
+return function(window, tab)
+	local applyHitboxVisibility
+
+	local playerSection = tab:Section({ Side = "Left" })
+	playerSection:Header({ Name = "Player" })
+
+	playerSection:Toggle({
+		Name = "Hitbox",
+		Default = esp.IsPlayerHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.TogglePlayerHitbox(state)
+		end),
+	}, "Toggle_PlayerHitbox")
+
+	playerSection:Dropdown({
+		Name = "Hitbox Mode",
+		Options = HITBOX_OPTIONS,
+		Default = hitboxModeToIndex(esp.GetPlayerHitboxMode()),
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			esp.SetPlayerHitboxMode(hitboxLabelToMode(option))
+			applyHitboxVisibility()
+		end),
+	}, "Dropdown_PlayerHitboxMode")
+
+	local playerSizeSlider = ui.PatchSliderLoadCallback(playerSection:Slider({
+		Name = "Hitbox Size",
+		Default = esp.GetPlayerHitboxScale(),
+		Minimum = 1,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetPlayerHitboxScale(Value)
+		end),
+	}, "Slider_PlayerHitboxSize"))
+
+	local enemySection = tab:Section({ Side = "Left" })
+	enemySection:Header({ Name = "Enemy" })
+
+	enemySection:Toggle({
+		Name = "Model Highlight",
+		Default = enemyEsp.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			enemyEsp.Toggle(state)
+		end),
+	}, "Toggle_EnemyESP")
+
+	local highlightColors = enemyEsp.GetColorNames()
+	local currentColor = enemyEsp.GetSelectedColor()
+	local colorDefaultIndex = 1
+	for i, name in ipairs(highlightColors) do
+		if name == currentColor then
+			colorDefaultIndex = i
+			break
+		end
+	end
+
+	enemySection:Dropdown({
+		Name = "Highlight Color",
+		Options = highlightColors,
+		Default = colorDefaultIndex,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			enemyEsp.SetSelectedColor(option)
+		end),
+	}, "Dropdown_HighlightColor")
+
+	enemySection:Toggle({
+		Name = "Hitbox",
+		Default = esp.IsEnemyHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleEnemyHitbox(state)
+		end),
+	}, "Toggle_EnemyHitbox")
+
+	enemySection:Dropdown({
+		Name = "Hitbox Mode",
+		Options = HITBOX_OPTIONS,
+		Default = hitboxModeToIndex(esp.GetEnemyHitboxMode()),
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			esp.SetEnemyHitboxMode(hitboxLabelToMode(option))
+			applyHitboxVisibility()
+		end),
+	}, "Dropdown_EnemyHitboxMode")
+
+	local enemySizeSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
+		Name = "Hitbox Size",
+		Default = esp.GetEnemyHitboxScale(),
+		Minimum = 1,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			esp.SetEnemyHitboxScale(Value)
+		end),
+	}, "Slider_EnemyHitboxSize"))
+
+	enemySection:Toggle({
+		Name = "Show Skill Hitbox",
+		Default = esp.IsSkillHitboxEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			esp.ToggleSkillHitbox(state)
+		end),
+	}, "Toggle_SkillHitbox")
+
+	applyHitboxVisibility = function()
+		pcall(function() playerSizeSlider:SetVisibility(esp.GetPlayerHitboxMode() == "Custom") end)
+		pcall(function() enemySizeSlider:SetVisibility(esp.GetEnemyHitboxMode() == "Custom") end)
+	end
+	applyHitboxVisibility()
+
+	local mapSection = tab:Section({ Side = "Right" })
+	mapSection:Header({ Name = "Map" })
+
+	mapSection:Toggle({
+		Name = "Map Optimizer",
+		Default = mapOptimizer.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			mapOptimizer.Toggle(state)
+		end),
+	}, "Toggle_MapOptimizer")
+
 end
 end function __DIST.C()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
@@ -14217,7 +14178,7 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.D()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.D()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
@@ -14225,7 +14186,7 @@ end function __DIST.D()-- Tab Notifications (DungeonQuest): cấu hình thông b
 local webhook = __DIST.load('C')
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
+	local section = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Discord Webhook" })
 
 	section:Input({
@@ -14253,7 +14214,7 @@ return function(window, tab)
 		end,
 	})
 
-	local pingSection = tab:Section({ Side = "Left" })
+	local pingSection = tab:Section({ Side = "Right" })
 	pingSection:Header({ Name = "Ping on Drops" })
 
 	pingSection:Toggle({
@@ -14289,12 +14250,462 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.E()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.E()
+local binder = {}
+
+function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
+	for property, value in pairs(properties) do
+		if excludes and table.find(excludes, property) then
+			continue
+		end
+
+		pcall(function()
+			object[property] = value
+		end)
+	end
+
+	return object
+end
+
+function binder.Wrap(
+	object: { [string]: any },
+	bindings: { [string]: (any) -> () },
+	excludes: { [number]: any }?,
+	instance: Instance?
+): any
+	local proxy = {}
+
+	setmetatable(proxy, {
+		__index = function(_, key)
+			if object[key] ~= nil then
+				return object[key]
+			elseif instance then
+				local ok, value = pcall(function()
+					return instance[key]
+				end)
+
+				if ok then
+					return value
+				end
+			end
+
+			return
+		end,
+
+		__newindex = function(_, key, value)
+			local handler = bindings[key]
+
+			if handler then
+				handler(value)
+
+				if not (excludes and table.find(excludes, key)) then
+					object[key] = value
+				end
+			elseif instance then
+				local ok, _ = pcall(function()
+					instance[key] = value
+				end)
+
+				if not ok then
+					object[key] = value
+				end
+			else
+				object[key] = value
+			end
+		end,
+	})
+
+	return proxy
+end
+
+return binder
+end function __DIST.F()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+--// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
+
+--// Imports
+
+local binder = __DIST.load('E')
+
+--// Services
+local VirtualUser = game:GetService("VirtualUser")
+
+--// Table
+local antiAfk = {}
+
+--// State
+local enabled = false
+local interval = 60 -- giây giữa mỗi lần "hoạt động" giả lập
+local thread = nil
+
+--// Gửi 1 lần tín hiệu "đang hoạt động" (click chuột trái/phải)
+local function sendActivity()
+	pcall(function()
+		VirtualUser:CaptureController()
+		VirtualUser:Button1Down(Vector2.new(0, 0))
+		VirtualUser:Button1Up(Vector2.new(0, 0))
+		VirtualUser:Button2Down(Vector2.new(0, 0))
+		VirtualUser:Button2Up(Vector2.new(0, 0))
+	end)
+end
+
+--// Vòng lặp giữ session không bị kick
+local function kickLoop()
+	while enabled do
+		sendActivity()
+
+		local waitTime = interval
+		while waitTime > 0 and enabled do
+			local step = math.min(waitTime, 0.5)
+			task.wait(step)
+			waitTime -= step
+		end
+	end
+	thread = nil
+end
+
+--// Methods
+function antiAfk.Start()
+	if enabled or thread then return end
+	enabled = true
+
+	--// Gửi ngay tức thì để session hoạt động ngay khi bật
+	task.spawn(sendActivity)
+	thread = task.spawn(kickLoop)
+end
+
+function antiAfk.Stop()
+	enabled = false
+end
+
+function antiAfk.IsEnabled()
+	return enabled
+end
+
+function antiAfk.SetInterval(seconds)
+	seconds = tonumber(seconds)
+	if seconds and seconds > 0 then
+		interval = seconds
+	else
+		interval = 60
+	end
+end
+
+function antiAfk.GetInterval()
+	return interval
+end
+
+--// Wrap với binder để gán qua property (tương thích tab:Toggle/tab:Slider)
+return binder.Wrap(antiAfk, {
+	Enabled = function(value: boolean)
+		if value then
+			antiAfk.Start()
+		else
+			antiAfk.Stop()
+		end
+	end,
+
+	Interval = function(value: number)
+		antiAfk.SetInterval(value)
+	end,
+}) :: {
+	Enabled: boolean,
+	Interval: number,
+	Start: () -> (),
+	Stop: () -> (),
+	IsEnabled: () -> boolean,
+	SetInterval: (number) -> (),
+	GetInterval: () -> number
+}
+end function __DIST.G()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+
+--// Imports
+
+local autoSave = __DIST.load('g')
+local ui = __DIST.load('f')
+local antiAfk = __DIST.load('F')
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "Anti AFK" })
+
+	section:Toggle({
+		Name = "Anti AFK",
+		Default = antiAfk.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			if state then
+				antiAfk.Start()
+			else
+				antiAfk.Stop()
+			end
+		end),
+	}, "Toggle_AntiAFK")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Interval (giây)",
+		Default = antiAfk.GetInterval(),
+		Minimum = 5,
+		Maximum = 300,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			antiAfk.SetInterval(value)
+		end),
+	}, "Slider_AntiAFKInterval"))
+end
+end function __DIST.H()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+-- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
+
+
+return function(window, tab)
+__DIST.load('B')(window, tab)
+__DIST.load('D')(window, tab)
+__DIST.load('G')(window, tab)
+end end function __DIST.I()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+-- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('c')
+
+--// Services
+local HttpService = game:GetService("HttpService")
+
+--// Constants
+local SETTINGS_FILE = macLib.Folder .. "/settings/autohide.json"
+
+--// Table
+local autoHide = {}
+
+--// State
+local enabled = false
+local window = nil
+
+--// Persistence
+local function loadSettings()
+	if not (isfile and isfile(SETTINGS_FILE)) then return end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+	end)
+	if ok and type(decoded) == "table" then
+		enabled = decoded.enabled == true
+	end
+end
+
+local function saveSettings()
+	if not (isfile and writefile) then return end
+	pcall(function()
+		writefile(SETTINGS_FILE, HttpService:JSONEncode({ enabled = enabled }))
+	end)
+end
+
+--// Methods
+function autoHide.SetWindow(newWindow)
+	window = newWindow
+end
+
+function autoHide.SetEnabled(state)
+	enabled = state == true
+	saveSettings()
+end
+
+function autoHide.IsEnabled()
+	return enabled
+end
+
+--// Ẩn cửa sổ ngay lập tức (dùng SetState(false) như Maclib minimize, hiện lại bằng keybind)
+function autoHide.Hide()
+	if not enabled or not window then return end
+	local ok = pcall(function()
+		window:SetState(false)
+	end)
+	if not ok then warn("[AutoHide] Không ẩn được window") end
+end
+
+--// Chạy sau khi init xong: ẩn ngay nếu được bật
+function autoHide.Execute()
+	if not enabled then return end
+	task.spawn(function()
+		task.wait(0.5)
+		autoHide.Hide()
+	end)
+end
+
+--// Load settings lúc require
+loadSettings()
+
+return autoHide
+end function __DIST.J()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+-- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
+-- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('g')
+local autoHide = __DIST.load('I')
+
+return function(window, tab)
+	local folder = macLib.Folder
+	local autoloadPath = folder .. "/settings/autoload.txt"
+
+	local function getAutoloadName()
+		if isfile and isfile(autoloadPath) then
+			return readfile(autoloadPath)
+		end
+		return nil
+	end
+
+	local function activate(name)
+		autoSave.SetActive(name)
+	end
+
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "Configs" })
+
+	local inputPath = nil
+	local configSelection
+	local autoloadLabel
+
+	local function refreshOptions(keep)
+		local options = macLib:RefreshConfigList()
+		configSelection:ClearOptions()
+		configSelection:InsertOptions(options)
+		if keep then
+			if not configSelection:IsOption(keep) then
+				configSelection:InsertOptions({ keep })
+			end
+			configSelection:UpdateSelection(keep)
+		end
+	end
+
+	section:Input({
+		Name = "Config Name",
+		Placeholder = "Name",
+		AcceptedCharacters = "All",
+		Callback = function(input)
+			inputPath = input
+		end,
+	})
+
+	configSelection = section:Dropdown({
+		Name = "Select Config",
+		Multi = false,
+		Required = false,
+		Options = macLib:RefreshConfigList(),
+		Callback = function(value)
+			activate(value)
+		end,
+	})
+
+	--// Auto-select config autoload (nếu đã set) để dropdown luôn chỉ đúng config đang dùng
+	local autoloadName = getAutoloadName()
+	if autoloadName and autoloadName ~= "" then
+		if not configSelection:IsOption(autoloadName) then
+			configSelection:InsertOptions({ autoloadName })
+		end
+		configSelection:UpdateSelection(autoloadName)
+		activate(autoloadName)
+	end
+
+	section:Button({
+		Name = "Create Config",
+		Callback = function()
+			if not inputPath or string.gsub(inputPath, " ", "") == "" then
+				window:Notify({ Title = "Interface", Description = "Config name cannot be empty." })
+				return
+			end
+
+			local success, err = macLib:SaveConfig(inputPath)
+			if not success then
+				window:Notify({ Title = "Interface", Description = "Unable to save config: " .. tostring(err) })
+				return
+			end
+
+			window:Notify({ Title = "Interface", Description = string.format("Created config %q", inputPath) })
+			refreshOptions(inputPath)
+			activate(inputPath)
+		end,
+	})
+
+	section:Button({
+		Name = "Load Config",
+		Callback = function()
+			local name = configSelection.Value
+			local success, err = macLib:LoadConfig(name)
+			if not success then
+				window:Notify({ Title = "Interface", Description = "Unable to load config: " .. tostring(err) })
+				return
+			end
+
+			window:Notify({ Title = "Interface", Description = string.format("Loaded config %q", name) })
+			activate(name)
+		end,
+	})
+
+	section:Button({
+		Name = "Overwrite Config",
+		Callback = function()
+			local name = configSelection.Value
+			local success, err = macLib:SaveConfig(name)
+			if not success then
+				window:Notify({ Title = "Interface", Description = "Unable to overwrite config: " .. tostring(err) })
+				return
+			end
+
+			window:Notify({ Title = "Interface", Description = string.format("Overwrote config %q", name) })
+			activate(name)
+		end,
+	})
+
+	section:Button({
+		Name = "Set as autoload",
+		Callback = function()
+			local name = configSelection.Value
+			if not name then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
+			writefile(autoloadPath, name)
+			autoloadLabel:UpdateName("Autoload config: " .. name)
+			window:Notify({ Title = "Interface", Description = string.format("Set %q as autoload", name) })
+			activate(name)
+		end,
+	})
+
+	section:Button({
+		Name = "Refresh Config List",
+		Callback = function()
+			refreshOptions(configSelection.Value)
+		end,
+	})
+
+	autoloadLabel = section:Label({ Text = "Autoload config: None" })
+	local currentAuto = getAutoloadName()
+	if currentAuto and currentAuto ~= "" then
+		autoloadLabel:UpdateName("Autoload config: " .. currentAuto)
+	end
+
+	section:Header({ Name = "Auto Hide UI" })
+	section:Toggle({
+		Name = "Hide window after execute",
+		Default = autoHide.IsEnabled(),
+		Callback = function(state)
+			autoHide.SetEnabled(state)
+		end,
+	}, "Toggle_AutoHide")
+
+	section:Label({
+		Text = "Press RightControl to show the window again.",
+	})
+end
+end function __DIST.K()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('e')
-local autoRetry = __DIST.load('q')
+local autoRetry = __DIST.load('u')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -14302,7 +14713,7 @@ local DUNGEON_LABEL = "Dungeon"
 local TIMER_LABEL = "Time Left"
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
+	local section = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Status" })
 
 	local bossLabel = section:Label({
@@ -14439,7 +14850,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.F()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.L()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+-- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
+
+
+return function(window, tab)
+__DIST.load('J')(window, tab)
+__DIST.load('K')(window, tab)
+end end function __DIST.M()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -14491,69 +14909,57 @@ return function(self)
 	--// Tabs
 	local tabGroup = window:TabGroup()
 	local tabs = {
-		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
-		Pathfinder = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
+		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://18821914323" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
-		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
-		SmartDodge = tabGroup:Tab({ Name = "Smart Dodge", Image = "rbxassetid://10734950309" }),
-		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
-		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
-		State = tabGroup:Tab({ Name = "State", Image = "rbxassetid://10734950309" }),
+		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10734950309" }),
+		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local speedTab = __DIST.load('i')
-	local autoFarmPathfinderTab = __DIST.load('m')
-	local dungeonTab = __DIST.load('r')
-	local inventoryTab = __DIST.load('t')
-	local visualTab = __DIST.load('x')
-	local smartDodgeTab = __DIST.load('z')
-	local configTab = __DIST.load('B')
-	local notificationsTab = __DIST.load('D')
-	local stateTab = __DIST.load('E')
+	local combatTab = __DIST.load('q')
+	local dungeonTab = __DIST.load('v')
+	local inventoryTab = __DIST.load('x')
+	local utilitiesTab = __DIST.load('H')
+	local configsTab = __DIST.load('L')
 
-	speedTab(window, tabs.Player)
-	autoFarmPathfinderTab(window, tabs.Pathfinder)
+	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
-	visualTab(window, tabs.Visual)
-	smartDodgeTab(window, tabs.SmartDodge)
-	configTab(window, tabs.Config)
-	notificationsTab(window, tabs.Notifications)
-	stateTab(window, tabs.State)
+	utilitiesTab(window, tabs.Utilities)
+	configsTab(window, tabs.Configs)
 
 	--// Phím tắt
-	local shortcuts = __DIST.load('l')
+	local shortcuts = __DIST.load('m')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
 	local webhook = __DIST.load('C')
 	webhook.Init()
-__DIST.load('v')
+__DIST.load('z')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
 
-local contextual = __DIST.load('k')
+local contextual = __DIST.load('l')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('A')
+	local autoHide = __DIST.load('I')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
 	--// Khởi chạy
-	tabs.Player:Select()
+	tabs.Combat:Select()
 	macLib:LoadAutoLoadConfig()
 
 	--// Nạp context data SAU khi config (kể cả autoload) được load, để context đọc đúng
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.G()
+end function __DIST.N()
 local flags = {}
 
 function flags:Export()
@@ -14596,81 +15002,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.H()
-local binder = {}
-
-function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
-	for property, value in pairs(properties) do
-		if excludes and table.find(excludes, property) then
-			continue
-		end
-
-		pcall(function()
-			object[property] = value
-		end)
-	end
-
-	return object
-end
-
-function binder.Wrap(
-	object: { [string]: any },
-	bindings: { [string]: (any) -> () },
-	excludes: { [number]: any }?,
-	instance: Instance?
-): any
-	local proxy = {}
-
-	setmetatable(proxy, {
-		__index = function(_, key)
-			if object[key] ~= nil then
-				return object[key]
-			elseif instance then
-				local ok, value = pcall(function()
-					return instance[key]
-				end)
-
-				if ok then
-					return value
-				end
-			end
-
-			return
-		end,
-
-		__newindex = function(_, key, value)
-			local handler = bindings[key]
-
-			if handler then
-				handler(value)
-
-				if not (excludes and table.find(excludes, key)) then
-					object[key] = value
-				end
-			elseif instance then
-				local ok, _ = pcall(function()
-					instance[key] = value
-				end)
-
-				if not ok then
-					object[key] = value
-				end
-			else
-				object[key] = value
-			end
-		end,
-	})
-
-	return proxy
-end
-
-return binder
-end function __DIST.I()
+return flags end function __DIST.O()
 --// Imports
 
 
 
-local binder = __DIST.load('H')
+local binder = __DIST.load('E')
 
 --// Variables
 local interface = {}
@@ -14690,9 +15027,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.J()--// Imports
+end function __DIST.P()--// Imports
 
-local binder = __DIST.load('H')
+local binder = __DIST.load('E')
 
 --// Variables
 local esp = {}
@@ -14703,11 +15040,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.K()--// Imports
+end function __DIST.Q()--// Imports
 
-local flags = __DIST.load('G')
-local interface = __DIST.load('I')
-local esp = __DIST.load('J')
+local flags = __DIST.load('N')
+local interface = __DIST.load('O')
+local esp = __DIST.load('P')
 
 --// Initialize
 local window = interface:Window({
@@ -14746,7 +15083,7 @@ return {
 		end,
 	},
 }
-end function __DIST.L()--// Variables
+end function __DIST.R()--// Variables
 
 local utility = {}
 
@@ -14778,7 +15115,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.M()--// Functions
+end function __DIST.S()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -14788,14 +15125,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.N()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.T()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('K')
-	local utility = __DIST.load('L')
-	local services = __DIST.load('M')
+	local base = __DIST.load('Q')
+	local utility = __DIST.load('R')
+	local services = __DIST.load('S')
 
 	--// References
 	local flags = base.Flags
@@ -14861,7 +15198,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('F'),
+		Load = __DIST.load('M'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -14872,7 +15209,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('N'),
+		Load = __DIST.load('T'),
 		Places = {
 			123456789,
 			987654321,

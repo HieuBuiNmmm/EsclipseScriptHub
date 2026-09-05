@@ -13,6 +13,13 @@ local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
 	local runSection = tab:Section({ Side = "Right" })
+
+	local function indexOf(list, name)
+		for i, v in ipairs(list) do
+			if v == name then return i end
+		end
+		return nil
+	end
 	section:Header({ Name = "Auto Join Dungeon" })
 	runSection:Header({ Name = "Dungeon Run Automation" })
 
@@ -24,15 +31,16 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoJoin")
 
-	local dungeonDropdown = section:Dropdown({
+	local dungeonOptions = dungeonCatalog.GetDungeons()
+	local dungeonDropdown = ui.PatchDropdownRestore(section:Dropdown({
 		Name = "Dungeon",
-		Options = dungeonCatalog.GetDungeons(),
-		Default = 1,
+		Options = dungeonOptions,
+		Default = indexOf(dungeonOptions, autoJoin.GetSelectedDungeon()) or 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
 			autoJoin.SetDungeon(option)
 		end),
-	}, "Dropdown_Dungeon")
+	}, "Dropdown_Dungeon"), true)
 
 	section:Button({
 		Name = "Refresh Map List",
@@ -70,16 +78,17 @@ return function(window, tab)
 	end
 	updateLevelLabel()
 
-	local difficultyDropdown = section:Dropdown({
+	local difficultyOptions = autoJoin.GetAllowedDifficulties()
+	local difficultyDropdown = ui.PatchDropdownRestore(section:Dropdown({
 		Name = "Difficulty",
-		Options = autoJoin.GetAllowedDifficulties(),
-		Default = 1,
+		Options = difficultyOptions,
+		Default = indexOf(difficultyOptions, autoJoin.GetSelectedDifficulty()) or 1,
 		Required = true,
 		Callback = autoSave.Wrap(function(option)
 			autoJoin.SetDifficulty(option)
 			updateLevelLabel()
 		end),
-	}, "Dropdown_Difficulty")
+	}, "Dropdown_Difficulty"), false)
 
 	section:Toggle({
 		Name = "Hardcore",

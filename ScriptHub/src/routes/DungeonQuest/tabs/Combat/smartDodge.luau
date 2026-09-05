@@ -1,10 +1,19 @@
--- Tab SmartDodge (DungeonQuest): Quản lý tính năng né chiêu thông minh.
+-- Module Smart Dodge trong tab Combat (DungeonQuest): quản lý tính năng né chiêu.
 -- Giai đoạn 1, 2 & 3: Threat Detection, Safe Spot Calculation & Dodge Execution.
 
 --// Imports
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local smartDodge = require("@routes/DungeonQuest/core/smartDodge")
+
+--// Dodge Mode options
+local DODGE_MODE_OPTIONS = { "Hybrid (MoveTo + Blink)", "Walk Only (MoveTo + Snap)" }
+local function dodgeModeToIndex(mode)
+	return (mode == "Walk" and 2) or 1
+end
+local function dodgeLabelToMode(label)
+	return (label == DODGE_MODE_OPTIONS[2] and "Walk") or "Hybrid"
+end
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -107,12 +116,22 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeThreatDetection")
 
 	leftSection:Toggle({
-		Name = "Auto Dodge Execution (Hybrid MoveTo + Teleport)",
+		Name = "Auto Dodge Execution",
 		Default = smartDodge.IsAutoDodgeEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			smartDodge.SetAutoDodge(state)
 		end),
 	}, "Toggle_SmartDodgeAutoExecution")
+
+	leftSection:Dropdown({
+		Name = "Dodge Movement Mode",
+		Options = DODGE_MODE_OPTIONS,
+		Default = dodgeModeToIndex(smartDodge.GetDodgeMode()),
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			smartDodge.SetDodgeMode(dodgeLabelToMode(option))
+		end),
+	}, "Dropdown_SmartDodgeMode")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Max Teleport Step (studs)",

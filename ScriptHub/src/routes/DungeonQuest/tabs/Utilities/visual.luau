@@ -1,4 +1,4 @@
--- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	local autoSave = require("@routes/DungeonQuest/core/autoSave")

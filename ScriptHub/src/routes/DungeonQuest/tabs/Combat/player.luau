@@ -1,4 +1,4 @@
--- Tab Speed (DungeonQuest).
+-- Module Player trong tab Combat (DungeonQuest) — trước đây là tab Speed, đã đổi tên theo folder.
 
 --// Imports
 local shared = require("@routes/DungeonQuest/core/shared")
@@ -8,7 +8,7 @@ local autoFarmPathfinder = require("@routes/DungeonQuest/core/autoFarmPathfinder
 local macLib = require("@packages/Maclib")
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
+	local section = tab:Section({ Side = "Right" })
 	section:Header({ Name = "Movement Speed" })
 
 	section:Toggle({

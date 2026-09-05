@@ -11,6 +11,7 @@
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local coordinator = require("@routes/DungeonQuest/core/coordinator")
 local macLib = require("@packages/Maclib")
 
 --// Services
@@ -22,6 +23,7 @@ local ANCHORS_FILE = macLib.Folder .. "/settings/anchors.json"
 
 --// State persist (khai báo TRƯỚC các hàm load/save để tham chiếu đúng local, không phải global).
 local visualDebug = true
+local debugPathMode = "Sphere" --// cách render path debug: "Sphere" (sphere nhỏ) hoặc "Line" (đường thẳng)
 local respawnOnNoPath = true --// khi cả path enemy + anchor đều fail -> self-kill để respawn
 local anchorFallback = false --// toggle: có dùng anchor để reach (fallback) khi nopath enemy hay không (mặc định tắt)
 local showAnchorMarkers = true --// hiện marker vị trí các anchor đã đặt
@@ -41,6 +43,7 @@ local function loadDebugSettings()
 	if ok and type(decoded) == "table" then
 		if decoded.enabled ~= nil then visualDebug = decoded.enabled == true end
 		if decoded.showAnchors ~= nil then showAnchorMarkers = decoded.showAnchors == true end
+		if decoded.mode == "Sphere" or decoded.mode == "Line" then debugPathMode = decoded.mode end
 	end
 end
 
@@ -50,6 +53,7 @@ local function saveDebugSettings()
 		writefile(SETTINGS_FILE, HttpService:JSONEncode({
 			enabled = visualDebug,
 			showAnchors = showAnchorMarkers,
+			mode = debugPathMode,
 		}))
 	end)
 end
@@ -142,7 +146,9 @@ local autoRotateHumanoid = nil
 local oldAutoRotate = nil
 local debugTargetPart = nil
 local debugEnemyHighlight = nil
-local debugPathParts = {} --// các sphere xanh lá show path
+local debugPathParts = {} --// các sphere xanh lá show path (mode "Sphere")
+local debugPathLines = {} --// các LineHandleAdornment từng đoạn show path (mode "Line")
+local debugPathAdornee = nil --// phần đế cố định (0,0,0) cho LineHandleAdornment
 local debugAnchorParts = {} --// marker (part + label) hiện vị trí anchor đã đặt
 local holdAngle = nil
 local holdRadius = nil
@@ -728,51 +734,101 @@ local function updateDebugVisuals()
 	highlight.Enabled = true
 end
 
---// Render path bằng các sphere xanh lá tại từng waypoint.
---// Chỉ rebuild khi path đổi (currentPath mới), tránh destroy/create mỗi frame.
+--// Render path debug theo mode:
+--//  * "Sphere": các sphere xanh lá tại từng waypoint (mode cũ).
+--//  * "Line": LineHandleAdornment nối từng cặp waypoint liên tiếp.
+--// Chỉ rebuild khi path đổi (currentPath mới) hoặc đổi mode, tránh destroy/create mỗi frame.
 local DEBUG_PATH_SPHERE_SIZE = 0.9
+local DEBUG_LINE_THICKNESS = 2
 local debugPathCachePath = nil
-local function updateDebugPathSpheres()
+
+local function destroyPathVisuals(list)
+	for _, obj in ipairs(list) do
+		pcall(function() obj:Destroy() end)
+	end
+	table.clear(list)
+end
+
+local function cleanupPathVisuals()
+	destroyPathVisuals(debugPathParts)
+	destroyPathVisuals(debugPathLines)
+	debugPathCachePath = nil
+end
+
+local function ensureDebugPathAdornee()
+	if debugPathAdornee and debugPathAdornee.Parent then return debugPathAdornee end
+	debugPathAdornee = Instance.new("Part")
+	debugPathAdornee.Name = "PathfinderPathAdornee_Debug"
+	debugPathAdornee.Anchored = true
+	debugPathAdornee.CanCollide = false
+	debugPathAdornee.CanQuery = false
+	debugPathAdornee.CanTouch = false
+	debugPathAdornee.Transparency = 1
+	debugPathAdornee.Size = Vector3.new(1, 1, 1)
+	debugPathAdornee.CFrame = CFrame.new(0, 0, 0)
+	debugPathAdornee.Parent = workspace
+	return debugPathAdornee
+end
+
+local function updateDebugPathVisuals()
 	if not visualDebug then
-		if #debugPathParts > 0 then
-			for _, part in ipairs(debugPathParts) do
-				pcall(function() part:Destroy() end)
-			end
-			table.clear(debugPathParts)
-		end
+		cleanupPathVisuals()
 		return nil
 	end
 	if currentPath == debugPathCachePath then return nil end
 
-	for _, part in ipairs(debugPathParts) do
-		pcall(function() part:Destroy() end)
-	end
-	table.clear(debugPathParts)
-	debugPathCachePath = currentPath
+	cleanupPathVisuals()
 
 	if not currentPath or not pathComputed then return nil end
 
 	local ok, waypoints = pcall(function() return currentPath:GetWaypoints() end)
 	if not ok or not waypoints then return nil end
-	for i = 1, #waypoints do
-		local wp = waypoints[i]
-		if wp then
-			local sphere = Instance.new("Part")
-			sphere.Name = "PathfinderPath_Debug"
-			sphere.Anchored = true
-			sphere.CanCollide = false
-			sphere.CanQuery = false
-			sphere.CanTouch = false
-			sphere.Size = Vector3.new(DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE)
-			sphere.Shape = Enum.PartType.Ball
-			sphere.Transparency = 0.3
-			sphere.Color = Color3.fromRGB(0, 255, 120)
-			sphere.Material = Enum.Material.Neon
-			sphere.CFrame = CFrame.new(wp.Position)
-			sphere.Parent = workspace
-			debugPathParts[#debugPathParts + 1] = sphere
+
+	if debugPathMode == "Line" then
+		local anchor = ensureDebugPathAdornee()
+		for i = 2, #waypoints do
+			local a = waypoints[i - 1]
+			local b = waypoints[i]
+			if a and b and a.Position and b.Position then
+				local dist = (b.Position - a.Position).Magnitude
+				if dist > 0.01 then
+					local line = Instance.new("LineHandleAdornment")
+					line.Name = "PathfinderPath_Debug"
+					line.Adornee = anchor
+					line.Length = dist
+					line.Thickness = DEBUG_LINE_THICKNESS
+					line.Transparency = 0.3
+					line.Color3 = Color3.fromRGB(0, 255, 120)
+					line.ZIndex = 0
+					line.CFrame = CFrame.lookAt(a.Position, b.Position)
+					line.Parent = workspace
+					debugPathLines[#debugPathLines + 1] = line
+				end
+			end
+		end
+	else
+		for i = 1, #waypoints do
+			local wp = waypoints[i]
+			if wp then
+				local sphere = Instance.new("Part")
+				sphere.Name = "PathfinderPath_Debug"
+				sphere.Anchored = true
+				sphere.CanCollide = false
+				sphere.CanQuery = false
+				sphere.CanTouch = false
+				sphere.Size = Vector3.new(DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE, DEBUG_PATH_SPHERE_SIZE)
+				sphere.Shape = Enum.PartType.Ball
+				sphere.Transparency = 0.3
+				sphere.Color = Color3.fromRGB(0, 255, 120)
+				sphere.Material = Enum.Material.Neon
+				sphere.CFrame = CFrame.new(wp.Position)
+				sphere.Parent = workspace
+				debugPathParts[#debugPathParts + 1] = sphere
+			end
 		end
 	end
+
+	debugPathCachePath = currentPath
 end
 
 --// ---------- Anchor markers (đánh dấu vị trí anchor đã đặt) ----------
@@ -793,11 +849,11 @@ local function cleanupDebugVisuals()
 		pcall(function() debugEnemyHighlight:Destroy() end)
 		debugEnemyHighlight = nil
 	end
-	for _, part in ipairs(debugPathParts) do
-		pcall(function() part:Destroy() end)
+	cleanupPathVisuals()
+	if debugPathAdornee then
+		pcall(function() debugPathAdornee:Destroy() end)
+		debugPathAdornee = nil
 	end
-	table.clear(debugPathParts)
-	debugPathCachePath = nil
 end
 
 --// Render lại toàn bộ marker theo anchors của MAP hiện tại (không gọi nếu tắt showAnchorMarkers).
@@ -1298,7 +1354,7 @@ local function stepMovement(deltaTime)
 	--// Guard debug: chỉ render khi bật visualDebug (tránh call mỗi frame khi tắt).
 	if visualDebug then
 		updateDebugVisuals()
-		updateDebugPathSpheres()
+		updateDebugPathVisuals()
 	end
 
 	--// LUỒNG DI CHUYỂN ANCHOR RIÊNG: khi đang fallback anchor, chuyển hẳn sang hàm chuyên biệt,
@@ -1444,6 +1500,19 @@ function autoFarmPathfinder.SetVisualDebug(value)
 	visualDebug = value == true
 	saveDebugSettings()
 	if not visualDebug then cleanupDebugVisuals() end
+end
+
+function autoFarmPathfinder.GetDebugPathMode()
+	return debugPathMode
+end
+
+function autoFarmPathfinder.SetDebugPathMode(value)
+	if value ~= "Sphere" and value ~= "Line" then return end
+	if debugPathMode == value then return end
+	debugPathMode = value
+	cleanupPathVisuals()
+	saveDebugSettings()
+	if visualDebug then updateDebugPathVisuals() end
 end
 
 function autoFarmPathfinder.IsRespawnOnNoPathEnabled()
@@ -1596,6 +1665,8 @@ function autoFarmPathfinder.Toggle(state)
 	enabled = state
 
 	if enabled then
+		--// Loại trừ lẫn nhau với SmartDodge (2 hệ thống điều khiển nhân vật, không chạy chung).
+		coordinator.EnableExclusive("AutoFarm")
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		running = true
 		lastSkillTime = 0
@@ -1711,5 +1782,8 @@ end)
 task.defer(function()
 	refreshAnchorMarkers()
 end)
+
+--// Đăng ký hệ thống để coordinator có thể tự tắt khi hệ thống khác bật lên.
+coordinator.Register("AutoFarm", autoFarmPathfinder.Toggle, autoFarmPathfinder.IsEnabled)
 
 return autoFarmPathfinder

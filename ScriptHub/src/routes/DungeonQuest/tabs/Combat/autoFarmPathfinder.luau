@@ -1,4 +1,4 @@
--- Tab AutoFarm Pathfinder (v2): cơ chế 2 pha.
+-- Module Auto Farm Pathfinder trong tab Combat (DungeonQuest): cơ chế 2 pha.
 -- CHASE: pathfinding chạy thẳng tới kẻ địch gần nhất khi ngoài tầm.
 -- HOLD: khi trong tầm skill range, giữ khoảng cách bằng orbit tốc độ 0 (đứng yên + quay mặt
 -- enemy) và tự spam Q+E. Kèm Visual Debug (ô đỏ điểm đuổi + highlight kẻ gần nhất).
@@ -82,7 +82,7 @@ return function(window, tab)
 
 	local refreshAnchorLabel
 
-	local anchorMapDropdown = anchorSection:Dropdown({
+	local anchorMapDropdown = ui.PatchDropdownRestore(anchorSection:Dropdown({
 		Name = "Map (Edit Anchors)",
 		Options = anchorMapOptions,
 		Default = indexOfOption(anchorMapOptions, selectedAnchorMap),
@@ -91,7 +91,7 @@ return function(window, tab)
 			selectedAnchorMap = option
 			refreshAnchorLabel()
 		end,
-	}, "Dropdown_PathfinderAnchorMap")
+	}, "Dropdown_PathfinderAnchorMap"), true)
 
 	local anchorLabel = anchorSection:Label({ Text = "No anchors set" })
 
@@ -179,7 +179,7 @@ return function(window, tab)
 	refreshAnchorLabel()
 
 	--// Bảng Visual Debug
-	local visualSection = tab:Section({ Side = "Left" })
+	local visualSection = tab:Section({ Side = "Right" })
 	visualSection:Header({ Name = "Visual Debug" })
 
 	visualSection:Toggle({
@@ -190,8 +190,19 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderDebug")
 
+	local PATH_MODE_OPTIONS = { "Sphere", "Line" }
+	visualSection:Dropdown({
+		Name = "Debug Path Mode",
+		Options = PATH_MODE_OPTIONS,
+		Default = autoFarmPathfinder.GetDebugPathMode() == "Line" and 2 or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			autoFarmPathfinder.SetDebugPathMode(option)
+		end),
+	}, "Dropdown_PathfinderDebugMode")
+
 	--// Bảng Debug: trạng thái realtime
-	local debugSection = tab:Section({ Side = "Left" })
+	local debugSection = tab:Section({ Side = "Right" })
 	debugSection:Header({ Name = "Debug" })
 
 	local stateLabel = debugSection:Label({ Text = "Initializing..." })
