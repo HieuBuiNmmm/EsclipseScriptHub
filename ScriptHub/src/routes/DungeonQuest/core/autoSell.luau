@@ -25,7 +25,6 @@ local rarityFilter = {} -- set: rarity string -> true
 local typeFilter = {} -- set: type string -> true
 local levelReqExactFilter = {} -- set: level number -> true (chọn đích danh các mốc)
 local levelReqMode = "None" -- "None" = exact multi, "Below" = ≤, "Above" = ≥
-local prefix = "" -- lọc item có tên bắt đầu bằng prefix (bỏ qua case)
 local sellRunning = false
 
 --// Các category có trong inventory (từ log reloadInvy)
@@ -210,14 +209,6 @@ function autoSell.ShouldSellItem(item)
 		return false
 	end
 
-	if prefix and #prefix > 0 then
-		local lowerName = string.lower(item.Name or "")
-		local lowerPrefix = string.lower(prefix)
-		if string.sub(lowerName, 1, #lowerPrefix) ~= lowerPrefix then
-			return false
-		end
-	end
-
 	if next(levelReqExactFilter) then
 		local lvl = item.LevelReq or 0
 		if levelReqMode == "Below" then
@@ -250,7 +241,6 @@ function autoSell.HasAnyFilter()
 		next(rarityFilter) ~= nil
 		or next(typeFilter) ~= nil
 		or next(levelReqExactFilter) ~= nil
-		or (prefix and #prefix > 0)
 		or (not excludeEquipped)
 	)
 end
@@ -306,14 +296,6 @@ function autoSell.SellItems()
 
 	sellRunning = false
 	return result
-end
-
-function autoSell.SetPrefixName(value)
-	prefix = (type(value) == "string" and value) or ""
-end
-
-function autoSell.GetPrefixName()
-	return prefix
 end
 
 function autoSell.SetLevelReqMode(value)

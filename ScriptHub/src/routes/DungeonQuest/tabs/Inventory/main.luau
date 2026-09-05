@@ -21,7 +21,6 @@ return function(window, tab)
 	local summaryRarityLabel = rightSection:Label({ Text = "Rarities: --" })
 	local summaryTypeLabel = rightSection:Label({ Text = "Item Types: --" })
 	local summaryLevelLabel = rightSection:Label({ Text = "Level Req: --" })
-	local summaryPrefixLabel = rightSection:Label({ Text = "Prefix: --" })
 	local summaryEquippedLabel = rightSection:Label({ Text = "Exclude Equipped: --" })
 
 	local function updateSummary()
@@ -75,14 +74,6 @@ return function(window, tab)
 		end
 		pcall(function()
 			summaryLevelLabel:UpdateName("Level Req: <font color='rgb(" .. levelColor .. ")'>" .. levelText .. "</font>")
-		end)
-
-		-- Prefix
-		local prefix = autoSell.GetPrefixName()
-		local prefixText = (#prefix > 0) and ('"' .. prefix .. '"') or "None"
-		local prefixColor = (#prefix > 0) and "255, 220, 120" or "160, 160, 160"
-		pcall(function()
-			summaryPrefixLabel:UpdateName("Prefix: <font color='rgb(" .. prefixColor .. ")'>" .. prefixText .. "</font>")
 		end)
 
 		-- Exclude Equipped
@@ -175,17 +166,6 @@ return function(window, tab)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellLevelReq")
-
-	leftSection:Input({
-		Name = "Prefix Name (starts with)",
-		Default = autoSell.GetPrefixName(),
-		Placeholder = "e.g. Runic",
-		AcceptedCharacters = "All",
-		Callback = autoSave.Wrap(function(value)
-			autoSell.SetPrefixName(value)
-			updateSummary()
-		end),
-	}, "Input_AutoSellPrefix")
 
 	leftSection:Toggle({
 		Name = "Exclude Equipped Items",

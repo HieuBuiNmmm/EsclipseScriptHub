@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-04T23:53:17.675285300+00:00",
+    genDate = "2026-09-05T11:34:48.578079800+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6954,6 +6954,10 @@ local respawnConnection = nil --// reset trạng thái khi nhân vật respawn
 local lastSkillTime = 0
 local cachedNearestEnemy = nil --// cache enemy gần nhất trong 1 frame (tránh gọi getNearestEnemy nhiều lần)
 local cachedNearestValid = false
+local selectToken = 0 --// generation token cho lần chọn target theo path-cost (hủy kết quả cũ khi có reselect mới xen vào)
+local selectRunning = false --// đang chạy cost-select async (chặn heartbeat tự chọn lại bằng straight-line gây phá kết quả)
+local RESCAN_TARGET_INTERVAL = 2 --// giây: rescan theo chu kì chọn lại target theo path-cost (bắt cost thay đổi khi enemy di chuyển)
+local lastRescanTargetAt = 0
 local dunReady = false
 local currentPath = nil
 local waypointIndex = 1
@@ -6977,20 +6981,16 @@ local anchorWalking = false --// ĐANG Ở LUỒNG DI CHUYỂN ANCHOR RIÊNG: hi
 local lastFallbackLogAt = 0 --// throttle log rơi vào fallback anchor (chỉ in 1 lần mỗi episode, không spam)
 local anchorStuckPos = nil --// vị trí theo dõi kẹt nhẹ khi đi ở luồng anchor walk
 local anchorStuckTimer = 0 --// thời gian đứng im trong luồng anchor walk
-local ANCHOR_STUCK_WINDOW = 3.0 --// giây: đứng im quá lâu khi đi anchor thì rebuild path 1 lần
---// Free-walk sau khi hết anchor: đi thẳng theo hướng đang facing trong N giây để băng qua khúc
---// navmesh không phủ, rồi quay lại pathfinding (resume CHASE). KHÔNG liên quan enemy.
+local ANCHOR_STUCK_WINDOW = 1.0 --// giây: đứng im quá lâu khi đi anchor thì rebuild path 1 lần
+--// Free-walk sau khi hết anchor: đi thẳng trong FREE_WALK_DURATION để băng qua khúc navmesh không
+--// phủ, rồi quay lại pathfinding (resume CHASE). KHÔNG liên quan enemy. Hướng đi: ưu tiên theo
+--// anchor1 -> anchor2 của room (nếu room có đủ 2 anchor); ngược lại fallback theo hướng đang nhìn.
 local freeWalkActive = false
 local freeWalkDir = nil --// hướng đi (Vector3 ngang, đơn vị) cố định trong suốt free-walk
 local freeWalkTimer = 0 --// thời gian còn lại của free-walk
-local freeWalkDest = nil --// đích MoveTo rất xa phía trước theo hướng nhìn (đi thẳng đáng tin cậy)
+local freeWalkDest = nil --// đích MoveTo rất xa phía trước theo hướng đã chọn (đi thẳng đáng tin cậy)
 local FREE_WALK_DURATION = 1.5 --// giây đi thẳng mỗi lần hết anchor
 local FREE_WALK_DISTANCE = 40 --// stud: đích MoveTo cách player (đủ xa để đi thẳng trong FREE_WALK_DURATION)
---// Anchor chain (có lock): khi nopath tới enemy, pathfinder khóa vào anchor (anchorChainIndex)
---// và đi tới nơi; chỉ advance sang anchor kế theo thứ tự đặt khi đã TỚI anchor hiện tại mà vẫn
---// nopath (tránh spam đổi target / vẽ path lung tung). anchorChainMap nhớ map đang duyệt.
-local anchorChainMap = nil --// map mà chain đang duyệt
-local anchorChainIndex = 0 --// index anchor đang KHOÁ (target hiện tại)
 --// Gate path build theo STATE (không theo time cooldown): chỉ build path khi thật sự cần.
 --// Spam trước đây do khi nopath, computeChasePath retry cùng enemy mỗi frame vô hạn. Giải pháp:
 --// nhớ target (enemy + vị trí đích) của lần build FAIL gần nhất; KHÔNG retry build path tới cùng
@@ -7002,10 +7002,10 @@ local REPATH_TOL = 3 --// stud: đích dịch chuyển trên mức này thì đ�
 --// Cooldown retry path cho cùng 1 enemy + đích đứng yên: stand không "khoá cứng" mà thử lại
 --// build path sau mỗi RETRY_COOLDOWN giây (chống spam mỗi frame, vẫn tự hồi phục khi có đường).
 local lastFailedTime = 0 --// os.clock() của lần build path fail gần nhất
-local RETRY_COOLDOWN = 1.5 --// giây giữa 2 lần retry build path cùng enemy đứng yên
+local RETRY_COOLDOWN = 1.0 --// giây giữa 2 lần retry build path cùng enemy đứng yên
 --// Chống self-kill lặp liên tục khi thật sự không path được (kill xong respawn -> lại thử).
 local lastSelfKillTime = 0
-local SELF_KILL_COOLDOWN = 2.0
+local SELF_KILL_COOLDOWN = 1.0
 --// Stuck detection: phát hiện đứng im dù path đang chạy -> chạy chuỗi gỡ kẹt:
 --// nhảy -> strafe trái -> strafe phải -> reset player (Health=0 để game respawn).
 --// (vật cản thấp/kệ mép mà path không đánh dấu Jump waypoint).
@@ -7127,19 +7127,148 @@ local PATH_PARAMS_RELAXED = {
 	Costs = {},
 }
 
---// Tìm anchor cần reach khi nopath của MAP hiện tại, theo cơ chế CHAIN có LOCK:
---// KHÓA VÀO 1 anchor duy nhất (anchorChainIndex) và đi tới nơi (trong nearAnchorTol studs).
---// Chỉ advance sang anchor KẾ TIẾP theo đúng thứ tự đặt khi đã thực sự TỚI anchor hiện tại
---// mà vẫn nopath tới enemy. Tránh spam đổi target anchor (trước đây advance mỗi lần recompute
---// -> vẽ path lung tung qua nhiều anchor). Anchor nào ĐÃ TỚI (reach) sẽ được đánh dấu visited
---// -> đổi màu marker + KHÔNG target lại trong phiên này. Trả về Vector3 hoặc nil.
+--// ---------- Chọn target bằng CHI PHÍ PATH (thay cho "nearest straight-line") ----------
+--// Lý do: map dungeon nhiều tầng/độ cao — "gần nhất" theo đường thẳng thường lệch xa chi phí thật
+--// (phải đi vòng/leo qua chokepoint). Ví dụ 3 chốt A->B->C: enemy ở C gần theo đường thẳng nhưng thật
+--// ra phải đi qua B; đáng lẽ enemy B nằm trên đường phải được xử trước — trước đây cost không tính nên
+--// đi xuyên qua B. Vì path tới B luôn ngắn hơn path tới C nên cách này tự quét dần từng chốt theo
+--// thứ tự đi thật chứ không bỏ sót enemy trên đường.
+--// Ước lượng chi phí di chuyển từ start tới dest qua Pathfinding (tổng độ dài waypoint theo ngang).
+--// Trả về số stud hoặc nil nếu không tính được path.
+--// Có cache: cùng 1 enemy (đích) được rescan định kỳ mỗi RESCAN_TARGET_INTERVAL. Chỉ tái dùng
+--// kết quả cũ khi CẢ player (start) và enemy (dest) chưa dịch chuyển đáng kể — giảm gọi
+--// PathfindingService (tốn CPU) mà không ảnh hưởng độ chính xác khi bot đang di chuyển.
+local COST_CACHE_TOL = 3 --// stud: start hoặc dest dịch chuyển dưới mức này thì tái dùng cost
+local costCache = {} --// { [model] = { keyStart = Vector3, keyDest = Vector3, cost = number } }
+local function measurePathCost(start, dest, model)
+	if model then
+		local hit = costCache[model]
+		if hit and hit.cost ~= nil and hit.keyDest
+			and (hit.keyDest - dest).Magnitude <= COST_CACHE_TOL
+			and (hit.keyStart - start).Magnitude <= COST_CACHE_TOL then
+			return hit.cost
+		end
+	end
+	local path = PathfindingService:CreatePath(PATH_PARAMS)
+	local ok = pcall(function() path:ComputeAsync(start, dest) end)
+	local waypoints = nil
+	if ok and path.Status == Enum.PathStatus.Success then
+		waypoints = path:GetWaypoints()
+	end
+	pcall(function() path:Destroy() end)
+	if not waypoints or #waypoints == 0 then return nil end
+	local total = 0
+	local prev = start
+	for i = 1, #waypoints do
+		local w = waypoints[i].Position
+		local dx, dz = w.X - prev.X, w.Z - prev.Z
+		total += math.sqrt(dx * dx + dz * dz)
+		prev = w
+	end
+	if model then
+		costCache[model] = { keyStart = start, keyDest = dest, cost = total }
+	end
+	return total
+end
+
+--// Gán target mới nếu khác target hiện tại: hủy path cũ (frame sau sẽ rebuild sang target mới).
+--// Giải phóng lock HOLD nếu enemy bị lock đã biến mất.
+local function commitTarget(model)
+	if model == chaseModel then return chaseModel end
+	chaseModel = model
+	if currentPath then pcall(function() currentPath:Destroy() end) end
+	currentPath = nil
+	pathComputed = false
+	chasePathTargetModel = nil
+	if lockedTargetModel and not getEnemyByModel(lockedTargetModel) then
+		lockedTargetModel = nil
+		holdAngle = nil
+		holdRadius = nil
+	end
+	return chaseModel
+end
+
+--// Chạy async: tính path cost cho từng enemy, chọn con có cost nhỏ nhất rồi commit.
+--// Duyệt theo khoảng cách NGANG tăng dần + prune bằng cận dưới (pathLen >= khoảng cách ngang):
+--// tới con kế mà khoảng cách ngang đã >= bestCost hiện tại thì các con sau không thể rẻ hơn -> dừng.
+--// Chạy trong task.spawn nên CHASE vẫn đi theo target cũ trong lúc tính; guard bằng selectToken khi
+--// có reselect mới xen giữa chừng (enemy spawn/chết liên tục) để bỏ kết quả cũ.
+local function kickOffCostSelect(fallbackNearest)
+	selectToken += 1
+	local token = selectToken
+	if selectRunning then return end
+	selectRunning = true
+	task.spawn(function()
+		local ok, err = pcall(function()
+			local playerRoot = getPlayerRoot()
+			local playerPos = playerRoot and getSafePosition(playerRoot) or nil
+			local chosen = nil
+			local chosenCost = math.huge
+			if playerPos then
+				local candidates = {}
+				for _, data in ipairs(shared.GetTrackedEnemyData()) do
+					if data and data.Root and data.Root.Parent then
+						local rp = getSafePosition(data.Root)
+						if rp then
+							local dx, dz = rp.X - playerPos.X, rp.Z - playerPos.Z
+							local straight = math.sqrt(dx * dx + dz * dz)
+							table.insert(candidates, { data = data, straight = straight })
+						end
+					end
+				end
+				table.sort(candidates, function(a, b) return a.straight < b.straight end)
+				for i = 1, #candidates do
+					if token ~= selectToken then return end
+					local cand = candidates[i]
+					if cand.straight >= chosenCost then break end
+					local cpos = getSafePosition(cand.data.Root)
+					if cpos then
+						local cost = measurePathCost(playerPos, cpos, cand.data.Model)
+						if token ~= selectToken then return end
+						if cost and cost < chosenCost then
+							chosenCost = cost
+							chosen = cand.data
+						end
+					end
+				end
+				--// Trong lúc tính, nếu có enemy lọt vào tầm thẳng thì ưu tiên HOLD ngay chứ không chọn theo cost.
+				if not chosen or chosenCost > skillRange then
+					local nearest = getNearestEnemy()
+					if nearest then
+						local np = getSafePosition(nearest.Root)
+						if np then
+							local dx, dz = np.X - playerPos.X, np.Z - playerPos.Z
+							if math.sqrt(dx * dx + dz * dz) <= skillRange then chosen = nearest end
+						end
+					end
+				end
+			end
+			if not enabled or not running then return end
+			if anchorWalking then return end --// đang rơi vào luồng anchor: không commit, tránh hủy path anchor
+			if chosen then
+				commitTarget(chosen.Model)
+			elseif fallbackNearest then
+				commitTarget(fallbackNearest.Model)
+			end
+		end)
+		selectRunning = false
+		if not ok then
+			warn(("[PathSelector] lỗi cost-select: %s"):format(tostring(err)))
+		end
+	end)
+end
+
+--// Tìm anchor cần reach khi nopath của ROOM hiện tại: chỉ trả về anchor ĐẦU TIÊN chưa visited
+--// của room (theo thứ tự đặt). Anchor thứ 2 của room KHÔNG được target/đi tới — nó chỉ dùng để
+--// định hướng free-walk (anchor1 -> anchor2). Hết anchor hợp lệ -> trả nil (để vào free-walk).
+--// Trả về Vector3 hoặc nil.
 local nearAnchorTol = 5
 
 local refreshAnchorMarkers --// forward ref (định nghĩa sau)
 
 --// Quét anchor map hiện tại THEO VỊ TRÍ mỗi frame: anchor nào player đang đứng gần (<= nearAnchorTol)
 --// mà đã TỪNG ở xa nó (wasFar) -> đánh dấu visited (đã đi qua/tiến tới nó từ xa). Trả về true nếu có
---// thay đổi (để refresh marker đổi màu + chain không target lại). KHÔNG mark ngay khi player chỉ đứng
+--// thay đổi (để refresh marker đổi màu + không target lại). KHÔNG mark ngay khi player chỉ đứng
 --// sẵn gần anchor từ đầu (anchor thường đặt tại vị trí đang đứng) để không mất anchor chưa thực sự dùng.
 local function sweepNearbyAnchors(playerPos)
 	local mapName = shared.GetCurrentDungeonName()
@@ -7168,18 +7297,8 @@ end
 local function findNextAnchor()
 	local mapName = shared.GetCurrentDungeonName()
 	local list = (type(mapName) == "string" and anchors[mapName]) or nil
-	if not (type(mapName) == "string" and #mapName > 0) or not list then
-		anchorChainMap = nil
-		anchorChainIndex = 0
-		return nil
-	end
-	if anchorChainMap ~= mapName then
-		anchorChainMap = mapName
-		anchorChainIndex = 0
-	end
+	if not (type(mapName) == "string" and #mapName > 0) or not list then return nil end
 
-	local playerRoot = getPlayerRoot()
-	local playerPos = playerRoot and getSafePosition(playerRoot) or nil
 	local current = shared.GetCurrentRoomIndex()
 	current = (type(current) == "number" and current) or -1
 
@@ -7187,39 +7306,35 @@ local function findNextAnchor()
 	--// current = room của enemy đang track; lúc CHUYỂN ROOM (xong quái room này, chờ quái room sau)
 	--// thì không còn quái -> current = 0 -> KHÔNG được dùng anchor nào (tránh nhảy target sang
 	--// anchor room khác khi chưa tới đó). Anchor room nào chỉ áp dụng khi current == room đó.
-	if current <= 0 then
-		anchorChainIndex = 0
-		return nil
-	end
+	if current <= 0 then return nil end
 
-	local function distTo(a)
-		return (playerPos and a.pos and (a.pos - playerPos).Magnitude) or math.huge
-	end
-
-	--// Đang khoá 1 anchor hợp lệ -> chỉ hợp lệ khi VẪN đúng room hiện tại (nếu đổi room thì hủy lock).
-	local target = (anchorChainIndex >= 1 and anchorChainIndex <= #list) and list[anchorChainIndex] or nil
-	if target and not target.visited and target.room == current then
-		if distTo(target) > nearAnchorTol then
-			return target.pos
-		end
-		--// Đã tới anchor này -> đánh dấu visited (không target lại) + đổi màu marker.
-		target.visited = true
-		refreshAnchorMarkers()
-	end
-
-	--// Chọn target MỚI: chỉ anchor trong ĐÚNG room hiện tại (anchor room nào thì tới đó mới dùng),
-	--// theo thứ tự đặt (không quay đầu), bỏ qua anchor đang đứng cạnh + anchor đã visited.
-	local best = nil
-	for i = anchorChainIndex + 1, #list do
-		local a = list[i]
-		if not a.visited and a.room == current and distTo(a) > nearAnchorTol then
-			best = i
-			break
+	--// Chỉ trả về anchor ĐẦU TIÊN của room hiện tại (nếu chưa visited). Anchor thứ 2 bỏ qua:
+	--// nó chỉ định hướng free-walk (anchor1 -> anchor2), không có vai trò đi tới.
+	for _, a in ipairs(list) do
+		if a.room == current then
+			if a.visited then return nil end
+			return a.pos
 		end
 	end
-	anchorChainIndex = best or 0
-	if anchorChainIndex == 0 then return nil end
-	return list[anchorChainIndex].pos
+	return nil
+end
+
+--// Lấy (tối đa 2) anchor của ROOM hiện tại theo thứ tự đặt (lọc đúng room). Dùng cho free-walk:
+--// room có đủ 2 anchor -> hướng đi thẳng là anchor1 -> anchor2; chưa đủ 2 -> fallback hướng nhìn.
+local function getRoomAnchors()
+	local mapName = shared.GetCurrentDungeonName()
+	local list = (type(mapName) == "string" and anchors[mapName]) or nil
+	if not list or #list == 0 then return {} end
+	local current = shared.GetCurrentRoomIndex()
+	current = (type(current) == "number" and current) or -1
+	local out = {}
+	for _, a in ipairs(list) do
+		if a.room == current and a.pos then
+			out[#out + 1] = a.pos
+			if #out >= 2 then break end
+		end
+	end
+	return out
 end
 
 --// Thử build path từ start tới dest với 2 bộ params (chính + relaxed).
@@ -7243,7 +7358,7 @@ local function tryBuildPath(start, dest, mountModel, isAnchor)
 			--// failedWaypointIndex = nil/0 (block tổng quát) -> nếu bỏ path theo index sẽ tear-down
 			--// MỖI FRAME -> rebuild path anchor liên tục cùng 1 đích (spam "REBUILD" + "Lock keep",
 			--// nhân vật "đi rồi cố về" lặp lại). Vì vậy KHÔNG tear-down theo index; đích ổn định,
-			--// chỉ rebuild khi kẹt thật (stuck detection) hoặc khi đi hết waypoint (advance).
+			--// chỉ rebuild khi kẹt thật (stuck detection) hoặc khi đi hết waypoint.
 			path.Blocked:Connect(function()
 				if isAnchor then
 					if stuckStage >= 1 then
@@ -7288,23 +7403,15 @@ local function computeChasePath(enemy, targetPos)
 
 	local start = playerPos
 
-	--// 1) Thử path tới enemy (params chính → relaxed). Thành công -> reset chuỗi anchor
-	--// (đã có path tới enemy, lần nopath sau bắt đầu lại anchor đầu).
+	--// 1) Thử path tới enemy (params chính → relaxed). Thành công -> thoát luồng anchor,
+	--// lần nopath sau sẽ vào anchor lại từ đầu.
 	if tryBuildPath(start, targetPos, enemy.Model, false) then
 		--// Có path tới enemy -> KHÔNG ở luồng anchor nữa (chase bình thường).
 		anchorWalking = false
-		--// Chỉ reset + log khi chain anchor thực sự đang active (đang fallback). Nếu chain đã
-		--// rỗng từ đầu (đang CHASE bình thường chưa rơi vô fallback) thì không có gì để reset,
-		--// tránh spam "enemy path OK -> reset anchor chain" mỗi lần build path tới enemy.
-		if anchorChainMap ~= nil or anchorChainIndex > 0 then
-			anchorChainMap = nil
-			anchorChainIndex = 0
-			if visualDebug then warn("[PathAnchor] enemy path OK -> reset anchor chain") end
-		end
 		return true
 	end
 
-	--// 2) Nopath tới enemy -> FALLBACK ANCHOR (chỉ khi toggle anchorFallback bật). Khóa anchor hợp lệ
+	--// 2) Nopath tới enemy -> FALLBACK ANCHOR (chỉ khi toggle anchorFallback bật). Tìm anchor hợp lệ
 	--// cho room hiện tại (findNextAnchor) rồi vào luồng di chuyển anchor riêng. Khi tắt toggle -> bỏ qua
 	--// hẳn, rơi thẳng xuống "cả 2 fail" (stand hoặc self-kill theo respawnOnNoPath).
 	if anchorFallback then
@@ -7318,7 +7425,7 @@ local function computeChasePath(enemy, targetPos)
 			local now = os.clock()
 			if now - lastFallbackLogAt >= 3 then
 				lastFallbackLogAt = now
-				warn("[PathAnchor] FALLBACK: đang rơi vào anchor (idx=" .. tostring(anchorChainIndex) .. ") cho room hiện tại")
+				warn("[PathAnchor] FALLBACK: đang rơi vào anchor cho room hiện tại")
 			end
 			return true
 		end
@@ -7583,12 +7690,43 @@ local function resetStuckCheck()
 	stuckStrafeDir = 0
 end
 
+--// Dọn toàn bộ state runtime (path/target/lock/stuck/select/anchor) để tái sử dụng
+--// cho cả trường hợp Toggle off và respawn. KHÔNG dọn kết nối/Heartbeat (do caller quản lý).
+local function resetRuntimeState()
+	if currentPath then pcall(function() currentPath:Destroy() end) end
+	currentPath = nil
+	pathComputed = false
+	chaseTarget = nil
+	holdAngle = nil
+	holdRadius = nil
+	lockedTargetModel = nil
+	chaseModel = nil
+	chasePathTargetModel = nil
+	pathIsAnchor = false
+	anchorWalking = false
+	freeWalkActive = false
+	freeWalkDir = nil
+	freeWalkDest = nil
+	cachedNearestEnemy = nil
+	cachedNearestValid = false
+	table.clear(costCache) --// enemy cũ có thể đã bị destroy -> dọn cache cost để không giữ ref rác
+	selectToken += 1 --// hủy cost-select đang chạy (nếu có)
+	selectRunning = false
+	lastRescanTargetAt = 0
+	lastFailedModel = nil
+	lastFailedDest = nil
+	lastFailedTime = 0
+	resetStuckCheck()
+end
+
 --// ---------- Event-driven: chọn/chuyển target theo sự kiện (không poll theo interval) ----------
 
---// Chọn lại nearest target MỘT LẦN (do sự kiện enemy đổi trigger). Nếu target model khác
+--// Chọn lại target MỘT LẦN (do sự kiện enemy đổi trigger). Nếu target model khác
 --// target hiện tại thì hủy path cũ (frame sau sẽ rebuild sang target mới). Giải phóng lock HOLD
 --// nếu enemy bị lock đã biến mất. Trả về model mục tiêu mới (hoặc nil).
-	local function reselectTarget()
+--// CHỌN TARGET: enemy trong tầm thẳng -> lock ngay (HOLD). Ngược lại chọn theo CHI PHÍ PATH
+--// async (không block CHASE hiện tại) thay vì "nearest straight-line" — xem kickOffCostSelect.
+local function reselectTarget()
 	local playerRoot = getPlayerRoot()
 	if not playerRoot then return end
 	local nearest = getNearestEnemy()
@@ -7598,21 +7736,20 @@ end
 	--// (enemy spawn/die trong lúc di chuyển tới anchor KHÔNG được làm gián đoạn path). Khi thoát
 	--// luồng anchor sẽ reselect lại bình thường.
 	if anchorWalking then return chaseModel end
-	local newModel = nearest and nearest.Model or nil
-	if newModel ~= chaseModel then
-		chaseModel = newModel
-		--// Target đổi -> path cũ lỗi thời, hủy để frame kế rebuild sang target mới.
-		if currentPath then pcall(function() currentPath:Destroy() end) end
-		currentPath = nil
-		pathComputed = false
-		chasePathTargetModel = nil
-		--// Đang HOLD mà enemy lock đã mất -> giải phóng lock.
-		if lockedTargetModel and not getEnemyByModel(lockedTargetModel) then
-			lockedTargetModel = nil
-			holdAngle = nil
-			holdRadius = nil
+	--// Enemy trong tầm thẳng -> lock ngay, không cần tính path cost.
+	if nearest then
+		local npos = getSafePosition(nearest.Root)
+		local ppos = getSafePosition(playerRoot)
+		if npos and ppos then
+			local dx, dz = npos.X - ppos.X, npos.Z - ppos.Z
+			if math.sqrt(dx * dx + dz * dz) <= skillRange then
+				return commitTarget(nearest.Model)
+			end
 		end
 	end
+	if not nearest then return commitTarget(nil) end
+	--// Không ai trong tầm -> chọn bằng path cost. Trong lúc tính, CHASE vẫn đi theo target hiện tại.
+	kickOffCostSelect(nearest)
 	return chaseModel
 end
 
@@ -7624,19 +7761,8 @@ end
 
 --// Nhân vật respawn (tự kill / chết) -> dọn path cũ + target cũ, chờ reselect sau.
 	local function onRespawn()
-	currentPath = nil
-	pathComputed = false
-	pathIsAnchor = false
-	anchorWalking = false
-	freeWalkActive = false
-	freeWalkDir = nil
-	freeWalkDest = nil
-	chasePathTargetModel = nil
-	chaseModel = nil
-	lockedTargetModel = nil
-	holdAngle = nil
-	holdRadius = nil
-	resetStuckCheck()
+	resetRuntimeState()
+	reselectTarget() --// chọn lại target (ưu tiên path-cost) ngay sau respawn, không chờ event
 end
 
 --// Bước hành động tiếp theo của chuỗi gỡ kẹt: nhảy -> strafe trái -> strafe phải
@@ -7662,10 +7788,10 @@ local function advanceStuckAction(humanoid)
 	end
 end
 
---// LUỒNG DI CHUYỂN ANCHOR RIÊNG (fallback): vẽ path tới anchor đích (idx = anchorChainIndex, được
---// khóa bởi findNextAnchor trong computeChasePath) 1 lần rồi đi thẳng tới đó theo pathfinder (theo địa
---// hình). KHÔNG xử lý enemy, không chuyển HOLD khi enemy vào tầm, không retarget. Khi tới anchor ->
---// đánh dấu visited + rebuild path tới anchor kế. Hết anchor hợp lệ -> thoát luồng (về CHASE bình thường).
+--// LUỒNG DI CHUYỂN ANCHOR RIÊNG (fallback): vẽ path tới anchor của room hiện tại 1 lần rồi đi
+--// thẳng tới đó theo pathfinder (theo địa hình). KHÔNG xử lý enemy, không chuyển HOLD khi enemy vào
+--// tầm, không retarget. Khi tới anchor -> đánh dấu visited. Hết anchor hợp lệ (hoặc nopath tới anchor)
+--// -> FREE-WALK đi thẳng theo hướng định sẵn rồi thoát luồng (về CHASE bình thường).
 local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 	local playerPos = getSafePosition(playerRoot)
 	if not playerPos then return end
@@ -7683,55 +7809,64 @@ local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 		return
 	end
 
-	--// Chưa có path anchor -> build path 1 lần rồi bắt đầu đi (không build lại mỗi frame).
+	--// Chưa có path anchor -> build path tới anchor hợp lệ 1 lần rồi bắt đầu đi (không build lại
+	--// mỗi frame). Nopath tới anchor (hoặc hết anchor hợp lệ) -> rơi thẳng vào FREE-WALK (không
+	--// thoát luồng giữa chừng để rồi vào lại → tránh spam log mỗi frame).
 	if not currentPath then
 		local anchorPos = findNextAnchor()
-		if not anchorPos then
-			--// Hết anchor hợp lệ trong room -> FREE-WALK: đi thẳng theo hướng đang facing trong
-			--// FREE_WALK_DURATION để băng qua khúc navmesh không phủ, rồi quay lại CHASE (resume).
-			--// KHÔNG liên quan enemy. Khi hết thời gian -> thoát luồng anchor (về CHASE/stand/self-kill).
-			if not freeWalkActive then
-				freeWalkActive = true
-				freeWalkTimer = FREE_WALK_DURATION
-				--// Hướng đi = hướng NHÌN thực tế (LookVector của HumanoidRootPart). KHÔNG dùng
-				--// Orientation.Y / FindFirstChild("HumanoidRootPart") vì playerRoot CHÍNH là
-				--// HumanoidRootPart (getPlayerRoot trả root) -> FindFirstChild trả nil -> cũ code
-				--// luôn ra hướng +X, sai hướng nhìn. Chuẩn hoá về mặt phẳng XZ.
-				local look = playerRoot.CFrame.LookVector
-				freeWalkDir = Vector3.new(look.X, 0, look.Z)
-				if freeWalkDir.Magnitude < 0.01 then
-					freeWalkDir = Vector3.new(0, 0, -1)
-				else
-					freeWalkDir = freeWalkDir.Unit
-				end
-				--// Đích tạm rất xa phía trước theo hướng nhìn -> MoveTo đi thẳng. Dùng chung cơ chế
-				--// MoveTo như toàn bộ pathfinder (đáng tin cậy hơn humanoid:Move(vector) — cái sau
-				--// dễ bị mất hiệu lực sau một MoveTo trước đó, làm "đứng im không đi").
-				freeWalkDest = playerPos + freeWalkDir * FREE_WALK_DISTANCE
-				if visualDebug then warn(("[PathAnchor] hết anchor -> FREE-WALK %gs theo hướng nhìn"):format(FREE_WALK_DURATION)) end
-			end
-			--// Đi thẳng theo hướng cố định (không cần path). MoveTo đích rất xa -> nhân vật bước thẳng,
-			--// Humanoid tự nhân với WalkSpeed.
-			ensureAutoRotateEnabled()
-			humanoid:MoveTo(freeWalkDest)
-			freeWalkTimer -= deltaTime
-			if freeWalkTimer <= 0 then
-				freeWalkActive = false
-				freeWalkDir = nil
-				freeWalkDest = nil
-				exitAnchorFlow()
-				return
-			end
-			return
-		end
-		if tryBuildPath(playerPos, anchorPos, nil, true) then
+		if anchorPos and tryBuildPath(playerPos, anchorPos, nil, true) then
 			anchorStuckPos = nil
 			anchorStuckTimer = 0
 			return --// vừa build xong, frame sau đi theo waypoint
 		end
-		--// Nopath tới anchor này -> thoát luồng anchor.
-		if visualDebug then warn("[PathAnchor] nopath tới anchor -> thoát luồng anchor walk") end
-		exitAnchorFlow()
+		--// Hết anchor hợp lệ trong room (đã visited) HOẶC nopath tới anchor -> FREE-WALK: đi thẳng
+		--// trong FREE_WALK_DURATION để băng qua khúc navmesh không phủ, rồi quay lại CHASE (resume).
+		--// Hướng đi ưu tiên theo anchor1 -> anchor2 của room (nếu có đủ 2 anchor), ngược lại theo
+		--// hướng nhìn. KHÔNG liên quan enemy. Hết thời gian -> thoát luồng anchor (về CHASE/stand/self-kill).
+		if not freeWalkActive then
+			freeWalkActive = true
+			freeWalkTimer = FREE_WALK_DURATION
+			--// Hướng đi: nếu room hiện tại có đủ 2 anchor thì đi theo hướng anchor1 -> anchor2
+			--// (anchor thứ 2 chỉ dùng để định hướng, không vai trò khác). Ngược lại fallback theo
+			--// hướng NHÌN thực tế (LookVector của HumanoidRootPart). KHÔNG dùng Orientation.Y /
+			--// FindFirstChild("HumanoidRootPart") vì playerRoot CHÍNH là HumanoidRootPart
+			--// (getPlayerRoot trả root) -> FindFirstChild trả nil -> cũ code luôn ra hướng +X,
+			--// sai hướng nhìn. Chuẩn hoá về mặt phẳng XZ.
+			local roomAnchors = getRoomAnchors()
+			if #roomAnchors >= 2 then
+				local d = roomAnchors[2] - roomAnchors[1]
+				freeWalkDir = Vector3.new(d.X, 0, d.Z)
+			else
+				local look = playerRoot.CFrame.LookVector
+				freeWalkDir = Vector3.new(look.X, 0, look.Z)
+			end
+			if freeWalkDir.Magnitude < 0.01 then
+				freeWalkDir = Vector3.new(0, 0, -1)
+			else
+				freeWalkDir = freeWalkDir.Unit
+			end
+			--// Đích tạm rất xa phía trước theo hướng đã chọn -> MoveTo đi thẳng. Dùng chung cơ chế
+			--// MoveTo như toàn bộ pathfinder (đáng tin cậy hơn humanoid:Move(vector) — cái sau
+			--// dễ bị mất hiệu lực sau một MoveTo trước đó, làm "đứng im không đi").
+			freeWalkDest = playerPos + freeWalkDir * FREE_WALK_DISTANCE
+			if #roomAnchors >= 2 then
+				if visualDebug then warn(("[PathAnchor] hết anchor -> FREE-WALK %gs theo hướng anchor1->anchor2"):format(FREE_WALK_DURATION)) end
+			elseif visualDebug then
+				warn(("[PathAnchor] hết anchor -> FREE-WALK %gs theo hướng nhìn"):format(FREE_WALK_DURATION))
+			end
+		end
+		--// Đi thẳng theo hướng cố định (không cần path). MoveTo đích rất xa -> nhân vật bước thẳng,
+		--// Humanoid tự nhân với WalkSpeed.
+		ensureAutoRotateEnabled()
+		humanoid:MoveTo(freeWalkDest)
+		freeWalkTimer -= deltaTime
+		if freeWalkTimer <= 0 then
+			freeWalkActive = false
+			freeWalkDir = nil
+			freeWalkDest = nil
+			exitAnchorFlow()
+			return
+		end
 		return
 	end
 
@@ -7742,19 +7877,24 @@ local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 		return
 	end
 	if waypointIndex > #waypoints then
-		--// Đã đi hết waypoint = ĐÃ TỚI anchor đích (idx = anchorChainIndex). Mark visited TRỰC TIẾP
-		--// (không đo lại khoảng cách — tránh lệch vài stud gây rebuild lặp). Frame kế findNextAnchor
-		--// sẽ advance sang anchor kế trong cùng room (hoặc return nil khi hết -> thoát luồng).
+		--// Đã đi hết waypoint = ĐÃ TỚI anchor đích. Mark visited anchor có pos trùng chaseTarget
+		--// (findNextAnchor chỉ target 1 anchor duy nhất của room) — không đo lại khoảng cách để
+		--// tránh lệch vài stud gây rebuild lặp. Frame kế: hết anchor hợp lệ -> rơi vào free-walk.
 		local mapName = shared.GetCurrentDungeonName()
 		local list = (type(mapName) == "string" and anchors[mapName]) or nil
-		if list and anchorChainIndex >= 1 and anchorChainIndex <= #list and not list[anchorChainIndex].visited then
-			list[anchorChainIndex].visited = true
-			refreshAnchorMarkers()
-			if visualDebug then warn(("[PathAnchor] TỚI anchor idx=%d -> visited"):format(anchorChainIndex)) end
+		if list then
+			for _, a in ipairs(list) do
+				if not a.visited and a.pos and chaseTarget and (a.pos - chaseTarget).Magnitude <= nearAnchorTol then
+					a.visited = true
+					refreshAnchorMarkers()
+					if visualDebug then warn(("[PathAnchor] TỚI anchor (R%d) -> visited"):format(a.room)) end
+					break
+				end
+			end
 		end
 		currentPath = nil
 		pathComputed = false
-		return --// frame kế: build path tới anchor kế (findNextAnchor) hoặc thoát nếu hết anchor
+		return --// frame kế: findNextAnchor hết anchor -> rơi vào free-walk
 	end
 
 	--// Đi theo waypoint giống CHASE (Click-to-Move, pathfinder theo địa hình): nhân vật tự đi + tự quay.
@@ -7795,134 +7935,56 @@ local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 	end
 end
 
---// Di chuyển: CHASE theo trạng thái, HOLD khi enemy trong tầm.
-local function stepMovement(deltaTime)
-	if shared.IsInLobby() then return end
-	if not dunReady then return end
-
-	local playerRoot = getPlayerRoot()
-	local humanoid = shared.GetHumanoid()
-	if not playerRoot or not playerRoot.Parent or not humanoid or not humanoid.Parent or humanoid.Health <= 0 then
-		currentPath = nil
-		pathComputed = false
-		cachedNearestValid = false
-		return
+--// HOLD: enemy trong tầm -> lock, orbit tốc độ thấp (center = enemy), quay mặt enemy + spam skill.
+--// Tách riêng khỏi stepMovement để cô lập lỗi: nếu phần CFrame/velocity của 1 frame throw thì chỉ
+--// ảnh hưởng frame đó (được log ở caller), không làm abrt toàn bộ pipeline CHASE/anchor.
+local function stepHold(deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
+	ensureAutoRotateDisabled()
+	--// Skill-fire: tái dùng enemy + vị trí đã resolve trong frame này (không resolve lại 2 lần/frame).
+	if skillEnabled then fireSkills() end
+	--// Huỷ MoveTo của CHASE trước đó để không chống đối việc set CFrame thủ công.
+	pcall(function() humanoid:MoveTo(playerPos) end)
+	if not lockedTargetModel then lockedTargetModel = enemy.Model end
+	if currentPath then pcall(function() currentPath:Destroy() end) end
+	currentPath = nil
+	pathComputed = false
+	chaseTarget = nil
+	resetStuckCheck()
+	--// Capture góc & bán kính từ vị trí hiện tại lúc vào HOLD.
+	--// Dùng offset = playerPos - enemyPos (hướng từ enemy tới player) để
+	--// orbitPos == vị trí player hiện tại, tránh bị dội ngược phía đối diện.
+	local offsetXZ = Vector3.new(playerPos.X - enemyPos.X, 0, playerPos.Z - enemyPos.Z)
+	if not holdAngle then
+		holdAngle = math.atan2(offsetXZ.Z, offsetXZ.X)
+		holdRadius = offsetXZ.Magnitude
 	end
-	--// Guard debug: chỉ render khi bật visualDebug (tránh call mỗi frame khi tắt).
-	if visualDebug then
-		updateDebugVisuals()
-		updateDebugPathSpheres()
-	end
-
-	--// LUỒNG DI CHUYỂN ANCHOR RIÊNG: khi đang fallback anchor, chuyển hẳn sang hàm chuyên biệt,
-	--// KHÔNG chạy CHASE/HOLD (không xử lý enemy khi đang đi tới anchor). Nếu đang trong luồng này thì
-	--// bỏ qua mọi logic khác để "vẽ path 1 lần, đi thẳng tới đích" — không spam, không can thiệp.
-	if anchorWalking then
-		stepAnchorWalking(deltaTime, humanoid, playerRoot)
-		return
-	end
-
-	--// Target được duy trì EVENT-DRIVEN qua shared.OnEnemyChanged -> reselectTarget().
-	--// Heartbeat CHỈ thực thi (follow path / HOLD), KHÔNG poll scan hay đổi target theo interval.
-	local enemy
-	if lockedTargetModel then
-		--// Đang HOLD -> bám enemy đã lock, không retarget.
-		enemy = getEnemyByModel(lockedTargetModel)
-		if not enemy then
-			lockedTargetModel = nil
-			holdAngle = nil
-			holdRadius = nil
+	--// Vị trí mong muốn trên quỹ đạo quanh enemy (theo enemy di chuyển)
+	local orbitPos = Vector3.new(
+		enemyPos.X + math.cos(holdAngle) * holdRadius,
+		playerPos.Y,
+		enemyPos.Z + math.sin(holdAngle) * holdRadius
+	)
+	--// Xích mượt về orbitPos (đứng yên nếu đã đúng vị trí, theo enemy nếu enemy di chuyển)
+	local pos = playerPos
+	local toOrbit = Vector3.new(orbitPos.X - pos.X, 0, orbitPos.Z - pos.Z)
+	local dist = toOrbit.Magnitude
+	local thisStep = moveSpeed * math.max(deltaTime, 1 / 60)
+	local newPos = pos
+	if dist > 0.01 then
+		if dist <= thisStep then
+			newPos = Vector3.new(orbitPos.X, pos.Y, orbitPos.Z)
+		else
+			newPos = pos + toOrbit.Unit * thisStep
 		end
 	end
-	if not enemy then
-		--// enemy theo chaseModel (đã cập nhật bởi event). Nếu model cũ mất mà event chưa tới thì
-		--// xoá chaseModel để reselect sau; KHÔNG scan lại mỗi frame.
-		enemy = getEnemyByModel(chaseModel)
-		if not enemy then
-			chaseModel = nil
-			--// Fallback: không có chaseModel nhưng vẫn có enemy đang track (ví dụ sau
-			--// respawn, tập enemy không đổi nên OnEnemyChanged không fire) → chọn lại ngay.
-			local nearest = getNearestEnemy()
-			if nearest then
-				chaseModel = nearest.Model
-				enemy = nearest
-			end
-		end
-	end
-	cachedNearestEnemy = enemy
-	cachedNearestValid = enemy ~= nil
-	if not enemy or not enemy.Root or not enemy.Root.Parent then
-		--// Không có target -> đứng yên. Event OnEnemyChanged sẽ reselect khi có enemy mới.
-		if currentPath then pcall(function() currentPath:Destroy() end) end
-		currentPath = nil
-		pathComputed = false
-		chaseTarget = nil
-		pcall(function() humanoid:MoveTo(getSafePosition(playerRoot)) end)
-		return
-	end
+	playerRoot.CFrame = CFrame.lookAt(newPos, enemyPos)
+	playerRoot.AssemblyLinearVelocity = Vector3.zero
+	playerRoot.AssemblyAngularVelocity = Vector3.zero
+end
 
-	local enemyPos = enemy and getSafePosition(enemy.Root) or nil
-	local playerPos = getSafePosition(playerRoot)
-	if not enemyPos or not playerPos then
-		return
-	end
-
-	--// Đánh dấu anchor đã đi qua (visited) theo vị trí thực tế -> đổi màu + không target lại.
-	--// KHÔNG huỷ path ở đây: việc hủy path ngay lúc vừa build khiến player "đi chút rồi vòng về"
-	--// (vì anchor thường đặt tại vị trí đang đứng, nên player luôn trong tầm nearAnchorTol).
-	sweepNearbyAnchors(playerPos)
-
-	local flat = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
-	if flat.Magnitude <= skillRange then
-		--// HOLD: lọt tầm -> LOCK target này, orbit tốc độ thấp — center = enemy lock,
-		--// giữ khoảng cách (holdRadius) + góc (holdAngle) đúng như lúc vào HOLD,
-		--// xích ra/lùi theo enemy. Không retarget.
-		ensureAutoRotateDisabled()
-		--// Skill-fire: tái dùng enemy + vị trí đã resolve trong frame này (không resolve lại 2 lần/frame).
-		if skillEnabled then fireSkills() end
-		--// Huỷ MoveTo của CHASE trước đó để không chống đối việc set CFrame thủ công.
-		pcall(function() humanoid:MoveTo(playerPos) end)
-		if not lockedTargetModel then lockedTargetModel = enemy.Model end
-		if currentPath then pcall(function() currentPath:Destroy() end) end
-		currentPath = nil
-		pathComputed = false
-		chaseTarget = nil
-		resetStuckCheck()
-		--// Capture góc & bán kính từ vị trí hiện tại lúc vào HOLD.
-		--// Dùng offset = playerPos - enemyPos (hướng từ enemy tới player) để
-		--// orbitPos == vị trí player hiện tại, tránh bị dội ngược phía đối diện.
-		local offsetXZ = Vector3.new(playerPos.X - enemyPos.X, 0, playerPos.Z - enemyPos.Z)
-		if not holdAngle then
-			holdAngle = math.atan2(offsetXZ.Z, offsetXZ.X)
-			holdRadius = offsetXZ.Magnitude
-		end
-		--// Vị trí mong muốn trên quỹ đạo quanh enemy (theo enemy di chuyển)
-		local orbitPos = Vector3.new(
-			enemyPos.X + math.cos(holdAngle) * holdRadius,
-			playerPos.Y,
-			enemyPos.Z + math.sin(holdAngle) * holdRadius
-		)
-		--// Xích mượt về orbitPos (đứng yên nếu đã đúng vị trí, theo enemy nếu enemy di chuyển)
-		local pos = playerPos
-		local toOrbit = Vector3.new(orbitPos.X - pos.X, 0, orbitPos.Z - pos.Z)
-		local dist = toOrbit.Magnitude
-		local thisStep = moveSpeed * math.max(deltaTime, 1 / 60)
-		local newPos = pos
-		if dist > 0.01 then
-			if dist <= thisStep then
-				newPos = Vector3.new(orbitPos.X, pos.Y, orbitPos.Z)
-			else
-				newPos = pos + toOrbit.Unit * thisStep
-			end
-		end
-		playerRoot.CFrame = CFrame.lookAt(newPos, enemyPos)
-		playerRoot.AssemblyLinearVelocity = Vector3.zero
-		playerRoot.AssemblyAngularVelocity = Vector3.zero
-		return
-	end
-
-	--// CHASE: pathfinder tới vị trí nearest (retarget theo interval).
-	--// Ra khỏi tầm -> giải phóng lock, quay lại chế độ retarget.
+--// CHASE: pathfinder tới vị trí enemy; ra khỏi tầm -> giải phóng lock, build/follow path, gỡ kẹt.
+--// Tách riêng để lỗi ở phần move/waypoint của 1 frame không làm abrt pipeline cùng frame.
+local function stepChase(deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
 	holdAngle = nil
 	holdRadius = nil
 	lockedTargetModel = nil
@@ -7964,7 +8026,7 @@ local function stepMovement(deltaTime)
 	end
 	if waypointIndex > #waypoints then
 		if visualDebug and pathIsAnchor then
-			warn(("[PathAnchor] anchor path HOÀN THÀNH (đã đi hết waypoint idx=%d) -> advance"):format(waypointIndex))
+			warn(("[PathAnchor] anchor path HOÀN THÀNH (đã đi hết waypoint idx=%d) -> tính lại"):format(waypointIndex))
 		end
 		pathComputed = false
 		return
@@ -8035,6 +8097,111 @@ local function stepMovement(deltaTime)
 	end
 end
 
+--// Di chuyển: CHASE theo trạng thái, HOLD khi enemy trong tầm.
+--// Orchestrator: resolve chung (guards, rescan, target) rồi dispatch HOLD/CHASE vào từng hàm
+--// riêng, mỗi hàm chạy trong 1 pcall độc lập để lỗi 1 phase không abrt cả frame.
+local function stepMovement(deltaTime)
+	if shared.IsInLobby() then return end
+	if not dunReady then return end
+
+	local playerRoot = getPlayerRoot()
+	local humanoid = shared.GetHumanoid()
+	if not playerRoot or not playerRoot.Parent or not humanoid or not humanoid.Parent or humanoid.Health <= 0 then
+		currentPath = nil
+		pathComputed = false
+		cachedNearestValid = false
+		return
+	end
+
+	--// RESCAN THEO CHU KÌ: định kỳ chọn lại target bằng path-cost (ngoài event-driven), để bắt
+	--// trường hợp enemy di chuyển làm cost thay đổi mà tập enemy không đổi (event không fire).
+	--// KHÔNG rescan khi đang LOCK HOLD (tránh nhảy target giữa các con trong tầm).
+	local rescanNow = os.clock()
+	if rescanNow - lastRescanTargetAt >= RESCAN_TARGET_INTERVAL then
+		lastRescanTargetAt = rescanNow
+		if not lockedTargetModel then reselectTarget() end
+	end
+	--// Guard debug: chỉ render khi bật visualDebug (tránh call mỗi frame khi tắt).
+	if visualDebug then
+		updateDebugVisuals()
+		updateDebugPathSpheres()
+	end
+
+	--// LUỒNG DI CHUYỂN ANCHOR RIÊNG: khi đang fallback anchor, chuyển hẳn sang hàm chuyên biệt,
+	--// KHÔNG chạy CHASE/HOLD (không xử lý enemy khi đang đi tới anchor). Nếu đang trong luồng này thì
+	--// bỏ qua mọi logic khác để "vẽ path 1 lần, đi thẳng tới đích" — không spam, không can thiệp.
+	if anchorWalking then
+		stepAnchorWalking(deltaTime, humanoid, playerRoot)
+		return
+	end
+
+	--// Target được duy trì EVENT-DRIVEN qua shared.OnEnemyChanged -> reselectTarget().
+	--// Heartbeat CHỈ thực thi (follow path / HOLD), KHÔNG poll scan hay đổi target theo interval.
+	local enemy
+	if lockedTargetModel then
+		--// Đang HOLD -> bám enemy đã lock, không retarget.
+		enemy = getEnemyByModel(lockedTargetModel)
+		if not enemy then
+			lockedTargetModel = nil
+			holdAngle = nil
+			holdRadius = nil
+		end
+	end
+	if not enemy then
+		--// enemy theo chaseModel (đã cập nhật bởi event). Nếu model cũ mất mà event chưa tới thì
+		--// xoá chaseModel để reselect sau; KHÔNG scan lại mỗi frame.
+		enemy = getEnemyByModel(chaseModel)
+		if not enemy then
+			chaseModel = nil
+			--// Fallback: không có chaseModel nhưng vẫn có enemy đang track (ví dụ sau
+			--// respawn, tập enemy không đổi nên OnEnemyChanged không fire) → chọn lại ngay.
+			--// TRÁNH CHÈN ÉP: nếu đang có lần chọn theo path-cost (selectRunning) thì KHÔNG tự
+			--// chọn straight-line ở đây — đứng yên chờ cost-select commit, kẻo phá kết quả chọn.
+			local nearest = getNearestEnemy()
+			if nearest and not selectRunning then
+				chaseModel = nearest.Model
+				enemy = nearest
+			end
+		end
+	end
+	cachedNearestEnemy = enemy
+	cachedNearestValid = enemy ~= nil
+	if not enemy or not enemy.Root or not enemy.Root.Parent then
+		--// Không có target -> đứng yên. Event OnEnemyChanged sẽ reselect khi có enemy mới.
+		if currentPath then pcall(function() currentPath:Destroy() end) end
+		currentPath = nil
+		pathComputed = false
+		chaseTarget = nil
+		pcall(function() humanoid:MoveTo(getSafePosition(playerRoot)) end)
+		return
+	end
+
+	local enemyPos = enemy and getSafePosition(enemy.Root) or nil
+	local playerPos = getSafePosition(playerRoot)
+	if not enemyPos or not playerPos then
+		return
+	end
+
+	--// Đánh dấu anchor đã đi qua (visited) theo vị trí thực tế -> đổi màu + không target lại.
+	--// KHÔNG huỷ path ở đây: việc hủy path ngay lúc vừa build khiến player "đi chút rồi vòng về"
+	--// (vì anchor thường đặt tại vị trí đang đứng, nên player luôn trong tầm nearAnchorTol).
+	sweepNearbyAnchors(playerPos)
+
+	local flat = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
+	if flat.Magnitude <= skillRange then
+		local ok, err = pcall(stepHold, deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
+		if not ok then
+			warn(("[AutoFarmPathfinder] lỗi HOLD: %s"):format(tostring(err)))
+		end
+		return
+	end
+
+	local ok, err = pcall(stepChase, deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
+	if not ok then
+		warn(("[AutoFarmPathfinder] lỗi CHASE: %s"):format(tostring(err)))
+	end
+end
+
 --// ---------- Accessors (tab UI dùng) ----------
 
 function autoFarmPathfinder.IsEnabled()
@@ -8078,7 +8245,11 @@ function autoFarmPathfinder.GetSkillInterval()
 end
 
 function autoFarmPathfinder.SetSkillInterval(value)
-	skillInterval = tonumber(value) or skillInterval
+	local raw = tonumber(value) or skillInterval
+	--// Clamp tối thiểu theo thời gian giữ phím (tránh spam key event nhanh hơn game xử lý được,
+	--// gây bỏ phím/trùng lặp). Thêm 1 frame an toàn sau khi nhả phím.
+	local minInterval = shared.GetKeyHoldTime() + 0.02
+	skillInterval = math.max(raw, minInterval)
 end
 
 function autoFarmPathfinder.GetSkillMode()
@@ -8151,8 +8322,9 @@ function autoFarmPathfinder.GetCurrentAnchorMap()
 	return nil
 end
 
---// Thêm anchor mới cho room hiện tại tại vị trí player (mỗi room có thể nhiều anchor).
---// mapName: map cần gắn anchor (mặc định map đang chơi). Trả về id hoặc nil nếu thất bại.
+--// Thêm anchor mới cho room hiện tại tại vị trí player (mỗi room TỐI ĐA 2 anchor: anchor thứ 2
+--// chỉ dùng để định hướng free-walk theo hướng anchor1 -> anchor2). mapName: map cần gắn anchor
+--// (mặc định map đang chơi). Trả về số thứ tự mới hoặc nil nếu thất bại/room đã đủ 2 anchor.
 function autoFarmPathfinder.SetAnchor(mapName)
 	local targetMap = mapName
 	if not (type(targetMap) == "string" and #targetMap > 0) then
@@ -8173,10 +8345,17 @@ function autoFarmPathfinder.SetAnchor(mapName)
 	if not pos then return nil end
 	local list = anchors[targetMap]
 	if not list then list = {}; anchors[targetMap] = list end
+	--// Limit: mỗi room tối đa 2 anchor (anchor thứ 2 chỉ mang vai trò định hướng free-walk).
+	local roomCount = 0
+	for _, a in ipairs(list) do
+		if a.room == room then roomCount += 1 end
+	end
+	if roomCount >= 2 then
+		warn(("[AutoFarmPathfinder] Room %d đã có đủ 2 anchor, không thể thêm"):format(room))
+		return nil
+	end
 	anchorSeq += 1
 	list[#list + 1] = { id = anchorSeq, room = room, pos = pos }
-	anchorChainMap = nil
-	anchorChainIndex = 0
 	refreshAnchorMarkers()
 	saveAnchors()
 	return #list
@@ -8194,8 +8373,6 @@ function autoFarmPathfinder.RemoveAnchor(mapName, index)
 		anchors[mapName] = nil
 		anchorSeq = 0 --// xóa hết -> id nội bộ về lại đầu
 	end
-	anchorChainMap = nil
-	anchorChainIndex = 0
 	refreshAnchorMarkers()
 	saveAnchors()
 	return true
@@ -8209,8 +8386,6 @@ function autoFarmPathfinder.ClearAllAnchors(mapName)
 		anchors = {}
 		anchorSeq = 0
 	end
-	anchorChainMap = nil
-	anchorChainIndex = 0
 	refreshAnchorMarkers()
 	saveAnchors()
 end
@@ -8252,6 +8427,9 @@ function autoFarmPathfinder.Toggle(state)
 		lastSkillTime = 0
 		cachedNearestEnemy = nil
 		cachedNearestValid = false
+		selectToken = 0
+		selectRunning = false
+		lastRescanTargetAt = 0
 		pathIsAnchor = false
 		lastFailedModel = nil
 		lastFailedDest = nil
@@ -8274,9 +8452,12 @@ function autoFarmPathfinder.Toggle(state)
 		task.defer(reselectTarget)
 		--// Gộp movement + skill vào 1 Heartbeat để giảm số connection/frame.
 		moveConnection = RunService.Heartbeat:Connect(function(deltaTime)
-			pcall(function()
+			local ok, err = pcall(function()
 				stepMovement(deltaTime)
 			end)
+			if not ok then
+				warn(("[AutoFarmPathfinder] lỗi stepMovement: %s"):format(tostring(err)))
+			end
 		end)
 	else
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
@@ -8287,22 +8468,7 @@ function autoFarmPathfinder.Toggle(state)
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
 		if h and h.Parent and r and r.Parent then pcall(function() h:MoveTo(getSafePosition(r)) end) end
-		if currentPath then pcall(function() currentPath:Destroy() end) end
-		currentPath = nil
-		pathComputed = false
-		chaseTarget = nil
-		holdAngle = nil
-		holdRadius = nil
-		lockedTargetModel = nil
-		chaseModel = nil
-		chasePathTargetModel = nil
-		pathIsAnchor = false
-		anchorWalking = false
-		freeWalkActive = false
-		freeWalkDir = nil
-		cachedNearestEnemy = nil
-		cachedNearestValid = false
-		resetStuckCheck()
+		resetRuntimeState()
 		cleanupDebugVisuals()
 	end
 end
@@ -9064,7 +9230,7 @@ return function(window, tab)
 			if num then
 				window:Notify({ Title = "Auto Farm", Description = ("Anchor #%d added"):format(num) })
 			else
-				window:Notify({ Title = "Auto Farm", Description = "Chưa xác định room/map, không thêm anchor" })
+				window:Notify({ Title = "Auto Farm", Description = "Không thêm được anchor (room đã đủ 2 hoặc chưa xác định room/map)" })
 			end
 			refreshAnchorLabel()
 		end,
@@ -9616,7 +9782,20 @@ if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
 --// Table
 local autoStart = {}
 
+--// Callbacks chạy sau khi fire remote start thành công (đánh dấu mốc run bắt đầu).
+local startCallbacks = {}
+
 --// Methods
+function autoStart.OnStart(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(startCallbacks, callback)
+	return function()
+		for i, cb in ipairs(startCallbacks) do
+			if cb == callback then table.remove(startCallbacks, i) break end
+		end
+	end
+end
+
 function autoStart.Start()
 	if autoStartRunning then return end
 	autoStartRunning = true
@@ -9642,6 +9821,9 @@ function autoStart.Start()
 					local sCmd, err = pcall(autoStartCommandFn)
 					if sCmd then
 						notifier.Notify("Auto Start", "Game started!", 3)
+						for i = #startCallbacks, 1, -1 do
+							pcall(startCallbacks[i])
+						end
 					else
 						notifier.Notify("Auto Start", "Trigger failed: " .. tostring(err), 3)
 					end
@@ -10241,7 +10423,6 @@ local rarityFilter = {} -- set: rarity string -> true
 local typeFilter = {} -- set: type string -> true
 local levelReqExactFilter = {} -- set: level number -> true (chọn đích danh các mốc)
 local levelReqMode = "None" -- "None" = exact multi, "Below" = ≤, "Above" = ≥
-local prefix = "" -- lọc item có tên bắt đầu bằng prefix (bỏ qua case)
 local sellRunning = false
 
 --// Các category có trong inventory (từ log reloadInvy)
@@ -10426,14 +10607,6 @@ function autoSell.ShouldSellItem(item)
 		return false
 	end
 
-	if prefix and #prefix > 0 then
-		local lowerName = string.lower(item.Name or "")
-		local lowerPrefix = string.lower(prefix)
-		if string.sub(lowerName, 1, #lowerPrefix) ~= lowerPrefix then
-			return false
-		end
-	end
-
 	if next(levelReqExactFilter) then
 		local lvl = item.LevelReq or 0
 		if levelReqMode == "Below" then
@@ -10466,7 +10639,6 @@ function autoSell.HasAnyFilter()
 		next(rarityFilter) ~= nil
 		or next(typeFilter) ~= nil
 		or next(levelReqExactFilter) ~= nil
-		or (prefix and #prefix > 0)
 		or (not excludeEquipped)
 	)
 end
@@ -10522,14 +10694,6 @@ function autoSell.SellItems()
 
 	sellRunning = false
 	return result
-end
-
-function autoSell.SetPrefixName(value)
-	prefix = (type(value) == "string" and value) or ""
-end
-
-function autoSell.GetPrefixName()
-	return prefix
 end
 
 function autoSell.SetLevelReqMode(value)
@@ -10691,7 +10855,6 @@ return function(window, tab)
 	local summaryRarityLabel = rightSection:Label({ Text = "Rarities: --" })
 	local summaryTypeLabel = rightSection:Label({ Text = "Item Types: --" })
 	local summaryLevelLabel = rightSection:Label({ Text = "Level Req: --" })
-	local summaryPrefixLabel = rightSection:Label({ Text = "Prefix: --" })
 	local summaryEquippedLabel = rightSection:Label({ Text = "Exclude Equipped: --" })
 
 	local function updateSummary()
@@ -10745,14 +10908,6 @@ return function(window, tab)
 		end
 		pcall(function()
 			summaryLevelLabel:UpdateName("Level Req: <font color='rgb(" .. levelColor .. ")'>" .. levelText .. "</font>")
-		end)
-
-		-- Prefix
-		local prefix = autoSell.GetPrefixName()
-		local prefixText = (#prefix > 0) and ('"' .. prefix .. '"') or "None"
-		local prefixColor = (#prefix > 0) and "255, 220, 120" or "160, 160, 160"
-		pcall(function()
-			summaryPrefixLabel:UpdateName("Prefix: <font color='rgb(" .. prefixColor .. ")'>" .. prefixText .. "</font>")
 		end)
 
 		-- Exclude Equipped
@@ -10845,17 +11000,6 @@ return function(window, tab)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellLevelReq")
-
-	leftSection:Input({
-		Name = "Prefix Name (starts with)",
-		Default = autoSell.GetPrefixName(),
-		Placeholder = "e.g. Runic",
-		AcceptedCharacters = "All",
-		Callback = autoSave.Wrap(function(value)
-			autoSell.SetPrefixName(value)
-			updateSummary()
-		end),
-	}, "Input_AutoSellPrefix")
 
 	leftSection:Toggle({
 		Name = "Exclude Equipped Items",
@@ -10961,230 +11105,13 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.u()-- DodgeNode: lưới node xung quanh player dùng làm bản đồ an toàn cho SmartDodge.
--- Node nằm trong vùng precast của skill -> màu đỏ (nguy hiểm).
--- Node nằm ngoài mọi precast -> màu xanh (an toàn) + là ứng viên để tele tới.
-
-
-local services = __DIST.load('d')
-
---// Cấu hình
-local NODE_RADIUS = 10          -- bán kính hình tròn phủ node quanh player (studs)
-local NODE_SPACING = 2          -- khoảng cách giữa các node (studs)
-local NODE_COLOR_SAFE = Color3.fromRGB(0, 255, 0)
-local NODE_COLOR_DANGER = Color3.fromRGB(255, 60, 60)
-local NODE_PART_NAME = "DodgeNode_ESP"
-local NODE_TRANSPARENCY = 0.6
-local NODE_THRESHOLD = 1.5       -- bán kính xem một node "dính" vào precast (studs)
-
---// Danh sách skill có precast telegraph (khớp SmartDodge).
-local DODGE_SKILL_NAMES = {
-	["northernMageShot"] = true,
-	["northernWarriorCircleStrike"] = true,
-	["northernWarriorLineStrike"] = true,
-	["spearmanStrike"] = true,
-	["spearmanStrikeHitbox"] = true,
-}
-
-local dodgeNodes = {}
-local enabled = false
-local thread = nil
-local repeatCount = 0
-
---// Kiểm tra một điểm (chỉ theo X/Z, bỏ qua chiều cao Y) có nằm trong phạm vi ngang
---// của bất kỳ part skill nào hay không. Mở rộng mỗi part thêm NODE_THRESHOLD.
-local function pointInDanger(center, parts)
-	for _, part in ipairs(parts) do
-		if part and part:IsA("BasePart") then
-			if part:IsA("Part") and part.Shape == Enum.PartType.Ball then
-				--// Part hình cầu: so theo bán kính thực từ tâm.
-				local radius = (part.Size.X / 2) + NODE_THRESHOLD
-				local d = (Vector3.new(center.X, 0, center.Z) - Vector3.new(part.Position.X, 0, part.Position.Z)).Magnitude
-				if d <= radius then return true end
-			else
-				--// Phần lớn: so theo hình chiếu ngang (XZ) trong local space của part.
-				local half = Vector3.new(part.Size.X / 2, part.Size.Z / 2, 0) + Vector3.one * NODE_THRESHOLD
-				local localPos = part.CFrame:PointToObjectSpace(center)
-				local dx = math.max(math.abs(localPos.X) - half.X, 0)
-				local dz = math.max(math.abs(localPos.Z) - half.Y, 0)
-				if dx * dx + dz * dz <= 0.25 then
-					return true
-				end
-			end
-		end
-	end
-	return false
-end
-
---// Quét Workspace thu về toàn bộ BasePart của các model skill (không cần child "precast").
-local function collectPrecasts()
-	local Workspace = game:GetService("Workspace")
-	local parts = {}
-	local function collect(root)
-		if DODGE_SKILL_NAMES[root.Name] then
-			for _, desc in ipairs(root:GetDescendants()) do
-				if desc:IsA("BasePart") and not desc:IsA("Terrain") then
-					table.insert(parts, desc)
-				end
-			end
-		end
-	end
-	for _, child in ipairs(Workspace:GetChildren()) do
-		collect(child)
-		for _, desc in ipairs(child:GetDescendants()) do
-			if DODGE_SKILL_NAMES[desc.Name] then collect(desc) end
-		end
-	end
-	return parts
-end
-
---// Thu về tên các model skill đang hiện diện trong Workspace (cho log chẩn đoán).
-local function collectSkillRoots()
-	local Workspace = game:GetService("Workspace")
-	local names = {}
-	local function collect(root)
-		if DODGE_SKILL_NAMES[root.Name] then
-			table.insert(names, root.Name)
-		end
-	end
-	for _, child in ipairs(Workspace:GetChildren()) do
-		collect(child)
-		for _, desc in ipairs(child:GetDescendants()) do
-			collect(desc)
-		end
-	end
-	return names
-end
-
---// Tạo lưới offset (X, Z) các node trong vòng tròn bán kính NODE_RADIUS.
-local function buildOffsets()
-	local offsets = {}
-	local step = NODE_SPACING
-	local maxCoord = math.floor(NODE_RADIUS / step) * step
-	for x = -maxCoord, maxCoord, step do
-		for z = -maxCoord, maxCoord, step do
-			if x * x + z * z <= NODE_RADIUS * NODE_RADIUS then
-				table.insert(offsets, Vector3.new(x, 0, z))
-			end
-		end
-	end
-	return offsets
-end
-
-local OFFSETS = buildOffsets()
-
---// Tạo tối đa số part node trong Workspace (theo số offset), một lần duy nhất.
-local function ensureNodes()
-	while #dodgeNodes < #OFFSETS do
-		local part = Instance.new("Part")
-		part.Name = NODE_PART_NAME
-		part.Shape = Enum.PartType.Ball
-		part.Size = Vector3.one * (NODE_SPACING * 0.6)
-		part.Transparency = NODE_TRANSPARENCY
-		part.Anchored = true
-		part.CanCollide = false
-		part.CanQuery = false
-		part.CanTouch = false
-		part.Material = Enum.Material.Neon
-		part.Parent = workspace
-		table.insert(dodgeNodes, part)
-	end
-end
-
---// Cập nhật màu + vị trí từng node quanh player.
-local function updateNodes(character, parts)
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	if not rootPart then return end
-	local center = rootPart.Position
-	dodgeNodes.redCount = 0
-	dodgeNodes.totalCount = #dodgeNodes
-	for i, part in ipairs(dodgeNodes) do
-		local offset = OFFSETS[i]
-		local pos = Vector3.new(center.X + offset.X, center.Y, center.Z + offset.Z)
-		part.CFrame = CFrame.new(pos)
-		if pointInDanger(pos, parts) then
-			part.Color = NODE_COLOR_DANGER
-			dodgeNodes.redCount = dodgeNodes.redCount + 1
-		else
-			part.Color = NODE_COLOR_SAFE
-		end
-	end
-	repeatCount = repeatCount + 1
-	if repeatCount % 20 == 0 then
-		print(("[DodgeNode] %d/%d nodes red, %d skill-parts nearby"):format(dodgeNodes.redCount, dodgeNodes.totalCount, #parts))
-	end
-end
-
---// Tìm node an toàn (xanh) gần player nhất. Trả về Vector3 hoặc nil.
-local function getNearestSafeNode(character, precasts)
-	local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-	if not rootPart then return nil end
-	local center = rootPart.Position
-	local best = nil
-	local bestDist = math.huge
-	for i, offset in ipairs(OFFSETS) do
-		local pos = Vector3.new(center.X + offset.X, center.Y, center.Z + offset.Z)
-		if not pointInDanger(pos, precasts) then
-			local dist = (pos - center).Magnitude
-			if dist > NODE_SPACING and dist < bestDist then
-				bestDist = dist
-				best = pos
-			end
-		end
-	end
-	return best
-end
-
-function dodgeNodes.Toggle(state)
-	if state == enabled then return end
-	enabled = state
-	if enabled then
-		if thread then task.cancel(thread); thread = nil end
-		ensureNodes()
-		thread = task.spawn(function()
-			local lastSkillLog = 0
-			while enabled do
-				local ok, err = pcall(function()
-					local parts = collectPrecasts()
-					updateNodes(services.player.Character, parts)
-					if os.clock() - lastSkillLog > 1 then
-						lastSkillLog = os.clock()
-						print(("[DodgeNode] skill roots found: %s"):format(table.concat(collectSkillRoots(), ", ")))
-					end
-				end)
-				if not ok and os.clock() - (dodgeNodes.lastWarn or 0) > 5 then
-					dodgeNodes.lastWarn = os.clock()
-					warn("[DodgeNode] error:", tostring(err))
-				end
-				task.wait(0.05)
-			end
-		end)
-	else
-		if thread then task.cancel(thread); thread = nil end
-		for _, part in ipairs(dodgeNodes) do part:Destroy() end
-		table.clear(dodgeNodes)
-	end
-end
-
-function dodgeNodes.IsEnabled()
-	return enabled
-end
-
---// API cho SmartDodge: trả về vị trí node an toàn gần nhất, hoặc nil.
-function dodgeNodes.FindSafeSpot(character)
-	local precasts = collectPrecasts()
-	return getNearestSafeNode(character, precasts)
-end
-
-return dodgeNodes
-end function __DIST.v()-- ESP hitbox cho DungeonQuest.
+end function __DIST.u()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
 
 local services = __DIST.load('d')
 local shared = __DIST.load('e')
-local dodgeNode = __DIST.load('u')
 
 --// Table
 local esp = {}
@@ -11199,26 +11126,7 @@ local PLAYER_BOX_NAME = "PlayerHitbox_ESP"
 local ENEMY_BOX_COLOR = Color3.fromRGB(255, 0, 0)
 local ENEMY_BOX_NAME = "EnemyHitbox_ESP"
 
---// [SmartDodge] telegraph = child "precast"; khi player trong vùng precast -> teleport ra ngoài.
-local SKILL_DODGE_NAMES = {
-	["northernMageShot"] = true,
-	["northernWarriorCircleStrike"] = true,
-	["northernWarriorLineStrike"] = true,
-	["spearmanStrike"] = true,
-	["spearmanStrikeHitbox"] = true,
-}
---// Khoảng dịch (studs) đẩy player vượt biên vùng thêm đúng giá trị này (1-4), giữ NHỎ
---// để tránh anticheat phát hiện tele. Điều chỉnh qua slider ở UI.
-local SKILL_DODGE_DISTANCE = 2
---// Bán kính vùng báo (bubble) quanh player. Nếu telegraph của skill chạm/trùng vùng này
---// (bất kể player ở đâu trong telegraph) -> dodge. Rộng hơn = né sớm hơn.
-local SKILL_DODGE_ZONE_RADIUS = 4
---// Chỉ dodge khi player dưới ngưỡng máu này (0 = luôn dodge).
-local SKILL_DODGE_MAX_HEALTH = 0
---// Cooldown toàn cục mặc định (giây) giữa 2 lần dodge bất kể skill nào, tránh tele liên tục.
-local SKILL_DODGE_GLOBAL_COOLDOWN = 1
---// Vòng an toàn (safety) thêm vào phía trên vòng trigger, để điểm tele luôn nằm ngoài vùng nguy hiểm.
-local SKILL_DODGE_SAFETY_MARGIN = 3
+--// Chu kỳ quét hiển thị hitbox skill (nhịp cập nhật trực quan).
 local SKILL_SCAN_INTERVAL = 0.01
 
 --// Hitbox mode constants
@@ -11236,22 +11144,6 @@ local enemyBoxEnabled = false
 local enemyBoxThread = nil
 local enemyBoxMode = HITBOX_MODE_REAL
 local enemyBoxScale = 1.5
-
---// State [Show Dodge Zone - bubble cầu quanh player]
-local dodgeZoneEnabled = false
-local dodgeZoneThread = nil
-local dodgeZoneRadius = SKILL_DODGE_ZONE_RADIUS
---// Vòng an toàn (safety) — phải lớn hơn trigger. Điểm an toàn luôn nằm ngoài vòng này.
-local dodgeZoneSafetyRadius = SKILL_DODGE_ZONE_RADIUS + SKILL_DODGE_SAFETY_MARGIN
---// State [Show Dodge Safety - bubble đỏ quanh precast]
-local dodgeSafetyEnabled = false
-local dodgeSafetyThread = nil
-
---// State [SmartDodge]
-local smartDodgeEnabled = false
-local smartDodgeThread = nil
-local skillDodgeGlobalCooldown = SKILL_DODGE_GLOBAL_COOLDOWN
-local lastGlobalDodgeAt = 0
 
 --// Tạo SelectionBox bám vào một adornee (Root hoặc proxy part).
 local function createSelectionBox(boxName, adornee, color)
@@ -11445,28 +11337,64 @@ function esp.SetEnemyHitboxScale(scale)
 end
 
 --// ========== [Show Skill Hitbox] Vẽ SelectionBox đỏ cho skill trong Workspace ==========
---// Scan toàn bộ descendants của Workspace (loại excluded classes),
---// vẽ SelectionBox đỏ đơn giản trên mỗi BasePart.
+--// Before start: snapshot toàn bộ level-1 child của Workspace vào blacklist (static:
+--// dungeon folder, boss parts, arena...). Chỉ BasePart mới xuất hiện SAU mốc đó
+--// (skill/attack) mới được vẽ.
 
 local SKILL_ESP_COLOR = Color3.fromRGB(255, 0, 0)
 local SKILL_ESP_NAME = "SkillESP"
 
---// ClassName bị loại bỏ khi scan (không phải skill).
-local SKILL_ESP_EXCLUDED_CLASSES = {
-	["Folder"] = true,
-	["Camera"] = true,
-	["Terrain"] = true,
-	["TerrainRegion"] = true,
-	["StringValue"] = true,
-	["IntValue"] = true,
-	["BoolValue"] = true,
-}
+--// Backlist: level-1 child của Workspace đã tồn tại lúc snapshot -> static.
+--// Mọi descendant trong nhánh đó mặc định cũng static (check theo cây ancestor,
+--// không cần liệt kê từng phần tử con khi snapshot).
+local skillBlackList = {}
+--// Mốc snapshot đã xong chưa. Chưa = chưa biết gì là "static" -> không vẽ gì cả.
+local skillBlacklistReady = false
 
 local skillBoxEnabled = false
 local skillBoxThread = nil
 
+--// Snapshot: blacklist các level-1 child của Workspace hiện tại.
+local function snapshotSkillBlacklist()
+	table.clear(skillBlackList)
+	local Workspace = game:GetService("Workspace")
+	for _, child in ipairs(Workspace:GetChildren()) do
+		skillBlackList[child] = true
+	end
+	skillBlacklistReady = true
+end
+
+--// [1] Before start: blacklist toàn bộ level-1 child hiện có của Workspace
+--// (static: dungeon folder, boss parts, arena...) -> không bị vẽ.
+snapshotSkillBlacklist()
+
+--// Kiểm tra part có thuộc character của player không (để bỏ qua, không vẽ).
+local function isPlayerPart(part)
+	local character = player.Character
+	if not character then return false end
+	local obj = part
+	while obj do
+		if obj == character then return true end
+		obj = obj.Parent
+	end
+	return false
+end
+
+--// Part nằm trong nhánh của level-1 child đã bị blacklist (static) -> không vẽ.
+local function isBlacklistedPart(part)
+	local obj = part
+	while obj do
+		if skillBlackList[obj] then return true end
+		obj = obj.Parent
+	end
+	return false
+end
+
 --// Tạo SelectionBox đỏ đơn giản trên BasePart nếu chưa có.
 local function createSkillBox(part)
+	if not skillBlacklistReady then return end
+	if isBlacklistedPart(part) then return end
+	if isPlayerPart(part) then return end
 	if part:FindFirstChild(SKILL_ESP_NAME) then return end
 	local box = Instance.new("SelectionBox")
 	box.Name = SKILL_ESP_NAME
@@ -11477,16 +11405,16 @@ local function createSkillBox(part)
 	box.Parent = part
 end
 
---// Quét toàn bộ descendants, loại excluded classes, vẽ SelectionBox trên BasePart.
+--// Quét toàn bộ descendants, chỉ vẽ BasePart không nằm trong blacklist.
 local function scanSkillHitboxes()
+	if not skillBlacklistReady then return end
 	local Workspace = game:GetService("Workspace")
 	for _, child in ipairs(Workspace:GetChildren()) do
-		if SKILL_ESP_EXCLUDED_CLASSES[child.ClassName] then continue end
 		if child:IsA("BasePart") then
 			createSkillBox(child)
 		end
 		for _, desc in ipairs(child:GetDescendants()) do
-			if desc:IsA("BasePart") and not SKILL_ESP_EXCLUDED_CLASSES[desc.ClassName] then
+			if desc:IsA("BasePart") then
 				createSkillBox(desc)
 			end
 		end
@@ -11526,308 +11454,8 @@ function esp.IsSkillHitboxEnabled()
 	return skillBoxEnabled
 end
 
---// ========== [SmartDodge] Auto-dodge ==========
-
---// Cache >> skillDodgeState[model] = { lastDodgeAt }; weak-key.
-local skillDodgeState = setmetatable({}, { __mode = "k" })
---// Teleport cooldown giữa 2 lần dodge của cùng model (giây).
-local SKILL_DODGE_INTERVAL = 0.3
---// Khoảng dịch runtime (studs), chỉnh qua slider (1-4).
-local skillDodgeDistance = SKILL_DODGE_DISTANCE
-
---// Tìm telegraph: child "precast" (BasePart).
-local function findSkillTelegraph(root)
-	local precast = root:FindFirstChild("precast")
-	return (precast and precast:IsA("BasePart")) and precast or nil
-end
-
---// Kiểm tra toàn bộ descendant BasePart của model skill có đang ẩn (transparency=1)
---// hay không. Nếu tất cả đều ẩn -> chiêu coi như không còn hiệu lực -> bỏ qua (không né).
-local function isSkillInvisible(model)
-	local any = false
-	for _, desc in ipairs(model:GetDescendants()) do
-		if desc:IsA("BasePart") and not desc:IsA("Terrain") then
-			any = true
-			if desc.Transparency < 1 then return false end
-		end
-	end
-	return any
-end
-
---// Kiểm tra vùng báo (bubble hình cầu quanh player, bán kính SKILL_DODGE_ZONE_RADIUS) có giao
---// với khối (AABB) của precast không. Khoảng cách ngắn nhất từ tâm bubble tới bề mặt khối
---// (trong local space, nên precast xoay cũng đúng) <= radius -> có giao. Thuần hình học,
---// không phụ thuộc physics/CanQuery.
-local function zoneIntersectsPrecast(precast, playerCenter)
-	local half = precast.Size / 2
-	local localPos = precast.CFrame:PointToObjectSpace(playerCenter)
-	local dx = math.max(math.abs(localPos.X) - half.X, 0)
-	local dy = math.max(math.abs(localPos.Y) - half.Y, 0)
-	local dz = math.max(math.abs(localPos.Z) - half.Z, 0)
-	local closestSq = dx * dx + dy * dy + dz * dz
-	return closestSq <= (dodgeZoneRadius * dodgeZoneRadius)
-end
-
---// Vị trí an toàn: đẩy player vượt biên vùng precast thêm skillDodgeDistance studs (giữ Y).
-local function findSafePosition(precast, rootPart)
-	local center = precast.Position
-	local toPlayer = rootPart.Position - center
-	local dir = Vector3.new(toPlayer.X, 0, toPlayer.Z)
-	if dir.Magnitude < 0.001 then
-		dir = Vector3.new(rootPart.CFrame.LookVector.X, 0, rootPart.CFrame.LookVector.Z)
-		if dir.Magnitude < 0.001 then dir = Vector3.new(1, 0, 0) end
-	end
-	dir = dir.Unit
-	local half = (precast.Size.X + precast.Size.Z) / 4
-	local distToEdge = math.max(half, 1)
-	--// Vòng an toàn: đẩy điểm đích ra ngoài vòng safety (lớn hơn vòng trigger)
-	--// + thêm biên né, đảm bảo không tele vào vùng nguy hiểm của precast.
-	local safePos = center + dir * (distToEdge + dodgeZoneSafetyRadius + skillDodgeDistance)
-	return Vector3.new(safePos.X, rootPart.Position.Y, safePos.Z)
-end
-
---// Teleport toàn bộ character ra chỗ an toàn (giữ hướng, dịch tương đối -> nhỏ cho anticheat).
---// LƯU Ý: cộng offset vào position (CFrame + Vector3) giữ hướng trong world space.
---// Không dùng (CFrame * CFrame.new(delta)) vì phép nhân dịch theo local space của rootPart,
---// gây lệch hướng -> player bị kéo về gần chỗ cũ.
-local function teleportAway(rootPart, safePos)
-	local character = rootPart.Parent
-	if not character then return end
-	character:SetPrimaryPartCFrame(rootPart.CFrame + (safePos - rootPart.Position))
-end
-
---// Xử lý 1 model skill: nếu player trong vùng precast -> teleport ra ngoài (cooldown).
-local function handleSkillRoot(root)
-	if not SKILL_DODGE_NAMES[root.Name] then return end
-	--// Bỏ qua nếu toàn bộ Part trong skill đã ẩn (transparency=1) -> chiêu không còn hiệu lực.
-	if isSkillInvisible(root) then return end
-
-	local castState = skillDodgeState[root]
-	if castState and castState[1] and (os.clock() - castState[1]) < SKILL_DODGE_INTERVAL then return end
-	--// Cooldown toàn cục: tránh tele liên tục giữa các lần dodge bất kể skill nào.
-	if (os.clock() - lastGlobalDodgeAt) < skillDodgeGlobalCooldown then return end
-
-	local precast = findSkillTelegraph(root)
-	if not precast then return end
-	local character = services.player.Character
-	if not character then return end
-	local rootPart = character:FindFirstChild("HumanoidRootPart")
-	if not rootPart or not rootPart.Parent then return end
-
-	if SKILL_DODGE_MAX_HEALTH > 0 then
-		local humanoid = character:FindFirstChildOfClass("Humanoid")
-		if humanoid and humanoid.Health > SKILL_DODGE_MAX_HEALTH then return end
-	end
-
-	if zoneIntersectsPrecast(precast, rootPart.Position) then
-		--// Ưu tiên tele tới node an toàn (xanh) gần nhất nếu có; fallback về hướng cũ.
-		local target = dodgeNode.FindSafeSpot(character)
-		if not target then
-			target = findSafePosition(precast, rootPart)
-		end
-		teleportAway(rootPart, target)
-		skillDodgeState[root] = { os.clock() }
-		lastGlobalDodgeAt = os.clock()
-	end
-end
-
---// Quét Workspace tìm skill theo tên và dodge.
-local function scanSkillDodges()
-	local Workspace = game:GetService("Workspace")
-	local function handleRoot(root)
-		if not SKILL_DODGE_NAMES[root.Name] then
-			for _, desc in ipairs(root:GetDescendants()) do
-				if SKILL_DODGE_NAMES[desc.Name] and desc:FindFirstChild("precast") then
-					handleSkillRoot(desc)
-					break
-				end
-			end
-		else
-			handleSkillRoot(root)
-		end
-	end
-	for _, child in ipairs(Workspace:GetChildren()) do
-		handleRoot(child)
-	end
-end
-
-local function clearSkillDodges()
-	if smartDodgeThread then task.cancel(smartDodgeThread); smartDodgeThread = nil end
-	table.clear(skillDodgeState)
-end
-
-function esp.ToggleSmartDodge(state)
-	if state == smartDodgeEnabled then return end
-	smartDodgeEnabled = state
-	if smartDodgeEnabled then
-		if smartDodgeThread then task.cancel(smartDodgeThread); smartDodgeThread = nil end
-		smartDodgeThread = task.spawn(function()
-			while smartDodgeEnabled do
-				local ok, err = pcall(scanSkillDodges)
-				if not ok and os.clock() - (esp.lastSkillWarnD or 0) > 5 then
-					esp.lastSkillWarnD = os.clock()
-					warn("[SmartDodge] error:", tostring(err))
-				end
-				task.wait(SKILL_SCAN_INTERVAL)
-			end
-		end)
-	else
-		clearSkillDodges()
-	end
-end
-
-function esp.IsSmartDodgeEnabled()
-	return smartDodgeEnabled
-end
-
---// Đặt/bớt khoảng dịch tele khi dodge (studs). Clamp 1-4 để tránh anticheat.
-function esp.SetSkillDodgeDistance(value)
-	skillDodgeDistance = math.clamp(value or SKILL_DODGE_DISTANCE, 1, 4)
-end
-
-function esp.GetSkillDodgeDistance()
-	return skillDodgeDistance
-end
-
---// Đặt cooldown toàn cục (giây) giữa 2 lần dodge. Clamp 0-5 để tránh anticheat.
-function esp.SetSmartDodgeCooldown(value)
-	skillDodgeGlobalCooldown = math.clamp(value or SKILL_DODGE_GLOBAL_COOLDOWN, 0, 5)
-end
-
-function esp.GetSmartDodgeCooldown()
-	return skillDodgeGlobalCooldown
-end
-
---// ========== [Show Dodge Zone] Trực quan 2 vòng né ==========
---// Vòng trigger (cyan, quanh player, bán kính dodgeZoneRadius): ngưỡng kích hoạt né.
---// Vòng safety (đỏ, quanh mỗi precast, bán kính dodgeZoneSafetyRadius): vùng mà điểm
---// an toàn sau khi né phải nằm ngoài.
-
-local DODGE_ZONE_NAME = "DodgeZone_ESP"
-local DODGE_ZONE_COLOR = Color3.fromRGB(0, 255, 255)
-local DODGE_SAFETY_NAME = "DodgeSafety_ESP"
-local DODGE_SAFETY_COLOR = Color3.fromRGB(255, 60, 60)
-
---// Tạo/cập nhật một bubble cầu tại vị trí thế giới tuyệt đối (parent = Workspace).
-local function showBubble(name, color, center, radius)
-	local bubble = workspace:FindFirstChild(name)
-	if not bubble then
-		bubble = Instance.new("Part")
-		bubble.Name = name
-		bubble.Shape = Enum.PartType.Ball
-		bubble.Transparency = 0.75
-		bubble.Anchored = true
-		bubble.CanCollide = false
-		bubble.CanQuery = false
-		bubble.CanTouch = false
-		bubble.Material = Enum.Material.Neon
-		bubble.Color = color
-		bubble.Parent = workspace
-	end
-	bubble.Size = Vector3.one * (radius * 2)
-	bubble.CFrame = CFrame.new(center)
-end
-
---// Xoá bubble vòng trigger (cyan) quanh player.
-local function clearZoneBubble()
-	local Workspace = game:GetService("Workspace")
-	local bubble = Workspace:FindFirstChild(DODGE_ZONE_NAME)
-	if bubble then bubble:Destroy() end
-end
-
---// Xoá các bubble vòng safety (đỏ) quanh precast.
-local function clearSafetyBubbles()
-	local Workspace = game:GetService("Workspace")
-	for _, obj in ipairs(Workspace:GetDescendants()) do
-		for _, child in ipairs(obj:GetChildren()) do
-			if string.find(child.Name, DODGE_SAFETY_NAME, 1, true) then
-				child:Destroy()
-			end
-		end
-	end
-end
-
-function esp.ToggleDodgeZone(state)
-	if state == dodgeZoneEnabled then return end
-	dodgeZoneEnabled = state
-	if dodgeZoneEnabled then
-		if dodgeZoneThread then task.cancel(dodgeZoneThread); dodgeZoneThread = nil end
-		dodgeZoneThread = task.spawn(function()
-			while dodgeZoneEnabled do
-				local character = player.Character
-				local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-				if rootPart then
-					showBubble(DODGE_ZONE_NAME, DODGE_ZONE_COLOR, rootPart.Position, dodgeZoneRadius)
-				end
-				task.wait(SKILL_SCAN_INTERVAL * 2)
-			end
-		end)
-	else
-		clearZoneBubble()
-	end
-end
-
-function esp.IsDodgeZoneEnabled()
-	return dodgeZoneEnabled
-end
-
---// Vòng safety (đỏ): quét skill có precast, vẽ bubble đỏ quanh mỗi precast.
-function esp.ToggleDodgeSafety(state)
-	if state == dodgeSafetyEnabled then return end
-	dodgeSafetyEnabled = state
-	if dodgeSafetyEnabled then
-		if dodgeSafetyThread then task.cancel(dodgeSafetyThread); dodgeSafetyThread = nil end
-		dodgeSafetyThread = task.spawn(function()
-			while dodgeSafetyEnabled do
-				local Workspace = game:GetService("Workspace")
-				local function handle(root)
-					if SKILL_DODGE_NAMES[root.Name] then
-						local precast = root:FindFirstChild("precast")
-						if precast and precast:IsA("BasePart") then
-							local bubbleName = DODGE_SAFETY_NAME .. "_" .. tostring(precast:GetDebugId())
-							showBubble(bubbleName, DODGE_SAFETY_COLOR, precast.Position, dodgeZoneSafetyRadius)
-						end
-					end
-				end
-				for _, child in ipairs(Workspace:GetChildren()) do
-					handle(child)
-					for _, desc in ipairs(child:GetDescendants()) do
-						if SKILL_DODGE_NAMES[desc.Name] then handle(desc) end
-					end
-				end
-				task.wait(SKILL_SCAN_INTERVAL * 2)
-			end
-		end)
-	else
-		clearSafetyBubbles()
-	end
-end
-
-function esp.IsDodgeSafetyEnabled()
-	return dodgeSafetyEnabled
-end
-
---// Đặt bán kính (tầm) bubble quanh player. Clamp 1-10 studs.
-function esp.SetDodgeZoneRadius(value)
-	dodgeZoneRadius = math.clamp(value or SKILL_DODGE_ZONE_RADIUS, 1, 10)
-end
-
-function esp.GetDodgeZoneRadius()
-	return dodgeZoneRadius
-end
-
---// Đặt bán kính vòng an toàn (safety) — phải >= vòng trigger. Clamp 2-15 studs.
-function esp.SetDodgeZoneSafetyRadius(value)
-	dodgeZoneSafetyRadius = math.max(value or (dodgeZoneRadius + SKILL_DODGE_SAFETY_MARGIN), dodgeZoneRadius)
-	dodgeZoneSafetyRadius = math.clamp(dodgeZoneSafetyRadius, 2, 15)
-end
-
-function esp.GetDodgeZoneSafetyRadius()
-	return dodgeZoneSafetyRadius
-end
-
 return esp
-end function __DIST.w()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.v()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -11968,7 +11596,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.x()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
+end function __DIST.w()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
 -- Script1: ép hiện hình liên tục các phần map bị ẩn/thuỷ tinh.
 -- Script2: dọn dẹp vật thể rác (decoration) ở lớp ngoài cùng của Map.
 -- Script3: radar hitbox quét quanh nhân vật, xóa part có độ cao (Y) > 80.
@@ -12139,15 +11767,14 @@ function mapOptimizer.IsEnabled()
 	return enabled
 end
 
-return mapOptimizer end function __DIST.y()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+return mapOptimizer end function __DIST.x()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 	
 local autoSave = __DIST.load('g')
-	local esp = __DIST.load('v')
-	local enemyEsp = __DIST.load('w')
-	local mapOptimizer = __DIST.load('x')
-	local dodgeNode = __DIST.load('u')
+	local esp = __DIST.load('u')
+	local enemyEsp = __DIST.load('v')
+	local mapOptimizer = __DIST.load('w')
 	local ui = __DIST.load('f')
 
 --// Hitbox mode options
@@ -12266,92 +11893,9 @@ return function(window, tab)
 		end),
 	}, "Toggle_SkillHitbox")
 
-	local skillDodgeSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
-		Name = "Dodge Distance",
-		Default = esp.GetSkillDodgeDistance(),
-		Minimum = 1,
-		Maximum = 4,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			esp.SetSkillDodgeDistance(Value)
-		end),
-	}, "Slider_SkillDodgeDistance"))
-
-	local dodgeCooldownSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
-		Name = "Dodge Cooldown",
-		Default = esp.GetSmartDodgeCooldown(),
-		Minimum = 0,
-		Maximum = 5,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			esp.SetSmartDodgeCooldown(Value)
-		end),
-	}, "Slider_SmartDodgeCooldown"))
-
-	enemySection:Toggle({
-		Name = "SmartDodge",
-		Default = esp.IsSmartDodgeEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.ToggleSmartDodge(state)
-		end),
-	}, "Toggle_SmartDodge")
-
-	enemySection:Toggle({
-		Name = "Show Dodge Zone",
-		Default = esp.IsDodgeZoneEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.ToggleDodgeZone(state)
-			applyHitboxVisibility()
-		end),
-	}, "Toggle_DodgeZone")
-
-	enemySection:Toggle({
-		Name = "Show Dodge Safety",
-		Default = esp.IsDodgeSafetyEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			esp.ToggleDodgeSafety(state)
-		end),
-	}, "Toggle_DodgeSafety")
-
-	enemySection:Toggle({
-		Name = "Show Dodge Nodes",
-		Default = dodgeNode.IsEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			dodgeNode.Toggle(state)
-		end),
-	}, "Toggle_DodgeNodes")
-
-	local dodgeZoneSlider = ui.PatchSliderLoadCallback(enemySection:Slider({
-		Name = "Dodge Zone Radius",
-		Default = esp.GetDodgeZoneRadius(),
-		Minimum = 1,
-		Maximum = 10,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			esp.SetDodgeZoneRadius(Value)
-		end),
-	}, "Slider_DodgeZoneRadius"))
-
-	local dodgeZoneSafetySlider = ui.PatchSliderLoadCallback(enemySection:Slider({
-		Name = "Dodge Zone Safety",
-		Default = esp.GetDodgeZoneSafetyRadius(),
-		Minimum = 2,
-		Maximum = 15,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			esp.SetDodgeZoneSafetyRadius(Value)
-		end),
-	}, "Slider_DodgeZoneSafetyRadius"))
-
 	applyHitboxVisibility = function()
 		pcall(function() playerSizeSlider:SetVisibility(esp.GetPlayerHitboxMode() == "Custom") end)
 		pcall(function() enemySizeSlider:SetVisibility(esp.GetEnemyHitboxMode() == "Custom") end)
-		pcall(function() dodgeZoneSlider:SetVisibility(esp.IsDodgeZoneEnabled()) end)
-		pcall(function() dodgeZoneSafetySlider:SetVisibility(esp.IsDodgeZoneEnabled()) end)
 	end
 	applyHitboxVisibility()
 
@@ -12367,7 +11911,1475 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.z()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end function __DIST.y()-- Smart Dodge (DungeonQuest): Phát hiện vùng nguy hiểm (Threat Detection) dựa trên
+-- thuộc tính Material == Enum.Material.Neon của các skill, projectile, và telegraphs.
+-- Giai đoạn 1: Quét, nhận diện hiểm họa ở Workspace (Depth 1) và giám sát trạng thái Fade/Destroy thời gian thực.
+
+--// Imports
+
+local services = __DIST.load('d')
+local lifecycle = __DIST.load('b')
+local notifier = __DIST.load('c')
+
+--// References
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local player = services.player
+
+--// Table
+local smartDodge = {}
+
+--// State
+local threatDetectorEnabled = false
+local logHazards = false
+local logInDanger = true
+local visualEspEnabled = true
+local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight }
+local hazardCount = 0
+local hazardChangedCallbacks = {}
+local lastHazardInfo = nil
+local connections = {}
+local ignoredSkillNames = {
+	["DodgeNode_ESP"] = true,
+	["Enhanced Aura Ring"] = true,
+	["EnhancedAuraRing"] = true,
+	["Enhanced Aura"] = true,
+	["EnhancedAura"] = true,
+	["Aura Ring"] = true,
+	["AuraRing"] = true,
+	["AuraRingMesh"] = true,
+	["groundAura"] = true,
+	["GroundAura"] = true,
+	["Ground Aura"] = true,
+	["ground aura"] = true,
+}
+
+--// Danh sách các skill ngoại lệ (không dùng Material Neon, ví dụ có child precast bằng Plastic)
+local CUSTOM_HAZARD_EXCEPTIONS = {
+	["largeIceSpikes"] = true,
+	["mediumIceSpikes"] = true,
+	["smallIceSpikes"] = true,
+	["thirdBossMultiRings"] = true,
+}
+
+--// Ngưỡng coi như chiêu đã mờ hoàn toàn/kết thúc
+local FADE_TRANSPARENCY_THRESHOLD = 0.95
+
+--// Danh sách các đối tượng Workspace cấp 1 cần bỏ qua
+local IGNORED_NAMES = {
+	["dungeon"] = true,
+	["Dungeon"] = true,
+	["Terrain"] = true,
+	["Camera"] = true,
+	["CurrentCamera"] = true,
+	["RaycastIgnore"] = true,
+	["Drops"] = true,
+	["Loot"] = true,
+	["DodgeNode_ESP"] = true,
+	["SmartDodge_SafeMarker"] = true,
+	["SmartDodge_SelectionBox"] = true,
+	["Enhanced Aura Ring"] = true,
+	["EnhancedAuraRing"] = true,
+	["Enhanced Aura"] = true,
+	["EnhancedAura"] = true,
+	["Aura Ring"] = true,
+	["AuraRing"] = true,
+	["groundAura"] = true,
+	["GroundAura"] = true,
+	["Ground Aura"] = true,
+	["ground aura"] = true,
+}
+
+--// Thêm một Skill vào danh sách ngoại lệ
+function smartDodge.AddCustomHazard(skillName)
+	if type(skillName) == "string" and #skillName > 0 then
+		CUSTOM_HAZARD_EXCEPTIONS[skillName] = true
+	end
+end
+
+--// Đăng ký tên kỹ năng của Player để loại trừ
+function smartDodge.RegisterPlayerSkill(skillName)
+	if type(skillName) == "string" and #skillName > 0 then
+		local cleanName = skillName:gsub("^%s+", ""):gsub("%s+$", "")
+		if not ignoredSkillNames[cleanName] then
+			ignoredSkillNames[cleanName] = true
+			local normalized = cleanName:lower():gsub("%s+", "")
+			ignoredSkillNames[normalized] = true
+			if logHazards then
+				print(("[SmartDodge] 🛡️ Registered Player Skill (Ignored): %s"):format(cleanName))
+			end
+		end
+	end
+end
+
+--// Tự động quét và lắng nghe kỹ năng trong Backpack / Character của Player và đồng đội
+local function initPlayerSkillWatcher()
+	local function scanPlayer(p)
+		if not p then return end
+
+		local function scanContainer(container)
+			if not container then return end
+			for _, child in ipairs(container:GetChildren()) do
+				smartDodge.RegisterPlayerSkill(child.Name)
+			end
+		end
+
+		local function watchBackpack(bp)
+			if not bp then return end
+			scanContainer(bp)
+			bp.ChildAdded:Connect(function(child)
+				smartDodge.RegisterPlayerSkill(child.Name)
+			end)
+		end
+
+		local function watchCharacter(char)
+			if not char then return end
+			scanContainer(char)
+			char.ChildAdded:Connect(function(child)
+				if child:IsA("Tool") then
+					smartDodge.RegisterPlayerSkill(child.Name)
+				end
+			end)
+		end
+
+		if p:FindFirstChild("Backpack") then
+			watchBackpack(p.Backpack)
+		end
+		p.ChildAdded:Connect(function(child)
+			if child.Name == "Backpack" or child:IsA("Backpack") then
+				watchBackpack(child)
+			end
+		end)
+
+		if p.Character then
+			watchCharacter(p.Character)
+		end
+		p.CharacterAdded:Connect(watchCharacter)
+	end
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		scanPlayer(p)
+	end
+	Players.PlayerAdded:Connect(scanPlayer)
+
+	-- Quét định kỳ mỗi 1 giây trong trường hợp đồ trong Backpack được game nạp trễ
+	task.spawn(function()
+		while threatDetectorEnabled or #Players:GetPlayers() > 0 do
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p:FindFirstChild("Backpack") then
+					for _, item in ipairs(p.Backpack:GetChildren()) do
+						smartDodge.RegisterPlayerSkill(item.Name)
+					end
+				end
+				if p.Character then
+					for _, item in ipairs(p.Character:GetChildren()) do
+						if item:IsA("Tool") then
+							smartDodge.RegisterPlayerSkill(item.Name)
+						end
+					end
+				end
+			end
+			task.wait(1)
+		end
+	end)
+end
+
+initPlayerSkillWatcher()
+
+--// Kiểm tra xem đối tượng có phải là của Player (hoặc skill của Player) không
+local function isPlayerAsset(instance)
+	if not instance then return true end
+
+	-- 1. Kiểm tra trực thuộc Character của bất kỳ người chơi nào
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character and (instance == p.Character or instance:IsDescendantOf(p.Character)) then
+			return true
+		end
+	end
+
+	-- 2. Kiểm tra trực tiếp trong Backpack & Character của mọi người chơi tại thời điểm t = 0
+	local instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
+	local instNameLower = instNameClean:lower():gsub("%s+", "")
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		local bp = p:FindFirstChild("Backpack")
+		if bp then
+			if bp:FindFirstChild(instance.Name) or bp:FindFirstChild(instNameClean) then
+				smartDodge.RegisterPlayerSkill(instance.Name)
+				return true
+			end
+			for _, item in ipairs(bp:GetChildren()) do
+				local itemLower = item.Name:lower():gsub("%s+", "")
+				if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+					smartDodge.RegisterPlayerSkill(item.Name)
+					return true
+				end
+			end
+		end
+
+		if p.Character then
+			if p.Character:FindFirstChild(instance.Name) or p.Character:FindFirstChild(instNameClean) then
+				smartDodge.RegisterPlayerSkill(instance.Name)
+				return true
+			end
+			for _, item in ipairs(p.Character:GetChildren()) do
+				if item:IsA("Tool") then
+					local itemLower = item.Name:lower():gsub("%s+", "")
+					if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+						smartDodge.RegisterPlayerSkill(item.Name)
+						return true
+					end
+				end
+			end
+		end
+	end
+
+	-- 3. Kiểm tra các Tag/Attribute/ObjectValue sở hữu (creator, owner, player, caster)
+	local creatorVal = instance:FindFirstChild("creator") or instance:FindFirstChild("Creator")
+		or instance:FindFirstChild("owner") or instance:FindFirstChild("Owner")
+		or instance:FindFirstChild("player") or instance:FindFirstChild("Player")
+		or instance:FindFirstChild("caster") or instance:FindFirstChild("Caster")
+	if creatorVal then
+		if creatorVal:IsA("ObjectValue") and creatorVal.Value and creatorVal.Value:IsA("Player") then
+			return true
+		elseif creatorVal:IsA("StringValue") and Players:FindFirstChild(creatorVal.Value) then
+			return true
+		end
+	end
+
+	local ownerAttr = instance:GetAttribute("Owner") or instance:GetAttribute("Player")
+		or instance:GetAttribute("creator") or instance:GetAttribute("Creator")
+	if ownerAttr then
+		if type(ownerAttr) == "string" and Players:FindFirstChild(ownerAttr) then
+			return true
+		end
+	end
+
+	-- 4. Kiểm tra tên Instance có chứa tên hoặc UserId của Player không
+	for _, p in ipairs(Players:GetPlayers()) do
+		local pNameLower = p.Name:lower()
+		if instNameLower:find(pNameLower, 1, true) or instance.Name:find(tostring(p.UserId), 1, true) then
+			return true
+		end
+	end
+
+	-- 5. So khớp mềm (Fuzzy Match) với danh sách tên kỹ năng đã đăng ký
+	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
+		return true
+	end
+
+	for skillName in pairs(ignoredSkillNames) do
+		local sLower = skillName:lower():gsub("%s+", "")
+		if #sLower >= 3 and (instNameLower:find(sLower, 1, true) or sLower:find(instNameLower, 1, true)) then
+			return true
+		end
+	end
+
+	return false
+end
+
+--// Kiểm tra xem một Part/MeshPart cụ thể có thuộc danh sách bỏ qua hay không
+local function isIgnoredPart(part)
+	if not part then return true end
+	if part == safeSpotMarkerPart or part.Name:find("SmartDodge") then return true end
+	local nameClean = part.Name:gsub("^%s+", ""):gsub("%s+$", "")
+	local nameLower = nameClean:lower():gsub("%s+", "")
+	if ignoredSkillNames[part.Name] or ignoredSkillNames[nameClean] or ignoredSkillNames[nameLower] or IGNORED_NAMES[part.Name] then
+		return true
+	end
+	if nameLower:find("enhancedaura", 1, true) or nameLower:find("auraring", 1, true) or nameLower:find("groundaura", 1, true) then
+		return true
+	end
+	return false
+end
+
+--// Tìm các Part nguy hiểm bên trong instance (Depth 1 BasePart hoặc Model)
+local function extractHazardParts(instance)
+	local parts = {}
+	if not instance or instance.Name:find("SmartDodge") or instance == safeSpotMarkerPart or isIgnoredPart(instance) then
+		return parts, false
+	end
+	local isException = CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
+
+	if isException then
+		-- Ngoại lệ đặc biệt: tìm các part 'precast' hoặc BaseParts có trong model
+		if instance:IsA("BasePart") then
+			if not isIgnoredPart(instance) and instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+				table.insert(parts, instance)
+			end
+		elseif instance:IsA("Model") then
+			local precasts = {}
+			for _, desc in ipairs(instance:GetDescendants()) do
+				if desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Name:lower():find("precast") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					table.insert(precasts, desc)
+				end
+			end
+			if #precasts > 0 then
+				parts = precasts
+			else
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+						table.insert(parts, desc)
+					end
+				end
+			end
+		end
+	else
+		-- Tiêu chuẩn chung: Material == Neon
+		if instance:IsA("BasePart") then
+			if not isIgnoredPart(instance) and instance.Material == Enum.Material.Neon and instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+				table.insert(parts, instance)
+			end
+		elseif instance:IsA("Model") then
+			for _, desc in ipairs(instance:GetDescendants()) do
+				if desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Material == Enum.Material.Neon and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					table.insert(parts, desc)
+				end
+			end
+		end
+	end
+
+	return parts, isException
+end
+
+--// Lấy vị trí trung tâm của instance
+local function getInstancePosition(instance, hazardParts)
+	if instance:IsA("BasePart") then
+		return instance.Position
+	elseif instance:IsA("Model") then
+		if instance.PrimaryPart then
+			return instance.PrimaryPart.Position
+		end
+		local pivot = instance:GetPivot()
+		if pivot and pivot.Position ~= Vector3.zero then
+			return pivot.Position
+		end
+	end
+
+	if hazardParts and #hazardParts > 0 then
+		return hazardParts[1].Position
+	end
+
+	return Vector3.zero
+end
+
+local function fireHazardChanged()
+	for _, cb in ipairs(hazardChangedCallbacks) do
+		pcall(cb, hazardCount, lastHazardInfo)
+	end
+end
+
+--// Forward declaration
+local unregisterHazard
+
+--// Tạo và gắn SelectionBox đỏ 3D lên từng Part của chiêu thức
+local function attachSelectionBoxes(hazardParts)
+	local boxes = {}
+	for _, part in ipairs(hazardParts) do
+		if part and part:IsA("BasePart") and part.Parent then
+			local box = Instance.new("SelectionBox")
+			box.Name = "SmartDodge_SelectionBox"
+			box.Color3 = Color3.fromRGB(255, 45, 45)
+			box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
+			box.SurfaceTransparency = 0.6
+			box.LineThickness = 0.05
+			box.Adornee = part
+			box.Parent = part
+			table.insert(boxes, box)
+		end
+	end
+	return boxes
+end
+
+--// Đăng ký một Instance (Depth 1) là hiểm họa và gắn listeners theo dõi độ mờ
+local function registerHazard(instance)
+	if not threatDetectorEnabled or not instance or activeHazards[instance] then return end
+	if instance:IsA("Folder") then return end
+	if instance.Name:find("SmartDodge") or instance == safeSpotMarkerPart then return end
+	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] or isPlayerAsset(instance) then return end
+
+	local hazardParts, isException = extractHazardParts(instance)
+	if #hazardParts == 0 then
+		-- Nếu là Model mới tạo có thể các part con chưa kịp parent vào Model
+		if instance:IsA("Model") then
+			local c
+			c = instance.DescendantAdded:Connect(function(desc)
+				if desc:IsA("BasePart") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					if isException or desc.Material == Enum.Material.Neon then
+						if c then c:Disconnect(); c = nil end
+						registerHazard(instance)
+					end
+				end
+			end)
+			task.delay(1, function()
+				if c then c:Disconnect(); c = nil end
+			end)
+		end
+		return
+	end
+
+	local pos = getInstancePosition(instance, hazardParts)
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local dist = rootPart and math.floor((pos - rootPart.Position).Magnitude) or 0
+
+	local activePartsSet = {}
+	local partConnections = {}
+
+	for _, part in ipairs(hazardParts) do
+		activePartsSet[part] = true
+	end
+
+	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
+
+	local info = {
+		Instance = instance,
+		Name = instance.Name,
+		Class = instance.ClassName,
+		Position = pos,
+		Distance = dist,
+		NeonCount = #hazardParts,
+		SpawnTime = os.clock(),
+		Connections = partConnections,
+		ActiveParts = activePartsSet,
+		VisualBoxes = visualBoxes,
+		IsException = isException,
+	}
+
+	activeHazards[instance] = info
+	hazardCount = hazardCount + 1
+	lastHazardInfo = info
+
+	-- Gắn sự kiện lắng nghe Transparency và Material thay đổi trên từng Part
+	local function checkPartStatus(part)
+		if not activeHazards[instance] or not activePartsSet[part] then return end
+
+		local isExpired = (not part.Parent)
+			or (part.Transparency >= FADE_TRANSPARENCY_THRESHOLD)
+			or (not isException and part.Material ~= Enum.Material.Neon)
+
+		if isExpired then
+			activePartsSet[part] = nil
+			-- Kiểm tra xem còn Part nào đang hoạt động không
+			local remaining = 0
+			for _ in pairs(activePartsSet) do
+				remaining = remaining + 1
+			end
+
+			if remaining == 0 then
+				unregisterHazard(instance, "Faded / Finished")
+			else
+				info.NeonCount = remaining
+			end
+		end
+	end
+
+	for _, part in ipairs(hazardParts) do
+		table.insert(partConnections, part:GetPropertyChangedSignal("Transparency"):Connect(function()
+			checkPartStatus(part)
+		end))
+		if not isException then
+			table.insert(partConnections, part:GetPropertyChangedSignal("Material"):Connect(function()
+				checkPartStatus(part)
+			end))
+		end
+		table.insert(partConnections, part.AncestryChanged:Connect(function()
+			checkPartStatus(part)
+		end))
+	end
+
+	if logHazards then
+		print(("[SmartDodge][Hazard] 🚨 Hazard Detected: %s | Class: %s | Parts: %d | Dist: %d studs%s")
+			:format(info.Name, info.Class, info.NeonCount, info.Distance, isException and " (Exception)" or ""))
+	end
+
+	fireHazardChanged()
+end
+
+--// Hủy đăng ký hiểm họa (khi mờ, đổi material, hoặc bị xóa khỏi Workspace)
+function unregisterHazard(instance, reason)
+	if not activeHazards[instance] then return end
+	local info = activeHazards[instance]
+
+	-- Dọn dẹp SelectionBoxes
+	if info.VisualBoxes then
+		for _, box in ipairs(info.VisualBoxes) do
+			pcall(function() box:Destroy() end)
+		end
+		table.clear(info.VisualBoxes)
+	end
+
+	-- Dọn dẹp connection của từng part
+	if info.Connections then
+		for _, c in ipairs(info.Connections) do
+			pcall(function() c:Disconnect() end)
+		end
+		table.clear(info.Connections)
+	end
+
+	activeHazards[instance] = nil
+	hazardCount = math.max(0, hazardCount - 1)
+
+	if logHazards and info then
+		local reasonStr = reason and (" (" .. reason .. ")") or ""
+		print(("[SmartDodge][Hazard] 🟢 Hazard Expired: %s%s")
+			:format(info.Name, reasonStr))
+	end
+
+	fireHazardChanged()
+end
+
+--// Cấu hình tính toán điểm an toàn (Bài toán 2)
+local playerHitboxPadding = 2.2     -- Bù trừ bán kính cơ thể nhân vật (studs) để phát hiện khi chạm mép
+local showHitboxVisual = false      -- Hiển thị vòng tròn trực quan hitbox padding quanh người
+local hitboxVisualPart = nil        -- Part visual hitbox tròn quanh chân
+local ESCAPE_MARGIN = 4.5           -- Khoảng cách đệm an toàn sau khi ra khỏi mép (studs)
+local RAYCAST_DOWN_DIST = 25        -- Khoảng cách bắn raycast xuống mặt đất (studs)
+local RADIAL_DISTANCES = { 6, 10, 14, 18, 24, 30 }
+local RADIAL_ANGLES = { 0, 45, 90, 135, 180, 225, 270, 315 }
+
+--// Safe Spot State
+local showSafeMarker = true
+local currentSafeSpot = nil
+local lockedSafeSpot = nil
+local isPlayerInDanger = false
+local currentDangerHazardName = nil
+local currentEscapeDist = 0
+local safeSpotCallbacks = {}
+local safeSpotMarkerPart = nil
+local safeSpotLoopThread = nil
+
+--// Cấu hình Thực thi Né Chiêu (Bài toán 3: Hybrid MoveTo + Micro-Teleport)
+local autoDodgeEnabled = false
+local maxTeleportStep = 3.0          -- Bước teleport an toàn tối đa (studs) để chống anti-cheat
+local microBlinkInterval = 0.05      -- Khoảng thời gian giữa các bước nhích MoveTo + Teleport
+local isDodging = false
+local dodgeThread = nil
+local dodgeStatusCallbacks = {}
+
+--// Raycast Parameters dùng chung
+local raycastParams = RaycastParams.new()
+raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+raycastParams.IgnoreWater = true
+
+--// Bắn raycast kiểm tra sàn nhà và snap tọa độ xuống mặt đất
+local function getFloorPosition(pos)
+	local ignoreList = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then table.insert(ignoreList, p.Character) end
+	end
+	if Workspace:FindFirstChild("RaycastIgnore") then
+		table.insert(ignoreList, Workspace.RaycastIgnore)
+	end
+	if safeSpotMarkerPart then
+		table.insert(ignoreList, safeSpotMarkerPart)
+	end
+	for inst in pairs(activeHazards) do
+		table.insert(ignoreList, inst)
+	end
+	raycastParams.FilterDescendantsInstances = ignoreList
+
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 6, pos.Z)
+	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
+	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
+
+	if result and result.Position then
+		return Vector3.new(pos.X, result.Position.Y + 3, pos.Z), true
+	end
+	return pos, false
+end
+
+--// Kiểm tra xem một điểm P có nằm trong phạm vi sát thương của một BasePart không
+local function isPointInPart(point, part)
+	if not part or not part:IsA("BasePart") or not part.Parent or isIgnoredPart(part) then
+		return false
+	end
+
+	-- 1. Dạng hình cầu / hình trụ (Circle / Ball / Cylinder AoE)
+	if part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder) then
+		local radius = math.max(part.Size.X, part.Size.Z) / 2 + playerHitboxPadding
+		local dX = point.X - part.Position.X
+		local dZ = point.Z - part.Position.Z
+		local distSq = dX * dX + dZ * dZ
+		local heightDiff = math.abs(point.Y - part.Position.Y)
+		return (distSq <= radius * radius) and (heightDiff <= math.max(10, part.Size.Y / 2 + 5))
+	end
+
+	-- 2. Dạng hình chữ nhật / hộp có hướng (Oriented Bounding Box - OBB)
+	local localPos = part.CFrame:PointToObjectSpace(point)
+	local halfX = part.Size.X / 2 + playerHitboxPadding
+	local halfZ = part.Size.Z / 2 + playerHitboxPadding
+	local halfY = math.max(8, part.Size.Y / 2 + 5)
+
+	return math.abs(localPos.X) <= halfX
+		and math.abs(localPos.Z) <= halfZ
+		and math.abs(localPos.Y) <= halfY
+end
+
+--// Kiểm tra xem một điểm P có đang bị dính bất kỳ mối nguy hiểm nào không
+local function isPointInAnyHazard(point)
+	local bestDistSq = math.huge
+	local foundInfo, foundPart = nil, nil
+
+	for _, info in pairs(activeHazards) do
+		if info.ActiveParts then
+			for part in pairs(info.ActiveParts) do
+				if isPointInPart(point, part) then
+					local distSq = (point - part.Position).Magnitude
+					if distSq < bestDistSq then
+						bestDistSq = distSq
+						foundInfo = info
+						foundPart = part
+					end
+				end
+			end
+		end
+	end
+
+	if foundPart then
+		return true, foundInfo, foundPart
+	end
+	return false, nil, nil
+end
+
+--// Tạo / Lấy Part hiển thị Hitbox Padding của Player quanh người
+local function getOrCreateHitboxVisual()
+	if hitboxVisualPart and hitboxVisualPart.Parent then
+		return hitboxVisualPart
+	end
+
+	local part = Instance.new("Part")
+	part.Name = "SmartDodge_HitboxVisual"
+	part.Shape = Enum.PartType.Cylinder
+	local diameter = math.max(0.4, playerHitboxPadding * 2)
+	part.Size = Vector3.new(0.15, diameter, diameter)
+	part.Color = Color3.fromRGB(0, 220, 255)
+	part.Material = Enum.Material.Neon
+	part.Transparency = 0.75
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+
+	local selectionBox = Instance.new("SelectionBox")
+	selectionBox.Name = "HitboxBorder"
+	selectionBox.Color3 = Color3.fromRGB(120, 240, 255)
+	selectionBox.SurfaceColor3 = Color3.fromRGB(0, 220, 255)
+	selectionBox.SurfaceTransparency = 0.8
+	selectionBox.LineThickness = 0.04
+	selectionBox.Adornee = part
+	selectionBox.Parent = part
+
+	hitboxVisualPart = part
+	return part
+end
+
+--// Cập nhật vị trí và kích thước vòng tròn Hitbox của Player
+local function updateHitboxVisual(playerPos)
+	if not showHitboxVisual or not threatDetectorEnabled or not playerPos then
+		if hitboxVisualPart then
+			hitboxVisualPart.Parent = nil
+		end
+		return
+	end
+
+	local part = getOrCreateHitboxVisual()
+	local diameter = math.max(0.4, playerHitboxPadding * 2)
+	part.Size = Vector3.new(0.15, diameter, diameter)
+
+	local floorPos, hasFloor = getFloorPosition(playerPos)
+	local yPos = hasFloor and (floorPos.Y - 2.8) or (playerPos.Y - 2.8)
+	local visualPos = Vector3.new(playerPos.X, yPos, playerPos.Z)
+
+	part.CFrame = CFrame.new(visualPos) * CFrame.Angles(0, 0, math.rad(90))
+	part.Parent = Workspace.Terrain
+end
+
+--// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá
+local function getOrCreateSafeMarker()
+	if safeSpotMarkerPart and safeSpotMarkerPart.Parent then
+		return safeSpotMarkerPart
+	end
+
+	local part = Instance.new("Part")
+	part.Name = "SmartDodge_SafeMarker"
+	part.Shape = Enum.PartType.Cylinder
+	part.Size = Vector3.new(0.4, 3.5, 3.5)
+	part.Color = Color3.fromRGB(0, 255, 120)
+	part.Material = Enum.Material.Neon
+	part.Transparency = 0.3
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+
+	local selectionBox = Instance.new("SelectionBox")
+	selectionBox.Name = "MarkerBorder"
+	selectionBox.Color3 = Color3.fromRGB(80, 255, 160)
+	selectionBox.SurfaceColor3 = Color3.fromRGB(0, 255, 120)
+	selectionBox.SurfaceTransparency = 0.5
+	selectionBox.LineThickness = 0.05
+	selectionBox.Adornee = part
+	selectionBox.Parent = part
+
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "MarkerGui"
+	bb.Size = UDim2.fromOffset(140, 30)
+	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.AlwaysOnTop = true
+	bb.Adornee = part
+	bb.Parent = part
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = Color3.fromRGB(80, 255, 160)
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.Text = "🟢 SAFE SPOT"
+	label.Parent = bb
+
+	safeSpotMarkerPart = part
+	return part
+end
+
+--// Cập nhật vị trí hiển thị của Safe Marker
+local function updateSafeMarkerVisual(pos, inDanger, escapeDist)
+	if not showSafeMarker or not inDanger or not pos then
+		if safeSpotMarkerPart then
+			safeSpotMarkerPart.Parent = nil
+		end
+		return
+	end
+
+	local marker = getOrCreateSafeMarker()
+	marker.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
+	marker.Parent = Workspace.Terrain
+
+	local bb = marker:FindFirstChild("MarkerGui")
+	local label = bb and bb:FindFirstChild("Label")
+	if label then
+		label.Text = ("🟢 SAFE SPOT (%.1fm)"):format(escapeDist or 0)
+	end
+end
+
+--// Thuật toán cốt lõi: Tính toán vị trí an toàn (Safe Spot Calculation)
+function smartDodge.CalculateSafeSpot(customPlayerPos)
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local playerPos = customPlayerPos or (rootPart and rootPart.Position)
+	if not playerPos then
+		lockedSafeSpot = nil
+		return false, nil, nil, 0
+	end
+
+	-- 1. Kiểm tra xem Player có đang đứng trong bất kỳ vùng nguy hiểm nào không
+	local inDanger, dangerInfo, dangerPart = isPointInAnyHazard(playerPos)
+	if not inDanger or not dangerPart then
+		lockedSafeSpot = nil
+		return false, nil, nil, 0
+	end
+
+	local hazardName = dangerInfo.Name or "Unknown"
+
+	-- 2. KHÓA ĐIỂM AN TOÀN (Latching Lock): Nếu điểm an toàn trước đó vẫn an toàn, GIỮ NGUYÊN 100% không tính lại
+	if lockedSafeSpot and not isPointInAnyHazard(lockedSafeSpot) then
+		local dist = (lockedSafeSpot - playerPos).Magnitude
+		if dist <= 35 then
+			return true, lockedSafeSpot, hazardName, math.floor(dist * 10) / 10
+		end
+	end
+
+	-- 3. Chiến lược A: Thoát trực tiếp (Direct Escape Vector) từ Part gây nguy hiểm gần nhất
+	local candidatePos = nil
+
+	if dangerPart:IsA("Part") and (dangerPart.Shape == Enum.PartType.Ball or dangerPart.Shape == Enum.PartType.Cylinder) then
+		-- A1. Chiêu hình tròn / hình cầu: Đẩy thẳng ra ngoài bán kính
+		local radius = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
+		local diff = Vector3.new(playerPos.X - dangerPart.Position.X, 0, playerPos.Z - dangerPart.Position.Z)
+		local dir = diff.Magnitude > 0.1 and diff.Unit or Vector3.new(0, 0, 1)
+		local directWorld = dangerPart.Position + dir * (radius + ESCAPE_MARGIN)
+		local snapped, hasFloor = getFloorPosition(directWorld)
+
+		if hasFloor and not isPointInAnyHazard(snapped) then
+			candidatePos = snapped
+		end
+	else
+		-- A2. Chiêu hình chữ nhật / OBB: Thoát ngang 90 độ theo cạnh hẹp nhất
+		local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
+		local halfX = dangerPart.Size.X / 2
+		local halfZ = dangerPart.Size.Z / 2
+		local targetLocal = nil
+
+		if halfX <= halfZ then
+			-- Cạnh X hẹp hơn -> Thoát ngang theo trục X
+			local sign = (localPos.X >= 0) and 1 or -1
+			targetLocal = Vector3.new(sign * (halfX + ESCAPE_MARGIN), 0, localPos.Z)
+		else
+			-- Cạnh Z hẹp hơn -> Thoát ngang theo trục Z
+			local sign = (localPos.Z >= 0) and 1 or -1
+			targetLocal = Vector3.new(localPos.X, 0, sign * (halfZ + ESCAPE_MARGIN))
+		end
+
+		local directWorld = dangerPart.CFrame:PointToWorldSpace(targetLocal)
+		local snapped, hasFloor = getFloorPosition(directWorld)
+
+		if hasFloor and not isPointInAnyHazard(snapped) then
+			candidatePos = snapped
+		end
+	end
+
+	-- 4. Chiến lược B: Lưới Tỏa Tròn (Radial Grid Search Fallback nếu thoát trực tiếp bị vướng)
+	if not candidatePos then
+		local bestPos = nil
+		local bestDist = math.huge
+
+		for _, dist in ipairs(RADIAL_DISTANCES) do
+			for _, angleDeg in ipairs(RADIAL_ANGLES) do
+				local rad = math.rad(angleDeg)
+				local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
+				local testWorld = playerPos + offset
+				local snapped, hasFloor = getFloorPosition(testWorld)
+
+				if hasFloor and not isPointInAnyHazard(snapped) then
+					local moveDist = (snapped - playerPos).Magnitude
+					if moveDist < bestDist then
+						bestDist = moveDist
+						bestPos = snapped
+					end
+				end
+			end
+			if bestPos then break end -- Ưu tiên vòng bán kính nhỏ nhất trước
+		end
+
+		candidatePos = bestPos
+	end
+
+	if candidatePos then
+		lockedSafeSpot = candidatePos
+		local escapeDist = math.floor((candidatePos - playerPos).Magnitude * 10) / 10
+		return true, candidatePos, hazardName, escapeDist
+	end
+
+	lockedSafeSpot = nil
+	return true, nil, hazardName, 0
+end
+
+local function fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist)
+	for _, cb in ipairs(safeSpotCallbacks) do
+		pcall(cb, inDanger, safePos, hazardName, escapeDist)
+	end
+end
+
+local function fireDodgeStatus(status)
+	for _, cb in ipairs(dodgeStatusCallbacks) do
+		pcall(cb, status)
+	end
+end
+
+--// Thực thi né sang Safe Spot bằng cơ chế Hybrid MoveTo + Micro-Teleport
+local function performDodge(safePos, escapeDist)
+	local char = player and player.Character
+	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+	local humanoid = char and char:FindFirstChild("Humanoid")
+	if not rootPart or not humanoid or humanoid.Health <= 0 then return end
+
+	if isDodging then return end
+
+	dodgeThread = task.spawn(function()
+		isDodging = true
+		fireDodgeStatus("Dodging")
+
+		local currentPos = rootPart.Position
+		local totalDist = (safePos - currentPos).Magnitude
+
+		-- Trường hợp 1: Khoảng cách ngắn (<= maxTeleportStep, ví dụ <= 3.0 studs) -> Teleport dứt điểm 1 nhịp
+		if totalDist <= maxTeleportStep then
+			rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
+			if logInDanger then
+				print(("[SmartDodge][Dodge] ⚡ Instant Micro-Teleport (%.1f studs) to Safe Spot!"):format(totalDist))
+			end
+			isDodging = false
+			fireDodgeStatus("Safe")
+			return
+		end
+
+		-- Trường hợp 2: Khoảng cách xa (> 3.0 studs) -> MoveTo kết hợp Micro-Blink
+		if logInDanger then
+			print(("[SmartDodge][Dodge] 🏃 Hybrid MoveTo + Micro-Blink (%.1f studs) to Safe Spot..."):format(totalDist))
+		end
+
+		local startTime = os.clock()
+		local timeout = 2.0 -- Timeout an toàn 2s
+
+		while isPlayerInDanger and autoDodgeEnabled and (os.clock() - startTime < timeout) do
+			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
+			currentPos = rootPart.Position
+			local distRemaining = (safePos - currentPos).Magnitude
+
+			-- Nếu đã tới cự ly micro-teleport cuối cùng
+			if distRemaining <= maxTeleportStep then
+				rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
+				humanoid:MoveTo(safePos)
+				break
+			end
+
+			local dir = (safePos - currentPos).Unit
+			local stepDist = math.min(maxTeleportStep, distRemaining - 0.5)
+
+			humanoid:MoveTo(safePos)
+
+			local newPos = currentPos + dir * stepDist
+			local lookTarget = newPos + dir
+			rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
+
+			task.wait(microBlinkInterval)
+		end
+
+		isDodging = false
+		fireDodgeStatus("Safe")
+	end)
+end
+
+--// Vòng lặp đánh giá nguy hiểm và cập nhật Safe Spot theo thời gian thực
+local function startSafeSpotLoop()
+	if safeSpotLoopThread then return end
+	safeSpotLoopThread = task.spawn(function()
+		local lastLogTime = 0
+		while threatDetectorEnabled do
+			local inDanger, safePos, hazardName, escapeDist = smartDodge.CalculateSafeSpot()
+			local stateChanged = (inDanger ~= isPlayerInDanger) or (safePos ~= currentSafeSpot)
+
+			isPlayerInDanger = inDanger
+			currentSafeSpot = safePos
+			currentDangerHazardName = hazardName
+			currentEscapeDist = escapeDist or 0
+
+			updateSafeMarkerVisual(safePos, inDanger, escapeDist)
+
+			local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			local pPos = rootPart and rootPart.Position
+			updateHitboxVisual(pPos)
+
+			-- Kích hoạt Thực thi Né Chiêu (Bài toán 3)
+			if inDanger and safePos and autoDodgeEnabled then
+				performDodge(safePos, escapeDist)
+			end
+
+			if stateChanged then
+				fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist)
+
+				if logInDanger and inDanger and safePos and (os.clock() - lastLogTime > 0.5) then
+					lastLogTime = os.clock()
+					print(("[SmartDodge][InDanger] ⚠️ IN DANGER: %s | Escape Dist: %.1f studs -> SafePos: (%.1f, %.1f, %.1f)")
+						:format(hazardName, escapeDist, safePos.X, safePos.Y, safePos.Z))
+				end
+			end
+
+			task.wait(0.05)
+		end
+	end)
+end
+
+local function stopSafeSpotLoop()
+	if safeSpotLoopThread then
+		task.cancel(safeSpotLoopThread)
+		safeSpotLoopThread = nil
+	end
+	if dodgeThread then
+		task.cancel(dodgeThread)
+		dodgeThread = nil
+	end
+	if safeSpotMarkerPart then
+		safeSpotMarkerPart.Parent = nil
+	end
+	if hitboxVisualPart then
+		hitboxVisualPart.Parent = nil
+	end
+	isDodging = false
+	isPlayerInDanger = false
+	currentSafeSpot = nil
+	lockedSafeSpot = nil
+	currentDangerHazardName = nil
+	fireSafeSpotChanged(false, nil, nil, 0)
+	fireDodgeStatus("Idle")
+end
+
+--// Bắt đầu quét & lắng nghe sự kiện Workspace cấp 1
+local function startTracking()
+	-- Dọn dẹp connection cũ nếu có
+	for _, c in ipairs(connections) do c:Disconnect() end
+	table.clear(connections)
+
+	-- Dọn dẹp hazards cũ
+	for inst, info in pairs(activeHazards) do
+		if info.VisualBoxes then
+			for _, box in ipairs(info.VisualBoxes) do pcall(function() box:Destroy() end) end
+		end
+		if info.Connections then
+			for _, c in ipairs(info.Connections) do pcall(function() c:Disconnect() end) end
+		end
+	end
+	table.clear(activeHazards)
+	hazardCount = 0
+
+	-- 1. Quét tức thời các child Depth 1 hiện tại trong Workspace
+	for _, child in ipairs(Workspace:GetChildren()) do
+		registerHazard(child)
+	end
+
+	-- 2. Lắng nghe vật thể mới sinh ra ở Workspace (Depth 1)
+	table.insert(connections, Workspace.ChildAdded:Connect(function(child)
+		registerHazard(child)
+	end))
+
+	-- 3. Lắng nghe vật thể bị xóa khỏi Workspace (Depth 1)
+	table.insert(connections, Workspace.ChildRemoved:Connect(function(child)
+		unregisterHazard(child, "Destroyed")
+	end))
+
+	-- Khởi chạy vòng lặp đánh giá Safe Spot
+	startSafeSpotLoop()
+
+	if logHazards then
+		print("[SmartDodge] 📡 Threat Detector & Safe Spot Engine started!")
+	end
+end
+
+local function stopTracking()
+	for _, c in ipairs(connections) do c:Disconnect() end
+	table.clear(connections)
+
+	for inst, info in pairs(activeHazards) do
+		if info.VisualBoxes then
+			for _, box in ipairs(info.VisualBoxes) do pcall(function() box:Destroy() end) end
+		end
+		if info.Connections then
+			for _, c in ipairs(info.Connections) do pcall(function() c:Disconnect() end) end
+		end
+	end
+	table.clear(activeHazards)
+	hazardCount = 0
+	fireHazardChanged()
+
+	stopSafeSpotLoop()
+
+	if logHazards then
+		print("[SmartDodge] 🛑 Threat Detector stopped.")
+	end
+end
+
+--// Methods
+function smartDodge.Toggle(state)
+	threatDetectorEnabled = state and true or false
+	if threatDetectorEnabled then
+		startTracking()
+	else
+		stopTracking()
+	end
+end
+
+function smartDodge.IsEnabled()
+	return threatDetectorEnabled
+end
+
+function smartDodge.SetLogHazards(state)
+	logHazards = state and true or false
+end
+
+function smartDodge.IsLogHazardsEnabled()
+	return logHazards
+end
+
+function smartDodge.SetLogInDanger(state)
+	logInDanger = state and true or false
+end
+
+function smartDodge.IsLogInDangerEnabled()
+	return logInDanger
+end
+
+-- Backward compatibility aliases
+smartDodge.SetLogThreats = smartDodge.SetLogHazards
+smartDodge.IsLogThreatsEnabled = smartDodge.IsLogHazardsEnabled
+
+function smartDodge.SetVisualEsp(state)
+	visualEspEnabled = state and true or false
+	if visualEspEnabled then
+		for _, info in pairs(activeHazards) do
+			if (not info.VisualBoxes or #info.VisualBoxes == 0) and info.ActiveParts then
+				local partsList = {}
+				for p in pairs(info.ActiveParts) do
+					table.insert(partsList, p)
+				end
+				info.VisualBoxes = attachSelectionBoxes(partsList)
+			end
+		end
+	else
+		for _, info in pairs(activeHazards) do
+			if info.VisualBoxes then
+				for _, box in ipairs(info.VisualBoxes) do
+					pcall(function() box:Destroy() end)
+				end
+				table.clear(info.VisualBoxes)
+			end
+		end
+	end
+end
+
+function smartDodge.IsVisualEspEnabled()
+	return visualEspEnabled
+end
+
+function smartDodge.SetShowSafeMarker(state)
+	showSafeMarker = state and true or false
+	updateSafeMarkerVisual(currentSafeSpot, isPlayerInDanger, currentEscapeDist)
+end
+
+function smartDodge.IsShowSafeMarkerEnabled()
+	return showSafeMarker
+end
+
+function smartDodge.IsInDanger()
+	return isPlayerInDanger
+end
+
+function smartDodge.GetCurrentSafeSpot()
+	return currentSafeSpot, isPlayerInDanger, currentDangerHazardName, currentEscapeDist
+end
+
+function smartDodge.OnSafeSpotChanged(callback)
+	if type(callback) ~= "function" then return end
+	table.insert(safeSpotCallbacks, callback)
+end
+
+function smartDodge.GetHazardCount()
+	return hazardCount
+end
+
+function smartDodge.GetActiveHazards()
+	local list = {}
+	for _, data in pairs(activeHazards) do
+		if data.Instance and data.Instance.Parent == Workspace then
+			table.insert(list, data)
+		end
+	end
+	return list
+end
+
+function smartDodge.GetLastHazardInfo()
+	return lastHazardInfo
+end
+
+function smartDodge.OnHazardChanged(callback)
+	if type(callback) ~= "function" then return end
+	table.insert(hazardChangedCallbacks, callback)
+end
+
+function smartDodge.SetAutoDodge(state)
+	autoDodgeEnabled = state and true or false
+end
+
+function smartDodge.IsAutoDodgeEnabled()
+	return autoDodgeEnabled
+end
+
+function smartDodge.SetMaxTeleportStep(step)
+	if type(step) == "number" and step > 0 then
+		maxTeleportStep = step
+	end
+end
+
+function smartDodge.GetMaxTeleportStep()
+	return maxTeleportStep
+end
+
+function smartDodge.GetDodgeStatus()
+	if isDodging then
+		return "Dodging"
+	elseif isPlayerInDanger then
+		return "Safe (Standing in Spot)"
+	else
+		return "Idle"
+	end
+end
+
+function smartDodge.OnDodgeStatusChanged(callback)
+	if type(callback) ~= "function" then return end
+	table.insert(dodgeStatusCallbacks, callback)
+end
+
+function smartDodge.SetShowHitboxVisual(state)
+	showHitboxVisual = state and true or false
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local pPos = rootPart and rootPart.Position
+	updateHitboxVisual(pPos)
+end
+
+function smartDodge.IsShowHitboxVisualEnabled()
+	return showHitboxVisual
+end
+
+function smartDodge.SetHitboxPadding(value)
+	if type(value) == "number" and value >= 0 then
+		playerHitboxPadding = value
+		if hitboxVisualPart and hitboxVisualPart.Parent then
+			local diameter = math.max(0.4, playerHitboxPadding * 2)
+			hitboxVisualPart.Size = Vector3.new(0.15, diameter, diameter)
+		end
+	end
+end
+
+function smartDodge.GetHitboxPadding()
+	return playerHitboxPadding
+end
+
+function smartDodge.SetMicroBlinkInterval(value)
+	if type(value) == "number" and value > 0 then
+		if value >= 1 then
+			microBlinkInterval = value / 1000
+		else
+			microBlinkInterval = value
+		end
+	end
+end
+
+function smartDodge.GetMicroBlinkIntervalMs()
+	return math.floor(microBlinkInterval * 1000 + 0.5)
+end
+
+function smartDodge.GetMicroBlinkInterval()
+	return microBlinkInterval
+end
+
+lifecycle.Register(function()
+	stopTracking()
+	if safeSpotMarkerPart then
+		pcall(function() safeSpotMarkerPart:Destroy() end)
+		safeSpotMarkerPart = nil
+	end
+	if hitboxVisualPart then
+		pcall(function() hitboxVisualPart:Destroy() end)
+		hitboxVisualPart = nil
+	end
+	if dodgeThread then
+		pcall(function() task.cancel(dodgeThread) end)
+		dodgeThread = nil
+	end
+	isDodging = false
+end)
+
+return smartDodge
+end function __DIST.z()-- Tab SmartDodge (DungeonQuest): Quản lý tính năng né chiêu thông minh.
+-- Giai đoạn 1, 2 & 3: Threat Detection, Safe Spot Calculation & Dodge Execution.
+
+--// Imports
+
+local ui = __DIST.load('f')
+local autoSave = __DIST.load('g')
+local smartDodge = __DIST.load('y')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Threat & Dodge Controls" })
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Real-time Dodge Monitor" })
+
+	--// Right Section Labels
+	local statusLabel = rightSection:Label({ Text = "Detector: <font color='rgb(255,80,80)'>Disabled</font>" })
+	local activeCountLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
+	local playerStateLabel = rightSection:Label({ Text = "Player State: <font color='rgb(0,255,0)'>SAFE</font>" })
+	local safeSpotLabel = rightSection:Label({ Text = "Safe Target: <font color='rgb(160,160,160)'>None (No Dodge Needed)</font>" })
+	local dodgeActionLabel = rightSection:Label({ Text = "Dodge Action: <font color='rgb(160,160,160)'>Idle</font>" })
+	local lastHazardLabel = rightSection:Label({ Text = "Last Detected: <font color='rgb(160,160,160)'>None</font>" })
+
+	local function updateMonitor(count, lastInfo)
+		count = count or smartDodge.GetHazardCount()
+		lastInfo = lastInfo or smartDodge.GetLastHazardInfo()
+
+		local isEnabled = smartDodge.IsEnabled()
+		local statusColor = isEnabled and "0, 255, 0" or "255, 80, 80"
+		local statusText = isEnabled and "Active (Scanning & Calculating)" or "Disabled"
+
+		pcall(function()
+			statusLabel:UpdateName("Detector: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
+		end)
+
+		local countColor = count > 0 and "255, 60, 60" or "0, 255, 0"
+		pcall(function()
+			activeCountLabel:UpdateName("Active Hazards: <font color='rgb(" .. countColor .. ")'>" .. tostring(count) .. "</font>")
+		end)
+
+		if lastInfo then
+			pcall(function()
+				lastHazardLabel:UpdateName(("Last Detected: <font color='rgb(255,220,120)'>%s</font> (%s, %d studs)"):format(
+					lastInfo.Name, lastInfo.Class, lastInfo.Distance
+				))
+			end)
+		else
+			pcall(function()
+				lastHazardLabel:UpdateName("Last Detected: <font color='rgb(160,160,160)'>None</font>")
+			end)
+		end
+	end
+
+	local function updateSafeSpotUI(inDanger, safePos, hazardName, escapeDist)
+		if inDanger and safePos then
+			pcall(function()
+				playerStateLabel:UpdateName(("Player State: <font color='rgb(255,60,60)'>⚠️ IN DANGER (%s)</font>"):format(hazardName or "Hazard"))
+				safeSpotLabel:UpdateName(("Safe Target: <font color='rgb(0,255,120)'>🟢 (%.1f, %.1f, %.1f) - %.1fm</font>"):format(
+					safePos.X, safePos.Y, safePos.Z, escapeDist or 0
+				))
+			end)
+		else
+			pcall(function()
+				playerStateLabel:UpdateName("Player State: <font color='rgb(0,255,0)'>🟢 SAFE</font>")
+				safeSpotLabel:UpdateName("Safe Target: <font color='rgb(160,160,160)'>None (No Dodge Needed)</font>")
+			end)
+		end
+	end
+
+	local function updateDodgeStatusUI(status)
+		status = status or smartDodge.GetDodgeStatus()
+		local color = "160, 160, 160"
+		if status == "Dodging" then
+			color = "255, 200, 50"
+		elseif status == "Returning" then
+			color = "80, 180, 255"
+		elseif status:find("Safe") then
+			color = "0, 255, 120"
+		end
+
+		pcall(function()
+			dodgeActionLabel:UpdateName("Dodge Action: <font color='rgb(" .. color .. ")'>" .. status .. "</font>")
+		end)
+	end
+
+	-- Lắng nghe cập nhật tức thời từ core
+	smartDodge.OnHazardChanged(function(count, lastInfo)
+		updateMonitor(count, lastInfo)
+	end)
+
+	smartDodge.OnSafeSpotChanged(function(inDanger, safePos, hazardName, escapeDist)
+		updateSafeSpotUI(inDanger, safePos, hazardName, escapeDist)
+	end)
+
+	smartDodge.OnDodgeStatusChanged(function(status)
+		updateDodgeStatusUI(status)
+	end)
+
+	--// Left Section Controls
+	leftSection:Toggle({
+		Name = "Enable Threat & Safe Spot Engine",
+		Default = smartDodge.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.Toggle(state)
+			updateMonitor()
+		end),
+	}, "Toggle_SmartDodgeThreatDetection")
+
+	leftSection:Toggle({
+		Name = "Auto Dodge Execution (Hybrid MoveTo + Teleport)",
+		Default = smartDodge.IsAutoDodgeEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetAutoDodge(state)
+		end),
+	}, "Toggle_SmartDodgeAutoExecution")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Max Teleport Step (studs)",
+		Default = smartDodge.GetMaxTeleportStep(),
+		Minimum = 1,
+		Maximum = 4,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetMaxTeleportStep(value)
+		end),
+	}, "Slider_SmartDodgeMaxStep"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Step Interval Delay (ms)",
+		Default = smartDodge.GetMicroBlinkIntervalMs(),
+		Minimum = 10,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetMicroBlinkInterval(value)
+		end),
+	}, "Slider_SmartDodgeStepInterval"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Player Hitbox Padding (studs)",
+		Default = smartDodge.GetHitboxPadding(),
+		Minimum = 0,
+		Maximum = 5,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetHitboxPadding(value)
+		end),
+	}, "Slider_SmartDodgeHitboxPadding"))
+
+	leftSection:Toggle({
+		Name = "Show Hitbox Padding Visual (Cyan Circle)",
+		Default = smartDodge.IsShowHitboxVisualEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetShowHitboxVisual(state)
+		end),
+	}, "Toggle_SmartDodgeHitboxVisual")
+
+	leftSection:Toggle({
+		Name = "Threat Visual ESP (SelectionBox)",
+		Default = smartDodge.IsVisualEspEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetVisualEsp(state)
+		end),
+	}, "Toggle_SmartDodgeVisualEsp")
+
+	leftSection:Toggle({
+		Name = "Show Safe Spot Marker (Green ESP)",
+		Default = smartDodge.IsShowSafeMarkerEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetShowSafeMarker(state)
+		end),
+	}, "Toggle_SmartDodgeShowSafeMarker")
+
+	leftSection:Toggle({
+		Name = "Log Hazards (Spawns / Despawns)",
+		Default = smartDodge.IsLogHazardsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetLogHazards(state)
+		end),
+	}, "Toggle_SmartDodgeLogHazards")
+
+	leftSection:Toggle({
+		Name = "Log In Danger & Safe Spot",
+		Default = smartDodge.IsLogInDangerEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetLogInDanger(state)
+		end),
+	}, "Toggle_SmartDodgeLogInDanger")
+
+	leftSection:Button({
+		Name = "Clear Console",
+		Callback = function()
+			pcall(function()
+				if rconsoleclear then rconsoleclear() end
+			end)
+		end,
+	})
+
+	-- Khởi tạo monitor
+	updateMonitor()
+	local curSpot, inDang, hName, eDist = smartDodge.GetCurrentSafeSpot()
+	updateSafeSpotUI(inDang, curSpot, hName, eDist)
+	updateDodgeStatusUI()
+end
+end function __DIST.A()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -12442,7 +13454,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.A()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.B()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -12450,7 +13462,7 @@ end function __DIST.A()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('g')
-local autoHide = __DIST.load('z')
+local autoHide = __DIST.load('A')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -12607,7 +13619,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.B()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.C()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -13205,12 +14217,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.C()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.D()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('B')
+local webhook = __DIST.load('C')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -13277,7 +14289,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.D()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.E()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
@@ -13427,7 +14439,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.E()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.F()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -13484,6 +14496,7 @@ return function(self)
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
 		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
+		SmartDodge = tabGroup:Tab({ Name = "Smart Dodge", Image = "rbxassetid://10734950309" }),
 		Config = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 		Notifications = tabGroup:Tab({ Name = "Notifications", Image = "rbxassetid://10734950309" }),
 		State = tabGroup:Tab({ Name = "State", Image = "rbxassetid://10734950309" }),
@@ -13497,16 +14510,18 @@ return function(self)
 	local autoFarmPathfinderTab = __DIST.load('m')
 	local dungeonTab = __DIST.load('r')
 	local inventoryTab = __DIST.load('t')
-	local visualTab = __DIST.load('y')
-	local configTab = __DIST.load('A')
-	local notificationsTab = __DIST.load('C')
-	local stateTab = __DIST.load('D')
+	local visualTab = __DIST.load('x')
+	local smartDodgeTab = __DIST.load('z')
+	local configTab = __DIST.load('B')
+	local notificationsTab = __DIST.load('D')
+	local stateTab = __DIST.load('E')
 
 	speedTab(window, tabs.Player)
 	autoFarmPathfinderTab(window, tabs.Pathfinder)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	visualTab(window, tabs.Visual)
+	smartDodgeTab(window, tabs.SmartDodge)
 	configTab(window, tabs.Config)
 	notificationsTab(window, tabs.Notifications)
 	stateTab(window, tabs.State)
@@ -13516,9 +14531,9 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('B')
+	local webhook = __DIST.load('C')
 	webhook.Init()
-__DIST.load('w')
+__DIST.load('v')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
@@ -13526,7 +14541,7 @@ __DIST.load('w')
 local contextual = __DIST.load('k')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('z')
+	local autoHide = __DIST.load('A')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -13538,7 +14553,7 @@ local contextual = __DIST.load('k')
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.F()
+end function __DIST.G()
 local flags = {}
 
 function flags:Export()
@@ -13581,7 +14596,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.G()
+return flags end function __DIST.H()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -13650,12 +14665,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.H()
+end function __DIST.I()
 --// Imports
 
 
 
-local binder = __DIST.load('G')
+local binder = __DIST.load('H')
 
 --// Variables
 local interface = {}
@@ -13675,9 +14690,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.I()--// Imports
+end function __DIST.J()--// Imports
 
-local binder = __DIST.load('G')
+local binder = __DIST.load('H')
 
 --// Variables
 local esp = {}
@@ -13688,11 +14703,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.J()--// Imports
+end function __DIST.K()--// Imports
 
-local flags = __DIST.load('F')
-local interface = __DIST.load('H')
-local esp = __DIST.load('I')
+local flags = __DIST.load('G')
+local interface = __DIST.load('I')
+local esp = __DIST.load('J')
 
 --// Initialize
 local window = interface:Window({
@@ -13731,7 +14746,7 @@ return {
 		end,
 	},
 }
-end function __DIST.K()--// Variables
+end function __DIST.L()--// Variables
 
 local utility = {}
 
@@ -13763,7 +14778,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.L()--// Functions
+end function __DIST.M()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -13773,14 +14788,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.M()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.N()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('J')
-	local utility = __DIST.load('K')
-	local services = __DIST.load('L')
+	local base = __DIST.load('K')
+	local utility = __DIST.load('L')
+	local services = __DIST.load('M')
 
 	--// References
 	local flags = base.Flags
@@ -13846,7 +14861,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('E'),
+		Load = __DIST.load('F'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -13857,7 +14872,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('M'),
+		Load = __DIST.load('N'),
 		Places = {
 			123456789,
 			987654321,

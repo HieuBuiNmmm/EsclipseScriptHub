@@ -116,7 +116,7 @@ return function(window, tab)
 			if num then
 				window:Notify({ Title = "Auto Farm", Description = ("Anchor #%d added"):format(num) })
 			else
-				window:Notify({ Title = "Auto Farm", Description = "Chưa xác định room/map, không thêm anchor" })
+				window:Notify({ Title = "Auto Farm", Description = "Không thêm được anchor (room đã đủ 2 hoặc chưa xác định room/map)" })
 			end
 			refreshAnchorLabel()
 		end,

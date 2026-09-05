@@ -33,7 +33,20 @@ if s2 and type(cmdFn2) == "function" then autoStartCommandFn = cmdFn2 end
 --// Table
 local autoStart = {}
 
+--// Callbacks chạy sau khi fire remote start thành công (đánh dấu mốc run bắt đầu).
+local startCallbacks = {}
+
 --// Methods
+function autoStart.OnStart(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(startCallbacks, callback)
+	return function()
+		for i, cb in ipairs(startCallbacks) do
+			if cb == callback then table.remove(startCallbacks, i) break end
+		end
+	end
+end
+
 function autoStart.Start()
 	if autoStartRunning then return end
 	autoStartRunning = true
@@ -59,6 +72,9 @@ function autoStart.Start()
 					local sCmd, err = pcall(autoStartCommandFn)
 					if sCmd then
 						notifier.Notify("Auto Start", "Game started!", 3)
+						for i = #startCallbacks, 1, -1 do
+							pcall(startCallbacks[i])
+						end
 					else
 						notifier.Notify("Auto Start", "Trigger failed: " .. tostring(err), 3)
 					end
