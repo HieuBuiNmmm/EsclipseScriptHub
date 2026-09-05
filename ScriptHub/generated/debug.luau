@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-04T03:25:15.726079600+00:00",
+    genDate = "2026-09-05T05:39:40.200201300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -9291,7 +9291,711 @@ return function(window, tab)
 	updateActiveCtxLabel()
 	refreshContextControls()
 	setEditControlsVisible(editDungeon ~= nil)
-end end function __DIST.n()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end end function __DIST.n()-- Smart Dodge (DungeonQuest): Phát hiện vùng nguy hiểm (Threat Detection) dựa trên
+-- thuộc tính Material == Enum.Material.Neon của các skill, projectile, và telegraphs.
+-- Giai đoạn 1: Quét, nhận diện hiểm họa ở Workspace (Depth 1) và giám sát trạng thái Fade/Destroy thời gian thực.
+
+--// Imports
+
+local services = __DIST.load('d')
+local lifecycle = __DIST.load('b')
+local notifier = __DIST.load('c')
+
+--// References
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local player = services.player
+
+--// Table
+local smartDodge = {}
+
+--// State
+local threatDetectorEnabled = false
+local logThreats = true
+local visualEspEnabled = true
+local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight }
+local hazardCount = 0
+local hazardChangedCallbacks = {}
+local lastHazardInfo = nil
+local connections = {}
+local ignoredSkillNames = {
+	["DodgeNode_ESP"] = true,
+}
+
+--// Danh sách các skill ngoại lệ (không dùng Material Neon, ví dụ có child precast bằng Plastic)
+local CUSTOM_HAZARD_EXCEPTIONS = {
+	["largeIceSpikes"] = true,
+	["mediumIceSpikes"] = true,
+	["smallIceSpikes"] = true,
+	["thirdBossMultiRings"] = true,
+}
+
+--// Ngưỡng coi như chiêu đã mờ hoàn toàn/kết thúc
+local FADE_TRANSPARENCY_THRESHOLD = 0.95
+
+--// Danh sách các đối tượng Workspace cấp 1 cần bỏ qua
+local IGNORED_NAMES = {
+	["dungeon"] = true,
+	["Dungeon"] = true,
+	["Terrain"] = true,
+	["Camera"] = true,
+	["CurrentCamera"] = true,
+	["RaycastIgnore"] = true,
+	["Drops"] = true,
+	["Loot"] = true,
+	["DodgeNode_ESP"] = true,
+}
+
+--// Thêm một Skill vào danh sách ngoại lệ
+function smartDodge.AddCustomHazard(skillName)
+	if type(skillName) == "string" and #skillName > 0 then
+		CUSTOM_HAZARD_EXCEPTIONS[skillName] = true
+	end
+end
+
+--// Đăng ký tên kỹ năng của Player để loại trừ
+function smartDodge.RegisterPlayerSkill(skillName)
+	if type(skillName) == "string" and #skillName > 0 then
+		local cleanName = skillName:gsub("^%s+", ""):gsub("%s+$", "")
+		if not ignoredSkillNames[cleanName] then
+			ignoredSkillNames[cleanName] = true
+			local normalized = cleanName:lower():gsub("%s+", "")
+			ignoredSkillNames[normalized] = true
+			if logThreats then
+				print(("[SmartDodge] 🛡️ Registered Player Skill (Ignored): %s"):format(cleanName))
+			end
+		end
+	end
+end
+
+--// Tự động quét và lắng nghe kỹ năng trong Backpack / Character của Player và đồng đội
+local function initPlayerSkillWatcher()
+	local function scanPlayer(p)
+		if not p then return end
+
+		local function scanContainer(container)
+			if not container then return end
+			for _, child in ipairs(container:GetChildren()) do
+				smartDodge.RegisterPlayerSkill(child.Name)
+			end
+		end
+
+		local function watchBackpack(bp)
+			if not bp then return end
+			scanContainer(bp)
+			bp.ChildAdded:Connect(function(child)
+				smartDodge.RegisterPlayerSkill(child.Name)
+			end)
+		end
+
+		local function watchCharacter(char)
+			if not char then return end
+			scanContainer(char)
+			char.ChildAdded:Connect(function(child)
+				if child:IsA("Tool") then
+					smartDodge.RegisterPlayerSkill(child.Name)
+				end
+			end)
+		end
+
+		if p:FindFirstChild("Backpack") then
+			watchBackpack(p.Backpack)
+		end
+		p.ChildAdded:Connect(function(child)
+			if child.Name == "Backpack" or child:IsA("Backpack") then
+				watchBackpack(child)
+			end
+		end)
+
+		if p.Character then
+			watchCharacter(p.Character)
+		end
+		p.CharacterAdded:Connect(watchCharacter)
+	end
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		scanPlayer(p)
+	end
+	Players.PlayerAdded:Connect(scanPlayer)
+
+	-- Quét định kỳ mỗi 1 giây trong trường hợp đồ trong Backpack được game nạp trễ
+	task.spawn(function()
+		while threatDetectorEnabled or #Players:GetPlayers() > 0 do
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p:FindFirstChild("Backpack") then
+					for _, item in ipairs(p.Backpack:GetChildren()) do
+						smartDodge.RegisterPlayerSkill(item.Name)
+					end
+				end
+				if p.Character then
+					for _, item in ipairs(p.Character:GetChildren()) do
+						if item:IsA("Tool") then
+							smartDodge.RegisterPlayerSkill(item.Name)
+						end
+					end
+				end
+			end
+			task.wait(1)
+		end
+	end)
+end
+
+initPlayerSkillWatcher()
+
+--// Kiểm tra xem đối tượng có phải là của Player (hoặc skill của Player) không
+local function isPlayerAsset(instance)
+	if not instance then return true end
+
+	-- 1. Kiểm tra trực thuộc Character của bất kỳ người chơi nào
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character and (instance == p.Character or instance:IsDescendantOf(p.Character)) then
+			return true
+		end
+	end
+
+	-- 2. Kiểm tra trực tiếp trong Backpack & Character của mọi người chơi tại thời điểm t = 0
+	local instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
+	local instNameLower = instNameClean:lower():gsub("%s+", "")
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		local bp = p:FindFirstChild("Backpack")
+		if bp then
+			if bp:FindFirstChild(instance.Name) or bp:FindFirstChild(instNameClean) then
+				smartDodge.RegisterPlayerSkill(instance.Name)
+				return true
+			end
+			for _, item in ipairs(bp:GetChildren()) do
+				local itemLower = item.Name:lower():gsub("%s+", "")
+				if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+					smartDodge.RegisterPlayerSkill(item.Name)
+					return true
+				end
+			end
+		end
+
+		if p.Character then
+			if p.Character:FindFirstChild(instance.Name) or p.Character:FindFirstChild(instNameClean) then
+				smartDodge.RegisterPlayerSkill(instance.Name)
+				return true
+			end
+			for _, item in ipairs(p.Character:GetChildren()) do
+				if item:IsA("Tool") then
+					local itemLower = item.Name:lower():gsub("%s+", "")
+					if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+						smartDodge.RegisterPlayerSkill(item.Name)
+						return true
+					end
+				end
+			end
+		end
+	end
+
+	-- 3. Kiểm tra các Tag/Attribute/ObjectValue sở hữu (creator, owner, player, caster)
+	local creatorVal = instance:FindFirstChild("creator") or instance:FindFirstChild("Creator")
+		or instance:FindFirstChild("owner") or instance:FindFirstChild("Owner")
+		or instance:FindFirstChild("player") or instance:FindFirstChild("Player")
+		or instance:FindFirstChild("caster") or instance:FindFirstChild("Caster")
+	if creatorVal then
+		if creatorVal:IsA("ObjectValue") and creatorVal.Value and creatorVal.Value:IsA("Player") then
+			return true
+		elseif creatorVal:IsA("StringValue") and Players:FindFirstChild(creatorVal.Value) then
+			return true
+		end
+	end
+
+	local ownerAttr = instance:GetAttribute("Owner") or instance:GetAttribute("Player")
+		or instance:GetAttribute("creator") or instance:GetAttribute("Creator")
+	if ownerAttr then
+		if type(ownerAttr) == "string" and Players:FindFirstChild(ownerAttr) then
+			return true
+		end
+	end
+
+	-- 4. Kiểm tra tên Instance có chứa tên hoặc UserId của Player không
+	for _, p in ipairs(Players:GetPlayers()) do
+		local pNameLower = p.Name:lower()
+		if instNameLower:find(pNameLower, 1, true) or instance.Name:find(tostring(p.UserId), 1, true) then
+			return true
+		end
+	end
+
+	-- 5. So khớp mềm (Fuzzy Match) với danh sách tên kỹ năng đã đăng ký
+	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
+		return true
+	end
+
+	for skillName in pairs(ignoredSkillNames) do
+		local sLower = skillName:lower():gsub("%s+", "")
+		if #sLower >= 3 and (instNameLower:find(sLower, 1, true) or sLower:find(instNameLower, 1, true)) then
+			return true
+		end
+	end
+
+	return false
+end
+
+--// Tìm các Part nguy hiểm bên trong instance (Depth 1 BasePart hoặc Model)
+local function extractHazardParts(instance)
+	local parts = {}
+	local isException = CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
+
+	if isException then
+		-- Ngoại lệ đặc biệt: tìm các part 'precast' hoặc BaseParts có trong model
+		if instance:IsA("BasePart") then
+			if instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+				table.insert(parts, instance)
+			end
+		elseif instance:IsA("Model") then
+			local precasts = {}
+			for _, desc in ipairs(instance:GetDescendants()) do
+				if desc:IsA("BasePart") and desc.Name:lower():find("precast") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					table.insert(precasts, desc)
+				end
+			end
+			if #precasts > 0 then
+				parts = precasts
+			else
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+						table.insert(parts, desc)
+					end
+				end
+			end
+		end
+	else
+		-- Tiêu chuẩn chung: Material == Neon
+		if instance:IsA("BasePart") then
+			if instance.Material == Enum.Material.Neon and instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+				table.insert(parts, instance)
+			end
+		elseif instance:IsA("Model") then
+			for _, desc in ipairs(instance:GetDescendants()) do
+				if desc:IsA("BasePart") and desc.Material == Enum.Material.Neon and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					table.insert(parts, desc)
+				end
+			end
+		end
+	end
+
+	return parts, isException
+end
+
+--// Lấy vị trí trung tâm của instance
+local function getInstancePosition(instance, hazardParts)
+	if instance:IsA("BasePart") then
+		return instance.Position
+	elseif instance:IsA("Model") then
+		if instance.PrimaryPart then
+			return instance.PrimaryPart.Position
+		end
+		local pivot = instance:GetPivot()
+		if pivot and pivot.Position ~= Vector3.zero then
+			return pivot.Position
+		end
+	end
+
+	if hazardParts and #hazardParts > 0 then
+		return hazardParts[1].Position
+	end
+
+	return Vector3.zero
+end
+
+local function fireHazardChanged()
+	for _, cb in ipairs(hazardChangedCallbacks) do
+		pcall(cb, hazardCount, lastHazardInfo)
+	end
+end
+
+--// Forward declaration
+local unregisterHazard
+
+--// Tạo và gắn SelectionBox đỏ 3D lên từng Part của chiêu thức
+local function attachSelectionBoxes(hazardParts)
+	local boxes = {}
+	for _, part in ipairs(hazardParts) do
+		if part and part:IsA("BasePart") and part.Parent then
+			local box = Instance.new("SelectionBox")
+			box.Name = "SmartDodge_SelectionBox"
+			box.Color3 = Color3.fromRGB(255, 45, 45)
+			box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
+			box.SurfaceTransparency = 0.6
+			box.LineThickness = 0.05
+			box.Adornee = part
+			box.Parent = part
+			table.insert(boxes, box)
+		end
+	end
+	return boxes
+end
+
+--// Đăng ký một Instance (Depth 1) là hiểm họa và gắn listeners theo dõi độ mờ
+local function registerHazard(instance)
+	if not threatDetectorEnabled or not instance or activeHazards[instance] then return end
+	if instance:IsA("Folder") then return end
+	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] or isPlayerAsset(instance) then return end
+
+	local hazardParts, isException = extractHazardParts(instance)
+	if #hazardParts == 0 then
+		-- Nếu là Model mới tạo có thể các part con chưa kịp parent vào Model
+		if instance:IsA("Model") then
+			local c
+			c = instance.DescendantAdded:Connect(function(desc)
+				if desc:IsA("BasePart") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					if isException or desc.Material == Enum.Material.Neon then
+						if c then c:Disconnect(); c = nil end
+						registerHazard(instance)
+					end
+				end
+			end)
+			task.delay(1, function()
+				if c then c:Disconnect(); c = nil end
+			end)
+		end
+		return
+	end
+
+	local pos = getInstancePosition(instance, hazardParts)
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local dist = rootPart and math.floor((pos - rootPart.Position).Magnitude) or 0
+
+	local activePartsSet = {}
+	local partConnections = {}
+
+	for _, part in ipairs(hazardParts) do
+		activePartsSet[part] = true
+	end
+
+	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
+
+	local info = {
+		Instance = instance,
+		Name = instance.Name,
+		Class = instance.ClassName,
+		Position = pos,
+		Distance = dist,
+		NeonCount = #hazardParts,
+		SpawnTime = os.clock(),
+		Connections = partConnections,
+		ActiveParts = activePartsSet,
+		VisualBoxes = visualBoxes,
+		IsException = isException,
+	}
+
+	activeHazards[instance] = info
+	hazardCount = hazardCount + 1
+	lastHazardInfo = info
+
+	-- Gắn sự kiện lắng nghe Transparency và Material thay đổi trên từng Part
+	local function checkPartStatus(part)
+		if not activeHazards[instance] or not activePartsSet[part] then return end
+
+		local isExpired = (not part.Parent)
+			or (part.Transparency >= FADE_TRANSPARENCY_THRESHOLD)
+			or (not isException and part.Material ~= Enum.Material.Neon)
+
+		if isExpired then
+			activePartsSet[part] = nil
+			-- Kiểm tra xem còn Part nào đang hoạt động không
+			local remaining = 0
+			for _ in pairs(activePartsSet) do
+				remaining = remaining + 1
+			end
+
+			if remaining == 0 then
+				unregisterHazard(instance, "Faded / Finished")
+			else
+				info.NeonCount = remaining
+			end
+		end
+	end
+
+	for _, part in ipairs(hazardParts) do
+		table.insert(partConnections, part:GetPropertyChangedSignal("Transparency"):Connect(function()
+			checkPartStatus(part)
+		end))
+		if not isException then
+			table.insert(partConnections, part:GetPropertyChangedSignal("Material"):Connect(function()
+				checkPartStatus(part)
+			end))
+		end
+		table.insert(partConnections, part.AncestryChanged:Connect(function()
+			checkPartStatus(part)
+		end))
+	end
+
+	if logThreats then
+		print(("[SmartDodge][Threat] 🚨 Hazard: %s | Class: %s | Threat Parts: %d | Dist: %d studs%s")
+			:format(info.Name, info.Class, info.NeonCount, info.Distance, isException and " (Exception)" or ""))
+	end
+
+	fireHazardChanged()
+end
+
+--// Hủy đăng ký hiểm họa (khi mờ, đổi material, hoặc bị xóa khỏi Workspace)
+function unregisterHazard(instance, reason)
+	if not activeHazards[instance] then return end
+	local info = activeHazards[instance]
+
+	-- Dọn dẹp SelectionBoxes
+	if info.VisualBoxes then
+		for _, box in ipairs(info.VisualBoxes) do
+			pcall(function() box:Destroy() end)
+		end
+		table.clear(info.VisualBoxes)
+	end
+
+	-- Dọn dẹp connection của từng part
+	if info.Connections then
+		for _, c in ipairs(info.Connections) do
+			pcall(function() c:Disconnect() end)
+		end
+		table.clear(info.Connections)
+	end
+
+	activeHazards[instance] = nil
+	hazardCount = math.max(0, hazardCount - 1)
+
+	if logThreats and info then
+		local reasonStr = reason and (" (" .. reason .. ")") or ""
+		print(("[SmartDodge][Threat] 🟢 Hazard Expired: %s%s")
+			:format(info.Name, reasonStr))
+	end
+
+	fireHazardChanged()
+end
+
+--// Bắt đầu quét & lắng nghe sự kiện Workspace cấp 1
+local function startTracking()
+	-- Dọn dẹp connection cũ nếu có
+	for _, c in ipairs(connections) do c:Disconnect() end
+	table.clear(connections)
+
+	-- Dọn dẹp hazards cũ
+	for inst, info in pairs(activeHazards) do
+		if info.VisualBoxes then
+			for _, box in ipairs(info.VisualBoxes) do pcall(function() box:Destroy() end) end
+		end
+		if info.Connections then
+			for _, c in ipairs(info.Connections) do pcall(function() c:Disconnect() end) end
+		end
+	end
+	table.clear(activeHazards)
+	hazardCount = 0
+
+	-- 1. Quét tức thời các child Depth 1 hiện tại trong Workspace
+	for _, child in ipairs(Workspace:GetChildren()) do
+		registerHazard(child)
+	end
+
+	-- 2. Lắng nghe vật thể mới sinh ra ở Workspace (Depth 1)
+	table.insert(connections, Workspace.ChildAdded:Connect(function(child)
+		registerHazard(child)
+	end))
+
+	-- 3. Lắng nghe vật thể bị xóa khỏi Workspace (Depth 1)
+	table.insert(connections, Workspace.ChildRemoved:Connect(function(child)
+		unregisterHazard(child, "Destroyed")
+	end))
+
+	if logThreats then
+		print("[SmartDodge] 📡 Threat Detector started! Monitoring Neon + Transparency events...")
+	end
+end
+
+local function stopTracking()
+	for _, c in ipairs(connections) do c:Disconnect() end
+	table.clear(connections)
+
+	for inst, info in pairs(activeHazards) do
+		if info.VisualBoxes then
+			for _, box in ipairs(info.VisualBoxes) do pcall(function() box:Destroy() end) end
+		end
+		if info.Connections then
+			for _, c in ipairs(info.Connections) do pcall(function() c:Disconnect() end) end
+		end
+	end
+	table.clear(activeHazards)
+	hazardCount = 0
+	fireHazardChanged()
+
+	if logThreats then
+		print("[SmartDodge] 🛑 Threat Detector stopped.")
+	end
+end
+
+--// Methods
+function smartDodge.Toggle(state)
+	threatDetectorEnabled = state and true or false
+	if threatDetectorEnabled then
+		startTracking()
+	else
+		stopTracking()
+	end
+end
+
+function smartDodge.IsEnabled()
+	return threatDetectorEnabled
+end
+
+function smartDodge.SetLogThreats(state)
+	logThreats = state and true or false
+end
+
+function smartDodge.IsLogThreatsEnabled()
+	return logThreats
+end
+
+function smartDodge.SetVisualEsp(state)
+	visualEspEnabled = state and true or false
+	if visualEspEnabled then
+		for _, info in pairs(activeHazards) do
+			if (not info.VisualBoxes or #info.VisualBoxes == 0) and info.ActiveParts then
+				local partsList = {}
+				for p in pairs(info.ActiveParts) do
+					table.insert(partsList, p)
+				end
+				info.VisualBoxes = attachSelectionBoxes(partsList)
+			end
+		end
+	else
+		for _, info in pairs(activeHazards) do
+			if info.VisualBoxes then
+				for _, box in ipairs(info.VisualBoxes) do
+					pcall(function() box:Destroy() end)
+				end
+				table.clear(info.VisualBoxes)
+			end
+		end
+	end
+end
+
+function smartDodge.IsVisualEspEnabled()
+	return visualEspEnabled
+end
+
+function smartDodge.GetHazardCount()
+	return hazardCount
+end
+
+function smartDodge.GetActiveHazards()
+	local list = {}
+	for _, data in pairs(activeHazards) do
+		if data.Instance and data.Instance.Parent == Workspace then
+			table.insert(list, data)
+		end
+	end
+	return list
+end
+
+function smartDodge.GetLastHazardInfo()
+	return lastHazardInfo
+end
+
+function smartDodge.OnHazardChanged(callback)
+	if type(callback) ~= "function" then return end
+	table.insert(hazardChangedCallbacks, callback)
+end
+
+lifecycle.Register(function()
+	stopTracking()
+end)
+
+return smartDodge
+end function __DIST.o()-- Tab SmartDodge (DungeonQuest): Quản lý tính năng né chiêu thông minh.
+-- Giai đoạn 1: Threat Detector (Quét & Nhận diện hiểm họa Neon trong Workspace).
+
+--// Imports
+
+local autoSave = __DIST.load('g')
+local smartDodge = __DIST.load('n')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Threat Detector" })
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Threat Monitor" })
+
+	--// Right Section Labels
+	local statusLabel = rightSection:Label({ Text = "Detector: <font color='rgb(255,80,80)'>Disabled</font>" })
+	local activeCountLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
+	local lastHazardLabel = rightSection:Label({ Text = "Last Detected: <font color='rgb(160,160,160)'>None</font>" })
+
+	local function updateMonitor(count, lastInfo)
+		count = count or smartDodge.GetHazardCount()
+		lastInfo = lastInfo or smartDodge.GetLastHazardInfo()
+
+		local isEnabled = smartDodge.IsEnabled()
+		local statusColor = isEnabled and "0, 255, 0" or "255, 80, 80"
+		local statusText = isEnabled and "Enabled (Scanning Neon)" or "Disabled"
+
+		pcall(function()
+			statusLabel:UpdateName("Detector: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
+		end)
+
+		local countColor = count > 0 and "255, 60, 60" or "0, 255, 0"
+		pcall(function()
+			activeCountLabel:UpdateName("Active Hazards: <font color='rgb(" .. countColor .. ")'>" .. tostring(count) .. "</font>")
+		end)
+
+		if lastInfo then
+			pcall(function()
+				lastHazardLabel:UpdateName(("Last Detected: <font color='rgb(255,220,120)'>%s</font> (%s, %d studs)"):format(
+					lastInfo.Name, lastInfo.Class, lastInfo.Distance
+				))
+			end)
+		else
+			pcall(function()
+				lastHazardLabel:UpdateName("Last Detected: <font color='rgb(160,160,160)'>None</font>")
+			end)
+		end
+	end
+
+	-- Lắng nghe cập nhật tức thời từ core
+	smartDodge.OnHazardChanged(function(count, lastInfo)
+		updateMonitor(count, lastInfo)
+	end)
+
+	--// Left Section Controls
+	leftSection:Toggle({
+		Name = "Enable Threat Detection",
+		Default = smartDodge.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.Toggle(state)
+			updateMonitor()
+		end),
+	}, "Toggle_SmartDodgeThreatDetection")
+
+	leftSection:Toggle({
+		Name = "Threat Visual ESP (SelectionBox)",
+		Default = smartDodge.IsVisualEspEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetVisualEsp(state)
+		end),
+	}, "Toggle_SmartDodgeVisualEsp")
+
+	leftSection:Toggle({
+		Name = "Log Threats to Console",
+		Default = smartDodge.IsLogThreatsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetLogThreats(state)
+		end),
+	}, "Toggle_SmartDodgeLogThreats")
+
+	leftSection:Button({
+		Name = "Clear Console",
+		Callback = function()
+			pcall(function()
+				if rconsoleclear then rconsoleclear() end
+			end)
+		end,
+	})
+
+	-- Khởi tạo monitor
+	updateMonitor()
+end
+end function __DIST.p()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
@@ -9478,14 +10182,21 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.o()-- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
--- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
--- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
+end function __DIST.q()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+-- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
+-- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
+-- hoạt động dù toggle có bật.
 
 --// Imports
 
 local shared = __DIST.load('e')
 local notifier = __DIST.load('c')
+
+--// Lobby placeId — ngoài các place này ra thì đều là dungeon
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
 
 --// State
 local autoStartEnabled = false
@@ -9495,9 +10206,9 @@ local autoStartDelay = 3
 local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
 local autoStartCommandFn = nil
 
---// Điều kiện kích hoạt: đang ở lobby (startButton hiện, ngoài dungeon) do shared tính
+--// Điều kiện kích hoạt: đang ở dungeon (place hiện tại KHÔNG phải placeId lobby).
 local function lobbyCondition()
-	return shared.IsInLobby()
+	return not LOBBY_PLACE_IDS[game.PlaceId]
 end
 
 --// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
@@ -9541,11 +10252,6 @@ function autoStart.Start()
 				end
 			end
 
-			--// Hết lobby (vào dungeon / đang chơi) -> cho phép kích lại ở lobby lần sau
-			if not met and autoStartTriggered then
-				autoStartTriggered = false
-			end
-
 			if not autoStartEnabled then break end
 			task.wait(1)
 		end
@@ -9570,19 +10276,124 @@ function autoStart.Toggle(state)
 	autoStartEnabled = state
 	if state then
 		autoStart.Start()
-		notifier.Notify("Auto Start", "Waiting for lobby...", 2)
 	else
 		autoStart.Stop()
-		notifier.Notify("Auto Start", "Stopped", 2)
 	end
 end
 
---// Reset trigger mỗi khi respawn
-shared.OnRespawn(function()
-	autoStartTriggered = false
-end)
+--// Vào dungeon = teleport đổi placeId -> script reload -> autoStartTriggered khởi tạo
+--// lại = false, nên fire đúng 1 lần mỗi dungeon mà không cần reset qua callback.
+--// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
+--// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.p()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStart end function __DIST.r()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+-- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
+-- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
+-- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
+
+--// Imports
+
+--// Lobby placeId — auto-press chỉ hoạt động tại đây
+
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
+
+--// Có đang ở lobby place không
+local function inLobbyPlace()
+	return LOBBY_PLACE_IDS[game.PlaceId] == true
+end
+
+--// State
+local enabled = false
+
+--// References
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+--// Nút Start trong introGui; button tồn tại khi introGui tồn tại (introGui biến mất
+--// sau khi bấm -> phải check cả introGui lẫn chính nút).
+local function findStartButton()
+	local player = game:GetService("Players").LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local introGui = playerGui:FindFirstChild("introGui")
+	if not introGui or not introGui:IsA("ScreenGui") or not introGui.Enabled then return nil end
+	local title = introGui:FindFirstChild("title")
+	if not title then return nil end
+	local frame = title:FindFirstChild("Frame")
+	if not frame then return nil end
+	local button = frame:FindFirstChild("TextButton")
+	if not button or not button:IsA("TextButton") or not button.Visible then return nil end
+	--// Chỉ chấp nhận nút có nhãn chứa "Play" để chắc tìm đúng nút Start.
+	local labelText = ""
+	if button.Text and type(button.Text) == "string" then
+		labelText = button.Text
+	end
+	if not string.find(string.lower(labelText), "play") then return nil end
+	return button
+end
+
+--// Mô phỏng chọn nút + nhấn Enter (theo Script3.txt), rồi BỎ CHỌN để thoát trạng
+--// thái selection/focus sau khi bấm cho sạch.
+local function pressStartButton(button)
+	pcall(function()
+		GuiService.SelectedObject = button
+	end)
+	task.wait(0.1)
+	VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+	task.wait()
+	VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+	task.wait(0.1)
+	pcall(function()
+		GuiService.SelectedObject = nil
+	end)
+end
+
+--// Loop: bấm lặp lại nút Start tới khi introGui biến mất (đã press được) rồi NGỪNG
+--// HẲN. Chống bấm quá sớm do animation: nếu nút chưa sẵn sàng lần đầu, các lần sau
+--// bấm tới khi dính. Chỉ hoạt động ở lobby place; vào dungeon ngừng hẳn.
+local function runLoop()
+	task.spawn(function()
+		local hadButton = false
+		while enabled do
+			--// Chỉ hoạt động ở lobby place; vào dungeon ngừng hẳn.
+			if not inLobbyPlace() then
+				task.wait(1)
+				continue
+			end
+
+			local button = findStartButton()
+			if button then
+				--// Bấm; nếu press thành công, introGui biến mất -> vòng sau không thấy nút.
+				pressStartButton(button)
+				hadButton = true
+			elseif hadButton then
+				--// Đã từng bấm mà giờ nút biến mất -> press thành công (introGui đóng).
+				print("[AutoStartLobby] Pressed Start")
+				break
+			end
+
+			if not enabled then break end
+			task.wait(0.2)
+		end
+	end)
+end
+
+--// Table
+local autoStartLobby = {}
+
+--// Methods
+function autoStartLobby.Toggle(state)
+	enabled = state
+	if enabled then
+		runLoop()
+	end
+end
+
+return autoStartLobby end function __DIST.s()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -9799,15 +10610,16 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.q()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.t()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('f')
-local autoJoin = __DIST.load('n')
-local autoStart = __DIST.load('o')
-local autoRetry = __DIST.load('p')
+local autoJoin = __DIST.load('p')
+local autoStart = __DIST.load('q')
+local autoStartLobby = __DIST.load('r')
+local autoRetry = __DIST.load('s')
 local autoSave = __DIST.load('g')
 local dungeonCatalog = __DIST.load('j')
 
@@ -9948,6 +10760,14 @@ return function(window, tab)
 	}, "Slider_AutoStartDelay"))
 
 	runSection:Toggle({
+		Name = "Auto Start Lobby",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoStartLobby.Toggle(state)
+		end),
+	}, "Toggle_AutoStartLobby")
+
+	runSection:Toggle({
 		Name = "Auto Retry",
 		Default = false,
 		Callback = autoSave.Wrap(function(state)
@@ -9995,21 +10815,34 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.r()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.u()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
 
---// Table
+--// Imports
 
+local lifecycle = __DIST.load('b')
+local notifier = __DIST.load('c')
+local shared = __DIST.load('e')
+
+--// Lobby placeId — ngoài các place này ra thì đều là dungeon
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
+
+--// Table
 local autoSell = {}
 
 --// State
+local autoSellEnabled = false
+local dungeonSellTriggered = false
 local excludeEquipped = true
 local rarityFilter = {} -- set: rarity string -> true
 local typeFilter = {} -- set: type string -> true
-local prefix = "" -- lọc item có tên bắt đầu bằng prefix (bỏ qua case)
-local levelReqMax = 0 -- lọc item có level yêu cầu <= levelReqMax (>0 mới áp dụng)
+local levelReqExactFilter = {} -- set: level number -> true (chọn đích danh các mốc)
+local levelReqMode = "None" -- "None" = exact multi, "Below" = ≤, "Above" = ≥
 local sellRunning = false
 
 --// Các category có trong inventory (từ log reloadInvy)
@@ -10022,6 +10855,15 @@ local CATEGORY_TYPES = {
 
 --// Cấp hiếm hợp lệ (để biết option nào là rarity)
 local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
+
+--// Các mốc Level Req tĩnh cho dropdown multi-select
+local LEVEL_REQ_OPTIONS = {
+	"1", "5", "15", "25", "35", "45", "55", "65", "75", "85",
+	"95", "105", "115", "125", "135", "145", "155", "165", "175", "185",
+}
+
+--// Chế độ lọc Level Req: None = chọn đích danh, Below = ≤, Above = ≥
+local LEVEL_REQ_MODE_OPTIONS = { "None", "Below", "Above" }
 
 --// Độ hiếm -> số 0..5 (dùng để map item.rarity sang RarityValue)
 local RARITY_ORDER = {
@@ -10185,16 +11027,26 @@ function autoSell.ShouldSellItem(item)
 		return false
 	end
 
-	if prefix and #prefix > 0 then
-		local lowerName = string.lower(item.Name or "")
-		local lowerPrefix = string.lower(prefix)
-		if string.sub(lowerName, 1, #lowerPrefix) ~= lowerPrefix then
-			return false
+	if next(levelReqExactFilter) then
+		local lvl = item.LevelReq or 0
+		if levelReqMode == "Below" then
+			-- Bán item có LevelReq ≤ mốc đã chọn (lấy max trong set)
+			local threshold
+			for v in pairs(levelReqExactFilter) do
+				if not threshold or v > threshold then threshold = v end
+			end
+			if threshold and lvl > threshold then return false end
+		elseif levelReqMode == "Above" then
+			-- Bán item có LevelReq ≥ mốc đã chọn (lấy min trong set)
+			local threshold
+			for v in pairs(levelReqExactFilter) do
+				if not threshold or v < threshold then threshold = v end
+			end
+			if threshold and lvl < threshold then return false end
+		else
+			-- None: chỉ bán đúng các mốc đã tick
+			if not levelReqExactFilter[lvl] then return false end
 		end
-	end
-
-	if levelReqMax and levelReqMax > 0 and (item.LevelReq or 0) > levelReqMax then
-		return false
 	end
 
 	return true
@@ -10206,8 +11058,7 @@ function autoSell.HasAnyFilter()
 	return (
 		next(rarityFilter) ~= nil
 		or next(typeFilter) ~= nil
-		or (prefix and #prefix > 0)
-		or (levelReqMax and levelReqMax > 0)
+		or next(levelReqExactFilter) ~= nil
 		or (not excludeEquipped)
 	)
 end
@@ -10265,21 +11116,16 @@ function autoSell.SellItems()
 	return result
 end
 
---// Điều khiển bộ lọc
-function autoSell.SetPrefixName(value)
-	prefix = (type(value) == "string" and value) or ""
+function autoSell.SetLevelReqMode(value)
+	if value == "Below" or value == "Above" then
+		levelReqMode = value
+	else
+		levelReqMode = "None"
+	end
 end
 
-function autoSell.GetPrefixName()
-	return prefix
-end
-
-function autoSell.SetLevelReqMax(value)
-	levelReqMax = tonumber(value) or 0
-end
-
-function autoSell.GetLevelReqMax()
-	return levelReqMax
+function autoSell.GetLevelReqMode()
+	return levelReqMode
 end
 
 function autoSell.SetExcludeEquipped(state)
@@ -10318,25 +11164,195 @@ function autoSell.GetTypeFilter()
 	return out
 end
 
+--// Level Req Exact filter dạng mảng các chuỗi đã chọn (vd {"1","15","145"})
+function autoSell.SetLevelReqExactFilter(selected)
+	levelReqExactFilter = {}
+	if type(selected) == "table" then
+		for _, v in ipairs(selected) do
+			local n = tonumber(v)
+			if n then levelReqExactFilter[n] = true end
+		end
+	end
+end
+
+function autoSell.GetLevelReqExactFilter()
+	local out = {}
+	for lvl in pairs(levelReqExactFilter) do table.insert(out, tostring(lvl)) end
+	return out
+end
+
+--// Auto Sell Toggle & Dungeon Start Watcher
+local function isDungeon()
+	return not LOBBY_PLACE_IDS[game.PlaceId]
+end
+
+local function triggerDungeonStartSell()
+	if not autoSellEnabled then return end
+	if dungeonSellTriggered then return end
+	if not isDungeon() then return end
+	if not autoSell.HasAnyFilter() then return end
+
+	dungeonSellTriggered = true
+	task.spawn(function()
+		-- Chờ 2.5s để server load dữ liệu inventory sau khi teleport/vào dungeon
+		task.wait(2.5)
+		if not autoSellEnabled or not isDungeon() then return end
+
+		local result = autoSell.SellItems()
+		if result and result.sold and result.sold > 0 then
+			notifier.Notify("AutoSell", ("Auto-sold %d item(s) on dungeon start."):format(result.sold), 3)
+		end
+	end)
+end
+
+function autoSell.Toggle(state)
+	autoSellEnabled = state and true or false
+	if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+		triggerDungeonStartSell()
+	end
+end
+
+function autoSell.IsEnabled()
+	return autoSellEnabled
+end
+
+--// Lắng nghe thay đổi dungeon để reset cờ và trigger bán cho run mới
+shared.OnDungeonNameChanged(function(name)
+	dungeonSellTriggered = false
+	if name then
+		triggerDungeonStartSell()
+	end
+end)
+
+shared.OnLobbyChanged(function(inLobby)
+	if not inLobby then
+		dungeonSellTriggered = false
+		triggerDungeonStartSell()
+	else
+		dungeonSellTriggered = false
+	end
+end)
+
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(1)
+		if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+			triggerDungeonStartSell()
+		end
+	end
+end)
+
+lifecycle.Register(function()
+	autoSellEnabled = false
+end)
+
+--// Export constants
+autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
+autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
+
 return autoSell
-end function __DIST.s()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.v()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('g')
-local autoSell = __DIST.load('r')
+local autoSell = __DIST.load('u')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
-	local section = tab:Section({ Side = "Left" })
-	section:Header({ Name = "AutoSell" })
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "AutoSell" })
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Filter Summary" })
+
+	--// Right Section Labels (Filter Summary)
+	local summaryStatusLabel = rightSection:Label({ Text = "Status: --" })
+	local summarySafetyLabel = rightSection:Label({ Text = "Safety: --" })
+	local summaryTriggerLabel = rightSection:Label({ Text = "Trigger: <font color='rgb(200,200,255)'>On Dungeon Start</font>" })
+	local summaryRarityLabel = rightSection:Label({ Text = "Rarities: --" })
+	local summaryTypeLabel = rightSection:Label({ Text = "Item Types: --" })
+	local summaryLevelLabel = rightSection:Label({ Text = "Level Req: --" })
+	local summaryEquippedLabel = rightSection:Label({ Text = "Exclude Equipped: --" })
+
+	local function updateSummary()
+		-- Status
+		local isAuto = autoSell.IsEnabled()
+		local statusColor = isAuto and "0, 255, 0" or "255, 80, 80"
+		local statusText = isAuto and "Enabled" or "Disabled"
+		pcall(function()
+			summaryStatusLabel:UpdateName("Status: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
+		end)
+
+		-- Safety Status
+		local hasFilter = autoSell.HasAnyFilter()
+		local safetyColor = hasFilter and "0, 255, 0" or "255, 80, 80"
+		local safetyText = hasFilter and "✓ Active (Configured)" or "⚠ NO filter selected"
+		pcall(function()
+			summarySafetyLabel:UpdateName("Safety: <font color='rgb(" .. safetyColor .. ")'>" .. safetyText .. "</font>")
+		end)
+
+		-- Rarities
+		local rarities = autoSell.GetRarityFilter()
+		local rarityText = #rarities > 0 and table.concat(rarities, ", ") or "All (No filter)"
+		local rarityColor = #rarities > 0 and "255, 220, 120" or "160, 160, 160"
+		pcall(function()
+			summaryRarityLabel:UpdateName("Rarities: <font color='rgb(" .. rarityColor .. ")'>" .. rarityText .. "</font>")
+		end)
+
+		-- Types
+		local types = autoSell.GetTypeFilter()
+		local typeText = #types > 0 and table.concat(types, ", ") or "All (No filter)"
+		local typeColor = #types > 0 and "255, 220, 120" or "160, 160, 160"
+		pcall(function()
+			summaryTypeLabel:UpdateName("Item Types: <font color='rgb(" .. typeColor .. ")'>" .. typeText .. "</font>")
+		end)
+
+		-- Level Req
+		local mode = autoSell.GetLevelReqMode()
+		local exactLevels = autoSell.GetLevelReqExactFilter()
+		table.sort(exactLevels, function(a, b) return (tonumber(a) or 0) < (tonumber(b) or 0) end)
+		local levelText = "All (No filter)"
+		local levelColor = "160, 160, 160"
+		if #exactLevels > 0 then
+			levelColor = "255, 220, 120"
+			if mode == "Below" then
+				levelText = "Below (≤ " .. exactLevels[#exactLevels] .. ")"
+			elseif mode == "Above" then
+				levelText = "Above (≥ " .. exactLevels[1] .. ")"
+			else
+				levelText = "Exact (" .. table.concat(exactLevels, ", ") .. ")"
+			end
+		end
+		pcall(function()
+			summaryLevelLabel:UpdateName("Level Req: <font color='rgb(" .. levelColor .. ")'>" .. levelText .. "</font>")
+		end)
+
+		-- Exclude Equipped
+		local exclude = autoSell.GetExcludeEquipped()
+		local excludeColor = exclude and "0, 255, 0" or "255, 80, 80"
+		local excludeText = exclude and "Yes (Protected)" or "No (May Sell)"
+		pcall(function()
+			summaryEquippedLabel:UpdateName("Exclude Equipped: <font color='rgb(" .. excludeColor .. ")'>" .. excludeText .. "</font>")
+		end)
+	end
+
+	--// Left Section Controls
+	leftSection:Toggle({
+		Name = "Auto Sell on Dungeon Start",
+		Default = autoSell.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSell.Toggle(state)
+			updateSummary()
+		end),
+	}, "Toggle_AutoSellEnabled")
 
 	local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
 	local TYPE_OPTIONS = { "Weapons", "Helmets", "Chests", "Abilities" }
 
-	section:Dropdown({
+	leftSection:Dropdown({
 		Name = "Rarity Filter",
 		Options = RARITY_OPTIONS,
 		Default = autoSell.GetRarityFilter(),
@@ -10346,10 +11362,11 @@ return function(window, tab)
 			local list = {}
 			for rarity in pairs(selected) do table.insert(list, rarity) end
 			autoSell.SetRarityFilter(list)
+			updateSummary()
 		end),
 	}, "Dropdown_AutoSellRarity")
 
-	section:Dropdown({
+	leftSection:Dropdown({
 		Name = "Item Type Filter",
 		Options = TYPE_OPTIONS,
 		Default = autoSell.GetTypeFilter(),
@@ -10359,42 +11376,65 @@ return function(window, tab)
 			local list = {}
 			for itemType in pairs(selected) do table.insert(list, itemType) end
 			autoSell.SetTypeFilter(list)
+			updateSummary()
 		end),
 	}, "Dropdown_AutoSellType")
 
-	section:Input({
-		Name = "Prefix Name (starts with)",
-		Default = autoSell.GetPrefixName(),
-		Placeholder = "e.g. Runic",
-		AcceptedCharacters = "All",
-		Callback = autoSave.Wrap(function(value)
-			autoSell.SetPrefixName(value)
-		end),
-	}, "Input_AutoSellPrefix")
+	local levelReqDropdown -- forward declaration để mode callback có thể truy cập
 
-	section:Input({
-		Name = "Max Level Req (≤)",
-		Default = tostring(autoSell.GetLevelReqMax()),
-		Placeholder = "e.g. 130",
-		AcceptedCharacters = "Numeric",
-		Callback = autoSave.Wrap(function(value)
-			autoSell.SetLevelReqMax(tonumber(value) or 0)
+	local currentMode = autoSell.GetLevelReqMode()
+	local currentModeIndex = table.find(autoSell.LEVEL_REQ_MODE_OPTIONS, currentMode) or 1
+	leftSection:Dropdown({
+		Name = "Level Req Mode",
+		Options = autoSell.LEVEL_REQ_MODE_OPTIONS,
+		Default = currentModeIndex,
+		Multi = false,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			autoSell.SetLevelReqMode(selected)
+			if levelReqDropdown then
+				local isMulti = (selected == "None")
+				levelReqDropdown.Settings.Multi = isMulti
+				levelReqDropdown.Settings.Required = not isMulti
+				levelReqDropdown:UpdateSelection({})
+			end
+			updateSummary()
 		end),
-	}, "Input_AutoSellLevelReq")
+	}, "Dropdown_AutoSellLevelReqMode")
 
-	section:Toggle({
+	levelReqDropdown = leftSection:Dropdown({
+		Name = "Level Req Filter",
+		Options = autoSell.LEVEL_REQ_OPTIONS,
+		Default = autoSell.GetLevelReqExactFilter(),
+		Multi = currentMode == "None",
+		Required = currentMode ~= "None",
+		Search = true,
+		Callback = autoSave.Wrap(function(selected)
+			local list = {}
+			if type(selected) == "table" then
+				for level in pairs(selected) do table.insert(list, level) end
+			elseif type(selected) == "string" then
+				table.insert(list, selected)
+			end
+			autoSell.SetLevelReqExactFilter(list)
+			updateSummary()
+		end),
+	}, "Dropdown_AutoSellLevelReq")
+
+	leftSection:Toggle({
 		Name = "Exclude Equipped Items",
 		Default = autoSell.GetExcludeEquipped(),
 		Callback = autoSave.Wrap(function(state)
 			autoSell.SetExcludeEquipped(state)
+			updateSummary()
 		end),
 	}, "Toggle_AutoSellExcludeEquipped")
 
-	local resultLabel = section:Label({
+	local resultLabel = leftSection:Label({
 		Text = "No search made yet.",
 	}, "Label_AutoSellResult")
 
-	section:Button({
+	leftSection:Button({
 		Name = "Search",
 		Callback = function()
 			task.spawn(function()
@@ -10420,7 +11460,7 @@ return function(window, tab)
 		end,
 	})
 
-	section:Button({
+	leftSection:Button({
 		Name = "Sell Now",
 		Callback = function()
 			task.spawn(function()
@@ -10481,8 +11521,11 @@ return function(window, tab)
 			end)
 		end,
 	})
+
+	-- Khởi tạo hiển thị summary lần đầu
+	updateSummary()
 end
-end function __DIST.t()-- DodgeNode: lưới node xung quanh player dùng làm bản đồ an toàn cho SmartDodge.
+end function __DIST.w()-- DodgeNode: lưới node xung quanh player dùng làm bản đồ an toàn cho SmartDodge.
 -- Node nằm trong vùng precast của skill -> màu đỏ (nguy hiểm).
 -- Node nằm ngoài mọi precast -> màu xanh (an toàn) + là ứng viên để tele tới.
 
@@ -10698,14 +11741,14 @@ function dodgeNodes.FindSafeSpot(character)
 end
 
 return dodgeNodes
-end function __DIST.u()-- ESP hitbox cho DungeonQuest.
+end function __DIST.x()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
 
 local services = __DIST.load('d')
 local shared = __DIST.load('e')
-local dodgeNode = __DIST.load('t')
+local dodgeNode = __DIST.load('w')
 
 --// Table
 local esp = {}
@@ -11382,7 +12425,7 @@ function esp.GetDodgeZoneSafetyRadius()
 end
 
 return esp
-end function __DIST.v()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.y()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -11523,7 +12566,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.w()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
+end function __DIST.z()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
 -- Script1: ép hiện hình liên tục các phần map bị ẩn/thuỷ tinh.
 -- Script2: dọn dẹp vật thể rác (decoration) ở lớp ngoài cùng của Map.
 -- Script3: radar hitbox quét quanh nhân vật, xóa part có độ cao (Y) > 80.
@@ -11694,15 +12737,15 @@ function mapOptimizer.IsEnabled()
 	return enabled
 end
 
-return mapOptimizer end function __DIST.x()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
+return mapOptimizer end function __DIST.A()-- Tab Visual (DungeonQuest): các tính năng hiển thị trực quan (visual).
 
 --// Imports
 	
 local autoSave = __DIST.load('g')
-	local esp = __DIST.load('u')
-	local enemyEsp = __DIST.load('v')
-	local mapOptimizer = __DIST.load('w')
-	local dodgeNode = __DIST.load('t')
+	local esp = __DIST.load('x')
+	local enemyEsp = __DIST.load('y')
+	local mapOptimizer = __DIST.load('z')
+	local dodgeNode = __DIST.load('w')
 	local ui = __DIST.load('f')
 
 --// Hitbox mode options
@@ -11922,7 +12965,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.y()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+end function __DIST.B()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -11997,7 +13040,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.z()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
+end function __DIST.C()-- Tab Config (DungeonQuest): tự build config section dùng API có sẵn của Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -12005,7 +13048,7 @@ end function __DIST.z()-- Tab Config (DungeonQuest): tự build config section d
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('g')
-local autoHide = __DIST.load('y')
+local autoHide = __DIST.load('B')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -12162,7 +13205,7 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.A()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.D()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -12760,12 +13803,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.B()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
+end function __DIST.E()-- Tab Notifications (DungeonQuest): cấu hình thông báo Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('A')
+local webhook = __DIST.load('D')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -12832,12 +13875,12 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.C()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
+end function __DIST.F()-- Tab State (DungeonQuest): hiển thị trạng thái thời gian thực của script.
 
 --// Imports
 
 local shared = __DIST.load('e')
-local autoRetry = __DIST.load('p')
+local autoRetry = __DIST.load('s')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -12982,7 +14025,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.D()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.G()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -13036,6 +14079,7 @@ return function(self)
 	local tabs = {
 		Player = tabGroup:Tab({ Name = "Player", Image = "rbxassetid://10734950309" }),
 		Pathfinder = tabGroup:Tab({ Name = "Auto Farm", Image = "rbxassetid://18821914323" }),
+		SmartDodge = tabGroup:Tab({ Name = "Smart Dodge", Image = "rbxassetid://10734950309" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
 		Visual = tabGroup:Tab({ Name = "Visual", Image = "rbxassetid://10734950309" }),
@@ -13050,15 +14094,17 @@ return function(self)
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local speedTab = __DIST.load('i')
 	local autoFarmPathfinderTab = __DIST.load('m')
-	local dungeonTab = __DIST.load('q')
-	local inventoryTab = __DIST.load('s')
-	local visualTab = __DIST.load('x')
-	local configTab = __DIST.load('z')
-	local notificationsTab = __DIST.load('B')
-	local stateTab = __DIST.load('C')
+	local smartDodgeTab = __DIST.load('o')
+	local dungeonTab = __DIST.load('t')
+	local inventoryTab = __DIST.load('v')
+	local visualTab = __DIST.load('A')
+	local configTab = __DIST.load('C')
+	local notificationsTab = __DIST.load('E')
+	local stateTab = __DIST.load('F')
 
 	speedTab(window, tabs.Player)
 	autoFarmPathfinderTab(window, tabs.Pathfinder)
+	smartDodgeTab(window, tabs.SmartDodge)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	visualTab(window, tabs.Visual)
@@ -13071,9 +14117,9 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('A')
+	local webhook = __DIST.load('D')
 	webhook.Init()
-__DIST.load('v')
+__DIST.load('y')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
@@ -13081,7 +14127,7 @@ __DIST.load('v')
 local contextual = __DIST.load('k')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('y')
+	local autoHide = __DIST.load('B')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -13093,7 +14139,7 @@ local contextual = __DIST.load('k')
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.E()
+end function __DIST.H()
 local flags = {}
 
 function flags:Export()
@@ -13136,7 +14182,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.F()
+return flags end function __DIST.I()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -13205,12 +14251,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.G()
+end function __DIST.J()
 --// Imports
 
 
 
-local binder = __DIST.load('F')
+local binder = __DIST.load('I')
 
 --// Variables
 local interface = {}
@@ -13230,9 +14276,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.H()--// Imports
+end function __DIST.K()--// Imports
 
-local binder = __DIST.load('F')
+local binder = __DIST.load('I')
 
 --// Variables
 local esp = {}
@@ -13243,11 +14289,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.I()--// Imports
+end function __DIST.L()--// Imports
 
-local flags = __DIST.load('E')
-local interface = __DIST.load('G')
-local esp = __DIST.load('H')
+local flags = __DIST.load('H')
+local interface = __DIST.load('J')
+local esp = __DIST.load('K')
 
 --// Initialize
 local window = interface:Window({
@@ -13286,7 +14332,7 @@ return {
 		end,
 	},
 }
-end function __DIST.J()--// Variables
+end function __DIST.M()--// Variables
 
 local utility = {}
 
@@ -13318,7 +14364,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.K()--// Functions
+end function __DIST.N()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -13328,14 +14374,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.L()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.O()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('I')
-	local utility = __DIST.load('J')
-	local services = __DIST.load('K')
+	local base = __DIST.load('L')
+	local utility = __DIST.load('M')
+	local services = __DIST.load('N')
 
 	--// References
 	local flags = base.Flags
@@ -13401,7 +14447,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('D'),
+		Load = __DIST.load('G'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -13412,7 +14458,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('L'),
+		Load = __DIST.load('O'),
 		Places = {
 			123456789,
 			987654321,

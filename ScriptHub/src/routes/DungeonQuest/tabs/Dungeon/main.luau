@@ -5,6 +5,7 @@
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoJoin = require("@routes/DungeonQuest/core/autoJoin")
 local autoStart = require("@routes/DungeonQuest/core/autoStart")
+local autoStartLobby = require("@routes/DungeonQuest/core/autoStartLobby")
 local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
@@ -144,6 +145,14 @@ return function(window, tab)
 			autoStart.SetDelay(Value)
 		end),
 	}, "Slider_AutoStartDelay"))
+
+	runSection:Toggle({
+		Name = "Auto Start Lobby",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			autoStartLobby.Toggle(state)
+		end),
+	}, "Toggle_AutoStartLobby")
 
 	runSection:Toggle({
 		Name = "Auto Retry",

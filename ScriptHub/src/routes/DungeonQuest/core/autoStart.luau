@@ -1,10 +1,17 @@
--- Auto Start Game cho DungeonQuest: chờ tới khi ở LOBBY (startButton hiện + ngoài
--- dungeon) rồi fire remote start. Trạng thái lobby/dungeon tính tập trung ở shared
--- để autoStart, webhook... dùng chung, tránh mỗi nơi tự poll startButton riêng.
+-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+-- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
+-- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
+-- hoạt động dù toggle có bật.
 
 --// Imports
 local shared = require("@routes/DungeonQuest/core/shared")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+
+--// Lobby placeId — ngoài các place này ra thì đều là dungeon
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
 
 --// State
 local autoStartEnabled = false
@@ -14,9 +21,9 @@ local autoStartDelay = 3
 local autoStartCommand = 'game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()'
 local autoStartCommandFn = nil
 
---// Điều kiện kích hoạt: đang ở lobby (startButton hiện, ngoài dungeon) do shared tính
+--// Điều kiện kích hoạt: đang ở dungeon (place hiện tại KHÔNG phải placeId lobby).
 local function lobbyCondition()
-	return shared.IsInLobby()
+	return not LOBBY_PLACE_IDS[game.PlaceId]
 end
 
 --// Compile remote start command (giữ hành vi cũ, loadstring có sẵn trong executor)
@@ -60,11 +67,6 @@ function autoStart.Start()
 				end
 			end
 
-			--// Hết lobby (vào dungeon / đang chơi) -> cho phép kích lại ở lobby lần sau
-			if not met and autoStartTriggered then
-				autoStartTriggered = false
-			end
-
 			if not autoStartEnabled then break end
 			task.wait(1)
 		end
@@ -89,16 +91,14 @@ function autoStart.Toggle(state)
 	autoStartEnabled = state
 	if state then
 		autoStart.Start()
-		notifier.Notify("Auto Start", "Waiting for lobby...", 2)
 	else
 		autoStart.Stop()
-		notifier.Notify("Auto Start", "Stopped", 2)
 	end
 end
 
---// Reset trigger mỗi khi respawn
-shared.OnRespawn(function()
-	autoStartTriggered = false
-end)
+--// Vào dungeon = teleport đổi placeId -> script reload -> autoStartTriggered khởi tạo
+--// lại = false, nên fire đúng 1 lần mỗi dungeon mà không cần reset qua callback.
+--// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
+--// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
 return autoStart

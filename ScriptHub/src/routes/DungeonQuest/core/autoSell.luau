@@ -3,15 +3,28 @@
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
 
+--// Imports
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local notifier = require("@routes/DungeonQuest/core/notifier")
+local shared = require("@routes/DungeonQuest/core/shared")
+
+--// Lobby placeId — ngoài các place này ra thì đều là dungeon
+local LOBBY_PLACE_IDS = {
+	[77649408247578] = true,
+	[115445507767090] = true,
+}
+
 --// Table
 local autoSell = {}
 
 --// State
+local autoSellEnabled = false
+local dungeonSellTriggered = false
 local excludeEquipped = true
 local rarityFilter = {} -- set: rarity string -> true
 local typeFilter = {} -- set: type string -> true
-local prefix = "" -- lọc item có tên bắt đầu bằng prefix (bỏ qua case)
-local levelReqMax = 0 -- lọc item có level yêu cầu <= levelReqMax (>0 mới áp dụng)
+local levelReqExactFilter = {} -- set: level number -> true (chọn đích danh các mốc)
+local levelReqMode = "None" -- "None" = exact multi, "Below" = ≤, "Above" = ≥
 local sellRunning = false
 
 --// Các category có trong inventory (từ log reloadInvy)
@@ -24,6 +37,15 @@ local CATEGORY_TYPES = {
 
 --// Cấp hiếm hợp lệ (để biết option nào là rarity)
 local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
+
+--// Các mốc Level Req tĩnh cho dropdown multi-select
+local LEVEL_REQ_OPTIONS = {
+	"1", "5", "15", "25", "35", "45", "55", "65", "75", "85",
+	"95", "105", "115", "125", "135", "145", "155", "165", "175", "185",
+}
+
+--// Chế độ lọc Level Req: None = chọn đích danh, Below = ≤, Above = ≥
+local LEVEL_REQ_MODE_OPTIONS = { "None", "Below", "Above" }
 
 --// Độ hiếm -> số 0..5 (dùng để map item.rarity sang RarityValue)
 local RARITY_ORDER = {
@@ -187,16 +209,26 @@ function autoSell.ShouldSellItem(item)
 		return false
 	end
 
-	if prefix and #prefix > 0 then
-		local lowerName = string.lower(item.Name or "")
-		local lowerPrefix = string.lower(prefix)
-		if string.sub(lowerName, 1, #lowerPrefix) ~= lowerPrefix then
-			return false
+	if next(levelReqExactFilter) then
+		local lvl = item.LevelReq or 0
+		if levelReqMode == "Below" then
+			-- Bán item có LevelReq ≤ mốc đã chọn (lấy max trong set)
+			local threshold
+			for v in pairs(levelReqExactFilter) do
+				if not threshold or v > threshold then threshold = v end
+			end
+			if threshold and lvl > threshold then return false end
+		elseif levelReqMode == "Above" then
+			-- Bán item có LevelReq ≥ mốc đã chọn (lấy min trong set)
+			local threshold
+			for v in pairs(levelReqExactFilter) do
+				if not threshold or v < threshold then threshold = v end
+			end
+			if threshold and lvl < threshold then return false end
+		else
+			-- None: chỉ bán đúng các mốc đã tick
+			if not levelReqExactFilter[lvl] then return false end
 		end
-	end
-
-	if levelReqMax and levelReqMax > 0 and (item.LevelReq or 0) > levelReqMax then
-		return false
 	end
 
 	return true
@@ -208,8 +240,7 @@ function autoSell.HasAnyFilter()
 	return (
 		next(rarityFilter) ~= nil
 		or next(typeFilter) ~= nil
-		or (prefix and #prefix > 0)
-		or (levelReqMax and levelReqMax > 0)
+		or next(levelReqExactFilter) ~= nil
 		or (not excludeEquipped)
 	)
 end
@@ -267,21 +298,16 @@ function autoSell.SellItems()
 	return result
 end
 
---// Điều khiển bộ lọc
-function autoSell.SetPrefixName(value)
-	prefix = (type(value) == "string" and value) or ""
+function autoSell.SetLevelReqMode(value)
+	if value == "Below" or value == "Above" then
+		levelReqMode = value
+	else
+		levelReqMode = "None"
+	end
 end
 
-function autoSell.GetPrefixName()
-	return prefix
-end
-
-function autoSell.SetLevelReqMax(value)
-	levelReqMax = tonumber(value) or 0
-end
-
-function autoSell.GetLevelReqMax()
-	return levelReqMax
+function autoSell.GetLevelReqMode()
+	return levelReqMode
 end
 
 function autoSell.SetExcludeEquipped(state)
@@ -319,5 +345,91 @@ function autoSell.GetTypeFilter()
 	for t in pairs(typeFilter) do table.insert(out, t) end
 	return out
 end
+
+--// Level Req Exact filter dạng mảng các chuỗi đã chọn (vd {"1","15","145"})
+function autoSell.SetLevelReqExactFilter(selected)
+	levelReqExactFilter = {}
+	if type(selected) == "table" then
+		for _, v in ipairs(selected) do
+			local n = tonumber(v)
+			if n then levelReqExactFilter[n] = true end
+		end
+	end
+end
+
+function autoSell.GetLevelReqExactFilter()
+	local out = {}
+	for lvl in pairs(levelReqExactFilter) do table.insert(out, tostring(lvl)) end
+	return out
+end
+
+--// Auto Sell Toggle & Dungeon Start Watcher
+local function isDungeon()
+	return not LOBBY_PLACE_IDS[game.PlaceId]
+end
+
+local function triggerDungeonStartSell()
+	if not autoSellEnabled then return end
+	if dungeonSellTriggered then return end
+	if not isDungeon() then return end
+	if not autoSell.HasAnyFilter() then return end
+
+	dungeonSellTriggered = true
+	task.spawn(function()
+		-- Chờ 2.5s để server load dữ liệu inventory sau khi teleport/vào dungeon
+		task.wait(2.5)
+		if not autoSellEnabled or not isDungeon() then return end
+
+		local result = autoSell.SellItems()
+		if result and result.sold and result.sold > 0 then
+			notifier.Notify("AutoSell", ("Auto-sold %d item(s) on dungeon start."):format(result.sold), 3)
+		end
+	end)
+end
+
+function autoSell.Toggle(state)
+	autoSellEnabled = state and true or false
+	if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+		triggerDungeonStartSell()
+	end
+end
+
+function autoSell.IsEnabled()
+	return autoSellEnabled
+end
+
+--// Lắng nghe thay đổi dungeon để reset cờ và trigger bán cho run mới
+shared.OnDungeonNameChanged(function(name)
+	dungeonSellTriggered = false
+	if name then
+		triggerDungeonStartSell()
+	end
+end)
+
+shared.OnLobbyChanged(function(inLobby)
+	if not inLobby then
+		dungeonSellTriggered = false
+		triggerDungeonStartSell()
+	else
+		dungeonSellTriggered = false
+	end
+end)
+
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(1)
+		if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+			triggerDungeonStartSell()
+		end
+	end
+end)
+
+lifecycle.Register(function()
+	autoSellEnabled = false
+end)
+
+--// Export constants
+autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
+autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell

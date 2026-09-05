@@ -1,0 +1,28 @@
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Đường dẫn đến TextButton của bạn (Nên dùng WaitForChild để đảm bảo UI đã load xong)
+local textButton = playerGui:WaitForChild("introGui"):WaitForChild("title"):WaitForChild("Frame"):WaitForChild("TextButton")
+
+-- Bước 1: "Chọn" đối tượng (Tạo trạng thái focus/hover cho TextButton)
+GuiService.SelectedObject = textButton
+
+-- Đợi 1 chút để UI kịp phản hồi trạng thái focus (có thể bỏ qua, nhưng khuyên dùng cho mượt)
+task.wait(0.1)
+
+-- Bước 2: Dùng VIM để mô phỏng thao tác nhấn phím Enter (Return)
+-- Gửi tín hiệu nhấn phím xuống (KeyDown)
+VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+
+-- Đợi 1 frame
+task.wait()
+
+-- Gửi tín hiệu nhả phím lên (KeyUp)
+VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+
+-- (Tùy chọn) Bỏ chọn nút sau khi đã nhấn xong
+-- GuiService.SelectedObject = nil
