@@ -6,6 +6,7 @@
 local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+local coordinator = require("@routes/DungeonQuest/core/coordinator")
 
 --// References
 local Players = game:GetService("Players")
@@ -773,6 +774,10 @@ local microBlinkInterval = 0.05      -- Khoảng thời gian giữa các bước
 local isDodging = false
 local dodgeThread = nil
 local dodgeStatusCallbacks = {}
+--// Provider trả về vị trí cần quay mặt khi né (ví dụ enemy — do AutoFarm Mode 2 đăng ký).
+--// nil = giữ hành vi cũ (face theo hướng di chuyển/safe spot). Giúp "luôn facing target"
+--// kể cả trong lúc blink — hiện tại performDodge quay mặt theo hướng nhảy (lookTarget = newPos+dir).
+local faceTargetProvider = nil
 
 --// Raycast Parameters dùng chung
 local raycastParams = RaycastParams.new()
@@ -1463,6 +1468,24 @@ local function fireDodgeStatus(status)
 	end
 end
 
+--// Lấy vị trí cần quay mặt khi né (nếu có provider). pcall cho an toàn vì provider do module khác bơm.
+local function getFaceTarget()
+	if not faceTargetProvider then return nil end
+	local ok, pos = pcall(faceTargetProvider)
+	if ok and type(pos) == "table" and pos.X and pos.Z then return pos end
+	return nil
+end
+
+--// Snap rotation khi teleport dứt điểm: face provider target nếu có, không thì giữ LookVector cũ.
+local function snapFace(rootPart, pos)
+	local targetPos = getFaceTarget()
+	if targetPos then
+		rootPart.CFrame = CFrame.new(pos, Vector3.new(targetPos.X, pos.Y, targetPos.Z))
+	else
+		rootPart.CFrame = CFrame.new(pos, pos + rootPart.CFrame.LookVector)
+	end
+end
+
 --// Thực thi né sang Safe Spot bằng cơ chế Hybrid MoveTo + Micro-Teleport
 local function performDodge(safePos, escapeDist)
 	local char = player and player.Character
@@ -1476,17 +1499,27 @@ local function performDodge(safePos, escapeDist)
 		isDodging = true
 		fireDodgeStatus("Dodging")
 
+		--// Luôn-facing target khi có provider: tắt AutoRotate để MoveTo không quay nhân vật theo
+		--// hướng đi; tự xoay mặt target mỗi nhịp bé (blink). Khôi phục AutoRotate khi kết thúc.
+		local prevAutoRotate = humanoid.AutoRotate
+		local faceEnemy = faceTargetProvider ~= nil
+		if faceEnemy then humanoid.AutoRotate = false end
+		local function finish()
+			if faceEnemy then humanoid.AutoRotate = prevAutoRotate end
+			isDodging = false
+			fireDodgeStatus("Safe")
+		end
+
 		local currentPos = rootPart.Position
 		local totalDist = (safePos - currentPos).Magnitude
 
 		-- Trường hợp 1: Khoảng cách ngắn (<= maxTeleportStep, ví dụ <= 3.0 studs) -> Teleport dứt điểm 1 nhịp
 		if totalDist <= maxTeleportStep then
-			rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
+			snapFace(rootPart, safePos)
 			if logInDanger then
 				print(("[SmartDodge][Dodge] ⚡ Instant Micro-Teleport (%.1f studs) to Safe Spot!"):format(totalDist))
 			end
-			isDodging = false
-			fireDodgeStatus("Safe")
+			finish()
 			return
 		end
 
@@ -1507,11 +1540,16 @@ local function performDodge(safePos, escapeDist)
 
 				-- Nếu đi bộ đã tới cự ly micro-teleport cuối cùng
 				if distRemaining <= maxTeleportStep then
-					rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
+					snapFace(rootPart, safePos)
 					humanoid:MoveTo(safePos)
 					break
 				end
 
+				--// Face target giữa các bước đi (MoveTo dịch chuyển, ta chỉ xoay hướng, giữ vị trí).
+				local targetPos = getFaceTarget()
+				if targetPos then
+					rootPart.CFrame = CFrame.lookAt(rootPart.Position, Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z))
+				end
 				humanoid:MoveTo(safePos)
 				task.wait(0.05)
 			end
@@ -1531,7 +1569,7 @@ local function performDodge(safePos, escapeDist)
 
 				-- Nếu đã tới cự ly micro-teleport cuối cùng
 				if distRemaining <= maxTeleportStep then
-					rootPart.CFrame = CFrame.new(safePos, safePos + rootPart.CFrame.LookVector)
+					snapFace(rootPart, safePos)
 					humanoid:MoveTo(safePos)
 					break
 				end
@@ -1542,15 +1580,22 @@ local function performDodge(safePos, escapeDist)
 				humanoid:MoveTo(safePos)
 
 				local newPos = currentPos + dir * stepDist
-				local lookTarget = newPos + dir
-				rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
+				--// Face target khi blink (không quay mặt theo hướng nhảy — chính là "facing về hướng
+				--// di chuyển - blink" mà user gặp). Không có provider thì quay mặt theo hướng nhảy như cũ.
+				local targetPos = getFaceTarget()
+				if targetPos then
+					rootPart.CFrame = CFrame.new(newPos, Vector3.new(targetPos.X, newPos.Y, targetPos.Z))
+				else
+					--// Không có provider: GIỮ hướng nhìn hiện tại — blink là teleport chứ không đi bộ,
+					--// quay mặt theo hướng nhảy chỉ làm nhân vật "xoay giật" theo hướng dodge.
+					rootPart.CFrame = CFrame.new(newPos, newPos + rootPart.CFrame.LookVector)
+				end
 
 				task.wait(microBlinkInterval)
 			end
 		end
 
-		isDodging = false
-		fireDodgeStatus("Safe")
+		finish()
 	end)
 end
 
@@ -1688,13 +1733,27 @@ local function stopTracking()
 	end
 end
 
---// Methods
+--// Bật/thay đổi engine KHÔNG liên quan tới độc quyền coordinator: Auto Farm có thể điều khiển
+--// Smart Dodge làm chủ di chuyển (Mode 2) mà không đụng chạy tới các hệ thống khác.
+function smartDodge.StartEngine()
+	if threatDetectorEnabled then return end
+	threatDetectorEnabled = true
+	startTracking()
+end
+
+function smartDodge.StopEngine()
+	if not threatDetectorEnabled then return end
+	threatDetectorEnabled = false
+	stopTracking()
+end
+
+--// Toggle độc lập (UI): bật engine + tự tuyên bố độc quyền (tắt các hệ thống điều khiển nhân vật khác).
 function smartDodge.Toggle(state)
-	threatDetectorEnabled = state and true or false
-	if threatDetectorEnabled then
-		startTracking()
+	if state then
+		smartDodge.StartEngine()
+		coordinator.EnableExclusive("SmartDodge")
 	else
-		stopTracking()
+		smartDodge.StopEngine()
 	end
 end
 
@@ -1762,6 +1821,16 @@ end
 
 function smartDodge.IsInDanger()
 	return isPlayerInDanger
+end
+
+function smartDodge.IsDodging()
+	return isDodging
+end
+
+--// Đăng ký provider trả về vị trí cần quay mặt trong lúc né (vd enemy). Khi set, performDodge
+--// không quay mặt theo hướng nhảy nữa mà luôn face target (cơ chế "luôn facing" cho cả blink).
+function smartDodge.SetFaceTargetProvider(func)
+	faceTargetProvider = type(func) == "function" and func or nil
 end
 
 function smartDodge.GetCurrentSafeSpot()
@@ -1903,5 +1972,9 @@ lifecycle.Register(function()
 	end
 	isDodging = false
 end)
+
+--// Đăng ký với coordinator: khi hệ thống khác (Auto Farm) chiếm độc quyền thì engine Smart Dodge
+--// bị tắt qua StopEngine; IsEnabled dùng để coordinator biết engine đang chạy.
+coordinator.Register("SmartDodge", smartDodge.StopEngine, smartDodge.IsEnabled)
 
 return smartDodge

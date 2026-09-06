@@ -25,6 +25,47 @@ return function(window, tab)
 		end),
 	}, "Toggle_PathfinderFarm")
 
+	--// Chế độ HOLD: "Orbit" = HOLD cũ (đứng yên trên quỹ đạo quay mặt enemy).
+	--// "SmartDodge" = không orbit/CFrame, đứng im + Smart Dodge né chủ động, cast skill khi không né.
+	local HOLD_MODE_OPTIONS = { "Orbit (Classic)", "SmartDodge Integration" }
+	farmSection:Dropdown({
+		Name = "Hold Mode",
+		Options = HOLD_MODE_OPTIONS,
+		Default = autoFarmPathfinder.GetHoldMode() == "SmartDodge" and 2 or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			autoFarmPathfinder.SetHoldMode(option:find("SmartDodge") and "SmartDodge" or "Orbit")
+		end),
+	}, "Dropdown_PathfinderHoldMode")
+
+	--// Gate "phải facing đã mới cast": độ lệch hướng nhìn (độ) tối đa so với enemy để được cast.
+	--// Lệch hơn ngưỡng thì AutoFarm chỉ xoay mặt enemy trong frame đó, chưa bấm skill.
+	farmSection:Slider({
+		Name = "Face Tolerance Before Skill (deg)",
+		Default = autoFarmPathfinder.GetFaceTolerance(),
+		Minimum = 0,
+		Maximum = 45,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			autoFarmPathfinder.SetFaceTolerance(value)
+		end),
+	}, "Slider_PathfinderFaceTolerance")
+
+	--// Mode 2: giữ khoảng cách MIN với enemy gần nhất — enemy lọt vào vùng này thì nhân vật bị
+	--// "đẩy" lùi (CFrame, vẫn cast skill trong lúc lùi). 0 = tắt (đứng yên + dodge như cũ).
+	farmSection:Slider({
+		Name = "Min Distance From Enemy (0 = off)",
+		Default = autoFarmPathfinder.GetMinDistance(),
+		Minimum = 0,
+		Maximum = 30,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			autoFarmPathfinder.SetMinDistance(value)
+		end),
+	}, "Slider_PathfinderMinDistance")
+
 	farmSection:Toggle({
 		Name = "Right Click Combo (Q+E)",
 		Default = shortcuts.IsMouseComboEnabled(),
@@ -235,8 +276,12 @@ return function(window, tab)
 			"Locked: " .. (info.locked and ("<font color='rgb(255,200,0)'>" .. info.lockedName .. "</font>") or "No") .. "\n",
 			"Current: " .. info.enemyName .. "\n",
 			"Dist 3D: " .. string.format("%.1f", info.enemyDist) .. "\n",
-			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / SkillRange " .. info.skillRange .. "\n",
+			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / Range " .. info.skillRange .. " / MinDist " .. tostring(info.minDistance) .. "\n",
 			"Orbit: angle " .. angleStr .. " / radius " .. radiusStr .. "\n",
+			"Hold: " .. info.holdMode .. (info.holdMode == "SmartDodge"
+				and (" | Dodge " .. formatBool(info.dodging) .. " | Threat " .. formatBool(info.threatActive))
+				or "") .. "\n",
+			"Facing: " .. string.format("%.1f", info.faceErr) .. "deg / Tol " .. tostring(info.faceTolerance) .. "deg\n",
 			"Path: " .. (info.pathComputed and (info.isAnchor and "<font color='rgb(0,255,0)'>anchor</font>" or "active") or "none") .. "\n",
 			"Tracking: " .. formatBool(info.dunReady) .. " / Enabled " .. formatBool(info.enabled),
 		})

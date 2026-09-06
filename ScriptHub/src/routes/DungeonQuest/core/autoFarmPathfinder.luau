@@ -12,6 +12,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local coordinator = require("@routes/DungeonQuest/core/coordinator")
+local smartDodge = require("@routes/DungeonQuest/core/smartDodge")
 local macLib = require("@packages/Maclib")
 
 --// Services
@@ -124,6 +125,20 @@ local skillEnabled = true
 local skillInterval = 0.5
 local skillMode = "Alternate" --// "Both" = Q+E cùng lúc, "Alternate" = Q -> E -> Q -> E
 local skillTurn = 0 --// dùng cho mode Alternate (0 = Q, 1 = E)
+--// HOLD có 2 chế độ: "Orbit" = đứng yên trên quỹ đạo tĩnh (HOLD cũ, orbit speed 0);
+--// "SmartDodge" = KHÔNG orbit/CFrame/rotation gì cả — đứng im để Smart Dodge tự né danger chủ động
+--// và chỉ cast skill khi nhân vật KHÔNG đang trong lúc né.
+local holdMode = "Orbit"
+--// Độ lệch hướng nhìn tối đa (độ) so với hướng tới enemy để được phép cast skill.
+--// Gate "phải facing đã mới cast": lệch quá ngưỡng này thì frame đó chỉ xoay mặt, chưa cast.
+local faceToleranceDeg = 20
+--// Mode 2 (SmartDodge): giữ khoảng cách MIN với enemy gần nhất. Khi enemy lọt vào vùng
+--// < minDistance, nhân vật bị "đẩy" lùi mượt theo hướng radial (CFrame — cơ chế giống Mode 1
+--// orbit) và VẪN cast skill trong lúc lùi. 0 = tắt (đứng yên như cũ).
+local minDistance = 4
+--// Snapshot trạng thái Smart Dodge (enabled + auto-dodge) khi AutoFarm nắm quyền ở Mode 2,
+--// để khôi phục chính xác trạng thái người dùng khi AutoFarm tắt hoặc chuyển về Orbit.
+local smartDodgeSnapshot = nil
 
 --// Runtime
 local moveConnection = nil
@@ -662,6 +677,54 @@ local function fireSkills()
 	end
 end
 
+--// ---------- Tích hợp Smart Dodge (Mode 2: holdMode == "SmartDodge") ----------
+
+--// Chụp trạng thái Smart Dodge hiện tại làm snapshot khôi phục khi trả quyền. Idempotent.
+--// GHI CHÚ: phải gọi TRƯỚC EnableExclusive("AutoFarm") vì EnableExclusive sẽ tự dừng SmartDodge
+--// đang chạy (qua coordinator) — chụp sau sẽ luôn thấy wasEnabled=false.
+local function captureSmartDodgeSnapshot()
+	if smartDodgeSnapshot then return end
+	smartDodgeSnapshot = {
+		wasEnabled = smartDodge.IsEnabled(),
+		wasAutoDodge = smartDodge.IsAutoDodgeEnabled(),
+	}
+end
+
+--// Provider vị trí cần quay mặt khi Smart Dodge né (enemy gần nhất) — dùng cho "luôn facing":
+--// dù đang blink/di chuyển né thì nhân vật vẫn quay mặt enemy, không quay theo hướng nhảy.
+local function smartDodgeFaceTarget()
+	local enemy = getNearestEnemy()
+	if enemy and enemy.Root and enemy.Root.Parent then
+		return getSafePosition(enemy.Root)
+	end
+	return nil
+end
+
+--// Chiếm / GIỮ quyền sở hữu engine Smart Dodge: luôn đảm bảo engine + auto-dodge đang BẬT.
+--// (auto-dodge là thứ thực sự move nhân vật né danger). Dùng mỗi frame trong Mode 2 để tự phục hồi
+--// mỗi khi bị tắt ngoài ý muốn (ví dụ toggle standalone SmartDodge chạm StopEngine/Toggle(false)).
+local function ensureSmartDodgeOwned()
+	captureSmartDodgeSnapshot()
+	if not smartDodge.IsEnabled() then smartDodge.StartEngine() end
+	if not smartDodge.IsAutoDodgeEnabled() then smartDodge.SetAutoDodge(true) end
+	smartDodge.SetFaceTargetProvider(smartDodgeFaceTarget)
+end
+
+--// Trả quyền: khôi phục đúng trạng thái Smart Dodge như trước khi AutoFarm chiếm
+--// (engine chỉ tắt nếu AutoFarm là người bật nó; auto-dodge trả về giá trị cũ). Idempotent.
+local function releaseSmartDodge()
+	smartDodge.SetFaceTargetProvider(nil)
+	if not smartDodgeSnapshot then return end
+	local snap = smartDodgeSnapshot
+	smartDodgeSnapshot = nil
+	if not snap.wasEnabled and smartDodge.IsEnabled() then
+		smartDodge.StopEngine()
+	end
+	if smartDodge.IsAutoDodgeEnabled() ~= snap.wasAutoDodge then
+		smartDodge.SetAutoDodge(snap.wasAutoDodge)
+	end
+end
+
 --// (Skill-fire đã gộp vào pipeline frame của stepMovement — tái dùng enemy/vị trí đã resolve,
 --// chỉ 1 lần resolve + 1 lần đo khoảng cách mỗi frame, không spam scan.)
 
@@ -1022,6 +1085,29 @@ end
 --// thẳng tới đó theo pathfinder (theo địa hình). KHÔNG xử lý enemy, không chuyển HOLD khi enemy vào
 --// tầm, không retarget. Khi tới anchor -> đánh dấu visited. Hết anchor hợp lệ (hoặc nopath tới anchor)
 --// -> FREE-WALK đi thẳng theo hướng định sẵn rồi thoát luồng (về CHASE bình thường).
+--// Luôn facing cho luồng di chuyển (anchor + free-walk): có enemy gần nhất -> tắt AutoRotate + tự
+--// xoay mặt enemy mỗi frame (MoveTo lo tịnh tiến — nhân vật đi nhưng mặt luôn hướng target, "shift
+--// lock"). Không có enemy -> trả về xoay tự nhiên theo hướng đi (AutoRotate bật).
+local function faceNearestOrNatural(humanoid, playerRoot)
+	local enemy = getNearestEnemy()
+	local targetPos
+	if enemy and enemy.Root and enemy.Root.Parent then
+		targetPos = getSafePosition(enemy.Root)
+	end
+	if autoRotateOwner then restoreAutoRotate() end
+	if targetPos then
+		humanoid.AutoRotate = false
+		local origin = playerRoot.CFrame.Position
+		local dx = targetPos.X - origin.X
+		local dz = targetPos.Z - origin.Z
+		if dx * dx + dz * dz > 0.25 then
+			playerRoot.CFrame = CFrame.lookAt(origin, targetPos)
+		end
+	else
+		humanoid.AutoRotate = true
+	end
+end
+
 local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 	local playerPos = getSafePosition(playerRoot)
 	if not playerPos then return end
@@ -1086,8 +1172,8 @@ local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 			end
 		end
 		--// Đi thẳng theo hướng cố định (không cần path). MoveTo đích rất xa -> nhân vật bước thẳng,
-		--// Humanoid tự nhân với WalkSpeed.
-		ensureAutoRotateEnabled()
+		--// Humanoid tự nhân với WalkSpeed. Luôn facing target nếu có (không tái bật AutoRotate).
+		faceNearestOrNatural(humanoid, playerRoot)
 		humanoid:MoveTo(freeWalkDest)
 		freeWalkTimer -= deltaTime
 		if freeWalkTimer <= 0 then
@@ -1128,7 +1214,8 @@ local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 	end
 
 	--// Đi theo waypoint giống CHASE (Click-to-Move, pathfinder theo địa hình): nhân vật tự đi + tự quay.
-	ensureAutoRotateEnabled()
+	--// Luôn facing target nếu có (không tái bật AutoRotate → mặt giữ hướng enemy khi di chuyển).
+	faceNearestOrNatural(humanoid, playerRoot)
 	local wp = waypoints[waypointIndex]
 	local dest = wp.Position
 	local pos = playerPos
@@ -1165,13 +1252,105 @@ local function stepAnchorWalking(deltaTime, humanoid, playerRoot)
 	end
 end
 
+--// Góc lệch NGANG (độ) giữa hướng nhìn nhân vật và hướng tới enemy (chỉ xét XZ, bỏ chênh dọc).
+--// 0 = đang nhìn thẳng mặt enemy. Dùng để gate cast skill: chỉ cast khi đã facing trong tolerance.
+local function getFacingErrorDeg(playerRoot, fromPos, enemyPos)
+	local look = playerRoot.CFrame.LookVector
+	local relX = enemyPos.X - fromPos.X
+	local relZ = enemyPos.Z - fromPos.Z
+	local relLen = math.sqrt(relX * relX + relZ * relZ)
+	if relLen < 0.01 then return 0 end
+	--// Chuẩn hoá hướng nhìn theo trục ngang (bỏ Y để đo "mặt quay đi hướng nào", không quan tâm nhìn xuống)
+	local lookX, lookZ = look.X, look.Z
+	local lookLen = math.sqrt(lookX * lookX + lookZ * lookZ)
+	if lookLen < 0.01 then return 0 end
+	local dot = (lookX / lookLen) * (relX / relLen) + (lookZ / lookLen) * (relZ / relLen)
+	dot = math.max(-1, math.min(1, dot))
+	return math.deg(math.acos(dot))
+end
+
+--// "Luôn facing target" (cơ chế tương đương shift lock): xoay nhân vật mặt target bằng CFrame mà
+--// CHỈ đổi hướng (giữ nguyên vị trí hiện tại tại playerRoot.Position) — MoveTo/humanoid lo phần
+--// tịnh tiến, ta không teleport di chuyển. Trả về false khi không thể xoay (target trùng vị trí).
+local function faceTowards(playerRoot, targetPos)
+	local origin = playerRoot.CFrame.Position
+	local dx = targetPos.X - origin.X
+	local dz = targetPos.Z - origin.Z
+	if dx * dx + dz * dz <= 0.25 then return false end
+	playerRoot.CFrame = CFrame.lookAt(origin, targetPos)
+	return true
+end
+
+--// HOLD MODE 2 (SmartDodge): KHÔNG orbit — lock target, huỷ path đang CHASE và cast skill TRỪ KHI
+--// nhân vật đang giữa lúc né (dodge) hoặc CHƯA FACING enemy.
+--// Giữ khoảng cách MIN với enemy gần nhất: enemy lọt vào vùng < minDistance (và không dodging) thì
+--// nhân vật bị "đẩy" lùi mượt theo hướng radial bằng CFrame (cơ chế giống Mode 1 orbit) đồng thời
+--// VẪN cast skill trong lúc lùi. Đang dodging thì nhường toàn bộ cho Smart Dodge (không can thiệp).
+--// Lý do gate skill theo dodge: performDodge teleport/micro-blink liên tục trên HumanoidRootPart —
+--// bấm phím skill cùng lúc không phá dodge nhưng chiêu giữa lúc dịch chuyển thường whiff, nên bỏ qua.
+--// Lý do gate theo facing: "phải facing đã mới cast" — hướng nhìn lệch enemy quá threshold thì frame
+--// này chỉ xoay mặt (CFrame, giữ nguyên vị trí; KHÔNG đụng vào khi đang né) và đợi frame sau mới cast.
+local function stepHoldSmartDodge(deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
+	holdAngle = nil
+	holdRadius = nil
+	local dodging = smartDodge.IsDodging()
+	if not lockedTargetModel then lockedTargetModel = enemy.Model end
+	if currentPath then pcall(function() currentPath:Destroy() end) end
+	currentPath = nil
+	pathComputed = false
+	chaseTarget = nil
+	resetStuckCheck()
+	if not dodging then
+		--// Luôn facing target: tắt AutoRotate để Roblox không tự xoay theo hướng di chuyển/kéo back.
+		humanoid.AutoRotate = false
+		local dx = playerPos.X - enemyPos.X
+		local dz = playerPos.Z - enemyPos.Z
+		local dist = math.sqrt(dx * dx + dz * dz)
+		if minDistance > 0 and dist < minDistance then
+			--// Enemy lọt vào vùng min -> "đẩy" lùi mượt theo radial (CFrame). Di chuyển bị dodge
+			--// ghi đè tuyệt đối khi nguy hiểm (frame này không chạy lúc dodging).
+			local push = math.min(moveSpeed * math.max(deltaTime, 1 / 60), minDistance - dist)
+			local pushedPos = playerPos
+			if dist > 0.01 then
+				pushedPos = Vector3.new(
+					playerPos.X + (dx / dist) * push,
+					playerPos.Y,
+					playerPos.Z + (dz / dist) * push
+				)
+			end
+			--// Huỷ MoveTo cũ để CFrame push không bị MoveTo khác kéo qua chỗ khác.
+			pcall(function() humanoid:MoveTo(playerPos) end)
+			--// Cast cả lúc lùi: gate facing dùng hướng nhìn frame trước (lookAt gán bên dưới
+			--// game chưa kịp xử lý, đúng quy tắc "phải facing đã mới cast").
+			if skillEnabled and getFacingErrorDeg(playerRoot, playerPos, enemyPos) <= faceToleranceDeg then
+				fireSkills()
+			end
+			playerRoot.CFrame = CFrame.lookAt(pushedPos, enemyPos)
+			playerRoot.AssemblyLinearVelocity = Vector3.zero
+			playerRoot.AssemblyAngularVelocity = Vector3.zero
+			return
+		end
+		--// Enemy ngoài vùng min (hoặc minDistance = 0 đã tắt): đứng yên + LUÔN facing + cast theo gate.
+		pcall(function() humanoid:MoveTo(playerPos) end)
+		if getFacingErrorDeg(playerRoot, playerPos, enemyPos) > faceToleranceDeg then
+			--// Chưa facing: xoay mặt enemy (giữ nguyên vị trí), cast chờ frame sau.
+			faceTowards(playerRoot, enemyPos)
+		end
+		if skillEnabled and getFacingErrorDeg(playerRoot, playerPos, enemyPos) <= faceToleranceDeg then
+			fireSkills()
+		end
+	end
+end
+
 --// HOLD: enemy trong tầm -> lock, orbit tốc độ thấp (center = enemy), quay mặt enemy + spam skill.
 --// Tách riêng khỏi stepMovement để cô lập lỗi: nếu phần CFrame/velocity của 1 frame throw thì chỉ
 --// ảnh hưởng frame đó (được log ở caller), không làm abrt toàn bộ pipeline CHASE/anchor.
 local function stepHold(deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
+	if holdMode == "SmartDodge" then
+		stepHoldSmartDodge(deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
+		return
+	end
 	ensureAutoRotateDisabled()
-	--// Skill-fire: tái dùng enemy + vị trí đã resolve trong frame này (không resolve lại 2 lần/frame).
-	if skillEnabled then fireSkills() end
 	--// Huỷ MoveTo của CHASE trước đó để không chống đối việc set CFrame thủ công.
 	pcall(function() humanoid:MoveTo(playerPos) end)
 	if not lockedTargetModel then lockedTargetModel = enemy.Model end
@@ -1207,6 +1386,13 @@ local function stepHold(deltaTime, humanoid, playerRoot, enemy, enemyPos, player
 			newPos = pos + toOrbit.Unit * thisStep
 		end
 	end
+	--// Gate skill theo facing: chỉ cast khi hướng nhìn frame trước đã khớp enemy. Dùng góc đo TRƯỚC
+	--// khi gán CFrame bên dưới — vì CFrame vừa set game chưa kịp xử lý, cast cùng frame sẽ dựa vào
+	--// hướng cũ (chưa chắc đã mặt enemy). Lệch > tolerance thì frame này chỉ xoay (CFrame lookAt sẽ
+	--// nhìn thẳng enemy), frame sau mới cast.
+	if skillEnabled and getFacingErrorDeg(playerRoot, pos, enemyPos) <= faceToleranceDeg then
+		fireSkills()
+	end
 	playerRoot.CFrame = CFrame.lookAt(newPos, enemyPos)
 	playerRoot.AssemblyLinearVelocity = Vector3.zero
 	playerRoot.AssemblyAngularVelocity = Vector3.zero
@@ -1218,6 +1404,11 @@ local function stepChase(deltaTime, humanoid, playerRoot, enemy, enemyPos, playe
 	holdAngle = nil
 	holdRadius = nil
 	lockedTargetModel = nil
+	--// LUÔN facing target (tương đương shift lock): tắt AutoRotate để Roblox không quay nhân vật theo
+	--// hướng di chuyển waypoint nữa, tự xoay mặt enemy mỗi frame (CFrame chỉ đổi hướng, giữ vị trí).
+	--// Nhờ vậy khi vào HOLD nhân vật đã mặt enemy, cast không phải chờ thêm 1 frame xoay.
+	humanoid.AutoRotate = false
+	faceTowards(playerRoot, enemyPos)
 	--// Path stale khi target hiện tại KHÁC target của path (enemy cũ chết / retarget
 	--// sang con khác) -> hủy path ngay để recompute sang target mới, không đi tiếp
 	--// theo path cũ dẫn tới chỗ xác (gây "state=CHASE nhưng không di chuyển").
@@ -1262,10 +1453,8 @@ local function stepChase(deltaTime, humanoid, playerRoot, enemy, enemyPos, playe
 		return
 	end
 
-	--// Di chuyển theo chuẩn Click-to-Move: Humanoid:MoveTo + AutoRotate bật,
-	--// nhân vật tự đi + tự quay theo hướng di chuyển (animation, va chạm).
-	ensureAutoRotateEnabled()
-
+	--// Di chuyển Click-to-Move: Humanoid:MoveTo — AutoRotate đã bị tắt + faceTowards ở đầu stepChase
+	--// (luôn-facing target), KHÔNG bật lại ở đây kẻo nhân vật quay theo hướng di chuyển lấn mặt target.
 	local wp = waypoints[waypointIndex]
 	local dest = wp.Position
 	local pos = playerPos
@@ -1331,6 +1520,9 @@ end
 --// Orchestrator: resolve chung (guards, rescan, target) rồi dispatch HOLD/CHASE vào từng hàm
 --// riêng, mỗi hàm chạy trong 1 pcall độc lập để lỗi 1 phase không abrt cả frame.
 local function stepMovement(deltaTime)
+	--// Mode 2: tái xác nhận quyền sở hữu engine Smart Dodge MỖI FRAME (chỉ là vài boolean check)
+	--// để tự phục hồi nếu engine/auto-dodge bị tắt ngoài ý muốn (vd toggle standalone chạm vào).
+	if holdMode == "SmartDodge" then ensureSmartDodgeOwned() end
 	if shared.IsInLobby() then return end
 	if not dunReady then return end
 
@@ -1402,7 +1594,10 @@ local function stepMovement(deltaTime)
 		currentPath = nil
 		pathComputed = false
 		chaseTarget = nil
-		pcall(function() humanoid:MoveTo(getSafePosition(playerRoot)) end)
+		--// Mode 2: đang né giữa chừng thì để Smart Dodge hoàn tất, không ghi đè MoveTo(safePos).
+		if not (holdMode == "SmartDodge" and smartDodge.IsDodging()) then
+			pcall(function() humanoid:MoveTo(getSafePosition(playerRoot)) end)
+		end
 		return
 	end
 
@@ -1424,6 +1619,23 @@ local function stepMovement(deltaTime)
 			warn(("[AutoFarmPathfinder] lỗi HOLD: %s"):format(tostring(err)))
 		end
 		return
+	end
+
+	--// HOLD MODE 2 gate CHASE: khi đang né (dodging) hoặc vùng nguy hiểm còn kích hoạt thì KHÔNG
+	--// đuổi — hủy MoveTo cũ để đứng yên, để Smart Dodge hoàn tất né an toàn. Hết danger mà enemy
+	--// vẫn ngoài tầm thì frame sau vào CHASE bình thường.
+	if holdMode == "SmartDodge" then
+		local dodging = smartDodge.IsDodging()
+		local inDanger = smartDodge.IsInDanger()
+		if dodging or inDanger then
+			--// Đang né thì KHÔNG ghi đè MoveTo(safePos) của Smart Dodge (tránh xung đột đích đi).
+			if not dodging then
+				pcall(function() humanoid:MoveTo(getSafePosition(playerRoot)) end)
+				--// Luôn facing target kể cả đang đứng chờ hết danger (không cast — chỉ xoay mặt).
+				faceTowards(playerRoot, enemyPos)
+			end
+			return
+		end
 	end
 
 	local ok, err = pcall(stepChase, deltaTime, humanoid, playerRoot, enemy, enemyPos, playerPos)
@@ -1490,6 +1702,44 @@ function autoFarmPathfinder.SetSkillMode(value)
 	if value == "Both" or value == "Alternate" then
 		skillMode = value
 	end
+end
+
+function autoFarmPathfinder.GetHoldMode()
+	return holdMode
+end
+
+--// Chuyển chế độ HOLD: "Orbit" (HOLD cũ: đứng yên trên quỹ đạo, quay mặt enemy) /
+--// "SmartDodge" (không orbit, đứng im để Smart Dodge né chủ động). Nếu AutoFarm đang chạy,
+--// bật/tắt quyền điều khiển Smart Dodge tương ứng ngay lập tức.
+function autoFarmPathfinder.SetHoldMode(value)
+	if value ~= "Orbit" and value ~= "SmartDodge" then return end
+	if holdMode == value then return end
+	holdMode = value
+	if running then
+		if holdMode == "SmartDodge" then
+			ensureSmartDodgeOwned()
+		else
+			releaseSmartDodge()
+		end
+	end
+end
+
+--// Độ lệch hướng nhìn tối đa (độ) để cast skill (gate "facing đã mới cast"). Clamp 0..90.
+function autoFarmPathfinder.GetFaceTolerance()
+	return faceToleranceDeg
+end
+
+function autoFarmPathfinder.SetFaceTolerance(value)
+	faceToleranceDeg = math.clamp(tonumber(value) or faceToleranceDeg, 0, 90)
+end
+
+--// Khoảng cách MIN giữa nhân vật và enemy gần nhất (Mode 2 SmartDodge). 0 = tắt (đứng yên).
+function autoFarmPathfinder.GetMinDistance()
+	return minDistance
+end
+
+function autoFarmPathfinder.SetMinDistance(value)
+	minDistance = math.clamp(tonumber(value) or minDistance, 0, 50)
 end
 
 function autoFarmPathfinder.IsVisualDebugEnabled()
@@ -1666,7 +1916,12 @@ function autoFarmPathfinder.Toggle(state)
 
 	if enabled then
 		--// Loại trừ lẫn nhau với SmartDodge (2 hệ thống điều khiển nhân vật, không chạy chung).
+		--// Mode 2: chụp snapshot TRƯỚC khi EnableExclusive (EnableExclusive sẽ dừng engine SmartDodge
+		--// đang chạy nếu có) để khôi phục đúng trạng thái trước khi AutoFarm nắm quyền.
+		if holdMode == "SmartDodge" then captureSmartDodgeSnapshot() end
 		coordinator.EnableExclusive("AutoFarm")
+		--// Mode 2: chiếm Smart Dodge làm chủ di chuyển + bật auto-dodge để nhân vật né chủ động.
+		if holdMode == "SmartDodge" then ensureSmartDodgeOwned() end
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 		running = true
 		lastSkillTime = 0
@@ -1715,6 +1970,8 @@ function autoFarmPathfinder.Toggle(state)
 		if h and h.Parent and r and r.Parent then pcall(function() h:MoveTo(getSafePosition(r)) end) end
 		resetRuntimeState()
 		cleanupDebugVisuals()
+		--// Mode 2: trả quyền điều khiển Smart Dodge (khôi phục engine + auto-dodge như trước).
+		releaseSmartDodge()
 	end
 end
 
@@ -1733,6 +1990,7 @@ function autoFarmPathfinder.GetDebugInfo()
 	local enemyDist = 0
 	local enemyFlat = 0
 	local lockedName = "-"
+	local faceErrDeg = 0
 
 	if locked then lockedName = locked.Model and locked.Model.Name or "-" end
 	if display and display.Root and display.Root.Parent then
@@ -1745,7 +2003,15 @@ function autoFarmPathfinder.GetDebugInfo()
 			enemyFlat = flat.Magnitude
 		end
 		phase = enemyFlat <= skillRange and "HOLD" or "CHASE"
+		if phase == "HOLD" then
+			faceErrDeg = getFacingErrorDeg(playerRoot, playerPos, displayPos)
+		end
 	end
+
+	--// Mode 2 (SmartDodge): expose trạng thái né/threat để UI debug theo dõi realtime.
+	local smartDodgeActive = holdMode == "SmartDodge"
+	local dodging = smartDodgeActive and smartDodge.IsDodging() or false
+	local threatActive = smartDodgeActive and smartDodge.IsInDanger() or false
 
 	return {
 		phase = phase,
@@ -1762,6 +2028,12 @@ function autoFarmPathfinder.GetDebugInfo()
 		isAnchor = pathIsAnchor,
 		dunReady = dunReady,
 		enabled = enabled,
+		holdMode = holdMode,
+		dodging = dodging,
+		threatActive = threatActive,
+		faceTolerance = faceToleranceDeg,
+		faceErr = faceErrDeg,
+		minDistance = minDistance,
 	}
 end
 
