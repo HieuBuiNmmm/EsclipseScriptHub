@@ -1,4 +1,4 @@
--- Module Smart Dodge trong tab Combat (DungeonQuest): quản lý tính năng né chiêu.
+-- Module Smart Dodge trong tab Combat (DungeonQuest): quản lý tính năng né chiêu thông minh.
 -- Giai đoạn 1, 2 & 3: Threat Detection, Safe Spot Calculation & Dodge Execution.
 
 --// Imports
@@ -156,18 +156,6 @@ return function(window, tab)
 			smartDodge.SetMicroBlinkInterval(value)
 		end),
 	}, "Slider_SmartDodgeStepInterval"))
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Walk Max Dodge Time (s)",
-		Default = smartDodge.GetWalkDodgeBudget(),
-		Minimum = 0.2,
-		Maximum = 2,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(value)
-			smartDodge.SetWalkDodgeBudget(value)
-		end),
-	}, "Slider_SmartDodgeWalkBudget"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player Hitbox Padding (studs)",
