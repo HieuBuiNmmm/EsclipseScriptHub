@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-05T23:10:41.342390100+00:00",
+    genDate = "2026-09-06T00:54:44.765857300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -10242,6 +10242,7 @@ local autoDodgeEnabled = false
 local dodgeMode = "Hybrid"           -- "Hybrid" (MoveTo + Micro-Blink) hoặc "Walk" (Walk Only + Snap)
 local maxTeleportStep = 3.0          -- Bước teleport an toàn tối đa (studs) để chống anti-cheat
 local microBlinkInterval = 0.05      -- Khoảng thời gian giữa các bước nhích MoveTo + Teleport
+local walkDodgeBudget = 0.8          -- Ngân sách thời gian tối đa để đi bộ (Walk) trước khi escalate sang micro-blink
 local isDodging = false
 local targetDodgeSpot = nil          -- Tọa độ đích đang nhắm đến (được cập nhật động khi bẻ lái)
 local dodgeThread = nil
@@ -10596,6 +10597,7 @@ local function performDodge(safePos, escapeDist)
 
 		local startTime = os.clock()
 		local timeout = 3.0 -- Timeout an toàn 3s
+		local escalated = false -- Walk: đã chuyển sang micro-blink vì không kịp đi bộ trong budget chưa (latch)
 
 		while isPlayerInDanger and autoDodgeEnabled and targetDodgeSpot and (os.clock() - startTime < timeout) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
@@ -10616,9 +10618,39 @@ local function performDodge(safePos, escapeDist)
 			end
 
 			if dodgeMode == "Walk" then
-				-- Mode 2: Đi bộ thuần túy (MoveTo Only) hướng về currentTarget
-				humanoid:MoveTo(currentTarget)
-				task.wait(0.05)
+				-- Mode 2: Đi bộ thuần túy (MoveTo Only) hướng về currentTarget.
+				-- Escalation theo deadline: dự báo ETA đi bộ vs budget còn lại (x0.8 cho
+				-- an toàn). Nếu đi bộ không kịp hoặc budget đã hết -> latch chuyển sang
+				-- micro-blink (step nhỏ đều) để chắc chắn thoát trong tầm thời gian hợp lý.
+				if not escalated then
+					local walkSpeed = humanoid.WalkSpeed or 16
+					if walkSpeed <= 0.1 then walkSpeed = 0.1 end
+					local eta = distRemaining / walkSpeed
+					local budgetLeft = walkDodgeBudget - (os.clock() - startTime)
+					if eta > math.max(0.1, budgetLeft * 0.8) or budgetLeft <= 0 then
+						escalated = true
+						if logInDanger then
+							print(("[SmartDodge][Dodge] 🔀 Walk deadline: ETA %.1fs > budget %.1fs -> Micro-Blink")
+								:format(eta, budgetLeft))
+						end
+					end
+				end
+
+				if escalated then
+					local dir = (currentTarget - currentPos).Unit
+					local stepDist = math.min(maxTeleportStep, distRemaining - 0.5)
+
+					humanoid:MoveTo(currentTarget)
+
+					local newPos = currentPos + dir * stepDist
+					local lookTarget = newPos + dir
+					rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
+
+					task.wait(microBlinkInterval)
+				else
+					humanoid:MoveTo(currentTarget)
+					task.wait(0.05)
+				end
 			else
 				-- Mode 1: Hybrid (MoveTo kết hợp Micro-Blink từng bước nhỏ)
 				local dir = (currentTarget - currentPos).Unit
@@ -10962,6 +10994,16 @@ function smartDodge.GetDodgeMode()
 	return dodgeMode
 end
 
+function smartDodge.SetWalkDodgeBudget(value)
+	if type(value) == "number" and value > 0 then
+		walkDodgeBudget = value
+	end
+end
+
+function smartDodge.GetWalkDodgeBudget()
+	return walkDodgeBudget
+end
+
 lifecycle.Register(function()
 	stopTracking()
 	if safeSpotMarkerPart then
@@ -11140,6 +11182,18 @@ return function(window, tab)
 			smartDodge.SetMicroBlinkInterval(value)
 		end),
 	}, "Slider_SmartDodgeStepInterval"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Walk Max Dodge Time (s)",
+		Default = smartDodge.GetWalkDodgeBudget(),
+		Minimum = 0.2,
+		Maximum = 2,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetWalkDodgeBudget(value)
+		end),
+	}, "Slider_SmartDodgeWalkBudget"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player Hitbox Padding (studs)",
@@ -13265,176 +13319,295 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.A()-- Map Optimizer (DungeonQuest): gộp 3 script thành 1 tính năng toggle.
--- Script1: ép hiện hình liên tục các phần map bị ẩn/thuỷ tinh.
--- Script2: dọn dẹp vật thể rác (decoration) ở lớp ngoài cùng của Map.
--- Script3: radar hitbox quét quanh nhân vật, xóa part có độ cao (Y) > 80.
+end function __DIST.A()-- Map Optimizer (DungeonQuest): Clean Map
+-- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
+-- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
 --// Imports
 
 local services = __DIST.load('d')
+local lifecycle = __DIST.load('b')
 
 --// Table
 local mapOptimizer = {}
 
 --// State
 local enabled = false
-local cleanupThread = nil
-local visibilityThread = nil
-local radarThread = nil
+local loopThread = nil
+local raycastThread = nil
+local connections = {}
+local modifiedParts = {} -- [part] = originalTransparency
+local modifiedCollisions = {} -- [part] = { CanCollide, CanTouch }
 
 local CLEANUP_INTERVAL = 2
-local FORCE_VISIBLE_INTERVAL = 0.5
-local RADAR_INTERVAL = 0.2
-local RADAR_HITBOX_SIZE = Vector3.new(20, 200, 20)
-local RADAR_MIN_Y = 80
+local RAY_INTERVAL = 0.05
+local RAY_COUNT = 16
+local RAY_DISTANCE = 30
 
---// DANH SÁCH 1: Xóa nếu tên object ở Depth 1 khớp chính xác
-local DEPTH1_NAMES_TO_DELETE = {
-	["Stone"] = true,
-	["Dead Tree"] = true,
-	["Eye Rune"] = true,
-	["Meshes/Ice shard"] = true,
-	["Small snow patch"] = true,
-	["snow patch"] = true,
-	["Meshes/Root4"] = true,
-	["snow machine"] = true,
-	["Meshes/Ice3"] = true,
-	["Meshes/ice plates_Circle.004"] = true,
-}
-
---// DANH SÁCH 2: Xóa object Depth 1 nếu BÊN TRONG nó có chứa tên này
-local DESCENDANT_NAMES_TO_TARGET = {
-	["Wooden plank"] = true,
-	["Meshes/Root4"] = true,
-}
-
-local function getMap()
-	return workspace:WaitForChild("Map", 5)
+--// Kiểm tra xem instance có phải là Model/Part thuộc danh sách ngoại lệ (stairRamps, Steps, Meshes/Cylinder) hay không
+local function isStairRamp(inst)
+	if not inst then return false end
+	local current = inst
+	while current and current ~= workspace do
+		local nameLower = current.Name:lower()
+		if nameLower:find("stairramp") or nameLower:find("step") or nameLower:find("meshes/cylinder") or nameLower:find("cylinder") then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
 end
 
---// Dọn dẹp vật thể rác ở Depth 1 (Script2)
-local function cleanUpMap()
-	local map = getMap()
-	if not map then return end
+--// Xử lý part thuộc model borders (Tắt va chạm & trigger)
+local function processBorderPart(part)
+	if not enabled or not part or not part:IsA("BasePart") then return end
+	if isStairRamp(part) then return end
 
-	for _, child in ipairs(map:GetChildren()) do
-		local shouldDelete = DEPTH1_NAMES_TO_DELETE[child.Name]
-		if not shouldDelete then
-			for _, descendant in ipairs(child:GetDescendants()) do
-				if DESCENDANT_NAMES_TO_TARGET[descendant.Name] then
-					shouldDelete = true
-					break
+	if not modifiedCollisions[part] then
+		modifiedCollisions[part] = {
+			CanCollide = part.CanCollide,
+			CanTouch = part.CanTouch,
+		}
+	end
+
+	pcall(function()
+		part.CanCollide = false
+		part.CanTouch = false
+	end)
+end
+
+--// Xử lý một BasePart (Tàng hình)
+local function processPart(part)
+	if not enabled or not part or not part:IsA("BasePart") then return end
+	if isStairRamp(part) then return end
+
+	-- Lưu lại Transparency ban đầu nếu chưa lưu
+	if modifiedParts[part] == nil then
+		modifiedParts[part] = part.Transparency
+	end
+
+	pcall(function()
+		part.Transparency = 1
+	end)
+end
+
+--// Xử lý một child/descendant bất kỳ
+local function processInstance(inst)
+	if not enabled or not inst then return end
+	if isStairRamp(inst) then return end
+
+	-- 1. Nếu là Model / Folder tên chứa "border"
+	if (inst:IsA("Model") or inst:IsA("Folder")) and inst.Name:lower():find("border") then
+		for _, desc in ipairs(inst:GetDescendants()) do
+			if desc:IsA("BasePart") and not isStairRamp(desc) then
+				processPart(desc)
+				processBorderPart(desc)
+			end
+		end
+		return
+	end
+
+	-- 2. Nếu là BasePart
+	if inst:IsA("BasePart") then
+		processPart(inst)
+	end
+
+	-- 3. Duyệt các descendant bên dưới
+	for _, desc in ipairs(inst:GetDescendants()) do
+		if desc:IsA("BasePart") then
+			processPart(desc)
+		elseif (desc:IsA("Model") or desc:IsA("Folder")) and desc.Name:lower():find("border") then
+			for _, p in ipairs(desc:GetDescendants()) do
+				if p:IsA("BasePart") and not isStairRamp(p) then
+					processPart(p)
+					processBorderPart(p)
 				end
 			end
 		end
-		if shouldDelete then
-			child:Destroy()
-		end
 	end
 end
 
---// Ép hiện hình cho một container (Script1)
-local function forceVisible(container)
-	if not container then return end
-	for _, object in ipairs(container:GetDescendants()) do
-		if object:IsA("BasePart") and object.Transparency ~= 0 then
-			object.Transparency = 0
-		end
+--// Quét và xử lý toàn bộ trong workspace.Map
+local function cleanMapFolder()
+	if not enabled then return end
+
+	local mapFolder = workspace:FindFirstChild("Map")
+	if not mapFolder then return end
+
+	for _, child in ipairs(mapFolder:GetChildren()) do
+		processInstance(child)
 	end
 end
 
---// Radar hitbox: quét quanh nhân vật và xóa part cao (Y > RADAR_MIN_Y) (Script3)
-local function runRadar()
+--// Kiểm tra xem part có phải là Solid spikes nằm trong một Model hay không
+local function isSpikeInModel(part)
+	if not part then return false end
+	local nameLower = part.Name:lower()
+	if nameLower:find("solid spikes") then
+		local parent = part.Parent
+		if parent and parent:IsA("Model") and parent ~= workspace then
+			return true
+		end
+	end
+	return false
+end
+
+--// Bắn Raycast theo trục X và Z xung quanh người chơi
+local function runSurroundingRaycasts()
 	local player = services.player
-	if not player then return end
-	local character = player.Character
+	local character = player and player.Character
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	local map = getMap()
-	if not map then return end
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = { character, workspace.Terrain }
+	raycastParams.IgnoreWater = true
 
-	local filterList = {}
-	local borders = map:FindFirstChild("borders")
-	local container143 = map:GetChildren()[143]
-	if borders then table.insert(filterList, borders) end
-	if container143 then table.insert(filterList, container143) end
+	-- Bắn ở 2 cao độ: ngang chân (+0.5) và ngang ngực (+2.0)
+	local heightOffsets = { 0.5, 2.0 }
+	local originPos = hrp.Position
 
-	local overlapParams = OverlapParams.new()
-	overlapParams.FilterType = Enum.RaycastFilterType.Include
-	overlapParams.FilterDescendantsInstances = filterList
+	for _, yOffset in ipairs(heightOffsets) do
+		local rayOrigin = Vector3.new(originPos.X, originPos.Y + yOffset, originPos.Z)
 
-	local hitboxCFrame = hrp.CFrame * CFrame.new(0, 100, 0)
-	local partsInHitbox = workspace:GetPartBoundsInBox(hitboxCFrame, RADAR_HITBOX_SIZE, overlapParams)
+		for i = 1, RAY_COUNT do
+			local angle = (i / RAY_COUNT) * (math.pi * 2)
+			local direction = Vector3.new(math.cos(angle), 0, math.sin(angle)) * RAY_DISTANCE
 
-	for _, hitPart in ipairs(partsInHitbox) do
-		if hitPart.Name ~= "borders" and hitPart.Name ~= "Baseplate" then
-			if hitPart.CFrame.Position.Y > RADAR_MIN_Y then
-				hitPart:Destroy()
+			local result = workspace:Raycast(rayOrigin, direction, raycastParams)
+			if result and result.Instance and result.Instance:IsA("BasePart") then
+				local hitPart = result.Instance
+
+				-- Bỏ qua nếu là stairRamps hoặc Solid spikes trong Model
+				if not isStairRamp(hitPart) and not isSpikeInModel(hitPart) then
+					if not modifiedCollisions[hitPart] then
+						modifiedCollisions[hitPart] = {
+							CanCollide = hitPart.CanCollide,
+							CanTouch = hitPart.CanTouch,
+						}
+					end
+
+					pcall(function()
+						hitPart.CanCollide = false
+						hitPart.CanTouch = false
+					end)
+				end
 			end
 		end
 	end
+end
+
+--// Lắng nghe sự kiện thêm mới trong Map
+local function attachListeners()
+	for _, c in ipairs(connections) do
+		pcall(function() c:Disconnect() end)
+	end
+	table.clear(connections)
+
+	local function hookMap(mapFolder)
+		if not mapFolder then return end
+
+		-- Lắng nghe part/model mới được thêm vào Map
+		table.insert(connections, mapFolder.DescendantAdded:Connect(function(desc)
+			if not enabled then return end
+			if desc:IsA("BasePart") and not isStairRamp(desc) then
+				processPart(desc)
+
+				-- Kiểm tra xem có nằm trong Model borders không
+				local parent = desc.Parent
+				while parent and parent ~= mapFolder and parent ~= workspace do
+					if (parent:IsA("Model") or parent:IsA("Folder")) and parent.Name:lower():find("border") then
+						processBorderPart(desc)
+						break
+					end
+					parent = parent.Parent
+				end
+			end
+		end))
+	end
+
+	local map = workspace:FindFirstChild("Map")
+	if map then
+		hookMap(map)
+	end
+
+	-- Lắng nghe khi Folder Map được tạo/tải lại khi chuyển màn
+	table.insert(connections, workspace.ChildAdded:Connect(function(child)
+		if not enabled then return end
+		if child.Name == "Map" then
+			hookMap(child)
+			task.delay(0.2, cleanMapFolder)
+		end
+	end))
+end
+
+--// Phục hồi lại trạng thái ban đầu khi tắt
+local function restoreMap()
+	-- 1. Phục hồi Transparency
+	for part, originalTransparency in pairs(modifiedParts) do
+		if part and part.Parent then
+			pcall(function()
+				part.Transparency = originalTransparency
+			end)
+		end
+	end
+	table.clear(modifiedParts)
+
+	-- 2. Phục hồi Collision & Touch
+	for part, originalState in pairs(modifiedCollisions) do
+		if part and part.Parent then
+			pcall(function()
+				part.CanCollide = originalState.CanCollide
+				part.CanTouch = originalState.CanTouch
+			end)
+		end
+	end
+	table.clear(modifiedCollisions)
 end
 
 function mapOptimizer.Toggle(state)
 	if state == enabled then return end
-	enabled = state
+	enabled = state and true or false
 
 	if enabled then
-		local ok, err = pcall(cleanUpMap)
-		if not ok then
-			warn("[MapOptimizer] cleanup error:", tostring(err))
-		end
+		cleanMapFolder()
+		attachListeners()
 
-		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
-		cleanupThread = task.spawn(function()
+		if loopThread then task.cancel(loopThread); loopThread = nil end
+		loopThread = task.spawn(function()
 			while enabled do
 				task.wait(CLEANUP_INTERVAL)
-				local ok, err = pcall(cleanUpMap)
-				if not ok then
-					warn("[MapOptimizer] cleanup error:", tostring(err))
-				end
+				pcall(cleanMapFolder)
 			end
 		end)
 
-		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
-		visibilityThread = task.spawn(function()
+		if raycastThread then task.cancel(raycastThread); raycastThread = nil end
+		raycastThread = task.spawn(function()
 			while enabled do
-				local ok, err = pcall(function()
-					local map = getMap()
-					local container143 = map and map:GetChildren()[143]
-					local borders = map and map:FindFirstChild("borders")
-					forceVisible(container143)
-					forceVisible(borders)
-				end)
-				if not ok then
-					warn("[MapOptimizer] visibility error:", tostring(err))
-				end
-				task.wait(FORCE_VISIBLE_INTERVAL)
-			end
-		end)
-
-		if radarThread then task.cancel(radarThread); radarThread = nil end
-		radarThread = task.spawn(function()
-			while enabled do
-				local ok, err = pcall(runRadar)
-				if not ok then
-					warn("[MapOptimizer] radar error:", tostring(err))
-				end
-				task.wait(RADAR_INTERVAL)
+				task.wait(RAY_INTERVAL)
+				pcall(runSurroundingRaycasts)
 			end
 		end)
 	else
-		if cleanupThread then task.cancel(cleanupThread); cleanupThread = nil end
-		if visibilityThread then task.cancel(visibilityThread); visibilityThread = nil end
-		if radarThread then task.cancel(radarThread); radarThread = nil end
+		for _, c in ipairs(connections) do
+			pcall(function() c:Disconnect() end)
+		end
+		table.clear(connections)
+
+		if loopThread then task.cancel(loopThread); loopThread = nil end
+		if raycastThread then task.cancel(raycastThread); raycastThread = nil end
+		restoreMap()
 	end
 end
 
 function mapOptimizer.IsEnabled()
 	return enabled
 end
+
+lifecycle.Register(function()
+	mapOptimizer.Toggle(false)
+end)
 
 return mapOptimizer end function __DIST.B()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 

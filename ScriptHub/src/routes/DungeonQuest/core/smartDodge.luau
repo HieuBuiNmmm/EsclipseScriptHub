@@ -539,6 +539,7 @@ local autoDodgeEnabled = false
 local dodgeMode = "Hybrid"           -- "Hybrid" (MoveTo + Micro-Blink) hoặc "Walk" (Walk Only + Snap)
 local maxTeleportStep = 3.0          -- Bước teleport an toàn tối đa (studs) để chống anti-cheat
 local microBlinkInterval = 0.05      -- Khoảng thời gian giữa các bước nhích MoveTo + Teleport
+local walkDodgeBudget = 0.8          -- Ngân sách thời gian tối đa để đi bộ (Walk) trước khi escalate sang micro-blink
 local isDodging = false
 local targetDodgeSpot = nil          -- Tọa độ đích đang nhắm đến (được cập nhật động khi bẻ lái)
 local dodgeThread = nil
@@ -893,6 +894,7 @@ local function performDodge(safePos, escapeDist)
 
 		local startTime = os.clock()
 		local timeout = 3.0 -- Timeout an toàn 3s
+		local escalated = false -- Walk: đã chuyển sang micro-blink vì không kịp đi bộ trong budget chưa (latch)
 
 		while isPlayerInDanger and autoDodgeEnabled and targetDodgeSpot and (os.clock() - startTime < timeout) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
@@ -913,9 +915,39 @@ local function performDodge(safePos, escapeDist)
 			end
 
 			if dodgeMode == "Walk" then
-				-- Mode 2: Đi bộ thuần túy (MoveTo Only) hướng về currentTarget
-				humanoid:MoveTo(currentTarget)
-				task.wait(0.05)
+				-- Mode 2: Đi bộ thuần túy (MoveTo Only) hướng về currentTarget.
+				-- Escalation theo deadline: dự báo ETA đi bộ vs budget còn lại (x0.8 cho
+				-- an toàn). Nếu đi bộ không kịp hoặc budget đã hết -> latch chuyển sang
+				-- micro-blink (step nhỏ đều) để chắc chắn thoát trong tầm thời gian hợp lý.
+				if not escalated then
+					local walkSpeed = humanoid.WalkSpeed or 16
+					if walkSpeed <= 0.1 then walkSpeed = 0.1 end
+					local eta = distRemaining / walkSpeed
+					local budgetLeft = walkDodgeBudget - (os.clock() - startTime)
+					if eta > math.max(0.1, budgetLeft * 0.8) or budgetLeft <= 0 then
+						escalated = true
+						if logInDanger then
+							print(("[SmartDodge][Dodge] 🔀 Walk deadline: ETA %.1fs > budget %.1fs -> Micro-Blink")
+								:format(eta, budgetLeft))
+						end
+					end
+				end
+
+				if escalated then
+					local dir = (currentTarget - currentPos).Unit
+					local stepDist = math.min(maxTeleportStep, distRemaining - 0.5)
+
+					humanoid:MoveTo(currentTarget)
+
+					local newPos = currentPos + dir * stepDist
+					local lookTarget = newPos + dir
+					rootPart.CFrame = CFrame.new(newPos, Vector3.new(lookTarget.X, newPos.Y, lookTarget.Z))
+
+					task.wait(microBlinkInterval)
+				else
+					humanoid:MoveTo(currentTarget)
+					task.wait(0.05)
+				end
 			else
 				-- Mode 1: Hybrid (MoveTo kết hợp Micro-Blink từng bước nhỏ)
 				local dir = (currentTarget - currentPos).Unit
@@ -1257,6 +1289,16 @@ end
 
 function smartDodge.GetDodgeMode()
 	return dodgeMode
+end
+
+function smartDodge.SetWalkDodgeBudget(value)
+	if type(value) == "number" and value > 0 then
+		walkDodgeBudget = value
+	end
+end
+
+function smartDodge.GetWalkDodgeBudget()
+	return walkDodgeBudget
 end
 
 lifecycle.Register(function()

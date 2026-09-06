@@ -158,6 +158,18 @@ return function(window, tab)
 	}, "Slider_SmartDodgeStepInterval"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Walk Max Dodge Time (s)",
+		Default = smartDodge.GetWalkDodgeBudget(),
+		Minimum = 0.2,
+		Maximum = 2,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetWalkDodgeBudget(value)
+		end),
+	}, "Slider_SmartDodgeWalkBudget"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player Hitbox Padding (studs)",
 		Default = smartDodge.GetHitboxPadding(),
 		Minimum = 0,
