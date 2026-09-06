@@ -46,6 +46,8 @@ local CUSTOM_HAZARD_EXCEPTIONS = {
 	["mediumIceSpikes"] = true,
 	["smallIceSpikes"] = true,
 	["thirdBossMultiRings"] = true,
+	["firstBossCrissCross"] = true,
+	["firstBossSeekingSpikes"] = true,
 }
 
 --// Ngưỡng coi như chiêu đã mờ hoàn toàn/kết thúc
@@ -64,6 +66,7 @@ local IGNORED_NAMES = {
 	["DodgeNode_ESP"] = true,
 	["SmartDodge_SafeMarker"] = true,
 	["SmartDodge_SelectionBox"] = true,
+	["SmartDodge_TrajectoryBox"] = true,
 	["Enhanced Aura Ring"] = true,
 	["EnhancedAuraRing"] = true,
 	["Enhanced Aura"] = true,
@@ -81,6 +84,98 @@ function smartDodge.AddCustomHazard(skillName)
 	if type(skillName) == "string" and #skillName > 0 then
 		CUSTOM_HAZARD_EXCEPTIONS[skillName] = true
 	end
+end
+
+--// Cấu hình các kỹ năng Projectile dạng quỹ đạo bắn thẳng (Trajectory / Corridor Telegraph)
+local TRAJECTORY_PROJECTILE_CONFIGS = {
+	["firstbosscrisscross"] = {
+		name = "firstBossCrissCross",
+		dangerRadius = 4.0,       -- Bán kính vùng sát thương của đạn (studs)
+		maxLookahead = 300.0,     -- Chiều dài hành lang dự đoán xuyên map (studs)
+		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho quỹ đạo
+	},
+	["firstbossseekingspikes"] = {
+		name = "firstBossSeekingSpikes",
+		dangerRadius = 4.5,       -- Bán kính vùng sát thương của đạn (studs)
+		maxLookahead = 300.0,     -- Chiều dài hành lang dự đoán xuyên map (studs)
+		visualColor = Color3.fromRGB(255, 110, 0), -- Màu cam đậm cho Seeking Spikes
+	},
+}
+
+--// Bảng lưu trữ trạng thái khóa hướng quỹ đạo (Direction Locking & State Tracking)
+local lockedProjectiles = {} -- [BasePart] = { originPos, forward2D, dangerRadius, maxLookahead, locked, config }
+local activeTrajectoryVisuals = {} -- [BasePart] = Part
+
+--// Thêm một Skill vào danh sách Trajectory Projectile
+function smartDodge.AddTrajectoryProjectile(skillName, dangerRadius, maxLookahead)
+	if type(skillName) == "string" and #skillName > 0 then
+		local clean = skillName:lower():gsub("%s+", "")
+		TRAJECTORY_PROJECTILE_CONFIGS[clean] = {
+			name = skillName,
+			dangerRadius = dangerRadius or 4.0,
+			maxLookahead = maxLookahead or 300.0,
+			visualColor = Color3.fromRGB(255, 130, 0),
+		}
+		if logHazards then
+			print(("[SmartDodge] 🚀 Registered Trajectory Projectile: %s"):format(skillName))
+		end
+	end
+end
+
+--// Kiểm tra xem part có thuộc cấu hình kỹ năng Trajectory hay không
+local function getTrajectoryConfigForPart(part)
+	if not part then return nil end
+	local nameLower = part.Name:lower():gsub("%s+", "")
+	if TRAJECTORY_PROJECTILE_CONFIGS[nameLower] then
+		return TRAJECTORY_PROJECTILE_CONFIGS[nameLower]
+	end
+	if part.Parent and part.Parent:IsA("Model") then
+		local parentLower = part.Parent.Name:lower():gsub("%s+", "")
+		if TRAJECTORY_PROJECTILE_CONFIGS[parentLower] then
+			return TRAJECTORY_PROJECTILE_CONFIGS[parentLower]
+		end
+	end
+	return nil
+end
+
+--// Khóa hướng bay ngay tại Frame 0 trước khi đạn bị xoay quanh trục Y bởi game
+local function lockTrajectoryForPart(part)
+	if not part or not part:IsA("BasePart") then return nil end
+	if lockedProjectiles[part] then
+		return lockedProjectiles[part]
+	end
+
+	local config = getTrajectoryConfigForPart(part)
+	if not config then return nil end
+
+	-- Bắt hướng LookVector tại thời điểm Frame 0 (spawn CFrame)
+	local look = part.CFrame.LookVector
+	local forward2D = Vector3.new(look.X, 0, look.Z)
+	if forward2D.Magnitude > 0.001 then
+		forward2D = forward2D.Unit
+	else
+		forward2D = Vector3.new(0, 0, -1)
+	end
+
+	local data = {
+		part = part,
+		originPos = part.Position,
+		forward2D = forward2D,
+		dangerRadius = config.dangerRadius or 4.0,
+		maxLookahead = config.maxLookahead or 85.0,
+		config = config,
+		spawnTime = os.clock(),
+		locked = true,
+	}
+
+	lockedProjectiles[part] = data
+	if logHazards then
+		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm"):format(
+			part.Name, forward2D.X, forward2D.Z, data.maxLookahead
+		))
+	end
+
+	return data
 end
 
 --// Đăng ký tên kỹ năng của Player để loại trừ
@@ -280,6 +375,8 @@ local HELPER_PART_NAMES = {
 	["main"] = true,
 	["handle"] = true,
 	["humanoidrootpart"] = true,
+	["firstbossbeampart"] = true,
+	["beampart"] = true,
 }
 
 --// Kiểm tra xem một Part/MeshPart cụ thể có thuộc danh sách bỏ qua hay không
@@ -291,6 +388,8 @@ local function isIgnoredPart(part)
 
 	if CUSTOM_HAZARD_EXCEPTIONS[part.Name] or (part.Parent and CUSTOM_HAZARD_EXCEPTIONS[part.Parent.Name])
 		or part.Name:lower():find("multiring") or (part.Parent and part.Parent.Name:lower():find("multiring"))
+		or part.Name:lower():find("crisscross") or (part.Parent and part.Parent.Name:lower():find("crisscross"))
+		or part.Name:lower():find("seekingspike") or (part.Parent and part.Parent.Name:lower():find("seekingspike"))
 		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss")) then
 		return false
 	end
@@ -312,6 +411,8 @@ local function extractHazardParts(instance)
 	end
 	local isException = CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
 		or instance.Name:lower():find("multiring")
+		or instance.Name:lower():find("crisscross")
+		or instance.Name:lower():find("seekingspike")
 		or instance.Name:lower():find("thirdboss")
 
 	local function isValidHazardPart(part)
@@ -421,6 +522,7 @@ end
 local function registerHazard(instance)
 	if not threatDetectorEnabled or not instance or activeHazards[instance] then return end
 	if instance:IsA("Folder") then return end
+	if instance:FindFirstChildOfClass("Humanoid") then return end
 	if instance.Name:find("SmartDodge") or instance == safeSpotMarkerPart then return end
 	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] or isPlayerAsset(instance) then return end
 
@@ -475,6 +577,13 @@ local function registerHazard(instance)
 	hazardCount = hazardCount + 1
 	lastHazardInfo = info
 
+	-- Khóa hướng bay ngay tại Frame 0 cho các chiêu đạn bay / Projectile
+	for _, part in ipairs(hazardParts) do
+		if getTrajectoryConfigForPart and getTrajectoryConfigForPart(part) then
+			lockTrajectoryForPart(part)
+		end
+	end
+
 	-- Gắn sự kiện lắng nghe Transparency và Material thay đổi trên từng Part
 	local function checkPartStatus(part)
 		if not activeHazards[instance] or not activePartsSet[part] then return end
@@ -485,6 +594,14 @@ local function registerHazard(instance)
 
 		if isExpired then
 			activePartsSet[part] = nil
+			if activeTrajectoryVisuals and activeTrajectoryVisuals[part] then
+				pcall(function() activeTrajectoryVisuals[part]:Destroy() end)
+				activeTrajectoryVisuals[part] = nil
+			end
+			if lockedProjectiles then
+				lockedProjectiles[part] = nil
+			end
+
 			-- Kiểm tra xem còn Part nào đang hoạt động không
 			local remaining = 0
 			for _ in pairs(activePartsSet) do
@@ -525,6 +642,10 @@ local function registerHazard(instance)
 						if not activePartsSet[desc] then
 							activePartsSet[desc] = true
 							info.NeonCount = info.NeonCount + 1
+
+							if getTrajectoryConfigForPart and getTrajectoryConfigForPart(desc) then
+								lockTrajectoryForPart(desc)
+							end
 
 							if visualEspEnabled then
 								local boxes = attachSelectionBoxes({ desc })
@@ -599,6 +720,19 @@ function unregisterHazard(instance, reason)
 		table.clear(info.Connections)
 	end
 
+	-- Dọn dẹp Trajectory visuals và locked data
+	if info.ActiveParts then
+		for p in pairs(info.ActiveParts) do
+			if activeTrajectoryVisuals and activeTrajectoryVisuals[p] then
+				pcall(function() activeTrajectoryVisuals[p]:Destroy() end)
+				activeTrajectoryVisuals[p] = nil
+			end
+			if lockedProjectiles then
+				lockedProjectiles[p] = nil
+			end
+		end
+	end
+
 	activeHazards[instance] = nil
 	hazardCount = math.max(0, hazardCount - 1)
 
@@ -670,6 +804,138 @@ local function getFloorPosition(pos)
 		return Vector3.new(pos.X, result.Position.Y + 3, pos.Z), true
 	end
 	return pos, false
+end
+
+--// Kiểm tra xem điểm P có nằm trong hành lang quỹ đạo của một Projectile Part không
+local function isPointInTrajectory(point, part)
+	local data = lockedProjectiles[part]
+	if not data then
+		data = lockTrajectoryForPart(part)
+	end
+	if not data then return false end
+
+	local origin = part.Position
+	local forward = data.forward2D
+	local maxDist = data.maxLookahead
+	local radius = data.dangerRadius
+
+	local toPoint = point - origin
+	local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
+	local dotForward = toPoint2D:Dot(forward)
+
+	-- Điểm P phải nằm trong khoảng từ ngay sau đạn (-radius) tới hết tầm maxDist
+	if dotForward < -radius or dotForward > maxDist then
+		return false
+	end
+
+	local projOnAxis = forward * dotForward
+	local perpVec = toPoint2D - projOnAxis
+	local perpDist = perpVec.Magnitude
+
+	-- Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - origin.Y)
+	if heightDiff > 14 then
+		return false
+	end
+
+	if perpDist <= (radius + playerHitboxPadding) then
+		return true, perpDist, radius, forward, origin, maxDist
+	end
+
+	return false
+end
+
+--// Cập nhật Visual ESP cho các hành lang quỹ đạo (Trajectory Boxes)
+local function updateTrajectoryVisuals()
+	if not visualEspEnabled or not threatDetectorEnabled then
+		for part, vPart in pairs(activeTrajectoryVisuals) do
+			pcall(function() vPart:Destroy() end)
+		end
+		table.clear(activeTrajectoryVisuals)
+		return
+	end
+
+	local currentActiveParts = {}
+
+	for _, info in pairs(activeHazards) do
+		if info.ActiveParts then
+			for part in pairs(info.ActiveParts) do
+				if part and part.Parent and part:IsA("BasePart") and part.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					local trajConfig = getTrajectoryConfigForPart(part)
+					if trajConfig then
+						local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
+						if trajData and trajData.forward2D then
+							currentActiveParts[part] = true
+							local forward2D = trajData.forward2D
+							local maxLookahead = trajData.maxLookahead
+							local dangerRadius = trajData.dangerRadius
+							local originPos = part.Position
+							local centerPos = originPos + forward2D * (maxLookahead / 2)
+
+							local vPart = activeTrajectoryVisuals[part]
+							if not vPart or not vPart.Parent then
+								vPart = Instance.new("Part")
+								vPart.Name = "SmartDodge_TrajectoryBox"
+								vPart.Material = Enum.Material.Neon
+								vPart.Color = trajConfig.visualColor or Color3.fromRGB(255, 130, 0)
+								vPart.Transparency = 0.82
+								vPart.Anchored = true
+								vPart.CanCollide = false
+								vPart.CanQuery = false
+								vPart.CanTouch = false
+
+								local box = Instance.new("SelectionBox")
+								box.Name = "TrajectoryBorder"
+								box.Color3 = Color3.fromRGB(255, 150, 30)
+								box.SurfaceColor3 = trajConfig.visualColor or Color3.fromRGB(255, 130, 0)
+								box.SurfaceTransparency = 0.8
+								box.LineThickness = 0.04
+								box.Adornee = vPart
+								box.Parent = vPart
+
+								local bb = Instance.new("BillboardGui")
+								bb.Name = "TrajGui"
+								bb.Size = UDim2.fromOffset(180, 26)
+								bb.StudsOffset = Vector3.new(0, 3.5, 0)
+								bb.AlwaysOnTop = true
+								bb.Adornee = vPart
+								bb.Parent = vPart
+
+								local label = Instance.new("TextLabel")
+								label.Name = "Label"
+								label.Size = UDim2.fromScale(1, 1)
+								label.BackgroundTransparency = 1
+								label.TextColor3 = Color3.fromRGB(255, 170, 40)
+								label.TextStrokeTransparency = 0
+								label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+								label.Font = Enum.Font.GothamBold
+								label.TextSize = 12
+								label.Text = ("🚀 TRAJECTORY: %s (%.0fm)"):format(part.Name, maxLookahead)
+								label.Parent = bb
+
+								activeTrajectoryVisuals[part] = vPart
+							end
+
+							vPart.Size = Vector3.new(dangerRadius * 2, 2.0, maxLookahead)
+							local floorPos, hasFloor = getFloorPosition(centerPos)
+							local visualCenter = hasFloor and Vector3.new(centerPos.X, floorPos.Y, centerPos.Z) or centerPos
+							vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
+							vPart.Parent = Workspace.Terrain
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Dọn dẹp những part đã hết hạn
+	for part, vPart in pairs(activeTrajectoryVisuals) do
+		if not currentActiveParts[part] then
+			pcall(function() vPart:Destroy() end)
+			activeTrajectoryVisuals[part] = nil
+			lockedProjectiles[part] = nil
+		end
+	end
 end
 
 --// Kiểm tra xem một điểm P có nằm trong phạm vi sát thương của một BasePart không
@@ -785,6 +1051,7 @@ end
 local function isPointInAnyHazard(point)
 	local bestDistSq = math.huge
 	local foundInfo, foundPart = nil, nil
+	local foundTraj = nil
 
 	for _, info in pairs(activeHazards) do
 		local isMultiRings = info.Name and info.Name:lower():find("multiring") ~= nil
@@ -798,17 +1065,40 @@ local function isPointInAnyHazard(point)
 					bestDistSq = distSq
 					foundInfo = info
 					foundPart = hitPart
+					foundTraj = nil
 				end
 			end
 		elseif info.ActiveParts then
-			-- Các skill khác dùng OBB / Radius thông thường
 			for part in pairs(info.ActiveParts) do
-				if isPointInPart(point, part) then
-					local distSq = (point - part.Position).Magnitude
-					if distSq < bestDistSq then
-						bestDistSq = distSq
-						foundInfo = info
-						foundPart = part
+				local trajConfig = getTrajectoryConfigForPart(part)
+				if trajConfig then
+					local inTraj, perpDist, radius, forward, origin, maxDist = isPointInTrajectory(point, part)
+					if inTraj then
+						local distSq = (point - part.Position).Magnitude
+						if distSq < bestDistSq then
+							bestDistSq = distSq
+							foundInfo = info
+							foundPart = part
+							foundTraj = {
+								isTrajectory = true,
+								perpDist = perpDist,
+								dangerRadius = radius,
+								forward2D = forward,
+								originPos = origin,
+								maxLookahead = maxDist,
+							}
+						end
+					end
+				else
+					-- Các skill khác dùng OBB / Radius thông thường
+					if isPointInPart(point, part) then
+						local distSq = (point - part.Position).Magnitude
+						if distSq < bestDistSq then
+							bestDistSq = distSq
+							foundInfo = info
+							foundPart = part
+							foundTraj = nil
+						end
 					end
 				end
 			end
@@ -816,9 +1106,9 @@ local function isPointInAnyHazard(point)
 	end
 
 	if foundPart then
-		return true, foundInfo, foundPart
+		return true, foundInfo, foundPart, foundTraj
 	end
-	return false, nil, nil
+	return false, nil, nil, nil
 end
 
 --// Tạo / Lấy Part hiển thị Hitbox Padding của Player quanh người
@@ -955,7 +1245,7 @@ function smartDodge.CalculateSafeSpot(customPlayerPos)
 	end
 
 	-- 1. Kiểm tra xem Player có đang đứng trong bất kỳ vùng nguy hiểm nào không
-	local inDanger, dangerInfo, dangerPart = isPointInAnyHazard(playerPos)
+	local inDanger, dangerInfo, dangerPart, dangerTraj = isPointInAnyHazard(playerPos)
 	if not inDanger or not dangerPart then
 		lockedSafeSpot = nil
 		return false, nil, nil, 0
@@ -1026,6 +1316,62 @@ function smartDodge.CalculateSafeSpot(customPlayerPos)
 					bestDist = moveDist
 					bestPos = snapped
 				end
+			end
+		end
+
+		candidatePos = bestPos
+	elseif dangerTraj and dangerTraj.isTrajectory then
+		-- 3. CHIẾN LƯỢC CHO PROJECTILE: Thoát Ngang Vuông Góc 90 Độ (Perpendicular Lateral Escape)
+		local forward2D = dangerTraj.forward2D
+		local perpDist = dangerTraj.perpDist
+		local dangerRadius = dangerTraj.dangerRadius
+		local stepNeeded = math.max(3.5, (dangerRadius - perpDist) + ESCAPE_MARGIN)
+
+		-- Vector vuông góc sang phải và sang trái (90 deg trên mặt phẳng X-Z)
+		local perpRight = Vector3.new(forward2D.Z, 0, -forward2D.X)
+		local perpLeft = Vector3.new(-forward2D.Z, 0, forward2D.X)
+
+		local trajCandidates = {
+			playerPos + perpRight * stepNeeded,
+			playerPos + perpLeft * stepNeeded,
+			playerPos + (perpRight * (stepNeeded + 2.0)),
+			playerPos + (perpLeft * (stepNeeded + 2.0)),
+			playerPos + (perpRight * stepNeeded) + (forward2D * 2),
+			playerPos + (perpLeft * stepNeeded) + (forward2D * 2),
+		}
+
+		local bestPos = nil
+		local bestDist = math.huge
+
+		for _, candWorld in ipairs(trajCandidates) do
+			local snapped, hasFloor = getFloorPosition(candWorld)
+			if hasFloor and not isPointInAnyHazard(snapped) then
+				local moveDist = (snapped - playerPos).Magnitude
+				if moveDist < bestDist then
+					bestDist = moveDist
+					bestPos = snapped
+				end
+			end
+		end
+
+		if not bestPos then
+			-- Fallback lưới tỏa tròn nếu cả 2 bên sườn đều bị vướng
+			for _, dist in ipairs(RADIAL_DISTANCES) do
+				for _, angleDeg in ipairs(RADIAL_ANGLES) do
+					local rad = math.rad(angleDeg)
+					local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
+					local testWorld = playerPos + offset
+					local snapped, hasFloor = getFloorPosition(testWorld)
+
+					if hasFloor and not isPointInAnyHazard(snapped) then
+						local moveDist = (snapped - playerPos).Magnitude
+						if moveDist < bestDist then
+							bestDist = moveDist
+							bestPos = snapped
+						end
+					end
+				end
+				if bestPos then break end
 			end
 		end
 
@@ -1227,6 +1573,7 @@ local function startSafeSpotLoop()
 			local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			local pPos = rootPart and rootPart.Position
 			updateHitboxVisual(pPos)
+			updateTrajectoryVisuals()
 
 			-- Kích hoạt Thực thi Né Chiêu (Bài toán 3)
 			if inDanger and safePos and autoDodgeEnabled then
@@ -1263,6 +1610,11 @@ local function stopSafeSpotLoop()
 	if hitboxVisualPart then
 		hitboxVisualPart.Parent = nil
 	end
+	for part, vPart in pairs(activeTrajectoryVisuals) do
+		pcall(function() vPart:Destroy() end)
+	end
+	table.clear(activeTrajectoryVisuals)
+	table.clear(lockedProjectiles)
 	isDodging = false
 	isPlayerInDanger = false
 	currentSafeSpot = nil
@@ -1372,6 +1724,7 @@ smartDodge.IsLogThreatsEnabled = smartDodge.IsLogHazardsEnabled
 
 function smartDodge.SetVisualEsp(state)
 	visualEspEnabled = state and true or false
+	updateTrajectoryVisuals()
 	if visualEspEnabled then
 		for _, info in pairs(activeHazards) do
 			if (not info.VisualBoxes or #info.VisualBoxes == 0) and info.ActiveParts then
@@ -1539,6 +1892,11 @@ lifecycle.Register(function()
 		pcall(function() hitboxVisualPart:Destroy() end)
 		hitboxVisualPart = nil
 	end
+	for part, vPart in pairs(activeTrajectoryVisuals) do
+		pcall(function() vPart:Destroy() end)
+	end
+	table.clear(activeTrajectoryVisuals)
+	table.clear(lockedProjectiles)
 	if dodgeThread then
 		pcall(function() task.cancel(dodgeThread) end)
 		dodgeThread = nil
