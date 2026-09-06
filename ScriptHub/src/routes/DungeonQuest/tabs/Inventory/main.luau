@@ -105,9 +105,7 @@ return function(window, tab)
 		Multi = true,
 		Required = false,
 		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			for rarity in pairs(selected) do table.insert(list, rarity) end
-			autoSell.SetRarityFilter(list)
+			autoSell.SetRarityFilter(selected)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellRarity")
@@ -119,9 +117,7 @@ return function(window, tab)
 		Multi = true,
 		Required = false,
 		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			for itemType in pairs(selected) do table.insert(list, itemType) end
-			autoSell.SetTypeFilter(list)
+			autoSell.SetTypeFilter(selected)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellType")
@@ -142,7 +138,14 @@ return function(window, tab)
 				local isMulti = (selected == "None")
 				levelReqDropdown.Settings.Multi = isMulti
 				levelReqDropdown.Settings.Required = not isMulti
-				levelReqDropdown:UpdateSelection({})
+				local currentFilters = autoSell.GetLevelReqExactFilter()
+				if #currentFilters > 0 then
+					if not isMulti and #currentFilters > 1 then
+						levelReqDropdown:UpdateSelection(currentFilters[1])
+					else
+						levelReqDropdown:UpdateSelection(currentFilters)
+					end
+				end
 			end
 			updateSummary()
 		end),
@@ -156,13 +159,7 @@ return function(window, tab)
 		Required = currentMode ~= "None",
 		Search = true,
 		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			if type(selected) == "table" then
-				for level in pairs(selected) do table.insert(list, level) end
-			elseif type(selected) == "string" then
-				table.insert(list, selected)
-			end
-			autoSell.SetLevelReqExactFilter(list)
+			autoSell.SetLevelReqExactFilter(selected)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellLevelReq")

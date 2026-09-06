@@ -281,4 +281,84 @@ function geometry.IsPointInAnyHazard(point)
 	return false, nil, nil, nil
 end
 
+--// Lấy danh sách tất cả các Hazard Instance đang bao phủ điểm P (hỗ trợ nhiều chiêu đè nhau)
+function geometry.GetAllHazardsAtPoint(point)
+	local det = det()
+	local hazardsSet = {}
+	local count = 0
+
+	for _, info in pairs(det.GetActiveHazardsMap()) do
+		local isMultiRings = info.Name and info.Name:lower():find("multiring") ~= nil
+		if isMultiRings then
+			local inRing, hitPart = geometry.IsPointInThirdBossMultiRings(point, info)
+			if inRing then
+				local inst = info.Instance or (hitPart and hitPart.Parent)
+				if inst then
+					hazardsSet[inst] = true
+					count = count + 1
+				end
+			end
+		elseif info.ActiveParts then
+			for part in pairs(info.ActiveParts) do
+				local trajConfig = det.GetTrajectoryConfigForPart(part)
+				if trajConfig then
+					local inTraj = geometry.IsPointInTrajectory(point, part)
+					if inTraj then
+						local inst = info.Instance or part
+						hazardsSet[inst] = true
+						count = count + 1
+						break
+					end
+				else
+					if geometry.IsPointInPart(point, part) then
+						local inst = info.Instance or (part:IsA("Model") and part or part.Parent)
+						hazardsSet[inst] = true
+						count = count + 1
+						break
+					end
+				end
+			end
+		end
+	end
+
+	return hazardsSet, count
+end
+
+--// Kiểm tra xem đoạn đường di chuyển từ fromPos -> toPos có an toàn không (Path Clearance)
+--// currentHazardsSet: tập hợp các Hazard mà người chơi ĐANG ĐỨNG TRONG (được phép băng qua để thoát ra)
+function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentDangerPart)
+	local dist = (toPos - fromPos).Magnitude
+	if dist <= 4.0 then
+		return true -- Bước ngắn / Instant Snap an toàn
+	end
+
+	local steps = math.clamp(math.floor(dist / 3.0), 2, 5)
+	for i = 1, steps - 1 do
+		local t = i / steps
+		local samplePos = fromPos:Lerp(toPos, t)
+		local inDanger, hitInfo, hitPart, hitTraj = geometry.IsPointInAnyHazard(samplePos)
+		if inDanger then
+			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) đang bay -> Tuyệt đối không băng qua
+			if hitTraj and hitTraj.isTrajectory then
+				return false
+			end
+			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường
+			local hitInst = (hitInfo and hitInfo.Instance)
+				or (hitPart and (hitPart:IsA("Model") and hitPart or hitPart.Parent))
+
+			if currentHazardsSet and next(currentHazardsSet) ~= nil then
+				if hitInst and not currentHazardsSet[hitInst] then
+					return false
+				end
+			elseif fallbackCurrentDangerPart then
+				local currentInst = fallbackCurrentDangerPart:IsA("Model") and fallbackCurrentDangerPart or fallbackCurrentDangerPart.Parent
+				if currentInst and hitInst and currentInst ~= hitInst then
+					return false
+				end
+			end
+		end
+	end
+	return true
+end
+
 return geometry

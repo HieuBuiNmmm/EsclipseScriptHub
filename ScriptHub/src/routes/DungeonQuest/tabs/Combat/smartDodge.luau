@@ -116,16 +116,36 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeAutoExecution")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Final Snap Distance (studs)",
-		Default = smartDodge.GetMaxTeleportStep(),
-		Minimum = 1,
-		Maximum = 4,
+		Name = "Max Dodge Time Budget (s)",
+		Default = smartDodge.GetMaxDodgeTime(),
+		Minimum = 0.3,
+		Maximum = 3.0,
 		DisplayMethod = "Round",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(value)
-			smartDodge.SetMaxTeleportStep(value)
+			smartDodge.SetMaxDodgeTime(value)
+		end),
+	}, "Slider_SmartDodgeMaxTime"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Instant / Final Snap Distance (studs)",
+		Default = smartDodge.GetMaxSnapDistance(),
+		Minimum = 1,
+		Maximum = 6,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetMaxSnapDistance(value)
 		end),
 	}, "Slider_SmartDodgeMaxStep"))
+
+	leftSection:Toggle({
+		Name = "Maintain Height When Snapping",
+		Default = smartDodge.IsMaintainSnapHeightEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetMaintainSnapHeight(state)
+		end),
+	}, "Toggle_SmartDodgeMaintainHeight")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player Hitbox Padding (studs)",

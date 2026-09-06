@@ -46,8 +46,14 @@ smartDodge.GetHitboxPadding = geometry.GetHitboxPadding
 --// Dodge (Module 5)
 smartDodge.SetAutoDodge = dodge.SetAutoDodge
 smartDodge.IsAutoDodgeEnabled = dodge.IsAutoDodgeEnabled
+smartDodge.SetMaxDodgeTime = dodge.SetMaxDodgeTime
+smartDodge.GetMaxDodgeTime = dodge.GetMaxDodgeTime
+smartDodge.SetMaxSnapDistance = dodge.SetMaxSnapDistance
+smartDodge.GetMaxSnapDistance = dodge.GetMaxSnapDistance
 smartDodge.SetMaxTeleportStep = dodge.SetMaxTeleportStep
 smartDodge.GetMaxTeleportStep = dodge.GetMaxTeleportStep
+smartDodge.SetMaintainSnapHeight = dodge.SetMaintainSnapHeight
+smartDodge.IsMaintainSnapHeightEnabled = dodge.IsMaintainSnapHeightEnabled
 smartDodge.IsDodging = dodge.IsDodging
 smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus

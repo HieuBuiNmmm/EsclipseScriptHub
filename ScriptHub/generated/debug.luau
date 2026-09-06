@@ -1,19 +1,3 @@
-﻿--!nocheck
---!nolint
-
---[[
-    @authors YOUR_NAME
-    @repository YOUR_REPOSITORY
-
-    This file was automatically generated with darklua, it is not intended for manual editing.
---]]
-
-_P = {
-    genDate = "2026-09-06T12:02:17.792731500+00:00",
-    cfg = "Debug",
-    vers = "v0.0.0"
-}
-
 --// Types
 type Window__DARKLUA_TYPE_a = { Visible: boolean? }
 local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()local MacLib = { 
@@ -5579,15 +5563,20 @@ function MacLib:Window(Settings)
 		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
 		if not success then return false, "Unable to decode JSON data." end
 
+		MacLib.LoadingConfig = true
 		MacLib.contextData = decoded.contextData or {}
 
 		for _, option in next, decoded.objects do
 			if ClassParser[option.type] then
-				task.spawn(function() 
+				pcall(function() 
 					ClassParser[option.type].Load(option.flag, option) 
 				end)
 			end
 		end
+
+		task.delay(1, function()
+			MacLib.LoadingConfig = false
+		end)
 
 		return true
 	end
@@ -5973,7 +5962,81 @@ function notifier.Notify(title, desc, lifetime)
 end
 
 return notifier
-end function __DIST.d()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
+end function __DIST.d()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
+-- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('c')
+
+--// Table
+local autoSave = {}
+
+--// Variables
+local activeConfig = nil
+local saveQueued = false
+local suspended = false
+
+function autoSave.Suspend()
+	suspended = true
+	saveQueued = false
+end
+
+function autoSave.Resume()
+	suspended = false
+end
+
+function autoSave.IsSuspended()
+	return suspended or (macLib.LoadingConfig == true)
+end
+
+-- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
+function autoSave.SetActive(name)
+	activeConfig = (typeof(name) == "string" and #name > 0) and name or nil
+end
+
+function autoSave.GetActive()
+	return activeConfig
+end
+
+-- Lưu ngay lập tức (gọi trực tiếp)
+function autoSave.SaveNow()
+	if autoSave.IsSuspended() then return end
+	if not activeConfig then return end
+
+	local success, err = macLib:SaveConfig(activeConfig)
+	if not success and err and err ~= "Please select a config file." then
+		notifier.Notify("AutoSave", "Không lưu được config: " .. tostring(err), 3)
+	end
+end
+
+-- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
+function autoSave.Save()
+	if autoSave.IsSuspended() then return end
+	if not activeConfig then return end
+	if saveQueued then return end
+	saveQueued = true
+
+	task.delay(0.5, function()
+		saveQueued = false
+		if not autoSave.IsSuspended() and autoSave.GetActive() then
+			autoSave.SaveNow()
+		end
+	end)
+end
+
+-- Bọc một callback control để tự lưu sau khi callback chạy
+function autoSave.Wrap(callback)
+	if type(callback) ~= "function" then return callback end
+	return function(...)
+		callback(...)
+		autoSave.Save()
+	end
+end
+
+return autoSave
+end function __DIST.e()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
 
 --// Services
 
@@ -6000,13 +6063,13 @@ return {
 	VirtualInputManager = VirtualInputManager,
 	player = player,
 }
-end function __DIST.e()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
+end function __DIST.f()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
 -- speed và các API cho module chuyên biệt (autoFarmPathfinder, webhook, ESP...)
 -- thao tác lên module này để tránh circular dependency.
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
 
 --// References
@@ -6741,7 +6804,7 @@ end)
 
 --// Table
 return shared
-end function __DIST.f()-- Tiện ích UI dùng chung cho các tab DungeonQuest (Maclib).
+end function __DIST.g()-- Tiện ích UI dùng chung cho các tab DungeonQuest (Maclib).
 
 --// Table
 
@@ -6779,8 +6842,13 @@ function ui.PatchDropdownRestore(dropdownElement, insertMissing)
 					self:InsertOptions({ newSelection })
 				end)
 			else
-				local firstOption = next(self:GetOptions())
-				if firstOption then newSelection = firstOption end
+				local opts = self.Settings and self.Settings.Options
+				if type(opts) == "table" and #opts > 0 then
+					newSelection = opts[1]
+				else
+					local firstOption = next(self:GetOptions())
+					if firstOption then newSelection = firstOption end
+				end
 			end
 		end
 		originalUpdateSelection(self, newSelection)
@@ -6789,64 +6857,6 @@ function ui.PatchDropdownRestore(dropdownElement, insertMissing)
 end
 
 return ui
-end function __DIST.g()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
--- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
-
---// Imports
-
-local macLib = __DIST.load('a')
-local notifier = __DIST.load('c')
-
---// Table
-local autoSave = {}
-
---// Variables
-local activeConfig = nil
-local saveQueued = false
-
--- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
-function autoSave.SetActive(name)
-	activeConfig = (typeof(name) == "string" and #name > 0) and name or nil
-end
-
-function autoSave.GetActive()
-	return activeConfig
-end
-
--- Lưu ngay lập tức (gọi trực tiếp)
-function autoSave.SaveNow()
-	if not activeConfig then return end
-
-	local success, err = macLib:SaveConfig(activeConfig)
-	if not success and err and err ~= "Please select a config file." then
-		notifier.Notify("AutoSave", "Không lưu được config: " .. tostring(err), 3)
-	end
-end
-
--- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
-function autoSave.Save()
-	if not activeConfig then return end
-	if saveQueued then return end
-	saveQueued = true
-
-	task.delay(0.5, function()
-		saveQueued = false
-		if autoSave.GetActive() then
-			autoSave.SaveNow()
-		end
-	end)
-end
-
--- Bọc một callback control để tự lưu sau khi callback chạy
-function autoSave.Wrap(callback)
-	if type(callback) ~= "function" then return callback end
-	return function(...)
-		callback(...)
-		autoSave.Save()
-	end
-end
-
-return autoSave
 end function __DIST.h()-- Coordinator (DungeonQuest): Điều phối loại trừ lẫn nhau giữa các hệ thống
 -- cùng điều khiển nhân vật (SmartDodge vs AutoFarm). Module lá — không require ai
 -- để tránh cycle import bị darklua (bundler) phát hiện.
@@ -7163,6 +7173,86 @@ function geometry.IsPointInAnyHazard(point)
 	return false, nil, nil, nil
 end
 
+--// Lấy danh sách tất cả các Hazard Instance đang bao phủ điểm P (hỗ trợ nhiều chiêu đè nhau)
+function geometry.GetAllHazardsAtPoint(point)
+	local det = det()
+	local hazardsSet = {}
+	local count = 0
+
+	for _, info in pairs(det.GetActiveHazardsMap()) do
+		local isMultiRings = info.Name and info.Name:lower():find("multiring") ~= nil
+		if isMultiRings then
+			local inRing, hitPart = geometry.IsPointInThirdBossMultiRings(point, info)
+			if inRing then
+				local inst = info.Instance or (hitPart and hitPart.Parent)
+				if inst then
+					hazardsSet[inst] = true
+					count = count + 1
+				end
+			end
+		elseif info.ActiveParts then
+			for part in pairs(info.ActiveParts) do
+				local trajConfig = det.GetTrajectoryConfigForPart(part)
+				if trajConfig then
+					local inTraj = geometry.IsPointInTrajectory(point, part)
+					if inTraj then
+						local inst = info.Instance or part
+						hazardsSet[inst] = true
+						count = count + 1
+						break
+					end
+				else
+					if geometry.IsPointInPart(point, part) then
+						local inst = info.Instance or (part:IsA("Model") and part or part.Parent)
+						hazardsSet[inst] = true
+						count = count + 1
+						break
+					end
+				end
+			end
+		end
+	end
+
+	return hazardsSet, count
+end
+
+--// Kiểm tra xem đoạn đường di chuyển từ fromPos -> toPos có an toàn không (Path Clearance)
+--// currentHazardsSet: tập hợp các Hazard mà người chơi ĐANG ĐỨNG TRONG (được phép băng qua để thoát ra)
+function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentDangerPart)
+	local dist = (toPos - fromPos).Magnitude
+	if dist <= 4.0 then
+		return true -- Bước ngắn / Instant Snap an toàn
+	end
+
+	local steps = math.clamp(math.floor(dist / 3.0), 2, 5)
+	for i = 1, steps - 1 do
+		local t = i / steps
+		local samplePos = fromPos:Lerp(toPos, t)
+		local inDanger, hitInfo, hitPart, hitTraj = geometry.IsPointInAnyHazard(samplePos)
+		if inDanger then
+			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) đang bay -> Tuyệt đối không băng qua
+			if hitTraj and hitTraj.isTrajectory then
+				return false
+			end
+			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường
+			local hitInst = (hitInfo and hitInfo.Instance)
+				or (hitPart and (hitPart:IsA("Model") and hitPart or hitPart.Parent))
+
+			if currentHazardsSet and next(currentHazardsSet) ~= nil then
+				if hitInst and not currentHazardsSet[hitInst] then
+					return false
+				end
+			elseif fallbackCurrentDangerPart then
+				local currentInst = fallbackCurrentDangerPart:IsA("Model") and fallbackCurrentDangerPart or fallbackCurrentDangerPart.Parent
+				if currentInst and hitInst and currentInst ~= hitInst then
+					return false
+				end
+			end
+		end
+	end
+	return true
+end
+
 return geometry end function __DIST.j()-- Smart Dodge – Module 1: Threat Detection Engine (DungeonQuest).
 -- Chuyên trách: quét Workspace Depth 1, nhận diện hiểm họa (Neon / ngoại lệ), khóa quỹ đạo
 -- projectile, SelectionBox ESP, hành lang quỹ đạo cảnh báo, registry tên skill player.
@@ -7170,7 +7260,7 @@ return geometry end function __DIST.j()-- Smart Dodge – Module 1: Threat Detec
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 
 --// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
 local geometryRef
@@ -8187,7 +8277,7 @@ return detection end function __DIST.k()-- Smart Dodge – Module 3+4: Safe Spot
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 local geometry = __DIST.load('i')
 local detection = __DIST.load('j')
 
@@ -8202,8 +8292,8 @@ local safeSpotMarkerPart = nil
 local showHitboxVisual = false
 local hitboxVisualPart = nil
 local ESCAPE_MARGIN = 4.5           -- Khoảng cách đệm an toàn sau khi ra khỏi mép (studs)
-local RADIAL_DISTANCES = { 6, 10, 14, 18, 24, 30 }
-local RADIAL_ANGLES = { 0, 45, 90, 135, 180, 225, 270, 315 }
+local RADIAL_DISTANCES = { 3.5, 5.5, 7.5, 10, 13, 16, 20, 25 }
+local ANGLE_OFFSETS_24 = { 0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90, 105, -105, 120, -120, 135, -135, 150, -150, 165, -165, 180 }
 
 --// Trạng thái visual gần nhất (để replay khi bật/tắt toggle từ UI — engine cập nhật mỗi nhịp)
 local lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = nil, false, 0
@@ -8321,7 +8411,7 @@ function safeSpot.UpdateHitbox(playerPos)
 	part.Parent = Workspace.Terrain
 end
 
---// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá
+--// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá (Hình Cầu Nhỏ Sát Đất)
 local function getOrCreateSafeMarker()
 	if safeSpotMarkerPart and safeSpotMarkerPart.Parent then
 		return safeSpotMarkerPart
@@ -8329,29 +8419,20 @@ local function getOrCreateSafeMarker()
 
 	local part = Instance.new("Part")
 	part.Name = "SmartDodge_SafeMarker"
-	part.Shape = Enum.PartType.Cylinder
-	part.Size = Vector3.new(0.4, 3.5, 3.5)
+	part.Shape = Enum.PartType.Ball
+	part.Size = Vector3.new(1.5, 1.5, 1.5)
 	part.Color = Color3.fromRGB(0, 255, 120)
 	part.Material = Enum.Material.Neon
-	part.Transparency = 0.3
+	part.Transparency = 0.2
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
 
-	local selectionBox = Instance.new("SelectionBox")
-	selectionBox.Name = "MarkerBorder"
-	selectionBox.Color3 = Color3.fromRGB(80, 255, 160)
-	selectionBox.SurfaceColor3 = Color3.fromRGB(0, 255, 120)
-	selectionBox.SurfaceTransparency = 0.5
-	selectionBox.LineThickness = 0.05
-	selectionBox.Adornee = part
-	selectionBox.Parent = part
-
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "MarkerGui"
-	bb.Size = UDim2.fromOffset(140, 30)
-	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.Size = UDim2.fromOffset(130, 24)
+	bb.StudsOffset = Vector3.new(0, 1.5, 0)
 	bb.AlwaysOnTop = true
 	bb.Adornee = part
 	bb.Parent = part
@@ -8364,7 +8445,7 @@ local function getOrCreateSafeMarker()
 	label.TextStrokeTransparency = 0
 	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
+	label.TextSize = 12
 	label.Text = "🟢 SAFE SPOT"
 	label.Parent = bb
 
@@ -8372,7 +8453,7 @@ local function getOrCreateSafeMarker()
 	return part
 end
 
---// Cập nhật vị trí hiển thị của Safe Marker (engine gọi mỗi nhịp loop)
+--// Cập nhật vị trí hiển thị của Safe Marker (đặt đáy hình cầu sát mặt đất nhất có thể)
 function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = pos, inDanger or false, escapeDist or 0
 	if not showSafeMarker or not inDanger or not pos then
@@ -8383,7 +8464,9 @@ function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	end
 
 	local marker = getOrCreateSafeMarker()
-	marker.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
+	-- pos.Y được tính là Floor_Y + 3. Quả cầu bán kính 0.75 nên đặt tâm ở (Floor_Y + 0.8) = (pos.Y - 2.2) để sát đất
+	local floorBallY = pos.Y - 2.2
+	marker.CFrame = CFrame.new(pos.X, floorBallY, pos.Z)
 	marker.Parent = Workspace.Terrain
 
 	local bb = marker:FindFirstChild("MarkerGui")
@@ -8391,6 +8474,138 @@ function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	if label then
 		label.Text = ("🟢 SAFE SPOT (%.1fm)"):format(escapeDist or 0)
 	end
+end
+
+local HYSTERESIS_THRESHOLD = 4.0     -- Ngưỡng chênh lệch cự ly (studs) để chuyển khóa sang điểm an toàn mới gần hơn
+
+--// Tính vector lực đẩy tổng hợp (Multi-Hazard Repulsion Force) từ tất cả các hazard đang đè/gần Player (1 vector/chiêu)
+local function computeRepulsionVector(playerPos)
+	local netX, netZ = 0, 0
+	local activeHazards = detection.GetActiveHazardsMap and detection.GetActiveHazardsMap()
+	if not activeHazards then return nil end
+
+	local count = 0
+	for _, info in pairs(activeHazards) do
+		-- Lấy vị trí trung tâm đại diện của từng Skill (tránh việc Model 10 part bị áp đảo Model 1 part)
+		local centerPos = info.Position
+		if not centerPos and info.ActiveParts then
+			for part in pairs(info.ActiveParts) do
+				if part and part.Parent and part:IsA("BasePart") then
+					centerPos = part.Position
+					break
+				end
+			end
+		end
+
+		if centerPos then
+			local diffX = playerPos.X - centerPos.X
+			local diffZ = playerPos.Z - centerPos.Z
+			local distSq = diffX * diffX + diffZ * diffZ
+			if distSq < 1600 and distSq > 0.01 then
+				local dist = math.sqrt(distSq)
+				local weight = 1 / math.max(1, dist)
+				netX = netX + (diffX / dist) * weight
+				netZ = netZ + (diffZ / dist) * weight
+				count = count + 1
+			end
+		end
+	end
+
+	local netMagSq = netX * netX + netZ * netZ
+	if count > 0 and netMagSq > 0.001 then
+		local netMag = math.sqrt(netMagSq)
+		return Vector3.new(netX / netMag, 0, netZ / netMag)
+	end
+	return nil
+end
+
+--// Trả về danh sách 24 góc quét được sắp xếp ưu tiên theo hướng lực đẩy thoát nạn tự nhiên
+local function getSearchAngles(repVector)
+	local baseAngleDeg = 0
+	if repVector then
+		baseAngleDeg = math.deg(math.atan2(repVector.Z, repVector.X))
+	end
+
+	local angles = table.create(24)
+	for i, off in ipairs(ANGLE_OFFSETS_24) do
+		angles[i] = (baseAngleDeg + off) % 360
+	end
+	return angles
+end
+
+--// Đánh giá vùng đệm an toàn xung quanh điểm candidate (Clearance Safety Margin Scoring)
+local function getClearanceBonus(point)
+	local buffer = 1.5
+	local offsets = {
+		Vector3.new(buffer, 0, 0),
+		Vector3.new(-buffer, 0, 0),
+		Vector3.new(0, 0, buffer),
+		Vector3.new(0, 0, -buffer),
+	}
+	local safeCount = 0
+	for _, off in ipairs(offsets) do
+		if not geometry.IsPointInAnyHazard(point + off) then
+			safeCount = safeCount + 1
+		end
+	end
+	-- Điểm thưởng tối đa 1.6 studs cho vị trí có không gian đệm rộng rãi 4 phía
+	return safeCount * 0.4
+end
+
+--// Thuật toán Quét Tỏa Tròn Đa Hướng (Fine-Grained Radial Sweep): tìm khoảng hở an toàn gần nhất kết hợp Path Check & Clearance
+local function searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart)
+	local angles = getSearchAngles(repVector)
+	local bestPos = nil
+	local bestScore = math.huge
+	local fallbackPos = nil
+	local fallbackScore = math.huge
+
+	for _, dist in ipairs(RADIAL_DISTANCES) do
+		local foundAtRadius = nil
+		local bestScoreAtRadius = math.huge
+		local fallbackAtRadius = nil
+		local bestFallbackScoreAtRadius = math.huge
+
+		for _, angleDeg in ipairs(angles) do
+			local rad = math.rad(angleDeg)
+			local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
+			local testWorld = playerPos + offset
+			local snapped, hasFloor = geometry.GetFloorPosition(testWorld)
+
+			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
+				local moveDist = (snapped - playerPos).Magnitude
+				local score = moveDist - getClearanceBonus(snapped)
+
+				-- Fallback lưu điểm an toàn tại đích
+				if score < bestFallbackScoreAtRadius then
+					bestFallbackScoreAtRadius = score
+					fallbackAtRadius = snapped
+				end
+
+				-- Ưu tiên số 1: Đoạn đường di chuyển từ playerPos -> snapped an toàn (cho phép băng qua các chiêu đang đè)
+				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+					if score < bestScoreAtRadius then
+						bestScoreAtRadius = score
+						foundAtRadius = snapped
+					end
+				end
+			end
+		end
+
+		if foundAtRadius then
+			bestScore = bestScoreAtRadius
+			bestPos = foundAtRadius
+			break -- Ưu tiên vòng bán kính nhỏ nhất có đường đi an toàn
+		elseif fallbackAtRadius and not fallbackPos then
+			fallbackScore = bestFallbackScoreAtRadius
+			fallbackPos = fallbackAtRadius
+		end
+	end
+
+	if bestPos then
+		return bestPos, bestScore
+	end
+	return fallbackPos, fallbackScore
 end
 
 --// Thuật toán cốt lõi: Tính toán vị trí an toàn (Safe Spot Calculation)
@@ -8411,17 +8626,30 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 
 	local hazardName = dangerInfo.Name or "Unknown"
 
-	-- 2. KHÓA ĐIỂM AN TOÀN (Latching Lock): Nếu điểm an toàn trước đó vẫn an toàn, GIỮ NGUYÊN 100% không tính lại
+	-- Lấy toàn bộ các hazard đang bao phủ vị trí Player (hỗ trợ nhiều chiêu đè nhau)
+	local currentHazardsSet = geometry.GetAllHazardsAtPoint(playerPos)
+
+	-- 2. ĐÁNH GIÁ KHÓA ĐIỂM HIỆN TẠI (Smart Latching with Hysteresis & Path Safety Check):
+	local hasValidLock = false
+	local lockedDist = math.huge
 	if lockedSafeSpot and not geometry.IsPointInAnyHazard(lockedSafeSpot) then
-		local dist = (lockedSafeSpot - playerPos).Magnitude
-		if dist <= 35 then
-			return true, lockedSafeSpot, hazardName, math.floor(dist * 10) / 10
+		lockedDist = (lockedSafeSpot - playerPos).Magnitude
+		-- Đề xuất 1 & 5: Điểm khóa phải nằm trong tầm và đường chạy tới điểm khóa vẫn phải an toàn
+		if lockedDist <= 35 and geometry.IsPathSafe(playerPos, lockedSafeSpot, currentHazardsSet, dangerPart) then
+			hasValidLock = true
+		else
+			lockedSafeSpot = nil
 		end
+	else
+		lockedSafeSpot = nil
 	end
 
 	local candidatePos = nil
 	local isMultiRings = hazardName:lower():find("multiring") ~= nil
 		or (dangerInfo.Instance and dangerInfo.Instance.Name:lower():find("multiring") ~= nil)
+
+	-- 3. Tính Vector Lực Đẩy Thoát Nạn Tổng Hợp (Multi-Hazard Repulsion)
+	local repVector = computeRepulsionVector(playerPos)
 
 	if isMultiRings then
 		-- Tính điểm thoát nhanh cho thirdBossMultiRings:
@@ -8464,22 +8692,31 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		end
 
 		local bestPos = nil
-		local bestDist = math.huge
+		local bestScore = math.huge
+		local fallbackPos = nil
+		local fallbackScore = math.huge
 
 		for _, candWorld in ipairs(candidates) do
 			local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
 			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
 				local moveDist = (snapped - playerPos).Magnitude
-				if moveDist < bestDist then
-					bestDist = moveDist
-					bestPos = snapped
+				local score = moveDist - getClearanceBonus(snapped)
+				if score < fallbackScore then
+					fallbackScore = score
+					fallbackPos = snapped
+				end
+				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+					if score < bestScore then
+						bestScore = score
+						bestPos = snapped
+					end
 				end
 			end
 		end
 
-		candidatePos = bestPos
+		candidatePos = bestPos or fallbackPos
 	elseif dangerTraj and dangerTraj.isTrajectory then
-		-- 3. CHIẾN LƯỢC CHO PROJECTILE: Thoát Ngang Vuông Góc 90 Độ (Perpendicular Lateral Escape)
+		-- 4. CHIẾN LƯỢC CHO PROJECTILE: Thoát Ngang Vuông Góc + Offset Quỹ Đạo Đa Hướng
 		local forward2D = dangerTraj.forward2D
 		local perpDist = dangerTraj.perpDist
 		local dangerRadius = dangerTraj.dangerRadius
@@ -8489,148 +8726,177 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		local perpRight = Vector3.new(forward2D.Z, 0, -forward2D.X)
 		local perpLeft = Vector3.new(-forward2D.Z, 0, forward2D.X)
 
-		local trajCandidates = {
-			playerPos + perpRight * stepNeeded,
-			playerPos + perpLeft * stepNeeded,
-			playerPos + (perpRight * (stepNeeded + 2.0)),
-			playerPos + (perpLeft * (stepNeeded + 2.0)),
-			playerPos + (perpRight * stepNeeded) + (forward2D * 2),
-			playerPos + (perpLeft * stepNeeded) + (forward2D * 2),
-		}
+		local fOffsets = { 0, 3, -3, 6, -6 }
+		local trajCandidates = {}
+		for _, fOff in ipairs(fOffsets) do
+			local fVec = forward2D * fOff
+			table.insert(trajCandidates, playerPos + perpRight * stepNeeded + fVec)
+			table.insert(trajCandidates, playerPos + perpLeft * stepNeeded + fVec)
+			table.insert(trajCandidates, playerPos + perpRight * (stepNeeded + 2.0) + fVec)
+			table.insert(trajCandidates, playerPos + perpLeft * (stepNeeded + 2.0) + fVec)
+		end
 
 		local bestPos = nil
-		local bestDist = math.huge
+		local bestScore = math.huge
+		local fallbackPos = nil
+		local fallbackScore = math.huge
 
 		for _, candWorld in ipairs(trajCandidates) do
 			local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
 			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
 				local moveDist = (snapped - playerPos).Magnitude
-				if moveDist < bestDist then
-					bestDist = moveDist
-					bestPos = snapped
+				local score = moveDist - getClearanceBonus(snapped)
+				if score < fallbackScore then
+					fallbackScore = score
+					fallbackPos = snapped
+				end
+				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+					if score < bestScore then
+						bestScore = score
+						bestPos = snapped
+					end
 				end
 			end
 		end
 
 		if not bestPos then
-			-- Fallback lưới tỏa tròn nếu cả 2 bên sườn đều bị vướng
-			for _, dist in ipairs(RADIAL_DISTANCES) do
-				for _, angleDeg in ipairs(RADIAL_ANGLES) do
-					local rad = math.rad(angleDeg)
-					local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
-					local testWorld = playerPos + offset
-					local snapped, hasFloor = geometry.GetFloorPosition(testWorld)
-
-					if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-						local moveDist = (snapped - playerPos).Magnitude
-						if moveDist < bestDist then
-							bestDist = moveDist
-							bestPos = snapped
-						end
-					end
-				end
-				if bestPos then break end
+			-- Fallback quét tỏa tròn 24 hướng nếu cả 2 bên sườn bị kẹt bởi skill khác
+			local radPos, radScore = searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart)
+			if radPos then
+				bestPos = radPos
+				bestScore = radScore
 			end
 		end
 
-		candidatePos = bestPos
+		candidatePos = bestPos or fallbackPos
 	else
-		-- 3. Chiến lược A: Thoát trực tiếp (Direct Escape Vector) từ Part gây nguy hiểm gần nhất cho các skill thông thường
+		-- 5. CHIẾN LƯỢC CHO KỸ NĂNG THÔNG THƯỜNG / ĐÈ NHAU (MULTI-HAZARD SOLVER)
+		local bestPos = nil
+		local bestScore = math.huge
+		local fallbackPos = nil
+		local fallbackScore = math.huge
+		local directCandidates = {}
+
 		if dangerPart:IsA("Part") and (dangerPart.Shape == Enum.PartType.Ball or dangerPart.Shape == Enum.PartType.Cylinder) then
-			-- A1. Chiêu hình tròn / hình cầu: Đẩy thẳng ra ngoài bán kính
+			-- A1. Chiêu hình tròn / hình cầu: Tạo các điểm thoát rẻ quạt (Fan Escapes: 0, ±25°, ±50°)
 			local radius = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
 			local diff = Vector3.new(playerPos.X - dangerPart.Position.X, 0, playerPos.Z - dangerPart.Position.Z)
-			local dir = diff.Magnitude > 0.1 and diff.Unit or Vector3.new(0, 0, 1)
-			local directWorld = dangerPart.Position + dir * (radius + ESCAPE_MARGIN)
-			local snapped, hasFloor = geometry.GetFloorPosition(directWorld)
+			local baseAngle = diff.Magnitude > 0.1 and math.atan2(diff.Z, diff.X) or 0
+			local escapeRadius = radius + ESCAPE_MARGIN
 
-			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-				candidatePos = snapped
+			local fanOffsets = { 0, math.rad(25), -math.rad(25), math.rad(50), -math.rad(50) }
+			for _, angOffset in ipairs(fanOffsets) do
+				local testAngle = baseAngle + angOffset
+				local directWorld = dangerPart.Position + Vector3.new(math.cos(testAngle) * escapeRadius, 0, math.sin(testAngle) * escapeRadius)
+				table.insert(directCandidates, directWorld)
 			end
 		else
-			-- A2. Chiêu hình chữ nhật / OBB: Thoát ngang 90 độ theo cạnh hẹp nhất
+			-- A2. Chiêu hình chữ nhật / OBB: Thoát theo cả 4 cạnh và 4 góc của hộp
 			local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
 			local halfX = dangerPart.Size.X / 2
 			local halfZ = dangerPart.Size.Z / 2
-			local targetLocal = nil
 
-			if halfX <= halfZ then
-				-- Cạnh X hẹp hơn -> Thoát ngang theo trục X
-				local sign = (localPos.X >= 0) and 1 or -1
-				targetLocal = Vector3.new(sign * (halfX + ESCAPE_MARGIN), 0, localPos.Z)
-			else
-				-- Cạnh Z hẹp hơn -> Thoát ngang theo trục Z
-				local sign = (localPos.Z >= 0) and 1 or -1
-				targetLocal = Vector3.new(localPos.X, 0, sign * (halfZ + ESCAPE_MARGIN))
-			end
+			-- 4 cạnh thoát mép
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, localPos.Z)))
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, localPos.Z)))
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, halfZ + ESCAPE_MARGIN)))
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, -(halfZ + ESCAPE_MARGIN))))
 
-			local directWorld = dangerPart.CFrame:PointToWorldSpace(targetLocal)
-			local snapped, hasFloor = geometry.GetFloorPosition(directWorld)
-
-			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-				candidatePos = snapped
-			end
+			-- 4 góc chéo
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, halfZ + ESCAPE_MARGIN)))
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, -(halfZ + ESCAPE_MARGIN))))
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, halfZ + ESCAPE_MARGIN)))
+			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, -(halfZ + ESCAPE_MARGIN))))
 		end
 
-		-- 4. Chiến lược B: Lưới Tỏa Tròn (Radial Grid Search Fallback nếu thoát trực tiếp bị vướng)
-		if not candidatePos then
-			local bestPos = nil
-			local bestDist = math.huge
-
-			for _, dist in ipairs(RADIAL_DISTANCES) do
-				for _, angleDeg in ipairs(RADIAL_ANGLES) do
-					local rad = math.rad(angleDeg)
-					local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
-					local testWorld = playerPos + offset
-					local snapped, hasFloor = geometry.GetFloorPosition(testWorld)
-
-					if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-						local moveDist = (snapped - playerPos).Magnitude
-						if moveDist < bestDist then
-							bestDist = moveDist
-							bestPos = snapped
-						end
+		-- Đánh giá các điểm thoát trực tiếp
+		for _, candWorld in ipairs(directCandidates) do
+			local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
+			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
+				local moveDist = (snapped - playerPos).Magnitude
+				local score = moveDist - getClearanceBonus(snapped)
+				if score < fallbackScore then
+					fallbackScore = score
+					fallbackPos = snapped
+				end
+				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+					if score < bestScore then
+						bestScore = score
+						bestPos = snapped
 					end
 				end
-				if bestPos then break end -- Ưu tiên vòng bán kính nhỏ nhất trước
 			end
-
-			candidatePos = bestPos
 		end
+
+		-- Quét tỏa tròn đa hướng (Multi-Hazard Gap Detection): tìm khoảng trống hở nhỏ nhất giữa 2 chiêu đè nhau
+		local radPos, radScore = searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart)
+		if radPos and (not bestPos or radScore < bestScore) then
+			bestScore = radScore
+			bestPos = radPos
+		end
+
+		candidatePos = bestPos or fallbackPos
 	end
 
+	-- 6. ÁP DỤNG CƠ CHẾ KHÓA ĐIỂM THÔNG MINH (Smart Latching Hysteresis Logic)
 	if candidatePos then
-		lockedSafeSpot = candidatePos
-		local escapeDist = math.floor((candidatePos - playerPos).Magnitude * 10) / 10
-		return true, candidatePos, hazardName, escapeDist
+		local candidateDist = (candidatePos - playerPos).Magnitude
+
+		if hasValidLock then
+			-- Điểm mới phải gần hơn điểm đang khóa một khoảng >= HYSTERESIS_THRESHOLD studs thì mới đổi khóa
+			if (candidateDist + HYSTERESIS_THRESHOLD) < lockedDist then
+				lockedSafeSpot = candidatePos
+			end
+		else
+			lockedSafeSpot = candidatePos
+		end
+
+		local finalDist = math.floor((lockedSafeSpot - playerPos).Magnitude * 10) / 10
+		return true, lockedSafeSpot, hazardName, finalDist
+	end
+
+	-- Nếu không tìm được candidate mới nhưng điểm khóa cũ vẫn an toàn và đường đi thông suốt
+	if hasValidLock then
+		local finalDist = math.floor(lockedDist * 10) / 10
+		return true, lockedSafeSpot, hazardName, finalDist
 	end
 
 	lockedSafeSpot = nil
 	return true, nil, hazardName, 0
 end
 
-return safeSpot end function __DIST.l()-- Smart Dodge – Module 5: Dodge Execution (Walk + Snap) (DungeonQuest).
--- Chuyên trách: di chuyển nhân vật tới Safe Spot với cơ chế Walk + Snap duy nhất,
--- luôn-facing target qua provider (faceTargetProvider), settings AutoDodge/MaxSnap.
--- Trạng thái "đang nguy hiểm" + cờ log do module Engine cung cấp qua SetRuntime (tránh vòng require).
+return safeSpot end function __DIST.l()-- Smart Dodge – Module 5: Dodge Execution (Walk + Snap hybrid with Time Budget) (DungeonQuest).
+-- Nguyên tắc HYBRID:
+--  (1) Còn cách Safe Spot ≤ Max Snap Distance => SNAP LUÔN (không walk).
+--  (2) Xa hơn => WALK tối đa theo ngân sách Max Dodge Time để thu hẹp cự ly snap.
+--      Vừa walk vừa kiểm tra: khi rơi vào ≤ Max Snap Distance thì snap;
+--      Hết budget thời gian mà chưa tới thì snap nốt phần còn lại để kịp thoát nổ chiêu.
+--  (3) Real-time Target Tracking: cập nhật đích đến thời gian thực theo quả cầu xanh.
+--  (4) Flat Floor MoveTo: di chuyển phẳng bám sàn 100%.
+--  (5) Maintain Height: căn chỉnh độ cao sát sàn chuẩn xác khi snap.
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 
 --// References
 local player = services.player
 
 --// State
 local autoDodgeEnabled = false
-local maxTeleportStep = 3.0          -- Cự ly Snap dứt điểm cuối cùng tối đa (studs)
+local maxDodgeTime = 1.0              -- Ngân sách thời gian tối đa để né (giây)
+local maxSnapDistance = 3.0           -- Còn cách Safe Spot ≤ cự ly này => SNAP LUÔN (studs)
+local FINAL_ADJUST_DIST = 0.5         -- Ngưỡng "đã đứng đúng" — hết budget mà còn xa hơn mức này thì mới snap nốt
+local maintainSnapHeight = true       -- Giữ độ cao Y của player lúc bắt đầu né khi snap
 local isDodging = false
 local dodgeThread = nil
+local currentTargetPos = nil
 local dodgeStatusCallbacks = {}
+
 --// Provider trả về vị trí cần quay mặt khi né (ví dụ enemy — do AutoFarm Mode 2 đăng ký).
---// nil = giữ hành vi cũ (face theo hướng di chuyển/safe spot). Giúp "luôn facing target"
---// cả trong lúc đi bộ né (xoay mặt enemy giữa các bước MoveTo).
+--// nil = giữ hành vi cũ (face theo hướng di chuyển/safe spot).
 local faceTargetProvider = nil
+
 --// Runtime do engine bơm: { getInDanger = fn, getLogInDanger = fn }
 local runtime = nil
 
@@ -8663,48 +8929,68 @@ local function getFaceTarget()
 	return nil
 end
 
---// Snap rotation khi teleport dứt điểm: face provider target nếu có, không thì giữ LookVector cũ.
-local function snapFace(rootPart, pos)
+--// Snap rotation khi teleport dứt điểm: căn chỉnh độ cao sát sàn chuẩn xác + face provider target nếu có.
+local function snapFace(rootPart, humanoid, pos, startHeight)
+	local targetY = startHeight or pos.Y
+	if not maintainSnapHeight and humanoid and humanoid.HipHeight then
+		local rootOffset = humanoid.HipHeight + (rootPart.Size.Y / 2)
+		local floorY = pos.Y - 3 -- vì pos.Y từ geometry.GetFloorPosition là floorY + 3
+		targetY = floorY + rootOffset
+	end
+
+	local actualPos = Vector3.new(pos.X, targetY, pos.Z)
 	local targetPos = getFaceTarget()
 	if targetPos then
-		rootPart.CFrame = CFrame.new(pos, Vector3.new(targetPos.X, pos.Y, targetPos.Z))
+		rootPart.CFrame = CFrame.new(actualPos, Vector3.new(targetPos.X, targetY, targetPos.Z))
 	else
-		rootPart.CFrame = CFrame.new(pos, pos + rootPart.CFrame.LookVector)
+		rootPart.CFrame = CFrame.new(actualPos, actualPos + rootPart.CFrame.LookVector)
 	end
 end
 
---// Thực thi né sang Safe Spot bằng cơ chế Walk + Snap (duy nhất): MoveTo đi bộ theo navmesh,
---// khi tới cự ly maxTeleportStep cuối cùng thì Snap dứt điểm. Không còn blink/micro-teleport —
---// nhân vật không quay mặt theo hướng nhảy, giảm ồn anti-cheat.
+--// Thực thi né sang Safe Spot (Walk + Snap hybrid with Time Budget):
+--// (1) Còn cách Safe Spot ≤ maxSnapDistance => snap luôn.
+--// (2) Xa hơn => walk tối đa theo ngân sách maxDodgeTime, bám đuổi marker thời gian thực.
+--// (3) Hết budget mà chưa tới => snap nốt phần còn lại để kịp thoát sát thương.
 function dodge.Perform(safePos, escapeDist)
 	local char = player and player.Character
 	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
 	local humanoid = char and char:FindFirstChild("Humanoid")
 	if not rootPart or not humanoid or humanoid.Health <= 0 then return end
 
-	if isDodging then return end
+	currentTargetPos = safePos
+
+	-- Nếu đang trong tiến trình né, cập nhật đích đến mới nhất để nhân vật luôn đi đúng hướng Marker
+	if isDodging then
+		local flatTarget = Vector3.new(safePos.X, rootPart.Position.Y, safePos.Z)
+		humanoid:MoveTo(flatTarget)
+		return
+	end
 
 	dodgeThread = task.spawn(function()
 		isDodging = true
 		fireDodgeStatus("Dodging")
 
-		--// Luôn-facing target khi có provider: tắt AutoRotate để MoveTo không quay nhân vật theo
-		--// hướng đi; tự xoay mặt target giữa các bước. Khôi phục AutoRotate khi kết thúc.
+		-- Độ cao Y ban đầu của player làm neo
+		local startHeight = rootPart.Position.Y
+
+		-- Tắt AutoRotate khi có provider để nhân vật luôn xoay mặt về quái trong lúc đi né
 		local prevAutoRotate = humanoid.AutoRotate
 		local faceEnemy = faceTargetProvider ~= nil
 		if faceEnemy then humanoid.AutoRotate = false end
+
 		local function finish()
 			if faceEnemy then humanoid.AutoRotate = prevAutoRotate end
 			isDodging = false
+			currentTargetPos = nil
 			fireDodgeStatus("Safe")
 		end
 
 		local currentPos = rootPart.Position
 		local totalDist = (safePos - currentPos).Magnitude
 
-		-- Trường hợp 1: Khoảng cách ngắn (<= maxTeleportStep, ví dụ <= 3.0 studs) -> Snap dứt điểm 1 nhịp
-		if totalDist <= maxTeleportStep then
-			snapFace(rootPart, safePos)
+		-- (1) Khoảng cách ngắn (≤ maxSnapDistance) -> Snap tức thời 1 nhịp
+		if totalDist <= maxSnapDistance then
+			snapFace(rootPart, humanoid, safePos, startHeight)
 			if getLogInDanger() then
 				print(("[SmartDodge][Dodge] ⚡ Instant Snap (%.1f studs) to Safe Spot!"):format(totalDist))
 			end
@@ -8712,33 +8998,44 @@ function dodge.Perform(safePos, escapeDist)
 			return
 		end
 
-		-- Walk + Snap (duy nhất): đi bộ theo navmesh tới Safe Spot, snap khi tới cự ly cuối.
 		if getLogInDanger() then
-			print(("[SmartDodge][Dodge] 🚶 Walk + Final Snap (%.1f studs) to Safe Spot..."):format(totalDist))
+			print(("[SmartDodge][Dodge] 🚶 Walk + Snap Hybrid (%.1f studs, budget %.2fs)..."):format(totalDist, maxDodgeTime))
 		end
 
 		local startTime = os.clock()
-		local timeout = 2.5
 
-		while getInDanger() and autoDodgeEnabled and (os.clock() - startTime < timeout) do
+		-- (2) Walk tối đa trong ngân sách thời gian maxDodgeTime để thu hẹp cự ly
+		while getInDanger() and autoDodgeEnabled and (os.clock() - startTime < maxDodgeTime) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
+			local targetPos = currentTargetPos or safePos
 			currentPos = rootPart.Position
-			local distRemaining = (safePos - currentPos).Magnitude
+			local distRemaining = (targetPos - currentPos).Magnitude
 
-			-- Đã tới cự ly snap cuối cùng (còn ≤ maxTeleportStep) -> snap + MoveTo tới đích
-			if distRemaining <= maxTeleportStep then
-				snapFace(rootPart, safePos)
-				humanoid:MoveTo(safePos)
+			-- Đã thu hẹp tới cự ly snap (còn ≤ maxSnapDistance) -> snap dứt điểm
+			if distRemaining <= maxSnapDistance then
+				snapFace(rootPart, humanoid, targetPos, startHeight)
 				break
 			end
 
-			--// Face target giữa các bước đi (MoveTo dịch chuyển, ta chỉ xoay hướng, giữ vị trí).
-			local targetPos = getFaceTarget()
-			if targetPos then
-				rootPart.CFrame = CFrame.lookAt(rootPart.Position, Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z))
+			-- Face target giữa các bước đi (nếu có provider)
+			local targetEnemy = getFaceTarget()
+			if targetEnemy then
+				rootPart.CFrame = CFrame.lookAt(currentPos, Vector3.new(targetEnemy.X, currentPos.Y, targetEnemy.Z))
 			end
-			humanoid:MoveTo(safePos)
+
+			-- Đi bộ bám phẳng mặt đất theo đúng hướng marker
+			local flatTarget = Vector3.new(targetPos.X, currentPos.Y, targetPos.Z)
+			humanoid:MoveTo(flatTarget)
 			task.wait(0.05)
+		end
+
+		-- (3) Hết ngân sách thời gian mà vẫn chưa đứng đúng chỗ: snap nốt phần còn lại
+		local targetPos = currentTargetPos or safePos
+		if (os.clock() - startTime) >= maxDodgeTime and (targetPos - rootPart.Position).Magnitude > FINAL_ADJUST_DIST then
+			snapFace(rootPart, humanoid, targetPos, startHeight)
+			if getLogInDanger() then
+				print("[SmartDodge][Dodge] ⚡ Time Budget reached — snapped the remainder to Safe Spot!")
+			end
 		end
 
 		finish()
@@ -8752,6 +9049,7 @@ function dodge.Cancel()
 		dodgeThread = nil
 	end
 	isDodging = false
+	currentTargetPos = nil
 end
 
 --// Bắn trạng thái dodge ra callbacks (engine gọi "Idle" khi dừng loop)
@@ -8769,14 +9067,36 @@ function dodge.IsAutoDodgeEnabled()
 	return autoDodgeEnabled
 end
 
-function dodge.SetMaxTeleportStep(step)
-	if type(step) == "number" and step > 0 then
-		maxTeleportStep = step
+function dodge.SetMaxDodgeTime(seconds)
+	if type(seconds) == "number" and seconds > 0 then
+		maxDodgeTime = seconds
 	end
 end
 
-function dodge.GetMaxTeleportStep()
-	return maxTeleportStep
+function dodge.GetMaxDodgeTime()
+	return maxDodgeTime
+end
+
+function dodge.SetMaxSnapDistance(value)
+	if type(value) == "number" and value > 0 then
+		maxSnapDistance = value
+	end
+end
+
+function dodge.GetMaxSnapDistance()
+	return maxSnapDistance
+end
+
+-- Backward compatibility aliases
+dodge.SetMaxTeleportStep = dodge.SetMaxSnapDistance
+dodge.GetMaxTeleportStep = dodge.GetMaxSnapDistance
+
+function dodge.SetMaintainSnapHeight(state)
+	maintainSnapHeight = state and true or false
+end
+
+function dodge.IsMaintainSnapHeightEnabled()
+	return maintainSnapHeight
 end
 
 function dodge.IsDodging()
@@ -8809,7 +9129,7 @@ return dodge end function __DIST.m()-- Smart Dodge – Module 6: Engine Orchestr
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 local coordinator = __DIST.load('h')
 local detection = __DIST.load('j')
 local geometry = __DIST.load('i')
@@ -9031,8 +9351,14 @@ smartDodge.GetHitboxPadding = geometry.GetHitboxPadding
 --// Dodge (Module 5)
 smartDodge.SetAutoDodge = dodge.SetAutoDodge
 smartDodge.IsAutoDodgeEnabled = dodge.IsAutoDodgeEnabled
+smartDodge.SetMaxDodgeTime = dodge.SetMaxDodgeTime
+smartDodge.GetMaxDodgeTime = dodge.GetMaxDodgeTime
+smartDodge.SetMaxSnapDistance = dodge.SetMaxSnapDistance
+smartDodge.GetMaxSnapDistance = dodge.GetMaxSnapDistance
 smartDodge.SetMaxTeleportStep = dodge.SetMaxTeleportStep
 smartDodge.GetMaxTeleportStep = dodge.GetMaxTeleportStep
+smartDodge.SetMaintainSnapHeight = dodge.SetMaintainSnapHeight
+smartDodge.IsMaintainSnapHeightEnabled = dodge.IsMaintainSnapHeightEnabled
 smartDodge.IsDodging = dodge.IsDodging
 smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus
@@ -9069,8 +9395,8 @@ return smartDodge end function __DIST.o()-- AutoFarm Pathfinder (v2): cơ chế 
 
 --// Imports
 
-local services = __DIST.load('d')
-local shared = __DIST.load('e')
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local coordinator = __DIST.load('h')
 local smartDodge = __DIST.load('n')
@@ -11124,9 +11450,9 @@ end function __DIST.p()-- Module Player trong tab Combat (DungeonQuest) — trư
 
 --// Imports
 
-local shared = __DIST.load('e')
-local ui = __DIST.load('f')
-local autoSave = __DIST.load('g')
+local shared = __DIST.load('f')
+local ui = __DIST.load('g')
+local autoSave = __DIST.load('d')
 local autoFarmPathfinder = __DIST.load('o')
 local macLib = __DIST.load('a')
 
@@ -11386,10 +11712,10 @@ return dungeonCatalog end function __DIST.r()-- Contextual AutoFarm Pathfinder s
 
 --// Imports
 
-local shared = __DIST.load('e')
+local shared = __DIST.load('f')
 local notifier = __DIST.load('c')
 local macLib = __DIST.load('a')
-local autoSave = __DIST.load('g')
+local autoSave = __DIST.load('d')
 local dungeonCatalog = __DIST.load('q')
 local lifecycle = __DIST.load('b')
 local autoFarmPathfinder = __DIST.load('o')
@@ -11634,8 +11960,8 @@ end function __DIST.s()-- Phím tắt: chuột phải kích hoạt combo Q+E (to
 
 --// Imports
 
-local services = __DIST.load('d')
-local shared = __DIST.load('e')
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
 --// References
@@ -11699,12 +12025,12 @@ end function __DIST.t()-- Module Auto Farm Pathfinder trong tab Combat (DungeonQ
 
 --// Imports
 
-local autoSave = __DIST.load('g')
+local autoSave = __DIST.load('d')
 local autoFarmPathfinder = __DIST.load('o')
-local shared = __DIST.load('e')
+local shared = __DIST.load('f')
 local contextual = __DIST.load('r')
 local shortcuts = __DIST.load('s')
-local ui = __DIST.load('f')
+local ui = __DIST.load('g')
 local dungeonCatalog = __DIST.load('q')
 
 return function(window, tab)
@@ -12202,8 +12528,8 @@ end end function __DIST.u()-- Module Smart Dodge trong tab Combat (DungeonQuest)
 
 --// Imports
 
-local ui = __DIST.load('f')
-local autoSave = __DIST.load('g')
+local ui = __DIST.load('g')
+local autoSave = __DIST.load('d')
 local smartDodge = __DIST.load('n')
 
 return function(window, tab)
@@ -12315,16 +12641,36 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeAutoExecution")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Final Snap Distance (studs)",
-		Default = smartDodge.GetMaxTeleportStep(),
-		Minimum = 1,
-		Maximum = 4,
+		Name = "Max Dodge Time Budget (s)",
+		Default = smartDodge.GetMaxDodgeTime(),
+		Minimum = 0.3,
+		Maximum = 3.0,
 		DisplayMethod = "Round",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(value)
-			smartDodge.SetMaxTeleportStep(value)
+			smartDodge.SetMaxDodgeTime(value)
+		end),
+	}, "Slider_SmartDodgeMaxTime"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Instant / Final Snap Distance (studs)",
+		Default = smartDodge.GetMaxSnapDistance(),
+		Minimum = 1,
+		Maximum = 6,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetMaxSnapDistance(value)
 		end),
 	}, "Slider_SmartDodgeMaxStep"))
+
+	leftSection:Toggle({
+		Name = "Maintain Height When Snapping",
+		Default = smartDodge.IsMaintainSnapHeightEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetMaintainSnapHeight(state)
+		end),
+	}, "Toggle_SmartDodgeMaintainHeight")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player Hitbox Padding (studs)",
@@ -12406,10 +12752,10 @@ end end function __DIST.w()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 local notifier = __DIST.load('c')
 local dungeonCatalog = __DIST.load('q')
-local shared = __DIST.load('e')
+local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
 local playerName = services.player.Name
@@ -12595,7 +12941,7 @@ end function __DIST.x()-- Auto Start Game cho DungeonQuest: chờ tới khi đan
 
 --// Imports
 
-local shared = __DIST.load('e')
+local shared = __DIST.load('f')
 local notifier = __DIST.load('c')
 
 --// Lobby placeId — ngoài các place này ra thì đều là dungeon
@@ -12819,7 +13165,7 @@ return autoStartLobby end function __DIST.z()-- Auto Retry Dungeon cho DungeonQu
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 local notifier = __DIST.load('c')
 
 --// References
@@ -13037,12 +13383,12 @@ end function __DIST.A()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable
 
 --// Imports
 
-local ui = __DIST.load('f')
+local ui = __DIST.load('g')
 local autoJoin = __DIST.load('w')
 local autoStart = __DIST.load('x')
 local autoStartLobby = __DIST.load('y')
 local autoRetry = __DIST.load('z')
-local autoSave = __DIST.load('g')
+local autoSave = __DIST.load('d')
 local dungeonCatalog = __DIST.load('q')
 
 return function(window, tab)
@@ -13123,7 +13469,7 @@ return function(window, tab)
 			autoJoin.SetDifficulty(option)
 			updateLevelLabel()
 		end),
-	}, "Dropdown_Difficulty"), false)
+	}, "Dropdown_Difficulty"), true)
 
 	section:Toggle({
 		Name = "Hardcore",
@@ -13255,7 +13601,7 @@ end function __DIST.B()-- Auto Sell (DungeonQuest): bán vật phẩm trong inve
 
 local lifecycle = __DIST.load('b')
 local notifier = __DIST.load('c')
-local shared = __DIST.load('e')
+local shared = __DIST.load('f')
 
 --// Lobby placeId — ngoài các place này ra thì đều là dungeon
 local LOBBY_PLACE_IDS = {
@@ -13287,10 +13633,14 @@ local CATEGORY_TYPES = {
 --// Cấp hiếm hợp lệ (để biết option nào là rarity)
 local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
 
---// Các mốc Level Req tĩnh cho dropdown multi-select
+--// Các mốc Level Req tĩnh cho dropdown multi-select (hỗ trợ tìm kiếm theo mốc 5 và 10)
 local LEVEL_REQ_OPTIONS = {
-	"1", "5", "15", "25", "35", "45", "55", "65", "75", "85",
-	"95", "105", "115", "125", "135", "145", "155", "165", "175", "185",
+	"1", "5", "10", "15", "20", "25", "30", "35", "40", "45", "50",
+	"55", "60", "65", "70", "75", "80", "85", "90", "95", "100",
+	"105", "110", "115", "120", "125", "130", "135", "140", "145", "150",
+	"155", "160", "165", "170", "175", "180", "185", "190", "195", "200",
+	"205", "210", "215", "220", "225", "230", "235", "240", "245", "250",
+	"255", "260", "265", "270", "275", "280", "285", "290", "295", "300",
 }
 
 --// Chế độ lọc Level Req: None = chọn đích danh, Below = ≤, Above = ≥
@@ -13492,9 +13842,7 @@ end
 --// Có ít nhất 1 điều kiện lọc đang active hay không.
 --// Dùng để cảnh báo khi user sắp bán mà không có filter nào (rủi ro bán sạch).
 function autoSell.HasAnyFilter()
-	-- Level filter luôn có giá trị tối thiểu (fallback = 1 khi user không chọn), nên
-	-- không bao giờ ở trạng thái "không có filter" — tránh bán hết inventory.
-	return true
+	return next(rarityFilter) ~= nil or next(typeFilter) ~= nil or next(levelReqExactFilter) ~= nil
 end
 
 --// Đếm tổng số item khớp điều kiện (gọi khi bấm nút Search, không bán).
@@ -13574,7 +13922,18 @@ end
 function autoSell.SetRarityFilter(selected)
 	rarityFilter = {}
 	if type(selected) == "table" then
-		for _, r in ipairs(selected) do rarityFilter[r] = true end
+		for k, v in pairs(selected) do
+			if v == true and type(k) == "string" then
+				local norm = normalizeRarity(k) or k
+				rarityFilter[norm] = true
+			elseif type(v) == "string" then
+				local norm = normalizeRarity(v) or v
+				rarityFilter[norm] = true
+			end
+		end
+	elseif type(selected) == "string" then
+		local norm = normalizeRarity(selected) or selected
+		rarityFilter[norm] = true
 	end
 end
 
@@ -13588,7 +13947,15 @@ end
 function autoSell.SetTypeFilter(selected)
 	typeFilter = {}
 	if type(selected) == "table" then
-		for _, t in ipairs(selected) do typeFilter[t] = true end
+		for k, v in pairs(selected) do
+			if v == true and type(k) == "string" then
+				typeFilter[k] = true
+			elseif type(v) == "string" then
+				typeFilter[v] = true
+			end
+		end
+	elseif type(selected) == "string" then
+		typeFilter[selected] = true
 	end
 end
 
@@ -13602,10 +13969,18 @@ end
 function autoSell.SetLevelReqExactFilter(selected)
 	levelReqExactFilter = {}
 	if type(selected) == "table" then
-		for _, v in ipairs(selected) do
-			local n = tonumber(v)
-			if n then levelReqExactFilter[n] = true end
+		for k, v in pairs(selected) do
+			if v == true then
+				local n = tonumber(k)
+				if n then levelReqExactFilter[n] = true end
+			else
+				local n = tonumber(v)
+				if n then levelReqExactFilter[n] = true end
+			end
 		end
+	elseif type(selected) == "string" or type(selected) == "number" then
+		local n = tonumber(selected)
+		if n then levelReqExactFilter[n] = true end
 	end
 end
 
@@ -13691,7 +14066,7 @@ end function __DIST.C()-- Tab Inventory (DungeonQuest): AutoSell section - sell 
 
 --// Imports
 
-local autoSave = __DIST.load('g')
+local autoSave = __DIST.load('d')
 local autoSell = __DIST.load('B')
 local notifier = __DIST.load('c')
 
@@ -13793,9 +14168,7 @@ return function(window, tab)
 		Multi = true,
 		Required = false,
 		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			for rarity in pairs(selected) do table.insert(list, rarity) end
-			autoSell.SetRarityFilter(list)
+			autoSell.SetRarityFilter(selected)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellRarity")
@@ -13807,9 +14180,7 @@ return function(window, tab)
 		Multi = true,
 		Required = false,
 		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			for itemType in pairs(selected) do table.insert(list, itemType) end
-			autoSell.SetTypeFilter(list)
+			autoSell.SetTypeFilter(selected)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellType")
@@ -13830,7 +14201,14 @@ return function(window, tab)
 				local isMulti = (selected == "None")
 				levelReqDropdown.Settings.Multi = isMulti
 				levelReqDropdown.Settings.Required = not isMulti
-				levelReqDropdown:UpdateSelection({})
+				local currentFilters = autoSell.GetLevelReqExactFilter()
+				if #currentFilters > 0 then
+					if not isMulti and #currentFilters > 1 then
+						levelReqDropdown:UpdateSelection(currentFilters[1])
+					else
+						levelReqDropdown:UpdateSelection(currentFilters)
+					end
+				end
 			end
 			updateSummary()
 		end),
@@ -13844,13 +14222,7 @@ return function(window, tab)
 		Required = currentMode ~= "None",
 		Search = true,
 		Callback = autoSave.Wrap(function(selected)
-			local list = {}
-			if type(selected) == "table" then
-				for level in pairs(selected) do table.insert(list, level) end
-			elseif type(selected) == "string" then
-				table.insert(list, selected)
-			end
-			autoSell.SetLevelReqExactFilter(list)
+			autoSell.SetLevelReqExactFilter(selected)
 			updateSummary()
 		end),
 	}, "Dropdown_AutoSellLevelReq")
@@ -13964,8 +14336,8 @@ end function __DIST.D()-- ESP hitbox cho DungeonQuest.
 
 --// Imports
 
-local services = __DIST.load('d')
-local shared = __DIST.load('e')
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
 
 --// Table
 local esp = {}
@@ -14316,8 +14688,8 @@ end function __DIST.E()-- ESP Enemy (Highlight) cho DungeonQuest.
 
 --// Imports
 
-local services = __DIST.load('d')
-local shared = __DIST.load('e')
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
 
 --// Table
 local enemyEsp = {}
@@ -14456,7 +14828,7 @@ end function __DIST.F()-- Map Optimizer (DungeonQuest): Clean Map
 
 --// Imports
 
-local services = __DIST.load('d')
+local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
 
 --// Table
@@ -14744,11 +15116,11 @@ return mapOptimizer end function __DIST.G()-- Module Visual trong tab Utilities 
 
 --// Imports
 	
-local autoSave = __DIST.load('g')
+local autoSave = __DIST.load('d')
 	local esp = __DIST.load('D')
 	local enemyEsp = __DIST.load('E')
 	local mapOptimizer = __DIST.load('F')
-	local ui = __DIST.load('f')
+	local ui = __DIST.load('g')
 
 --// Hitbox mode options
 local HITBOX_OPTIONS = { "Custom Hitbox", "Real Hitbox" }
@@ -14892,7 +15264,7 @@ end function __DIST.H()-- Webhook Discord cho DungeonQuest: gửi thông báo WI
 
 local macLib = __DIST.load('a')
 local notifier = __DIST.load('c')
-local shared = __DIST.load('e')
+local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
 --// Services
@@ -15724,8 +16096,8 @@ end function __DIST.L()-- Module Mix trong tab Utilities (DungeonQuest): các ti
 
 --// Imports
 
-local autoSave = __DIST.load('g')
-local ui = __DIST.load('f')
+local autoSave = __DIST.load('d')
+local ui = __DIST.load('g')
 local antiAfk = __DIST.load('K')
 
 return function(window, tab)
@@ -15846,7 +16218,7 @@ end function __DIST.O()-- Module Config trong tab Configs (DungeonQuest): tự b
 --// Imports
 
 local macLib = __DIST.load('a')
-local autoSave = __DIST.load('g')
+local autoSave = __DIST.load('d')
 local autoHide = __DIST.load('N')
 
 return function(window, tab)
@@ -16008,7 +16380,7 @@ end function __DIST.P()-- Module State trong tab Configs (DungeonQuest): hiển 
 
 --// Imports
 
-local shared = __DIST.load('e')
+local shared = __DIST.load('f')
 local autoRetry = __DIST.load('z')
 
 local BOSS_LABEL = "Boss Active"
@@ -16184,6 +16556,10 @@ return function(self)
 	--// Imports
 	local macLib = __DIST.load('a')
 	local lifecycle = __DIST.load('b')
+	local autoSave = __DIST.load('d')
+
+	--// Tạm khóa autoSave trong quá trình khởi tạo UI và nạp config để tránh ghi đè file trên đĩa
+	autoSave.Suspend()
 
 	--// Window
 	local window = macLib:Window({
@@ -16262,6 +16638,11 @@ local contextual = __DIST.load('r')
 	--// Nạp context data SAU khi config (kể cả autoload) được load, để context đọc đúng
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
+
+	--// Kích hoạt lại autoSave sau khi toàn bộ UI và config đã nạp xong ổn định
+	task.delay(1.5, function()
+		autoSave.Resume()
+	end)
 end
 end function __DIST.S()
 local flags = {}

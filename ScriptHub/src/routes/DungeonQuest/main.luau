@@ -20,6 +20,10 @@ return function(self)
 	--// Imports
 	local macLib = require("@packages/Maclib")
 	local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+	local autoSave = require("@routes/DungeonQuest/core/autoSave")
+
+	--// Tạm khóa autoSave trong quá trình khởi tạo UI và nạp config để tránh ghi đè file trên đĩa
+	autoSave.Suspend()
 
 	--// Window
 	local window = macLib:Window({
@@ -98,4 +102,9 @@ return function(self)
 	--// Nạp context data SAU khi config (kể cả autoload) được load, để context đọc đúng
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
+
+	--// Kích hoạt lại autoSave sau khi toàn bộ UI và config đã nạp xong ổn định
+	task.delay(1.5, function()
+		autoSave.Resume()
+	end)
 end

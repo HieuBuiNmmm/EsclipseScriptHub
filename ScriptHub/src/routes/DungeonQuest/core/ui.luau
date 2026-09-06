@@ -35,8 +35,13 @@ function ui.PatchDropdownRestore(dropdownElement, insertMissing)
 					self:InsertOptions({ newSelection })
 				end)
 			else
-				local firstOption = next(self:GetOptions())
-				if firstOption then newSelection = firstOption end
+				local opts = self.Settings and self.Settings.Options
+				if type(opts) == "table" and #opts > 0 then
+					newSelection = opts[1]
+				else
+					local firstOption = next(self:GetOptions())
+					if firstOption then newSelection = firstOption end
+				end
 			end
 		end
 		originalUpdateSelection(self, newSelection)

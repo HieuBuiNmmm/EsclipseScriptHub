@@ -88,7 +88,7 @@ return function(window, tab)
 			autoJoin.SetDifficulty(option)
 			updateLevelLabel()
 		end),
-	}, "Dropdown_Difficulty"), false)
+	}, "Dropdown_Difficulty"), true)
 
 	section:Toggle({
 		Name = "Hardcore",

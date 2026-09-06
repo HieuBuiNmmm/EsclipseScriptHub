@@ -5561,15 +5561,20 @@ function MacLib:Window(Settings)
 		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
 		if not success then return false, "Unable to decode JSON data." end
 
+		MacLib.LoadingConfig = true
 		MacLib.contextData = decoded.contextData or {}
 
 		for _, option in next, decoded.objects do
 			if ClassParser[option.type] then
-				task.spawn(function() 
+				pcall(function() 
 					ClassParser[option.type].Load(option.flag, option) 
 				end)
 			end
 		end
+
+		task.delay(1, function()
+			MacLib.LoadingConfig = false
+		end)
 
 		return true
 	end

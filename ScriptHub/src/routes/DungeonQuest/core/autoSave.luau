@@ -11,6 +11,20 @@ local autoSave = {}
 --// Variables
 local activeConfig = nil
 local saveQueued = false
+local suspended = false
+
+function autoSave.Suspend()
+	suspended = true
+	saveQueued = false
+end
+
+function autoSave.Resume()
+	suspended = false
+end
+
+function autoSave.IsSuspended()
+	return suspended or (macLib.LoadingConfig == true)
+end
 
 -- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
 function autoSave.SetActive(name)
@@ -23,6 +37,7 @@ end
 
 -- Lưu ngay lập tức (gọi trực tiếp)
 function autoSave.SaveNow()
+	if autoSave.IsSuspended() then return end
 	if not activeConfig then return end
 
 	local success, err = macLib:SaveConfig(activeConfig)
@@ -33,13 +48,14 @@ end
 
 -- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
 function autoSave.Save()
+	if autoSave.IsSuspended() then return end
 	if not activeConfig then return end
 	if saveQueued then return end
 	saveQueued = true
 
 	task.delay(0.5, function()
 		saveQueued = false
-		if autoSave.GetActive() then
+		if not autoSave.IsSuspended() and autoSave.GetActive() then
 			autoSave.SaveNow()
 		end
 	end)

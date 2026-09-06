@@ -1,7 +1,12 @@
--- Smart Dodge – Module 5: Dodge Execution (Walk + Snap) (DungeonQuest).
--- Chuyên trách: di chuyển nhân vật tới Safe Spot với cơ chế Walk + Snap duy nhất,
--- luôn-facing target qua provider (faceTargetProvider), settings AutoDodge/MaxSnap.
--- Trạng thái "đang nguy hiểm" + cờ log do module Engine cung cấp qua SetRuntime (tránh vòng require).
+-- Smart Dodge – Module 5: Dodge Execution (Walk + Snap hybrid with Time Budget) (DungeonQuest).
+-- Nguyên tắc HYBRID:
+--  (1) Còn cách Safe Spot ≤ Max Snap Distance => SNAP LUÔN (không walk).
+--  (2) Xa hơn => WALK tối đa theo ngân sách Max Dodge Time để thu hẹp cự ly snap.
+--      Vừa walk vừa kiểm tra: khi rơi vào ≤ Max Snap Distance thì snap;
+--      Hết budget thời gian mà chưa tới thì snap nốt phần còn lại để kịp thoát nổ chiêu.
+--  (3) Real-time Target Tracking: cập nhật đích đến thời gian thực theo quả cầu xanh.
+--  (4) Flat Floor MoveTo: di chuyển phẳng bám sàn 100%.
+--  (5) Maintain Height: căn chỉnh độ cao sát sàn chuẩn xác khi snap.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -11,14 +16,19 @@ local player = services.player
 
 --// State
 local autoDodgeEnabled = false
-local maxTeleportStep = 3.0          -- Cự ly Snap dứt điểm cuối cùng tối đa (studs)
+local maxDodgeTime = 1.0              -- Ngân sách thời gian tối đa để né (giây)
+local maxSnapDistance = 3.0           -- Còn cách Safe Spot ≤ cự ly này => SNAP LUÔN (studs)
+local FINAL_ADJUST_DIST = 0.5         -- Ngưỡng "đã đứng đúng" — hết budget mà còn xa hơn mức này thì mới snap nốt
+local maintainSnapHeight = true       -- Giữ độ cao Y của player lúc bắt đầu né khi snap
 local isDodging = false
 local dodgeThread = nil
+local currentTargetPos = nil
 local dodgeStatusCallbacks = {}
+
 --// Provider trả về vị trí cần quay mặt khi né (ví dụ enemy — do AutoFarm Mode 2 đăng ký).
---// nil = giữ hành vi cũ (face theo hướng di chuyển/safe spot). Giúp "luôn facing target"
---// cả trong lúc đi bộ né (xoay mặt enemy giữa các bước MoveTo).
+--// nil = giữ hành vi cũ (face theo hướng di chuyển/safe spot).
 local faceTargetProvider = nil
+
 --// Runtime do engine bơm: { getInDanger = fn, getLogInDanger = fn }
 local runtime = nil
 
@@ -51,48 +61,68 @@ local function getFaceTarget()
 	return nil
 end
 
---// Snap rotation khi teleport dứt điểm: face provider target nếu có, không thì giữ LookVector cũ.
-local function snapFace(rootPart, pos)
+--// Snap rotation khi teleport dứt điểm: căn chỉnh độ cao sát sàn chuẩn xác + face provider target nếu có.
+local function snapFace(rootPart, humanoid, pos, startHeight)
+	local targetY = startHeight or pos.Y
+	if not maintainSnapHeight and humanoid and humanoid.HipHeight then
+		local rootOffset = humanoid.HipHeight + (rootPart.Size.Y / 2)
+		local floorY = pos.Y - 3 -- vì pos.Y từ geometry.GetFloorPosition là floorY + 3
+		targetY = floorY + rootOffset
+	end
+
+	local actualPos = Vector3.new(pos.X, targetY, pos.Z)
 	local targetPos = getFaceTarget()
 	if targetPos then
-		rootPart.CFrame = CFrame.new(pos, Vector3.new(targetPos.X, pos.Y, targetPos.Z))
+		rootPart.CFrame = CFrame.new(actualPos, Vector3.new(targetPos.X, targetY, targetPos.Z))
 	else
-		rootPart.CFrame = CFrame.new(pos, pos + rootPart.CFrame.LookVector)
+		rootPart.CFrame = CFrame.new(actualPos, actualPos + rootPart.CFrame.LookVector)
 	end
 end
 
---// Thực thi né sang Safe Spot bằng cơ chế Walk + Snap (duy nhất): MoveTo đi bộ theo navmesh,
---// khi tới cự ly maxTeleportStep cuối cùng thì Snap dứt điểm. Không còn blink/micro-teleport —
---// nhân vật không quay mặt theo hướng nhảy, giảm ồn anti-cheat.
+--// Thực thi né sang Safe Spot (Walk + Snap hybrid with Time Budget):
+--// (1) Còn cách Safe Spot ≤ maxSnapDistance => snap luôn.
+--// (2) Xa hơn => walk tối đa theo ngân sách maxDodgeTime, bám đuổi marker thời gian thực.
+--// (3) Hết budget mà chưa tới => snap nốt phần còn lại để kịp thoát sát thương.
 function dodge.Perform(safePos, escapeDist)
 	local char = player and player.Character
 	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
 	local humanoid = char and char:FindFirstChild("Humanoid")
 	if not rootPart or not humanoid or humanoid.Health <= 0 then return end
 
-	if isDodging then return end
+	currentTargetPos = safePos
+
+	-- Nếu đang trong tiến trình né, cập nhật đích đến mới nhất để nhân vật luôn đi đúng hướng Marker
+	if isDodging then
+		local flatTarget = Vector3.new(safePos.X, rootPart.Position.Y, safePos.Z)
+		humanoid:MoveTo(flatTarget)
+		return
+	end
 
 	dodgeThread = task.spawn(function()
 		isDodging = true
 		fireDodgeStatus("Dodging")
 
-		--// Luôn-facing target khi có provider: tắt AutoRotate để MoveTo không quay nhân vật theo
-		--// hướng đi; tự xoay mặt target giữa các bước. Khôi phục AutoRotate khi kết thúc.
+		-- Độ cao Y ban đầu của player làm neo
+		local startHeight = rootPart.Position.Y
+
+		-- Tắt AutoRotate khi có provider để nhân vật luôn xoay mặt về quái trong lúc đi né
 		local prevAutoRotate = humanoid.AutoRotate
 		local faceEnemy = faceTargetProvider ~= nil
 		if faceEnemy then humanoid.AutoRotate = false end
+
 		local function finish()
 			if faceEnemy then humanoid.AutoRotate = prevAutoRotate end
 			isDodging = false
+			currentTargetPos = nil
 			fireDodgeStatus("Safe")
 		end
 
 		local currentPos = rootPart.Position
 		local totalDist = (safePos - currentPos).Magnitude
 
-		-- Trường hợp 1: Khoảng cách ngắn (<= maxTeleportStep, ví dụ <= 3.0 studs) -> Snap dứt điểm 1 nhịp
-		if totalDist <= maxTeleportStep then
-			snapFace(rootPart, safePos)
+		-- (1) Khoảng cách ngắn (≤ maxSnapDistance) -> Snap tức thời 1 nhịp
+		if totalDist <= maxSnapDistance then
+			snapFace(rootPart, humanoid, safePos, startHeight)
 			if getLogInDanger() then
 				print(("[SmartDodge][Dodge] ⚡ Instant Snap (%.1f studs) to Safe Spot!"):format(totalDist))
 			end
@@ -100,33 +130,44 @@ function dodge.Perform(safePos, escapeDist)
 			return
 		end
 
-		-- Walk + Snap (duy nhất): đi bộ theo navmesh tới Safe Spot, snap khi tới cự ly cuối.
 		if getLogInDanger() then
-			print(("[SmartDodge][Dodge] 🚶 Walk + Final Snap (%.1f studs) to Safe Spot..."):format(totalDist))
+			print(("[SmartDodge][Dodge] 🚶 Walk + Snap Hybrid (%.1f studs, budget %.2fs)..."):format(totalDist, maxDodgeTime))
 		end
 
 		local startTime = os.clock()
-		local timeout = 2.5
 
-		while getInDanger() and autoDodgeEnabled and (os.clock() - startTime < timeout) do
+		-- (2) Walk tối đa trong ngân sách thời gian maxDodgeTime để thu hẹp cự ly
+		while getInDanger() and autoDodgeEnabled and (os.clock() - startTime < maxDodgeTime) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
+			local targetPos = currentTargetPos or safePos
 			currentPos = rootPart.Position
-			local distRemaining = (safePos - currentPos).Magnitude
+			local distRemaining = (targetPos - currentPos).Magnitude
 
-			-- Đã tới cự ly snap cuối cùng (còn ≤ maxTeleportStep) -> snap + MoveTo tới đích
-			if distRemaining <= maxTeleportStep then
-				snapFace(rootPart, safePos)
-				humanoid:MoveTo(safePos)
+			-- Đã thu hẹp tới cự ly snap (còn ≤ maxSnapDistance) -> snap dứt điểm
+			if distRemaining <= maxSnapDistance then
+				snapFace(rootPart, humanoid, targetPos, startHeight)
 				break
 			end
 
-			--// Face target giữa các bước đi (MoveTo dịch chuyển, ta chỉ xoay hướng, giữ vị trí).
-			local targetPos = getFaceTarget()
-			if targetPos then
-				rootPart.CFrame = CFrame.lookAt(rootPart.Position, Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z))
+			-- Face target giữa các bước đi (nếu có provider)
+			local targetEnemy = getFaceTarget()
+			if targetEnemy then
+				rootPart.CFrame = CFrame.lookAt(currentPos, Vector3.new(targetEnemy.X, currentPos.Y, targetEnemy.Z))
 			end
-			humanoid:MoveTo(safePos)
+
+			-- Đi bộ bám phẳng mặt đất theo đúng hướng marker
+			local flatTarget = Vector3.new(targetPos.X, currentPos.Y, targetPos.Z)
+			humanoid:MoveTo(flatTarget)
 			task.wait(0.05)
+		end
+
+		-- (3) Hết ngân sách thời gian mà vẫn chưa đứng đúng chỗ: snap nốt phần còn lại
+		local targetPos = currentTargetPos or safePos
+		if (os.clock() - startTime) >= maxDodgeTime and (targetPos - rootPart.Position).Magnitude > FINAL_ADJUST_DIST then
+			snapFace(rootPart, humanoid, targetPos, startHeight)
+			if getLogInDanger() then
+				print("[SmartDodge][Dodge] ⚡ Time Budget reached — snapped the remainder to Safe Spot!")
+			end
 		end
 
 		finish()
@@ -140,6 +181,7 @@ function dodge.Cancel()
 		dodgeThread = nil
 	end
 	isDodging = false
+	currentTargetPos = nil
 end
 
 --// Bắn trạng thái dodge ra callbacks (engine gọi "Idle" khi dừng loop)
@@ -157,14 +199,36 @@ function dodge.IsAutoDodgeEnabled()
 	return autoDodgeEnabled
 end
 
-function dodge.SetMaxTeleportStep(step)
-	if type(step) == "number" and step > 0 then
-		maxTeleportStep = step
+function dodge.SetMaxDodgeTime(seconds)
+	if type(seconds) == "number" and seconds > 0 then
+		maxDodgeTime = seconds
 	end
 end
 
-function dodge.GetMaxTeleportStep()
-	return maxTeleportStep
+function dodge.GetMaxDodgeTime()
+	return maxDodgeTime
+end
+
+function dodge.SetMaxSnapDistance(value)
+	if type(value) == "number" and value > 0 then
+		maxSnapDistance = value
+	end
+end
+
+function dodge.GetMaxSnapDistance()
+	return maxSnapDistance
+end
+
+-- Backward compatibility aliases
+dodge.SetMaxTeleportStep = dodge.SetMaxSnapDistance
+dodge.GetMaxTeleportStep = dodge.GetMaxSnapDistance
+
+function dodge.SetMaintainSnapHeight(state)
+	maintainSnapHeight = state and true or false
+end
+
+function dodge.IsMaintainSnapHeightEnabled()
+	return maintainSnapHeight
 end
 
 function dodge.IsDodging()

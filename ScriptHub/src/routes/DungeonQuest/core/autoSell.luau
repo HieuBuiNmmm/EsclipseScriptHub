@@ -38,10 +38,14 @@ local CATEGORY_TYPES = {
 --// Cấp hiếm hợp lệ (để biết option nào là rarity)
 local RARITY_OPTIONS = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic" }
 
---// Các mốc Level Req tĩnh cho dropdown multi-select
+--// Các mốc Level Req tĩnh cho dropdown multi-select (hỗ trợ tìm kiếm theo mốc 5 và 10)
 local LEVEL_REQ_OPTIONS = {
-	"1", "5", "15", "25", "35", "45", "55", "65", "75", "85",
-	"95", "105", "115", "125", "135", "145", "155", "165", "175", "185",
+	"1", "5", "10", "15", "20", "25", "30", "35", "40", "45", "50",
+	"55", "60", "65", "70", "75", "80", "85", "90", "95", "100",
+	"105", "110", "115", "120", "125", "130", "135", "140", "145", "150",
+	"155", "160", "165", "170", "175", "180", "185", "190", "195", "200",
+	"205", "210", "215", "220", "225", "230", "235", "240", "245", "250",
+	"255", "260", "265", "270", "275", "280", "285", "290", "295", "300",
 }
 
 --// Chế độ lọc Level Req: None = chọn đích danh, Below = ≤, Above = ≥
@@ -243,9 +247,7 @@ end
 --// Có ít nhất 1 điều kiện lọc đang active hay không.
 --// Dùng để cảnh báo khi user sắp bán mà không có filter nào (rủi ro bán sạch).
 function autoSell.HasAnyFilter()
-	-- Level filter luôn có giá trị tối thiểu (fallback = 1 khi user không chọn), nên
-	-- không bao giờ ở trạng thái "không có filter" — tránh bán hết inventory.
-	return true
+	return next(rarityFilter) ~= nil or next(typeFilter) ~= nil or next(levelReqExactFilter) ~= nil
 end
 
 --// Đếm tổng số item khớp điều kiện (gọi khi bấm nút Search, không bán).
@@ -325,7 +327,18 @@ end
 function autoSell.SetRarityFilter(selected)
 	rarityFilter = {}
 	if type(selected) == "table" then
-		for _, r in ipairs(selected) do rarityFilter[r] = true end
+		for k, v in pairs(selected) do
+			if v == true and type(k) == "string" then
+				local norm = normalizeRarity(k) or k
+				rarityFilter[norm] = true
+			elseif type(v) == "string" then
+				local norm = normalizeRarity(v) or v
+				rarityFilter[norm] = true
+			end
+		end
+	elseif type(selected) == "string" then
+		local norm = normalizeRarity(selected) or selected
+		rarityFilter[norm] = true
 	end
 end
 
@@ -339,7 +352,15 @@ end
 function autoSell.SetTypeFilter(selected)
 	typeFilter = {}
 	if type(selected) == "table" then
-		for _, t in ipairs(selected) do typeFilter[t] = true end
+		for k, v in pairs(selected) do
+			if v == true and type(k) == "string" then
+				typeFilter[k] = true
+			elseif type(v) == "string" then
+				typeFilter[v] = true
+			end
+		end
+	elseif type(selected) == "string" then
+		typeFilter[selected] = true
 	end
 end
 
@@ -353,10 +374,18 @@ end
 function autoSell.SetLevelReqExactFilter(selected)
 	levelReqExactFilter = {}
 	if type(selected) == "table" then
-		for _, v in ipairs(selected) do
-			local n = tonumber(v)
-			if n then levelReqExactFilter[n] = true end
+		for k, v in pairs(selected) do
+			if v == true then
+				local n = tonumber(k)
+				if n then levelReqExactFilter[n] = true end
+			else
+				local n = tonumber(v)
+				if n then levelReqExactFilter[n] = true end
+			end
 		end
+	elseif type(selected) == "string" or type(selected) == "number" then
+		local n = tonumber(selected)
+		if n then levelReqExactFilter[n] = true end
 	end
 end
 
