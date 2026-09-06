@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-06T04:50:38.841833800+00:00",
+    genDate = "2026-09-06T08:55:53.494920900+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -15603,7 +15603,668 @@ end function __DIST.L()-- Tab Configs (DungeonQuest): gộp Config (quản lý c
 return function(window, tab)
 __DIST.load('J')(window, tab)
 __DIST.load('K')(window, tab)
-end end function __DIST.M()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end end function __DIST.M()-- Map Recorder & Profile Manager (DungeonQuest - DevTools):
+-- 1. Giới hạn CHỈ TÁC ĐỘNG VÀO DEPTH LEVEL 1 (Model hoặc Part cấp 1 trực thuộc Workspace.Map).
+-- 2. Click-to-delete sẽ tự động bọc highlight và xóa TOÀN BỘ Model cha (Depth 1) thay vì xóa part con bên trong.
+-- 3. Xuất dữ liệu đã xóa thành file JSON cấu hình riêng cho từng Dungeon.
+-- 4. Nạp và áp dụng profile JSON để tự động tối ưu map (Xóa hoặc Tàng hình + No-clip).
+
+--// Imports
+
+local HttpService = game:GetService("HttpService")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
+local notifier = __DIST.load('c')
+local lifecycle = __DIST.load('b')
+
+--// Table
+local mapRecorder = {}
+
+--// State
+local isRecording = false
+local recordedDeletions = {} -- list of { Name, Class, Path, Position, Size, IsModel }
+local recordedSet = {} -- [Path or Fingerprint] = true (tránh trùng lặp)
+local recordConnection = nil
+local countCallbacks = {}
+
+local clickToDeleteEnabled = false
+local clickConnection = nil
+local hoverConnection = nil
+local hoverBox = nil
+local hoveredTarget = nil
+
+local PROFILES_FOLDER = "EsclipseHub/DungeonQuest/MapProfiles"
+
+--// Helper: Làm tròn số thập phân
+local function round(num, decimals)
+	local mult = 10 ^ (decimals or 2)
+	return math.floor(num * mult + 0.5) / mult
+end
+
+--// Helper: Lấy đường dẫn phân cấp (Path) của Instance
+local function getInstancePath(inst)
+	if not inst then return "" end
+	local parts = {}
+	local curr = inst
+	while curr and curr ~= game do
+		table.insert(parts, 1, curr.Name)
+		curr = curr.Parent
+	end
+	return table.concat(parts, ".")
+end
+
+--// Helper: Lấy tâm và kích thước bao phủ (Bounding Box) của Model hoặc Part
+local function getInstancePositionAndSize(inst)
+	if not inst then return nil, nil end
+	if inst:IsA("BasePart") then
+		return inst.Position, inst.Size
+	elseif inst:IsA("Model") then
+		local cf, sz = inst:GetBoundingBox()
+		return cf.Position, sz
+	end
+	return nil, nil
+end
+
+--// Helper: Tạo dấu vân tay độc nhất cho Object Depth Level 1
+local function getObjectFingerprint(name, pos, sz)
+	return string.format("%s_%.1f_%.1f_%.1f_%.1f_%.1f_%.1f",
+		name,
+		pos and pos.X or 0, pos and pos.Y or 0, pos and pos.Z or 0,
+		sz and sz.X or 0, sz and sz.Y or 0, sz and sz.Z or 0
+	)
+end
+
+--// Tìm phần tử gốc Model/Part (Depth Level 1) trực thuộc Map Container hoặc Sub-Folder
+local function getDepth1Root(inst)
+	if not inst or inst == Workspace or inst == Workspace.Terrain then return nil end
+
+	-- Bỏ qua nếu thuộc Character của bất kỳ người chơi nào
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character and (inst == p.Character or inst:IsDescendantOf(p.Character)) then
+			return nil
+		end
+	end
+
+	-- Bỏ qua Camera, Terrain, RaycastIgnore, SmartDodge, ESP
+	if inst:IsA("Camera") or inst:IsA("Terrain") or inst.Name == "Terrain" or inst.Name:find("Raycast") then
+		return nil
+	end
+	if inst.Name:find("SmartDodge") or inst.Name:find("ESP") or inst.Name:find("Highlight") or inst.Name:find("MapRecorder") then
+		return nil
+	end
+
+	local mapContainer = Workspace:FindFirstChild("Map")
+		or Workspace:FindFirstChild("dungeon")
+		or Workspace:FindFirstChild("Dungeon")
+		or Workspace
+
+	-- Duyệt ngược lên từ part con đến Model cao nhất (dưới Map Container hoặc dưới Folder)
+	local curr = inst
+	while curr.Parent and curr.Parent ~= mapContainer and not curr.Parent:IsA("Folder") and curr.Parent ~= Workspace do
+		curr = curr.Parent
+	end
+
+	-- Nếu curr là Folder (tránh chọn toàn bộ folder chứa hàng trăm vật thể), trả về chính inst
+	if curr:IsA("Folder") then
+		return inst
+	end
+
+	return curr
+end
+
+--// File System Utilities (Tương thích mọi executor)
+local function ensureDirectory(path)
+	if makefolder and isfolder then
+		pcall(function()
+			local parts = string.split(path, "/")
+			local current = ""
+			for _, p in ipairs(parts) do
+				current = (current == "") and p or (current .. "/" .. p)
+				if not isfolder(current) then
+					makefolder(current)
+				end
+			end
+		end)
+	end
+end
+
+local function saveJsonFile(filePath, dataTable)
+	if not writefile then
+		warn("[MapRecorder] Executor không hỗ trợ hàm writefile!")
+		return false
+	end
+	local success, jsonStr = pcall(function()
+		return HttpService:JSONEncode(dataTable)
+	end)
+	if not success or not jsonStr then return false end
+
+	ensureDirectory(PROFILES_FOLDER)
+	local writeSuccess = pcall(writefile, filePath, jsonStr)
+	return writeSuccess
+end
+
+local function loadJsonFile(filePath)
+	if not readfile or not isfile then return nil end
+	if not isfile(filePath) then return nil end
+
+	local success, content = pcall(readfile, filePath)
+	if not success or not content then return nil end
+
+	local decodeSuccess, data = pcall(function()
+		return HttpService:JSONDecode(content)
+	end)
+	if decodeSuccess and type(data) == "table" then
+		return data
+	end
+	return nil
+end
+
+--// Thông báo số lượng part đã ghi nhận
+local function fireCountChanged()
+	local count = #recordedDeletions
+	for _, cb in ipairs(countCallbacks) do
+		pcall(cb, count, isRecording)
+	end
+end
+
+--// Xử lý khi có Object bị xóa khỏi Workspace (Chỉ ghi nhận Depth Level 1)
+local function onDescendantRemoving(inst)
+	if not isRecording or not inst then return end
+
+	local root = getDepth1Root(inst)
+	if not root then return end
+
+	-- Lấy thông tin của Root Depth Level 1
+	local name = root.Name
+	local className = root.ClassName
+	local path = getInstancePath(root)
+	local pos, size = getInstancePositionAndSize(root)
+
+	local fp = getObjectFingerprint(name, pos, size)
+	if recordedSet[fp] or (path and recordedSet[path]) then
+		return
+	end
+
+	recordedSet[fp] = true
+	if path and #path > 0 then
+		recordedSet[path] = true
+	end
+
+	local entry = {
+		Name = name,
+		Class = className,
+		Path = path,
+		Position = pos and { round(pos.X, 2), round(pos.Y, 2), round(pos.Z, 2) } or nil,
+		Size = size and { round(size.X, 2), round(size.Y, 2), round(size.Z, 2) } or nil,
+		IsModel = root:IsA("Model"),
+	}
+
+	table.insert(recordedDeletions, entry)
+	fireCountChanged()
+
+	print(string.format("[MapRecorder][Depth-1] 🗑️ Recorded: '%s' (%s) | Path: %s | Pos: (%.2f, %.2f, %.2f)",
+		name, className, path, pos and pos.X or 0, pos and pos.Y or 0, pos and pos.Z or 0
+	))
+end
+
+--// Bắt đầu chế độ Ghi (Start Recording)
+function mapRecorder.StartRecording()
+	if isRecording then return end
+	isRecording = true
+	table.clear(recordedDeletions)
+	table.clear(recordedSet)
+
+	if recordConnection then
+		recordConnection:Disconnect()
+		recordConnection = nil
+	end
+
+	recordConnection = Workspace.DescendantRemoving:Connect(onDescendantRemoving)
+	fireCountChanged()
+
+	print("[MapRecorder] 🔴 Bắt đầu ghi nhận (Chế độ Depth Level 1)!")
+	notifier:Notify("Map Recorder", "Đã bật chế độ ghi nhận xóa Map (Depth Level 1)!", 3)
+end
+
+--// Dừng chế độ Ghi (Stop Recording) và tùy chọn tự động lưu
+function mapRecorder.StopRecording(autoSave)
+	if not isRecording then return end
+	isRecording = false
+
+	if recordConnection then
+		recordConnection:Disconnect()
+		recordConnection = nil
+	end
+
+	fireCountChanged()
+	print(string.format("[MapRecorder] ⏹️ Dừng ghi. Tổng cộng đã ghi nhận: %d objects (Depth 1).", #recordedDeletions))
+
+	if autoSave and #recordedDeletions > 0 then
+		local dungeonName = shared.GetCurrentDungeonName() or "Default_Dungeon"
+		mapRecorder.SaveProfile(dungeonName)
+	end
+end
+
+function mapRecorder.IsRecording()
+	return isRecording
+end
+
+function mapRecorder.GetRecordedCount()
+	return #recordedDeletions
+end
+
+function mapRecorder.GetRecordedData()
+	return recordedDeletions
+end
+
+function mapRecorder.ClearBuffer()
+	table.clear(recordedDeletions)
+	table.clear(recordedSet)
+	fireCountChanged()
+	print("[MapRecorder] 🧹 Đã xóa sạch bộ nhớ tạm.")
+end
+
+function mapRecorder.OnCountChanged(callback)
+	if type(callback) == "function" then
+		table.insert(countCallbacks, callback)
+	end
+end
+
+--// Lưu Profile ra file JSON
+function mapRecorder.SaveProfile(customName)
+	if #recordedDeletions == 0 then
+		warn("[MapRecorder] Không có dữ liệu để lưu!")
+		notifier:Notify("Map Recorder", "Không có Object nào trong bộ nhớ để lưu!", 3)
+		return false
+	end
+
+	local dungeonName = customName
+	if not dungeonName or #dungeonName == 0 then
+		dungeonName = shared.GetCurrentDungeonName() or "Default_Dungeon"
+	end
+
+	local cleanName = dungeonName:gsub("[\\/:*?\"<>|]", "_")
+	local filePath = string.format("%s/%s.json", PROFILES_FOLDER, cleanName)
+
+	local profileData = {
+		DungeonName = dungeonName,
+		SavedAt = os.date("%Y-%m-%d %H:%M:%S"),
+		Scope = "DepthLevel1",
+		TotalCount = #recordedDeletions,
+		Objects = recordedDeletions,
+	}
+
+	local success = saveJsonFile(filePath, profileData)
+	if success then
+		print(string.format("[MapRecorder] 💾 Đã lưu profile thành công: %s (%d Depth-1 objects)", filePath, #recordedDeletions))
+		notifier:Notify("Map Recorder", string.format("Đã lưu %d Depth-1 objects vào '%s.json'!", #recordedDeletions, cleanName), 4)
+		return true
+	else
+		warn(string.format("[MapRecorder] ❌ Lưu file thất bại: %s", filePath))
+		notifier:Notify("Map Recorder", "Lưu file JSON thất bại!", 4)
+		return false
+	end
+end
+
+--// Sao chép JSON vào Clipboard
+function mapRecorder.ExportToClipboard()
+	if #recordedDeletions == 0 then
+		notifier:Notify("Map Recorder", "Không có dữ liệu để sao chép!", 3)
+		return false
+	end
+
+	local dungeonName = shared.GetCurrentDungeonName() or "Default_Dungeon"
+	local profileData = {
+		DungeonName = dungeonName,
+		SavedAt = os.date("%Y-%m-%d %H:%M:%S"),
+		Scope = "DepthLevel1",
+		TotalCount = #recordedDeletions,
+		Objects = recordedDeletions,
+	}
+
+	local jsonStr = HttpService:JSONEncode(profileData)
+	if setclipboard then
+		setclipboard(jsonStr)
+		notifier:Notify("Map Recorder", "Đã copy JSON vào Clipboard!", 3)
+		return true
+	end
+	return false
+end
+
+--// Nạp và Áp dụng Profile JSON vào Map hiện tại (Khớp chính xác theo Tọa độ 3D)
+function mapRecorder.ApplyProfile(customName, mode)
+	local dungeonName = customName
+	if not dungeonName or #dungeonName == 0 then
+		dungeonName = shared.GetCurrentDungeonName() or "Default_Dungeon"
+	end
+
+	local cleanName = dungeonName:gsub("[\\/:*?\"<>|]", "_")
+	local filePath = string.format("%s/%s.json", PROFILES_FOLDER, cleanName)
+
+	local profile = loadJsonFile(filePath)
+	if not profile or not profile.Objects then
+		warn(string.format("[MapRecorder] Không tìm thấy file profile: %s", filePath))
+		notifier:Notify("Map Recorder", string.format("Không tìm thấy profile '%s.json'!", cleanName), 4)
+		return 0
+	end
+
+	local applyMode = mode or "Destroy" -- "Destroy" hoặc "Ghost"
+	local cleanedCount = 0
+	local objects = profile.Objects
+
+	-- Chuyển danh sách object thành mảng vector tọa độ để so khớp khoảng cách
+	local targetList = {}
+	for _, entry in ipairs(objects) do
+		if entry.Position then
+			table.insert(targetList, {
+				Pos = Vector3.new(entry.Position[1], entry.Position[2], entry.Position[3]),
+				Name = entry.Name,
+				Class = entry.Class,
+				Size = entry.Size and Vector3.new(entry.Size[1], entry.Size[2], entry.Size[3]) or nil,
+			})
+		end
+	end
+
+	local mapContainer = Workspace:FindFirstChild("Map")
+		or Workspace:FindFirstChild("dungeon")
+		or Workspace:FindFirstChild("Dungeon")
+		or Workspace
+
+	-- Tập hợp tất cả các candidate cấp 1 hoặc Model trong Map
+	local candidates = {}
+	for _, child in ipairs(mapContainer:GetChildren()) do
+		if not child:IsA("Camera") and not child:IsA("Terrain") and child.Name ~= "Terrain" then
+			table.insert(candidates, child)
+			-- Nếu child là Folder (chứa các sub-models), thêm cả các Model bên trong folder
+			if child:IsA("Folder") or child:IsA("Configuration") then
+				for _, sub in ipairs(child:GetChildren()) do
+					table.insert(candidates, sub)
+				end
+			end
+		end
+	end
+
+	local alreadyCleaned = {}
+
+	for _, candidate in ipairs(candidates) do
+		if not alreadyCleaned[candidate] and candidate.Parent then
+			local candPos, candSize = getInstancePositionAndSize(candidate)
+			if candPos then
+				local matched = false
+
+				-- CHỈ SO KHỚP KHI TỌA ĐỘ VỊ TRÍ TRÙNG KHỚP (Khoảng cách <= 2.5 studs)
+				for _, target in ipairs(targetList) do
+					local dist = (candPos - target.Pos).Magnitude
+					if dist <= 2.5 then
+						-- Đảm bảo trùng tên hoặc Class
+						if candidate.Name == target.Name or candidate.ClassName == target.Class or candidate:IsA(target.Class) then
+							matched = true
+							break
+						end
+					end
+				end
+
+				if matched then
+					alreadyCleaned[candidate] = true
+					cleanedCount = cleanedCount + 1
+
+					pcall(function()
+						if applyMode == "Destroy" then
+							candidate:Destroy()
+						else
+							if candidate:IsA("BasePart") then
+								candidate.Transparency = 1
+								candidate.CanCollide = false
+								candidate.CanTouch = false
+							elseif candidate:IsA("Model") then
+								for _, desc in ipairs(candidate:GetDescendants()) do
+									if desc:IsA("BasePart") then
+										desc.Transparency = 1
+										desc.CanCollide = false
+										desc.CanTouch = false
+									end
+								end
+							end
+						end
+					end)
+				end
+			end
+		end
+	end
+
+	print(string.format("[MapRecorder][Spatial Match] ⚡ Đã áp dụng profile '%s': Đã xử lý %d / %d objects (Mode: %s)!",
+		cleanName, cleanedCount, #objects, applyMode
+	))
+	notifier:Notify("Map Recorder", string.format("Đã tối ưu %d objects đúng vị trí theo '%s'!", cleanedCount, cleanName), 4)
+	return cleanedCount
+end
+
+--// Công cụ Click-To-Delete: Tự động bọc Highlight và Xóa toàn bộ Model/Part Depth Level 1
+local function getOrCreateHoverBox()
+	if hoverBox and hoverBox.Parent then return hoverBox end
+	local box = Instance.new("SelectionBox")
+	box.Name = "MapRecorder_HoverBox"
+	box.Color3 = Color3.fromRGB(255, 60, 60)
+	box.SurfaceColor3 = Color3.fromRGB(255, 20, 20)
+	box.SurfaceTransparency = 0.55
+	box.LineThickness = 0.06
+	box.Parent = Workspace.Terrain
+	hoverBox = box
+	return box
+end
+
+function mapRecorder.SetClickToDelete(state)
+	clickToDeleteEnabled = state and true or false
+
+	if hoverConnection then hoverConnection:Disconnect(); hoverConnection = nil end
+	if clickConnection then clickConnection:Disconnect(); clickConnection = nil end
+	if hoverBox then hoverBox.Adornee = nil end
+
+	if not clickToDeleteEnabled then
+		hoveredTarget = nil
+		return
+	end
+
+	local player = services.player
+	local mouse = player and player:GetMouse()
+	if not mouse then return end
+
+	local box = getOrCreateHoverBox()
+
+	-- Lắng nghe di chuột: Tự động trỏ lên Root Depth Level 1
+	hoverConnection = RunService.RenderStepped:Connect(function()
+		if not clickToDeleteEnabled then return end
+		local target = mouse.Target
+		local root = getDepth1Root(target)
+
+		if root and root ~= Workspace.Terrain then
+			hoveredTarget = root
+			box.Adornee = root
+		else
+			hoveredTarget = nil
+			box.Adornee = nil
+		end
+	end)
+
+	-- Lắng nghe click chuột trái hoặc phím X để xóa toàn bộ Root Depth Level 1
+	clickConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed or not clickToDeleteEnabled then return end
+
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.KeyCode == Enum.KeyCode.X then
+			if hoveredTarget and hoveredTarget.Parent then
+				local targetToDelete = hoveredTarget
+				box.Adornee = nil
+				hoveredTarget = nil
+
+				print(string.format("[MapRecorder][Click-To-Delete] 💥 Deleted Depth-1 Root: '%s' (%s)",
+					targetToDelete.Name, targetToDelete.ClassName
+				))
+
+				pcall(function()
+					targetToDelete:Destroy()
+				end)
+			end
+		end
+	end)
+
+	notifier:Notify("Click-To-Delete", "Đã bật! Di chuột sẽ tự bọc toàn bộ Model (Depth 1). Click hoặc bấm X để xóa.", 4)
+end
+
+function mapRecorder.IsClickToDeleteEnabled()
+	return clickToDeleteEnabled
+end
+
+--// Cleanup khi unload script
+lifecycle.Register(function()
+	mapRecorder.StopRecording(false)
+	mapRecorder.SetClickToDelete(false)
+	if hoverBox then
+		pcall(function() hoverBox:Destroy() end)
+		hoverBox = nil
+	end
+	table.clear(recordedDeletions)
+	table.clear(recordedSet)
+	table.clear(countCallbacks)
+end)
+
+return mapRecorder
+end function __DIST.N()-- Tab DevTools (DungeonQuest): Quản lý công cụ dành cho Admin / Developer.
+-- 1. Map Recorder: Ghi nhận các Part bị xóa và xuất profile JSON.
+-- 2. Profile Manager: Nạp & áp dụng profile tối ưu map riêng cho từng Dungeon.
+
+--// Imports
+
+local mapRecorder = __DIST.load('M')
+local shared = __DIST.load('e')
+local dungeonCatalog = __DIST.load('k')
+
+return function(window, tab)
+	--// Cột Trái: Chế độ Ghi nhận Xóa Map (Recorder)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Map Recorder (Admin)" })
+
+	local currentDungeon = shared.GetCurrentDungeonName() or "Unknown"
+	local statusHeader = leftSection:Header({ Name = string.format("Current Map: %s | Recorded: 0", currentDungeon) })
+
+	mapRecorder.OnCountChanged(function(count, isRecording)
+		local dName = shared.GetCurrentDungeonName() or "Unknown"
+		local stateStr = isRecording and "🔴 RECORDING" or "⏹️ IDLE"
+		pcall(function()
+			statusHeader:SetText(string.format("[%s] Map: %s | Deleted: %d", stateStr, dName, count))
+		end)
+	end)
+
+	leftSection:Toggle({
+		Name = "Record Map Deletions",
+		Default = mapRecorder.IsRecording(),
+		Callback = function(state)
+			if state then
+				mapRecorder.StartRecording()
+			else
+				mapRecorder.StopRecording(false)
+			end
+		end,
+	}, "Toggle_MapRecorder_Record")
+
+	leftSection:Toggle({
+		Name = "Click-To-Delete Tool (Raycast / X)",
+		Default = mapRecorder.IsClickToDeleteEnabled(),
+		Callback = function(state)
+			mapRecorder.SetClickToDelete(state)
+		end,
+	}, "Toggle_MapRecorder_ClickToDelete")
+
+	leftSection:Button({
+		Name = "Clear Recorded Buffer",
+		Callback = function()
+			mapRecorder.ClearBuffer()
+			window:Notify({ Title = "Map Recorder", Description = "Đã xóa sạch bộ nhớ tạm!" })
+		end,
+	})
+
+	leftSection:Button({
+		Name = "Copy JSON to Clipboard",
+		Callback = function()
+			local success = mapRecorder.ExportToClipboard()
+			if success then
+				window:Notify({ Title = "Map Recorder", Description = "Đã copy JSON vào Clipboard!" })
+			else
+				window:Notify({ Title = "Map Recorder", Description = "Không có dữ liệu để copy!" })
+			end
+		end,
+	})
+
+	--// Cột Phải: Quản lý File Profile & Áp dụng
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Map Profiles (JSON)" })
+
+	local profileNameInput = ""
+	local applyMode = "Destroy"
+
+	rightSection:Input({
+		Name = "Profile Name (Leave empty for current map)",
+		Placeholder = "e.g. Desert Temple",
+		AcceptedCharacters = "All",
+		Callback = function(input)
+			profileNameInput = input
+		end,
+	})
+
+	rightSection:Dropdown({
+		Name = "Apply Mode",
+		Multi = false,
+		Required = true,
+		Options = { "Destroy (Delete Permanent)", "Ghost (Transparency=1, No-Clip)" },
+		Default = "Destroy (Delete Permanent)",
+		Callback = function(value)
+			if value:find("Ghost") then
+				applyMode = "Ghost"
+			else
+				applyMode = "Destroy"
+			end
+		end,
+	})
+
+	rightSection:Button({
+		Name = "💾 Save Current Profile to File",
+		Callback = function()
+			local targetName = (#profileNameInput > 0) and profileNameInput or shared.GetCurrentDungeonName()
+			if not targetName or #targetName == 0 then
+				targetName = "Default_Dungeon"
+			end
+
+			local success = mapRecorder.SaveProfile(targetName)
+			if success then
+				window:Notify({ Title = "Map Recorder", Description = string.format("Đã lưu profile '%s.json' thành công!", targetName) })
+			else
+				window:Notify({ Title = "Map Recorder", Description = "Lưu file thất bại (hoặc buffer trống)!" })
+			end
+		end,
+	})
+
+	rightSection:Button({
+		Name = "⚡ Apply Profile to Current Map",
+		Callback = function()
+			local targetName = (#profileNameInput > 0) and profileNameInput or shared.GetCurrentDungeonName()
+			if not targetName or #targetName == 0 then
+				targetName = "Default_Dungeon"
+			end
+
+			local count = mapRecorder.ApplyProfile(targetName, applyMode)
+			if count > 0 then
+				window:Notify({ Title = "Map Recorder", Description = string.format("Đã tối ưu %d parts theo '%s.json'!", count, targetName) })
+			else
+				window:Notify({ Title = "Map Recorder", Description = string.format("Không tìm thấy profile hoặc không có part khớp: %s", targetName) })
+			end
+		end,
+	})
+end
+end function __DIST.O()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -15660,6 +16321,7 @@ return function(self)
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
 		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10734950309" }),
 		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
+		DevTools = tabGroup:Tab({ Name = "DevTools", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -15671,12 +16333,14 @@ return function(self)
 	local inventoryTab = __DIST.load('x')
 	local utilitiesTab = __DIST.load('H')
 	local configsTab = __DIST.load('L')
+	local devToolsTab = __DIST.load('N')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	utilitiesTab(window, tabs.Utilities)
 	configsTab(window, tabs.Configs)
+	devToolsTab(window, tabs.DevTools)
 
 	--// Phím tắt
 	local shortcuts = __DIST.load('m')
@@ -15705,7 +16369,7 @@ local contextual = __DIST.load('l')
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.N()
+end function __DIST.P()
 local flags = {}
 
 function flags:Export()
@@ -15748,7 +16412,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.O()
+return flags end function __DIST.Q()
 --// Imports
 
 
@@ -15773,7 +16437,7 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.P()--// Imports
+end function __DIST.R()--// Imports
 
 local binder = __DIST.load('E')
 
@@ -15786,11 +16450,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.Q()--// Imports
+end function __DIST.S()--// Imports
 
-local flags = __DIST.load('N')
-local interface = __DIST.load('O')
-local esp = __DIST.load('P')
+local flags = __DIST.load('P')
+local interface = __DIST.load('Q')
+local esp = __DIST.load('R')
 
 --// Initialize
 local window = interface:Window({
@@ -15829,7 +16493,7 @@ return {
 		end,
 	},
 }
-end function __DIST.R()--// Variables
+end function __DIST.T()--// Variables
 
 local utility = {}
 
@@ -15861,7 +16525,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.S()--// Functions
+end function __DIST.U()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -15871,14 +16535,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.T()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.V()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('Q')
-	local utility = __DIST.load('R')
-	local services = __DIST.load('S')
+	local base = __DIST.load('S')
+	local utility = __DIST.load('T')
+	local services = __DIST.load('U')
 
 	--// References
 	local flags = base.Flags
@@ -15944,7 +16608,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('M'),
+		Load = __DIST.load('O'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -15955,7 +16619,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('T'),
+		Load = __DIST.load('V'),
 		Places = {
 			123456789,
 			987654321,

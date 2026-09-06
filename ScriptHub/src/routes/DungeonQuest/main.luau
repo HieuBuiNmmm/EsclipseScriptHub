@@ -54,6 +54,7 @@ return function(self)
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
 		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10734950309" }),
 		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
+		DevTools = tabGroup:Tab({ Name = "DevTools", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -65,12 +66,14 @@ return function(self)
 	local inventoryTab = require("@routes/DungeonQuest/tabs/Inventory/main")
 	local utilitiesTab = require("@routes/DungeonQuest/tabs/Utilities/main")
 	local configsTab = require("@routes/DungeonQuest/tabs/Configs/main")
+	local devToolsTab = require("@routes/DungeonQuest/tabs/DevTools/main")
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	utilitiesTab(window, tabs.Utilities)
 	configsTab(window, tabs.Configs)
+	devToolsTab(window, tabs.DevTools)
 
 	--// Phím tắt
 	local shortcuts = require("@routes/DungeonQuest/core/shortcuts")

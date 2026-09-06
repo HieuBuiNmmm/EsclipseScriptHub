@@ -1,0 +1,17 @@
+local workspace = game:GetService("Workspace")
+
+-- Lắng nghe sự kiện khi có bất kỳ object nào bị xóa hoặc gỡ khỏi Workspace
+workspace.DescendantRemoving:Connect(function(instance)
+    -- Kiểm tra xem object bị xóa có phải là một Part 3D có tọa độ (Position) hay không
+    if instance:IsA("BasePart") then
+        local pos = instance.Position
+        print(string.format("[Log Xóa] Tên: %s | Tọa độ: X: %.2f, Y: %.2f, Z: %.2f", instance.Name, pos.X, pos.Y, pos.Z))
+        
+    -- Nếu object bị xóa là một Model (nhóm các Part), ta lấy tọa độ của PrimaryPart
+    elseif instance:IsA("Model") and instance.PrimaryPart then
+        local pos = instance.PrimaryPart.Position
+        print(string.format("[Log Xóa Model] Tên: %s | Tọa độ: X: %.2f, Y: %.2f, Z: %.2f", instance.Name, pos.X, pos.Y, pos.Z))
+    end
+end)
+
+print("Đã bật script theo dõi object bị xóa!")
