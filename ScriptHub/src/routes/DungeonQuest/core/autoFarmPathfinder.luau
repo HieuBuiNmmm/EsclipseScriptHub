@@ -132,10 +132,6 @@ local holdMode = "Orbit"
 --// Độ lệch hướng nhìn tối đa (độ) so với hướng tới enemy để được phép cast skill.
 --// Gate "phải facing đã mới cast": lệch quá ngưỡng này thì frame đó chỉ xoay mặt, chưa cast.
 local faceToleranceDeg = 20
---// Mode 2 (SmartDodge): giữ khoảng cách MIN với enemy gần nhất. Khi enemy lọt vào vùng
---// < minDistance, nhân vật bị "đẩy" lùi mượt theo hướng radial (CFrame — cơ chế giống Mode 1
---// orbit) và VẪN cast skill trong lúc lùi. 0 = tắt (đứng yên như cũ).
-local minDistance = 4
 --// Snapshot trạng thái Smart Dodge (enabled + auto-dodge) khi AutoFarm nắm quyền ở Mode 2,
 --// để khôi phục chính xác trạng thái người dùng khi AutoFarm tắt hoặc chuyển về Orbit.
 local smartDodgeSnapshot = nil
@@ -1283,9 +1279,9 @@ end
 
 --// HOLD MODE 2 (SmartDodge): KHÔNG orbit — lock target, huỷ path đang CHASE và cast skill TRỪ KHI
 --// nhân vật đang giữa lúc né (dodge) hoặc CHƯA FACING enemy.
---// Giữ khoảng cách MIN với enemy gần nhất: enemy lọt vào vùng < minDistance (và không dodging) thì
---// nhân vật bị "đẩy" lùi mượt theo hướng radial bằng CFrame (cơ chế giống Mode 1 orbit) đồng thời
---// VẪN cast skill trong lúc lùi. Đang dodging thì nhường toàn bộ cho Smart Dodge (không can thiệp).
+--// Đứng yên (MoveTo hiện tại) + Luôn-facing target: tắt AutoRotate để di chuyển/cast không bị
+--// xoay lung tung vì MoveTo. Không còn lo "giữ khoảng cách đẩy" ở đây — tính năng đó đã tách
+--// sang module STANDALONE core/keepDistance.luau (xóa được khi cần).
 --// Lý do gate skill theo dodge: performDodge teleport/micro-blink liên tục trên HumanoidRootPart —
 --// bấm phím skill cùng lúc không phá dodge nhưng chiêu giữa lúc dịch chuyển thường whiff, nên bỏ qua.
 --// Lý do gate theo facing: "phải facing đã mới cast" — hướng nhìn lệch enemy quá threshold thì frame
@@ -1303,34 +1299,7 @@ local function stepHoldSmartDodge(deltaTime, humanoid, playerRoot, enemy, enemyP
 	if not dodging then
 		--// Luôn facing target: tắt AutoRotate để Roblox không tự xoay theo hướng di chuyển/kéo back.
 		humanoid.AutoRotate = false
-		local dx = playerPos.X - enemyPos.X
-		local dz = playerPos.Z - enemyPos.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
-		if minDistance > 0 and dist < minDistance then
-			--// Enemy lọt vào vùng min -> "đẩy" lùi mượt theo radial (CFrame). Di chuyển bị dodge
-			--// ghi đè tuyệt đối khi nguy hiểm (frame này không chạy lúc dodging).
-			local push = math.min(moveSpeed * math.max(deltaTime, 1 / 60), minDistance - dist)
-			local pushedPos = playerPos
-			if dist > 0.01 then
-				pushedPos = Vector3.new(
-					playerPos.X + (dx / dist) * push,
-					playerPos.Y,
-					playerPos.Z + (dz / dist) * push
-				)
-			end
-			--// Huỷ MoveTo cũ để CFrame push không bị MoveTo khác kéo qua chỗ khác.
-			pcall(function() humanoid:MoveTo(playerPos) end)
-			--// Cast cả lúc lùi: gate facing dùng hướng nhìn frame trước (lookAt gán bên dưới
-			--// game chưa kịp xử lý, đúng quy tắc "phải facing đã mới cast").
-			if skillEnabled and getFacingErrorDeg(playerRoot, playerPos, enemyPos) <= faceToleranceDeg then
-				fireSkills()
-			end
-			playerRoot.CFrame = CFrame.lookAt(pushedPos, enemyPos)
-			playerRoot.AssemblyLinearVelocity = Vector3.zero
-			playerRoot.AssemblyAngularVelocity = Vector3.zero
-			return
-		end
-		--// Enemy ngoài vùng min (hoặc minDistance = 0 đã tắt): đứng yên + LUÔN facing + cast theo gate.
+		--// Đứng yên tại vị trí hiện tại (chống đối MoveTo/path cũ còn sót).
 		pcall(function() humanoid:MoveTo(playerPos) end)
 		if getFacingErrorDeg(playerRoot, playerPos, enemyPos) > faceToleranceDeg then
 			--// Chưa facing: xoay mặt enemy (giữ nguyên vị trí), cast chờ frame sau.
@@ -1733,15 +1702,6 @@ function autoFarmPathfinder.SetFaceTolerance(value)
 	faceToleranceDeg = math.clamp(tonumber(value) or faceToleranceDeg, 0, 90)
 end
 
---// Khoảng cách MIN giữa nhân vật và enemy gần nhất (Mode 2 SmartDodge). 0 = tắt (đứng yên).
-function autoFarmPathfinder.GetMinDistance()
-	return minDistance
-end
-
-function autoFarmPathfinder.SetMinDistance(value)
-	minDistance = math.clamp(tonumber(value) or minDistance, 0, 50)
-end
-
 function autoFarmPathfinder.IsVisualDebugEnabled()
 	return visualDebug
 end
@@ -2033,7 +1993,6 @@ function autoFarmPathfinder.GetDebugInfo()
 		threatActive = threatActive,
 		faceTolerance = faceToleranceDeg,
 		faceErr = faceErrDeg,
-		minDistance = minDistance,
 	}
 end
 

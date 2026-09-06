@@ -1,4 +1,4 @@
---!nocheck
+﻿--!nocheck
 --!nolint
 
 --[[
@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-06T12:42:35.367402500+00:00",
+    genDate = "2026-09-06T14:12:07.799873100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8321,7 +8321,7 @@ function safeSpot.UpdateHitbox(playerPos)
 	part.Parent = Workspace.Terrain
 end
 
---// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá
+--// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá (Hình Cầu Nhỏ Sát Đất)
 local function getOrCreateSafeMarker()
 	if safeSpotMarkerPart and safeSpotMarkerPart.Parent then
 		return safeSpotMarkerPart
@@ -8329,29 +8329,20 @@ local function getOrCreateSafeMarker()
 
 	local part = Instance.new("Part")
 	part.Name = "SmartDodge_SafeMarker"
-	part.Shape = Enum.PartType.Cylinder
-	part.Size = Vector3.new(0.4, 3.5, 3.5)
+	part.Shape = Enum.PartType.Ball
+	part.Size = Vector3.new(1.5, 1.5, 1.5)
 	part.Color = Color3.fromRGB(0, 255, 120)
 	part.Material = Enum.Material.Neon
-	part.Transparency = 0.3
+	part.Transparency = 0.2
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
 
-	local selectionBox = Instance.new("SelectionBox")
-	selectionBox.Name = "MarkerBorder"
-	selectionBox.Color3 = Color3.fromRGB(80, 255, 160)
-	selectionBox.SurfaceColor3 = Color3.fromRGB(0, 255, 120)
-	selectionBox.SurfaceTransparency = 0.5
-	selectionBox.LineThickness = 0.05
-	selectionBox.Adornee = part
-	selectionBox.Parent = part
-
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "MarkerGui"
-	bb.Size = UDim2.fromOffset(140, 30)
-	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.Size = UDim2.fromOffset(130, 24)
+	bb.StudsOffset = Vector3.new(0, 1.5, 0)
 	bb.AlwaysOnTop = true
 	bb.Adornee = part
 	bb.Parent = part
@@ -8364,7 +8355,7 @@ local function getOrCreateSafeMarker()
 	label.TextStrokeTransparency = 0
 	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
+	label.TextSize = 12
 	label.Text = "🟢 SAFE SPOT"
 	label.Parent = bb
 
@@ -8372,7 +8363,7 @@ local function getOrCreateSafeMarker()
 	return part
 end
 
---// Cập nhật vị trí hiển thị của Safe Marker (engine gọi mỗi nhịp loop)
+--// Cập nhật vị trí hiển thị của Safe Marker (đặt đáy hình cầu sát mặt đất nhất có thể)
 function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = pos, inDanger or false, escapeDist or 0
 	if not showSafeMarker or not inDanger or not pos then
@@ -8383,7 +8374,9 @@ function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	end
 
 	local marker = getOrCreateSafeMarker()
-	marker.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
+	-- pos.Y được tính là Floor_Y + 3. Quả cầu bán kính 0.75 nên đặt tâm ở (Floor_Y + 0.8) = (pos.Y - 2.2) để sát đất
+	local floorBallY = pos.Y - 2.2
+	marker.CFrame = CFrame.new(pos.X, floorBallY, pos.Z)
 	marker.Parent = Workspace.Terrain
 
 	local bb = marker:FindFirstChild("MarkerGui")
@@ -8609,11 +8602,14 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 	return true, nil, hazardName, 0
 end
 
-return safeSpot end function __DIST.l()-- Smart Dodge – Module 5: Dodge Execution (Walk + Snap) (DungeonQuest).
--- Chuyên trách: di chuyển nhân vật tới Safe Spot theo Ngân sách Thời gian (Max Dodge Time).
--- Nguyên tắc: WALK TỐI ĐA để thu hẹp cự ly snap — snap xa sẽ bị anti-cheat kéo về. Snap chỉ là
--- cứu cánh cuối: (1) micro-snap ≤0.5 stud để căn chỉnh dừng chính xác, (2) hết ngân sách thời gian
--- mà chưa tới thì snap nốt phần còn lại (đã được walk thu nhỏ). Luôn-facing target qua provider.
+return safeSpot end function __DIST.l()-- Smart Dodge – Module 5: Dodge Execution (Walk + Snap hybrid) (DungeonQuest).
+-- Nguyên tắc HYBRID:
+--  (1) Còn cách Safe Spot ≤ Max Snap Distance => SNAP LUÔN (không walk). 
+--  (2) Xa hơn => WALK tối đa theo ngân sách Max Dodge Time để thu hẹp cự ly snap
+--      (snap xa bị anti-cheat kéo về); vừa walk vừa kiểm tra: khi rơi vào ≤ Max Snap
+--      Distance thì snap; hết budget mà chưa tới thì snap nốt phần còn lại.
+-- Maintain Height: khi bật giữ nguyên độ cao Y của player lúc BẮT ĐẦU NÉ khi snap — snap
+-- chỉ dịch X/Z (teleport ngang thuần túy), tránh lơ lửng do chênh lệch độ cao Safe Spot.
 
 --// Imports
 
@@ -8625,7 +8621,9 @@ local player = services.player
 --// State
 local autoDodgeEnabled = false
 local maxDodgeTime = 1.0              -- Ngân sách thời gian tối đa để né 1 đối tượng (s)
-local FINAL_ADJUST_DIST = 0.5         -- Cự ly micro-snap cuối để căn chỉnh dừng đúng Safe Spot
+local maxSnapDistance = 3.0           -- Còn cách Safe Spot ≤ cự ly này => SNAP LUÔN (không walk)
+local FINAL_ADJUST_DIST = 0.5         -- Ngưỡng "đã đứng đúng" — hết budget mà còn xa hơn mức này thì mới snap
+local maintainSnapHeight = true       -- Giữ độ cao Y của player lúc bắt đầu né khi snap (teleport ngang thuần túy)
 local isDodging = false
 local dodgeThread = nil
 local dodgeStatusCallbacks = {}
@@ -8665,6 +8663,14 @@ local function getFaceTarget()
 	return nil
 end
 
+--// Điều chỉnh vị trí snap theo Maintain Height: giữ Y ban đầu, chỉ dịch X/Z (teleport ngang).
+local function snapPosForHeight(pos, startHeight)
+	if maintainSnapHeight then
+		return Vector3.new(pos.X, startHeight, pos.Z)
+	end
+	return pos
+end
+
 --// Snap rotation khi teleport dứt điểm: face provider target nếu có, không thì giữ LookVector cũ.
 local function snapFace(rootPart, pos)
 	local targetPos = getFaceTarget()
@@ -8675,10 +8681,10 @@ local function snapFace(rootPart, pos)
 	end
 end
 
---// Thực thi né sang Safe Spot theo Ngân sách Thời gian (Max Dodge Time).
---// Ưu tiên WALK tối đa để thu hẹp cự ly snap (snap xa bị anti-cheat kéo về). Snap chỉ là
---// phao cứu sinh cuối: (1) micro-snap ≤ FINAL_ADJUST_DIST để đặt dừng chính xác, (2) hết ngân
---// sách thời gian mà chưa tới thì snap nốt phần còn lại (đã được walk thu nhỏ).
+--// Thực thi né sang Safe Spot (Walk + Snap hybrid).
+--// (1) Còn cách Safe Spot ≤ Max Snap Distance => snap luôn. (2) Xa hơn: walk tối đa trong ngân
+--// sách Max Dodge Time, mỗi tick kiểm tra lại — khi rơi vào ≤ Max Snap Distance thì snap;
+--// hết budget mà chưa tới thì snap nốt phần còn lại. Luôn-facing target qua provider.
 function dodge.Perform(safePos, escapeDist)
 	local char = player and player.Character
 	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
@@ -8687,11 +8693,14 @@ function dodge.Perform(safePos, escapeDist)
 
 	if isDodging then return end
 
-	dodgeThread = task.spawn(function()
-		isDodging = true
-		fireDodgeStatus("Dodging")
+dodgeThread = task.spawn(function()
+			isDodging = true
+			fireDodgeStatus("Dodging")
 
-		--// Luôn-facing target khi có provider: tắt AutoRotate để MoveTo không quay nhân vật theo
+			--// Độ cao Y ban đầu của player — dùng làm neo cho Maintain Height khi snap.
+			local startHeight = rootPart.Position.Y
+
+			--// Luôn-facing target khi có provider: tắt AutoRotate để MoveTo không quay nhân vật theo
 		--// hướng đi; tự xoay mặt target giữa các bước. Khôi phục AutoRotate khi kết thúc.
 		local prevAutoRotate = humanoid.AutoRotate
 		local faceEnemy = faceTargetProvider ~= nil
@@ -8702,11 +8711,11 @@ function dodge.Perform(safePos, escapeDist)
 			fireDodgeStatus("Safe")
 		end
 
-		--// Đã đứng sát Safe Spot: micro-snap căn chỉnh là đủ, không cần di chuyển.
-		if (safePos - rootPart.Position).Magnitude <= FINAL_ADJUST_DIST then
-			snapFace(rootPart, safePos)
+		--// Còn cách Safe Spot ≤ Max Snap Distance: SNAP LUÔN (không walk).
+		if (safePos - rootPart.Position).Magnitude <= maxSnapDistance then
+			snapFace(rootPart, snapPosForHeight(safePos, startHeight))
 			if getLogInDanger() then
-				print("[SmartDodge][Dodge] ⚡ Current spot already safe, micro-snap adjusted.")
+				print(("[SmartDodge][Dodge] ⚡ Within Max Snap Distance (%.1f studs) — snapped to Safe Spot."):format(maxSnapDistance))
 			end
 			finish()
 			return
@@ -8722,9 +8731,9 @@ function dodge.Perform(safePos, escapeDist)
 		while getInDanger() and autoDodgeEnabled and (os.clock() - startTime < maxDodgeTime) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
 
-			--// Đã tới gần đích: snap căn chỉnh dừng chính xác rồi kết thúc.
-			if (safePos - rootPart.Position).Magnitude <= FINAL_ADJUST_DIST then
-				snapFace(rootPart, safePos)
+			--// Walk nhích và rơi vào phạm vi ≤ Max Snap Distance: snap căn chỉnh rồi kết thúc.
+			if (safePos - rootPart.Position).Magnitude <= maxSnapDistance then
+				snapFace(rootPart, snapPosForHeight(safePos, startHeight))
 				humanoid:MoveTo(safePos)
 				break
 			end
@@ -8738,10 +8747,10 @@ function dodge.Perform(safePos, escapeDist)
 			task.wait(0.05)
 		end
 
-		--// Hết ngân sách thời gian mà chưa tới: snap nốt phần còn lại (đã được walk thu nhỏ tối đa).
+		--// Hết ngân sách thời gian mà vẫn chưa đứng đúng chỗ: snap nốt phần còn lại (walk đã thu hẹp tối đa).
 		if (os.clock() - startTime) >= maxDodgeTime
 			and (safePos - rootPart.Position).Magnitude > FINAL_ADJUST_DIST then
-			snapFace(rootPart, safePos)
+			snapFace(rootPart, snapPosForHeight(safePos, startHeight))
 			if getLogInDanger() then
 				print("[SmartDodge][Dodge] ⚡ Budget end — snapped the remainder to Safe Spot.")
 			end
@@ -8787,6 +8796,24 @@ end
 
 function dodge.IsDodging()
 	return isDodging
+end
+
+function dodge.SetMaintainSnapHeight(state)
+	maintainSnapHeight = state and true or false
+end
+
+function dodge.IsMaintainSnapHeightEnabled()
+	return maintainSnapHeight
+end
+
+function dodge.SetMaxSnapDistance(value)
+	if type(value) == "number" and value > 0 then
+		maxSnapDistance = value
+	end
+end
+
+function dodge.GetMaxSnapDistance()
+	return maxSnapDistance
 end
 
 function dodge.SetFaceTargetProvider(func)
@@ -9040,6 +9067,10 @@ smartDodge.IsAutoDodgeEnabled = dodge.IsAutoDodgeEnabled
 smartDodge.SetMaxDodgeTime = dodge.SetMaxDodgeTime
 smartDodge.GetMaxDodgeTime = dodge.GetMaxDodgeTime
 smartDodge.IsDodging = dodge.IsDodging
+smartDodge.SetMaintainSnapHeight = dodge.SetMaintainSnapHeight
+smartDodge.IsMaintainSnapHeightEnabled = dodge.IsMaintainSnapHeightEnabled
+smartDodge.SetMaxSnapDistance = dodge.SetMaxSnapDistance
+smartDodge.GetMaxSnapDistance = dodge.GetMaxSnapDistance
 smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus
 smartDodge.OnDodgeStatusChanged = dodge.OnDodgeStatusChanged
@@ -9199,10 +9230,6 @@ local holdMode = "Orbit"
 --// Độ lệch hướng nhìn tối đa (độ) so với hướng tới enemy để được phép cast skill.
 --// Gate "phải facing đã mới cast": lệch quá ngưỡng này thì frame đó chỉ xoay mặt, chưa cast.
 local faceToleranceDeg = 20
---// Mode 2 (SmartDodge): giữ khoảng cách MIN với enemy gần nhất. Khi enemy lọt vào vùng
---// < minDistance, nhân vật bị "đẩy" lùi mượt theo hướng radial (CFrame — cơ chế giống Mode 1
---// orbit) và VẪN cast skill trong lúc lùi. 0 = tắt (đứng yên như cũ).
-local minDistance = 4
 --// Snapshot trạng thái Smart Dodge (enabled + auto-dodge) khi AutoFarm nắm quyền ở Mode 2,
 --// để khôi phục chính xác trạng thái người dùng khi AutoFarm tắt hoặc chuyển về Orbit.
 local smartDodgeSnapshot = nil
@@ -10350,9 +10377,9 @@ end
 
 --// HOLD MODE 2 (SmartDodge): KHÔNG orbit — lock target, huỷ path đang CHASE và cast skill TRỪ KHI
 --// nhân vật đang giữa lúc né (dodge) hoặc CHƯA FACING enemy.
---// Giữ khoảng cách MIN với enemy gần nhất: enemy lọt vào vùng < minDistance (và không dodging) thì
---// nhân vật bị "đẩy" lùi mượt theo hướng radial bằng CFrame (cơ chế giống Mode 1 orbit) đồng thời
---// VẪN cast skill trong lúc lùi. Đang dodging thì nhường toàn bộ cho Smart Dodge (không can thiệp).
+--// Đứng yên (MoveTo hiện tại) + Luôn-facing target: tắt AutoRotate để di chuyển/cast không bị
+--// xoay lung tung vì MoveTo. Không còn lo "giữ khoảng cách đẩy" ở đây — tính năng đó đã tách
+--// sang module STANDALONE core/keepDistance.luau (xóa được khi cần).
 --// Lý do gate skill theo dodge: performDodge teleport/micro-blink liên tục trên HumanoidRootPart —
 --// bấm phím skill cùng lúc không phá dodge nhưng chiêu giữa lúc dịch chuyển thường whiff, nên bỏ qua.
 --// Lý do gate theo facing: "phải facing đã mới cast" — hướng nhìn lệch enemy quá threshold thì frame
@@ -10370,34 +10397,7 @@ local function stepHoldSmartDodge(deltaTime, humanoid, playerRoot, enemy, enemyP
 	if not dodging then
 		--// Luôn facing target: tắt AutoRotate để Roblox không tự xoay theo hướng di chuyển/kéo back.
 		humanoid.AutoRotate = false
-		local dx = playerPos.X - enemyPos.X
-		local dz = playerPos.Z - enemyPos.Z
-		local dist = math.sqrt(dx * dx + dz * dz)
-		if minDistance > 0 and dist < minDistance then
-			--// Enemy lọt vào vùng min -> "đẩy" lùi mượt theo radial (CFrame). Di chuyển bị dodge
-			--// ghi đè tuyệt đối khi nguy hiểm (frame này không chạy lúc dodging).
-			local push = math.min(moveSpeed * math.max(deltaTime, 1 / 60), minDistance - dist)
-			local pushedPos = playerPos
-			if dist > 0.01 then
-				pushedPos = Vector3.new(
-					playerPos.X + (dx / dist) * push,
-					playerPos.Y,
-					playerPos.Z + (dz / dist) * push
-				)
-			end
-			--// Huỷ MoveTo cũ để CFrame push không bị MoveTo khác kéo qua chỗ khác.
-			pcall(function() humanoid:MoveTo(playerPos) end)
-			--// Cast cả lúc lùi: gate facing dùng hướng nhìn frame trước (lookAt gán bên dưới
-			--// game chưa kịp xử lý, đúng quy tắc "phải facing đã mới cast").
-			if skillEnabled and getFacingErrorDeg(playerRoot, playerPos, enemyPos) <= faceToleranceDeg then
-				fireSkills()
-			end
-			playerRoot.CFrame = CFrame.lookAt(pushedPos, enemyPos)
-			playerRoot.AssemblyLinearVelocity = Vector3.zero
-			playerRoot.AssemblyAngularVelocity = Vector3.zero
-			return
-		end
-		--// Enemy ngoài vùng min (hoặc minDistance = 0 đã tắt): đứng yên + LUÔN facing + cast theo gate.
+		--// Đứng yên tại vị trí hiện tại (chống đối MoveTo/path cũ còn sót).
 		pcall(function() humanoid:MoveTo(playerPos) end)
 		if getFacingErrorDeg(playerRoot, playerPos, enemyPos) > faceToleranceDeg then
 			--// Chưa facing: xoay mặt enemy (giữ nguyên vị trí), cast chờ frame sau.
@@ -10800,15 +10800,6 @@ function autoFarmPathfinder.SetFaceTolerance(value)
 	faceToleranceDeg = math.clamp(tonumber(value) or faceToleranceDeg, 0, 90)
 end
 
---// Khoảng cách MIN giữa nhân vật và enemy gần nhất (Mode 2 SmartDodge). 0 = tắt (đứng yên).
-function autoFarmPathfinder.GetMinDistance()
-	return minDistance
-end
-
-function autoFarmPathfinder.SetMinDistance(value)
-	minDistance = math.clamp(tonumber(value) or minDistance, 0, 50)
-end
-
 function autoFarmPathfinder.IsVisualDebugEnabled()
 	return visualDebug
 end
@@ -11100,7 +11091,6 @@ function autoFarmPathfinder.GetDebugInfo()
 		threatActive = threatActive,
 		faceTolerance = faceToleranceDeg,
 		faceErr = faceErrDeg,
-		minDistance = minDistance,
 	}
 end
 
@@ -11753,20 +11743,8 @@ return function(window, tab)
 		end),
 	}, "Slider_PathfinderFaceTolerance")
 
-	--// Mode 2: giữ khoảng cách MIN với enemy gần nhất — enemy lọt vào vùng này thì nhân vật bị
-	--// "đẩy" lùi (CFrame, vẫn cast skill trong lúc lùi). 0 = tắt (đứng yên + dodge như cũ).
-	farmSection:Slider({
-		Name = "Min Distance From Enemy (0 = off)",
-		Default = autoFarmPathfinder.GetMinDistance(),
-		Minimum = 0,
-		Maximum = 30,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			autoFarmPathfinder.SetMinDistance(value)
-		end),
-	}, "Slider_PathfinderMinDistance")
-
+	--// Mode 2: giữ khoảng cách "đẩy lùi" đã tách sang module standalone core/keepDistance.luau
+	--// (xem section "Keep Distance (Push)" của tab này).
 	farmSection:Toggle({
 		Name = "Right Click Combo (Q+E)",
 		Default = shortcuts.IsMouseComboEnabled(),
@@ -11977,7 +11955,7 @@ return function(window, tab)
 			"Locked: " .. (info.locked and ("<font color='rgb(255,200,0)'>" .. info.lockedName .. "</font>") or "No") .. "\n",
 			"Current: " .. info.enemyName .. "\n",
 			"Dist 3D: " .. string.format("%.1f", info.enemyDist) .. "\n",
-			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / Range " .. info.skillRange .. " / MinDist " .. tostring(info.minDistance) .. "\n",
+			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / Range " .. info.skillRange .. "\n",
 			"Orbit: angle " .. angleStr .. " / radius " .. radiusStr .. "\n",
 			"Hold: " .. info.holdMode .. (info.holdMode == "SmartDodge"
 				and (" | Dodge " .. formatBool(info.dodging) .. " | Threat " .. formatBool(info.threatActive))
@@ -12333,6 +12311,26 @@ return function(window, tab)
 	}, "Slider_SmartDodgeMaxTime"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Max Snap Distance (studs)",
+		Default = smartDodge.GetMaxSnapDistance(),
+		Minimum = 1,
+		Maximum = 5,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetMaxSnapDistance(value)
+		end),
+	}, "Slider_SmartDodgeMaxSnapDistance"))
+
+	leftSection:Toggle({
+		Name = "Maintain Height on Snap",
+		Default = smartDodge.IsMaintainSnapHeightEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetMaintainSnapHeight(state)
+		end),
+	}, "Toggle_SmartDodgeMaintainSnapHeight")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player Hitbox Padding (studs)",
 		Default = smartDodge.GetHitboxPadding(),
 		Minimum = 0,
@@ -12399,7 +12397,265 @@ return function(window, tab)
 	updateSafeSpotUI(inDang, curSpot, hName, eDist)
 	updateDodgeStatusUI()
 end
-end function __DIST.v()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Auto Farm (Pathfinder) + Smart Dodge.
+end function __DIST.v()-- Keep Distance (Push) – module STANDALONE, có thể xóa bất kỳ lúc nào.
+-- Chuyên trách: giữ khoảng cách với kẻ địch GẦN NHẤT bằng cơ chế "đẩy" (CFrame).
+-- Khi enemy gần nhất lọt vào vùng < MinDistance, nhân vật bị đẩy lùi mượt theo hướng
+-- radial mỗi frame (CFrame + delta frame, như push cũ trong autoFarm HOLD Mode 2) cho tới
+-- khi ra khỏi vùng. Cancel MoveTo đang chạy để CFrame không bị pathfinding/humanoid kéo
+-- ngược lại, đồng thời xoá vận tốc (AssemblyLinearVelocity) tránh bị trôi sau khi dừng.
+-- NGUYÊN TẮC HOẠT ĐỘNG ĐỘC LẬP:
+--  * Không cần bật Auto Farm — chỉ cần tracking enemy của shared (đang chạy nền sẵn).
+--  * Nhường tuyệt đối cho Smart Dodge đang né (không đẩy khi isDodging).
+--  * Không đẩy khi nhân vật chết.
+-- XÓA SẠCH = xóa 3 thứ này (không vướng 1 chỗ nào khác):
+--  1) core/keepDistance.luau
+--  2) tabs/Combat/keepDistance.luau
+--  3) dòng require trong tabs/Combat/main.luau
+
+--// Imports
+
+local services = __DIST.load('d')
+local shared = __DIST.load('e')
+local lifecycle = __DIST.load('b')
+
+--// References
+local player = services.player
+local RunService = services.RunService
+
+--// Table
+local keepDistance = {}
+
+--// State
+local enabled = false
+local minDistance = 4 --// stud: enemy lọt vào vùng nhỏ hơn mức này thì bị đẩy lùi. 0 = tắt.
+local pushSpeed = 50 --// tốc độ đẩy lùi tối đa (stud/giây). Có chặn không đẩy quá MinDistance.
+local MIN_PUSH_DIST = 0.01 --// ngưỡng tránh chia cho 0 khi enemy trùng vị trí player
+
+--// Lazy require Smart Dodge (tránh vòng require + module bị xóa 1 phía vẫn không crash).
+local isDodgingFn = nil
+local function isDodging()
+	if isDodgingFn == nil then
+		local ok, smartDodge = pcall(function()
+			return __DIST.load('n')
+		end)
+		isDodgingFn = ok and smartDodge and smartDodge.IsDodging or function() return false end
+	end
+	return isDodgingFn()
+end
+
+local function getPlayerRoot()
+	local char = player and player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root and root.Parent then return root end
+	return nil
+end
+
+--// Đọc vị trí part an toàn (đề phòng enemy chết/rm giữa chừng).
+local function getSafePosition(part)
+	if not part or not part.Parent then return nil end
+	local ok, pos = pcall(function()
+		return part.Position
+	end)
+	if not ok or not pos then return nil end
+	return pos
+end
+
+--// Vị trí + khoảng cách NGANG (XZ) tới kẻ địch gần nhất. Trả (nil, math.huge) khi không có enemy.
+local function getNearestEnemyInfo(playerPos)
+	local nearestPos = nil
+	local nearestDist = math.huge
+	for _, data in ipairs(shared.GetTrackedEnemyData()) do
+		if data and data.Root and data.Root.Parent then
+			local pos = getSafePosition(data.Root)
+			if pos then
+				local dx = pos.X - playerPos.X
+				local dz = pos.Z - playerPos.Z
+				local d = math.sqrt(dx * dx + dz * dz)
+				if d < nearestDist then
+					nearestDist = d
+					nearestPos = pos
+				end
+			end
+		end
+	end
+	return nearestPos, nearestDist
+end
+
+--// AutoRotate tạm tắt khi ĐANG ĐẨY (click-to-move tự quay theo hướng đi sẽ chống đối CFrame),
+--// khôi phục đúng giá trị cũ khi hết đẩy. Chỉ capture 1 lần mỗi phiên đẩy.
+local autoRotateHumanoid = nil
+local oldAutoRotate = nil
+local function setAutoRotate(humanoid, off)
+	if off then
+		if humanoid == autoRotateHumanoid then return end
+		if autoRotateHumanoid then
+			pcall(function() autoRotateHumanoid.AutoRotate = oldAutoRotate end)
+		end
+		oldAutoRotate = humanoid.AutoRotate
+		humanoid.AutoRotate = false
+		autoRotateHumanoid = humanoid
+	else
+		local h = autoRotateHumanoid
+		if not h then return end
+		pcall(function() h.AutoRotate = oldAutoRotate end)
+		autoRotateHumanoid = nil
+		oldAutoRotate = nil
+	end
+end
+
+--// Một frame đẩy: trả true nếu frame đó thực hiện đẩy (để biết phiên đẩy đang diễn ra).
+local function step(deltaTime)
+	if not enabled then return false end
+
+	local rootPart = getPlayerRoot()
+	if not rootPart then return false end
+	local char = rootPart:FindFirstAncestorOfClass("Model")
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then return false end
+	if isDodging() then return false end
+
+	local playerPos = rootPart.Position
+	local enemyPos, dist = getNearestEnemyInfo(playerPos)
+	if not enemyPos or minDistance <= 0 or dist >= minDistance then return false end
+
+	--// Enemy lọt vào vùng min -> đẩy lùi mượt theo radial (CFrame, có delta frame).
+	setAutoRotate(humanoid, true)
+	local dx = playerPos.X - enemyPos.X
+	local dz = playerPos.Z - enemyPos.Z
+	local push = math.min(pushSpeed * math.max(deltaTime, 1 / 60), minDistance - dist)
+	local pushedPos = playerPos
+	if dist > MIN_PUSH_DIST then
+		pushedPos = Vector3.new(
+			playerPos.X + (dx / dist) * push,
+			playerPos.Y,
+			playerPos.Z + (dz / dist) * push
+		)
+	end
+	--// Cancel MoveTo cũ để CFrame push không bị MoveTo khác kéo qua chỗ khác.
+	pcall(function() humanoid:MoveTo(playerPos) end)
+	rootPart.CFrame = CFrame.lookAt(pushedPos, enemyPos)
+	rootPart.AssemblyLinearVelocity = Vector3.zero
+	rootPart.AssemblyAngularVelocity = Vector3.zero
+	return true
+end
+
+--// Heartbeat loop: chạy khi module load, chỉ làm việc khi enabled. Dừng theo lifecycle.
+task.spawn(function()
+	local lastTimestamp = os.clock()
+	while lifecycle.IsActive() do
+		local dt = RunService.Heartbeat:Wait()
+		if type(dt) ~= "number" then
+			local now = os.clock()
+			dt = now - lastTimestamp
+			lastTimestamp = now
+		end
+		if not step(dt) then
+			--// Không còn đẩy (tắt / hết vùng / né / chết) -> trả AutoRotate về cũ nếu đang tạm tắt.
+			setAutoRotate(nil, false)
+		end
+	end
+	setAutoRotate(nil, false)
+end)
+
+--// Accessors
+
+function keepDistance.SetEnabled(state)
+	enabled = state and true or false
+end
+
+function keepDistance.Toggle()
+	enabled = not enabled
+	return enabled
+end
+
+function keepDistance.IsEnabled()
+	return enabled
+end
+
+function keepDistance.SetMinDistance(value)
+	minDistance = math.max(tonumber(value) or minDistance, 0)
+end
+
+function keepDistance.GetMinDistance()
+	return minDistance
+end
+
+function keepDistance.SetPushSpeed(value)
+	pushSpeed = math.max(tonumber(value) or pushSpeed, 0)
+end
+
+function keepDistance.GetPushSpeed()
+	return pushSpeed
+end
+
+--// Table
+return keepDistance end function __DIST.w()-- Module Keep Distance (Push) trong tab Combat (DungeonQuest): section độc lập để xóa sạch khi cần.
+-- Xóa = xóa file này + core/keepDistance.luau + dòng require trong tabs/Combat/main.luau.
+
+--// Imports
+
+local autoSave = __DIST.load('g')
+local ui = __DIST.load('f')
+local keepDistance = __DIST.load('v')
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Right" })
+	section:Header({ Name = "Keep Distance (Push)" })
+
+	section:Toggle({
+		Name = "Enable Keep Distance",
+		Default = keepDistance.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			keepDistance.SetEnabled(state)
+		end),
+	}, "Toggle_KeepDistance")
+
+	section:Slider({
+		Name = "Min Distance (studs)",
+		Default = keepDistance.GetMinDistance(),
+		Minimum = 0,
+		Maximum = 30,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			keepDistance.SetMinDistance(value)
+		end),
+	}, "Slider_KeepDistanceMinDistance")
+
+	section:Slider({
+		Name = "Push Speed",
+		Default = keepDistance.GetPushSpeed(),
+		Minimum = 5,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			keepDistance.SetPushSpeed(value)
+		end),
+	}, "Slider_KeepDistancePushSpeed")
+
+	local statusLabel = section:Label({ Text = "" })
+	local function updateStatus()
+		local stateText = keepDistance.IsEnabled()
+			and "<font color='rgb(0,255,0)'>ON</font>"
+			or "<font color='rgb(255,80,80)'>OFF</font>"
+		pcall(function()
+			statusLabel:UpdateName(
+				"Keep Distance: " .. stateText
+					.. "\nMin: " .. string.format("%.0f", keepDistance.GetMinDistance()) .. " studs"
+					.. " / Speed: " .. string.format("%.0f", keepDistance.GetPushSpeed())
+			)
+		end)
+	end
+
+	updateStatus()
+
+	task.spawn(function()
+		while task.wait(0.25) do
+			updateStatus()
+		end
+	end)
+end end function __DIST.x()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Auto Farm (Pathfinder) + Smart Dodge.
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
@@ -12407,7 +12663,8 @@ return function(window, tab)
 __DIST.load('p')(window, tab)
 __DIST.load('t')(window, tab)
 __DIST.load('u')(window, tab)
-end end function __DIST.w()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+__DIST.load('w')(window, tab)
+end end function __DIST.y()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
@@ -12594,7 +12851,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.x()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.z()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -12714,7 +12971,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.y()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.A()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -12821,7 +13078,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.z()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.B()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -13038,16 +13295,16 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.A()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.C()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('f')
-local autoJoin = __DIST.load('w')
-local autoStart = __DIST.load('x')
-local autoStartLobby = __DIST.load('y')
-local autoRetry = __DIST.load('z')
+local autoJoin = __DIST.load('y')
+local autoStart = __DIST.load('z')
+local autoStartLobby = __DIST.load('A')
+local autoRetry = __DIST.load('B')
 local autoSave = __DIST.load('g')
 local dungeonCatalog = __DIST.load('q')
 
@@ -13252,7 +13509,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.B()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.D()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -13691,14 +13948,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.C()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.E()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('g')
-local autoSell = __DIST.load('B')
+local autoSell = __DIST.load('D')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -13965,7 +14222,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.D()-- ESP hitbox cho DungeonQuest.
+end function __DIST.F()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -14315,7 +14572,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.E()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.G()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -14456,7 +14713,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.F()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.H()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -14746,14 +15003,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.G()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.I()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('g')
-	local esp = __DIST.load('D')
-	local enemyEsp = __DIST.load('E')
-	local mapOptimizer = __DIST.load('F')
+	local esp = __DIST.load('F')
+	local enemyEsp = __DIST.load('G')
+	local mapOptimizer = __DIST.load('H')
 	local ui = __DIST.load('f')
 
 --// Hitbox mode options
@@ -14890,7 +15147,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.H()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.J()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -15488,12 +15745,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.I()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.K()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('H')
+local webhook = __DIST.load('J')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -15560,7 +15817,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.J()
+end function __DIST.L()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -15629,12 +15886,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.K()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.M()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('J')
+local binder = __DIST.load('L')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -15726,13 +15983,13 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.L()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.N()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('g')
 local ui = __DIST.load('f')
-local antiAfk = __DIST.load('K')
+local antiAfk = __DIST.load('M')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -15762,15 +16019,15 @@ return function(window, tab)
 		end),
 	}, "Slider_AntiAFKInterval"))
 end
-end function __DIST.M()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.O()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('G')(window, tab)
 __DIST.load('I')(window, tab)
-__DIST.load('L')(window, tab)
-end end function __DIST.N()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('K')(window, tab)
+__DIST.load('N')(window, tab)
+end end function __DIST.P()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -15845,7 +16102,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.O()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.Q()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -15853,7 +16110,7 @@ end function __DIST.O()-- Module Config trong tab Configs (DungeonQuest): tự b
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('g')
-local autoHide = __DIST.load('N')
+local autoHide = __DIST.load('P')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -16010,12 +16267,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.P()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.R()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('e')
-local autoRetry = __DIST.load('z')
+local autoRetry = __DIST.load('B')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -16160,14 +16417,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.Q()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.S()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('O')(window, tab)
-__DIST.load('P')(window, tab)
-end end function __DIST.R()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+__DIST.load('Q')(window, tab)
+__DIST.load('R')(window, tab)
+end end function __DIST.T()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -16230,11 +16487,11 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('v')
-	local dungeonTab = __DIST.load('A')
-	local inventoryTab = __DIST.load('C')
-	local utilitiesTab = __DIST.load('M')
-	local configsTab = __DIST.load('Q')
+	local combatTab = __DIST.load('x')
+	local dungeonTab = __DIST.load('C')
+	local inventoryTab = __DIST.load('E')
+	local utilitiesTab = __DIST.load('O')
+	local configsTab = __DIST.load('S')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -16247,9 +16504,9 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('H')
+	local webhook = __DIST.load('J')
 	webhook.Init()
-__DIST.load('E')
+__DIST.load('G')
 
 	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
 	
@@ -16257,7 +16514,7 @@ __DIST.load('E')
 local contextual = __DIST.load('r')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
-	local autoHide = __DIST.load('N')
+	local autoHide = __DIST.load('P')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -16269,7 +16526,7 @@ local contextual = __DIST.load('r')
 	--// dữ liệu đã lưu thay vì fallback về global.
 	contextual.Init()
 end
-end function __DIST.S()
+end function __DIST.U()
 local flags = {}
 
 function flags:Export()
@@ -16312,12 +16569,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.T()
+return flags end function __DIST.V()
 --// Imports
 
 
 
-local binder = __DIST.load('J')
+local binder = __DIST.load('L')
 
 --// Variables
 local interface = {}
@@ -16337,9 +16594,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.U()--// Imports
+end function __DIST.W()--// Imports
 
-local binder = __DIST.load('J')
+local binder = __DIST.load('L')
 
 --// Variables
 local esp = {}
@@ -16350,11 +16607,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.V()--// Imports
+end function __DIST.X()--// Imports
 
-local flags = __DIST.load('S')
-local interface = __DIST.load('T')
-local esp = __DIST.load('U')
+local flags = __DIST.load('U')
+local interface = __DIST.load('V')
+local esp = __DIST.load('W')
 
 --// Initialize
 local window = interface:Window({
@@ -16393,7 +16650,7 @@ return {
 		end,
 	},
 }
-end function __DIST.W()--// Variables
+end function __DIST.Y()--// Variables
 
 local utility = {}
 
@@ -16425,7 +16682,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.X()--// Functions
+end function __DIST.Z()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -16435,14 +16692,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.Y()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST._()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('V')
-	local utility = __DIST.load('W')
-	local services = __DIST.load('X')
+	local base = __DIST.load('X')
+	local utility = __DIST.load('Y')
+	local services = __DIST.load('Z')
 
 	--// References
 	local flags = base.Flags
@@ -16508,7 +16765,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('R'),
+		Load = __DIST.load('T'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -16519,7 +16776,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('Y'),
+		Load = __DIST.load('_'),
 		Places = {
 			123456789,
 			987654321,

@@ -52,20 +52,8 @@ return function(window, tab)
 		end),
 	}, "Slider_PathfinderFaceTolerance")
 
-	--// Mode 2: giữ khoảng cách MIN với enemy gần nhất — enemy lọt vào vùng này thì nhân vật bị
-	--// "đẩy" lùi (CFrame, vẫn cast skill trong lúc lùi). 0 = tắt (đứng yên + dodge như cũ).
-	farmSection:Slider({
-		Name = "Min Distance From Enemy (0 = off)",
-		Default = autoFarmPathfinder.GetMinDistance(),
-		Minimum = 0,
-		Maximum = 30,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			autoFarmPathfinder.SetMinDistance(value)
-		end),
-	}, "Slider_PathfinderMinDistance")
-
+	--// Mode 2: giữ khoảng cách "đẩy lùi" đã tách sang module standalone core/keepDistance.luau
+	--// (xem section "Keep Distance (Push)" của tab này).
 	farmSection:Toggle({
 		Name = "Right Click Combo (Q+E)",
 		Default = shortcuts.IsMouseComboEnabled(),
@@ -276,7 +264,7 @@ return function(window, tab)
 			"Locked: " .. (info.locked and ("<font color='rgb(255,200,0)'>" .. info.lockedName .. "</font>") or "No") .. "\n",
 			"Current: " .. info.enemyName .. "\n",
 			"Dist 3D: " .. string.format("%.1f", info.enemyDist) .. "\n",
-			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / Range " .. info.skillRange .. " / MinDist " .. tostring(info.minDistance) .. "\n",
+			"Dist XZ: " .. string.format("%.1f", info.enemyFlat) .. " / Range " .. info.skillRange .. "\n",
 			"Orbit: angle " .. angleStr .. " / radius " .. radiusStr .. "\n",
 			"Hold: " .. info.holdMode .. (info.holdMode == "SmartDodge"
 				and (" | Dodge " .. formatBool(info.dodging) .. " | Threat " .. formatBool(info.threatActive))

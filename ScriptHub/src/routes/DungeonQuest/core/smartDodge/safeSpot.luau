@@ -137,7 +137,7 @@ function safeSpot.UpdateHitbox(playerPos)
 	part.Parent = Workspace.Terrain
 end
 
---// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá
+--// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá (Hình Cầu Nhỏ Sát Đất)
 local function getOrCreateSafeMarker()
 	if safeSpotMarkerPart and safeSpotMarkerPart.Parent then
 		return safeSpotMarkerPart
@@ -145,29 +145,20 @@ local function getOrCreateSafeMarker()
 
 	local part = Instance.new("Part")
 	part.Name = "SmartDodge_SafeMarker"
-	part.Shape = Enum.PartType.Cylinder
-	part.Size = Vector3.new(0.4, 3.5, 3.5)
+	part.Shape = Enum.PartType.Ball
+	part.Size = Vector3.new(1.5, 1.5, 1.5)
 	part.Color = Color3.fromRGB(0, 255, 120)
 	part.Material = Enum.Material.Neon
-	part.Transparency = 0.3
+	part.Transparency = 0.2
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
 	part.CanTouch = false
 
-	local selectionBox = Instance.new("SelectionBox")
-	selectionBox.Name = "MarkerBorder"
-	selectionBox.Color3 = Color3.fromRGB(80, 255, 160)
-	selectionBox.SurfaceColor3 = Color3.fromRGB(0, 255, 120)
-	selectionBox.SurfaceTransparency = 0.5
-	selectionBox.LineThickness = 0.05
-	selectionBox.Adornee = part
-	selectionBox.Parent = part
-
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "MarkerGui"
-	bb.Size = UDim2.fromOffset(140, 30)
-	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.Size = UDim2.fromOffset(130, 24)
+	bb.StudsOffset = Vector3.new(0, 1.5, 0)
 	bb.AlwaysOnTop = true
 	bb.Adornee = part
 	bb.Parent = part
@@ -180,7 +171,7 @@ local function getOrCreateSafeMarker()
 	label.TextStrokeTransparency = 0
 	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
+	label.TextSize = 12
 	label.Text = "🟢 SAFE SPOT"
 	label.Parent = bb
 
@@ -188,7 +179,7 @@ local function getOrCreateSafeMarker()
 	return part
 end
 
---// Cập nhật vị trí hiển thị của Safe Marker (engine gọi mỗi nhịp loop)
+--// Cập nhật vị trí hiển thị của Safe Marker (đặt đáy hình cầu sát mặt đất nhất có thể)
 function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = pos, inDanger or false, escapeDist or 0
 	if not showSafeMarker or not inDanger or not pos then
@@ -199,7 +190,9 @@ function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	end
 
 	local marker = getOrCreateSafeMarker()
-	marker.CFrame = CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90))
+	-- pos.Y được tính là Floor_Y + 3. Quả cầu bán kính 0.75 nên đặt tâm ở (Floor_Y + 0.8) = (pos.Y - 2.2) để sát đất
+	local floorBallY = pos.Y - 2.2
+	marker.CFrame = CFrame.new(pos.X, floorBallY, pos.Z)
 	marker.Parent = Workspace.Terrain
 
 	local bb = marker:FindFirstChild("MarkerGui")

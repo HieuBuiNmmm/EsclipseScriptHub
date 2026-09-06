@@ -1,8 +1,11 @@
--- Smart Dodge – Module 5: Dodge Execution (Walk + Snap) (DungeonQuest).
--- Chuyên trách: di chuyển nhân vật tới Safe Spot theo Ngân sách Thời gian (Max Dodge Time).
--- Nguyên tắc: WALK TỐI ĐA để thu hẹp cự ly snap — snap xa sẽ bị anti-cheat kéo về. Snap chỉ là
--- cứu cánh cuối: (1) micro-snap ≤0.5 stud để căn chỉnh dừng chính xác, (2) hết ngân sách thời gian
--- mà chưa tới thì snap nốt phần còn lại (đã được walk thu nhỏ). Luôn-facing target qua provider.
+-- Smart Dodge – Module 5: Dodge Execution (Walk + Snap hybrid) (DungeonQuest).
+-- Nguyên tắc HYBRID:
+--  (1) Còn cách Safe Spot ≤ Max Snap Distance => SNAP LUÔN (không walk). 
+--  (2) Xa hơn => WALK tối đa theo ngân sách Max Dodge Time để thu hẹp cự ly snap
+--      (snap xa bị anti-cheat kéo về); vừa walk vừa kiểm tra: khi rơi vào ≤ Max Snap
+--      Distance thì snap; hết budget mà chưa tới thì snap nốt phần còn lại.
+-- Maintain Height: khi bật giữ nguyên độ cao Y của player lúc BẮT ĐẦU NÉ khi snap — snap
+-- chỉ dịch X/Z (teleport ngang thuần túy), tránh lơ lửng do chênh lệch độ cao Safe Spot.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -13,7 +16,9 @@ local player = services.player
 --// State
 local autoDodgeEnabled = false
 local maxDodgeTime = 1.0              -- Ngân sách thời gian tối đa để né 1 đối tượng (s)
-local FINAL_ADJUST_DIST = 0.5         -- Cự ly micro-snap cuối để căn chỉnh dừng đúng Safe Spot
+local maxSnapDistance = 3.0           -- Còn cách Safe Spot ≤ cự ly này => SNAP LUÔN (không walk)
+local FINAL_ADJUST_DIST = 0.5         -- Ngưỡng "đã đứng đúng" — hết budget mà còn xa hơn mức này thì mới snap
+local maintainSnapHeight = true       -- Giữ độ cao Y của player lúc bắt đầu né khi snap (teleport ngang thuần túy)
 local isDodging = false
 local dodgeThread = nil
 local dodgeStatusCallbacks = {}
@@ -53,6 +58,14 @@ local function getFaceTarget()
 	return nil
 end
 
+--// Điều chỉnh vị trí snap theo Maintain Height: giữ Y ban đầu, chỉ dịch X/Z (teleport ngang).
+local function snapPosForHeight(pos, startHeight)
+	if maintainSnapHeight then
+		return Vector3.new(pos.X, startHeight, pos.Z)
+	end
+	return pos
+end
+
 --// Snap rotation khi teleport dứt điểm: face provider target nếu có, không thì giữ LookVector cũ.
 local function snapFace(rootPart, pos)
 	local targetPos = getFaceTarget()
@@ -63,10 +76,10 @@ local function snapFace(rootPart, pos)
 	end
 end
 
---// Thực thi né sang Safe Spot theo Ngân sách Thời gian (Max Dodge Time).
---// Ưu tiên WALK tối đa để thu hẹp cự ly snap (snap xa bị anti-cheat kéo về). Snap chỉ là
---// phao cứu sinh cuối: (1) micro-snap ≤ FINAL_ADJUST_DIST để đặt dừng chính xác, (2) hết ngân
---// sách thời gian mà chưa tới thì snap nốt phần còn lại (đã được walk thu nhỏ).
+--// Thực thi né sang Safe Spot (Walk + Snap hybrid).
+--// (1) Còn cách Safe Spot ≤ Max Snap Distance => snap luôn. (2) Xa hơn: walk tối đa trong ngân
+--// sách Max Dodge Time, mỗi tick kiểm tra lại — khi rơi vào ≤ Max Snap Distance thì snap;
+--// hết budget mà chưa tới thì snap nốt phần còn lại. Luôn-facing target qua provider.
 function dodge.Perform(safePos, escapeDist)
 	local char = player and player.Character
 	local rootPart = char and char:FindFirstChild("HumanoidRootPart")
@@ -75,11 +88,14 @@ function dodge.Perform(safePos, escapeDist)
 
 	if isDodging then return end
 
-	dodgeThread = task.spawn(function()
-		isDodging = true
-		fireDodgeStatus("Dodging")
+dodgeThread = task.spawn(function()
+			isDodging = true
+			fireDodgeStatus("Dodging")
 
-		--// Luôn-facing target khi có provider: tắt AutoRotate để MoveTo không quay nhân vật theo
+			--// Độ cao Y ban đầu của player — dùng làm neo cho Maintain Height khi snap.
+			local startHeight = rootPart.Position.Y
+
+			--// Luôn-facing target khi có provider: tắt AutoRotate để MoveTo không quay nhân vật theo
 		--// hướng đi; tự xoay mặt target giữa các bước. Khôi phục AutoRotate khi kết thúc.
 		local prevAutoRotate = humanoid.AutoRotate
 		local faceEnemy = faceTargetProvider ~= nil
@@ -90,11 +106,11 @@ function dodge.Perform(safePos, escapeDist)
 			fireDodgeStatus("Safe")
 		end
 
-		--// Đã đứng sát Safe Spot: micro-snap căn chỉnh là đủ, không cần di chuyển.
-		if (safePos - rootPart.Position).Magnitude <= FINAL_ADJUST_DIST then
-			snapFace(rootPart, safePos)
+		--// Còn cách Safe Spot ≤ Max Snap Distance: SNAP LUÔN (không walk).
+		if (safePos - rootPart.Position).Magnitude <= maxSnapDistance then
+			snapFace(rootPart, snapPosForHeight(safePos, startHeight))
 			if getLogInDanger() then
-				print("[SmartDodge][Dodge] ⚡ Current spot already safe, micro-snap adjusted.")
+				print(("[SmartDodge][Dodge] ⚡ Within Max Snap Distance (%.1f studs) — snapped to Safe Spot."):format(maxSnapDistance))
 			end
 			finish()
 			return
@@ -110,9 +126,9 @@ function dodge.Perform(safePos, escapeDist)
 		while getInDanger() and autoDodgeEnabled and (os.clock() - startTime < maxDodgeTime) do
 			if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then break end
 
-			--// Đã tới gần đích: snap căn chỉnh dừng chính xác rồi kết thúc.
-			if (safePos - rootPart.Position).Magnitude <= FINAL_ADJUST_DIST then
-				snapFace(rootPart, safePos)
+			--// Walk nhích và rơi vào phạm vi ≤ Max Snap Distance: snap căn chỉnh rồi kết thúc.
+			if (safePos - rootPart.Position).Magnitude <= maxSnapDistance then
+				snapFace(rootPart, snapPosForHeight(safePos, startHeight))
 				humanoid:MoveTo(safePos)
 				break
 			end
@@ -126,10 +142,10 @@ function dodge.Perform(safePos, escapeDist)
 			task.wait(0.05)
 		end
 
-		--// Hết ngân sách thời gian mà chưa tới: snap nốt phần còn lại (đã được walk thu nhỏ tối đa).
+		--// Hết ngân sách thời gian mà vẫn chưa đứng đúng chỗ: snap nốt phần còn lại (walk đã thu hẹp tối đa).
 		if (os.clock() - startTime) >= maxDodgeTime
 			and (safePos - rootPart.Position).Magnitude > FINAL_ADJUST_DIST then
-			snapFace(rootPart, safePos)
+			snapFace(rootPart, snapPosForHeight(safePos, startHeight))
 			if getLogInDanger() then
 				print("[SmartDodge][Dodge] ⚡ Budget end — snapped the remainder to Safe Spot.")
 			end
@@ -175,6 +191,24 @@ end
 
 function dodge.IsDodging()
 	return isDodging
+end
+
+function dodge.SetMaintainSnapHeight(state)
+	maintainSnapHeight = state and true or false
+end
+
+function dodge.IsMaintainSnapHeightEnabled()
+	return maintainSnapHeight
+end
+
+function dodge.SetMaxSnapDistance(value)
+	if type(value) == "number" and value > 0 then
+		maxSnapDistance = value
+	end
+end
+
+function dodge.GetMaxSnapDistance()
+	return maxSnapDistance
 end
 
 function dodge.SetFaceTargetProvider(func)
