@@ -241,6 +241,13 @@ local function isPlayerAsset(instance)
 		end
 	end
 
+	-- 0. Ngoại lệ chiêu của Boss -> Tuyệt đối không phải của Player
+	if CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
+		or instance.Name:lower():find("multiring")
+		or instance.Name:lower():find("thirdboss") then
+		return false
+	end
+
 	-- 4. Kiểm tra tên Instance có chứa tên hoặc UserId của Player không
 	for _, p in ipairs(Players:GetPlayers()) do
 		local pNameLower = p.Name:lower()
@@ -249,14 +256,14 @@ local function isPlayerAsset(instance)
 		end
 	end
 
-	-- 5. So khớp mềm (Fuzzy Match) với danh sách tên kỹ năng đã đăng ký
+	-- 5. So khớp với danh sách tên kỹ năng đã đăng ký
 	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
 		return true
 	end
 
 	for skillName in pairs(ignoredSkillNames) do
 		local sLower = skillName:lower():gsub("%s+", "")
-		if #sLower >= 3 and (instNameLower:find(sLower, 1, true) or sLower:find(instNameLower, 1, true)) then
+		if #sLower >= 4 and instNameLower:find(sLower, 1, true) then
 			return true
 		end
 	end
@@ -264,12 +271,30 @@ local function isPlayerAsset(instance)
 	return false
 end
 
+--// Danh sách tên các Part bổ trợ / không gây sát thương cần lọc bỏ
+local HELPER_PART_NAMES = {
+	["primarypart"] = true,
+	["center"] = true,
+	["hitbox"] = true,
+	["root"] = true,
+	["main"] = true,
+	["handle"] = true,
+	["humanoidrootpart"] = true,
+}
+
 --// Kiểm tra xem một Part/MeshPart cụ thể có thuộc danh sách bỏ qua hay không
 local function isIgnoredPart(part)
 	if not part then return true end
 	if part == safeSpotMarkerPart or part.Name:find("SmartDodge") then return true end
 	local nameClean = part.Name:gsub("^%s+", ""):gsub("%s+$", "")
 	local nameLower = nameClean:lower():gsub("%s+", "")
+
+	if CUSTOM_HAZARD_EXCEPTIONS[part.Name] or (part.Parent and CUSTOM_HAZARD_EXCEPTIONS[part.Parent.Name])
+		or part.Name:lower():find("multiring") or (part.Parent and part.Parent.Name:lower():find("multiring"))
+		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss")) then
+		return false
+	end
+
 	if ignoredSkillNames[part.Name] or ignoredSkillNames[nameClean] or ignoredSkillNames[nameLower] or IGNORED_NAMES[part.Name] then
 		return true
 	end
@@ -286,17 +311,32 @@ local function extractHazardParts(instance)
 		return parts, false
 	end
 	local isException = CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
+		or instance.Name:lower():find("multiring")
+		or instance.Name:lower():find("thirdboss")
+
+	local function isValidHazardPart(part)
+		if not part or not part:IsA("BasePart") or isIgnoredPart(part) then return false end
+		local nameLower = part.Name:lower():gsub("%s+", "")
+		if HELPER_PART_NAMES[nameLower] then return false end
+
+		-- Với chiêu multi rings, chỉ nhận các part tên 'ring'
+		if instance.Name:lower():find("multiring") and not nameLower:find("ring") then
+			return false
+		end
+
+		return part.Transparency < FADE_TRANSPARENCY_THRESHOLD
+	end
 
 	if isException then
-		-- Ngoại lệ đặc biệt: tìm các part 'precast' hoặc BaseParts có trong model
+		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring' hoặc BaseParts có trong model
 		if instance:IsA("BasePart") then
-			if not isIgnoredPart(instance) and instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+			if isValidHazardPart(instance) then
 				table.insert(parts, instance)
 			end
 		elseif instance:IsA("Model") then
 			local precasts = {}
 			for _, desc in ipairs(instance:GetDescendants()) do
-				if desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Name:lower():find("precast") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+				if isValidHazardPart(desc) and desc.Name:lower():find("precast") then
 					table.insert(precasts, desc)
 				end
 			end
@@ -304,7 +344,7 @@ local function extractHazardParts(instance)
 				parts = precasts
 			else
 				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					if isValidHazardPart(desc) then
 						table.insert(parts, desc)
 					end
 				end
@@ -313,12 +353,12 @@ local function extractHazardParts(instance)
 	else
 		-- Tiêu chuẩn chung: Material == Neon
 		if instance:IsA("BasePart") then
-			if not isIgnoredPart(instance) and instance.Material == Enum.Material.Neon and instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+			if isValidHazardPart(instance) and instance.Material == Enum.Material.Neon then
 				table.insert(parts, instance)
 			end
 		elseif instance:IsA("Model") then
 			for _, desc in ipairs(instance:GetDescendants()) do
-				if desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Material == Enum.Material.Neon and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+				if isValidHazardPart(desc) and desc.Material == Enum.Material.Neon then
 					table.insert(parts, desc)
 				end
 			end
@@ -473,6 +513,63 @@ local function registerHazard(instance)
 		end))
 	end
 
+	-- Lắng nghe các Part con được nạp trễ vào Model (Ví dụ các Ring được gán vào sau)
+	if instance:IsA("Model") then
+		table.insert(partConnections, instance.DescendantAdded:Connect(function(desc)
+			if not activeHazards[instance] then return end
+			local isValid = desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD
+			if isValid then
+				local nameLower = desc.Name:lower():gsub("%s+", "")
+				if not HELPER_PART_NAMES[nameLower] then
+					if isException or desc.Material == Enum.Material.Neon then
+						if not activePartsSet[desc] then
+							activePartsSet[desc] = true
+							info.NeonCount = info.NeonCount + 1
+
+							if visualEspEnabled then
+								local boxes = attachSelectionBoxes({ desc })
+								if boxes and #boxes > 0 then
+									for _, b in ipairs(boxes) do table.insert(info.VisualBoxes, b) end
+								end
+							end
+
+							table.insert(partConnections, desc:GetPropertyChangedSignal("Transparency"):Connect(function()
+								checkPartStatus(desc)
+							end))
+							table.insert(partConnections, desc.AncestryChanged:Connect(function()
+								checkPartStatus(desc)
+							end))
+						end
+					end
+				end
+			end
+		end))
+	end
+
+	-- Tự động in cấu trúc chi tiết của thirdBossMultiRings để phân tích thông số hình học
+	if instance.Name:lower():find("multiring") then
+		task.delay(0.3, function()
+			if not instance or not instance.Parent then return end
+			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or instance.PrimaryPart
+			local centerPos = centerPart and centerPart.Position or Vector3.zero
+			print("================ [MULTIRINGS INSPECTOR DUMP] ================")
+			print(("[MultiRings] Model: %s | Center: (%.1f, %.1f, %.1f)"):format(instance.Name, centerPos.X, centerPos.Y, centerPos.Z))
+
+			local idx = 0
+			for _, child in ipairs(instance:GetDescendants()) do
+				if child:IsA("BasePart") then
+					idx = idx + 1
+					local off = child.Position - centerPos
+					local _, rotY = child.CFrame:ToOrientation()
+					print(("[%d] Name: '%s' | Class: %s | Size: (%.1f, %.1f, %.1f) | Offset: (%.1f, %.1f, %.1f) | RotY: %.1f deg"):format(
+						idx, child.Name, child.ClassName, child.Size.X, child.Size.Y, child.Size.Z, off.X, off.Y, off.Z, math.deg(rotY)
+					))
+				end
+			end
+			print("=============================================================")
+		end)
+	end
+
 	if logHazards then
 		print(("[SmartDodge][Hazard] 🚨 Hazard Detected: %s | Class: %s | Parts: %d | Dist: %d studs%s")
 			:format(info.Name, info.Class, info.NeonCount, info.Distance, isException and " (Exception)" or ""))
@@ -602,13 +699,109 @@ local function isPointInPart(point, part)
 		and math.abs(localPos.Y) <= halfY
 end
 
+--// Kiểm tra xem một điểm P có nằm trong vành khuyên / bán nguyệt của một UnionOperation 'ring' không
+local function isPointInRingPart(point, ringPart)
+	if not ringPart or not ringPart:IsA("BasePart") or not ringPart.Parent or isIgnoredPart(ringPart) then
+		return false
+	end
+
+	-- 1. Xác định tâm thực của cả Model (Center Part)
+	local centerPart = ringPart.Parent:FindFirstChild("center")
+		or ringPart.Parent:FindFirstChild("Center")
+		or ringPart.Parent.PrimaryPart
+	local centerPos = centerPart and centerPart.Position or ringPart.Position
+
+	-- 2. Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - centerPos.Y)
+	if heightDiff > math.max(14, ringPart.Size.Y / 2 + 8) then
+		return false
+	end
+
+	-- 3. Đưa tọa độ điểm P và vị trí Ring về mặt phẳng 2D (X-Z)
+	local diffX = point.X - centerPos.X
+	local diffZ = point.Z - centerPos.Z
+	local r = math.sqrt(diffX * diffX + diffZ * diffZ)
+
+	-- 4. Bán kính ngoài thực tế của Ring từ kích thước Size.Z (Size = Diameter x Height x Radius)
+	local radiusOuter = ringPart.Size.Z
+	if radiusOuter < 1 then
+		radiusOuter = math.max(ringPart.Size.X, ringPart.Size.Z) / 2
+	end
+
+	-- Bề dày dải Cyan: 12.5 studs cho các ring 1-6 (Size.X: 50, 75, 100, 125, 150, 175) và 17.5 studs cho ring 7 (Size.X: 210)
+	local bandThickness = (radiusOuter > 90) and 18.0 or 13.0
+	local radiusInner = math.max(0, radiusOuter - bandThickness)
+
+	-- 5. Kiểm tra khoảng rỗng ở giữa: Nếu r nằm trong lỗ trống -> AN TOÀN!
+	if r < radiusInner - playerHitboxPadding then
+		return false
+	end
+
+	-- 6. Nếu r vượt quá bán kính ngoài -> Nằm ngoài Ring này
+	if r > radiusOuter + playerHitboxPadding then
+		return false
+	end
+
+	-- 7. Kiểm tra hướng bán nguyệt bằng Tích Vô Hướng (Vector Dot Product):
+	local offX = ringPart.Position.X - centerPos.X
+	local offZ = ringPart.Position.Z - centerPos.Z
+	local offMag = math.sqrt(offX * offX + offZ * offZ)
+
+	if offMag > 0.5 then
+		local dirUnitX = offX / offMag
+		local dirUnitZ = offZ / offMag
+		local dot = (diffX * dirUnitX) + (diffZ * dirUnitZ)
+
+		-- Nếu dot < -playerHitboxPadding -> Nằm ở nửa đối diện (Khoảng đất trống an toàn 100%)
+		if dot < -playerHitboxPadding then
+			return false
+		end
+	end
+
+	return true, r, radiusInner, radiusOuter, centerPos, ringPart.CFrame
+end
+
+--// Kiểm tra xem điểm P có bị dính bất kỳ vòng nào trong Model thirdBossMultiRings không
+local function isPointInThirdBossMultiRings(point, hazardInfo)
+	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then
+		return false, nil
+	end
+
+	if hazardInfo.ActiveParts then
+		for part in pairs(hazardInfo.ActiveParts) do
+			if part and part.Parent and part:IsA("BasePart") and part.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+				local inRing = isPointInRingPart(point, part)
+				if inRing then
+					return true, part
+				end
+			end
+		end
+	end
+
+	return false, nil
+end
+
 --// Kiểm tra xem một điểm P có đang bị dính bất kỳ mối nguy hiểm nào không
 local function isPointInAnyHazard(point)
 	local bestDistSq = math.huge
 	local foundInfo, foundPart = nil, nil
 
 	for _, info in pairs(activeHazards) do
-		if info.ActiveParts then
+		local isMultiRings = info.Name and info.Name:lower():find("multiring") ~= nil
+
+		if isMultiRings then
+			-- ÁP DỤNG THỬ NGHIỆM 2: Giải Tích Tọa Độ Cực (Polar Annulus) RIÊNG CHO thirdBossMultiRings
+			local inRing, hitPart = isPointInThirdBossMultiRings(point, info)
+			if inRing then
+				local distSq = (point - hitPart.Position).Magnitude
+				if distSq < bestDistSq then
+					bestDistSq = distSq
+					foundInfo = info
+					foundPart = hitPart
+				end
+			end
+		elseif info.ActiveParts then
+			-- Các skill khác dùng OBB / Radius thông thường
 			for part in pairs(info.ActiveParts) do
 				if isPointInPart(point, part) then
 					local distSq = (point - part.Position).Magnitude
@@ -778,69 +971,128 @@ function smartDodge.CalculateSafeSpot(customPlayerPos)
 		end
 	end
 
-	-- 3. Chiến lược A: Thoát trực tiếp (Direct Escape Vector) từ Part gây nguy hiểm gần nhất
 	local candidatePos = nil
+	local isMultiRings = hazardName:lower():find("multiring") ~= nil
+		or (dangerInfo.Instance and dangerInfo.Instance.Name:lower():find("multiring") ~= nil)
 
-	if dangerPart:IsA("Part") and (dangerPart.Shape == Enum.PartType.Ball or dangerPart.Shape == Enum.PartType.Cylinder) then
-		-- A1. Chiêu hình tròn / hình cầu: Đẩy thẳng ra ngoài bán kính
-		local radius = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
-		local diff = Vector3.new(playerPos.X - dangerPart.Position.X, 0, playerPos.Z - dangerPart.Position.Z)
-		local dir = diff.Magnitude > 0.1 and diff.Unit or Vector3.new(0, 0, 1)
-		local directWorld = dangerPart.Position + dir * (radius + ESCAPE_MARGIN)
-		local snapped, hasFloor = getFloorPosition(directWorld)
+	if isMultiRings then
+		-- Tính điểm thoát nhanh cho thirdBossMultiRings:
+		local inRing, r, rIn, rOut, centerPos, ringCF = isPointInRingPart(playerPos, dangerPart)
+		local candidates = {}
 
-		if hasFloor and not isPointInAnyHazard(snapped) then
-			candidatePos = snapped
+		if inRing and centerPos and r and r > 0.1 then
+			local diffX = playerPos.X - centerPos.X
+			local diffZ = playerPos.Z - centerPos.Z
+			local unitX = diffX / r
+			local unitZ = diffZ / r
+
+			-- Thử bước vào lỗ trong (nhích nhẹ 3 studs)
+			if rIn and rIn > 2.0 then
+				local stepIn = Vector3.new(centerPos.X + unitX * (rIn - 2.5), playerPos.Y, centerPos.Z + unitZ * (rIn - 2.5))
+				table.insert(candidates, stepIn)
+			end
+
+			-- Thử bước vào khoảng hở ngoài (nhích nhẹ 3 studs)
+			if rOut then
+				local stepOut = Vector3.new(centerPos.X + unitX * (rOut + 2.5), playerPos.Y, centerPos.Z + unitZ * (rOut + 2.5))
+				table.insert(candidates, stepOut)
+			end
+
+			-- Thử bước sang nửa đối diện nếu là bán nguyệt
+			local stepFlip = Vector3.new(centerPos.X - diffX, playerPos.Y, centerPos.Z - diffZ)
+			table.insert(candidates, stepFlip)
 		end
-	else
-		-- A2. Chiêu hình chữ nhật / OBB: Thoát ngang 90 độ theo cạnh hẹp nhất
-		local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
-		local halfX = dangerPart.Size.X / 2
-		local halfZ = dangerPart.Size.Z / 2
-		local targetLocal = nil
 
-		if halfX <= halfZ then
-			-- Cạnh X hẹp hơn -> Thoát ngang theo trục X
-			local sign = (localPos.X >= 0) and 1 or -1
-			targetLocal = Vector3.new(sign * (halfX + ESCAPE_MARGIN), 0, localPos.Z)
-		else
-			-- Cạnh Z hẹp hơn -> Thoát ngang theo trục Z
-			local sign = (localPos.Z >= 0) and 1 or -1
-			targetLocal = Vector3.new(localPos.X, 0, sign * (halfZ + ESCAPE_MARGIN))
+		-- Quét tỏa tròn 16 hướng bổ trợ
+		local multiRingsRadii = { 3, 6, 9, 12, 15, 18, 22, 26, 30, 35, 40 }
+		local multiRingsAngles = { 0, 22.5, 45, 67.5, 90, 112.5, 135, 157.5, 180, 202.5, 225, 247.5, 270, 292.5, 315, 337.5 }
+
+		for _, dist in ipairs(multiRingsRadii) do
+			for _, angleDeg in ipairs(multiRingsAngles) do
+				local rad = math.rad(angleDeg)
+				local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
+				table.insert(candidates, playerPos + offset)
+			end
 		end
 
-		local directWorld = dangerPart.CFrame:PointToWorldSpace(targetLocal)
-		local snapped, hasFloor = getFloorPosition(directWorld)
-
-		if hasFloor and not isPointInAnyHazard(snapped) then
-			candidatePos = snapped
-		end
-	end
-
-	-- 4. Chiến lược B: Lưới Tỏa Tròn (Radial Grid Search Fallback nếu thoát trực tiếp bị vướng)
-	if not candidatePos then
 		local bestPos = nil
 		local bestDist = math.huge
 
-		for _, dist in ipairs(RADIAL_DISTANCES) do
-			for _, angleDeg in ipairs(RADIAL_ANGLES) do
-				local rad = math.rad(angleDeg)
-				local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
-				local testWorld = playerPos + offset
-				local snapped, hasFloor = getFloorPosition(testWorld)
-
-				if hasFloor and not isPointInAnyHazard(snapped) then
-					local moveDist = (snapped - playerPos).Magnitude
-					if moveDist < bestDist then
-						bestDist = moveDist
-						bestPos = snapped
-					end
+		for _, candWorld in ipairs(candidates) do
+			local snapped, hasFloor = getFloorPosition(candWorld)
+			if hasFloor and not isPointInAnyHazard(snapped) then
+				local moveDist = (snapped - playerPos).Magnitude
+				if moveDist < bestDist then
+					bestDist = moveDist
+					bestPos = snapped
 				end
 			end
-			if bestPos then break end -- Ưu tiên vòng bán kính nhỏ nhất trước
 		end
 
 		candidatePos = bestPos
+	else
+		-- 3. Chiến lược A: Thoát trực tiếp (Direct Escape Vector) từ Part gây nguy hiểm gần nhất cho các skill thông thường
+		if dangerPart:IsA("Part") and (dangerPart.Shape == Enum.PartType.Ball or dangerPart.Shape == Enum.PartType.Cylinder) then
+			-- A1. Chiêu hình tròn / hình cầu: Đẩy thẳng ra ngoài bán kính
+			local radius = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
+			local diff = Vector3.new(playerPos.X - dangerPart.Position.X, 0, playerPos.Z - dangerPart.Position.Z)
+			local dir = diff.Magnitude > 0.1 and diff.Unit or Vector3.new(0, 0, 1)
+			local directWorld = dangerPart.Position + dir * (radius + ESCAPE_MARGIN)
+			local snapped, hasFloor = getFloorPosition(directWorld)
+
+			if hasFloor and not isPointInAnyHazard(snapped) then
+				candidatePos = snapped
+			end
+		else
+			-- A2. Chiêu hình chữ nhật / OBB: Thoát ngang 90 độ theo cạnh hẹp nhất
+			local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
+			local halfX = dangerPart.Size.X / 2
+			local halfZ = dangerPart.Size.Z / 2
+			local targetLocal = nil
+
+			if halfX <= halfZ then
+				-- Cạnh X hẹp hơn -> Thoát ngang theo trục X
+				local sign = (localPos.X >= 0) and 1 or -1
+				targetLocal = Vector3.new(sign * (halfX + ESCAPE_MARGIN), 0, localPos.Z)
+			else
+				-- Cạnh Z hẹp hơn -> Thoát ngang theo trục Z
+				local sign = (localPos.Z >= 0) and 1 or -1
+				targetLocal = Vector3.new(localPos.X, 0, sign * (halfZ + ESCAPE_MARGIN))
+			end
+
+			local directWorld = dangerPart.CFrame:PointToWorldSpace(targetLocal)
+			local snapped, hasFloor = getFloorPosition(directWorld)
+
+			if hasFloor and not isPointInAnyHazard(snapped) then
+				candidatePos = snapped
+			end
+		end
+
+		-- 4. Chiến lược B: Lưới Tỏa Tròn (Radial Grid Search Fallback nếu thoát trực tiếp bị vướng)
+		if not candidatePos then
+			local bestPos = nil
+			local bestDist = math.huge
+
+			for _, dist in ipairs(RADIAL_DISTANCES) do
+				for _, angleDeg in ipairs(RADIAL_ANGLES) do
+					local rad = math.rad(angleDeg)
+					local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
+					local testWorld = playerPos + offset
+					local snapped, hasFloor = getFloorPosition(testWorld)
+
+					if hasFloor and not isPointInAnyHazard(snapped) then
+						local moveDist = (snapped - playerPos).Magnitude
+						if moveDist < bestDist then
+							bestDist = moveDist
+							bestPos = snapped
+						end
+					end
+				end
+				if bestPos then break end -- Ưu tiên vòng bán kính nhỏ nhất trước
+			end
+
+			candidatePos = bestPos
+		end
 	end
 
 	if candidatePos then
