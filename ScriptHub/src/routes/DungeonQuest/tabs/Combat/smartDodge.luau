@@ -1,19 +1,11 @@
 -- Module Smart Dodge trong tab Combat (DungeonQuest): quản lý tính năng né chiêu thông minh.
 -- Giai đoạn 1, 2 & 3: Threat Detection, Safe Spot Calculation & Dodge Execution.
+-- Cơ chế né duy nhất: Walk + Snap (MoveTo đi bộ, snap tới đích khi còn cự ly ≤ Max Snap).
 
 --// Imports
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local smartDodge = require("@routes/DungeonQuest/core/smartDodge")
-
---// Dodge Mode options
-local DODGE_MODE_OPTIONS = { "Hybrid (MoveTo + Blink)", "Walk Only (MoveTo + Snap)" }
-local function dodgeModeToIndex(mode)
-	return (mode == "Walk" and 2) or 1
-end
-local function dodgeLabelToMode(label)
-	return (label == DODGE_MODE_OPTIONS[2] and "Walk") or "Hybrid"
-end
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -123,18 +115,8 @@ return function(window, tab)
 		end),
 	}, "Toggle_SmartDodgeAutoExecution")
 
-	leftSection:Dropdown({
-		Name = "Dodge Movement Mode",
-		Options = DODGE_MODE_OPTIONS,
-		Default = dodgeModeToIndex(smartDodge.GetDodgeMode()),
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			smartDodge.SetDodgeMode(dodgeLabelToMode(option))
-		end),
-	}, "Dropdown_SmartDodgeMode")
-
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Max Teleport Step (studs)",
+		Name = "Final Snap Distance (studs)",
 		Default = smartDodge.GetMaxTeleportStep(),
 		Minimum = 1,
 		Maximum = 4,
@@ -144,18 +126,6 @@ return function(window, tab)
 			smartDodge.SetMaxTeleportStep(value)
 		end),
 	}, "Slider_SmartDodgeMaxStep"))
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Step Interval Delay (ms)",
-		Default = smartDodge.GetMicroBlinkIntervalMs(),
-		Minimum = 10,
-		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			smartDodge.SetMicroBlinkInterval(value)
-		end),
-	}, "Slider_SmartDodgeStepInterval"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player Hitbox Padding (studs)",

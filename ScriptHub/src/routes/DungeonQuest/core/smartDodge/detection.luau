@@ -1,0 +1,1018 @@
+-- Smart Dodge – Module 1: Threat Detection Engine (DungeonQuest).
+-- Chuyên trách: quét Workspace Depth 1, nhận diện hiểm họa (Neon / ngoại lệ), khóa quỹ đạo
+-- projectile, SelectionBox ESP, hành lang quỹ đạo cảnh báo, registry tên skill player.
+-- State riêng: activeHazards, lockedProjectiles, activeTrajectoryVisuals, các flag debug.
+
+--// Imports
+local services = require("@routes/DungeonQuest/core/services")
+
+--// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
+local geometryRef
+local function getGeometry()
+	if not geometryRef then
+		geometryRef = require("@routes/DungeonQuest/core/smartDodge/geometry")
+	end
+	return geometryRef
+end
+
+--// References
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local player = services.player
+
+--// Table
+local detection = {}
+
+--// State
+local threatDetectorEnabled = false
+local logHazards = false
+local visualEspEnabled = true
+local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight }
+local hazardCount = 0
+local hazardChangedCallbacks = {}
+local lastHazardInfo = nil
+local connections = {}
+local ignoredSkillNames = {
+	["DodgeNode_ESP"] = true,
+	["Enhanced Aura Ring"] = true,
+	["EnhancedAuraRing"] = true,
+	["Enhanced Aura"] = true,
+	["EnhancedAura"] = true,
+	["Aura Ring"] = true,
+	["AuraRing"] = true,
+	["AuraRingMesh"] = true,
+	["groundAura"] = true,
+	["GroundAura"] = true,
+	["Ground Aura"] = true,
+	["ground aura"] = true,
+}
+
+--// Danh sách các skill ngoại lệ (không dùng Material Neon, ví dụ có child precast bằng Plastic)
+local CUSTOM_HAZARD_EXCEPTIONS = {
+	["largeIceSpikes"] = true,
+	["mediumIceSpikes"] = true,
+	["smallIceSpikes"] = true,
+	["thirdBossMultiRings"] = true,
+	["firstBossCrissCross"] = true,
+	["firstBossSeekingSpikes"] = true,
+}
+
+--// Ngưỡng coi như chiêu đã mờ hoàn toàn/kết thúc
+local FADE_TRANSPARENCY_THRESHOLD = 0.95
+
+--// Danh sách các đối tượng Workspace cấp 1 cần bỏ qua
+local IGNORED_NAMES = {
+	["dungeon"] = true,
+	["Dungeon"] = true,
+	["Terrain"] = true,
+	["Camera"] = true,
+	["CurrentCamera"] = true,
+	["RaycastIgnore"] = true,
+	["Drops"] = true,
+	["Loot"] = true,
+	["DodgeNode_ESP"] = true,
+	["SmartDodge_SafeMarker"] = true,
+	["SmartDodge_SelectionBox"] = true,
+	["SmartDodge_TrajectoryBox"] = true,
+	["Enhanced Aura Ring"] = true,
+	["EnhancedAuraRing"] = true,
+	["Enhanced Aura"] = true,
+	["EnhancedAura"] = true,
+	["Aura Ring"] = true,
+	["AuraRing"] = true,
+	["groundAura"] = true,
+	["GroundAura"] = true,
+	["Ground Aura"] = true,
+	["ground aura"] = true,
+}
+
+--// Cấu hình các kỹ năng Projectile dạng quỹ đạo bắn thẳng (Trajectory / Corridor Telegraph)
+local TRAJECTORY_PROJECTILE_CONFIGS = {
+	["firstbosscrisscross"] = {
+		name = "firstBossCrissCross",
+		dangerRadius = 4.0,       -- Bán kính vùng sát thương của đạn (studs)
+		maxLookahead = 300.0,     -- Chiều dài hành lang dự đoán xuyên map (studs)
+		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho quỹ đạo
+	},
+	["firstbossseekingspikes"] = {
+		name = "firstBossSeekingSpikes",
+		dangerRadius = 4.5,       -- Bán kính vùng sát thương của đạn (studs)
+		maxLookahead = 300.0,     -- Chiều dài hành lang dự đoán xuyên map (studs)
+		visualColor = Color3.fromRGB(255, 110, 0), -- Màu cam đậm cho Seeking Spikes
+	},
+}
+
+--// Bảng lưu trữ trạng thái khóa hướng quỹ đạo (Direction Locking & State Tracking)
+local lockedProjectiles = {} -- [BasePart] = { originPos, forward2D, dangerRadius, maxLookahead, locked, config }
+local activeTrajectoryVisuals = {} -- [BasePart] = Part
+
+--// Getters nội bộ cho geometry (tránh vòng phụ thuộc detection -> geometry: geometry đọc qua lazy require).
+detection.GetActiveHazardsMap = function()
+	return activeHazards
+end
+
+detection.GetLockedProjectiles = function()
+	return lockedProjectiles
+end
+
+detection.GetFadeThreshold = function()
+	return FADE_TRANSPARENCY_THRESHOLD
+end
+
+detection.IsEnabled = function()
+	return threatDetectorEnabled
+end
+
+detection.SetEnabled = function(state)
+	threatDetectorEnabled = state and true or false
+end
+
+--// Xóa toàn bộ visual quỹ đạo + lock data (dùng khi stop loop / shutdown)
+detection.ClearTrajectoryVisuals = function()
+	for part, vPart in pairs(activeTrajectoryVisuals) do
+		pcall(function() vPart:Destroy() end)
+	end
+	table.clear(activeTrajectoryVisuals)
+	table.clear(lockedProjectiles)
+end
+
+--// Thêm một Skill vào danh sách ngoại lệ
+function detection.AddCustomHazard(skillName)
+	if type(skillName) == "string" and #skillName > 0 then
+		CUSTOM_HAZARD_EXCEPTIONS[skillName] = true
+	end
+end
+
+--// Thêm một Skill vào danh sách Trajectory Projectile
+function detection.AddTrajectoryProjectile(skillName, dangerRadius, maxLookahead)
+	if type(skillName) == "string" and #skillName > 0 then
+		local clean = skillName:lower():gsub("%s+", "")
+		TRAJECTORY_PROJECTILE_CONFIGS[clean] = {
+			name = skillName,
+			dangerRadius = dangerRadius or 4.0,
+			maxLookahead = maxLookahead or 300.0,
+			visualColor = Color3.fromRGB(255, 130, 0),
+		}
+		if logHazards then
+			print(("[SmartDodge] 🚀 Registered Trajectory Projectile: %s"):format(skillName))
+		end
+	end
+end
+
+--// Kiểm tra xem part có thuộc cấu hình kỹ năng Trajectory hay không
+local function getTrajectoryConfigForPart(part)
+	if not part then return nil end
+	local nameLower = part.Name:lower():gsub("%s+", "")
+	if TRAJECTORY_PROJECTILE_CONFIGS[nameLower] then
+		return TRAJECTORY_PROJECTILE_CONFIGS[nameLower]
+	end
+	if part.Parent and part.Parent:IsA("Model") then
+		local parentLower = part.Parent.Name:lower():gsub("%s+", "")
+		if TRAJECTORY_PROJECTILE_CONFIGS[parentLower] then
+			return TRAJECTORY_PROJECTILE_CONFIGS[parentLower]
+		end
+	end
+	return nil
+end
+
+detection.GetTrajectoryConfigForPart = function(part)
+	return getTrajectoryConfigForPart(part)
+end
+
+--// Khóa hướng bay ngay tại Frame 0 trước khi đạn bị xoay quanh trục Y bởi game
+local function lockTrajectoryForPart(part)
+	if not part or not part:IsA("BasePart") then return nil end
+	if lockedProjectiles[part] then
+		return lockedProjectiles[part]
+	end
+
+	local config = getTrajectoryConfigForPart(part)
+	if not config then return nil end
+
+	-- Bắt hướng LookVector tại thời điểm Frame 0 (spawn CFrame)
+	local look = part.CFrame.LookVector
+	local forward2D = Vector3.new(look.X, 0, look.Z)
+	if forward2D.Magnitude > 0.001 then
+		forward2D = forward2D.Unit
+	else
+		forward2D = Vector3.new(0, 0, -1)
+	end
+
+	local data = {
+		part = part,
+		originPos = part.Position,
+		forward2D = forward2D,
+		dangerRadius = config.dangerRadius or 4.0,
+		maxLookahead = config.maxLookahead or 85.0,
+		config = config,
+		spawnTime = os.clock(),
+		locked = true,
+	}
+
+	lockedProjectiles[part] = data
+	if logHazards then
+		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm"):format(
+			part.Name, forward2D.X, forward2D.Z, data.maxLookahead
+		))
+	end
+
+	return data
+end
+
+detection.LockTrajectoryForPart = function(part)
+	return lockTrajectoryForPart(part)
+end
+
+--// Đăng ký tên kỹ năng của Player để loại trừ
+function detection.RegisterPlayerSkill(skillName)
+	if type(skillName) == "string" and #skillName > 0 then
+		local cleanName = skillName:gsub("^%s+", ""):gsub("%s+$", "")
+		if not ignoredSkillNames[cleanName] then
+			ignoredSkillNames[cleanName] = true
+			local normalized = cleanName:lower():gsub("%s+", "")
+			ignoredSkillNames[normalized] = true
+			if logHazards then
+				print(("[SmartDodge] 🛡️ Registered Player Skill (Ignored): %s"):format(cleanName))
+			end
+		end
+	end
+end
+
+--// Tự động quét và lắng nghe kỹ năng trong Backpack / Character của Player và đồng đội
+local function initPlayerSkillWatcher()
+	local function scanPlayer(p)
+		if not p then return end
+
+		local function scanContainer(container)
+			if not container then return end
+			for _, child in ipairs(container:GetChildren()) do
+				detection.RegisterPlayerSkill(child.Name)
+			end
+		end
+
+		local function watchBackpack(bp)
+			if not bp then return end
+			scanContainer(bp)
+			bp.ChildAdded:Connect(function(child)
+				detection.RegisterPlayerSkill(child.Name)
+			end)
+		end
+
+		local function watchCharacter(char)
+			if not char then return end
+			scanContainer(char)
+			char.ChildAdded:Connect(function(child)
+				if child:IsA("Tool") then
+					detection.RegisterPlayerSkill(child.Name)
+				end
+			end)
+		end
+
+		if p:FindFirstChild("Backpack") then
+			watchBackpack(p.Backpack)
+		end
+		p.ChildAdded:Connect(function(child)
+			if child.Name == "Backpack" or child:IsA("Backpack") then
+				watchBackpack(child)
+			end
+		end)
+
+		if p.Character then
+			watchCharacter(p.Character)
+		end
+		p.CharacterAdded:Connect(watchCharacter)
+	end
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		scanPlayer(p)
+	end
+	Players.PlayerAdded:Connect(scanPlayer)
+
+	-- Quét định kỳ mỗi 1 giây trong trường hợp đồ trong Backpack được game nạp trễ
+	task.spawn(function()
+		while threatDetectorEnabled or #Players:GetPlayers() > 0 do
+			for _, p in ipairs(Players:GetPlayers()) do
+				if p:FindFirstChild("Backpack") then
+					for _, item in ipairs(p.Backpack:GetChildren()) do
+						detection.RegisterPlayerSkill(item.Name)
+					end
+				end
+				if p.Character then
+					for _, item in ipairs(p.Character:GetChildren()) do
+						if item:IsA("Tool") then
+							detection.RegisterPlayerSkill(item.Name)
+						end
+					end
+				end
+			end
+			task.wait(1)
+		end
+	end)
+end
+
+initPlayerSkillWatcher()
+
+--// Kiểm tra xem đối tượng có phải là của Player (hoặc skill của Player) không
+local function isPlayerAsset(instance)
+	if not instance then return true end
+
+	-- 1. Kiểm tra trực thuộc Character của bất kỳ người chơi nào
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character and (instance == p.Character or instance:IsDescendantOf(p.Character)) then
+			return true
+		end
+	end
+
+	-- 2. Kiểm tra trực tiếp trong Backpack & Character của mọi người chơi tại thời điểm t = 0
+	local instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
+	local instNameLower = instNameClean:lower():gsub("%s+", "")
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		local bp = p:FindFirstChild("Backpack")
+		if bp then
+			if bp:FindFirstChild(instance.Name) or bp:FindFirstChild(instNameClean) then
+				detection.RegisterPlayerSkill(instance.Name)
+				return true
+			end
+			for _, item in ipairs(bp:GetChildren()) do
+				local itemLower = item.Name:lower():gsub("%s+", "")
+				if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+					detection.RegisterPlayerSkill(item.Name)
+					return true
+				end
+			end
+		end
+
+		if p.Character then
+			if p.Character:FindFirstChild(instance.Name) or p.Character:FindFirstChild(instNameClean) then
+				detection.RegisterPlayerSkill(instance.Name)
+				return true
+			end
+			for _, item in ipairs(p.Character:GetChildren()) do
+				if item:IsA("Tool") then
+					local itemLower = item.Name:lower():gsub("%s+", "")
+					if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+						detection.RegisterPlayerSkill(item.Name)
+						return true
+					end
+				end
+			end
+		end
+	end
+
+	-- 3. Kiểm tra các Tag/Attribute/ObjectValue sở hữu (creator, owner, player, caster)
+	local creatorVal = instance:FindFirstChild("creator") or instance:FindFirstChild("Creator")
+		or instance:FindFirstChild("owner") or instance:FindFirstChild("Owner")
+		or instance:FindFirstChild("player") or instance:FindFirstChild("Player")
+		or instance:FindFirstChild("caster") or instance:FindFirstChild("Caster")
+	if creatorVal then
+		if creatorVal:IsA("ObjectValue") and creatorVal.Value and creatorVal.Value:IsA("Player") then
+			return true
+		elseif creatorVal:IsA("StringValue") and Players:FindFirstChild(creatorVal.Value) then
+			return true
+		end
+	end
+
+	local ownerAttr = instance:GetAttribute("Owner") or instance:GetAttribute("Player")
+		or instance:GetAttribute("creator") or instance:GetAttribute("Creator")
+	if ownerAttr then
+		if type(ownerAttr) == "string" and Players:FindFirstChild(ownerAttr) then
+			return true
+		end
+	end
+
+	-- 0. Ngoại lệ chiêu của Boss -> Tuyệt đối không phải của Player
+	if CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
+		or instance.Name:lower():find("multiring")
+		or instance.Name:lower():find("thirdboss") then
+		return false
+	end
+
+	-- 4. Kiểm tra tên Instance có chứa tên hoặc UserId của Player không
+	for _, p in ipairs(Players:GetPlayers()) do
+		local pNameLower = p.Name:lower()
+		if instNameLower:find(pNameLower, 1, true) or instance.Name:find(tostring(p.UserId), 1, true) then
+			return true
+		end
+	end
+
+	-- 5. So khớp với danh sách tên kỹ năng đã đăng ký
+	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
+		return true
+	end
+
+	for skillName in pairs(ignoredSkillNames) do
+		local sLower = skillName:lower():gsub("%s+", "")
+		if #sLower >= 4 and instNameLower:find(sLower, 1, true) then
+			return true
+		end
+	end
+
+	return false
+end
+
+--// Danh sách tên các Part bổ trợ / không gây sát thương cần lọc bỏ
+local HELPER_PART_NAMES = {
+	["primarypart"] = true,
+	["center"] = true,
+	["hitbox"] = true,
+	["root"] = true,
+	["main"] = true,
+	["handle"] = true,
+	["humanoidrootpart"] = true,
+	["firstbossbeampart"] = true,
+	["beampart"] = true,
+}
+
+--// Kiểm tra xem một Part/MeshPart cụ thể có thuộc danh sách bỏ qua hay không
+local function isIgnoredPart(part)
+	if not part then return true end
+	--// Marker "SmartDodge_SafeMarker" đã bị chặn sẵn bằng tên chứa "SmartDodge" (CanQuery=false),
+	--// nên không cần so sánh instance marker riêng nữa (refactor ra nhiều module).
+	if part.Name:find("SmartDodge") then return true end
+	local nameClean = part.Name:gsub("^%s+", ""):gsub("%s+$", "")
+	local nameLower = nameClean:lower():gsub("%s+", "")
+
+	if CUSTOM_HAZARD_EXCEPTIONS[part.Name] or (part.Parent and CUSTOM_HAZARD_EXCEPTIONS[part.Parent.Name])
+		or part.Name:lower():find("multiring") or (part.Parent and part.Parent.Name:lower():find("multiring"))
+		or part.Name:lower():find("crisscross") or (part.Parent and part.Parent.Name:lower():find("crisscross"))
+		or part.Name:lower():find("seekingspike") or (part.Parent and part.Parent.Name:lower():find("seekingspike"))
+		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss")) then
+		return false
+	end
+
+	if ignoredSkillNames[part.Name] or ignoredSkillNames[nameClean] or ignoredSkillNames[nameLower] or IGNORED_NAMES[part.Name] then
+		return true
+	end
+
+	if nameLower:find("enhancedaura", 1, true) or nameLower:find("auraring", 1, true) or nameLower:find("groundaura", 1, true) then
+		return true
+	end
+	return false
+end
+
+detection.IsIgnoredPart = function(part)
+	return isIgnoredPart(part)
+end
+
+--// Tìm các Part nguy hiểm bên trong instance (Depth 1 BasePart hoặc Model)
+local function extractHazardParts(instance)
+	local parts = {}
+	if not instance or instance.Name:find("SmartDodge") or isIgnoredPart(instance) then
+		return parts, false
+	end
+	local isException = CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
+		or instance.Name:lower():find("multiring")
+		or instance.Name:lower():find("crisscross")
+		or instance.Name:lower():find("seekingspike")
+		or instance.Name:lower():find("thirdboss")
+
+	local function isValidHazardPart(part)
+		if not part or not part:IsA("BasePart") or isIgnoredPart(part) then return false end
+		local nameLower = part.Name:lower():gsub("%s+", "")
+		if HELPER_PART_NAMES[nameLower] then return false end
+
+		-- Với chiêu multi rings, chỉ nhận các part tên 'ring'
+		if instance.Name:lower():find("multiring") and not nameLower:find("ring") then
+			return false
+		end
+
+		return part.Transparency < FADE_TRANSPARENCY_THRESHOLD
+	end
+
+	if isException then
+		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring' hoặc BaseParts có trong model
+		if instance:IsA("BasePart") then
+			if isValidHazardPart(instance) then
+				table.insert(parts, instance)
+			end
+		elseif instance:IsA("Model") then
+			local precasts = {}
+			for _, desc in ipairs(instance:GetDescendants()) do
+				if isValidHazardPart(desc) and desc.Name:lower():find("precast") then
+					table.insert(precasts, desc)
+				end
+			end
+			if #precasts > 0 then
+				parts = precasts
+			else
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if isValidHazardPart(desc) then
+						table.insert(parts, desc)
+					end
+				end
+			end
+		end
+	else
+		-- Tiêu chuẩn chung: Material == Neon
+		if instance:IsA("BasePart") then
+			if isValidHazardPart(instance) and instance.Material == Enum.Material.Neon then
+				table.insert(parts, instance)
+			end
+		elseif instance:IsA("Model") then
+			for _, desc in ipairs(instance:GetDescendants()) do
+				if isValidHazardPart(desc) and desc.Material == Enum.Material.Neon then
+					table.insert(parts, desc)
+				end
+			end
+		end
+	end
+
+	return parts, isException
+end
+
+--// Lấy vị trí trung tâm của instance
+local function getInstancePosition(instance, hazardParts)
+	if instance:IsA("BasePart") then
+		return instance.Position
+	elseif instance:IsA("Model") then
+		if instance.PrimaryPart then
+			return instance.PrimaryPart.Position
+		end
+		local pivot = instance:GetPivot()
+		if pivot and pivot.Position ~= Vector3.zero then
+			return pivot.Position
+		end
+	end
+
+	if hazardParts and #hazardParts > 0 then
+		return hazardParts[1].Position
+	end
+
+	return Vector3.zero
+end
+
+local function fireHazardChanged()
+	for _, cb in ipairs(hazardChangedCallbacks) do
+		pcall(cb, hazardCount, lastHazardInfo)
+	end
+end
+
+--// Forward declaration
+local unregisterHazard
+
+--// Tạo và gắn SelectionBox đỏ 3D lên từng Part của chiêu thức
+local function attachSelectionBoxes(hazardParts)
+	local boxes = {}
+	for _, part in ipairs(hazardParts) do
+		if part and part:IsA("BasePart") and part.Parent then
+			local box = Instance.new("SelectionBox")
+			box.Name = "SmartDodge_SelectionBox"
+			box.Color3 = Color3.fromRGB(255, 45, 45)
+			box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
+			box.SurfaceTransparency = 0.6
+			box.LineThickness = 0.05
+			box.Adornee = part
+			box.Parent = part
+			table.insert(boxes, box)
+		end
+	end
+	return boxes
+end
+
+--// Đăng ký một Instance (Depth 1) là hiểm họa và gắn listeners theo dõi độ mờ
+local function registerHazard(instance)
+	if not threatDetectorEnabled or not instance or activeHazards[instance] then return end
+	if instance:IsA("Folder") then return end
+	if instance:FindFirstChildOfClass("Humanoid") then return end
+	if instance.Name:find("SmartDodge") then return end
+	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] or isPlayerAsset(instance) then return end
+
+	local hazardParts, isException = extractHazardParts(instance)
+	if #hazardParts == 0 then
+		-- Nếu là Model mới tạo có thể các part con chưa kịp parent vào Model
+		if instance:IsA("Model") then
+			local c
+			c = instance.DescendantAdded:Connect(function(desc)
+				if desc:IsA("BasePart") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					if isException or desc.Material == Enum.Material.Neon then
+						if c then c:Disconnect(); c = nil end
+						registerHazard(instance)
+					end
+				end
+			end)
+			task.delay(1, function()
+				if c then c:Disconnect(); c = nil end
+			end)
+		end
+		return
+	end
+
+	local pos = getInstancePosition(instance, hazardParts)
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local dist = rootPart and math.floor((pos - rootPart.Position).Magnitude) or 0
+
+	local activePartsSet = {}
+	local partConnections = {}
+
+	for _, part in ipairs(hazardParts) do
+		activePartsSet[part] = true
+	end
+
+	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
+
+	local info = {
+		Instance = instance,
+		Name = instance.Name,
+		Class = instance.ClassName,
+		Position = pos,
+		Distance = dist,
+		NeonCount = #hazardParts,
+		SpawnTime = os.clock(),
+		Connections = partConnections,
+		ActiveParts = activePartsSet,
+		VisualBoxes = visualBoxes,
+		IsException = isException,
+	}
+
+	activeHazards[instance] = info
+	hazardCount = hazardCount + 1
+	lastHazardInfo = info
+
+	-- Khóa hướng bay ngay tại Frame 0 cho các chiêu đạn bay / Projectile
+	for _, part in ipairs(hazardParts) do
+		if getTrajectoryConfigForPart(part) then
+			lockTrajectoryForPart(part)
+		end
+	end
+
+	-- Gắn sự kiện lắng nghe Transparency và Material thay đổi trên từng Part
+	local function checkPartStatus(part)
+		if not activeHazards[instance] or not activePartsSet[part] then return end
+
+		local isExpired = (not part.Parent)
+			or (part.Transparency >= FADE_TRANSPARENCY_THRESHOLD)
+			or (not isException and part.Material ~= Enum.Material.Neon)
+
+		if isExpired then
+			activePartsSet[part] = nil
+			if activeTrajectoryVisuals[part] then
+				pcall(function() activeTrajectoryVisuals[part]:Destroy() end)
+				activeTrajectoryVisuals[part] = nil
+			end
+			if lockedProjectiles[part] then
+				lockedProjectiles[part] = nil
+			end
+
+			-- Kiểm tra xem còn Part nào đang hoạt động không
+			local remaining = 0
+			for _ in pairs(activePartsSet) do
+				remaining = remaining + 1
+			end
+
+			if remaining == 0 then
+				unregisterHazard(instance, "Faded / Finished")
+			else
+				info.NeonCount = remaining
+			end
+		end
+	end
+
+	for _, part in ipairs(hazardParts) do
+		table.insert(partConnections, part:GetPropertyChangedSignal("Transparency"):Connect(function()
+			checkPartStatus(part)
+		end))
+		if not isException then
+			table.insert(partConnections, part:GetPropertyChangedSignal("Material"):Connect(function()
+				checkPartStatus(part)
+			end))
+		end
+		table.insert(partConnections, part.AncestryChanged:Connect(function()
+			checkPartStatus(part)
+		end))
+	end
+
+	-- Lắng nghe các Part con được nạp trễ vào Model (Ví dụ các Ring được gán vào sau)
+	if instance:IsA("Model") then
+		table.insert(partConnections, instance.DescendantAdded:Connect(function(desc)
+			if not activeHazards[instance] then return end
+			local isValid = desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD
+			if isValid then
+				local nameLower = desc.Name:lower():gsub("%s+", "")
+				if not HELPER_PART_NAMES[nameLower] then
+					if isException or desc.Material == Enum.Material.Neon then
+						if not activePartsSet[desc] then
+							activePartsSet[desc] = true
+							info.NeonCount = info.NeonCount + 1
+
+							if getTrajectoryConfigForPart(desc) then
+								lockTrajectoryForPart(desc)
+							end
+
+							if visualEspEnabled then
+								local boxes = attachSelectionBoxes({ desc })
+								if boxes and #boxes > 0 then
+									for _, b in ipairs(boxes) do table.insert(info.VisualBoxes, b) end
+								end
+							end
+
+							table.insert(partConnections, desc:GetPropertyChangedSignal("Transparency"):Connect(function()
+								checkPartStatus(desc)
+							end))
+							table.insert(partConnections, desc.AncestryChanged:Connect(function()
+								checkPartStatus(desc)
+							end))
+						end
+					end
+				end
+			end
+		end))
+	end
+
+	-- Tự động in cấu trúc chi tiết của thirdBossMultiRings để phân tích thông số hình học
+	if instance.Name:lower():find("multiring") then
+		task.delay(0.3, function()
+			if not instance or not instance.Parent then return end
+			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or instance.PrimaryPart
+			local centerPos = centerPart and centerPart.Position or Vector3.zero
+			print("================ [MULTIRINGS INSPECTOR DUMP] ================")
+			print(("[MultiRings] Model: %s | Center: (%.1f, %.1f, %.1f)"):format(instance.Name, centerPos.X, centerPos.Y, centerPos.Z))
+
+			local idx = 0
+			for _, child in ipairs(instance:GetDescendants()) do
+				if child:IsA("BasePart") then
+					idx = idx + 1
+					local off = child.Position - centerPos
+					local _, rotY = child.CFrame:ToOrientation()
+					print(("[%d] Name: '%s' | Class: %s | Size: (%.1f, %.1f, %.1f) | Offset: (%.1f, %.1f, %.1f) | RotY: %.1f deg"):format(
+						idx, child.Name, child.ClassName, child.Size.X, child.Size.Y, child.Size.Z, off.X, off.Y, off.Z, math.deg(rotY)
+					))
+				end
+			end
+			print("=============================================================")
+		end)
+	end
+
+	if logHazards then
+		print(("[SmartDodge][Hazard] 🚨 Hazard Detected: %s | Class: %s | Parts: %d | Dist: %d studs%s")
+			:format(info.Name, info.Class, info.NeonCount, info.Distance, isException and " (Exception)" or ""))
+	end
+
+	fireHazardChanged()
+end
+
+--// Hủy đăng ký hiểm họa (khi mờ, đổi material, hoặc bị xóa khỏi Workspace)
+function unregisterHazard(instance, reason)
+	if not activeHazards[instance] then return end
+	local info = activeHazards[instance]
+
+	-- Dọn dẹp SelectionBoxes
+	if info.VisualBoxes then
+		for _, box in ipairs(info.VisualBoxes) do
+			pcall(function() box:Destroy() end)
+		end
+		table.clear(info.VisualBoxes)
+	end
+
+	-- Dọn dẹp connection của từng part
+	if info.Connections then
+		for _, c in ipairs(info.Connections) do
+			pcall(function() c:Disconnect() end)
+		end
+		table.clear(info.Connections)
+	end
+
+	-- Dọn dẹp Trajectory visuals và locked data
+	if info.ActiveParts then
+		for p in pairs(info.ActiveParts) do
+			if activeTrajectoryVisuals[p] then
+				pcall(function() activeTrajectoryVisuals[p]:Destroy() end)
+				activeTrajectoryVisuals[p] = nil
+			end
+			if lockedProjectiles[p] then
+				lockedProjectiles[p] = nil
+			end
+		end
+	end
+
+	activeHazards[instance] = nil
+	hazardCount = math.max(0, hazardCount - 1)
+
+	if logHazards and info then
+		local reasonStr = reason and (" (" .. reason .. ")") or ""
+		print(("[SmartDodge][Hazard] 🟢 Hazard Expired: %s%s")
+			:format(info.Name, reasonStr))
+	end
+
+	fireHazardChanged()
+end
+
+--// Nội bộ cho engine: đăng ký/hủy hazard 1 instance (Workspace ChildAdded/ChildRemoved)
+detection.RegisterHazard = registerHazard
+detection.UnregisterHazard = unregisterHazard
+
+--// Cập nhật Visual ESP cho các hành lang quỹ đạo (Trajectory Boxes)
+function detection.UpdateTrajectoryVisuals()
+	if not visualEspEnabled or not threatDetectorEnabled then
+		for part, vPart in pairs(activeTrajectoryVisuals) do
+			pcall(function() vPart:Destroy() end)
+		end
+		table.clear(activeTrajectoryVisuals)
+		return
+	end
+
+	local currentActiveParts = {}
+
+	for _, info in pairs(activeHazards) do
+		if info.ActiveParts then
+			for part in pairs(info.ActiveParts) do
+				if part and part.Parent and part:IsA("BasePart") and part.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+					local trajConfig = getTrajectoryConfigForPart(part)
+					if trajConfig then
+						local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
+						if trajData and trajData.forward2D then
+							currentActiveParts[part] = true
+							local forward2D = trajData.forward2D
+							local maxLookahead = trajData.maxLookahead
+							local dangerRadius = trajData.dangerRadius
+							local originPos = part.Position
+							local centerPos = originPos + forward2D * (maxLookahead / 2)
+
+							local vPart = activeTrajectoryVisuals[part]
+							if not vPart or not vPart.Parent then
+								vPart = Instance.new("Part")
+								vPart.Name = "SmartDodge_TrajectoryBox"
+								vPart.Material = Enum.Material.Neon
+								vPart.Color = trajConfig.visualColor or Color3.fromRGB(255, 130, 0)
+								vPart.Transparency = 0.82
+								vPart.Anchored = true
+								vPart.CanCollide = false
+								vPart.CanQuery = false
+								vPart.CanTouch = false
+
+								local box = Instance.new("SelectionBox")
+								box.Name = "TrajectoryBorder"
+								box.Color3 = Color3.fromRGB(255, 150, 30)
+								box.SurfaceColor3 = trajConfig.visualColor or Color3.fromRGB(255, 130, 0)
+								box.SurfaceTransparency = 0.8
+								box.LineThickness = 0.04
+								box.Adornee = vPart
+								box.Parent = vPart
+
+								local bb = Instance.new("BillboardGui")
+								bb.Name = "TrajGui"
+								bb.Size = UDim2.fromOffset(180, 26)
+								bb.StudsOffset = Vector3.new(0, 3.5, 0)
+								bb.AlwaysOnTop = true
+								bb.Adornee = vPart
+								bb.Parent = vPart
+
+								local label = Instance.new("TextLabel")
+								label.Name = "Label"
+								label.Size = UDim2.fromScale(1, 1)
+								label.BackgroundTransparency = 1
+								label.TextColor3 = Color3.fromRGB(255, 170, 40)
+								label.TextStrokeTransparency = 0
+								label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+								label.Font = Enum.Font.GothamBold
+								label.TextSize = 12
+								label.Text = ("🚀 TRAJECTORY: %s (%.0fm)"):format(part.Name, maxLookahead)
+								label.Parent = bb
+
+								activeTrajectoryVisuals[part] = vPart
+							end
+
+							vPart.Size = Vector3.new(dangerRadius * 2, 2.0, maxLookahead)
+							local floorPos, hasFloor = getGeometry().GetFloorPosition(centerPos)
+							local visualCenter = hasFloor and Vector3.new(centerPos.X, floorPos.Y, centerPos.Z) or centerPos
+							vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
+							vPart.Parent = Workspace.Terrain
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Dọn dẹp những part đã hết hạn
+	for part, vPart in pairs(activeTrajectoryVisuals) do
+		if not currentActiveParts[part] then
+			pcall(function() vPart:Destroy() end)
+			activeTrajectoryVisuals[part] = nil
+			lockedProjectiles[part] = nil
+		end
+	end
+end
+
+--// Bắt đầu quét & lắng nghe sự kiện Workspace cấp 1 (được engine gọi khi StartEngine)
+function detection.StartScan()
+	-- Dọn dẹp connection cũ nếu có
+	for _, c in ipairs(connections) do c:Disconnect() end
+	table.clear(connections)
+
+	-- Dọn dẹp hazards cũ
+	for inst, info in pairs(activeHazards) do
+		if info.VisualBoxes then
+			for _, box in ipairs(info.VisualBoxes) do pcall(function() box:Destroy() end) end
+		end
+		if info.Connections then
+			for _, c in ipairs(info.Connections) do pcall(function() c:Disconnect() end) end
+		end
+	end
+	table.clear(activeHazards)
+	hazardCount = 0
+
+	-- 1. Quét tức thời các child Depth 1 hiện tại trong Workspace
+	for _, child in ipairs(Workspace:GetChildren()) do
+		registerHazard(child)
+	end
+
+	-- 2. Lắng nghe vật thể mới sinh ra ở Workspace (Depth 1)
+	table.insert(connections, Workspace.ChildAdded:Connect(function(child)
+		registerHazard(child)
+	end))
+
+	-- 3. Lắng nghe vật thể bị xóa khỏi Workspace (Depth 1)
+	table.insert(connections, Workspace.ChildRemoved:Connect(function(child)
+		unregisterHazard(child, "Destroyed")
+	end))
+
+	if logHazards then
+		print("[SmartDodge] 📡 Threat Detector & Safe Spot Engine started!")
+	end
+end
+
+--// Dừng quét, dọn hazards và connection (được engine gọi khi StopEngine/Shutdown)
+function detection.StopScan()
+	for _, c in ipairs(connections) do c:Disconnect() end
+	table.clear(connections)
+
+	for inst, info in pairs(activeHazards) do
+		if info.VisualBoxes then
+			for _, box in ipairs(info.VisualBoxes) do pcall(function() box:Destroy() end) end
+		end
+		if info.Connections then
+			for _, c in ipairs(info.Connections) do pcall(function() c:Disconnect() end) end
+		end
+	end
+	table.clear(activeHazards)
+	hazardCount = 0
+	fireHazardChanged()
+
+	if logHazards then
+		print("[SmartDodge] 🛑 Threat Detector stopped.")
+	end
+end
+
+--// Public accessors (facade chỉ proxy)
+function detection.SetLogHazards(state)
+	logHazards = state and true or false
+end
+
+function detection.IsLogHazardsEnabled()
+	return logHazards
+end
+
+function detection.SetVisualEsp(state)
+	visualEspEnabled = state and true or false
+	detection.UpdateTrajectoryVisuals()
+	if visualEspEnabled then
+		for _, info in pairs(activeHazards) do
+			if (not info.VisualBoxes or #info.VisualBoxes == 0) and info.ActiveParts then
+				local partsList = {}
+				for p in pairs(info.ActiveParts) do
+					table.insert(partsList, p)
+				end
+				info.VisualBoxes = attachSelectionBoxes(partsList)
+			end
+		end
+	else
+		for _, info in pairs(activeHazards) do
+			if info.VisualBoxes then
+				for _, box in ipairs(info.VisualBoxes) do
+					pcall(function() box:Destroy() end)
+				end
+				table.clear(info.VisualBoxes)
+			end
+		end
+	end
+end
+
+function detection.IsVisualEspEnabled()
+	return visualEspEnabled
+end
+
+function detection.GetHazardCount()
+	return hazardCount
+end
+
+function detection.GetActiveHazards()
+	local list = {}
+	for _, data in pairs(activeHazards) do
+		if data.Instance and data.Instance.Parent == Workspace then
+			table.insert(list, data)
+		end
+	end
+	return list
+end
+
+function detection.GetLastHazardInfo()
+	return lastHazardInfo
+end
+
+function detection.OnHazardChanged(callback)
+	if type(callback) ~= "function" then return end
+	table.insert(hazardChangedCallbacks, callback)
+end
+
+return detection
