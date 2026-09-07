@@ -139,18 +139,6 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeAutoFaceTarget")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Max Dodge Time Budget (s)",
-		Default = smartDodge.GetMaxDodgeTime(),
-		Minimum = 0.3,
-		Maximum = 3.0,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(value)
-			smartDodge.SetMaxDodgeTime(value)
-		end),
-	}, "Slider_SmartDodgeMaxTime"))
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Instant / Final Snap Distance (studs)",
 		Default = smartDodge.GetMaxSnapDistance(),
 		Minimum = 1,

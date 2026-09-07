@@ -34,7 +34,6 @@
 local services = require("@routes/DungeonQuest/core/services")
 local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
 
-
 --// References
 local player = services.player
 
@@ -42,7 +41,6 @@ local player = services.player
 local autoDodgeEnabled = false
 local dodgeMode = "Blink" -- "Blink" | "MoveTo" (Mặc định Blink để ép di chuyển mượt mà không bị phím đè)
 
-local maxDodgeTime = 1.0
 local maxSnapDistance = 3.0
 
 local FINAL_ADJUST_DIST = 0.5
@@ -123,8 +121,9 @@ local function getFaceTarget()
 		end
 	end
 
-	-- Lấy vị trí mục tiêu hiện tại từ targetFacing
-	if targetFacing and targetFacing.IsEnabled() then
+	-- Luôn luôn lấy vị trí mục tiêu nếu có (Bất kể toggle UI bật hay tắt)
+	-- Đảm bảo yêu cầu cốt lõi: "Dù đang né thì vẫn phải nhìn vào mục tiêu."
+	if targetFacing then
 		local tPos = targetFacing.GetTargetPosition()
 		if tPos then
 			return tPos
@@ -133,7 +132,6 @@ local function getFaceTarget()
 
 	return nil
 end
-
 
 --==============================================================--
 -- Helpers
@@ -353,12 +351,6 @@ function dodge.Perform(safePos, escapeDist)
 
 		fireDodgeStatus("Dodging")
 
-		-- Log tốc độ người chơi khi bắt đầu né (WalkSpeed và vận tốc vật lý thực tế)
-		local curWalkSpeed = humanoid and humanoid.WalkSpeed or 0
-		local curVel = rootPart and rootPart.AssemblyLinearVelocity or Vector3.zero
-		local horizSpeed = math.sqrt(curVel.X * curVel.X + curVel.Z * curVel.Z)
-		print(("[SmartDodge][SpeedLog] 🏃 Bắt đầu né (%s) | WalkSpeed: %.1f studs/s | Vận tốc vật lý: %.1f studs/s (3D: %.1f) | Cự ly thoát: %.1f studs")
-			:format(dodgeMode, curWalkSpeed, horizSpeed, curVel.Magnitude, escapeDist or 0))
 
 		--======================================================--
 		-- Initial state
@@ -373,7 +365,7 @@ function dodge.Perform(safePos, escapeDist)
 				activeGyro = nil
 			end
 			if humanoid and humanoid.Parent then
-				humanoid.AutoRotate = not targetFacing.IsEnabled()
+				humanoid.AutoRotate = true
 			end
 		end
 
@@ -391,7 +383,6 @@ function dodge.Perform(safePos, escapeDist)
 
 			fireDodgeStatus("Safe")
 		end
-
 
 		local ok, err = pcall(function()
 			--======================================================--
@@ -428,118 +419,144 @@ function dodge.Perform(safePos, escapeDist)
 				return
 			end
 
-			--======================================================--
-			-- (2) MOVEMENT: Blink (Instant Snap) OR MoveTo (Walk + Gyro)
-			--======================================================--
-
 			if dodgeMode == "Blink" then
-				-- Blink: Lướt / Snap tức thì tới Safe Spot (Không bị kẹt vật lý)
-				snapFace(
-					rootPart,
-					humanoid,
-					targetPos,
-					startHeight
-				)
-
-				if getLogInDanger() then
-					print(
-						("[SmartDodge][Dodge] ⚡ Blink Dash (%.1f studs) to Safe Spot!")
-							:format(totalDist)
-					)
-				end
-
-				return
-			else
-				-- MoveTo Walk Mode
-				if getLogInDanger() then
-					print(
-						("[SmartDodge][Dodge] 🚶 MoveTo Walk (%.1f studs, budget %.2fs)...")
-							:format(totalDist, maxDodgeTime)
-					)
-				end
-
-				-- DÙNG BODYGYRO ĐỂ XOAY MẶT VỀ BOSS MÀ KHÔNG LÀM ĐỨNG YÊN NHÂN VẬT
-				local targetEnemy = getFaceTarget()
-				if targetEnemy then
-					humanoid.AutoRotate = false
-					pcall(function()
-						local g = Instance.new("BodyGyro")
-						g.Name = "SmartDodge_FacingGyro"
-						g.MaxTorque = Vector3.new(0, 400000, 0)
-						g.P = 25000
-						g.D = 500
-						local pPos = rootPart.Position
-						g.CFrame = CFrame.lookAt(pPos, Vector3.new(targetEnemy.X, pPos.Y, targetEnemy.Z))
-						g.Parent = rootPart
-						activeGyro = g
-					end)
-				else
-					humanoid.AutoRotate = true
-				end
-
-				local startTime = os.clock()
-
-				--======================================================--
-				-- WALK LOOP: Humanoid:MoveTo di chuyển tự nhiên
-				--======================================================--
-
-				while autoDodgeEnabled
-					and (os.clock() - startTime < maxDodgeTime)
-				do
-					if not rootPart.Parent
-						or not humanoid.Parent
-						or humanoid.Health <= 0
-					then
-						break
+				-- Blink: 2 bước micro-blink siêu nhỏ mở màn -> tự động walk -> cuối cùng snap vào Spot
+				local MICRO_BLINK_STEP = 1.8 -- studs mỗi bước siêu nhỏ
+				for step = 1, 2 do
+					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
+						return
 					end
 
 					targetPos = currentTargetPos or safePos
 					currentPos = rootPart.Position
+					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
+					local dist = diff.Magnitude
 
-					local distRemaining = flatDistance(
-						currentPos,
-						targetPos
-					)
-
-					if distRemaining <= maxSnapDistance then
-						snapFace(
-							rootPart,
-							humanoid,
-							targetPos,
-							startHeight
-						)
-
+					if dist <= maxSnapDistance then
+						snapFace(rootPart, humanoid, targetPos, startHeight)
 						if getLogInDanger() then
-							print(
-								("[SmartDodge][Dodge] 🎯 Reached snap range (%.2f studs) -> SNAP")
-									:format(distRemaining)
-							)
+							print(("[SmartDodge][Dodge] ⚡ Micro-Blink %d đã tới tầm snap (%.1f studs) -> SNAP VÀO SPOT!"):format(step, dist))
 						end
-
-						break
+						return
 					end
 
-					-- Cập nhật góc quay của Gyro nếu Boss dịch chuyển
-					if activeGyro and activeGyro.Parent then
-						local enemyPos = getFaceTarget()
-						if enemyPos then
-							activeGyro.CFrame = CFrame.lookAt(currentPos, Vector3.new(enemyPos.X, currentPos.Y, enemyPos.Z))
-						end
+					local stepDist = math.min(MICRO_BLINK_STEP, (dist - maxSnapDistance) * 0.5)
+					stepDist = math.max(0.6, stepDist)
+					local stepPos = currentPos + diff.Unit * stepDist
+
+					snapFace(rootPart, humanoid, stepPos, startHeight)
+
+					if getLogInDanger() then
+						print(("[SmartDodge][Dodge] ⚡ Micro-Blink %d/2 (%.1f studs) -> còn %.1f studs")
+							:format(step, stepDist, dist - stepDist))
 					end
 
-					local moveTarget = makeMoveTarget(
-						rootPart,
-						targetPos
-					)
-
-					-- Phát MoveTo để Humanoid tự động bước đi
-					humanoid:MoveTo(moveTarget)
-
-					task.wait(0.05)
+					task.wait(0.02)
 				end
 
-				cleanGyro()
+				if getLogInDanger() then
+					print(("[SmartDodge][Dodge] 🚶 Sau 2 Micro-Blink -> Tiếp tục Walk về Safe Spot (còn %.1f studs)...")
+						:format(flatDistance(rootPart.Position, currentTargetPos or safePos)))
+				end
+			else
+				-- MoveTo Walk Mode (không micro-blink, chỉ walk thuần túy)
+				if getLogInDanger() then
+					print(
+						("[SmartDodge][Dodge] 🚶 MoveTo Walk (%.1f studs)...")
+							:format(totalDist)
+					)
+				end
 			end
+
+			-- DÙNG BODYGYRO ĐỂ XOAY MẶT VỀ BOSS MÀ KHÔNG LÀM ĐỨNG YÊN NHÂN VẬT
+			local targetEnemy = getFaceTarget()
+			if targetEnemy then
+				humanoid.AutoRotate = false
+				pcall(function()
+					local g = Instance.new("BodyGyro")
+					g.Name = "SmartDodge_FacingGyro"
+					g.MaxTorque = Vector3.new(0, 400000, 0)
+					g.P = 25000
+					g.D = 500
+					local pPos = rootPart.Position
+					g.CFrame = CFrame.lookAt(pPos, Vector3.new(targetEnemy.X, pPos.Y, targetEnemy.Z))
+					g.Parent = rootPart
+					activeGyro = g
+				end)
+			else
+				humanoid.AutoRotate = true
+			end
+
+			local startTime = os.clock()
+			local MAX_SAFETY_TIMEOUT = 10.0 -- Giới hạn an toàn chống kẹt vĩnh viễn nếu bị tường cản
+
+			--======================================================--
+			-- WALK LOOP: Humanoid:MoveTo di chuyển tự nhiên đến khi an toàn hoặc tới Safe Spot
+			--======================================================--
+
+			while autoDodgeEnabled and (os.clock() - startTime < MAX_SAFETY_TIMEOUT) do
+				if not rootPart.Parent
+					or not humanoid.Parent
+					or humanoid.Health <= 0
+				then
+					break
+				end
+
+				-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước
+				if not getInDanger() then
+					break
+				end
+
+				targetPos = currentTargetPos or safePos
+				if not targetPos then
+					break
+				end
+
+				currentPos = rootPart.Position
+
+				local distRemaining = flatDistance(
+					currentPos,
+					targetPos
+				)
+
+				if distRemaining <= maxSnapDistance then
+					snapFace(
+						rootPart,
+						humanoid,
+						targetPos,
+						startHeight
+					)
+
+					if getLogInDanger() then
+						print(
+							("[SmartDodge][Dodge] 🎯 Reached snap range (%.2f studs) -> SNAP")
+								:format(distRemaining)
+						)
+					end
+
+					break
+				end
+
+				-- Cập nhật góc quay của Gyro nếu Boss dịch chuyển
+				if activeGyro and activeGyro.Parent then
+					local enemyPos = getFaceTarget()
+					if enemyPos then
+						activeGyro.CFrame = CFrame.lookAt(currentPos, Vector3.new(enemyPos.X, currentPos.Y, enemyPos.Z))
+					end
+				end
+
+				local moveTarget = makeMoveTarget(
+					rootPart,
+					targetPos
+				)
+
+				-- Phát MoveTo để Humanoid tự động bước đi
+				humanoid:MoveTo(moveTarget)
+
+				task.wait(0.05)
+			end
+
+			cleanGyro()
 
 			--======================================================--
 			-- (3) Final decision after WALK
@@ -553,13 +570,14 @@ function dodge.Perform(safePos, escapeDist)
 			end
 
 			targetPos = currentTargetPos or safePos
+			if not targetPos then return end
 
 			local remainingDist = flatDistance(
 				rootPart.Position,
 				targetPos
 			)
 
-			if remainingDist <= maxSnapDistance or remainingDist > FINAL_ADJUST_DIST then
+			if remainingDist <= maxSnapDistance then
 				snapFace(
 					rootPart,
 					humanoid,
@@ -608,7 +626,6 @@ function dodge.Cancel()
 	isDodging = false
 	targetFacing.SetDodging(false)
 	currentTargetPos = nil
-
 end
 
 --==============================================================--
@@ -643,22 +660,6 @@ end
 
 function dodge.GetDodgeMode()
 	return dodgeMode
-end
-
---==============================================================--
--- Max Dodge Time
---==============================================================--
-
-function dodge.SetMaxDodgeTime(seconds)
-	if type(seconds) == "number"
-		and seconds > 0
-	then
-		maxDodgeTime = seconds
-	end
-end
-
-function dodge.GetMaxDodgeTime()
-	return maxDodgeTime
 end
 
 --==============================================================--

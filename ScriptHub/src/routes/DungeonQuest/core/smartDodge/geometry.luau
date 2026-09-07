@@ -62,6 +62,8 @@ local function updateRaycastFilter(force)
 	raycastParams.FilterDescendantsInstances = cachedIgnoreList
 end
 
+local player = Players.LocalPlayer
+
 --// Bắn raycast kiểm tra sàn nhà và snap tọa độ xuống mặt đất
 function geometry.GetFloorPosition(pos)
 	updateRaycastFilter(false)
@@ -76,12 +78,38 @@ function geometry.GetFloorPosition(pos)
 	return pos, false
 end
 
+--// Bắn raycast kiểm tra sàn nhà và trả về cao độ Y thực tế của mặt sàn (không cộng offset +3)
+function geometry.GetRawFloorY(pos)
+	updateRaycastFilter(false)
+
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 8, pos.Z)
+	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
+	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
+
+	if result and result.Position then
+		return result.Position.Y, true
+	end
+
+	-- Fallback kiểm tra dưới chân Player
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if rootPart then
+		local pOrigin = Vector3.new(rootPart.Position.X, rootPart.Position.Y + 6, rootPart.Position.Z)
+		local pResult = Workspace:Raycast(pOrigin, rayDir, raycastParams)
+		if pResult and pResult.Position then
+			return pResult.Position.Y, true
+		end
+		return rootPart.Position.Y - 2.8, false
+	end
+
+	return pos.Y, false
+end
+
 --// Kiểm tra xem điểm P có nằm trong hành lang quỹ đạo của một Projectile Part không
 function geometry.IsPointInTrajectory(point, part)
 	local det = det()
 	local data = det.GetLockedProjectiles()[part]
 	if not data then
-		data = det.LockTrajectoryForPart(part)
+		data = det.LockTrajectoryForPart and det.LockTrajectoryForPart(part)
 	end
 	if not data then return false end
 
@@ -103,9 +131,10 @@ function geometry.IsPointInTrajectory(point, part)
 	local perpVec = toPoint2D - projOnAxis
 	local perpDist = perpVec.Magnitude
 
-	-- Kiểm tra độ cao Y
-	local heightDiff = math.abs(point.Y - origin.Y)
-	if heightDiff > 14 then
+	-- Kiểm tra độ cao Y theo độ cao sàn đã khóa (Raw Floor Y) của chiêu
+	local refY = data.rawFloorY or origin.Y
+	local heightDiff = math.abs(point.Y - (refY + 2.8))
+	if heightDiff > 12 then
 		return false
 	end
 

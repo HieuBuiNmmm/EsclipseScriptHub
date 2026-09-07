@@ -58,7 +58,7 @@ local CUSTOM_HAZARD_EXCEPTIONS = {
 }
 
 --// Ngưỡng coi như chiêu đã mờ hoàn toàn/kết thúc
-local FADE_TRANSPARENCY_THRESHOLD = 0.95
+local FADE_TRANSPARENCY_THRESHOLD = 0.85
 
 --// Danh sách các đối tượng Workspace cấp 1 cần bỏ qua
 local IGNORED_NAMES = {
@@ -239,6 +239,13 @@ local function lockTrajectoryForPart(part)
 	local finalDangerRadius = baseMinRadius + trajectoryWidthPadding
 	local finalMaxLookahead = config.maxLookahead or trajectoryLookahead
 
+	-- KHÓA TRỤC Y NGAY TẠI THỜI ĐIỂM SPAWN:
+	-- Lấy cao độ sàn mặt đất (Raw Floor Y) để vùng màu cam và hitbox luôn dán chặt vào mặt đất,
+	-- không bị trôi nổi trên không trung hay nhấp nhô theo trục Y của viên đạn.
+	local rawFloorY, hasFloor = getGeometry().GetRawFloorY(part.Position)
+	local boxThickness = 0.8 -- Chiều cao của vùng màu cam trên mặt đất (studs)
+	local lockedVisualY = rawFloorY + (boxThickness / 2) + 0.05 -- Đặt đáy hộp nằm sát trên sàn để không chìm vào mesh sàn
+
 	local data = {
 		part = part,
 		originPos = part.Position,
@@ -248,12 +255,15 @@ local function lockTrajectoryForPart(part)
 		config = config,
 		spawnTime = os.clock(),
 		locked = true,
+		rawFloorY = rawFloorY,
+		lockedVisualY = lockedVisualY,
+		boxThickness = boxThickness,
 	}
 
 	lockedProjectiles[part] = data
 	if logHazards then
-		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm | Width: %.1fm (Radius: %.1fm)"):format(
-			part.Name, forward2D.X, forward2D.Z, data.maxLookahead, data.dangerRadius * 2, data.dangerRadius
+		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm | Width: %.1fm | Locked Floor Y: %.2f"):format(
+			part.Name, forward2D.X, forward2D.Z, data.maxLookahead, data.dangerRadius * 2, rawFloorY
 		))
 	end
 
@@ -380,8 +390,8 @@ local function isPlayerAsset(instance)
 	end
 
 	-- 2. Kiểm tra trực tiếp trong Backpack & Character của mọi người chơi (Khớp chính xác tên, không fuzzy substring)
-	local instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
-	local instNameLower = instNameClean:lower():gsub("%s+", "")
+	instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
+	instNameLower = instNameClean:lower():gsub("%s+", "")
 
 	for _, p in ipairs(Players:GetPlayers()) do
 		local bp = p:FindFirstChild("Backpack")
@@ -665,8 +675,15 @@ local function registerHazard(instance)
 	local activePartsSet = {}
 	local partConnections = {}
 
+	-- Bộ theo dõi chu kỳ chớp sáng (Flash Peak & Decay Tracker) cho từng Part
+	local partMinTrans = {}      -- [Part] = number (độ mờ thấp nhất / sáng nhất từng ghi nhận)
+	local partHasFlashed = {}    -- [Part] = boolean (đã từng đạt trạng thái chớp sáng kích nổ chưa)
+
 	for _, part in ipairs(hazardParts) do
 		activePartsSet[part] = true
+		local initT = part.Transparency
+		partMinTrans[part] = initT
+		partHasFlashed[part] = (initT <= 0.28)
 	end
 
 	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
@@ -700,12 +717,33 @@ local function registerHazard(instance)
 	local function checkPartStatus(part)
 		if not activeHazards[instance] or not activePartsSet[part] then return end
 
+		local curTrans = part.Transparency
+		local minT = partMinTrans[part] or curTrans
+		if curTrans < minT then
+			minT = curTrans
+			partMinTrans[part] = minT
+		end
+
+		-- Pha Kích nổ / Sát thương: Khi part đạt độ sáng chói (Transparency tụt xuống <= 0.28)
+		if minT <= 0.28 then
+			partHasFlashed[part] = true
+		end
+
+		-- Pha Tan biến sau khi chớp sáng (Early Hitbox Clearance):
+		-- Một khi đã từng chớp sáng, chỉ cần Transparency bắt đầu tăng lên (curTrans >= minT + 0.18 hoặc curTrans >= 0.40)
+		-- -> Sát thương đã nổ xong 100%, loại bỏ hitbox ngay lập tức không cần đợi tới 0.85/0.95!
+		local hasDecayedAfterFlash = partHasFlashed[part] and (curTrans >= (minT + 0.18) or curTrans >= 0.40)
+
 		local isExpired = (not part.Parent)
-			or (part.Transparency >= FADE_TRANSPARENCY_THRESHOLD)
+			or hasDecayedAfterFlash
+			or (curTrans >= FADE_TRANSPARENCY_THRESHOLD)
 			or (not isException and part.Material ~= Enum.Material.Neon)
 
 		if isExpired then
 			activePartsSet[part] = nil
+			partMinTrans[part] = nil
+			partHasFlashed[part] = nil
+
 			if activeTrajectoryVisuals[part] then
 				pcall(function() activeTrajectoryVisuals[part]:Destroy() end)
 				activeTrajectoryVisuals[part] = nil
@@ -721,7 +759,8 @@ local function registerHazard(instance)
 			end
 
 			if remaining == 0 then
-				unregisterHazard(instance, "Faded / Finished")
+				local reason = hasDecayedAfterFlash and "Post-flash Decay (Early Hitbox Clearance)" or "Faded / Finished"
+				unregisterHazard(instance, reason)
 			else
 				info.NeonCount = remaining
 			end
@@ -754,6 +793,10 @@ local function registerHazard(instance)
 						if not activePartsSet[desc] then
 							activePartsSet[desc] = true
 							info.NeonCount = info.NeonCount + 1
+
+							local initT = desc.Transparency
+							partMinTrans[desc] = initT
+							partHasFlashed[desc] = (initT <= 0.28)
 
 							if getTrajectoryConfigForPart(desc) then
 								lockTrajectoryForPart(desc)
@@ -901,6 +944,10 @@ function detection.UpdateTrajectoryVisuals()
 							local originPos = part.Position
 							local centerPos = originPos + forward2D * (maxLookahead / 2)
 
+							-- Khóa cứng độ cao trục Y (lockedVisualY) đã tính và cố định từ khi spawn
+							local lockedY = trajData.lockedVisualY or (trajData.rawFloorY and (trajData.rawFloorY + 0.45)) or originPos.Y
+							local thickness = trajData.boxThickness or 0.8
+
 							local vPart = activeTrajectoryVisuals[part]
 							if not vPart or not vPart.Parent then
 								vPart = Instance.new("Part")
@@ -925,7 +972,7 @@ function detection.UpdateTrajectoryVisuals()
 								local bb = Instance.new("BillboardGui")
 								bb.Name = "TrajGui"
 								bb.Size = UDim2.fromOffset(200, 26)
-								bb.StudsOffset = Vector3.new(0, 3.5, 0)
+								bb.StudsOffset = Vector3.new(0, 2.5, 0)
 								bb.AlwaysOnTop = true
 								bb.Adornee = vPart
 								bb.Parent = vPart
@@ -943,14 +990,10 @@ function detection.UpdateTrajectoryVisuals()
 								label.Parent = bb
 
 								activeTrajectoryVisuals[part] = vPart
-
-								-- Chỉ bắn Raycast lấy độ cao sàn một lần duy nhất lúc tạo part
-								local floorPos, hasFloor = getGeometry().GetFloorPosition(centerPos)
-								trajData.floorY = hasFloor and floorPos.Y or centerPos.Y
 							end
 
-							vPart.Size = Vector3.new(dangerRadius * 2, 2.0, maxLookahead)
-							local visualCenter = Vector3.new(centerPos.X, trajData.floorY or centerPos.Y, centerPos.Z)
+							vPart.Size = Vector3.new(dangerRadius * 2, thickness, maxLookahead)
+							local visualCenter = Vector3.new(centerPos.X, lockedY, centerPos.Z)
 							vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
 							vPart.Parent = Workspace.Terrain
 						end
