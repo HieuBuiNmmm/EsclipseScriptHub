@@ -25,10 +25,6 @@ local dodgeThread = nil
 local currentTargetPos = nil
 local dodgeStatusCallbacks = {}
 
---// Provider trả về vị trí cần quay mặt khi né (ví dụ enemy — do AutoFarm Mode 2 đăng ký).
---// nil = giữ hành vi cũ (face theo hướng di chuyển/safe spot).
-local faceTargetProvider = nil
-
 --// Runtime do engine bơm: { getInDanger = fn, getLogInDanger = fn }
 local runtime = nil
 
@@ -53,15 +49,7 @@ local function fireDodgeStatus(status)
 	end
 end
 
---// Lấy vị trí cần quay mặt khi né (nếu có provider). pcall cho an toàn vì provider do module khác bơm.
-local function getFaceTarget()
-	if not faceTargetProvider then return nil end
-	local ok, pos = pcall(faceTargetProvider)
-	if ok and type(pos) == "table" and pos.X and pos.Z then return pos end
-	return nil
-end
-
---// Snap rotation khi teleport dứt điểm: căn chỉnh độ cao sát sàn chuẩn xác + face provider target nếu có.
+--// Snap rotation khi teleport dứt điểm: căn chỉnh độ cao sát sàn chuẩn xác.
 local function snapFace(rootPart, humanoid, pos, startHeight)
 	local targetY = startHeight or pos.Y
 	if not maintainSnapHeight and humanoid and humanoid.HipHeight then
@@ -71,12 +59,7 @@ local function snapFace(rootPart, humanoid, pos, startHeight)
 	end
 
 	local actualPos = Vector3.new(pos.X, targetY, pos.Z)
-	local targetPos = getFaceTarget()
-	if targetPos then
-		rootPart.CFrame = CFrame.new(actualPos, Vector3.new(targetPos.X, targetY, targetPos.Z))
-	else
-		rootPart.CFrame = CFrame.new(actualPos, actualPos + rootPart.CFrame.LookVector)
-	end
+	rootPart.CFrame = CFrame.new(actualPos, actualPos + rootPart.CFrame.LookVector)
 end
 
 --// Thực thi né sang Safe Spot (Walk + Snap hybrid with Time Budget):
@@ -105,13 +88,7 @@ function dodge.Perform(safePos, escapeDist)
 		-- Độ cao Y ban đầu của player làm neo
 		local startHeight = rootPart.Position.Y
 
-		-- Tắt AutoRotate khi có provider để nhân vật luôn xoay mặt về quái trong lúc đi né
-		local prevAutoRotate = humanoid.AutoRotate
-		local faceEnemy = faceTargetProvider ~= nil
-		if faceEnemy then humanoid.AutoRotate = false end
-
 		local function finish()
-			if faceEnemy then humanoid.AutoRotate = prevAutoRotate end
 			isDodging = false
 			currentTargetPos = nil
 			fireDodgeStatus("Safe")
@@ -147,12 +124,6 @@ function dodge.Perform(safePos, escapeDist)
 			if distRemaining <= maxSnapDistance then
 				snapFace(rootPart, humanoid, targetPos, startHeight)
 				break
-			end
-
-			-- Face target giữa các bước đi (nếu có provider)
-			local targetEnemy = getFaceTarget()
-			if targetEnemy then
-				rootPart.CFrame = CFrame.lookAt(currentPos, Vector3.new(targetEnemy.X, currentPos.Y, targetEnemy.Z))
 			end
 
 			-- Đi bộ bám phẳng mặt đất theo đúng hướng marker
@@ -233,10 +204,6 @@ end
 
 function dodge.IsDodging()
 	return isDodging
-end
-
-function dodge.SetFaceTargetProvider(func)
-	faceTargetProvider = type(func) == "function" and func or nil
 end
 
 function dodge.GetStatus()

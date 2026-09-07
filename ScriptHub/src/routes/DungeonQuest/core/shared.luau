@@ -1,5 +1,5 @@
 -- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
--- speed và các API cho module chuyên biệt (autoFarmPathfinder, webhook, ESP...)
+-- speed và các API cho module chuyên biệt (webhook, ESP...)
 -- thao tác lên module này để tránh circular dependency.
 
 --// Imports
@@ -24,8 +24,9 @@ local shared = {}
 local humanoid = nil
 
 local enabled = false
-local fastSpeed = 50
+local fastSpeed = 16
 local normalSpeed = 16
+
 
 local dungeonStartTime = nil
 
@@ -129,6 +130,7 @@ local function untrackEnemy(enemy)
 	enemyCount -= 1
 	disconnectEnemyConnections(enemy)
 	fireEnemyChanged()
+	refreshRoomIndex()
 end
 
 --// Tìm room (con trực tiếp của dungeon) chứa model.
@@ -155,6 +157,7 @@ local function trackEnemy(enemy)
 	enemyCount += 1
 	enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
 	fireEnemyChanged()
+	refreshRoomIndex()
 end
 
 local function waitAndTrackModel(model)
@@ -163,14 +166,14 @@ local function waitAndTrackModel(model)
 	if pendingModels[model] then return end
 	pendingModels[model] = true
 	task.spawn(function()
-		local timeout = os.clock() + 3
+		local timeout = os.clock() + 2
 		while model.Parent and os.clock() < timeout do
 			if isValidEnemy(model) then
 				pendingModels[model] = nil
 				trackEnemy(model)
 				return
 			end
-			task.wait(0.1)
+			task.wait(0.03)
 		end
 		pendingModels[model] = nil
 		if model.Parent and isValidEnemy(model) then trackEnemy(model) end
@@ -332,7 +335,7 @@ function shared.GetDungeonElapsed()
 	return os.clock() - dungeonStartTime
 end
 
---// Ensures dungeon tracking is ready (autoFarmPathfinder dùng).
+--// Ensures dungeon tracking is ready.
 function shared.ReadyDungeon()
 	if not dungeon and not initializeRooms() then return false end
 	return true

@@ -43,14 +43,14 @@ function shortcuts.Init()
 	shortcuts.inited = true
 
 	inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-		if gameProcessed then return end
 		if input.UserInputType == Enum.UserInputType.MouseButton2 then
-			--// Ẩn: chuột phải kích hoạt E + Q (chỉ khi toggle bật).
+			if UserInputService:GetFocusedTextBox() then return end
 			if comboEnabled then
 				fireCombo()
 			end
 		end
 	end)
+
 end
 
 lifecycle.Register(function()

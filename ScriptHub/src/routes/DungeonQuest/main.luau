@@ -87,21 +87,18 @@ return function(self)
 	--// ESP Enemy (highlight mob trong dungeon)
 	require("@routes/DungeonQuest/core/enemyEsp")
 
-	--// Contextual Combat settings (per dungeon x per boss/mob) - auto-switch
-	local contextual = require("@routes/DungeonQuest/core/contextual")
-
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	local autoHide = require("@routes/DungeonQuest/core/autoHide")
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
+	--// Contextual (tự động áp dụng setting theo Dungeon x Target)
+	local contextual = require("@routes/DungeonQuest/core/contextual")
+	contextual.Init()
+
 	--// Khởi chạy
 	tabs.Combat:Select()
 	macLib:LoadAutoLoadConfig()
-
-	--// Nạp context data SAU khi config (kể cả autoload) được load, để context đọc đúng
-	--// dữ liệu đã lưu thay vì fallback về global.
-	contextual.Init()
 
 	--// Kích hoạt lại autoSave sau khi toàn bộ UI và config đã nạp xong ổn định
 	task.delay(1.5, function()

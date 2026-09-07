@@ -1,11 +1,10 @@
--- Module Player trong tab Combat (DungeonQuest) — trước đây là tab Speed, đã đổi tên theo folder.
+-- Module Player trong tab Combat (DungeonQuest).
 
 --// Imports
 local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
-local autoFarmPathfinder = require("@routes/DungeonQuest/core/autoFarmPathfinder")
-local macLib = require("@packages/Maclib")
+local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -31,26 +30,13 @@ return function(window, tab)
 		end),
 	}, "Slider_FastSpeed"))
 
-	--// Auto Farm (Pathfinder v2) toggle qua phím tắt
-	section:Header({ Name = "Auto Farm" })
+	section:Header({ Name = "Shortcuts" })
 
-	local function toggleAutoFarmFromKey()
-		local newState = not autoFarmPathfinder.IsEnabled()
-		--// Đồng bộ UI toggle Auto Farm ở tab Auto Farm - drive farm qua callback của nó
-		local opt = macLib.Options and macLib.Options["Toggle_PathfinderFarm"]
-		if opt and opt.UpdateState then
-			opt:UpdateState(newState)
-		else
-			autoFarmPathfinder.Toggle(newState)
-		end
-	end
-
-	section:Keybind({
-		Name = "Toggle Auto Farm",
-		Default = Enum.KeyCode.X,
-		Callback = function()
-			toggleAutoFarmFromKey()
-		end,
-	}, "Keybind_AutoFarm")
-
-end
+	section:Toggle({
+		Name = "Right Click Combo (Q+E)",
+		Default = shortcuts.IsMouseComboEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shortcuts.SetMouseComboEnabled(state)
+		end),
+	}, "Toggle_MouseCombo")
+end

@@ -1,0 +1,818 @@
+AI IMPLEMENTATION SPECIFICATION
+Target Selection + Target Tracking + Freewalk Movement System
+Platform: Roblox
+
+============================================================
+1. PURPOSE
+============================================================
+
+This document defines the intended behavior and responsibilities of an
+AI-controlled player/enemy-chasing movement system.
+
+The system has five main responsibilities:
+
+1. Periodically scan all rooms and build a list of valid enemies.
+2. Select exactly one target using the lowest Roblox Pathfinding movement
+   cost as the only target-selection criterion.
+3. Track the selected target and maintain path information.
+4. Move toward the target using direct Freewalk/MoveTo behavior rather than
+   blindly following every Pathfinding waypoint as movement commands.
+5. Detect blocking with a raycast from the player to the current destination
+   and move the destination backward through path nodes until the ray is clear.
+
+The PathfindingService is NOT the movement controller.
+
+Pathfinding has exactly two roles:
+- Determine whether an enemy is reachable.
+- Provide path nodes/waypoints that can be used by the movement system,
+  especially by the Blocking Checker when the direct movement line is blocked.
+
+============================================================
+2. HIGH-LEVEL ARCHITECTURE
+============================================================
+
+The system consists of:
+
+A. Enemy Scanner
+B. Enemy Validator
+C. Target Selector
+D. Target Tracker / Path Manager
+E. Movement Controller
+F. Blocking Checker
+G. State / Interrupt Manager
+
+Data flow:
+
+Periodic Rescan
+    -> Enemy Scanner
+    -> Enemy Validation
+    -> Valid Enemy List
+    -> Target Selector
+    -> Current Target
+    -> Target Tracker / Path Manager
+    -> Movement Controller
+    -> Blocking Checker
+    -> Movement adjustment
+
+A rescan is independent from the movement loop.
+
+A new target selected by the Target Selector must be able to replace the
+current target while movement is already in progress.
+
+============================================================
+3. ENEMY SCANNER
+============================================================
+
+The Enemy Scanner runs periodically.
+
+On every scan:
+
+1. Inspect all relevant rooms.
+2. Find enemy models/entities.
+3. Collect them into a temporary candidate list.
+4. Pass candidates through Enemy Validation.
+5. Produce the current Valid Enemy List.
+
+The scanner must not directly choose a target.
+
+Output:
+
+ValidEnemyList = {
+    EnemyA,
+    EnemyB,
+    EnemyC,
+    ...
+}
+
+The scan must represent the current world state at the time of the scan.
+
+============================================================
+4. ENEMY VALIDATION
+============================================================
+
+An enemy is considered valid only if it satisfies the required structural
+and gameplay conditions.
+
+At minimum, validation should ensure:
+
+- Enemy still exists.
+- Enemy is a valid enemy entity.
+- Enemy is alive.
+- Required movement/root component exists.
+- Enemy belongs to a valid/relevant room.
+
+Invalid enemies must not be passed to Target Selector.
+
+Validation must be repeated when necessary because an enemy can become
+invalid after a scan.
+
+Examples:
+
+- Enemy dies.
+- Enemy model is destroyed.
+- Enemy leaves the relevant room.
+- Required root/movement component disappears.
+
+============================================================
+5. TARGET SELECTION
+============================================================
+
+Target selection uses ONE criterion only:
+
+    LOWEST PATHFINDING MOVEMENT COST
+
+For every valid enemy:
+
+1. Obtain the player's current position.
+2. Obtain the enemy's current position.
+3. Compute a Roblox PathfindingService path.
+4. Determine whether the enemy is reachable.
+5. If reachable, obtain the path's movement cost.
+6. Compare the cost with the other reachable enemies.
+7. Select the enemy with the lowest cost.
+
+Conceptually:
+
+Enemy A -> reachable -> cost 120
+Enemy B -> reachable -> cost 45
+Enemy C -> unreachable
+Enemy D -> reachable -> cost 80
+
+Result:
+
+CurrentTarget = Enemy B
+
+Unreachable enemies are not eligible for target selection.
+
+DO NOT use these as additional target-selection criteria unless explicitly
+added to the specification later:
+
+- Euclidean distance
+- Manhattan distance
+- Enemy health
+- Enemy proximity to camera
+- Room distance
+- Enemy priority
+- Line of sight
+- Visual distance
+- Spawn order
+
+The target-selection criterion is Pathfinding movement cost only.
+
+============================================================
+6. TARGET SWITCHING
+============================================================
+
+After every rescan, compare the newly selected target with the current
+target.
+
+Case A: No current target
+
+    -> Acquire the newly selected target.
+
+Case B: New target is the same as current target
+
+    -> Keep current target.
+    -> Continue tracking/movement unless another invalidation occurred.
+
+Case C: New target is different
+
+    -> Current movement toward the old target must be interrupted.
+    -> Replace CurrentTarget.
+    -> Recalculate/refresh path information for the new target.
+    -> Resume movement toward the new target.
+
+Optional stabilization behavior:
+
+A target-switch threshold/hysteresis MAY be implemented later to prevent
+rapid target oscillation when two targets have almost identical costs.
+
+If implemented, it must not change the fundamental target criterion:
+Pathfinding cost remains the only criterion.
+
+============================================================
+7. TARGET TRACKING
+============================================================
+
+Once a target has been selected, the Target Tracker continuously tracks
+the target's current position.
+
+The target is dynamic.
+
+The target may:
+
+- Move.
+- Change position significantly.
+- Die.
+- Be destroyed.
+- Become unreachable.
+- Leave the relevant area.
+
+Therefore, a previously calculated path must not be treated as permanently
+valid.
+
+Target tracking is responsible for detecting when path information needs
+to be refreshed.
+
+At appropriate intervals/events:
+
+1. Read the target's current position.
+2. Recalculate or update Pathfinding information when necessary.
+3. Verify reachability.
+4. Update the available path nodes/waypoints.
+5. Provide the current movement destination to Movement Controller.
+
+============================================================
+8. ROLE OF ROBLOX PATHFINDING
+============================================================
+
+Roblox PathfindingService is used for two purposes only.
+
+PURPOSE 1:
+Determine reachability.
+
+    Is Player -> Target reachable?
+
+PURPOSE 2:
+Generate path nodes/waypoints.
+
+    If reachable, what nodes exist along the valid route?
+
+PathfindingService is NOT responsible for issuing the actual movement
+commands.
+
+Do NOT implement the movement system as:
+
+    Compute Path
+        -> MoveTo(Node 1)
+        -> MoveTo(Node 2)
+        -> MoveTo(Node 3)
+        -> MoveTo(Target)
+
+unless explicitly required by a future specification.
+
+The intended behavior is:
+
+    Compute Path
+        -> obtain path nodes
+        -> Movement Controller performs Freewalk/direct MoveTo behavior
+        -> Blocking Checker determines whether the current direct movement
+           destination is blocked
+        -> if blocked, use previous path node as a closer destination
+
+============================================================
+9. MOVEMENT CONTROLLER
+============================================================
+
+The Movement Controller is responsible for actual player movement.
+
+Its primary behavior is Freewalk/direct movement toward the current
+destination.
+
+The movement destination is normally related to the current target position.
+
+The Movement Controller must not assume that the target's original
+position remains valid.
+
+During movement, the following conditions may interrupt or modify movement:
+
+- Target changed.
+- Target became invalid.
+- Target died.
+- Target moved enough to require path refresh.
+- Current destination became blocked.
+- Path became stale/invalid.
+- No valid destination remains.
+
+============================================================
+10. BLOCKING CHECKER
+============================================================
+
+The Blocking Checker determines whether the player's direct movement toward
+the current destination is physically blocked.
+
+Raycast definition:
+
+Origin:
+    Player root position.
+
+Direction:
+    CurrentDestination - Player root position.
+
+The raycast is NOT based on:
+
+- Camera LookVector.
+- Player camera direction.
+- Player facing direction.
+
+It is a geometric ray from the player's current position directly toward the
+current movement destination.
+
+Conceptually:
+
+    Player
+       |
+       |----------------------> Destination
+       |
+       X  blocking object
+
+If the raycast detects a blocking object:
+
+    Blocking = true
+
+If there is no blocking object:
+
+    Blocking = false
+
+The exact filtering rules for what counts as a blocking object must be
+defined by implementation (for example, ignoring the player itself and
+other explicitly non-blocking objects).
+
+============================================================
+11. BLOCKED DESTINATION BEHAVIOR
+============================================================
+
+When Blocking Checker reports:
+
+    Blocking = true
+
+the current destination must be moved closer to the player by going back
+one path node.
+
+Example:
+
+    Player -> Node1 -> Node2 -> Node3 -> Target
+
+If the current destination is Target and:
+
+    Raycast(Player -> Target) = blocked
+
+then the movement destination becomes the previous path node:
+
+    Destination = Node3
+
+Check again.
+
+If Node3 is also blocked:
+
+    Destination = Node2
+
+Check again.
+
+Continue moving backward through path nodes until:
+
+    Raycast(Player -> Destination) = clear
+
+Then:
+
+    Movement Controller -> MoveTo(clear destination)
+
+This process is iterative.
+
+The system must NOT permanently modify the actual target position.
+It modifies only the current movement destination.
+
+============================================================
+12. BLOCKING LOOP
+============================================================
+
+The intended logic is:
+
+    Current Destination
+        |
+        v
+    Raycast Player -> Destination
+        |
+        +---- CLEAR ----> Move toward Destination
+        |
+        +---- BLOCKED
+                 |
+                 v
+          Select previous path node
+                 |
+                 v
+          Does a previous node exist?
+              /          \
+            YES           NO
+             |             |
+             v             v
+       Raycast again     BLOCKED STATE
+
+Important:
+
+The Blocking Checker does not select another enemy.
+
+It only determines a safer/closer movement destination for the CURRENT
+target.
+
+============================================================
+13. NO VALID PREVIOUS NODE
+============================================================
+
+The system must handle the case where the destination is blocked but there
+is no earlier path node available.
+
+Example:
+
+    Player
+      |
+    Node1
+      |
+    Target
+
+If all usable destinations are blocked and no previous node exists:
+
+    Movement State = BLOCKED
+
+Do NOT loop indefinitely.
+
+When BLOCKED, the system should request path reevaluation/repath.
+
+Possible flow:
+
+    BLOCKED
+       -> Recalculate Path
+       -> New path available?
+            YES -> update path -> resume movement
+            NO  -> target may be unreachable/invalid -> re-evaluate target
+
+============================================================
+14. TARGET INVALIDATION
+============================================================
+
+The current target must be invalidated immediately when detected as
+invalid.
+
+Examples:
+
+- Target no longer exists.
+- Target is dead.
+- Target loses required movement/root component.
+- Target is no longer a valid enemy.
+- Target becomes otherwise invalid according to Enemy Validation.
+
+When current target becomes invalid:
+
+    Stop/cancel current movement
+        -> Clear CurrentTarget
+        -> Trigger target acquisition/rescan
+        -> Select a new target if one exists
+
+Do not continue moving toward a destroyed/dead target.
+
+============================================================
+15. PATH INVALIDATION / REPATH
+============================================================
+
+A path may become stale even when the target remains valid.
+
+Repath should occur when one or more of the following are true:
+
+- Target moved significantly.
+- Environment changed and invalidated the route.
+- Current path is no longer usable.
+- Blocking behavior reaches a dead end.
+- Target becomes unreachable using the current path.
+- A target switch occurs.
+
+Repath process:
+
+    Current Target
+        -> Get current target position
+        -> PathfindingService
+        -> Reachable?
+             YES -> replace/update path nodes
+             NO  -> target is not currently reachable
+                     -> trigger target re-evaluation
+
+============================================================
+16. PERIODIC RESCAN VS MOVEMENT LOOP
+============================================================
+
+These are separate loops/systems.
+
+SYSTEM A: Target Evaluation
+
+    Periodic:
+        Scan rooms
+        -> Validate enemies
+        -> Calculate path cost
+        -> Select lowest-cost target
+        -> Compare with CurrentTarget
+        -> Switch target if required
+
+SYSTEM B: Movement
+
+    Continuous/active while target exists:
+        Validate target
+        -> Track target position
+        -> Maintain path
+        -> Determine destination
+        -> Blocking Checker
+        -> MoveTo/Freewalk
+        -> Repeat
+
+System A has authority to replace CurrentTarget.
+
+System B has authority over actual movement toward CurrentTarget.
+
+============================================================
+17. PRIORITY OF EVENTS
+============================================================
+
+Higher-priority events must interrupt lower-priority movement behavior.
+
+Recommended priority:
+
+1. Current target invalid/dead/destroyed
+2. New target selected by rescan
+3. Path invalid/unreachable
+4. Blocking/dead-end condition
+5. Target position/path update
+6. Normal movement continuation
+
+Example:
+
+If the system is moving toward Target A and Target A dies:
+
+    DO NOT continue movement.
+
+Instead:
+
+    invalidate Target A
+    -> acquire/select another target
+    -> calculate/update path
+    -> resume movement
+
+============================================================
+18. STATE MACHINE
+============================================================
+
+Recommended logical states:
+
+NO_TARGET
+    No valid target is currently assigned.
+
+ACQUIRING_TARGET
+    Target selection is being performed.
+
+TRACKING_TARGET
+    A valid target exists and its position/path is being monitored.
+
+MOVING
+    Movement Controller is actively moving toward the current destination.
+
+BLOCKED
+    Current direct destination cannot be reached and no usable previous
+    node is currently available.
+
+REPATHING
+    A new path is being calculated.
+
+TARGET_REACHED
+    The movement system considers the current target reached.
+
+Recommended transitions:
+
+NO_TARGET
+    -> ACQUIRING_TARGET
+
+ACQUIRING_TARGET
+    -> TRACKING_TARGET       if target found
+    -> NO_TARGET             if no target found
+
+TRACKING_TARGET
+    -> MOVING                when movement begins
+    -> REPATHING             when path must be refreshed
+    -> NO_TARGET             when target becomes invalid
+
+MOVING
+    -> TRACKING_TARGET       when movement needs reevaluation
+    -> REPATHING             when path is invalid
+    -> BLOCKED               when no valid destination exists
+    -> NO_TARGET             when target becomes invalid
+    -> TARGET_REACHED        when target is reached
+
+BLOCKED
+    -> REPATHING             when path reevaluation is requested
+    -> NO_TARGET             if no valid target remains
+
+REPATHING
+    -> MOVING                if a usable path/destination exists
+    -> BLOCKED               if no usable movement destination exists
+    -> NO_TARGET             if target becomes invalid
+
+TARGET_REACHED
+    -> ACQUIRING_TARGET      for the next target evaluation
+
+============================================================
+19. IMPORTANT SEPARATION OF RESPONSIBILITIES
+============================================================
+
+ENEMY SCANNER:
+    Finds enemies.
+
+ENEMY VALIDATOR:
+    Determines which enemies are valid.
+
+TARGET SELECTOR:
+    Chooses the lowest Pathfinding-cost enemy.
+
+TARGET TRACKER:
+    Tracks the selected enemy and its changing position.
+
+PATH MANAGER:
+    Uses Roblox PathfindingService to determine reachability and provide
+    path nodes.
+
+MOVEMENT CONTROLLER:
+    Performs actual Freewalk/MoveTo movement.
+
+BLOCKING CHECKER:
+    Uses raycast Player -> Destination to determine whether the current
+    direct movement line is blocked.
+
+STATE / INTERRUPT MANAGER:
+    Coordinates transitions and interrupts between the above systems.
+
+No system should silently take over another system's responsibility.
+
+============================================================
+20. COMPLETE EXECUTION FLOW
+============================================================
+
+INITIALIZATION:
+
+    -> Initialize systems
+    -> CurrentTarget = nil
+    -> State = NO_TARGET
+    -> Start periodic target evaluation
+    -> Start movement/update loop
+
+
+PERIODIC TARGET EVALUATION:
+
+    -> Scan all rooms
+    -> Build enemy candidates
+    -> Validate candidates
+    -> For every valid enemy:
+           calculate Pathfinding path
+           determine reachability
+           obtain movement cost
+    -> Ignore unreachable enemies
+    -> Select reachable enemy with lowest movement cost
+    -> Compare against CurrentTarget
+
+    If no target:
+        CurrentTarget = nil
+        State = NO_TARGET
+
+    If same target:
+        Keep CurrentTarget
+        Continue tracking
+
+    If different target:
+        Interrupt current movement
+        CurrentTarget = new target
+        State = REPATHING
+
+
+TARGET TRACKING:
+
+    -> Validate CurrentTarget
+    -> Obtain current target position
+    -> Determine whether path refresh is necessary
+    -> If necessary:
+           calculate new Pathfinding path
+           verify reachability
+           update path nodes
+    -> Determine current movement destination
+    -> State = MOVING
+
+
+MOVEMENT:
+
+    -> Obtain CurrentDestination
+    -> Run Blocking Checker
+
+    If clear:
+        MoveTo/Freewalk toward CurrentDestination
+
+    If blocked:
+        Move destination back by one path node
+        Run Blocking Checker again
+
+        Repeat until:
+            destination is clear
+            OR
+            no previous node exists
+
+
+IF TARGET CHANGES:
+
+    -> Interrupt old movement
+    -> Stop using old target/path
+    -> Assign new target
+    -> Repath
+    -> Determine new destination
+    -> Resume movement
+
+
+IF TARGET DIES/DISAPPEARS:
+
+    -> Interrupt movement
+    -> Invalidate CurrentTarget
+    -> Clear target/path data
+    -> Acquire a new target
+    -> If one exists, repath and resume
+    -> Otherwise remain in NO_TARGET
+
+
+IF PATH BECOMES INVALID:
+
+    -> Interrupt/adjust movement
+    -> Repath toward CurrentTarget
+    -> If reachable:
+           update nodes
+           resume movement
+    -> If unreachable:
+           request target reevaluation
+
+
+IF BLOCKING REACHES A DEAD END:
+
+    -> State = BLOCKED
+    -> Request repath
+    -> If new path exists:
+           update path
+           resume movement
+    -> If no valid route exists:
+           re-evaluate target
+
+============================================================
+21. NON-GOALS / DO NOT IMPLEMENT BY DEFAULT
+============================================================
+
+Do not add alternative target scoring systems.
+
+Do not combine:
+
+    distance + Pathfinding cost + HP + room priority
+
+The required target criterion is:
+
+    minimum Pathfinding movement cost.
+
+Do not make Camera LookVector determine Blocking Checker direction.
+
+Do not make Blocking Checker choose a new enemy.
+
+Do not permanently modify the enemy's actual world position.
+
+Do not assume a Pathfinding path remains valid forever.
+
+Do not allow infinite backward-node searching when every destination is
+blocked.
+
+Do not make periodic rescanning directly execute movement commands.
+
+Do not require the Movement Controller to follow every Pathfinding waypoint
+as a sequence of MoveTo commands.
+
+============================================================
+22. CORE DESIGN PRINCIPLE
+============================================================
+
+The system should conceptually answer four separate questions:
+
+QUESTION 1:
+    "Which enemy should I target?"
+
+ANSWER:
+    The reachable enemy with the lowest Pathfinding movement cost.
+
+QUESTION 2:
+    "Can I reach that enemy, and what route information exists?"
+
+ANSWER:
+    Roblox PathfindingService.
+
+QUESTION 3:
+    "How should I actually move?"
+
+ANSWER:
+    Movement Controller using Freewalk/direct MoveTo behavior.
+
+QUESTION 4:
+    "Is my current direct movement line blocked?"
+
+ANSWER:
+    Blocking Checker using a raycast from Player Root Position directly to
+    the current movement destination.
+
+The systems must remain separated while sharing the required state:
+CurrentTarget, CurrentPath, CurrentDestination, and movement state.
+
+============================================================
+END OF SPECIFICATION
+============================================================

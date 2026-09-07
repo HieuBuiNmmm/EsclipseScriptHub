@@ -1,6 +1,5 @@
--- Coordinator (DungeonQuest): Điều phối loại trừ lẫn nhau giữa các hệ thống
--- cùng điều khiển nhân vật (SmartDodge vs AutoFarm). Module lá — không require ai
--- để tránh cycle import bị darklua (bundler) phát hiện.
+-- Coordinator (DungeonQuest): Điều phối loại trừ lẫn nhau giữa các hệ thống điều khiển nhân vật.
+-- Module lá — không require ai để tránh cycle import bị darklua (bundler) phát hiện.
 
 local coordinator = {}
 local features = {}

@@ -1,29 +1,29 @@
--- Contextual AutoFarm Pathfinder settings (v2) cho DungeonQuest.
--- Cho phép cấu hình riêng nhóm Auto Farm (Move Speed, Retarget Interval, Skill
--- Range/Interval/Enabled/Mode, field prefix "Pathfinder...") theo DUNGEON x
--- LOẠI MỤC TIÊU (Quái thường / Boss 1/2/3).
--- Giá trị lưu per-context trong JSON (Maclib/DungeonQuest_ContextCombat.json).
--- Khi 1 context chưa có override thì fallback về giá trị global hiện tại (autoFarmPathfinder).
+-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
+-- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
+-- Dữ liệu lưu trong file config JSON qua macLib.contextData.
 
 --// Imports
-local shared = require("@routes/DungeonQuest/core/shared")
-local notifier = require("@routes/DungeonQuest/core/notifier")
 local macLib = require("@packages/Maclib")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local shared = require("@routes/DungeonQuest/core/shared")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
+local notifier = require("@routes/DungeonQuest/core/notifier")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local autoFarmPathfinder = require("@routes/DungeonQuest/core/autoFarmPathfinder")
+local autoFarm = require("@routes/DungeonQuest/core/autoFarm")
 
 --// Table
 local contextual = {}
 
---// Metadata field -> get/set trên autoFarmPathfinder (group AutoFarm Pathfinder v2).
+--// Metadata field -> get/set trên autoFarm
 local FIELD_DEFS = {
-	PathfinderRetargetInterval = { get = function() return autoFarmPathfinder.GetRetargetInterval() end, set = function(v) autoFarmPathfinder.SetRetargetInterval(v) end },
-	PathfinderSkillRange = { get = function() return autoFarmPathfinder.GetSkillRange() end, set = function(v) autoFarmPathfinder.SetSkillRange(v) end },
-	PathfinderSkillInterval = { get = function() return autoFarmPathfinder.GetSkillInterval() end, set = function(v) autoFarmPathfinder.SetSkillInterval(v) end },
-	PathfinderSkillEnabled = { get = function() return autoFarmPathfinder.IsSkillEnabled() end, set = function(v) autoFarmPathfinder.SetSkillEnabled(v) end },
-	PathfinderSkillMode = { get = function() return autoFarmPathfinder.GetSkillMode() end, set = function(v) autoFarmPathfinder.SetSkillMode(v) end },
+	TargetReachDistance = {
+		get = function()
+			return autoFarm.GetReachDistance()
+		end,
+		set = function(v)
+			autoFarm.SetReachDistance(v)
+		end,
+	},
 }
 
 local DISPLAY_TO_KEY = {
@@ -40,13 +40,13 @@ local KEY_TO_DISPLAY = {
 }
 
 --// Storage: data[dungeon][target][field] = value
---// Sống trong config đang chọn (nhúng vào file config .json qua MacLib.contextData)
+--// Sống trong config đang chọn (nhúng vào file config .json qua macLib.contextData)
 local data = {}
 local lastDataRef = nil
 local activeConfig = nil
 local configChangedCallbacks = {}
 
---// Các tab đăng ký callback khi đổi config (để làm mới UI context). Hỗ trợ nhiều tab.
+--// Các tab đăng ký callback khi đổi config (để làm mới UI context).
 function contextual.OnConfigChanged(cb)
 	if type(cb) ~= "function" then return end
 	table.insert(configChangedCallbacks, cb)
@@ -58,8 +58,6 @@ function contextual.ReloadFromConfig()
 	local newActive = autoSave.GetActive()
 
 	local configChanged = newActive ~= activeConfig
-	--// MacLib:LoadConfig tạo bảng contextData MỚI -> phát hiện khi data vừa được nạp (kể cả
-	--// khi tên config không đổi, vd autoload) để refresh UI + re-apply context.
 	local dataChanged = macData ~= lastDataRef
 
 	data = macData
@@ -74,7 +72,7 @@ function contextual.ReloadFromConfig()
 	return configChanged or dataChanged
 end
 
---// Đồng bộ dữ liệu lên MacLib để mỗi lần save config là lưu kèm contextData
+--// Đồng bộ dữ liệu lên macLib để mỗi lần save config là lưu kèm contextData
 local function bindMacLib()
 	macLib.contextData = data
 end
@@ -86,7 +84,6 @@ local function persist()
 end
 
 --// Đảm bảo context có đầy đủ tất cả field (điền mặc định = global fallback nếu thiếu)
---// Trả về true nếu có field được khởi tạo mới.
 local function ensureContextComplete(dungeon, targetKey)
 	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
 	if not KEY_TO_DISPLAY[targetKey] then return end
@@ -106,8 +103,6 @@ local function ensureContextComplete(dungeon, targetKey)
 end
 
 --// Tự khởi tạo context base cho TOÀN BỘ map x target khi khởi tạo script.
---// Đảm bảo mọi dungeon trong catalog đều có sẵn đủ field (= giá trị global hiện tại)
---// thay vì chỉ tạo khi người dùng bắt đầu chỉnh sửa. Không ghi đè override đã lưu.
 function contextual.SeedAllDefaults()
 	local targets = { "Mob", "Boss1", "Boss2", "Boss3" }
 	local seededAny = false
@@ -124,7 +119,7 @@ function contextual.SeedAllDefaults()
 	return seededAny
 end
 
---// Ghi override cho context cụ thể (context luôn đầy đủ tất cả field)
+--// Ghi override cho context cụ thể
 function contextual.SetField(dungeon, targetKey, field, value)
 	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
 	if not KEY_TO_DISPLAY[targetKey] then return end
@@ -149,7 +144,6 @@ end
 function contextual.GetField(dungeon, targetKey, field)
 	local def = FIELD_DEFS[field]
 	if not def then return nil end
-	--// Ngoài dungeon (tên nil/rỗng) -> không có context -> dùng global hiện tại
 	if type(dungeon) == "string" and #dungeon > 0 then
 		local ctx = data[dungeon] and data[dungeon][targetKey]
 		if ctx and ctx[field] ~= nil then return ctx[field] end
@@ -166,7 +160,7 @@ function contextual.GetContext(dungeon, targetKey)
 	return out
 end
 
---// Áp bộ giá trị của 1 context vào shared (để farm dùng)
+--// Áp bộ giá trị của 1 context vào autoFarm
 function contextual.ApplyContext(dungeon, targetKey)
 	local ctx = contextual.GetContext(dungeon, targetKey)
 	for field, def in pairs(FIELD_DEFS) do
@@ -174,7 +168,7 @@ function contextual.ApplyContext(dungeon, targetKey)
 	end
 end
 
---// Áp context HIỆN TẠI (dungeon đang chơi + mục tiêu đang farm) lên shared.
+--// Áp context HIỆN TẠI (dungeon đang chơi + mục tiêu đang farm) lên autoFarm.
 function contextual.ApplyCurrent()
 	local dungeon = shared.GetCurrentDungeonName()
 	local targetKey = shared.GetCombatTargetKey()
@@ -198,7 +192,7 @@ function contextual.GetTargets()
 end
 
 function contextual.GetDisplayForTarget(key)
-	return KEY_TO_DISPLAY[key]
+	return KEY_TO_DISPLAY[key] or "Normal"
 end
 
 --// Auto-switch watcher: lắng nghe dungeon/boss đổi -> áp context hiện tại + thông báo.
@@ -208,20 +202,18 @@ local function findAndApply(force)
 	local dungeon = shared.GetCurrentDungeonName()
 	local targetKey = shared.GetCombatTargetKey()
 
-	--// Rời dungeon hoặc chưa vào -> reset cache để lần vào lại được áp dụng lại context
 	if not dungeon then
 		lastDungeon = nil
 		lastApplied = nil
 		return
 	end
 
-	--// Đảm bảo áp lại khi cùng dungeon cùng target (vd vừa vào lại dungeon)
 	if not force and dungeon == lastDungeon and targetKey == lastApplied then return end
 
 	contextual.ApplyContext(dungeon, targetKey)
 
 	if targetKey ~= "Mob" then
-		notifier.Notify("Auto Farm Context", dungeon .. " - " .. KEY_TO_DISPLAY[targetKey], 2)
+		notifier.Notify("Auto Farm Context", dungeon .. " - " .. (KEY_TO_DISPLAY[targetKey] or targetKey), 2)
 	end
 	lastApplied = targetKey
 	lastDungeon = dungeon
@@ -236,12 +228,9 @@ function contextual.Init()
 	shared.OnBossIndexChanged(function() findAndApply(false) end)
 	shared.OnBossActiveChanged(function() findAndApply(false) end)
 
-	--// Poll ít hơn: dungeon/boss đổi đã được xử lý bằng event callbacks trên, poll chỉ
-	--// còn để bắt thay đổi config file từ bên ngoài -> giảm CPU nền.
 	task.spawn(function()
 		while lifecycle.IsActive() do
 			task.wait(1.0)
-			--// Đổi config -> nạp lại dữ liệu context của config mới (+ re-apply)
 			if contextual.ReloadFromConfig() then
 				findAndApply(true)
 			end

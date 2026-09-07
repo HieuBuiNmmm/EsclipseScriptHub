@@ -55,7 +55,6 @@ smartDodge.GetMaxTeleportStep = dodge.GetMaxTeleportStep
 smartDodge.SetMaintainSnapHeight = dodge.SetMaintainSnapHeight
 smartDodge.IsMaintainSnapHeightEnabled = dodge.IsMaintainSnapHeightEnabled
 smartDodge.IsDodging = dodge.IsDodging
-smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus
 smartDodge.OnDodgeStatusChanged = dodge.OnDodgeStatusChanged
 
@@ -70,8 +69,7 @@ smartDodge.IsInDanger = engine.IsInDanger
 smartDodge.GetCurrentSafeSpot = engine.GetCurrentSafeSpot
 smartDodge.OnSafeSpotChanged = engine.OnSafeSpotChanged
 
---// Đăng ký với coordinator: khi hệ thống khác (Auto Farm) chiếm độc quyền thì engine Smart Dodge
---// bị tắt qua StopEngine; IsEnabled dùng để coordinator biết engine đang chạy.
+--// Đăng ký với coordinator
 coordinator.Register("SmartDodge", smartDodge.StopEngine, smartDodge.IsEnabled)
 
 --// Dọn dẹp toàn diện khi shutdown
