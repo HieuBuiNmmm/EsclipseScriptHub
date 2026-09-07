@@ -22,10 +22,13 @@ local shared = {}
 
 --// State
 local humanoid = nil
+local rootPart = nil
 
 local enabled = false
 local fastSpeed = 16
 local normalSpeed = 16
+local instantAccelEnabled = true
+local instantBrakeEnabled = false
 
 
 local dungeonStartTime = nil
@@ -298,6 +301,22 @@ function shared.GetFastSpeed()
 	return fastSpeed
 end
 
+function shared.SetInstantAccelEnabled(state)
+	instantAccelEnabled = state and true or false
+end
+
+function shared.IsInstantAccelEnabled()
+	return instantAccelEnabled
+end
+
+function shared.SetInstantBrakeEnabled(state)
+	instantBrakeEnabled = state and true or false
+end
+
+function shared.IsInstantBrakeEnabled()
+	return instantBrakeEnabled
+end
+
 --// Humanoid setup
 local function connectSpeedListener()
 	if speedConnection then
@@ -318,8 +337,47 @@ function shared.SetHumanoid(character)
 	if not newHumanoid then return end
 
 	humanoid = newHumanoid
+	rootPart = character:WaitForChild("HumanoidRootPart", 10) or character.PrimaryPart
 	normalSpeed = humanoid.WalkSpeed
 	if enabled then humanoid.WalkSpeed = fastSpeed end
+end
+
+--// Instant Movement (Acceleration / Brake)
+local function updateInstantMovement()
+	if not lifecycle.IsActive() then return end
+	if not instantAccelEnabled and not instantBrakeEnabled then return end
+	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 or humanoid.Sit then return end
+	if not rootPart or not rootPart.Parent then
+		local char = player and player.Character
+		rootPart = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+		if not rootPart then return end
+	end
+	if rootPart.Anchored then return end
+
+	local moveDir = humanoid.MoveDirection
+	local curVel = rootPart.AssemblyLinearVelocity
+
+	if moveDir.Magnitude > 0.05 then
+		if instantAccelEnabled then
+			local targetSpeed = enabled and fastSpeed or humanoid.WalkSpeed
+			rootPart.AssemblyLinearVelocity = Vector3.new(
+				moveDir.X * targetSpeed,
+				curVel.Y,
+				moveDir.Z * targetSpeed
+			)
+		end
+	elseif instantBrakeEnabled then
+		if math.abs(curVel.X) > 0.1 or math.abs(curVel.Z) > 0.1 then
+			rootPart.AssemblyLinearVelocity = Vector3.new(0, curVel.Y, 0)
+		end
+	end
+end
+
+if services.RunService then
+	local simEvent = services.RunService.PreSimulation or services.RunService.Heartbeat
+	if simEvent then
+		trackCleanupConnection(simEvent:Connect(updateInstantMovement))
+	end
 end
 
 function shared.GetDungeonStartTime()

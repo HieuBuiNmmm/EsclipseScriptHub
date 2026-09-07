@@ -11,6 +11,7 @@ local geometry = require("@routes/DungeonQuest/core/smartDodge/geometry")
 local safeSpot = require("@routes/DungeonQuest/core/smartDodge/safeSpot")
 local dodge = require("@routes/DungeonQuest/core/smartDodge/dodge")
 local engine = require("@routes/DungeonQuest/core/smartDodge/engine")
+local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
 
 --// Table
 local smartDodge = {}
@@ -18,6 +19,10 @@ local smartDodge = {}
 --// Threat Detection (Module 1)
 smartDodge.AddCustomHazard = detection.AddCustomHazard
 smartDodge.AddTrajectoryProjectile = detection.AddTrajectoryProjectile
+smartDodge.SetTrajectoryLookahead = detection.SetTrajectoryLookahead
+smartDodge.GetTrajectoryLookahead = detection.GetTrajectoryLookahead
+smartDodge.SetTrajectoryWidthPadding = detection.SetTrajectoryWidthPadding
+smartDodge.GetTrajectoryWidthPadding = detection.GetTrajectoryWidthPadding
 smartDodge.RegisterPlayerSkill = detection.RegisterPlayerSkill
 
 smartDodge.SetLogHazards = detection.SetLogHazards
@@ -46,6 +51,8 @@ smartDodge.GetHitboxPadding = geometry.GetHitboxPadding
 --// Dodge (Module 5)
 smartDodge.SetAutoDodge = dodge.SetAutoDodge
 smartDodge.IsAutoDodgeEnabled = dodge.IsAutoDodgeEnabled
+smartDodge.SetDodgeMode = dodge.SetDodgeMode
+smartDodge.GetDodgeMode = dodge.GetDodgeMode
 smartDodge.SetMaxDodgeTime = dodge.SetMaxDodgeTime
 smartDodge.GetMaxDodgeTime = dodge.GetMaxDodgeTime
 smartDodge.SetMaxSnapDistance = dodge.SetMaxSnapDistance
@@ -55,8 +62,19 @@ smartDodge.GetMaxTeleportStep = dodge.GetMaxTeleportStep
 smartDodge.SetMaintainSnapHeight = dodge.SetMaintainSnapHeight
 smartDodge.IsMaintainSnapHeightEnabled = dodge.IsMaintainSnapHeightEnabled
 smartDodge.IsDodging = dodge.IsDodging
+smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus
 smartDodge.OnDodgeStatusChanged = dodge.OnDodgeStatusChanged
+
+--// Target Facing
+smartDodge.SetAutoFaceTarget = targetFacing.SetEnabled
+smartDodge.IsAutoFaceTargetEnabled = targetFacing.IsEnabled
+smartDodge.GetTargetPosition = targetFacing.GetTargetPosition
+-- Backward compatibility aliases
+smartDodge.SetAutoFaceBoss = smartDodge.SetAutoFaceTarget
+smartDodge.IsAutoFaceBossEnabled = smartDodge.IsAutoFaceTargetEnabled
+smartDodge.GetBossPosition = smartDodge.GetTargetPosition
+smartDodge.IsBossActive = targetFacing.IsEnabled
 
 --// Engine (Module 6)
 smartDodge.StartEngine = engine.StartEngine
@@ -69,7 +87,8 @@ smartDodge.IsInDanger = engine.IsInDanger
 smartDodge.GetCurrentSafeSpot = engine.GetCurrentSafeSpot
 smartDodge.OnSafeSpotChanged = engine.OnSafeSpotChanged
 
---// Đăng ký với coordinator
+--// Đăng ký với coordinator: khi hệ thống khác (Auto Farm) chiếm độc quyền thì engine Smart Dodge
+--// bị tắt qua StopEngine; IsEnabled dùng để coordinator biết engine đang chạy.
 coordinator.Register("SmartDodge", smartDodge.StopEngine, smartDodge.IsEnabled)
 
 --// Dọn dẹp toàn diện khi shutdown

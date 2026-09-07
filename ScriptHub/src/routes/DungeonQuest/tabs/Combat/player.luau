@@ -30,6 +30,22 @@ return function(window, tab)
 		end),
 	}, "Slider_FastSpeed"))
 
+	section:Toggle({
+		Name = "Instant Acceleration (Max Speed tức thì)",
+		Default = shared.IsInstantAccelEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetInstantAccelEnabled(state)
+		end),
+	}, "Toggle_InstantAcceleration")
+
+	section:Toggle({
+		Name = "Instant Brake (Dừng tức thì / Chống trượt)",
+		Default = shared.IsInstantBrakeEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetInstantBrakeEnabled(state)
+		end),
+	}, "Toggle_InstantBrake")
+
 	section:Header({ Name = "Shortcuts" })
 
 	section:Toggle({

@@ -90,21 +90,46 @@ local IGNORED_NAMES = {
 local TRAJECTORY_PROJECTILE_CONFIGS = {
 	["firstbosscrisscross"] = {
 		name = "firstBossCrissCross",
-		dangerRadius = 4.0,       -- Bán kính vùng sát thương của đạn (studs)
-		maxLookahead = 300.0,     -- Chiều dài hành lang dự đoán xuyên map (studs)
+		dangerRadius = 4.0,       -- Bán kính vùng sát thương tối thiểu của đạn (studs)
+		maxLookahead = nil,       -- Chiều dài hành lang dự đoán (nil = dùng trajectoryLookahead động)
 		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho quỹ đạo
 	},
 	["firstbossseekingspikes"] = {
 		name = "firstBossSeekingSpikes",
-		dangerRadius = 4.5,       -- Bán kính vùng sát thương của đạn (studs)
-		maxLookahead = 300.0,     -- Chiều dài hành lang dự đoán xuyên map (studs)
+		dangerRadius = 4.5,       -- Bán kính vùng sát thương tối thiểu của đạn (studs)
+		maxLookahead = nil,       -- Chiều dài hành lang dự đoán (nil = dùng trajectoryLookahead động)
 		visualColor = Color3.fromRGB(255, 110, 0), -- Màu cam đậm cho Seeking Spikes
 	},
 }
 
+--// Cấu hình động cho hành lang quỹ đạo đạn (Trajectory Tuning)
+local trajectoryLookahead = 50.0          -- Chiều dài hành lang dự đoán (mặc định 50 studs thay vì 300 để tránh tắc map)
+local trajectoryWidthPadding = 2.5        -- Khoảng đệm nới rộng 2 bên sườn dựa trên kích thước thật của chiêu (studs)
+
 --// Bảng lưu trữ trạng thái khóa hướng quỹ đạo (Direction Locking & State Tracking)
 local lockedProjectiles = {} -- [BasePart] = { originPos, forward2D, dangerRadius, maxLookahead, locked, config }
 local activeTrajectoryVisuals = {} -- [BasePart] = Part
+
+--// Getters/Setters cho cấu hình Trajectory
+detection.SetTrajectoryLookahead = function(val)
+	if type(val) == "number" and val >= 10 then
+		trajectoryLookahead = val
+	end
+end
+
+detection.GetTrajectoryLookahead = function()
+	return trajectoryLookahead
+end
+
+detection.SetTrajectoryWidthPadding = function(val)
+	if type(val) == "number" and val >= 0 then
+		trajectoryWidthPadding = val
+	end
+end
+
+detection.GetTrajectoryWidthPadding = function()
+	return trajectoryWidthPadding
+end
 
 --// Getters nội bộ cho geometry (tránh vòng phụ thuộc detection -> geometry: geometry đọc qua lazy require).
 detection.GetActiveHazardsMap = function()
@@ -150,7 +175,7 @@ function detection.AddTrajectoryProjectile(skillName, dangerRadius, maxLookahead
 		TRAJECTORY_PROJECTILE_CONFIGS[clean] = {
 			name = skillName,
 			dangerRadius = dangerRadius or 4.0,
-			maxLookahead = maxLookahead or 300.0,
+			maxLookahead = maxLookahead,
 			visualColor = Color3.fromRGB(255, 130, 0),
 		}
 		if logHazards then
@@ -189,21 +214,37 @@ local function lockTrajectoryForPart(part)
 	local config = getTrajectoryConfigForPart(part)
 	if not config then return nil end
 
-	-- Bắt hướng LookVector tại thời điểm Frame 0 (spawn CFrame)
-	local look = part.CFrame.LookVector
-	local forward2D = Vector3.new(look.X, 0, look.Z)
-	if forward2D.Magnitude > 0.001 then
-		forward2D = forward2D.Unit
+	-- Bắt hướng bay từ Velocity (nếu đang bay) hoặc CFrame.LookVector tại thời điểm spawn
+	local forward2D = Vector3.new(0, 0, -1)
+	local vel = (part.AssemblyLinearVelocity or (part:IsA("BasePart") and part.Velocity))
+	if vel and Vector3.new(vel.X, 0, vel.Z).Magnitude > 2 then
+		forward2D = Vector3.new(vel.X, 0, vel.Z).Unit
 	else
-		forward2D = Vector3.new(0, 0, -1)
+		local look = part.CFrame.LookVector
+		local look2D = Vector3.new(look.X, 0, look.Z)
+		if look2D.Magnitude > 0.001 then
+			forward2D = look2D.Unit
+		end
 	end
+
+	-- Đo bề ngang tiết diện thực tế (cross-section) vuông góc với hướng bay:
+	-- Dùng math.min(Size.X, Size.Z) để lấy bề ngang viên đạn, tránh lấy chiều dài thân đạn (Length)
+	local crossSectionWidth = math.min(part.Size.X, part.Size.Z)
+	if crossSectionWidth < 1 then
+		crossSectionWidth = math.max(part.Size.X, part.Size.Z)
+	end
+	crossSectionWidth = math.clamp(crossSectionWidth, 2.0, 12.0)
+
+	local baseMinRadius = config.dangerRadius or (crossSectionWidth / 2)
+	local finalDangerRadius = baseMinRadius + trajectoryWidthPadding
+	local finalMaxLookahead = config.maxLookahead or trajectoryLookahead
 
 	local data = {
 		part = part,
 		originPos = part.Position,
 		forward2D = forward2D,
-		dangerRadius = config.dangerRadius or 4.0,
-		maxLookahead = config.maxLookahead or 85.0,
+		dangerRadius = finalDangerRadius,
+		maxLookahead = finalMaxLookahead,
 		config = config,
 		spawnTime = os.clock(),
 		locked = true,
@@ -211,8 +252,8 @@ local function lockTrajectoryForPart(part)
 
 	lockedProjectiles[part] = data
 	if logHazards then
-		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm"):format(
-			part.Name, forward2D.X, forward2D.Z, data.maxLookahead
+		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm | Width: %.1fm (Radius: %.1fm)"):format(
+			part.Name, forward2D.X, forward2D.Z, data.maxLookahead, data.dangerRadius * 2, data.dangerRadius
 		))
 	end
 
@@ -316,6 +357,21 @@ initPlayerSkillWatcher()
 local function isPlayerAsset(instance)
 	if not instance then return true end
 
+	local instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
+	local instNameLower = instNameClean:lower():gsub("%s+", "")
+
+	-- 0. Ngoại lệ chiêu của Boss / Enemy -> Tuyệt đối không phải của Player
+	if CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
+		or instNameLower:find("boss")
+		or instNameLower:find("enemy")
+		or instNameLower:find("mob")
+		or instNameLower:find("multiring")
+		or instNameLower:find("crisscross")
+		or instNameLower:find("seekingspike")
+		or instNameLower:find("thirdboss") then
+		return false
+	end
+
 	-- 1. Kiểm tra trực thuộc Character của bất kỳ người chơi nào
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p.Character and (instance == p.Character or instance:IsDescendantOf(p.Character)) then
@@ -323,7 +379,7 @@ local function isPlayerAsset(instance)
 		end
 	end
 
-	-- 2. Kiểm tra trực tiếp trong Backpack & Character của mọi người chơi tại thời điểm t = 0
+	-- 2. Kiểm tra trực tiếp trong Backpack & Character của mọi người chơi (Khớp chính xác tên, không fuzzy substring)
 	local instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
 	local instNameLower = instNameClean:lower():gsub("%s+", "")
 
@@ -336,7 +392,7 @@ local function isPlayerAsset(instance)
 			end
 			for _, item in ipairs(bp:GetChildren()) do
 				local itemLower = item.Name:lower():gsub("%s+", "")
-				if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+				if item.Name == instance.Name or itemLower == instNameLower then
 					detection.RegisterPlayerSkill(item.Name)
 					return true
 				end
@@ -351,7 +407,7 @@ local function isPlayerAsset(instance)
 			for _, item in ipairs(p.Character:GetChildren()) do
 				if item:IsA("Tool") then
 					local itemLower = item.Name:lower():gsub("%s+", "")
-					if item.Name == instance.Name or itemLower == instNameLower or instNameLower:find(itemLower, 1, true) or itemLower:find(instNameLower, 1, true) then
+					if item.Name == instance.Name or itemLower == instNameLower then
 						detection.RegisterPlayerSkill(item.Name)
 						return true
 					end
@@ -381,13 +437,6 @@ local function isPlayerAsset(instance)
 		end
 	end
 
-	-- 0. Ngoại lệ chiêu của Boss -> Tuyệt đối không phải của Player
-	if CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
-		or instance.Name:lower():find("multiring")
-		or instance.Name:lower():find("thirdboss") then
-		return false
-	end
-
 	-- 4. Kiểm tra tên Instance có chứa tên hoặc UserId của Player không
 	for _, p in ipairs(Players:GetPlayers()) do
 		local pNameLower = p.Name:lower()
@@ -396,16 +445,14 @@ local function isPlayerAsset(instance)
 		end
 	end
 
-	-- 5. So khớp với danh sách tên kỹ năng đã đăng ký
+	-- 5. So khớp với danh sách tên kỹ năng đã đăng ký (Chính xác tên, không fuzzy substring tránh trùng tên chiêu Boss)
 	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
 		return true
 	end
 
-	for skillName in pairs(ignoredSkillNames) do
-		local sLower = skillName:lower():gsub("%s+", "")
-		if #sLower >= 4 and instNameLower:find(sLower, 1, true) then
-			return true
-		end
+	-- Riêng các hiệu ứng Aura thông dụng của player
+	if instNameLower:find("enhancedaura", 1, true) or instNameLower:find("auraring", 1, true) or instNameLower:find("groundaura", 1, true) then
+		return true
 	end
 
 	return false
@@ -415,13 +462,10 @@ end
 local HELPER_PART_NAMES = {
 	["primarypart"] = true,
 	["center"] = true,
-	["hitbox"] = true,
 	["root"] = true,
 	["main"] = true,
 	["handle"] = true,
 	["humanoidrootpart"] = true,
-	["firstbossbeampart"] = true,
-	["beampart"] = true,
 }
 
 --// Kiểm tra xem một Part/MeshPart cụ thể có thuộc danh sách bỏ qua hay không
@@ -576,11 +620,13 @@ local function registerHazard(instance)
 	if instance:IsA("Folder") then return end
 	if instance:FindFirstChildOfClass("Humanoid") then return end
 	if instance.Name:find("SmartDodge") then return end
-	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] or isPlayerAsset(instance) then return end
+	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] then return end
 
+	-- FAST REJECTION: Trích xuất part hiểm họa trước.
+	-- Nếu không có part Neon và không thuộc ngoại lệ -> Bỏ qua ngay lập tức trong 0.0001ms mà KHÔNG chạy isPlayerAsset
 	local hazardParts, isException = extractHazardParts(instance)
 	if #hazardParts == 0 then
-		-- Nếu là Model mới tạo có thể các part con chưa kịp parent vào Model
+		-- Nếu là Model mới tạo, các part con có thể chưa kịp replicate hoặc parent vào Model
 		if instance:IsA("Model") then
 			local c
 			c = instance.DescendantAdded:Connect(function(desc)
@@ -591,12 +637,26 @@ local function registerHazard(instance)
 					end
 				end
 			end)
-			task.delay(1, function()
+			task.delay(1.5, function()
+				if c then c:Disconnect(); c = nil end
+			end)
+		elseif instance:IsA("BasePart") and instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
+			local c
+			c = instance:GetPropertyChangedSignal("Material"):Connect(function()
+				if instance.Material == Enum.Material.Neon then
+					if c then c:Disconnect(); c = nil end
+					registerHazard(instance)
+				end
+			end)
+			task.delay(1.5, function()
 				if c then c:Disconnect(); c = nil end
 			end)
 		end
 		return
 	end
+
+	-- Chỉ khi chắc chắn có Part nguy hiểm thực sự mới kiểm tra xem có phải skill của Player/Đồng đội không
+	if isPlayerAsset(instance) then return end
 
 	local pos = getInstancePosition(instance, hazardParts)
 	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -822,9 +882,22 @@ function detection.UpdateTrajectoryVisuals()
 						local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
 						if trajData and trajData.forward2D then
 							currentActiveParts[part] = true
+
+							-- Cập nhật động kích thước theo slider UI thời gian thực
+							local crossSectionWidth = math.min(part.Size.X, part.Size.Z)
+							if crossSectionWidth < 1 then
+								crossSectionWidth = math.max(part.Size.X, part.Size.Z)
+							end
+							crossSectionWidth = math.clamp(crossSectionWidth, 2.0, 12.0)
+
+							local baseMinRadius = trajData.config.dangerRadius or (crossSectionWidth / 2)
+							local dangerRadius = baseMinRadius + trajectoryWidthPadding
+							local maxLookahead = trajData.config.maxLookahead or trajectoryLookahead
+
+							trajData.dangerRadius = dangerRadius
+							trajData.maxLookahead = maxLookahead
+
 							local forward2D = trajData.forward2D
-							local maxLookahead = trajData.maxLookahead
-							local dangerRadius = trajData.dangerRadius
 							local originPos = part.Position
 							local centerPos = originPos + forward2D * (maxLookahead / 2)
 
@@ -851,7 +924,7 @@ function detection.UpdateTrajectoryVisuals()
 
 								local bb = Instance.new("BillboardGui")
 								bb.Name = "TrajGui"
-								bb.Size = UDim2.fromOffset(180, 26)
+								bb.Size = UDim2.fromOffset(200, 26)
 								bb.StudsOffset = Vector3.new(0, 3.5, 0)
 								bb.AlwaysOnTop = true
 								bb.Adornee = vPart
@@ -866,15 +939,18 @@ function detection.UpdateTrajectoryVisuals()
 								label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 								label.Font = Enum.Font.GothamBold
 								label.TextSize = 12
-								label.Text = ("🚀 TRAJECTORY: %s (%.0fm)"):format(part.Name, maxLookahead)
+								label.Text = ("🚀 TRAJECTORY: %s (%.0fm | W:%.1fm)"):format(part.Name, maxLookahead, dangerRadius * 2)
 								label.Parent = bb
 
 								activeTrajectoryVisuals[part] = vPart
+
+								-- Chỉ bắn Raycast lấy độ cao sàn một lần duy nhất lúc tạo part
+								local floorPos, hasFloor = getGeometry().GetFloorPosition(centerPos)
+								trajData.floorY = hasFloor and floorPos.Y or centerPos.Y
 							end
 
 							vPart.Size = Vector3.new(dangerRadius * 2, 2.0, maxLookahead)
-							local floorPos, hasFloor = getGeometry().GetFloorPosition(centerPos)
-							local visualCenter = hasFloor and Vector3.new(centerPos.X, floorPos.Y, centerPos.Z) or centerPos
+							local visualCenter = Vector3.new(centerPos.X, trajData.floorY or centerPos.Y, centerPos.Z)
 							vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
 							vPart.Parent = Workspace.Terrain
 						end
