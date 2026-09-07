@@ -39,21 +39,34 @@ local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
 raycastParams.IgnoreWater = true
 
---// Bắn raycast kiểm tra sàn nhà và snap tọa độ xuống mặt đất
-function geometry.GetFloorPosition(pos)
-	local ignoreList = {}
+local cachedIgnoreList = {}
+local lastFilterRebuildTime = 0
+
+local function updateRaycastFilter(force)
+	local now = os.clock()
+	if not force and (now - lastFilterRebuildTime < 0.25) then
+		return
+	end
+	lastFilterRebuildTime = now
+
+	table.clear(cachedIgnoreList)
 	for _, p in ipairs(Players:GetPlayers()) do
-		if p.Character then table.insert(ignoreList, p.Character) end
+		if p.Character then table.insert(cachedIgnoreList, p.Character) end
 	end
 	if Workspace:FindFirstChild("RaycastIgnore") then
-		table.insert(ignoreList, Workspace.RaycastIgnore)
+		table.insert(cachedIgnoreList, Workspace.RaycastIgnore)
 	end
-	--// (Refactor) Marker "SmartDodge_SafeMarker" không cần filter: CanQuery=false nên raycast
-	--// không bao giờ trúng — tên cũng đã chứa "SmartDodge" để lọc ở các chỗ khác.
 	for inst in pairs(det().GetActiveHazardsMap()) do
-		table.insert(ignoreList, inst)
+		table.insert(cachedIgnoreList, inst)
 	end
-	raycastParams.FilterDescendantsInstances = ignoreList
+	raycastParams.FilterDescendantsInstances = cachedIgnoreList
+end
+
+local player = Players.LocalPlayer
+
+--// Bắn raycast kiểm tra sàn nhà và snap tọa độ xuống mặt đất
+function geometry.GetFloorPosition(pos)
+	updateRaycastFilter(false)
 
 	local rayOrigin = Vector3.new(pos.X, pos.Y + 6, pos.Z)
 	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
@@ -65,12 +78,38 @@ function geometry.GetFloorPosition(pos)
 	return pos, false
 end
 
+--// Bắn raycast kiểm tra sàn nhà và trả về cao độ Y thực tế của mặt sàn (không cộng offset +3)
+function geometry.GetRawFloorY(pos)
+	updateRaycastFilter(false)
+
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 8, pos.Z)
+	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
+	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
+
+	if result and result.Position then
+		return result.Position.Y, true
+	end
+
+	-- Fallback kiểm tra dưới chân Player
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if rootPart then
+		local pOrigin = Vector3.new(rootPart.Position.X, rootPart.Position.Y + 6, rootPart.Position.Z)
+		local pResult = Workspace:Raycast(pOrigin, rayDir, raycastParams)
+		if pResult and pResult.Position then
+			return pResult.Position.Y, true
+		end
+		return rootPart.Position.Y - 2.8, false
+	end
+
+	return pos.Y, false
+end
+
 --// Kiểm tra xem điểm P có nằm trong hành lang quỹ đạo của một Projectile Part không
 function geometry.IsPointInTrajectory(point, part)
 	local det = det()
 	local data = det.GetLockedProjectiles()[part]
 	if not data then
-		data = det.LockTrajectoryForPart(part)
+		data = det.LockTrajectoryForPart and det.LockTrajectoryForPart(part)
 	end
 	if not data then return false end
 
@@ -92,9 +131,10 @@ function geometry.IsPointInTrajectory(point, part)
 	local perpVec = toPoint2D - projOnAxis
 	local perpDist = perpVec.Magnitude
 
-	-- Kiểm tra độ cao Y
-	local heightDiff = math.abs(point.Y - origin.Y)
-	if heightDiff > 14 then
+	-- Kiểm tra độ cao Y theo độ cao sàn đã khóa (Raw Floor Y) của chiêu
+	local refY = data.rawFloorY or origin.Y
+	local heightDiff = math.abs(point.Y - (refY + 2.8))
+	if heightDiff > 12 then
 		return false
 	end
 
@@ -281,6 +321,29 @@ function geometry.IsPointInAnyHazard(point)
 	return false, nil, nil, nil
 end
 
+--// Kiểm tra xem một đĩa tròn bán kính safeRadius quanh điểm P có hoàn toàn an toàn (không chạm bất kỳ hazard nào) không
+function geometry.IsSpotFullySafe(centerPoint, safeRadius)
+	if not centerPoint then return false end
+	safeRadius = safeRadius or 0.8
+
+	-- 1. Kiểm tra chính tâm điểm P
+	if geometry.IsPointInAnyHazard(centerPoint) then
+		return false
+	end
+
+	-- 2. Kiểm tra chu vi đĩa tròn xung quanh điểm P (4 hướng chính: 0, 90, 180, 270)
+	local angles = { 0, 90, 180, 270 }
+	for _, deg in ipairs(angles) do
+		local rad = math.rad(deg)
+		local sample = centerPoint + Vector3.new(math.cos(rad) * safeRadius, 0, math.sin(rad) * safeRadius)
+		if geometry.IsPointInAnyHazard(sample) then
+			return false -- Bị chạm mép vào một hazard nào đó
+		end
+	end
+
+	return true
+end
+
 --// Lấy danh sách tất cả các Hazard Instance đang bao phủ điểm P (hỗ trợ nhiều chiêu đè nhau)
 function geometry.GetAllHazardsAtPoint(point)
 	local det = det()
@@ -328,11 +391,12 @@ end
 --// currentHazardsSet: tập hợp các Hazard mà người chơi ĐANG ĐỨNG TRONG (được phép băng qua để thoát ra)
 function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentDangerPart)
 	local dist = (toPos - fromPos).Magnitude
-	if dist <= 4.0 then
-		return true -- Bước ngắn / Instant Snap an toàn
+	if dist <= 1.5 then
+		return true -- Chỉ bỏ qua bước cực ngắn <= 1.5 studs
 	end
 
-	local steps = math.clamp(math.floor(dist / 3.0), 2, 5)
+	-- Chia nhỏ đường đi mỗi đoạn ~1.8 studs để kiểm tra nghiêm ngặt từng bước
+	local steps = math.clamp(math.ceil(dist / 1.8), 2, 8)
 	for i = 1, steps - 1 do
 		local t = i / steps
 		local samplePos = fromPos:Lerp(toPos, t)
@@ -342,7 +406,7 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 			if hitTraj and hitTraj.isTrajectory then
 				return false
 			end
-			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường
+			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường, từ chối ngay
 			local hitInst = (hitInfo and hitInfo.Instance)
 				or (hitPart and (hitPart:IsA("Model") and hitPart or hitPart.Parent))
 

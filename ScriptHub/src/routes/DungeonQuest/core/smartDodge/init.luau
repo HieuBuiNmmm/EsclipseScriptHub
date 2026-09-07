@@ -11,6 +11,7 @@ local geometry = require("@routes/DungeonQuest/core/smartDodge/geometry")
 local safeSpot = require("@routes/DungeonQuest/core/smartDodge/safeSpot")
 local dodge = require("@routes/DungeonQuest/core/smartDodge/dodge")
 local engine = require("@routes/DungeonQuest/core/smartDodge/engine")
+local bossFacing = require("@routes/DungeonQuest/core/smartDodge/bossFacing")
 
 --// Table
 local smartDodge = {}
@@ -18,6 +19,10 @@ local smartDodge = {}
 --// Threat Detection (Module 1)
 smartDodge.AddCustomHazard = detection.AddCustomHazard
 smartDodge.AddTrajectoryProjectile = detection.AddTrajectoryProjectile
+smartDodge.SetTrajectoryLookahead = detection.SetTrajectoryLookahead
+smartDodge.GetTrajectoryLookahead = detection.GetTrajectoryLookahead
+smartDodge.SetTrajectoryWidthPadding = detection.SetTrajectoryWidthPadding
+smartDodge.GetTrajectoryWidthPadding = detection.GetTrajectoryWidthPadding
 smartDodge.RegisterPlayerSkill = detection.RegisterPlayerSkill
 
 smartDodge.SetLogHazards = detection.SetLogHazards
@@ -46,8 +51,8 @@ smartDodge.GetHitboxPadding = geometry.GetHitboxPadding
 --// Dodge (Module 5)
 smartDodge.SetAutoDodge = dodge.SetAutoDodge
 smartDodge.IsAutoDodgeEnabled = dodge.IsAutoDodgeEnabled
-smartDodge.SetMaxDodgeTime = dodge.SetMaxDodgeTime
-smartDodge.GetMaxDodgeTime = dodge.GetMaxDodgeTime
+smartDodge.SetDodgeMode = dodge.SetDodgeMode
+smartDodge.GetDodgeMode = dodge.GetDodgeMode
 smartDodge.SetMaxSnapDistance = dodge.SetMaxSnapDistance
 smartDodge.GetMaxSnapDistance = dodge.GetMaxSnapDistance
 smartDodge.SetMaxTeleportStep = dodge.SetMaxTeleportStep
@@ -58,6 +63,12 @@ smartDodge.IsDodging = dodge.IsDodging
 smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus
 smartDodge.OnDodgeStatusChanged = dodge.OnDodgeStatusChanged
+
+--// Boss Facing
+smartDodge.SetAutoFaceBoss = bossFacing.SetEnabled
+smartDodge.IsAutoFaceBossEnabled = bossFacing.IsEnabled
+smartDodge.GetBossPosition = bossFacing.GetBossPosition
+smartDodge.IsBossActive = bossFacing.IsBossActive
 
 --// Engine (Module 6)
 smartDodge.StartEngine = engine.StartEngine

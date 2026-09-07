@@ -6,6 +6,7 @@
 local services = require("@routes/DungeonQuest/core/services")
 local geometry = require("@routes/DungeonQuest/core/smartDodge/geometry")
 local detection = require("@routes/DungeonQuest/core/smartDodge/detection")
+local bossFacing = require("@routes/DungeonQuest/core/smartDodge/bossFacing")
 
 --// References
 local Workspace = game:GetService("Workspace")
@@ -14,12 +15,12 @@ local player = services.player
 --// State
 local showSafeMarker = true
 local lockedSafeSpot = nil
+local lockedHazardCount = 0
 local safeSpotMarkerPart = nil
 local showHitboxVisual = false
-local hitboxVisualPart = nil
 local ESCAPE_MARGIN = 4.5           -- Khoảng cách đệm an toàn sau khi ra khỏi mép (studs)
-local RADIAL_DISTANCES = { 3.5, 5.5, 7.5, 10, 13, 16, 20, 25 }
-local ANGLE_OFFSETS_24 = { 0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90, 105, -105, 120, -120, 135, -135, 150, -150, 165, -165, 180 }
+local RADIAL_DISTANCES = { 4.0, 7.0, 10.5, 15.0, 20.0, 25.0 }
+local ANGLE_OFFSETS_12 = { 0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180 }
 
 --// Trạng thái visual gần nhất (để replay khi bật/tắt toggle từ UI — engine cập nhật mỗi nhịp)
 local lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = nil, false, 0
@@ -58,15 +59,19 @@ end
 
 --// Dọn visual marker/hitbox: unparent (giữ object để tái sử dụng) — engine stop loop gọi
 function safeSpot.HideVisuals()
-	if safeSpotMarkerPart then
+	if safeSpotMarkerPart and safeSpotMarkerPart.Parent then
 		safeSpotMarkerPart.Parent = nil
 	end
-	if hitboxVisualPart then
+	if hitboxVisualPart and hitboxVisualPart.Parent then
 		hitboxVisualPart.Parent = nil
 	end
+	lastMarkerPos = nil
+	lastMarkerInDanger = false
+	lastMarkerEscapeDist = 0
+	lastHitboxPlayerPos = nil
 end
 
---// Destroy marker/hitbox hoàn toàn (lifecycle shutdown)
+--// Hủy hoàn toàn visual khi shutdown (lifecycle)
 function safeSpot.DestroyVisuals()
 	if safeSpotMarkerPart then
 		pcall(function() safeSpotMarkerPart:Destroy() end)
@@ -81,6 +86,7 @@ end
 --// Reset lock an toàn (engine gọi khi dừng loop — tương đương lockedSafeSpot = nil)
 function safeSpot.ResetLock()
 	lockedSafeSpot = nil
+	lockedHazardCount = 0
 end
 
 --// Tạo / Lấy Part hiển thị Hitbox Padding của Player quanh người
@@ -179,6 +185,9 @@ local function getOrCreateSafeMarker()
 	return part
 end
 
+local lastRenderedMarkerPos = nil
+local lastRenderedEscapeDist = -1
+
 --// Cập nhật vị trí hiển thị của Safe Marker (đặt đáy hình cầu sát mặt đất nhất có thể)
 function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 	lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = pos, inDanger or false, escapeDist or 0
@@ -186,26 +195,53 @@ function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
 		if safeSpotMarkerPart then
 			safeSpotMarkerPart.Parent = nil
 		end
+		lastRenderedMarkerPos = nil
+		lastRenderedEscapeDist = -1
 		return
 	end
 
 	local marker = getOrCreateSafeMarker()
 	-- pos.Y được tính là Floor_Y + 3. Quả cầu bán kính 0.75 nên đặt tâm ở (Floor_Y + 0.8) = (pos.Y - 2.2) để sát đất
 	local floorBallY = pos.Y - 2.2
-	marker.CFrame = CFrame.new(pos.X, floorBallY, pos.Z)
-	marker.Parent = Workspace.Terrain
+	local newPos = Vector3.new(pos.X, floorBallY, pos.Z)
 
-	local bb = marker:FindFirstChild("MarkerGui")
-	local label = bb and bb:FindFirstChild("Label")
-	if label then
-		label.Text = ("🟢 SAFE SPOT (%.1fm)"):format(escapeDist or 0)
+	if not lastRenderedMarkerPos or (newPos - lastRenderedMarkerPos).Magnitude > 0.1 then
+		lastRenderedMarkerPos = newPos
+		marker.CFrame = CFrame.new(newPos)
+	end
+	if not marker.Parent then
+		marker.Parent = Workspace.Terrain
+	end
+
+	local curDist = escapeDist or 0
+	if math.abs(curDist - lastRenderedEscapeDist) >= 0.2 then
+		lastRenderedEscapeDist = curDist
+		local bb = marker:FindFirstChild("MarkerGui")
+		local label = bb and bb:FindFirstChild("Label")
+		if label then
+			label.Text = ("🟢 SAFE SPOT (%.1fm)"):format(curDist)
+		end
 	end
 end
 
-local HYSTERESIS_THRESHOLD = 4.0     -- Ngưỡng chênh lệch cự ly (studs) để chuyển khóa sang điểm an toàn mới gần hơn
+local HYSTERESIS_THRESHOLD = 3.0     -- Ngưỡng chênh lệch cự ly (studs) để chuyển khóa sang điểm an toàn mới gần hơn
 
 --// Tính vector lực đẩy tổng hợp (Multi-Hazard Repulsion Force) từ tất cả các hazard đang đè/gần Player (1 vector/chiêu)
 local function computeRepulsionVector(playerPos)
+	-- Ưu tiên số 1: Nếu có Boss -> Luôn ép vector lực đẩy LÙI thẳng ra xa Boss
+	if bossFacing then
+		local bossPos = bossFacing.GetBossPosition()
+		if bossPos then
+			local diffX = playerPos.X - bossPos.X
+			local diffZ = playerPos.Z - bossPos.Z
+			local distSq = diffX * diffX + diffZ * diffZ
+			if distSq > 0.01 then
+				local dist = math.sqrt(distSq)
+				return Vector3.new(diffX / dist, 0, diffZ / dist)
+			end
+		end
+	end
+
 	local netX, netZ = 0, 0
 	local activeHazards = detection.GetActiveHazardsMap and detection.GetActiveHazardsMap()
 	if not activeHazards then return nil end
@@ -245,28 +281,30 @@ local function computeRepulsionVector(playerPos)
 	return nil
 end
 
---// Trả về danh sách 24 góc quét được sắp xếp ưu tiên theo hướng lực đẩy thoát nạn tự nhiên
-local function getSearchAngles(repVector)
+--// Trả về danh sách 12 góc quét được sắp xếp ưu tiên theo hướng di chuyển của Player hoặc lực đẩy thoát hiểm
+local function getSearchAngles(repVector, moveDir)
 	local baseAngleDeg = 0
-	if repVector then
+	if moveDir then
+		baseAngleDeg = math.deg(math.atan2(moveDir.Z, moveDir.X))
+	elseif repVector then
 		baseAngleDeg = math.deg(math.atan2(repVector.Z, repVector.X))
 	end
 
-	local angles = table.create(24)
-	for i, off in ipairs(ANGLE_OFFSETS_24) do
+	local angles = table.create(12)
+	for i, off in ipairs(ANGLE_OFFSETS_12) do
 		angles[i] = (baseAngleDeg + off) % 360
 	end
 	return angles
 end
 
 --// Đánh giá vùng đệm an toàn xung quanh điểm candidate (Clearance Safety Margin Scoring)
+--// Quét nhanh 4 hướng chính ở bán kính 2.5m (Tối ưu hóa CPU: chỉ 4 điểm thay vì 12 điểm)
 local function getClearanceBonus(point)
-	local buffer = 1.5
 	local offsets = {
-		Vector3.new(buffer, 0, 0),
-		Vector3.new(-buffer, 0, 0),
-		Vector3.new(0, 0, buffer),
-		Vector3.new(0, 0, -buffer),
+		Vector3.new(2.5, 0, 0),
+		Vector3.new(-2.5, 0, 0),
+		Vector3.new(0, 0, 2.5),
+		Vector3.new(0, 0, -2.5),
 	}
 	local safeCount = 0
 	for _, off in ipairs(offsets) do
@@ -274,13 +312,41 @@ local function getClearanceBonus(point)
 			safeCount = safeCount + 1
 		end
 	end
-	-- Điểm thưởng tối đa 1.6 studs cho vị trí có không gian đệm rộng rãi 4 phía
-	return safeCount * 0.4
+	-- Tối đa 4 điểm an toàn -> Điểm thưởng tối đa: 4 * 0.7 = 2.8 studs
+	return safeCount * 0.7
+end
+
+--// Tính điểm ưu tiên cho một ứng viên vị trí an toàn (Score càng THẤP càng ƯU TIÊN):
+--// Ưu tiên hướng di chuyển của Player, hướng lùi tự nhiên và cự ly an toàn
+local function scoreCandidate(playerPos, candPos, repVector, moveDir)
+	local moveDist = (candPos - playerPos).Magnitude
+	local clearance = getClearanceBonus(candPos)
+	local score = moveDist - (clearance * 0.5)
+
+	if moveDist > 0.5 then
+		local dir = (candPos - playerPos).Unit
+		if moveDir then
+			local dotMove = dir:Dot(moveDir)
+			if dotMove > 0 then
+				-- Cùng phía / thuận hướng Player đang chủ động di chuyển: thưởng tới 3.5 studs
+				score = score - (dotMove * 3.5)
+			else
+				-- Ngược hướng Player đang di chuyển: phạt nhẹ (+2.0 studs)
+				score = score + (math.abs(dotMove) * 2.0)
+			end
+		elseif repVector then
+			local dot = dir:Dot(repVector)
+			score = score - (dot * 2.5) -- Thưởng tới 2.5 studs cho hướng lùi thoát hiểm tự nhiên ra sau
+		end
+	end
+
+	return score
 end
 
 --// Thuật toán Quét Tỏa Tròn Đa Hướng (Fine-Grained Radial Sweep): tìm khoảng hở an toàn gần nhất kết hợp Path Check & Clearance
-local function searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart)
-	local angles = getSearchAngles(repVector)
+--// TỐI ƯU HÓA ĐỈNH CAO: Không bắn bất kỳ tia Raycast nào trong vòng lặp quét! Chỉ snap sàn 1 lần duy nhất cho điểm chốt cuối cùng.
+local function searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart, moveDir)
+	local angles = getSearchAngles(repVector, moveDir)
 	local bestPos = nil
 	local bestScore = math.huge
 	local fallbackPos = nil
@@ -289,57 +355,61 @@ local function searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dan
 	for _, dist in ipairs(RADIAL_DISTANCES) do
 		local foundAtRadius = nil
 		local bestScoreAtRadius = math.huge
-		local fallbackAtRadius = nil
-		local bestFallbackScoreAtRadius = math.huge
 
 		for _, angleDeg in ipairs(angles) do
 			local rad = math.rad(angleDeg)
 			local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
 			local testWorld = playerPos + offset
-			local snapped, hasFloor = geometry.GetFloorPosition(testWorld)
 
-			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-				local moveDist = (snapped - playerPos).Magnitude
-				local score = moveDist - getClearanceBonus(snapped)
+			-- TỐI ƯU HIỆU SUẤT CPU: Kiểm tra hình học thuần túy (0 Raycast)
+			if geometry.IsSpotFullySafe(testWorld, 0.8) then
+				local score = scoreCandidate(playerPos, testWorld, repVector, moveDir)
 
-				-- Fallback lưu điểm an toàn tại đích
-				if score < bestFallbackScoreAtRadius then
-					bestFallbackScoreAtRadius = score
-					fallbackAtRadius = snapped
+				-- Fallback lưu điểm an toàn tại đích (phòng khi không có đường đi thẳng an toàn)
+				if score < fallbackScore then
+					fallbackScore = score
+					fallbackPos = testWorld
 				end
 
-				-- Ưu tiên số 1: Đoạn đường di chuyển từ playerPos -> snapped an toàn (cho phép băng qua các chiêu đang đè)
-				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+				-- Ưu tiên số 1: Đoạn đường di chuyển từ playerPos -> testWorld an toàn (cho phép băng qua các chiêu đang đè)
+				if geometry.IsPathSafe(playerPos, testWorld, currentHazardsSet, dangerPart) then
 					if score < bestScoreAtRadius then
 						bestScoreAtRadius = score
-						foundAtRadius = snapped
+						foundAtRadius = testWorld
 					end
 				end
 			end
 		end
 
+		-- Ngay khi ở vòng bán kính gần nhất này tìm được khe an toàn -> CHỌN NGAY LẬP TỨC và dừng tìm kiếm
 		if foundAtRadius then
-			bestScore = bestScoreAtRadius
 			bestPos = foundAtRadius
-			break -- Ưu tiên vòng bán kính nhỏ nhất có đường đi an toàn
-		elseif fallbackAtRadius and not fallbackPos then
-			fallbackScore = bestFallbackScoreAtRadius
-			fallbackPos = fallbackAtRadius
+			bestScore = bestScoreAtRadius
+			break
 		end
 	end
 
-	if bestPos then
-		return bestPos, bestScore
+	local chosenPos = bestPos or fallbackPos
+	local chosenScore = bestPos and bestScore or fallbackScore
+
+	-- CHỈ BẮN DUY NHẤT 1 TIA RAYCAST cho ứng viên tốt nhất đã chọn để snap chính xác xuống mặt đất
+	if chosenPos then
+		local snapped, hasFloor = geometry.GetFloorPosition(chosenPos)
+		local finalPos = hasFloor and snapped or chosenPos
+		return finalPos, chosenScore
 	end
-	return fallbackPos, fallbackScore
+
+	return nil, math.huge
 end
 
 --// Thuật toán cốt lõi: Tính toán vị trí an toàn (Safe Spot Calculation)
 function safeSpot.CalculateSafeSpot(customPlayerPos)
 	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local humanoid = player and player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local playerPos = customPlayerPos or (rootPart and rootPart.Position)
 	if not playerPos then
 		lockedSafeSpot = nil
+		lockedHazardCount = 0
 		return false, nil, nil, 0
 	end
 
@@ -347,18 +417,31 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 	local inDanger, dangerInfo, dangerPart, dangerTraj = geometry.IsPointInAnyHazard(playerPos)
 	if not inDanger or not dangerPart then
 		lockedSafeSpot = nil
+		lockedHazardCount = 0
 		return false, nil, nil, 0
 	end
 
 	local hazardName = dangerInfo.Name or "Unknown"
 
+	-- Xác định hướng di chuyển chủ động hiện tại của Player (độ ưu tiên: Humanoid.MoveDirection -> RootPart.AssemblyLinearVelocity)
+	local moveDir = nil
+	if humanoid and humanoid.MoveDirection.Magnitude > 0.1 then
+		moveDir = Vector3.new(humanoid.MoveDirection.X, 0, humanoid.MoveDirection.Z).Unit
+	elseif rootPart then
+		local vel = rootPart.AssemblyLinearVelocity
+		local vel2D = Vector3.new(vel.X, 0, vel.Z)
+		if vel2D.Magnitude > 1.5 then
+			moveDir = vel2D.Unit
+		end
+	end
+
 	-- Lấy toàn bộ các hazard đang bao phủ vị trí Player (hỗ trợ nhiều chiêu đè nhau)
-	local currentHazardsSet = geometry.GetAllHazardsAtPoint(playerPos)
+	local currentHazardsSet, currentHazardCount = geometry.GetAllHazardsAtPoint(playerPos)
 
 	-- 2. ĐÁNH GIÁ KHÓA ĐIỂM HIỆN TẠI (Smart Latching with Hysteresis & Path Safety Check):
 	local hasValidLock = false
 	local lockedDist = math.huge
-	if lockedSafeSpot and not geometry.IsPointInAnyHazard(lockedSafeSpot) then
+	if lockedSafeSpot and geometry.IsSpotFullySafe(lockedSafeSpot, 0.8) then
 		lockedDist = (lockedSafeSpot - playerPos).Magnitude
 		-- Đề xuất 1 & 5: Điểm khóa phải nằm trong tầm và đường chạy tới điểm khóa vẫn phải an toàn
 		if lockedDist <= 35 and geometry.IsPathSafe(playerPos, lockedSafeSpot, currentHazardsSet, dangerPart) then
@@ -423,18 +506,20 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		local fallbackScore = math.huge
 
 		for _, candWorld in ipairs(candidates) do
-			local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
-			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-				local moveDist = (snapped - playerPos).Magnitude
-				local score = moveDist - getClearanceBonus(snapped)
-				if score < fallbackScore then
-					fallbackScore = score
-					fallbackPos = snapped
-				end
-				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
-					if score < bestScore then
-						bestScore = score
-						bestPos = snapped
+			if geometry.IsSpotFullySafe(candWorld, 0.8) then
+				local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
+				if hasFloor and geometry.IsSpotFullySafe(snapped, 0.8) then
+					local moveDist = (snapped - playerPos).Magnitude
+					local score = moveDist - getClearanceBonus(snapped)
+					if score < fallbackScore then
+						fallbackScore = score
+						fallbackPos = snapped
+					end
+					if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+						if score < bestScore then
+							bestScore = score
+							bestPos = snapped
+						end
 					end
 				end
 			end
@@ -468,18 +553,19 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		local fallbackScore = math.huge
 
 		for _, candWorld in ipairs(trajCandidates) do
-			local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
-			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-				local moveDist = (snapped - playerPos).Magnitude
-				local score = moveDist - getClearanceBonus(snapped)
-				if score < fallbackScore then
-					fallbackScore = score
-					fallbackPos = snapped
-				end
-				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
-					if score < bestScore then
-						bestScore = score
-						bestPos = snapped
+			if geometry.IsSpotFullySafe(candWorld, 0.8) then
+				local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
+				if hasFloor and geometry.IsSpotFullySafe(snapped, 0.8) then
+					local score = scoreCandidate(playerPos, snapped, repVector, moveDir)
+					if score < fallbackScore then
+						fallbackScore = score
+						fallbackPos = snapped
+					end
+					if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+						if score < bestScore then
+							bestScore = score
+							bestPos = snapped
+						end
 					end
 				end
 			end
@@ -487,7 +573,7 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 
 		if not bestPos then
 			-- Fallback quét tỏa tròn 24 hướng nếu cả 2 bên sườn bị kẹt bởi skill khác
-			local radPos, radScore = searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart)
+			local radPos, radScore = searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart, moveDir)
 			if radPos then
 				bestPos = radPos
 				bestScore = radScore
@@ -497,97 +583,128 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		candidatePos = bestPos or fallbackPos
 	else
 		-- 5. CHIẾN LƯỢC CHO KỸ NĂNG THÔNG THƯỜNG / ĐÈ NHAU (MULTI-HAZARD SOLVER)
-		local bestPos = nil
-		local bestScore = math.huge
+		-- Ưu tiên số 1: Quét tỏa tròn 360 độ (ưu tiên theo hướng di chuyển của Player hoặc lùi ra xa Boss/vụ nổ)
+		local radPos, radScore = searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart, moveDir)
+
+		local bestPos = radPos
+		local bestScore = radScore
 		local fallbackPos = nil
 		local fallbackScore = math.huge
-		local directCandidates = {}
 
-		if dangerPart:IsA("Part") and (dangerPart.Shape == Enum.PartType.Ball or dangerPart.Shape == Enum.PartType.Cylinder) then
-			-- A1. Chiêu hình tròn / hình cầu: Tạo các điểm thoát rẻ quạt (Fan Escapes: 0, ±25°, ±50°)
-			local radius = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
-			local diff = Vector3.new(playerPos.X - dangerPart.Position.X, 0, playerPos.Z - dangerPart.Position.Z)
-			local baseAngle = diff.Magnitude > 0.1 and math.atan2(diff.Z, diff.X) or 0
-			local escapeRadius = radius + ESCAPE_MARGIN
+		-- Nếu quét tỏa tròn chưa tìm được đường đi an toàn, thử thêm các điểm thoát trực tiếp của Part
+		if not bestPos then
+			local directCandidates = {}
 
-			local fanOffsets = { 0, math.rad(25), -math.rad(25), math.rad(50), -math.rad(50) }
-			for _, angOffset in ipairs(fanOffsets) do
-				local testAngle = baseAngle + angOffset
-				local directWorld = dangerPart.Position + Vector3.new(math.cos(testAngle) * escapeRadius, 0, math.sin(testAngle) * escapeRadius)
-				table.insert(directCandidates, directWorld)
-			end
-		else
-			-- A2. Chiêu hình chữ nhật / OBB: Thoát theo cả 4 cạnh và 4 góc của hộp
-			local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
-			local halfX = dangerPart.Size.X / 2
-			local halfZ = dangerPart.Size.Z / 2
+			if dangerPart:IsA("Part") and (dangerPart.Shape == Enum.PartType.Ball or dangerPart.Shape == Enum.PartType.Cylinder) then
+				-- A1. Chiêu hình tròn / hình cầu: Tạo các điểm thoát rẻ quạt (Fan Escapes: 0, ±25°, ±50°)
+				local radius = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
+				local diff = Vector3.new(playerPos.X - dangerPart.Position.X, 0, playerPos.Z - dangerPart.Position.Z)
+				local baseAngle = diff.Magnitude > 0.1 and math.atan2(diff.Z, diff.X) or 0
+				local escapeRadius = radius + ESCAPE_MARGIN
 
-			-- 4 cạnh thoát mép
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, localPos.Z)))
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, localPos.Z)))
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, halfZ + ESCAPE_MARGIN)))
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, -(halfZ + ESCAPE_MARGIN))))
-
-			-- 4 góc chéo
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, halfZ + ESCAPE_MARGIN)))
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, -(halfZ + ESCAPE_MARGIN))))
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, halfZ + ESCAPE_MARGIN)))
-			table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, -(halfZ + ESCAPE_MARGIN))))
-		end
-
-		-- Đánh giá các điểm thoát trực tiếp
-		for _, candWorld in ipairs(directCandidates) do
-			local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
-			if hasFloor and not geometry.IsPointInAnyHazard(snapped) then
-				local moveDist = (snapped - playerPos).Magnitude
-				local score = moveDist - getClearanceBonus(snapped)
-				if score < fallbackScore then
-					fallbackScore = score
-					fallbackPos = snapped
+				local fanOffsets = { 0, math.rad(25), -math.rad(25), math.rad(50), -math.rad(50) }
+				for _, angOffset in ipairs(fanOffsets) do
+					local testAngle = baseAngle + angOffset
+					local directWorld = dangerPart.Position + Vector3.new(math.cos(testAngle) * escapeRadius, 0, math.sin(testAngle) * escapeRadius)
+					table.insert(directCandidates, directWorld)
 				end
-				if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
-					if score < bestScore then
-						bestScore = score
-						bestPos = snapped
+			else
+				-- A2. Chiêu hình chữ nhật / OBB: Thoát theo cả 4 cạnh và 4 góc của hộp
+				local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
+				local halfX = dangerPart.Size.X / 2
+				local halfZ = dangerPart.Size.Z / 2
+
+				-- 4 cạnh thoát mép
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, localPos.Z)))
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, localPos.Z)))
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, halfZ + ESCAPE_MARGIN)))
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, -(halfZ + ESCAPE_MARGIN))))
+
+				-- 4 góc chéo
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, halfZ + ESCAPE_MARGIN)))
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, -(halfZ + ESCAPE_MARGIN))))
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, halfZ + ESCAPE_MARGIN)))
+				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, -(halfZ + ESCAPE_MARGIN))))
+			end
+
+			-- Đánh giá các điểm thoát trực tiếp
+			for _, candWorld in ipairs(directCandidates) do
+				if geometry.IsSpotFullySafe(candWorld, 0.8) then
+					local snapped, hasFloor = geometry.GetFloorPosition(candWorld)
+					if hasFloor and geometry.IsSpotFullySafe(snapped, 0.8) then
+						local score = scoreCandidate(playerPos, snapped, repVector, moveDir)
+						if score < fallbackScore then
+							fallbackScore = score
+							fallbackPos = snapped
+						end
+						if geometry.IsPathSafe(playerPos, snapped, currentHazardsSet, dangerPart) then
+							if score < bestScore then
+								bestScore = score
+								bestPos = snapped
+							end
+						end
 					end
 				end
 			end
 		end
 
-		-- Quét tỏa tròn đa hướng (Multi-Hazard Gap Detection): tìm khoảng trống hở nhỏ nhất giữa 2 chiêu đè nhau
-		local radPos, radScore = searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart)
-		if radPos and (not bestPos or radScore < bestScore) then
-			bestScore = radScore
-			bestPos = radPos
-		end
-
 		candidatePos = bestPos or fallbackPos
 	end
 
-	-- 6. ÁP DỤNG CƠ CHẾ KHÓA ĐIỂM THÔNG MINH (Smart Latching Hysteresis Logic)
-	if candidatePos then
-		local candidateDist = (candidatePos - playerPos).Magnitude
+	-- 6. ÁP DỤNG CƠ CHẾ KHÓA ĐIỂM ĐỘNG THÔNG MINH (Dynamic Real-time Safe Spot Hysteresis)
+	local chosenSpot = nil
 
-		if hasValidLock then
-			-- Điểm mới phải gần hơn điểm đang khóa một khoảng >= HYSTERESIS_THRESHOLD studs thì mới đổi khóa
-			if (candidateDist + HYSTERESIS_THRESHOLD) < lockedDist then
+	if candidatePos and geometry.IsSpotFullySafe(candidatePos, 0.8) then
+		local candDist = (candidatePos - playerPos).Magnitude
+
+		if hasValidLock and lockedSafeSpot then
+			-- So sánh giữa điểm khóa cũ (lockedSafeSpot) và điểm mới tính (candidatePos)
+			local distAdvantage = lockedDist - candDist -- Độ lợi cự ly nếu đổi sang candidate mới
+			local hazardSetChanged = (currentHazardCount > lockedHazardCount)
+
+			-- Kiểm tra xem Player có đang chủ động di chuyển về phía candidate mới không
+			local playerMovingTowardsCand = false
+			if moveDir and candDist > 0.5 then
+				local candVec = Vector3.new(candidatePos.X - playerPos.X, 0, candidatePos.Z - playerPos.Z)
+				if candVec.Magnitude > 0.01 and candVec.Unit:Dot(moveDir) > 0.3 then
+					playerMovingTowardsCand = true
+				end
+			end
+
+			-- Chuyển sang candidate mới khi:
+			-- 1. Có thêm chiêu mới xuất hiện (hazardSetChanged)
+			-- 2. Player đang chủ động di chuyển về phía candidate mới VÀ candidate mới gần bằng hoặc gần hơn điểm cũ (candDist <= lockedDist + 1.0)
+			-- 3. Candidate mới gần hơn rõ rệt (distAdvantage >= 1.5 studs)
+			-- 4. Điểm cũ còn xa (> 6.0 studs) trong khi candidate mới thoát hiểm rất gần (<= 4.0 studs)
+			if hazardSetChanged 
+				or (playerMovingTowardsCand and candDist <= (lockedDist + 1.0))
+				or distAdvantage >= 1.5 
+				or (lockedDist > 6.0 and candDist <= 4.0) then
+				chosenSpot = candidatePos
 				lockedSafeSpot = candidatePos
+				lockedHazardCount = currentHazardCount
+			else
+				-- Giữ nguyên điểm khóa cũ để chống rung lắc (Anti-jitter) khi đứng yên
+				chosenSpot = lockedSafeSpot
 			end
 		else
+			-- Chưa có khóa hoặc khóa cũ đã hỏng (bị chiêu đè) -> Khóa ngay điểm candidate mới
+			chosenSpot = candidatePos
 			lockedSafeSpot = candidatePos
+			lockedHazardCount = currentHazardCount
 		end
-
-		local finalDist = math.floor((lockedSafeSpot - playerPos).Magnitude * 10) / 10
-		return true, lockedSafeSpot, hazardName, finalDist
+	elseif hasValidLock and lockedSafeSpot then
+		-- Không tìm được candidate mới nhưng điểm cũ vẫn còn an toàn -> Giữ điểm cũ
+		chosenSpot = lockedSafeSpot
 	end
 
-	-- Nếu không tìm được candidate mới nhưng điểm khóa cũ vẫn an toàn và đường đi thông suốt
-	if hasValidLock then
-		local finalDist = math.floor(lockedDist * 10) / 10
-		return true, lockedSafeSpot, hazardName, finalDist
+	if chosenSpot then
+		local finalDist = math.floor((chosenSpot - playerPos).Magnitude * 10) / 10
+		return true, chosenSpot, hazardName, finalDist
 	end
 
 	lockedSafeSpot = nil
+	lockedHazardCount = 0
 	return true, nil, hazardName, 0
 end
 

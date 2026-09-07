@@ -53,12 +53,16 @@ return function(window, tab)
 	end
 
 	local function updateSafeSpotUI(inDanger, safePos, hazardName, escapeDist)
-		if inDanger and safePos then
+		if inDanger then
 			pcall(function()
 				playerStateLabel:UpdateName(("Player State: <font color='rgb(255,60,60)'>⚠️ IN DANGER (%s)</font>"):format(hazardName or "Hazard"))
-				safeSpotLabel:UpdateName(("Safe Target: <font color='rgb(0,255,120)'>🟢 (%.1f, %.1f, %.1f) - %.1fm</font>"):format(
-					safePos.X, safePos.Y, safePos.Z, escapeDist or 0
-				))
+				if safePos then
+					safeSpotLabel:UpdateName(("Safe Target: <font color='rgb(0,255,120)'>🟢 (%.1f, %.1f, %.1f) - %.1fm</font>"):format(
+						safePos.X, safePos.Y, safePos.Z, escapeDist or 0
+					))
+				else
+					safeSpotLabel:UpdateName("Safe Target: <font color='rgb(255,160,0)'>⚠️ Calculating Safe Spot...</font>")
+				end
 			end)
 		else
 			pcall(function()
@@ -74,7 +78,7 @@ return function(window, tab)
 		if status == "Dodging" then
 			color = "255, 200, 50"
 		elseif status == "Returning" then
-			color = "80, 180, 255"
+			color = "255, 140, 0"
 		elseif status:find("Safe") then
 			color = "0, 255, 120"
 		end
@@ -115,17 +119,24 @@ return function(window, tab)
 		end),
 	}, "Toggle_SmartDodgeAutoExecution")
 
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Max Dodge Time Budget (s)",
-		Default = smartDodge.GetMaxDodgeTime(),
-		Minimum = 0.3,
-		Maximum = 3.0,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(value)
-			smartDodge.SetMaxDodgeTime(value)
+	local DODGE_MODE_OPTIONS = { "MoveTo", "Blink" }
+	leftSection:Dropdown({
+		Name = "Dodge Movement Mode",
+		Options = DODGE_MODE_OPTIONS,
+		Default = smartDodge.GetDodgeMode() == "Blink" and 2 or 1,
+		Required = true,
+		Callback = autoSave.Wrap(function(mode)
+			smartDodge.SetDodgeMode(mode)
 		end),
-	}, "Slider_SmartDodgeMaxTime"))
+	}, "Dropdown_SmartDodgeMode")
+
+	leftSection:Toggle({
+		Name = "Auto Face Boss (Luôn nhìn về Boss)",
+		Default = smartDodge.IsAutoFaceBossEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetAutoFaceBoss(state)
+		end),
+	}, "Toggle_SmartDodgeAutoFaceBoss")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Instant / Final Snap Distance (studs)",
@@ -158,6 +169,30 @@ return function(window, tab)
 			smartDodge.SetHitboxPadding(value)
 		end),
 	}, "Slider_SmartDodgeHitboxPadding"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Trajectory Lookahead Length (studs)",
+		Default = smartDodge.GetTrajectoryLookahead(),
+		Minimum = 20,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetTrajectoryLookahead(value)
+		end),
+	}, "Slider_SmartDodgeTrajLookahead"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Trajectory Width Padding (studs)",
+		Default = smartDodge.GetTrajectoryWidthPadding(),
+		Minimum = 0.5,
+		Maximum = 6.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetTrajectoryWidthPadding(value)
+		end),
+	}, "Slider_SmartDodgeTrajPadding"))
 
 	leftSection:Toggle({
 		Name = "Show Hitbox Padding Visual (Cyan Circle)",
