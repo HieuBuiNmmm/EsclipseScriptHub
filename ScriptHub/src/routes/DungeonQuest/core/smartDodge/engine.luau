@@ -33,6 +33,7 @@ local currentEscapeDist = 0
 local safeSpotCallbacks = {}
 local safeSpotLoopThread = nil
 local logInDanger = true
+local ignoreDodgeWhenInvulnerable = true
 
 --// Bơm runtime cho module Dodge: đọc trạng thái danger & log trực tiếp từ engine (tránh vòng require)
 dodge.SetRuntime({
@@ -46,9 +47,13 @@ dodge.SetRuntime({
 
 local engine = {}
 
-local function fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist)
+local lastDeadState = false
+local lastInvulnState = false
+local lastUIUpdateTime = 0
+
+local function fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
 	for _, cb in ipairs(safeSpotCallbacks) do
-		pcall(cb, inDanger, safePos, hazardName, escapeDist)
+		pcall(cb, inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
 	end
 end
 
@@ -63,8 +68,18 @@ local function startSafeSpotLoop()
 				detection.ClearAllHazards("Room Cleared")
 			end
 
-			local inDanger, safePos, hazardName, escapeDist = safeSpot.CalculateSafeSpot()
-			local stateChanged = (inDanger ~= isPlayerInDanger) or (safePos ~= currentSafeSpot)
+			local isDead = shared.IsDead and shared.IsDead() or false
+			local inDanger, safePos, hazardName, escapeDist
+			if isDead then
+				inDanger = false
+				safePos = nil
+				hazardName = "Dead"
+				escapeDist = 0
+			else
+				inDanger, safePos, hazardName, escapeDist = safeSpot.CalculateSafeSpot()
+			end
+
+			local isInvulnerable, invulnReason = shared.IsInvulnerable()
 
 			isPlayerInDanger = inDanger
 			currentSafeSpot = safePos
@@ -76,20 +91,46 @@ local function startSafeSpotLoop()
 			local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 			local pPos = rootPart and rootPart.Position
 			safeSpot.UpdateHitbox(pPos)
+			safeSpot.UpdatePlayerRadar(pPos, inDanger)
 			detection.UpdateTrajectoryVisuals()
 
 			-- Kích hoạt Thực thi Né Chiêu (Bài toán 3)
 			if inDanger and safePos and dodge.IsAutoDodgeEnabled() then
-				dodge.Perform(safePos, escapeDist)
+				if isInvulnerable and ignoreDodgeWhenInvulnerable then
+					-- Người chơi đang trong trạng thái bất tử (ForceField hoặc mới hồi sinh)
+					-- -> Hủy hoặc không né chiêu để tận dụng tối đa thời gian bất tử tấn công quái / boss!
+					if dodge.IsDodging() then
+						dodge.Cancel()
+					end
+				else
+					dodge.Perform(safePos, escapeDist)
+				end
 			end
 
+			local now = os.clock()
+			local invulnTimeTick = isInvulnerable and (now - lastUIUpdateTime >= 0.25)
+			local stateChanged = (inDanger ~= isPlayerInDanger)
+				or (safePos ~= currentSafeSpot)
+				or (isDead ~= lastDeadState)
+				or (isInvulnerable ~= lastInvulnState)
+				or invulnTimeTick
+
 			if stateChanged then
-				fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist)
+				lastUIUpdateTime = now
+				lastDeadState = isDead
+				lastInvulnState = isInvulnerable
+
+				fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
 
 				if logInDanger and inDanger and safePos and (os.clock() - lastLogTime > 0.5) then
 					lastLogTime = os.clock()
-					print(("[SmartDodge][InDanger] ⚠️ IN DANGER: %s | Escape Dist: %.1f studs -> SafePos: (%.1f, %.1f, %.1f)")
-						:format(hazardName, escapeDist, safePos.X, safePos.Y, safePos.Z))
+					if isInvulnerable and ignoreDodgeWhenInvulnerable then
+						print(("[SmartDodge][Invulnerable] 🛡️ IN DANGER (%s) but INVULNERABLE (%s) -> Dodge Paused")
+							:format(hazardName, invulnReason or "Protection"))
+					else
+						print(("[SmartDodge][InDanger] ⚠️ IN DANGER: %s | Escape Dist: %.1f studs -> SafePos: (%.1f, %.1f, %.1f)")
+							:format(hazardName, escapeDist, safePos.X, safePos.Y, safePos.Z))
+					end
 				end
 			end
 
@@ -168,6 +209,18 @@ end
 
 function engine.IsLogInDangerEnabled()
 	return logInDanger
+end
+
+function engine.SetIgnoreDodgeWhenInvulnerable(state)
+	ignoreDodgeWhenInvulnerable = state and true or false
+end
+
+function engine.IsIgnoreDodgeWhenInvulnerableEnabled()
+	return ignoreDodgeWhenInvulnerable
+end
+
+function engine.IsDead()
+	return shared.IsDead and shared.IsDead() or false
 end
 
 function engine.IsInDanger()

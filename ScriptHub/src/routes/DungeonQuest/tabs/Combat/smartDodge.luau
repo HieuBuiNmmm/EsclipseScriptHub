@@ -52,8 +52,29 @@ return function(window, tab)
 		end
 	end
 
-	local function updateSafeSpotUI(inDanger, safePos, hazardName, escapeDist)
-		if inDanger then
+	local function updateSafeSpotUI(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
+		if isDead == nil then
+			isDead = smartDodge.IsDead and smartDodge.IsDead() or false
+		end
+		if isInvulnerable == nil then
+			isInvulnerable, invulnReason = smartDodge.IsInvulnerable()
+		end
+
+		if isDead then
+			pcall(function()
+				playerStateLabel:UpdateName("Player State: <font color='rgb(160,160,160)'>💀 DEAD</font>")
+				safeSpotLabel:UpdateName("Safe Target: <font color='rgb(160,160,160)'>None (Player Dead)</font>")
+			end)
+		elseif isInvulnerable and smartDodge.IsIgnoreDodgeWhenInvulnerableEnabled() then
+			pcall(function()
+				playerStateLabel:UpdateName(("Player State: <font color='rgb(0,220,255)'>🛡️ INVULNERABLE (%s)</font>"):format(invulnReason or "Protection"))
+				if inDanger and safePos then
+					safeSpotLabel:UpdateName(("Safe Target: <font color='rgb(0,220,255)'>🛡️ Dodge Paused (%.1fm to Safe)</font>"):format(escapeDist or 0))
+				else
+					safeSpotLabel:UpdateName("Safe Target: <font color='rgb(160,160,160)'>None (Invulnerable)</font>")
+				end
+			end)
+		elseif inDanger then
 			pcall(function()
 				playerStateLabel:UpdateName(("Player State: <font color='rgb(255,60,60)'>⚠️ IN DANGER (%s)</font>"):format(hazardName or "Hazard"))
 				if safePos then
@@ -73,7 +94,20 @@ return function(window, tab)
 	end
 
 	local function updateDodgeStatusUI(status)
+		local isDead = smartDodge.IsDead and smartDodge.IsDead() or false
+		if isDead then
+			pcall(function()
+				dodgeActionLabel:UpdateName("Dodge Action: <font color='rgb(160, 160, 160)'>Dead</font>")
+			end)
+			return
+		end
+
 		status = status or smartDodge.GetDodgeStatus()
+		local isInvuln = smartDodge.IsInvulnerable()
+		if isInvuln and smartDodge.IsIgnoreDodgeWhenInvulnerableEnabled() and smartDodge.IsInDanger() then
+			status = "🛡️ Paused (Invulnerable)"
+		end
+
 		local color = "160, 160, 160"
 		if status == "Dodging" then
 			color = "255, 200, 50"
@@ -81,6 +115,8 @@ return function(window, tab)
 			color = "255, 140, 0"
 		elseif status:find("Safe") then
 			color = "0, 255, 120"
+		elseif status:find("Invulnerable") then
+			color = "0, 220, 255"
 		end
 
 		pcall(function()
@@ -93,8 +129,9 @@ return function(window, tab)
 		updateMonitor(count, lastInfo)
 	end)
 
-	smartDodge.OnSafeSpotChanged(function(inDanger, safePos, hazardName, escapeDist)
-		updateSafeSpotUI(inDanger, safePos, hazardName, escapeDist)
+	smartDodge.OnSafeSpotChanged(function(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
+		updateSafeSpotUI(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
+		updateDodgeStatusUI()
 	end)
 
 	smartDodge.OnDodgeStatusChanged(function(status)
@@ -149,6 +186,26 @@ return function(window, tab)
 			smartDodge.SetAutoFaceTarget(state)
 		end),
 	}, "Toggle_SmartDodgeAutoFaceTarget")
+
+	leftSection:Toggle({
+		Name = "Pause Dodge When Invulnerable (Respawn)",
+		Default = smartDodge.IsIgnoreDodgeWhenInvulnerableEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetIgnoreDodgeWhenInvulnerable(state)
+		end),
+	}, "Toggle_SmartDodgeIgnoreInvulnerable")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Respawn Protection Duration (seconds)",
+		Default = smartDodge.GetRespawnProtectionDuration(),
+		Minimum = 0,
+		Maximum = 10,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetRespawnProtectionDuration(value)
+		end),
+	}, "Slider_SmartDodgeRespawnProtectionDuration"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Instant / Final Snap Distance (studs)",
@@ -213,6 +270,14 @@ return function(window, tab)
 			smartDodge.SetShowHitboxVisual(state)
 		end),
 	}, "Toggle_SmartDodgeHitboxVisual")
+
+	leftSection:Toggle({
+		Name = "Player Threat Radar (24-Ray Sonar)",
+		Default = smartDodge.IsShowPlayerRadarEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetShowPlayerRadar(state)
+		end),
+	}, "Toggle_SmartDodgePlayerRadar")
 
 	leftSection:Toggle({
 		Name = "Threat Visual ESP (SelectionBox)",

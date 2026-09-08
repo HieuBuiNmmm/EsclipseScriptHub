@@ -8,7 +8,7 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 --// State
-local playerHitboxPadding = 2.2     -- Bù trừ bán kính cơ thể nhân vật (studs) để phát hiện khi chạm mép
+local playerHitboxPadding = 1.8     -- Bù trừ bán kính cơ thể nhân vật (studs) để phát hiện khi chạm mép
 local RAYCAST_DOWN_DIST = 150       -- Khoảng cách bắn raycast xuống mặt đất (studs) - đủ sâu để bắt sàn từ độ cao của Boss
 local MAX_HEIGHT_TOLERANCE = 150.0  -- Chiêu trong Dungeon Quest gây sát thương toàn bộ cột không gian X-Z bất kể độ cao
 
@@ -447,23 +447,29 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 	return false, nil, nil, nil
 end
 
---// Kiểm tra xem một đĩa tròn bán kính safeRadius quanh điểm P có hoàn toàn an toàn (không chạm bất kỳ hazard nào) không
+--// Kiểm tra xem một đĩa tròn quanh điểm P có hoàn toàn an toàn (không chạm bất kỳ hazard nào) không
+--// Cấu hình Cân Bằng (Balanced): Kiểm tra tâm (fast reject) + 4 hướng chính ở bán kính safeRadius
+local CHECK_OFFSETS_4 = {
+	Vector3.new(1, 0, 0),
+	Vector3.new(-1, 0, 0),
+	Vector3.new(0, 0, 1),
+	Vector3.new(0, 0, -1),
+}
+
 function geometry.IsSpotFullySafe(centerPoint, safeRadius, ignoredInstance)
 	if not centerPoint then return false end
-	safeRadius = safeRadius or 0.8
+	safeRadius = safeRadius or 0.5
 
-	-- 1. Kiểm tra chính tâm điểm P
+	-- 1. Kiểm tra chính tâm điểm P (Loại bỏ ngay 90% điểm không hợp lệ mà không tốn thêm CPU)
 	if geometry.IsPointInAnyHazard(centerPoint, ignoredInstance) then
 		return false
 	end
 
-	-- 2. Kiểm tra chu vi đĩa tròn xung quanh điểm P (4 hướng chính: 0, 90, 180, 270)
-	local angles = { 0, 90, 180, 270 }
-	for _, deg in ipairs(angles) do
-		local rad = math.rad(deg)
-		local sample = centerPoint + Vector3.new(math.cos(rad) * safeRadius, 0, math.sin(rad) * safeRadius)
+	-- 2. Kiểm tra 4 hướng chính ở chu vi an toàn
+	for _, off in ipairs(CHECK_OFFSETS_4) do
+		local sample = centerPoint + (off * safeRadius)
 		if geometry.IsPointInAnyHazard(sample, ignoredInstance) then
-			return false -- Bị chạm mép vào một hazard nào đó
+			return false
 		end
 	end
 
@@ -482,7 +488,7 @@ function geometry.GetAllHazardsAtPoint(point)
 			local inRing, hitPart = geometry.IsPointInThirdBossMultiRings(point, info)
 			if inRing then
 				hazardsSet[hitPart] = true
-				hazardsSet[info.Instance] = true
+				if info.Instance then hazardsSet[info.Instance] = true end
 				count = count + 1
 			end
 		elseif info.Instance and info.Instance:IsA("Model") and (
@@ -492,7 +498,7 @@ function geometry.GetAllHazardsAtPoint(point)
 			local inBeam, hitPart = geometry.IsPointInSecondBossMovingBeam(point, info)
 			if inBeam then
 				hazardsSet[hitPart or info.Instance] = true
-				hazardsSet[info.Instance] = true
+				if info.Instance then hazardsSet[info.Instance] = true end
 				count = count + 1
 			end
 		elseif info.ActiveParts then
@@ -502,11 +508,15 @@ function geometry.GetAllHazardsAtPoint(point)
 					local inTraj = geometry.IsPointInTrajectory(point, part)
 					if inTraj then
 						hazardsSet[part] = true
+						if info.Instance then hazardsSet[info.Instance] = true end
+						if part.Parent and part.Parent ~= Workspace then hazardsSet[part.Parent] = true end
 						count = count + 1
 					end
 				else
 					if geometry.IsPointInPart(point, part) then
 						hazardsSet[part] = true
+						if info.Instance then hazardsSet[info.Instance] = true end
+						if part.Parent and part.Parent ~= Workspace then hazardsSet[part.Parent] = true end
 						count = count + 1
 					end
 				end
@@ -521,12 +531,12 @@ end
 --// currentHazardsSet: tập hợp các Hazard mà người chơi ĐANG ĐỨNG TRONG (được phép băng qua để thoát ra)
 function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentDangerPart, ignoredInstance)
 	local dist = (toPos - fromPos).Magnitude
-	if dist <= 1.5 then
-		return true -- Chỉ bỏ qua bước cực ngắn <= 1.5 studs
+	if dist <= 1.2 then
+		return true -- Chỉ bỏ qua bước cực ngắn <= 1.2 studs
 	end
 
-	-- Chia nhỏ đường đi mỗi đoạn ~1.8 studs để kiểm tra nghiêm ngặt từng bước
-	local steps = math.clamp(math.ceil(dist / 1.8), 2, 8)
+	-- Bước chia mẫu 1.5 studs (vừa khít nhỏ hơn hitbox 2.2 studs, số bước tối đa 8 để không gây giật lag)
+	local steps = math.clamp(math.ceil(dist / 1.5), 2, 8)
 	for i = 1, steps - 1 do
 		local t = i / steps
 		local samplePos = fromPos:Lerp(toPos, t)
@@ -538,15 +548,21 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 			end
 			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường, từ chối ngay
 			local hitInst = (hitInfo and hitInfo.Instance)
-				or (hitPart and (hitPart:IsA("Model") and hitPart or hitPart.Parent))
+			local hitParent = hitPart and hitPart.Parent
 
 			if currentHazardsSet and next(currentHazardsSet) ~= nil then
-				if hitInst and not currentHazardsSet[hitInst] then
+				local isKnown = (hitPart and currentHazardsSet[hitPart])
+					or (hitInst and currentHazardsSet[hitInst])
+					or (hitParent and currentHazardsSet[hitParent])
+				if not isKnown then
 					return false
 				end
 			elseif fallbackCurrentDangerPart then
 				local currentInst = fallbackCurrentDangerPart:IsA("Model") and fallbackCurrentDangerPart or fallbackCurrentDangerPart.Parent
-				if currentInst and hitInst and currentInst ~= hitInst then
+				local isKnown = (hitPart and hitPart == fallbackCurrentDangerPart)
+					or (currentInst and hitInst and currentInst == hitInst)
+					or (currentInst and hitParent and currentInst == hitParent)
+				if not isKnown then
 					return false
 				end
 			else

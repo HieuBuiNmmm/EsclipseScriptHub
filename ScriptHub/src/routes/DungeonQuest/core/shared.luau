@@ -86,10 +86,14 @@ local initializeRooms
 local resetDungeon
 local refreshRoomIndex
 
---// Respawn hooks (các module khác đăng ký để reset trạng thái khi respawn)
+--// Respawn hooks & Invulnerability tracking
 local respawnCallbacks = {}
 local cleanupConnections = {}
 local speedConnection = nil
+local diedConnection = nil
+local lastRespawnTime = 0
+local respawnProtectionDuration = 4.0 -- Thời gian bất tử mặc định sau khi hồi sinh (giây)
+local wasDead = false
 
 local function trackCleanupConnection(connection)
 	if connection then table.insert(cleanupConnections, connection) end
@@ -98,6 +102,78 @@ end
 
 function shared.OnRespawn(callback)
 	table.insert(respawnCallbacks, callback)
+end
+
+function shared.GetLastRespawnTime()
+	return lastRespawnTime
+end
+
+function shared.GetRespawnProtectionDuration()
+	return respawnProtectionDuration
+end
+
+function shared.SetRespawnProtectionDuration(seconds)
+	if type(seconds) == "number" and seconds >= 0 then
+		respawnProtectionDuration = seconds
+	end
+end
+
+function shared.GetRespawnProtectionRemaining()
+	if lastRespawnTime == 0 then return 0 end
+	local elapsed = os.clock() - lastRespawnTime
+	local remaining = respawnProtectionDuration - elapsed
+	return math.max(0, remaining)
+end
+
+function shared.IsJustRespawned(gracePeriodSeconds)
+	local period = gracePeriodSeconds or respawnProtectionDuration
+	if lastRespawnTime == 0 then return false end
+	return (os.clock() - lastRespawnTime) <= period
+end
+
+function shared.WasDead()
+	return wasDead
+end
+
+function shared.IsDead()
+	local char = player and player.Character
+	if not char or not char.Parent then return true end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return true end
+	return false
+end
+
+--// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
+--// Hỗ trợ: ForceField của Roblox, Tag/Attribute của game, và Bộ đếm bảo vệ sau khi hồi sinh
+function shared.IsInvulnerable()
+	local char = player and player.Character
+	if not char or not char.Parent then return false, nil end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health <= 0 then
+		return false, nil -- Khi đã chết thì không tính là bất tử
+	end
+
+	-- 1. Kiểm tra ForceField nguyên bản của Roblox
+	local ff = char:FindFirstChildOfClass("ForceField")
+	if ff then
+		return true, "ForceField"
+	end
+
+	-- 2. Kiểm tra Attribute hoặc Tag của game
+	if char:GetAttribute("Invulnerable") or char:GetAttribute("Immune") or char:GetAttribute("Respawning") then
+		return true, "Attribute"
+	end
+	if char:FindFirstChild("Invulnerable") or char:FindFirstChild("Immune") or char:FindFirstChild("Respawning") then
+		return true, "Value"
+	end
+
+	-- 3. Kiểm tra Thời gian bảo vệ sau khi hồi sinh (Respawn Protection Timer)
+	local remaining = shared.GetRespawnProtectionRemaining()
+	if remaining > 0 then
+		return true, ("Respawn Shield (%.1fs)"):format(remaining)
+	end
+
+	return false, nil
 end
 
 --// Enemy helpers
@@ -340,6 +416,26 @@ function shared.SetHumanoid(character)
 	rootPart = character:WaitForChild("HumanoidRootPart", 10) or character.PrimaryPart
 	normalSpeed = humanoid.WalkSpeed
 	if enabled then humanoid.WalkSpeed = fastSpeed end
+
+	if diedConnection then
+		diedConnection:Disconnect()
+		diedConnection = nil
+	end
+	diedConnection = humanoid.Died:Connect(function()
+		wasDead = true
+	end)
+
+	trackCleanupConnection(humanoid.HealthChanged:Connect(function(health)
+		if health <= 0 then
+			wasDead = true
+		elseif wasDead and health > 0 then
+			wasDead = false
+			lastRespawnTime = os.clock()
+			for _, callback in ipairs(respawnCallbacks) do
+				pcall(callback)
+			end
+		end
+	end))
 end
 
 --// Instant Movement (Acceleration / Brake)
@@ -491,6 +587,7 @@ if player then
 	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
 		local ok, err = pcall(function()
 			if not character then return end
+			lastRespawnTime = os.clock()
 			shared.SetHumanoid(character)
 			connectSpeedListener()
 

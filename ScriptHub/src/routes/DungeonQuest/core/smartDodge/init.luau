@@ -12,6 +12,7 @@ local safeSpot = require("@routes/DungeonQuest/core/smartDodge/safeSpot")
 local dodge = require("@routes/DungeonQuest/core/smartDodge/dodge")
 local engine = require("@routes/DungeonQuest/core/smartDodge/engine")
 local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
+local shared = require("@routes/DungeonQuest/core/shared")
 
 --// Table
 local smartDodge = {}
@@ -44,6 +45,10 @@ smartDodge.OnHazardChanged = detection.OnHazardChanged
 smartDodge.CalculateSafeSpot = safeSpot.CalculateSafeSpot
 smartDodge.SetShowSafeMarker = safeSpot.SetShowSafeMarker
 smartDodge.IsShowSafeMarkerEnabled = safeSpot.IsShowSafeMarkerEnabled
+smartDodge.SetShowPlayerRadar = safeSpot.SetShowPlayerRadar
+smartDodge.IsShowPlayerRadarEnabled = safeSpot.IsShowPlayerRadarEnabled
+smartDodge.UpdatePlayerRadar = safeSpot.UpdatePlayerRadar
+smartDodge.ClearPlayerRadar = safeSpot.ClearPlayerRadar
 smartDodge.SetShowHitboxVisual = safeSpot.SetShowHitboxVisual
 smartDodge.IsShowHitboxVisualEnabled = safeSpot.IsShowHitboxVisualEnabled
 smartDodge.SetHitboxPadding = safeSpot.SetHitboxPadding
@@ -90,6 +95,15 @@ smartDodge.IsLogInDangerEnabled = engine.IsLogInDangerEnabled
 smartDodge.IsInDanger = engine.IsInDanger
 smartDodge.GetCurrentSafeSpot = engine.GetCurrentSafeSpot
 smartDodge.OnSafeSpotChanged = engine.OnSafeSpotChanged
+
+--// Invulnerability & Respawn Protection
+smartDodge.SetIgnoreDodgeWhenInvulnerable = engine.SetIgnoreDodgeWhenInvulnerable
+smartDodge.IsIgnoreDodgeWhenInvulnerableEnabled = engine.IsIgnoreDodgeWhenInvulnerableEnabled
+smartDodge.SetRespawnProtectionDuration = shared.SetRespawnProtectionDuration
+smartDodge.GetRespawnProtectionDuration = shared.GetRespawnProtectionDuration
+smartDodge.GetRespawnProtectionRemaining = shared.GetRespawnProtectionRemaining
+smartDodge.IsInvulnerable = shared.IsInvulnerable
+smartDodge.IsDead = shared.IsDead
 
 --// Đăng ký với coordinator: khi hệ thống khác (Auto Farm) chiếm độc quyền thì engine Smart Dodge
 --// bị tắt qua StopEngine; IsEnabled dùng để coordinator biết engine đang chạy.

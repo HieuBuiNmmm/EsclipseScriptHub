@@ -32,6 +32,7 @@
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
+local shared = require("@routes/DungeonQuest/core/shared")
 local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
 
 --// References
@@ -337,6 +338,11 @@ end
 --==============================================================--
 
 function dodge.Perform(safePos, escapeDist)
+	-- Bỏ qua né chiêu khi nhân vật đang trong trạng thái bất tử (ForceField hoặc mới hồi sinh)
+	if shared.IsInvulnerable and shared.IsInvulnerable() then
+		return
+	end
+
 	local char, rootPart, humanoid = getCharacterParts()
 
 	if not rootPart
@@ -793,6 +799,8 @@ end
 function dodge.GetStatus()
 	if isDodging then
 		return "Dodging"
+	elseif shared.IsInvulnerable and shared.IsInvulnerable() and getInDanger() then
+		return "🛡️ Paused (Invulnerable)"
 	elseif getInDanger() then
 		return "Safe (Standing in Spot)"
 	else
