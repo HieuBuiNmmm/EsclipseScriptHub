@@ -5,6 +5,7 @@
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
+local shared = require("@routes/DungeonQuest/core/shared")
 local coordinator = require("@routes/DungeonQuest/core/coordinator")
 local detection = require("@routes/DungeonQuest/core/smartDodge/detection")
 local geometry = require("@routes/DungeonQuest/core/smartDodge/geometry")
@@ -57,6 +58,11 @@ local function startSafeSpotLoop()
 	safeSpotLoopThread = task.spawn(function()
 		local lastLogTime = 0
 		while detection.IsEnabled() do
+			-- Tầng 1: Nếu không ở Boss Room và toàn bộ quái trong phòng đã chết -> Dọn sạch toàn bộ hazard tồn đọng
+			if not shared.IsBossActive() and shared.GetEnemyCount() == 0 and detection.GetHazardCount() > 0 then
+				detection.ClearAllHazards("Room Cleared")
+			end
+
 			local inDanger, safePos, hazardName, escapeDist = safeSpot.CalculateSafeSpot()
 			local stateChanged = (inDanger ~= isPlayerInDanger) or (safePos ~= currentSafeSpot)
 

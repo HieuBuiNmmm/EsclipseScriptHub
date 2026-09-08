@@ -9,7 +9,8 @@ local Workspace = game:GetService("Workspace")
 
 --// State
 local playerHitboxPadding = 2.2     -- Bù trừ bán kính cơ thể nhân vật (studs) để phát hiện khi chạm mép
-local RAYCAST_DOWN_DIST = 25        -- Khoảng cách bắn raycast xuống mặt đất (studs)
+local RAYCAST_DOWN_DIST = 150       -- Khoảng cách bắn raycast xuống mặt đất (studs) - đủ sâu để bắt sàn từ độ cao của Boss
+local MAX_HEIGHT_TOLERANCE = 150.0  -- Chiêu trong Dungeon Quest gây sát thương toàn bộ cột không gian X-Z bất kể độ cao
 
 --// Data source hiểm họa do Engine bơm vào (tránh require trực tiếp detection — đứt vòng phụ thuộc).
 local data = nil
@@ -68,7 +69,7 @@ local player = Players.LocalPlayer
 function geometry.GetFloorPosition(pos)
 	updateRaycastFilter(false)
 
-	local rayOrigin = Vector3.new(pos.X, pos.Y + 6, pos.Z)
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 10, pos.Z)
 	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
 	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
 
@@ -82,7 +83,7 @@ end
 function geometry.GetRawFloorY(pos)
 	updateRaycastFilter(false)
 
-	local rayOrigin = Vector3.new(pos.X, pos.Y + 8, pos.Z)
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 12, pos.Z)
 	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
 	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
 
@@ -93,7 +94,7 @@ function geometry.GetRawFloorY(pos)
 	-- Fallback kiểm tra dưới chân Player
 	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 	if rootPart then
-		local pOrigin = Vector3.new(rootPart.Position.X, rootPart.Position.Y + 6, rootPart.Position.Z)
+		local pOrigin = Vector3.new(pos.X, rootPart.Position.Y + 8, pos.Z)
 		local pResult = Workspace:Raycast(pOrigin, rayDir, raycastParams)
 		if pResult and pResult.Position then
 			return pResult.Position.Y, true
@@ -122,6 +123,29 @@ function geometry.IsPointInTrajectory(point, part)
 	local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
 	local dotForward = toPoint2D:Dot(forward)
 
+	if data.config and data.config.isDynamicMoving then
+		-- Với Dynamic Moving Beam (vùng màu cam di động quét sàn thời gian thực):
+		-- Giới hạn chiều sâu từ phía sau beam -4 studs đến trước beam +maxDist
+		if dotForward < -4 or dotForward > (maxDist + 2) then
+			return false
+		end
+
+		local projOnAxis = forward * dotForward
+		local perpVec = toPoint2D - projOnAxis
+		local perpDist = perpVec.Magnitude
+
+		local checkY = data.lockedVisualY or (data.rawFloorY and (data.rawFloorY + 2.8)) or origin.Y
+		local heightDiff = math.abs(point.Y - checkY)
+		if heightDiff > MAX_HEIGHT_TOLERANCE then
+			return false
+		end
+
+		if perpDist <= (radius + playerHitboxPadding) then
+			return true, perpDist, radius, forward, origin, maxDist
+		end
+		return false
+	end
+
 	-- Điểm P phải nằm trong khoảng từ ngay sau đạn (-radius) tới hết tầm maxDist
 	if dotForward < -radius or dotForward > maxDist then
 		return false
@@ -132,9 +156,9 @@ function geometry.IsPointInTrajectory(point, part)
 	local perpDist = perpVec.Magnitude
 
 	-- Kiểm tra độ cao Y theo độ cao sàn đã khóa (Raw Floor Y) của chiêu
-	local refY = data.rawFloorY or origin.Y
-	local heightDiff = math.abs(point.Y - (refY + 2.8))
-	if heightDiff > 12 then
+	local checkY = data.rawFloorY and (data.rawFloorY + 2.8) or origin.Y
+	local heightDiff = math.abs(point.Y - checkY)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
 		return false
 	end
 
@@ -158,14 +182,33 @@ function geometry.IsPointInPart(point, part)
 		local dZ = point.Z - part.Position.Z
 		local distSq = dX * dX + dZ * dZ
 		local heightDiff = math.abs(point.Y - part.Position.Y)
-		return (distSq <= radius * radius) and (heightDiff <= math.max(10, part.Size.Y / 2 + 5))
+		return (distSq <= radius * radius) and (heightDiff <= MAX_HEIGHT_TOLERANCE)
 	end
 
-	-- 2. Dạng hình chữ nhật / hộp có hướng (Oriented Bounding Box - OBB)
+	-- 2. Dạng Moving Beam (secondBossMovingBeam) xoay lộn quanh trục X:
+	local isMovingBeam = part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
+	if isMovingBeam then
+		local localPos = part.CFrame:PointToObjectSpace(point)
+		-- Chiều dài thanh beam dọc theo trục X (vùng sải ngang quét qua phòng):
+		local halfLength = math.max(part.Size.X, part.Size.Z) / 2 + playerHitboxPadding
+		-- Bán kính tiết diện xoay quanh trục X (đường kính thanh beam):
+		local beamRadius = math.max(part.Size.Y, math.min(part.Size.X, part.Size.Z)) / 2 + playerHitboxPadding
+		if beamRadius < 3.5 then beamRadius = 3.5 end
+
+		-- Khoảng cách vuông góc với trục beam trong mặt phẳng Y-Z (miễn nhiễm với góc xoay lộn quanh trục X):
+		local radialDistSq = localPos.Y * localPos.Y + localPos.Z * localPos.Z
+		local heightDiff = math.abs(point.Y - part.Position.Y)
+
+		return (math.abs(localPos.X) <= halfLength)
+			and (radialDistSq <= (beamRadius + 1.5) * (beamRadius + 1.5))
+			and (heightDiff <= MAX_HEIGHT_TOLERANCE)
+	end
+
+	-- 3. Dạng hình chữ nhật / hộp có hướng (Oriented Bounding Box - OBB)
 	local localPos = part.CFrame:PointToObjectSpace(point)
 	local halfX = part.Size.X / 2 + playerHitboxPadding
 	local halfZ = part.Size.Z / 2 + playerHitboxPadding
-	local halfY = math.max(8, part.Size.Y / 2 + 5)
+	local halfY = math.max(MAX_HEIGHT_TOLERANCE, part.Size.Y / 2 + 5)
 
 	return math.abs(localPos.X) <= halfX
 		and math.abs(localPos.Z) <= halfZ
@@ -186,7 +229,7 @@ function geometry.IsPointInRingPart(point, ringPart)
 
 	-- 2. Kiểm tra độ cao Y
 	local heightDiff = math.abs(point.Y - centerPos.Y)
-	if heightDiff > math.max(14, ringPart.Size.Y / 2 + 8) then
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
 		return false
 	end
 
@@ -256,15 +299,83 @@ function geometry.IsPointInThirdBossMultiRings(point, hazardInfo)
 	return false, nil
 end
 
+--// Kiểm tra xem điểm P có nằm trong vùng nguy hiểm của Model secondBossMovingBeam không
+function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
+	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then
+		return false, nil, nil
+	end
+
+	local inst = hazardInfo.Instance
+	local det = det()
+	local trajData = det.GetLockedProjectiles()[inst]
+	if not trajData then
+		return false, nil, nil
+	end
+
+	local primary = inst:IsA("Model") and (inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart"))
+	local curPos = (primary and primary.Position) or (inst:IsA("Model") and select(1, inst:GetBoundingBox()).Position) or inst.Position
+
+	local forward = trajData.forward2D or Vector3.new(0, 0, -1)
+	local radius = trajData.dangerRadius or 25.0
+	local maxDist = trajData.maxLookahead or 50.0
+
+	local toPoint = point - curPos
+	local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
+	local dotForward = toPoint2D:Dot(forward)
+
+	-- Chiều sâu tịnh tiến: từ sau beam -4 studs đến trước beam +maxDist
+	if dotForward < -4 or dotForward > (maxDist + 2) then
+		return false, nil, nil
+	end
+
+	local projOnAxis = forward * dotForward
+	local perpVec = toPoint2D - projOnAxis
+	local perpDist = perpVec.Magnitude
+
+	local checkY = trajData.lockedVisualY or curPos.Y
+	local heightDiff = math.abs(point.Y - checkY)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false, nil, nil
+	end
+
+	if perpDist <= (radius + playerHitboxPadding) then
+		local hitPart = primary or inst:FindFirstChildWhichIsA("BasePart")
+		local foundTraj = {
+			isTrajectory = true,
+			isDynamicMoving = true,
+			perpDist = perpDist,
+			dangerRadius = radius,
+			forward2D = forward,
+			originPos = curPos,
+			maxLookahead = maxDist,
+		}
+		return true, hitPart, foundTraj
+	end
+
+	return false, nil, nil
+end
+
 --// Kiểm tra xem một điểm P có đang bị dính bất kỳ mối nguy hiểm nào không
-function geometry.IsPointInAnyHazard(point)
+function geometry.IsPointInAnyHazard(point, ignoredInstance)
 	local det = det()
 	local bestDistSq = math.huge
 	local foundInfo, foundPart = nil, nil
 	local foundTraj = nil
 
 	for _, info in pairs(det.GetActiveHazardsMap()) do
+		if ignoredInstance then
+			if info.Instance == ignoredInstance
+				or (info.Instance and info.Instance.Name == ignoredInstance.Name)
+				or (info.Name and info.Name == ignoredInstance.Name) then
+				continue
+			end
+		end
+
 		local isMultiRings = info.Name and info.Name:lower():find("multiring") ~= nil
+		local isMovingBeam = info.Instance and info.Instance:IsA("Model") and (
+			(info.Name and info.Name:lower():find("movingbeam") ~= nil)
+			or (info.Instance.Name and info.Instance.Name:lower():find("movingbeam") ~= nil)
+		)
 
 		if isMultiRings then
 			-- ÁP DỤNG THỬ NGHIỆM 2: Giải Tích Tọa Độ Cực (Polar Annulus) RIÊNG CHO thirdBossMultiRings
@@ -278,8 +389,23 @@ function geometry.IsPointInAnyHazard(point)
 					foundTraj = nil
 				end
 			end
+		elseif isMovingBeam then
+			-- ÁP DỤNG XỬ LÝ CẤP MODEL CHO secondBossMovingBeam (TIẾP CẬN 2)
+			local inBeam, hitPart, trajData = geometry.IsPointInSecondBossMovingBeam(point, info)
+			if inBeam then
+				local distSq = (point - (hitPart and hitPart.Position or info.Instance.Position)).Magnitude
+				if distSq < bestDistSq then
+					bestDistSq = distSq
+					foundInfo = info
+					foundPart = hitPart or info.Instance
+					foundTraj = trajData
+				end
+			end
 		elseif info.ActiveParts then
 			for part in pairs(info.ActiveParts) do
+				if ignoredInstance and (part == ignoredInstance or part.Name == ignoredInstance.Name) then
+					continue
+				end
 				local trajConfig = det.GetTrajectoryConfigForPart(part)
 				if trajConfig then
 					local inTraj, perpDist, radius, forward, origin, maxDist = geometry.IsPointInTrajectory(point, part)
@@ -322,12 +448,12 @@ function geometry.IsPointInAnyHazard(point)
 end
 
 --// Kiểm tra xem một đĩa tròn bán kính safeRadius quanh điểm P có hoàn toàn an toàn (không chạm bất kỳ hazard nào) không
-function geometry.IsSpotFullySafe(centerPoint, safeRadius)
+function geometry.IsSpotFullySafe(centerPoint, safeRadius, ignoredInstance)
 	if not centerPoint then return false end
 	safeRadius = safeRadius or 0.8
 
 	-- 1. Kiểm tra chính tâm điểm P
-	if geometry.IsPointInAnyHazard(centerPoint) then
+	if geometry.IsPointInAnyHazard(centerPoint, ignoredInstance) then
 		return false
 	end
 
@@ -336,7 +462,7 @@ function geometry.IsSpotFullySafe(centerPoint, safeRadius)
 	for _, deg in ipairs(angles) do
 		local rad = math.rad(deg)
 		local sample = centerPoint + Vector3.new(math.cos(rad) * safeRadius, 0, math.sin(rad) * safeRadius)
-		if geometry.IsPointInAnyHazard(sample) then
+		if geometry.IsPointInAnyHazard(sample, ignoredInstance) then
 			return false -- Bị chạm mép vào một hazard nào đó
 		end
 	end
@@ -355,11 +481,19 @@ function geometry.GetAllHazardsAtPoint(point)
 		if isMultiRings then
 			local inRing, hitPart = geometry.IsPointInThirdBossMultiRings(point, info)
 			if inRing then
-				local inst = info.Instance or (hitPart and hitPart.Parent)
-				if inst then
-					hazardsSet[inst] = true
-					count = count + 1
-				end
+				hazardsSet[hitPart] = true
+				hazardsSet[info.Instance] = true
+				count = count + 1
+			end
+		elseif info.Instance and info.Instance:IsA("Model") and (
+			(info.Name and info.Name:lower():find("movingbeam") ~= nil)
+			or (info.Instance.Name and info.Instance.Name:lower():find("movingbeam") ~= nil)
+		) then
+			local inBeam, hitPart = geometry.IsPointInSecondBossMovingBeam(point, info)
+			if inBeam then
+				hazardsSet[hitPart or info.Instance] = true
+				hazardsSet[info.Instance] = true
+				count = count + 1
 			end
 		elseif info.ActiveParts then
 			for part in pairs(info.ActiveParts) do
@@ -367,17 +501,13 @@ function geometry.GetAllHazardsAtPoint(point)
 				if trajConfig then
 					local inTraj = geometry.IsPointInTrajectory(point, part)
 					if inTraj then
-						local inst = info.Instance or part
-						hazardsSet[inst] = true
+						hazardsSet[part] = true
 						count = count + 1
-						break
 					end
 				else
 					if geometry.IsPointInPart(point, part) then
-						local inst = info.Instance or (part:IsA("Model") and part or part.Parent)
-						hazardsSet[inst] = true
+						hazardsSet[part] = true
 						count = count + 1
-						break
 					end
 				end
 			end
@@ -389,7 +519,7 @@ end
 
 --// Kiểm tra xem đoạn đường di chuyển từ fromPos -> toPos có an toàn không (Path Clearance)
 --// currentHazardsSet: tập hợp các Hazard mà người chơi ĐANG ĐỨNG TRONG (được phép băng qua để thoát ra)
-function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentDangerPart)
+function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentDangerPart, ignoredInstance)
 	local dist = (toPos - fromPos).Magnitude
 	if dist <= 1.5 then
 		return true -- Chỉ bỏ qua bước cực ngắn <= 1.5 studs
@@ -400,7 +530,7 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 	for i = 1, steps - 1 do
 		local t = i / steps
 		local samplePos = fromPos:Lerp(toPos, t)
-		local inDanger, hitInfo, hitPart, hitTraj = geometry.IsPointInAnyHazard(samplePos)
+		local inDanger, hitInfo, hitPart, hitTraj = geometry.IsPointInAnyHazard(samplePos, ignoredInstance)
 		if inDanger then
 			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) đang bay -> Tuyệt đối không băng qua
 			if hitTraj and hitTraj.isTrajectory then
@@ -419,6 +549,8 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 				if currentInst and hitInst and currentInst ~= hitInst then
 					return false
 				end
+			else
+				return false
 			end
 		end
 	end

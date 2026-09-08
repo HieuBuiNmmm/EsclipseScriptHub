@@ -130,6 +130,18 @@ return function(window, tab)
 		end),
 	}, "Dropdown_SmartDodgeMode")
 
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Blink Step Distance (studs)",
+		Default = smartDodge.GetBlinkStep(),
+		Minimum = 0.2,
+		Maximum = 2.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetBlinkStep(value)
+		end),
+	}, "Slider_SmartDodgeBlinkStep"))
+
 	leftSection:Toggle({
 		Name = "Auto Face Target (Luôn nhìn về mục tiêu)",
 		Default = smartDodge.IsAutoFaceTargetEnabled(),
@@ -141,8 +153,8 @@ return function(window, tab)
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Instant / Final Snap Distance (studs)",
 		Default = smartDodge.GetMaxSnapDistance(),
-		Minimum = 1,
-		Maximum = 6,
+		Minimum = 0.2,
+		Maximum = 6.0,
 		DisplayMethod = "Round",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(value)

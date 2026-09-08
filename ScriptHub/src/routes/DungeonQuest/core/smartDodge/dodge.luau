@@ -41,7 +41,8 @@ local player = services.player
 local autoDodgeEnabled = false
 local dodgeMode = "Blink" -- "Blink" | "MoveTo" (Mặc định Blink để ép di chuyển mượt mà không bị phím đè)
 
-local maxSnapDistance = 3.0
+local maxSnapDistance = 1.0
+local blinkStep = 1.0 -- Cự ly mỗi nhịp chớp Blink (studs)
 
 local FINAL_ADJUST_DIST = 0.5
 
@@ -70,6 +71,22 @@ local MOVE_CHECK_INTERVAL = 0.03
 --// Ví dụ enemy — do AutoFarm Mode 2 đăng ký.
 --// nil = giữ hành vi cũ.
 local faceTargetProvider = nil
+
+--// Raycast Parameters cho Blink kiểm tra tường và sàn (Anti-Cheat Protection)
+local blinkRayParams = RaycastParams.new()
+blinkRayParams.FilterType = Enum.RaycastFilterType.Exclude
+blinkRayParams.IgnoreWater = true
+
+local function updateBlinkRayFilter()
+	local ignoreList = {}
+	for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+		if p.Character then table.insert(ignoreList, p.Character) end
+	end
+	if workspace:FindFirstChild("RaycastIgnore") then
+		table.insert(ignoreList, workspace.RaycastIgnore)
+	end
+	blinkRayParams.FilterDescendantsInstances = ignoreList
+end
 
 --// Runtime do engine bơm:
 --// { getInDanger = fn, getLogInDanger = fn }
@@ -201,19 +218,17 @@ local function snapFace(rootPart, humanoid, pos, startHeight)
 
 	local targetY = startHeight or pos.Y
 
-	if not maintainSnapHeight
-		and humanoid
-		and humanoid.HipHeight
-	then
-		local rootOffset =
-			humanoid.HipHeight
-			+ (rootPart.Size.Y / 2)
-
-		-- geometry.GetFloorPosition() contract:
-		-- pos.Y = floorY + 3
-		local floorY = pos.Y - 3
-
-		targetY = floorY + rootOffset
+	if not maintainSnapHeight and humanoid and humanoid.HipHeight and rootPart then
+		local rootOffset = humanoid.HipHeight + (rootPart.Size.Y / 2)
+		local rayOrigin = Vector3.new(pos.X, (startHeight or rootPart.Position.Y) + 6, pos.Z)
+		local rayDir = Vector3.new(0, -20, 0)
+		local floorResult = workspace:Raycast(rayOrigin, rayDir, blinkRayParams)
+		if floorResult and floorResult.Position then
+			targetY = floorResult.Position.Y + rootOffset
+		else
+			local floorY = pos.Y - 3
+			targetY = floorY + rootOffset
+		end
 	end
 
 	local actualPos = Vector3.new(
@@ -365,7 +380,11 @@ function dodge.Perform(safePos, escapeDist)
 				activeGyro = nil
 			end
 			if humanoid and humanoid.Parent then
-				humanoid.AutoRotate = true
+				if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+					humanoid.AutoRotate = false
+				else
+					humanoid.AutoRotate = true
+				end
 			end
 		end
 
@@ -392,16 +411,12 @@ function dodge.Perform(safePos, escapeDist)
 			local targetPos = currentTargetPos or safePos
 			local currentPos = rootPart.Position
 
-			local totalDist = flatDistance(
-				currentPos,
-				targetPos
-			)
+			local totalDist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(currentPos.X, 0, currentPos.Z)).Magnitude
 
-			--======================================================--
-			-- (1) Already close enough -> SNAP
-			--======================================================--
-
-			if totalDist <= maxSnapDistance then
+			-- 1. Nếu cự ly tới Safe Spot <= snapDistance -> Snap dứt điểm ngay lập tức (1 bước duy nhất)
+			-- Trong chế độ Blink: Không bao giờ snap 1 bước lớn hơn blinkStep để chống giật anticheat sync
+			local effectiveSnapDist = (dodgeMode == "Blink") and math.min(maxSnapDistance, blinkStep) or maxSnapDistance
+			if totalDist <= effectiveSnapDist then
 				snapFace(
 					rootPart,
 					humanoid,
@@ -420,52 +435,89 @@ function dodge.Perform(safePos, escapeDist)
 			end
 
 			if dodgeMode == "Blink" then
-				-- Blink: 2 bước micro-blink siêu nhỏ mở màn -> tự động walk -> cuối cùng snap vào Spot
-				local MICRO_BLINK_STEP = 1.8 -- studs mỗi bước siêu nhỏ
-				for step = 1, 2 do
+				-- RAPID CONTINUOUS BLINK (ANTI-CHEAT HARDENED):
+				-- 1. blinkStep studs mỗi 0.025s (vận tốc ~112 studs/s chuẩn Dash skill)
+				-- 2. Quét raycast vật cản ngang thắt lưng (Anti No-Clip): không blink xuyên tường/cột
+				-- 3. Bám sàn động (Dynamic Floor Snapping): tự nâng/hạ chân theo dốc/bậc thang
+				-- 4. Triệt tiêu gia tốc vật lý (AssemblyLinearVelocity = 0): chống desync
+				local currentStep = blinkStep or 1.0
+				local blinkStart = os.clock()
+				local MAX_BLINK_TIMEOUT = 2.5 -- Giới hạn an toàn chống kẹt
+
+				updateBlinkRayFilter()
+
+				while autoDodgeEnabled and (os.clock() - blinkStart < MAX_BLINK_TIMEOUT) do
 					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
 						return
 					end
 
 					targetPos = currentTargetPos or safePos
+					if not targetPos then break end
+
 					currentPos = rootPart.Position
 					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
 					local dist = diff.Magnitude
 
-					if dist <= maxSnapDistance then
+					-- Nếu đã tới cự ly snap hoặc khoảng cách quá ngắn -> Snap dứt điểm (không vượt quá currentStep)
+					local snapThreshold = math.min(maxSnapDistance, currentStep)
+					if dist <= snapThreshold then
 						snapFace(rootPart, humanoid, targetPos, startHeight)
 						if getLogInDanger() then
-							print(("[SmartDodge][Dodge] ⚡ Micro-Blink %d đã tới tầm snap (%.1f studs) -> SNAP VÀO SPOT!"):format(step, dist))
+							print(("[SmartDodge][Dodge] ⚡ Rapid Blink reached Safe Spot (%.1f studs) -> SNAP!"):format(dist))
 						end
 						return
 					end
 
-					local stepDist = math.min(MICRO_BLINK_STEP, (dist - maxSnapDistance) * 0.5)
-					stepDist = math.max(0.6, stepDist)
-					local stepPos = currentPos + diff.Unit * stepDist
-
-					snapFace(rootPart, humanoid, stepPos, startHeight)
-
-					if getLogInDanger() then
-						print(("[SmartDodge][Dodge] ⚡ Micro-Blink %d/2 (%.1f studs) -> còn %.1f studs")
-							:format(step, stepDist, dist - stepDist))
+					-- Nếu đã thoát hiểm hoàn toàn (không còn dính hazard) và cự ly còn lại nhỏ (<= currentStep) -> Snap và dừng
+					if not getInDanger() and dist <= currentStep then
+						snapFace(rootPart, humanoid, targetPos, startHeight)
+						return
 					end
 
-					task.wait(0.02)
+					local stepDist = math.min(currentStep, dist)
+					local stepDir = diff.Unit
+
+					-- KIỂM TRA RAYCAST VẬT CẢN (ANTI NO-CLIP RUBBERBAND):
+					-- Quét tia ngang ở tầm thắt lưng (Y + 1.5) để phát hiện tường / cột cản
+					local waistOrigin = currentPos + Vector3.new(0, 1.5, 0)
+					local waistDir = stepDir * (stepDist + 0.4)
+					local wallHit = workspace:Raycast(waistOrigin, waistDir, blinkRayParams)
+
+					if wallHit and wallHit.Instance and wallHit.Instance.CanCollide and wallHit.Normal.Y <= 0.65 then
+						local hitDist = (wallHit.Position - waistOrigin).Magnitude
+						if hitDist <= 0.7 then
+							-- Đã sát tường cản, không thể tiến thêm về hướng này
+							break
+						else
+							stepDist = math.max(0, hitDist - 0.4)
+						end
+					end
+
+					local stepPos = currentPos + stepDir * stepDist
+					snapFace(rootPart, humanoid, stepPos, startHeight)
+
+					task.wait(0.025)
 				end
 
-				if getLogInDanger() then
-					print(("[SmartDodge][Dodge] 🚶 Sau 2 Micro-Blink -> Tiếp tục Walk về Safe Spot (còn %.1f studs)...")
-						:format(flatDistance(rootPart.Position, currentTargetPos or safePos)))
+				-- Final check sau khi thoát loop Blink: Chỉ snap nếu cự ly còn lại <= currentStep
+				if rootPart.Parent and humanoid.Parent and humanoid.Health > 0 then
+					targetPos = currentTargetPos or safePos
+					if targetPos then
+						local remainingDiff = Vector3.new(targetPos.X - rootPart.Position.X, 0, targetPos.Z - rootPart.Position.Z)
+						if remainingDiff.Magnitude <= math.min(maxSnapDistance, currentStep) then
+							snapFace(rootPart, humanoid, targetPos, startHeight)
+						end
+					end
 				end
-			else
-				-- MoveTo Walk Mode (không micro-blink, chỉ walk thuần túy)
-				if getLogInDanger() then
-					print(
-						("[SmartDodge][Dodge] 🚶 MoveTo Walk (%.1f studs)...")
-							:format(totalDist)
-					)
-				end
+				return
+			end
+
+			-- MoveTo Walk Mode (chỉ dùng khi mode == "MoveTo")
+			if getLogInDanger() then
+				print(
+					("[SmartDodge][Dodge] 🚶 MoveTo Walk (%.1f studs)...")
+						:format(totalDist)
+				)
 			end
 
 			-- DÙNG BODYGYRO ĐỂ XOAY MẶT VỀ BOSS MÀ KHÔNG LÀM ĐỨNG YÊN NHÂN VẬT
@@ -615,7 +667,11 @@ function dodge.Cancel()
 	local char, rootPart, humanoid = getCharacterParts()
 
 	if humanoid then
-		humanoid.AutoRotate = true
+		if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+			humanoid.AutoRotate = false
+		else
+			humanoid.AutoRotate = true
+		end
 	end
 
 	if rootPart and rootPart.Parent then
@@ -684,6 +740,20 @@ end
 
 dodge.SetMaxTeleportStep = dodge.SetMaxSnapDistance
 dodge.GetMaxTeleportStep = dodge.GetMaxSnapDistance
+
+--==============================================================--
+-- Blink Step Distance
+--==============================================================--
+
+function dodge.SetBlinkStep(value)
+	if type(value) == "number" and value > 0 then
+		blinkStep = value
+	end
+end
+
+function dodge.GetBlinkStep()
+	return blinkStep
+end
 
 --==============================================================--
 -- Maintain Snap Height

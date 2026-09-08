@@ -24,6 +24,7 @@ smartDodge.GetTrajectoryLookahead = detection.GetTrajectoryLookahead
 smartDodge.SetTrajectoryWidthPadding = detection.SetTrajectoryWidthPadding
 smartDodge.GetTrajectoryWidthPadding = detection.GetTrajectoryWidthPadding
 smartDodge.RegisterPlayerSkill = detection.RegisterPlayerSkill
+smartDodge.GetActiveBossOrb = detection.GetActiveBossOrb
 
 smartDodge.SetLogHazards = detection.SetLogHazards
 smartDodge.IsLogHazardsEnabled = detection.IsLogHazardsEnabled
@@ -47,12 +48,16 @@ smartDodge.SetShowHitboxVisual = safeSpot.SetShowHitboxVisual
 smartDodge.IsShowHitboxVisualEnabled = safeSpot.IsShowHitboxVisualEnabled
 smartDodge.SetHitboxPadding = safeSpot.SetHitboxPadding
 smartDodge.GetHitboxPadding = geometry.GetHitboxPadding
+smartDodge.GetBoss1ArenaCenter = safeSpot.GetBoss1ArenaCenter
+smartDodge.GetBoss1ArenaRadius = safeSpot.GetBoss1ArenaRadius
 
 --// Dodge (Module 5)
 smartDodge.SetAutoDodge = dodge.SetAutoDodge
 smartDodge.IsAutoDodgeEnabled = dodge.IsAutoDodgeEnabled
 smartDodge.SetDodgeMode = dodge.SetDodgeMode
 smartDodge.GetDodgeMode = dodge.GetDodgeMode
+smartDodge.SetBlinkStep = dodge.SetBlinkStep
+smartDodge.GetBlinkStep = dodge.GetBlinkStep
 smartDodge.SetMaxSnapDistance = dodge.SetMaxSnapDistance
 smartDodge.GetMaxSnapDistance = dodge.GetMaxSnapDistance
 smartDodge.SetMaxTeleportStep = dodge.SetMaxTeleportStep
@@ -72,7 +77,8 @@ smartDodge.GetTargetPosition = targetFacing.GetTargetPosition
 smartDodge.SetAutoFaceBoss = smartDodge.SetAutoFaceTarget
 smartDodge.IsAutoFaceBossEnabled = smartDodge.IsAutoFaceTargetEnabled
 smartDodge.GetBossPosition = smartDodge.GetTargetPosition
-smartDodge.IsBossActive = targetFacing.IsEnabled
+smartDodge.IsTargetActive = targetFacing.IsTargetActive
+smartDodge.IsBossActive = targetFacing.IsTargetActive
 
 --// Engine (Module 6)
 smartDodge.StartEngine = engine.StartEngine
