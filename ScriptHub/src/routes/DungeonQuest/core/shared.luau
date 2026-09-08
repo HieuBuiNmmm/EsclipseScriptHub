@@ -29,7 +29,7 @@ local fastSpeed = 16
 local normalSpeed = 16
 local instantAccelEnabled = true
 local instantBrakeEnabled = false
-
+local isSettingSpeed = false
 
 local dungeonStartTime = nil
 
@@ -144,7 +144,7 @@ function shared.IsDead()
 end
 
 --// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
---// Hỗ trợ: ForceField của Roblox, Tag/Attribute của game, và Bộ đếm bảo vệ sau khi hồi sinh
+--// Hỗ trợ: ForceField của Roblox, Tag/Attribute chuẩn của game, và Bộ đếm bảo vệ sau khi hồi sinh
 function shared.IsInvulnerable()
 	local char = player and player.Character
 	if not char or not char.Parent then return false, nil end
@@ -155,19 +155,29 @@ function shared.IsInvulnerable()
 
 	-- 1. Kiểm tra ForceField nguyên bản của Roblox
 	local ff = char:FindFirstChildOfClass("ForceField")
-	if ff then
+	if ff and ff.Visible ~= false then
 		return true, "ForceField"
 	end
 
-	-- 2. Kiểm tra Attribute hoặc Tag của game
-	if char:GetAttribute("Invulnerable") or char:GetAttribute("Immune") or char:GetAttribute("Respawning") then
+	-- 2. Kiểm tra Attribute hoặc Tag của game (chỉ nhận khi có giá trị true chính xác)
+	local attrInvuln = char:GetAttribute("Invulnerable")
+	local attrImmune = char:GetAttribute("Immune")
+	local attrRespawn = char:GetAttribute("Respawning")
+	if attrInvuln == true or attrImmune == true or attrRespawn == true then
 		return true, "Attribute"
 	end
-	if char:FindFirstChild("Invulnerable") or char:FindFirstChild("Immune") or char:FindFirstChild("Respawning") then
+
+	-- 3. Kiểm tra BoolValue của game (chỉ nhận khi đúng là BoolValue và Value == true)
+	local valInvuln = char:FindFirstChild("Invulnerable")
+	local valImmune = char:FindFirstChild("Immune")
+	local valRespawn = char:FindFirstChild("Respawning")
+	if (valInvuln and valInvuln:IsA("BoolValue") and valInvuln.Value == true)
+		or (valImmune and valImmune:IsA("BoolValue") and valImmune.Value == true)
+		or (valRespawn and valRespawn:IsA("BoolValue") and valRespawn.Value == true) then
 		return true, "Value"
 	end
 
-	-- 3. Kiểm tra Thời gian bảo vệ sau khi hồi sinh (Respawn Protection Timer)
+	-- 4. Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
 	local remaining = shared.GetRespawnProtectionRemaining()
 	if remaining > 0 then
 		return true, ("Respawn Shield (%.1fs)"):format(remaining)
@@ -358,14 +368,26 @@ end
 function shared.SetFastSpeed(value)
 	fastSpeed = value
 	if enabled and humanoid and humanoid.Parent then
-		humanoid.WalkSpeed = fastSpeed
+		if humanoid.WalkSpeed < fastSpeed then
+			isSettingSpeed = true
+			humanoid.WalkSpeed = fastSpeed
+			isSettingSpeed = false
+		end
 	end
 end
 
 function shared.SetSpeedEnabled(state)
 	enabled = state
 	if humanoid and humanoid.Parent then
-		humanoid.WalkSpeed = enabled and fastSpeed or normalSpeed
+		isSettingSpeed = true
+		if enabled then
+			if humanoid.WalkSpeed < fastSpeed then
+				humanoid.WalkSpeed = fastSpeed
+			end
+		else
+			humanoid.WalkSpeed = normalSpeed
+		end
+		isSettingSpeed = false
 	end
 end
 
@@ -401,8 +423,20 @@ local function connectSpeedListener()
 	end
 	if not humanoid or not humanoid.Parent then return end
 	speedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-		if enabled and humanoid and humanoid.Parent and humanoid.WalkSpeed ~= fastSpeed then
-			humanoid.WalkSpeed = fastSpeed
+		if isSettingSpeed then return end
+		if not humanoid or not humanoid.Parent then return end
+		local curSpeed = humanoid.WalkSpeed
+		if enabled then
+			-- Floor Speed / Anti-Slow: Nếu tốc độ hiện tại thấp hơn fastSpeed (ví dụ 16 hoặc bị làm chậm),
+			-- ta ép lên mức sàn fastSpeed. Nhưng nếu game buff tốc cao hơn (ví dụ skill buff lên 24),
+			-- ta giữ nguyên để người chơi được hưởng trọn vẹn buff của game mà không bị bóp nghẹt.
+			if curSpeed < fastSpeed then
+				isSettingSpeed = true
+				humanoid.WalkSpeed = fastSpeed
+				isSettingSpeed = false
+			end
+		else
+			normalSpeed = curSpeed
 		end
 	end)
 end
@@ -415,7 +449,11 @@ function shared.SetHumanoid(character)
 	humanoid = newHumanoid
 	rootPart = character:WaitForChild("HumanoidRootPart", 10) or character.PrimaryPart
 	normalSpeed = humanoid.WalkSpeed
-	if enabled then humanoid.WalkSpeed = fastSpeed end
+	if enabled and humanoid.WalkSpeed < fastSpeed then
+		isSettingSpeed = true
+		humanoid.WalkSpeed = fastSpeed
+		isSettingSpeed = false
+	end
 
 	if diedConnection then
 		diedConnection:Disconnect()
@@ -430,10 +468,6 @@ function shared.SetHumanoid(character)
 			wasDead = true
 		elseif wasDead and health > 0 then
 			wasDead = false
-			lastRespawnTime = os.clock()
-			for _, callback in ipairs(respawnCallbacks) do
-				pcall(callback)
-			end
 		end
 	end))
 end
@@ -455,7 +489,7 @@ local function updateInstantMovement()
 
 	if moveDir.Magnitude > 0.05 then
 		if instantAccelEnabled then
-			local targetSpeed = enabled and fastSpeed or humanoid.WalkSpeed
+			local targetSpeed = enabled and math.max(fastSpeed, humanoid.WalkSpeed) or humanoid.WalkSpeed
 			rootPart.AssemblyLinearVelocity = Vector3.new(
 				moveDir.X * targetSpeed,
 				curVel.Y,

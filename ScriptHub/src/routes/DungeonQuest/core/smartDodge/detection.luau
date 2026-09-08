@@ -28,12 +28,32 @@ local detection = {}
 local threatDetectorEnabled = false
 local logHazards = false
 local visualEspEnabled = true
-local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid }
+local showSkillTimers = true
+local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
 local lastHazardInfo = nil
 local connections = {}
 local sharedCleanups = {}
+
+--// Bảng cơ sở dữ liệu thời gian sống học được từ các kỹ năng (Skill Lifetime Profiler)
+local skillProfiles = {} -- [string skillName] = { count = number, avgLifetime = number, minLifetime = number, maxLifetime = number }
+
+--// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây)
+local KNOWN_SKILL_LIFETIMES = {
+	["largeIceSpikes"] = 1.8,
+	["mediumIceSpikes"] = 1.5,
+	["smallIceSpikes"] = 1.2,
+	["thirdBossMultiRings"] = 2.8,
+	["firstBossCrissCross"] = 2.2,
+	["firstBossSeekingSpikes"] = 2.5,
+	["firstBossBigSpike"] = 2.0,
+	["firstBossBeamPart"] = 2.0,
+	["secondBossMovingBeam"] = 3.5,
+	["secondbossyelloworb"] = 4.0,
+	["secondbossredorb"] = 4.0,
+	["secondbossgreenorb"] = 4.0,
+}
 local ignoredSkillNames = {
 	["DodgeNode_ESP"] = true,
 	["Enhanced Aura Ring"] = true,
@@ -815,6 +835,61 @@ local function attachSelectionBoxes(hazardParts)
 	return boxes
 end
 
+--// Ước tính tổng thời gian tồn tại (Total Expected Lifetime) của một kỹ năng
+local function getEstimatedSkillLifetime(skillName)
+	local prof = skillProfiles[skillName]
+	if prof and prof.avgLifetime then
+		return prof.avgLifetime
+	end
+	local known = KNOWN_SKILL_LIFETIMES[skillName]
+	if known then
+		return known
+	end
+	return 2.5
+end
+
+--// Gắn BillboardGui 3D đếm ngược thời gian tồn tại của hazard
+local function attachHazardTimerBillboard(instance, hazardParts, skillName)
+	if not showSkillTimers then return nil, nil end
+	local targetPart = hazardParts and hazardParts[1]
+	if not targetPart or not targetPart:IsA("BasePart") then
+		if instance:IsA("BasePart") then
+			targetPart = instance
+		elseif instance:IsA("Model") and instance.PrimaryPart then
+			targetPart = instance.PrimaryPart
+		else
+			return nil, nil
+		end
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "SmartDodge_TimerBillboard"
+	billboard.Adornee = targetPart
+	billboard.Size = UDim2.new(0, 160, 0, 40)
+	billboard.StudsOffset = Vector3.new(0, 4.0, 0)
+	billboard.AlwaysOnTop = true
+	billboard.ResetOnSpawn = false
+
+	local label = Instance.new("TextLabel")
+	label.Name = "TimerLabel"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(255, 220, 80)
+	label.Text = skillName .. "\n⏳ calculating..."
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 1.5
+	stroke.Parent = label
+
+	label.Parent = billboard
+	billboard.Parent = targetPart
+
+	return billboard, label
+end
+
 --// Tìm đối tượng tung chiêu (Caster) để theo dõi vòng đời sống/chết (Tầng 2)
 local function findCasterForHazard(instance, pos)
 	if not instance then return nil, nil end
@@ -942,6 +1017,10 @@ local function registerHazard(instance)
 	end
 
 	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
+	local timerBillboard, timerLabel = nil, nil
+	if showSkillTimers then
+		timerBillboard, timerLabel = attachHazardTimerBillboard(instance, hazardParts, instance.Name)
+	end
 
 	local info = {
 		Instance = instance,
@@ -954,6 +1033,8 @@ local function registerHazard(instance)
 		Connections = partConnections,
 		ActiveParts = activePartsSet,
 		VisualBoxes = visualBoxes,
+		TimerBillboard = timerBillboard,
+		TimerLabel = timerLabel,
 		IsException = isException,
 		Caster = casterModel,
 		CasterHumanoid = casterHumanoid,
@@ -1178,6 +1259,35 @@ function unregisterHazard(instance, reason)
 			end
 			if lockedProjectiles[p] then
 				lockedProjectiles[p] = nil
+			end
+		end
+	end
+
+	-- Dọn dẹp Timer Billboard
+	if info.TimerBillboard then
+		pcall(function() info.TimerBillboard:Destroy() end)
+		info.TimerBillboard = nil
+		info.TimerLabel = nil
+	end
+
+	-- Cập nhật thống kê thời gian sống của chiêu thức (Skill Lifetime Profiler)
+	if info.SpawnTime then
+		local duration = os.clock() - info.SpawnTime
+		if duration >= 0.2 and duration <= 25.0 then
+			local prof = skillProfiles[info.Name]
+			if not prof then
+				prof = {
+					count = 1,
+					avgLifetime = duration,
+					minLifetime = duration,
+					maxLifetime = duration,
+				}
+				skillProfiles[info.Name] = prof
+			else
+				prof.count = prof.count + 1
+				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / math.min(prof.count, 8)
+				prof.minLifetime = math.min(prof.minLifetime, duration)
+				prof.maxLifetime = math.max(prof.maxLifetime, duration)
 			end
 		end
 	end
@@ -1639,6 +1749,79 @@ function detection.GetActiveBossOrb()
 		end
 	end
 	return nil, nil, nil, nil
+end
+
+--// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất
+function detection.GetHazardTimeRemaining(instance)
+	local info = activeHazards[instance]
+	if not info or not info.SpawnTime then return nil, nil, 0 end
+	local elapsed = os.clock() - info.SpawnTime
+	local estTotal = getEstimatedSkillLifetime(info.Name)
+	local remaining = math.max(0, estTotal - elapsed)
+	return remaining, estTotal, elapsed
+end
+
+--// Lấy thông tin thống kê thời gian sống của một kỹ năng
+function detection.GetSkillProfile(skillName)
+	return skillProfiles[skillName]
+end
+
+--// Lấy toàn bộ hồ sơ thời gian sống của các chiêu thức đã học
+function detection.GetAllSkillProfiles()
+	return skillProfiles
+end
+
+--// Cập nhật nhãn đếm ngược 3D trên đầu các hazard đang hoạt động
+function detection.UpdateHazardTimers()
+	if not showSkillTimers then return end
+	local now = os.clock()
+	for _, info in pairs(activeHazards) do
+		if info.TimerLabel and info.SpawnTime then
+			local elapsed = now - info.SpawnTime
+			local estTotal = getEstimatedSkillLifetime(info.Name)
+			local remaining = math.max(0, estTotal - elapsed)
+
+			local color
+			if remaining <= 0.4 then
+				color = Color3.fromRGB(100, 255, 100) -- Xanh lá: sắp tan biến
+			elseif remaining <= 1.0 then
+				color = Color3.fromRGB(255, 170, 0) -- Cam: sắp hết hạn
+			else
+				color = Color3.fromRGB(255, 75, 75) -- Đỏ: đang nguy hiểm
+			end
+
+			info.TimerLabel.TextColor3 = color
+			info.TimerLabel.Text = string.format("%s\n⏳ %.1fs / %.1fs", info.Name, remaining, estTotal)
+		end
+	end
+end
+
+--// Bật/tắt hiển thị đếm ngược 3D Countdown trên đầu chiêu thức
+function detection.SetShowSkillTimers(state)
+	showSkillTimers = state and true or false
+	if not showSkillTimers then
+		for _, info in pairs(activeHazards) do
+			if info.TimerBillboard then
+				pcall(function() info.TimerBillboard:Destroy() end)
+				info.TimerBillboard = nil
+				info.TimerLabel = nil
+			end
+		end
+	else
+		for inst, info in pairs(activeHazards) do
+			if not info.TimerBillboard and info.ActiveParts then
+				local partsList = {}
+				for p in pairs(info.ActiveParts) do
+					table.insert(partsList, p)
+				end
+				info.TimerBillboard, info.TimerLabel = attachHazardTimerBillboard(inst, partsList, info.Name)
+			end
+		end
+	end
+end
+
+function detection.IsShowSkillTimersEnabled()
+	return showSkillTimers
 end
 
 return detection

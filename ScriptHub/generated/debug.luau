@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-08T08:29:05.547601500+00:00",
+    genDate = "2026-09-08T12:24:48.075600200+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6111,7 +6111,7 @@ local fastSpeed = 16
 local normalSpeed = 16
 local instantAccelEnabled = true
 local instantBrakeEnabled = false
-
+local isSettingSpeed = false
 
 local dungeonStartTime = nil
 
@@ -6226,7 +6226,7 @@ function shared.IsDead()
 end
 
 --// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
---// Hỗ trợ: ForceField của Roblox, Tag/Attribute của game, và Bộ đếm bảo vệ sau khi hồi sinh
+--// Hỗ trợ: ForceField của Roblox, Tag/Attribute chuẩn của game, và Bộ đếm bảo vệ sau khi hồi sinh
 function shared.IsInvulnerable()
 	local char = player and player.Character
 	if not char or not char.Parent then return false, nil end
@@ -6237,19 +6237,29 @@ function shared.IsInvulnerable()
 
 	-- 1. Kiểm tra ForceField nguyên bản của Roblox
 	local ff = char:FindFirstChildOfClass("ForceField")
-	if ff then
+	if ff and ff.Visible ~= false then
 		return true, "ForceField"
 	end
 
-	-- 2. Kiểm tra Attribute hoặc Tag của game
-	if char:GetAttribute("Invulnerable") or char:GetAttribute("Immune") or char:GetAttribute("Respawning") then
+	-- 2. Kiểm tra Attribute hoặc Tag của game (chỉ nhận khi có giá trị true chính xác)
+	local attrInvuln = char:GetAttribute("Invulnerable")
+	local attrImmune = char:GetAttribute("Immune")
+	local attrRespawn = char:GetAttribute("Respawning")
+	if attrInvuln == true or attrImmune == true or attrRespawn == true then
 		return true, "Attribute"
 	end
-	if char:FindFirstChild("Invulnerable") or char:FindFirstChild("Immune") or char:FindFirstChild("Respawning") then
+
+	-- 3. Kiểm tra BoolValue của game (chỉ nhận khi đúng là BoolValue và Value == true)
+	local valInvuln = char:FindFirstChild("Invulnerable")
+	local valImmune = char:FindFirstChild("Immune")
+	local valRespawn = char:FindFirstChild("Respawning")
+	if (valInvuln and valInvuln:IsA("BoolValue") and valInvuln.Value == true)
+		or (valImmune and valImmune:IsA("BoolValue") and valImmune.Value == true)
+		or (valRespawn and valRespawn:IsA("BoolValue") and valRespawn.Value == true) then
 		return true, "Value"
 	end
 
-	-- 3. Kiểm tra Thời gian bảo vệ sau khi hồi sinh (Respawn Protection Timer)
+	-- 4. Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
 	local remaining = shared.GetRespawnProtectionRemaining()
 	if remaining > 0 then
 		return true, ("Respawn Shield (%.1fs)"):format(remaining)
@@ -6440,14 +6450,26 @@ end
 function shared.SetFastSpeed(value)
 	fastSpeed = value
 	if enabled and humanoid and humanoid.Parent then
-		humanoid.WalkSpeed = fastSpeed
+		if humanoid.WalkSpeed < fastSpeed then
+			isSettingSpeed = true
+			humanoid.WalkSpeed = fastSpeed
+			isSettingSpeed = false
+		end
 	end
 end
 
 function shared.SetSpeedEnabled(state)
 	enabled = state
 	if humanoid and humanoid.Parent then
-		humanoid.WalkSpeed = enabled and fastSpeed or normalSpeed
+		isSettingSpeed = true
+		if enabled then
+			if humanoid.WalkSpeed < fastSpeed then
+				humanoid.WalkSpeed = fastSpeed
+			end
+		else
+			humanoid.WalkSpeed = normalSpeed
+		end
+		isSettingSpeed = false
 	end
 end
 
@@ -6483,8 +6505,20 @@ local function connectSpeedListener()
 	end
 	if not humanoid or not humanoid.Parent then return end
 	speedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-		if enabled and humanoid and humanoid.Parent and humanoid.WalkSpeed ~= fastSpeed then
-			humanoid.WalkSpeed = fastSpeed
+		if isSettingSpeed then return end
+		if not humanoid or not humanoid.Parent then return end
+		local curSpeed = humanoid.WalkSpeed
+		if enabled then
+			-- Floor Speed / Anti-Slow: Nếu tốc độ hiện tại thấp hơn fastSpeed (ví dụ 16 hoặc bị làm chậm),
+			-- ta ép lên mức sàn fastSpeed. Nhưng nếu game buff tốc cao hơn (ví dụ skill buff lên 24),
+			-- ta giữ nguyên để người chơi được hưởng trọn vẹn buff của game mà không bị bóp nghẹt.
+			if curSpeed < fastSpeed then
+				isSettingSpeed = true
+				humanoid.WalkSpeed = fastSpeed
+				isSettingSpeed = false
+			end
+		else
+			normalSpeed = curSpeed
 		end
 	end)
 end
@@ -6497,7 +6531,11 @@ function shared.SetHumanoid(character)
 	humanoid = newHumanoid
 	rootPart = character:WaitForChild("HumanoidRootPart", 10) or character.PrimaryPart
 	normalSpeed = humanoid.WalkSpeed
-	if enabled then humanoid.WalkSpeed = fastSpeed end
+	if enabled and humanoid.WalkSpeed < fastSpeed then
+		isSettingSpeed = true
+		humanoid.WalkSpeed = fastSpeed
+		isSettingSpeed = false
+	end
 
 	if diedConnection then
 		diedConnection:Disconnect()
@@ -6512,10 +6550,6 @@ function shared.SetHumanoid(character)
 			wasDead = true
 		elseif wasDead and health > 0 then
 			wasDead = false
-			lastRespawnTime = os.clock()
-			for _, callback in ipairs(respawnCallbacks) do
-				pcall(callback)
-			end
 		end
 	end))
 end
@@ -6537,7 +6571,7 @@ local function updateInstantMovement()
 
 	if moveDir.Magnitude > 0.05 then
 		if instantAccelEnabled then
-			local targetSpeed = enabled and fastSpeed or humanoid.WalkSpeed
+			local targetSpeed = enabled and math.max(fastSpeed, humanoid.WalkSpeed) or humanoid.WalkSpeed
 			rootPart.AssemblyLinearVelocity = Vector3.new(
 				moveDir.X * targetSpeed,
 				curVel.Y,
@@ -7789,12 +7823,32 @@ local detection = {}
 local threatDetectorEnabled = false
 local logHazards = false
 local visualEspEnabled = true
-local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid }
+local showSkillTimers = true
+local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
 local lastHazardInfo = nil
 local connections = {}
 local sharedCleanups = {}
+
+--// Bảng cơ sở dữ liệu thời gian sống học được từ các kỹ năng (Skill Lifetime Profiler)
+local skillProfiles = {} -- [string skillName] = { count = number, avgLifetime = number, minLifetime = number, maxLifetime = number }
+
+--// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây)
+local KNOWN_SKILL_LIFETIMES = {
+	["largeIceSpikes"] = 1.8,
+	["mediumIceSpikes"] = 1.5,
+	["smallIceSpikes"] = 1.2,
+	["thirdBossMultiRings"] = 2.8,
+	["firstBossCrissCross"] = 2.2,
+	["firstBossSeekingSpikes"] = 2.5,
+	["firstBossBigSpike"] = 2.0,
+	["firstBossBeamPart"] = 2.0,
+	["secondBossMovingBeam"] = 3.5,
+	["secondbossyelloworb"] = 4.0,
+	["secondbossredorb"] = 4.0,
+	["secondbossgreenorb"] = 4.0,
+}
 local ignoredSkillNames = {
 	["DodgeNode_ESP"] = true,
 	["Enhanced Aura Ring"] = true,
@@ -8576,6 +8630,61 @@ local function attachSelectionBoxes(hazardParts)
 	return boxes
 end
 
+--// Ước tính tổng thời gian tồn tại (Total Expected Lifetime) của một kỹ năng
+local function getEstimatedSkillLifetime(skillName)
+	local prof = skillProfiles[skillName]
+	if prof and prof.avgLifetime then
+		return prof.avgLifetime
+	end
+	local known = KNOWN_SKILL_LIFETIMES[skillName]
+	if known then
+		return known
+	end
+	return 2.5
+end
+
+--// Gắn BillboardGui 3D đếm ngược thời gian tồn tại của hazard
+local function attachHazardTimerBillboard(instance, hazardParts, skillName)
+	if not showSkillTimers then return nil, nil end
+	local targetPart = hazardParts and hazardParts[1]
+	if not targetPart or not targetPart:IsA("BasePart") then
+		if instance:IsA("BasePart") then
+			targetPart = instance
+		elseif instance:IsA("Model") and instance.PrimaryPart then
+			targetPart = instance.PrimaryPart
+		else
+			return nil, nil
+		end
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "SmartDodge_TimerBillboard"
+	billboard.Adornee = targetPart
+	billboard.Size = UDim2.new(0, 160, 0, 40)
+	billboard.StudsOffset = Vector3.new(0, 4.0, 0)
+	billboard.AlwaysOnTop = true
+	billboard.ResetOnSpawn = false
+
+	local label = Instance.new("TextLabel")
+	label.Name = "TimerLabel"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextColor3 = Color3.fromRGB(255, 220, 80)
+	label.Text = skillName .. "\n⏳ calculating..."
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 1.5
+	stroke.Parent = label
+
+	label.Parent = billboard
+	billboard.Parent = targetPart
+
+	return billboard, label
+end
+
 --// Tìm đối tượng tung chiêu (Caster) để theo dõi vòng đời sống/chết (Tầng 2)
 local function findCasterForHazard(instance, pos)
 	if not instance then return nil, nil end
@@ -8703,6 +8812,10 @@ local function registerHazard(instance)
 	end
 
 	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
+	local timerBillboard, timerLabel = nil, nil
+	if showSkillTimers then
+		timerBillboard, timerLabel = attachHazardTimerBillboard(instance, hazardParts, instance.Name)
+	end
 
 	local info = {
 		Instance = instance,
@@ -8715,6 +8828,8 @@ local function registerHazard(instance)
 		Connections = partConnections,
 		ActiveParts = activePartsSet,
 		VisualBoxes = visualBoxes,
+		TimerBillboard = timerBillboard,
+		TimerLabel = timerLabel,
 		IsException = isException,
 		Caster = casterModel,
 		CasterHumanoid = casterHumanoid,
@@ -8939,6 +9054,35 @@ function unregisterHazard(instance, reason)
 			end
 			if lockedProjectiles[p] then
 				lockedProjectiles[p] = nil
+			end
+		end
+	end
+
+	-- Dọn dẹp Timer Billboard
+	if info.TimerBillboard then
+		pcall(function() info.TimerBillboard:Destroy() end)
+		info.TimerBillboard = nil
+		info.TimerLabel = nil
+	end
+
+	-- Cập nhật thống kê thời gian sống của chiêu thức (Skill Lifetime Profiler)
+	if info.SpawnTime then
+		local duration = os.clock() - info.SpawnTime
+		if duration >= 0.2 and duration <= 25.0 then
+			local prof = skillProfiles[info.Name]
+			if not prof then
+				prof = {
+					count = 1,
+					avgLifetime = duration,
+					minLifetime = duration,
+					maxLifetime = duration,
+				}
+				skillProfiles[info.Name] = prof
+			else
+				prof.count = prof.count + 1
+				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / math.min(prof.count, 8)
+				prof.minLifetime = math.min(prof.minLifetime, duration)
+				prof.maxLifetime = math.max(prof.maxLifetime, duration)
 			end
 		end
 	end
@@ -9400,6 +9544,79 @@ function detection.GetActiveBossOrb()
 		end
 	end
 	return nil, nil, nil, nil
+end
+
+--// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất
+function detection.GetHazardTimeRemaining(instance)
+	local info = activeHazards[instance]
+	if not info or not info.SpawnTime then return nil, nil, 0 end
+	local elapsed = os.clock() - info.SpawnTime
+	local estTotal = getEstimatedSkillLifetime(info.Name)
+	local remaining = math.max(0, estTotal - elapsed)
+	return remaining, estTotal, elapsed
+end
+
+--// Lấy thông tin thống kê thời gian sống của một kỹ năng
+function detection.GetSkillProfile(skillName)
+	return skillProfiles[skillName]
+end
+
+--// Lấy toàn bộ hồ sơ thời gian sống của các chiêu thức đã học
+function detection.GetAllSkillProfiles()
+	return skillProfiles
+end
+
+--// Cập nhật nhãn đếm ngược 3D trên đầu các hazard đang hoạt động
+function detection.UpdateHazardTimers()
+	if not showSkillTimers then return end
+	local now = os.clock()
+	for _, info in pairs(activeHazards) do
+		if info.TimerLabel and info.SpawnTime then
+			local elapsed = now - info.SpawnTime
+			local estTotal = getEstimatedSkillLifetime(info.Name)
+			local remaining = math.max(0, estTotal - elapsed)
+
+			local color
+			if remaining <= 0.4 then
+				color = Color3.fromRGB(100, 255, 100) -- Xanh lá: sắp tan biến
+			elseif remaining <= 1.0 then
+				color = Color3.fromRGB(255, 170, 0) -- Cam: sắp hết hạn
+			else
+				color = Color3.fromRGB(255, 75, 75) -- Đỏ: đang nguy hiểm
+			end
+
+			info.TimerLabel.TextColor3 = color
+			info.TimerLabel.Text = string.format("%s\n⏳ %.1fs / %.1fs", info.Name, remaining, estTotal)
+		end
+	end
+end
+
+--// Bật/tắt hiển thị đếm ngược 3D Countdown trên đầu chiêu thức
+function detection.SetShowSkillTimers(state)
+	showSkillTimers = state and true or false
+	if not showSkillTimers then
+		for _, info in pairs(activeHazards) do
+			if info.TimerBillboard then
+				pcall(function() info.TimerBillboard:Destroy() end)
+				info.TimerBillboard = nil
+				info.TimerLabel = nil
+			end
+		end
+	else
+		for inst, info in pairs(activeHazards) do
+			if not info.TimerBillboard and info.ActiveParts then
+				local partsList = {}
+				for p in pairs(info.ActiveParts) do
+					table.insert(partsList, p)
+				end
+				info.TimerBillboard, info.TimerLabel = attachHazardTimerBillboard(inst, partsList, info.Name)
+			end
+		end
+	end
+end
+
+function detection.IsShowSkillTimersEnabled()
+	return showSkillTimers
 end
 
 return detection end function __DIST.m()-- Target Movement System – Component C: Target Selector & Path Calculator
@@ -10684,7 +10901,7 @@ local function getClearanceBonus(point)
 end
 
 --// Tính điểm ưu tiên cho một ứng viên vị trí an toàn (Score càng THẤP càng ƯU TIÊN):
---// Ưu tiên hướng di chuyển của Player, hướng lùi tự nhiên và cự ly an toàn
+--// Tận dụng Hệ quy chiếu Face-to-Target: Ưu tiên Lách Ngang (Strafe), Phạt Lùi Xéo Sâu, Phạt Cự Ly
 local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 	-- Hard check cho Boss 1 Arena: Không chọn điểm ra ngoài phạm vi sàn đấu
 	if boss1ArenaCenter and not isInsideBoss1Arena(candPos, playerPos) then
@@ -10693,7 +10910,37 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 
 	local moveDist = (candPos - playerPos).Magnitude
 	local clearance = getClearanceBonus(candPos)
-	local score = moveDist - (clearance * 0.5)
+	-- Cự ly là tiêu chí sống còn: mỗi stud chạy thêm làm tăng nguy cơ deal dame
+	local score = (moveDist * 1.5) - (clearance * 0.35)
+
+	-- TẬN DỤNG HỆ QUY CHIẾU CHIẾN ĐẤU FACE-TO-TARGET (Nhìn Boss)
+	local targetPos = targetFacing and targetFacing.GetTargetPosition and targetFacing.GetTargetPosition()
+	if targetPos and moveDist > 0.3 then
+		local toTarget2D = Vector3.new(targetPos.X - playerPos.X, 0, targetPos.Z - playerPos.Z)
+		if toTarget2D.Magnitude > 1.0 then
+			local fwd = toTarget2D.Unit
+			local right = Vector3.new(-fwd.Z, 0, fwd.X)
+			local toCand2D = Vector3.new(candPos.X - playerPos.X, 0, candPos.Z - playerPos.Z)
+
+			local depthOffset = toCand2D:Dot(fwd)                  -- > 0: Tiến | < 0: Lùi
+			local strafeRatio = math.abs(toCand2D.Unit:Dot(right)) -- 1.0: Lách ngang sườn thuần túy
+
+			-- 1. Thưởng lớn cho bước LÁCH NGANG (Strafe giữ cự ly với Boss - Điểm 1)
+			if strafeRatio >= 0.82 and math.abs(depthOffset) <= 2.2 then
+				score = score - 6.0
+			end
+
+			-- 2. Phạt điểm nếu LÙI XÉO RA SAU LƯNG (như Điểm 2: mất tầm đánh, chạy lâu trong vùng đỏ)
+			if depthOffset < -2.0 then
+				score = score + (math.abs(depthOffset) * 1.8)
+			end
+
+			-- 3. Phạt nếu TIẾN THẲNG VÀO MẶT BOSS khi đang né chiêu
+			if depthOffset > 2.5 then
+				score = score + (depthOffset * 1.2)
+			end
+		end
+	end
 
 	if moveDist > 0.5 then
 		local dir = (candPos - playerPos).Unit
@@ -10706,9 +10953,9 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 				-- Ngược hướng Player đang di chuyển: phạt nhẹ (+2.0 studs)
 				score = score + (math.abs(dotMove) * 2.0)
 			end
-		elseif repVector then
+		elseif repVector and not targetPos then
 			local dot = dir:Dot(repVector)
-			score = score - (dot * 2.5) -- Thưởng tới 2.5 studs cho hướng lùi thoát hiểm tự nhiên ra sau
+			score = score - (dot * 2.0)
 		end
 	end
 
@@ -11195,15 +11442,19 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 12.0))
 		else
 			-- CHIẾN LƯỢC PROJECTILE / BEAM CỦA BOSS 1 (firstBossBigSpike, seekingSpikes):
-			-- TUYỆT ĐỐI KHÔNG NÉ LÙI DỌC CHIÊU! Chỉ né vuông góc ngang sang 2 bên sườn (Perpendicular Lateral Escapes)
-			local latSteps = { stepNeeded, stepNeeded + 2.5, stepNeeded + 5.0 }
-			local smallFOffsets = { 0, 1.5, -1.5, 3.0, -3.0 }
+			-- ƯU TIÊN TUYỆT ĐỐI: Lách ngang vuông góc thuần túy 90° (Điểm 1) - Thoát hiểm nhanh nhất
+			local latSteps = { stepNeeded, stepNeeded + 2.0, stepNeeded + 4.0 }
 			for _, sDist in ipairs(latSteps) do
-				for _, fOff in ipairs(smallFOffsets) do
-					local fVec = forward2D * fOff
-					table.insert(trajCandidates, playerPos + perpRight * sDist + fVec)
-					table.insert(trajCandidates, playerPos + perpLeft * sDist + fVec)
-				end
+				table.insert(trajCandidates, playerPos + perpRight * sDist)
+				table.insert(trajCandidates, playerPos + perpLeft * sDist)
+			end
+
+			-- Dự phòng lệch nhẹ chỉ khi cả 2 hướng ngang thuần túy đều bị chướng ngại vật cản:
+			local backupFOffsets = { -1.5, 1.5, -3.0 }
+			for _, fOff in ipairs(backupFOffsets) do
+				local fVec = forward2D * fOff
+				table.insert(trajCandidates, playerPos + perpRight * stepNeeded + fVec)
+				table.insert(trajCandidates, playerPos + perpLeft * stepNeeded + fVec)
 			end
 		end
 
@@ -11229,20 +11480,22 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			end
 
 			if geometry.IsSpotFullySafe(candWorld, 0.5) then
-				-- Chấm điểm ưu tiên (Toán thuần túy)
+				-- Chấm điểm ưu tiên: Cự ly ngắn nhất = thời gian ở trong vùng đỏ ít nhất
 				local moveDist = toCand.Magnitude
 				local clearance = getClearanceBonus(candWorld)
-				local score = moveDist - (clearance * 0.5)
+				local score = (moveDist * 1.6) - (clearance * 0.3)
 
 				local dotFwd = toCand.Magnitude > 0.5 and toCand.Unit:Dot(forward2D) or 0
 				if isMovingBeam and dotFwd < -0.2 then
 					-- Chỉ thưởng lùi ra sau cho Moving Beam của Boss 2!
 					score = score - 15.0
 				elseif not isMovingBeam then
-					-- Với Boss 1: Thưởng né thuần ngang vuông góc (Perpendicular)
+					-- Thưởng áp đảo cho bước né thuần ngang vuông góc (Perpendicular - Điểm 1)
 					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
-					if dotPerp > 0.7 then
-						score = score - 8.0 -- Thưởng lớn cho bước né thuần ngang sang 2 bên sườn
+					if dotPerp >= 0.90 then
+						score = score - 12.0 -- Điểm 1: Lách ngang sườn ngắn nhất, không bị deal dame
+					elseif dotPerp < 0.80 then
+						score = score + 4.0  -- Điểm 2: Đi chéo/lùi xéo bị phạt điểm nặng
 					end
 				end
 
@@ -11476,13 +11729,14 @@ return safeSpot end function __DIST.r()--=======================================
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local targetFacing = __DIST.load('p')
+local RunService = services.RunService
 
 --// References
 local player = services.player
 
 --// State
 local autoDodgeEnabled = false
-local dodgeMode = "Blink" -- "Blink" | "MoveTo" (Mặc định Blink để ép di chuyển mượt mà không bị phím đè)
+local dodgeMode = "HumanoidMove" -- "HumanoidMove" | "Blink" | "MoveTo"
 
 local maxSnapDistance = 1.0
 local blinkStep = 1.0 -- Cự ly mỗi nhịp chớp Blink (studs)
@@ -11493,6 +11747,7 @@ local maintainSnapHeight = true
 
 local isDodging = false
 local dodgeThread = nil
+local activeMoveConn = nil
 
 local currentTargetPos = nil
 
@@ -11839,9 +12094,22 @@ function dodge.Perform(safePos, escapeDist)
 		local function finish()
 			cleanGyro()
 
-			if rootPart and rootPart.Parent then
+			if activeMoveConn then
+				pcall(function() activeMoveConn:Disconnect() end)
+				activeMoveConn = nil
+			end
+
+			if rootPart and rootPart.Parent and dodgeMode ~= "HumanoidMove" then
 				rootPart.AssemblyLinearVelocity = Vector3.zero
 				rootPart.AssemblyAngularVelocity = Vector3.zero
+			end
+
+			if humanoid and humanoid.Parent and dodgeMode == "HumanoidMove" then
+				pcall(function()
+					humanoid:Move(Vector3.zero, false)
+					local root = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+					if root then humanoid:MoveTo(root.Position) end
+				end)
 			end
 
 			isDodging = false
@@ -11864,7 +12132,7 @@ function dodge.Perform(safePos, escapeDist)
 			-- 1. Nếu cự ly tới Safe Spot <= snapDistance -> Snap dứt điểm ngay lập tức (1 bước duy nhất)
 			-- Trong chế độ Blink: Không bao giờ snap 1 bước lớn hơn blinkStep để chống giật anticheat sync
 			local effectiveSnapDist = (dodgeMode == "Blink") and math.min(maxSnapDistance, blinkStep) or maxSnapDistance
-			if totalDist <= effectiveSnapDist then
+			if totalDist <= effectiveSnapDist and dodgeMode ~= "HumanoidMove" then
 				snapFace(
 					rootPart,
 					humanoid,
@@ -11879,6 +12147,88 @@ function dodge.Perform(safePos, escapeDist)
 					)
 				end
 
+				return
+			end
+
+			if dodgeMode == "HumanoidMove" then
+				-- PURE PHYSICAL INPUT WALK (ZERO CFRAME OVERWRITE / ZERO HEIGHT JITTER)
+				if getLogInDanger() then
+					print(("[SmartDodge][Dodge] 🏃 Humanoid:Move (Pure Physics Walk) (%.1f studs)..."):format(totalDist))
+				end
+
+				local startTime = os.clock()
+				local MAX_WALK_TIMEOUT = 4.0
+
+				humanoid.AutoRotate = true
+
+				local moveTarget = Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z)
+				humanoid:MoveTo(moveTarget)
+
+				if activeMoveConn then
+					pcall(function() activeMoveConn:Disconnect() end)
+					activeMoveConn = nil
+				end
+
+				activeMoveConn = RunService.RenderStepped:Connect(function()
+					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
+						if activeMoveConn then activeMoveConn:Disconnect(); activeMoveConn = nil end
+						return
+					end
+
+					local curTarget = currentTargetPos or safePos
+					if not curTarget then return end
+
+					local curDiff = Vector3.new(curTarget.X - rootPart.Position.X, 0, curTarget.Z - rootPart.Position.Z)
+					if curDiff.Magnitude > 0.6 then
+						humanoid:Move(curDiff.Unit, false)
+					else
+						humanoid:Move(Vector3.zero, false)
+					end
+				end)
+
+				while autoDodgeEnabled and (os.clock() - startTime < MAX_WALK_TIMEOUT) do
+					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
+						break
+					end
+
+					-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước
+					if not getInDanger() then
+						break
+					end
+
+					targetPos = currentTargetPos or safePos
+					if not targetPos then break end
+
+					currentPos = rootPart.Position
+					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
+					local dist = diff.Magnitude
+
+					if dist <= 0.8 then
+						break
+					end
+
+					humanoid:MoveTo(Vector3.new(targetPos.X, currentPos.Y, targetPos.Z))
+
+					-- Tự động nhảy nếu gặp gờ bậc thang / chướng ngại vật thấp
+					local waistOrigin = currentPos + Vector3.new(0, 0.5, 0)
+					local waistDir = diff.Unit * 2.0
+					local obstacleHit = workspace:Raycast(waistOrigin, waistDir, blinkRayParams)
+					if obstacleHit and obstacleHit.Instance and obstacleHit.Instance.CanCollide and obstacleHit.Normal.Y < 0.7 then
+						humanoid.Jump = true
+					end
+
+					task.wait(0.03)
+				end
+
+				if activeMoveConn then
+					pcall(function() activeMoveConn:Disconnect() end)
+					activeMoveConn = nil
+				end
+
+				pcall(function()
+					humanoid:Move(Vector3.zero, false)
+					humanoid:MoveTo(rootPart.Position)
+				end)
 				return
 			end
 
@@ -12115,6 +12465,9 @@ function dodge.Cancel()
 	local char, rootPart, humanoid = getCharacterParts()
 
 	if humanoid then
+		pcall(function()
+			humanoid:Move(Vector3.zero, false)
+		end)
 		if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
 			humanoid.AutoRotate = false
 		else
@@ -12122,7 +12475,7 @@ function dodge.Cancel()
 		end
 	end
 
-	if rootPart and rootPart.Parent then
+	if rootPart and rootPart.Parent and dodgeMode ~= "HumanoidMove" then
 		rootPart.AssemblyLinearVelocity = Vector3.zero
 		rootPart.AssemblyAngularVelocity = Vector3.zero
 	end
@@ -12157,7 +12510,7 @@ end
 --==============================================================--
 
 function dodge.SetDodgeMode(mode)
-	if mode == "MoveTo" or mode == "Blink" then
+	if mode == "MoveTo" or mode == "Blink" or mode == "HumanoidMove" then
 		dodgeMode = mode
 	end
 end
@@ -12365,6 +12718,7 @@ local function startSafeSpotLoop()
 			safeSpot.UpdateHitbox(pPos)
 			safeSpot.UpdatePlayerRadar(pPos, inDanger)
 			detection.UpdateTrajectoryVisuals()
+			detection.UpdateHazardTimers()
 
 			-- Kích hoạt Thực thi Né Chiêu (Bài toán 3)
 			if inDanger and safePos and dodge.IsAutoDodgeEnabled() then
@@ -12546,6 +12900,11 @@ smartDodge.IsLogThreatsEnabled = smartDodge.IsLogHazardsEnabled
 
 smartDodge.SetVisualEsp = detection.SetVisualEsp
 smartDodge.IsVisualEspEnabled = detection.IsVisualEspEnabled
+smartDodge.SetShowSkillTimers = detection.SetShowSkillTimers
+smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
+smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
+smartDodge.GetSkillProfile = detection.GetSkillProfile
+smartDodge.GetAllSkillProfiles = detection.GetAllSkillProfiles
 
 smartDodge.GetHazardCount = detection.GetHazardCount
 smartDodge.GetActiveHazards = detection.GetActiveHazards
@@ -12784,11 +13143,19 @@ return function(window, tab)
 		end),
 	}, "Toggle_SmartDodgeAutoExecution")
 
-	local DODGE_MODE_OPTIONS = { "MoveTo", "Blink" }
+	local DODGE_MODE_OPTIONS = { "HumanoidMove", "Blink", "MoveTo" }
+	local currentMode = smartDodge.GetDodgeMode()
+	local defaultIdx = 1
+	if currentMode == "Blink" then
+		defaultIdx = 2
+	elseif currentMode == "MoveTo" then
+		defaultIdx = 3
+	end
+
 	leftSection:Dropdown({
 		Name = "Dodge Movement Mode",
 		Options = DODGE_MODE_OPTIONS,
-		Default = smartDodge.GetDodgeMode() == "Blink" and 2 or 1,
+		Default = defaultIdx,
 		Required = true,
 		Callback = autoSave.Wrap(function(mode)
 			smartDodge.SetDodgeMode(mode)
@@ -12914,6 +13281,14 @@ return function(window, tab)
 			smartDodge.SetVisualEsp(state)
 		end),
 	}, "Toggle_SmartDodgeVisualEsp")
+
+	leftSection:Toggle({
+		Name = "Show Skill Lifetime Timers (3D Countdown)",
+		Default = smartDodge.IsShowSkillTimersEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetShowSkillTimers(state)
+		end),
+	}, "Toggle_SmartDodgeSkillTimers")
 
 	leftSection:Toggle({
 		Name = "Show Safe Spot Marker (Green ESP)",
@@ -14772,7 +15147,239 @@ return function(window, tab)
 	refreshContextControls()
 	setEditControlsVisible(editDungeon ~= nil)
 end
-end function __DIST.A()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Smart Dodge.
+end function __DIST.A()-- Smart Auto Play Core (DungeonQuest)
+-- Step 1: Visual Combat Radius R circle around player formed by small spheres.
+
+
+local services = __DIST.load('e')
+local lifecycle = __DIST.load('b')
+local RunService = services.RunService
+local player = services.player
+
+local smartAutoPlay = {}
+
+--// Settings & State
+local showRadiusCircle = false
+local radius = 15.0 -- Combat Radius R in studs
+local SPHERE_COUNT = 36 -- 36 spheres = 1 sphere every 10 degrees
+local sphereSize = 0.35 -- Diameter of each sphere in studs
+local SPHERE_COLOR = Color3.fromRGB(0, 225, 255) -- Vibrant Neon Cyan
+
+local sphereParts = {}
+local visualFolder = nil
+local updateConnection = nil
+
+--// Floor Raycast Parameters
+local floorRayParams = RaycastParams.new()
+floorRayParams.FilterType = Enum.RaycastFilterType.Exclude
+floorRayParams.IgnoreWater = true
+
+local function updateRayFilter()
+	local ignore = {}
+	if player and player.Character then
+		table.insert(ignore, player.Character)
+	end
+	local rayIgnore = workspace:FindFirstChild("RaycastIgnore")
+	if rayIgnore then
+		table.insert(ignore, rayIgnore)
+	end
+	floorRayParams.FilterDescendantsInstances = ignore
+end
+
+local function getOrCreateVisualFolder()
+	if visualFolder and visualFolder.Parent then
+		return visualFolder
+	end
+
+	local container = workspace.CurrentCamera or workspace
+	local folder = container:FindFirstChild("SmartAutoPlay_RadiusVisual")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "SmartAutoPlay_RadiusVisual"
+		folder.Parent = container
+	end
+	visualFolder = folder
+	return folder
+end
+
+local function getOrCreateSpheres()
+	local folder = getOrCreateVisualFolder()
+
+	while #sphereParts < SPHERE_COUNT do
+		local idx = #sphereParts + 1
+		local p = Instance.new("Part")
+		p.Name = ("RadiusSphere_%02d"):format(idx)
+		p.Shape = Enum.PartType.Ball
+		p.Size = Vector3.new(sphereSize, sphereSize, sphereSize)
+		p.Material = Enum.Material.Neon
+		p.Color = SPHERE_COLOR
+		p.Transparency = 0.2
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanTouch = false
+		p.CanQuery = false
+		p.CastShadow = false
+		p.Parent = folder
+		table.insert(sphereParts, p)
+	end
+
+	return sphereParts
+end
+
+local function hideSpheres()
+	for _, p in ipairs(sphereParts) do
+		p.Transparency = 1
+	end
+end
+
+local function updateCirclePositions()
+	if not showRadiusCircle then
+		hideSpheres()
+		return
+	end
+
+	local char = player and player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not root or not root.Parent then
+		hideSpheres()
+		return
+	end
+
+	updateRayFilter()
+	local spheres = getOrCreateSpheres()
+	local pPos = root.Position
+	local angleStep = (2 * math.pi) / SPHERE_COUNT
+
+	-- Single locked Y level beneath player for all spheres
+	local floorHit = workspace:Raycast(pPos, Vector3.new(0, -12.0, 0), floorRayParams)
+	local lockedY = floorHit and (floorHit.Position.Y + (sphereSize / 2)) or (pPos.Y - 2.8)
+
+	for i = 1, SPHERE_COUNT do
+		local angle = (i - 1) * angleStep
+		local targetX = pPos.X + math.cos(angle) * radius
+		local targetZ = pPos.Z + math.sin(angle) * radius
+
+		local part = spheres[i]
+		if part and part.Parent then
+			part.Position = Vector3.new(targetX, lockedY, targetZ)
+			part.Transparency = 0.2
+			part.Color = SPHERE_COLOR
+		end
+	end
+end
+
+local function startLoop()
+	if updateConnection then return end
+	updateConnection = RunService.RenderStepped:Connect(function()
+		pcall(updateCirclePositions)
+	end)
+end
+
+local function stopLoop()
+	if updateConnection then
+		updateConnection:Disconnect()
+		updateConnection = nil
+	end
+	hideSpheres()
+end
+
+--// Public API
+
+function smartAutoPlay.SetShowRadiusCircle(state)
+	showRadiusCircle = state and true or false
+	if showRadiusCircle then
+		startLoop()
+	else
+		stopLoop()
+	end
+end
+
+function smartAutoPlay.IsShowRadiusCircleEnabled()
+	return showRadiusCircle
+end
+
+function smartAutoPlay.SetRadius(val)
+	if type(val) == "number" and val > 0 then
+		radius = math.clamp(val, 2.0, 100.0)
+	end
+end
+
+function smartAutoPlay.GetRadius()
+	return radius
+end
+
+function smartAutoPlay.SetSphereSize(val)
+	if type(val) == "number" and val > 0 then
+		sphereSize = math.clamp(val, 0.1, 3.0)
+		for _, p in ipairs(sphereParts) do
+			p.Size = Vector3.new(sphereSize, sphereSize, sphereSize)
+		end
+	end
+end
+
+function smartAutoPlay.GetSphereSize()
+	return sphereSize
+end
+
+--// Lifecycle Cleanup
+lifecycle.Register(function()
+	stopLoop()
+	for _, p in ipairs(sphereParts) do
+		pcall(function() p:Destroy() end)
+	end
+	table.clear(sphereParts)
+	if visualFolder then
+		pcall(function() visualFolder:Destroy() end)
+		visualFolder = nil
+	end
+end)
+
+return smartAutoPlay
+end function __DIST.B()-- Tab Combat - Submodule Smart Auto Play (DungeonQuest)
+-- Step 1: Visual Combat Radius Controls
+
+
+local ui = __DIST.load('g')
+local autoSave = __DIST.load('d')
+local smartAutoPlay = __DIST.load('A')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Smart Auto Play - Visuals" })
+
+	leftSection:Toggle({
+		Name = "Show Radius Circle (Spheres)",
+		Default = smartAutoPlay.IsShowRadiusCircleEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetShowRadiusCircle(state)
+		end),
+	}, "Toggle_SAP_RadiusCircle")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Radius R (studs)",
+		Default = smartAutoPlay.GetRadius(),
+		Minimum = 4,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetRadius(val)
+		end),
+	}, "Slider_SAP_Radius"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Sphere Size (studs)",
+		Default = smartAutoPlay.GetSphereSize(),
+		Minimum = 0.1,
+		Maximum = 2.0,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetSphereSize(val)
+		end),
+	}, "Slider_SAP_SphereSize"))
+end
+end function __DIST.C()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Smart Dodge.
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
@@ -14780,9 +15387,10 @@ return function(window, tab)
 __DIST.load('i')(window, tab)
 __DIST.load('u')(window, tab)
 __DIST.load('z')(window, tab)
+__DIST.load('B')(window, tab)
 end
 
-end function __DIST.B()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.D()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
@@ -14969,7 +15577,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.C()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.E()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -15089,7 +15697,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.D()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.F()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -15196,7 +15804,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.E()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.G()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -15413,16 +16021,16 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.F()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.H()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('g')
-local autoJoin = __DIST.load('B')
-local autoStart = __DIST.load('C')
-local autoStartLobby = __DIST.load('D')
-local autoRetry = __DIST.load('E')
+local autoJoin = __DIST.load('D')
+local autoStart = __DIST.load('E')
+local autoStartLobby = __DIST.load('F')
+local autoRetry = __DIST.load('G')
 local autoSave = __DIST.load('d')
 local dungeonCatalog = __DIST.load('x')
 
@@ -15627,7 +16235,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.G()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.I()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -16095,14 +16703,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.H()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.J()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('G')
+local autoSell = __DIST.load('I')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -16366,7 +16974,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.I()-- ESP hitbox cho DungeonQuest.
+end function __DIST.K()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -16716,7 +17324,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.J()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.L()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -16857,7 +17465,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.K()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.M()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -17311,14 +17919,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.L()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.N()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('I')
-	local enemyEsp = __DIST.load('J')
-	local mapOptimizer = __DIST.load('K')
+	local esp = __DIST.load('K')
+	local enemyEsp = __DIST.load('L')
+	local mapOptimizer = __DIST.load('M')
 	local ui = __DIST.load('g')
 
 --// Hitbox mode options
@@ -17455,7 +18063,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.M()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.O()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -18053,12 +18661,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.N()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.P()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('M')
+local webhook = __DIST.load('O')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -18125,7 +18733,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.O()
+end function __DIST.Q()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -18194,12 +18802,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.P()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.R()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('O')
+local binder = __DIST.load('Q')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -18291,13 +18899,13 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.Q()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.S()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
-local antiAfk = __DIST.load('P')
+local antiAfk = __DIST.load('R')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -18327,15 +18935,15 @@ return function(window, tab)
 		end),
 	}, "Slider_AntiAFKInterval"))
 end
-end function __DIST.R()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.T()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('L')(window, tab)
 __DIST.load('N')(window, tab)
-__DIST.load('Q')(window, tab)
-end end function __DIST.S()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('P')(window, tab)
+__DIST.load('S')(window, tab)
+end end function __DIST.U()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -18410,7 +19018,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.T()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.V()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -18418,7 +19026,7 @@ end function __DIST.T()-- Module Config trong tab Configs (DungeonQuest): tự b
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('S')
+local autoHide = __DIST.load('U')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -18575,12 +19183,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.U()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.W()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('f')
-local autoRetry = __DIST.load('E')
+local autoRetry = __DIST.load('G')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -18725,14 +19333,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.V()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.X()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('T')(window, tab)
-__DIST.load('U')(window, tab)
-end end function __DIST.W()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+__DIST.load('V')(window, tab)
+__DIST.load('W')(window, tab)
+end end function __DIST.Y()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -18799,11 +19407,11 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('A')
-	local dungeonTab = __DIST.load('F')
-	local inventoryTab = __DIST.load('H')
-	local utilitiesTab = __DIST.load('R')
-	local configsTab = __DIST.load('V')
+	local combatTab = __DIST.load('C')
+	local dungeonTab = __DIST.load('H')
+	local inventoryTab = __DIST.load('J')
+	local utilitiesTab = __DIST.load('T')
+	local configsTab = __DIST.load('X')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -18816,14 +19424,14 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('M')
+	local webhook = __DIST.load('O')
 	webhook.Init()
-__DIST.load('J')
+__DIST.load('L')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	
 
-local autoHide = __DIST.load('S')
+local autoHide = __DIST.load('U')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
@@ -18840,7 +19448,7 @@ local autoHide = __DIST.load('S')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.X()
+end function __DIST.Z()
 local flags = {}
 
 function flags:Export()
@@ -18883,12 +19491,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.Y()
+return flags end function __DIST._()
 --// Imports
 
 
 
-local binder = __DIST.load('O')
+local binder = __DIST.load('Q')
 
 --// Variables
 local interface = {}
@@ -18908,9 +19516,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.Z()--// Imports
+end function __DIST.aa()--// Imports
 
-local binder = __DIST.load('O')
+local binder = __DIST.load('Q')
 
 --// Variables
 local esp = {}
@@ -18921,11 +19529,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST._()--// Imports
+end function __DIST.ab()--// Imports
 
-local flags = __DIST.load('X')
-local interface = __DIST.load('Y')
-local esp = __DIST.load('Z')
+local flags = __DIST.load('Z')
+local interface = __DIST.load('_')
+local esp = __DIST.load('aa')
 
 --// Initialize
 local window = interface:Window({
@@ -18964,7 +19572,7 @@ return {
 		end,
 	},
 }
-end function __DIST.aa()--// Variables
+end function __DIST.ac()--// Variables
 
 local utility = {}
 
@@ -18996,7 +19604,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.ab()--// Functions
+end function __DIST.ad()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -19006,14 +19614,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.ac()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.ae()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('_')
-	local utility = __DIST.load('aa')
-	local services = __DIST.load('ab')
+	local base = __DIST.load('ab')
+	local utility = __DIST.load('ac')
+	local services = __DIST.load('ad')
 
 	--// References
 	local flags = base.Flags
@@ -19079,7 +19687,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('W'),
+		Load = __DIST.load('Y'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -19090,7 +19698,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('ac'),
+		Load = __DIST.load('ae'),
 		Places = {
 			123456789,
 			987654321,

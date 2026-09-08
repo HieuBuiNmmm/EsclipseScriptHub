@@ -34,13 +34,14 @@
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
+local RunService = services.RunService
 
 --// References
 local player = services.player
 
 --// State
 local autoDodgeEnabled = false
-local dodgeMode = "Blink" -- "Blink" | "MoveTo" (Mặc định Blink để ép di chuyển mượt mà không bị phím đè)
+local dodgeMode = "HumanoidMove" -- "HumanoidMove" | "Blink" | "MoveTo"
 
 local maxSnapDistance = 1.0
 local blinkStep = 1.0 -- Cự ly mỗi nhịp chớp Blink (studs)
@@ -51,6 +52,7 @@ local maintainSnapHeight = true
 
 local isDodging = false
 local dodgeThread = nil
+local activeMoveConn = nil
 
 local currentTargetPos = nil
 
@@ -397,9 +399,22 @@ function dodge.Perform(safePos, escapeDist)
 		local function finish()
 			cleanGyro()
 
-			if rootPart and rootPart.Parent then
+			if activeMoveConn then
+				pcall(function() activeMoveConn:Disconnect() end)
+				activeMoveConn = nil
+			end
+
+			if rootPart and rootPart.Parent and dodgeMode ~= "HumanoidMove" then
 				rootPart.AssemblyLinearVelocity = Vector3.zero
 				rootPart.AssemblyAngularVelocity = Vector3.zero
+			end
+
+			if humanoid and humanoid.Parent and dodgeMode == "HumanoidMove" then
+				pcall(function()
+					humanoid:Move(Vector3.zero, false)
+					local root = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+					if root then humanoid:MoveTo(root.Position) end
+				end)
 			end
 
 			isDodging = false
@@ -422,7 +437,7 @@ function dodge.Perform(safePos, escapeDist)
 			-- 1. Nếu cự ly tới Safe Spot <= snapDistance -> Snap dứt điểm ngay lập tức (1 bước duy nhất)
 			-- Trong chế độ Blink: Không bao giờ snap 1 bước lớn hơn blinkStep để chống giật anticheat sync
 			local effectiveSnapDist = (dodgeMode == "Blink") and math.min(maxSnapDistance, blinkStep) or maxSnapDistance
-			if totalDist <= effectiveSnapDist then
+			if totalDist <= effectiveSnapDist and dodgeMode ~= "HumanoidMove" then
 				snapFace(
 					rootPart,
 					humanoid,
@@ -437,6 +452,88 @@ function dodge.Perform(safePos, escapeDist)
 					)
 				end
 
+				return
+			end
+
+			if dodgeMode == "HumanoidMove" then
+				-- PURE PHYSICAL INPUT WALK (ZERO CFRAME OVERWRITE / ZERO HEIGHT JITTER)
+				if getLogInDanger() then
+					print(("[SmartDodge][Dodge] 🏃 Humanoid:Move (Pure Physics Walk) (%.1f studs)..."):format(totalDist))
+				end
+
+				local startTime = os.clock()
+				local MAX_WALK_TIMEOUT = 4.0
+
+				humanoid.AutoRotate = true
+
+				local moveTarget = Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z)
+				humanoid:MoveTo(moveTarget)
+
+				if activeMoveConn then
+					pcall(function() activeMoveConn:Disconnect() end)
+					activeMoveConn = nil
+				end
+
+				activeMoveConn = RunService.RenderStepped:Connect(function()
+					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
+						if activeMoveConn then activeMoveConn:Disconnect(); activeMoveConn = nil end
+						return
+					end
+
+					local curTarget = currentTargetPos or safePos
+					if not curTarget then return end
+
+					local curDiff = Vector3.new(curTarget.X - rootPart.Position.X, 0, curTarget.Z - rootPart.Position.Z)
+					if curDiff.Magnitude > 0.6 then
+						humanoid:Move(curDiff.Unit, false)
+					else
+						humanoid:Move(Vector3.zero, false)
+					end
+				end)
+
+				while autoDodgeEnabled and (os.clock() - startTime < MAX_WALK_TIMEOUT) do
+					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
+						break
+					end
+
+					-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước
+					if not getInDanger() then
+						break
+					end
+
+					targetPos = currentTargetPos or safePos
+					if not targetPos then break end
+
+					currentPos = rootPart.Position
+					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
+					local dist = diff.Magnitude
+
+					if dist <= 0.8 then
+						break
+					end
+
+					humanoid:MoveTo(Vector3.new(targetPos.X, currentPos.Y, targetPos.Z))
+
+					-- Tự động nhảy nếu gặp gờ bậc thang / chướng ngại vật thấp
+					local waistOrigin = currentPos + Vector3.new(0, 0.5, 0)
+					local waistDir = diff.Unit * 2.0
+					local obstacleHit = workspace:Raycast(waistOrigin, waistDir, blinkRayParams)
+					if obstacleHit and obstacleHit.Instance and obstacleHit.Instance.CanCollide and obstacleHit.Normal.Y < 0.7 then
+						humanoid.Jump = true
+					end
+
+					task.wait(0.03)
+				end
+
+				if activeMoveConn then
+					pcall(function() activeMoveConn:Disconnect() end)
+					activeMoveConn = nil
+				end
+
+				pcall(function()
+					humanoid:Move(Vector3.zero, false)
+					humanoid:MoveTo(rootPart.Position)
+				end)
 				return
 			end
 
@@ -673,6 +770,9 @@ function dodge.Cancel()
 	local char, rootPart, humanoid = getCharacterParts()
 
 	if humanoid then
+		pcall(function()
+			humanoid:Move(Vector3.zero, false)
+		end)
 		if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
 			humanoid.AutoRotate = false
 		else
@@ -680,7 +780,7 @@ function dodge.Cancel()
 		end
 	end
 
-	if rootPart and rootPart.Parent then
+	if rootPart and rootPart.Parent and dodgeMode ~= "HumanoidMove" then
 		rootPart.AssemblyLinearVelocity = Vector3.zero
 		rootPart.AssemblyAngularVelocity = Vector3.zero
 	end
@@ -715,7 +815,7 @@ end
 --==============================================================--
 
 function dodge.SetDodgeMode(mode)
-	if mode == "MoveTo" or mode == "Blink" then
+	if mode == "MoveTo" or mode == "Blink" or mode == "HumanoidMove" then
 		dodgeMode = mode
 	end
 end

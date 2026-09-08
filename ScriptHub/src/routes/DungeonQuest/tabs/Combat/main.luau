@@ -5,6 +5,7 @@ return function(window, tab)
 	require("@routes/DungeonQuest/tabs/Combat/player")(window, tab)
 	require("@routes/DungeonQuest/tabs/Combat/smartDodge")(window, tab)
 	require("@routes/DungeonQuest/tabs/Combat/autoFarm")(window, tab)
+	require("@routes/DungeonQuest/tabs/Combat/smartAutoPlay")(window, tab)
 end
 
 

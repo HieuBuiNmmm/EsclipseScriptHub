@@ -35,6 +35,11 @@ smartDodge.IsLogThreatsEnabled = smartDodge.IsLogHazardsEnabled
 
 smartDodge.SetVisualEsp = detection.SetVisualEsp
 smartDodge.IsVisualEspEnabled = detection.IsVisualEspEnabled
+smartDodge.SetShowSkillTimers = detection.SetShowSkillTimers
+smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
+smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
+smartDodge.GetSkillProfile = detection.GetSkillProfile
+smartDodge.GetAllSkillProfiles = detection.GetAllSkillProfiles
 
 smartDodge.GetHazardCount = detection.GetHazardCount
 smartDodge.GetActiveHazards = detection.GetActiveHazards

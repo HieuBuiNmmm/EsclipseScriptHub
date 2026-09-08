@@ -93,6 +93,7 @@ local function startSafeSpotLoop()
 			safeSpot.UpdateHitbox(pPos)
 			safeSpot.UpdatePlayerRadar(pPos, inDanger)
 			detection.UpdateTrajectoryVisuals()
+			detection.UpdateHazardTimers()
 
 			-- Kích hoạt Thực thi Né Chiêu (Bài toán 3)
 			if inDanger and safePos and dodge.IsAutoDodgeEnabled() then

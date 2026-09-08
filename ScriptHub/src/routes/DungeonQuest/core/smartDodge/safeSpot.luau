@@ -825,7 +825,7 @@ local function getClearanceBonus(point)
 end
 
 --// Tính điểm ưu tiên cho một ứng viên vị trí an toàn (Score càng THẤP càng ƯU TIÊN):
---// Ưu tiên hướng di chuyển của Player, hướng lùi tự nhiên và cự ly an toàn
+--// Tận dụng Hệ quy chiếu Face-to-Target: Ưu tiên Lách Ngang (Strafe), Phạt Lùi Xéo Sâu, Phạt Cự Ly
 local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 	-- Hard check cho Boss 1 Arena: Không chọn điểm ra ngoài phạm vi sàn đấu
 	if boss1ArenaCenter and not isInsideBoss1Arena(candPos, playerPos) then
@@ -834,7 +834,37 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 
 	local moveDist = (candPos - playerPos).Magnitude
 	local clearance = getClearanceBonus(candPos)
-	local score = moveDist - (clearance * 0.5)
+	-- Cự ly là tiêu chí sống còn: mỗi stud chạy thêm làm tăng nguy cơ deal dame
+	local score = (moveDist * 1.5) - (clearance * 0.35)
+
+	-- TẬN DỤNG HỆ QUY CHIẾU CHIẾN ĐẤU FACE-TO-TARGET (Nhìn Boss)
+	local targetPos = targetFacing and targetFacing.GetTargetPosition and targetFacing.GetTargetPosition()
+	if targetPos and moveDist > 0.3 then
+		local toTarget2D = Vector3.new(targetPos.X - playerPos.X, 0, targetPos.Z - playerPos.Z)
+		if toTarget2D.Magnitude > 1.0 then
+			local fwd = toTarget2D.Unit
+			local right = Vector3.new(-fwd.Z, 0, fwd.X)
+			local toCand2D = Vector3.new(candPos.X - playerPos.X, 0, candPos.Z - playerPos.Z)
+
+			local depthOffset = toCand2D:Dot(fwd)                  -- > 0: Tiến | < 0: Lùi
+			local strafeRatio = math.abs(toCand2D.Unit:Dot(right)) -- 1.0: Lách ngang sườn thuần túy
+
+			-- 1. Thưởng lớn cho bước LÁCH NGANG (Strafe giữ cự ly với Boss - Điểm 1)
+			if strafeRatio >= 0.82 and math.abs(depthOffset) <= 2.2 then
+				score = score - 6.0
+			end
+
+			-- 2. Phạt điểm nếu LÙI XÉO RA SAU LƯNG (như Điểm 2: mất tầm đánh, chạy lâu trong vùng đỏ)
+			if depthOffset < -2.0 then
+				score = score + (math.abs(depthOffset) * 1.8)
+			end
+
+			-- 3. Phạt nếu TIẾN THẲNG VÀO MẶT BOSS khi đang né chiêu
+			if depthOffset > 2.5 then
+				score = score + (depthOffset * 1.2)
+			end
+		end
+	end
 
 	if moveDist > 0.5 then
 		local dir = (candPos - playerPos).Unit
@@ -847,9 +877,9 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 				-- Ngược hướng Player đang di chuyển: phạt nhẹ (+2.0 studs)
 				score = score + (math.abs(dotMove) * 2.0)
 			end
-		elseif repVector then
+		elseif repVector and not targetPos then
 			local dot = dir:Dot(repVector)
-			score = score - (dot * 2.5) -- Thưởng tới 2.5 studs cho hướng lùi thoát hiểm tự nhiên ra sau
+			score = score - (dot * 2.0)
 		end
 	end
 
@@ -1336,15 +1366,19 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 12.0))
 		else
 			-- CHIẾN LƯỢC PROJECTILE / BEAM CỦA BOSS 1 (firstBossBigSpike, seekingSpikes):
-			-- TUYỆT ĐỐI KHÔNG NÉ LÙI DỌC CHIÊU! Chỉ né vuông góc ngang sang 2 bên sườn (Perpendicular Lateral Escapes)
-			local latSteps = { stepNeeded, stepNeeded + 2.5, stepNeeded + 5.0 }
-			local smallFOffsets = { 0, 1.5, -1.5, 3.0, -3.0 }
+			-- ƯU TIÊN TUYỆT ĐỐI: Lách ngang vuông góc thuần túy 90° (Điểm 1) - Thoát hiểm nhanh nhất
+			local latSteps = { stepNeeded, stepNeeded + 2.0, stepNeeded + 4.0 }
 			for _, sDist in ipairs(latSteps) do
-				for _, fOff in ipairs(smallFOffsets) do
-					local fVec = forward2D * fOff
-					table.insert(trajCandidates, playerPos + perpRight * sDist + fVec)
-					table.insert(trajCandidates, playerPos + perpLeft * sDist + fVec)
-				end
+				table.insert(trajCandidates, playerPos + perpRight * sDist)
+				table.insert(trajCandidates, playerPos + perpLeft * sDist)
+			end
+
+			-- Dự phòng lệch nhẹ chỉ khi cả 2 hướng ngang thuần túy đều bị chướng ngại vật cản:
+			local backupFOffsets = { -1.5, 1.5, -3.0 }
+			for _, fOff in ipairs(backupFOffsets) do
+				local fVec = forward2D * fOff
+				table.insert(trajCandidates, playerPos + perpRight * stepNeeded + fVec)
+				table.insert(trajCandidates, playerPos + perpLeft * stepNeeded + fVec)
 			end
 		end
 
@@ -1370,20 +1404,22 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			end
 
 			if geometry.IsSpotFullySafe(candWorld, 0.5) then
-				-- Chấm điểm ưu tiên (Toán thuần túy)
+				-- Chấm điểm ưu tiên: Cự ly ngắn nhất = thời gian ở trong vùng đỏ ít nhất
 				local moveDist = toCand.Magnitude
 				local clearance = getClearanceBonus(candWorld)
-				local score = moveDist - (clearance * 0.5)
+				local score = (moveDist * 1.6) - (clearance * 0.3)
 
 				local dotFwd = toCand.Magnitude > 0.5 and toCand.Unit:Dot(forward2D) or 0
 				if isMovingBeam and dotFwd < -0.2 then
 					-- Chỉ thưởng lùi ra sau cho Moving Beam của Boss 2!
 					score = score - 15.0
 				elseif not isMovingBeam then
-					-- Với Boss 1: Thưởng né thuần ngang vuông góc (Perpendicular)
+					-- Thưởng áp đảo cho bước né thuần ngang vuông góc (Perpendicular - Điểm 1)
 					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
-					if dotPerp > 0.7 then
-						score = score - 8.0 -- Thưởng lớn cho bước né thuần ngang sang 2 bên sườn
+					if dotPerp >= 0.90 then
+						score = score - 12.0 -- Điểm 1: Lách ngang sườn ngắn nhất, không bị deal dame
+					elseif dotPerp < 0.80 then
+						score = score + 4.0  -- Điểm 2: Đi chéo/lùi xéo bị phạt điểm nặng
 					end
 				end
 

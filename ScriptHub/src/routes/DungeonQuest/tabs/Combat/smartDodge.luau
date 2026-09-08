@@ -156,11 +156,19 @@ return function(window, tab)
 		end),
 	}, "Toggle_SmartDodgeAutoExecution")
 
-	local DODGE_MODE_OPTIONS = { "MoveTo", "Blink" }
+	local DODGE_MODE_OPTIONS = { "HumanoidMove", "Blink", "MoveTo" }
+	local currentMode = smartDodge.GetDodgeMode()
+	local defaultIdx = 1
+	if currentMode == "Blink" then
+		defaultIdx = 2
+	elseif currentMode == "MoveTo" then
+		defaultIdx = 3
+	end
+
 	leftSection:Dropdown({
 		Name = "Dodge Movement Mode",
 		Options = DODGE_MODE_OPTIONS,
-		Default = smartDodge.GetDodgeMode() == "Blink" and 2 or 1,
+		Default = defaultIdx,
 		Required = true,
 		Callback = autoSave.Wrap(function(mode)
 			smartDodge.SetDodgeMode(mode)
@@ -286,6 +294,14 @@ return function(window, tab)
 			smartDodge.SetVisualEsp(state)
 		end),
 	}, "Toggle_SmartDodgeVisualEsp")
+
+	leftSection:Toggle({
+		Name = "Show Skill Lifetime Timers (3D Countdown)",
+		Default = smartDodge.IsShowSkillTimersEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetShowSkillTimers(state)
+		end),
+	}, "Toggle_SmartDodgeSkillTimers")
 
 	leftSection:Toggle({
 		Name = "Show Safe Spot Marker (Green ESP)",
