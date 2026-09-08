@@ -835,7 +835,12 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 	local moveDist = (candPos - playerPos).Magnitude
 	local clearance = getClearanceBonus(candPos)
 	-- Cự ly là tiêu chí sống còn: mỗi stud chạy thêm làm tăng nguy cơ deal dame
-	local score = (moveDist * 1.5) - (clearance * 0.35)
+	local score = (moveDist * 2.0) - (clearance * 0.35)
+	if moveDist > 12.0 then
+		-- Phạt lũy tiến nặng nề cho các điểm cách xa (> 12 studs):
+		-- Triệt tiêu hoàn toàn lỗi chọn điểm góc 30-40 studs khi chỉ cần bước 2-3 studs là an toàn
+		score = score + ((moveDist - 12.0) * 3.5)
+	end
 
 	-- TẬN DỤNG HỆ QUY CHIẾU CHIẾN ĐẤU FACE-TO-TARGET (Nhìn Boss)
 	local targetPos = targetFacing and targetFacing.GetTargetPosition and targetFacing.GetTargetPosition()
@@ -1051,6 +1056,32 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		if activeOrbPart and orbColorName then
 			local targetCrystal, wrongCrystals = getBossCrystal(orbColorName)
 			if targetCrystal then
+				-- KIỂM TRA SÀN SẠCH & VÙNG ĐỆM AN TOÀN:
+				-- Nếu người chơi vừa né ra mép một chiêu thức sát thương (ví dụ AoE tròn hoặc MovingBeam)
+				-- mà chiêu đó vẫn đang tồn tại/chờ nổ sát chân người chơi (bán kính đệm 4.5 studs):
+				-- -> ĐỨNG YÊN TẠI VỊ TRÍ AN TOÀN NÀY, đợi chiêu nổ biến mất trước khi bắt đầu dắt cầu!
+				-- (Lưu ý: Nếu trong lúc đứng đợi mà có MovingBeam mới quét trúng playerPos, Bước 1 ở trên
+				-- sẽ tự động phát hiện inDanger = true và né chiêu đó ngay lập tức).
+				local hasActiveFloorHazard = false
+				local allHazards = detection.GetActiveHazards and detection.GetActiveHazards()
+				if allHazards and #allHazards > 0 then
+					for _, hData in ipairs(allHazards) do
+						local hInst = hData.Instance
+						if hInst and hInst ~= activeOrbPart and hInst ~= (activeOrbPart and activeOrbPart.Parent) then
+							if not geometry.IsSpotFullySafe(playerPos, 4.5, activeOrbPart) then
+								hasActiveFloorHazard = true
+								break
+							end
+						end
+					end
+				end
+
+				if hasActiveFloorHazard then
+					lockedSafeSpot = playerPos
+					lockedHazardCount = 1
+					return true, playerPos, ("Waiting for nearby AoE to explode before leading %s"):format(orbColorName:upper()), 0
+				end
+
 				local orbPos = activeOrbPart.Position
 				local crystalPos = targetCrystal.Position
 
@@ -1216,23 +1247,30 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 	lastDangerPart = dangerPart
 	lastCurrentHazardsSet = currentHazardsSet
 
-	-- 2. CƠ CHẾ STRICT LATCHING (Khóa điểm an toàn tuyệt đối - chống rung giật / nhảy điểm):
-	-- Nếu đã có điểm khóa và điểm đó VẪN HOÀN TOÀN AN TOÀN:
-	-- -> Giữ nguyên 100% điểm này! Tuyệt đối không quét vector mới, không đổi điểm!
+	-- 2. CƠ CHẾ STRICT LATCHING KẾT HỢP OPPORTUNISTIC RETARGETING:
+	-- Kiểm tra tính hợp lệ của điểm khóa an toàn hiện tại (nếu có):
+	local isOldPointStillSafe = false
+	local lockedDist = math.huge
 	if lockedSafeSpot and geometry.IsSpotFullySafe(lockedSafeSpot, 0.5) then
 		local inArena = not (boss1ArenaCenter and not isInsideBoss1Arena(lockedSafeSpot, playerPos))
 		if inArena then
-			local lockedDist = (lockedSafeSpot - playerPos).Magnitude
+			lockedDist = (lockedSafeSpot - playerPos).Magnitude
 			if lockedDist <= 45 and geometry.IsPathSafe(playerPos, lockedSafeSpot, currentHazardsSet, dangerPart) then
-				local finalDist = math.floor(lockedDist * 10) / 10
-				return true, lockedSafeSpot, hazardName, finalDist
+				isOldPointStillSafe = true
+				-- NẾU ĐÃ Ở RẤT GẦN ĐIỂM KHÓA (<= 3.5 studs): Giữ nguyên 100% điểm này, không cần tính toán lại
+				if lockedDist <= 3.5 then
+					local finalDist = math.floor(lockedDist * 10) / 10
+					return true, lockedSafeSpot, hazardName, finalDist
+				end
 			end
 		end
 	end
 
-	-- Điểm khóa cũ bị skill mới đè hoặc không còn an toàn -> Mở khóa để tính toán điểm mới
-	lockedSafeSpot = nil
-	lockedHazardCount = currentHazardCount
+	-- Điểm khóa cũ bị skill mới đè hoặc không còn an toàn -> Xóa khóa
+	if not isOldPointStillSafe then
+		lockedSafeSpot = nil
+		lockedHazardCount = currentHazardCount
+	end
 
 	local candidatePos = nil
 	local isMultiRings = hazardName:lower():find("multiring") ~= nil
@@ -1525,22 +1563,33 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				table.insert(directCandidates, dangerPart.Position + forward2D * (beamRadius + ESCAPE_MARGIN + 1.5))
 				table.insert(directCandidates, dangerPart.Position - forward2D * (beamRadius + ESCAPE_MARGIN + 1.5))
 			else
-				-- A3. Chiêu hình chữ nhật / OBB: 4 cạnh + 4 góc chéo (chỉ cần nhích ESCAPE_MARGIN = 1.5 studs qua mép)
+				-- A3. Chiêu hình chữ nhật / OBB: Tự động phát hiện trục Dài/Rộng
 				local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
 				local halfX = dangerPart.Size.X / 2
 				local halfZ = dangerPart.Size.Z / 2
 
-				-- 4 cạnh
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, localPos.Z)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, localPos.Z)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, halfZ + ESCAPE_MARGIN)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, -(halfZ + ESCAPE_MARGIN))))
-
-				-- 4 góc chéo
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, halfZ + ESCAPE_MARGIN)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, -(halfZ + ESCAPE_MARGIN))))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, halfZ + ESCAPE_MARGIN)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, -(halfZ + ESCAPE_MARGIN))))
+				-- Tự động nhận diện trục dài (Length) và trục hẹp (Width) của hành lang:
+				if halfZ >= halfX * 1.4 then
+					-- Trục Z là hành lang dài, trục X là bề sườn hẹp:
+					-- ƯU TIÊN TUYỆT ĐỐI: Thoát vuông góc sang 2 bên sườn trục X tại đúng vị trí Z của người chơi!
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN + 2.0, localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN + 2.0), localPos.Y, localPos.Z)))
+				elseif halfX >= halfZ * 1.4 then
+					-- Trục X là hành lang dài, trục Z là bề sườn hẹp:
+					-- ƯU TIÊN TUYỆT ĐỐI: Thoát vuông góc sang 2 bên sườn trục Z tại đúng vị trí X của người chơi!
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN))))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN + 2.0)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN + 2.0))))
+				else
+					-- Chiêu hình vuông hoặc chữ nhật đều: Thoát 4 cạnh gần nhất (TUYỆT ĐỐI KHÔNG sinh 4 góc chéo xa)
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN))))
+				end
 			end
 
 			-- Đánh giá các điểm thoát trực tiếp (0 Raycast)
@@ -1603,12 +1652,32 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		end
 	end
 
-	-- 6. KHÓA CHẶT ĐIỂM AN TOÀN VỪA TÌM ĐƯỢC (Strict Latch - Cố định 100% không rung lắc)
+	-- 6. KHÓA CHẶT ĐIỂM AN TOÀN VỪA TÌM ĐƯỢC KẾT HỢP OPPORTUNISTIC RETARGETING:
 	if candidatePos then
+		-- Nếu điểm cũ vẫn an toàn nhưng điểm mới gần hơn vượt trội (>= HYSTERESIS_THRESHOLD studs):
+		-- -> Bẻ lái sang điểm mới gần hơn ngay lập tức (ví dụ: né dải xanh vừa biến mất chỉ cách 2-3 studs thay vì chạy 15 studs ra mép)!
+		-- Ngược lại, nếu điểm mới không gần hơn đủ nhiều -> Tiếp tục giữ điểm cũ để tránh rung giật
+		if isOldPointStillSafe then
+			local newDist = (candidatePos - playerPos).Magnitude
+			if (lockedDist - newDist) >= HYSTERESIS_THRESHOLD then
+				lockedSafeSpot = candidatePos
+				lockedHazardCount = currentHazardCount
+				local finalDist = math.floor(newDist * 10) / 10
+				return true, candidatePos, hazardName, finalDist
+			else
+				local finalDist = math.floor(lockedDist * 10) / 10
+				return true, lockedSafeSpot, hazardName, finalDist
+			end
+		end
+
 		lockedSafeSpot = candidatePos
 		lockedHazardCount = currentHazardCount
 		local finalDist = math.floor((candidatePos - playerPos).Magnitude * 10) / 10
 		return true, candidatePos, hazardName, finalDist
+	elseif isOldPointStillSafe then
+		-- Không tìm thấy candidatePos mới tốt hơn -> Tiếp tục giữ điểm cũ
+		local finalDist = math.floor(lockedDist * 10) / 10
+		return true, lockedSafeSpot, hazardName, finalDist
 	end
 
 	lockedSafeSpot = nil

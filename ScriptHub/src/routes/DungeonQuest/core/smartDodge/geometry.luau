@@ -535,37 +535,36 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 		return true -- Chỉ bỏ qua bước cực ngắn <= 1.2 studs
 	end
 
-	-- Bước chia mẫu 1.5 studs (vừa khít nhỏ hơn hitbox 2.2 studs, số bước tối đa 8 để không gây giật lag)
-	local steps = math.clamp(math.ceil(dist / 1.5), 2, 8)
+	-- Bước chia mẫu 1.8 studs (nhỏ hơn hitbox người chơi 2.5 studs, tối đa 32 bước để không bỏ lọt bất kỳ chiêu nào trên đường dài)
+	local steps = math.clamp(math.ceil(dist / 1.8), 2, 32)
 	for i = 1, steps - 1 do
 		local t = i / steps
 		local samplePos = fromPos:Lerp(toPos, t)
 		local inDanger, hitInfo, hitPart, hitTraj = geometry.IsPointInAnyHazard(samplePos, ignoredInstance)
 		if inDanger then
-			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) đang bay -> Tuyệt đối không băng qua
-			if hitTraj and hitTraj.isTrajectory then
-				return false
-			end
-			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường, từ chối ngay
 			local hitInst = (hitInfo and hitInfo.Instance)
 			local hitParent = hitPart and hitPart.Parent
 
+			local isKnown = false
 			if currentHazardsSet and next(currentHazardsSet) ~= nil then
-				local isKnown = (hitPart and currentHazardsSet[hitPart])
+				isKnown = (hitPart and currentHazardsSet[hitPart])
 					or (hitInst and currentHazardsSet[hitInst])
 					or (hitParent and currentHazardsSet[hitParent])
-				if not isKnown then
-					return false
-				end
 			elseif fallbackCurrentDangerPart then
 				local currentInst = fallbackCurrentDangerPart:IsA("Model") and fallbackCurrentDangerPart or fallbackCurrentDangerPart.Parent
-				local isKnown = (hitPart and hitPart == fallbackCurrentDangerPart)
+				isKnown = (hitPart and hitPart == fallbackCurrentDangerPart)
 					or (currentInst and hitInst and currentInst == hitInst)
 					or (currentInst and hitParent and currentInst == hitParent)
-				if not isKnown then
-					return false
-				end
-			else
+			end
+
+			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) MỚI mà người chơi KHÔNG đứng trong đó -> Tuyệt đối không băng qua
+			--    Nếu là chính Trajectory mà người chơi đang đứng trong đó -> Cho phép bước ra khỏi mép!
+			if hitTraj and hitTraj.isTrajectory and not isKnown then
+				return false
+			end
+
+			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường, từ chối ngay
+			if not isKnown then
 				return false
 			end
 		end

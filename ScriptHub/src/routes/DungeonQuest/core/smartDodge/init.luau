@@ -40,6 +40,8 @@ smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
 smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
 smartDodge.GetSkillProfile = detection.GetSkillProfile
 smartDodge.GetAllSkillProfiles = detection.GetAllSkillProfiles
+smartDodge.SaveSkillProfiles = detection.SaveSkillProfiles
+smartDodge.LoadSkillProfiles = detection.LoadSkillProfiles
 
 smartDodge.GetHazardCount = detection.GetHazardCount
 smartDodge.GetActiveHazards = detection.GetActiveHazards

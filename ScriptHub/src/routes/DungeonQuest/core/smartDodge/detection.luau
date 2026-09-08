@@ -6,6 +6,8 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
+local macLib = require("@packages/Maclib")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 
 --// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
 local geometryRef
@@ -19,6 +21,7 @@ end
 --// References
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
 local player = services.player
 
 --// Table
@@ -39,21 +42,83 @@ local sharedCleanups = {}
 --// Bảng cơ sở dữ liệu thời gian sống học được từ các kỹ năng (Skill Lifetime Profiler)
 local skillProfiles = {} -- [string skillName] = { count = number, avgLifetime = number, minLifetime = number, maxLifetime = number }
 
---// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây)
+--// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây): { hitDelay, totalLifetime }
 local KNOWN_SKILL_LIFETIMES = {
-	["largeIceSpikes"] = 1.8,
-	["mediumIceSpikes"] = 1.5,
-	["smallIceSpikes"] = 1.2,
-	["thirdBossMultiRings"] = 2.8,
-	["firstBossCrissCross"] = 2.2,
-	["firstBossSeekingSpikes"] = 2.5,
-	["firstBossBigSpike"] = 2.0,
-	["firstBossBeamPart"] = 2.0,
-	["secondBossMovingBeam"] = 3.5,
-	["secondbossyelloworb"] = 4.0,
-	["secondbossredorb"] = 4.0,
-	["secondbossgreenorb"] = 4.0,
+	["smallIceSpikes"] = { hitDelay = 0.8, totalLifetime = 1.2 },
+	["mediumIceSpikes"] = { hitDelay = 1.1, totalLifetime = 1.5 },
+	["largeIceSpikes"] = { hitDelay = 1.4, totalLifetime = 1.8 },
+	["thirdBossMultiRings"] = { hitDelay = 2.0, totalLifetime = 2.8 },
+	["firstBossCrissCross"] = { hitDelay = 1.6, totalLifetime = 2.2 },
+	["firstBossSeekingSpikes"] = { hitDelay = 1.8, totalLifetime = 2.5 },
+	["firstBossBigSpike"] = { hitDelay = 1.5, totalLifetime = 2.0 },
+	["firstBossBeamPart"] = { hitDelay = 1.5, totalLifetime = 2.0 },
+	["secondBossMovingBeam"] = { hitDelay = 0.0, totalLifetime = 3.5 },
+	["secondbossyelloworb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
+	["secondbossredorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
+	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
 }
+
+--// Lưu trữ vĩnh viễn (Persistence) hồ sơ thời gian sống & thời điểm kích nổ sát thương của các kỹ năng ra file JSON
+local SETTINGS_FOLDER = macLib.Folder .. "/settings"
+local PROFILES_FILE = SETTINGS_FOLDER .. "/smartDodge_skills.json"
+
+local function loadSkillProfiles()
+	if not (isfile and isfile(PROFILES_FILE)) then return end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(readfile(PROFILES_FILE))
+	end)
+	if ok and type(decoded) == "table" then
+		for skillName, data in pairs(decoded) do
+			if type(data) == "table" and type(data.avgLifetime) == "number" then
+				skillProfiles[skillName] = {
+					count = tonumber(data.count) or 1,
+					avgLifetime = tonumber(data.avgLifetime) or 2.0,
+					avgHitDelay = tonumber(data.avgHitDelay) or (tonumber(data.avgLifetime) * 0.75),
+					minLifetime = tonumber(data.minLifetime) or data.avgLifetime,
+					maxLifetime = tonumber(data.maxLifetime) or data.avgLifetime,
+				}
+			end
+		end
+		if logHazards then
+			print(("[SmartDodge] 📂 Loaded skill lifetime & hit profiles from %s"):format(PROFILES_FILE))
+		end
+	end
+end
+
+local isSavePending = false
+
+local function saveSkillProfilesNow()
+	if not (isfile and writefile) then return end
+	pcall(function()
+		if makefolder and isfolder then
+			if not isfolder(macLib.Folder) then makefolder(macLib.Folder) end
+			if not isfolder(SETTINGS_FOLDER) then makefolder(SETTINGS_FOLDER) end
+		end
+		writefile(PROFILES_FILE, HttpService:JSONEncode(skillProfiles))
+	end)
+end
+
+local function saveSkillProfiles()
+	if not (isfile and writefile) then return end
+	if isSavePending then return end
+	isSavePending = true
+
+	task.delay(1.5, function()
+		isSavePending = false
+		saveSkillProfilesNow()
+	end)
+end
+
+-- Nạp ngay dữ liệu đã học từ file JSON của các phiên trước
+loadSkillProfiles()
+
+-- Tự động lưu khi script shutdown
+lifecycle.Register(function()
+	if isSavePending then
+		isSavePending = false
+		saveSkillProfilesNow()
+	end
+end)
 local ignoredSkillNames = {
 	["DodgeNode_ESP"] = true,
 	["Enhanced Aura Ring"] = true,
@@ -835,17 +900,26 @@ local function attachSelectionBoxes(hazardParts)
 	return boxes
 end
 
---// Ước tính tổng thời gian tồn tại (Total Expected Lifetime) của một kỹ năng
+--// Ước tính tổng thời gian tồn tại và thời điểm kích nổ sát thương (Total Lifetime & Hit Delay)
 local function getEstimatedSkillLifetime(skillName)
 	local prof = skillProfiles[skillName]
 	if prof and prof.avgLifetime then
-		return prof.avgLifetime
+		local hitDelay = prof.avgHitDelay
+		if not hitDelay then
+			local known = KNOWN_SKILL_LIFETIMES[skillName]
+			hitDelay = (type(known) == "table" and known.hitDelay) or (prof.avgLifetime * 0.70)
+		end
+		return prof.avgLifetime, hitDelay
 	end
 	local known = KNOWN_SKILL_LIFETIMES[skillName]
 	if known then
-		return known
+		if type(known) == "table" then
+			return known.totalLifetime or 2.0, known.hitDelay or 1.5
+		else
+			return known, known * 0.70
+		end
 	end
-	return 2.5
+	return 2.5, 1.8
 end
 
 --// Gắn BillboardGui 3D đếm ngược thời gian tồn tại của hazard
@@ -1030,6 +1104,7 @@ local function registerHazard(instance)
 		Distance = dist,
 		NeonCount = #hazardParts,
 		SpawnTime = os.clock(),
+		HitTime = nil, -- Ghi nhận thời điểm nháy kích nổ sát thương
 		Connections = partConnections,
 		ActiveParts = activePartsSet,
 		VisualBoxes = visualBoxes,
@@ -1052,6 +1127,25 @@ local function registerHazard(instance)
 		table.insert(partConnections, casterModel.AncestryChanged:Connect(function(_, parent)
 			if not parent then
 				unregisterHazard(instance, "Caster Removed")
+			end
+		end))
+	end
+
+	-- Lắng nghe âm thanh nổ hoặc particles bung ra để bắt trọn thời điểm nháy damage
+	for _, desc in ipairs(instance:GetDescendants()) do
+		if desc:IsA("Sound") then
+			table.insert(partConnections, desc.Played:Connect(function()
+				if not info.HitTime then
+					info.HitTime = os.clock()
+				end
+			end))
+		end
+	end
+
+	if instance:IsA("Model") then
+		table.insert(partConnections, instance.DescendantAdded:Connect(function(desc)
+			if not info.HitTime and (desc:IsA("ParticleEmitter") or desc:IsA("Sound") or (desc:IsA("BasePart") and desc.Name ~= "precast")) then
+				info.HitTime = os.clock()
 			end
 		end))
 	end
@@ -1083,6 +1177,9 @@ local function registerHazard(instance)
 		-- Pha Kích nổ / Sát thương: Khi part đạt độ sáng chói (Transparency tụt xuống <= 0.28)
 		if minT <= 0.28 then
 			partHasFlashed[part] = true
+			if not info.HitTime then
+				info.HitTime = os.clock()
+			end
 		end
 
 		-- Pha Tan biến sau khi chớp sáng (Early Hitbox Clearance):
@@ -1270,25 +1367,38 @@ function unregisterHazard(instance, reason)
 		info.TimerLabel = nil
 	end
 
-	-- Cập nhật thống kê thời gian sống của chiêu thức (Skill Lifetime Profiler)
+	-- Cập nhật thống kê thời gian sống & thời điểm nháy kích nổ sát thương (Skill Lifetime & Hit Profiler)
 	if info.SpawnTime then
 		local duration = os.clock() - info.SpawnTime
+		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
+
+		-- Nếu không bắt được HitTime qua visual/sound, lấy ước tính chuẩn
+		if not hitDelay or hitDelay < 0.1 or hitDelay > duration then
+			local _, defaultHit = getEstimatedSkillLifetime(info.Name)
+			hitDelay = math.min(defaultHit, duration * 0.75)
+		end
+
 		if duration >= 0.2 and duration <= 25.0 then
 			local prof = skillProfiles[info.Name]
 			if not prof then
 				prof = {
 					count = 1,
 					avgLifetime = duration,
+					avgHitDelay = hitDelay,
 					minLifetime = duration,
 					maxLifetime = duration,
 				}
 				skillProfiles[info.Name] = prof
 			else
 				prof.count = prof.count + 1
-				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / math.min(prof.count, 8)
+				local weight = math.min(prof.count, 8)
+				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / weight
+				prof.avgHitDelay = (prof.avgHitDelay or hitDelay) + (hitDelay - (prof.avgHitDelay or hitDelay)) / weight
 				prof.minLifetime = math.min(prof.minLifetime, duration)
 				prof.maxLifetime = math.max(prof.maxLifetime, duration)
 			end
+			-- Tự động lưu hồ sơ đã học vào file JSON
+			saveSkillProfiles()
 		end
 	end
 
@@ -1751,14 +1861,15 @@ function detection.GetActiveBossOrb()
 	return nil, nil, nil, nil
 end
 
---// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất
+--// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất và trước khi giáng damage
 function detection.GetHazardTimeRemaining(instance)
 	local info = activeHazards[instance]
-	if not info or not info.SpawnTime then return nil, nil, 0 end
+	if not info or not info.SpawnTime then return nil, nil, 0, nil, nil end
 	local elapsed = os.clock() - info.SpawnTime
-	local estTotal = getEstimatedSkillLifetime(info.Name)
-	local remaining = math.max(0, estTotal - elapsed)
-	return remaining, estTotal, elapsed
+	local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
+	local remainingTotal = math.max(0, estTotal - elapsed)
+	local remainingToHit = math.max(0, estHit - elapsed)
+	return remainingTotal, estTotal, elapsed, remainingToHit, estHit
 end
 
 --// Lấy thông tin thống kê thời gian sống của một kỹ năng
@@ -1778,20 +1889,30 @@ function detection.UpdateHazardTimers()
 	for _, info in pairs(activeHazards) do
 		if info.TimerLabel and info.SpawnTime then
 			local elapsed = now - info.SpawnTime
-			local estTotal = getEstimatedSkillLifetime(info.Name)
-			local remaining = math.max(0, estTotal - elapsed)
+			local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
+			local remainingTotal = math.max(0, estTotal - elapsed)
+			local remainingToHit = math.max(0, estHit - elapsed)
 
 			local color
-			if remaining <= 0.4 then
-				color = Color3.fromRGB(100, 255, 100) -- Xanh lá: sắp tan biến
-			elseif remaining <= 1.0 then
-				color = Color3.fromRGB(255, 170, 0) -- Cam: sắp hết hạn
+			local text
+			if remainingToHit > 0 then
+				-- Đang trong giai đoạn telegraph / chuẩn bị giáng damage
+				if remainingToHit <= 0.4 then
+					color = Color3.fromRGB(255, 60, 60) -- Đỏ rực: sát thương sắp giáng xuống!
+				elseif remainingToHit <= 1.0 then
+					color = Color3.fromRGB(255, 160, 0) -- Cam: sắp nổ
+				else
+					color = Color3.fromRGB(255, 230, 80) -- Vàng: đang precast
+				end
+				text = string.format("%s\n💥 HIT IN: %.1fs (⏳ %.1fs)", info.Name, remainingToHit, remainingTotal)
 			else
-				color = Color3.fromRGB(255, 75, 75) -- Đỏ: đang nguy hiểm
+				-- Đã kích nổ damage xong! Đang trong giai đoạn tàn dư animation/fading
+				color = Color3.fromRGB(80, 255, 120) -- Xanh neon: Đã nổ xong (an toàn để bước vào nếu tàn dư vô hại)
+				text = string.format("%s\n✅ DETONATED! (⏳ %.1fs)", info.Name, remainingTotal)
 			end
 
 			info.TimerLabel.TextColor3 = color
-			info.TimerLabel.Text = string.format("%s\n⏳ %.1fs / %.1fs", info.Name, remaining, estTotal)
+			info.TimerLabel.Text = text
 		end
 	end
 end
@@ -1823,5 +1944,8 @@ end
 function detection.IsShowSkillTimersEnabled()
 	return showSkillTimers
 end
+
+detection.SaveSkillProfiles = saveSkillProfilesNow
+detection.LoadSkillProfiles = loadSkillProfiles
 
 return detection

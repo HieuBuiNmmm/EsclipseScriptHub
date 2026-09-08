@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-08T12:24:48.075600200+00:00",
+    genDate = "2026-09-08T14:32:33.940199500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7754,37 +7754,36 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 		return true -- Chỉ bỏ qua bước cực ngắn <= 1.2 studs
 	end
 
-	-- Bước chia mẫu 1.5 studs (vừa khít nhỏ hơn hitbox 2.2 studs, số bước tối đa 8 để không gây giật lag)
-	local steps = math.clamp(math.ceil(dist / 1.5), 2, 8)
+	-- Bước chia mẫu 1.8 studs (nhỏ hơn hitbox người chơi 2.5 studs, tối đa 32 bước để không bỏ lọt bất kỳ chiêu nào trên đường dài)
+	local steps = math.clamp(math.ceil(dist / 1.8), 2, 32)
 	for i = 1, steps - 1 do
 		local t = i / steps
 		local samplePos = fromPos:Lerp(toPos, t)
 		local inDanger, hitInfo, hitPart, hitTraj = geometry.IsPointInAnyHazard(samplePos, ignoredInstance)
 		if inDanger then
-			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) đang bay -> Tuyệt đối không băng qua
-			if hitTraj and hitTraj.isTrajectory then
-				return false
-			end
-			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường, từ chối ngay
 			local hitInst = (hitInfo and hitInfo.Instance)
 			local hitParent = hitPart and hitPart.Parent
 
+			local isKnown = false
 			if currentHazardsSet and next(currentHazardsSet) ~= nil then
-				local isKnown = (hitPart and currentHazardsSet[hitPart])
+				isKnown = (hitPart and currentHazardsSet[hitPart])
 					or (hitInst and currentHazardsSet[hitInst])
 					or (hitParent and currentHazardsSet[hitParent])
-				if not isKnown then
-					return false
-				end
 			elseif fallbackCurrentDangerPart then
 				local currentInst = fallbackCurrentDangerPart:IsA("Model") and fallbackCurrentDangerPart or fallbackCurrentDangerPart.Parent
-				local isKnown = (hitPart and hitPart == fallbackCurrentDangerPart)
+				isKnown = (hitPart and hitPart == fallbackCurrentDangerPart)
 					or (currentInst and hitInst and currentInst == hitInst)
 					or (currentInst and hitParent and currentInst == hitParent)
-				if not isKnown then
-					return false
-				end
-			else
+			end
+
+			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) MỚI mà người chơi KHÔNG đứng trong đó -> Tuyệt đối không băng qua
+			--    Nếu là chính Trajectory mà người chơi đang đứng trong đó -> Cho phép bước ra khỏi mép!
+			if hitTraj and hitTraj.isTrajectory and not isKnown then
+				return false
+			end
+
+			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường, từ chối ngay
+			if not isKnown then
 				return false
 			end
 		end
@@ -7801,6 +7800,8 @@ return geometry end function __DIST.l()-- Smart Dodge – Module 1: Threat Detec
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
+local macLib = __DIST.load('a')
+local lifecycle = __DIST.load('b')
 
 --// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
 local geometryRef
@@ -7814,6 +7815,7 @@ end
 --// References
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local HttpService = game:GetService("HttpService")
 local player = services.player
 
 --// Table
@@ -7834,21 +7836,83 @@ local sharedCleanups = {}
 --// Bảng cơ sở dữ liệu thời gian sống học được từ các kỹ năng (Skill Lifetime Profiler)
 local skillProfiles = {} -- [string skillName] = { count = number, avgLifetime = number, minLifetime = number, maxLifetime = number }
 
---// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây)
+--// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây): { hitDelay, totalLifetime }
 local KNOWN_SKILL_LIFETIMES = {
-	["largeIceSpikes"] = 1.8,
-	["mediumIceSpikes"] = 1.5,
-	["smallIceSpikes"] = 1.2,
-	["thirdBossMultiRings"] = 2.8,
-	["firstBossCrissCross"] = 2.2,
-	["firstBossSeekingSpikes"] = 2.5,
-	["firstBossBigSpike"] = 2.0,
-	["firstBossBeamPart"] = 2.0,
-	["secondBossMovingBeam"] = 3.5,
-	["secondbossyelloworb"] = 4.0,
-	["secondbossredorb"] = 4.0,
-	["secondbossgreenorb"] = 4.0,
+	["smallIceSpikes"] = { hitDelay = 0.8, totalLifetime = 1.2 },
+	["mediumIceSpikes"] = { hitDelay = 1.1, totalLifetime = 1.5 },
+	["largeIceSpikes"] = { hitDelay = 1.4, totalLifetime = 1.8 },
+	["thirdBossMultiRings"] = { hitDelay = 2.0, totalLifetime = 2.8 },
+	["firstBossCrissCross"] = { hitDelay = 1.6, totalLifetime = 2.2 },
+	["firstBossSeekingSpikes"] = { hitDelay = 1.8, totalLifetime = 2.5 },
+	["firstBossBigSpike"] = { hitDelay = 1.5, totalLifetime = 2.0 },
+	["firstBossBeamPart"] = { hitDelay = 1.5, totalLifetime = 2.0 },
+	["secondBossMovingBeam"] = { hitDelay = 0.0, totalLifetime = 3.5 },
+	["secondbossyelloworb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
+	["secondbossredorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
+	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
 }
+
+--// Lưu trữ vĩnh viễn (Persistence) hồ sơ thời gian sống & thời điểm kích nổ sát thương của các kỹ năng ra file JSON
+local SETTINGS_FOLDER = macLib.Folder .. "/settings"
+local PROFILES_FILE = SETTINGS_FOLDER .. "/smartDodge_skills.json"
+
+local function loadSkillProfiles()
+	if not (isfile and isfile(PROFILES_FILE)) then return end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(readfile(PROFILES_FILE))
+	end)
+	if ok and type(decoded) == "table" then
+		for skillName, data in pairs(decoded) do
+			if type(data) == "table" and type(data.avgLifetime) == "number" then
+				skillProfiles[skillName] = {
+					count = tonumber(data.count) or 1,
+					avgLifetime = tonumber(data.avgLifetime) or 2.0,
+					avgHitDelay = tonumber(data.avgHitDelay) or (tonumber(data.avgLifetime) * 0.75),
+					minLifetime = tonumber(data.minLifetime) or data.avgLifetime,
+					maxLifetime = tonumber(data.maxLifetime) or data.avgLifetime,
+				}
+			end
+		end
+		if logHazards then
+			print(("[SmartDodge] 📂 Loaded skill lifetime & hit profiles from %s"):format(PROFILES_FILE))
+		end
+	end
+end
+
+local isSavePending = false
+
+local function saveSkillProfilesNow()
+	if not (isfile and writefile) then return end
+	pcall(function()
+		if makefolder and isfolder then
+			if not isfolder(macLib.Folder) then makefolder(macLib.Folder) end
+			if not isfolder(SETTINGS_FOLDER) then makefolder(SETTINGS_FOLDER) end
+		end
+		writefile(PROFILES_FILE, HttpService:JSONEncode(skillProfiles))
+	end)
+end
+
+local function saveSkillProfiles()
+	if not (isfile and writefile) then return end
+	if isSavePending then return end
+	isSavePending = true
+
+	task.delay(1.5, function()
+		isSavePending = false
+		saveSkillProfilesNow()
+	end)
+end
+
+-- Nạp ngay dữ liệu đã học từ file JSON của các phiên trước
+loadSkillProfiles()
+
+-- Tự động lưu khi script shutdown
+lifecycle.Register(function()
+	if isSavePending then
+		isSavePending = false
+		saveSkillProfilesNow()
+	end
+end)
 local ignoredSkillNames = {
 	["DodgeNode_ESP"] = true,
 	["Enhanced Aura Ring"] = true,
@@ -8630,17 +8694,26 @@ local function attachSelectionBoxes(hazardParts)
 	return boxes
 end
 
---// Ước tính tổng thời gian tồn tại (Total Expected Lifetime) của một kỹ năng
+--// Ước tính tổng thời gian tồn tại và thời điểm kích nổ sát thương (Total Lifetime & Hit Delay)
 local function getEstimatedSkillLifetime(skillName)
 	local prof = skillProfiles[skillName]
 	if prof and prof.avgLifetime then
-		return prof.avgLifetime
+		local hitDelay = prof.avgHitDelay
+		if not hitDelay then
+			local known = KNOWN_SKILL_LIFETIMES[skillName]
+			hitDelay = (type(known) == "table" and known.hitDelay) or (prof.avgLifetime * 0.70)
+		end
+		return prof.avgLifetime, hitDelay
 	end
 	local known = KNOWN_SKILL_LIFETIMES[skillName]
 	if known then
-		return known
+		if type(known) == "table" then
+			return known.totalLifetime or 2.0, known.hitDelay or 1.5
+		else
+			return known, known * 0.70
+		end
 	end
-	return 2.5
+	return 2.5, 1.8
 end
 
 --// Gắn BillboardGui 3D đếm ngược thời gian tồn tại của hazard
@@ -8825,6 +8898,7 @@ local function registerHazard(instance)
 		Distance = dist,
 		NeonCount = #hazardParts,
 		SpawnTime = os.clock(),
+		HitTime = nil, -- Ghi nhận thời điểm nháy kích nổ sát thương
 		Connections = partConnections,
 		ActiveParts = activePartsSet,
 		VisualBoxes = visualBoxes,
@@ -8847,6 +8921,25 @@ local function registerHazard(instance)
 		table.insert(partConnections, casterModel.AncestryChanged:Connect(function(_, parent)
 			if not parent then
 				unregisterHazard(instance, "Caster Removed")
+			end
+		end))
+	end
+
+	-- Lắng nghe âm thanh nổ hoặc particles bung ra để bắt trọn thời điểm nháy damage
+	for _, desc in ipairs(instance:GetDescendants()) do
+		if desc:IsA("Sound") then
+			table.insert(partConnections, desc.Played:Connect(function()
+				if not info.HitTime then
+					info.HitTime = os.clock()
+				end
+			end))
+		end
+	end
+
+	if instance:IsA("Model") then
+		table.insert(partConnections, instance.DescendantAdded:Connect(function(desc)
+			if not info.HitTime and (desc:IsA("ParticleEmitter") or desc:IsA("Sound") or (desc:IsA("BasePart") and desc.Name ~= "precast")) then
+				info.HitTime = os.clock()
 			end
 		end))
 	end
@@ -8878,6 +8971,9 @@ local function registerHazard(instance)
 		-- Pha Kích nổ / Sát thương: Khi part đạt độ sáng chói (Transparency tụt xuống <= 0.28)
 		if minT <= 0.28 then
 			partHasFlashed[part] = true
+			if not info.HitTime then
+				info.HitTime = os.clock()
+			end
 		end
 
 		-- Pha Tan biến sau khi chớp sáng (Early Hitbox Clearance):
@@ -9065,25 +9161,38 @@ function unregisterHazard(instance, reason)
 		info.TimerLabel = nil
 	end
 
-	-- Cập nhật thống kê thời gian sống của chiêu thức (Skill Lifetime Profiler)
+	-- Cập nhật thống kê thời gian sống & thời điểm nháy kích nổ sát thương (Skill Lifetime & Hit Profiler)
 	if info.SpawnTime then
 		local duration = os.clock() - info.SpawnTime
+		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
+
+		-- Nếu không bắt được HitTime qua visual/sound, lấy ước tính chuẩn
+		if not hitDelay or hitDelay < 0.1 or hitDelay > duration then
+			local _, defaultHit = getEstimatedSkillLifetime(info.Name)
+			hitDelay = math.min(defaultHit, duration * 0.75)
+		end
+
 		if duration >= 0.2 and duration <= 25.0 then
 			local prof = skillProfiles[info.Name]
 			if not prof then
 				prof = {
 					count = 1,
 					avgLifetime = duration,
+					avgHitDelay = hitDelay,
 					minLifetime = duration,
 					maxLifetime = duration,
 				}
 				skillProfiles[info.Name] = prof
 			else
 				prof.count = prof.count + 1
-				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / math.min(prof.count, 8)
+				local weight = math.min(prof.count, 8)
+				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / weight
+				prof.avgHitDelay = (prof.avgHitDelay or hitDelay) + (hitDelay - (prof.avgHitDelay or hitDelay)) / weight
 				prof.minLifetime = math.min(prof.minLifetime, duration)
 				prof.maxLifetime = math.max(prof.maxLifetime, duration)
 			end
+			-- Tự động lưu hồ sơ đã học vào file JSON
+			saveSkillProfiles()
 		end
 	end
 
@@ -9546,14 +9655,15 @@ function detection.GetActiveBossOrb()
 	return nil, nil, nil, nil
 end
 
---// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất
+--// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất và trước khi giáng damage
 function detection.GetHazardTimeRemaining(instance)
 	local info = activeHazards[instance]
-	if not info or not info.SpawnTime then return nil, nil, 0 end
+	if not info or not info.SpawnTime then return nil, nil, 0, nil, nil end
 	local elapsed = os.clock() - info.SpawnTime
-	local estTotal = getEstimatedSkillLifetime(info.Name)
-	local remaining = math.max(0, estTotal - elapsed)
-	return remaining, estTotal, elapsed
+	local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
+	local remainingTotal = math.max(0, estTotal - elapsed)
+	local remainingToHit = math.max(0, estHit - elapsed)
+	return remainingTotal, estTotal, elapsed, remainingToHit, estHit
 end
 
 --// Lấy thông tin thống kê thời gian sống của một kỹ năng
@@ -9573,20 +9683,30 @@ function detection.UpdateHazardTimers()
 	for _, info in pairs(activeHazards) do
 		if info.TimerLabel and info.SpawnTime then
 			local elapsed = now - info.SpawnTime
-			local estTotal = getEstimatedSkillLifetime(info.Name)
-			local remaining = math.max(0, estTotal - elapsed)
+			local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
+			local remainingTotal = math.max(0, estTotal - elapsed)
+			local remainingToHit = math.max(0, estHit - elapsed)
 
 			local color
-			if remaining <= 0.4 then
-				color = Color3.fromRGB(100, 255, 100) -- Xanh lá: sắp tan biến
-			elseif remaining <= 1.0 then
-				color = Color3.fromRGB(255, 170, 0) -- Cam: sắp hết hạn
+			local text
+			if remainingToHit > 0 then
+				-- Đang trong giai đoạn telegraph / chuẩn bị giáng damage
+				if remainingToHit <= 0.4 then
+					color = Color3.fromRGB(255, 60, 60) -- Đỏ rực: sát thương sắp giáng xuống!
+				elseif remainingToHit <= 1.0 then
+					color = Color3.fromRGB(255, 160, 0) -- Cam: sắp nổ
+				else
+					color = Color3.fromRGB(255, 230, 80) -- Vàng: đang precast
+				end
+				text = string.format("%s\n💥 HIT IN: %.1fs (⏳ %.1fs)", info.Name, remainingToHit, remainingTotal)
 			else
-				color = Color3.fromRGB(255, 75, 75) -- Đỏ: đang nguy hiểm
+				-- Đã kích nổ damage xong! Đang trong giai đoạn tàn dư animation/fading
+				color = Color3.fromRGB(80, 255, 120) -- Xanh neon: Đã nổ xong (an toàn để bước vào nếu tàn dư vô hại)
+				text = string.format("%s\n✅ DETONATED! (⏳ %.1fs)", info.Name, remainingTotal)
 			end
 
 			info.TimerLabel.TextColor3 = color
-			info.TimerLabel.Text = string.format("%s\n⏳ %.1fs / %.1fs", info.Name, remaining, estTotal)
+			info.TimerLabel.Text = text
 		end
 	end
 end
@@ -9618,6 +9738,9 @@ end
 function detection.IsShowSkillTimersEnabled()
 	return showSkillTimers
 end
+
+detection.SaveSkillProfiles = saveSkillProfilesNow
+detection.LoadSkillProfiles = loadSkillProfiles
 
 return detection end function __DIST.m()-- Target Movement System – Component C: Target Selector & Path Calculator
 -- Spec: Sections 5 & 6 (Roblox_Target_Movement_System_AI_Spec.txt)
@@ -9947,7 +10070,11 @@ end
 local function applyAutoRotateState()
 	local hum = getHumanoid()
 	if hum then
-		hum.AutoRotate = not enabled
+		if enabled and targetFacing.IsTargetActive() then
+			hum.AutoRotate = false
+		else
+			hum.AutoRotate = true
+		end
 	end
 end
 
@@ -10001,12 +10128,12 @@ local function startFacingLoop()
 		while enabled and lifecycle.IsActive() do
 			if not isDodging then
 				local targetPos = targetFacing.GetTargetPosition()
-				if targetPos then
-					local rootPart = getPlayerRoot()
-					local humanoid = getHumanoid()
+				local rootPart = getPlayerRoot()
+				local humanoid = getHumanoid()
 
+				if targetPos then
 					if rootPart and humanoid and humanoid.Health > 0 then
-						-- Đảm bảo AutoRotate luôn false khi tính năng đang bật
+						-- Chỉ khóa AutoRotate khi CÓ MỤC TIÊU
 						if humanoid.AutoRotate ~= false then
 							humanoid.AutoRotate = false
 						end
@@ -10023,6 +10150,11 @@ local function startFacingLoop()
 								rootPart.CFrame = CFrame.lookAt(pPos, target)
 							end
 						end
+					end
+				else
+					-- KHÔNG CÓ ENEMY -> Mở lại AutoRotate để nhân vật xoay hướng tự nhiên
+					if humanoid and humanoid.Health > 0 and humanoid.AutoRotate ~= true then
+						humanoid.AutoRotate = true
 					end
 				end
 			end
@@ -10911,7 +11043,12 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 	local moveDist = (candPos - playerPos).Magnitude
 	local clearance = getClearanceBonus(candPos)
 	-- Cự ly là tiêu chí sống còn: mỗi stud chạy thêm làm tăng nguy cơ deal dame
-	local score = (moveDist * 1.5) - (clearance * 0.35)
+	local score = (moveDist * 2.0) - (clearance * 0.35)
+	if moveDist > 12.0 then
+		-- Phạt lũy tiến nặng nề cho các điểm cách xa (> 12 studs):
+		-- Triệt tiêu hoàn toàn lỗi chọn điểm góc 30-40 studs khi chỉ cần bước 2-3 studs là an toàn
+		score = score + ((moveDist - 12.0) * 3.5)
+	end
 
 	-- TẬN DỤNG HỆ QUY CHIẾU CHIẾN ĐẤU FACE-TO-TARGET (Nhìn Boss)
 	local targetPos = targetFacing and targetFacing.GetTargetPosition and targetFacing.GetTargetPosition()
@@ -11127,6 +11264,32 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		if activeOrbPart and orbColorName then
 			local targetCrystal, wrongCrystals = getBossCrystal(orbColorName)
 			if targetCrystal then
+				-- KIỂM TRA SÀN SẠCH & VÙNG ĐỆM AN TOÀN:
+				-- Nếu người chơi vừa né ra mép một chiêu thức sát thương (ví dụ AoE tròn hoặc MovingBeam)
+				-- mà chiêu đó vẫn đang tồn tại/chờ nổ sát chân người chơi (bán kính đệm 4.5 studs):
+				-- -> ĐỨNG YÊN TẠI VỊ TRÍ AN TOÀN NÀY, đợi chiêu nổ biến mất trước khi bắt đầu dắt cầu!
+				-- (Lưu ý: Nếu trong lúc đứng đợi mà có MovingBeam mới quét trúng playerPos, Bước 1 ở trên
+				-- sẽ tự động phát hiện inDanger = true và né chiêu đó ngay lập tức).
+				local hasActiveFloorHazard = false
+				local allHazards = detection.GetActiveHazards and detection.GetActiveHazards()
+				if allHazards and #allHazards > 0 then
+					for _, hData in ipairs(allHazards) do
+						local hInst = hData.Instance
+						if hInst and hInst ~= activeOrbPart and hInst ~= (activeOrbPart and activeOrbPart.Parent) then
+							if not geometry.IsSpotFullySafe(playerPos, 4.5, activeOrbPart) then
+								hasActiveFloorHazard = true
+								break
+							end
+						end
+					end
+				end
+
+				if hasActiveFloorHazard then
+					lockedSafeSpot = playerPos
+					lockedHazardCount = 1
+					return true, playerPos, ("Waiting for nearby AoE to explode before leading %s"):format(orbColorName:upper()), 0
+				end
+
 				local orbPos = activeOrbPart.Position
 				local crystalPos = targetCrystal.Position
 
@@ -11292,23 +11455,30 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 	lastDangerPart = dangerPart
 	lastCurrentHazardsSet = currentHazardsSet
 
-	-- 2. CƠ CHẾ STRICT LATCHING (Khóa điểm an toàn tuyệt đối - chống rung giật / nhảy điểm):
-	-- Nếu đã có điểm khóa và điểm đó VẪN HOÀN TOÀN AN TOÀN:
-	-- -> Giữ nguyên 100% điểm này! Tuyệt đối không quét vector mới, không đổi điểm!
+	-- 2. CƠ CHẾ STRICT LATCHING KẾT HỢP OPPORTUNISTIC RETARGETING:
+	-- Kiểm tra tính hợp lệ của điểm khóa an toàn hiện tại (nếu có):
+	local isOldPointStillSafe = false
+	local lockedDist = math.huge
 	if lockedSafeSpot and geometry.IsSpotFullySafe(lockedSafeSpot, 0.5) then
 		local inArena = not (boss1ArenaCenter and not isInsideBoss1Arena(lockedSafeSpot, playerPos))
 		if inArena then
-			local lockedDist = (lockedSafeSpot - playerPos).Magnitude
+			lockedDist = (lockedSafeSpot - playerPos).Magnitude
 			if lockedDist <= 45 and geometry.IsPathSafe(playerPos, lockedSafeSpot, currentHazardsSet, dangerPart) then
-				local finalDist = math.floor(lockedDist * 10) / 10
-				return true, lockedSafeSpot, hazardName, finalDist
+				isOldPointStillSafe = true
+				-- NẾU ĐÃ Ở RẤT GẦN ĐIỂM KHÓA (<= 3.5 studs): Giữ nguyên 100% điểm này, không cần tính toán lại
+				if lockedDist <= 3.5 then
+					local finalDist = math.floor(lockedDist * 10) / 10
+					return true, lockedSafeSpot, hazardName, finalDist
+				end
 			end
 		end
 	end
 
-	-- Điểm khóa cũ bị skill mới đè hoặc không còn an toàn -> Mở khóa để tính toán điểm mới
-	lockedSafeSpot = nil
-	lockedHazardCount = currentHazardCount
+	-- Điểm khóa cũ bị skill mới đè hoặc không còn an toàn -> Xóa khóa
+	if not isOldPointStillSafe then
+		lockedSafeSpot = nil
+		lockedHazardCount = currentHazardCount
+	end
 
 	local candidatePos = nil
 	local isMultiRings = hazardName:lower():find("multiring") ~= nil
@@ -11601,22 +11771,33 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				table.insert(directCandidates, dangerPart.Position + forward2D * (beamRadius + ESCAPE_MARGIN + 1.5))
 				table.insert(directCandidates, dangerPart.Position - forward2D * (beamRadius + ESCAPE_MARGIN + 1.5))
 			else
-				-- A3. Chiêu hình chữ nhật / OBB: 4 cạnh + 4 góc chéo (chỉ cần nhích ESCAPE_MARGIN = 1.5 studs qua mép)
+				-- A3. Chiêu hình chữ nhật / OBB: Tự động phát hiện trục Dài/Rộng
 				local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
 				local halfX = dangerPart.Size.X / 2
 				local halfZ = dangerPart.Size.Z / 2
 
-				-- 4 cạnh
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, localPos.Z)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, localPos.Z)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, halfZ + ESCAPE_MARGIN)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, 0, -(halfZ + ESCAPE_MARGIN))))
-
-				-- 4 góc chéo
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, halfZ + ESCAPE_MARGIN)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, 0, -(halfZ + ESCAPE_MARGIN))))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, halfZ + ESCAPE_MARGIN)))
-				table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), 0, -(halfZ + ESCAPE_MARGIN))))
+				-- Tự động nhận diện trục dài (Length) và trục hẹp (Width) của hành lang:
+				if halfZ >= halfX * 1.4 then
+					-- Trục Z là hành lang dài, trục X là bề sườn hẹp:
+					-- ƯU TIÊN TUYỆT ĐỐI: Thoát vuông góc sang 2 bên sườn trục X tại đúng vị trí Z của người chơi!
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN + 2.0, localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN + 2.0), localPos.Y, localPos.Z)))
+				elseif halfX >= halfZ * 1.4 then
+					-- Trục X là hành lang dài, trục Z là bề sườn hẹp:
+					-- ƯU TIÊN TUYỆT ĐỐI: Thoát vuông góc sang 2 bên sườn trục Z tại đúng vị trí X của người chơi!
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN))))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN + 2.0)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN + 2.0))))
+				else
+					-- Chiêu hình vuông hoặc chữ nhật đều: Thoát 4 cạnh gần nhất (TUYỆT ĐỐI KHÔNG sinh 4 góc chéo xa)
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), localPos.Y, localPos.Z)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN)))
+					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN))))
+				end
 			end
 
 			-- Đánh giá các điểm thoát trực tiếp (0 Raycast)
@@ -11679,12 +11860,32 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		end
 	end
 
-	-- 6. KHÓA CHẶT ĐIỂM AN TOÀN VỪA TÌM ĐƯỢC (Strict Latch - Cố định 100% không rung lắc)
+	-- 6. KHÓA CHẶT ĐIỂM AN TOÀN VỪA TÌM ĐƯỢC KẾT HỢP OPPORTUNISTIC RETARGETING:
 	if candidatePos then
+		-- Nếu điểm cũ vẫn an toàn nhưng điểm mới gần hơn vượt trội (>= HYSTERESIS_THRESHOLD studs):
+		-- -> Bẻ lái sang điểm mới gần hơn ngay lập tức (ví dụ: né dải xanh vừa biến mất chỉ cách 2-3 studs thay vì chạy 15 studs ra mép)!
+		-- Ngược lại, nếu điểm mới không gần hơn đủ nhiều -> Tiếp tục giữ điểm cũ để tránh rung giật
+		if isOldPointStillSafe then
+			local newDist = (candidatePos - playerPos).Magnitude
+			if (lockedDist - newDist) >= HYSTERESIS_THRESHOLD then
+				lockedSafeSpot = candidatePos
+				lockedHazardCount = currentHazardCount
+				local finalDist = math.floor(newDist * 10) / 10
+				return true, candidatePos, hazardName, finalDist
+			else
+				local finalDist = math.floor(lockedDist * 10) / 10
+				return true, lockedSafeSpot, hazardName, finalDist
+			end
+		end
+
 		lockedSafeSpot = candidatePos
 		lockedHazardCount = currentHazardCount
 		local finalDist = math.floor((candidatePos - playerPos).Magnitude * 10) / 10
 		return true, candidatePos, hazardName, finalDist
+	elseif isOldPointStillSafe then
+		-- Không tìm thấy candidatePos mới tốt hơn -> Tiếp tục giữ điểm cũ
+		local finalDist = math.floor(lockedDist * 10) / 10
+		return true, lockedSafeSpot, hazardName, finalDist
 	end
 
 	lockedSafeSpot = nil
@@ -12083,7 +12284,8 @@ function dodge.Perform(safePos, escapeDist)
 				activeGyro = nil
 			end
 			if humanoid and humanoid.Parent then
-				if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+				local hasEnemy = targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() and targetFacing.IsTargetActive and targetFacing.IsTargetActive()
+				if hasEnemy then
 					humanoid.AutoRotate = false
 				else
 					humanoid.AutoRotate = true
@@ -12159,7 +12361,12 @@ function dodge.Perform(safePos, escapeDist)
 				local startTime = os.clock()
 				local MAX_WALK_TIMEOUT = 4.0
 
-				humanoid.AutoRotate = true
+				local targetEnemy = getFaceTarget()
+				if targetEnemy then
+					humanoid.AutoRotate = false
+				else
+					humanoid.AutoRotate = true
+				end
 
 				local moveTarget = Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z)
 				humanoid:MoveTo(moveTarget)
@@ -12183,6 +12390,29 @@ function dodge.Perform(safePos, escapeDist)
 						humanoid:Move(curDiff.Unit, false)
 					else
 						humanoid:Move(Vector3.zero, false)
+					end
+
+					-- STRAFE FACING: Vừa rảo bước né đòn vừa giữ nguyên góc nhìn dán chặt vào mục tiêu
+					if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+						local curEnemy = getFaceTarget()
+						if curEnemy then
+							if humanoid.AutoRotate ~= false then
+								humanoid.AutoRotate = false
+							end
+							local pPos = rootPart.Position
+							local diff = Vector3.new(curEnemy.X - pPos.X, 0, curEnemy.Z - pPos.Z)
+							if diff.Magnitude > 0.5 then
+								local curLook = rootPart.CFrame.LookVector
+								local wantLook = diff.Unit
+								if curLook:Dot(wantLook) < 0.999 then
+									rootPart.CFrame = CFrame.lookAt(pPos, Vector3.new(curEnemy.X, pPos.Y, curEnemy.Z))
+								end
+							end
+						else
+							if humanoid.AutoRotate ~= true then
+								humanoid.AutoRotate = true
+							end
+						end
 					end
 				end)
 
@@ -12220,15 +12450,7 @@ function dodge.Perform(safePos, escapeDist)
 					task.wait(0.03)
 				end
 
-				if activeMoveConn then
-					pcall(function() activeMoveConn:Disconnect() end)
-					activeMoveConn = nil
-				end
-
-				pcall(function()
-					humanoid:Move(Vector3.zero, false)
-					humanoid:MoveTo(rootPart.Position)
-				end)
+				finish()
 				return
 			end
 
@@ -12468,7 +12690,8 @@ function dodge.Cancel()
 		pcall(function()
 			humanoid:Move(Vector3.zero, false)
 		end)
-		if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+		local hasEnemy = targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() and targetFacing.IsTargetActive and targetFacing.IsTargetActive()
+		if hasEnemy then
 			humanoid.AutoRotate = false
 		else
 			humanoid.AutoRotate = true
@@ -12905,6 +13128,8 @@ smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
 smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
 smartDodge.GetSkillProfile = detection.GetSkillProfile
 smartDodge.GetAllSkillProfiles = detection.GetAllSkillProfiles
+smartDodge.SaveSkillProfiles = detection.SaveSkillProfiles
+smartDodge.LoadSkillProfiles = detection.LoadSkillProfiles
 
 smartDodge.GetHazardCount = detection.GetHazardCount
 smartDodge.GetActiveHazards = detection.GetActiveHazards

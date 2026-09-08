@@ -39,7 +39,11 @@ end
 local function applyAutoRotateState()
 	local hum = getHumanoid()
 	if hum then
-		hum.AutoRotate = not enabled
+		if enabled and targetFacing.IsTargetActive() then
+			hum.AutoRotate = false
+		else
+			hum.AutoRotate = true
+		end
 	end
 end
 
@@ -93,12 +97,12 @@ local function startFacingLoop()
 		while enabled and lifecycle.IsActive() do
 			if not isDodging then
 				local targetPos = targetFacing.GetTargetPosition()
-				if targetPos then
-					local rootPart = getPlayerRoot()
-					local humanoid = getHumanoid()
+				local rootPart = getPlayerRoot()
+				local humanoid = getHumanoid()
 
+				if targetPos then
 					if rootPart and humanoid and humanoid.Health > 0 then
-						-- Đảm bảo AutoRotate luôn false khi tính năng đang bật
+						-- Chỉ khóa AutoRotate khi CÓ MỤC TIÊU
 						if humanoid.AutoRotate ~= false then
 							humanoid.AutoRotate = false
 						end
@@ -115,6 +119,11 @@ local function startFacingLoop()
 								rootPart.CFrame = CFrame.lookAt(pPos, target)
 							end
 						end
+					end
+				else
+					-- KHÔNG CÓ ENEMY -> Mở lại AutoRotate để nhân vật xoay hướng tự nhiên
+					if humanoid and humanoid.Health > 0 and humanoid.AutoRotate ~= true then
+						humanoid.AutoRotate = true
 					end
 				end
 			end

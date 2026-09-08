@@ -388,7 +388,8 @@ function dodge.Perform(safePos, escapeDist)
 				activeGyro = nil
 			end
 			if humanoid and humanoid.Parent then
-				if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+				local hasEnemy = targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() and targetFacing.IsTargetActive and targetFacing.IsTargetActive()
+				if hasEnemy then
 					humanoid.AutoRotate = false
 				else
 					humanoid.AutoRotate = true
@@ -464,7 +465,12 @@ function dodge.Perform(safePos, escapeDist)
 				local startTime = os.clock()
 				local MAX_WALK_TIMEOUT = 4.0
 
-				humanoid.AutoRotate = true
+				local targetEnemy = getFaceTarget()
+				if targetEnemy then
+					humanoid.AutoRotate = false
+				else
+					humanoid.AutoRotate = true
+				end
 
 				local moveTarget = Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z)
 				humanoid:MoveTo(moveTarget)
@@ -488,6 +494,29 @@ function dodge.Perform(safePos, escapeDist)
 						humanoid:Move(curDiff.Unit, false)
 					else
 						humanoid:Move(Vector3.zero, false)
+					end
+
+					-- STRAFE FACING: Vừa rảo bước né đòn vừa giữ nguyên góc nhìn dán chặt vào mục tiêu
+					if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+						local curEnemy = getFaceTarget()
+						if curEnemy then
+							if humanoid.AutoRotate ~= false then
+								humanoid.AutoRotate = false
+							end
+							local pPos = rootPart.Position
+							local diff = Vector3.new(curEnemy.X - pPos.X, 0, curEnemy.Z - pPos.Z)
+							if diff.Magnitude > 0.5 then
+								local curLook = rootPart.CFrame.LookVector
+								local wantLook = diff.Unit
+								if curLook:Dot(wantLook) < 0.999 then
+									rootPart.CFrame = CFrame.lookAt(pPos, Vector3.new(curEnemy.X, pPos.Y, curEnemy.Z))
+								end
+							end
+						else
+							if humanoid.AutoRotate ~= true then
+								humanoid.AutoRotate = true
+							end
+						end
 					end
 				end)
 
@@ -525,15 +554,7 @@ function dodge.Perform(safePos, escapeDist)
 					task.wait(0.03)
 				end
 
-				if activeMoveConn then
-					pcall(function() activeMoveConn:Disconnect() end)
-					activeMoveConn = nil
-				end
-
-				pcall(function()
-					humanoid:Move(Vector3.zero, false)
-					humanoid:MoveTo(rootPart.Position)
-				end)
+				finish()
 				return
 			end
 
@@ -773,7 +794,8 @@ function dodge.Cancel()
 		pcall(function()
 			humanoid:Move(Vector3.zero, false)
 		end)
-		if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
+		local hasEnemy = targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() and targetFacing.IsTargetActive and targetFacing.IsTargetActive()
+		if hasEnemy then
 			humanoid.AutoRotate = false
 		else
 			humanoid.AutoRotate = true
