@@ -142,6 +142,8 @@ local CUSTOM_HAZARD_EXCEPTIONS = {
 	["mediumIceSpikes"] = true,
 	["smallIceSpikes"] = true,
 	["thirdBossMultiRings"] = true,
+	["thirdBossMissile"] = true,
+	["thirdBossBeamPart"] = true,
 	["firstBossCrissCross"] = true,
 	["firstBossSeekingSpikes"] = true,
 	["firstBossBigSpike"] = true,
@@ -237,6 +239,45 @@ local TRAJECTORY_PROJECTILE_CONFIGS = {
 		maxLookahead = nil,       -- Dùng chung setting Tra lookahead length động (từ slider UI)
 		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho Moving Beam
 		isDynamicMoving = true,   -- Đánh dấu là Dynamic Moving Hazard (Tiếp cận 2)
+	},
+	["secondbossyelloworb"] = {
+		name = "secondBossYellowOrb",
+		dangerRadius = 5.0,       -- Bán kính vùng nguy hiểm cơ bản của Orb
+		maxLookahead = 22.0,      -- Chiều dài hành lang dự đoán phía trước hướng di chuyển
+		visualColor = Color3.fromRGB(255, 130, 0), -- Vùng màu cam cảnh báo quỹ đạo
+		isDynamicMoving = true,
+		isBossOrb = true,
+		orbColorName = "yellow",
+	},
+	["secondbossredorb"] = {
+		name = "secondBossRedOrb",
+		dangerRadius = 5.0,
+		maxLookahead = 22.0,
+		visualColor = Color3.fromRGB(255, 130, 0),
+		isDynamicMoving = true,
+		isBossOrb = true,
+		orbColorName = "red",
+	},
+	["secondbossgreenorb"] = {
+		name = "secondBossGreenOrb",
+		dangerRadius = 5.0,
+		maxLookahead = 22.0,
+		visualColor = Color3.fromRGB(255, 130, 0),
+		isDynamicMoving = true,
+		isBossOrb = true,
+		orbColorName = "green",
+	},
+	["thirdbossmissile"] = {
+		name = "thirdBossMissile",
+		dangerRadius = 6.0,       -- Bán kính vùng nguy hiểm cơ bản (tự động đọc Beam/Part size)
+		maxLookahead = 140.0,     -- Chiều dài hành lang dự đoán xuyên phòng
+		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cảnh báo quỹ đạo
+	},
+	["thirdbossbeampart"] = {
+		name = "thirdBossBeamPart",
+		dangerRadius = 6.0,       -- Bán kính vùng nguy hiểm của tia laser báo trước
+		maxLookahead = 140.0,
+		visualColor = Color3.fromRGB(255, 130, 0),
 	},
 }
 
@@ -473,6 +514,21 @@ local function lockTrajectoryForPart(part)
 				forward2D = look2D.Unit
 			end
 		end
+
+		-- Nếu là missile, kiểm tra companion thirdBossBeamPart để lấy hướng và độ dài chuẩn từ Attachment2
+		if part.Name:lower():find("missile") then
+			for otherPart, otherData in pairs(lockedProjectiles) do
+				if otherPart and otherPart.Parent and otherPart.Name:lower():find("beampart") and otherData and otherData.forward2D then
+					if (otherPart.Position - part.Position).Magnitude < 10 then
+						forward2D = otherData.forward2D
+						if otherData.maxLookahead then
+							autoLength = otherData.maxLookahead
+						end
+						break
+					end
+				end
+			end
+		end
 	end
 
 	-- TỰ ĐỘNG BÓC TÁCH KÍCH THƯỚC THẬT (Auto Dimension Detection):
@@ -521,6 +577,118 @@ end
 detection.LockTrajectoryForPart = function(part)
 	return lockTrajectoryForPart(part)
 end
+
+--// Khóa quỹ đạo trực tiếp cho Model Second Boss Moving Beam (tính toán độc lập với Visual ESP)
+local function lockSecondBossMovingBeam(inst)
+	if not inst or not inst.Parent then return nil end
+	if lockedProjectiles[inst] then return lockedProjectiles[inst] end
+
+	local modelCFrame, modelSize = inst:GetBoundingBox()
+	local primary = inst:FindFirstChildWhichIsA("BasePart")
+	local curPos = (primary and primary.Position) or modelCFrame.Position
+
+	local rv = (primary and primary.CFrame.RightVector) or modelCFrame.RightVector
+	local right2D = Vector3.new(rv.X, 0, rv.Z)
+	if right2D.Magnitude > 0.01 then
+		right2D = right2D.Unit
+	else
+		right2D = Vector3.new(1, 0, 0)
+	end
+	local forward2D = Vector3.new(-right2D.Z, 0, right2D.X)
+	local look = (primary and primary.CFrame.LookVector) or modelCFrame.LookVector
+	local look2D = Vector3.new(look.X, 0, look.Z)
+	if look2D.Magnitude > 0.01 and forward2D:Dot(look2D.Unit) < 0 then
+		forward2D = -forward2D
+	end
+
+	local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+	if beamSpan < 12 then beamSpan = 50.0 end
+	local dangerWidth = beamSpan + trajectoryWidthPadding * 2
+	local dangerDepth = trajectoryLookahead
+
+	local curFloorY = getGeometry().GetRawFloorY(curPos)
+	local thickness = 0.8
+	local lockedY = curFloorY + (thickness / 2) + 0.05
+
+	local trajData = {
+		instance = inst,
+		lastPos = curPos,
+		curPos = curPos,
+		forward2D = forward2D,
+		dangerRadius = dangerWidth / 2,
+		dangerWidth = dangerWidth,
+		maxLookahead = dangerDepth,
+		dangerDepth = dangerDepth,
+		lockedVisualY = lockedY,
+		boxThickness = thickness,
+		isDynamicMoving = true,
+		config = TRAJECTORY_PROJECTILE_CONFIGS["secondbossmovingbeam"],
+	}
+	lockedProjectiles[inst] = trajData
+	return trajData
+end
+
+detection.LockSecondBossMovingBeam = lockSecondBossMovingBeam
+
+--// Khởi tạo theo dõi quỹ đạo động cho Boss 2 Orbs (Yellow / Red / Green Orb luôn hướng về Player)
+local function lockBossOrb(inst, config)
+	if not inst or not inst.Parent then return nil end
+	if lockedProjectiles[inst] then return lockedProjectiles[inst] end
+
+	local primary = inst:IsA("BasePart") and inst or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart"))
+	local modelCFrame, modelSize
+	if inst:IsA("Model") then
+		modelCFrame, modelSize = inst:GetBoundingBox()
+	end
+	local curPos = (primary and primary.Position) or (modelCFrame and modelCFrame.Position) or inst.Position
+
+	-- Xác định hướng và chiều dài ban đầu: Hướng thẳng từ Quả Cầu tới Player
+	local forward2D = Vector3.new(0, 0, -1)
+	local dangerDepth = 22.0
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local playerPos = rootPart and rootPart.Position
+
+	if playerPos then
+		local diff = Vector3.new(playerPos.X - curPos.X, 0, playerPos.Z - curPos.Z)
+		local dist = diff.Magnitude
+		if dist > 0.3 then
+			forward2D = diff.Unit
+			dangerDepth = math.clamp(dist + 4.0, 10.0, 80.0)
+		end
+	end
+
+	local partSize = (primary and primary.Size) or modelSize or Vector3.new(6, 6, 6)
+	local baseRadius = math.max(partSize.X, partSize.Z) / 2
+	if baseRadius < 4.0 then baseRadius = 4.0 end
+	local dangerRadius = baseRadius + trajectoryWidthPadding
+	local dangerWidth = dangerRadius * 2
+
+	local curFloorY = getGeometry().GetRawFloorY(curPos)
+	local thickness = 0.8
+	local lockedY = curFloorY + (thickness / 2) + 0.05
+
+	local trajData = {
+		instance = inst,
+		lastPos = curPos,
+		curPos = curPos,
+		forward2D = forward2D,
+		dangerRadius = dangerRadius,
+		dangerWidth = dangerWidth,
+		maxLookahead = dangerDepth,
+		dangerDepth = dangerDepth,
+		lockedVisualY = lockedY,
+		boxThickness = thickness,
+		isDynamicMoving = true,
+		isBossOrb = true,
+		config = config or TRAJECTORY_PROJECTILE_CONFIGS[inst.Name:lower():gsub("%s+", "")],
+	}
+	lockedProjectiles[inst] = trajData
+	return trajData
+end
+
+local initBossOrb = lockBossOrb
+detection.LockBossOrb = lockBossOrb
+detection.InitBossOrb = lockBossOrb
 
 --// Đăng ký tên kỹ năng của Player để loại trừ
 function detection.RegisterPlayerSkill(skillName)
@@ -848,7 +1016,8 @@ local function isIgnoredPart(part)
 		or part.Name:lower():find("bigspike") or (part.Parent and part.Parent.Name:lower():find("bigspike"))
 		or part.Name:lower():find("beampart") or (part.Parent and part.Parent.Name:lower():find("beampart"))
 		or part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
-		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss")) then
+		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss"))
+		or part.Name:lower():find("missile") or (part.Parent and part.Parent.Name:lower():find("missile")) then
 		return false
 	end
 
@@ -880,6 +1049,7 @@ local function extractHazardParts(instance)
 		or instance.Name:lower():find("beampart")
 		or instance.Name:lower():find("movingbeam")
 		or instance.Name:lower():find("thirdboss")
+		or instance.Name:lower():find("missile")
 
 	local function isValidHazardPart(part)
 		if not part or not part:IsA("BasePart") or isIgnoredPart(part) then return false end
@@ -901,7 +1071,7 @@ local function extractHazardParts(instance)
 	end
 
 	if isException then
-		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring' hoặc BaseParts có trong model
+		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring' hoặc Part Neon có trong model
 		if instance:IsA("BasePart") then
 			if isValidHazardPart(instance) then
 				table.insert(parts, instance)
@@ -909,25 +1079,23 @@ local function extractHazardParts(instance)
 		elseif instance:IsA("Model") then
 			local precasts = {}
 			for _, desc in ipairs(instance:GetDescendants()) do
-				if isValidHazardPart(desc) and desc.Name:lower():find("precast") then
+				if isValidHazardPart(desc) and (desc.Name:lower():find("precast") or desc.Name:lower():find("ring")) then
 					table.insert(precasts, desc)
 				end
 			end
 			if #precasts > 0 then
 				parts = precasts
 			else
+				-- Nếu không có part precast/ring cụ thể, CHỈ lấy các part Neon thực sự (tuyệt đối không lấy part hộp/PrimaryPart)
 				for _, desc in ipairs(instance:GetDescendants()) do
-					if isValidHazardPart(desc) then
+					if isValidHazardPart(desc) and desc.Material == Enum.Material.Neon then
 						table.insert(parts, desc)
 					end
-				end
-				if #parts == 0 and instance.PrimaryPart and instance.PrimaryPart:IsA("BasePart") then
-					table.insert(parts, instance.PrimaryPart)
 				end
 			end
 		end
 	else
-		-- Tiêu chuẩn chung: Material == Neon
+		-- Tiêu chuẩn chung: CHỈ nhận Material == Neon
 		if instance:IsA("BasePart") then
 			if isValidHazardPart(instance) and instance.Material == Enum.Material.Neon then
 				table.insert(parts, instance)
@@ -944,22 +1112,19 @@ local function extractHazardParts(instance)
 	return parts, isException
 end
 
---// Lấy vị trí trung tâm của instance
+--// Lấy vị trí trung tâm của instance (Ưu tiên tuyệt đối hazardParts thực tế, KHÔNG dùng PrimaryPart)
 local function getInstancePosition(instance, hazardParts)
+	if hazardParts and #hazardParts > 0 then
+		return hazardParts[1].Position
+	end
+
 	if instance:IsA("BasePart") then
 		return instance.Position
 	elseif instance:IsA("Model") then
-		if instance.PrimaryPart then
-			return instance.PrimaryPart.Position
-		end
 		local pivot = instance:GetPivot()
 		if pivot and pivot.Position ~= Vector3.zero then
 			return pivot.Position
 		end
-	end
-
-	if hazardParts and #hazardParts > 0 then
-		return hazardParts[1].Position
 	end
 
 	return Vector3.zero
@@ -979,27 +1144,35 @@ local function attachSelectionBoxes(hazardParts)
 	local boxes = {}
 	for _, part in ipairs(hazardParts) do
 		if part and part:IsA("BasePart") and part.Parent then
-			local box = Instance.new("SelectionBox")
-			box.Name = "SmartDodge_SelectionBox"
-
+			-- SelectionBox CHỈ bọc các Part phát sáng Neon thực sự hoặc các part precast/ring/trajectory/orb
+			-- Tuyệt đối KHÔNG bọc các part hộp/mesh to đùng không phải Neon
+			local isNeon = (part.Material == Enum.Material.Neon)
 			local orbConf = BOSS_ORB_CONFIGS[part.Name:lower()]
 				or (part.Parent and BOSS_ORB_CONFIGS[part.Parent.Name:lower()])
+			local isPrecast = part.Name:lower():find("precast") ~= nil
+			local isRing = part.Name:lower():find("ring") ~= nil
+			local isTraj = getTrajectoryConfigForPart(part) ~= nil
 
-			if orbConf then
-				box.Color3 = orbConf.color
-				box.SurfaceColor3 = orbConf.surfaceColor
-				box.SurfaceTransparency = 0.5
-				box.LineThickness = 0.08
-			else
-				box.Color3 = Color3.fromRGB(255, 45, 45)
-				box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
-				box.SurfaceTransparency = 0.6
-				box.LineThickness = 0.05
+			if isNeon or orbConf or isPrecast or isRing or isTraj then
+				local box = Instance.new("SelectionBox")
+				box.Name = "SmartDodge_SelectionBox"
+
+				if orbConf then
+					box.Color3 = orbConf.color
+					box.SurfaceColor3 = orbConf.surfaceColor
+					box.SurfaceTransparency = 0.5
+					box.LineThickness = 0.08
+				else
+					box.Color3 = Color3.fromRGB(255, 45, 45)
+					box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
+					box.SurfaceTransparency = 0.6
+					box.LineThickness = 0.05
+				end
+
+				box.Adornee = part
+				box.Parent = part
+				table.insert(boxes, box)
 			end
-
-			box.Adornee = part
-			box.Parent = part
-			table.insert(boxes, box)
 		end
 	end
 	return boxes
@@ -1034,8 +1207,8 @@ local function attachHazardTimerBillboard(instance, hazardParts, skillName)
 	if not targetPart or not targetPart:IsA("BasePart") then
 		if instance:IsA("BasePart") then
 			targetPart = instance
-		elseif instance:IsA("Model") and instance.PrimaryPart then
-			targetPart = instance.PrimaryPart
+		elseif instance:IsA("Model") then
+			targetPart = instance:FindFirstChildWhichIsA("BasePart")
 		else
 			return nil, nil
 		end
@@ -1256,6 +1429,14 @@ local function registerHazard(instance)
 	end
 
 	-- Khóa hướng bay ngay tại Frame 0 cho các chiêu đạn bay / Projectile
+	local instNameLower = (instance.Name or ""):lower():gsub("%s+", "")
+	if instance:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (instance.Name and instance.Name:lower():find("movingbeam") ~= nil)) then
+		lockSecondBossMovingBeam(instance)
+	end
+	if BOSS_ORB_CONFIGS[instNameLower] or (instance.Name and BOSS_ORB_CONFIGS[instance.Name:lower():gsub("%s+", "")]) then
+		lockBossOrb(instance, TRAJECTORY_PROJECTILE_CONFIGS[instNameLower])
+	end
+
 	for _, part in ipairs(hazardParts) do
 		if getTrajectoryConfigForPart(part) then
 			lockTrajectoryForPart(part)
@@ -1403,7 +1584,7 @@ local function registerHazard(instance)
 	if instance.Name:lower():find("multiring") then
 		task.delay(0.3, function()
 			if not instance or not instance.Parent then return end
-			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or instance.PrimaryPart
+			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or (hazardParts and hazardParts[1])
 			local centerPos = centerPart and centerPart.Position or Vector3.zero
 			print("================ [MULTIRINGS INSPECTOR DUMP] ================")
 			print(("[MultiRings] Model: %s | Center: (%.1f, %.1f, %.1f)"):format(instance.Name, centerPos.X, centerPos.Y, centerPos.Z))
@@ -1523,6 +1704,168 @@ end
 detection.RegisterHazard = registerHazard
 detection.UnregisterHazard = unregisterHazard
 
+--// Cập nhật tọa độ và logic quỹ đạo đạn bay / moving beam theo thời gian thực (độc lập 100% với Visual ESP)
+function detection.UpdateTrajectories()
+	if not threatDetectorEnabled then
+		table.clear(lockedProjectiles)
+		return
+	end
+
+	local currentActiveKeys = {}
+
+	for _, info in pairs(activeHazards) do
+		local inst = info.Instance
+		if inst and inst.Parent then
+			local instNameLower = (inst.Name or ""):lower():gsub("%s+", "")
+			local isMovingBeam = inst:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
+
+			local orbConfig = BOSS_ORB_CONFIGS[instNameLower] or (info.Name and BOSS_ORB_CONFIGS[info.Name:lower():gsub("%s+", "")])
+			local isBossOrb = (orbConfig ~= nil) or (TRAJECTORY_PROJECTILE_CONFIGS[instNameLower] and TRAJECTORY_PROJECTILE_CONFIGS[instNameLower].isBossOrb)
+
+			if isMovingBeam then
+				-- Cập nhật động cho Model secondBossMovingBeam
+				currentActiveKeys[inst] = true
+
+				local modelCFrame, modelSize = inst:GetBoundingBox()
+				local primary = inst:FindFirstChildWhichIsA("BasePart")
+				local curPos = (primary and primary.Position) or modelCFrame.Position
+
+				local trajData = lockedProjectiles[inst]
+				if not trajData then
+					trajData = lockSecondBossMovingBeam(inst)
+				end
+
+				if trajData then
+					-- Cập nhật hướng tịnh tiến thực tế từ frame này sang frame khác
+					local moveDelta = curPos - trajData.lastPos
+					local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
+					if moveDelta2D.Magnitude > 0.08 then
+						trajData.forward2D = moveDelta2D.Unit
+					end
+					trajData.lastPos = curPos
+					trajData.curPos = curPos
+
+					-- Bề ngang beam bao quát cả Model (lấy trục dài nhất của BoundingBox)
+					local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+					if beamSpan < 12 then beamSpan = 50.0 end
+					local dangerWidth = beamSpan + trajectoryWidthPadding * 2
+					local maxLookahead = (trajData.config and trajData.config.maxLookahead) or trajectoryLookahead
+					local dangerDepth = maxLookahead
+
+					trajData.dangerRadius = dangerWidth / 2
+					trajData.dangerWidth = dangerWidth
+					trajData.maxLookahead = dangerDepth
+					trajData.dangerDepth = dangerDepth
+
+					-- Cao độ dán chặt mặt sàn
+					local curFloorY = getGeometry().GetRawFloorY(curPos)
+					local thickness = 0.8
+					local lockedY = curFloorY + (thickness / 2) + 0.05
+					trajData.lockedVisualY = lockedY
+					trajData.boxThickness = thickness
+				end
+			elseif isBossOrb then
+				-- Cập nhật động cho Boss 2 Orbs (Yellow / Red / Green Orb bám đuổi)
+				currentActiveKeys[inst] = true
+
+				local primary = inst:IsA("BasePart") and inst or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart"))
+				local modelCFrame, modelSize
+				if inst:IsA("Model") then
+					modelCFrame, modelSize = inst:GetBoundingBox()
+				end
+				local curPos = (primary and primary.Position) or (modelCFrame and modelCFrame.Position) or inst.Position
+
+				local trajData = lockedProjectiles[inst]
+				if not trajData then
+					trajData = lockBossOrb(inst, TRAJECTORY_PROJECTILE_CONFIGS[instNameLower])
+				end
+
+				if trajData then
+					-- CẬP NHẬT ĐỘNG THEO THỜI GIAN THỰC TÙY VÀO VỊ TRÍ CỦA QUẢ CẦU VÀ VỊ TRÍ NGƯỜI CHƠI
+					local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+					local playerPos = rootPart and rootPart.Position
+
+					local dangerDepth = 22.0
+					if playerPos then
+						local diff = Vector3.new(playerPos.X - curPos.X, 0, playerPos.Z - curPos.Z)
+						local distToPlayer = diff.Magnitude
+						if distToPlayer > 0.3 then
+							trajData.forward2D = diff.Unit
+							-- Chiều dài hành lang cam bao trùm từ quả cầu đến tận chân người chơi (+ 4 studs buffer phía sau người chơi)
+							dangerDepth = math.clamp(distToPlayer + 4.0, 10.0, 80.0)
+						end
+					else
+						-- Fallback khi người chơi chưa spawn / đã chết: theo delta di chuyển hoặc vận tốc
+						local vel = primary and (primary.AssemblyLinearVelocity or (primary:IsA("BasePart") and primary.Velocity))
+						local vel2D = vel and Vector3.new(vel.X, 0, vel.Z)
+						if vel2D and vel2D.Magnitude > 1.5 then
+							trajData.forward2D = vel2D.Unit
+						else
+							local moveDelta = curPos - trajData.lastPos
+							local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
+							if moveDelta2D.Magnitude > 0.05 then
+								trajData.forward2D = moveDelta2D.Unit
+							end
+						end
+					end
+
+					trajData.lastPos = curPos
+					trajData.curPos = curPos
+
+					local partSize = (primary and primary.Size) or modelSize or Vector3.new(6, 6, 6)
+					local baseRadius = math.max(partSize.X, partSize.Z) / 2
+					if baseRadius < 4.0 then baseRadius = 4.0 end
+					local dangerRadius = baseRadius + trajectoryWidthPadding
+					local dangerWidth = dangerRadius * 2
+
+					trajData.dangerRadius = dangerRadius
+					trajData.dangerWidth = dangerWidth
+					trajData.maxLookahead = dangerDepth
+					trajData.dangerDepth = dangerDepth
+
+					local curFloorY = getGeometry().GetRawFloorY(curPos)
+					local thickness = 0.8
+					local lockedY = curFloorY + (thickness / 2) + 0.05
+					trajData.lockedVisualY = lockedY
+					trajData.boxThickness = thickness
+				end
+			else
+				-- Cập nhật cho các Part Projectile khác (Spike, Telegraph Beam, v.v.)
+				if info.ActiveParts then
+					for part in pairs(info.ActiveParts) do
+						if part and part.Parent and part:IsA("BasePart") then
+							local trajConfig = getTrajectoryConfigForPart(part)
+							if trajConfig then
+								currentActiveKeys[part] = true
+								local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
+								if trajData and trajData.forward2D then
+									local autoWidth, autoLength = getPartAutoDimensions(part)
+									local baseMinRadius = autoWidth / 2
+									if trajData.config and trajData.config.dangerRadius and trajData.config.dangerRadius > baseMinRadius then
+										baseMinRadius = trajData.config.dangerRadius
+									end
+									local dangerRadius = baseMinRadius + trajectoryWidthPadding
+									local maxLookahead = autoLength or (trajData.config and trajData.config.maxLookahead) or trajData.maxLookahead or trajectoryLookahead
+
+									trajData.dangerRadius = dangerRadius
+									trajData.maxLookahead = maxLookahead
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Dọn dẹp những projectile không còn hoạt động trong activeHazards
+	for key in pairs(lockedProjectiles) do
+		if not currentActiveKeys[key] then
+			lockedProjectiles[key] = nil
+		end
+	end
+end
+
 --// Cập nhật Visual ESP cho các hành lang quỹ đạo (Trajectory Boxes)
 function detection.UpdateTrajectoryVisuals()
 	if not visualEspEnabled or not threatDetectorEnabled then
@@ -1533,130 +1876,160 @@ function detection.UpdateTrajectoryVisuals()
 		return
 	end
 
-	local currentActiveParts = {}
+	local currentActiveVisuals = {}
 
 	for _, info in pairs(activeHazards) do
 		local inst = info.Instance
 		if inst and inst.Parent then
 			local instNameLower = (inst.Name or ""):lower():gsub("%s+", "")
-			local isMovingBeam = inst:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
+			local isMovingBeam = (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
+			local orbConfig = BOSS_ORB_CONFIGS[instNameLower] or (info.Name and BOSS_ORB_CONFIGS[info.Name:lower():gsub("%s+", "")])
+			local isBossOrb = (orbConfig ~= nil) or (TRAJECTORY_PROJECTILE_CONFIGS[instNameLower] and TRAJECTORY_PROJECTILE_CONFIGS[instNameLower].isBossOrb)
 
 			if isMovingBeam then
 				-- =========================================================================
-				-- XỬ LÝ TRỰC TIẾP CẤP MODEL CHO SECOND BOSS MOVING BEAM (TIẾP CẬN 2)
+				-- XỬ LÝ VISUAL CẤP MODEL CHO SECOND BOSS MOVING BEAM
 				-- =========================================================================
-				currentActiveParts[inst] = true
-
-				local modelCFrame, modelSize = inst:GetBoundingBox()
-				local primary = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
-				local curPos = (primary and primary.Position) or modelCFrame.Position
-
 				local trajData = lockedProjectiles[inst]
-				if not trajData then
-					local rv = (primary and primary.CFrame.RightVector) or modelCFrame.RightVector
-					local right2D = Vector3.new(rv.X, 0, rv.Z)
-					if right2D.Magnitude > 0.01 then
-						right2D = right2D.Unit
+				if not trajData and lockSecondBossMovingBeam then
+					trajData = lockSecondBossMovingBeam(inst)
+				end
+				if trajData then
+					currentActiveVisuals[inst] = true
+
+					local curPos = trajData.curPos or (inst:IsA("Model") and select(1, inst:GetBoundingBox()).Position) or inst.Position
+					local forward2D = trajData.forward2D or Vector3.new(0, 0, -1)
+					local dangerWidth = trajData.dangerWidth or (trajData.dangerRadius * 2)
+					local dangerDepth = trajData.dangerDepth or trajData.maxLookahead or 50.0
+					local lockedY = trajData.lockedVisualY or (getGeometry().GetRawFloorY(curPos) + 0.45)
+					local thickness = trajData.boxThickness or 0.8
+
+					local vPart = activeTrajectoryVisuals[inst]
+					if not vPart or not vPart.Parent then
+						vPart = Instance.new("Part")
+						vPart.Name = "SmartDodge_TrajectoryBox"
+						vPart.Material = Enum.Material.Neon
+						vPart.Color = Color3.fromRGB(255, 130, 0)
+						vPart.Transparency = 0.82
+						vPart.Anchored = true
+						vPart.CanCollide = false
+						vPart.CanQuery = false
+						vPart.CanTouch = false
+
+						local box = Instance.new("SelectionBox")
+						box.Name = "TrajectoryBorder"
+						box.Color3 = Color3.fromRGB(255, 150, 30)
+						box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
+						box.SurfaceTransparency = 0.8
+						box.LineThickness = 0.04
+						box.Adornee = vPart
+						box.Parent = vPart
+
+						local bb = Instance.new("BillboardGui")
+						bb.Name = "TrajGui"
+						bb.Size = UDim2.fromOffset(220, 26)
+						bb.StudsOffset = Vector3.new(0, 2.5, 0)
+						bb.AlwaysOnTop = true
+						bb.Adornee = vPart
+						bb.Parent = vPart
+
+						local label = Instance.new("TextLabel")
+						label.Name = "Label"
+						label.Size = UDim2.fromScale(1, 1)
+						label.BackgroundTransparency = 1
+						label.TextColor3 = Color3.fromRGB(255, 170, 40)
+						label.TextStrokeTransparency = 0
+						label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+						label.Font = Enum.Font.GothamBold
+						label.TextSize = 12
+						label.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
+						label.Parent = bb
+
+						activeTrajectoryVisuals[inst] = vPart
 					else
-						right2D = Vector3.new(1, 0, 0)
-					end
-					local forward2D = Vector3.new(-right2D.Z, 0, right2D.X)
-					local look = (primary and primary.CFrame.LookVector) or modelCFrame.LookVector
-					local look2D = Vector3.new(look.X, 0, look.Z)
-					if look2D.Magnitude > 0.01 and forward2D:Dot(look2D.Unit) < 0 then
-						forward2D = -forward2D
+						local tg = vPart:FindFirstChild("TrajGui")
+						local lbl = tg and tg:FindFirstChild("Label")
+						if lbl and lbl:IsA("TextLabel") then
+							lbl.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
+						end
 					end
 
-					trajData = {
-						instance = inst,
-						lastPos = curPos,
-						forward2D = forward2D,
-						isDynamicMoving = true,
-						config = TRAJECTORY_PROJECTILE_CONFIGS["secondbossmovingbeam"],
-					}
-					lockedProjectiles[inst] = trajData
+					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
+					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 1.5)
+					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
+					vPart.Parent = Workspace.Terrain
 				end
+			elseif isBossOrb then
+				-- =========================================================================
+				-- XỬ LÝ VISUAL CHO BOSS 2 ORBS (Yellow / Red / Green Orb)
+				-- =========================================================================
+				local trajData = lockedProjectiles[inst]
+				if trajData then
+					currentActiveVisuals[inst] = true
 
-				-- Cập nhật hướng tịnh tiến thực tế từ frame này sang frame khác
-				local moveDelta = curPos - trajData.lastPos
-				local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
-				if moveDelta2D.Magnitude > 0.08 then
-					trajData.forward2D = moveDelta2D.Unit
-				end
-				trajData.lastPos = curPos
+					local curPos = trajData.curPos or inst.Position
+					local forward2D = trajData.forward2D or Vector3.new(0, 0, -1)
+					local dangerWidth = trajData.dangerWidth or (trajData.dangerRadius * 2)
+					local dangerDepth = trajData.dangerDepth or trajData.maxLookahead or 22.0
+					local lockedY = trajData.lockedVisualY or (getGeometry().GetRawFloorY(curPos) + 0.45)
+					local thickness = trajData.boxThickness or 0.8
+					local orbColorName = (trajData.config and trajData.config.orbColorName) or (orbConfig and orbConfig.colorName) or "orb"
 
-				-- Bề ngang beam bao quát cả Model (lấy trục dài nhất của BoundingBox)
-				local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
-				if beamSpan < 12 then beamSpan = 50.0 end
-				local dangerWidth = beamSpan + trajectoryWidthPadding * 2
-				local maxLookahead = (trajData.config and trajData.config.maxLookahead) or trajectoryLookahead
-				local dangerDepth = maxLookahead
-				local forward2D = trajData.forward2D
+					local vPart = activeTrajectoryVisuals[inst]
+					if not vPart or not vPart.Parent then
+						vPart = Instance.new("Part")
+						vPart.Name = "SmartDodge_TrajectoryBox"
+						vPart.Material = Enum.Material.Neon
+						vPart.Color = Color3.fromRGB(255, 130, 0)
+						vPart.Transparency = 0.82
+						vPart.Anchored = true
+						vPart.CanCollide = false
+						vPart.CanQuery = false
+						vPart.CanTouch = false
 
-				trajData.dangerRadius = dangerWidth / 2
-				trajData.maxLookahead = dangerDepth
+						local box = Instance.new("SelectionBox")
+						box.Name = "TrajectoryBorder"
+						box.Color3 = Color3.fromRGB(255, 150, 30)
+						box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
+						box.SurfaceTransparency = 0.8
+						box.LineThickness = 0.04
+						box.Adornee = vPart
+						box.Parent = vPart
 
-				-- Cao độ dán chặt mặt sàn
-				local curFloorY, hasFloor = getGeometry().GetRawFloorY(curPos)
-				local thickness = 0.8
-				local lockedY = (hasFloor and (curFloorY + thickness / 2 + 0.05)) or (curPos.Y - 2.5)
-				trajData.lockedVisualY = lockedY
+						local bb = Instance.new("BillboardGui")
+						bb.Name = "TrajGui"
+						bb.Size = UDim2.fromOffset(220, 26)
+						bb.StudsOffset = Vector3.new(0, 2.5, 0)
+						bb.AlwaysOnTop = true
+						bb.Adornee = vPart
+						bb.Parent = vPart
 
-				local vPart = activeTrajectoryVisuals[inst]
-				if not vPart or not vPart.Parent then
-					vPart = Instance.new("Part")
-					vPart.Name = "SmartDodge_TrajectoryBox"
-					vPart.Material = Enum.Material.Neon
-					vPart.Color = Color3.fromRGB(255, 130, 0)
-					vPart.Transparency = 0.82
-					vPart.Anchored = true
-					vPart.CanCollide = false
-					vPart.CanQuery = false
-					vPart.CanTouch = false
+						local label = Instance.new("TextLabel")
+						label.Name = "Label"
+						label.Size = UDim2.fromScale(1, 1)
+						label.BackgroundTransparency = 1
+						label.TextColor3 = Color3.fromRGB(255, 170, 40)
+						label.TextStrokeTransparency = 0
+						label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+						label.Font = Enum.Font.GothamBold
+						label.TextSize = 12
+						label.Text = ("🚀 %s ORB: %s (%.0fm | W:%.1fm)"):format(orbColorName:upper(), inst.Name, dangerDepth, dangerWidth)
+						label.Parent = bb
 
-					local box = Instance.new("SelectionBox")
-					box.Name = "TrajectoryBorder"
-					box.Color3 = Color3.fromRGB(255, 150, 30)
-					box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
-					box.SurfaceTransparency = 0.8
-					box.LineThickness = 0.04
-					box.Adornee = vPart
-					box.Parent = vPart
-
-					local bb = Instance.new("BillboardGui")
-					bb.Name = "TrajGui"
-					bb.Size = UDim2.fromOffset(220, 26)
-					bb.StudsOffset = Vector3.new(0, 2.5, 0)
-					bb.AlwaysOnTop = true
-					bb.Adornee = vPart
-					bb.Parent = vPart
-
-					local label = Instance.new("TextLabel")
-					label.Name = "Label"
-					label.Size = UDim2.fromScale(1, 1)
-					label.BackgroundTransparency = 1
-					label.TextColor3 = Color3.fromRGB(255, 170, 40)
-					label.TextStrokeTransparency = 0
-					label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-					label.Font = Enum.Font.GothamBold
-					label.TextSize = 12
-					label.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
-					label.Parent = bb
-
-					activeTrajectoryVisuals[inst] = vPart
-				else
-					local tg = vPart:FindFirstChild("TrajGui")
-					local lbl = tg and tg:FindFirstChild("Label")
-					if lbl and lbl:IsA("TextLabel") then
-						lbl.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
+						activeTrajectoryVisuals[inst] = vPart
+					else
+						local tg = vPart:FindFirstChild("TrajGui")
+						local lbl = tg and tg:FindFirstChild("Label")
+						if lbl and lbl:IsA("TextLabel") then
+							lbl.Text = ("🚀 %s ORB: %s (%.0fm | W:%.1fm)"):format(orbColorName:upper(), inst.Name, dangerDepth, dangerWidth)
+						end
 					end
-				end
 
-				vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
-				-- Phóng dài về phía trước thanh beam theo đúng setting Tra lookahead length (gốc từ -2 studs sau beam đến +dangerDepth trước beam)
-				local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 1.5)
-				vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-				vPart.Parent = Workspace.Terrain
+					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
+					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 2.0)
+					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
+					vPart.Parent = Workspace.Terrain
+				end
 			else
 				-- =========================================================================
 				-- XỬ LÝ CHO CÁC PART PROJECTILE KHÁC (Spike, Telegraph Beam, v.v.)
@@ -1666,12 +2039,12 @@ function detection.UpdateTrajectoryVisuals()
 						if part and part.Parent and part:IsA("BasePart") then
 							local trajConfig = getTrajectoryConfigForPart(part)
 							if trajConfig then
-								-- Tránh vẽ đè 2 hành lang cam nếu cả firstBossBeamPart và firstBossBigSpike cùng xuất hiện
 								local isBeam = part.Name:lower():find("beampart") ~= nil
+								local isMissile = part.Name:lower():find("missile") ~= nil
 								local hasDuplicate = false
-								if isBeam then
-									for otherPart in pairs(currentActiveParts) do
-										if otherPart ~= part and otherPart:IsA("BasePart") and (otherPart.Position - part.Position).Magnitude < 4 then
+								if isBeam or isMissile then
+									for otherPart in pairs(currentActiveVisuals) do
+										if otherPart ~= part and otherPart:IsA("BasePart") and (otherPart.Position - part.Position).Magnitude < 6 then
 											hasDuplicate = true
 											break
 										end
@@ -1679,26 +2052,17 @@ function detection.UpdateTrajectoryVisuals()
 								end
 
 								if not hasDuplicate then
-									local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
+									local trajData = lockedProjectiles[part]
 									if trajData and trajData.forward2D then
-										currentActiveParts[part] = true
+										currentActiveVisuals[part] = true
 
-										local autoWidth, autoLength = getPartAutoDimensions(part)
-										local baseMinRadius = autoWidth / 2
-										if trajData.config.dangerRadius and trajData.config.dangerRadius > baseMinRadius then
-											baseMinRadius = trajData.config.dangerRadius
-										end
-										local dangerRadius = baseMinRadius + trajectoryWidthPadding
-										local maxLookahead = autoLength or trajData.config.maxLookahead or trajData.maxLookahead or trajectoryLookahead
-
-										trajData.dangerRadius = dangerRadius
-										trajData.maxLookahead = maxLookahead
-
+										local maxLookahead = trajData.maxLookahead or trajectoryLookahead
+										local dangerRadius = trajData.dangerRadius or 4.0
 										local forward2D = trajData.forward2D
 										local originPos = part.Position
 										local centerPos = originPos + forward2D * (maxLookahead / 2)
 
-										local lockedY = trajData.lockedVisualY or (trajData.rawFloorY and (trajData.rawFloorY + 0.45)) or originPos.Y
+										local lockedY = trajData.lockedVisualY or (trajData.rawFloorY and (trajData.rawFloorY + 0.45)) or (getGeometry().GetRawFloorY(originPos) + 0.45)
 										local thickness = trajData.boxThickness or 0.8
 
 										local depth = maxLookahead
@@ -1769,17 +2133,16 @@ function detection.UpdateTrajectoryVisuals()
 		end
 	end
 
-	-- Dọn dẹp những part đã hết hạn
+	-- Dọn dẹp những visual đã hết hạn
 	for part, vPart in pairs(activeTrajectoryVisuals) do
-		if not currentActiveParts[part] then
+		if not currentActiveVisuals[part] then
 			pcall(function() vPart:Destroy() end)
 			activeTrajectoryVisuals[part] = nil
-			lockedProjectiles[part] = nil
 		end
 	end
 end
 
---// Dọn sạch toàn bộ visual của các hành lang đạn bay
+--// Dọn sạch toàn bộ visual của các hành lang đạn bay (không xóa lockedProjectiles)
 function detection.ClearTrajectoryVisuals()
 	for part, vPart in pairs(activeTrajectoryVisuals) do
 		pcall(function() vPart:Destroy() end)
@@ -1797,6 +2160,7 @@ function detection.ClearAllHazards(reason)
 		unregisterHazard(inst, reason or "Purged")
 	end
 	table.clear(activeHazards)
+	table.clear(lockedProjectiles)
 	hazardCount = 0
 	detection.ClearTrajectoryVisuals()
 	fireHazardChanged()
@@ -1943,12 +2307,23 @@ end
 function detection.GetActiveBossOrb()
 	for inst, info in pairs(activeHazards) do
 		if inst and inst.Parent then
-			local orbConf = BOSS_ORB_CONFIGS[inst.Name:lower()]
+			local cleanName = (inst.Name or ""):lower():gsub("%s+", "")
+			local orbConf = BOSS_ORB_CONFIGS[cleanName]
+			if not orbConf then
+				if cleanName:find("yelloworb") then
+					orbConf = BOSS_ORB_CONFIGS["secondbossyelloworb"]
+				elseif cleanName:find("redorb") then
+					orbConf = BOSS_ORB_CONFIGS["secondbossredorb"]
+				elseif cleanName:find("greenorb") then
+					orbConf = BOSS_ORB_CONFIGS["secondbossgreenorb"]
+				end
+			end
+
 			if orbConf then
 				local part = inst:IsA("BasePart") and inst or nil
 				if not part and info.ActiveParts then
 					for p in pairs(info.ActiveParts) do
-						if p and p.Parent then
+						if p and p.Parent and p:IsA("BasePart") then
 							part = p
 							break
 						end

@@ -224,7 +224,6 @@ function geometry.IsPointInRingPart(point, ringPart)
 	-- 1. Xác định tâm thực của cả Model (Center Part)
 	local centerPart = ringPart.Parent:FindFirstChild("center")
 		or ringPart.Parent:FindFirstChild("Center")
-		or ringPart.Parent.PrimaryPart
 	local centerPos = centerPart and centerPart.Position or ringPart.Position
 
 	-- 2. Kiểm tra độ cao Y
@@ -308,12 +307,48 @@ function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
 	local inst = hazardInfo.Instance
 	local det = det()
 	local trajData = det.GetLockedProjectiles()[inst]
+	if not trajData and det.LockSecondBossMovingBeam then
+		trajData = det.LockSecondBossMovingBeam(inst)
+	end
+	if not trajData and det.LockBossOrb then
+		trajData = det.LockBossOrb(inst)
+	end
 	if not trajData then
 		return false, nil, nil
 	end
 
-	local primary = inst:IsA("Model") and (inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart"))
+	local primary = inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart") or (inst:IsA("BasePart") and inst)
 	local curPos = (primary and primary.Position) or (inst:IsA("Model") and select(1, inst:GetBoundingBox()).Position) or inst.Position
+
+	if trajData.isBossOrb then
+		-- Boss 2 Orb là quả cầu bám đuổi (chỉ gây nổ tử thần khi va chạm trong cự ly gần <= radius + padding).
+		-- TUYỆT ĐỐI KHÔNG coi toàn bộ hành lang 50-80 studs nối từ quả cầu tới Player là vùng nguy hiểm hình học!
+		-- (Vì nếu coi cả dải nối là hazard thì Player luôn bị dính hazard, và khi né chiêu khác tia này sẽ quét qua
+		-- làm biến mất điểm an toàn luân phiên -> gây giật giật giậm chân tại chỗ).
+		local toPoint = point - curPos
+		local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
+		local distToOrb = toPoint2D.Magnitude
+		local orbDangerRadius = (trajData.dangerRadius or 5.0) + playerHitboxPadding
+		if distToOrb <= orbDangerRadius then
+			local checkY = trajData.lockedVisualY or curPos.Y
+			local heightDiff = math.abs(point.Y - checkY)
+			if heightDiff <= MAX_HEIGHT_TOLERANCE then
+				local hitPart = primary or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart")) or inst
+				local foundTraj = {
+					isTrajectory = true,
+					isDynamicMoving = true,
+					isBossOrb = true,
+					perpDist = distToOrb,
+					dangerRadius = trajData.dangerRadius or 5.0,
+					forward2D = trajData.forward2D or Vector3.new(0, 0, -1),
+					originPos = curPos,
+					maxLookahead = orbDangerRadius,
+				}
+				return true, hitPart, foundTraj
+			end
+		end
+		return false, nil, nil
+	end
 
 	local forward = trajData.forward2D or Vector3.new(0, 0, -1)
 	local radius = trajData.dangerRadius or 25.0
@@ -323,7 +358,7 @@ function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
 	local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
 	local dotForward = toPoint2D:Dot(forward)
 
-	-- Chiều sâu tịnh tiến: từ sau beam -4 studs đến trước beam +maxDist
+	-- Chiều sâu tịnh tiến: từ sau hazard (-4 studs) đến trước hazard +maxDist
 	if dotForward < -4 or dotForward > (maxDist + 2) then
 		return false, nil, nil
 	end
@@ -339,7 +374,7 @@ function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
 	end
 
 	if perpDist <= (radius + playerHitboxPadding) then
-		local hitPart = primary or inst:FindFirstChildWhichIsA("BasePart")
+		local hitPart = primary or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart")) or inst
 		local foundTraj = {
 			isTrajectory = true,
 			isDynamicMoving = true,
@@ -376,6 +411,7 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 			(info.Name and info.Name:lower():find("movingbeam") ~= nil)
 			or (info.Instance.Name and info.Instance.Name:lower():find("movingbeam") ~= nil)
 		)
+		local isMovingHazard = isMovingBeam or (info.Instance and det.GetLockedProjectiles()[info.Instance] ~= nil)
 
 		if isMultiRings then
 			-- ÁP DỤNG THỬ NGHIỆM 2: Giải Tích Tọa Độ Cực (Polar Annulus) RIÊNG CHO thirdBossMultiRings
@@ -389,8 +425,8 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 					foundTraj = nil
 				end
 			end
-		elseif isMovingBeam then
-			-- ÁP DỤNG XỬ LÝ CẤP MODEL CHO secondBossMovingBeam (TIẾP CẬN 2)
+		elseif isMovingHazard then
+			-- ÁP DỤNG XỬ LÝ CẤP MODEL CHO secondBossMovingBeam & Boss Orbs
 			local inBeam, hitPart, trajData = geometry.IsPointInSecondBossMovingBeam(point, info)
 			if inBeam then
 				local distSq = (point - (hitPart and hitPart.Position or info.Instance.Position)).Magnitude

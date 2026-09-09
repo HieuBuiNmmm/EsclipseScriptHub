@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-09T05:35:49.251151800+00:00",
+    genDate = "2026-09-09T10:47:55.239107100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7443,7 +7443,6 @@ function geometry.IsPointInRingPart(point, ringPart)
 	-- 1. Xác định tâm thực của cả Model (Center Part)
 	local centerPart = ringPart.Parent:FindFirstChild("center")
 		or ringPart.Parent:FindFirstChild("Center")
-		or ringPart.Parent.PrimaryPart
 	local centerPos = centerPart and centerPart.Position or ringPart.Position
 
 	-- 2. Kiểm tra độ cao Y
@@ -7527,12 +7526,48 @@ function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
 	local inst = hazardInfo.Instance
 	local det = det()
 	local trajData = det.GetLockedProjectiles()[inst]
+	if not trajData and det.LockSecondBossMovingBeam then
+		trajData = det.LockSecondBossMovingBeam(inst)
+	end
+	if not trajData and det.LockBossOrb then
+		trajData = det.LockBossOrb(inst)
+	end
 	if not trajData then
 		return false, nil, nil
 	end
 
-	local primary = inst:IsA("Model") and (inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart"))
+	local primary = inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart") or (inst:IsA("BasePart") and inst)
 	local curPos = (primary and primary.Position) or (inst:IsA("Model") and select(1, inst:GetBoundingBox()).Position) or inst.Position
+
+	if trajData.isBossOrb then
+		-- Boss 2 Orb là quả cầu bám đuổi (chỉ gây nổ tử thần khi va chạm trong cự ly gần <= radius + padding).
+		-- TUYỆT ĐỐI KHÔNG coi toàn bộ hành lang 50-80 studs nối từ quả cầu tới Player là vùng nguy hiểm hình học!
+		-- (Vì nếu coi cả dải nối là hazard thì Player luôn bị dính hazard, và khi né chiêu khác tia này sẽ quét qua
+		-- làm biến mất điểm an toàn luân phiên -> gây giật giật giậm chân tại chỗ).
+		local toPoint = point - curPos
+		local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
+		local distToOrb = toPoint2D.Magnitude
+		local orbDangerRadius = (trajData.dangerRadius or 5.0) + playerHitboxPadding
+		if distToOrb <= orbDangerRadius then
+			local checkY = trajData.lockedVisualY or curPos.Y
+			local heightDiff = math.abs(point.Y - checkY)
+			if heightDiff <= MAX_HEIGHT_TOLERANCE then
+				local hitPart = primary or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart")) or inst
+				local foundTraj = {
+					isTrajectory = true,
+					isDynamicMoving = true,
+					isBossOrb = true,
+					perpDist = distToOrb,
+					dangerRadius = trajData.dangerRadius or 5.0,
+					forward2D = trajData.forward2D or Vector3.new(0, 0, -1),
+					originPos = curPos,
+					maxLookahead = orbDangerRadius,
+				}
+				return true, hitPart, foundTraj
+			end
+		end
+		return false, nil, nil
+	end
 
 	local forward = trajData.forward2D or Vector3.new(0, 0, -1)
 	local radius = trajData.dangerRadius or 25.0
@@ -7542,7 +7577,7 @@ function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
 	local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
 	local dotForward = toPoint2D:Dot(forward)
 
-	-- Chiều sâu tịnh tiến: từ sau beam -4 studs đến trước beam +maxDist
+	-- Chiều sâu tịnh tiến: từ sau hazard (-4 studs) đến trước hazard +maxDist
 	if dotForward < -4 or dotForward > (maxDist + 2) then
 		return false, nil, nil
 	end
@@ -7558,7 +7593,7 @@ function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
 	end
 
 	if perpDist <= (radius + playerHitboxPadding) then
-		local hitPart = primary or inst:FindFirstChildWhichIsA("BasePart")
+		local hitPart = primary or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart")) or inst
 		local foundTraj = {
 			isTrajectory = true,
 			isDynamicMoving = true,
@@ -7595,6 +7630,7 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 			(info.Name and info.Name:lower():find("movingbeam") ~= nil)
 			or (info.Instance.Name and info.Instance.Name:lower():find("movingbeam") ~= nil)
 		)
+		local isMovingHazard = isMovingBeam or (info.Instance and det.GetLockedProjectiles()[info.Instance] ~= nil)
 
 		if isMultiRings then
 			-- ÁP DỤNG THỬ NGHIỆM 2: Giải Tích Tọa Độ Cực (Polar Annulus) RIÊNG CHO thirdBossMultiRings
@@ -7608,8 +7644,8 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 					foundTraj = nil
 				end
 			end
-		elseif isMovingBeam then
-			-- ÁP DỤNG XỬ LÝ CẤP MODEL CHO secondBossMovingBeam (TIẾP CẬN 2)
+		elseif isMovingHazard then
+			-- ÁP DỤNG XỬ LÝ CẤP MODEL CHO secondBossMovingBeam & Boss Orbs
 			local inBeam, hitPart, trajData = geometry.IsPointInSecondBossMovingBeam(point, info)
 			if inBeam then
 				local distSq = (point - (hitPart and hitPart.Position or info.Instance.Position)).Magnitude
@@ -7936,6 +7972,8 @@ local CUSTOM_HAZARD_EXCEPTIONS = {
 	["mediumIceSpikes"] = true,
 	["smallIceSpikes"] = true,
 	["thirdBossMultiRings"] = true,
+	["thirdBossMissile"] = true,
+	["thirdBossBeamPart"] = true,
 	["firstBossCrissCross"] = true,
 	["firstBossSeekingSpikes"] = true,
 	["firstBossBigSpike"] = true,
@@ -8031,6 +8069,45 @@ local TRAJECTORY_PROJECTILE_CONFIGS = {
 		maxLookahead = nil,       -- Dùng chung setting Tra lookahead length động (từ slider UI)
 		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho Moving Beam
 		isDynamicMoving = true,   -- Đánh dấu là Dynamic Moving Hazard (Tiếp cận 2)
+	},
+	["secondbossyelloworb"] = {
+		name = "secondBossYellowOrb",
+		dangerRadius = 5.0,       -- Bán kính vùng nguy hiểm cơ bản của Orb
+		maxLookahead = 22.0,      -- Chiều dài hành lang dự đoán phía trước hướng di chuyển
+		visualColor = Color3.fromRGB(255, 130, 0), -- Vùng màu cam cảnh báo quỹ đạo
+		isDynamicMoving = true,
+		isBossOrb = true,
+		orbColorName = "yellow",
+	},
+	["secondbossredorb"] = {
+		name = "secondBossRedOrb",
+		dangerRadius = 5.0,
+		maxLookahead = 22.0,
+		visualColor = Color3.fromRGB(255, 130, 0),
+		isDynamicMoving = true,
+		isBossOrb = true,
+		orbColorName = "red",
+	},
+	["secondbossgreenorb"] = {
+		name = "secondBossGreenOrb",
+		dangerRadius = 5.0,
+		maxLookahead = 22.0,
+		visualColor = Color3.fromRGB(255, 130, 0),
+		isDynamicMoving = true,
+		isBossOrb = true,
+		orbColorName = "green",
+	},
+	["thirdbossmissile"] = {
+		name = "thirdBossMissile",
+		dangerRadius = 6.0,       -- Bán kính vùng nguy hiểm cơ bản (tự động đọc Beam/Part size)
+		maxLookahead = 140.0,     -- Chiều dài hành lang dự đoán xuyên phòng
+		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cảnh báo quỹ đạo
+	},
+	["thirdbossbeampart"] = {
+		name = "thirdBossBeamPart",
+		dangerRadius = 6.0,       -- Bán kính vùng nguy hiểm của tia laser báo trước
+		maxLookahead = 140.0,
+		visualColor = Color3.fromRGB(255, 130, 0),
 	},
 }
 
@@ -8267,6 +8344,21 @@ local function lockTrajectoryForPart(part)
 				forward2D = look2D.Unit
 			end
 		end
+
+		-- Nếu là missile, kiểm tra companion thirdBossBeamPart để lấy hướng và độ dài chuẩn từ Attachment2
+		if part.Name:lower():find("missile") then
+			for otherPart, otherData in pairs(lockedProjectiles) do
+				if otherPart and otherPart.Parent and otherPart.Name:lower():find("beampart") and otherData and otherData.forward2D then
+					if (otherPart.Position - part.Position).Magnitude < 10 then
+						forward2D = otherData.forward2D
+						if otherData.maxLookahead then
+							autoLength = otherData.maxLookahead
+						end
+						break
+					end
+				end
+			end
+		end
 	end
 
 	-- TỰ ĐỘNG BÓC TÁCH KÍCH THƯỚC THẬT (Auto Dimension Detection):
@@ -8315,6 +8407,118 @@ end
 detection.LockTrajectoryForPart = function(part)
 	return lockTrajectoryForPart(part)
 end
+
+--// Khóa quỹ đạo trực tiếp cho Model Second Boss Moving Beam (tính toán độc lập với Visual ESP)
+local function lockSecondBossMovingBeam(inst)
+	if not inst or not inst.Parent then return nil end
+	if lockedProjectiles[inst] then return lockedProjectiles[inst] end
+
+	local modelCFrame, modelSize = inst:GetBoundingBox()
+	local primary = inst:FindFirstChildWhichIsA("BasePart")
+	local curPos = (primary and primary.Position) or modelCFrame.Position
+
+	local rv = (primary and primary.CFrame.RightVector) or modelCFrame.RightVector
+	local right2D = Vector3.new(rv.X, 0, rv.Z)
+	if right2D.Magnitude > 0.01 then
+		right2D = right2D.Unit
+	else
+		right2D = Vector3.new(1, 0, 0)
+	end
+	local forward2D = Vector3.new(-right2D.Z, 0, right2D.X)
+	local look = (primary and primary.CFrame.LookVector) or modelCFrame.LookVector
+	local look2D = Vector3.new(look.X, 0, look.Z)
+	if look2D.Magnitude > 0.01 and forward2D:Dot(look2D.Unit) < 0 then
+		forward2D = -forward2D
+	end
+
+	local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+	if beamSpan < 12 then beamSpan = 50.0 end
+	local dangerWidth = beamSpan + trajectoryWidthPadding * 2
+	local dangerDepth = trajectoryLookahead
+
+	local curFloorY = getGeometry().GetRawFloorY(curPos)
+	local thickness = 0.8
+	local lockedY = curFloorY + (thickness / 2) + 0.05
+
+	local trajData = {
+		instance = inst,
+		lastPos = curPos,
+		curPos = curPos,
+		forward2D = forward2D,
+		dangerRadius = dangerWidth / 2,
+		dangerWidth = dangerWidth,
+		maxLookahead = dangerDepth,
+		dangerDepth = dangerDepth,
+		lockedVisualY = lockedY,
+		boxThickness = thickness,
+		isDynamicMoving = true,
+		config = TRAJECTORY_PROJECTILE_CONFIGS["secondbossmovingbeam"],
+	}
+	lockedProjectiles[inst] = trajData
+	return trajData
+end
+
+detection.LockSecondBossMovingBeam = lockSecondBossMovingBeam
+
+--// Khởi tạo theo dõi quỹ đạo động cho Boss 2 Orbs (Yellow / Red / Green Orb luôn hướng về Player)
+local function lockBossOrb(inst, config)
+	if not inst or not inst.Parent then return nil end
+	if lockedProjectiles[inst] then return lockedProjectiles[inst] end
+
+	local primary = inst:IsA("BasePart") and inst or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart"))
+	local modelCFrame, modelSize
+	if inst:IsA("Model") then
+		modelCFrame, modelSize = inst:GetBoundingBox()
+	end
+	local curPos = (primary and primary.Position) or (modelCFrame and modelCFrame.Position) or inst.Position
+
+	-- Xác định hướng và chiều dài ban đầu: Hướng thẳng từ Quả Cầu tới Player
+	local forward2D = Vector3.new(0, 0, -1)
+	local dangerDepth = 22.0
+	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local playerPos = rootPart and rootPart.Position
+
+	if playerPos then
+		local diff = Vector3.new(playerPos.X - curPos.X, 0, playerPos.Z - curPos.Z)
+		local dist = diff.Magnitude
+		if dist > 0.3 then
+			forward2D = diff.Unit
+			dangerDepth = math.clamp(dist + 4.0, 10.0, 80.0)
+		end
+	end
+
+	local partSize = (primary and primary.Size) or modelSize or Vector3.new(6, 6, 6)
+	local baseRadius = math.max(partSize.X, partSize.Z) / 2
+	if baseRadius < 4.0 then baseRadius = 4.0 end
+	local dangerRadius = baseRadius + trajectoryWidthPadding
+	local dangerWidth = dangerRadius * 2
+
+	local curFloorY = getGeometry().GetRawFloorY(curPos)
+	local thickness = 0.8
+	local lockedY = curFloorY + (thickness / 2) + 0.05
+
+	local trajData = {
+		instance = inst,
+		lastPos = curPos,
+		curPos = curPos,
+		forward2D = forward2D,
+		dangerRadius = dangerRadius,
+		dangerWidth = dangerWidth,
+		maxLookahead = dangerDepth,
+		dangerDepth = dangerDepth,
+		lockedVisualY = lockedY,
+		boxThickness = thickness,
+		isDynamicMoving = true,
+		isBossOrb = true,
+		config = config or TRAJECTORY_PROJECTILE_CONFIGS[inst.Name:lower():gsub("%s+", "")],
+	}
+	lockedProjectiles[inst] = trajData
+	return trajData
+end
+
+local initBossOrb = lockBossOrb
+detection.LockBossOrb = lockBossOrb
+detection.InitBossOrb = lockBossOrb
 
 --// Đăng ký tên kỹ năng của Player để loại trừ
 function detection.RegisterPlayerSkill(skillName)
@@ -8642,7 +8846,8 @@ local function isIgnoredPart(part)
 		or part.Name:lower():find("bigspike") or (part.Parent and part.Parent.Name:lower():find("bigspike"))
 		or part.Name:lower():find("beampart") or (part.Parent and part.Parent.Name:lower():find("beampart"))
 		or part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
-		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss")) then
+		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss"))
+		or part.Name:lower():find("missile") or (part.Parent and part.Parent.Name:lower():find("missile")) then
 		return false
 	end
 
@@ -8674,6 +8879,7 @@ local function extractHazardParts(instance)
 		or instance.Name:lower():find("beampart")
 		or instance.Name:lower():find("movingbeam")
 		or instance.Name:lower():find("thirdboss")
+		or instance.Name:lower():find("missile")
 
 	local function isValidHazardPart(part)
 		if not part or not part:IsA("BasePart") or isIgnoredPart(part) then return false end
@@ -8695,7 +8901,7 @@ local function extractHazardParts(instance)
 	end
 
 	if isException then
-		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring' hoặc BaseParts có trong model
+		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring' hoặc Part Neon có trong model
 		if instance:IsA("BasePart") then
 			if isValidHazardPart(instance) then
 				table.insert(parts, instance)
@@ -8703,25 +8909,23 @@ local function extractHazardParts(instance)
 		elseif instance:IsA("Model") then
 			local precasts = {}
 			for _, desc in ipairs(instance:GetDescendants()) do
-				if isValidHazardPart(desc) and desc.Name:lower():find("precast") then
+				if isValidHazardPart(desc) and (desc.Name:lower():find("precast") or desc.Name:lower():find("ring")) then
 					table.insert(precasts, desc)
 				end
 			end
 			if #precasts > 0 then
 				parts = precasts
 			else
+				-- Nếu không có part precast/ring cụ thể, CHỈ lấy các part Neon thực sự (tuyệt đối không lấy part hộp/PrimaryPart)
 				for _, desc in ipairs(instance:GetDescendants()) do
-					if isValidHazardPart(desc) then
+					if isValidHazardPart(desc) and desc.Material == Enum.Material.Neon then
 						table.insert(parts, desc)
 					end
-				end
-				if #parts == 0 and instance.PrimaryPart and instance.PrimaryPart:IsA("BasePart") then
-					table.insert(parts, instance.PrimaryPart)
 				end
 			end
 		end
 	else
-		-- Tiêu chuẩn chung: Material == Neon
+		-- Tiêu chuẩn chung: CHỈ nhận Material == Neon
 		if instance:IsA("BasePart") then
 			if isValidHazardPart(instance) and instance.Material == Enum.Material.Neon then
 				table.insert(parts, instance)
@@ -8738,22 +8942,19 @@ local function extractHazardParts(instance)
 	return parts, isException
 end
 
---// Lấy vị trí trung tâm của instance
+--// Lấy vị trí trung tâm của instance (Ưu tiên tuyệt đối hazardParts thực tế, KHÔNG dùng PrimaryPart)
 local function getInstancePosition(instance, hazardParts)
+	if hazardParts and #hazardParts > 0 then
+		return hazardParts[1].Position
+	end
+
 	if instance:IsA("BasePart") then
 		return instance.Position
 	elseif instance:IsA("Model") then
-		if instance.PrimaryPart then
-			return instance.PrimaryPart.Position
-		end
 		local pivot = instance:GetPivot()
 		if pivot and pivot.Position ~= Vector3.zero then
 			return pivot.Position
 		end
-	end
-
-	if hazardParts and #hazardParts > 0 then
-		return hazardParts[1].Position
 	end
 
 	return Vector3.zero
@@ -8773,27 +8974,35 @@ local function attachSelectionBoxes(hazardParts)
 	local boxes = {}
 	for _, part in ipairs(hazardParts) do
 		if part and part:IsA("BasePart") and part.Parent then
-			local box = Instance.new("SelectionBox")
-			box.Name = "SmartDodge_SelectionBox"
-
+			-- SelectionBox CHỈ bọc các Part phát sáng Neon thực sự hoặc các part precast/ring/trajectory/orb
+			-- Tuyệt đối KHÔNG bọc các part hộp/mesh to đùng không phải Neon
+			local isNeon = (part.Material == Enum.Material.Neon)
 			local orbConf = BOSS_ORB_CONFIGS[part.Name:lower()]
 				or (part.Parent and BOSS_ORB_CONFIGS[part.Parent.Name:lower()])
+			local isPrecast = part.Name:lower():find("precast") ~= nil
+			local isRing = part.Name:lower():find("ring") ~= nil
+			local isTraj = getTrajectoryConfigForPart(part) ~= nil
 
-			if orbConf then
-				box.Color3 = orbConf.color
-				box.SurfaceColor3 = orbConf.surfaceColor
-				box.SurfaceTransparency = 0.5
-				box.LineThickness = 0.08
-			else
-				box.Color3 = Color3.fromRGB(255, 45, 45)
-				box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
-				box.SurfaceTransparency = 0.6
-				box.LineThickness = 0.05
+			if isNeon or orbConf or isPrecast or isRing or isTraj then
+				local box = Instance.new("SelectionBox")
+				box.Name = "SmartDodge_SelectionBox"
+
+				if orbConf then
+					box.Color3 = orbConf.color
+					box.SurfaceColor3 = orbConf.surfaceColor
+					box.SurfaceTransparency = 0.5
+					box.LineThickness = 0.08
+				else
+					box.Color3 = Color3.fromRGB(255, 45, 45)
+					box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
+					box.SurfaceTransparency = 0.6
+					box.LineThickness = 0.05
+				end
+
+				box.Adornee = part
+				box.Parent = part
+				table.insert(boxes, box)
 			end
-
-			box.Adornee = part
-			box.Parent = part
-			table.insert(boxes, box)
 		end
 	end
 	return boxes
@@ -8828,8 +9037,8 @@ local function attachHazardTimerBillboard(instance, hazardParts, skillName)
 	if not targetPart or not targetPart:IsA("BasePart") then
 		if instance:IsA("BasePart") then
 			targetPart = instance
-		elseif instance:IsA("Model") and instance.PrimaryPart then
-			targetPart = instance.PrimaryPart
+		elseif instance:IsA("Model") then
+			targetPart = instance:FindFirstChildWhichIsA("BasePart")
 		else
 			return nil, nil
 		end
@@ -9050,6 +9259,14 @@ local function registerHazard(instance)
 	end
 
 	-- Khóa hướng bay ngay tại Frame 0 cho các chiêu đạn bay / Projectile
+	local instNameLower = (instance.Name or ""):lower():gsub("%s+", "")
+	if instance:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (instance.Name and instance.Name:lower():find("movingbeam") ~= nil)) then
+		lockSecondBossMovingBeam(instance)
+	end
+	if BOSS_ORB_CONFIGS[instNameLower] or (instance.Name and BOSS_ORB_CONFIGS[instance.Name:lower():gsub("%s+", "")]) then
+		lockBossOrb(instance, TRAJECTORY_PROJECTILE_CONFIGS[instNameLower])
+	end
+
 	for _, part in ipairs(hazardParts) do
 		if getTrajectoryConfigForPart(part) then
 			lockTrajectoryForPart(part)
@@ -9197,7 +9414,7 @@ local function registerHazard(instance)
 	if instance.Name:lower():find("multiring") then
 		task.delay(0.3, function()
 			if not instance or not instance.Parent then return end
-			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or instance.PrimaryPart
+			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or (hazardParts and hazardParts[1])
 			local centerPos = centerPart and centerPart.Position or Vector3.zero
 			print("================ [MULTIRINGS INSPECTOR DUMP] ================")
 			print(("[MultiRings] Model: %s | Center: (%.1f, %.1f, %.1f)"):format(instance.Name, centerPos.X, centerPos.Y, centerPos.Z))
@@ -9317,6 +9534,168 @@ end
 detection.RegisterHazard = registerHazard
 detection.UnregisterHazard = unregisterHazard
 
+--// Cập nhật tọa độ và logic quỹ đạo đạn bay / moving beam theo thời gian thực (độc lập 100% với Visual ESP)
+function detection.UpdateTrajectories()
+	if not threatDetectorEnabled then
+		table.clear(lockedProjectiles)
+		return
+	end
+
+	local currentActiveKeys = {}
+
+	for _, info in pairs(activeHazards) do
+		local inst = info.Instance
+		if inst and inst.Parent then
+			local instNameLower = (inst.Name or ""):lower():gsub("%s+", "")
+			local isMovingBeam = inst:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
+
+			local orbConfig = BOSS_ORB_CONFIGS[instNameLower] or (info.Name and BOSS_ORB_CONFIGS[info.Name:lower():gsub("%s+", "")])
+			local isBossOrb = (orbConfig ~= nil) or (TRAJECTORY_PROJECTILE_CONFIGS[instNameLower] and TRAJECTORY_PROJECTILE_CONFIGS[instNameLower].isBossOrb)
+
+			if isMovingBeam then
+				-- Cập nhật động cho Model secondBossMovingBeam
+				currentActiveKeys[inst] = true
+
+				local modelCFrame, modelSize = inst:GetBoundingBox()
+				local primary = inst:FindFirstChildWhichIsA("BasePart")
+				local curPos = (primary and primary.Position) or modelCFrame.Position
+
+				local trajData = lockedProjectiles[inst]
+				if not trajData then
+					trajData = lockSecondBossMovingBeam(inst)
+				end
+
+				if trajData then
+					-- Cập nhật hướng tịnh tiến thực tế từ frame này sang frame khác
+					local moveDelta = curPos - trajData.lastPos
+					local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
+					if moveDelta2D.Magnitude > 0.08 then
+						trajData.forward2D = moveDelta2D.Unit
+					end
+					trajData.lastPos = curPos
+					trajData.curPos = curPos
+
+					-- Bề ngang beam bao quát cả Model (lấy trục dài nhất của BoundingBox)
+					local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
+					if beamSpan < 12 then beamSpan = 50.0 end
+					local dangerWidth = beamSpan + trajectoryWidthPadding * 2
+					local maxLookahead = (trajData.config and trajData.config.maxLookahead) or trajectoryLookahead
+					local dangerDepth = maxLookahead
+
+					trajData.dangerRadius = dangerWidth / 2
+					trajData.dangerWidth = dangerWidth
+					trajData.maxLookahead = dangerDepth
+					trajData.dangerDepth = dangerDepth
+
+					-- Cao độ dán chặt mặt sàn
+					local curFloorY = getGeometry().GetRawFloorY(curPos)
+					local thickness = 0.8
+					local lockedY = curFloorY + (thickness / 2) + 0.05
+					trajData.lockedVisualY = lockedY
+					trajData.boxThickness = thickness
+				end
+			elseif isBossOrb then
+				-- Cập nhật động cho Boss 2 Orbs (Yellow / Red / Green Orb bám đuổi)
+				currentActiveKeys[inst] = true
+
+				local primary = inst:IsA("BasePart") and inst or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart"))
+				local modelCFrame, modelSize
+				if inst:IsA("Model") then
+					modelCFrame, modelSize = inst:GetBoundingBox()
+				end
+				local curPos = (primary and primary.Position) or (modelCFrame and modelCFrame.Position) or inst.Position
+
+				local trajData = lockedProjectiles[inst]
+				if not trajData then
+					trajData = lockBossOrb(inst, TRAJECTORY_PROJECTILE_CONFIGS[instNameLower])
+				end
+
+				if trajData then
+					-- CẬP NHẬT ĐỘNG THEO THỜI GIAN THỰC TÙY VÀO VỊ TRÍ CỦA QUẢ CẦU VÀ VỊ TRÍ NGƯỜI CHƠI
+					local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+					local playerPos = rootPart and rootPart.Position
+
+					local dangerDepth = 22.0
+					if playerPos then
+						local diff = Vector3.new(playerPos.X - curPos.X, 0, playerPos.Z - curPos.Z)
+						local distToPlayer = diff.Magnitude
+						if distToPlayer > 0.3 then
+							trajData.forward2D = diff.Unit
+							-- Chiều dài hành lang cam bao trùm từ quả cầu đến tận chân người chơi (+ 4 studs buffer phía sau người chơi)
+							dangerDepth = math.clamp(distToPlayer + 4.0, 10.0, 80.0)
+						end
+					else
+						-- Fallback khi người chơi chưa spawn / đã chết: theo delta di chuyển hoặc vận tốc
+						local vel = primary and (primary.AssemblyLinearVelocity or (primary:IsA("BasePart") and primary.Velocity))
+						local vel2D = vel and Vector3.new(vel.X, 0, vel.Z)
+						if vel2D and vel2D.Magnitude > 1.5 then
+							trajData.forward2D = vel2D.Unit
+						else
+							local moveDelta = curPos - trajData.lastPos
+							local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
+							if moveDelta2D.Magnitude > 0.05 then
+								trajData.forward2D = moveDelta2D.Unit
+							end
+						end
+					end
+
+					trajData.lastPos = curPos
+					trajData.curPos = curPos
+
+					local partSize = (primary and primary.Size) or modelSize or Vector3.new(6, 6, 6)
+					local baseRadius = math.max(partSize.X, partSize.Z) / 2
+					if baseRadius < 4.0 then baseRadius = 4.0 end
+					local dangerRadius = baseRadius + trajectoryWidthPadding
+					local dangerWidth = dangerRadius * 2
+
+					trajData.dangerRadius = dangerRadius
+					trajData.dangerWidth = dangerWidth
+					trajData.maxLookahead = dangerDepth
+					trajData.dangerDepth = dangerDepth
+
+					local curFloorY = getGeometry().GetRawFloorY(curPos)
+					local thickness = 0.8
+					local lockedY = curFloorY + (thickness / 2) + 0.05
+					trajData.lockedVisualY = lockedY
+					trajData.boxThickness = thickness
+				end
+			else
+				-- Cập nhật cho các Part Projectile khác (Spike, Telegraph Beam, v.v.)
+				if info.ActiveParts then
+					for part in pairs(info.ActiveParts) do
+						if part and part.Parent and part:IsA("BasePart") then
+							local trajConfig = getTrajectoryConfigForPart(part)
+							if trajConfig then
+								currentActiveKeys[part] = true
+								local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
+								if trajData and trajData.forward2D then
+									local autoWidth, autoLength = getPartAutoDimensions(part)
+									local baseMinRadius = autoWidth / 2
+									if trajData.config and trajData.config.dangerRadius and trajData.config.dangerRadius > baseMinRadius then
+										baseMinRadius = trajData.config.dangerRadius
+									end
+									local dangerRadius = baseMinRadius + trajectoryWidthPadding
+									local maxLookahead = autoLength or (trajData.config and trajData.config.maxLookahead) or trajData.maxLookahead or trajectoryLookahead
+
+									trajData.dangerRadius = dangerRadius
+									trajData.maxLookahead = maxLookahead
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Dọn dẹp những projectile không còn hoạt động trong activeHazards
+	for key in pairs(lockedProjectiles) do
+		if not currentActiveKeys[key] then
+			lockedProjectiles[key] = nil
+		end
+	end
+end
+
 --// Cập nhật Visual ESP cho các hành lang quỹ đạo (Trajectory Boxes)
 function detection.UpdateTrajectoryVisuals()
 	if not visualEspEnabled or not threatDetectorEnabled then
@@ -9327,130 +9706,160 @@ function detection.UpdateTrajectoryVisuals()
 		return
 	end
 
-	local currentActiveParts = {}
+	local currentActiveVisuals = {}
 
 	for _, info in pairs(activeHazards) do
 		local inst = info.Instance
 		if inst and inst.Parent then
 			local instNameLower = (inst.Name or ""):lower():gsub("%s+", "")
-			local isMovingBeam = inst:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
+			local isMovingBeam = (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
+			local orbConfig = BOSS_ORB_CONFIGS[instNameLower] or (info.Name and BOSS_ORB_CONFIGS[info.Name:lower():gsub("%s+", "")])
+			local isBossOrb = (orbConfig ~= nil) or (TRAJECTORY_PROJECTILE_CONFIGS[instNameLower] and TRAJECTORY_PROJECTILE_CONFIGS[instNameLower].isBossOrb)
 
 			if isMovingBeam then
 				-- =========================================================================
-				-- XỬ LÝ TRỰC TIẾP CẤP MODEL CHO SECOND BOSS MOVING BEAM (TIẾP CẬN 2)
+				-- XỬ LÝ VISUAL CẤP MODEL CHO SECOND BOSS MOVING BEAM
 				-- =========================================================================
-				currentActiveParts[inst] = true
-
-				local modelCFrame, modelSize = inst:GetBoundingBox()
-				local primary = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
-				local curPos = (primary and primary.Position) or modelCFrame.Position
-
 				local trajData = lockedProjectiles[inst]
-				if not trajData then
-					local rv = (primary and primary.CFrame.RightVector) or modelCFrame.RightVector
-					local right2D = Vector3.new(rv.X, 0, rv.Z)
-					if right2D.Magnitude > 0.01 then
-						right2D = right2D.Unit
+				if not trajData and lockSecondBossMovingBeam then
+					trajData = lockSecondBossMovingBeam(inst)
+				end
+				if trajData then
+					currentActiveVisuals[inst] = true
+
+					local curPos = trajData.curPos or (inst:IsA("Model") and select(1, inst:GetBoundingBox()).Position) or inst.Position
+					local forward2D = trajData.forward2D or Vector3.new(0, 0, -1)
+					local dangerWidth = trajData.dangerWidth or (trajData.dangerRadius * 2)
+					local dangerDepth = trajData.dangerDepth or trajData.maxLookahead or 50.0
+					local lockedY = trajData.lockedVisualY or (getGeometry().GetRawFloorY(curPos) + 0.45)
+					local thickness = trajData.boxThickness or 0.8
+
+					local vPart = activeTrajectoryVisuals[inst]
+					if not vPart or not vPart.Parent then
+						vPart = Instance.new("Part")
+						vPart.Name = "SmartDodge_TrajectoryBox"
+						vPart.Material = Enum.Material.Neon
+						vPart.Color = Color3.fromRGB(255, 130, 0)
+						vPart.Transparency = 0.82
+						vPart.Anchored = true
+						vPart.CanCollide = false
+						vPart.CanQuery = false
+						vPart.CanTouch = false
+
+						local box = Instance.new("SelectionBox")
+						box.Name = "TrajectoryBorder"
+						box.Color3 = Color3.fromRGB(255, 150, 30)
+						box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
+						box.SurfaceTransparency = 0.8
+						box.LineThickness = 0.04
+						box.Adornee = vPart
+						box.Parent = vPart
+
+						local bb = Instance.new("BillboardGui")
+						bb.Name = "TrajGui"
+						bb.Size = UDim2.fromOffset(220, 26)
+						bb.StudsOffset = Vector3.new(0, 2.5, 0)
+						bb.AlwaysOnTop = true
+						bb.Adornee = vPart
+						bb.Parent = vPart
+
+						local label = Instance.new("TextLabel")
+						label.Name = "Label"
+						label.Size = UDim2.fromScale(1, 1)
+						label.BackgroundTransparency = 1
+						label.TextColor3 = Color3.fromRGB(255, 170, 40)
+						label.TextStrokeTransparency = 0
+						label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+						label.Font = Enum.Font.GothamBold
+						label.TextSize = 12
+						label.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
+						label.Parent = bb
+
+						activeTrajectoryVisuals[inst] = vPart
 					else
-						right2D = Vector3.new(1, 0, 0)
-					end
-					local forward2D = Vector3.new(-right2D.Z, 0, right2D.X)
-					local look = (primary and primary.CFrame.LookVector) or modelCFrame.LookVector
-					local look2D = Vector3.new(look.X, 0, look.Z)
-					if look2D.Magnitude > 0.01 and forward2D:Dot(look2D.Unit) < 0 then
-						forward2D = -forward2D
+						local tg = vPart:FindFirstChild("TrajGui")
+						local lbl = tg and tg:FindFirstChild("Label")
+						if lbl and lbl:IsA("TextLabel") then
+							lbl.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
+						end
 					end
 
-					trajData = {
-						instance = inst,
-						lastPos = curPos,
-						forward2D = forward2D,
-						isDynamicMoving = true,
-						config = TRAJECTORY_PROJECTILE_CONFIGS["secondbossmovingbeam"],
-					}
-					lockedProjectiles[inst] = trajData
+					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
+					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 1.5)
+					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
+					vPart.Parent = Workspace.Terrain
 				end
+			elseif isBossOrb then
+				-- =========================================================================
+				-- XỬ LÝ VISUAL CHO BOSS 2 ORBS (Yellow / Red / Green Orb)
+				-- =========================================================================
+				local trajData = lockedProjectiles[inst]
+				if trajData then
+					currentActiveVisuals[inst] = true
 
-				-- Cập nhật hướng tịnh tiến thực tế từ frame này sang frame khác
-				local moveDelta = curPos - trajData.lastPos
-				local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
-				if moveDelta2D.Magnitude > 0.08 then
-					trajData.forward2D = moveDelta2D.Unit
-				end
-				trajData.lastPos = curPos
+					local curPos = trajData.curPos or inst.Position
+					local forward2D = trajData.forward2D or Vector3.new(0, 0, -1)
+					local dangerWidth = trajData.dangerWidth or (trajData.dangerRadius * 2)
+					local dangerDepth = trajData.dangerDepth or trajData.maxLookahead or 22.0
+					local lockedY = trajData.lockedVisualY or (getGeometry().GetRawFloorY(curPos) + 0.45)
+					local thickness = trajData.boxThickness or 0.8
+					local orbColorName = (trajData.config and trajData.config.orbColorName) or (orbConfig and orbConfig.colorName) or "orb"
 
-				-- Bề ngang beam bao quát cả Model (lấy trục dài nhất của BoundingBox)
-				local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
-				if beamSpan < 12 then beamSpan = 50.0 end
-				local dangerWidth = beamSpan + trajectoryWidthPadding * 2
-				local maxLookahead = (trajData.config and trajData.config.maxLookahead) or trajectoryLookahead
-				local dangerDepth = maxLookahead
-				local forward2D = trajData.forward2D
+					local vPart = activeTrajectoryVisuals[inst]
+					if not vPart or not vPart.Parent then
+						vPart = Instance.new("Part")
+						vPart.Name = "SmartDodge_TrajectoryBox"
+						vPart.Material = Enum.Material.Neon
+						vPart.Color = Color3.fromRGB(255, 130, 0)
+						vPart.Transparency = 0.82
+						vPart.Anchored = true
+						vPart.CanCollide = false
+						vPart.CanQuery = false
+						vPart.CanTouch = false
 
-				trajData.dangerRadius = dangerWidth / 2
-				trajData.maxLookahead = dangerDepth
+						local box = Instance.new("SelectionBox")
+						box.Name = "TrajectoryBorder"
+						box.Color3 = Color3.fromRGB(255, 150, 30)
+						box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
+						box.SurfaceTransparency = 0.8
+						box.LineThickness = 0.04
+						box.Adornee = vPart
+						box.Parent = vPart
 
-				-- Cao độ dán chặt mặt sàn
-				local curFloorY, hasFloor = getGeometry().GetRawFloorY(curPos)
-				local thickness = 0.8
-				local lockedY = (hasFloor and (curFloorY + thickness / 2 + 0.05)) or (curPos.Y - 2.5)
-				trajData.lockedVisualY = lockedY
+						local bb = Instance.new("BillboardGui")
+						bb.Name = "TrajGui"
+						bb.Size = UDim2.fromOffset(220, 26)
+						bb.StudsOffset = Vector3.new(0, 2.5, 0)
+						bb.AlwaysOnTop = true
+						bb.Adornee = vPart
+						bb.Parent = vPart
 
-				local vPart = activeTrajectoryVisuals[inst]
-				if not vPart or not vPart.Parent then
-					vPart = Instance.new("Part")
-					vPart.Name = "SmartDodge_TrajectoryBox"
-					vPart.Material = Enum.Material.Neon
-					vPart.Color = Color3.fromRGB(255, 130, 0)
-					vPart.Transparency = 0.82
-					vPart.Anchored = true
-					vPart.CanCollide = false
-					vPart.CanQuery = false
-					vPart.CanTouch = false
+						local label = Instance.new("TextLabel")
+						label.Name = "Label"
+						label.Size = UDim2.fromScale(1, 1)
+						label.BackgroundTransparency = 1
+						label.TextColor3 = Color3.fromRGB(255, 170, 40)
+						label.TextStrokeTransparency = 0
+						label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+						label.Font = Enum.Font.GothamBold
+						label.TextSize = 12
+						label.Text = ("🚀 %s ORB: %s (%.0fm | W:%.1fm)"):format(orbColorName:upper(), inst.Name, dangerDepth, dangerWidth)
+						label.Parent = bb
 
-					local box = Instance.new("SelectionBox")
-					box.Name = "TrajectoryBorder"
-					box.Color3 = Color3.fromRGB(255, 150, 30)
-					box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
-					box.SurfaceTransparency = 0.8
-					box.LineThickness = 0.04
-					box.Adornee = vPart
-					box.Parent = vPart
-
-					local bb = Instance.new("BillboardGui")
-					bb.Name = "TrajGui"
-					bb.Size = UDim2.fromOffset(220, 26)
-					bb.StudsOffset = Vector3.new(0, 2.5, 0)
-					bb.AlwaysOnTop = true
-					bb.Adornee = vPart
-					bb.Parent = vPart
-
-					local label = Instance.new("TextLabel")
-					label.Name = "Label"
-					label.Size = UDim2.fromScale(1, 1)
-					label.BackgroundTransparency = 1
-					label.TextColor3 = Color3.fromRGB(255, 170, 40)
-					label.TextStrokeTransparency = 0
-					label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-					label.Font = Enum.Font.GothamBold
-					label.TextSize = 12
-					label.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
-					label.Parent = bb
-
-					activeTrajectoryVisuals[inst] = vPart
-				else
-					local tg = vPart:FindFirstChild("TrajGui")
-					local lbl = tg and tg:FindFirstChild("Label")
-					if lbl and lbl:IsA("TextLabel") then
-						lbl.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
+						activeTrajectoryVisuals[inst] = vPart
+					else
+						local tg = vPart:FindFirstChild("TrajGui")
+						local lbl = tg and tg:FindFirstChild("Label")
+						if lbl and lbl:IsA("TextLabel") then
+							lbl.Text = ("🚀 %s ORB: %s (%.0fm | W:%.1fm)"):format(orbColorName:upper(), inst.Name, dangerDepth, dangerWidth)
+						end
 					end
-				end
 
-				vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
-				-- Phóng dài về phía trước thanh beam theo đúng setting Tra lookahead length (gốc từ -2 studs sau beam đến +dangerDepth trước beam)
-				local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 1.5)
-				vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-				vPart.Parent = Workspace.Terrain
+					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
+					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 2.0)
+					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
+					vPart.Parent = Workspace.Terrain
+				end
 			else
 				-- =========================================================================
 				-- XỬ LÝ CHO CÁC PART PROJECTILE KHÁC (Spike, Telegraph Beam, v.v.)
@@ -9460,12 +9869,12 @@ function detection.UpdateTrajectoryVisuals()
 						if part and part.Parent and part:IsA("BasePart") then
 							local trajConfig = getTrajectoryConfigForPart(part)
 							if trajConfig then
-								-- Tránh vẽ đè 2 hành lang cam nếu cả firstBossBeamPart và firstBossBigSpike cùng xuất hiện
 								local isBeam = part.Name:lower():find("beampart") ~= nil
+								local isMissile = part.Name:lower():find("missile") ~= nil
 								local hasDuplicate = false
-								if isBeam then
-									for otherPart in pairs(currentActiveParts) do
-										if otherPart ~= part and otherPart:IsA("BasePart") and (otherPart.Position - part.Position).Magnitude < 4 then
+								if isBeam or isMissile then
+									for otherPart in pairs(currentActiveVisuals) do
+										if otherPart ~= part and otherPart:IsA("BasePart") and (otherPart.Position - part.Position).Magnitude < 6 then
 											hasDuplicate = true
 											break
 										end
@@ -9473,26 +9882,17 @@ function detection.UpdateTrajectoryVisuals()
 								end
 
 								if not hasDuplicate then
-									local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
+									local trajData = lockedProjectiles[part]
 									if trajData and trajData.forward2D then
-										currentActiveParts[part] = true
+										currentActiveVisuals[part] = true
 
-										local autoWidth, autoLength = getPartAutoDimensions(part)
-										local baseMinRadius = autoWidth / 2
-										if trajData.config.dangerRadius and trajData.config.dangerRadius > baseMinRadius then
-											baseMinRadius = trajData.config.dangerRadius
-										end
-										local dangerRadius = baseMinRadius + trajectoryWidthPadding
-										local maxLookahead = autoLength or trajData.config.maxLookahead or trajData.maxLookahead or trajectoryLookahead
-
-										trajData.dangerRadius = dangerRadius
-										trajData.maxLookahead = maxLookahead
-
+										local maxLookahead = trajData.maxLookahead or trajectoryLookahead
+										local dangerRadius = trajData.dangerRadius or 4.0
 										local forward2D = trajData.forward2D
 										local originPos = part.Position
 										local centerPos = originPos + forward2D * (maxLookahead / 2)
 
-										local lockedY = trajData.lockedVisualY or (trajData.rawFloorY and (trajData.rawFloorY + 0.45)) or originPos.Y
+										local lockedY = trajData.lockedVisualY or (trajData.rawFloorY and (trajData.rawFloorY + 0.45)) or (getGeometry().GetRawFloorY(originPos) + 0.45)
 										local thickness = trajData.boxThickness or 0.8
 
 										local depth = maxLookahead
@@ -9563,17 +9963,16 @@ function detection.UpdateTrajectoryVisuals()
 		end
 	end
 
-	-- Dọn dẹp những part đã hết hạn
+	-- Dọn dẹp những visual đã hết hạn
 	for part, vPart in pairs(activeTrajectoryVisuals) do
-		if not currentActiveParts[part] then
+		if not currentActiveVisuals[part] then
 			pcall(function() vPart:Destroy() end)
 			activeTrajectoryVisuals[part] = nil
-			lockedProjectiles[part] = nil
 		end
 	end
 end
 
---// Dọn sạch toàn bộ visual của các hành lang đạn bay
+--// Dọn sạch toàn bộ visual của các hành lang đạn bay (không xóa lockedProjectiles)
 function detection.ClearTrajectoryVisuals()
 	for part, vPart in pairs(activeTrajectoryVisuals) do
 		pcall(function() vPart:Destroy() end)
@@ -9591,6 +9990,7 @@ function detection.ClearAllHazards(reason)
 		unregisterHazard(inst, reason or "Purged")
 	end
 	table.clear(activeHazards)
+	table.clear(lockedProjectiles)
 	hazardCount = 0
 	detection.ClearTrajectoryVisuals()
 	fireHazardChanged()
@@ -9737,12 +10137,23 @@ end
 function detection.GetActiveBossOrb()
 	for inst, info in pairs(activeHazards) do
 		if inst and inst.Parent then
-			local orbConf = BOSS_ORB_CONFIGS[inst.Name:lower()]
+			local cleanName = (inst.Name or ""):lower():gsub("%s+", "")
+			local orbConf = BOSS_ORB_CONFIGS[cleanName]
+			if not orbConf then
+				if cleanName:find("yelloworb") then
+					orbConf = BOSS_ORB_CONFIGS["secondbossyelloworb"]
+				elseif cleanName:find("redorb") then
+					orbConf = BOSS_ORB_CONFIGS["secondbossredorb"]
+				elseif cleanName:find("greenorb") then
+					orbConf = BOSS_ORB_CONFIGS["secondbossgreenorb"]
+				end
+			end
+
 			if orbConf then
 				local part = inst:IsA("BasePart") and inst or nil
 				if not part and info.ActiveParts then
 					for p in pairs(info.ActiveParts) do
-						if p and p.Parent then
+						if p and p.Parent and p:IsA("BasePart") then
 							part = p
 							break
 						end
@@ -10477,16 +10888,17 @@ local function getBossCrystal(colorName)
 	end
 	if not crystalsModel then return nil, {} end
 
-	local targetCrystal = crystalsModel:FindFirstChild(colorName)
-	if targetCrystal and not targetCrystal:IsA("BasePart") then
-		targetCrystal = targetCrystal:FindFirstChildWhichIsA("BasePart")
-	end
-
+	local targetCrystal = nil
 	local wrongCrystals = {}
+	local targetColorLower = colorName and colorName:lower() or ""
+
 	for _, child in ipairs(crystalsModel:GetChildren()) do
-		if child.Name:lower() ~= colorName:lower() then
-			local p = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
-			if p then
+		local cNameLower = child.Name:lower()
+		local p = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
+		if p then
+			if #targetColorLower > 0 and (cNameLower == targetColorLower or cNameLower:find(targetColorLower)) then
+				targetCrystal = p
+			else
 				table.insert(wrongCrystals, p)
 			end
 		end
@@ -11055,21 +11467,19 @@ local function computeRepulsionVector(playerPos, dangerPart)
 	if activeHazards then
 		local count = 0
 		for _, info in pairs(activeHazards) do
-			-- Lấy vị trí trung tâm đại diện của từng Skill theo thời gian thực (hỗ trợ skill di động như movingBeam)
+			-- Lấy vị trí trung tâm đại diện của từng Skill theo thời gian thực (ưu tiên ActiveParts / info.Position, KHÔNG dùng PrimaryPart)
 			local centerPos = nil
-			if info.Instance and info.Instance.Parent then
-				if info.Instance:IsA("Model") and info.Instance.PrimaryPart then
-					centerPos = info.Instance.PrimaryPart.Position
-				elseif info.Instance:IsA("BasePart") then
-					centerPos = info.Instance.Position
-				end
-			end
-			if not centerPos and info.ActiveParts then
+			if info.ActiveParts then
 				for part in pairs(info.ActiveParts) do
 					if part and part.Parent and part:IsA("BasePart") then
 						centerPos = part.Position
 						break
 					end
+				end
+			end
+			if not centerPos and info.Instance and info.Instance.Parent then
+				if info.Instance:IsA("BasePart") then
+					centerPos = info.Instance.Position
 				end
 			end
 			centerPos = centerPos or info.Position
@@ -11152,6 +11562,15 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 	-- Hard check cho Boss 1 Arena: Không chọn điểm ra ngoài phạm vi sàn đấu
 	if boss1ArenaCenter and not isInsideBoss1Arena(candPos, playerPos) then
 		return math.huge
+	end
+
+	-- Tránh né thẳng vào Boss Orb (nếu có quả cầu Boss 2 đang hoạt động):
+	local activeOrb = detection.GetActiveBossOrb and detection.GetActiveBossOrb()
+	if activeOrb and activeOrb.Position then
+		local dOrb = (Vector3.new(candPos.X - activeOrb.Position.X, 0, candPos.Z - activeOrb.Position.Z)).Magnitude
+		if dOrb < 12.0 then
+			return math.huge -- Tuyệt đối không chọn điểm né nằm gần quả cầu!
+		end
 	end
 
 	local moveDist = (candPos - playerPos).Magnitude
@@ -11359,7 +11778,7 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		end
 	end
 
-	-- Lấy Boss 2 Orb đang kích hoạt (nếu có) để highlight cột pha lê và loại trừ khỏi check né giật cục
+	-- Lấy Boss 2 Orb đang kích hoạt (nếu có) để highlight cột pha lê và xử lý ưu tiên né khẩn cấp
 	local activeOrbPart, orbColorName = detection.GetActiveBossOrb()
 	if activeOrbPart and orbColorName then
 		local targetCrystal = getBossCrystal(orbColorName)
@@ -11370,20 +11789,52 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		clearCrystalHighlight()
 	end
 
+	local distToOrb = math.huge
+	local isOrbTooClose = false
+	if activeOrbPart and activeOrbPart.Position then
+		distToOrb = (Vector3.new(activeOrbPart.Position.X - playerPos.X, 0, activeOrbPart.Position.Z - playerPos.Z)).Magnitude
+		-- Cự ly an toàn với Quả Cầu: Luôn duy trì khoảng cách an toàn >= 16.0 studs!
+		-- Nếu quả cầu tiến vào cự ly < 16.0 studs -> Kích hoạt né/kite khẩn cấp, tuyệt đối không đứng yên!
+		if distToOrb < 16.0 then
+			isOrbTooClose = true
+		end
+	end
+
 	-- 1. ƯU TIÊN SỐ 1: NÉ TRƯỚC (DODGE HAZARDS FIRST)
-	-- Kiểm tra xem Player có đang đứng trong bất kỳ vùng nguy hiểm nào không (bỏ qua quả cầu đang dí)
-	local inDanger, dangerInfo, dangerPart, dangerTraj = geometry.IsPointInAnyHazard(playerPos, activeOrbPart)
+	-- Kiểm tra xem Player có đang đứng trong bất kỳ vùng nguy hiểm nào không.
+	-- - Nếu quả cầu ở cự ly an toàn (>= 16.0 studs): Tạm bỏ qua quả cầu để né các chiêu khác hoặc dẫn cầu về cột.
+	-- - Nếu quả cầu áp sát nguy hiểm (< 16.0 studs): TUYỆT ĐỐI KHÔNG BỎ QUA! Kích hoạt né khẩn cấp quả cầu.
+	local ignoredOrb = (not isOrbTooClose) and activeOrbPart or nil
+	local inDanger, dangerInfo, dangerPart, dangerTraj = geometry.IsPointInAnyHazard(playerPos, ignoredOrb)
+
+	-- Can thiệp khẩn cấp: Nếu không dính chiêu sàn nào khác nhưng quả cầu đã áp sát < 16.0 studs:
+	if not inDanger and isOrbTooClose then
+		inDanger = true
+		dangerPart = activeOrbPart
+		dangerInfo = { Name = ("%s Orb (Maintain Safe Distance)"):format(orbColorName and orbColorName:upper() or "BOSS") }
+		local fwd = (playerPos - activeOrbPart.Position)
+		local fwd2D = (fwd.Magnitude > 0.1) and Vector3.new(fwd.X, 0, fwd.Z).Unit or Vector3.new(0, 0, 1)
+		dangerTraj = {
+			isTrajectory = true,
+			isDynamicMoving = true,
+			isBossOrb = true,
+			perpDist = 0,
+			dangerRadius = 6.0,
+			forward2D = fwd2D,
+			originPos = activeOrbPart.Position,
+			maxLookahead = 25.0,
+		}
+	end
 	if not inDanger or not dangerPart then
 		-- 2. ƯU TIÊN SỐ 2: DẪN ORB VỀ CỘT KHI ĐANG AN TOÀN
 		if activeOrbPart and orbColorName then
 			local targetCrystal, wrongCrystals = getBossCrystal(orbColorName)
 			if targetCrystal then
 				-- KIỂM TRA SÀN SẠCH & VÙNG ĐỆM AN TOÀN:
-				-- Nếu người chơi vừa né ra mép một chiêu thức sát thương (ví dụ AoE tròn hoặc MovingBeam)
-				-- mà chiêu đó vẫn đang tồn tại/chờ nổ sát chân người chơi (bán kính đệm 4.5 studs):
-				-- -> ĐỨNG YÊN TẠI VỊ TRÍ AN TOÀN NÀY, đợi chiêu nổ biến mất trước khi bắt đầu dắt cầu!
-				-- (Lưu ý: Nếu trong lúc đứng đợi mà có MovingBeam mới quét trúng playerPos, Bước 1 ở trên
-				-- sẽ tự động phát hiện inDanger = true và né chiêu đó ngay lập tức).
+				-- Nếu người chơi vừa né ra mép một chiêu thức sát thương (ví dụ hình chữ nhật hay MovingBeam)
+				-- mà chiêu đó vẫn đang tồn tại sát chân:
+				-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 28 studs): TUYỆT ĐỐI KHÔNG ĐỨNG YÊN CHỜ AOE NỔ!
+				-- Phải tiếp tục lùi/kite dọc theo hành lang an toàn ra xa quả cầu!
 				local hasActiveFloorHazard = false
 				local allHazards = detection.GetActiveHazards and detection.GetActiveHazards()
 				if allHazards and #allHazards > 0 then
@@ -11399,9 +11850,46 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				end
 
 				if hasActiveFloorHazard then
-					lockedSafeSpot = playerPos
-					lockedHazardCount = 1
-					return true, playerPos, ("Waiting for nearby AoE to explode before leading %s"):format(orbColorName:upper()), 0
+					if distToOrb < 28.0 and activeOrbPart and activeOrbPart.Position then
+						local fwdOrb = (playerPos - activeOrbPart.Position)
+						local fwdOrb2D = (fwdOrb.Magnitude > 0.1) and Vector3.new(fwdOrb.X, 0, fwdOrb.Z).Unit or Vector3.new(0, 0, 1)
+						local perpOrb = Vector3.new(-fwdOrb2D.Z, 0, fwdOrb2D.X)
+
+						local corridorSteps = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
+						local corridorPerp = { 0, 2.0, -2.0, 4.0, -4.0 }
+						local bestKite = nil
+						local bestKiteDist = -math.huge
+
+						for _, stepDist in ipairs(corridorSteps) do
+							for _, pOff in ipairs(corridorPerp) do
+								local cand = playerPos + fwdOrb2D * stepDist + perpOrb * pOff
+								if geometry.IsSpotFullySafe(cand, 0.5, activeOrbPart) then
+									if geometry.IsPathSafe(playerPos, cand, nil, nil, activeOrbPart) then
+										local dToOrb = (Vector3.new(cand.X - activeOrbPart.Position.X, 0, cand.Z - activeOrbPart.Position.Z)).Magnitude
+										if dToOrb > bestKiteDist then
+											bestKiteDist = dToOrb
+											bestKite = cand
+										end
+									end
+								end
+							end
+						end
+
+						if bestKite then
+							local sFloor, hasF = geometry.GetFloorPosition(bestKite)
+							local finalKite = hasF and sFloor or bestKite
+							lockedSafeSpot = finalKite
+							lockedHazardCount = 1
+							return true, finalKite, ("Kiting along corridor away from %s"):format(orbColorName:upper()), (finalKite - playerPos).Magnitude
+						end
+					end
+
+					-- Chỉ đứng yên khi quả cầu ở cự ly an toàn rất xa (>= 28 studs):
+					if distToOrb >= 28.0 then
+						lockedSafeSpot = playerPos
+						lockedHazardCount = 1
+						return true, playerPos, ("Waiting for nearby AoE to explode before leading %s"):format(orbColorName:upper()), 0
+					end
 				end
 
 				local orbPos = activeOrbPart.Position
@@ -11526,8 +12014,44 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 						lockedHazardCount = 1
 						return true, finalDetour, ("Detour around skill -> %s Crystal"):format(orbColorName:upper()), (finalDetour - playerPos).Magnitude
 					else
-						-- Đường đi bị chặn hoàn toàn bởi chiêu thức nguy hiểm và không có ngách vòng:
-						-- GIỮ NGUYÊN VỊ TRÍ AN TOÀN HIỆN TẠI đợi chiêu tan biến thay vì đâm đầu tự sát!
+						-- Đường đi tới cột bị chặn hoàn toàn bởi chiêu thức nguy hiểm (ví dụ hình chữ nhật đỏ):
+						-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 28 studs): TUYỆT ĐỐI KHÔNG ĐỨNG YÊN CHỜ NỔ!
+						-- Lùi/Kite dọc theo hành lang an toàn (hướng ra xa quả cầu) để giữ cự ly sinh tồn:
+						if activeOrbPart and activeOrbPart.Position and distToOrb < 28.0 then
+							local fwdOrb = (playerPos - activeOrbPart.Position)
+							local fwdOrb2D = (fwdOrb.Magnitude > 0.1) and Vector3.new(fwdOrb.X, 0, fwdOrb.Z).Unit or Vector3.new(0, 0, 1)
+							local perpOrb = Vector3.new(-fwdOrb2D.Z, 0, fwdOrb2D.X)
+
+							local corridorSteps = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
+							local corridorPerp = { 0, 2.0, -2.0, 4.0, -4.0 }
+							local bestKite = nil
+							local bestKiteDist = -math.huge
+
+							for _, stepDist in ipairs(corridorSteps) do
+								for _, pOff in ipairs(corridorPerp) do
+									local cand = playerPos + fwdOrb2D * stepDist + perpOrb * pOff
+									if geometry.IsSpotFullySafe(cand, 0.5, activeOrbPart) then
+										if geometry.IsPathSafe(playerPos, cand, nil, nil, activeOrbPart) then
+											local dToOrb = (Vector3.new(cand.X - activeOrbPart.Position.X, 0, cand.Z - activeOrbPart.Position.Z)).Magnitude
+											if dToOrb > bestKiteDist then
+												bestKiteDist = dToOrb
+												bestKite = cand
+											end
+										end
+									end
+								end
+							end
+
+							if bestKite then
+								local sFloor, hasF = geometry.GetFloorPosition(bestKite)
+								local finalKite = hasF and sFloor or bestKite
+								lockedSafeSpot = finalKite
+								lockedHazardCount = 1
+								return true, finalKite, ("Kiting along corridor away from %s"):format(orbColorName:upper()), (finalKite - playerPos).Magnitude
+							end
+						end
+
+						-- Chỉ khi không có quả cầu đe dọa mới đứng yên tại vị trí an toàn hiện tại đợi chiêu tan biến:
 						lockedSafeSpot = playerPos
 						lockedHazardCount = 1
 						return true, playerPos, ("Waiting for path to clear -> %s Crystal"):format(orbColorName:upper()), 0
@@ -11579,8 +12103,22 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			lockedDist = (lockedSafeSpot - playerPos).Magnitude
 			if lockedDist <= 45 and geometry.IsPathSafe(playerPos, lockedSafeSpot, currentHazardsSet, dangerPart) then
 				isOldPointStillSafe = true
-				-- NẾU ĐÃ Ở RẤT GẦN ĐIỂM KHÓA (<= 3.5 studs): Giữ nguyên 100% điểm này, không cần tính toán lại
-				if lockedDist <= 3.5 then
+
+				-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 24 studs):
+				-- Tuyệt đối KHÔNG giữ điểm khóa nếu điểm đó quá gần quả cầu (< 18 studs)
+				-- hoặc nếu nhân vật đã tới nơi (lockedDist <= 1.5) nhưng quả cầu vẫn đang dí -> Buộc tính điểm lùi tiếp theo!
+				if activeOrbPart and activeOrbPart.Position then
+					local distOrbToLocked = (Vector3.new(lockedSafeSpot.X - activeOrbPart.Position.X, 0, lockedSafeSpot.Z - activeOrbPart.Position.Z)).Magnitude
+					if distOrbToLocked < 18.0 and distToOrb < 24.0 then
+						isOldPointStillSafe = false
+					elseif lockedDist <= 1.5 and distToOrb < 24.0 then
+						isOldPointStillSafe = false
+					end
+				end
+
+				-- NẾU ĐÃ CÓ ĐIỂM KHÓA HỢP LỆ VÀ ĐANG TRÊN ĐƯỜNG CHẠY TỚI (lockedDist <= 6.5 studs):
+				-- Giữ nguyên 100% điểm này, triệt tiêu hoàn toàn hiện tượng nhảy điểm giậm chân tại chỗ!
+				if isOldPointStillSafe and lockedDist <= 6.5 then
 					local finalDist = math.floor(lockedDist * 10) / 10
 					return true, lockedSafeSpot, hazardName, finalDist
 				end
@@ -11651,6 +12189,13 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			if boss1ArenaCenter and not isInsideBoss1Arena(candWorld, playerPos) then
 				continue
 			end
+			-- Tránh né thẳng vào Boss Orb (nếu có quả cầu Boss 2 đang hoạt động):
+			if activeOrbPart and activeOrbPart.Position then
+				local dOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
+				if dOrb < 12.0 then
+					continue
+				end
+			end
 			if geometry.IsSpotFullySafe(candWorld, 0.5) then
 				local moveDist = (candWorld - playerPos).Magnitude
 				local score = moveDist - getClearanceBonus(candWorld)
@@ -11700,10 +12245,27 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 
 		local isMovingBeam = hazardName:lower():find("movingbeam") ~= nil
 			or (dangerPart and dangerPart.Name:lower():find("movingbeam") ~= nil)
+		local isBossOrb = (dangerTraj and dangerTraj.isBossOrb)
+			or (hazardName:lower():find("orb") ~= nil)
+			or (dangerPart and dangerPart.Name:lower():find("orb") ~= nil)
 
 		local trajCandidates = {}
 
-		if isMovingBeam then
+		if isBossOrb then
+			-- CHIẾN LƯỢC CHO BOSS 2 ORB (Yellow/Red/Green Orb):
+			-- Quả cầu dí theo Player. Thoát hiểm và DUY TRÌ KHOẢNG CÁCH AN TOÀN (>= 18 studs):
+			-- forward2D ở đây là vector hướng từ Quả Cầu ra vị trí Player!
+			-- Do đó, playerPos + forward2D * kDist là chạy THẲNG RA XA Quả Cầu (tăng cự ly an toàn)!
+			-- Kết hợp lách sườn perpRight * pOff để khiến quả cầu bay chệch hướng (Flank & Kite)
+			local kiteDists = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
+			local perpOffsets = { 0, 2.0, -2.0, 4.5, -4.5, 7.0, -7.0 }
+			for _, kDist in ipairs(kiteDists) do
+				for _, pOff in ipairs(perpOffsets) do
+					local kitePos = playerPos + forward2D * kDist + perpRight * pOff
+					table.insert(trajCandidates, kitePos)
+				end
+			end
+		elseif isMovingBeam then
 			-- CHIẾN LƯỢC MOVING BEAM (Boss 2): Cho phép lùi sau đuôi beam đã quét qua
 			local fOffsets = { 0, -3, -6, -10 }
 			for _, fOff in ipairs(fOffsets) do
@@ -11754,12 +12316,30 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				continue
 			end
 
-			-- LỌC CHẶN TRIỆT ĐỂ: Tuyệt đối không chọn điểm nào nằm về phía trước theo hướng bay của chiêu (+forward2D)
+			-- Tránh né thẳng vào Boss Orb (nếu đang né chiêu khác mà có quả cầu ở gần):
+			if not isBossOrb and activeOrbPart and activeOrbPart.Position then
+				local dOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
+				if dOrb < 12.0 then
+					continue
+				end
+			end
+
+			-- LỌC CHẶN TRIỆT ĐỂ:
 			local toCand = candWorld - playerPos
 			if toCand.Magnitude > 0.5 then
 				local dotForward = toCand.Unit:Dot(forward2D)
-				if dotForward > 0.25 then
-					continue
+				if isBossOrb then
+					-- Với Quả Cầu (forward2D hướng từ Quả Cầu tới Player):
+					-- Tuyệt đối không chọn điểm chạy đâm đầu ngược lại vào Quả Cầu (dotForward < -0.25)
+					if dotForward < -0.25 then
+						continue
+					end
+				else
+					-- Với Tia bắn thẳng / Moving Beam (forward2D hướng theo chiều đạn bay):
+					-- Tuyệt đối không chọn điểm nằm về phía trước theo hướng bay của chiêu (dotForward > 0.25)
+					if dotForward > 0.25 then
+						continue
+					end
 				end
 			end
 
@@ -11770,7 +12350,21 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				local score = (moveDist * 1.6) - (clearance * 0.3)
 
 				local dotFwd = toCand.Magnitude > 0.5 and toCand.Unit:Dot(forward2D) or 0
-				if isMovingBeam and dotFwd < -0.2 then
+				if isBossOrb then
+					-- Thưởng lớn cho việc gia tăng khoảng cách an toàn với Quả Cầu (Kiting Safe Distance):
+					if activeOrbPart and activeOrbPart.Position then
+						local newDistOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
+						if newDistOrb < 15.0 then
+							score = score + (15.0 - newDistOrb) * 10.0 -- Phạt nặng nếu điểm ứng viên vẫn quá gần quả cầu
+						else
+							score = score - math.min(25.0, (newDistOrb - 15.0) * 2.0) -- Thưởng điểm cực lớn khi mở rộng cự ly an toàn
+						end
+					end
+					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
+					if dotPerp >= 0.65 then
+						score = score - 8.0 -- Thưởng lách sườn
+					end
+				elseif isMovingBeam and dotFwd < -0.2 then
 					-- Chỉ thưởng lùi ra sau cho Moving Beam của Boss 2!
 					score = score - 15.0
 				elseif not isMovingBeam then
@@ -11786,6 +12380,24 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				-- Ưu tiên kéo về tâm sàn đấu Boss 1 nếu đang dạt ra xa
 				if boss1ArenaCenter then
 					score = score + getBoss1ArenaScoreAdjustment(candWorld, playerPos)
+				end
+
+				-- Ưu tiên hướng Player đang chủ động di chuyển (Chống giật đổi hướng 180 độ):
+				if moveDir and moveDist > 0.5 then
+					local dotMove = toCand.Unit:Dot(moveDir)
+					if dotMove > 0.15 then
+						score = score - (dotMove * 5.0) -- Thưởng lớn cho hướng đang chạy
+					elseif dotMove < -0.15 then
+						score = score + (math.abs(dotMove) * 6.0) -- Phạt nặng việc quay xe giật lùi ngược hướng
+					end
+				end
+
+				-- Anti-Flicker Hysteresis: Ưu tiên duy trì điểm Safe Spot đã khóa trước đó
+				if lockedSafeSpot then
+					local distToLocked = (candWorld - lockedSafeSpot).Magnitude
+					if distToLocked < 3.0 then
+						score = score - 8.0
+					end
 				end
 
 				if score < fallbackScore then
@@ -11805,6 +12417,7 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			-- Fallback: Quét tỏa các góc LÙI VÀ NGANG thuần toán học (0 Raycast)
 			local fwdAngleDeg = math.deg(math.atan2(forward2D.Z, forward2D.X))
 			local testAngles = isMovingBeam and { 90, -90, 120, -120, 150, -150, 180 }
+				or isBossOrb and { 0, 15, -15, 30, -30, 45, -45, 60, -60 }
 				or { 90, -90, 75, -75, 105, -105, 60, -60, 120, -120 }
 			local backRadii = { 4.0, 7.0, 11.0, 16.0, 22.0 }
 
@@ -12415,7 +13028,7 @@ function dodge.Perform(safePos, escapeDist)
 				activeMoveConn = nil
 			end
 
-			if rootPart and rootPart.Parent and dodgeMode ~= "HumanoidMove" then
+			if rootPart and rootPart.Parent then
 				rootPart.AssemblyLinearVelocity = Vector3.zero
 				rootPart.AssemblyAngularVelocity = Vector3.zero
 			end
@@ -12448,7 +13061,7 @@ function dodge.Perform(safePos, escapeDist)
 			-- 1. Nếu cự ly tới Safe Spot <= snapDistance -> Snap dứt điểm ngay lập tức (1 bước duy nhất)
 			-- Trong chế độ Blink: Không bao giờ snap 1 bước lớn hơn blinkStep để chống giật anticheat sync
 			local effectiveSnapDist = (dodgeMode == "Blink") and math.min(maxSnapDistance, blinkStep) or maxSnapDistance
-			if totalDist <= effectiveSnapDist and dodgeMode ~= "HumanoidMove" then
+			if totalDist <= effectiveSnapDist then
 				snapFace(
 					rootPart,
 					humanoid,
@@ -12547,7 +13160,21 @@ function dodge.Perform(safePos, escapeDist)
 					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
 					local dist = diff.Magnitude
 
-					if dist <= 0.8 then
+					-- SNAP DỨT ĐIỂM Ở BƯỚC CUỐI (FINAL STEP SNAP):
+					-- Khi chạy gần tới Safe Spot (cự ly <= maxSnapDistance) -> Snap dứt điểm ngay vào đích!
+					if dist <= maxSnapDistance then
+						snapFace(rootPart, humanoid, targetPos, startHeight)
+						if getLogInDanger() then
+							print(("[SmartDodge][Dodge] ⚡ HumanoidMove Final Snap (%.1f studs) to Safe Spot!"):format(dist))
+						end
+						break
+					end
+
+					-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước (hoặc snap nốt nếu trong cự ly)
+					if not getInDanger() then
+						if dist <= maxSnapDistance then
+							snapFace(rootPart, humanoid, targetPos, startHeight)
+						end
 						break
 					end
 
@@ -12562,6 +13189,17 @@ function dodge.Perform(safePos, escapeDist)
 					end
 
 					task.wait(0.03)
+				end
+
+				-- Final check sau khi thoát loop HumanoidMove: Nếu còn trong cự ly snap, snap dứt điểm
+				if rootPart.Parent and humanoid.Parent and humanoid.Health > 0 then
+					targetPos = currentTargetPos or safePos
+					if targetPos then
+						local remainingDiff = Vector3.new(targetPos.X - rootPart.Position.X, 0, targetPos.Z - rootPart.Position.Z)
+						if remainingDiff.Magnitude <= maxSnapDistance then
+							snapFace(rootPart, humanoid, targetPos, startHeight)
+						end
+					end
 				end
 
 				finish()
@@ -13029,6 +13667,9 @@ local function startSafeSpotLoop()
 			if not shared.IsBossActive() and shared.GetEnemyCount() == 0 and detection.GetHazardCount() > 0 then
 				detection.ClearAllHazards("Room Cleared")
 			end
+
+			-- 0. Luôn cập nhật quỹ đạo đạn bay & moving beam toán học TRƯỚC KHI tính Safe Spot (độc lập 100% với Visual ESP)
+			detection.UpdateTrajectories()
 
 			local isDead = shared.IsDead and shared.IsDead() or false
 			local inDanger, safePos, hazardName, escapeDist

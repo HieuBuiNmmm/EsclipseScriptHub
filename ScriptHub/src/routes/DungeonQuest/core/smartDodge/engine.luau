@@ -68,6 +68,9 @@ local function startSafeSpotLoop()
 				detection.ClearAllHazards("Room Cleared")
 			end
 
+			-- 0. Luôn cập nhật quỹ đạo đạn bay & moving beam toán học TRƯỚC KHI tính Safe Spot (độc lập 100% với Visual ESP)
+			detection.UpdateTrajectories()
+
 			local isDead = shared.IsDead and shared.IsDead() or false
 			local inDanger, safePos, hazardName, escapeDist
 			if isDead then

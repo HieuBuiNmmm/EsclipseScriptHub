@@ -405,7 +405,7 @@ function dodge.Perform(safePos, escapeDist)
 				activeMoveConn = nil
 			end
 
-			if rootPart and rootPart.Parent and dodgeMode ~= "HumanoidMove" then
+			if rootPart and rootPart.Parent then
 				rootPart.AssemblyLinearVelocity = Vector3.zero
 				rootPart.AssemblyAngularVelocity = Vector3.zero
 			end
@@ -438,7 +438,7 @@ function dodge.Perform(safePos, escapeDist)
 			-- 1. Nếu cự ly tới Safe Spot <= snapDistance -> Snap dứt điểm ngay lập tức (1 bước duy nhất)
 			-- Trong chế độ Blink: Không bao giờ snap 1 bước lớn hơn blinkStep để chống giật anticheat sync
 			local effectiveSnapDist = (dodgeMode == "Blink") and math.min(maxSnapDistance, blinkStep) or maxSnapDistance
-			if totalDist <= effectiveSnapDist and dodgeMode ~= "HumanoidMove" then
+			if totalDist <= effectiveSnapDist then
 				snapFace(
 					rootPart,
 					humanoid,
@@ -537,7 +537,21 @@ function dodge.Perform(safePos, escapeDist)
 					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
 					local dist = diff.Magnitude
 
-					if dist <= 0.8 then
+					-- SNAP DỨT ĐIỂM Ở BƯỚC CUỐI (FINAL STEP SNAP):
+					-- Khi chạy gần tới Safe Spot (cự ly <= maxSnapDistance) -> Snap dứt điểm ngay vào đích!
+					if dist <= maxSnapDistance then
+						snapFace(rootPart, humanoid, targetPos, startHeight)
+						if getLogInDanger() then
+							print(("[SmartDodge][Dodge] ⚡ HumanoidMove Final Snap (%.1f studs) to Safe Spot!"):format(dist))
+						end
+						break
+					end
+
+					-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước (hoặc snap nốt nếu trong cự ly)
+					if not getInDanger() then
+						if dist <= maxSnapDistance then
+							snapFace(rootPart, humanoid, targetPos, startHeight)
+						end
 						break
 					end
 
@@ -552,6 +566,17 @@ function dodge.Perform(safePos, escapeDist)
 					end
 
 					task.wait(0.03)
+				end
+
+				-- Final check sau khi thoát loop HumanoidMove: Nếu còn trong cự ly snap, snap dứt điểm
+				if rootPart.Parent and humanoid.Parent and humanoid.Health > 0 then
+					targetPos = currentTargetPos or safePos
+					if targetPos then
+						local remainingDiff = Vector3.new(targetPos.X - rootPart.Position.X, 0, targetPos.Z - rootPart.Position.Z)
+						if remainingDiff.Magnitude <= maxSnapDistance then
+							snapFace(rootPart, humanoid, targetPos, startHeight)
+						end
+					end
 				end
 
 				finish()

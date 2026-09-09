@@ -155,16 +155,17 @@ local function getBossCrystal(colorName)
 	end
 	if not crystalsModel then return nil, {} end
 
-	local targetCrystal = crystalsModel:FindFirstChild(colorName)
-	if targetCrystal and not targetCrystal:IsA("BasePart") then
-		targetCrystal = targetCrystal:FindFirstChildWhichIsA("BasePart")
-	end
-
+	local targetCrystal = nil
 	local wrongCrystals = {}
+	local targetColorLower = colorName and colorName:lower() or ""
+
 	for _, child in ipairs(crystalsModel:GetChildren()) do
-		if child.Name:lower() ~= colorName:lower() then
-			local p = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
-			if p then
+		local cNameLower = child.Name:lower()
+		local p = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
+		if p then
+			if #targetColorLower > 0 and (cNameLower == targetColorLower or cNameLower:find(targetColorLower)) then
+				targetCrystal = p
+			else
 				table.insert(wrongCrystals, p)
 			end
 		end
@@ -733,21 +734,19 @@ local function computeRepulsionVector(playerPos, dangerPart)
 	if activeHazards then
 		local count = 0
 		for _, info in pairs(activeHazards) do
-			-- Lấy vị trí trung tâm đại diện của từng Skill theo thời gian thực (hỗ trợ skill di động như movingBeam)
+			-- Lấy vị trí trung tâm đại diện của từng Skill theo thời gian thực (ưu tiên ActiveParts / info.Position, KHÔNG dùng PrimaryPart)
 			local centerPos = nil
-			if info.Instance and info.Instance.Parent then
-				if info.Instance:IsA("Model") and info.Instance.PrimaryPart then
-					centerPos = info.Instance.PrimaryPart.Position
-				elseif info.Instance:IsA("BasePart") then
-					centerPos = info.Instance.Position
-				end
-			end
-			if not centerPos and info.ActiveParts then
+			if info.ActiveParts then
 				for part in pairs(info.ActiveParts) do
 					if part and part.Parent and part:IsA("BasePart") then
 						centerPos = part.Position
 						break
 					end
+				end
+			end
+			if not centerPos and info.Instance and info.Instance.Parent then
+				if info.Instance:IsA("BasePart") then
+					centerPos = info.Instance.Position
 				end
 			end
 			centerPos = centerPos or info.Position
@@ -830,6 +829,15 @@ local function scoreCandidate(playerPos, candPos, repVector, moveDir)
 	-- Hard check cho Boss 1 Arena: Không chọn điểm ra ngoài phạm vi sàn đấu
 	if boss1ArenaCenter and not isInsideBoss1Arena(candPos, playerPos) then
 		return math.huge
+	end
+
+	-- Tránh né thẳng vào Boss Orb (nếu có quả cầu Boss 2 đang hoạt động):
+	local activeOrb = detection.GetActiveBossOrb and detection.GetActiveBossOrb()
+	if activeOrb and activeOrb.Position then
+		local dOrb = (Vector3.new(candPos.X - activeOrb.Position.X, 0, candPos.Z - activeOrb.Position.Z)).Magnitude
+		if dOrb < 12.0 then
+			return math.huge -- Tuyệt đối không chọn điểm né nằm gần quả cầu!
+		end
 	end
 
 	local moveDist = (candPos - playerPos).Magnitude
@@ -1037,7 +1045,7 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		end
 	end
 
-	-- Lấy Boss 2 Orb đang kích hoạt (nếu có) để highlight cột pha lê và loại trừ khỏi check né giật cục
+	-- Lấy Boss 2 Orb đang kích hoạt (nếu có) để highlight cột pha lê và xử lý ưu tiên né khẩn cấp
 	local activeOrbPart, orbColorName = detection.GetActiveBossOrb()
 	if activeOrbPart and orbColorName then
 		local targetCrystal = getBossCrystal(orbColorName)
@@ -1048,20 +1056,52 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		clearCrystalHighlight()
 	end
 
+	local distToOrb = math.huge
+	local isOrbTooClose = false
+	if activeOrbPart and activeOrbPart.Position then
+		distToOrb = (Vector3.new(activeOrbPart.Position.X - playerPos.X, 0, activeOrbPart.Position.Z - playerPos.Z)).Magnitude
+		-- Cự ly an toàn với Quả Cầu: Luôn duy trì khoảng cách an toàn >= 16.0 studs!
+		-- Nếu quả cầu tiến vào cự ly < 16.0 studs -> Kích hoạt né/kite khẩn cấp, tuyệt đối không đứng yên!
+		if distToOrb < 16.0 then
+			isOrbTooClose = true
+		end
+	end
+
 	-- 1. ƯU TIÊN SỐ 1: NÉ TRƯỚC (DODGE HAZARDS FIRST)
-	-- Kiểm tra xem Player có đang đứng trong bất kỳ vùng nguy hiểm nào không (bỏ qua quả cầu đang dí)
-	local inDanger, dangerInfo, dangerPart, dangerTraj = geometry.IsPointInAnyHazard(playerPos, activeOrbPart)
+	-- Kiểm tra xem Player có đang đứng trong bất kỳ vùng nguy hiểm nào không.
+	-- - Nếu quả cầu ở cự ly an toàn (>= 16.0 studs): Tạm bỏ qua quả cầu để né các chiêu khác hoặc dẫn cầu về cột.
+	-- - Nếu quả cầu áp sát nguy hiểm (< 16.0 studs): TUYỆT ĐỐI KHÔNG BỎ QUA! Kích hoạt né khẩn cấp quả cầu.
+	local ignoredOrb = (not isOrbTooClose) and activeOrbPart or nil
+	local inDanger, dangerInfo, dangerPart, dangerTraj = geometry.IsPointInAnyHazard(playerPos, ignoredOrb)
+
+	-- Can thiệp khẩn cấp: Nếu không dính chiêu sàn nào khác nhưng quả cầu đã áp sát < 16.0 studs:
+	if not inDanger and isOrbTooClose then
+		inDanger = true
+		dangerPart = activeOrbPart
+		dangerInfo = { Name = ("%s Orb (Maintain Safe Distance)"):format(orbColorName and orbColorName:upper() or "BOSS") }
+		local fwd = (playerPos - activeOrbPart.Position)
+		local fwd2D = (fwd.Magnitude > 0.1) and Vector3.new(fwd.X, 0, fwd.Z).Unit or Vector3.new(0, 0, 1)
+		dangerTraj = {
+			isTrajectory = true,
+			isDynamicMoving = true,
+			isBossOrb = true,
+			perpDist = 0,
+			dangerRadius = 6.0,
+			forward2D = fwd2D,
+			originPos = activeOrbPart.Position,
+			maxLookahead = 25.0,
+		}
+	end
 	if not inDanger or not dangerPart then
 		-- 2. ƯU TIÊN SỐ 2: DẪN ORB VỀ CỘT KHI ĐANG AN TOÀN
 		if activeOrbPart and orbColorName then
 			local targetCrystal, wrongCrystals = getBossCrystal(orbColorName)
 			if targetCrystal then
 				-- KIỂM TRA SÀN SẠCH & VÙNG ĐỆM AN TOÀN:
-				-- Nếu người chơi vừa né ra mép một chiêu thức sát thương (ví dụ AoE tròn hoặc MovingBeam)
-				-- mà chiêu đó vẫn đang tồn tại/chờ nổ sát chân người chơi (bán kính đệm 4.5 studs):
-				-- -> ĐỨNG YÊN TẠI VỊ TRÍ AN TOÀN NÀY, đợi chiêu nổ biến mất trước khi bắt đầu dắt cầu!
-				-- (Lưu ý: Nếu trong lúc đứng đợi mà có MovingBeam mới quét trúng playerPos, Bước 1 ở trên
-				-- sẽ tự động phát hiện inDanger = true và né chiêu đó ngay lập tức).
+				-- Nếu người chơi vừa né ra mép một chiêu thức sát thương (ví dụ hình chữ nhật hay MovingBeam)
+				-- mà chiêu đó vẫn đang tồn tại sát chân:
+				-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 28 studs): TUYỆT ĐỐI KHÔNG ĐỨNG YÊN CHỜ AOE NỔ!
+				-- Phải tiếp tục lùi/kite dọc theo hành lang an toàn ra xa quả cầu!
 				local hasActiveFloorHazard = false
 				local allHazards = detection.GetActiveHazards and detection.GetActiveHazards()
 				if allHazards and #allHazards > 0 then
@@ -1077,9 +1117,46 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				end
 
 				if hasActiveFloorHazard then
-					lockedSafeSpot = playerPos
-					lockedHazardCount = 1
-					return true, playerPos, ("Waiting for nearby AoE to explode before leading %s"):format(orbColorName:upper()), 0
+					if distToOrb < 28.0 and activeOrbPart and activeOrbPart.Position then
+						local fwdOrb = (playerPos - activeOrbPart.Position)
+						local fwdOrb2D = (fwdOrb.Magnitude > 0.1) and Vector3.new(fwdOrb.X, 0, fwdOrb.Z).Unit or Vector3.new(0, 0, 1)
+						local perpOrb = Vector3.new(-fwdOrb2D.Z, 0, fwdOrb2D.X)
+
+						local corridorSteps = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
+						local corridorPerp = { 0, 2.0, -2.0, 4.0, -4.0 }
+						local bestKite = nil
+						local bestKiteDist = -math.huge
+
+						for _, stepDist in ipairs(corridorSteps) do
+							for _, pOff in ipairs(corridorPerp) do
+								local cand = playerPos + fwdOrb2D * stepDist + perpOrb * pOff
+								if geometry.IsSpotFullySafe(cand, 0.5, activeOrbPart) then
+									if geometry.IsPathSafe(playerPos, cand, nil, nil, activeOrbPart) then
+										local dToOrb = (Vector3.new(cand.X - activeOrbPart.Position.X, 0, cand.Z - activeOrbPart.Position.Z)).Magnitude
+										if dToOrb > bestKiteDist then
+											bestKiteDist = dToOrb
+											bestKite = cand
+										end
+									end
+								end
+							end
+						end
+
+						if bestKite then
+							local sFloor, hasF = geometry.GetFloorPosition(bestKite)
+							local finalKite = hasF and sFloor or bestKite
+							lockedSafeSpot = finalKite
+							lockedHazardCount = 1
+							return true, finalKite, ("Kiting along corridor away from %s"):format(orbColorName:upper()), (finalKite - playerPos).Magnitude
+						end
+					end
+
+					-- Chỉ đứng yên khi quả cầu ở cự ly an toàn rất xa (>= 28 studs):
+					if distToOrb >= 28.0 then
+						lockedSafeSpot = playerPos
+						lockedHazardCount = 1
+						return true, playerPos, ("Waiting for nearby AoE to explode before leading %s"):format(orbColorName:upper()), 0
+					end
 				end
 
 				local orbPos = activeOrbPart.Position
@@ -1204,8 +1281,44 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 						lockedHazardCount = 1
 						return true, finalDetour, ("Detour around skill -> %s Crystal"):format(orbColorName:upper()), (finalDetour - playerPos).Magnitude
 					else
-						-- Đường đi bị chặn hoàn toàn bởi chiêu thức nguy hiểm và không có ngách vòng:
-						-- GIỮ NGUYÊN VỊ TRÍ AN TOÀN HIỆN TẠI đợi chiêu tan biến thay vì đâm đầu tự sát!
+						-- Đường đi tới cột bị chặn hoàn toàn bởi chiêu thức nguy hiểm (ví dụ hình chữ nhật đỏ):
+						-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 28 studs): TUYỆT ĐỐI KHÔNG ĐỨNG YÊN CHỜ NỔ!
+						-- Lùi/Kite dọc theo hành lang an toàn (hướng ra xa quả cầu) để giữ cự ly sinh tồn:
+						if activeOrbPart and activeOrbPart.Position and distToOrb < 28.0 then
+							local fwdOrb = (playerPos - activeOrbPart.Position)
+							local fwdOrb2D = (fwdOrb.Magnitude > 0.1) and Vector3.new(fwdOrb.X, 0, fwdOrb.Z).Unit or Vector3.new(0, 0, 1)
+							local perpOrb = Vector3.new(-fwdOrb2D.Z, 0, fwdOrb2D.X)
+
+							local corridorSteps = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
+							local corridorPerp = { 0, 2.0, -2.0, 4.0, -4.0 }
+							local bestKite = nil
+							local bestKiteDist = -math.huge
+
+							for _, stepDist in ipairs(corridorSteps) do
+								for _, pOff in ipairs(corridorPerp) do
+									local cand = playerPos + fwdOrb2D * stepDist + perpOrb * pOff
+									if geometry.IsSpotFullySafe(cand, 0.5, activeOrbPart) then
+										if geometry.IsPathSafe(playerPos, cand, nil, nil, activeOrbPart) then
+											local dToOrb = (Vector3.new(cand.X - activeOrbPart.Position.X, 0, cand.Z - activeOrbPart.Position.Z)).Magnitude
+											if dToOrb > bestKiteDist then
+												bestKiteDist = dToOrb
+												bestKite = cand
+											end
+										end
+									end
+								end
+							end
+
+							if bestKite then
+								local sFloor, hasF = geometry.GetFloorPosition(bestKite)
+								local finalKite = hasF and sFloor or bestKite
+								lockedSafeSpot = finalKite
+								lockedHazardCount = 1
+								return true, finalKite, ("Kiting along corridor away from %s"):format(orbColorName:upper()), (finalKite - playerPos).Magnitude
+							end
+						end
+
+						-- Chỉ khi không có quả cầu đe dọa mới đứng yên tại vị trí an toàn hiện tại đợi chiêu tan biến:
 						lockedSafeSpot = playerPos
 						lockedHazardCount = 1
 						return true, playerPos, ("Waiting for path to clear -> %s Crystal"):format(orbColorName:upper()), 0
@@ -1257,8 +1370,22 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			lockedDist = (lockedSafeSpot - playerPos).Magnitude
 			if lockedDist <= 45 and geometry.IsPathSafe(playerPos, lockedSafeSpot, currentHazardsSet, dangerPart) then
 				isOldPointStillSafe = true
-				-- NẾU ĐÃ Ở RẤT GẦN ĐIỂM KHÓA (<= 3.5 studs): Giữ nguyên 100% điểm này, không cần tính toán lại
-				if lockedDist <= 3.5 then
+
+				-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 24 studs):
+				-- Tuyệt đối KHÔNG giữ điểm khóa nếu điểm đó quá gần quả cầu (< 18 studs)
+				-- hoặc nếu nhân vật đã tới nơi (lockedDist <= 1.5) nhưng quả cầu vẫn đang dí -> Buộc tính điểm lùi tiếp theo!
+				if activeOrbPart and activeOrbPart.Position then
+					local distOrbToLocked = (Vector3.new(lockedSafeSpot.X - activeOrbPart.Position.X, 0, lockedSafeSpot.Z - activeOrbPart.Position.Z)).Magnitude
+					if distOrbToLocked < 18.0 and distToOrb < 24.0 then
+						isOldPointStillSafe = false
+					elseif lockedDist <= 1.5 and distToOrb < 24.0 then
+						isOldPointStillSafe = false
+					end
+				end
+
+				-- NẾU ĐÃ CÓ ĐIỂM KHÓA HỢP LỆ VÀ ĐANG TRÊN ĐƯỜNG CHẠY TỚI (lockedDist <= 6.5 studs):
+				-- Giữ nguyên 100% điểm này, triệt tiêu hoàn toàn hiện tượng nhảy điểm giậm chân tại chỗ!
+				if isOldPointStillSafe and lockedDist <= 6.5 then
 					local finalDist = math.floor(lockedDist * 10) / 10
 					return true, lockedSafeSpot, hazardName, finalDist
 				end
@@ -1329,6 +1456,13 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			if boss1ArenaCenter and not isInsideBoss1Arena(candWorld, playerPos) then
 				continue
 			end
+			-- Tránh né thẳng vào Boss Orb (nếu có quả cầu Boss 2 đang hoạt động):
+			if activeOrbPart and activeOrbPart.Position then
+				local dOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
+				if dOrb < 12.0 then
+					continue
+				end
+			end
 			if geometry.IsSpotFullySafe(candWorld, 0.5) then
 				local moveDist = (candWorld - playerPos).Magnitude
 				local score = moveDist - getClearanceBonus(candWorld)
@@ -1378,10 +1512,27 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 
 		local isMovingBeam = hazardName:lower():find("movingbeam") ~= nil
 			or (dangerPart and dangerPart.Name:lower():find("movingbeam") ~= nil)
+		local isBossOrb = (dangerTraj and dangerTraj.isBossOrb)
+			or (hazardName:lower():find("orb") ~= nil)
+			or (dangerPart and dangerPart.Name:lower():find("orb") ~= nil)
 
 		local trajCandidates = {}
 
-		if isMovingBeam then
+		if isBossOrb then
+			-- CHIẾN LƯỢC CHO BOSS 2 ORB (Yellow/Red/Green Orb):
+			-- Quả cầu dí theo Player. Thoát hiểm và DUY TRÌ KHOẢNG CÁCH AN TOÀN (>= 18 studs):
+			-- forward2D ở đây là vector hướng từ Quả Cầu ra vị trí Player!
+			-- Do đó, playerPos + forward2D * kDist là chạy THẲNG RA XA Quả Cầu (tăng cự ly an toàn)!
+			-- Kết hợp lách sườn perpRight * pOff để khiến quả cầu bay chệch hướng (Flank & Kite)
+			local kiteDists = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
+			local perpOffsets = { 0, 2.0, -2.0, 4.5, -4.5, 7.0, -7.0 }
+			for _, kDist in ipairs(kiteDists) do
+				for _, pOff in ipairs(perpOffsets) do
+					local kitePos = playerPos + forward2D * kDist + perpRight * pOff
+					table.insert(trajCandidates, kitePos)
+				end
+			end
+		elseif isMovingBeam then
 			-- CHIẾN LƯỢC MOVING BEAM (Boss 2): Cho phép lùi sau đuôi beam đã quét qua
 			local fOffsets = { 0, -3, -6, -10 }
 			for _, fOff in ipairs(fOffsets) do
@@ -1432,12 +1583,30 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				continue
 			end
 
-			-- LỌC CHẶN TRIỆT ĐỂ: Tuyệt đối không chọn điểm nào nằm về phía trước theo hướng bay của chiêu (+forward2D)
+			-- Tránh né thẳng vào Boss Orb (nếu đang né chiêu khác mà có quả cầu ở gần):
+			if not isBossOrb and activeOrbPart and activeOrbPart.Position then
+				local dOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
+				if dOrb < 12.0 then
+					continue
+				end
+			end
+
+			-- LỌC CHẶN TRIỆT ĐỂ:
 			local toCand = candWorld - playerPos
 			if toCand.Magnitude > 0.5 then
 				local dotForward = toCand.Unit:Dot(forward2D)
-				if dotForward > 0.25 then
-					continue
+				if isBossOrb then
+					-- Với Quả Cầu (forward2D hướng từ Quả Cầu tới Player):
+					-- Tuyệt đối không chọn điểm chạy đâm đầu ngược lại vào Quả Cầu (dotForward < -0.25)
+					if dotForward < -0.25 then
+						continue
+					end
+				else
+					-- Với Tia bắn thẳng / Moving Beam (forward2D hướng theo chiều đạn bay):
+					-- Tuyệt đối không chọn điểm nằm về phía trước theo hướng bay của chiêu (dotForward > 0.25)
+					if dotForward > 0.25 then
+						continue
+					end
 				end
 			end
 
@@ -1448,7 +1617,21 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				local score = (moveDist * 1.6) - (clearance * 0.3)
 
 				local dotFwd = toCand.Magnitude > 0.5 and toCand.Unit:Dot(forward2D) or 0
-				if isMovingBeam and dotFwd < -0.2 then
+				if isBossOrb then
+					-- Thưởng lớn cho việc gia tăng khoảng cách an toàn với Quả Cầu (Kiting Safe Distance):
+					if activeOrbPart and activeOrbPart.Position then
+						local newDistOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
+						if newDistOrb < 15.0 then
+							score = score + (15.0 - newDistOrb) * 10.0 -- Phạt nặng nếu điểm ứng viên vẫn quá gần quả cầu
+						else
+							score = score - math.min(25.0, (newDistOrb - 15.0) * 2.0) -- Thưởng điểm cực lớn khi mở rộng cự ly an toàn
+						end
+					end
+					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
+					if dotPerp >= 0.65 then
+						score = score - 8.0 -- Thưởng lách sườn
+					end
+				elseif isMovingBeam and dotFwd < -0.2 then
 					-- Chỉ thưởng lùi ra sau cho Moving Beam của Boss 2!
 					score = score - 15.0
 				elseif not isMovingBeam then
@@ -1464,6 +1647,24 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				-- Ưu tiên kéo về tâm sàn đấu Boss 1 nếu đang dạt ra xa
 				if boss1ArenaCenter then
 					score = score + getBoss1ArenaScoreAdjustment(candWorld, playerPos)
+				end
+
+				-- Ưu tiên hướng Player đang chủ động di chuyển (Chống giật đổi hướng 180 độ):
+				if moveDir and moveDist > 0.5 then
+					local dotMove = toCand.Unit:Dot(moveDir)
+					if dotMove > 0.15 then
+						score = score - (dotMove * 5.0) -- Thưởng lớn cho hướng đang chạy
+					elseif dotMove < -0.15 then
+						score = score + (math.abs(dotMove) * 6.0) -- Phạt nặng việc quay xe giật lùi ngược hướng
+					end
+				end
+
+				-- Anti-Flicker Hysteresis: Ưu tiên duy trì điểm Safe Spot đã khóa trước đó
+				if lockedSafeSpot then
+					local distToLocked = (candWorld - lockedSafeSpot).Magnitude
+					if distToLocked < 3.0 then
+						score = score - 8.0
+					end
 				end
 
 				if score < fallbackScore then
@@ -1483,6 +1684,7 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			-- Fallback: Quét tỏa các góc LÙI VÀ NGANG thuần toán học (0 Raycast)
 			local fwdAngleDeg = math.deg(math.atan2(forward2D.Z, forward2D.X))
 			local testAngles = isMovingBeam and { 90, -90, 120, -120, 150, -150, 180 }
+				or isBossOrb and { 0, 15, -15, 30, -30, 45, -45, 60, -60 }
 				or { 90, -90, 75, -75, 105, -105, 60, -60, 120, -120 }
 			local backRadii = { 4.0, 7.0, 11.0, 16.0, 22.0 }
 
