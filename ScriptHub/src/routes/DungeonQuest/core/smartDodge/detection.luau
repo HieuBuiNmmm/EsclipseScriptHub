@@ -8,6 +8,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local macLib = require("@packages/Maclib")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local skillTimingManager = require("@routes/DungeonQuest/core/smartDodge/skillTimingManager")
 
 --// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
 local geometryRef
@@ -60,67 +61,6 @@ local KNOWN_SKILL_LIFETIMES = {
 	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
 }
 
---// Lưu trữ vĩnh viễn (Persistence) hồ sơ thời gian sống & thời điểm kích nổ sát thương của các kỹ năng ra file JSON
-local SETTINGS_FOLDER = macLib.Folder .. "/settings"
-local PROFILES_FILE = SETTINGS_FOLDER .. "/smartDodge_skills.json"
-
-local function loadSkillProfiles()
-	if not (isfile and isfile(PROFILES_FILE)) then return end
-	local ok, decoded = pcall(function()
-		return HttpService:JSONDecode(readfile(PROFILES_FILE))
-	end)
-	if ok and type(decoded) == "table" then
-		for skillName, data in pairs(decoded) do
-			if type(data) == "table" and type(data.avgLifetime) == "number" then
-				skillProfiles[skillName] = {
-					count = tonumber(data.count) or 1,
-					avgLifetime = tonumber(data.avgLifetime) or 2.0,
-					avgHitDelay = tonumber(data.avgHitDelay) or (tonumber(data.avgLifetime) * 0.75),
-					minLifetime = tonumber(data.minLifetime) or data.avgLifetime,
-					maxLifetime = tonumber(data.maxLifetime) or data.avgLifetime,
-				}
-			end
-		end
-		if logHazards then
-			print(("[SmartDodge] 📂 Loaded skill lifetime & hit profiles from %s"):format(PROFILES_FILE))
-		end
-	end
-end
-
-local isSavePending = false
-
-local function saveSkillProfilesNow()
-	if not (isfile and writefile) then return end
-	pcall(function()
-		if makefolder and isfolder then
-			if not isfolder(macLib.Folder) then makefolder(macLib.Folder) end
-			if not isfolder(SETTINGS_FOLDER) then makefolder(SETTINGS_FOLDER) end
-		end
-		writefile(PROFILES_FILE, HttpService:JSONEncode(skillProfiles))
-	end)
-end
-
-local function saveSkillProfiles()
-	if not (isfile and writefile) then return end
-	if isSavePending then return end
-	isSavePending = true
-
-	task.delay(1.5, function()
-		isSavePending = false
-		saveSkillProfilesNow()
-	end)
-end
-
--- Nạp ngay dữ liệu đã học từ file JSON của các phiên trước
-loadSkillProfiles()
-
--- Tự động lưu khi script shutdown
-lifecycle.Register(function()
-	if isSavePending then
-		isSavePending = false
-		saveSkillProfilesNow()
-	end
-end)
 local ignoredSkillNames = {
 	["DodgeNode_ESP"] = true,
 	["Enhanced Aura Ring"] = true,
@@ -877,6 +817,11 @@ local function isPlayerAsset(instance)
 	local instNameLower = instNameClean:lower():gsub("%s+", "")
 
 	-- 0. Ngoại lệ chiêu của Boss / Enemy -> Tuyệt đối không phải của Player
+	local repEnemyProj = ReplicatedStorage:FindFirstChild("enemyProjectiles")
+	if repEnemyProj and (repEnemyProj:FindFirstChild(instance.Name, true) or repEnemyProj:FindFirstChild(instNameClean, true)) then
+		return false
+	end
+
 	if CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
 		or instNameLower:find("boss")
 		or instNameLower:find("enemy")
@@ -1180,14 +1125,8 @@ end
 
 --// Ước tính tổng thời gian tồn tại và thời điểm kích nổ sát thương (Total Lifetime & Hit Delay)
 local function getEstimatedSkillLifetime(skillName)
-	local prof = skillProfiles[skillName]
-	if prof and prof.avgLifetime then
-		local hitDelay = prof.avgHitDelay
-		if not hitDelay then
-			local known = KNOWN_SKILL_LIFETIMES[skillName]
-			hitDelay = (type(known) == "table" and known.hitDelay) or (prof.avgLifetime * 0.70)
-		end
-		return prof.avgLifetime, hitDelay
+	if skillTimingManager then
+		return skillTimingManager.GetSkillTiming(skillName)
 	end
 	local known = KNOWN_SKILL_LIFETIMES[skillName]
 	if known then
@@ -1304,7 +1243,10 @@ local function registerHazard(instance)
 	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] then return end
 
 	-- FAST REJECTION (Tầng 1): Nếu phòng đã dọn sạch quái và không ở Boss room -> Bỏ qua
-	if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then return end
+	-- Ngoại lệ: khi đang bật Huấn luyện (Recording) thì không bỏ qua để đảm bảo bắt trọn mọi chiêu thức
+	if not (skillTimingManager and skillTimingManager.IsRecording()) then
+		if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then return end
+	end
 
 	-- FAST REJECTION: Trích xuất part hiểm họa trước.
 	-- Nếu không có part Neon và không thuộc ngoại lệ -> Bỏ qua ngay lập tức trong 0.0001ms mà KHÔNG chạy isPlayerAsset
@@ -1379,6 +1321,7 @@ local function registerHazard(instance)
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Position = pos,
+		SpawnPosition = pos,
 		Distance = dist,
 		NeonCount = #hazardParts,
 		SpawnTime = os.clock(),
@@ -1653,38 +1596,42 @@ function unregisterHazard(instance, reason)
 		info.TimerLabel = nil
 	end
 
-	-- Cập nhật thống kê thời gian sống & thời điểm nháy kích nổ sát thương (Skill Lifetime & Hit Profiler)
-	if autoLearnSkillLifetimes and info.SpawnTime then
+	-- Nếu đang bật chế độ Huấn luyện chơi chay (Manual Training): Ghi nhận nhịp chiêu vào RAM buffer
+	if skillTimingManager and skillTimingManager.IsRecording() and info.SpawnTime then
 		local duration = os.clock() - info.SpawnTime
 		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
 
-		-- Nếu không bắt được HitTime qua visual/sound, lấy ước tính chuẩn
-		if not hitDelay or hitDelay < 0.1 or hitDelay > duration then
+		-- Nhận diện xem chiêu thức có phải là Projectile / Đạn bay di chuyển hay không
+		local currentPos = getInstancePosition(instance, nil)
+		local travelDist = (currentPos - (info.SpawnPosition or info.Position or Vector3.zero)).Magnitude
+		local nameClean = (info.Name or ""):lower():gsub("%s+", "")
+		local isProjectile = (TRAJECTORY_PROJECTILE_CONFIGS[nameClean] ~= nil)
+			or (nameClean:find("projectile") ~= nil)
+			or (nameClean:find("missile") ~= nil)
+			or (nameClean:find("orb") ~= nil)
+			or (nameClean:find("bullet") ~= nil)
+			or (nameClean:find("ball") ~= nil)
+			or (nameClean:find("movingbeam") ~= nil)
+			or (nameClean:find("crisscross") ~= nil)
+			or (nameClean:find("seekingspike") ~= nil)
+			or (travelDist >= 6.0)
+
+		if isProjectile then
+			-- Chiêu projectile gây sát thương xuyên suốt toàn bộ vòng đời bay (HitDelay = 0.0s)
+			hitDelay = 0.0
+		elseif not hitDelay or hitDelay < 0.1 or hitDelay > duration then
 			local _, defaultHit = getEstimatedSkillLifetime(info.Name)
 			hitDelay = math.min(defaultHit, duration * 0.75)
 		end
 
 		if duration >= 0.2 and duration <= 25.0 then
-			local prof = skillProfiles[info.Name]
-			if not prof then
-				prof = {
-					count = 1,
-					avgLifetime = duration,
-					avgHitDelay = hitDelay,
-					minLifetime = duration,
-					maxLifetime = duration,
-				}
-				skillProfiles[info.Name] = prof
-			else
-				prof.count = prof.count + 1
-				local weight = math.min(prof.count, 8)
-				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / weight
-				prof.avgHitDelay = (prof.avgHitDelay or hitDelay) + (hitDelay - (prof.avgHitDelay or hitDelay)) / weight
-				prof.minLifetime = math.min(prof.minLifetime, duration)
-				prof.maxLifetime = math.max(prof.maxLifetime, duration)
-			end
-			-- Tự động lưu hồ sơ đã học vào file JSON
-			saveSkillProfiles()
+			skillTimingManager.RecordSkill(info.Name, duration, hitDelay, isProjectile)
+			local typeTag = isProjectile and "🚀 Projectile" or "💥 AoE"
+			print(("[SkillTiming] 📝 Recorded: '%s' [%s] | Lifetime: %.2fs | HitDelay: %.2fs (%s)")
+				:format(info.Name, typeTag, duration, hitDelay, reason or "Despawned"))
+		else
+			print(("[SkillTiming] ⚠️ Skipped '%s': duration %.2fs out of range [0.2, 25.0]")
+				:format(info.Name, duration))
 		end
 	end
 
@@ -2434,7 +2381,8 @@ function detection.IsAutoLearnSkillLifetimesEnabled()
 	return autoLearnSkillLifetimes
 end
 
-detection.SaveSkillProfiles = saveSkillProfilesNow
-detection.LoadSkillProfiles = loadSkillProfiles
+detection.SaveSkillProfiles = skillTimingManager.SaveRecordedData
+detection.LoadSkillProfiles = skillTimingManager.LoadMapData
+detection.skillTimingManager = skillTimingManager
 
 return detection

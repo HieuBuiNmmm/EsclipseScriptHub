@@ -26,6 +26,7 @@ geometry.BindDetection({
 local player = services.player
 
 --// State
+local isEngineActive = false
 local isPlayerInDanger = false
 local currentSafeSpot = nil
 local currentDangerHazardName = nil
@@ -63,7 +64,7 @@ local function startSafeSpotLoop()
 	if safeSpotLoopThread then return end
 	safeSpotLoopThread = task.spawn(function()
 		local lastLogTime = 0
-		while detection.IsEnabled() do
+		while isEngineActive do
 			-- Tầng 1: Nếu không ở Boss Room và toàn bộ quái trong phòng đã chết -> Dọn sạch toàn bộ hazard tồn đọng
 			if not shared.IsBossActive() and shared.GetEnemyCount() == 0 and detection.GetHazardCount() > 0 then
 				detection.ClearAllHazards("Room Cleared")
@@ -173,15 +174,23 @@ end
 --// Bật/thay đổi engine KHÔNG liên quan tới độc quyền coordinator: Auto Farm có thể điều khiển
 --// Smart Dodge làm chủ di chuyển (Mode 2) mà không đụng chạy tới các hệ thống khác.
 function engine.StartEngine()
-	if detection.IsEnabled() then return end
+	if isEngineActive then return end
+	isEngineActive = true
 	detection.SetEnabled(true)
 	startTracking()
 end
 
 function engine.StopEngine()
-	if not detection.IsEnabled() then return end
-	detection.SetEnabled(false)
-	stopTracking()
+	if not isEngineActive then return end
+	isEngineActive = false
+	stopSafeSpotLoop()
+
+	-- Chỉ dừng bộ quét detection nếu tính năng Record cũng không đang chạy
+	local skillTimingManager = detection.skillTimingManager
+	if not (skillTimingManager and skillTimingManager.IsRecording()) then
+		detection.SetEnabled(false)
+		detection.StopScan()
+	end
 end
 
 --// Toggle độc lập (UI): bật engine + tự tuyên bố độc quyền (tắt các hệ thống điều khiển nhân vật khác).
@@ -195,11 +204,12 @@ function engine.Toggle(state)
 end
 
 function engine.IsEnabled()
-	return detection.IsEnabled()
+	return isEngineActive
 end
 
 --// Dọn dẹp toàn diện khi shutdown (lifecycle): dừng tracking + hủy visual hoàn toàn
 function engine.Shutdown()
+	isEngineActive = false
 	stopTracking()
 	safeSpot.DestroyVisuals()
 	detection.ClearTrajectoryVisuals()

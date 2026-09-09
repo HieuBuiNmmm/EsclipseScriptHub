@@ -13,12 +13,33 @@ local dodge = require("@routes/DungeonQuest/core/smartDodge/dodge")
 local engine = require("@routes/DungeonQuest/core/smartDodge/engine")
 local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
 local speedDebugHud = require("@routes/DungeonQuest/core/smartDodge/speedDebugHud")
+local skillTimingManager = require("@routes/DungeonQuest/core/smartDodge/skillTimingManager")
 local shared = require("@routes/DungeonQuest/core/shared")
 
 --// Table
 local smartDodge = {}
 
+--// Skill Timing & Training
+smartDodge.skillTiming = skillTimingManager
+smartDodge.SetSkillTimingMode = skillTimingManager.SetMode
+smartDodge.GetSkillTimingMode = skillTimingManager.GetMode
+smartDodge.SetSelectedSkillMap = skillTimingManager.SetSelectedMap
+smartDodge.GetSelectedSkillMap = skillTimingManager.GetSelectedMap
+smartDodge.LoadSkillMapData = skillTimingManager.LoadMapData
+smartDodge.SetSkillRecordingEnabled = skillTimingManager.SetRecordingEnabled
+smartDodge.IsSkillRecordingEnabled = skillTimingManager.IsRecording
+smartDodge.SaveRecordedSkillData = skillTimingManager.SaveRecordedData
+smartDodge.ClearRecordedSkillSession = skillTimingManager.ClearRecordedSession
+smartDodge.GetLoadedSkillCount = skillTimingManager.GetLoadedSkillCount
+smartDodge.GetRecordedSkillCount = skillTimingManager.GetRecordedSkillCount
+smartDodge.GetTotalSamplesCount = skillTimingManager.GetTotalSamplesCount
+smartDodge.OnSkillTimingChanged = skillTimingManager.OnChanged
+
 --// Threat Detection (Module 1)
+smartDodge.StartDetection = detection.StartScan
+smartDodge.StopDetection = detection.StopScan
+smartDodge.IsDetectionEnabled = detection.IsEnabled
+smartDodge.SetDetectionEnabled = detection.SetEnabled
 smartDodge.AddCustomHazard = detection.AddCustomHazard
 smartDodge.AddTrajectoryProjectile = detection.AddTrajectoryProjectile
 smartDodge.SetTrajectoryLookahead = detection.SetTrajectoryLookahead
@@ -38,13 +59,7 @@ smartDodge.SetVisualEsp = detection.SetVisualEsp
 smartDodge.IsVisualEspEnabled = detection.IsVisualEspEnabled
 smartDodge.SetShowSkillTimers = detection.SetShowSkillTimers
 smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
-smartDodge.SetAutoLearnSkillLifetimes = detection.SetAutoLearnSkillLifetimes
-smartDodge.IsAutoLearnSkillLifetimesEnabled = detection.IsAutoLearnSkillLifetimesEnabled
 smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
-smartDodge.GetSkillProfile = detection.GetSkillProfile
-smartDodge.GetAllSkillProfiles = detection.GetAllSkillProfiles
-smartDodge.SaveSkillProfiles = detection.SaveSkillProfiles
-smartDodge.LoadSkillProfiles = detection.LoadSkillProfiles
 
 smartDodge.GetHazardCount = detection.GetHazardCount
 smartDodge.GetActiveHazards = detection.GetActiveHazards

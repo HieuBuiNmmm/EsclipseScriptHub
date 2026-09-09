@@ -362,14 +362,6 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeSkillTimers")
 
 	leftSection:Toggle({
-		Name = "Auto Learn Skill Lifetimes (Save JSON)",
-		Default = smartDodge.IsAutoLearnSkillLifetimesEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			smartDodge.SetAutoLearnSkillLifetimes(state)
-		end),
-	}, "Toggle_SmartDodgeAutoLearnSkills")
-
-	leftSection:Toggle({
 		Name = "Show Safe Spot Marker (Green ESP)",
 		Default = smartDodge.IsShowSafeMarkerEnabled(),
 		Callback = autoSave.Wrap(function(state)

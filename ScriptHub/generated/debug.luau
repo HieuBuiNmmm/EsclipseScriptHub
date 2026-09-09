@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-09T11:13:06.283446600+00:00",
+    genDate = "2026-09-09T13:05:37.416652100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7289,7 +7289,663 @@ function coordinator.IsEnabled(name)
 	return feat ~= nil and feat.isEnabled()
 end
 
-return coordinator end function __DIST.k()-- Smart Dodge – Module 2: Geometry & Hazard Hit-testing (DungeonQuest).
+return coordinator end function __DIST.k()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+-- Map thường: fetch động qua remote getDungeonStats (có cache).
+-- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
+
+--// Data
+
+local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
+
+local DUNGEONS = {
+	"Desert Temple",
+	"Winter Outpost",
+	"Pirate Island",
+	"King's Castle",
+	"The Underworld",
+	"Samurai Palace",
+	"The Canals",
+	"Ghastly Harbor",
+	"Steampunk Sewers",
+	"Orbital Outpost",
+	"Volcanic Chambers",
+	"Aquatic Temple",
+	"Enchanted Forest",
+	"Egg Island",
+	"Krampus",
+	"Tutorial Dungeon",
+}
+
+local SPECIAL_DUNGEONS = {
+	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
+	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
+	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
+}
+
+--// Table
+local dungeonCatalog = {}
+
+--// Cache
+local statsCache = {}
+local dynamicDungeons = nil
+
+--// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
+local HttpService = game:GetService("HttpService")
+local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
+
+local function persistMapList(list)
+	if not (isfile and writefile and makefolder and isfolder) then return end
+	pcall(function()
+		if not isfolder("Maclib") then makefolder("Maclib") end
+	end)
+	pcall(function()
+		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
+	end)
+end
+
+local function loadPersistedMapList()
+	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
+	end)
+	if not ok or typeof(data) ~= "table" then return nil end
+
+	local list = {}
+	for _, name in ipairs(data) do
+		if type(name) == "string" and #name > 0 then
+			table.insert(list, name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+local function mergeDungeonLists(primary)
+	local seen = {}
+	local merged = {}
+	for _, name in ipairs(primary or {}) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	for _, name in ipairs(DUNGEONS) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	return merged
+end
+
+--// Helpers
+local function findScrollingFrame()
+	local player = game:GetService("Players").LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local queueGui = playerGui:FindFirstChild("queueGui")
+	if not queueGui then return nil end
+	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
+	if not chooseDungeon then return nil end
+	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
+	if not backgroundFillLeft then return nil end
+	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
+end
+
+local function collectDungeonsFromUi()
+	local scrollingFrame = findScrollingFrame()
+	if not scrollingFrame then return nil end
+
+	local list = {}
+	for _, child in ipairs(scrollingFrame:GetChildren()) do
+		if child:IsA("ImageLabel") and #child.Name > 0 then
+			table.insert(list, child.Name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+--// Methods
+function dungeonCatalog.GetDungeons()
+	if dynamicDungeons then return dynamicDungeons end
+
+	local uiList = collectDungeonsFromUi()
+	if uiList then
+		local merged = mergeDungeonLists(uiList)
+		dynamicDungeons = merged
+		persistMapList(merged)
+		return merged
+	end
+
+	local persisted = loadPersistedMapList()
+	if persisted then
+		local merged = mergeDungeonLists(persisted)
+		dynamicDungeons = merged
+		return merged
+	end
+
+	return DUNGEONS
+end
+
+function dungeonCatalog.RefreshDungeons()
+	dynamicDungeons = nil
+	return dungeonCatalog.GetDungeons()
+end
+
+function dungeonCatalog.GetDungeonStats(name)
+	if type(name) ~= "string" or #name == 0 then return nil end
+	if statsCache[name] ~= nil then return statsCache[name] end
+
+	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
+	if not getStats then return nil end
+
+	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
+	if ok and typeof(result) == "table" then
+		statsCache[name] = result
+		return result
+	end
+	return nil
+end
+
+function dungeonCatalog.GetAllowedDifficulties(name)
+	if type(name) ~= "string" then return DIFFICULTIES end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.Difficulties end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	local allowed = {}
+	if stats then
+		for _, difficulty in ipairs(DIFFICULTIES) do
+			if stats[difficulty] then table.insert(allowed, difficulty) end
+		end
+	end
+	if #allowed > 0 then return allowed end
+	return DIFFICULTIES
+end
+
+function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
+	if type(difficulty) ~= "string" then return false end
+	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
+		if option == difficulty then return true end
+	end
+	return false
+end
+
+function dungeonCatalog.GetLevelReq(name, difficulty)
+	if type(name) ~= "string" then return 0 end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.LevelReq or 0 end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	if stats and type(difficulty) == "string" and stats[difficulty] then
+		return tonumber(stats[difficulty].levelReq) or 0
+	end
+	return 0
+end
+
+--// Table
+dungeonCatalog.DUNGEONS = DUNGEONS
+dungeonCatalog.DIFFICULTIES = DIFFICULTIES
+
+return dungeonCatalog end function __DIST.l()--==============================================================--
+-- Smart Dodge – Skill Timing Manager
+-- Quản lý dữ liệu thời gian tồn tại (lifetime) và điểm nổ (hit delay) của chiêu thức.
+-- Hỗ trợ 2 chế độ riêng biệt:
+--   1. "Default Preset": Dùng bảng số liệu cứng chuẩn đã đo đạc (Zero I/O, cực kỳ ổn định)
+--   2. "Trained Preset": Dùng dữ liệu JSON được huấn luyện riêng theo từng Map (Zero I/O khi né, nạp 1 lần vào RAM)
+-- Chế độ Huấn luyện (Recording):
+--   - Người chơi tự chơi chay trong map để thu thập nhịp chiêu thức
+--   - Toàn bộ dữ liệu ghi nhận lưu tạm trong RAM, chỉ ghi ra file khi người chơi chủ động bấm Save
+--==============================================================--
+
+
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
+local dungeonCatalog = __DIST.load('k')
+local notifier = __DIST.load('c')
+local macLib = __DIST.load('a')
+
+local HttpService = game:GetService("HttpService")
+
+local skillTimingManager = {}
+
+--// Bảng Preset mặc định chuẩn (Hardcoded Presets)
+local DEFAULT_PRESETS = {
+	["mediumIceSpikes"] = { hitDelay = 1.1, totalLifetime = 1.5, isProjectile = false, skillType = "AoE" },
+	["largeIceSpikes"] = { hitDelay = 1.4, totalLifetime = 1.8, isProjectile = false, skillType = "AoE" },
+	["thirdBossMultiRings"] = { hitDelay = 2.0, totalLifetime = 2.8, isProjectile = false, skillType = "AoE" },
+	["firstBossCrissCross"] = { hitDelay = 0.0, totalLifetime = 2.2, isProjectile = true, skillType = "Projectile" },
+	["firstBossSeekingSpikes"] = { hitDelay = 0.0, totalLifetime = 2.5, isProjectile = true, skillType = "Projectile" },
+	["firstBossBigSpike"] = { hitDelay = 0.0, totalLifetime = 2.0, isProjectile = true, skillType = "Projectile" },
+	["firstBossBeamPart"] = { hitDelay = 0.0, totalLifetime = 2.0, isProjectile = true, skillType = "Projectile" },
+	["secondBossMovingBeam"] = { hitDelay = 0.0, totalLifetime = 3.5, isProjectile = true, skillType = "Projectile" },
+	["secondbossyelloworb"] = { hitDelay = 0.0, totalLifetime = 4.0, isProjectile = true, skillType = "Projectile" },
+	["secondbossredorb"] = { hitDelay = 0.0, totalLifetime = 4.0, isProjectile = true, skillType = "Projectile" },
+	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0, isProjectile = true, skillType = "Projectile" },
+	["thirdBossMissile"] = { hitDelay = 0.0, totalLifetime = 3.5, isProjectile = true, skillType = "Projectile" },
+}
+
+--// Thư mục lưu dữ liệu theo Map
+local SKILLS_FOLDER = macLib.Folder .. "/skills_data"
+
+local function ensureFolder()
+	if makefolder and isfolder then
+		pcall(function()
+			if not isfolder(macLib.Folder) then makefolder(macLib.Folder) end
+			if not isfolder(SKILLS_FOLDER) then makefolder(SKILLS_FOLDER) end
+		end)
+	end
+end
+
+--// Trạng thái vận hành
+local currentMode = "Default Preset" -- "Default Preset" | "Trained Preset"
+local selectedMap = nil
+
+-- RAM Data cho Mode 2 (Trained Preset)
+local loadedTrainedData = {}
+local loadedSkillCount = 0
+
+-- RAM Data cho Huấn luyện Chơi chay (Recording Session)
+local isRecording = false
+local recordedSessionData = {}
+local recordedSkillCount = 0
+local totalSamplesCount = 0
+
+local changeListeners = {}
+
+local function fireChange()
+	for _, cb in ipairs(changeListeners) do
+		pcall(cb, {
+			mode = currentMode,
+			selectedMap = selectedMap,
+			loadedCount = loadedSkillCount,
+			isRecording = isRecording,
+			recordedCount = recordedSkillCount,
+			totalSamples = totalSamplesCount,
+		})
+	end
+end
+
+-- Chuẩn hóa tên file an toàn cho hệ thống tệp
+local function sanitizeFileName(name)
+	if not name or #name == 0 then return "Unknown" end
+	return (name:gsub("[\\/:*?\"<>|]", "_"))
+end
+
+local function getFilePathForMap(mapName)
+	ensureFolder()
+	return SKILLS_FOLDER .. "/" .. sanitizeFileName(mapName) .. ".json"
+end
+
+--// ĐỌC DỮ LIỆU MAP VÀO RAM (Chỉ đọc 1 lần khi chọn map hoặc vào phòng)
+function skillTimingManager.LoadMapData(mapName)
+	mapName = mapName or selectedMap or shared.GetCurrentDungeonName() or "Unknown"
+	local filePath = getFilePathForMap(mapName)
+
+	table.clear(loadedTrainedData)
+	loadedSkillCount = 0
+
+	if isfile and isfile(filePath) then
+		local ok, content = pcall(readfile, filePath)
+		if ok and content and #content > 0 then
+			local parseOk, parsed = pcall(function() return HttpService:JSONDecode(content) end)
+			if parseOk and type(parsed) == "table" then
+				for skillName, data in pairs(parsed) do
+					if type(data) == "table" and type(data.avgLifetime) == "number" then
+						loadedTrainedData[skillName] = {
+							totalLifetime = tonumber(data.avgLifetime) or 2.0,
+							hitDelay = tonumber(data.avgHitDelay) or (tonumber(data.avgLifetime) * 0.75),
+							count = tonumber(data.count) or 1,
+							minLifetime = tonumber(data.minLifetime),
+							maxLifetime = tonumber(data.maxLifetime),
+							isProjectile = data.isProjectile == true,
+							skillType = data.skillType or (data.isProjectile and "Projectile" or "AoE"),
+						}
+						loadedSkillCount = loadedSkillCount + 1
+					end
+				end
+			end
+		end
+	end
+
+	fireChange()
+	return loadedSkillCount
+end
+
+--// LẤY DỮ LIỆU TIMING (Được Smart Dodge / 3D Countdown gọi mỗi frame - 100% TRÊN RAM)
+function skillTimingManager.GetSkillTiming(skillName)
+	if currentMode == "Trained Preset" then
+		local trained = loadedTrainedData[skillName]
+		if trained and trained.totalLifetime then
+			local hitDelay = trained.hitDelay
+			if trained.isProjectile or hitDelay == 0 then
+				hitDelay = 0.0
+			end
+			return trained.totalLifetime, (hitDelay or (trained.totalLifetime * 0.75))
+		end
+	end
+
+	-- Mode 1 hoặc fallback: Bảng cứng Preset
+	local preset = DEFAULT_PRESETS[skillName]
+	if preset then
+		return preset.totalLifetime or 2.0, preset.hitDelay or 1.5
+	end
+
+	return 2.5, 1.8
+end
+
+--// CHẾ ĐỘ HUẤN LUYỆN CHƠI CHAY (MANUAL TRAINING)
+function skillTimingManager.SetRecordingEnabled(state)
+	isRecording = state and true or false
+	if isRecording then
+		notifier.Notify("Skill Training", "Bắt đầu thu thập dữ liệu skill (Chơi chay)! Hãy tự né và đánh Boss.", 4)
+	else
+		notifier.Notify("Skill Training", ("Đã dừng ghi nhận. Thu thập được %d chiêu thức."):format(recordedSkillCount), 3)
+	end
+	fireChange()
+end
+
+function skillTimingManager.IsRecording()
+	return isRecording
+end
+
+-- Ghi nhận 1 skill vào RAM buffer (hoàn toàn không đụng file I/O)
+function skillTimingManager.RecordSkill(skillName, duration, hitDelay, isProjectile)
+	if not isRecording then return end
+	if not skillName or not duration or duration < 0.2 or duration > 30.0 then return end
+
+	totalSamplesCount = totalSamplesCount + 1
+
+	if isProjectile then
+		hitDelay = 0.0
+	end
+
+	local rec = recordedSessionData[skillName]
+	if not rec then
+		local isProj = isProjectile and true or false
+		recordedSessionData[skillName] = {
+			count = 1,
+			avgLifetime = duration,
+			avgHitDelay = hitDelay or 0.0,
+			minLifetime = duration,
+			maxLifetime = duration,
+			isProjectile = isProj,
+			skillType = isProj and "Projectile" or "AoE",
+		}
+		recordedSkillCount = recordedSkillCount + 1
+	else
+		rec.count = rec.count + 1
+		rec.isProjectile = rec.isProjectile or (isProjectile and true or false)
+		rec.skillType = rec.isProjectile and "Projectile" or "AoE"
+
+		if rec.isProjectile then
+			-- Với Projectile: Sát thương gây ra liên tục suốt hành trình bay
+			rec.avgHitDelay = 0.0
+
+			-- Xử lý va chạm nổ sớm (Loại 1) vs Đạn xuyên thấu (Loại 2):
+			-- Nếu duration quá ngắn so với thời gian bay tối đa từng đo (< 60% maxLifetime),
+			-- đây là trường hợp đạn va chạm người chơi/tường nổ sớm -> Không kéo tụt avgLifetime!
+			if duration >= (rec.maxLifetime * 0.60) then
+				local weight = math.min(rec.count, 8)
+				rec.avgLifetime = rec.avgLifetime + (duration - rec.avgLifetime) / weight
+			end
+			rec.maxLifetime = math.max(rec.maxLifetime, duration)
+			rec.minLifetime = math.min(rec.minLifetime, duration)
+		else
+			-- Với AoE / Telegraph nổ mặt đất:
+			local weight = math.min(rec.count, 8)
+			rec.avgLifetime = rec.avgLifetime + (duration - rec.avgLifetime) / weight
+			if hitDelay then
+				rec.avgHitDelay = (rec.avgHitDelay or hitDelay) + (hitDelay - (rec.avgHitDelay or hitDelay)) / weight
+			end
+			rec.minLifetime = math.min(rec.minLifetime, duration)
+			rec.maxLifetime = math.max(rec.maxLifetime, duration)
+		end
+	end
+
+	local tag = rec.isProjectile and "🚀 Projectile" or "💥 AoE"
+	print(("[SkillTimingManager] ✅ Recorded '%s' [%s] (hits: %d, avgLife: %.2fs, hitDelay: %.2fs) | RAM: %d unique, %d total hits")
+		:format(skillName, tag, rec.count, rec.avgLifetime, rec.avgHitDelay or 0, recordedSkillCount, totalSamplesCount))
+
+	fireChange()
+end
+
+-- Đóng gói dữ liệu Map thành định dạng JSON chuẩn có thụt dòng đẹp, dễ đọc, ưu tiên trường isProjectile và skillType
+local function serializeSkillData(data)
+	local lines = { "{\n" }
+	local sortedKeys = {}
+	for k in pairs(data) do
+		table.insert(sortedKeys, k)
+	end
+	table.sort(sortedKeys)
+
+	for i, skillName in ipairs(sortedKeys) do
+		local info = data[skillName]
+		local isProj = (info.isProjectile == true)
+		local skillType = info.skillType or (isProj and "Projectile" or "AoE")
+		local avgLife = tonumber(info.avgLifetime) or 2.0
+		local hitDelay = tonumber(info.avgHitDelay) or (isProj and 0.0 or 1.5)
+		local count = tonumber(info.count) or 1
+		local minLife = tonumber(info.minLifetime) or avgLife
+		local maxLife = tonumber(info.maxLifetime) or avgLife
+
+		local comma = (i < #sortedKeys) and "," or ""
+		table.insert(lines, string.format('  %q: {\n', skillName))
+		table.insert(lines, string.format('    "skillType": %q,\n', skillType))
+		table.insert(lines, string.format('    "isProjectile": %s,\n', isProj and "true" or "false"))
+		table.insert(lines, string.format('    "avgLifetime": %.2f,\n', avgLife))
+		table.insert(lines, string.format('    "avgHitDelay": %.2f,\n', hitDelay))
+		table.insert(lines, string.format('    "count": %d,\n', count))
+		table.insert(lines, string.format('    "minLifetime": %.2f,\n', minLife))
+		table.insert(lines, string.format('    "maxLifetime": %.2f\n', maxLife))
+		table.insert(lines, "  }" .. comma .. "\n")
+	end
+	table.insert(lines, "}")
+	return table.concat(lines)
+end
+
+-- Lưu RAM buffer ra file của Map (Chỉ chạy 1 lần khi người chơi bấm nút Save)
+function skillTimingManager.SaveRecordedData(targetMapName)
+	targetMapName = targetMapName or selectedMap or shared.GetCurrentDungeonName() or "Unknown"
+	if not (writefile and isfile) then
+		notifier.Notify("Training Error", "Executor không hỗ trợ writefile!", 3)
+		return false, 0
+	end
+
+	if recordedSkillCount == 0 then
+		notifier.Notify("Skill Training", "Chưa có dữ liệu skill nào được ghi trong phiên chơi!", 3)
+		return false, 0
+	end
+
+	local filePath = getFilePathForMap(targetMapName)
+	local existingData = {}
+
+	if isfile(filePath) then
+		pcall(function()
+			local raw = readfile(filePath)
+			if raw and #raw > 0 then
+				local parsed = HttpService:JSONDecode(raw)
+				if type(parsed) == "table" then
+					existingData = parsed
+				end
+			end
+		end)
+	end
+
+	-- Merge session data vào existing data
+	local mergedCount = 0
+	for sName, sData in pairs(recordedSessionData) do
+		local old = existingData[sName]
+		if not old then
+			sData.isProjectile = sData.isProjectile and true or false
+			sData.skillType = sData.isProjectile and "Projectile" or "AoE"
+			existingData[sName] = sData
+		else
+			old.count = (old.count or 1) + (sData.count or 1)
+			if sData.isProjectile or old.isProjectile then
+				old.isProjectile = true
+				old.skillType = "Projectile"
+				old.avgHitDelay = 0.0
+				old.maxLifetime = math.max(old.maxLifetime or sData.maxLifetime, sData.maxLifetime)
+				old.minLifetime = math.min(old.minLifetime or sData.minLifetime, sData.minLifetime)
+				old.avgLifetime = math.max(old.avgLifetime or 0, sData.avgLifetime or 0)
+			else
+				old.isProjectile = false
+				old.skillType = "AoE"
+				old.avgLifetime = (old.avgLifetime + sData.avgLifetime) / 2
+				old.avgHitDelay = ((old.avgHitDelay or old.avgLifetime * 0.75) + (sData.avgHitDelay or sData.avgLifetime * 0.75)) / 2
+				old.minLifetime = math.min(old.minLifetime or sData.minLifetime, sData.minLifetime)
+				old.maxLifetime = math.max(old.maxLifetime or sData.maxLifetime, sData.maxLifetime)
+			end
+		end
+		mergedCount = mergedCount + 1
+	end
+
+	local saveOk = pcall(function()
+		ensureFolder()
+		local jsonText
+		local encodeOk, encoded = pcall(serializeSkillData, existingData)
+		if encodeOk and encoded and #encoded > 0 then
+			jsonText = encoded
+		else
+			jsonText = HttpService:JSONEncode(existingData)
+		end
+		writefile(filePath, jsonText)
+	end)
+
+	if saveOk then
+		-- Tự động nạp luôn vào bộ nhớ cho Mode 2
+		skillTimingManager.LoadMapData(targetMapName)
+		notifier.Notify("Skill Training", ("Đã lưu thành công %d chiêu thức vào map [%s]!"):format(mergedCount, targetMapName), 4)
+		table.clear(recordedSessionData)
+		recordedSkillCount = 0
+		totalSamplesCount = 0
+		fireChange()
+		return true, mergedCount
+	else
+		notifier.Notify("Training Error", "Lỗi trong quá trình ghi file!", 3)
+		return false, 0
+	end
+end
+
+function skillTimingManager.ClearRecordedSession()
+	table.clear(recordedSessionData)
+	recordedSkillCount = 0
+	totalSamplesCount = 0
+	fireChange()
+	notifier.Notify("Skill Training", "Đã xóa bộ nhớ đệm phiên huấn luyện.", 2)
+end
+
+-- In dữ liệu phiên huấn luyện (Buffer trong RAM) ra console F9
+function skillTimingManager.PrintRecordedData()
+	print("================ [SkillTiming] Recorded Session Buffer ================")
+	local count = 0
+	for name, data in pairs(recordedSessionData) do
+		count = count + 1
+		local tag = data.isProjectile and "🚀 Projectile" or "💥 AoE"
+		print(string.format("[%d] '%s' [%s] | avgLife: %.2fs | hitDelay: %.2fs | hits: %d (min: %.2fs, max: %.2fs)",
+			count, name, tag, data.avgLifetime or 0, data.avgHitDelay or 0, data.count or 1, data.minLifetime or 0, data.maxLifetime or 0))
+	end
+	if count == 0 then
+		print("No skills recorded in current session buffer.")
+	end
+	print("=======================================================================")
+	return count
+end
+
+-- In dữ liệu Map đã nạp vào RAM ra console F9
+function skillTimingManager.PrintLoadedMapData()
+	local mapName = selectedMap or shared.GetCurrentDungeonName() or "Unknown"
+	print(string.format("================ [SkillTiming] Loaded RAM Data for [%s] ================", mapName))
+	local count = 0
+	for name, data in pairs(loadedTrainedData) do
+		count = count + 1
+		local tag = data.isProjectile and "🚀 Projectile" or "💥 AoE"
+		print(string.format("[%d] '%s' [%s] | avgLife: %.2fs | hitDelay: %.2fs | hits: %d",
+			count, name, tag, data.totalLifetime or 0, data.hitDelay or 0, data.count or 1))
+	end
+	if count == 0 then
+		print("No trained skills loaded for this map.")
+	end
+	print("=======================================================================")
+	return count
+end
+
+--// GETTERS & SETTERS
+function skillTimingManager.SetMode(mode)
+	if mode == "Default Preset" or mode == "Trained Preset" then
+		currentMode = mode
+		if currentMode == "Trained Preset" then
+			skillTimingManager.LoadMapData(selectedMap)
+		end
+		fireChange()
+	end
+end
+
+function skillTimingManager.GetMode()
+	return currentMode
+end
+
+function skillTimingManager.SetSelectedMap(mapName)
+	if mapName and #mapName > 0 then
+		selectedMap = mapName
+		if currentMode == "Trained Preset" then
+			skillTimingManager.LoadMapData(selectedMap)
+		end
+		fireChange()
+	end
+end
+
+function skillTimingManager.GetSelectedMap()
+	if not selectedMap then
+		selectedMap = shared.GetCurrentDungeonName()
+		if not selectedMap or #selectedMap == 0 then
+			local dList = dungeonCatalog.GetDungeons()
+			selectedMap = (dList and dList[1]) or "Desert Temple"
+		end
+	end
+	return selectedMap
+end
+
+function skillTimingManager.GetLoadedSkillCount()
+	return loadedSkillCount
+end
+
+function skillTimingManager.GetRecordedSkillCount()
+	return recordedSkillCount
+end
+
+function skillTimingManager.GetTotalSamplesCount()
+	return totalSamplesCount
+end
+
+function skillTimingManager.GetDefaultPresets()
+	return DEFAULT_PRESETS
+end
+
+function skillTimingManager.OnChanged(callback)
+	if type(callback) == "function" then
+		table.insert(changeListeners, callback)
+	end
+end
+
+-- Tự động nhận diện map khi vào Dungeon mới
+task.spawn(function()
+	while true do
+		local curDungeon = shared.GetCurrentDungeonName()
+		if curDungeon and curDungeon ~= selectedMap and currentMode == "Trained Preset" then
+			selectedMap = curDungeon
+			skillTimingManager.LoadMapData(curDungeon)
+		end
+		task.wait(2.0)
+	end
+end)
+
+return skillTimingManager
+end function __DIST.m()-- Smart Dodge – Module 2: Geometry & Hazard Hit-testing (DungeonQuest).
 -- Các "thuật toán chấm điểm": isPointInPart (OBB), ring bán nguyệt phân cực, hành lang
 -- projectile, isPointInAnyHazard, getFloorPosition. Data hiểm họa được Engine bơm vào qua
 -- BindDetection (đứt vòng phụ thuộc detection -> geometry), nên module thuần số học + logic.
@@ -7900,7 +8556,7 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 	return true
 end
 
-return geometry end function __DIST.l()-- Smart Dodge – Module 1: Threat Detection Engine (DungeonQuest).
+return geometry end function __DIST.n()-- Smart Dodge – Module 1: Threat Detection Engine (DungeonQuest).
 -- Chuyên trách: quét Workspace Depth 1, nhận diện hiểm họa (Neon / ngoại lệ), khóa quỹ đạo
 -- projectile, SelectionBox ESP, hành lang quỹ đạo cảnh báo, registry tên skill player.
 -- State riêng: activeHazards, lockedProjectiles, activeTrajectoryVisuals, các flag debug.
@@ -7911,12 +8567,13 @@ local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local macLib = __DIST.load('a')
 local lifecycle = __DIST.load('b')
+local skillTimingManager = __DIST.load('l')
 
 --// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
 local geometryRef
 local function getGeometry()
 	if not geometryRef then
-		geometryRef = __DIST.load('k')
+		geometryRef = __DIST.load('m')
 	end
 	return geometryRef
 end
@@ -7963,67 +8620,6 @@ local KNOWN_SKILL_LIFETIMES = {
 	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
 }
 
---// Lưu trữ vĩnh viễn (Persistence) hồ sơ thời gian sống & thời điểm kích nổ sát thương của các kỹ năng ra file JSON
-local SETTINGS_FOLDER = macLib.Folder .. "/settings"
-local PROFILES_FILE = SETTINGS_FOLDER .. "/smartDodge_skills.json"
-
-local function loadSkillProfiles()
-	if not (isfile and isfile(PROFILES_FILE)) then return end
-	local ok, decoded = pcall(function()
-		return HttpService:JSONDecode(readfile(PROFILES_FILE))
-	end)
-	if ok and type(decoded) == "table" then
-		for skillName, data in pairs(decoded) do
-			if type(data) == "table" and type(data.avgLifetime) == "number" then
-				skillProfiles[skillName] = {
-					count = tonumber(data.count) or 1,
-					avgLifetime = tonumber(data.avgLifetime) or 2.0,
-					avgHitDelay = tonumber(data.avgHitDelay) or (tonumber(data.avgLifetime) * 0.75),
-					minLifetime = tonumber(data.minLifetime) or data.avgLifetime,
-					maxLifetime = tonumber(data.maxLifetime) or data.avgLifetime,
-				}
-			end
-		end
-		if logHazards then
-			print(("[SmartDodge] 📂 Loaded skill lifetime & hit profiles from %s"):format(PROFILES_FILE))
-		end
-	end
-end
-
-local isSavePending = false
-
-local function saveSkillProfilesNow()
-	if not (isfile and writefile) then return end
-	pcall(function()
-		if makefolder and isfolder then
-			if not isfolder(macLib.Folder) then makefolder(macLib.Folder) end
-			if not isfolder(SETTINGS_FOLDER) then makefolder(SETTINGS_FOLDER) end
-		end
-		writefile(PROFILES_FILE, HttpService:JSONEncode(skillProfiles))
-	end)
-end
-
-local function saveSkillProfiles()
-	if not (isfile and writefile) then return end
-	if isSavePending then return end
-	isSavePending = true
-
-	task.delay(1.5, function()
-		isSavePending = false
-		saveSkillProfilesNow()
-	end)
-end
-
--- Nạp ngay dữ liệu đã học từ file JSON của các phiên trước
-loadSkillProfiles()
-
--- Tự động lưu khi script shutdown
-lifecycle.Register(function()
-	if isSavePending then
-		isSavePending = false
-		saveSkillProfilesNow()
-	end
-end)
 local ignoredSkillNames = {
 	["DodgeNode_ESP"] = true,
 	["Enhanced Aura Ring"] = true,
@@ -8780,6 +9376,11 @@ local function isPlayerAsset(instance)
 	local instNameLower = instNameClean:lower():gsub("%s+", "")
 
 	-- 0. Ngoại lệ chiêu của Boss / Enemy -> Tuyệt đối không phải của Player
+	local repEnemyProj = ReplicatedStorage:FindFirstChild("enemyProjectiles")
+	if repEnemyProj and (repEnemyProj:FindFirstChild(instance.Name, true) or repEnemyProj:FindFirstChild(instNameClean, true)) then
+		return false
+	end
+
 	if CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
 		or instNameLower:find("boss")
 		or instNameLower:find("enemy")
@@ -9083,14 +9684,8 @@ end
 
 --// Ước tính tổng thời gian tồn tại và thời điểm kích nổ sát thương (Total Lifetime & Hit Delay)
 local function getEstimatedSkillLifetime(skillName)
-	local prof = skillProfiles[skillName]
-	if prof and prof.avgLifetime then
-		local hitDelay = prof.avgHitDelay
-		if not hitDelay then
-			local known = KNOWN_SKILL_LIFETIMES[skillName]
-			hitDelay = (type(known) == "table" and known.hitDelay) or (prof.avgLifetime * 0.70)
-		end
-		return prof.avgLifetime, hitDelay
+	if skillTimingManager then
+		return skillTimingManager.GetSkillTiming(skillName)
 	end
 	local known = KNOWN_SKILL_LIFETIMES[skillName]
 	if known then
@@ -9207,7 +9802,10 @@ local function registerHazard(instance)
 	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] then return end
 
 	-- FAST REJECTION (Tầng 1): Nếu phòng đã dọn sạch quái và không ở Boss room -> Bỏ qua
-	if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then return end
+	-- Ngoại lệ: khi đang bật Huấn luyện (Recording) thì không bỏ qua để đảm bảo bắt trọn mọi chiêu thức
+	if not (skillTimingManager and skillTimingManager.IsRecording()) then
+		if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then return end
+	end
 
 	-- FAST REJECTION: Trích xuất part hiểm họa trước.
 	-- Nếu không có part Neon và không thuộc ngoại lệ -> Bỏ qua ngay lập tức trong 0.0001ms mà KHÔNG chạy isPlayerAsset
@@ -9282,6 +9880,7 @@ local function registerHazard(instance)
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Position = pos,
+		SpawnPosition = pos,
 		Distance = dist,
 		NeonCount = #hazardParts,
 		SpawnTime = os.clock(),
@@ -9556,38 +10155,42 @@ function unregisterHazard(instance, reason)
 		info.TimerLabel = nil
 	end
 
-	-- Cập nhật thống kê thời gian sống & thời điểm nháy kích nổ sát thương (Skill Lifetime & Hit Profiler)
-	if autoLearnSkillLifetimes and info.SpawnTime then
+	-- Nếu đang bật chế độ Huấn luyện chơi chay (Manual Training): Ghi nhận nhịp chiêu vào RAM buffer
+	if skillTimingManager and skillTimingManager.IsRecording() and info.SpawnTime then
 		local duration = os.clock() - info.SpawnTime
 		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
 
-		-- Nếu không bắt được HitTime qua visual/sound, lấy ước tính chuẩn
-		if not hitDelay or hitDelay < 0.1 or hitDelay > duration then
+		-- Nhận diện xem chiêu thức có phải là Projectile / Đạn bay di chuyển hay không
+		local currentPos = getInstancePosition(instance, nil)
+		local travelDist = (currentPos - (info.SpawnPosition or info.Position or Vector3.zero)).Magnitude
+		local nameClean = (info.Name or ""):lower():gsub("%s+", "")
+		local isProjectile = (TRAJECTORY_PROJECTILE_CONFIGS[nameClean] ~= nil)
+			or (nameClean:find("projectile") ~= nil)
+			or (nameClean:find("missile") ~= nil)
+			or (nameClean:find("orb") ~= nil)
+			or (nameClean:find("bullet") ~= nil)
+			or (nameClean:find("ball") ~= nil)
+			or (nameClean:find("movingbeam") ~= nil)
+			or (nameClean:find("crisscross") ~= nil)
+			or (nameClean:find("seekingspike") ~= nil)
+			or (travelDist >= 6.0)
+
+		if isProjectile then
+			-- Chiêu projectile gây sát thương xuyên suốt toàn bộ vòng đời bay (HitDelay = 0.0s)
+			hitDelay = 0.0
+		elseif not hitDelay or hitDelay < 0.1 or hitDelay > duration then
 			local _, defaultHit = getEstimatedSkillLifetime(info.Name)
 			hitDelay = math.min(defaultHit, duration * 0.75)
 		end
 
 		if duration >= 0.2 and duration <= 25.0 then
-			local prof = skillProfiles[info.Name]
-			if not prof then
-				prof = {
-					count = 1,
-					avgLifetime = duration,
-					avgHitDelay = hitDelay,
-					minLifetime = duration,
-					maxLifetime = duration,
-				}
-				skillProfiles[info.Name] = prof
-			else
-				prof.count = prof.count + 1
-				local weight = math.min(prof.count, 8)
-				prof.avgLifetime = prof.avgLifetime + (duration - prof.avgLifetime) / weight
-				prof.avgHitDelay = (prof.avgHitDelay or hitDelay) + (hitDelay - (prof.avgHitDelay or hitDelay)) / weight
-				prof.minLifetime = math.min(prof.minLifetime, duration)
-				prof.maxLifetime = math.max(prof.maxLifetime, duration)
-			end
-			-- Tự động lưu hồ sơ đã học vào file JSON
-			saveSkillProfiles()
+			skillTimingManager.RecordSkill(info.Name, duration, hitDelay, isProjectile)
+			local typeTag = isProjectile and "🚀 Projectile" or "💥 AoE"
+			print(("[SkillTiming] 📝 Recorded: '%s' [%s] | Lifetime: %.2fs | HitDelay: %.2fs (%s)")
+				:format(info.Name, typeTag, duration, hitDelay, reason or "Despawned"))
+		else
+			print(("[SkillTiming] ⚠️ Skipped '%s': duration %.2fs out of range [0.2, 25.0]")
+				:format(info.Name, duration))
 		end
 	end
 
@@ -10337,10 +10940,11 @@ function detection.IsAutoLearnSkillLifetimesEnabled()
 	return autoLearnSkillLifetimes
 end
 
-detection.SaveSkillProfiles = saveSkillProfilesNow
-detection.LoadSkillProfiles = loadSkillProfiles
+detection.SaveSkillProfiles = skillTimingManager.SaveRecordedData
+detection.LoadSkillProfiles = skillTimingManager.LoadMapData
+detection.skillTimingManager = skillTimingManager
 
-return detection end function __DIST.m()-- Target Movement System – Component C: Target Selector & Path Calculator
+return detection end function __DIST.o()-- Target Movement System – Component C: Target Selector & Path Calculator
 -- Spec: Sections 5 & 6 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
@@ -10434,7 +11038,7 @@ function selector.SelectBestTarget(playerPos, validEnemies, cancelCheck)
 end
 
 return selector
-end function __DIST.n()-- Auto Farm System – Component A & B: Enemy Scanner & Enemy Validator
+end function __DIST.p()-- Auto Farm System – Component A & B: Enemy Scanner & Enemy Validator
 -- Spec: Sections 3 & 4 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
@@ -10495,12 +11099,12 @@ function scanner.Scan()
 end
 
 return scanner
-end function __DIST.o()-- Target Movement System – Component D: Target Tracker & Path Manager
+end function __DIST.q()-- Target Movement System – Component D: Target Tracker & Path Manager
 -- Spec: Sections 7, 8, 14, 15 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
-local selector = __DIST.load('m')
-local scanner = __DIST.load('n')
+local selector = __DIST.load('o')
+local scanner = __DIST.load('p')
 
 local tracker = {}
 
@@ -10626,7 +11230,7 @@ function tracker.Repath(playerPos, currentEnemyPos)
 end
 
 return tracker
-end function __DIST.p()-- Smart Dodge – Module phụ: Target Facing Manager (DungeonQuest)
+end function __DIST.r()-- Smart Dodge – Module phụ: Target Facing Manager (DungeonQuest)
 -- Chuyên trách: Tự động định vị mục tiêu hiện tại (Target của Auto Farm hoặc quái gần nhất)
 -- và điều khiển nhân vật luôn quay mặt về phía mục tiêu (sử dụng Humanoid.AutoRotate = false).
 
@@ -10635,7 +11239,7 @@ end function __DIST.p()-- Smart Dodge – Module phụ: Target Facing Manager (D
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
-local tracker = __DIST.load('o')
+local tracker = __DIST.load('q')
 
 --// References
 local player = services.player
@@ -10803,7 +11407,7 @@ lifecycle.Register(function()
 end)
 
 return targetFacing
-end function __DIST.q()-- Smart Dodge – Module 3+4: Safe Spot Calculation & Player Visuals (DungeonQuest).
+end function __DIST.s()-- Smart Dodge – Module 3+4: Safe Spot Calculation & Player Visuals (DungeonQuest).
 -- Chuyên trách: Tính toán điểm thoát nạn (CalculateSafeSpot + latching lock + 3 chiến lược thoát)
 -- và visual quanh người: Safe Marker xanh, Hitbox Padding cyan.
 
@@ -10811,9 +11415,9 @@ end function __DIST.q()-- Smart Dodge – Module 3+4: Safe Spot Calculation & Pl
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local geometry = __DIST.load('k')
-local detection = __DIST.load('l')
-local targetFacing = __DIST.load('p')
+local geometry = __DIST.load('m')
+local detection = __DIST.load('n')
+local targetFacing = __DIST.load('r')
 
 --// References
 local Workspace = game:GetService("Workspace")
@@ -12693,7 +13297,7 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 	return true, nil, hazardName, 0
 end
 
-return safeSpot end function __DIST.r()--==============================================================--
+return safeSpot end function __DIST.t()--==============================================================--
 -- Smart Dodge – Module 5: Dodge Execution
 -- MoveTo Hybrid + Snap + Time Budget
 -- DungeonQuest
@@ -12729,7 +13333,7 @@ return safeSpot end function __DIST.r()--=======================================
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local targetFacing = __DIST.load('p')
+local targetFacing = __DIST.load('r')
 local RunService = services.RunService
 
 --// References
@@ -13830,7 +14434,7 @@ end
 -- Return
 --==============================================================--
 
-return dodge end function __DIST.s()-- Smart Dodge – Module 6: Engine Orchestrator (DungeonQuest).
+return dodge end function __DIST.u()-- Smart Dodge – Module 6: Engine Orchestrator (DungeonQuest).
 -- Chuyên trách: kết nối Detection + SafeSpot + Dodge. Vòng lặp đánh giá nguy hiểm theo thời
 -- gian thực (safe spot loop), quản lý vòng đời engine (Start/Stop/Toggle), trạng thái danger
 -- hiện tại, fire callbacks SafeSpotChanged, coordinator.Register + dodge runtime bơm cho Module 5.
@@ -13840,10 +14444,10 @@ return dodge end function __DIST.s()-- Smart Dodge – Module 6: Engine Orchestr
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local coordinator = __DIST.load('j')
-local detection = __DIST.load('l')
-local geometry = __DIST.load('k')
-local safeSpot = __DIST.load('q')
-local dodge = __DIST.load('r')
+local detection = __DIST.load('n')
+local geometry = __DIST.load('m')
+local safeSpot = __DIST.load('s')
+local dodge = __DIST.load('t')
 
 --// Bơm data hiểm họa cho module Geometry (đứt vòng phụ thuộc — geometry không require detection).
 geometry.BindDetection({
@@ -13859,6 +14463,7 @@ geometry.BindDetection({
 local player = services.player
 
 --// State
+local isEngineActive = false
 local isPlayerInDanger = false
 local currentSafeSpot = nil
 local currentDangerHazardName = nil
@@ -13896,7 +14501,7 @@ local function startSafeSpotLoop()
 	if safeSpotLoopThread then return end
 	safeSpotLoopThread = task.spawn(function()
 		local lastLogTime = 0
-		while detection.IsEnabled() do
+		while isEngineActive do
 			-- Tầng 1: Nếu không ở Boss Room và toàn bộ quái trong phòng đã chết -> Dọn sạch toàn bộ hazard tồn đọng
 			if not shared.IsBossActive() and shared.GetEnemyCount() == 0 and detection.GetHazardCount() > 0 then
 				detection.ClearAllHazards("Room Cleared")
@@ -14006,15 +14611,23 @@ end
 --// Bật/thay đổi engine KHÔNG liên quan tới độc quyền coordinator: Auto Farm có thể điều khiển
 --// Smart Dodge làm chủ di chuyển (Mode 2) mà không đụng chạy tới các hệ thống khác.
 function engine.StartEngine()
-	if detection.IsEnabled() then return end
+	if isEngineActive then return end
+	isEngineActive = true
 	detection.SetEnabled(true)
 	startTracking()
 end
 
 function engine.StopEngine()
-	if not detection.IsEnabled() then return end
-	detection.SetEnabled(false)
-	stopTracking()
+	if not isEngineActive then return end
+	isEngineActive = false
+	stopSafeSpotLoop()
+
+	-- Chỉ dừng bộ quét detection nếu tính năng Record cũng không đang chạy
+	local skillTimingManager = detection.skillTimingManager
+	if not (skillTimingManager and skillTimingManager.IsRecording()) then
+		detection.SetEnabled(false)
+		detection.StopScan()
+	end
 end
 
 --// Toggle độc lập (UI): bật engine + tự tuyên bố độc quyền (tắt các hệ thống điều khiển nhân vật khác).
@@ -14028,11 +14641,12 @@ function engine.Toggle(state)
 end
 
 function engine.IsEnabled()
-	return detection.IsEnabled()
+	return isEngineActive
 end
 
 --// Dọn dẹp toàn diện khi shutdown (lifecycle): dừng tracking + hủy visual hoàn toàn
 function engine.Shutdown()
+	isEngineActive = false
 	stopTracking()
 	safeSpot.DestroyVisuals()
 	detection.ClearTrajectoryVisuals()
@@ -14074,7 +14688,7 @@ function engine.OnSafeSpotChanged(callback)
 	table.insert(safeSpotCallbacks, callback)
 end
 
-return engine end function __DIST.t()--==============================================================--
+return engine end function __DIST.v()--==============================================================--
 -- Smart Dodge – Speed Debug HUD
 -- Hiển thị trực quan tốc độ hiện tại (WalkSpeed) của Player
 -- trực tiếp trên màn hình game (Screen HUD) kèm đổi màu theo trạng thái:
@@ -14302,7 +14916,7 @@ end)
 speedDebugHud.SetEnabled(true)
 
 return speedDebugHud
-end function __DIST.u()-- Smart Dodge (DungeonQuest) – Facade: tổng hợp 6 module nhỏ thành API pública đầy đủ.
+end function __DIST.w()-- Smart Dodge (DungeonQuest) – Facade: tổng hợp 6 module nhỏ thành API pública đầy đủ.
 -- Các module thành phần: detection (quét hiểm họa) / geometry (hit-test) / safeSpot
 -- (tính điểm an toàn + visual) / dodge (Walk+Snap) / engine (orchestrator).
 -- Đường dẫn require "@routes/DungeonQuest/core/smartDodge" vẫn giữ nguyên (init.luau).
@@ -14311,19 +14925,40 @@ end function __DIST.u()-- Smart Dodge (DungeonQuest) – Facade: tổng hợp 6 
 
 local lifecycle = __DIST.load('b')
 local coordinator = __DIST.load('j')
-local detection = __DIST.load('l')
-local geometry = __DIST.load('k')
-local safeSpot = __DIST.load('q')
-local dodge = __DIST.load('r')
-local engine = __DIST.load('s')
-local targetFacing = __DIST.load('p')
-local speedDebugHud = __DIST.load('t')
+local detection = __DIST.load('n')
+local geometry = __DIST.load('m')
+local safeSpot = __DIST.load('s')
+local dodge = __DIST.load('t')
+local engine = __DIST.load('u')
+local targetFacing = __DIST.load('r')
+local speedDebugHud = __DIST.load('v')
+local skillTimingManager = __DIST.load('l')
 local shared = __DIST.load('f')
 
 --// Table
 local smartDodge = {}
 
+--// Skill Timing & Training
+smartDodge.skillTiming = skillTimingManager
+smartDodge.SetSkillTimingMode = skillTimingManager.SetMode
+smartDodge.GetSkillTimingMode = skillTimingManager.GetMode
+smartDodge.SetSelectedSkillMap = skillTimingManager.SetSelectedMap
+smartDodge.GetSelectedSkillMap = skillTimingManager.GetSelectedMap
+smartDodge.LoadSkillMapData = skillTimingManager.LoadMapData
+smartDodge.SetSkillRecordingEnabled = skillTimingManager.SetRecordingEnabled
+smartDodge.IsSkillRecordingEnabled = skillTimingManager.IsRecording
+smartDodge.SaveRecordedSkillData = skillTimingManager.SaveRecordedData
+smartDodge.ClearRecordedSkillSession = skillTimingManager.ClearRecordedSession
+smartDodge.GetLoadedSkillCount = skillTimingManager.GetLoadedSkillCount
+smartDodge.GetRecordedSkillCount = skillTimingManager.GetRecordedSkillCount
+smartDodge.GetTotalSamplesCount = skillTimingManager.GetTotalSamplesCount
+smartDodge.OnSkillTimingChanged = skillTimingManager.OnChanged
+
 --// Threat Detection (Module 1)
+smartDodge.StartDetection = detection.StartScan
+smartDodge.StopDetection = detection.StopScan
+smartDodge.IsDetectionEnabled = detection.IsEnabled
+smartDodge.SetDetectionEnabled = detection.SetEnabled
 smartDodge.AddCustomHazard = detection.AddCustomHazard
 smartDodge.AddTrajectoryProjectile = detection.AddTrajectoryProjectile
 smartDodge.SetTrajectoryLookahead = detection.SetTrajectoryLookahead
@@ -14343,13 +14978,7 @@ smartDodge.SetVisualEsp = detection.SetVisualEsp
 smartDodge.IsVisualEspEnabled = detection.IsVisualEspEnabled
 smartDodge.SetShowSkillTimers = detection.SetShowSkillTimers
 smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
-smartDodge.SetAutoLearnSkillLifetimes = detection.SetAutoLearnSkillLifetimes
-smartDodge.IsAutoLearnSkillLifetimesEnabled = detection.IsAutoLearnSkillLifetimesEnabled
 smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
-smartDodge.GetSkillProfile = detection.GetSkillProfile
-smartDodge.GetAllSkillProfiles = detection.GetAllSkillProfiles
-smartDodge.SaveSkillProfiles = detection.SaveSkillProfiles
-smartDodge.LoadSkillProfiles = detection.LoadSkillProfiles
 
 smartDodge.GetHazardCount = detection.GetHazardCount
 smartDodge.GetActiveHazards = detection.GetActiveHazards
@@ -14445,7 +15074,7 @@ lifecycle.Register(function()
 	engine.Shutdown()
 end)
 
-return smartDodge end function __DIST.v()-- Module Smart Dodge trong tab Combat (DungeonQuest): quản lý tính năng né chiêu thông minh.
+return smartDodge end function __DIST.x()-- Module Smart Dodge trong tab Combat (DungeonQuest): quản lý tính năng né chiêu thông minh.
 -- Giai đoạn 1, 2 & 3: Threat Detection, Safe Spot Calculation & Dodge Execution.
 -- Cơ chế né duy nhất: Walk + Snap (MoveTo đi bộ, snap tới đích khi còn cự ly ≤ Max Snap).
 
@@ -14453,7 +15082,7 @@ return smartDodge end function __DIST.v()-- Module Smart Dodge trong tab Combat 
 
 local ui = __DIST.load('g')
 local autoSave = __DIST.load('d')
-local smartDodge = __DIST.load('u')
+local smartDodge = __DIST.load('w')
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -14810,14 +15439,6 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeSkillTimers")
 
 	leftSection:Toggle({
-		Name = "Auto Learn Skill Lifetimes (Save JSON)",
-		Default = smartDodge.IsAutoLearnSkillLifetimesEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			smartDodge.SetAutoLearnSkillLifetimes(state)
-		end),
-	}, "Toggle_SmartDodgeAutoLearnSkills")
-
-	leftSection:Toggle({
 		Name = "Show Safe Spot Marker (Green ESP)",
 		Default = smartDodge.IsShowSafeMarkerEnabled(),
 		Callback = autoSave.Wrap(function(state)
@@ -14864,7 +15485,179 @@ return function(window, tab)
 	updateSafeSpotUI(inDang, curSpot, hName, eDist)
 	updateDodgeStatusUI()
 end
-end function __DIST.w()-- Target Movement System – Component E & F: Movement Controller & Blocking Checker
+end function __DIST.y()--==============================================================--
+-- Module Skill Timing & Training trong tab Combat (DungeonQuest)
+-- Tách biệt rõ ràng thành bảng riêng (Section riêng):
+--   1. Section "Skill Timing Profiles":
+--      - Mode 1: Default Preset (bảng cứng chuẩn, ổn định tuyệt đối)
+--      - Mode 2: Trained Preset (chọn file JSON theo từng Map, nạp 1 lần vào RAM)
+--   2. Section "Manual Skill Training":
+--      - Chế độ chơi chay thu thập dữ liệu nhịp chiêu thức
+--      - Hoàn toàn 0% disk I/O khi né đòn, chỉ lưu file khi chủ động bấm Save
+--==============================================================--
+
+
+local ui = __DIST.load('g')
+local autoSave = __DIST.load('d')
+local smartDodge = __DIST.load('w')
+local dungeonCatalog = __DIST.load('k')
+local shared = __DIST.load('f')
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Right" })
+	section:Header({ Name = "Skill Timing Profiles" })
+
+	local manager = smartDodge.skillTiming
+	local TIMING_MODES = { "Default Preset", "Trained Preset" }
+
+	local currentMode = manager.GetMode()
+	local defaultModeIdx = (currentMode == "Trained Preset") and 2 or 1
+
+	-- Mode Selector
+	local modeDropdown = section:Dropdown({
+		Name = "Timing Source Mode",
+		Options = TIMING_MODES,
+		Default = defaultModeIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(mode)
+			manager.SetMode(mode)
+		end),
+	}, "Dropdown_SkillTimingMode")
+
+	-- Map Selector
+	local allDungeons = dungeonCatalog.GetDungeons() or { "Desert Temple" }
+	local curSelectedMap = manager.GetSelectedMap()
+	local defaultMapIdx = 1
+	for i, dName in ipairs(allDungeons) do
+		if dName == curSelectedMap then
+			defaultMapIdx = i
+			break
+		end
+	end
+
+	local mapDropdown = section:Dropdown({
+		Name = "Select Map Profile (Mode 2)",
+		Options = allDungeons,
+		Default = defaultMapIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(mapName)
+			manager.SetSelectedMap(mapName)
+		end),
+	}, "Dropdown_SkillTimingSelectedMap")
+
+	local profileStatusLabel = section:Label({
+		Text = "Profile Status: <font color='rgb(0, 255, 120)'>Default Presets Active</font>",
+	})
+
+	section:Button({
+		Name = "Reload Map Data to RAM",
+		Callback = function()
+			local curMap = manager.GetSelectedMap()
+			local count = manager.LoadMapData(curMap)
+			local countStr = count > 0 and ("<font color='rgb(0, 255, 120)'>" .. tostring(count) .. " skills loaded</font>")
+				or "<font color='rgb(255, 160, 0)'>0 skills (No file found)</font>"
+			profileStatusLabel:UpdateName("Profile Status: " .. countStr .. " for [" .. curMap .. "]")
+		end,
+	})
+
+	section:Button({
+		Name = "View Map Skills in Console (F9)",
+		Callback = function()
+			local count = manager.PrintLoadedMapData()
+			notifier.Notify("Skill Timing", ("Đã in %d chiêu của Map ra Console (F9)"):format(count), 2)
+		end,
+	})
+
+	-- Training Section
+	section:Header({ Name = "Manual Training (Chơi Chay)" })
+
+	local recordToggle = section:Toggle({
+		Name = "Record Skill Timings (Chơi Chay)",
+		Default = manager.IsRecording(),
+		Callback = function(state)
+			manager.SetRecordingEnabled(state)
+			if state then
+				-- Khởi động ĐỘC LẬP bộ quét hiểm họa để bắt nhịp chiêu thức vào RAM
+				-- Tuyệt đối KHÔNG bật Safe Spot Engine, KHÔNG hiện Safe Spot ESP, KHÔNG can thiệp di chuyển né đòn
+				smartDodge.SetDetectionEnabled(true)
+				smartDodge.StartDetection()
+			else
+				-- Khi tắt Record: nếu người chơi không bật Smart Dodge Engine thì dừng hẳn bộ quét
+				if not smartDodge.IsEnabled() then
+					smartDodge.SetDetectionEnabled(false)
+					smartDodge.StopDetection()
+				end
+			end
+		end,
+	})
+
+	local recordStatusLabel = section:Label({
+		Text = "Recording: <font color='rgb(160, 160, 160)'>Idle (0 skills, 0 hits)</font>",
+	})
+
+	section:Button({
+		Name = "Save Trained Data to Map File",
+		Callback = function()
+			local curMap = manager.GetSelectedMap()
+			local ok, count = manager.SaveRecordedData(curMap)
+			if ok then
+				recordStatusLabel:UpdateName("Recording: <font color='rgb(0, 255, 120)'>Saved " .. tostring(count) .. " skills to " .. curMap .. "!</font>")
+			end
+		end,
+	})
+
+	section:Button({
+		Name = "Clear Recording Buffer",
+		Callback = function()
+			manager.ClearRecordedSession()
+			recordStatusLabel:UpdateName("Recording: <font color='rgb(160, 160, 160)'>Buffer Cleared (0 skills, 0 hits)</font>")
+		end,
+	})
+
+	section:Button({
+		Name = "View Buffer in Console (F9)",
+		Callback = function()
+			local count = manager.PrintRecordedData()
+			notifier.Notify("Skill Training", ("Đã in %d chiêu trong Buffer ra Console (F9)"):format(count), 2)
+		end,
+	})
+
+	-- Lắng nghe cập nhật real-time để cập nhật Text Labels
+	local function updateLabels(info)
+		pcall(function()
+			if info.mode == "Default Preset" then
+				profileStatusLabel:UpdateName("Profile Status: <font color='rgb(0, 255, 120)'>Default Presets Active (Stable)</font>")
+			else
+				local curMap = info.selectedMap or manager.GetSelectedMap() or "Unknown"
+				if info.loadedCount > 0 then
+					profileStatusLabel:UpdateName(("Profile Status: <font color='rgb(0, 255, 120)'>%d skills</font> from [%s] in RAM"):format(info.loadedCount, curMap))
+				else
+					profileStatusLabel:UpdateName(("Profile Status: <font color='rgb(255, 160, 0)'>0 skills</font> (No file) for [%s]"):format(curMap))
+				end
+			end
+
+			local totalSamples = info.totalSamples or manager.GetTotalSamplesCount()
+			if info.isRecording then
+				recordStatusLabel:UpdateName(("Recording: <font color='rgb(255, 60, 60)'>🔴 ACTIVE</font> (%d skills, %d hits in RAM)"):format(info.recordedCount, totalSamples))
+			else
+				recordStatusLabel:UpdateName(("Recording: <font color='rgb(160, 160, 160)'>Idle</font> (%d skills, %d hits buffered)"):format(info.recordedCount, totalSamples))
+			end
+		end)
+	end
+
+	manager.OnChanged(updateLabels)
+
+	-- Khởi tạo ban đầu
+	updateLabels({
+		mode = manager.GetMode(),
+		selectedMap = manager.GetSelectedMap(),
+		loadedCount = manager.GetLoadedSkillCount(),
+		isRecording = manager.IsRecording(),
+		recordedCount = manager.GetRecordedSkillCount(),
+		totalSamples = manager.GetTotalSamplesCount(),
+	})
+end
+end function __DIST.z()-- Target Movement System – Component E & F: Movement Controller & Blocking Checker
 -- Spec: Sections 9, 10, 11, 12, 13 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
@@ -15074,7 +15867,7 @@ end
 
 return movement
 
-end function __DIST.x()-- Auto Farm System – Component G: State / Interrupt Manager & Facade
+end function __DIST.A()-- Auto Farm System – Component G: State / Interrupt Manager & Facade
 -- Spec: Sections 2, 16, 17, 18, 19, 20 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 --// Imports
@@ -15084,10 +15877,10 @@ local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local coordinator = __DIST.load('j')
 
-local scanner = __DIST.load('n')
-local selector = __DIST.load('m')
-local tracker = __DIST.load('o')
-local movement = __DIST.load('w')
+local scanner = __DIST.load('p')
+local selector = __DIST.load('o')
+local tracker = __DIST.load('q')
+local movement = __DIST.load('z')
 
 --// Services
 local RunService = services.RunService
@@ -15911,208 +16704,7 @@ lifecycle.Register(function()
 end)
 
 return autoFarm
-end function __DIST.y()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
--- Map thường: fetch động qua remote getDungeonStats (có cache).
--- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
-
---// Data
-
-local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
-
-local DUNGEONS = {
-	"Desert Temple",
-	"Winter Outpost",
-	"Pirate Island",
-	"King's Castle",
-	"The Underworld",
-	"Samurai Palace",
-	"The Canals",
-	"Ghastly Harbor",
-	"Steampunk Sewers",
-	"Orbital Outpost",
-	"Volcanic Chambers",
-	"Aquatic Temple",
-	"Enchanted Forest",
-	"Egg Island",
-	"Krampus",
-	"Tutorial Dungeon",
-}
-
-local SPECIAL_DUNGEONS = {
-	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
-	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
-	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
-}
-
---// Table
-local dungeonCatalog = {}
-
---// Cache
-local statsCache = {}
-local dynamicDungeons = nil
-
---// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
-local HttpService = game:GetService("HttpService")
-local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
-
-local function persistMapList(list)
-	if not (isfile and writefile and makefolder and isfolder) then return end
-	pcall(function()
-		if not isfolder("Maclib") then makefolder("Maclib") end
-	end)
-	pcall(function()
-		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
-	end)
-end
-
-local function loadPersistedMapList()
-	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
-	local ok, data = pcall(function()
-		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
-	end)
-	if not ok or typeof(data) ~= "table" then return nil end
-
-	local list = {}
-	for _, name in ipairs(data) do
-		if type(name) == "string" and #name > 0 then
-			table.insert(list, name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
-local function mergeDungeonLists(primary)
-	local seen = {}
-	local merged = {}
-	for _, name in ipairs(primary or {}) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	for _, name in ipairs(DUNGEONS) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	return merged
-end
-
---// Helpers
-local function findScrollingFrame()
-	local player = game:GetService("Players").LocalPlayer
-	if not player then return nil end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then return nil end
-	local queueGui = playerGui:FindFirstChild("queueGui")
-	if not queueGui then return nil end
-	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
-	if not chooseDungeon then return nil end
-	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
-	if not backgroundFillLeft then return nil end
-	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
-end
-
-local function collectDungeonsFromUi()
-	local scrollingFrame = findScrollingFrame()
-	if not scrollingFrame then return nil end
-
-	local list = {}
-	for _, child in ipairs(scrollingFrame:GetChildren()) do
-		if child:IsA("ImageLabel") and #child.Name > 0 then
-			table.insert(list, child.Name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
---// Methods
-function dungeonCatalog.GetDungeons()
-	if dynamicDungeons then return dynamicDungeons end
-
-	local uiList = collectDungeonsFromUi()
-	if uiList then
-		local merged = mergeDungeonLists(uiList)
-		dynamicDungeons = merged
-		persistMapList(merged)
-		return merged
-	end
-
-	local persisted = loadPersistedMapList()
-	if persisted then
-		local merged = mergeDungeonLists(persisted)
-		dynamicDungeons = merged
-		return merged
-	end
-
-	return DUNGEONS
-end
-
-function dungeonCatalog.RefreshDungeons()
-	dynamicDungeons = nil
-	return dungeonCatalog.GetDungeons()
-end
-
-function dungeonCatalog.GetDungeonStats(name)
-	if type(name) ~= "string" or #name == 0 then return nil end
-	if statsCache[name] ~= nil then return statsCache[name] end
-
-	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
-	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
-	if not getStats then return nil end
-
-	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
-	if ok and typeof(result) == "table" then
-		statsCache[name] = result
-		return result
-	end
-	return nil
-end
-
-function dungeonCatalog.GetAllowedDifficulties(name)
-	if type(name) ~= "string" then return DIFFICULTIES end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.Difficulties end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	local allowed = {}
-	if stats then
-		for _, difficulty in ipairs(DIFFICULTIES) do
-			if stats[difficulty] then table.insert(allowed, difficulty) end
-		end
-	end
-	if #allowed > 0 then return allowed end
-	return DIFFICULTIES
-end
-
-function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
-	if type(difficulty) ~= "string" then return false end
-	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
-		if option == difficulty then return true end
-	end
-	return false
-end
-
-function dungeonCatalog.GetLevelReq(name, difficulty)
-	if type(name) ~= "string" then return 0 end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.LevelReq or 0 end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	if stats and type(difficulty) == "string" and stats[difficulty] then
-		return tonumber(stats[difficulty].levelReq) or 0
-	end
-	return 0
-end
-
---// Table
-dungeonCatalog.DUNGEONS = DUNGEONS
-dungeonCatalog.DIFFICULTIES = DIFFICULTIES
-
-return dungeonCatalog end function __DIST.z()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
+end function __DIST.B()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
 -- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
 -- Dữ liệu lưu trong file config JSON qua macLib.contextData.
 
@@ -16121,10 +16713,10 @@ return dungeonCatalog end function __DIST.z()-- Core Contextual cho DungeonQuest
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
 local shared = __DIST.load('f')
-local dungeonCatalog = __DIST.load('y')
+local dungeonCatalog = __DIST.load('k')
 local notifier = __DIST.load('c')
 local lifecycle = __DIST.load('b')
-local autoFarm = __DIST.load('x')
+local autoFarm = __DIST.load('A')
 
 --// Table
 local contextual = {}
@@ -16354,15 +16946,15 @@ function contextual.Init()
 end
 
 return contextual
-end function __DIST.A()-- Module Auto Farm trong tab Combat (DungeonQuest)
+end function __DIST.C()-- Module Auto Farm trong tab Combat (DungeonQuest)
 -- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
 -- và Auto Farm Context (Target Reach Distance theo từng Dungeon x Target).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoFarm = __DIST.load('x')
-local contextual = __DIST.load('z')
+local autoFarm = __DIST.load('A')
+local contextual = __DIST.load('B')
 local shared = __DIST.load('f')
 local services = __DIST.load('e')
 local ui = __DIST.load('g')
@@ -16686,7 +17278,7 @@ return function(window, tab)
 	refreshContextControls()
 	setEditControlsVisible(editDungeon ~= nil)
 end
-end function __DIST.B()-- Smart Auto Play Core (DungeonQuest)
+end function __DIST.D()-- Smart Auto Play Core (DungeonQuest)
 -- Step 1: Visual Combat Radius R circle around player formed by small spheres.
 
 
@@ -16874,13 +17466,13 @@ lifecycle.Register(function()
 end)
 
 return smartAutoPlay
-end function __DIST.C()-- Tab Combat - Submodule Smart Auto Play (DungeonQuest)
+end function __DIST.E()-- Tab Combat - Submodule Smart Auto Play (DungeonQuest)
 -- Step 1: Visual Combat Radius Controls
 
 
 local ui = __DIST.load('g')
 local autoSave = __DIST.load('d')
-local smartAutoPlay = __DIST.load('B')
+local smartAutoPlay = __DIST.load('D')
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -16920,25 +17512,26 @@ return function(window, tab)
 		end),
 	}, "Slider_SAP_SphereSize"))
 end
-end function __DIST.D()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Smart Dodge.
+end function __DIST.F()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Smart Dodge.
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
 __DIST.load('i')(window, tab)
-__DIST.load('v')(window, tab)
-__DIST.load('A')(window, tab)
+__DIST.load('x')(window, tab)
+__DIST.load('y')(window, tab)
 __DIST.load('C')(window, tab)
+__DIST.load('E')(window, tab)
 end
 
-end function __DIST.E()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.G()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('y')
+local dungeonCatalog = __DIST.load('k')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
@@ -17118,7 +17711,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.F()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.H()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -17238,7 +17831,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.G()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.I()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -17345,7 +17938,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.H()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.J()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -17562,18 +18155,18 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.I()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.K()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('g')
-local autoJoin = __DIST.load('E')
-local autoStart = __DIST.load('F')
-local autoStartLobby = __DIST.load('G')
-local autoRetry = __DIST.load('H')
+local autoJoin = __DIST.load('G')
+local autoStart = __DIST.load('H')
+local autoStartLobby = __DIST.load('I')
+local autoRetry = __DIST.load('J')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('y')
+local dungeonCatalog = __DIST.load('k')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -17776,7 +18369,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.J()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.L()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -18244,14 +18837,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.K()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.M()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('J')
+local autoSell = __DIST.load('L')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -18515,7 +19108,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.L()-- ESP hitbox cho DungeonQuest.
+end function __DIST.N()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -18865,7 +19458,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.M()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.O()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -19006,7 +19599,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.N()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.P()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -19460,14 +20053,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.O()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.Q()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('L')
-	local enemyEsp = __DIST.load('M')
-	local mapOptimizer = __DIST.load('N')
+	local esp = __DIST.load('N')
+	local enemyEsp = __DIST.load('O')
+	local mapOptimizer = __DIST.load('P')
 	local ui = __DIST.load('g')
 
 --// Hitbox mode options
@@ -19604,7 +20197,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.P()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.R()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -20202,12 +20795,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.Q()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.S()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('P')
+local webhook = __DIST.load('R')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -20274,7 +20867,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.R()
+end function __DIST.T()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -20343,12 +20936,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.S()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.U()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('R')
+local binder = __DIST.load('T')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -20440,13 +21033,13 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.T()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.V()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
-local antiAfk = __DIST.load('S')
+local antiAfk = __DIST.load('U')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -20476,15 +21069,15 @@ return function(window, tab)
 		end),
 	}, "Slider_AntiAFKInterval"))
 end
-end function __DIST.U()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.W()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('O')(window, tab)
 __DIST.load('Q')(window, tab)
-__DIST.load('T')(window, tab)
-end end function __DIST.V()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('S')(window, tab)
+__DIST.load('V')(window, tab)
+end end function __DIST.X()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -20559,7 +21152,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.W()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.Y()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -20567,7 +21160,7 @@ end function __DIST.W()-- Module Config trong tab Configs (DungeonQuest): tự b
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('V')
+local autoHide = __DIST.load('X')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -20724,12 +21317,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.X()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.Z()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('f')
-local autoRetry = __DIST.load('H')
+local autoRetry = __DIST.load('J')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -20874,14 +21467,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.Y()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST._()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('W')(window, tab)
-__DIST.load('X')(window, tab)
-end end function __DIST.Z()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+__DIST.load('Y')(window, tab)
+__DIST.load('Z')(window, tab)
+end end function __DIST.aa()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -20949,11 +21542,11 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('D')
-	local dungeonTab = __DIST.load('I')
-	local inventoryTab = __DIST.load('K')
-	local utilitiesTab = __DIST.load('U')
-	local configsTab = __DIST.load('Y')
+	local combatTab = __DIST.load('F')
+	local dungeonTab = __DIST.load('K')
+	local inventoryTab = __DIST.load('M')
+	local utilitiesTab = __DIST.load('W')
+	local configsTab = __DIST.load('_')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -20966,19 +21559,19 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('P')
+	local webhook = __DIST.load('R')
 	webhook.Init()
-__DIST.load('M')
+__DIST.load('O')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	
 
-local autoHide = __DIST.load('V')
+local autoHide = __DIST.load('X')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
 	--// Contextual (tự động áp dụng setting theo Dungeon x Target)
-	local contextual = __DIST.load('z')
+	local contextual = __DIST.load('B')
 	contextual.Init()
 
 	--// Khởi chạy
@@ -20990,7 +21583,7 @@ local autoHide = __DIST.load('V')
 		autoSave.Resume()
 	end)
 end
-end function __DIST._()
+end function __DIST.ab()
 local flags = {}
 
 function flags:Export()
@@ -21033,12 +21626,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.aa()
+return flags end function __DIST.ac()
 --// Imports
 
 
 
-local binder = __DIST.load('R')
+local binder = __DIST.load('T')
 
 --// Variables
 local interface = {}
@@ -21058,9 +21651,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.ab()--// Imports
+end function __DIST.ad()--// Imports
 
-local binder = __DIST.load('R')
+local binder = __DIST.load('T')
 
 --// Variables
 local esp = {}
@@ -21071,11 +21664,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.ac()--// Imports
+end function __DIST.ae()--// Imports
 
-local flags = __DIST.load('_')
-local interface = __DIST.load('aa')
-local esp = __DIST.load('ab')
+local flags = __DIST.load('ab')
+local interface = __DIST.load('ac')
+local esp = __DIST.load('ad')
 
 --// Initialize
 local window = interface:Window({
@@ -21114,7 +21707,7 @@ return {
 		end,
 	},
 }
-end function __DIST.ad()--// Variables
+end function __DIST.af()--// Variables
 
 local utility = {}
 
@@ -21146,7 +21739,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.ae()--// Functions
+end function __DIST.ag()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -21156,14 +21749,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.af()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.ah()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('ac')
-	local utility = __DIST.load('ad')
-	local services = __DIST.load('ae')
+	local base = __DIST.load('ae')
+	local utility = __DIST.load('af')
+	local services = __DIST.load('ag')
 
 	--// References
 	local flags = base.Flags
@@ -21229,7 +21822,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('Z'),
+		Load = __DIST.load('aa'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -21240,7 +21833,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('af'),
+		Load = __DIST.load('ah'),
 		Places = {
 			123456789,
 			987654321,
