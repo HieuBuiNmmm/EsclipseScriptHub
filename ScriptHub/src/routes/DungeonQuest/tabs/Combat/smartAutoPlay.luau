@@ -18,7 +18,8 @@ return function(window, tab)
 	}, "Toggle_SAP_RadiusCircle")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Radius R (studs)",
+		Name = "Radius R",
+		Suffix = " std",
 		Default = smartAutoPlay.GetRadius(),
 		Minimum = 4,
 		Maximum = 100,
@@ -30,7 +31,8 @@ return function(window, tab)
 	}, "Slider_SAP_Radius"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Sphere Size (studs)",
+		Name = "Sphere Size",
+		Suffix = " std",
 		Default = smartAutoPlay.GetSphereSize(),
 		Minimum = 0.1,
 		Maximum = 2.0,

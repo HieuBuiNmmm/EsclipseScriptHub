@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-08T14:32:33.940199500+00:00",
+    genDate = "2026-09-09T05:35:49.251151800+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -155,7 +155,7 @@ function MacLib:Window(Settings)
 	sidebar.BorderColor3 = Color3.fromRGB(0, 0, 0)
 	sidebar.BorderSizePixel = 0
 	sidebar.Position = UDim2.fromScale(-3.52e-08, 4.69e-08)
-	sidebar.Size = UDim2.fromScale(0.325, 1)
+	sidebar.Size = Settings.SidebarWidth and UDim2.new(0, Settings.SidebarWidth, 1, 0) or UDim2.fromScale(0.325, 1)
 
 	local divider = Instance.new("Frame")
 	divider.Name = "Divider"
@@ -7815,6 +7815,7 @@ end
 --// References
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local player = services.player
 
@@ -7826,6 +7827,7 @@ local threatDetectorEnabled = false
 local logHazards = false
 local visualEspEnabled = true
 local showSkillTimers = true
+local autoLearnSkillLifetimes = true
 local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
@@ -8401,7 +8403,97 @@ local function initPlayerSkillWatcher()
 	end)
 end
 
+--// Tự động quét và nạp danh sách toàn bộ kỹ năng của game từ ReplicatedStorage.abilities
+local function scanAbilityInstance(ability)
+	if not ability then return end
+	detection.RegisterPlayerSkill(ability.Name)
+
+	local nameVal = ability:FindFirstChild("name")
+	if nameVal and nameVal:IsA("ValueBase") and tostring(nameVal.Value) ~= "" then
+		detection.RegisterPlayerSkill(tostring(nameVal.Value))
+	end
+
+	local attrName = ability:GetAttribute("name") or ability:GetAttribute("Name")
+	if type(attrName) == "string" and attrName ~= "" then
+		detection.RegisterPlayerSkill(attrName)
+	end
+
+	-- Quét các BasePart/MeshPart/Projectiles bên trong ability (nếu có)
+	for _, desc in ipairs(ability:GetDescendants()) do
+		if desc:IsA("BasePart") and desc.Name ~= "Handle" and desc.Name ~= "Part" and desc.Name ~= "Union" then
+			detection.RegisterPlayerSkill(desc.Name)
+		end
+	end
+end
+
+local function initReplicatedAbilitiesWatcher()
+	local function hookFolder(folder)
+		for _, child in ipairs(folder:GetChildren()) do
+			scanAbilityInstance(child)
+		end
+		folder.ChildAdded:Connect(function(child)
+			scanAbilityInstance(child)
+		end)
+		if logHazards then
+			print(("[SmartDodge] 📚 Loaded %d player abilities from ReplicatedStorage.abilities"):format(#folder:GetChildren()))
+		end
+	end
+
+	local abilitiesFolder = ReplicatedStorage:FindFirstChild("abilities")
+	if abilitiesFolder then
+		hookFolder(abilitiesFolder)
+	else
+		task.spawn(function()
+			local folder = ReplicatedStorage:WaitForChild("abilities", 10)
+			if folder then
+				hookFolder(folder)
+			end
+		end)
+	end
+end
+
+--// Tự động quét và nạp toàn bộ danh mục EFFECT / đạn / vòng sáng từ ReplicatedStorage.projectiles
+local function scanProjectileInstance(proj)
+	if not proj then return end
+	detection.RegisterPlayerSkill(proj.Name)
+
+	-- Quét toàn bộ part/mesh/model con bên trong
+	for _, desc in ipairs(proj:GetDescendants()) do
+		if desc:IsA("BasePart") and desc.Name ~= "Handle" and desc.Name ~= "Part" and desc.Name ~= "Union" then
+			detection.RegisterPlayerSkill(desc.Name)
+		end
+	end
+end
+
+local function initReplicatedProjectilesWatcher()
+	local function hookFolder(folder)
+		for _, child in ipairs(folder:GetChildren()) do
+			scanProjectileInstance(child)
+		end
+		folder.ChildAdded:Connect(function(child)
+			scanProjectileInstance(child)
+		end)
+		if logHazards then
+			print(("[SmartDodge] 🎆 Loaded %d player projectiles/effects from ReplicatedStorage.projectiles"):format(#folder:GetChildren()))
+		end
+	end
+
+	local projFolder = ReplicatedStorage:FindFirstChild("projectiles")
+	if projFolder then
+		hookFolder(projFolder)
+	else
+		task.spawn(function()
+			local folder = ReplicatedStorage:WaitForChild("projectiles", 10)
+			if folder then
+				hookFolder(folder)
+			end
+		end)
+	end
+end
+
 initPlayerSkillWatcher()
+initReplicatedAbilitiesWatcher()
+initReplicatedProjectilesWatcher()
 
 --// Kiểm tra xem đối tượng có phải là của Player (hoặc skill của Player) không
 local function isPlayerAsset(instance)
@@ -8500,6 +8592,19 @@ local function isPlayerAsset(instance)
 
 	-- 5. So khớp với danh sách tên kỹ năng đã đăng ký (Chính xác tên, không fuzzy substring tránh trùng tên chiêu Boss)
 	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
+		return true
+	end
+
+	-- 6. Kiểm tra trực tiếp thư mục ReplicatedStorage.abilities & projectiles (phòng trường hợp chiêu/effect mới chưa kịp nạp)
+	local repAbilities = ReplicatedStorage:FindFirstChild("abilities")
+	if repAbilities and (repAbilities:FindFirstChild(instance.Name) or repAbilities:FindFirstChild(instNameClean)) then
+		detection.RegisterPlayerSkill(instance.Name)
+		return true
+	end
+
+	local repProjectiles = ReplicatedStorage:FindFirstChild("projectiles")
+	if repProjectiles and (repProjectiles:FindFirstChild(instance.Name) or repProjectiles:FindFirstChild(instNameClean)) then
+		detection.RegisterPlayerSkill(instance.Name)
 		return true
 	end
 
@@ -9162,7 +9267,7 @@ function unregisterHazard(instance, reason)
 	end
 
 	-- Cập nhật thống kê thời gian sống & thời điểm nháy kích nổ sát thương (Skill Lifetime & Hit Profiler)
-	if info.SpawnTime then
+	if autoLearnSkillLifetimes and info.SpawnTime then
 		local duration = os.clock() - info.SpawnTime
 		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
 
@@ -9737,6 +9842,15 @@ end
 
 function detection.IsShowSkillTimersEnabled()
 	return showSkillTimers
+end
+
+--// Bật/tắt chế độ tự động học thời gian tồn tại & điểm kích nổ sát thương của kỹ năng
+function detection.SetAutoLearnSkillLifetimes(state)
+	autoLearnSkillLifetimes = state and true or false
+end
+
+function detection.IsAutoLearnSkillLifetimesEnabled()
+	return autoLearnSkillLifetimes
 end
 
 detection.SaveSkillProfiles = saveSkillProfilesNow
@@ -13125,6 +13239,8 @@ smartDodge.SetVisualEsp = detection.SetVisualEsp
 smartDodge.IsVisualEspEnabled = detection.IsVisualEspEnabled
 smartDodge.SetShowSkillTimers = detection.SetShowSkillTimers
 smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
+smartDodge.SetAutoLearnSkillLifetimes = detection.SetAutoLearnSkillLifetimes
+smartDodge.IsAutoLearnSkillLifetimesEnabled = detection.IsAutoLearnSkillLifetimesEnabled
 smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
 smartDodge.GetSkillProfile = detection.GetSkillProfile
 smartDodge.GetAllSkillProfiles = detection.GetAllSkillProfiles
@@ -13388,7 +13504,8 @@ return function(window, tab)
 	}, "Dropdown_SmartDodgeMode")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Blink Step Distance (studs)",
+		Name = "Blink Step Distance",
+		Suffix = " std",
 		Default = smartDodge.GetBlinkStep(),
 		Minimum = 0.2,
 		Maximum = 2.0,
@@ -13416,7 +13533,8 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeIgnoreInvulnerable")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Respawn Protection Duration (seconds)",
+		Name = "Respawn Protection",
+		Suffix = "s",
 		Default = smartDodge.GetRespawnProtectionDuration(),
 		Minimum = 0,
 		Maximum = 10,
@@ -13428,7 +13546,8 @@ return function(window, tab)
 	}, "Slider_SmartDodgeRespawnProtectionDuration"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Instant / Final Snap Distance (studs)",
+		Name = "Final Snap Distance",
+		Suffix = " std",
 		Default = smartDodge.GetMaxSnapDistance(),
 		Minimum = 0.2,
 		Maximum = 6.0,
@@ -13448,7 +13567,8 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeMaintainHeight")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Player Hitbox Padding (studs)",
+		Name = "Hitbox Padding",
+		Suffix = " std",
 		Default = smartDodge.GetHitboxPadding(),
 		Minimum = 0,
 		Maximum = 5,
@@ -13460,7 +13580,8 @@ return function(window, tab)
 	}, "Slider_SmartDodgeHitboxPadding"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Trajectory Lookahead Length (studs)",
+		Name = "Trajectory Lookahead",
+		Suffix = " std",
 		Default = smartDodge.GetTrajectoryLookahead(),
 		Minimum = 20,
 		Maximum = 150,
@@ -13472,7 +13593,8 @@ return function(window, tab)
 	}, "Slider_SmartDodgeTrajLookahead"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Trajectory Width Padding (studs)",
+		Name = "Trajectory Width",
+		Suffix = " std",
 		Default = smartDodge.GetTrajectoryWidthPadding(),
 		Minimum = 0.5,
 		Maximum = 6.0,
@@ -13514,6 +13636,14 @@ return function(window, tab)
 			smartDodge.SetShowSkillTimers(state)
 		end),
 	}, "Toggle_SmartDodgeSkillTimers")
+
+	leftSection:Toggle({
+		Name = "Auto Learn Skill Lifetimes (Save JSON)",
+		Default = smartDodge.IsAutoLearnSkillLifetimesEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetAutoLearnSkillLifetimes(state)
+		end),
+	}, "Toggle_SmartDodgeAutoLearnSkills")
 
 	leftSection:Toggle({
 		Name = "Show Safe Spot Marker (Green ESP)",
@@ -15075,7 +15205,8 @@ return function(window, tab)
 	}, "Toggle_AutoFarm")
 
 	leftSection:Slider({
-		Name = "Rescan Interval (seconds)",
+		Name = "Rescan Interval",
+		Suffix = "s",
 		Default = autoFarm.GetScanInterval(),
 		Minimum = 0.5,
 		Maximum = 5.0,
@@ -15086,7 +15217,8 @@ return function(window, tab)
 	}, "Slider_AF_ScanInterval")
 
 	leftSection:Slider({
-		Name = "Target Reach Distance (studs)",
+		Name = "Target Reach Distance",
+		Suffix = " std",
 		Default = autoFarm.GetReachDistance(),
 		Minimum = 2,
 		Maximum = 200,
@@ -15098,7 +15230,8 @@ return function(window, tab)
 	}, "Slider_AF_ReachDistance")
 
 	leftSection:Slider({
-		Name = "Repath Distance Threshold (studs)",
+		Name = "Repath Distance",
+		Suffix = " std",
 		Default = autoFarm.GetRepathDistance(),
 		Minimum = 2,
 		Maximum = 20,
@@ -15313,6 +15446,7 @@ return function(window, tab)
 
 	reachDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
 		Name = "Target Reach Distance",
+		Suffix = " std",
 		Default = contextual.GetField(editDungeon, editTarget, "TargetReachDistance"),
 		Minimum = 2,
 		Maximum = 200,
@@ -15581,7 +15715,8 @@ return function(window, tab)
 	}, "Toggle_SAP_RadiusCircle")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Radius R (studs)",
+		Name = "Radius R",
+		Suffix = " std",
 		Default = smartAutoPlay.GetRadius(),
 		Minimum = 4,
 		Maximum = 100,
@@ -15593,7 +15728,8 @@ return function(window, tab)
 	}, "Slider_SAP_Radius"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Sphere Size (studs)",
+		Name = "Sphere Size",
+		Suffix = " std",
 		Default = smartAutoPlay.GetSphereSize(),
 		Minimum = 0.1,
 		Maximum = 2.0,
@@ -19597,7 +19733,8 @@ return function(self)
 	local window = macLib:Window({
 		Title = "DungeonQuest",
 		Subtitle = "EsclipseHub",
-		Size = UDim2.fromOffset(900, 600),
+		Size = UDim2.fromOffset(1000, 600),
+		SidebarWidth = 300,
 		DragStyle = 1,
 		DisabledWindowControls = {},
 		ShowUserInfo = true,
@@ -19621,10 +19758,10 @@ return function(self)
 	--// Tabs
 	local tabGroup = window:TabGroup()
 	local tabs = {
-		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://18821914323" }),
-		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
-		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
-		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10734950309" }),
+		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://10734975692" }),
+		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734886202" }),
+		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10709769841" }),
+		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10747383470" }),
 		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 	}
 

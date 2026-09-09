@@ -21,6 +21,7 @@ end
 --// References
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local player = services.player
 
@@ -32,6 +33,7 @@ local threatDetectorEnabled = false
 local logHazards = false
 local visualEspEnabled = true
 local showSkillTimers = true
+local autoLearnSkillLifetimes = true
 local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
@@ -607,7 +609,97 @@ local function initPlayerSkillWatcher()
 	end)
 end
 
+--// Tự động quét và nạp danh sách toàn bộ kỹ năng của game từ ReplicatedStorage.abilities
+local function scanAbilityInstance(ability)
+	if not ability then return end
+	detection.RegisterPlayerSkill(ability.Name)
+
+	local nameVal = ability:FindFirstChild("name")
+	if nameVal and nameVal:IsA("ValueBase") and tostring(nameVal.Value) ~= "" then
+		detection.RegisterPlayerSkill(tostring(nameVal.Value))
+	end
+
+	local attrName = ability:GetAttribute("name") or ability:GetAttribute("Name")
+	if type(attrName) == "string" and attrName ~= "" then
+		detection.RegisterPlayerSkill(attrName)
+	end
+
+	-- Quét các BasePart/MeshPart/Projectiles bên trong ability (nếu có)
+	for _, desc in ipairs(ability:GetDescendants()) do
+		if desc:IsA("BasePart") and desc.Name ~= "Handle" and desc.Name ~= "Part" and desc.Name ~= "Union" then
+			detection.RegisterPlayerSkill(desc.Name)
+		end
+	end
+end
+
+local function initReplicatedAbilitiesWatcher()
+	local function hookFolder(folder)
+		for _, child in ipairs(folder:GetChildren()) do
+			scanAbilityInstance(child)
+		end
+		folder.ChildAdded:Connect(function(child)
+			scanAbilityInstance(child)
+		end)
+		if logHazards then
+			print(("[SmartDodge] 📚 Loaded %d player abilities from ReplicatedStorage.abilities"):format(#folder:GetChildren()))
+		end
+	end
+
+	local abilitiesFolder = ReplicatedStorage:FindFirstChild("abilities")
+	if abilitiesFolder then
+		hookFolder(abilitiesFolder)
+	else
+		task.spawn(function()
+			local folder = ReplicatedStorage:WaitForChild("abilities", 10)
+			if folder then
+				hookFolder(folder)
+			end
+		end)
+	end
+end
+
+--// Tự động quét và nạp toàn bộ danh mục EFFECT / đạn / vòng sáng từ ReplicatedStorage.projectiles
+local function scanProjectileInstance(proj)
+	if not proj then return end
+	detection.RegisterPlayerSkill(proj.Name)
+
+	-- Quét toàn bộ part/mesh/model con bên trong
+	for _, desc in ipairs(proj:GetDescendants()) do
+		if desc:IsA("BasePart") and desc.Name ~= "Handle" and desc.Name ~= "Part" and desc.Name ~= "Union" then
+			detection.RegisterPlayerSkill(desc.Name)
+		end
+	end
+end
+
+local function initReplicatedProjectilesWatcher()
+	local function hookFolder(folder)
+		for _, child in ipairs(folder:GetChildren()) do
+			scanProjectileInstance(child)
+		end
+		folder.ChildAdded:Connect(function(child)
+			scanProjectileInstance(child)
+		end)
+		if logHazards then
+			print(("[SmartDodge] 🎆 Loaded %d player projectiles/effects from ReplicatedStorage.projectiles"):format(#folder:GetChildren()))
+		end
+	end
+
+	local projFolder = ReplicatedStorage:FindFirstChild("projectiles")
+	if projFolder then
+		hookFolder(projFolder)
+	else
+		task.spawn(function()
+			local folder = ReplicatedStorage:WaitForChild("projectiles", 10)
+			if folder then
+				hookFolder(folder)
+			end
+		end)
+	end
+end
+
 initPlayerSkillWatcher()
+initReplicatedAbilitiesWatcher()
+initReplicatedProjectilesWatcher()
 
 --// Kiểm tra xem đối tượng có phải là của Player (hoặc skill của Player) không
 local function isPlayerAsset(instance)
@@ -706,6 +798,19 @@ local function isPlayerAsset(instance)
 
 	-- 5. So khớp với danh sách tên kỹ năng đã đăng ký (Chính xác tên, không fuzzy substring tránh trùng tên chiêu Boss)
 	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
+		return true
+	end
+
+	-- 6. Kiểm tra trực tiếp thư mục ReplicatedStorage.abilities & projectiles (phòng trường hợp chiêu/effect mới chưa kịp nạp)
+	local repAbilities = ReplicatedStorage:FindFirstChild("abilities")
+	if repAbilities and (repAbilities:FindFirstChild(instance.Name) or repAbilities:FindFirstChild(instNameClean)) then
+		detection.RegisterPlayerSkill(instance.Name)
+		return true
+	end
+
+	local repProjectiles = ReplicatedStorage:FindFirstChild("projectiles")
+	if repProjectiles and (repProjectiles:FindFirstChild(instance.Name) or repProjectiles:FindFirstChild(instNameClean)) then
+		detection.RegisterPlayerSkill(instance.Name)
 		return true
 	end
 
@@ -1368,7 +1473,7 @@ function unregisterHazard(instance, reason)
 	end
 
 	-- Cập nhật thống kê thời gian sống & thời điểm nháy kích nổ sát thương (Skill Lifetime & Hit Profiler)
-	if info.SpawnTime then
+	if autoLearnSkillLifetimes and info.SpawnTime then
 		local duration = os.clock() - info.SpawnTime
 		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
 
@@ -1943,6 +2048,15 @@ end
 
 function detection.IsShowSkillTimersEnabled()
 	return showSkillTimers
+end
+
+--// Bật/tắt chế độ tự động học thời gian tồn tại & điểm kích nổ sát thương của kỹ năng
+function detection.SetAutoLearnSkillLifetimes(state)
+	autoLearnSkillLifetimes = state and true or false
+end
+
+function detection.IsAutoLearnSkillLifetimesEnabled()
+	return autoLearnSkillLifetimes
 end
 
 detection.SaveSkillProfiles = saveSkillProfilesNow

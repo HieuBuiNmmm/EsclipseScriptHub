@@ -176,7 +176,8 @@ return function(window, tab)
 	}, "Dropdown_SmartDodgeMode")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Blink Step Distance (studs)",
+		Name = "Blink Step Distance",
+		Suffix = " std",
 		Default = smartDodge.GetBlinkStep(),
 		Minimum = 0.2,
 		Maximum = 2.0,
@@ -204,7 +205,8 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeIgnoreInvulnerable")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Respawn Protection Duration (seconds)",
+		Name = "Respawn Protection",
+		Suffix = "s",
 		Default = smartDodge.GetRespawnProtectionDuration(),
 		Minimum = 0,
 		Maximum = 10,
@@ -216,7 +218,8 @@ return function(window, tab)
 	}, "Slider_SmartDodgeRespawnProtectionDuration"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Instant / Final Snap Distance (studs)",
+		Name = "Final Snap Distance",
+		Suffix = " std",
 		Default = smartDodge.GetMaxSnapDistance(),
 		Minimum = 0.2,
 		Maximum = 6.0,
@@ -236,7 +239,8 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeMaintainHeight")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Player Hitbox Padding (studs)",
+		Name = "Hitbox Padding",
+		Suffix = " std",
 		Default = smartDodge.GetHitboxPadding(),
 		Minimum = 0,
 		Maximum = 5,
@@ -248,7 +252,8 @@ return function(window, tab)
 	}, "Slider_SmartDodgeHitboxPadding"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Trajectory Lookahead Length (studs)",
+		Name = "Trajectory Lookahead",
+		Suffix = " std",
 		Default = smartDodge.GetTrajectoryLookahead(),
 		Minimum = 20,
 		Maximum = 150,
@@ -260,7 +265,8 @@ return function(window, tab)
 	}, "Slider_SmartDodgeTrajLookahead"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Trajectory Width Padding (studs)",
+		Name = "Trajectory Width",
+		Suffix = " std",
 		Default = smartDodge.GetTrajectoryWidthPadding(),
 		Minimum = 0.5,
 		Maximum = 6.0,
@@ -302,6 +308,14 @@ return function(window, tab)
 			smartDodge.SetShowSkillTimers(state)
 		end),
 	}, "Toggle_SmartDodgeSkillTimers")
+
+	leftSection:Toggle({
+		Name = "Auto Learn Skill Lifetimes (Save JSON)",
+		Default = smartDodge.IsAutoLearnSkillLifetimesEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetAutoLearnSkillLifetimes(state)
+		end),
+	}, "Toggle_SmartDodgeAutoLearnSkills")
 
 	leftSection:Toggle({
 		Name = "Show Safe Spot Marker (Green ESP)",

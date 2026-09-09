@@ -29,7 +29,8 @@ return function(self)
 	local window = macLib:Window({
 		Title = "DungeonQuest",
 		Subtitle = "EsclipseHub",
-		Size = UDim2.fromOffset(900, 600),
+		Size = UDim2.fromOffset(1000, 600),
+		SidebarWidth = 300,
 		DragStyle = 1,
 		DisabledWindowControls = {},
 		ShowUserInfo = true,
@@ -53,10 +54,10 @@ return function(self)
 	--// Tabs
 	local tabGroup = window:TabGroup()
 	local tabs = {
-		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://18821914323" }),
-		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734950309" }),
-		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10734950309" }),
-		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10734950309" }),
+		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://10734975692" }),
+		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734886202" }),
+		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10709769841" }),
+		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10747383470" }),
 		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
 	}
 

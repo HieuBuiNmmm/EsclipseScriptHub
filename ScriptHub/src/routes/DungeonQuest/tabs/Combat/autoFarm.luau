@@ -28,7 +28,8 @@ return function(window, tab)
 	}, "Toggle_AutoFarm")
 
 	leftSection:Slider({
-		Name = "Rescan Interval (seconds)",
+		Name = "Rescan Interval",
+		Suffix = "s",
 		Default = autoFarm.GetScanInterval(),
 		Minimum = 0.5,
 		Maximum = 5.0,
@@ -39,7 +40,8 @@ return function(window, tab)
 	}, "Slider_AF_ScanInterval")
 
 	leftSection:Slider({
-		Name = "Target Reach Distance (studs)",
+		Name = "Target Reach Distance",
+		Suffix = " std",
 		Default = autoFarm.GetReachDistance(),
 		Minimum = 2,
 		Maximum = 200,
@@ -51,7 +53,8 @@ return function(window, tab)
 	}, "Slider_AF_ReachDistance")
 
 	leftSection:Slider({
-		Name = "Repath Distance Threshold (studs)",
+		Name = "Repath Distance",
+		Suffix = " std",
 		Default = autoFarm.GetRepathDistance(),
 		Minimum = 2,
 		Maximum = 20,
@@ -266,6 +269,7 @@ return function(window, tab)
 
 	reachDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
 		Name = "Target Reach Distance",
+		Suffix = " std",
 		Default = contextual.GetField(editDungeon, editTarget, "TargetReachDistance"),
 		Minimum = 2,
 		Maximum = 200,
