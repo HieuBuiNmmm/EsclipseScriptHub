@@ -43,6 +43,7 @@ dodge.SetRuntime({
 	getLogInDanger = function()
 		return logInDanger
 	end,
+	getActiveBossOrb = detection.GetActiveBossOrb,
 })
 
 local engine = {}
@@ -107,7 +108,7 @@ local function startSafeSpotLoop()
 						dodge.Cancel()
 					end
 				else
-					dodge.Perform(safePos, escapeDist)
+					dodge.Perform(safePos, escapeDist, hazardName)
 				end
 			end
 

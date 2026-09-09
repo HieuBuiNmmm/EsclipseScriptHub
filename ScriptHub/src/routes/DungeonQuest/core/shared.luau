@@ -415,6 +415,70 @@ function shared.IsInstantBrakeEnabled()
 	return instantBrakeEnabled
 end
 
+--// Panic Speed state (Smart Dodge Panic Sprint)
+local panicSpeedActive = false
+local panicSpeedThread = nil
+
+function shared.TriggerPanicSpeed(panicSpeed, duration)
+	panicSpeed = panicSpeed or 24
+	duration = duration or 1.5
+	if not humanoid or not humanoid.Parent then return false end
+
+	-- Nếu player đã có WalkSpeed >= panicSpeed (do skill buff của game hoặc tab Speed), không kích hoạt
+	if humanoid.WalkSpeed >= panicSpeed then
+		return false
+	end
+
+	if panicSpeedThread then
+		task.cancel(panicSpeedThread)
+		panicSpeedThread = nil
+	end
+
+	panicSpeedActive = true
+	isSettingSpeed = true
+	if humanoid.WalkSpeed < panicSpeed then
+		humanoid.WalkSpeed = panicSpeed
+	end
+	isSettingSpeed = false
+
+	panicSpeedThread = task.delay(duration, function()
+		panicSpeedActive = false
+		panicSpeedThread = nil
+		if humanoid and humanoid.Parent then
+			isSettingSpeed = true
+			if enabled then
+				humanoid.WalkSpeed = fastSpeed
+			else
+				humanoid.WalkSpeed = normalSpeed
+			end
+			isSettingSpeed = false
+		end
+	end)
+	return true
+end
+
+function shared.CancelPanicSpeed()
+	if not panicSpeedActive and not panicSpeedThread then return end
+	if panicSpeedThread then
+		task.cancel(panicSpeedThread)
+		panicSpeedThread = nil
+	end
+	panicSpeedActive = false
+	if humanoid and humanoid.Parent then
+		isSettingSpeed = true
+		if enabled then
+			humanoid.WalkSpeed = fastSpeed
+		else
+			humanoid.WalkSpeed = normalSpeed
+		end
+		isSettingSpeed = false
+	end
+end
+
+function shared.IsPanicSpeedActive()
+	return panicSpeedActive
+end
+
 --// Humanoid setup
 local function connectSpeedListener()
 	if speedConnection then
@@ -426,6 +490,14 @@ local function connectSpeedListener()
 		if isSettingSpeed then return end
 		if not humanoid or not humanoid.Parent then return end
 		local curSpeed = humanoid.WalkSpeed
+		if panicSpeedActive then
+			if curSpeed < 24 then
+				isSettingSpeed = true
+				humanoid.WalkSpeed = 24
+				isSettingSpeed = false
+			end
+			return
+		end
 		if enabled then
 			-- Floor Speed / Anti-Slow: Nếu tốc độ hiện tại thấp hơn fastSpeed (ví dụ 16 hoặc bị làm chậm),
 			-- ta ép lên mức sàn fastSpeed. Nhưng nếu game buff tốc cao hơn (ví dụ skill buff lên 24),
@@ -461,6 +533,7 @@ function shared.SetHumanoid(character)
 	end
 	diedConnection = humanoid.Died:Connect(function()
 		wasDead = true
+		shared.CancelPanicSpeed()
 	end)
 
 	trackCleanupConnection(humanoid.HealthChanged:Connect(function(health)

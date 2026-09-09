@@ -12,6 +12,7 @@ local safeSpot = require("@routes/DungeonQuest/core/smartDodge/safeSpot")
 local dodge = require("@routes/DungeonQuest/core/smartDodge/dodge")
 local engine = require("@routes/DungeonQuest/core/smartDodge/engine")
 local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
+local speedDebugHud = require("@routes/DungeonQuest/core/smartDodge/speedDebugHud")
 local shared = require("@routes/DungeonQuest/core/shared")
 
 --// Table
@@ -82,6 +83,22 @@ smartDodge.IsDodging = dodge.IsDodging
 smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus
 smartDodge.OnDodgeStatusChanged = dodge.OnDodgeStatusChanged
+smartDodge.Cancel = dodge.Cancel
+
+--// Panic Sprint (Kích tốc né nguy cấp)
+smartDodge.SetPanicSprintEnabled = dodge.SetPanicSprintEnabled
+smartDodge.IsPanicSprintEnabled = dodge.IsPanicSprintEnabled
+smartDodge.SetPanicSpeed = dodge.SetPanicSpeed
+smartDodge.GetPanicSpeed = dodge.GetPanicSpeed
+smartDodge.SetPanicDuration = dodge.SetPanicDuration
+smartDodge.GetPanicDuration = dodge.GetPanicDuration
+smartDodge.SetPanicCooldown = dodge.SetPanicCooldown
+smartDodge.GetPanicCooldown = dodge.GetPanicCooldown
+smartDodge.IsPanicActive = dodge.IsPanicActive
+
+--// Speed Debug HUD (Màn hình chơi)
+smartDodge.SetSpeedDebugHudEnabled = speedDebugHud.SetEnabled
+smartDodge.IsSpeedDebugHudEnabled = speedDebugHud.IsEnabled
 
 --// Target Facing
 smartDodge.SetAutoFaceTarget = targetFacing.SetEnabled

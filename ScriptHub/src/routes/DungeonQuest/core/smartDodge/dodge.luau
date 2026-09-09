@@ -56,6 +56,13 @@ local activeMoveConn = nil
 
 local currentTargetPos = nil
 
+--// Panic Sprint (Phương án B: Tăng tốc khi tình huống nguy cấp)
+local panicSprintEnabled = true
+local panicSpeed = 24
+local panicDuration = 1.5
+local panicCooldown = 5.0
+local lastPanicTime = 0
+
 local dodgeStatusCallbacks = {}
 
 --// MoveTo tuning
@@ -119,6 +126,12 @@ local function getLogInDanger()
 		or false
 end
 
+local function getActiveBossOrb()
+	return runtime
+		and runtime.getActiveBossOrb
+		and runtime.getActiveBossOrb()
+end
+
 --==============================================================--
 -- Status callbacks
 --==============================================================--
@@ -128,6 +141,8 @@ local function fireDodgeStatus(status)
 		pcall(cb, status)
 	end
 end
+
+dodge.FireStatus = fireDodgeStatus
 
 --==============================================================--
 -- Face target
@@ -335,11 +350,74 @@ local function updateWalkFacing(rootPart, humanoid)
 	end
 end
 
+local function tryTriggerPanicSprint(safePos, escapeDist, hazardName, rootPart, humanoid)
+	if not panicSprintEnabled then return end
+	if dodgeMode ~= "HumanoidMove" and dodgeMode ~= "MoveTo" then return end
+	if not rootPart or not rootPart.Parent then return end
+
+	-- TỐI ƯU HÓA: Kiểm tra nếu Player đã có sẵn tốc độ hoặc Velocity >= 24 (do chiêu buff tốc chính thức của game)
+	-- -> Bỏ qua kích hoạt Panic để tiết kiệm cooldown 5s và tránh can thiệp vào buff của game
+	local curWalkSpeed = humanoid and humanoid.WalkSpeed or 0
+	local vel = rootPart.AssemblyLinearVelocity
+	local horizVelocity = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
+
+	if curWalkSpeed >= (panicSpeed - 0.5) or horizVelocity >= (panicSpeed - 1.0) then
+		return
+	end
+
+	local now = os.clock()
+	if (now - lastPanicTime) < panicCooldown then return end
+
+	local isEmergency = false
+	local panicReason = nil
+
+	-- 1. Cự ly né xa (escapeDist >= 10.0 studs)
+	local currentDist = escapeDist or (safePos and (Vector3.new(safePos.X - rootPart.Position.X, 0, safePos.Z - rootPart.Position.Z).Magnitude)) or 0
+	if currentDist >= 10.0 then
+		isEmergency = true
+		panicReason = ("Long escape distance (%.1f studs)"):format(currentDist)
+	end
+
+	-- 2. Chiêu khẩn cấp / Bị bao vây / Kiting / Lối đi bị chặn
+	if not isEmergency and hazardName then
+		local hLow = hazardName:lower()
+		if hLow:find("emergency") or hLow:find("kiting") or hLow:find("waiting for path") or hLow:find("lead") then
+			isEmergency = true
+			panicReason = ("Hazard threat (%s)"):format(hazardName)
+		end
+	end
+
+	-- 3. Quả Cầu (Boss Orb) hoặc Projectile nguy hiểm đang áp sát (< 15.0 studs)
+	if not isEmergency then
+		local activeOrb = getActiveBossOrb()
+		local orbPart = activeOrb and (activeOrb.Position and activeOrb or activeOrb.Instance)
+		local orbPos = orbPart and orbPart.Position
+		if orbPos then
+			local dOrb = (Vector3.new(orbPos.X - rootPart.Position.X, 0, orbPos.Z - rootPart.Position.Z)).Magnitude
+			if dOrb < 15.0 then
+				isEmergency = true
+				panicReason = ("Boss Orb closing in (%.1f studs)"):format(dOrb)
+			end
+		end
+	end
+
+	if isEmergency then
+		lastPanicTime = now
+		if shared.TriggerPanicSpeed then
+			shared.TriggerPanicSpeed(panicSpeed, panicDuration)
+		end
+		if getLogInDanger() then
+			print(("[SmartDodge][Panic] 💨 PANIC SPRINT ACTIVATED! WalkSpeed boosted to %d for %.1fs (Reason: %s)")
+				:format(panicSpeed, panicDuration, panicReason or "Emergency"))
+		end
+	end
+end
+
 --==============================================================--
 -- Perform Dodge
 --==============================================================--
 
-function dodge.Perform(safePos, escapeDist)
+function dodge.Perform(safePos, escapeDist, hazardName)
 	-- Bỏ qua né chiêu khi nhân vật đang trong trạng thái bất tử (ForceField hoặc mới hồi sinh)
 	if shared.IsInvulnerable and shared.IsInvulnerable() then
 		return
@@ -360,6 +438,9 @@ function dodge.Perform(safePos, escapeDist)
 
 	-- Always update latest target.
 	currentTargetPos = safePos
+
+	-- Đánh giá kích hoạt Panic Sprint (Phương án B: Tình huống nguy cấp)
+	tryTriggerPanicSprint(safePos, escapeDist, hazardName, rootPart, humanoid)
 
 	-- If already dodging, do NOT spawn another thread.
 	--
@@ -416,6 +497,11 @@ function dodge.Perform(safePos, escapeDist)
 					local root = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 					if root then humanoid:MoveTo(root.Position) end
 				end)
+			end
+
+			-- Hủy Panic Speed ngay khi đã thoát hiểm xong về đích
+			if shared.CancelPanicSpeed then
+				shared.CancelPanicSpeed()
 			end
 
 			isDodging = false
@@ -968,6 +1054,80 @@ function dodge.OnDodgeStatusChanged(callback)
 		dodgeStatusCallbacks,
 		callback
 	)
+end
+
+--==============================================================--
+-- Dodge Cancellation
+--==============================================================--
+
+function dodge.Cancel()
+	if dodgeThread then
+		task.cancel(dodgeThread)
+		dodgeThread = nil
+	end
+	if activeMoveConn then
+		pcall(function() activeMoveConn:Disconnect() end)
+		activeMoveConn = nil
+	end
+	local _, rootPart, humanoid = getCharacterParts()
+	if humanoid and humanoid.Parent and dodgeMode == "HumanoidMove" then
+		pcall(function()
+			humanoid:Move(Vector3.zero, false)
+		end)
+	end
+	if shared.CancelPanicSpeed then
+		shared.CancelPanicSpeed()
+	end
+	isDodging = false
+	targetFacing.SetDodging(false)
+	currentTargetPos = nil
+	fireDodgeStatus("Idle")
+end
+
+--==============================================================--
+-- Panic Sprint Accessors
+--==============================================================--
+
+function dodge.SetPanicSprintEnabled(state)
+	panicSprintEnabled = state and true or false
+end
+
+function dodge.IsPanicSprintEnabled()
+	return panicSprintEnabled
+end
+
+function dodge.SetPanicSpeed(value)
+	if type(value) == "number" and value > 0 then
+		panicSpeed = value
+	end
+end
+
+function dodge.GetPanicSpeed()
+	return panicSpeed
+end
+
+function dodge.SetPanicDuration(value)
+	if type(value) == "number" and value > 0 then
+		panicDuration = value
+	end
+end
+
+function dodge.GetPanicDuration()
+	return panicDuration
+end
+
+function dodge.SetPanicCooldown(value)
+	if type(value) == "number" and value > 0 then
+		panicCooldown = value
+	end
+end
+
+function dodge.GetPanicCooldown()
+	return panicCooldown
+end
+
+function dodge.IsPanicActive()
+	return shared.IsPanicSpeedActive and shared.IsPanicSpeedActive() or false
 end
 
 --==============================================================--

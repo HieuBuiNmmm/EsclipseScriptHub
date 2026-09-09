@@ -108,6 +108,11 @@ return function(window, tab)
 			status = "🛡️ Paused (Invulnerable)"
 		end
 
+		local isPanic = smartDodge.IsPanicActive and smartDodge.IsPanicActive()
+		if isPanic and status == "Dodging" then
+			status = "Dodging (💨 PANIC SPRINT)"
+		end
+
 		local color = "160, 160, 160"
 		if status == "Dodging" then
 			color = "255, 200, 50"
@@ -238,6 +243,53 @@ return function(window, tab)
 		end),
 	}, "Toggle_SmartDodgeMaintainHeight")
 
+	leftSection:Toggle({
+		Name = "Panic Sprint on Danger (Tăng tốc né khẩn cấp)",
+		Default = smartDodge.IsPanicSprintEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetPanicSprintEnabled(state)
+		end),
+	}, "Toggle_SmartDodgePanicSprint")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Panic WalkSpeed",
+		Suffix = " spd",
+		Default = smartDodge.GetPanicSpeed(),
+		Minimum = 18,
+		Maximum = 32,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetPanicSpeed(value)
+		end),
+	}, "Slider_SmartDodgePanicSpeed"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Panic Duration",
+		Suffix = "s",
+		Default = smartDodge.GetPanicDuration(),
+		Minimum = 0.5,
+		Maximum = 3.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetPanicDuration(value)
+		end),
+	}, "Slider_SmartDodgePanicDuration"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Panic Cooldown",
+		Suffix = "s",
+		Default = smartDodge.GetPanicCooldown(),
+		Minimum = 2.0,
+		Maximum = 10.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			smartDodge.SetPanicCooldown(value)
+		end),
+	}, "Slider_SmartDodgePanicCooldown"))
+
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Hitbox Padding",
 		Suffix = " std",
@@ -324,6 +376,14 @@ return function(window, tab)
 			smartDodge.SetShowSafeMarker(state)
 		end),
 	}, "Toggle_SmartDodgeShowSafeMarker")
+
+	leftSection:Toggle({
+		Name = "Show Speed Debug HUD (Tốc độ trên màn hình)",
+		Default = smartDodge.IsSpeedDebugHudEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartDodge.SetSpeedDebugHudEnabled(state)
+		end),
+	}, "Toggle_SmartDodgeSpeedDebugHud")
 
 	leftSection:Toggle({
 		Name = "Log Hazards (Spawns / Despawns)",
