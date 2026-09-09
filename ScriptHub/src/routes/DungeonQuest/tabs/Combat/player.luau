@@ -38,14 +38,6 @@ return function(window, tab)
 		end),
 	}, "Toggle_InstantAcceleration")
 
-	section:Toggle({
-		Name = "Instant Brake (Dừng tức thì / Chống trượt)",
-		Default = shared.IsInstantBrakeEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			shared.SetInstantBrakeEnabled(state)
-		end),
-	}, "Toggle_InstantBrake")
-
 	section:Header({ Name = "Shortcuts" })
 
 	section:Toggle({

@@ -99,7 +99,24 @@ return function(self)
 
 	--// Khởi chạy
 	tabs.Combat:Select()
+
+	local coordinator = require("@routes/DungeonQuest/core/coordinator")
+	local smartAutoPlay = require("@routes/DungeonQuest/core/smartAutoPlay")
+
+	coordinator.SetLocked(true)
 	macLib:LoadAutoLoadConfig()
+
+	task.delay(0.3, function()
+		coordinator.SetLocked(false)
+
+		-- Đảm bảo Smart Auto Play kích hoạt chính xác nếu toggle được lưu là ON
+		local sapOpt = macLib.Options and macLib.Options["Toggle_SAP_Master"]
+		if sapOpt and sapOpt:GetState() == true then
+			if not smartAutoPlay.IsMasterEnabled() then
+				smartAutoPlay.SetMasterEnabled(true)
+			end
+		end
+	end)
 
 	--// Kích hoạt lại autoSave sau khi toàn bộ UI và config đã nạp xong ổn định
 	task.delay(1.5, function()

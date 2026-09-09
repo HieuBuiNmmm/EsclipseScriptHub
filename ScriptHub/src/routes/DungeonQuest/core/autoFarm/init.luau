@@ -59,6 +59,9 @@ local dunReady = false
 --// Velocity Stuck Detection State
 local stuckTimer = 0
 local lastJumpTime = 0
+local autoJumpOnStuck = false -- Toggle tự động nhảy khi vận tốc thấp
+local stuckVelocityThreshold = 10.0 -- Ngưỡng vận tốc (studs/s)
+local isPaused = false -- Tạm dừng di chuyển mà không hủy path
 
 
 
@@ -200,6 +203,11 @@ local function stepMovementLoop(deltaTime)
 	local playerPos = getSafePosition(playerRoot)
 	if not playerPos then return end
 
+	-- Nếu đang tạm dừng di chuyển (giữ vị trí khi combat hoặc né) -> không bước tiếp
+	if isPaused then
+		return
+	end
+
 	-- Periodic Target Rescan (System A)
 	local now = os.clock()
 	if now - lastScanTime >= scanInterval then
@@ -321,9 +329,9 @@ local function stepMovementLoop(deltaTime)
 		local horizontalSpeed = rootVel and Vector3.new(rootVel.X, 0, rootVel.Z).Magnitude or 0
 		local dt = (type(deltaTime) == "number" and deltaTime > 0) and deltaTime or 0.016
 
-		if horizontalSpeed < 10.0 then
+		if horizontalSpeed < stuckVelocityThreshold then
 			stuckTimer += dt
-			if (now - lastJumpTime) >= 0.4 then
+			if autoJumpOnStuck and (now - lastJumpTime) >= 0.4 then
 				humanoid.Jump = true
 				pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
 				lastJumpTime = now
@@ -636,6 +644,44 @@ function autoFarm.SetRepathDistance(val)
 	end
 end
 
+function autoFarm.SetAutoJumpOnStuck(state)
+	autoJumpOnStuck = state and true or false
+end
+
+function autoFarm.IsAutoJumpOnStuckEnabled()
+	return autoJumpOnStuck
+end
+
+function autoFarm.SetStuckVelocityThreshold(val)
+	if type(val) == "number" and val >= 1 then
+		stuckVelocityThreshold = val
+	end
+end
+
+function autoFarm.GetStuckVelocityThreshold()
+	return stuckVelocityThreshold
+end
+
+function autoFarm.SetPaused(state)
+	local want = state and true or false
+	if want == isPaused then return end
+	isPaused = want
+	if isPaused then
+		local h = shared.GetHumanoid()
+		local r = getPlayerRoot()
+		if h and h.Parent and r then
+			local p = getSafePosition(r)
+			if p then
+				pcall(function() h:MoveTo(p) end)
+			end
+		end
+	end
+end
+
+function autoFarm.IsPaused()
+	return isPaused
+end
+
 function autoFarm.IsPlannedPathVisualEnabled()
 	return showPlannedPath
 end
@@ -751,12 +797,14 @@ function autoFarm.GetDebugInfo()
 end
 
 
-function autoFarm.Toggle(state)
+function autoFarm.Toggle(state, bypassCoordinator)
 	if state == enabled then return end
 	enabled = state
 
 	if enabled then
-		coordinator.EnableExclusive("AutoFarm")
+		if not bypassCoordinator then
+			coordinator.EnableExclusive("AutoFarm")
+		end
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 
 		running = true
@@ -805,8 +853,11 @@ function autoFarm.Toggle(state)
 
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
-		if h and h.Parent and r and r.Parent then
-			pcall(function() h:MoveTo(getSafePosition(r)) end)
+		if h and h.Parent and r then
+			local p = getSafePosition(r)
+			if p then
+				pcall(function() h:MoveTo(p) end)
+			end
 		end
 
 		tracker.ClearTarget()

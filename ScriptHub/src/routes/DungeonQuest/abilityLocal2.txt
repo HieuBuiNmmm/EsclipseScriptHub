@@ -1,0 +1,3432 @@
+-- Script Path: game:GetService("Players").acz0025n.PlayerGui.abilityLocal.abilityLocal2
+-- Took 2.83s to decompile.
+-- Executor: Madium (2.0.0)
+
+local LocalPlayer = game.Players.LocalPlayer
+local rng = Random.new(tick())
+local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+game.ReplicatedStorage.remotes.abilityCast.OnClientEvent:Connect(function(arg1, arg2, arg3, arg4) -- line: 7
+    -- upvalues:
+    --  [1] LocalPlayer (copy)
+    --  [2] Debris (copy)
+    --  [3] TweenService (copy)
+    --  [4] RunService (copy)
+    --  [5] rng (copy)
+
+    if LocalPlayer.showAbilities.Value == true and (arg1 ~= LocalPlayer and arg4 ~= true) then
+        return
+    end
+
+    if arg2 == "Electric Field" then
+        local _ = arg1.Character.HumanoidRootPart
+        local ElectricField = game.ReplicatedStorage.projectiles["Electric Field"]:Clone()
+        Debris:AddItem(ElectricField, 6)
+        local v6
+        ElectricField.Parent, v6 = workspace, arg3
+        ElectricField:SetPrimaryPartCFrame(v6)
+        local v7 = pairs
+
+        for _, val in v7(ElectricField:GetDescendants()) do
+            if val:IsA("BasePart") then
+                val.Size = val.Size * 1.15
+            end
+
+            if val:IsA("Beam") then
+                val.Width0 = val.Width0 * 1.15
+                val.Width1 = val.Width1 * 1.15
+            end
+        end
+
+        wait(0.5)
+
+        for _ = 1, 4, 1 do
+            local v17 = pairs
+
+            for _, val_1 in v17(ElectricField:GetChildren()) do
+                spawn(function() -- line: 43
+                    -- upvalues:
+                    --  [1] ElectricField (copy)
+                    --  [2] val_1 (copy)
+
+                    ElectricField.PrimaryPart.shockSound:Play()
+
+                    if val_1:IsA("Beam") then
+                        val_1.Enabled = true
+                    end
+
+                    wait(0.075)
+
+                    if val_1:IsA("Beam") then
+                        val_1.Enabled = false
+                    end
+                end)
+            end
+
+            wait(0.25)
+        end
+
+        wait(0.6)
+        ElectricField:Destroy()
+
+        return
+    end
+
+    local v34
+
+    if arg2 == "Energy Orb" then
+        local _ = arg1.Character.HumanoidRootPart
+        local v22 = arg3 * CFrame.Angles(0, 0, 1.5707963267948966)
+        local EnergyOrb = game.ReplicatedStorage.projectiles["Energy Orb"]:Clone()
+        Debris:AddItem(EnergyOrb, 6)
+        EnergyOrb.Parent = workspace
+        EnergyOrb.CFrame = v22
+        local t = {}
+        t.CFrame = v22 + v22.LookVector * 60
+        local v32 = TweenService:Create(
+            EnergyOrb,
+            TweenInfo.new(
+                1,
+                Enum.EasingStyle.Linear,
+                Enum.EasingDirection.Out,
+                0,
+                false,
+                0
+            ),
+            t
+        )
+        v32:Play()
+        EnergyOrb.sound:Play()
+        EnergyOrb.charge:Play()
+        EnergyOrb.swoosh:Play()
+        v34 = v32.Completed
+        v34:Connect(function() -- line: 78
+            -- upvalues:
+            --  [1] EnergyOrb (copy)
+
+            EnergyOrb:Destroy()
+        end)
+
+        return
+    end
+
+    if arg2 == "Mystery Matter" then
+        local HumanoidRootPart_2 = arg1.Character.HumanoidRootPart
+        local MysteryMatter = game.ReplicatedStorage.projectiles["Mystery Matter"]:Clone()
+        Debris:AddItem(MysteryMatter, 6)
+        MysteryMatter.Parent = workspace
+        local _ = nil
+        local Heartbeat = RunService.Heartbeat
+
+        local function v42() -- line: 91
+            -- upvalues:
+            --  [1] MysteryMatter (copy)
+            --  [2] HumanoidRootPart_2 (copy)
+
+            MysteryMatter:SetPrimaryPartCFrame(HumanoidRootPart_2.CFrame)
+        end
+
+        local v43 = Heartbeat:Connect(v42)
+        task.wait(0.2)
+        v43:Disconnect()
+        local _ = nil
+        v42 = 1
+
+        for index_1 = v42, 5, 1 do
+            v34 = MysteryMatter[tostring(index_1)]
+
+            if not v34 then
+                break
+            end
+
+            local t_1 = {
+                CFrame = HumanoidRootPart_2.CFrame + HumanoidRootPart_2.CFrame.LookVector * 30
+            }
+            local v48 = TweenService:Create(
+                v34,
+                TweenInfo.new(0.15, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                t_1
+            )
+            v48:Play()
+            MysteryMatter.PrimaryPart.swoosh:Play()
+            v48.Completed:Connect(function() -- line: 114
+                -- upvalues:
+                --  [1] TweenService (ref)
+                --  [2] v34 (copy)
+                --  [3] MysteryMatter (copy)
+
+                TweenService:Create(
+                    v34,
+                    TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                    { Size = Vector3.new(60, 60, 60), Transparency = 1 }
+                ):Play()
+                MysteryMatter.PrimaryPart.explosion1:Play()
+            end)
+            task.wait(0.15)
+        end
+    else
+        if arg2 == "Explosive Mine" then
+            local ExplosiveMine = game.ReplicatedStorage.projectiles["Explosive Mine"]
+            local HumanoidRootPart_3 = arg1.Character.HumanoidRootPart
+            ExplosiveMine = ExplosiveMine:Clone()
+            Debris:AddItem(ExplosiveMine, 5)
+            ExplosiveMine.Parent = workspace
+            ExplosiveMine:SetPrimaryPartCFrame(HumanoidRootPart_3.CFrame)
+            local t_3 = {}
+            t_3.CFrame = arg3 + Vector3.new(0, -2.5, 0)
+            local New_2 = TweenInfo.new(
+                0.2,
+                Enum.EasingStyle.Linear,
+                Enum.EasingDirection.Out,
+                0,
+                false,
+                0
+            )
+            local v58 = TweenService:Create(ExplosiveMine.PrimaryPart, New_2, t_3)
+            v58.Completed:Connect(function() -- line: 145
+                -- upvalues:
+                --  [1] ExplosiveMine (copy)
+                --  [2] TweenService (ref)
+
+                wait(0.1)
+                ExplosiveMine.PrimaryPart.beep:Play()
+                ExplosiveMine.lightPart.PointLight.Enabled = true
+                wait(0.1)
+                ExplosiveMine.lightPart.PointLight.Enabled = false
+                wait(0.1)
+                ExplosiveMine.PrimaryPart.beep:Play()
+                ExplosiveMine.lightPart.PointLight.Enabled = true
+                wait(0.1)
+                ExplosiveMine.lightPart.PointLight.Enabled = false
+                wait(0.1)
+                ExplosiveMine.PrimaryPart.beep:Play()
+                ExplosiveMine.lightPart.PointLight.Enabled = true
+                wait(0.1)
+
+                for _, child in pairs(ExplosiveMine:GetChildren()) do
+                    if child:IsA("BasePart") and child.Name ~= "explosion" then
+                        child.Transparency = 1
+                    end
+                end
+
+                local tweenInfo = TweenInfo.new(
+                    0.5,
+                    Enum.EasingStyle.Quart,
+                    Enum.EasingDirection.Out,
+                    0,
+                    false,
+                    0
+                )
+                TweenService:Create(
+                    ExplosiveMine.explosion,
+                    tweenInfo,
+                    { Size = Vector3.new(80, 80, 80), Transparency = 1 }
+                ):Play()
+                ExplosiveMine.PrimaryPart.explosion1:Play()
+                ExplosiveMine.PrimaryPart.explosion2:Play()
+                ExplosiveMine.lightPart.PointLight.Enabled = false
+            end)
+            v58:Play()
+
+            return
+        end
+
+        if arg2 == "Vortex Grenade" then
+            local _ = arg1.Character.HumanoidRootPart
+            local VortexGrenade = game.ReplicatedStorage.projectiles["Vortex Grenade"]:Clone()
+            Debris:AddItem(VortexGrenade, 0.5)
+            local v64
+            VortexGrenade.Parent, v64 = workspace, arg3
+            VortexGrenade:SetPrimaryPartCFrame(v64)
+            local t_5 = {}
+            t_5.CFrame = arg3 + arg3.LookVector * 60
+            local New_3 = TweenInfo.new(
+                0.5,
+                Enum.EasingStyle.Linear,
+                Enum.EasingDirection.Out,
+                0,
+                false,
+                0
+            )
+            TweenService:Create(VortexGrenade.PrimaryPart, New_3, t_5):Play()
+
+            return
+        end
+
+        if arg2 == "Vortex Grenade Explosion" then
+            local _ = arg1.Character.HumanoidRootPart
+            local PrimaryPart_2 = arg3.PrimaryPart.CFrame
+            local VortexGrenadeExplosion = game.ReplicatedStorage.projectiles["Vortex Grenade Explosion"]:Clone()
+            game:GetService("Debris"):AddItem(VortexGrenadeExplosion, 1)
+            VortexGrenadeExplosion.Parent = workspace
+            VortexGrenadeExplosion.PrimaryPart.explode:Play()
+            spawn(function() -- line: 205
+                -- upvalues:
+                --  [1] VortexGrenadeExplosion (copy)
+                --  [2] PrimaryPart_2 (copy)
+
+                local v78 = 0
+
+                while true do
+                    if not VortexGrenadeExplosion:FindFirstChild("PrimaryPart") then
+                        break
+                    end
+
+                    VortexGrenadeExplosion:SetPrimaryPartCFrame(
+                        PrimaryPart_2 * CFrame.Angles(0, math.rad(v78), 0)
+                    )
+                    wait()
+                    v78 += 50
+                end
+            end)
+            local New_4 = Random.new(tick())
+            spawn(function() -- line: 215
+                -- upvalues:
+                --  [1] VortexGrenadeExplosion (copy)
+                --  [2] New_4 (copy)
+
+                while true do
+                    if not VortexGrenadeExplosion:FindFirstChild("PrimaryPart") then
+                        break
+                    end
+
+                    for _, val_2 in pairs(VortexGrenadeExplosion:GetChildren()) do
+                        if val_2.Name == "crescent" and New_4:NextInteger(0, 2) == 1 then
+                            spawn(function() -- line: 220
+                                -- upvalues:
+                                --  [1] val_2 (copy)
+
+                                val_2.Transparency = 0
+                                wait(0.1)
+
+                                for _ = 1, 5 do
+                                    val_2.Transparency += 0.2
+                                    wait()
+                                end
+                            end)
+                        end
+                    end
+
+                    wait(0.2)
+                end
+            end)
+
+            return
+        end
+
+        if arg2 == "Focus Beam" then
+            local HumanoidRootPart_6 = arg1.Character.HumanoidRootPart
+            local FocusBeam = game.ReplicatedStorage.projectiles["Focus Beam"]:Clone()
+            Debris:AddItem(FocusBeam, 7)
+            FocusBeam.Parent = workspace
+            FocusBeam:SetPrimaryPartCFrame(
+                HumanoidRootPart_6.CFrame + HumanoidRootPart_6.CFrame.LookVector * 35
+            )
+            local v94 = true
+            local v95 = nil
+            v95 = RunService.Heartbeat:Connect(function() -- line: 246
+                -- upvalues:
+                --  [1] v94 (ref)
+                --  [2] FocusBeam (copy)
+                --  [3] HumanoidRootPart_6 (copy)
+                --  [4] v95 (ref)
+
+                if v94 == true then
+                    FocusBeam:SetPrimaryPartCFrame(
+                        HumanoidRootPart_6.CFrame + HumanoidRootPart_6.CFrame.LookVector * 35
+                    )
+
+                    return
+                end
+
+                v95:Disconnect()
+                v95 = nil
+            end)
+            local v99 = pairs
+
+            for _, val_3 in v99(FocusBeam:GetChildren()) do
+                if val_3.Name == "beam" or val_3.Name == "mainBeam" then
+                    spawn(function() -- line: 258
+                        -- upvalues:
+                        --  [1] TweenService (ref)
+                        --  [2] val_3 (copy)
+                        --  [3] FocusBeam (copy)
+                        --  [4] v94 (ref)
+
+                        local v100 = TweenService:Create(
+                            val_3,
+                            TweenInfo.new(
+                                0.25,
+                                Enum.EasingStyle.Linear,
+                                Enum.EasingDirection.Out,
+                                0,
+                                false,
+                                0
+                            ),
+                            { Transparency = 0 }
+                        )
+                        v100.Completed:Connect(function() -- line: 264
+                            -- upvalues:
+                            --  [1] val_3 (ref)
+                            --  [2] FocusBeam (ref)
+                            --  [3] TweenService (ref)
+                            --  [4] v94 (ref)
+
+                            local Magnitude = (val_3.Position - FocusBeam.PrimaryPart.Position).Magnitude
+
+                            for _ = 1, 18 do
+                                val_3.CFrame += CFrame.new(
+                                    val_3.Position,
+                                    FocusBeam.PrimaryPart.Position
+                                ).LookVector * (Magnitude / 18)
+                                wait()
+                            end
+
+                            wait(0.1)
+
+                            if val_3.Name == "mainBeam" then
+                                local v101 = TweenService:Create(
+                                    val_3,
+                                    TweenInfo.new(
+                                        0.4,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out,
+                                        0,
+                                        false,
+                                        0
+                                    ),
+                                    { Size = Vector3.new(34, 34, 150), Transparency = 1 }
+                                )
+                                v94 = false
+                                v101:Play()
+                                FocusBeam.PrimaryPart.shoot:Play()
+
+                                return
+                            end
+
+                            val_3.Transparency = 1
+                        end)
+                        v100:Play()
+                    end)
+                end
+            end
+
+            return
+        end
+
+        if arg2 == "Molten Shards" then
+            local HumanoidRootPart_7 = arg1.Character.HumanoidRootPart
+            local MoltenShard = game.ReplicatedStorage.projectiles["Molten Shard"]:Clone()
+            Debris:AddItem(MoltenShard, 2)
+            local v107 = RunService.Heartbeat:Connect(function() -- line: 301
+                -- upvalues:
+                --  [1] HumanoidRootPart_7 (copy)
+                --  [2] MoltenShard (copy)
+
+                local v108 = (HumanoidRootPart_7.CFrame - HumanoidRootPart_7.Position):vectorToWorldSpace(
+                    Vector3.new(1, 0, 0)
+                )
+                MoltenShard.CFrame = HumanoidRootPart_7.CFrame + HumanoidRootPart_7.CFrame.LookVector * 3.5 + v108 * 3.5
+            end)
+            MoltenShard.Parent = workspace
+            wait(0.3)
+            v107:Disconnect()
+            MoltenShard.particle2:Destroy()
+            MoltenShard.PointLight:Destroy()
+            local _ = TweenService:Create(
+                MoltenShard,
+                TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                { Transparency = 1, Size = Vector3.new(9, 9, 9) }
+            ):Play()
+            MoltenShard.explosion2:Play()
+            local MoltenShard_1 = game.ReplicatedStorage.projectiles["Molten Shard"]
+
+            for index_4 = 1, 6, 1 do
+                spawn(function() -- line: 321
+                    -- upvalues:
+                    --  [1] MoltenShard_1 (copy)
+                    --  [2] Debris (ref)
+                    --  [3] MoltenShard (copy)
+                    --  [4] TweenService (ref)
+                    --  [5] index_4 (copy)
+                    --  [6] rng (ref)
+
+                    local v119 = MoltenShard_1:Clone()
+                    v119.explosion1.PlaybackSpeed = 2
+                    Debris:AddItem(v119, 2)
+                    v119.Size *= 0.5
+                    v119.Parent = workspace
+                    v119.CFrame = MoltenShard.CFrame
+                    local v120 = TweenService
+                    local tweenInfo_1 = TweenInfo.new(
+                        index_4 * 0.035,
+                        Enum.EasingStyle.Linear,
+                        Enum.EasingDirection.Out
+                    )
+                    local t_8 = {}
+                    local v121 = v119.CFrame + v119.CFrame.LookVector * (index_4 * 10)
+                    local v122 = rng:NextInteger(-4, 4)
+                    t_8.CFrame = v121 + Vector3.new(v122, 0, rng:NextInteger(-4, 4))
+                    v120:Create(v119, tweenInfo_1, t_8):Play()
+                    wait(index_4 * 0.035 + 0.4)
+                    TweenService:Create(
+                        v119,
+                        TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                        { Transparency = 1, Size = Vector3.new(30, 30, 30) }
+                    ):Play()
+                    v119.explosion1:Play()
+                    wait(0.35)
+                    v119.particle2.Enabled = false
+                    v119.PointLight.Enabled = false
+                end)
+            end
+        else
+            if arg2 == "Lava Cage" then
+                local _ = arg1.Character.HumanoidRootPart
+                local LavaCage = game.ReplicatedStorage.projectiles["Lava Cage"]:Clone()
+                Debris:AddItem(LavaCage, 5)
+                LavaCage.Parent = workspace
+                LavaCage:SetPrimaryPartCFrame(arg3 * CFrame.Angles(0, 0.7853981633974483, 0))
+                wait(0.3)
+                LavaCage.Union.Transparency = 0
+                LavaCage.flashPart.Transparency = 0
+                local v134 = pairs
+                local PrimaryPart_4 = LavaCage.PrimaryPart
+
+                for _, val_4 in v134(PrimaryPart_4:GetChildren()) do
+                    if val_4:IsA("Beam") then
+                        val_4.Width0 = 40
+                        val_4.Width1 = 40
+                        TweenService:Create(
+                            val_4,
+                            TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                            { Width0 = 0, Width1 = 0 }
+                        ):Play()
+                    end
+                end
+
+                TweenService:Create(
+                    LavaCage.Union,
+                    TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                    { Transparency = 1 }
+                ):Play()
+                TweenService:Create(
+                    LavaCage.flashPart,
+                    TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                    { Transparency = 1 }
+                ):Play()
+                LavaCage.PrimaryPart.shoot:Play()
+                LavaCage.PrimaryPart.swoosh:Play()
+
+                return
+            end
+
+            if arg2 == "Inner Focus" then
+                local HumanoidRootPart_9 = arg1.Character.HumanoidRootPart
+                local TweenService_1 = game:GetService("TweenService")
+                local InnerFocusParticleHolder = game.ReplicatedStorage.projectiles["Inner Focus Particle Holder"].particleAttachment:Clone()
+                Debris:AddItem(InnerFocusParticleHolder, 5)
+                InnerFocusParticleHolder.Parent = HumanoidRootPart_9
+                local v150 = game.ReplicatedStorage.projectiles.sounds.chargingSound:Clone()
+                Debris:AddItem(v150, 2)
+                v150.Parent = HumanoidRootPart_9
+                v150:Play()
+                local New_8 = Instance.new("PointLight")
+                Debris:AddItem(New_8, 5)
+                New_8.Brightness = 0.9
+                New_8.Range = 18
+                local FromRGB = Color3.fromRGB(73, 255, 255)
+                New_8.Color = FromRGB
+                New_8.Parent = HumanoidRootPart_9
+                local v162 = true
+                local v163 = spawn
+                v163(function() -- line: 390
+                    -- upvalues:
+                    --  [1] v162 (ref)
+
+                    wait(5)
+                    v162 = false
+                end)
+
+                while v162 == true do
+                    v163 = game.ReplicatedStorage.projectiles.groundAura:Clone()
+                    Debris:AddItem(v163, 1)
+                    local FromRGB_1 = Color3.fromRGB(73, 255, 255)
+                    v163.Color = FromRGB_1
+                    v163.Parent = workspace
+                    v163.CFrame = (HumanoidRootPart_9.CFrame + Vector3.new(0, -3, 0)) * CFrame.Angles(
+                        0,
+                        math.rad((rng:NextInteger(-180, 180))),
+                        0
+                    )
+                    local v171 = rng:NextNumber(15, 20)
+                    local v172 = rng:NextNumber(4, 7)
+                    local t_11 = { Size = Vector3.new(v171, v172, v171), Transparency = 1 }
+                    t_11.CFrame = v163.CFrame + Vector3.new(0, v172 / 2, 0)
+                    local v178 = TweenService_1:Create(
+                        v163,
+                        TweenInfo.new(
+                            0.5,
+                            Enum.EasingStyle.Quart,
+                            Enum.EasingDirection.Out,
+                            0,
+                            false,
+                            0
+                        ),
+                        t_11
+                    )
+                    v178:Play()
+                    v178.Completed:Connect(function() -- line: 413
+                        -- upvalues:
+                        --  [1] v163 (copy)
+
+                        v163:Destroy()
+                    end)
+                    wait(0.08)
+                end
+
+                return
+            end
+
+            if arg2 == "Inner Rage" then
+                local HumanoidRootPart_10 = arg1.Character.HumanoidRootPart
+                local TweenService_2 = game:GetService("TweenService")
+                local InnerRageParticleHolder = game.ReplicatedStorage.projectiles["Inner Rage Particle Holder"].particleAttachment:Clone()
+                Debris:AddItem(InnerRageParticleHolder, 5)
+                InnerRageParticleHolder.Parent = HumanoidRootPart_10
+                local v187 = game.ReplicatedStorage.projectiles.sounds.chargingSound:Clone()
+                Debris:AddItem(v187, 2)
+                v187.Parent = HumanoidRootPart_10
+                v187:Play()
+                local New_9 = Instance.new("PointLight")
+                Debris:AddItem(New_9, 5)
+                New_9.Brightness = 0.9
+                New_9.Range = 18
+                local FromRGB_2 = Color3.fromRGB(211, 85, 85)
+                New_9.Color = FromRGB_2
+                New_9.Parent = HumanoidRootPart_10
+                local v199 = true
+                local v200 = spawn
+                v200(function() -- line: 442
+                    -- upvalues:
+                    --  [1] v199 (ref)
+
+                    wait(5)
+                    v199 = false
+                end)
+
+                while v199 == true do
+                    v200 = game.ReplicatedStorage.projectiles.groundAura:Clone()
+                    Debris:AddItem(v200, 1)
+                    local FromRGB_3 = Color3.fromRGB(211, 85, 85)
+                    v200.Color = FromRGB_3
+                    v200.Parent = workspace
+                    v200.CFrame = (HumanoidRootPart_10.CFrame + Vector3.new(0, -3, 0)) * CFrame.Angles(
+                        0,
+                        math.rad((rng:NextInteger(-180, 180))),
+                        0
+                    )
+                    local v208 = rng:NextNumber(15, 20)
+                    local v209 = rng:NextNumber(4, 7)
+                    local t_12 = { Size = Vector3.new(v208, v209, v208), Transparency = 1 }
+                    t_12.CFrame = v200.CFrame + Vector3.new(0, v209 / 2, 0)
+                    local v215 = TweenService_2:Create(
+                        v200,
+                        TweenInfo.new(
+                            0.5,
+                            Enum.EasingStyle.Quart,
+                            Enum.EasingDirection.Out,
+                            0,
+                            false,
+                            0
+                        ),
+                        t_12
+                    )
+                    v215:Play()
+                    v215.Completed:Connect(function() -- line: 465
+                        -- upvalues:
+                        --  [1] v200 (copy)
+
+                        v200:Destroy()
+                    end)
+                    wait(0.08)
+                end
+
+                return
+            end
+
+            if arg2 == "Lava Beam Orb" then
+                local HumanoidRootPart_11 = arg1.Character.HumanoidRootPart
+                local MoltenShard_2 = game.ReplicatedStorage.projectiles["Molten Shard"]:Clone()
+                Debris:AddItem(MoltenShard_2, 2)
+                local v222 = game.ReplicatedStorage.projectiles.sounds.explosivePunchCharge:Clone()
+                Debris:AddItem(v222, 2)
+                v222.TimePosition = 1.4
+                v222.Parent = MoltenShard_2
+                v222:Play()
+                local v227 = game.ReplicatedStorage.projectiles.sounds.Explosion:Clone()
+                Debris:AddItem(v227, 2)
+                v227.Parent = MoltenShard_2
+                TweenService:Create(
+                    MoltenShard_2,
+                    TweenInfo.new(0.6, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                    { Size = Vector3.new(8, 8, 8) }
+                ):Play()
+                local _ = RunService.Heartbeat:Connect(function() -- line: 489
+                    -- upvalues:
+                    --  [1] MoltenShard_2 (copy)
+                    --  [2] HumanoidRootPart_11 (copy)
+
+                    MoltenShard_2.CFrame = HumanoidRootPart_11.CFrame + Vector3.new(0, 8, 0)
+                end)
+                MoltenShard_2.Parent = workspace
+                wait(1)
+                v227:Play()
+                TweenService:Create(
+                    MoltenShard_2,
+                    TweenInfo.new(0.35, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                    { Size = Vector3.new(25, 25, 25), Transparency = 1 }
+                ):Play()
+                MoltenShard_2.particle2.Enabled = false
+                MoltenShard_2.PointLight.Enabled = false
+
+                for _ = 1, 3, 1 do
+                    local v243 = game.ReplicatedStorage.projectiles["Lava Beam Explosion Cylinder"]:Clone()
+                    Debris:AddItem(v243, 2)
+                    v243.CFrame = (HumanoidRootPart_11.CFrame + Vector3.new(0, 8, 0)) * CFrame.Angles(
+                        rng:NextNumber(0, 360),
+                        rng:NextNumber(0, 360),
+                        rng:NextNumber(0, 360)
+                    )
+                    v243.Parent = workspace
+                    TweenService:Create(
+                        v243,
+                        TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                        { Size = Vector3.new(2, 40, 40), Transparency = 1 }
+                    ):Play()
+                end
+            else
+                if arg2 == "Lava Beam Orb Shoot" then
+                    local HumanoidRootPart_12 = arg1.Character.HumanoidRootPart
+                    local v250 = pairs
+                    local v251 = arg3
+
+                    for _, val_5 in v250(v251) do
+                        local LavaBeam = game.ReplicatedStorage.projectiles["Lava Beam"]:Clone()
+                        Debris:AddItem(LavaBeam, 5)
+                        local v253 = HumanoidRootPart_12.Position + Vector3.new(0, 8, 0)
+                        local Position = val_5.PrimaryPart.Position
+                        local Magnitude_1 = (v253 - Position).Magnitude
+                        local cframe = CFrame.new(v253, Position)
+                        LavaBeam.Size = Vector3.new(Magnitude_1, 0.3, 0.3)
+                        LavaBeam.CFrame = (cframe + cframe.LookVector * (Magnitude_1 / 2)) * CFrame.Angles(
+                            0,
+                            1.5707963267948966,
+                            0
+                        )
+                        LavaBeam.Parent = workspace
+                        local v258 = TweenService
+                        v258:Create(
+                            LavaBeam,
+                            TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                            { Size = LavaBeam.Size + Vector3.new(0, 4, 4), Transparency = 1 }
+                        ):Play()
+                    end
+
+                    return
+                end
+
+                if arg2 == "Amethyst Blast" then
+                    local v259 = arg1.Character.HumanoidRootPart.CFrame
+                    local v260 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                    v260.Transparency = 0
+                    v260.Color = Color3.fromRGB(255, 134, 253)
+                    Debris:AddItem(v260, 5)
+                    v260.Parent = workspace
+                    v260.CFrame = v259 + v259.LookVector * 3
+                    TweenService:Create(
+                        v260,
+                        TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                        { Size = Vector3.new(30, 30, 30), Transparency = 1 }
+                    ):Play()
+
+                    for index_6 = 1, 7, 1 do
+                        local AmethystBlast = game.ReplicatedStorage.projectiles["Amethyst Blast"]:Clone()
+                        Debris:AddItem(AmethystBlast, 3)
+                        AmethystBlast.sound.PlaybackSpeed = rng:NextNumber(1.5, 2)
+                        AmethystBlast.sound:Play()
+                        AmethystBlast.CFrame = (v259 + v259.LookVector * (index_6 * 10 - 5)) * CFrame.Angles(
+                            math.rad((rng:NextNumber(0, 360))),
+                            math.rad((rng:NextNumber(0, 360))),
+                            (math.rad((rng:NextNumber(0, 360))))
+                        )
+                        AmethystBlast.Parent = workspace
+                        TweenService:Create(
+                            AmethystBlast,
+                            TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                            { Size = Vector3.new(0.5, 30, 30), Transparency = 1 }
+                        ):Play()
+                        wait()
+                    end
+                else
+                    local v323
+
+                    if arg2 == "Lava Barrage" then
+                        local HumanoidRootPart_13 = arg1.Character.HumanoidRootPart
+                        wait(0.1)
+                        local LavaBarrageSlash = game.ReplicatedStorage.projectiles["Lava Barrage Slash"]:Clone()
+                        Debris:AddItem(LavaBarrageSlash, 2)
+                        LavaBarrageSlash.PrimaryPart.CFrame = HumanoidRootPart_13.CFrame * CFrame.Angles(
+                            0,
+                            0,
+                            0.5235987755982988
+                        )
+                        LavaBarrageSlash.Parent = workspace
+                        LavaBarrageSlash.PrimaryPart.swoosh:Play()
+                        local PrimaryPart_9 = LavaBarrageSlash.PrimaryPart
+                        local New_12 = TweenInfo.new(
+                            0.25,
+                            Enum.EasingStyle.Linear,
+                            Enum.EasingDirection.Out
+                        )
+                        local t_15 = {}
+                        t_15.CFrame = LavaBarrageSlash.PrimaryPart.CFrame + LavaBarrageSlash.PrimaryPart.CFrame.LookVector * 70
+                        local v298 = TweenService:Create(PrimaryPart_9, New_12, t_15)
+                        v298.Completed:Connect(function() -- line: 562
+                            -- upvalues:
+                            --  [1] LavaBarrageSlash (copy)
+
+                            LavaBarrageSlash.Union.Transparency = 1
+                        end)
+                        v298:Play()
+                        wait(0.25)
+                        local LavaBarrageSlash_1 = game.ReplicatedStorage.projectiles["Lava Barrage Slash"]:Clone()
+                        Debris:AddItem(LavaBarrageSlash_1, 2)
+                        LavaBarrageSlash_1.PrimaryPart.CFrame = HumanoidRootPart_13.CFrame * CFrame.Angles(
+                            0,
+                            0,
+                            -0.5235987755982988
+                        )
+                        LavaBarrageSlash_1.Parent = workspace
+                        LavaBarrageSlash_1.PrimaryPart.swoosh:Play()
+                        local v310 = TweenService:Create(
+                            LavaBarrageSlash_1.PrimaryPart,
+                            TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                            {
+                                CFrame = LavaBarrageSlash_1.PrimaryPart.CFrame + LavaBarrageSlash_1.PrimaryPart.CFrame.LookVector * 70
+                            }
+                        )
+                        v310.Completed:Connect(function() -- line: 575
+                            -- upvalues:
+                            --  [1] LavaBarrageSlash_1 (copy)
+
+                            LavaBarrageSlash_1.Union.Transparency = 1
+                        end)
+                        v310:Play()
+                        wait(0.4)
+                        local LavaBarrageBall = game.ReplicatedStorage.projectiles["Lava Barrage Ball"]:Clone()
+                        Debris:AddItem(LavaBarrageBall, 2)
+                        LavaBarrageBall.CFrame = HumanoidRootPart_13.CFrame
+                        LavaBarrageBall.Parent = workspace
+                        local v317 = true
+                        LavaBarrageBall.explosion1:Play()
+                        LavaBarrageBall.explosion2:Play()
+                        LavaBarrageBall.swoosh:Play()
+                        local tweenInfo_10 = TweenInfo.new(
+                            0.25,
+                            Enum.EasingStyle.Linear,
+                            Enum.EasingDirection.Out
+                        )
+                        local t_17 = {}
+                        t_17.CFrame = LavaBarrageBall.CFrame + LavaBarrageBall.CFrame.LookVector * 70
+                        t_17.Size = Vector3.new(10, 10, 10)
+                        local v318 = TweenService:Create(LavaBarrageBall, tweenInfo_10, t_17)
+
+                        function v323() -- line: 592
+                            -- upvalues:
+                            --  [1] LavaBarrageBall (copy)
+                            --  [2] v317 (ref)
+
+                            LavaBarrageBall.Transparency = 1
+                            LavaBarrageBall.particle2.Enabled = false
+                            LavaBarrageBall.PointLight.Enabled = false
+                            v317 = false
+                        end
+
+                        v318.Completed:Connect(v323)
+                        v318:Play()
+
+                        while v317 do
+                            local v324 = game.ReplicatedStorage.projectiles["Lava Barrage Ring"]:Clone()
+                            Debris:AddItem(v324, 2)
+                            v324.CFrame = LavaBarrageBall.CFrame * CFrame.Angles(
+                                1.5707963267948966,
+                                0,
+                                1.5707963267948966
+                            )
+                            v324.Parent = workspace
+                            TweenService:Create(
+                                v324,
+                                TweenInfo.new(
+                                    0.35,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out
+                                ),
+                                { Size = Vector3.new(1, 30, 30), Transparency = 1 }
+                            ):Play()
+                            wait()
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Blade Fall" then
+                        local _ = arg1.Character.HumanoidRootPart
+                        wait(0.3)
+                        local BladeFallSword = game.ReplicatedStorage.projectiles["Blade Fall Sword"]:Clone()
+                        Debris:AddItem(BladeFallSword, 1.2)
+                        local New_14 = CFrame.new
+                        local Position_1 = arg3.Position
+                        local v333 = rng:NextNumber(-35, 35)
+                        local v338 = New_14(
+                            Position_1 + Vector3.new(v333, 80, rng:NextNumber(-35, 35)),
+                            arg3.Position
+                        ) * CFrame.Angles(0, 3.141592653589793, 0)
+                        local v340 = (v338.Position - arg3.Position).Magnitude - 5
+                        BladeFallSword.CFrame = v338
+                        BladeFallSword.Parent = workspace
+                        BladeFallSword.swoosh.TimePosition = 0.2
+                        BladeFallSword.swoosh:Play()
+                        local v343 = TweenService:Create(
+                            BladeFallSword,
+                            TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                            { CFrame = v338 + v338.LookVector * -v340 }
+                        )
+                        v343.Completed:Connect(function() -- line: 626
+                            -- upvalues:
+                            --  [1] BladeFallSword (copy)
+                            --  [2] Debris (ref)
+                            --  [3] arg3 (copy)
+                            --  [4] TweenService (ref)
+                            --  [5] rng (ref)
+
+                            BladeFallSword.Explosion:Play()
+                            local v345 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                            v345.Transparency = 0
+                            v345.Color = Color3.fromRGB(218, 133, 65)
+                            Debris:AddItem(v345, 5)
+                            v345.Parent = workspace
+                            v345.CFrame = arg3
+                            TweenService:Create(
+                                v345,
+                                TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(63, 63, 63), Transparency = 1 }
+                            ):Play()
+
+                            for _ = 1, 3 do
+                                local v347 = game.ReplicatedStorage.projectiles["Lava Beam Explosion Cylinder"]:Clone()
+                                Debris:AddItem(v347, 2)
+                                v347.CFrame = arg3 * CFrame.Angles(
+                                    rng:NextNumber(0, 360),
+                                    rng:NextNumber(0, 360),
+                                    rng:NextNumber(0, 360)
+                                )
+                                v347.Parent = workspace
+                                TweenService:Create(
+                                    v347,
+                                    TweenInfo.new(
+                                        0.5,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = Vector3.new(2, 75, 75), Transparency = 1 }
+                                ):Play()
+                            end
+                        end)
+                        v343:Play()
+
+                        return
+                    end
+
+                    local t_20
+
+                    if arg2 == "Enhanced Inner Rage" then
+                        local HumanoidRootPart_15 = arg1.Character.HumanoidRootPart
+                        local TweenService_3 = game:GetService("TweenService")
+                        local InnerRageParticleHolder_1 = game.ReplicatedStorage.projectiles["Inner Rage Particle Holder"].particleAttachment:Clone()
+                        Debris:AddItem(InnerRageParticleHolder_1, 5)
+                        InnerRageParticleHolder_1.Parent = HumanoidRootPart_15
+                        local v359 = game.ReplicatedStorage.projectiles.sounds.chargingSound:Clone()
+                        Debris:AddItem(v359, 2)
+                        v359.Parent = HumanoidRootPart_15
+                        v359:Play()
+                        local New_17 = Instance.new("PointLight")
+                        Debris:AddItem(New_17, 5)
+                        New_17.Brightness = 0.9
+                        New_17.Range = 18
+                        local FromRGB_5 = Color3.fromRGB(211, 85, 85)
+                        New_17.Color = FromRGB_5
+                        New_17.Parent = HumanoidRootPart_15
+                        local v371 = true
+                        local v372 = spawn
+
+                        local function v373() -- line: 668
+                            -- upvalues:
+                            --  [1] v371 (ref)
+
+                            wait(5)
+                            v371 = false
+                        end
+
+                        v372(v373)
+                        v372 = 0
+
+                        while v371 == true do
+                            v373 = v372 % 2
+
+                            if v373 == 0 then
+                                v373 = game.ReplicatedStorage.projectiles["Enhanced Aura Ring"]:Clone()
+                                Debris:AddItem(v373, 1)
+                                v373.Color = Color3.fromRGB(211, 85, 85)
+                                v373.Parent = workspace
+                                local v375 = HumanoidRootPart_15.CFrame
+                                local Angles_11 = CFrame.Angles
+                                local v377 = math.rad((rng:NextInteger(65, 115)))
+                                v373.CFrame, v323 = v375 * Angles_11(
+                                    v377,
+                                    math.rad((rng:NextInteger(-25, 25))),
+                                    0
+                                ), v373
+                                TweenService_3:Create(
+                                    v323,
+                                    TweenInfo.new(
+                                        0.5,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = Vector3.new(25, 25, 1.5), Transparency = 1 }
+                                ):Play()
+                            end
+
+                            v373 = game.ReplicatedStorage.projectiles.groundAura:Clone()
+                            Debris:AddItem(v373, 1)
+                            v373.Color = Color3.fromRGB(211, 85, 85)
+                            v373.Parent = workspace
+                            v373.CFrame = (HumanoidRootPart_15.CFrame + Vector3.new(0, -3, 0)) * CFrame.Angles(
+                                0,
+                                math.rad((rng:NextInteger(-180, 180))),
+                                0
+                            )
+                            local v383 = rng:NextNumber(15, 20)
+                            local v384 = rng:NextNumber(4, 7)
+                            t_20 = { Size = Vector3.new(v383, v384, v383), Transparency = 1 }
+                            t_20.CFrame = v373.CFrame + Vector3.new(0, v384 / 2, 0)
+                            local v391 = TweenService_3:Create(
+                                v373,
+                                TweenInfo.new(
+                                    0.5,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out,
+                                    0,
+                                    false,
+                                    0
+                                ),
+                                t_20
+                            )
+                            v391:Play()
+
+                            local function v392() -- line: 702
+                                -- upvalues:
+                                --  [1] v373 (copy)
+
+                                v373:Destroy()
+                            end
+
+                            v391.Completed:Connect(v392)
+                            v372 += 1
+                            wait(0.08)
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Enhanced Inner Focus" then
+                        local HumanoidRootPart_16 = arg1.Character.HumanoidRootPart
+                        local TweenService_4 = game:GetService("TweenService")
+                        local InnerFocusParticleHolder_1 = game.ReplicatedStorage.projectiles["Inner Focus Particle Holder"].particleAttachment:Clone()
+                        Debris:AddItem(InnerFocusParticleHolder_1, 5)
+                        InnerFocusParticleHolder_1.Parent = HumanoidRootPart_16
+                        local v400 = game.ReplicatedStorage.projectiles.sounds.chargingSound:Clone()
+                        Debris:AddItem(v400, 2)
+                        v400.Parent = HumanoidRootPart_16
+                        v400:Play()
+                        local New_18 = Instance.new("PointLight")
+                        Debris:AddItem(New_18, 5)
+                        New_18.Brightness = 0.9
+                        New_18.Range = 18
+                        local FromRGB_6 = Color3.fromRGB(73, 255, 255)
+                        New_18.Color = FromRGB_6
+                        New_18.Parent = HumanoidRootPart_16
+                        local v412 = true
+                        local v413 = spawn
+
+                        local function v414() -- line: 733
+                            -- upvalues:
+                            --  [1] v412 (ref)
+
+                            wait(5)
+                            v412 = false
+                        end
+
+                        v413(v414)
+                        v413 = 0
+
+                        while v412 == true do
+                            v414 = v413 % 2
+
+                            if v414 == 0 then
+                                v414 = game.ReplicatedStorage.projectiles["Enhanced Aura Ring"]:Clone()
+                                Debris:AddItem(v414, 1)
+                                v414.Color = Color3.fromRGB(73, 255, 255)
+                                v414.Parent = workspace
+                                local v416 = HumanoidRootPart_16.CFrame
+                                local Angles_13 = CFrame.Angles
+                                local v418 = math.rad((rng:NextInteger(65, 115)))
+                                v414.CFrame, t_20 = v416 * Angles_13(
+                                    v418,
+                                    math.rad((rng:NextInteger(-25, 25))),
+                                    0
+                                ), v414
+                                TweenService_4:Create(
+                                    t_20,
+                                    TweenInfo.new(
+                                        0.5,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = Vector3.new(25, 25, 1.5), Transparency = 1 }
+                                ):Play()
+                            end
+
+                            v414 = game.ReplicatedStorage.projectiles.groundAura:Clone()
+                            Debris:AddItem(v414, 1)
+                            v414.Color = Color3.fromRGB(73, 255, 255)
+                            v414.Parent = workspace
+                            v414.CFrame = (HumanoidRootPart_16.CFrame + Vector3.new(0, -3, 0)) * CFrame.Angles(
+                                0,
+                                math.rad((rng:NextInteger(-180, 180))),
+                                0
+                            )
+                            local v424 = rng:NextNumber(15, 20)
+                            local v425 = rng:NextNumber(4, 7)
+                            local t_21 = { Size = Vector3.new(v424, v425, v424), Transparency = 1 }
+                            t_21.CFrame = v414.CFrame + Vector3.new(0, v425 / 2, 0)
+                            local v432 = TweenService_4:Create(
+                                v414,
+                                TweenInfo.new(
+                                    0.5,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out,
+                                    0,
+                                    false,
+                                    0
+                                ),
+                                t_21
+                            )
+                            v432:Play()
+
+                            local function v433() -- line: 767
+                                -- upvalues:
+                                --  [1] v414 (copy)
+
+                                v414:Destroy()
+                            end
+
+                            v432.Completed:Connect(v433)
+                            v413 += 1
+                            wait(0.08)
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Ultimate Inner Rage" then
+                        local HumanoidRootPart_17 = arg1.Character.HumanoidRootPart
+                        local TweenService_5 = game:GetService("TweenService")
+                        local InnerRageParticleHolder_2 = game.ReplicatedStorage.projectiles["Inner Rage Particle Holder"].particleAttachment:Clone()
+                        Debris:AddItem(InnerRageParticleHolder_2, 5)
+                        InnerRageParticleHolder_2.Parent = HumanoidRootPart_17
+                        local v441 = game.ReplicatedStorage.projectiles.sounds.chargingSound:Clone()
+                        Debris:AddItem(v441, 2)
+                        v441.Parent = HumanoidRootPart_17
+                        v441:Play()
+                        local New_19 = Instance.new("PointLight")
+                        Debris:AddItem(New_19, 5)
+                        New_19.Brightness = 0.9
+                        New_19.Range = 18
+                        local FromRGB_7 = Color3.fromRGB(211, 85, 85)
+                        New_19.Color = FromRGB_7
+                        New_19.Parent = HumanoidRootPart_17
+                        local v453 = true
+                        local v454 = spawn
+
+                        local function v455() -- line: 797
+                            -- upvalues:
+                            --  [1] v453 (ref)
+
+                            wait(5)
+                            v453 = false
+                        end
+
+                        v454(v455)
+                        v454 = 0
+
+                        while v453 == true do
+                            v455 = 4
+
+                            for index_8 = 1, v455 do
+                                local v456 = game.ReplicatedStorage.projectiles["Enhanced Aura Ring"]:Clone()
+                                Debris:AddItem(v456, 1)
+                                v456.Color = Color3.fromRGB(211, 85, 85)
+                                v456.Parent = workspace
+                                local v458 = HumanoidRootPart_17.CFrame
+                                local Angles_15 = CFrame.Angles
+                                local v457 = rng:NextInteger(65, 115)
+                                local v459 = math.rad(v457)
+                                local v461 = rng:NextInteger(-25, 25)
+                                v456.CFrame = v458 * Angles_15(
+                                    v459,
+                                    math.rad(v461),
+                                    (math.rad(index_8 * 23))
+                                )
+                                local v463 = Vector3.new(25, 25, 1.5) + Vector3.new(
+                                    index_8 * 4,
+                                    index_8 * 4,
+                                    0
+                                )
+                                TweenService_5:Create(
+                                    v456,
+                                    TweenInfo.new(
+                                        0.5,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = v463, Transparency = 1 }
+                                ):Play()
+                            end
+
+                            v455 = game.ReplicatedStorage.projectiles.groundAura:Clone()
+                            Debris:AddItem(v455, 1)
+                            v455.Color = Color3.fromRGB(211, 85, 85)
+                            v455.Parent = workspace
+                            v455.CFrame = (HumanoidRootPart_17.CFrame + Vector3.new(0, -3, 0)) * CFrame.Angles(
+                                0,
+                                math.rad((rng:NextInteger(-180, 180))),
+                                0
+                            )
+                            local v467 = rng:NextNumber(15, 20)
+                            local v468 = rng:NextNumber(4, 7)
+                            local t_23 = { Size = Vector3.new(v467, v468, v467), Transparency = 1 }
+                            t_23.CFrame = v455.CFrame + Vector3.new(0, v468 / 2, 0)
+                            local v475 = TweenService_5:Create(
+                                v455,
+                                TweenInfo.new(
+                                    0.5,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out,
+                                    0,
+                                    false,
+                                    0
+                                ),
+                                t_23
+                            )
+                            v475:Play()
+
+                            local function v476() -- line: 833
+                                -- upvalues:
+                                --  [1] v455 (copy)
+
+                                v455:Destroy()
+                            end
+
+                            v475.Completed:Connect(v476)
+                            v454 += 1
+                            wait(0.08)
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Ultimate Inner Focus" then
+                        local HumanoidRootPart_18 = arg1.Character.HumanoidRootPart
+                        local TweenService_6 = game:GetService("TweenService")
+                        local InnerFocusParticleHolder_2 = game.ReplicatedStorage.projectiles["Inner Focus Particle Holder"].particleAttachment:Clone()
+                        Debris:AddItem(InnerFocusParticleHolder_2, 5)
+                        InnerFocusParticleHolder_2.Parent = HumanoidRootPart_18
+                        local v484 = game.ReplicatedStorage.projectiles.sounds.chargingSound:Clone()
+                        Debris:AddItem(v484, 2)
+                        v484.Parent = HumanoidRootPart_18
+                        v484:Play()
+                        local New_21 = Instance.new("PointLight")
+                        Debris:AddItem(New_21, 5)
+                        New_21.Brightness = 0.9
+                        New_21.Range = 18
+                        local FromRGB_8 = Color3.fromRGB(73, 255, 255)
+                        New_21.Color = FromRGB_8
+                        New_21.Parent = HumanoidRootPart_18
+                        local v496 = true
+                        local v497 = spawn
+
+                        local function v498() -- line: 864
+                            -- upvalues:
+                            --  [1] v496 (ref)
+
+                            wait(5)
+                            v496 = false
+                        end
+
+                        v497(v498)
+                        v497 = 0
+
+                        while v496 == true do
+                            v498 = 4
+
+                            for index_9 = 1, v498 do
+                                local v499 = game.ReplicatedStorage.projectiles["Enhanced Aura Ring"]:Clone()
+                                Debris:AddItem(v499, 1)
+                                v499.Color = Color3.fromRGB(73, 255, 255)
+                                v499.Parent = workspace
+                                local v501 = HumanoidRootPart_18.CFrame
+                                local Angles_17 = CFrame.Angles
+                                local v500 = rng:NextInteger(65, 115)
+                                local v502 = math.rad(v500)
+                                local v504 = rng:NextInteger(-25, 25)
+                                v499.CFrame = v501 * Angles_17(
+                                    v502,
+                                    math.rad(v504),
+                                    (math.rad(index_9 * 23))
+                                )
+                                local v506 = Vector3.new(25, 25, 1.5) + Vector3.new(
+                                    index_9 * 4,
+                                    index_9 * 4,
+                                    0
+                                )
+                                TweenService_6:Create(
+                                    v499,
+                                    TweenInfo.new(
+                                        0.5,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = v506, Transparency = 1 }
+                                ):Play()
+                            end
+
+                            v498 = game.ReplicatedStorage.projectiles.groundAura:Clone()
+                            Debris:AddItem(v498, 1)
+                            v498.Color = Color3.fromRGB(73, 255, 255)
+                            v498.Parent = workspace
+                            v498.CFrame = (HumanoidRootPart_18.CFrame + Vector3.new(0, -3, 0)) * CFrame.Angles(
+                                0,
+                                math.rad((rng:NextInteger(-180, 180))),
+                                0
+                            )
+                            local v510 = rng:NextNumber(15, 20)
+                            local v511 = rng:NextNumber(4, 7)
+                            local t_25 = { Size = Vector3.new(v510, v511, v510), Transparency = 1 }
+                            t_25.CFrame = v498.CFrame + Vector3.new(0, v511 / 2, 0)
+                            local v518 = TweenService_6:Create(
+                                v498,
+                                TweenInfo.new(
+                                    0.5,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out,
+                                    0,
+                                    false,
+                                    0
+                                ),
+                                t_25
+                            )
+                            v518:Play()
+
+                            local function v519() -- line: 900
+                                -- upvalues:
+                                --  [1] v498 (copy)
+
+                                v498:Destroy()
+                            end
+
+                            v518.Completed:Connect(v519)
+                            v497 += 1
+                            wait(0.08)
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Water Orb Spawn" then
+                        local _ = arg1.Character.HumanoidRootPart
+                        local BigPhaseBall = game.ReplicatedStorage.projectiles["Big Phase Ball"]:Clone()
+                        Debris:AddItem(BigPhaseBall, 5)
+                        BigPhaseBall.Parent = workspace
+                        BigPhaseBall.CFrame = arg3
+                        BigPhaseBall.chargeSound:Play()
+                        local v526 = TweenService
+                        local v527 = BigPhaseBall
+                        local New_23 = TweenInfo.new(
+                            0.5,
+                            Enum.EasingStyle.Quart,
+                            Enum.EasingDirection.Out
+                        )
+                        local t_26 = {}
+                        t_26.CFrame = arg3 + arg3.LookVector * 25
+                        v526:Create(v527, New_23, t_26):Play()
+                        spawn(function() -- line: 918
+                            -- upvalues:
+                            --  [1] Debris (ref)
+                            --  [2] BigPhaseBall (copy)
+                            --  [3] rng (ref)
+                            --  [4] TweenService (ref)
+
+                            for _ = 1, 16 do
+                                local v530 = game.ReplicatedStorage.projectiles["Phase Ring"]:Clone()
+                                Debris:AddItem(v530, 2)
+                                v530.CFrame = BigPhaseBall.CFrame * CFrame.Angles(
+                                    math.rad((rng:NextNumber(-180, 180))),
+                                    math.rad((rng:NextNumber(-180, 180))),
+                                    (math.rad((rng:NextNumber(-180, 180))))
+                                )
+                                v530.Parent = workspace
+                                TweenService:Create(
+                                    v530,
+                                    TweenInfo.new(
+                                        0.2,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = Vector3.new(0.4, 20, 20), Transparency = 1 }
+                                ):Play()
+                                wait(0.05)
+                            end
+                        end)
+                        wait(0.8)
+                        BigPhaseBall.Explosion:Play()
+                        TweenService:Create(
+                            BigPhaseBall,
+                            TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                            { Size = Vector3.new(70, 70, 70), Transparency = 1 }
+                        ):Play()
+
+                        return
+                    end
+
+                    if arg2 == "Water Orb Hit" then
+                        local _ = arg1.Character.HumanoidRootPart
+                        local v543 = arg3[1]
+                        local v544 = arg3[2]
+                        local _ = {}
+                        local v545 = pairs
+                        local v546 = v544
+
+                        for _, val_6 in v545(v546) do
+                            local v547 = game.ReplicatedStorage.projectiles.phaseBeamModel:Clone()
+                            Debris:AddItem(v547, 0.4)
+                            v547.Parent = workspace
+                            v547.part1.CFrame = v543
+                            v547.part2.CFrame = val_6.PrimaryPart.CFrame
+                            v547["Phase Beam"].Enabled = true
+                            local v548 = game.ReplicatedStorage.projectiles["Big Phase Ball"]:Clone()
+                            Debris:AddItem(v548, 5)
+                            v548.Parent = workspace
+                            v548.CFrame = val_6.PrimaryPart.CFrame
+                            TweenService:Create(
+                                v548,
+                                TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(40, 40, 40), Transparency = 1 }
+                            ):Play()
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Ice Spikes" then
+                        local _ = arg1.Character.HumanoidRootPart
+                        local IceSpikes = game.ReplicatedStorage.projectiles["Ice Spikes"]:Clone()
+                        Debris:AddItem(IceSpikes, 3)
+                        IceSpikes:SetPrimaryPartCFrame(arg3)
+                        IceSpikes.Parent = workspace
+                        local v557 = pairs
+
+                        for _, val_7 in v557(IceSpikes:GetChildren()) do
+                            if val_7:IsA("Model") then
+                                TweenService:Create(
+                                    val_7.PrimaryPart,
+                                    TweenInfo.new(
+                                        0.25,
+                                        Enum.EasingStyle.Linear,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { CFrame = val_7.PrimaryPart.CFrame + Vector3.new(0, 10, 0) }
+                                ):Play()
+                            end
+                        end
+
+                        wait(0.5)
+                        local v561 = pairs
+
+                        for _, val_8 in v561(IceSpikes:GetChildren()) do
+                            if val_8:IsA("Model") then
+                                local v563 = TweenService
+                                local PrimaryPart_14 = val_8.PrimaryPart
+                                local tweenInfo_23 = TweenInfo.new(
+                                    0.1,
+                                    Enum.EasingStyle.Linear,
+                                    Enum.EasingDirection.Out
+                                )
+                                v563:Create(
+                                    PrimaryPart_14,
+                                    tweenInfo_23,
+                                    {
+                                        CFrame = val_8.PrimaryPart.CFrame + val_8.PrimaryPart.CFrame.LookVector * 40
+                                    }
+                                ):Play()
+                            end
+                        end
+
+                        IceSpikes.PrimaryPart.sound:Play()
+                        wait(0.2)
+                        local v565 = pairs
+
+                        for _, val_9 in v565(IceSpikes:GetChildren()) do
+                            if val_9:IsA("Model") then
+                                TweenService:Create(
+                                    val_9.MeshPart,
+                                    TweenInfo.new(
+                                        0.3,
+                                        Enum.EasingStyle.Linear,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Transparency = 1 }
+                                ):Play()
+                                val_9.MeshPart.flames.Enabled = false
+                                val_9.MeshPart.Trail.Enabled = false
+                            end
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Spear Strike" then
+                        local _ = arg1.Character.HumanoidRootPart
+                        local SpearStrike = game.ReplicatedStorage.projectiles["Spear Strike"]:Clone()
+                        Debris:AddItem(SpearStrike, 6)
+                        SpearStrike.Parent = workspace
+                        SpearStrike:SetPrimaryPartCFrame(arg3 + arg3.LookVector * 4)
+                        local v575 = true
+                        local v576 = nil
+                        local v577 = TweenService:Create(
+                            SpearStrike.PrimaryPart,
+                            TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                            { CFrame = arg3 + arg3.LookVector * 70 }
+                        )
+                        local v578 = pairs
+                        local PrimaryPart_18 = SpearStrike.PrimaryPart
+
+                        for _, val_10 in v578(PrimaryPart_18:GetChildren()) do
+                            if val_10:IsA("Beam") then
+                                TweenService:Create(
+                                    val_10,
+                                    TweenInfo.new(
+                                        0.3,
+                                        Enum.EasingStyle.Linear,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Width1 = 7 }
+                                ):Play()
+                            end
+                        end
+
+                        v577.Completed:Connect(function() -- line: 1011
+                            -- upvalues:
+                            --  [1] v575 (ref)
+                            --  [2] SpearStrike (copy)
+                            --  [3] v576 (ref)
+
+                            v575 = false
+
+                            for _, descendant in pairs(SpearStrike:GetDescendants()) do
+                                if descendant:IsA("BasePart") then
+                                    descendant.Transparency = 1
+                                elseif descendant:IsA("Beam") then
+                                    descendant.Enabled = false
+                                elseif descendant:IsA("PointLight") then
+                                    descendant.Enabled = false
+                                end
+                            end
+
+                            v576:Disconnect()
+                        end)
+                        local v582 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                        v582.Transparency = 0
+                        v582.Color = Color3.fromRGB(255, 112, 112)
+                        Debris:AddItem(v582, 5)
+                        v582.Parent = workspace
+                        v582.CFrame = arg3 + arg3.LookVector * 3
+                        TweenService:Create(
+                            v582,
+                            TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                            { Size = Vector3.new(35, 35, 35), Transparency = 1 }
+                        ):Play()
+                        SpearStrike.PrimaryPart.sound:Play()
+                        v577:Play()
+                        v576 = RunService.Heartbeat:Connect(function() -- line: 1037
+                            -- upvalues:
+                            --  [1] SpearStrike (copy)
+
+                            SpearStrike.attachmentModel.PrimaryPart.CFrame = SpearStrike.attachmentModel.PrimaryPart.CFrame * CFrame.Angles(
+                                0,
+                                0,
+                                0.3490658503988659
+                            )
+                        end)
+
+                        while v575 == true do
+                            local SpearStrikeRing = game.ReplicatedStorage.projectiles["Spear Strike Ring"]:Clone()
+                            Debris:AddItem(SpearStrikeRing, 3)
+                            SpearStrikeRing.CFrame = (SpearStrike.PrimaryPart.CFrame + SpearStrike.PrimaryPart.CFrame.LookVector * -6) * CFrame.Angles(
+                                1.5707963267948966,
+                                0,
+                                1.5707963267948966
+                            )
+                            SpearStrikeRing.Parent = workspace
+                            TweenService:Create(
+                                SpearStrikeRing,
+                                TweenInfo.new(
+                                    0.25,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out
+                                ),
+                                { Size = Vector3.new(5, 30, 30), Transparency = 1 }
+                            ):Play()
+                            wait(0.065)
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Spear Strike Aura" then
+                        local HumanoidRootPart_23 = arg1.Character.HumanoidRootPart
+                        local v601 = game.ReplicatedStorage.projectiles.sounds.explosivePunchCharge:Clone()
+                        Debris:AddItem(v601, 2)
+                        v601.Parent = HumanoidRootPart_23
+                        v601.TimePosition = 1.5
+                        v601:Play()
+                        local New_26 = Instance.new("PointLight")
+                        Debris:AddItem(New_26, 2)
+                        New_26.Brightness = 0.9
+                        New_26.Range = 18
+                        New_26.Color = Color3.fromRGB(255, 101, 101)
+                        New_26.Parent = HumanoidRootPart_23
+                        local v615 = true
+                        spawn(function() -- line: 1069
+                            -- upvalues:
+                            --  [1] v615 (ref)
+
+                            wait(1.5)
+                            v615 = false
+                        end)
+                        local v617 = 15
+                        local v618 = 4
+                        local v619 = 2.5
+                        local v620 = spawn
+                        v620(function() -- line: 1077
+                            -- upvalues:
+                            --  [1] v617 (ref)
+                            --  [2] v618 (ref)
+                            --  [3] v619 (ref)
+
+                            for _ = 1, 8 do
+                                v617 += 1.37
+                                v618 += 0.5
+                                v619 += 0.315
+                                wait(0.18)
+                            end
+                        end)
+
+                        while v615 == true do
+                            v620 = game.ReplicatedStorage.projectiles.groundAura:Clone()
+                            Debris:AddItem(v620, 1)
+                            v620.Color = Color3.fromRGB(255, 101, 101)
+                            v620.Parent = workspace
+                            v620.CFrame = (HumanoidRootPart_23.CFrame + Vector3.new(0, -3, 0)) * CFrame.Angles(
+                                0,
+                                math.rad((rng:NextInteger(-180, 180))),
+                                0
+                            )
+                            local t_36 = { Size = Vector3.new(v617, v618, v617), Transparency = 1 }
+                            t_36.CFrame = v620.CFrame + Vector3.new(0, v619, 0)
+                            local v627 = TweenService:Create(
+                                v620,
+                                TweenInfo.new(
+                                    0.8,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out,
+                                    0,
+                                    false,
+                                    0
+                                ),
+                                t_36
+                            )
+                            v627:Play()
+                            v627.Completed:Connect(function() -- line: 1101
+                                -- upvalues:
+                                --  [1] v620 (copy)
+
+                                v620:Destroy()
+                            end)
+                            wait(0.1)
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Ice Barrage" then
+                        local HumanoidRootPart_24 = arg1.Character.HumanoidRootPart
+                        local v628 = pairs
+                        local v629 = arg3
+                        local v630
+
+                        for _, val_11 in v628(v629) do
+                            v630 = val_11.PrimaryPart.CFrame
+                            local v631 = game.ReplicatedStorage.projectiles["Ice Barrage Ball"]:Clone()
+                            Debris:AddItem(v631, 5)
+                            v631.PrimaryPart.CFrame = HumanoidRootPart_24.CFrame + Vector3.new(0, -3, 0)
+                            v631.Parent = workspace
+                            local v633 = TweenService:Create(
+                                v631.PrimaryPart,
+                                TweenInfo.new(
+                                    0.22,
+                                    Enum.EasingStyle.Linear,
+                                    Enum.EasingDirection.Out
+                                ),
+                                { CFrame = v630 }
+                            )
+                            v633.Completed:Connect(function() -- line: 1120
+                                -- upvalues:
+                                --  [1] v631 (copy)
+                                --  [2] Debris (ref)
+                                --  [3] v630 (copy)
+                                --  [4] TweenService (ref)
+
+                                v631.PrimaryPart.Transparency = 1
+                                v631.neon.Transparency = 1
+                                v631.PrimaryPart.soundHit:Play()
+                                local v634 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                                v634.Transparency = 0
+                                v634.Color = Color3.fromRGB(0, 170, 255)
+                                Debris:AddItem(v634, 5)
+                                v634.Parent = workspace
+                                v634.CFrame = v630
+                                TweenService:Create(
+                                    v634,
+                                    TweenInfo.new(
+                                        0.5,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = Vector3.new(35, 35, 35), Transparency = 1 }
+                                ):Play()
+                            end)
+                            v633:Play()
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Aquatic Smite" then
+                        local v636 = game.ReplicatedStorage.projectiles["Aquatic Smite Cast"]:Clone()
+                        Debris:AddItem(v636, 0.35)
+                        v636.Parent = workspace
+                        v636:SetPrimaryPartCFrame(arg1.Character.HumanoidRootPart.CFrame)
+                        local v640 = game.ReplicatedStorage.projectiles["Aquatic Smite Hit"]:Clone()
+                        Debris:AddItem(v640, 5)
+                        Debris:AddItem(v640.Beam, 0.35)
+                        v640.CFrame = arg3
+                        v640.Parent = workspace
+                        v640.blastSound:Play()
+                        v640.particles1:Emit(100)
+                        v640.particles2:Emit(150)
+
+                        return
+                    end
+
+                    if arg2 == "Ice Crash" then
+                        local v649 = game.ReplicatedStorage.projectiles["Ice Crash"]:Clone()
+                        v649:SetPrimaryPartCFrame(arg3 + Vector3.new(0, -20, 0))
+                        Debris:AddItem(v649, 5)
+                        v649.Parent = workspace
+                        spawn(function() -- line: 1161
+                            -- upvalues:
+                            --  [1] v649 (copy)
+
+                            for _, child_1 in pairs(v649.PrimaryPart:GetChildren()) do
+                                child_1:Play()
+                                wait()
+                            end
+                        end)
+
+                        for _, val_12 in pairs(v649:GetChildren()) do
+                            if val_12:IsA("Model") then
+                                spawn(function() -- line: 1169
+                                    -- upvalues:
+                                    --  [1] val_12 (copy)
+                                    --  [2] TweenService (ref)
+
+                                    for _, child_2 in pairs(val_12:GetChildren()) do
+                                        child_2.Transparency = 0
+                                        TweenService:Create(
+                                            child_2,
+                                            TweenInfo.new(
+                                                0.15,
+                                                Enum.EasingStyle.Linear,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            { CFrame = child_2.CFrame + Vector3.new(0, 20, 0) }
+                                        ):Play()
+                                    end
+
+                                    wait(0.15)
+
+                                    for _, child_3 in pairs(val_12:GetChildren()) do
+                                        child_3.particles:Emit(4)
+                                        TweenService:Create(
+                                            child_3,
+                                            TweenInfo.new(
+                                                0.2,
+                                                Enum.EasingStyle.Linear,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            { Transparency = 1 }
+                                        ):Play()
+                                    end
+                                end)
+                                wait(0.04)
+                            end
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Fungal Poison Cast" then
+                        local _ = arg1.Character.HumanoidRootPart
+                        local FungalPoison = game.ReplicatedStorage.projectiles["Fungal Poison"]:Clone()
+                        Debris:AddItem(FungalPoison, 5)
+                        local v667
+                        FungalPoison.Parent, v667 = workspace, arg3
+                        FungalPoison:SetPrimaryPartCFrame(v667)
+                        FungalPoison.PrimaryPart.shoot:Play()
+                        FungalPoison.PrimaryPart.swoosh:Play()
+                        FungalPoison.particlePart.particle1:Emit(80)
+                        FungalPoison.particlePart.particle1:Emit(40)
+                        FungalPoison.particlePart.particle3:Emit(50)
+
+                        return
+                    end
+
+                    if arg2 == "Fungal Poison Effect" then
+                        for _, val_13 in pairs(arg3) do
+                            local FungalPoisonParticles = game.ReplicatedStorage.projectiles["Fungal Poison Particles"].particle:Clone()
+                            Debris:AddItem(FungalPoisonParticles, 2)
+                            FungalPoisonParticles.Parent = val_13.PrimaryPart
+                        end
+
+                        return
+                    end
+
+                    if arg2 == "Agony Orbs Cast" then
+                        local v675 = arg3[1]
+                        local HumanoidRootPart_42 = arg1.Character.HumanoidRootPart
+                        local AgonyOrbsMainOrb = game.ReplicatedStorage.projectiles["Agony Orbs Main Orb"]
+                        local v678 = arg3[2]
+                        AgonyOrbsMainOrb = AgonyOrbsMainOrb:Clone()
+                        Debris:AddItem(AgonyOrbsMainOrb, 5)
+                        AgonyOrbsMainOrb.PrimaryPart.CFrame = HumanoidRootPart_42.CFrame
+                        AgonyOrbsMainOrb.Parent = workspace
+                        local t_39 = { CFrame = v675 }
+                        TweenService:Create(
+                            AgonyOrbsMainOrb.PrimaryPart,
+                            TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                            t_39
+                        ):Play()
+                        wait(0.4)
+                        local v687 = pairs
+                        local v688 = v678
+
+                        for _, val_14 in v687(v688) do
+                            local PrimaryPart_28 = val_14.PrimaryPart
+
+                            if PrimaryPart_28 then
+                                local v689 = PrimaryPart_28.CFrame
+                                local v690 = game.ReplicatedStorage.projectiles["Agony Orbs Small"]:Clone()
+                                Debris:AddItem(v690, 4)
+                                v690.PrimaryPart.CFrame = v675
+                                v690.Parent = workspace
+                                local v692 = TweenService
+                                local PrimaryPart_29 = v690.PrimaryPart
+                                local v693 = v692:Create(
+                                    PrimaryPart_29,
+                                    TweenInfo.new(
+                                        0.2,
+                                        Enum.EasingStyle.Linear,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { CFrame = v689 }
+                                )
+                                v693.Completed:Connect(function() -- line: 1232
+                                    -- upvalues:
+                                    --  [1] v690 (copy)
+                                    --  [2] Debris (ref)
+                                    --  [3] v689 (copy)
+                                    --  [4] TweenService (ref)
+
+                                    v690.PrimaryPart.explosion:Play()
+                                    v690.PrimaryPart.Transparency = 1
+                                    v690.Part.Transparency = 1
+                                    local v694 = game.ReplicatedStorage.projectiles["Agony Orbs Star Explosion"]:Clone()
+                                    Debris:AddItem(v694, 5)
+                                    v694.Parent = workspace
+                                    v694.CFrame = v689
+                                    TweenService:Create(
+                                        v694,
+                                        TweenInfo.new(
+                                            1,
+                                            Enum.EasingStyle.Quart,
+                                            Enum.EasingDirection.Out
+                                        ),
+                                        { Size = Vector3.new(40, 40, 40), Transparency = 1 }
+                                    ):Play()
+                                end)
+                                v693:Play()
+                            end
+                        end
+
+                        wait(0.2)
+                        AgonyOrbsMainOrb:Destroy()
+
+                        return
+                    end
+
+                    if arg2 == "Lightning Burst" then
+                        local tweenInfo_34 = TweenInfo.new(
+                            0.6,
+                            Enum.EasingStyle.Sine,
+                            Enum.EasingDirection.In
+                        )
+                        local v698 = game.ReplicatedStorage.projectiles["Lightning Burst"]:Clone()
+                        Debris:AddItem(v698, 5)
+                        v698:SetPrimaryPartCFrame(arg3)
+                        v698.Parent = workspace
+                        v698.PrimaryPart.Explosion:Play()
+
+                        for index_12 = 1, 10, 1 do
+                            spawn(function() -- line: 1259
+                                -- upvalues:
+                                --  [1] v698 (copy)
+                                --  [2] index_12 (copy)
+                                --  [3] TweenService (ref)
+                                --  [4] tweenInfo_34 (copy)
+
+                                for _, child_4 in pairs(v698:GetChildren()) do
+                                    if tonumber(child_4.Name) == index_12 then
+                                        child_4.Transparency = 0
+                                        TweenService:Create(
+                                            child_4,
+                                            tweenInfo_34,
+                                            { Transparency = 1 }
+                                        ):Play()
+                                    end
+                                end
+                            end)
+                            wait()
+                        end
+                    else
+                        if arg2 == "Piercing Roots" then
+                            local v709 = game.ReplicatedStorage.projectiles["Piercing Roots"]:Clone()
+                            Debris:AddItem(v709, 5)
+                            v709:SetPrimaryPartCFrame(arg3)
+                            v709.Parent = workspace
+
+                            for _, val_15 in pairs(v709:GetChildren()) do
+                                local v713 = TweenService:Create(
+                                    val_15,
+                                    TweenInfo.new(
+                                        0.2,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { CFrame = val_15.CFrame + val_15.CFrame.UpVector * 40 }
+                                )
+                                v713.Completed:Connect(function() -- line: 1280
+                                    -- upvalues:
+                                    --  [1] TweenService (ref)
+                                    --  [2] val_15 (copy)
+
+                                    wait(0.1)
+                                    TweenService:Create(
+                                        val_15,
+                                        TweenInfo.new(
+                                            0.3,
+                                            Enum.EasingStyle.Linear,
+                                            Enum.EasingDirection.In
+                                        ),
+                                        {
+                                            CFrame = val_15.CFrame - val_15.CFrame.UpVector * 40,
+                                            Transparency = 1
+                                        }
+                                    ):Play()
+                                end)
+                                v709.PrimaryPart.piercingRootsSound:Play()
+                                v713:Play()
+                            end
+
+                            return
+                        end
+
+                        if arg2 == "Crystalline Cannon" then
+                            local _ = arg1.Character.HumanoidRootPart
+                            local v721 = arg3 * CFrame.Angles(-1.5707963267948966, 0, 0)
+                            local CrystalineCannonBlast = game.ReplicatedStorage.projectiles["Crystaline Cannon Blast"]:Clone()
+                            Debris:AddItem(CrystalineCannonBlast, 5)
+                            CrystalineCannonBlast.Parent = workspace
+                            CrystalineCannonBlast.CFrame = v721
+                            local v727 = TweenService
+                            local New_28 = TweenInfo.new(
+                                0.4,
+                                Enum.EasingStyle.Quad,
+                                Enum.EasingDirection.Out
+                            )
+                            v727:Create(
+                                CrystalineCannonBlast,
+                                New_28,
+                                {
+                                    Transparency = 1,
+                                    Size = Vector3.new(90, 80, 90),
+                                    CFrame = (v721 + arg3.LookVector * 40) * CFrame.Angles(
+                                        0,
+                                        3.141592653589793,
+                                        0
+                                    )
+                                }
+                            ):Play()
+                            CrystalineCannonBlast.blast:Play()
+                            local v734 = arg3 * CFrame.Angles(1.5707963267948966, 0, 0)
+                            local CrystalineCannonSpiral = game.ReplicatedStorage.projectiles["Crystaline Cannon Spiral"]:Clone()
+                            Debris:AddItem(CrystalineCannonSpiral, 5)
+                            CrystalineCannonSpiral.Parent = workspace
+                            CrystalineCannonSpiral.CFrame = v734
+                            local v739 = TweenService
+                            local tweenInfo_37 = TweenInfo.new(
+                                0.4,
+                                Enum.EasingStyle.Quad,
+                                Enum.EasingDirection.Out
+                            )
+                            v739:Create(
+                                CrystalineCannonSpiral,
+                                tweenInfo_37,
+                                {
+                                    Transparency = 1,
+                                    Size = Vector3.new(50, 80, 50),
+                                    CFrame = (v734 + arg3.LookVector * 40) * CFrame.Angles(
+                                        0,
+                                        3.141592653589793,
+                                        0
+                                    )
+                                }
+                            ):Play()
+                            v734 *= CFrame.Angles(0, 0.7853981633974483, 0)
+                            local CrystalineCannonSpiral_1 = game.ReplicatedStorage.projectiles["Crystaline Cannon Spiral"]:Clone()
+                            Debris:AddItem(CrystalineCannonSpiral_1, 5)
+                            CrystalineCannonSpiral_1.Parent = workspace
+                            CrystalineCannonSpiral_1.CFrame = v734
+                            local v748 = TweenService
+                            local tweenInfo_38 = TweenInfo.new(
+                                0.4,
+                                Enum.EasingStyle.Quad,
+                                Enum.EasingDirection.Out
+                            )
+                            v748:Create(
+                                CrystalineCannonSpiral_1,
+                                tweenInfo_38,
+                                {
+                                    Transparency = 1,
+                                    Size = Vector3.new(90, 90, 90),
+                                    CFrame = (v734 + arg3.LookVector * 45) * CFrame.Angles(
+                                        0,
+                                        3.141592653589793,
+                                        0
+                                    )
+                                }
+                            ):Play()
+                            v734 *= CFrame.Angles(0, 1.3089969389957472, 0)
+                            local CrystalineCannonSpiral_2 = game.ReplicatedStorage.projectiles["Crystaline Cannon Spiral"]:Clone()
+                            Debris:AddItem(CrystalineCannonSpiral_2, 5)
+                            CrystalineCannonSpiral_2.Parent = workspace
+                            CrystalineCannonSpiral_2.CFrame = v734
+                            local v756 = TweenService
+                            local tweenInfo_39 = TweenInfo.new(
+                                0.4,
+                                Enum.EasingStyle.Quad,
+                                Enum.EasingDirection.Out
+                            )
+                            v756:Create(
+                                CrystalineCannonSpiral_2,
+                                tweenInfo_39,
+                                {
+                                    Transparency = 1,
+                                    Size = Vector3.new(25, 90, 25),
+                                    CFrame = (v734 + arg3.LookVector * 45) * CFrame.Angles(
+                                        0,
+                                        3.141592653589793,
+                                        0
+                                    )
+                                }
+                            ):Play()
+
+                            return
+                        end
+
+                        if arg2 == "Concussive Blast" then
+                            local _ = arg1.Character.HumanoidRootPart
+                            local v759 = game.ReplicatedStorage.projectiles.concussiveBlastTrail:Clone()
+                            Debris:AddItem(v759, 5)
+                            local Angles_24 = CFrame.Angles(0, 3.141592653589793, 0)
+                            v759.CFrame = arg3 * Angles_24
+                            v759.Parent = workspace
+                            local v769 = v759
+                            local New_29 = TweenInfo.new(
+                                0.25,
+                                Enum.EasingStyle.Linear,
+                                Enum.EasingDirection.Out
+                            )
+                            local v768 = TweenService:Create(
+                                v769,
+                                New_29,
+                                {
+                                    CFrame = v759.CFrame - v759.CFrame.LookVector * 30,
+                                    Size = Vector3.new(10, 14, 50)
+                                }
+                            )
+                            v768.Completed:Connect(function() -- line: 1341
+                                -- upvalues:
+                                --  [1] TweenService (ref)
+                                --  [2] v759 (copy)
+                                --  [3] Debris (ref)
+                                --  [4] arg3 (copy)
+
+                                TweenService:Create(
+                                    v759,
+                                    TweenInfo.new(
+                                        0.3,
+                                        Enum.EasingStyle.Quad,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Transparency = 1, Size = Vector3.new(20, 36, 50) }
+                                ):Play()
+                                local v774 = game.ReplicatedStorage.projectiles.concussiveBlastExplosion:Clone()
+                                Debris:AddItem(v774, 5)
+                                v774.CFrame = arg3 + arg3.LookVector * 40
+                                v774.Parent = workspace
+                                TweenService:Create(
+                                    v774,
+                                    TweenInfo.new(
+                                        0.55,
+                                        Enum.EasingStyle.Quad,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    {
+                                        CFrame = v774.CFrame + Vector3.new(0, 40, 0),
+                                        Transparency = 1,
+                                        Size = Vector3.new(90, 80, 90)
+                                    }
+                                ):Play()
+                                local v776 = game.ReplicatedStorage.projectiles.concussiveBlastRing:Clone()
+                                Debris:AddItem(v776, 5)
+                                v776.CFrame = arg3 + arg3.LookVector * 40
+                                v776.Parent = workspace
+                                TweenService:Create(
+                                    v776,
+                                    TweenInfo.new(
+                                        0.35,
+                                        Enum.EasingStyle.Quad,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Transparency = 1, Size = Vector3.new(100, 10, 100) }
+                                ):Play()
+                            end)
+                            v768:Play()
+
+                            return
+                        end
+
+                        if arg2 == "Wind Blast" then
+                            local v779 = game.ReplicatedStorage.projectiles["Wind Blast"]:Clone()
+                            Debris:AddItem(v779, 2)
+                            v779:SetPrimaryPartCFrame(arg3)
+                            v779.Parent = workspace
+                            local v783 = tick() + 1.5
+                            local v784 = nil
+                            v784 = RunService.Heartbeat:Connect(function() -- line: 1374
+                                -- upvalues:
+                                --  [1] v783 (copy)
+                                --  [2] v784 (ref)
+                                --  [3] v779 (copy)
+
+                                if tick() > v783 then
+                                    v784:Disconnect()
+                                    v784 = nil
+
+                                    return
+                                end
+
+                                v779.part1.CFrame = v779.part1.CFrame * CFrame.Angles(
+                                    0,
+                                    0.22689280275926285,
+                                    0
+                                )
+                                v779.part2.CFrame = v779.part1.CFrame * CFrame.Angles(
+                                    0,
+                                    0.12217304763960307,
+                                    0
+                                )
+                            end)
+                            v779.part1.windBlastSound:Play()
+                            v779.part1.Attachment.ParticleEmitter:Emit(100)
+                            TweenService:Create(
+                                v779.part1,
+                                TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(90, 20, 90) }
+                            ):Play()
+                            TweenService:Create(
+                                v779.part2,
+                                TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(82, 20, 82) }
+                            ):Play()
+                            TweenService:Create(
+                                v779.wave,
+                                TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(103, 15, 103), Transparency = 1 }
+                            ):Play()
+                            wait(0.35)
+                            TweenService:Create(
+                                v779.part1,
+                                TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                { Transparency = 1 }
+                            ):Play()
+                            TweenService:Create(
+                                v779.part2,
+                                TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                { Transparency = 1 }
+                            ):Play()
+
+                            return
+                        end
+
+                        if arg2 == "Revitalize" then
+                            local v802 = arg1.Character.HumanoidRootPart.CFrame + Vector3.new(0, -1.5, 0)
+                            local v804 = game.ReplicatedStorage.projectiles.revitalize:Clone()
+                            Debris:AddItem(v804, 2)
+                            v804.CFrame = v802 * CFrame.Angles(0, rng:NextNumber(-3.14, 3.14), 0)
+                            v804.Parent = workspace
+                            v804.healSound:Play()
+                            TweenService:Create(
+                                v804,
+                                TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(150, 2, 150), Transparency = 1 }
+                            ):Play()
+
+                            return
+                        end
+
+                        if arg2 == "Flame Strike" then
+                            local HumanoidRootPart_28 = arg1.Character.HumanoidRootPart
+                            local v821 = HumanoidRootPart_28.CFrame + HumanoidRootPart_28.CFrame.LookVector * 40
+                            local FlameStrike = game.ReplicatedStorage.projectiles["Flame Strike"]:Clone()
+                            Debris:AddItem(FlameStrike, 2)
+                            FlameStrike:SetPrimaryPartCFrame(
+                                v821 * CFrame.Angles(0, rng:NextNumber(-3.14, 3.14), 0)
+                            )
+                            FlameStrike.Parent = workspace
+                            FlameStrike.PrimaryPart.flameStrikeSound:Play()
+                            local v829 = TweenService
+                            local FireExplosion1 = FlameStrike.fireExplosion1
+                            v829:Create(
+                                FireExplosion1,
+                                TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                {
+                                    CFrame = FlameStrike.fireExplosion1.CFrame + Vector3.new(0, 109.335, 0),
+                                    Size = Vector3.new(90.19, 226.67, 90.19),
+                                    Transparency = 1
+                                }
+                            ):Play()
+                            local v831 = TweenService
+                            local FireExplosion2 = FlameStrike.fireExplosion2
+                            v831:Create(
+                                FireExplosion2,
+                                TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                {
+                                    CFrame = FlameStrike.fireExplosion2.CFrame + Vector3.new(0, 109.335, 0),
+                                    Size = Vector3.new(60, 280, 60),
+                                    Transparency = 1
+                                }
+                            ):Play()
+                            local v833 = TweenService
+                            local FireRing = FlameStrike.fireRing
+                            v833:Create(
+                                FireRing,
+                                TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                {
+                                    CFrame = FlameStrike.fireRing.CFrame + Vector3.new(0, 13, 0),
+                                    Size = Vector3.new(129.036, 33.933, 129.036),
+                                    Transparency = 1
+                                }
+                            ):Play()
+                            TweenService:Create(
+                                FlameStrike.spikeRing,
+                                TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(113.932, 1.628, 113.932), Transparency = 1 }
+                            ):Play()
+
+                            return
+                        end
+
+                        if arg2 == "Frost Cone" then
+                            local v837 = arg1.Character.HumanoidRootPart.CFrame
+                            local FrostCone = game.ReplicatedStorage.projectiles["Frost Cone"]:Clone()
+                            Debris:AddItem(FrostCone, 4)
+                            FrostCone:SetPrimaryPartCFrame(v837)
+                            FrostCone.Parent = workspace
+                            FrostCone.PrimaryPart.frostConeSound:Play()
+                            local Cone1 = FrostCone.cone1.CFrame
+                            local Cone2 = FrostCone.cone2.CFrame
+                            local Cone3 = FrostCone.cone3.CFrame
+                            local v844 = TweenService
+                            local Cone1_1 = FrostCone.cone1
+                            local tweenInfo_43 = TweenInfo.new(
+                                0.6,
+                                Enum.EasingStyle.Quart,
+                                Enum.EasingDirection.Out
+                            )
+                            v844:Create(
+                                Cone1_1,
+                                tweenInfo_43,
+                                {
+                                    Size = Vector3.new(68.257, 80.611, 68.257),
+                                    CFrame = (Cone1 + Cone1.UpVector * 38 + Vector3.new(0, 1.9, 0)) * CFrame.Angles(
+                                        0,
+                                        3.12413936106985,
+                                        0
+                                    ),
+                                    Transparency = 1
+                                }
+                            ):Play()
+                            local v847 = TweenService
+                            local Cone2_1 = FrostCone.cone2
+                            local tweenInfo_44 = TweenInfo.new(
+                                0.6,
+                                Enum.EasingStyle.Quart,
+                                Enum.EasingDirection.Out
+                            )
+                            v847:Create(
+                                Cone2_1,
+                                tweenInfo_44,
+                                {
+                                    Size = Vector3.new(68.257, 88.611, 68.257),
+                                    CFrame = (Cone2 + Cone2.UpVector * 42 + Vector3.new(0, 1.9, 0)) * CFrame.Angles(
+                                        0,
+                                        -3.12413936106985,
+                                        0
+                                    ),
+                                    Transparency = 1
+                                }
+                            ):Play()
+                            local v850 = TweenService
+                            local Cone3_1 = FrostCone.cone3
+                            local tweenInfo_45 = TweenInfo.new(
+                                0.7,
+                                Enum.EasingStyle.Quart,
+                                Enum.EasingDirection.Out
+                            )
+                            v850:Create(
+                                Cone3_1,
+                                tweenInfo_45,
+                                {
+                                    Size = Vector3.new(40, 80.611, 40),
+                                    CFrame = (Cone3 + Cone3.UpVector * 38 + Vector3.new(0, 1.9, 0)) * CFrame.Angles(
+                                        0,
+                                        1.5707963267948966,
+                                        0
+                                    ),
+                                    Transparency = 1
+                                }
+                            ):Play()
+                            FrostCone.particlePart.particles:Emit(100)
+
+                            return
+                        end
+
+                        if arg2 == "Soul Drain" then
+                            local v853 = arg1.Character.HumanoidRootPart.CFrame
+                            local SoulDrain = game.ReplicatedStorage.projectiles["Soul Drain"]:Clone()
+                            Debris:AddItem(SoulDrain, 4)
+                            SoulDrain:SetPrimaryPartCFrame(v853 + v853.LookVector * 40)
+                            SoulDrain.Parent = workspace
+                            local Mesh1 = SoulDrain.mesh1
+                            local New_40 = TweenInfo.new(
+                                0.4,
+                                Enum.EasingStyle.Quart,
+                                Enum.EasingDirection.Out
+                            )
+                            local v861 = TweenService:Create(
+                                Mesh1,
+                                New_40,
+                                {
+                                    CFrame = SoulDrain.mesh1.CFrame * CFrame.Angles(
+                                        0,
+                                        3.12413936106985,
+                                        0
+                                    ),
+                                    Size = Vector3.new(90, 1, 90)
+                                }
+                            )
+                            v861.Completed:Connect(function() -- line: 1455
+                                -- upvalues:
+                                --  [1] SoulDrain (copy)
+                                --  [2] TweenService (ref)
+
+                                SoulDrain.mesh1.soulDrainSound:Play()
+                                SoulDrain.mesh1.Color = Color3.fromRGB(169, 140, 255)
+                                TweenService:Create(
+                                    SoulDrain.mesh1,
+                                    TweenInfo.new(
+                                        0.4,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Transparency = 1 }
+                                ):Play()
+                            end)
+                            v861:Play()
+                            local v866 = TweenService
+                            local Mesh2 = SoulDrain.mesh2
+                            local New_41 = TweenInfo.new(
+                                0.4,
+                                Enum.EasingStyle.Quart,
+                                Enum.EasingDirection.Out
+                            )
+                            v866:Create(
+                                Mesh2,
+                                New_41,
+                                {
+                                    CFrame = SoulDrain.mesh2.CFrame * CFrame.Angles(
+                                        0,
+                                        -3.12413936106985,
+                                        0
+                                    ),
+                                    Size = Vector3.new(75, 1, 75)
+                                }
+                            ):Play()
+                            v861.Completed:Connect(function() -- line: 1463
+                                -- upvalues:
+                                --  [1] TweenService (ref)
+                                --  [2] SoulDrain (copy)
+
+                                TweenService:Create(
+                                    SoulDrain.mesh2,
+                                    TweenInfo.new(
+                                        0.4,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Transparency = 1 }
+                                ):Play()
+                            end)
+                            v861:Play()
+
+                            return
+                        end
+
+                        if arg2 == "Soul Drain Effect" then
+                            for _, val_16 in pairs(arg3) do
+                                local SoulDrainParticles = game.ReplicatedStorage.projectiles["Soul Drain Particles"].particle:Clone()
+                                Debris:AddItem(SoulDrainParticles, 2)
+                                SoulDrainParticles.Parent = val_16.PrimaryPart
+                            end
+
+                            return
+                        end
+
+                        if arg2 == "Geyser" then
+                            local v873 = arg1.Character.HumanoidRootPart.CFrame
+                            local Geyser = game.ReplicatedStorage.projectiles.Geyser:Clone()
+                            Debris:AddItem(Geyser, 3)
+                            Geyser:SetPrimaryPartCFrame(v873 + v873.LookVector * 40)
+                            Geyser.Parent = workspace
+                            Geyser.particlePart.geyserSound:Play()
+                            Geyser.particlePart.particles:Emit(90)
+                            task.spawn(function() -- line: 1490
+                                -- upvalues:
+                                --  [1] Geyser (copy)
+
+                                task.wait(0.2)
+                                Geyser.particlePart.particles.Enabled = false
+                            end)
+                            TweenService:Create(
+                                Geyser.geyserRing,
+                                TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                                { Size = Vector3.new(92, 2, 92), Transparency = 1 }
+                            ):Play()
+
+                            return
+                        end
+
+                        if arg2 == "Flame Shuriken" then
+                            local HumanoidRootPart_29 = arg1.Character.HumanoidRootPart
+                            local _ = HumanoidRootPart_29.CFrame
+                            local FlameShuriken = game.ReplicatedStorage.projectiles["Flame Shuriken"]:Clone()
+                            Debris:AddItem(FlameShuriken, 4)
+                            FlameShuriken.Parent = workspace
+                            FlameShuriken.CFrame = HumanoidRootPart_29.CFrame + HumanoidRootPart_29.CFrame.LookVector * 6
+                            TweenService:Create(
+                                FlameShuriken,
+                                TweenInfo.new(
+                                    0.4,
+                                    Enum.EasingStyle.Linear,
+                                    Enum.EasingDirection.Out
+                                ),
+                                { Size = Vector3.new(50, 50, 2) }
+                            ):Play()
+                            local v899 = 0
+                            local v900 = tick() + 0.4
+                            local v901 = v900 + 0.3
+                            local v902 = nil
+                            local v903 = nil
+                            v903 = RunService.Heartbeat:Connect(function() -- line: 1515
+                                -- upvalues:
+                                --  [1] v900 (copy)
+                                --  [2] FlameShuriken (copy)
+                                --  [3] HumanoidRootPart_29 (copy)
+                                --  [4] v899 (ref)
+                                --  [5] v902 (ref)
+                                --  [6] v901 (copy)
+                                --  [7] v903 (ref)
+
+                                if tick() < v900 then
+                                    FlameShuriken.CFrame = (HumanoidRootPart_29.CFrame + HumanoidRootPart_29.CFrame.LookVector * 6) * CFrame.Angles(
+                                        0,
+                                        0,
+                                        (math.rad(v899))
+                                    )
+                                    v899 -= 5
+
+                                    return
+                                end
+
+                                if v902 == nil then
+                                    FlameShuriken.flameShurikenSound:Play()
+                                    v902 = HumanoidRootPart_29.CFrame
+
+                                    for _, val_17 in pairs(FlameShuriken:GetChildren()) do
+                                        if val_17:IsA("Trail") then
+                                            val_17.Enabled = true
+                                        end
+                                    end
+                                end
+
+                                local v907 = math.clamp((tick() - v900) / 0.3, 0, 1)
+                                FlameShuriken.CFrame = (v902 + v902.LookVector * (v907 * 80 + 6)) * CFrame.Angles(
+                                    0,
+                                    0,
+                                    (math.rad(v899))
+                                )
+                                FlameShuriken.Transparency = v907
+
+                                if tick() > v901 then
+                                    v903:Disconnect()
+                                    v903 = nil
+                                    FlameShuriken.Transparency = 1
+                                end
+
+                                v899 -= 15
+                            end)
+
+                            return
+                        end
+
+                        if arg2 == "Gale Barrage" then
+                            local HumanoidRootPart_30 = arg1.Character.HumanoidRootPart
+                            local v910 = HumanoidRootPart_30.CFrame
+
+                            for _ = 1, 3, 1 do
+                                for index_14 = -20, 20, 20 do
+                                    spawn(function() -- line: 1552
+                                        -- upvalues:
+                                        --  [1] Debris (ref)
+                                        --  [2] v910 (copy)
+                                        --  [3] RunService (ref)
+                                        --  [4] HumanoidRootPart_30 (copy)
+                                        --  [5] index_14 (copy)
+                                        --  [6] TweenService (ref)
+
+                                        local v917 = game.ReplicatedStorage.projectiles["Gale Barrage"]:Clone()
+                                        Debris:AddItem(v917, 4)
+                                        v917.Parent = workspace
+                                        v917.CFrame = v910
+                                        local v918 = 0
+                                        local v919 = tick() + 0.4
+                                        local v920 = nil
+                                        local v921 = v919 + 0.3
+                                        local v922 = nil
+                                        v922 = RunService.Heartbeat:Connect(function() -- line: 1565
+                                            -- upvalues:
+                                            --  [1] v919 (copy)
+                                            --  [2] HumanoidRootPart_30 (ref)
+                                            --  [3] index_14 (ref)
+                                            --  [4] v917 (copy)
+                                            --  [5] v918 (ref)
+                                            --  [6] v920 (ref)
+                                            --  [7] TweenService (ref)
+                                            --  [8] v921 (copy)
+                                            --  [9] v922 (ref)
+
+                                            if tick() < v919 then
+                                                local v924 = HumanoidRootPart_30.CFrame * CFrame.Angles(
+                                                    0,
+                                                    math.rad(index_14),
+                                                    0
+                                                )
+                                                v917.CFrame = (v924 + v924.LookVector * 6) * CFrame.Angles(
+                                                    0,
+                                                    math.rad(v918),
+                                                    0
+                                                )
+                                                v918 -= 10
+
+                                                return
+                                            end
+
+                                            if v920 == nil then
+                                                v917.galeBarrageSound:Play()
+                                                TweenService:Create(
+                                                    v917,
+                                                    TweenInfo.new(
+                                                        0.25,
+                                                        Enum.EasingStyle.Linear,
+                                                        Enum.EasingDirection.Out
+                                                    ),
+                                                    { Size = Vector3.new(30, 6, 30) }
+                                                ):Play()
+                                                local v929 = HumanoidRootPart_30.CFrame
+                                                local Angles_31 = CFrame.Angles
+                                                v920 = v929 * Angles_31(0, math.rad(index_14), 0)
+                                                local v930 = pairs
+                                                local _ = Angles_31(0, math.rad(index_14), 0)
+
+                                                for _, val_18 in v930(v917:GetChildren()) do
+                                                    if val_18:IsA("Trail") then
+                                                        val_18.Enabled = true
+                                                    end
+                                                end
+                                            end
+
+                                            local v932 = math.clamp((tick() - v919) / 0.3, 0, 1)
+                                            v917.CFrame = (v920 + v920.LookVector * (v932 * 90 + 6)) * CFrame.Angles(
+                                                0,
+                                                math.rad(v918),
+                                                0
+                                            )
+                                            v917.Transparency = v932
+
+                                            if tick() > v921 then
+                                                v922:Disconnect()
+                                                v922 = nil
+                                                v917.Transparency = 1
+                                                v917.PointLight.Enabled = false
+                                            end
+
+                                            v918 -= 20
+                                        end)
+                                    end)
+                                end
+
+                                wait(0.1)
+                            end
+                        else
+                            if arg2 == "Solar Beam" then
+                                local _ = arg1.Character.HumanoidRootPart
+                                local SolarBeam = game.ReplicatedStorage.projectiles["Solar Beam"]:Clone()
+                                Debris:AddItem(SolarBeam, 6)
+                                SolarBeam:SetPrimaryPartCFrame(arg3)
+                                SolarBeam.Parent = workspace
+                                SolarBeam.PrimaryPart.cast1:Play()
+                                local v941 = TweenService
+                                local SolarBeamMissile = SolarBeam.solarBeamMissile
+                                local New_44 = TweenInfo.new(
+                                    0.3,
+                                    Enum.EasingStyle.Quart,
+                                    Enum.EasingDirection.Out
+                                )
+                                v941:Create(
+                                    SolarBeamMissile,
+                                    New_44,
+                                    {
+                                        Position = SolarBeam.solarBeamMissile.Position + arg3.LookVector * 70,
+                                        Size = Vector3.new(20, 20, 40)
+                                    }
+                                ):Play()
+                                wait(0.1)
+                                TweenService:Create(
+                                    SolarBeam.solarBeamMissile,
+                                    TweenInfo.new(
+                                        0.25,
+                                        Enum.EasingStyle.Quart,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { Size = Vector3.new(40, 40, 60), Transparency = 1 }
+                                ):Play()
+                                wait(0.3)
+                                SolarBeam.PrimaryPart.explode:Play()
+                                SolarBeam.solarBeamLine.smallerParticles:Emit(200)
+                                SolarBeam.solarBeamLine.biggerParticles:Emit(80)
+
+                                return
+                            end
+
+                            if arg2 == "God Spear" then
+                                local _ = arg1.Character.HumanoidRootPart
+                                wait(0.3)
+                                local GodSpearModel = game.ReplicatedStorage.projectiles["God Spear Model"]:Clone()
+                                Debris:AddItem(GodSpearModel, 1.6)
+                                local New_46 = CFrame.new
+                                local Position_5 = arg3.Position
+                                local v955 = rng:NextNumber(-35, 35)
+                                local v960 = New_46(
+                                    Position_5 + Vector3.new(v955, 80, rng:NextNumber(-35, 35)),
+                                    arg3.Position
+                                ) * CFrame.Angles(0, 3.141592653589793, 0)
+                                local v962 = (v960.Position - arg3.Position).Magnitude + 7
+                                GodSpearModel:SetPrimaryPartCFrame(v960)
+                                GodSpearModel.Parent = workspace
+                                GodSpearModel.PrimaryPart.swoosh.TimePosition = 0.2
+                                GodSpearModel.PrimaryPart.swoosh:Play()
+                                local v966 = TweenService:Create(
+                                    GodSpearModel.PrimaryPart,
+                                    TweenInfo.new(
+                                        0.3,
+                                        Enum.EasingStyle.Linear,
+                                        Enum.EasingDirection.Out
+                                    ),
+                                    { CFrame = v960 + v960.LookVector * -v962 }
+                                )
+                                v966.Completed:Connect(function() -- line: 1647
+                                    -- upvalues:
+                                    --  [1] GodSpearModel (copy)
+                                    --  [2] Debris (ref)
+                                    --  [3] arg3 (copy)
+                                    --  [4] TweenService (ref)
+                                    --  [5] rng (ref)
+
+                                    GodSpearModel.PrimaryPart.Explosion:Play()
+                                    local v967 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                                    v967.Transparency = 0
+                                    v967.Color = Color3.fromRGB(255, 57, 57)
+                                    Debris:AddItem(v967, 5)
+                                    v967.Parent = workspace
+                                    v967.CFrame = arg3
+                                    TweenService:Create(
+                                        v967,
+                                        TweenInfo.new(
+                                            0.4,
+                                            Enum.EasingStyle.Quart,
+                                            Enum.EasingDirection.Out
+                                        ),
+                                        { Size = Vector3.new(55, 55, 55), Transparency = 1 }
+                                    ):Play()
+
+                                    for _ = 1, 3 do
+                                        local v969 = game.ReplicatedStorage.projectiles["God Spear Explosion Cylinder"]:Clone()
+                                        Debris:AddItem(v969, 2)
+                                        v969.CFrame = arg3 * CFrame.Angles(
+                                            rng:NextNumber(0, 360),
+                                            rng:NextNumber(0, 360),
+                                            rng:NextNumber(0, 360)
+                                        )
+                                        v969.Parent = workspace
+                                        TweenService:Create(
+                                            v969,
+                                            TweenInfo.new(
+                                                0.5,
+                                                Enum.EasingStyle.Quart,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            { Size = Vector3.new(2, 65, 65), Transparency = 1 }
+                                        ):Play()
+                                    end
+
+                                    local v974 = game.ReplicatedStorage.projectiles["God Spear Debris Ring"]:Clone()
+                                    Debris:AddItem(v974, 1.8)
+                                    v974:SetPrimaryPartCFrame(arg3)
+                                    v974.Parent = workspace
+
+                                    for _ = 1, 10 do
+                                        spawn(function() -- line: 1671
+                                            -- upvalues:
+                                            --  [1] Debris (ref)
+                                            --  [2] arg3 (ref)
+                                            --  [3] rng (ref)
+
+                                            local v975 = game.ReplicatedStorage.projectiles["God Spear Debris"]:Clone()
+                                            Debris:AddItem(v975, 2.2)
+                                            local v976 = arg3
+                                            local v977 = rng:NextNumber(-4, 4)
+                                            v975.CFrame = v976 + Vector3.new(
+                                                v977,
+                                                0,
+                                                rng:NextNumber(-4, 4)
+                                            )
+                                            local v978 = rng:NextNumber(3, 4)
+                                            local v979 = rng:NextNumber(3, 4)
+                                            v975.Size = Vector3.new(
+                                                v978,
+                                                v979,
+                                                rng:NextNumber(3, 4)
+                                            )
+                                            v975.Parent = workspace
+                                            local Attachment0 = v975.Attachment0
+                                            local v980 = rng:NextNumber(-2, 2)
+                                            local v981 = rng:NextNumber(-2, 2)
+                                            Attachment0.Position = Vector3.new(
+                                                v980,
+                                                v981,
+                                                rng:NextNumber(-2, 2)
+                                            )
+                                            local VectorForce = v975.VectorForce
+                                            local v982 = rng:NextInteger(-33000, 33000)
+                                            local v983 = rng:NextInteger(60000, 110000)
+                                            VectorForce.Force = Vector3.new(
+                                                v982,
+                                                v983,
+                                                rng:NextInteger(-33000, 33000)
+                                            )
+                                            v975.VectorForce.Enabled = true
+                                            wait(0.15)
+                                            v975.VectorForce.Enabled = false
+                                        end)
+                                    end
+                                end)
+                                v966:Play()
+
+                                return
+                            end
+
+                            if arg2 == "Blade Barrage" then
+                                local _ = arg1.Character.HumanoidRootPart
+                                local v985 = arg3
+                                v985 += v985.LookVector * -20
+                                local v991
+
+                                for _ = 1, 15, 1 do
+                                    v991 = v985 + v985.UpVector * rng:NextNumber(-2, 6)
+                                    local v993 = v991 + v985.RightVector * rng:NextNumber(-33, 33)
+                                    v991 = game.ReplicatedStorage.projectiles["Blade Barrage Sword"]:Clone()
+                                    Debris:AddItem(v991, 3)
+                                    v991.CFrame = v993 * CFrame.Angles(
+                                        0,
+                                        3.141592653589793,
+                                        (math.rad((rng:NextNumber(-180, 180))))
+                                    )
+                                    v991.Parent = workspace
+                                    v991.sound.PitchShiftSoundEffect.Octave = rng:NextNumber(
+                                        0.5,
+                                        0.8
+                                    )
+                                    v991.sound:Play()
+                                    local tweenInfo_51 = TweenInfo.new(
+                                        0.2,
+                                        Enum.EasingStyle.Linear,
+                                        Enum.EasingDirection.Out
+                                    )
+                                    local v1000 = TweenService:Create(
+                                        v991,
+                                        tweenInfo_51,
+                                        { Position = v993.Position + v993.LookVector * 100 }
+                                    )
+                                    v1000.Completed:Connect(function() -- line: 1702
+                                        -- upvalues:
+                                        --  [1] TweenService (ref)
+                                        --  [2] v991 (copy)
+
+                                        TweenService:Create(
+                                            v991,
+                                            TweenInfo.new(
+                                                0.3,
+                                                Enum.EasingStyle.Quart,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            { Transparency = 1 }
+                                        ):Play()
+                                        v991.PointLight.Enabled = false
+                                        v991.particleAttachment.particle2.Enabled = false
+                                    end)
+                                    v1000:Play()
+                                    wait()
+                                end
+                            elseif arg2 == "Amethyst Beams" then
+                                local _ = arg1.Character.HumanoidRootPart
+                                local v1004 = arg3[1]
+                                local v1005 = arg3[2]
+                                local v1006 = v1004 + Vector3.new(0, 15, 0)
+                                local Magnitude_3 = (v1005.Position - v1004.Position).Magnitude
+                                local AmethystBeamOrb = game.ReplicatedStorage.projectiles["Amethyst Beam Orb"]:Clone()
+                                Debris:AddItem(AmethystBeamOrb, 1)
+                                AmethystBeamOrb.CFrame = v1006
+                                AmethystBeamOrb.Parent = workspace
+                                AmethystBeamOrb.sound:Play()
+                                local v1021
+
+                                for index_18 = -40, 40, 20 do
+                                    local v1013 = v1004 + v1004.RightVector * index_18
+                                    local _ = v1005 + v1005.RightVector * index_18
+                                    local v1015 = game.ReplicatedStorage.projectiles["Amethyst Beam Ground Particles"]:Clone()
+                                    Debris:AddItem(v1015, 5)
+                                    v1015.CFrame = v1013
+                                    v1015.Parent = workspace
+                                    local v1017 = game.ReplicatedStorage.projectiles["Amethyst Beam Beam"]:Clone()
+                                    Debris:AddItem(v1017, 3)
+                                    v1017.Parent = workspace
+                                    local now_2 = tick()
+                                    local v1020 = now_2 + 0.25
+                                    v1021 = nil
+                                    v1021 = RunService.Heartbeat:Connect(function() -- line: 1742
+                                        -- upvalues:
+                                        --  [1] v1020 (copy)
+                                        --  [2] now_2 (copy)
+                                        --  [3] v1013 (copy)
+                                        --  [4] Magnitude_3 (copy)
+                                        --  [5] v1015 (copy)
+                                        --  [6] v1006 (copy)
+                                        --  [7] v1017 (copy)
+                                        --  [8] TweenService (ref)
+                                        --  [9] v1021 (ref)
+
+                                        local now = tick()
+
+                                        if now < v1020 then
+                                            local v1023 = v1013 + v1013.LookVector * (math.clamp(
+                                                (now - now_2) / 0.25,
+                                                0,
+                                                1
+                                            ) * Magnitude_3)
+                                            v1015.CFrame = v1023
+                                            local Magnitude_2 = (v1006.Position - v1023.Position).Magnitude
+                                            local cframe_1 = CFrame.new(
+                                                v1006.Position,
+                                                v1023.Position
+                                            )
+                                            v1017.Size = Vector3.new(Magnitude_2, 2, 2)
+                                            v1017.CFrame = (cframe_1 + cframe_1.LookVector * (Magnitude_2 / 2)) * CFrame.Angles(
+                                                0,
+                                                1.5707963267948966,
+                                                0
+                                            )
+
+                                            return
+                                        end
+
+                                        v1015.middleAttachment.iceParticle.Enabled = false
+                                        TweenService:Create(
+                                            v1017,
+                                            TweenInfo.new(
+                                                0.35,
+                                                Enum.EasingStyle.Quart,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            { Transparency = 1 }
+                                        ):Play()
+                                        v1021:Disconnect()
+                                        v1021 = nil
+                                    end)
+                                end
+                            else
+                                if arg2 == "Jade Roller" then
+                                    local _ = arg1.Character.HumanoidRootPart
+                                    local JadeRoller = game.ReplicatedStorage.projectiles["Jade Roller"]:Clone()
+                                    Debris:AddItem(JadeRoller, 5)
+                                    JadeRoller:SetPrimaryPartCFrame(arg3)
+                                    JadeRoller.Parent = workspace
+                                    JadeRoller.PrimaryPart.sound:Play()
+                                    local g_tick_3 = tick()
+                                    local v1036 = g_tick_3 + 0.2 + 0.45
+                                    local v1037 = nil
+                                    v1037 = RunService.Heartbeat:Connect(function() -- line: 1780
+                                        -- upvalues:
+                                        --  [1] v1036 (copy)
+                                        --  [2] g_tick_3 (copy)
+                                        --  [3] arg3 (copy)
+                                        --  [4] JadeRoller (copy)
+                                        --  [5] TweenService (ref)
+                                        --  [6] v1037 (ref)
+
+                                        local now_1 = tick()
+
+                                        if now_1 < v1036 then
+                                            JadeRoller:SetPrimaryPartCFrame(
+                                                arg3 + arg3.LookVector * (math.clamp(
+                                                    (now_1 - g_tick_3) / 0.2,
+                                                    0,
+                                                    1
+                                                ) * 80)
+                                            )
+                                            JadeRoller.outerCylinder1.CFrame = JadeRoller.outerCylinder1.CFrame * CFrame.Angles(
+                                                0,
+                                                -0.3490658503988659,
+                                                0
+                                            )
+                                            JadeRoller.outerCylinder2.CFrame = JadeRoller.outerCylinder2.CFrame * CFrame.Angles(
+                                                0,
+                                                -0.4886921905584123,
+                                                0
+                                            )
+                                        else
+                                            JadeRoller.innerCylinder.particles.Enabled = false
+                                            JadeRoller.innerCylinder.Trail.Enabled = false
+                                            TweenService:Create(
+                                                JadeRoller.innerCylinder,
+                                                TweenInfo.new(
+                                                    0.25,
+                                                    Enum.EasingStyle.Quart,
+                                                    Enum.EasingDirection.Out
+                                                ),
+                                                { Transparency = 1 }
+                                            ):Play()
+                                            TweenService:Create(
+                                                JadeRoller.outerCylinder1,
+                                                TweenInfo.new(
+                                                    0.25,
+                                                    Enum.EasingStyle.Quart,
+                                                    Enum.EasingDirection.Out
+                                                ),
+                                                { Transparency = 1 }
+                                            ):Play()
+                                            TweenService:Create(
+                                                JadeRoller.outerCylinder2,
+                                                TweenInfo.new(
+                                                    0.25,
+                                                    Enum.EasingStyle.Quart,
+                                                    Enum.EasingDirection.Out
+                                                ),
+                                                { Transparency = 1 }
+                                            ):Play()
+                                        end
+
+                                        if now_1 > v1036 then
+                                            v1037:Disconnect()
+                                            v1037 = nil
+                                        end
+                                    end)
+
+                                    return
+                                end
+
+                                if arg2 == "Jade Rain" then
+                                    local _ = arg1.Character.HumanoidRootPart
+                                    local v1045 = arg3[1]
+                                    local v1046 = arg3[2]
+                                    local JadeRainCircle = game.ReplicatedStorage.projectiles["Jade Rain Circle"]:Clone()
+                                    Debris:AddItem(JadeRainCircle, 5)
+                                    JadeRainCircle:SetPrimaryPartCFrame(v1045)
+                                    JadeRainCircle.Parent = workspace
+                                    TweenService:Create(
+                                        JadeRainCircle.Union,
+                                        TweenInfo.new(
+                                            0.35,
+                                            Enum.EasingStyle.Quart,
+                                            Enum.EasingDirection.Out
+                                        ),
+                                        { Transparency = 1 }
+                                    ):Play()
+                                    JadeRainCircle.PrimaryPart.Sound:Play()
+                                    local v1054 = pairs
+                                    local v1055 = v1046
+
+                                    for _, val_19 in v1054(v1055) do
+                                        spawn(function() -- line: 1816
+                                            -- upvalues:
+                                            --  [1] rng (ref)
+                                            --  [2] val_19 (copy)
+                                            --  [3] Debris (ref)
+                                            --  [4] TweenService (ref)
+
+                                            local v1056 = rng:NextNumber(-15, 15)
+                                            local vec3 = Vector3.new(
+                                                v1056,
+                                                70,
+                                                rng:NextNumber(-15, 15)
+                                            )
+                                            local v1057 = CFrame.new(val_19 + vec3, val_19) * CFrame.Angles(
+                                                1.5707963267948966,
+                                                0,
+                                                0
+                                            )
+                                            local v1058 = game.ReplicatedStorage.projectiles["Jade Rain Crystal"]:Clone()
+                                            Debris:AddItem(v1058, 5)
+                                            v1058.CFrame = v1057
+                                            v1058.Parent = workspace
+                                            local v1060 = TweenService:Create(
+                                                v1058,
+                                                TweenInfo.new(
+                                                    0.1,
+                                                    Enum.EasingStyle.Linear,
+                                                    Enum.EasingDirection.Out
+                                                ),
+                                                { Position = val_19 }
+                                            )
+                                            v1060.Completed:Connect(function() -- line: 1826
+                                                -- upvalues:
+                                                --  [1] Debris (ref)
+                                                --  [2] val_19 (ref)
+                                                --  [3] TweenService (ref)
+                                                --  [4] v1058 (copy)
+
+                                                local v1061 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                                                v1061.Transparency = 0
+                                                v1061.Color = Color3.fromRGB(61, 255, 197)
+                                                Debris:AddItem(v1061, 5)
+                                                v1061.Parent = workspace
+                                                v1061.CFrame = CFrame.new(val_19)
+                                                TweenService:Create(
+                                                    v1061,
+                                                    TweenInfo.new(
+                                                        0.4,
+                                                        Enum.EasingStyle.Quart,
+                                                        Enum.EasingDirection.Out
+                                                    ),
+                                                    {
+                                                        Size = Vector3.new(48, 48, 48),
+                                                        Transparency = 1
+                                                    }
+                                                ):Play()
+                                                wait(0.3)
+                                                TweenService:Create(
+                                                    v1058,
+                                                    TweenInfo.new(
+                                                        0.4,
+                                                        Enum.EasingStyle.Quart,
+                                                        Enum.EasingDirection.Out
+                                                    ),
+                                                    { Transparency = 1 }
+                                                ):Play()
+                                                v1058.PointLight.Enabled = false
+                                            end)
+                                            v1060:Play()
+                                        end)
+                                    end
+
+                                    return
+                                end
+
+                                if arg2 == "Carrot Barrage" then
+                                    local CarrotBarrage = game.ReplicatedStorage.projectiles["Carrot Barrage"]
+                                    local HumanoidRootPart_37 = arg1.Character.HumanoidRootPart
+                                    CarrotBarrage = CarrotBarrage:Clone()
+                                    game:GetService("Debris"):AddItem(CarrotBarrage, 6)
+                                    CarrotBarrage.Parent = workspace
+                                    CarrotBarrage:SetPrimaryPartCFrame(HumanoidRootPart_37.CFrame)
+                                    local PrimaryPart_42 = CarrotBarrage.PrimaryPart.iceFly
+                                    local _ = CarrotBarrage.PrimaryPart.shatterSound
+
+                                    for index_19 = 1, 21, 1 do
+                                        spawn(function() -- line: 1854
+                                            -- upvalues:
+                                            --  [1] CarrotBarrage (copy)
+                                            --  [2] index_19 (copy)
+                                            --  [3] PrimaryPart_42 (copy)
+                                            --  [4] TweenService (ref)
+
+                                            local v1076 = CarrotBarrage[tostring(index_19)]
+                                            local v1077 = game.ReplicatedStorage.projectiles["Carrot Barrage Carrot"]:Clone()
+                                            game:GetService("Debris"):AddItem(v1077, 3)
+                                            v1077.Parent = workspace
+                                            v1077:SetPrimaryPartCFrame(v1076.CFrame)
+                                            local v1078 = PrimaryPart_42:Clone()
+                                            v1078.Parent = v1076
+                                            v1078:Play()
+                                            local t_70 = {
+                                                CFrame = v1076.CFrame + v1076.CFrame.LookVector * 24
+                                            }
+                                            local tweenInfo_60 = TweenInfo.new(
+                                                0.15,
+                                                Enum.EasingStyle.Linear,
+                                                Enum.EasingDirection.Out,
+                                                0,
+                                                false,
+                                                0
+                                            )
+                                            TweenService:Create(
+                                                v1077.PrimaryPart,
+                                                tweenInfo_60,
+                                                t_70
+                                            ):Play()
+                                        end)
+                                        wait(0.01)
+                                    end
+                                else
+                                    if arg2 == "Egg Bomb" then
+                                        local EggBomb = game.ReplicatedStorage.projectiles["Egg Bomb"]
+                                        local HumanoidRootPart_38 = arg1.Character.HumanoidRootPart
+                                        EggBomb = EggBomb:Clone()
+                                        Debris:AddItem(EggBomb, 5)
+                                        EggBomb.Parent = workspace
+                                        EggBomb:SetPrimaryPartCFrame(HumanoidRootPart_38.CFrame)
+                                        local t_71 = {}
+                                        t_71.CFrame = arg3 + Vector3.new(0, -2.5, 0)
+                                        local New_50 = TweenInfo.new(
+                                            0.2,
+                                            Enum.EasingStyle.Linear,
+                                            Enum.EasingDirection.Out,
+                                            0,
+                                            false,
+                                            0
+                                        )
+                                        local v1089 = TweenService:Create(
+                                            EggBomb.PrimaryPart,
+                                            New_50,
+                                            t_71
+                                        )
+                                        v1089.Completed:Connect(function() -- line: 1891
+                                            -- upvalues:
+                                            --  [1] EggBomb (copy)
+                                            --  [2] TweenService (ref)
+
+                                            wait(0.1)
+                                            EggBomb.neon.PointLight.Enabled = true
+                                            wait(0.1)
+                                            EggBomb.neon.PointLight.Enabled = false
+                                            wait(0.1)
+                                            EggBomb.neon.PointLight.Enabled = true
+                                            wait(0.1)
+                                            EggBomb.neon.PointLight.Enabled = false
+                                            wait(0.1)
+                                            EggBomb.neon.PointLight.Enabled = true
+                                            wait(0.1)
+
+                                            for _, child_5 in pairs(EggBomb:GetChildren()) do
+                                                if child_5:IsA("BasePart") and child_5.Name ~= "explosion" then
+                                                    child_5.Transparency = 1
+                                                end
+                                            end
+
+                                            local tweenInfo_61 = TweenInfo.new(
+                                                0.5,
+                                                Enum.EasingStyle.Quart,
+                                                Enum.EasingDirection.Out,
+                                                0,
+                                                false,
+                                                0
+                                            )
+                                            TweenService:Create(
+                                                EggBomb.explosion,
+                                                tweenInfo_61,
+                                                { Size = Vector3.new(80, 80, 80), Transparency = 1 }
+                                            ):Play()
+                                            EggBomb.PrimaryPart.explosion1:Play()
+                                            EggBomb.PrimaryPart.explosion2:Play()
+                                            EggBomb.neon.PointLight.Enabled = false
+                                        end)
+                                        v1089:Play()
+
+                                        return
+                                    end
+
+                                    if arg2 == "Phase Barrage" then
+                                        local HumanoidRootPart_39 = arg1.Character.HumanoidRootPart
+                                        wait(0.1)
+                                        local PhaseBall = game.ReplicatedStorage.projectiles["Phase Ball"]:Clone()
+                                        Debris:AddItem(PhaseBall, 2)
+                                        PhaseBall.CFrame = HumanoidRootPart_39.CFrame
+                                        PhaseBall.Parent = workspace
+                                        PhaseBall.sound:Play()
+                                        local v1101 = PhaseBall
+                                        local New_51 = TweenInfo.new(
+                                            0.25,
+                                            Enum.EasingStyle.Linear,
+                                            Enum.EasingDirection.Out
+                                        )
+                                        local t_73 = {}
+                                        t_73.CFrame = PhaseBall.CFrame + PhaseBall.CFrame.LookVector * 70
+                                        local v1100 = TweenService:Create(v1101, New_51, t_73)
+                                        v1100.Completed:Connect(function() -- line: 1930
+                                            -- upvalues:
+                                            --  [1] PhaseBall (copy)
+
+                                            PhaseBall.Transparency = 1
+                                            PhaseBall.particles.Enabled = false
+                                        end)
+                                        PhaseBall.explosive:Play()
+                                        v1100:Play()
+                                        wait(0.25)
+                                        local PhaseBall_1 = game.ReplicatedStorage.projectiles["Phase Ball"]:Clone()
+                                        Debris:AddItem(PhaseBall_1, 2)
+                                        PhaseBall_1.CFrame = HumanoidRootPart_39.CFrame
+                                        PhaseBall_1.Parent = workspace
+                                        PhaseBall_1.sound:Play()
+                                        local v1112 = TweenService:Create(
+                                            PhaseBall_1,
+                                            TweenInfo.new(
+                                                0.25,
+                                                Enum.EasingStyle.Linear,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            {
+                                                CFrame = PhaseBall_1.CFrame + PhaseBall_1.CFrame.LookVector * 70
+                                            }
+                                        )
+                                        v1112.Completed:Connect(function() -- line: 1945
+                                            -- upvalues:
+                                            --  [1] PhaseBall_1 (copy)
+
+                                            PhaseBall_1.Transparency = 1
+                                            PhaseBall_1.particles.Enabled = false
+                                        end)
+                                        PhaseBall_1.explosive:Play()
+                                        v1112:Play()
+                                        wait(0.4)
+                                        local PhaseBall_2 = game.ReplicatedStorage.projectiles["Phase Ball"]:Clone()
+                                        Debris:AddItem(PhaseBall_2, 2)
+                                        PhaseBall_2.CFrame = HumanoidRootPart_39.CFrame
+                                        PhaseBall_2.Parent = workspace
+                                        PhaseBall_2.sound:Play()
+                                        local v1120 = TweenService:Create(
+                                            PhaseBall_2,
+                                            TweenInfo.new(
+                                                0.25,
+                                                Enum.EasingStyle.Linear,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            {
+                                                CFrame = PhaseBall_2.CFrame + PhaseBall_2.CFrame.LookVector * 70
+                                            }
+                                        )
+                                        v1120.Completed:Connect(function() -- line: 1960
+                                            -- upvalues:
+                                            --  [1] PhaseBall_2 (copy)
+
+                                            PhaseBall_2.Transparency = 1
+                                            PhaseBall_2.particles.Enabled = false
+                                        end)
+                                        PhaseBall_2.explosive:Play()
+                                        v1120:Play()
+
+                                        return
+                                    end
+
+                                    if arg2 == "Chain Phase Spawn" then
+                                        local _ = arg1.Character.HumanoidRootPart
+                                        local BigPhaseBall_1 = game.ReplicatedStorage.projectiles["Big Phase Ball"]:Clone()
+                                        Debris:AddItem(BigPhaseBall_1, 5)
+                                        BigPhaseBall_1.Parent = workspace
+                                        BigPhaseBall_1.CFrame = arg3
+                                        BigPhaseBall_1.chargeSound:Play()
+
+                                        for _ = 1, 20, 1 do
+                                            spawn(function() -- line: 1979
+                                                -- upvalues:
+                                                --  [1] Debris (ref)
+                                                --  [2] arg3 (copy)
+                                                --  [3] rng (ref)
+                                                --  [4] TweenService (ref)
+
+                                                local v1128 = game.ReplicatedStorage.projectiles["phase Ring"]:Clone()
+                                                Debris:AddItem(v1128, 2)
+                                                local v1129 = arg3
+                                                local Angles_36 = CFrame.Angles
+                                                local v1130 = rng:NextNumber(-180, 180)
+                                                local v1131 = math.rad(v1130)
+                                                local v1132 = rng:NextNumber(-180, 180)
+                                                local v1133 = math.rad(v1132)
+                                                local v1134 = rng:NextNumber(-180, 180)
+                                                v1128.CFrame = v1129 * Angles_36(
+                                                    v1131,
+                                                    v1133,
+                                                    (math.rad(v1134))
+                                                )
+                                                v1128.Parent = workspace
+                                                TweenService:Create(
+                                                    v1128,
+                                                    TweenInfo.new(
+                                                        0.2,
+                                                        Enum.EasingStyle.Quart,
+                                                        Enum.EasingDirection.Out
+                                                    ),
+                                                    {
+                                                        Size = Vector3.new(0.4, 20, 20),
+                                                        Transparency = 1
+                                                    }
+                                                ):Play()
+                                            end)
+                                            wait(0.05)
+                                        end
+
+                                        BigPhaseBall_1.Explosion:Play()
+                                        TweenService:Create(
+                                            BigPhaseBall_1,
+                                            TweenInfo.new(
+                                                0.5,
+                                                Enum.EasingStyle.Quart,
+                                                Enum.EasingDirection.Out
+                                            ),
+                                            { Size = Vector3.new(55, 55, 55), Transparency = 1 }
+                                        ):Play()
+
+                                        return
+                                    end
+
+                                    if arg2 == "Chain Phase Shoot" then
+                                        local _ = arg1.Character.HumanoidRootPart
+                                        local v1140 = arg3[1]
+                                        local v1141 = arg3[2]
+                                        local _ = {}
+                                        local v1142 = pairs
+                                        local v1143 = v1141
+
+                                        for _, val_20 in v1142(v1143) do
+                                            local v1144 = game.ReplicatedStorage.projectiles.phaseBeamModel:Clone()
+                                            Debris:AddItem(v1144, 0.4)
+                                            v1144.Parent = workspace
+                                            v1144.part1.CFrame = v1140
+                                            v1144.part2.CFrame = val_20.PrimaryPart.CFrame
+                                            v1144["Phase Beam"].Enabled = true
+                                            local v1145 = game.ReplicatedStorage.projectiles["Big Phase Ball"]:Clone()
+                                            Debris:AddItem(v1145, 5)
+                                            v1145.Parent = workspace
+                                            v1145.CFrame = val_20.PrimaryPart.CFrame
+                                            TweenService:Create(
+                                                v1145,
+                                                TweenInfo.new(
+                                                    0.4,
+                                                    Enum.EasingStyle.Quart,
+                                                    Enum.EasingDirection.Out
+                                                ),
+                                                { Size = Vector3.new(40, 40, 40), Transparency = 1 }
+                                            ):Play()
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)

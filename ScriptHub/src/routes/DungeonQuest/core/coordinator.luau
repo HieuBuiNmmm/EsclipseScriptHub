@@ -3,6 +3,17 @@
 
 local coordinator = {}
 local features = {}
+local locked = false
+
+--// Khóa coordinator: dùng trong quá trình nạp config (LoadConfig) để tránh
+--// các toggle cũ / toggle thành phần đè chết toggle master hệ thống.
+function coordinator.SetLocked(state)
+	locked = state and true or false
+end
+
+function coordinator.IsLocked()
+	return locked
+end
 
 --// Đăng ký 1 hệ thống có thể bị tắt độc quyền. setEnabled(false) được gọi khi
 --// một hệ thống khác bật lên. isEnabled() trả về trạng thái đang chạy.
@@ -16,6 +27,7 @@ end
 
 --// Bật độc quyền 1 hệ thống: tự động TẮT toàn bộ hệ thống khác đang chạy trước đó.
 function coordinator.EnableExclusive(name)
+	if locked then return end
 	for otherName, feat in pairs(features) do
 		if otherName ~= name and feat.isEnabled() then
 			pcall(feat.setEnabled, false)

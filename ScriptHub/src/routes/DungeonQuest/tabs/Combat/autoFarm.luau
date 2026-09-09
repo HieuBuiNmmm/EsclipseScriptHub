@@ -65,6 +65,27 @@ return function(window, tab)
 		end),
 	}, "Slider_AF_RepathDistance")
 
+	leftSection:Toggle({
+		Name = "Auto Jump When Stuck (Low Velocity)",
+		Default = autoFarm.IsAutoJumpOnStuckEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoJumpOnStuck(state)
+		end),
+	}, "Toggle_AF_AutoJumpOnStuck")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Stuck Velocity Threshold",
+		Suffix = " studs/s",
+		Default = autoFarm.GetStuckVelocityThreshold(),
+		Minimum = 2,
+		Maximum = 20,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetStuckVelocityThreshold(val)
+		end),
+	}, "Slider_AF_StuckVelocity"))
+
 	leftSection:Header({ Name = "Visual Debug" })
 
 	leftSection:Toggle({

@@ -14,6 +14,7 @@ local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local smartDodge = require("@routes/DungeonQuest/core/smartDodge")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 local shared = require("@routes/DungeonQuest/core/shared")
+local notifier = require("@routes/DungeonQuest/core/notifier")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })

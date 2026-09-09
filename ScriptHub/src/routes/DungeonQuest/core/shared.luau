@@ -28,7 +28,6 @@ local enabled = false
 local fastSpeed = 16
 local normalSpeed = 16
 local instantAccelEnabled = true
-local instantBrakeEnabled = false
 local isSettingSpeed = false
 
 local dungeonStartTime = nil
@@ -407,14 +406,6 @@ function shared.IsInstantAccelEnabled()
 	return instantAccelEnabled
 end
 
-function shared.SetInstantBrakeEnabled(state)
-	instantBrakeEnabled = state and true or false
-end
-
-function shared.IsInstantBrakeEnabled()
-	return instantBrakeEnabled
-end
-
 --// Panic Speed state (Smart Dodge Panic Sprint)
 local panicSpeedActive = false
 local panicSpeedThread = nil
@@ -545,14 +536,14 @@ function shared.SetHumanoid(character)
 	end))
 end
 
---// Instant Movement (Acceleration / Brake)
+--// Instant Movement (Acceleration)
 local function updateInstantMovement()
 	if not lifecycle.IsActive() then return end
-	if not instantAccelEnabled and not instantBrakeEnabled then return end
+	if not instantAccelEnabled then return end
 	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 or humanoid.Sit then return end
 	if not rootPart or not rootPart.Parent then
 		local char = player and player.Character
-		rootPart = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+		rootPart = char and char:FindFirstChild("HumanoidRootPart")
 		if not rootPart then return end
 	end
 	if rootPart.Anchored then return end
@@ -561,18 +552,12 @@ local function updateInstantMovement()
 	local curVel = rootPart.AssemblyLinearVelocity
 
 	if moveDir.Magnitude > 0.05 then
-		if instantAccelEnabled then
-			local targetSpeed = enabled and math.max(fastSpeed, humanoid.WalkSpeed) or humanoid.WalkSpeed
-			rootPart.AssemblyLinearVelocity = Vector3.new(
-				moveDir.X * targetSpeed,
-				curVel.Y,
-				moveDir.Z * targetSpeed
-			)
-		end
-	elseif instantBrakeEnabled then
-		if math.abs(curVel.X) > 0.1 or math.abs(curVel.Z) > 0.1 then
-			rootPart.AssemblyLinearVelocity = Vector3.new(0, curVel.Y, 0)
-		end
+		local targetSpeed = enabled and math.max(fastSpeed, humanoid.WalkSpeed) or humanoid.WalkSpeed
+		rootPart.AssemblyLinearVelocity = Vector3.new(
+			moveDir.X * targetSpeed,
+			curVel.Y,
+			moveDir.Z * targetSpeed
+		)
 	end
 end
 

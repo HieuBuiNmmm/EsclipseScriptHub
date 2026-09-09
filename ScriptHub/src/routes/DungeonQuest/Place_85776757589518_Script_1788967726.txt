@@ -1,0 +1,409 @@
+-- Script Path: game:GetService("Players").acz0025n.PlayerScripts.Ui.abilities
+-- Took 0s to decompile.
+-- Executor: Madium (2.0.0)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local _ = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer.PlayerGui
+local Abilities = PlayerGui:WaitForChild("abilities", 72000)
+local Frame = Abilities:WaitForChild("Frame")
+local Slot = Frame:WaitForChild("LeftAbility"):WaitForChild("slot")
+local Slot_1 = Frame:WaitForChild("RightAbility"):WaitForChild("slot")
+local _ = LocalPlayer:WaitForChild("PlayerScripts")
+local v1 = UserInputService.TouchEnabled
+
+if v1 then
+    v1 = not UserInputService.MouseEnabled
+end
+
+if UserInputService.GamepadEnabled and not v1 then
+    local _ = not UserInputService.KeyboardEnabled
+end
+
+local _ = 1
+local Character = LocalPlayer.Character
+local t = {
+    slot_Q = { button = Slot, key = "q", looping = false },
+    slot_E = { button = Slot_1, key = "e", looping = false }
+}
+local t_3 = {}
+
+local function updateDeviceUI() -- line: 40
+    -- upvalues:
+    --  [1] UserInputService (copy)
+    --  [2] Frame (copy)
+    --  [3] Abilities (copy)
+
+    local v4 = UserInputService:GetLastInputType()
+    local v5 = if string.find(v4.Name, "Gamepad") == nil then false else true
+    local v6 = if v4 ~= Enum.UserInputType.Touch then false else true
+
+    if v4 == Enum.UserInputType.None then
+        if UserInputService.GamepadEnabled then
+            v5 = true
+        else
+            v6 = if not UserInputService.TouchEnabled then v6 else if UserInputService.MouseEnabled then v6 else true
+        end
+    end
+
+    local v7 = v6 or UserInputService.TouchEnabled and (not v5 and not UserInputService.MouseEnabled)
+
+    if Frame:FindFirstChild("CanSwap") then
+        Frame.CanSwap.Visible = not v7
+    end
+
+    if Abilities:FindFirstChild("Swap") then
+        Abilities.Swap.Visible = v7
+    end
+
+    if Frame:FindFirstChild("Xbox") then
+        Frame.Xbox.Visible = v5
+    end
+end
+
+local function setupDeviceUI() -- line: 70
+    -- upvalues:
+    --  [1] Frame (copy)
+    --  [2] Abilities (copy)
+    --  [3] ReplicatedStorage (copy)
+    --  [4] updateDeviceUI (copy)
+    --  [5] UserInputService (copy)
+
+    if Frame:FindFirstChild("Set#") then
+        Frame["Set#"].Text = "Set 1"
+    end
+
+    if Abilities:FindFirstChild("Swap") then
+        Abilities.Swap.MouseButton1Click:Connect(function() -- line: 76
+            -- upvalues:
+            --  [1] ReplicatedStorage (ref)
+
+            ReplicatedStorage.remotes.swapAbilitySet:FireServer()
+        end)
+    end
+
+    updateDeviceUI()
+    UserInputService.LastInputTypeChanged:Connect(function() -- line: 83
+        -- upvalues:
+        --  [1] updateDeviceUI (ref)
+
+        updateDeviceUI()
+    end)
+end
+
+local _ = function(arg1) --[[ slotSetup ]] -- line: 88
+    -- upvalues:
+    --  [1] LocalPlayer (copy)
+
+    arg1.button:WaitForChild("ImageButton").MouseButton1Down:Connect(function() -- line: 91
+        -- upvalues:
+        --  [1] LocalPlayer (ref)
+        --  [2] arg1 (copy)
+
+        local v8 = nil
+
+        for _, child in pairs(LocalPlayer.Backpack:GetChildren()) do
+            if child:FindFirstChild("abilitySlot") and child.abilitySlot.Value == arg1.key then
+                v8 = child
+                break
+            end
+        end
+
+        if v8 then
+            local LocalEvent = v8:FindFirstChild("localEvent")
+
+            if LocalEvent then
+                LocalEvent:Fire()
+            end
+        end
+    end)
+end
+
+local function findToolForSlot(arg2) -- line: 109
+    -- upvalues:
+    --  [1] LocalPlayer (copy)
+    --  [2] Character (ref)
+
+    for _, child_1 in pairs(LocalPlayer.Backpack:GetChildren()) do
+        if child_1:FindFirstChild("abilitySlot") and child_1.abilitySlot.Value == arg2 then
+            return child_1
+        end
+    end
+
+    if Character then
+        for _, val in pairs(Character:GetChildren()) do
+            if val:IsA("Tool") and (val:FindFirstChild("abilitySlot") and val.abilitySlot.Value == arg2) then
+                return val
+            end
+        end
+    end
+
+    return nil
+end
+
+local function loopCheck(arg3) -- line: 127
+    -- upvalues:
+    --  [1] Character (ref)
+    --  [2] findToolForSlot (copy)
+
+    local CooldownNumber = arg3.button.cooldownNumber
+    local CurrentCooldown = CooldownNumber.currentCooldown
+    local ImageButton = arg3.button.ImageButton
+    local Cooldown, CooldownLength, ImageId, Value
+
+    while true do
+        if not Character or not Character.Parent then
+            ImageButton.Image = ""
+            CooldownNumber.Visible = false
+            CurrentCooldown.Size = UDim2.new(1, 0, 0, 0)
+            task.wait()
+            continue
+        end
+
+        local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+
+        if Humanoid then
+            if Humanoid.Health <= 0 then
+                ImageButton.Image = ""
+                CooldownNumber.Visible = false
+                CurrentCooldown.Size = UDim2.new(1, 0, 0, 0)
+                task.wait()
+                continue
+            end
+
+            local v12 = findToolForSlot(arg3.key)
+
+            if not v12 then
+                ImageButton.Image = ""
+                CooldownNumber.Visible = false
+                CurrentCooldown.Size = UDim2.new(1, 0, 0, 0)
+                task.wait()
+                continue
+            end
+
+            ImageId = v12:FindFirstChild("imageId")
+
+            if ImageId and ImageButton.Image ~= ImageId.Value then
+                ImageButton.Image = ImageId.Value
+            end
+
+            Cooldown = v12:FindFirstChild("cooldown")
+            CooldownLength = v12:FindFirstChild("cooldownLength")
+
+            if Cooldown then
+                if CooldownLength and Cooldown.Value > 0 then
+                    CooldownNumber.Visible = true
+                    Value = CooldownLength.Value
+
+                    if Value > 0 then
+                        CooldownNumber.Text = string.format("%2.1f", Cooldown.Value)
+                        CurrentCooldown.Size = UDim2.new(
+                            1,
+                            0,
+                            math.clamp(Cooldown.Value / Value, 0, 1),
+                            0
+                        )
+                    end
+                else
+                    CooldownNumber.Visible = false
+                    CurrentCooldown.Size = UDim2.new(1, 0, 0, 0)
+                end
+
+                task.wait()
+            else
+                CooldownNumber.Visible = false
+                CurrentCooldown.Size = UDim2.new(1, 0, 0, 0)
+                task.wait()
+            end
+        else
+            ImageButton.Image = ""
+            CooldownNumber.Visible = false
+            CurrentCooldown.Size = UDim2.new(1, 0, 0, 0)
+            task.wait()
+            continue
+        end
+    end
+end
+
+local function swapColorCheck() -- line: 185
+    -- upvalues:
+    --  [1] Character (ref)
+    --  [2] Frame (copy)
+    --  [3] Abilities (copy)
+
+    while true do
+        local v13 = true
+
+        if Character and Character.Parent then
+            local BusyCasting = Character:FindFirstChild("busyCasting")
+
+            if BusyCasting and BusyCasting.Value == true then
+                v13 = false
+            end
+
+            local Humanoid_1 = Character:FindFirstChildOfClass("Humanoid")
+
+            if Humanoid_1 then
+                if Humanoid_1.Health <= 0 then
+                    v13 = false
+                end
+            else
+                v13 = false
+            end
+        else
+            v13 = false
+        end
+
+        local v14 = v13 and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+
+        if Frame:FindFirstChild("CanSwap") then
+            Frame.CanSwap.TextColor3 = v14
+        end
+
+        if Abilities:FindFirstChild("Swap") then
+            Abilities.Swap.BackgroundColor3 = v14
+        end
+
+        task.wait(0.1)
+    end
+end
+
+local function setupCharacterTracking() -- line: 217
+    -- upvalues:
+    --  [1] LocalPlayer (copy)
+    --  [2] Character (ref)
+
+    if LocalPlayer.Character then
+        Character = LocalPlayer.Character
+    end
+
+    LocalPlayer.CharacterAdded:Connect(function(character) -- line: 223
+        -- upvalues:
+        --  [1] Character (ref)
+
+        character:WaitForChild("HumanoidRootPart", 10)
+        character:WaitForChild("Humanoid", 10)
+        Character = character
+    end)
+    LocalPlayer.CharacterRemoving:Connect(function() -- line: 230
+        -- upvalues:
+        --  [1] Character (ref)
+
+        Character = nil
+    end)
+end
+
+function t_3.Init() -- line: 235
+    -- upvalues:
+    --  [1] setupCharacterTracking (copy)
+    --  [2] setupDeviceUI (copy)
+    --  [3] ContextActionService (copy)
+    --  [4] PlayerGui (copy)
+    --  [5] ReplicatedStorage (copy)
+    --  [6] t (copy)
+    --  [7] LocalPlayer (copy)
+    --  [8] loopCheck (copy)
+    --  [9] swapColorCheck (copy)
+    --  [10] _ (ref)
+    --  [11] Frame (copy)
+
+    setupCharacterTracking()
+    setupDeviceUI()
+    ContextActionService:BindAction("SwapAbilitySet", function(_, arg6, _) -- line: 240
+        -- upvalues:
+        --  [1] PlayerGui (ref)
+        --  [2] ReplicatedStorage (ref)
+
+        if arg6 ~= Enum.UserInputState.Begin then
+            return Enum.ContextActionResult.Pass
+        end
+
+        local Inventory = PlayerGui:FindFirstChild("inventory")
+
+        if Inventory and (Inventory:FindFirstChild("mainBackground") and Inventory.mainBackground.Visible) then
+            return Enum.ContextActionResult.Pass
+        end
+
+        ReplicatedStorage.remotes.swapAbilitySet:FireServer()
+
+        return Enum.ContextActionResult.Sink
+    end, false, Enum.KeyCode.ButtonB)
+    local SlotQ = t.slot_Q
+    t.slot_Q.button:WaitForChild("ImageButton").MouseButton1Down:Connect(function() -- line: 91
+        -- upvalues:
+        --  [1] LocalPlayer (ref)
+        --  [2] SlotQ (copy)
+
+        local v15 = nil
+
+        for _, child_2 in pairs(LocalPlayer.Backpack:GetChildren()) do
+            if child_2:FindFirstChild("abilitySlot") and child_2.abilitySlot.Value == SlotQ.key then
+                v15 = child_2
+                break
+            end
+        end
+
+        if v15 then
+            local LocalEvent_1 = v15:FindFirstChild("localEvent")
+
+            if LocalEvent_1 then
+                LocalEvent_1:Fire()
+            end
+        end
+    end)
+    local SlotE = t.slot_E
+    t.slot_E.button:WaitForChild("ImageButton").MouseButton1Down:Connect(function() -- line: 91
+        -- upvalues:
+        --  [1] LocalPlayer (ref)
+        --  [2] SlotE (copy)
+
+        local v17 = nil
+
+        for _, child_3 in pairs(LocalPlayer.Backpack:GetChildren()) do
+            if child_3:FindFirstChild("abilitySlot") and child_3.abilitySlot.Value == SlotE.key then
+                v17 = child_3
+                break
+            end
+        end
+
+        if v17 then
+            local LocalEvent_2 = v17:FindFirstChild("localEvent")
+
+            if LocalEvent_2 then
+                LocalEvent_2:Fire()
+            end
+        end
+    end)
+
+    for _, val_1 in t do
+        task.spawn(loopCheck, val_1)
+    end
+
+    task.spawn(swapColorCheck)
+    ReplicatedStorage.remotes.abilitySetSwapped.OnClientEvent:Connect(function(arg8, _) -- line: 264
+        -- upvalues:
+        --  [1] _ (ref)
+        --  [2] Frame (ref)
+
+        _ = arg8
+
+        if Frame:FindFirstChild("Set#") then
+            Frame["Set#"].Text = "Set " .. tostring(arg8)
+        end
+    end)
+end
+
+function t_3.Toggle() -- line: 272
+    -- upvalues:
+    --  [1] Abilities (copy)
+
+    Abilities.Enabled = not Abilities.Enabled
+end
+
+t_3.Init()
+
+return t_3
