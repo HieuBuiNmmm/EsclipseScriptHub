@@ -91,7 +91,7 @@ local cleanupConnections = {}
 local speedConnection = nil
 local diedConnection = nil
 local lastRespawnTime = 0
-local respawnProtectionDuration = 4.0 -- Thời gian bất tử mặc định sau khi hồi sinh (giây)
+local respawnProtectionDuration = 4.0 -- Thời gian bảo vệ chuyển giao sau khi hồi sinh (giây)
 local wasDead = false
 
 local function trackCleanupConnection(connection)

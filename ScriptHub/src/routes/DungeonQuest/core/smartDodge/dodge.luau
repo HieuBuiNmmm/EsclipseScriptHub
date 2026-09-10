@@ -418,11 +418,6 @@ end
 --==============================================================--
 
 function dodge.Perform(safePos, escapeDist, hazardName)
-	-- Bỏ qua né chiêu khi nhân vật đang trong trạng thái bất tử (ForceField hoặc mới hồi sinh)
-	if shared.IsInvulnerable and shared.IsInvulnerable() then
-		return
-	end
-
 	local char, rootPart, humanoid = getCharacterParts()
 
 	if not rootPart

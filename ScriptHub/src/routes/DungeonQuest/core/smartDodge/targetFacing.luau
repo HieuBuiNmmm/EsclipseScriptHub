@@ -15,11 +15,20 @@ local player = services.player
 local enabled = false
 local facingThread = nil
 local isDodging = false
+local targetOverride = nil
 
 local targetFacing = {}
 
 function targetFacing.SetDodging(state)
 	isDodging = state and true or false
+end
+
+function targetFacing.SetTargetOverride(pos)
+	targetOverride = pos
+end
+
+function targetFacing.GetTargetOverride()
+	return targetOverride
 end
 
 local function getPlayerRoot()
@@ -49,6 +58,11 @@ end
 
 --// Lấy vị trí Vector3 của Target hiện tại (Auto Farm target hoặc quái gần nhất)
 function targetFacing.GetTargetPosition()
+	-- 0. Ưu tiên Target Override (Cluster Centroid khi gom quái AoE)
+	if targetOverride then
+		return targetOverride
+	end
+
 	-- 1. Ưu tiên target của Auto Farm nếu đang có
 	local afTarget = tracker.GetTarget()
 	if afTarget and afTarget.Root and afTarget.Root.Parent then
@@ -170,6 +184,7 @@ end)
 
 --// Tự động dọn dẹp khi script shutdown
 lifecycle.Register(function()
+	targetOverride = nil
 	stopFacingLoop()
 end)
 

@@ -34,7 +34,7 @@ local currentEscapeDist = 0
 local safeSpotCallbacks = {}
 local safeSpotLoopThread = nil
 local logInDanger = true
-local ignoreDodgeWhenInvulnerable = true
+local ignoreDodgeWhenInvulnerable = false
 
 --// Bơm runtime cho module Dodge: đọc trạng thái danger & log trực tiếp từ engine (tránh vòng require)
 dodge.SetRuntime({
@@ -102,15 +102,7 @@ local function startSafeSpotLoop()
 
 			-- Kích hoạt Thực thi Né Chiêu (Bài toán 3)
 			if inDanger and safePos and dodge.IsAutoDodgeEnabled() then
-				if isInvulnerable and ignoreDodgeWhenInvulnerable then
-					-- Người chơi đang trong trạng thái bất tử (ForceField hoặc mới hồi sinh)
-					-- -> Hủy hoặc không né chiêu để tận dụng tối đa thời gian bất tử tấn công quái / boss!
-					if dodge.IsDodging() then
-						dodge.Cancel()
-					end
-				else
-					dodge.Perform(safePos, escapeDist, hazardName)
-				end
+				dodge.Perform(safePos, escapeDist, hazardName)
 			end
 
 			local now = os.clock()

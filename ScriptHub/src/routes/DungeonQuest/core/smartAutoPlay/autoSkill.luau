@@ -12,6 +12,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
 local smartDodge = require("@routes/DungeonQuest/core/smartDodge")
+local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
 
 local UserInputService = services.UserInputService
 local VirtualInputManager = services.VirtualInputManager
@@ -28,6 +29,7 @@ local castInterval = 0.25 -- Chu kỳ kiểm tra & xả chiêu cho Full Dame (gi
 local keyHoldDuration = 0.08
 local buffDelay = 0.25 -- Thời gian chờ sau khi ấn Buff để nhận hiệu lực rồi mới xả Dame (giây)
 local comboCooldownOverride = 0 -- 0 = tự động nhận từ game, >0 = ghi đè thủ công
+local castDamageWhileWaitingBuff = true -- Vẫn xả chiêu Dame khi Buff đang hồi chiêu
 
 -- Playstyle Mode: "Auto" | "FullDamage" | "BuffAndDamage"
 local playstyleModeSetting = "Auto"
@@ -63,13 +65,15 @@ local buffSkill = nil
 local damageSkill = nil
 local lastBuffCastTime = 0
 local lastDamageCastTime = 0
+local lastAnyCastTime = 0
 local lastScanTime = 0
 
--- Reference tới hàm lấy bán kính R từ smartAutoPlay facade
-local getCombatRadius = nil
+-- Reference tới hàm lấy tầm xả chiêu (Skill Cast Range) từ smartAutoPlay facade
+local getSkillRange = nil
 function autoSkill.BindRadiusGetter(getterFn)
-	getCombatRadius = getterFn
+	getSkillRange = getterFn
 end
+autoSkill.BindSkillRangeGetter = autoSkill.BindRadiusGetter
 
 local function getEffectivePlaystyle()
 	if playstyleModeSetting == "FullDamage" then
@@ -80,13 +84,15 @@ local function getEffectivePlaystyle()
 	return detectedPlaystyle
 end
 
--- Tìm Tool kỹ năng trong Backpack hoặc Character theo slotKey ("q" hoặc "e")
+-- Tìm Tool kỹ năng trong Backpack hoặc Character theo slotKey ("q" hoặc "e", không phân biệt hoa thường)
 local function findAbilityTool(slotKey)
+	local targetKey = tostring(slotKey):lower()
+
 	local bp = player and player:FindFirstChild("Backpack")
 	if bp then
 		for _, child in ipairs(bp:GetChildren()) do
 			local slotVal = child:FindFirstChild("abilitySlot")
-			if slotVal and slotVal.Value == slotKey then
+			if slotVal and tostring(slotVal.Value):lower() == targetKey then
 				return child
 			end
 		end
@@ -97,7 +103,7 @@ local function findAbilityTool(slotKey)
 		for _, child in ipairs(char:GetChildren()) do
 			if child:IsA("Tool") then
 				local slotVal = child:FindFirstChild("abilitySlot")
-				if slotVal and slotVal.Value == slotKey then
+				if slotVal and tostring(slotVal.Value):lower() == targetKey then
 					return child
 				end
 			end
@@ -108,12 +114,15 @@ local function findAbilityTool(slotKey)
 end
 
 -- Kiểm tra nhân vật có đang bận cast chiêu không (busyCasting)
+-- Kèm cơ chế tự động bypass nếu busy kéo dài quá 0.6s (tránh lỗi kẹt animation hoặc đòn đánh thường)
 local function isCharacterBusyCasting()
 	local char = player and player.Character
 	if char then
 		local busy = char:FindFirstChild("busyCasting")
 		if busy and busy:IsA("BoolValue") and busy.Value == true then
-			return true
+			if os.clock() - lastAnyCastTime < 0.6 then
+				return true
+			end
 		end
 	end
 	return false
@@ -170,6 +179,23 @@ end
 
 -- Kích hoạt kỹ năng (ưu tiên gọi localEvent của Tool, đồng thời nhấn phím)
 local function castAbility(tool, key)
+	-- Quay mặt ngay tức thì về hướng mục tiêu (ưu tiên Centroid Override khi gom quái AoE)
+	local char = player and player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local aimOverride = targetFacing.GetTargetOverride and targetFacing.GetTargetOverride()
+	local tPos = aimOverride or (nearestTargetInfo and nearestTargetInfo.pos)
+	if root and tPos then
+		local pPos = root.Position
+		local flatLook = Vector3.new(tPos.X - pPos.X, 0, tPos.Z - pPos.Z)
+		if flatLook.Magnitude > 0.5 then
+			pcall(function()
+				root.CFrame = CFrame.lookAt(pPos, pPos + flatLook.Unit)
+			end)
+		end
+	end
+
+	lastAnyCastTime = os.clock()
+
 	if tool and tool.Parent then
 		local localEvent = tool:FindFirstChild("localEvent")
 		if localEvent and localEvent:IsA("BindableEvent") then
@@ -293,6 +319,10 @@ local function getEnemiesInRadius(r)
 
 	local pPos = root.Position
 	local inRange = {}
+	local seenModels = {}
+
+	-- Cho phép chênh lệch cao độ tương xứng với bán kính r (tránh lọc oan quái trên cầu thang/dốc)
+	local maxAllowedDy = math.max(25.0, r * 0.75)
 
 	local tracked = shared.GetTrackedEnemyData()
 	for _, data in ipairs(tracked) do
@@ -300,9 +330,11 @@ local function getEnemiesInRadius(r)
 			local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
 			if hum and hum.Health > 0 then
 				local dx = data.Root.Position.X - pPos.X
+				local dy = data.Root.Position.Y - pPos.Y
 				local dz = data.Root.Position.Z - pPos.Z
 				local flatDist = math.sqrt(dx * dx + dz * dz)
-				if flatDist <= r then
+				if flatDist <= r and math.abs(dy) <= maxAllowedDy then
+					seenModels[data.Model] = true
 					table.insert(inRange, {
 						data = data,
 						dist = flatDist,
@@ -311,6 +343,27 @@ local function getEnemiesInRadius(r)
 						pos = data.Root.Position,
 					})
 				end
+			end
+		end
+	end
+
+	-- Bổ sung target hiện tại của AutoFarm nếu chưa có trong inRange
+	local afTarget = tracker.GetTarget and tracker.GetTarget()
+	if afTarget and afTarget.Root and afTarget.Root.Parent and not seenModels[afTarget.Model] then
+		local hum = afTarget.Humanoid or (afTarget.Model and afTarget.Model:FindFirstChildOfClass("Humanoid"))
+		if hum and hum.Health > 0 then
+			local dx = afTarget.Root.Position.X - pPos.X
+			local dy = afTarget.Root.Position.Y - pPos.Y
+			local dz = afTarget.Root.Position.Z - pPos.Z
+			local flatDist = math.sqrt(dx * dx + dz * dz)
+			if flatDist <= r and math.abs(dy) <= maxAllowedDy then
+				table.insert(inRange, {
+					data = afTarget,
+					dist = flatDist,
+					model = afTarget.Model,
+					name = (afTarget.Model and afTarget.Model.Name) or "Target",
+					pos = afTarget.Root.Position,
+				})
 			end
 		end
 	end
@@ -369,24 +422,44 @@ local function executeCombat()
 			lastDamageCastTime = os.clock()
 
 			isCasting = false
+		elseif castDamageWhileWaitingBuff and not isCharacterBusyCasting() then
+			-- Khi Buff đang hồi chiêu: Tiếp tục xả chiêu Dame khi chiêu Dame đã hồi để tối ưu DPS
+			local dCdVal = damageTool and damageTool:FindFirstChild("cooldown")
+			local dReady = not dCdVal or ((tonumber(dCdVal.Value) or 0) <= 0.05)
+			if dReady then
+				local elapsedSinceLastDamage = os.clock() - lastDamageCastTime
+				local dCd = damageSkill.cooldown or 2.5
+				if lastDamageCastTime == 0 or elapsedSinceLastDamage >= dCd then
+					isCasting = true
+					castAbility(damageTool, damageSkill.key)
+					lastDamageCastTime = os.clock()
+					isCasting = false
+				end
+			end
 		end
 	else
 		-- LỐI CHƠI 1: FULL DAMAGE (Spam Q & E như bình thường)
 		isCasting = true
+		local castedQ = false
 		if useSkillQ then
 			local qTool = skillQ.tool or findAbilityTool("q")
 			local qCdVal = qTool and qTool:FindFirstChild("cooldown")
 			local qReady = not qCdVal or ((tonumber(qCdVal.Value) or 0) <= 0.05)
 			if qReady and not isCharacterBusyCasting() then
 				castAbility(qTool, Enum.KeyCode.Q)
+				castedQ = true
 			end
+		end
+
+		if castedQ then
+			task.wait(0.08)
 		end
 
 		if useSkillE then
 			local eTool = skillE.tool or findAbilityTool("e")
 			local eCdVal = eTool and eTool:FindFirstChild("cooldown")
 			local eReady = not eCdVal or ((tonumber(eCdVal.Value) or 0) <= 0.05)
-			if eReady and not isCharacterBusyCasting() then
+			if eReady then
 				castAbility(eTool, Enum.KeyCode.E)
 			end
 		end
@@ -405,7 +478,7 @@ local function startLoop()
 		while enabled do
 			-- Không thao tác khi nhân vật đã chết hoặc đang mở khung gõ chữ (chat box)
 			if not shared.IsDead() and not UserInputService:GetFocusedTextBox() then
-				local r = (getCombatRadius and getCombatRadius()) or 15.0
+				local r = (getSkillRange and getSkillRange()) or 25.0
 				local enemies = getEnemiesInRadius(r)
 				currentEnemyCount = #enemies
 
@@ -529,6 +602,14 @@ end
 
 function autoSkill.GetComboCooldownOverride()
 	return comboCooldownOverride
+end
+
+function autoSkill.SetCastDamageWhileWaitingBuff(val)
+	castDamageWhileWaitingBuff = val and true or false
+end
+
+function autoSkill.IsCastDamageWhileWaitingBuffEnabled()
+	return castDamageWhileWaitingBuff
 end
 
 function autoSkill.SetPlaystyleMode(mode)

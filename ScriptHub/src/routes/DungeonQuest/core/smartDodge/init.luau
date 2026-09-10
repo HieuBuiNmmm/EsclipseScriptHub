@@ -99,6 +99,7 @@ smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
 smartDodge.GetDodgeStatus = dodge.GetStatus
 smartDodge.OnDodgeStatusChanged = dodge.OnDodgeStatusChanged
 smartDodge.Cancel = dodge.Cancel
+smartDodge.Perform = dodge.Perform
 
 --// Panic Sprint (Kích tốc né nguy cấp)
 smartDodge.SetPanicSprintEnabled = dodge.SetPanicSprintEnabled

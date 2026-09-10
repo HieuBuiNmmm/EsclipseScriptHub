@@ -88,7 +88,7 @@ function geometry.GetRawFloorY(pos)
 	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
 
 	if result and result.Position then
-		return result.Position.Y, true
+		return result.Position.Y, true, result.Normal
 	end
 
 	-- Fallback kiểm tra dưới chân Player
@@ -97,12 +97,12 @@ function geometry.GetRawFloorY(pos)
 		local pOrigin = Vector3.new(pos.X, rootPart.Position.Y + 8, pos.Z)
 		local pResult = Workspace:Raycast(pOrigin, rayDir, raycastParams)
 		if pResult and pResult.Position then
-			return pResult.Position.Y, true
+			return pResult.Position.Y, true, pResult.Normal
 		end
-		return rootPart.Position.Y - 2.8, false
+		return rootPart.Position.Y - 2.8, false, Vector3.new(0, 1, 0)
 	end
 
-	return pos.Y, false
+	return pos.Y, false, Vector3.new(0, 1, 0)
 end
 
 --// Kiểm tra xem điểm P có nằm trong hành lang quỹ đạo của một Projectile Part không

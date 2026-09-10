@@ -18,6 +18,7 @@ if not player then
 end
 
 return {
+	Workspace = workspace,
 	Players = Players,
 	UserInputService = UserInputService,
 	RunService = RunService,
