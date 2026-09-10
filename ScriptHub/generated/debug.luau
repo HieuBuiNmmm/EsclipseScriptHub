@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-08T08:29:05.547601500+00:00",
+    genDate = "2026-09-10T00:33:30.582509500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -12323,6 +12323,22 @@ local lastDeadState = false
 local lastInvulnState = false
 local lastUIUpdateTime = 0
 
+local lastDangerState = false
+local lastSafeSpotPos = nil
+local lastDangerHazardName = nil
+
+local SAFE_SPOT_POS_CHANGE_EPSILON = 0.5
+
+local function samePosition(a, b)
+	if a == nil or b == nil then
+		return a == nil and b == nil
+	end
+	local dx = a.X - b.X
+	local dy = a.Y - b.Y
+	local dz = a.Z - b.Z
+	return (dx * dx + dy * dy + dz * dz) <= (SAFE_SPOT_POS_CHANGE_EPSILON * SAFE_SPOT_POS_CHANGE_EPSILON)
+end
+
 local function fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
 	for _, cb in ipairs(safeSpotCallbacks) do
 		pcall(cb, inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
@@ -12381,8 +12397,9 @@ local function startSafeSpotLoop()
 
 			local now = os.clock()
 			local invulnTimeTick = isInvulnerable and (now - lastUIUpdateTime >= 0.25)
-			local stateChanged = (inDanger ~= isPlayerInDanger)
-				or (safePos ~= currentSafeSpot)
+			local stateChanged = (inDanger ~= lastDangerState)
+				or not samePosition(safePos, lastSafeSpotPos)
+				or (hazardName ~= lastDangerHazardName)
 				or (isDead ~= lastDeadState)
 				or (isInvulnerable ~= lastInvulnState)
 				or invulnTimeTick
@@ -12391,6 +12408,9 @@ local function startSafeSpotLoop()
 				lastUIUpdateTime = now
 				lastDeadState = isDead
 				lastInvulnState = isInvulnerable
+				lastDangerState = inDanger
+				lastSafeSpotPos = safePos
+				lastDangerHazardName = hazardName
 
 				fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
 
@@ -12423,6 +12443,9 @@ local function stopSafeSpotLoop()
 	isPlayerInDanger = false
 	currentSafeSpot = nil
 	currentDangerHazardName = nil
+	lastDangerState = false
+	lastSafeSpotPos = nil
+	lastDangerHazardName = nil
 	fireSafeSpotChanged(false, nil, nil, 0)
 	dodge.FireStatus("Idle")
 end
