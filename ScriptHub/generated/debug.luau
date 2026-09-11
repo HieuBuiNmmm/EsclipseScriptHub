@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-09T23:22:11.295732200+00:00",
+    genDate = "2026-09-11T14:30:54.693603200+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6016,12 +6016,32 @@ function autoSave.GetActive()
 	return activeConfig
 end
 
+-- Fallback: nếu chưa có config active (không bấm chọn trong tab Configs) nhưng có
+-- config autoload trong autoload.txt thì dùng luôn tên đó -> đảm bảo mọi slider/
+-- toggle đều được lưu mà không phụ thuộc thứ tự khởi tạo tab.
+local function resolveActiveConfig()
+	if activeConfig then return activeConfig end
+
+	local folder = macLib.Folder
+	local path = folder .. "/settings/autoload.txt"
+	if not (isfile and readfile) then return nil end
+	if isfile(path) then
+		local ok, name = pcall(readfile, path)
+		if ok and typeof(name) == "string" and #name > 0 then
+			activeConfig = name
+			return activeConfig
+		end
+	end
+	return nil
+end
+
 -- Lưu ngay lập tức (gọi trực tiếp)
 function autoSave.SaveNow()
 	if autoSave.IsSuspended() then return end
-	if not activeConfig then return end
+	local name = resolveActiveConfig()
+	if not name then return end
 
-	local success, err = macLib:SaveConfig(activeConfig)
+	local success, err = macLib:SaveConfig(name)
 	if not success and err and err ~= "Please select a config file." then
 		notifier.Notify("AutoSave", "Không lưu được config: " .. tostring(err), 3)
 	end
@@ -6030,7 +6050,7 @@ end
 -- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
 function autoSave.Save()
 	if autoSave.IsSuspended() then return end
-	if not activeConfig then return end
+	if not resolveActiveConfig() then return end
 	if saveQueued then return end
 	saveQueued = true
 
@@ -23066,7 +23086,2432 @@ end function __DIST.ab()-- Tab Configs (DungeonQuest): gộp Config (quản lý 
 return function(window, tab)
 __DIST.load('_')(window, tab)
 __DIST.load('aa')(window, tab)
-end end function __DIST.ac()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end end function __DIST.ac()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
+--   - Macro = 1 bản ghi cho cả map, chứa toàn bộ segment của các ROOM QUÁI THƯỜNG.
+--   - Lưu trong MacLib config qua macLib.contextData.pathRecord (tồn tại qua phiên).
+--   - Format:
+--     contextData.pathRecord[mapName] = {
+--       map = "TênMap",
+--       version = 2,
+--       created = os.time(),
+--       updated = os.time(),
+--       rooms = {
+--         ["3"] = { startPos = {X,Y,Z}, points = {{X,Y,Z}...} }, -- segment theo room index
+--         ...
+--       }
+--     }
+--   - Boss room KHÔNG có segment (ngẫu nhiên -> dùng SmartDodge).
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('d')
+
+--// Table
+local storage = {}
+
+--// Constants
+local STORAGE_KEY = "pathRecord"
+local CURRENT_VERSION = 3
+
+--// Listeners (UI cập nhật khi bản ghi thay đổi)
+local changedListeners = {}
+
+local function fireChanged()
+	for i = #changedListeners, 1, -1 do
+		pcall(changedListeners[i])
+	end
+end
+
+--// Đọc sub-table pathRecord trong contextData hiện tại.
+--// macLib thay ref contextData mỗi lần LoadConfig nên đọc trực tiếp, không cache.
+local function currentData()
+	local context = macLib.contextData
+	if type(context) ~= "table" then return nil end
+	return context[STORAGE_KEY]
+end
+
+local function encodeVec(vec)
+	if not vec then return nil end
+	return { X = vec.X, Y = vec.Y, Z = vec.Z }
+end
+
+local function decodeVec(t)
+	if not t or type(t) ~= "table" then return nil end
+	return Vector3.new(t.X or 0, t.Y or 0, t.Z or 0)
+end
+
+local function isRoomSeg(raw)
+	return type(raw) == "table" and type(raw.points) == "table" and #raw.points > 0
+end
+
+--// Facing lưu dạng {X,Z} (trục ngang của LookVector). Decode -> Vector3 unit (X,0,Z).
+local function decodeFacing(f)
+	if type(f) ~= "table" or type(f.X) ~= "number" then return nil end
+	local look = Vector3.new(f.X, 0, f.Z)
+	if look.Magnitude < 0.001 then return nil end
+	return look.Unit
+end
+
+--// Decode events của segment: dwells (đứng chờ) + skills (chuột phải).
+local function decodeEvents(rawEvents)
+	if type(rawEvents) ~= "table" then return nil end
+
+	local dwells = {}
+	for _, d in ipairs(rawEvents.dwells or {}) do
+		local pos = decodeVec(d.pos)
+		if pos then
+			dwells[#dwells + 1] = {
+				pos = pos,
+				dur = tonumber(d.dur) or 0,
+				facing = decodeFacing(d.facing),
+			}
+		end
+	end
+
+	local skills = {}
+	for _, s in ipairs(rawEvents.skills or {}) do
+		local pos = decodeVec(s.pos)
+		if pos then
+			skills[#skills + 1] = {
+				pos = pos,
+				facing = decodeFacing(s.facing),
+				dw = math.floor(tonumber(s.dw) or 0), --// index dwell liên kết (0 = không)
+				dwT = tonumber(s.dwT) or 0, --// giây sau khi vào dwell (dwell-linked)
+			}
+		end
+	end
+
+	if #dwells == 0 and #skills == 0 then return nil end
+	return { dwells = dwells, skills = skills }
+end
+
+--// Làm mịn đường gấp khúc (Douglas-Peucker trên mặt phẳng XZ).
+--// Chấp nhận mảng Vector3 (decode) hoặc bảng {X,Y,Z} (ghi); rút gọn số điểm,
+--// KHÔNG đổi kiểu của từng phần tử (giữ nguyên ref). Đệ quy bằng stack để an toàn
+--// với 4000 điểm.
+local MIN_KEEP_SPACING = 0.2 -- Studs tối thiểu giữa 2 điểm giữ lại
+
+local function flatDistance(a, b)
+	local dx = a.X - b.X
+	local dz = a.Z - b.Z
+	return math.sqrt(dx * dx + dz * dz)
+end
+
+function storage.SimplifyPath(points, tol)
+	local n = #points
+	if n <= 2 then return points end
+
+	local keep = {}
+	for i = 1, n do keep[i] = false end
+	keep[1] = true
+	keep[n] = true
+
+	local tol2 = tol * tol
+	local stack = { { 1, n } }
+	while #stack > 0 do
+		local seg = table.remove(stack)
+		local a, b = seg[1], seg[2]
+		local ax, az = points[a].X, points[a].Z
+		local bx, bz = points[b].X, points[b].Z
+		local dx = bx - ax
+		local dz = bz - az
+		local len2 = dx * dx + dz * dz
+
+		local maxD = -1
+		local maxI = 0
+		for i = a + 1, b - 1 do
+			local t = 0
+			if len2 > 0 then
+				t = ((points[i].X - ax) * dx + (points[i].Z - az) * dz) / len2
+				t = math.clamp(t, 0, 1)
+			end
+			local ex = points[i].X - (ax + dx * t)
+			local ez = points[i].Z - (az + dz * t)
+			local d2 = ex * ex + ez * ez
+			if d2 > maxD then
+				maxD = d2
+				maxI = i
+			end
+		end
+		if maxI > 0 and maxD > tol2 then
+			keep[maxI] = true
+			table.insert(stack, { a, maxI })
+			table.insert(stack, { maxI, b })
+		end
+	end
+
+	local out = {}
+	for i = 1, n do
+		if keep[i] and (#out == 0 or flatDistance(out[#out], points[i]) >= MIN_KEEP_SPACING) then
+			table.insert(out, points[i])
+		end
+	end
+	if #out == 1 then table.insert(out, points[n]) end
+	return out
+end
+
+function storage.OnChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(changedListeners, callback)
+	return function()
+		for i, cb in ipairs(changedListeners) do
+			if cb == callback then table.remove(changedListeners, i) break end
+		end
+	end
+end
+
+--// Có macro cho map này không?
+function storage.HasMap(mapName)
+	if type(mapName) ~= "string" or #mapName == 0 then return false end
+	local data = currentData()
+	return data ~= nil and data[mapName] ~= nil
+end
+
+--// Lấy 1 segment (room) từ macro của map. Trả về { startPos, points } hoặc nil.
+function storage.GetRoomSegment(mapName, roomIndex)
+	if type(mapName) ~= "string" or type(roomIndex) ~= "number" then return nil end
+	local data = currentData()
+	if not data then return nil end
+	local macro = data[mapName]
+	if not macro or type(macro.rooms) ~= "table" then return nil end
+
+	local raw = macro.rooms[tostring(roomIndex)]
+	if not isRoomSeg(raw) then return nil end
+
+	local points = {}
+	for _, p in ipairs(raw.points) do
+		local vec = decodeVec(p)
+		if vec then points[#points + 1] = vec end
+	end
+	if #points == 0 then return nil end
+
+	return {
+		startPos = decodeVec(raw.startPos) or points[1],
+		points = points,
+		events = raw.events and decodeEvents(raw.events) or nil,
+		speed = tonumber(raw.speed) or 0,
+	}
+end
+
+--// Có segment (room) trong macro của map không?
+function storage.HasSegmentOrMacro(mapName, roomIndex)
+	return storage.GetRoomSegment(mapName, roomIndex) ~= nil
+end
+
+--// Macro map đầy đủ (đã decode): { map, version, rooms = {[idx] = {startPos, points}}, created, updated }
+function storage.GetMap(mapName)
+	if not storage.HasMap(mapName) then return nil end
+	local data = currentData()
+	local macro = data[mapName]
+
+	local rooms = {}
+	for key, raw in pairs(macro.rooms or {}) do
+		local room = tonumber(key)
+		if room and isRoomSeg(raw) then
+			local points = {}
+			for _, p in ipairs(raw.points) do
+				local vec = decodeVec(p)
+				if vec then points[#points + 1] = vec end
+			end
+			if #points > 0 then
+				rooms[room] = {
+					startPos = decodeVec(raw.startPos) or points[1],
+					points = points,
+					events = raw.events and decodeEvents(raw.events) or nil,
+					speed = tonumber(raw.speed) or 0,
+				}
+			end
+		end
+	end
+
+	return {
+		map = mapName,
+		version = macro.version,
+		rooms = rooms,
+		created = macro.created,
+		updated = macro.updated,
+	}
+end
+
+--// Danh sách các map đã có macro (sắp theo tên).
+function storage.GetMaps()
+	local data = currentData()
+	if not data then return {} end
+
+	local out = {}
+	for mapName, macro in pairs(data) do
+		if type(mapName) == "string" and type(macro) == "table" and macro.map == mapName and type(macro.rooms) == "table" then
+			local roomCount = 0
+			local pointCount = 0
+			for key, raw in pairs(macro.rooms) do
+				if tonumber(key) ~= nil and isRoomSeg(raw) then
+					roomCount += 1
+					pointCount += #raw.points
+				end
+			end
+			if roomCount > 0 then
+				table.insert(out, {
+					map = mapName,
+					roomCount = roomCount,
+					pointCount = pointCount,
+					updated = macro.updated,
+				})
+			end
+		end
+	end
+	table.sort(out, function(a, b)
+		return a.map < b.map
+	end)
+	return out
+end
+
+function storage.Count()
+	return #storage.GetMaps()
+end
+
+--// Lưu/ghi đè 1 segment (room) vào macro của map.
+--// Macro của map tích lũy dần qua nhiều lần record (mỗi room 1 segment).
+--// events (optional): { dwells = { {pos, dur, facing} }, skills = { {pos, facing, dw, dwT} } }
+--// speed (optional): tốc độ di chuyển trung bình khi record (playback ép lại để khớp thời gian).
+function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed)
+	if type(mapName) ~= "string" or #mapName == 0 then return false end
+	if type(roomIndex) ~= "number" or roomIndex <= 0 then return false end
+	if not startPos or not points or #points == 0 then return false end
+
+	local context = macLib.contextData
+	if type(context) ~= "table" then
+		context = {}
+		macLib.contextData = context
+	end
+
+	local data = context[STORAGE_KEY]
+	if not data then
+		data = {}
+		context[STORAGE_KEY] = data
+	end
+
+	local macro = data[mapName]
+	if not macro or type(macro) ~= "table" then
+		macro = {
+			map = mapName,
+			version = CURRENT_VERSION,
+			created = os.time(),
+			updated = os.time(),
+			rooms = {},
+		}
+		data[mapName] = macro
+	end
+	if type(macro.rooms) ~= "table" then macro.rooms = {} end
+
+	local encoded = {}
+	for _, p in ipairs(points) do
+		encoded[#encoded + 1] = encodeVec(p)
+	end
+	local seg = {
+		startPos = encodeVec(startPos) or encoded[1],
+		points = encoded,
+	}
+	if type(speed) == "number" and speed > 0 then
+		seg.speed = speed
+	end
+
+	if events and type(events) == "table" then
+		local nD = #(events.dwells or {})
+		local nS = #(events.skills or {})
+		if nD > 0 or nS > 0 then
+			local encEvents = { dwells = {}, skills = {} }
+			for _, d in ipairs(events.dwells) do
+				encEvents.dwells[#encEvents.dwells + 1] = {
+					pos = encodeVec(d.pos),
+					dur = d.dur or 0,
+					facing = d.facing,
+				}
+			end
+			for _, s in ipairs(events.skills) do
+				encEvents.skills[#encEvents.skills + 1] = {
+					pos = encodeVec(s.pos),
+					facing = s.facing,
+					dw = s.dw or 0,
+					dwT = s.dwT or 0,
+				}
+			end
+			seg.events = encEvents
+		end
+	end
+
+	macro.rooms[tostring(roomIndex)] = seg
+	macro.version = CURRENT_VERSION
+	macro.map = mapName
+	macro.updated = os.time()
+
+	autoSave.Save()
+	fireChanged()
+	return true
+end
+
+--// Xoá macro của 1 map.
+function storage.RemoveMap(mapName)
+	local data = currentData()
+	if not data or not data[mapName] then return false end
+
+	data[mapName] = nil
+	if next(data) == nil then
+		local context = macLib.contextData
+		if type(context) == "table" then context[STORAGE_KEY] = nil end
+	end
+	autoSave.Save()
+	fireChanged()
+	return true
+end
+
+--// Xoá toàn bộ metadata.
+function storage.ClearAll()
+	local data = currentData()
+	local hasData = false
+	if data then
+		for mapName, macro in pairs(data) do
+			if type(mapName) == "string" then hasData = true; break end
+		end
+	end
+	if not hasData then return end
+
+	table.clear(data)
+	local context = macLib.contextData
+	if type(context) == "table" then context[STORAGE_KEY] = nil end
+	autoSave.Save()
+	fireChanged()
+end
+
+--// Đồng bộ lại từ config (macLib tự thay ref; gọi để UI làm mới).
+function storage.ReloadFromConfig()
+	fireChanged()
+end
+
+return storage end function __DIST.ad()-- Path Record System – Recorder: ghi 1 SEGMENT (1 room) mỗi phiên.
+--   - Bấm Record: vị trí đứng hiện tại = điểm khởi đầu của room này.
+--   - TỰ TẮT + lưu khi CHUYỂN ROOM (OnRoomIndexChanged), khi vào BOSS, hoặc về LOBBY.
+--   - Mỗi lần lưu gộp segment vào macro của MAP (mỗi room 1 segment; ghi lại room
+--     nào thì ghi đè segment cũ của room đó). Macro = toàn bộ room đã record của map.
+
+--// Imports
+
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
+local storage = __DIST.load('ac')
+local notifier = __DIST.load('c')
+
+local RunService = services.RunService
+local player = services.player
+local UserInputService = services.UserInputService
+
+--// Constants
+local MIN_SPACING = 0.2 -- Studs tối thiểu giữa 2 điểm khi ghi (bắt mịn hơn để khớp vị trí)
+local MAX_POINTS = 4000 -- Giới hạn điểm 1 segment
+local SIMPLIFY_TOL = 1.0 -- Studs: dung sai làm mịn Douglas-Peucker khi lưu
+local DWELL_MIN = 0.5 -- Giây đứng yên tối thiểu mới ghi event "dừng"
+local MOVING_EPS = 0.15 -- Studs/frame: coi là đang di chuyển nếu vượt ngưỡng này
+
+--// Table
+local recorder = {}
+
+--// Settings
+local captureDwells = true
+local captureSkills = true
+
+function recorder.SetCapture(state)
+	state = state and true or false
+	captureDwells = state
+	captureSkills = state
+end
+
+function recorder.IsCaptureEnabled()
+	return captureDwells or captureSkills
+end
+
+--// State
+local isRecording = false
+local recMap = nil
+local startRoom = 0
+local startPos = nil
+local points = {}
+local captureConnection = nil
+local inputConnection = nil
+local roomChangeConnection = nil
+local lobbyConnection = nil
+local bossConnection = nil
+local respawnConnection = nil
+
+--// Timeline events (dwells + skills) của segment đang record.
+local recStartT = 0
+local dwells = {}
+local skills = {}
+local currentDwell = nil
+local currentDwellStartRel = 0
+local stationarySince = nil
+local standingAnchor = nil
+local standingFacing = nil
+local prevFramePos = nil
+local roomChangePending = false
+--// Tốc độ di chuyển trung bình trong lúc record (để playback ép đúng tốc độ -> khớp thời gian).
+local movedDist = 0
+local movingTime = 0
+local lastFrameT = nil
+
+--// Listeners
+local statusListeners = {}
+
+local function fireStatus()
+	local info = {
+		recording = isRecording,
+		map = recMap,
+		room = startRoom,
+		pointCount = #points,
+		dwellCount = #dwells,
+		skillCount = #skills,
+	}
+	for _, cb in ipairs(statusListeners) do
+		pcall(cb, info)
+	end
+end
+
+local function getPlayerRoot()
+	local char = player and player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root and root.Parent then return root end
+	return nil
+end
+
+--// Facing ngang hiện tại của nhân vật dạng {X,Z}.
+local function getFacing()
+	local root = getPlayerRoot()
+	if not root then return nil end
+	local look = root.CFrame.LookVector
+	if look.Magnitude < 0.001 then return nil end
+	return { X = look.X / look.Magnitude, Z = look.Z / look.Magnitude }
+end
+
+local function stopSubscriptions()
+	if captureConnection then captureConnection:Disconnect(); captureConnection = nil end
+	if inputConnection then inputConnection:Disconnect(); inputConnection = nil end
+	if roomChangeConnection then roomChangeConnection(); roomChangeConnection = nil end
+	if lobbyConnection then lobbyConnection(); lobbyConnection = nil end
+	if bossConnection then bossConnection(); bossConnection = nil end
+	if respawnConnection then respawnConnection(); respawnConnection = nil end
+end
+
+--// Khởi động LẠI segment từ vị trí hiện tại (chết/hồi sinh hoặc dịch chuyển lớn):
+--// xoá points + timeline cũ -> KHÔNG còn đường nối thẳng (teleport line) từ chỗ cũ.
+local function restartSegment()
+	local target = getPlayerRoot()
+	if not target then return false end
+	local pos = target.Position
+	startPos = pos
+	points = { pos }
+	dwells = {}
+	skills = {}
+	currentDwell = nil
+	currentDwellStartRel = 0
+	stationarySince = nil
+	standingAnchor = nil
+	standingFacing = nil
+	prevFramePos = pos
+	movedDist = 0
+	movingTime = 0
+	recStartT = os.clock()
+	lastFrameT = os.clock()
+	fireStatus()
+	return true
+end
+
+function recorder.IsRecording()
+	return isRecording
+end
+
+function recorder.GetStartRoom()
+	return startRoom
+end
+
+--// Điểm đang ghi (cho visual / status).
+function recorder.GetCurrentPoints()
+	return points
+end
+
+function recorder.GetStatus()
+	return {
+		recording = isRecording,
+		map = recMap,
+		room = startRoom,
+		pointCount = #points,
+	}
+end
+
+function recorder.OnStatusChanged(callback)
+	if type(callback) == "function" then
+		table.insert(statusListeners, callback)
+	end
+end
+
+--// Bắt đầu record 1 room. Trả về ok, err.
+function recorder.Start()
+	if isRecording then return false, "đang record rồi" end
+
+	local root = getPlayerRoot()
+	if not root then return false, "chưa có nhân vật" end
+	if shared.IsDead() then return false, "nhân vật đang chết" end
+	if shared.IsBossActive() then return false, "boss room (dùng Smart Dodge)" end
+
+	local room = shared.GetCurrentRoomIndex()
+	if room <= 0 then return false, "không nằm trong dungeon" end
+
+	local map = shared.GetCurrentDungeonName()
+	if not map or #map == 0 then return false, "không xác định được map" end
+
+	recMap = map
+	startRoom = room
+	startPos = root.Position
+	points = { startPos }
+	isRecording = true
+
+	--// Timeline (dwells/skills) của đoạn record này.
+	recStartT = os.clock()
+	dwells = {}
+	skills = {}
+	currentDwell = nil
+	currentDwellStartRel = 0
+	stationarySince = nil
+	standingAnchor = nil
+	standingFacing = nil
+	prevFramePos = root.Position
+	roomChangePending = false
+	movedDist = 0
+	movingTime = 0
+	lastFrameT = os.clock()
+
+	--// Sample vị trí nhân vật + phát hiện đứng yên (dwell) để ghép timeline.
+	captureConnection = RunService.Heartbeat:Connect(function()
+		if not isRecording then return end
+		if shared.IsDead() then
+			stationarySince = nil
+			currentDwell = nil
+			prevFramePos = nil
+			return
+		end
+
+		local target = getPlayerRoot()
+		if not target then return end
+		if shared.IsBossActive() then return end
+		local pos = target.Position
+
+		--// Nhảy vọt vị trí bất thường (chết/teleport/respawn KHÔNG có CharacterAdded):
+		--// cmt lại segment từ điểm hiện tại, không nối thẳng sang vị trí mới.
+		local lastPt = points[#points]
+		if lastPt and (pos - lastPt).Magnitude > 35 then
+			restartSegment()
+			return
+		end
+
+		--// Ước lượng tốc độ di chuyển: cộng dồn quãng đường + thời gian đang đi (luôn chạy).
+		local now = os.clock()
+		local moved = prevFramePos and (pos - prevFramePos).Magnitude or 0
+		prevFramePos = pos
+		local dt = lastFrameT and math.max(0, now - lastFrameT) or 0
+		lastFrameT = now
+		if moved >= MOVING_EPS then
+			movedDist += moved
+			movingTime += dt
+		end
+
+		--// Dwell detection: đứng yên liên tục -> gộp thành event "dừng" (vị trí+thời gian+facing).
+		if captureDwells then
+			if moved < MOVING_EPS then
+				if not stationarySince then
+					stationarySince = now
+					standingAnchor = pos
+					standingFacing = getFacing()
+				end
+				if currentDwell then
+					currentDwell.dur = now - stationarySince
+					currentDwell.facing = getFacing() or standingFacing
+				elseif now - stationarySince >= DWELL_MIN then
+					currentDwellStartRel = stationarySince - recStartT
+					currentDwell = {
+						pos = standingAnchor,
+						dur = now - stationarySince,
+						facing = standingFacing,
+						index = #dwells + 1,
+					}
+					table.insert(dwells, currentDwell)
+				end
+			else
+				stationarySince = nil
+				currentDwell = nil
+			end
+		end
+
+		local last = points[#points]
+		if last and (pos - last).Magnitude < MIN_SPACING then return end
+		if #points >= MAX_POINTS then
+			recorder.Stop("đạt giới hạn điểm")
+			return
+		end
+		table.insert(points, pos)
+	end)
+
+	--// Capture chuột phải = kích hoạt skill (kèm vị trí + facing + thời gian trong dwell).
+	if captureSkills then
+		inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+			if not isRecording or not captureSkills then return end
+			if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+			if gameProcessed then return end
+			if UserInputService:GetFocusedTextBox() then return end
+			if shared.IsDead() then return end
+
+			local target = getPlayerRoot()
+			if not target then return end
+
+			local ev = {
+				pos = target.Position,
+				facing = getFacing(),
+				dw = 0,
+				dwT = 0,
+			}
+			if currentDwell then
+				ev.dw = currentDwell.index
+				ev.dwT = math.max(0, (os.clock() - recStartT) - currentDwellStartRel)
+			end
+			table.insert(skills, ev)
+		end)
+	end
+
+	--// TỰ TẮT khi chuyển room (callback không truyền tham số -> đọc lại index).
+	--// TRỄ 1 GIÂY: vừa đổi room vẫn ghi nốt đoạn đi qua trong 1s rồi mới dừng.
+	--// roomChangePending chống stack nhiều lần đổi room trong khoảng chờ.
+	roomChangeConnection = shared.OnRoomIndexChanged(function()
+		if isRecording then
+			local current = shared.GetCurrentRoomIndex()
+			if current ~= startRoom and not roomChangePending then
+				roomChangePending = true
+				task.delay(1, function()
+					roomChangePending = false
+					if isRecording then recorder.Stop("chuyển room") end
+				end)
+			end
+		end
+	end)
+
+	--// Vào boss -> tắt + lưu segment đã ghi.
+	bossConnection = shared.OnBossActiveChanged(function(active)
+		if isRecording and active then
+			recorder.Stop("vào boss room")
+		end
+	end)
+
+	--// Về lobby -> hết map -> tắt + lưu.
+	lobbyConnection = shared.OnLobbyChanged(function(inLobby)
+		if isRecording and inLobby then
+			recorder.Stop("về lobby")
+		end
+	end)
+
+	--// Bắt sự kiện hồi sinh khi đang record: làm mới segment room hiện tại từ vị trí hồi sinh mới,
+	--// loại bỏ hoàn toàn đoạn nối thẳng (teleport line) từ điểm chết về điểm hồi sinh.
+	--// (TH hồi sinh KHÔNG có CharacterAdded vẫn được bắt qua guard gap > 35 ở heartbeat.)
+	respawnConnection = shared.OnRespawn(function()
+		if not isRecording then return end
+		task.delay(0.2, function()
+			if not isRecording or shared.IsDead() then return end
+			if restartSegment() then
+				notifier.Notify("Path Record", ("Phát hiện hồi sinh: Tự động ghi lại room %d từ điểm hồi sinh"):format(startRoom), 3)
+			end
+		end)
+	end)
+
+	notifier.Notify("Path Record", ("Bắt đầu record room %d (%s)"):format(room, map), 2)
+	fireStatus()
+	return true
+end
+
+--// Dừng + gộp segment vào macro của map. Trả về ok.
+function recorder.Stop(reason)
+	if not isRecording then return false end
+
+	isRecording = false
+	stopSubscriptions()
+
+	--// Gói timeline events (dwells + skills) nếu có.
+	local events
+	if #dwells > 0 or #skills > 0 then
+		events = { dwells = dwells, skills = skills }
+	end
+
+	--// Tốc độ trung bình thực tế lúc di chuyển; playback ép lại tốc độ này để
+	--// nhân vật tới vị trí ĐÚNG LÚC như record (skill không bị trễ/quá nhanh).
+	local avgSpeed = 0
+	if movingTime > 0.5 and movedDist > 5 then
+		avgSpeed = math.clamp(movedDist / movingTime, 5, 100)
+	end
+
+	local clean = storage.SimplifyPath(points, SIMPLIFY_TOL)
+	local saved = storage.SaveSegment(recMap, startRoom, startPos, clean, events, avgSpeed)
+	if saved then
+		local extra = ""
+		if events then
+			extra = (" (%d điểm gốc -> %d mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#points, #clean, #skills, #dwells, avgSpeed)
+		else
+			extra = (" (%d điểm gốc -> %d mịn, %.1fspd)"):format(#points, #clean, avgSpeed)
+		end
+		notifier.Notify("Path Record", ("Đã lưu room %d%s vào map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
+	end
+
+	recMap = nil
+	startRoom = 0
+	startPos = nil
+	points = {}
+	dwells = {}
+	skills = {}
+	currentDwell = nil
+	stationarySince = nil
+	prevFramePos = nil
+	roomChangePending = false
+	movedDist = 0
+	movingTime = 0
+	lastFrameT = nil
+	fireStatus()
+	return saved
+end
+
+--// Huỷ record KHÔNG lưu (shutdown / discard).
+function recorder.Cancel()
+	if not isRecording then return end
+
+	stopSubscriptions()
+	recMap = nil
+	startRoom = 0
+	startPos = nil
+	points = {}
+	dwells = {}
+	skills = {}
+	currentDwell = nil
+	stationarySince = nil
+	prevFramePos = nil
+	roomChangePending = false
+	movedDist = 0
+	movingTime = 0
+	lastFrameT = nil
+	isRecording = false
+	fireStatus()
+end
+
+return recorder end function __DIST.ae()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room quái thường) ĐÚNG 1 LẦN.
+--   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
+--     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
+--   - BOSS room: KHÔNG đi (ngẫu nhiên, dùng SmartDodge) -> đứng yên chờ. Nếu
+--     hệ thống khác (SmartDodge/AutoFarm) chiếm quyền -> PauseForExclusive:
+--     nhường + tự resume khi sang room quái thường có segment (để đi nốt lượt).
+--   - Room chưa có segment trong macro -> đứng yên chờ đổi room.
+--   - Hết map (lobby) -> dừng hẳn playback (đi 1 lần, không tự phát lại).
+
+--// Imports
+
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
+local storage = __DIST.load('ac')
+local notifier = __DIST.load('c')
+
+local player = services.player
+local VirtualInputManager = services.VirtualInputManager
+local UserInputService = services.UserInputService
+
+--// Constants
+local SIMPLIFY_TOL = 1.0 -- Studs: làm mịn quỹ đạo khi load (macro cũ dày đặc cũng đi trơn)
+local ARRIVE_DIST = 1.0 -- Studs: ngưỡng coi là đã tới đích cuối
+local START_REPOSITION_TIMEOUT = 8.0 -- Giây tối đa đi về node đầu trước khi phát
+local LOOKAHEAD = 7.0 -- Studs: đích luôn cách phía trước theo quỹ đạo (ngăn việc dừng)
+local PROJECT_BACK = 8.0 -- Studs: hình chiếu chỉ tìm trong cửa sổ quanh progress (chống nhảy nhánh giao)
+local PROJECT_FRONT = 14.0 -- Studs: >= LOOKAHEAD + margin; nhánh giao/đường vòng nằm ngoài -> không bao giờ bị bắt hụt
+local STUCK_TIMEOUT = 8.0 -- Giây không nhúc nhích -> nghi bị kẹt
+local STUCK_BUMP = 2.0 -- Studs: nhảy tới trước khi nghi kẹt
+local SKILL_FACE_HOLD_MIN = 0.5 -- Giây tối thiểu giữ facing sau khi xả skill
+local SKILL_FACE_HOLD_MAX = 2.0 -- Giây tối đa giữ facing sau khi xả skill
+
+--// Table
+local mover = {}
+
+--// Settings: tái hiện timeline record (dừng + skill + xoay mặt).
+local replayPauses = true
+local replaySkills = true
+local replayFacing = true
+local skillFaceHold = 0.6 -- Giây giữ facing sau khi xả skill khi đang đi (mặc định 0.6s)
+
+function mover.SetSkillFaceHold(seconds)
+	if type(seconds) == "number" then
+		skillFaceHold = math.clamp(seconds, SKILL_FACE_HOLD_MIN, SKILL_FACE_HOLD_MAX)
+	end
+end
+
+function mover.GetSkillFaceHold()
+	return skillFaceHold
+end
+
+function mover.SetReplayTimeline(state)
+	state = state and true or false
+	replayPauses = state
+	replaySkills = state
+	replayFacing = state
+end
+
+function mover.IsReplayTimelineEnabled()
+	return replayPauses
+end
+
+--// Settings: ép tốc chạy = tốc độ record để VỊ TRÍ và THỜI GIAN khớp nhau
+--// (nhân vật tới điểm bắn skill/dừng đúng lúc như người chơi đã làm).
+local matchRecordSpeed = true
+local appliedSpeed = nil
+local restoreSpeed = nil
+
+function mover.SetSpeedMatch(state)
+	matchRecordSpeed = state and true or false
+end
+
+function mover.IsSpeedMatchEnabled()
+	return matchRecordSpeed
+end
+
+--// Ép WalkSpeed theo tốc độ đã ghi của segment; nhớ giá trị gốc để khôi phục.
+local function applyRecordSpeed(speed)
+	if not matchRecordSpeed then return end
+	if type(speed) ~= "number" or speed <= 0 then return end
+	local hum = shared.GetHumanoid()
+	if not hum then return end
+	if appliedSpeed == nil then restoreSpeed = hum.WalkSpeed end
+	appliedSpeed = speed
+	if hum.WalkSpeed ~= speed then hum.WalkSpeed = speed end
+end
+
+local function restorePlaybackSpeed()
+	if appliedSpeed == nil then return end
+	local hum = shared.GetHumanoid()
+	if restoreSpeed and hum and hum.WalkSpeed ~= restoreSpeed then
+		hum.WalkSpeed = restoreSpeed
+	end
+	appliedSpeed = nil
+	restoreSpeed = nil
+end
+
+--// State
+local isPlaying = false
+local resumeWanted = false -- Bật cờ "tự resume" khi room có segment xuất hiện
+local activeMap = nil -- Map đang playback
+local playThread = nil
+local statusListeners = {}
+
+local function fireStatus(reason)
+	local info = {
+		playing = isPlaying,
+		map = activeMap,
+		room = shared.GetCurrentRoomIndex(),
+		boss = shared.IsBossActive(),
+		resume = resumeWanted,
+		reason = reason,
+	}
+	for _, cb in ipairs(statusListeners) do
+		pcall(cb, info)
+	end
+end
+
+local function getPlayerRoot()
+	local char = player and player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root and root.Parent then return root end
+	return nil
+end
+
+local function getSafePosition(part)
+	if not part or not part.Parent then return nil end
+	local ok, pos = pcall(function()
+		return part.Position
+	end)
+	if not ok or not pos then return nil end
+	return pos
+end
+
+local function flatDistance(a, b)
+	local dx = a.X - b.X
+	local dz = a.Z - b.Z
+	return math.sqrt(dx * dx + dz * dz)
+end
+
+--// Dừng hẳn nhân vật (khi tắt phát / nhường quyền).
+local function cancelMove(humanoid)
+	local root = getPlayerRoot()
+	if root and humanoid then
+		local pos = getSafePosition(root)
+		if pos then pcall(function() humanoid:MoveTo(pos) end) end
+	end
+end
+
+--// Mô phỏng chuột phải (kích hoạt skill như người chơi vừa làm lúc record).
+--// Double-cast (gần như double click, cách nhau 0.005s) để chống trượt do CD/timing bị lệch nhẹ.
+local function fireRightClick()
+	local hold = shared.GetKeyHoldTime() or 0.05
+	local mouse = UserInputService:GetMouseLocation()
+	pcall(function()
+		-- Lần click 1
+		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, true, game, false)
+		task.wait(hold)
+		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, false, game, false)
+
+		-- Khoảng nghỉ 0.005s trước lần click 2
+		task.wait(0.005)
+
+		-- Lần click 2 (double-tap đảm bảo ăn skill nếu lệch CD tích tắc)
+		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, true, game, false)
+		task.wait(hold)
+		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, false, game, false)
+	end)
+end
+
+--// Xoay nhân vật theo hướng record (tắt AutoRotate để giữ mặt cố định).
+local function setFacing(root, faceLook)
+	if not root or not root.Parent then return end
+	local hum = shared.GetHumanoid()
+	if hum then hum.AutoRotate = false end
+	local look = faceLook or Vector3.new(1, 0, 0)
+	if look.Magnitude < 0.1 then look = Vector3.new(1, 0, 0) end
+	look = Vector3.new(look.X, 0, look.Z).Unit
+	pcall(function()
+		local p = root.Position
+		root.CFrame = CFrame.lookAt(p, p + look)
+	end)
+end
+
+local function restoreAutoRotate()
+	local hum = shared.GetHumanoid()
+	if hum then hum.AutoRotate = true end
+end
+
+--// Đi liên tục toàn bộ quỹ đạo 1 segment — KHÔNG bao giờ dừng giữa chừng.
+--// Cách hoạt động (bám quỹ đạo + projection + lookahead):
+--//   1. Làm mịn đường (Douglas-Peucker) khi load: macro cũ ghi dày 0.3 stud + wiggle
+--//      sẽ bị "kéo thẳng" thành đường chính, tránh việc dừng gật gù từng phần.
+--//   2. Quy đổi sang tổng chiều dài cung; progress = hình chiếu GẦN NHẤT của nhân
+--//      vật lên đường -> LUÔN dính theo vị trí (không lỡ đỉnh khi cắt góc).
+--//   3. Đích = điểm cách LOOKAHEAD studs phía trước trên đường -> humanoid không
+--//      bao giờ "tới đích" để giảm tốc/dừng, chạy liền mạch theo quỹ đạo.
+--//   4. Nhân vật đứng yên quá STUCK_TIMEOUT -> đẩy progress tới trước để lách vật cản.
+local function walkThrough(segment, room)
+	local humanoid = shared.GetHumanoid()
+	local root = getPlayerRoot()
+	if not humanoid or not root then return end
+
+	--// Ép đúng tốc độ record trước cả bước kéo về node đầu (để timing khớp ngay từ đầu).
+	applyRecordSpeed(segment.speed)
+
+	local path = storage.SimplifyPath(segment.points, SIMPLIFY_TOL)
+	local n = #path
+	if n < 2 then return end
+
+	local total = 0
+	local cum = {}
+	cum[1] = 0
+	for i = 2, n do
+		local segLen = flatDistance(path[i - 1], path[i])
+		total += segLen
+		cum[i] = total
+	end
+
+	--// Hình chiếu gần nhất của 1 điểm lên đường -> chiều dài cung tương ứng.
+	--// Chỉ xét các SEGMENT trong cửa sổ [minArc, maxArc] quanh progress hiện tại:
+	--// - Ngăn path tự giao (đường vòng cắt chính nó): nhánh kia dù XZ trùng nhưng nằm
+	--//   ngoài cửa sổ -> progress không bị nảy tới nhánh đó (khỏi bỏ qua vòng).
+	--// - Vẫn gần gũi khi đi từng đoạn/cắt góc (cửa sổ đủ rộng).
+	local function projectPoint(pos, minArc, maxArc)
+		minArc = minArc or 0
+		maxArc = maxArc or total
+		local bestArc = 0
+		local bestD2 = math.huge
+		for k = 2, n do
+			if cum[k] < minArc then continue end
+			if cum[k - 1] > maxArc then continue end
+			local a, b = path[k - 1], path[k]
+			local ax, az = a.X, a.Z
+			local dx = b.X - ax
+			local dz = b.Z - az
+			local len2 = dx * dx + dz * dz
+			local t = 0
+			if len2 > 0 then
+				t = ((pos.X - ax) * dx + (pos.Z - az) * dz) / len2
+				t = math.clamp(t, 0, 1)
+			end
+			local ex = pos.X - (ax + dx * t)
+			local ez = pos.Z - (az + dz * t)
+			local d2 = ex * ex + ez * ez
+			if d2 < bestD2 then
+				bestD2 = d2
+				bestArc = cum[k - 1] + math.sqrt(len2) * t
+			end
+		end
+		return bestArc
+	end
+
+	--// Điểm trên đường tại chiều dài cung `dist` (nội suy tuyến tính).
+	--// PHẢI trả Vector3 thật: Humanoid:MoveTo không chấp nhận bảng {X,Y,Z}.
+	local function pointAt(dist)
+		local k = 2
+		while k <= n and cum[k] < dist do k += 1 end
+		k = math.min(k, n)
+		local segLen = cum[k] - cum[k - 1]
+		if segLen <= 0 then return path[k] end
+		local t = math.clamp((dist - cum[k - 1]) / segLen, 0, 1)
+		local a, b = path[k - 1], path[k]
+		return Vector3.new(
+			a.X + (b.X - a.X) * t,
+			a.Y + (b.Y - a.Y) * t,
+			a.Z + (b.Z - a.Z) * t
+		)
+	end
+
+	--// ---- Timeline events (record: đứng chờ + skill chuột phải) ----
+	--// Anchor theo VỊ TRÍ trên đường (project lên path đã làm mịn) -> tốc độ
+	--// chạy lại khác bản gốc vẫn khớp. Skill trong khoảng đứng yên được nội
+	--// suy theo thời gian tương đối trong dwell; skill khi di chuyển bắn khi
+	--// nhân vật cắt qua đúng vị trí.
+	local dwells = {}
+	local walkSkills = {}
+	if segment.events and (replayPauses or replaySkills or replayFacing) then
+		local rawDwells = segment.events.dwells or {}
+		local rawSkills = segment.events.skills or {}
+		for i, d in ipairs(rawDwells) do
+			dwells[i] = {
+				arc = projectPoint(d.pos),
+				dur = d.dur or 0,
+				facing = d.facing,
+				skills = {},
+			}
+		end
+		for _, s in ipairs(rawSkills) do
+			local attached = (replayPauses and s.dw > 0 and dwells[s.dw]) and dwells[s.dw] or nil
+			if attached then
+				table.insert(attached.skills, { tOff = s.dwT or 0, facing = s.facing })
+			else
+				table.insert(walkSkills, {
+					arc = projectPoint(s.pos),
+					facing = s.facing,
+				})
+			end
+		end
+		table.sort(walkSkills, function(a, b) return a.arc < b.arc end)
+	end
+
+	--// Đứng yên re-run theo đúng duration record (xoay mặt + xả skill trong khoảng dừng).
+	local function runDwell(dwell)
+		if not isPlaying or dwell.dur <= 0 then return true end
+		if replayPauses then
+			if replayFacing then setFacing(root, dwell.facing) end
+			local p0 = getSafePosition(root)
+			local startT = os.clock()
+			local skIdx = 1
+			while isPlaying and os.clock() - startT < dwell.dur do
+				if not root or not root.Parent then return false, "no_root" end
+				if shared.IsDead() then return false, "dead" end
+				if shared.GetCurrentRoomIndex() ~= room then return false, "room_changed" end
+				if shared.IsBossActive() then return false, "boss" end
+				--// Giữ chân tại chỗ (chống đẩy lệch) trong suốt khoảng dừng.
+				local anchor = p0 or getSafePosition(root)
+				if anchor then pcall(function() humanoid:MoveTo(anchor) end) end
+				local sk = dwell.skills[skIdx]
+				if sk and os.clock() - startT >= sk.tOff then
+					if replaySkills then
+						if replayFacing then setFacing(root, sk.facing) end
+						fireRightClick()
+					elseif replayFacing then
+						setFacing(root, sk.facing)
+					end
+					skIdx += 1
+				end
+				task.wait(0.05)
+			end
+			if replayFacing then restoreAutoRotate() end
+		end
+		return true
+	end
+
+	--// Đảm bảo khi bắt đầu di chuyển: luôn đi về NODE ĐẦU TIÊN (path[1] - vị trí xuất phát).
+	--// Không chiếu tìm node giữa đường (tránh bị nhảy cóc sang nhánh khác khi đi ngang qua).
+	local repositionStart = path[1]
+	local repositionDeadline = os.clock() + START_REPOSITION_TIMEOUT
+	while isPlaying do
+		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
+		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
+		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
+		if shared.IsBossActive() then restoreAutoRotate(); return false, "boss" end
+		local p0 = getSafePosition(root)
+		if not p0 then
+			task.wait(0.08)
+			continue
+		end
+		if flatDistance(p0, repositionStart) <= ARRIVE_DIST then break end
+		pcall(function() humanoid:MoveTo(repositionStart) end)
+		if os.clock() >= repositionDeadline then break end
+		task.wait(0.08)
+	end
+
+	local progress = 0
+	local prevPos = getSafePosition(root)
+	local lastMoved = os.clock()
+	local dwellIdx = 1
+	local skillIdx = 1
+	local faceLockUntil = 0
+	local lastSkillFacing = nil
+
+	--// Throttle MoveTo: chỉ gửi lệnh mới khi target nhích ≥ STEP hoặc quá TIMEOUT.
+	--// Giảm tải pathfinding của game (đỡ treo client khi chạy set cấu hình 10Hz).
+	local lastTargetPos = nil
+	local lastMoveToAt = 0
+	local function sendMove(target)
+		local now = os.clock()
+		local movedBy = lastTargetPos and flatDistance(lastTargetPos, target) or math.huge
+		if movedBy > 0.5 or now - lastMoveToAt >= 0.25 then
+			lastTargetPos = target
+			lastMoveToAt = now
+			pcall(function() humanoid:MoveTo(target) end)
+		end
+	end
+
+	while isPlaying do
+		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
+		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
+		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
+		if shared.IsBossActive() then restoreAutoRotate(); return false, "boss" end -- boss mới xuất hiện -> đứng yên
+
+		local pos = getSafePosition(root)
+		if not pos then
+			task.wait(0.08)
+			continue
+		end
+
+		--// Progress bám hình chiếu gần nhất (trong cửa sổ quanh progress); chỉ tiến, không lùi.
+		local projected = projectPoint(
+			pos,
+			math.max(0, progress - PROJECT_BACK),
+			math.min(total, progress + PROJECT_FRONT)
+		)
+		if projected > progress then progress = projected end
+
+		--// Nghi kẹt: vị trí không nhúc nhích trong STUCK_TIMEOUT -> đẩy target tới.
+		if prevPos then
+			if flatDistance(pos, prevPos) > 0.02 then lastMoved = os.clock() end
+		end
+		prevPos = pos
+		if os.clock() - lastMoved > STUCK_TIMEOUT then
+			progress = math.min(progress + STUCK_BUMP, total - ARRIVE_DIST)
+			lastMoved = os.clock()
+			prevPos = pos
+		end
+
+		--// Bắn skill lúc di chuyển: nhân vật cắt qua đúng vị trí đã bấm chuột phải.
+		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast
+		--// (không quay về hướng đi ngay -> skill không bị bắn lệch).
+		while skillIdx <= #walkSkills and walkSkills[skillIdx].arc <= progress do
+			local sk = walkSkills[skillIdx]
+			if replayFacing then
+				setFacing(root, sk.facing)
+				lastSkillFacing = sk.facing
+				faceLockUntil = os.clock() + skillFaceHold
+			end
+			if replaySkills then
+				fireRightClick()
+			end
+			skillIdx += 1
+		end
+
+		--// Đứng chờ ĐÚNG thời lượng record tại vị trí tương ứng.
+		local nextDwell = dwells[dwellIdx]
+		if nextDwell and progress >= nextDwell.arc then
+			local dOk, dErr = runDwell(nextDwell)
+			if not dOk then restoreAutoRotate(); return false, dErr end
+			dwellIdx += 1
+			prevPos = getSafePosition(root)
+			lastMoved = os.clock()
+			continue
+		end
+
+		--// Gần cuối -> đi thẳng nốt tới điểm cuối rồi kết thúc lượt.
+		if progress >= total - ARRIVE_DIST then
+			restoreAutoRotate()
+			pcall(function() humanoid:MoveTo(path[n]) end)
+			local deadline = os.clock() + 5
+			while isPlaying do
+				local p2 = getSafePosition(root)
+				if p2 and flatDistance(p2, path[n]) <= ARRIVE_DIST then break end
+				if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
+				if shared.IsBossActive() or shared.IsDead() then restoreAutoRotate(); return false, "dead" end
+				if os.clock() >= deadline then break end
+				if os.clock() >= faceLockUntil and humanoid.AutoRotate ~= true then
+					humanoid.AutoRotate = true
+				end
+				task.wait(0.08)
+			end
+			restoreAutoRotate()
+			return true, "completed"
+		end
+
+		--// Đích luôn ở phía trước -> humanoid đi liền mạch.
+		if os.clock() < faceLockUntil then
+			--// Đang trong cửa sổ giữ facing: khoá AutoRotate + resnap mỗi tick.
+			if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
+			if lastSkillFacing then setFacing(root, lastSkillFacing) end
+		elseif humanoid.AutoRotate ~= true then
+			humanoid.AutoRotate = true
+		end
+		local target = pointAt(math.min(progress + LOOKAHEAD, total - 0.01))
+		sendMove(target)
+		task.wait(0.1)
+	end
+	restoreAutoRotate()
+	return false, "stopped"
+end
+
+local function playbackLoop()
+	--// Đi ĐÚNG 1 LẦN: mỗi room đi hết segment 1 lượt rồi ĐỨNG YÊN chờ đổi room;
+	--// không đi qua lại trong room. Khi hết map (lobby) -> dừng hẳn.
+	local visitedRoom = 0
+	local walkedThisVisit = false
+	local wasDead = false
+
+	while isPlaying do
+		if resumeWanted then break end
+
+		if shared.IsDead() then
+			wasDead = true
+			task.wait(0.25)
+			continue
+		end
+		if wasDead then
+			--// Vừa hồi sinh: reset lượt để ĐI LẠI room hiện tại (không bỏ giữa chừng vì đã chết).
+			wasDead = false
+			visitedRoom = 0
+			walkedThisVisit = false
+		end
+		if shared.IsInLobby() then
+			--// Hết run: dừng playback, không tự phát lại (đi 1 lần).
+			resumeWanted = false
+			isPlaying = false
+			break
+		end
+		if shared.IsBossActive() then
+			--// Boss: đứng yên (dùng SmartDodge).
+			task.wait(0.25)
+			continue
+		end
+
+		local room = shared.GetCurrentRoomIndex()
+		if room <= 0 then
+			task.wait(0.1)
+			continue
+		end
+
+		--// Đổi room -> lượt đi mới cho room đó.
+		if room ~= visitedRoom then
+			visitedRoom = room
+			walkedThisVisit = false
+		end
+
+		local segment = storage.GetRoomSegment(activeMap, room)
+		if not segment then
+			--// Room chưa record trong macro -> đứng yên chờ đổi room.
+			task.wait(0.1)
+			continue
+		end
+
+		if walkedThisVisit then
+			--// Đã đi hết 1 lượt segment -> đứng yên, chờ đổi room.
+			task.wait(0.1)
+			continue
+		end
+
+		local ok, reason = walkThrough(segment, room)
+		restoreAutoRotate()
+		if ok then
+			walkedThisVisit = true
+		else
+			--// Nếu bị chết hoặc gián đoạn giữa chừng: không đánh dấu walkedThisVisit
+			--// để khi hồi sinh sẽ tự động đi lại / đi tiếp cho xong room.
+			if reason == "dead" then
+				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để tiếp tục...", 2)
+				while isPlaying and shared.IsDead() do
+					task.wait(0.2)
+				end
+				task.wait(0.6) -- Chờ nhân vật load xong hoàn toàn
+			end
+		end
+	end
+	restorePlaybackSpeed()
+	restoreAutoRotate()
+	playThread = nil
+	fireStatus()
+end
+
+function mover.IsPlaying()
+	return isPlaying
+end
+
+function mover.ResumeWanted()
+	return resumeWanted
+end
+
+function mover.GetActiveMap()
+	return activeMap
+end
+
+function mover.GetStatus()
+	return {
+		playing = isPlaying,
+		map = activeMap,
+		room = shared.GetCurrentRoomIndex(),
+		boss = shared.IsBossActive(),
+		resume = resumeWanted,
+	}
+end
+
+function mover.OnStatusChanged(callback)
+	if type(callback) == "function" then
+		table.insert(statusListeners, callback)
+	end
+end
+
+--// Bắt đầu phát. Trả về ok, err.
+function mover.Start()
+	if isPlaying then return false, "đang phát rồi" end
+	if shared.IsInLobby() then return false, "đang ở lobby" end
+	if shared.IsBossActive() then return false, "boss room (hãy dùng Smart Dodge)" end
+
+	local room = shared.GetCurrentRoomIndex()
+	if room <= 0 then return false, "chưa có room" end
+
+	local map = shared.GetCurrentDungeonName()
+	if not map or #map == 0 then return false, "không xác định được map" end
+	if not storage.HasSegmentOrMacro(map, room) then
+		return false, ("map [%s] chưa có segment room %d"):format(map, room)
+	end
+
+	activeMap = map
+	resumeWanted = false
+	isPlaying = true
+	playThread = task.spawn(playbackLoop)
+	fireStatus("started")
+	return true
+end
+
+--// Dừng (thủ công): không tự resume nữa.
+function mover.Stop()
+	isPlaying = false
+	resumeWanted = false
+	activeMap = nil
+	if playThread then
+		task.cancel(playThread)
+		playThread = nil
+	end
+	cancelMove(shared.GetHumanoid())
+	restorePlaybackSpeed()
+	restoreAutoRotate()
+	fireStatus("stopped")
+end
+
+--// Nhường độc quyền cho hệ thống khác (SmartDodge/AutoFarm...): dừng nhưng
+--// giữ ý định tự resume khi vào room quái thường có segment.
+function mover.PauseForExclusive()
+	if not isPlaying then return end
+
+	resumeWanted = true
+	isPlaying = false
+	if playThread then
+		task.cancel(playThread)
+		playThread = nil
+	end
+	cancelMove(shared.GetHumanoid())
+	restorePlaybackSpeed()
+	restoreAutoRotate()
+	notifier.Notify("Path Record", "Nhường điều khiển: sẽ tự phát tiếp khi vào room có bản ghi", 3)
+	fireStatus("paused")
+end
+
+return mover end function __DIST.af()-- Path Record System – Visual: vẽ quỹ đạo record (đỏ khi đang record /
+-- cyan khi đang play / xám xanh nhạt khi xem trước macro của map).
+
+--// Imports
+
+local Workspace = game:GetService("Workspace")
+
+--// Table
+local visual = {}
+
+--// State
+local anchor = nil
+local lines = {}
+local drawnKey = nil
+local lastUpdate = 0
+
+--// Style áp dụng lúc tạo LineHandleAdornment (thay đổi qua tab Path Record).
+local style = {
+	thickness = 3,
+	transparency = 0.25,
+}
+
+function visual.SetStyle(update)
+	if type(update) ~= "table" then return end
+	if update.thickness ~= nil then
+		style.thickness = math.clamp(update.thickness, 1, 10)
+	end
+	if update.transparency ~= nil then
+		style.transparency = math.clamp(update.transparency, 0, 0.9)
+	end
+end
+
+function visual.GetStyle()
+	return { thickness = style.thickness, transparency = style.transparency }
+end
+
+--// Constants
+local THROTTLE = 0.4 -- Giây tối thiểu giữa 2 lần rebuild (đang record điểm đổi liên tục)
+
+local function ensureAnchor()
+	if anchor and anchor.Parent then return anchor end
+	anchor = Instance.new("Part")
+	anchor.Name = "PR_PathAnchor_Visual"
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.new(1, 1, 1)
+	anchor.CFrame = CFrame.new(0, 0, 0)
+	anchor.Parent = Workspace
+	return anchor
+end
+
+function visual.Clear()
+	for _, line in ipairs(lines) do
+		pcall(function() line:Destroy() end)
+	end
+	table.clear(lines)
+	drawnKey = nil
+end
+
+--// Vẽ nhiều polyline (mỗi segment 1 màu riêng). Tự skip khi key không đổi.
+--// polys: { { points = {Vector3...}, color = Color3, tag = any }, ... }
+function visual.DrawPolylines(polys, key, force)
+	if not polys or #polys == 0 then
+		visual.Clear()
+		return
+	end
+
+	local strKey = tostring(key)
+	if strKey == drawnKey then return end
+	if not force and os.clock() - lastUpdate < THROTTLE and #lines > 0 then return end
+
+	visual.Clear()
+	drawnKey = strKey
+	lastUpdate = os.clock()
+
+	local adornee = ensureAnchor()
+	for _, poly in ipairs(polys) do
+		local points = poly.points
+		if points and #points >= 2 then
+			for i = 2, #points do
+				local a = points[i - 1]
+				local b = points[i]
+				local dist = (b - a).Magnitude
+				if dist > 0.01 then
+					local line = Instance.new("LineHandleAdornment")
+					line.Name = "PR_PathLine_Visual"
+					line.Adornee = adornee
+					line.Length = dist
+					line.Thickness = style.thickness
+					line.Transparency = style.transparency
+					line.Color3 = poly.color or Color3.fromRGB(0, 230, 255)
+					line.ZIndex = 1
+					line.CFrame = CFrame.lookAt(a, b)
+					line.Parent = Workspace
+					table.insert(lines, line)
+				end
+			end
+		end
+	end
+	if #lines == 0 then drawnKey = nil end
+end
+
+return visual end function __DIST.ag()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
+--   - Macro = 1 bản ghi cho cả MAP, chứa toàn bộ ROOM QUÁI THƯỜNG.
+--   - Chỉ hoạt động với room quái thường; BOSS ngẫu nhiên -> dùng SmartDodge
+--     (pathRecord tự nhường quyền và auto-resume khi sang room có bản ghi).
+
+--// Imports
+
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
+local lifecycle = __DIST.load('b')
+local coordinator = __DIST.load('j')
+local notifier = __DIST.load('c')
+
+local storage = __DIST.load('ac')
+local recorder = __DIST.load('ad')
+local mover = __DIST.load('ae')
+local visual = __DIST.load('af')
+
+local RunService = services.RunService
+
+--// Table
+local pathRecord = {}
+
+--// Settings
+local showVisual = true
+
+--// Bộ màu line path (dropdown trong tab) + style kích thước (slider).
+local DEFAULT_THEME = "Default (Red/Cyan/Teal)"
+local THEMES = {
+	[DEFAULT_THEME] = {
+		rec = Color3.fromRGB(255, 60, 60),
+		play = Color3.fromRGB(0, 230, 255),
+		idle = Color3.fromRGB(90, 190, 200),
+	},
+	["Oceana"] = {
+		rec = Color3.fromRGB(0, 190, 255),
+		play = Color3.fromRGB(80, 255, 220),
+		idle = Color3.fromRGB(120, 210, 255),
+	},
+	["Sunset"] = {
+		rec = Color3.fromRGB(255, 120, 60),
+		play = Color3.fromRGB(255, 220, 80),
+		idle = Color3.fromRGB(255, 150, 160),
+	},
+	["Emerald"] = {
+		rec = Color3.fromRGB(80, 255, 140),
+		play = Color3.fromRGB(0, 220, 120),
+		idle = Color3.fromRGB(140, 255, 180),
+	},
+	["Violet"] = {
+		rec = Color3.fromRGB(200, 90, 255),
+		play = Color3.fromRGB(170, 120, 255),
+		idle = Color3.fromRGB(150, 150, 255),
+	},
+}
+
+local visualStyle = {
+	thickness = 3,
+	transparency = 0.25, --// 0 = đậm nhất, 0.9 = gần như mất
+	theme = DEFAULT_THEME,
+}
+
+function pathRecord.GetStyle()
+	return {
+		thickness = visualStyle.thickness,
+		transparency = visualStyle.transparency,
+		theme = visualStyle.theme,
+	}
+end
+
+function pathRecord.GetThemeNames()
+	local names = {}
+	for name in pairs(THEMES) do
+		names[#names + 1] = name
+	end
+	table.sort(names)
+	return names
+end
+
+--// Áp style mới (từ slider/dropdown) -> đẩy sang visual + ép redraw sớm nhất.
+function pathRecord.SetStyle(update)
+	if type(update) ~= "table" then return end
+	if update.thickness ~= nil then visualStyle.thickness = math.clamp(update.thickness, 1, 10) end
+	if update.transparency ~= nil then visualStyle.transparency = math.clamp(update.transparency, 0, 0.9) end
+	if update.theme and THEMES[update.theme] then visualStyle.theme = update.theme end
+	visual.SetStyle({ thickness = visualStyle.thickness, transparency = visualStyle.transparency })
+	lastBuildKey = nil
+	fireStatus("style")
+end
+
+--// Timeline record/replay: đứng chờ (dwell) + kích hoạt skill (chuột phải) + facing.
+local timelineCapture = true
+local timelineReplay = true
+
+function pathRecord.IsTimelineCaptureEnabled()
+	return timelineCapture
+end
+
+function pathRecord.SetTimelineCapture(state)
+	timelineCapture = state and true or false
+	recorder.SetCapture(timelineCapture)
+	fireStatus("timeline")
+end
+
+function pathRecord.IsTimelineReplayEnabled()
+	return timelineReplay
+end
+
+function pathRecord.SetTimelineReplay(state)
+	timelineReplay = state and true or false
+	mover.SetReplayTimeline(timelineReplay)
+	fireStatus("timeline")
+end
+
+--// Ép tốc chạy = tốc độ record khi phát (khớp thời gian skill/dừng, mặc định bật).
+function pathRecord.IsSpeedMatchEnabled()
+	return mover.IsSpeedMatchEnabled()
+end
+
+function pathRecord.SetSpeedMatch(state)
+	mover.SetSpeedMatch(state and true or false)
+	fireStatus("speedmatch")
+end
+
+--// Giữ facing sau khi xả skill khi đang đi (0.5s - 2s) để game kịp ghi nhận hướng cast.
+function pathRecord.GetSkillFaceHold()
+	return mover.GetSkillFaceHold()
+end
+
+function pathRecord.SetSkillFaceHold(seconds)
+	mover.SetSkillFaceHold(seconds)
+	fireStatus("facehold")
+end
+
+--// State
+local statusListeners = {}
+local bossConnection = nil
+local drawConnection = nil
+local storageUnsub = nil
+local roomUnsub = nil
+local mapUnsub = nil
+
+local function fireStatus(reason)
+	local info = {
+		recording = recorder.IsRecording(),
+		playing = mover.IsPlaying(),
+		resume = mover.ResumeWanted(),
+		map = shared.GetCurrentDungeonName(),
+		room = shared.GetCurrentRoomIndex(),
+		boss = shared.IsBossActive(),
+		recordedMaps = storage.Count(),
+		pointCount = recorder.IsRecording() and recorder.GetStatus().pointCount or 0,
+		reason = reason,
+	}
+	for _, cb in ipairs(statusListeners) do
+		pcall(cb, info)
+	end
+end
+
+--// ---------- Record ----------
+
+function pathRecord.ToggleRecord(state)
+	if state then
+		if recorder.IsRecording() then return true end
+		if mover.IsPlaying() then mover.Stop() end
+
+		local ok, err = recorder.Start()
+		if not ok then
+			notifier.Notify("Path Record", "Không bắt đầu record: " .. tostring(err), 3)
+		end
+		fireStatus()
+		return ok
+	else
+		local was = recorder.IsRecording()
+		recorder.Stop()
+		fireStatus()
+		return was
+	end
+end
+
+function pathRecord.IsRecording()
+	return recorder.IsRecording()
+end
+
+--// Room hiện tại đã có segment trong macro chưa? (để xác nhận trước khi record ghi đè)
+function pathRecord.CurrentRoomHasRecord()
+	return storage.HasSegmentOrMacro(shared.GetCurrentDungeonName(), shared.GetCurrentRoomIndex())
+end
+
+--// ---------- Playback ----------
+
+function pathRecord.TogglePlay(state)
+	if state then
+		if mover.IsPlaying() then return true end
+		if recorder.IsRecording() then recorder.Stop() end
+
+		--// Pre-check trước khi chiếm độc quyền, tránh tự tắt hệ thống khác
+		--// (AutoFarm/SmartDodge) nhưng rồi playback lại không chạy được.
+		if shared.IsInLobby() then
+			notifier.Notify("Path Record", "Không phát được: đang ở lobby", 3)
+			fireStatus()
+			return false
+		end
+		if shared.IsBossActive() then
+			notifier.Notify("Path Record", "Không phát được: boss room (hãy dùng Smart Dodge)", 3)
+			fireStatus()
+			return false
+		end
+
+		--// Pre-check segment để KHÔNG chiếm độc quyền (không tự tắt AutoFarm/
+		--// SmartDodge) trong khi room hiện tại chưa có bản ghi để chạy.
+		local mapN = shared.GetCurrentDungeonName()
+		if not mapN or #mapN == 0 then
+			notifier.Notify("Path Record", "Không phát được: không xác định được map", 3)
+			fireStatus()
+			return false
+		end
+		if not storage.HasSegmentOrMacro(mapN, shared.GetCurrentRoomIndex()) then
+			notifier.Notify("Path Record", "Không phát được: room này chưa có bản ghi trong macro", 3)
+			fireStatus()
+			return false
+		end
+
+		--// Playback điều khiển nhân vật -> chiếm độc quyền, tắt các hệ thống khác.
+		coordinator.EnableExclusive("PathRecord")
+
+		local ok, err = mover.Start()
+		if not ok then
+			notifier.Notify("Path Record", "Không phát được: " .. tostring(err), 3)
+		end
+		fireStatus()
+		return ok
+	else
+		local was = mover.IsPlaying()
+		mover.Stop()
+		fireStatus()
+		return was
+	end
+end
+
+function pathRecord.IsPlaying()
+	return mover.IsPlaying()
+end
+
+--// Chủ quyền di chuyển = playback (record chỉ quan sát, không điều khiển nhân vật).
+function pathRecord.IsEnabled()
+	return mover.IsPlaying()
+end
+
+--// ---------- Settings ----------
+
+function pathRecord.SetShowVisual(state)
+	showVisual = state and true or false
+	if not showVisual then visual.Clear() end
+	fireStatus()
+end
+
+function pathRecord.IsShowVisualEnabled()
+	return showVisual
+end
+
+--// ---------- Storage passthrough ----------
+
+function pathRecord.GetMaps()
+	return storage.GetMaps()
+end
+
+function pathRecord.GetMacro(mapName)
+	return storage.GetMap(mapName)
+end
+
+function pathRecord.RemoveMap(mapName)
+	storage.RemoveMap(mapName)
+	fireStatus("removed")
+end
+
+function pathRecord.ClearAll()
+	storage.ClearAll()
+	fireStatus("cleared")
+end
+
+--// ---------- Status ----------
+
+function pathRecord.GetStatus()
+	local recStat = recorder.GetStatus()
+	return {
+		recording = recorder.IsRecording(),
+		playing = mover.IsPlaying(),
+		resume = mover.ResumeWanted(),
+		map = shared.GetCurrentDungeonName(),
+		room = shared.GetCurrentRoomIndex(),
+		boss = shared.IsBossActive(),
+		recordedMaps = storage.Count(),
+		pointCount = recStat.pointCount,
+	}
+end
+
+function pathRecord.OnStatusChanged(callback)
+	if type(callback) == "function" then
+		table.insert(statusListeners, callback)
+	end
+end
+
+--// ---------- Autonomous behavior ----------
+
+--// Vào boss room khi đang phát -> chỉ báo + đứng yên (dùng SmartDodge).
+--// Nếu bật SmartDodge, nó chiếm độc quyền -> pathRecord nhường và auto-resume.
+bossConnection = shared.OnBossActiveChanged(function(active)
+	if active and mover.IsPlaying() then
+		notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Smart Dodge", 3)
+		fireStatus("boss")
+	end
+end)
+
+--// Bản ghi thay đổi -> cập nhật UI.
+storageUnsub = storage.OnChanged(function()
+	fireStatus("storage")
+end)
+
+--// Auto-resume: đang chờ (do nhường quyền cho hệ thống khác giữa chừng) mà sang
+--// được room quái thường có segment trong macro của map đang chạy -> phát tiếp nốt lượt.
+roomUnsub = shared.OnRoomIndexChanged(function()
+	if not mover.ResumeWanted() then return end
+
+	local room = shared.GetCurrentRoomIndex()
+	if room <= 0 or shared.IsInLobby() or shared.IsBossActive() or shared.IsDead() then return end
+
+	local map = shared.GetCurrentDungeonName()
+	if not map or #map == 0 then return end
+	if mover.GetActiveMap() and mover.GetActiveMap() ~= map then return end
+	if not storage.HasSegmentOrMacro(map, room) then return end
+
+	coordinator.EnableExclusive("PathRecord")
+	mover.Start() -- Resume; lỗi nhỏ (race) thì bỏ qua, room event tiếp theo sẽ thử lại.
+	fireStatus("resumed")
+end)
+
+--// Đổi map giữa chừng: hủy ý định resume + dừng nếu đang phát/đang record.
+mapUnsub = shared.OnDungeonNameChanged(function(name)
+	if recorder.IsRecording() then
+		recorder.Cancel()
+		notifier.Notify("Path Record", "Đổi map: hủy record đang dở", 3)
+	end
+	if mover.ResumeWanted() and (not mover.GetActiveMap() or mover.GetActiveMap() ~= name) then
+		mover.Stop()
+	end
+	fireStatus("map")
+end)
+
+--// Render quỹ đạo: đỏ (record), cyan (play), xanh nhạt (xem trước macro khi idle).
+--// Tối ưu: dùng "chìa khoá tín hiệu" (cheap, KHÔNG decode) -> chỉ decode + dựng
+--// polyline khi tín hiệu ĐỔI; trước đây decode toàn bộ macro + dựng object mỗi frame.
+--// Tổng số LineHandleAdornment cũng giảm mạnh nhờ làm mịn trước khi vẽ.
+local function macroStamp(map)
+	if not map or #map == 0 then return "-" end
+	for _, rec in ipairs(storage.GetMaps()) do
+		if rec.map == map then
+			return tostring(rec.updated or "-") .. ":" .. tostring(rec.roomCount)
+		end
+	end
+	return "-"
+end
+
+local lastDrawTag = nil
+local lastBuildKey = nil
+visual.SetStyle({ thickness = visualStyle.thickness, transparency = visualStyle.transparency })
+recorder.SetCapture(timelineCapture)
+mover.SetReplayTimeline(timelineReplay)
+drawConnection = RunService.Heartbeat:Connect(function()
+	if not showVisual then
+		if lastDrawTag then visual.Clear(); lastDrawTag = nil end
+		return
+	end
+
+	local map = shared.GetCurrentDungeonName()
+	local room = shared.GetCurrentRoomIndex()
+
+	local buildKey
+	if recorder.IsRecording() then
+		buildKey = "rec:" .. #recorder.GetCurrentPoints()
+	elseif mover.IsPlaying() then
+		buildKey = "play:" .. tostring(room) .. ":" .. macroStamp(map)
+	else
+		buildKey = "idle:" .. macroStamp(map)
+	end
+	if buildKey == lastBuildKey then return end
+	lastBuildKey = buildKey
+
+	local theme = THEMES[visualStyle.theme] or THEMES[DEFAULT_THEME]
+	local polys = {}
+
+	if recorder.IsRecording() then
+		--// Đang record: vẽ segment hiện tại màu sắc theo theme (points là Vector3 sống, không decode).
+		local pts = recorder.GetCurrentPoints()
+		if #pts >= 2 then
+			polys[1] = { points = pts, color = theme.rec, tag = "rec" }
+		end
+	elseif mover.IsPlaying() then
+		--// Đang play: vẽ segment của room hiện tại (đã làm mịn như lúc đi).
+		if map and room > 0 then
+			local seg = storage.GetRoomSegment(map, room)
+			if seg and #seg.points >= 2 then
+				polys[1] = {
+					points = storage.SimplifyPath(seg.points, 1.0),
+					color = theme.play,
+					tag = "play_" .. tostring(room),
+				}
+			end
+		end
+	else
+		--// Idle: xem trước toàn bộ macro của map hiện tại.
+		if map then
+			local macro = storage.GetMap(map)
+			if macro then
+				local roomKeys = {}
+				for r in pairs(macro.rooms) do
+					roomKeys[#roomKeys + 1] = r
+				end
+				table.sort(roomKeys)
+				for _, r in ipairs(roomKeys) do
+					local seg = macro.rooms[r]
+					if seg and #seg.points >= 2 then
+						polys[#polys + 1] = {
+							points = storage.SimplifyPath(seg.points, 1.0),
+							color = theme.idle,
+							tag = "macro_" .. tostring(r),
+						}
+					end
+				end
+			end
+		end
+	end
+
+	if #polys > 0 then
+		--// Key theo nội dung để visual tự skip rebuild (throttle 0.4s).
+		local parts = {}
+		for _, p in ipairs(polys) do
+			parts[#parts + 1] = (p.tag or "x") .. ":" .. #p.points
+		end
+		visual.DrawPolylines(polys, table.concat(parts, "|"))
+		lastDrawTag = "drawn"
+	elseif lastDrawTag then
+		visual.Clear()
+		lastDrawTag = nil
+	end
+end)
+
+--// ---------- Coordinator & Lifecycle ----------
+
+--// Hệ thống khác chiếm độc quyền (SmartDodge/AutoFarm...) -> nhường + auto-resume.
+coordinator.Register("PathRecord", function(state)
+	if not state then
+		mover.PauseForExclusive()
+	end
+	fireStatus("disabled")
+end, pathRecord.IsEnabled)
+
+lifecycle.Register(function()
+	mover.Stop()
+	recorder.Cancel()
+	visual.Clear()
+	if bossConnection then bossConnection(); bossConnection = nil end
+	if drawConnection then drawConnection:Disconnect(); drawConnection = nil end
+	if roomUnsub then roomUnsub(); roomUnsub = nil end
+	if mapUnsub then mapUnsub(); mapUnsub = nil end
+	if storageUnsub then storageUnsub(); storageUnsub = nil end
+end)
+
+return pathRecord end function __DIST.ah()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
+--   - MACRO = 1 bản ghi cho cả map, tích lũy dần các room đã record.
+--   - Record 1 lần = 1 ROOM: bấm Record -> điểm bắt đầu = vị trí đứng,
+--     TỰ TẮT khi đổi room / vào boss / về lobby và gộp vào macro của map.
+--   - Boss ngẫu nhiên -> dùng SmartDodge (pathRecord tự nhường + auto-resume).
+
+--// Imports
+
+local services = __DIST.load('e')
+local lifecycle = __DIST.load('b')
+local pathRecord = __DIST.load('ag')
+local autoSave = __DIST.load('d')
+local ui = __DIST.load('g')
+local notifier = __DIST.load('c')
+
+local RunService = services.RunService
+
+return function(window, tab)
+	--// ============================================================
+	--// LEFT COLUMN: Điều khiển
+	--// ============================================================
+	local left = tab:Section({ Side = "Left" })
+	left:Header({ Name = "Path Record" })
+	left:Label({
+		Text = "Macro = 1 bản ghi cho cả map, chứa toàn bộ <font color='rgb(0,255,120)'>ROOM QUÁI THƯỜNG</font>. Tự lưu khi hết map / tắt record. Boss -> dùng Smart Dodge.",
+	})
+
+	local isSyncingRecord = false
+	local isSyncingPlay = false
+	local isPromptingRecord = false
+
+	local recordToggle = left:Toggle({
+		Name = "Record Path (Macro)",
+		Default = pathRecord.IsRecording(),
+		Callback = function(state)
+			if isSyncingRecord then return end
+
+			if state then
+				-- Đã đang record rồi -> không làm gì thêm
+				if pathRecord.IsRecording() then return end
+
+				--// Room đã có macro -> record sẽ GHI ĐÈ segment cũ: hỏi xác nhận trước.
+				if pathRecord.CurrentRoomHasRecord() then
+					if isPromptingRecord then return end
+					isPromptingRecord = true
+
+					window:Dialog({
+						Title = "Confirm Record",
+						Description = "Room này <font color='rgb(255,200,0)'>đã có macro được lưu</font>."
+							.. "\n\nRecord bây giờ sẽ <b>GHI ĐÈ segment cũ</b> của room đó.\nBạn vẫn muốn record lại chứ?",
+						Buttons = {
+							{
+								Name = "Record (Overwrite)",
+								Callback = function()
+									isPromptingRecord = false
+									local ok = pathRecord.ToggleRecord(true)
+									if not ok then
+										isSyncingRecord = true
+										recordToggle:UpdateState(false)
+										isSyncingRecord = false
+									end
+								end,
+							},
+							{
+								Name = "Cancel",
+								Callback = function()
+									isPromptingRecord = false
+									isSyncingRecord = true
+									recordToggle:UpdateState(false)
+									isSyncingRecord = false
+								end,
+							},
+						},
+					})
+					return
+				end
+				pathRecord.ToggleRecord(true)
+			else
+				isPromptingRecord = false
+				if pathRecord.IsRecording() then
+					pathRecord.ToggleRecord(false)
+				end
+			end
+		end,
+	})
+	left:Label({
+		Text = "Record sẽ bắt cả <font color='rgb(255,150,80)'>khoảng đứng chờ</font> + <font color='rgb(255,80,80)'>skill chuột phải</font> + hướng mặt, Play sẽ tái hiện lại đúng vị trí & giây đã record.",
+	})
+
+	local playToggle = left:Toggle({
+		Name = "Play Path (Macro)",
+		Default = pathRecord.IsPlaying(),
+		Callback = function(state)
+			if isSyncingPlay then return end
+			pathRecord.TogglePlay(state)
+		end,
+	})
+
+	--// Timeline: ghi/tái hiện khoảng dừng + skill chuột phải + hướng mặt.
+	local captureTimeline = left:Toggle({
+		Name = "Record Pauses & Skills",
+		Default = pathRecord.IsTimelineCaptureEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetTimelineCapture(state)
+		end),
+	}, "Toggle_PR_TimelineCapture")
+
+	local replayTimeline = left:Toggle({
+		Name = "Replay Pauses & Skills",
+		Default = pathRecord.IsTimelineReplayEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetTimelineReplay(state)
+		end),
+	}, "Toggle_PR_TimelineReplay")
+
+	local speedMatch = left:Toggle({
+		Name = "Match Record Speed (Precise)",
+		Default = pathRecord.IsSpeedMatchEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetSpeedMatch(state)
+		end),
+	}, "Toggle_PR_SpeedMatch")
+
+	--// Giữ facing sau khi xả skill khi đang đi (0.5s - 2s).
+	ui.PatchSliderLoadCallback(left:Slider({
+		Name = "Skill Face Hold (s)",
+		Default = pathRecord.GetSkillFaceHold(),
+		Minimum = 0.5,
+		Maximum = 2,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(v)
+			pathRecord.SetSkillFaceHold(v)
+		end),
+		onInputComplete = function(v)
+			autoSave.SaveNow()
+			notifier.Notify("Path Record", ("Saved Skill Face Hold = %ss"):format(tostring(v)), 2)
+		end,
+	}, "Slider_PR_SkillFaceHold"))
+
+	local visualToggle = left:Toggle({
+		Name = "Show Path Visual",
+		Default = pathRecord.IsShowVisualEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetShowVisual(state)
+		end),
+	}, "Toggle_PR_Visual")
+
+	--// Tuỳ chỉnh cách hiển thị line path (kích thước + màu).
+	local prStyle = pathRecord.GetStyle()
+
+	ui.PatchSliderLoadCallback(left:Slider({
+		Name = "Line Thickness",
+		Default = prStyle.thickness,
+		Minimum = 1,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(v)
+			pathRecord.SetStyle({ thickness = v })
+		end),
+		onInputComplete = function(v)
+			autoSave.SaveNow()
+		end,
+	}, "Slider_PR_LineThickness"))
+
+	ui.PatchSliderLoadCallback(left:Slider({
+		Name = "Line Opacity",
+		Default = math.round((1 - prStyle.transparency) * 100),
+		Minimum = 10,
+		Maximum = 100,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(v)
+			pathRecord.SetStyle({ transparency = 1 - v / 100 })
+		end),
+		onInputComplete = function(v)
+			autoSave.SaveNow()
+		end,
+	}, "Slider_PR_LineOpacity"))
+
+	local themeNames = pathRecord.GetThemeNames()
+	local themeIdx = 1
+	for i, name in ipairs(themeNames) do
+		if name == prStyle.theme then
+			themeIdx = i
+			break
+		end
+	end
+	ui.PatchDropdownRestore(left:Dropdown({
+		Name = "Path Color Theme",
+		Options = themeNames,
+		Default = themeIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(option)
+			pathRecord.SetStyle({ theme = option })
+		end),
+	}, "Dropdown_PR_Theme"), false)
+
+	--// ============================================================
+	--// LEFT COLUMN: Quản lý macro
+	--// ============================================================
+	left:Header({ Name = "Macros" })
+
+	local macroDropdown = ui.PatchDropdownRestore(left:Dropdown({
+		Name = "Map Recording",
+		Options = { "None" },
+		Default = 1,
+		Required = true,
+		Callback = function(option) end,
+	}), false)
+
+	local deleteBtn = left:Button({
+		Name = "Delete Selected Map",
+		Callback = autoSave.Wrap(function()
+			local selected = macroDropdown:GetOptions()
+			for option, isSelected in pairs(selected) do
+				if isSelected then
+					local mapName = string.match(option, "^Map (%b[]) %(%d+ rooms%)$")
+					if not mapName or #mapName <= 2 then
+						mapName = string.match(option, "^Map (.-) %(%d+ rooms%)$")
+					end
+					if mapName and #mapName > 2 then
+						mapName = mapName:sub(2, -2)
+						pathRecord.RemoveMap(mapName)
+					end
+					return
+				end
+			end
+		end),
+	})
+
+	--// Nút Clear 2 bước (arm Confirm -> bấm lại trong hạn).
+	local clearArmed = false
+	local clearTimer = nil
+	local CLEAR_NAME = "Clear All Recordings"
+	local CLEAR_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Clear All?</font>"
+	local CLEAR_TIMEOUT = 3
+
+	local function disarmClear()
+		if not clearArmed then return end
+		clearArmed = false
+		if clearTimer then task.cancel(clearTimer); clearTimer = nil end
+		pcall(function() clearBtn:UpdateName(CLEAR_NAME) end)
+	end
+
+	local clearBtn = left:Button({
+		Name = CLEAR_NAME,
+		Callback = function()
+			if not clearArmed then
+				clearArmed = true
+				if clearTimer then task.cancel(clearTimer) end
+				clearTimer = task.delay(CLEAR_TIMEOUT, disarmClear)
+				pcall(function() clearBtn:UpdateName(CLEAR_CONFIRM_NAME) end)
+				return
+			end
+			disarmClear()
+			pathRecord.ClearAll()
+		end,
+	})
+
+	--// ============================================================
+	--// RIGHT COLUMN: Status
+	--// ============================================================
+	local right = tab:Section({ Side = "Right" })
+	right:Header({ Name = "Status Monitor" })
+
+	local stateLabel = right:Label({ Text = "State: <font color='rgb(160,160,160)'>Idle</font>" })
+	local roomLabel = right:Label({ Text = "Room: <font color='rgb(160,160,160)'>-</font> | Boss: <font color='rgb(160,160,160)'>-</font>" })
+	local pointsLabel = right:Label({ Text = "Points: <font color='rgb(160,160,160)'>-</font>" })
+	local recordingsLabel = right:Label({ Text = "Macros: <font color='rgb(160,160,160)'>None</font>" })
+
+	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop).
+	local function syncToggles(info)
+		if not isPromptingRecord then
+			pcall(function()
+				if recordToggle and recordToggle.GetState and recordToggle:GetState() ~= info.recording then
+					isSyncingRecord = true
+					recordToggle:UpdateState(info.recording)
+					isSyncingRecord = false
+				end
+			end)
+		end
+		pcall(function()
+			if playToggle and playToggle.GetState and playToggle:GetState() ~= info.playing then
+				isSyncingPlay = true
+				playToggle:UpdateState(info.playing)
+				isSyncingPlay = false
+			end
+		end)
+		pcall(function()
+			if visualToggle and visualToggle.GetState and visualToggle:GetState() ~= pathRecord.IsShowVisualEnabled() then
+				visualToggle:UpdateState(pathRecord.IsShowVisualEnabled())
+			end
+		end)
+	end
+
+	local function mapOptionList(maps)
+		local options = {}
+		for _, rec in ipairs(maps) do
+			options[#options + 1] = ("Map [%s] (%d rooms)"):format(rec.map, rec.roomCount)
+		end
+		if #options == 0 then
+			options[1] = "None"
+		end
+		return options
+	end
+
+	--// Chỉ rebuild dropdown khi danh sách map đổi (tránh churn mỗi tick).
+	local lastMapOptionsKey = nil
+
+	local function refreshDropdown(maps)
+		local options = mapOptionList(maps)
+		local key = table.concat(options, "|")
+
+		if key == lastMapOptionsKey then return end
+		lastMapOptionsKey = key
+
+		local prevSelected = nil
+		for option, isSelected in pairs(macroDropdown:GetOptions()) do
+			if isSelected then prevSelected = option; break end
+		end
+
+		pcall(function() macroDropdown:ClearOptions() end)
+		pcall(function() macroDropdown:InsertOptions(options) end)
+
+		--// Giữ selection cũ nếu còn tồn tại, không thì chọn option đầu tiên.
+		local newSelection = prevSelected
+		if not newSelection or not macroDropdown:IsOption(newSelection) then
+			newSelection = options[1]
+		end
+		pcall(function() macroDropdown:UpdateSelection(newSelection) end)
+	end
+
+	local function updateStatus(info)
+		local stateText
+		if info.recording then
+			stateText = "<font color='rgb(255,90,90)'>Recording...</font>"
+		elseif info.playing then
+			stateText = "<font color='rgb(0,230,255)'>Playing</font>"
+		elseif info.resume then
+			stateText = "<font color='rgb(255,200,0)'>Waiting (auto-resume)</font>"
+		else
+			stateText = "<font color='rgb(160,160,160)'>Idle</font>"
+		end
+		pcall(function() stateLabel:UpdateName("State: " .. stateText) end)
+
+		local bossText = info.boss
+			and "<font color='rgb(255,80,80)'>YES (dùng Smart Dodge)</font>"
+			or "<font color='rgb(0,255,120)'>No</font>"
+		local roomText = info.room and info.room > 0
+			and ("<font color='rgb(0,255,255)'>room %d</font>"):format(info.room)
+			or "<font color='rgb(160,160,160)'>-</font>"
+		local mapText = info.map and #info.map > 0
+			and ("<font color='rgb(150,255,150)'>%s</font>"):format(info.map)
+			or "<font color='rgb(160,160,160)'>-</font>"
+		pcall(function() roomLabel:UpdateName("Map: " .. mapText .. " | Room: " .. roomText .. " | Boss: " .. bossText) end)
+
+		if info.recording then
+			pcall(function() pointsLabel:UpdateName(("Points: <font color='rgb(255,170,60)'>%d</font> (room %s)"):format(info.pointCount, tostring(info.room))) end)
+		else
+			pcall(function() pointsLabel:UpdateName("Points: <font color='rgb(160,160,160)'>-</font>") end)
+		end
+
+		local maps = pathRecord.GetMaps()
+		if #maps == 0 then
+			pcall(function() recordingsLabel:UpdateName("Macros: <font color='rgb(160,160,160)'>None</font>") end)
+		else
+			local parts = {}
+			for _, rec in ipairs(maps) do
+				parts[#parts + 1] = ("%s(%dr/%dp)"):format(rec.map, rec.roomCount, rec.pointCount)
+			end
+			pcall(function() recordingsLabel:UpdateName("Macros: <font color='rgb(150,255,150)'>" .. table.concat(parts, ", ") .. "</font>") end)
+		end
+
+		refreshDropdown(maps)
+	end
+
+	pathRecord.OnStatusChanged(function(info)
+		updateStatus(info)
+		syncToggles(info)
+	end)
+
+	--// Monitor định kỳ (đảm bảo UI phản ánh đúng cả khi config đổi).
+	local lastUpdate = 0
+	local monitorConnection = RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		if now - lastUpdate < 0.4 then return end
+		lastUpdate = now
+		local info = pathRecord.GetStatus()
+		updateStatus(info)
+		syncToggles(info)
+	end)
+
+	lifecycle.Register(function()
+		if monitorConnection then monitorConnection:Disconnect(); monitorConnection = nil end
+	end)
+
+	updateStatus(pathRecord.GetStatus())
+	syncToggles(pathRecord.GetStatus())
+end end function __DIST.ai()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -23128,6 +25573,7 @@ return function(self)
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10709769841" }),
 		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10747383470" }),
 		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
+		PathRecord = tabGroup:Tab({ Name = "Path Record", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -23139,12 +25585,14 @@ return function(self)
 	local inventoryTab = __DIST.load('O')
 	local utilitiesTab = __DIST.load('Y')
 	local configsTab = __DIST.load('ab')
+	local pathRecordTab = __DIST.load('ah')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	utilitiesTab(window, tabs.Utilities)
 	configsTab(window, tabs.Configs)
+	pathRecordTab(window, tabs.PathRecord)
 
 	--// Phím tắt
 	local shortcuts = __DIST.load('h')
@@ -23175,6 +25623,19 @@ local autoHide = __DIST.load('Z')
 	coordinator.SetLocked(true)
 	macLib:LoadAutoLoadConfig()
 
+	--// Đồng bộ config autoload vào autoSave: nếu không gọi SetActive thì
+	--// autoSave.Save() sẽ KHÔNG lưu bất kỳ slider/toggle nào khi thay đổi.
+	local function syncActiveConfigFromAutoload()
+		local path = macLib.Folder .. "/settings/autoload.txt"
+		if isfile and isfile(path) then
+			local ok, name = pcall(readfile, path)
+			if ok and type(name) == "string" and #name > 0 then
+				autoSave.SetActive(name)
+			end
+		end
+	end
+	syncActiveConfigFromAutoload()
+
 	task.delay(0.3, function()
 		coordinator.SetLocked(false)
 
@@ -23192,7 +25653,7 @@ local autoHide = __DIST.load('Z')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.ad()
+end function __DIST.aj()
 local flags = {}
 
 function flags:Export()
@@ -23235,7 +25696,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.ae()
+return flags end function __DIST.ak()
 --// Imports
 
 
@@ -23260,7 +25721,7 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.af()--// Imports
+end function __DIST.al()--// Imports
 
 local binder = __DIST.load('V')
 
@@ -23273,11 +25734,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.ag()--// Imports
+end function __DIST.am()--// Imports
 
-local flags = __DIST.load('ad')
-local interface = __DIST.load('ae')
-local esp = __DIST.load('af')
+local flags = __DIST.load('aj')
+local interface = __DIST.load('ak')
+local esp = __DIST.load('al')
 
 --// Initialize
 local window = interface:Window({
@@ -23316,7 +25777,7 @@ return {
 		end,
 	},
 }
-end function __DIST.ah()--// Variables
+end function __DIST.an()--// Variables
 
 local utility = {}
 
@@ -23348,7 +25809,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.ai()--// Functions
+end function __DIST.ao()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -23358,14 +25819,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.aj()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.ap()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('ag')
-	local utility = __DIST.load('ah')
-	local services = __DIST.load('ai')
+	local base = __DIST.load('am')
+	local utility = __DIST.load('an')
+	local services = __DIST.load('ao')
 
 	--// References
 	local flags = base.Flags
@@ -23431,7 +25892,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('ac'),
+		Load = __DIST.load('ai'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -23442,7 +25903,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('aj'),
+		Load = __DIST.load('ap'),
 		Places = {
 			123456789,
 			987654321,

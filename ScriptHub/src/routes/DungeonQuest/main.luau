@@ -59,6 +59,7 @@ return function(self)
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10709769841" }),
 		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10747383470" }),
 		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
+		PathRecord = tabGroup:Tab({ Name = "Path Record", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -70,12 +71,14 @@ return function(self)
 	local inventoryTab = require("@routes/DungeonQuest/tabs/Inventory/main")
 	local utilitiesTab = require("@routes/DungeonQuest/tabs/Utilities/main")
 	local configsTab = require("@routes/DungeonQuest/tabs/Configs/main")
+	local pathRecordTab = require("@routes/DungeonQuest/tabs/PathRecord/main")
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	utilitiesTab(window, tabs.Utilities)
 	configsTab(window, tabs.Configs)
+	pathRecordTab(window, tabs.PathRecord)
 
 	--// Phím tắt
 	local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
@@ -105,6 +108,19 @@ return function(self)
 
 	coordinator.SetLocked(true)
 	macLib:LoadAutoLoadConfig()
+
+	--// Đồng bộ config autoload vào autoSave: nếu không gọi SetActive thì
+	--// autoSave.Save() sẽ KHÔNG lưu bất kỳ slider/toggle nào khi thay đổi.
+	local function syncActiveConfigFromAutoload()
+		local path = macLib.Folder .. "/settings/autoload.txt"
+		if isfile and isfile(path) then
+			local ok, name = pcall(readfile, path)
+			if ok and type(name) == "string" and #name > 0 then
+				autoSave.SetActive(name)
+			end
+		end
+	end
+	syncActiveConfigFromAutoload()
 
 	task.delay(0.3, function()
 		coordinator.SetLocked(false)

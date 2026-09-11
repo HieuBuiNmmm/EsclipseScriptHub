@@ -35,12 +35,32 @@ function autoSave.GetActive()
 	return activeConfig
 end
 
+-- Fallback: nếu chưa có config active (không bấm chọn trong tab Configs) nhưng có
+-- config autoload trong autoload.txt thì dùng luôn tên đó -> đảm bảo mọi slider/
+-- toggle đều được lưu mà không phụ thuộc thứ tự khởi tạo tab.
+local function resolveActiveConfig()
+	if activeConfig then return activeConfig end
+
+	local folder = macLib.Folder
+	local path = folder .. "/settings/autoload.txt"
+	if not (isfile and readfile) then return nil end
+	if isfile(path) then
+		local ok, name = pcall(readfile, path)
+		if ok and typeof(name) == "string" and #name > 0 then
+			activeConfig = name
+			return activeConfig
+		end
+	end
+	return nil
+end
+
 -- Lưu ngay lập tức (gọi trực tiếp)
 function autoSave.SaveNow()
 	if autoSave.IsSuspended() then return end
-	if not activeConfig then return end
+	local name = resolveActiveConfig()
+	if not name then return end
 
-	local success, err = macLib:SaveConfig(activeConfig)
+	local success, err = macLib:SaveConfig(name)
 	if not success and err and err ~= "Please select a config file." then
 		notifier.Notify("AutoSave", "Không lưu được config: " .. tostring(err), 3)
 	end
@@ -49,7 +69,7 @@ end
 -- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
 function autoSave.Save()
 	if autoSave.IsSuspended() then return end
-	if not activeConfig then return end
+	if not resolveActiveConfig() then return end
 	if saveQueued then return end
 	saveQueued = true
 
