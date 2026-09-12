@@ -146,8 +146,17 @@ function geometry.IsPointInTrajectory(point, part)
 		return false
 	end
 
-	-- Điểm P phải nằm trong khoảng từ ngay sau đạn (-radius) tới hết tầm maxDist
-	if dotForward < -radius or dotForward > maxDist then
+	-- Xử lý mở rộng hình nón (Expanding Cone Corridor) cho kỹ năng chuỗi vòng tròn mở rộng (secondBossCricleHitbox - Boss 2)
+	local effectiveRadius = radius
+	local isExpandingCone = (data.config and data.config.isExpandingCone)
+	if isExpandingCone then
+		local expansionRate = (data.config and data.config.expansionRate) or 0.25
+		-- Càng lan xa theo chiều forward, bán kính vòng tròn nguy hiểm càng phình to
+		effectiveRadius = radius + math.max(0, dotForward * expansionRate)
+	end
+
+	-- Điểm P phải nằm trong khoảng từ ngay sau đạn (-effectiveRadius) tới hết tầm maxDist
+	if dotForward < -effectiveRadius or dotForward > maxDist then
 		return false
 	end
 
@@ -162,8 +171,8 @@ function geometry.IsPointInTrajectory(point, part)
 		return false
 	end
 
-	if perpDist <= (radius + playerHitboxPadding) then
-		return true, perpDist, radius, forward, origin, maxDist
+	if perpDist <= (effectiveRadius + playerHitboxPadding) then
+		return true, perpDist, effectiveRadius, forward, origin, maxDist
 	end
 
 	return false
@@ -175,14 +184,29 @@ function geometry.IsPointInPart(point, part)
 		return false
 	end
 
+	-- Broadphase distance pruning: Loại bỏ siêu tốc 95% điểm ở xa chỉ bằng phép tính số học X-Z
+	-- (Tuyệt đối không gọi CFrame:PointToObjectSpace tốn kém nếu điểm nằm ngoài bán kính bao)
+	local partPos = part.Position
+	local dX = point.X - partPos.X
+	local dZ = point.Z - partPos.Z
+	local pSize = part.Size
+	local maxDim = (pSize.X > pSize.Z and pSize.X or pSize.Z)
+	local maxRadius = (maxDim * 0.7072) + playerHitboxPadding + 2.0
+	if (dX * dX + dZ * dZ) > (maxRadius * maxRadius) then
+		return false
+	end
+
+	-- Kiểm tra độ cao Y sơ bộ
+	local heightDiff = math.abs(point.Y - partPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false
+	end
+
 	-- 1. Dạng hình cầu / hình trụ (Circle / Ball / Cylinder AoE)
 	if part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder) then
-		local radius = math.max(part.Size.X, part.Size.Z) / 2 + playerHitboxPadding
-		local dX = point.X - part.Position.X
-		local dZ = point.Z - part.Position.Z
+		local radius = math.max(pSize.X, pSize.Z) / 2 + playerHitboxPadding
 		local distSq = dX * dX + dZ * dZ
-		local heightDiff = math.abs(point.Y - part.Position.Y)
-		return (distSq <= radius * radius) and (heightDiff <= MAX_HEIGHT_TOLERANCE)
+		return distSq <= radius * radius
 	end
 
 	-- 2. Dạng Moving Beam (secondBossMovingBeam) xoay lộn quanh trục X:
@@ -190,25 +214,23 @@ function geometry.IsPointInPart(point, part)
 	if isMovingBeam then
 		local localPos = part.CFrame:PointToObjectSpace(point)
 		-- Chiều dài thanh beam dọc theo trục X (vùng sải ngang quét qua phòng):
-		local halfLength = math.max(part.Size.X, part.Size.Z) / 2 + playerHitboxPadding
+		local halfLength = math.max(pSize.X, pSize.Z) / 2 + playerHitboxPadding
 		-- Bán kính tiết diện xoay quanh trục X (đường kính thanh beam):
-		local beamRadius = math.max(part.Size.Y, math.min(part.Size.X, part.Size.Z)) / 2 + playerHitboxPadding
+		local beamRadius = math.max(pSize.Y, math.min(pSize.X, pSize.Z)) / 2 + playerHitboxPadding
 		if beamRadius < 3.5 then beamRadius = 3.5 end
 
 		-- Khoảng cách vuông góc với trục beam trong mặt phẳng Y-Z (miễn nhiễm với góc xoay lộn quanh trục X):
 		local radialDistSq = localPos.Y * localPos.Y + localPos.Z * localPos.Z
-		local heightDiff = math.abs(point.Y - part.Position.Y)
 
 		return (math.abs(localPos.X) <= halfLength)
 			and (radialDistSq <= (beamRadius + 1.5) * (beamRadius + 1.5))
-			and (heightDiff <= MAX_HEIGHT_TOLERANCE)
 	end
 
 	-- 3. Dạng hình chữ nhật / hộp có hướng (Oriented Bounding Box - OBB)
 	local localPos = part.CFrame:PointToObjectSpace(point)
-	local halfX = part.Size.X / 2 + playerHitboxPadding
-	local halfZ = part.Size.Z / 2 + playerHitboxPadding
-	local halfY = math.max(MAX_HEIGHT_TOLERANCE, part.Size.Y / 2 + 5)
+	local halfX = pSize.X / 2 + playerHitboxPadding
+	local halfZ = pSize.Z / 2 + playerHitboxPadding
+	local halfY = math.max(MAX_HEIGHT_TOLERANCE, pSize.Y / 2 + 5)
 
 	return math.abs(localPos.X) <= halfX
 		and math.abs(localPos.Z) <= halfZ
@@ -458,6 +480,8 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 								forward2D = forward,
 								originPos = origin,
 								maxLookahead = maxDist,
+								isExpandingCone = (trajConfig and trajConfig.isExpandingCone) or false,
+								expansionRate = (trajConfig and trajConfig.expansionRate) or 0.25,
 							}
 						end
 					end
@@ -501,11 +525,16 @@ function geometry.IsSpotFullySafe(centerPoint, safeRadius, ignoredInstance)
 		return false
 	end
 
-	-- 2. Kiểm tra 4 hướng chính ở chu vi an toàn
-	for _, off in ipairs(CHECK_OFFSETS_4) do
-		local sample = centerPoint + (off * safeRadius)
-		if geometry.IsPointInAnyHazard(sample, ignoredInstance) then
-			return false
+	-- 2. Kiểm tra chu vi an toàn:
+	-- Lưu ý: geometry.IsPointInPart đã luôn cộng sẵn playerHitboxPadding = 1.0 stud đệm an toàn.
+	-- Do đó khi safeRadius <= 0.6 stud, kiểm tra tâm điểm đã hoàn toàn bảo đảm an toàn tuyệt đối.
+	-- Chỉ kiểm tra 4 hướng khi caller yêu cầu safeRadius lớn (> 0.6 stud, ví dụ vùng đệm 4.5 studs).
+	if safeRadius > 0.6 then
+		for _, off in ipairs(CHECK_OFFSETS_4) do
+			local sample = centerPoint + (off * safeRadius)
+			if geometry.IsPointInAnyHazard(sample, ignoredInstance) then
+				return false
+			end
 		end
 	end
 
@@ -571,8 +600,8 @@ function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentD
 		return true -- Chỉ bỏ qua bước cực ngắn <= 1.2 studs
 	end
 
-	-- Bước chia mẫu 1.8 studs (nhỏ hơn hitbox người chơi 2.5 studs, tối đa 32 bước để không bỏ lọt bất kỳ chiêu nào trên đường dài)
-	local steps = math.clamp(math.ceil(dist / 1.8), 2, 32)
+	-- Bước chia mẫu 2.8 studs (nhỏ hơn đường kính va chạm người chơi ~4.5 studs, tối đa 14 bước để tối ưu CPU tối đa)
+	local steps = math.clamp(math.ceil(dist / 2.8), 2, 14)
 	for i = 1, steps - 1 do
 		local t = i / steps
 		local samplePos = fromPos:Lerp(toPos, t)

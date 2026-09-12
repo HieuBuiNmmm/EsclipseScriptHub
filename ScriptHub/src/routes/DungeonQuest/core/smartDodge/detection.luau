@@ -59,6 +59,10 @@ local KNOWN_SKILL_LIFETIMES = {
 	["secondbossyelloworb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
 	["secondbossredorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
 	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
+	["secondbosscriclehitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
+	["secondbosscirclehitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
+	["secondBossCricleHitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
+	["secondBossCircleHitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
 }
 
 local ignoredSkillNames = {
@@ -92,6 +96,10 @@ local CUSTOM_HAZARD_EXCEPTIONS = {
 	["secondbossyelloworb"] = true,
 	["secondbossredorb"] = true,
 	["secondbossgreenorb"] = true,
+	["secondBossCricleHitbox"] = true,
+	["secondbosscriclehitbox"] = true,
+	["secondBossCircleHitbox"] = true,
+	["secondbosscirclehitbox"] = true,
 }
 
 --// Ngưỡng coi như chiêu đã mờ hoàn toàn/kết thúc
@@ -215,9 +223,25 @@ local TRAJECTORY_PROJECTILE_CONFIGS = {
 	},
 	["thirdbossbeampart"] = {
 		name = "thirdBossBeamPart",
-		dangerRadius = 6.0,       -- Bán kính vùng nguy hiểm của tia laser báo trước
+		dangerRadius = 6.0,
 		maxLookahead = 140.0,
 		visualColor = Color3.fromRGB(255, 130, 0),
+	},
+	["secondbosscriclehitbox"] = {
+		name = "secondBossCricleHitbox",
+		dangerRadius = 8.0,
+		maxLookahead = 95.0,
+		visualColor = Color3.fromRGB(255, 90, 0),
+		isExpandingCone = true,
+		expansionRate = 0.25,
+	},
+	["secondbosscirclehitbox"] = {
+		name = "secondBossCircleHitbox",
+		dangerRadius = 8.0,
+		maxLookahead = 95.0,
+		visualColor = Color3.fromRGB(255, 90, 0),
+		isExpandingCone = true,
+		expansionRate = 0.25,
 	},
 }
 
@@ -314,6 +338,15 @@ local function getTrajectoryConfigForPart(part)
 		local parentLower = part.Parent.Name:lower():gsub("%s+", "")
 		if TRAJECTORY_PROJECTILE_CONFIGS[parentLower] then
 			return TRAJECTORY_PROJECTILE_CONFIGS[parentLower]
+		end
+	end
+	if nameLower:find("cricle") or nameLower:find("circle") then
+		return TRAJECTORY_PROJECTILE_CONFIGS["secondbosscriclehitbox"]
+	end
+	if part.Parent and part.Parent:IsA("Model") then
+		local parentLower = part.Parent.Name:lower():gsub("%s+", "")
+		if parentLower:find("cricle") or parentLower:find("circle") then
+			return TRAJECTORY_PROJECTILE_CONFIGS["secondbosscriclehitbox"]
 		end
 	end
 	return nil
@@ -419,6 +452,7 @@ local function lockTrajectoryForPart(part)
 
 	-- Bắt hướng bay từ Velocity (nếu đang bay) hoặc CFrame.LookVector tại thời điểm spawn
 	local forward2D = Vector3.new(0, 0, -1)
+	local autoLength = nil
 	local vel = (part.AssemblyLinearVelocity or (part:IsA("BasePart") and part.Velocity))
 	if vel and Vector3.new(vel.X, 0, vel.Z).Magnitude > 2 then
 		forward2D = Vector3.new(vel.X, 0, vel.Z).Unit
@@ -438,6 +472,20 @@ local function lockTrajectoryForPart(part)
 			perp = -perp
 		end
 		forward2D = perp
+	elseif config.isExpandingCone then
+		-- Với kỹ năng chuỗi vòng tròn mở rộng hình nón (secondBossCricleHitbox - Boss 2):
+		-- Hướng lan tỏa xuất phát từ vị trí spawn của vòng tròn hướng thẳng về phía Player
+		local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		local playerPos = rootPart and rootPart.Position
+		if playerPos then
+			local diff = Vector3.new(playerPos.X - part.Position.X, 0, playerPos.Z - part.Position.Z)
+			local dist = diff.Magnitude
+			if dist > 0.3 then
+				forward2D = diff.Unit
+				-- Chiều dài hành lang dự đoán bao trùm qua Player tối thiểu 35 studs
+				autoLength = math.clamp(dist + 35.0, 85.0, 160.0)
+			end
+		end
 	else
 		-- Nếu part có Attachment2 (đường điều hướng như firstBossBeamPart)
 		local att2 = part:FindFirstChild("Attachment2") or (part.Parent and part.Parent:FindFirstChild("Attachment2"))
@@ -472,8 +520,9 @@ local function lockTrajectoryForPart(part)
 	end
 
 	-- TỰ ĐỘNG BÓC TÁCH KÍCH THƯỚC THẬT (Auto Dimension Detection):
-	local autoWidth, autoLength = getPartAutoDimensions(part)
+	local autoWidth, detectedLength = getPartAutoDimensions(part)
 	local baseRadius = autoWidth / 2
+	autoLength = autoLength or detectedLength
 
 	-- Nếu config có dangerRadius sàn cao hơn (safety floor), tôn trọng giá trị an toàn
 	if config.dangerRadius and config.dangerRadius > baseRadius then
@@ -961,6 +1010,8 @@ local function isIgnoredPart(part)
 		or part.Name:lower():find("bigspike") or (part.Parent and part.Parent.Name:lower():find("bigspike"))
 		or part.Name:lower():find("beampart") or (part.Parent and part.Parent.Name:lower():find("beampart"))
 		or part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
+		or part.Name:lower():find("cricle") or (part.Parent and part.Parent.Name:lower():find("cricle"))
+		or part.Name:lower():find("circle") or (part.Parent and part.Parent.Name:lower():find("circle"))
 		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss"))
 		or part.Name:lower():find("missile") or (part.Parent and part.Parent.Name:lower():find("missile")) then
 		return false
@@ -993,6 +1044,8 @@ local function extractHazardParts(instance)
 		or instance.Name:lower():find("bigspike")
 		or instance.Name:lower():find("beampart")
 		or instance.Name:lower():find("movingbeam")
+		or instance.Name:lower():find("cricle")
+		or instance.Name:lower():find("circle")
 		or instance.Name:lower():find("thirdboss")
 		or instance.Name:lower():find("missile")
 
@@ -1016,7 +1069,7 @@ local function extractHazardParts(instance)
 	end
 
 	if isException then
-		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring' hoặc Part Neon có trong model
+		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring', 'cricle', 'circle', 'hitbox' hoặc Part Neon có trong model
 		if instance:IsA("BasePart") then
 			if isValidHazardPart(instance) then
 				table.insert(parts, instance)
@@ -1024,7 +1077,13 @@ local function extractHazardParts(instance)
 		elseif instance:IsA("Model") then
 			local precasts = {}
 			for _, desc in ipairs(instance:GetDescendants()) do
-				if isValidHazardPart(desc) and (desc.Name:lower():find("precast") or desc.Name:lower():find("ring")) then
+				if isValidHazardPart(desc) and (
+					desc.Name:lower():find("precast")
+					or desc.Name:lower():find("ring")
+					or desc.Name:lower():find("cricle")
+					or desc.Name:lower():find("circle")
+					or desc.Name:lower():find("hitbox")
+				) then
 					table.insert(precasts, desc)
 				end
 			end
@@ -1035,6 +1094,14 @@ local function extractHazardParts(instance)
 				for _, desc in ipairs(instance:GetDescendants()) do
 					if isValidHazardPart(desc) and desc.Material == Enum.Material.Neon then
 						table.insert(parts, desc)
+					end
+				end
+				-- Fallback ngoại lệ: nếu không có part Neon nào nhưng có BasePart hợp lệ
+				if #parts == 0 then
+					for _, desc in ipairs(instance:GetDescendants()) do
+						if isValidHazardPart(desc) then
+							table.insert(parts, desc)
+						end
 					end
 				end
 			end
@@ -2013,8 +2080,15 @@ function detection.UpdateTrajectoryVisuals()
 										local thickness = trajData.boxThickness or 0.8
 
 										local depth = maxLookahead
+										local isExpandingCone = (trajData.config and trajData.config.isExpandingCone)
 										local boxWidth = dangerRadius * 2
-										local labelText = ("🚀 TRAJECTORY: %s (%.0fm | W:%.1fm)"):format(part.Name, maxLookahead, boxWidth)
+										if isExpandingCone then
+											local expRate = (trajData.config and trajData.config.expansionRate) or 0.25
+											boxWidth = math.floor((dangerRadius + (maxLookahead * expRate / 2)) * 2)
+										end
+										local labelText = isExpandingCone
+											and ("⚡ CONE CORRIDOR: %s (%.0fm | W:%.1fm)"):format(part.Name, maxLookahead, boxWidth)
+											or ("🚀 TRAJECTORY: %s (%.0fm | W:%.1fm)"):format(part.Name, maxLookahead, boxWidth)
 
 										local vPart = activeTrajectoryVisuals[part]
 										if not vPart or not vPart.Parent then

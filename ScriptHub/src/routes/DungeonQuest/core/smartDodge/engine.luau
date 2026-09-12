@@ -86,6 +86,9 @@ local function startSafeSpotLoop()
 
 			local isInvulnerable, invulnReason = shared.IsInvulnerable()
 
+			local wasInDanger = isPlayerInDanger
+			local wasSafeSpot = currentSafeSpot
+
 			isPlayerInDanger = inDanger
 			currentSafeSpot = safePos
 			currentDangerHazardName = hazardName
@@ -107,8 +110,8 @@ local function startSafeSpotLoop()
 
 			local now = os.clock()
 			local invulnTimeTick = isInvulnerable and (now - lastUIUpdateTime >= 0.25)
-			local stateChanged = (inDanger ~= isPlayerInDanger)
-				or (safePos ~= currentSafeSpot)
+			local stateChanged = (inDanger ~= wasInDanger)
+				or (safePos ~= wasSafeSpot)
 				or (isDead ~= lastDeadState)
 				or (isInvulnerable ~= lastInvulnState)
 				or invulnTimeTick
@@ -132,7 +135,12 @@ local function startSafeSpotLoop()
 				end
 			end
 
-			task.wait(0.05)
+			-- Tối ưu hóa Adaptive Polling:
+			-- Khi an toàn và không có hiểm họa: giãn nhịp 0.1s (10 FPS) để tiết kiệm 50% CPU
+			-- Khi có hiểm họa hoặc đang dính chiêu: tăng tốc lên 0.04s (25 FPS) để né phản xạ siêu nhạy
+			local hasThreats = inDanger or (detection.GetHazardCount and detection.GetHazardCount() > 0)
+			local pollInterval = hasThreats and 0.04 or 0.1
+			task.wait(pollInterval)
 		end
 	end)
 end

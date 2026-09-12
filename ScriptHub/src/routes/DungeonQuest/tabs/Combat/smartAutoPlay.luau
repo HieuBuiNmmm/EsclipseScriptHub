@@ -182,6 +182,14 @@ return function(window, tab)
 		end),
 	}, "Toggle_SAP_OpenSpace")
 
+	rightSection:Toggle({
+		Name = "Enable Combat Micro-Strafing",
+		Default = smartAutoPlay.IsMicroStrafingEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetMicroStrafing(state)
+		end),
+	}, "Toggle_SAP_MicroStrafing")
+
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Reposition Radius Mult",
 		Suffix = "x",
@@ -299,6 +307,12 @@ return function(window, tab)
 				local targetText = info.targetName and string.format("%s (%.1f std)", info.targetName, info.targetDist or 0) or "Mobs"
 				masterStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>🌀 ORBITING: Grouping %s (%.1f std)</font>", targetText, info.radius or 15.0))
 				stateMonitorLabel:UpdateName("State: <font color='rgb(0, 225, 255)'>🌀 ORBITING (Mob Grouping & Casting)</font>")
+				targetMonitorLabel:UpdateName("Target: " .. targetText)
+				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
+			elseif info.state == "Strafing" then
+				local targetText = info.targetName and string.format("%s (%.1f std)", info.targetName, info.targetDist or 0) or "In Range"
+				masterStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 255, 180)'>⚡ STRAFING: Micro-stepping & Casting on %s</font>", targetText))
+				stateMonitorLabel:UpdateName("State: <font color='rgb(0, 255, 180)'>⚡ STRAFING (Preemptive Micro-Step)</font>")
 				targetMonitorLabel:UpdateName("Target: " .. targetText)
 				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
 			elseif info.state == "InCombat" then

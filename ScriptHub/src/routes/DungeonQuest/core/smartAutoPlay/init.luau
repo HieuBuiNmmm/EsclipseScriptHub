@@ -49,6 +49,14 @@ local repositionTarget = nil
 local repositionStartTime = 0
 local MAX_REPOSITION_TIME = 3.5
 
+--// Combat Micro-Strafing State (Chủ động nhấp nhả lướt nhẹ né trước khi quái kịp tung chiêu)
+local combatMicroStrafingEnabled = true
+local lastMicroStrafeTime = 0
+local strafeDirection = 1 -- 1 hoặc -1 (xoay nhẹ theo chiều kim đồng hồ hoặc ngược lại)
+local currentStrafeTarget = nil
+local strafeTargetStartTime = 0
+local currentStrafePause = 1.2
+
 local smartAutoSkillEnabled = true
 local radiusMobs = 14.0 -- Kiting Radius cho Quái thường (studs)
 local radiusBoss1 = 16.0 -- Kiting Radius cho Boss 1 (tính từ tâm sàn đấu)
@@ -507,6 +515,7 @@ local function startMasterLoop()
 				currentEscapeDist = 0
 				currentTargetName = nil
 				currentTargetDist = nil
+				currentStrafeTarget = nil
 				fireMasterStatus()
 				task.wait(0.2)
 				continue
@@ -519,6 +528,7 @@ local function startMasterLoop()
 			if inDanger then
 				lastDodgeTimestamp = os.clock()
 				wasInDanger = true
+				currentStrafeTarget = nil
 				-- Khi nguy hiểm mới xuất hiện -> Ngắt repositioning ngay lập tức!
 				if repositionTarget then
 					repositionTarget = nil
@@ -553,8 +563,8 @@ local function startMasterLoop()
 
 			-- 2. Đánh giá quái xung quanh theo Combat Radius R (động theo mục tiêu hiện tại)
 			local r = getCurrentTargetRadius(currentTargetName)
-			-- Khi đang ở InCombat, HoldingRadius hoặc Orbiting, mở rộng thêm HYSTERESIS_BUFFER để tránh rung bật/tắt ở mép
-			local checkR = (masterState == "InCombat" or masterState == "HoldingRadius" or masterState == "Orbiting") and (r + HYSTERESIS_BUFFER) or r
+			-- Khi đang ở InCombat, HoldingRadius, Orbiting hoặc Strafing, mở rộng thêm HYSTERESIS_BUFFER để tránh rung bật/tắt ở mép
+			local checkR = (masterState == "InCombat" or masterState == "HoldingRadius" or masterState == "Orbiting" or masterState == "Strafing") and (r + HYSTERESIS_BUFFER) or r
 			local hasEnemyInRadius, totalAlive, nName, nDist, nPos, clusterCentroid, clusterCount = evaluateEnemies(checkR)
 
 			currentTargetName = nName
@@ -665,7 +675,7 @@ local function startMasterLoop()
 				-- Tự động khóa mặt vào quái khi trong tầm chiến đấu
 				targetFacing.SetEnabled(true)
 
-				-- Hàm kiểm tra độ an toàn của điểm di chuyển (mặt sàn, hazard, tường, ràng buộc biên sàn đấu)
+				-- Hàm kiểm tra độ an toàn của điểm di chuyển (mặt sàn, hazard, lộ trình di chuyển, tường, ràng buộc biên sàn đấu)
 				local function isSafeSpot(pos)
 					-- 1. Ràng buộc cứng sàn đấu Boss 1 (nếu có Arena): Điểm đến bắt buộc phải nằm bên trong sàn đấu
 					if isBoss1 and arenaCenter and arenaRadius and arenaRadius > 0 then
@@ -680,7 +690,12 @@ local function startMasterLoop()
 						return false, nil
 					end
 					local floorPos = Vector3.new(pos.X, rawFloorY + 2.8, pos.Z)
-					if geometry.IsPointInAnyHazard(floorPos) then
+					-- 2. Điểm đến phải an toàn và có khoảng đệm tối thiểu 1.5 studs với mép mọi chiêu thức
+					if not geometry.IsSpotFullySafe(floorPos, 1.5) then
+						return false, nil
+					end
+					-- 3. Toàn bộ lộ trình di chuyển từ pPos tới floorPos phải hoàn toàn sạch bóng chiêu (Path Clearance)
+					if not geometry.IsPathSafe(pPos, floorPos) then
 						return false, nil
 					end
 					-- Raycast kiểm tra tường từ hông nhân vật tới điểm đích
@@ -693,7 +708,125 @@ local function startMasterLoop()
 					return true, floorPos
 				end
 
+				-- Hàm thực thi Combat Micro-Strafing (chủ động nhấp nhả lướt nhẹ né chiêu trước khi quái kịp tung ra)
+				local function performCombatMicroStrafe(anchorPos, desiredRadius, fallbackState)
+					fallbackState = fallbackState or "InCombat"
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if not hum then return fallbackState end
+
+					if not combatMicroStrafingEnabled then
+						pcall(function() hum:MoveTo(pPos) end)
+						return fallbackState
+					end
+
+					local now = os.clock()
+
+					-- 1. Đang trong hành trình lướt tới điểm Micro-Strafe:
+					if currentStrafeTarget then
+						local distToStrafe = (Vector3.new(currentStrafeTarget.X - pPos.X, 0, currentStrafeTarget.Z - pPos.Z)).Magnitude
+						local elapsed = now - strafeTargetStartTime
+						if distToStrafe <= 1.8 or elapsed >= 0.75 then
+							-- Đã đến nơi hoặc quá thời gian bước chân -> Kết thúc bước lướt, chuyển sang nhịp dừng chân xả combo
+							currentStrafeTarget = nil
+							lastMicroStrafeTime = now
+							currentStrafePause = 0.9 + (math.random(0, 6) / 10) -- Nghỉ chân 0.9s - 1.5s
+							pcall(function() hum:MoveTo(pPos) end)
+							return fallbackState
+						else
+							hum:MoveTo(currentStrafeTarget)
+							return "Strafing"
+						end
+					end
+
+					-- 2. Đang trong nhịp dừng chân vững xả chiêu (Cooldown giữa 2 lần strafe):
+					if (now - lastMicroStrafeTime) < currentStrafePause then
+						pcall(function() hum:MoveTo(pPos) end)
+						return fallbackState
+					end
+
+					-- 3. Hết nhịp dừng -> Khởi động bước Micro-Strafe tiếp theo!
+					if not anchorPos then
+						pcall(function() hum:MoveTo(pPos) end)
+						return fallbackState
+					end
+
+					local toPlayer = Vector3.new(pPos.X - anchorPos.X, 0, pPos.Z - anchorPos.Z)
+					local curDist = toPlayer.Magnitude
+					if curDist < 2.0 then
+						pcall(function() hum:MoveTo(pPos) end)
+						return fallbackState
+					end
+
+					local curAngle = math.atan2(toPlayer.Z, toPlayer.X)
+					-- Bước góc ứng với khoảng 4.5 studs trên cung tròn (s = r * theta => theta = s / r)
+					local stepStuds = 4.5
+					local angleStep = math.clamp(stepStuds / curDist, math.rad(12), math.rad(28))
+
+					-- 25% xác suất đảo chiều ngẫu nhiên để bước đi tự nhiên như người chơi thật
+					if math.random() < 0.25 then
+						strafeDirection = -strafeDirection
+					end
+
+					-- Thử hướng strafe hiện tại
+					local testAngle = curAngle + (strafeDirection * angleStep)
+					local testCandidate = anchorPos + Vector3.new(math.cos(testAngle), 0, math.sin(testAngle)) * curDist
+
+					local safe, safePos = isSafeSpot(testCandidate)
+					if not safe then
+						-- Bị vướng tường hoặc hazard -> Đảo chiều ngược lại
+						strafeDirection = -strafeDirection
+						testAngle = curAngle + (strafeDirection * angleStep)
+						testCandidate = anchorPos + Vector3.new(math.cos(testAngle), 0, math.sin(testAngle)) * curDist
+						safe, safePos = isSafeSpot(testCandidate)
+					end
+
+					if safe and safePos then
+						currentStrafeTarget = safePos
+						strafeTargetStartTime = now
+						hum:MoveTo(safePos)
+						return "Strafing"
+					else
+						-- Cả 2 hướng đều bị cản -> Đứng yên và thử lại sau 1.0s
+						lastMicroStrafeTime = now
+						currentStrafePause = 1.0
+						pcall(function() hum:MoveTo(pPos) end)
+						return fallbackState
+					end
+				end
+
 				local isBossTarget = isBossActive or (nName and nName:lower():find("boss") ~= nil)
+
+				-- Thiết lập mục tiêu định hướng Target Facing (Centroid cho quái thường, Boss cho Boss)
+				if not isBossTarget then
+					local packCenter = clusterCentroid or nPos
+					if packCenter then
+						targetFacing.SetTargetOverride(packCenter)
+					else
+						targetFacing.SetTargetOverride(nil)
+					end
+				else
+					targetFacing.SetTargetOverride(nil)
+				end
+
+				-- Đệm ổn định sau né (Post-Dodge Settle):
+				-- Nếu vừa né xong (trong vòng 0.45s) và trên sàn vẫn còn tàn dư chiêu thức chưa tan biến hẳn:
+				-- Đứng vững chân tại điểm Safe Spot vừa né tới (InCombat) để xả combo skill vào quái/boss,
+				-- TUYỆT ĐỐI không vội di chuyển lăng xăng ngay tránh giẫm ngược lại mép chiêu cũ gây giật giật!
+				local isPostDodgeSettling = (os.clock() - lastDodgeTimestamp < 0.45)
+					and (smartDodge.GetHazardCount and smartDodge.GetHazardCount() > 0)
+
+				if isPostDodgeSettling then
+					currentStrafeTarget = nil
+					lastMicroStrafeTime = os.clock()
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum then
+						pcall(function() hum:MoveTo(pPos) end)
+					end
+					masterState = "InCombat"
+					fireMasterStatus()
+					task.wait(0.04)
+					continue
+				end
 
 				if isBoss1 and inBoss1Arena and arenaCenter and arenaRadius and arenaRadius > 0 then
 					targetFacing.SetTargetOverride(nil)
@@ -725,11 +858,7 @@ local function startMasterLoop()
 
 					-- Nếu đang ở cự ly chuẩn so với trung tâm sàn, vị trí an toàn và Boss không áp sát
 					if distError <= 2.5 and isSafeHere and not bossTooClose then
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if hum then
-							pcall(function() hum:MoveTo(pPos) end)
-						end
-						masterState = "HoldingRadius"
+						masterState = performCombatMicroStrafe(arenaCenter, holdCenterDist, "HoldingRadius")
 					else
 						-- Cần di chuyển tới điểm tối ưu trên vòng bán kính holdCenterDist xung quanh arenaCenter
 						local candidateAngles = {
@@ -891,19 +1020,11 @@ local function startMasterLoop()
 							end
 							masterState = "HoldingRadius"
 						else
-							local hum = char and char:FindFirstChildOfClass("Humanoid")
-							if hum then
-								pcall(function() hum:MoveTo(pPos) end)
-							end
-							masterState = "InCombat"
+							masterState = performCombatMicroStrafe(nPos, holdDist, "InCombat")
 						end
 					else
-						-- Đang ở cự ly an toàn chuẩn trong vòng R và an toàn bên trong sàn -> Dừng bước và giữ nguyên vị trí xả skill!
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if hum then
-							pcall(function() hum:MoveTo(pPos) end)
-						end
-						masterState = "InCombat"
+						-- Đang ở cự ly an toàn chuẩn trong vòng R và an toàn bên trong sàn -> Micro-strafe xả skill!
+						masterState = performCombatMicroStrafe(nPos, holdDist, "InCombat")
 					end
 				else
 					-- ==============================================================
@@ -966,19 +1087,11 @@ local function startMasterLoop()
 							end
 							masterState = "Orbiting"
 						else
-							local hum = char and char:FindFirstChildOfClass("Humanoid")
-							if hum then
-								pcall(function() hum:MoveTo(pPos) end)
-							end
-							masterState = "InCombat"
+							masterState = performCombatMicroStrafe(packCenter or nPos, orbitDist, "InCombat")
 						end
 					else
-						-- Bầy quái ở cự ly an toàn ngoài mép R -> Dừng bước xả skill thẳng vào tâm cụm quái
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if hum then
-							pcall(function() hum:MoveTo(pPos) end)
-						end
-						masterState = "InCombat"
+						-- Bầy quái ở cự ly an toàn ngoài mép R -> Micro-strafe xả skill thẳng vào tâm cụm quái
+						masterState = performCombatMicroStrafe(packCenter or nPos, r, "InCombat")
 					end
 				end
 			else
@@ -1292,6 +1405,14 @@ end
 
 function smartAutoPlay.GetSphereSize()
 	return sphereSize
+end
+
+function smartAutoPlay.IsMicroStrafingEnabled()
+	return combatMicroStrafingEnabled
+end
+
+function smartAutoPlay.SetMicroStrafing(state)
+	combatMicroStrafingEnabled = state and true or false
 end
 
 --// Đăng ký Coordinator để hệ thống khác (hoặc phím tắt) có thể tắt Smart Auto Play

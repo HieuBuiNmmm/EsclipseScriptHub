@@ -1,5 +1,5 @@
 -- Script Path: game:GetService("Players").acz0025n.PlayerScripts.mapSpecificLocals
--- Took 0.36s to decompile.
+-- Took 0.31s to decompile.
 -- Executor: Madium (2.0.0)
 
 local LocalPlayer = game.Players.LocalPlayer
@@ -2902,11 +2902,80 @@ game.ReplicatedStorage.remotes:WaitForChild("enchantedBossSpecficEvents").OnClie
         end
     end
 end)
+local t_55 = { colors = nil, active = nil }
+local t_56 = {
+    red = Color3.fromRGB(255, 78, 78),
+    yellow = Color3.fromRGB(255, 250, 94),
+    green = Color3.fromRGB(78, 255, 69),
+    grey = Color3.fromRGB(154, 154, 154)
+}
 local _ = {}
+t_55.colors = t_56
+local t_58 = { yellow = 0, red = 90, green = 180 }
+
+local function setSafeColorArrow(arg23) -- line: 1881
+    -- upvalues:
+    --  [1] LocalPlayer (copy)
+    --  [2] t_58 (copy)
+    --  [3] t_55 (copy)
+
+    local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+    local v418 = PlayerGui
+
+    if v418 then
+        v418 = PlayerGui:FindFirstChild("bonusBossHealth")
+    end
+
+    local v419 = v418
+
+    if v419 then
+        v419 = v418:FindFirstChild("healthFrame")
+    end
+
+    local v420 = v419
+
+    if v420 then
+        v420 = v419:FindFirstChild("safeColorArrow")
+    end
+
+    local v421 = v420
+
+    if v421 then
+        v421 = v420:FindFirstChild("arrow")
+    end
+
+    if not v421 then
+        return
+    end
+
+    local v422 = arg23
+
+    if v422 then
+        v422 = t_58[arg23]
+    end
+
+    if not v422 then
+        v420.Visible = false
+
+        return
+    end
+
+    v421.Rotation = v422
+    local v423 = t_55.colors[arg23] or Color3.fromRGB(255, 255, 255)
+
+    for _, val_32 in ipairs(v421:GetChildren()) do
+        if val_32:IsA("Frame") then
+            val_32.BackgroundColor3 = v423
+        end
+    end
+
+    v420.Visible = true
+end
+
 game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClientEvent:Connect(function(
-    arg23,
-    arg24
-) -- line: 1850
+    arg24,
+    arg25
+) -- line: 1909
     -- upvalues:
     --  [1] v1 (copy)
     --  [2] CameraShaker_m (copy)
@@ -2914,224 +2983,221 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
     --  [4] TweenService (copy)
     --  [5] RunService (copy)
     --  [6] TimeSync_m (copy)
+    --  [7] t_55 (copy)
+    --  [8] setSafeColorArrow (copy)
+    --  [9] LocalPlayer (copy)
 
-    local v419
+    local v425
 
-    if arg23 == "Shake Screens" then
-        local v418 = v1
-        v419 = CameraShaker_m.Presets
-        v418:Shake(v419[arg24])
-
-        return
-    end
-
-    local v424
-
-    if arg23 == "First Boss Slam Land" then
-        local v421 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v421.Transparency = 0
-        local FromRGB_1 = Color3.fromRGB
-        v419 = 0
-        v424 = 0
-        v421.Color = FromRGB_1(255, v419, v424)
-        local v425 = Debris
-        v419 = v421
-        v424 = 3
-        v425:AddItem(v419, v424)
-        v421.Parent = workspace
-        v421.CFrame = arg24
-        v421.firstBossLand:Play()
-        local v427 = TweenService
-        v419 = v421
-        v424 = TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        v427:Create(v419, v424, { Size = Vector3.new(80, 80, 80), Transparency = 1 }):Play()
+    if arg24 == "Shake Screens" then
+        v425 = CameraShaker_m.Presets
+        v1:Shake(v425[arg25])
 
         return
     end
 
-    if arg23 == "First Boss Jump Up" then
-        local v429 = game.ReplicatedStorage.enemyProjectiles.firstBossSmokePart:Clone()
-        local v430 = Debris
-        v419 = v429
-        v424 = 3
-        v430:AddItem(v419, v424)
-        v429.Position = arg24
-        v429.Parent = workspace
-        local Particles = v429.particles
-        v419 = 150
-        Particles:Emit(v419)
-        local Particles_2 = workspace.firstBossSmokePart.particles
-        v419 = 150
-        Particles_2:Emit(v419)
+    local v429
+
+    if arg24 == "First Boss Slam Land" then
+        local v427 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+        v427.Transparency = 0
+        v425 = 0
+        v429 = 0
+        v427.Color = Color3.fromRGB(255, v425, v429)
+        v425 = v427
+        v429 = 3
+        Debris:AddItem(v425, v429)
+        v427.Parent = workspace
+        v427.CFrame = arg25
+        v427.firstBossLand:Play()
+        v425 = v427
+        v429 = TweenInfo.new
+        local EasingStyle_Quart_1 = Enum.EasingStyle.Quart
+        local EasingDirection_Out_10 = Enum.EasingDirection.Out
+        local v431 = TweenService
+        v429 = v429(0.45, EasingStyle_Quart_1, EasingDirection_Out_10)
+        v431:Create(v425, v429, { Size = Vector3.new(80, 80, 80), Transparency = 1 }):Play()
 
         return
     end
 
-    if arg23 == "First Boss Jump Down" then
+    if arg24 == "First Boss Jump Up" then
+        local v432 = game.ReplicatedStorage.enemyProjectiles.firstBossSmokePart:Clone()
+        v425 = v432
+        v429 = 3
+        Debris:AddItem(v425, v429)
+        v432.Position = arg25
+        v432.Parent = workspace
+        v425 = 150
+        v432.particles:Emit(v425)
+        v425 = 150
+        workspace.firstBossSmokePart.particles:Emit(v425)
+
+        return
+    end
+
+    if arg24 == "First Boss Jump Down" then
         local v433 = game.ReplicatedStorage.enemyProjectiles.firstBossSmokePart:Clone()
-        local v434 = Debris
-        v419 = v433
-        v424 = 3
-        v434:AddItem(v419, v424)
-        v433.Position = arg24
+        v425 = v433
+        v429 = 3
+        Debris:AddItem(v425, v429)
+        v433.Position = arg25
         v433.Parent = workspace
-        local Particles_1 = v433.particles
-        v419 = 150
-        Particles_1:Emit(v419)
-        local Particles_3 = workspace.firstBossSmokePart.particles
-        v419 = 150
-        Particles_3:Emit(v419)
+        v425 = 150
+        v433.particles:Emit(v425)
+        v425 = 150
+        workspace.firstBossSmokePart.particles:Emit(v425)
 
         return
     end
 
-    if arg23 == "First Boss Criss Cross Projectile" then
-        local v437 = arg24[1]
-        local v438 = arg24[2]
-        local v439 = arg24[3]
-        v419 = arg24[4]
-        v424 = arg24[5]
-        local v440 = game.ReplicatedStorage.enemyProjectiles.firstBossCrissCross:Clone()
-        Debris:AddItem(v440, 10)
-        v440.CFrame = v424
-        v440.Parent = workspace
-        local v445 = 0
-        local v446 = nil
-        v446 = RunService.Heartbeat:Connect(function() -- line: 1903
+    if arg24 == "First Boss Criss Cross Projectile" then
+        local v434 = arg25[1]
+        local v435 = arg25[2]
+        local v436 = arg25[3]
+        v425 = arg25[4]
+        v429 = arg25[5]
+        local v437 = game.ReplicatedStorage.enemyProjectiles.firstBossCrissCross:Clone()
+        Debris:AddItem(v437, 10)
+        v437.CFrame = v429
+        v437.Parent = workspace
+        local v442 = 0
+        local v443 = nil
+        v443 = RunService.Heartbeat:Connect(function() -- line: 1962
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v439 (copy)
-            --  [3] v438 (copy)
-            --  [4] v424 (copy)
-            --  [5] v437 (copy)
-            --  [6] v440 (copy)
-            --  [7] v445 (ref)
-            --  [8] v419 (copy)
-            --  [9] v446 (ref)
+            --  [2] v436 (copy)
+            --  [3] v435 (copy)
+            --  [4] v429 (copy)
+            --  [5] v434 (copy)
+            --  [6] v437 (copy)
+            --  [7] v442 (ref)
+            --  [8] v425 (copy)
+            --  [9] v443 (ref)
 
-            local v448 = TimeSync_m:GetTime()
-            local v449 = math.clamp((v448 - v439) / v438, 0, 1)
-            v440.CFrame = (v424 + v424.LookVector * (v449 * v437)) * CFrame.Angles(
+            local v445 = TimeSync_m:GetTime()
+            local v446 = math.clamp((v445 - v436) / v435, 0, 1)
+            v437.CFrame = (v429 + v429.LookVector * (v446 * v434)) * CFrame.Angles(
                 0,
-                math.rad(v445),
+                math.rad(v442),
                 0
             )
-            v445 += 10
+            v442 += 10
 
-            if v448 > v419 then
-                v446:Disconnect()
-                v446 = nil
-                v440.Transparency = 1
-                v440.Mist.Enabled = false
-                v440.Trail.Enabled = false
+            if v445 > v425 then
+                v443:Disconnect()
+                v443 = nil
+                v437.Transparency = 1
+                v437.Mist.Enabled = false
+                v437.Trail.Enabled = false
             end
         end)
 
         return
     end
 
-    if arg23 == "First Boss Seeking Spike" then
-        local v452 = arg24[1]
-        local v453 = arg24[2]
-        local v454 = arg24[3]
-        v419 = arg24[4]
-        v424 = arg24[5]
-        local v455 = game.ReplicatedStorage.enemyProjectiles.firstBossSeekingSpikes:Clone()
-        Debris:AddItem(v455, 10)
-        v455.CFrame = v424
-        v455.Parent = workspace
-        local v460 = game.ReplicatedStorage.enemyProjectiles.firstBossBeamPart:Clone()
-        Debris:AddItem(v460, 1.5)
-        v460.Position = v424.Position
-        v460.Attachment2.WorldPosition = (v424 + v424.LookVector * v452).Position
-        v460.Parent = workspace
-        local v466 = 0
-        local v467 = nil
-        v467 = RunService.Heartbeat:Connect(function() -- line: 1941
+    if arg24 == "First Boss Seeking Spike" then
+        local v449 = arg25[1]
+        local v450 = arg25[2]
+        local v451 = arg25[3]
+        v425 = arg25[4]
+        v429 = arg25[5]
+        local v452 = game.ReplicatedStorage.enemyProjectiles.firstBossSeekingSpikes:Clone()
+        Debris:AddItem(v452, 10)
+        v452.CFrame = v429
+        v452.Parent = workspace
+        local v457 = game.ReplicatedStorage.enemyProjectiles.firstBossBeamPart:Clone()
+        Debris:AddItem(v457, 1.5)
+        v457.Position = v429.Position
+        v457.Attachment2.WorldPosition = (v429 + v429.LookVector * v449).Position
+        v457.Parent = workspace
+        local v463 = 0
+        local v464 = nil
+        v464 = RunService.Heartbeat:Connect(function() -- line: 2000
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v454 (copy)
-            --  [3] v453 (copy)
-            --  [4] v424 (copy)
-            --  [5] v452 (copy)
-            --  [6] v455 (copy)
-            --  [7] v466 (ref)
-            --  [8] v419 (copy)
-            --  [9] v467 (ref)
+            --  [2] v451 (copy)
+            --  [3] v450 (copy)
+            --  [4] v429 (copy)
+            --  [5] v449 (copy)
+            --  [6] v452 (copy)
+            --  [7] v463 (ref)
+            --  [8] v425 (copy)
+            --  [9] v464 (ref)
 
-            local v469 = TimeSync_m:GetTime()
-            local v470 = math.clamp((v469 - v454) / v453, 0, 1)
-            v455.CFrame = (v424 + v424.LookVector * (v470 * v452)) * CFrame.Angles(
+            local v466 = TimeSync_m:GetTime()
+            local v467 = math.clamp((v466 - v451) / v450, 0, 1)
+            v452.CFrame = (v429 + v429.LookVector * (v467 * v449)) * CFrame.Angles(
                 0,
-                math.rad(v466),
+                math.rad(v463),
                 0
             )
-            v466 += 10
+            v463 += 10
 
-            if v469 > v419 then
-                v467:Disconnect()
-                v467 = nil
-                v455.Transparency = 1
-                v455.Trail.Enabled = false
+            if v466 > v425 then
+                v464:Disconnect()
+                v464 = nil
+                v452.Transparency = 1
+                v452.Trail.Enabled = false
             end
         end)
 
         return
     end
 
-    if arg23 == "First Boss Big Spike" then
-        local v473 = arg24[1]
-        local v474 = arg24[2]
-        local v475 = arg24[3]
-        v419 = arg24[4]
-        v424 = arg24[5]
-        local v476 = game.ReplicatedStorage.enemyProjectiles.firstBossBigSpike:Clone()
-        Debris:AddItem(v476, 10)
-        v476.CFrame = v424
-        v476.Parent = workspace
-        local v481 = game.ReplicatedStorage.enemyProjectiles.firstBossBeamPart:Clone()
-        Debris:AddItem(v481, 10)
-        v481.Position = v424.Position
-        v481.Attachment2.WorldPosition = (v424 + v424.LookVector * v473).Position
-        v481.Beam.Width0 = 40
-        v481.Beam.Width1 = 40
-        v481.Parent = workspace
-        local v489 = false
-        local v490 = 0
-        local v491 = nil
-        v491 = RunService.Heartbeat:Connect(function() -- line: 1981
+    if arg24 == "First Boss Big Spike" then
+        local v470 = arg25[1]
+        local v471 = arg25[2]
+        local v472 = arg25[3]
+        v425 = arg25[4]
+        v429 = arg25[5]
+        local v473 = game.ReplicatedStorage.enemyProjectiles.firstBossBigSpike:Clone()
+        Debris:AddItem(v473, 10)
+        v473.CFrame = v429
+        v473.Parent = workspace
+        local v478 = game.ReplicatedStorage.enemyProjectiles.firstBossBeamPart:Clone()
+        Debris:AddItem(v478, 10)
+        v478.Position = v429.Position
+        v478.Attachment2.WorldPosition = (v429 + v429.LookVector * v470).Position
+        v478.Beam.Width0 = 40
+        v478.Beam.Width1 = 40
+        v478.Parent = workspace
+        local v486 = false
+        local v487 = 0
+        local v488 = nil
+        v488 = RunService.Heartbeat:Connect(function() -- line: 2040
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v475 (copy)
-            --  [3] v489 (ref)
-            --  [4] v476 (copy)
-            --  [5] v474 (copy)
-            --  [6] v424 (copy)
-            --  [7] v473 (copy)
-            --  [8] v490 (ref)
-            --  [9] v419 (copy)
-            --  [10] v491 (ref)
-            --  [11] v481 (copy)
+            --  [2] v472 (copy)
+            --  [3] v486 (ref)
+            --  [4] v473 (copy)
+            --  [5] v471 (copy)
+            --  [6] v429 (copy)
+            --  [7] v470 (copy)
+            --  [8] v487 (ref)
+            --  [9] v425 (copy)
+            --  [10] v488 (ref)
+            --  [11] v478 (copy)
 
-            local v492 = TimeSync_m:GetTime()
+            local v489 = TimeSync_m:GetTime()
 
-            if v492 > v475 then
-                if not v489 then
-                    v489 = true
-                    v476.Transparency = 0
-                    v476.Trail.Enabled = true
+            if v489 > v472 then
+                if not v486 then
+                    v486 = true
+                    v473.Transparency = 0
+                    v473.Trail.Enabled = true
                 end
 
-                local v494 = v424 + v424.LookVector * (math.clamp((v492 - v475) / v474, 0, 1) * v473)
-                v476.CFrame = v494 * CFrame.Angles(0, math.rad(v490), 0)
-                v490 += 10
+                local v491 = v429 + v429.LookVector * (math.clamp((v489 - v472) / v471, 0, 1) * v470)
+                v473.CFrame = v491 * CFrame.Angles(0, math.rad(v487), 0)
+                v487 += 10
 
-                if v492 > v419 then
-                    v491:Disconnect()
-                    v491 = nil
-                    v476.Transparency = 1
-                    v476.Trail.Enabled = false
-                    v481:Destroy()
+                if v489 > v425 then
+                    v488:Disconnect()
+                    v488 = nil
+                    v473.Transparency = 1
+                    v473.Trail.Enabled = false
+                    v478:Destroy()
                 end
             end
         end)
@@ -3139,87 +3205,88 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
         return
     end
 
-    if arg23 == "First Boss Spike Hit Explosion" then
-        local v496 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v496.Transparency = 0
-        local FromRGB_2 = Color3.fromRGB
-        v419 = 80
-        v424 = 80
-        v496.Color = FromRGB_2(255, v419, v424)
-        local v499 = Debris
-        v419 = v496
-        v424 = 3
-        v499:AddItem(v419, v424)
-        v496.Parent = workspace
-        v496.CFrame = arg24
-        v496.firstBossShurikenHit:Play()
-        local v501 = TweenService
-        v419 = v496
-        v424 = TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
-        v501:Create(v419, v424, { Size = Vector3.new(175, 175, 175), Transparency = 1 }):Play()
+    if arg24 == "First Boss Spike Hit Explosion" then
+        local v493 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+        v493.Transparency = 0
+        v425 = 80
+        v429 = 80
+        v493.Color = Color3.fromRGB(255, v425, v429)
+        v425 = v493
+        v429 = 3
+        Debris:AddItem(v425, v429)
+        v493.Parent = workspace
+        v493.CFrame = arg25
+        v493.firstBossShurikenHit:Play()
+        v425 = v493
+        v429 = TweenInfo.new
+        local EasingStyle_Quart_2 = Enum.EasingStyle.Quart
+        local EasingDirection_Out_11 = Enum.EasingDirection.Out
+        local v496 = TweenService
+        v429 = v429(0.8, EasingStyle_Quart_2, EasingDirection_Out_11)
+        v496:Create(v425, v429, { Size = Vector3.new(175, 175, 175), Transparency = 1 }):Play()
 
         return
     end
 
-    if arg23 == "Second Boss Big Hitting Ground Spikes" then
-        local v503 = arg24[1]
-        local v504 = arg24[2]
-        local v505 = arg24[3]
-        v419 = nil
-        v424 = nil
+    if arg24 == "Second Boss Big Hitting Ground Spikes" then
+        local v497 = arg25[1]
+        local v498 = arg25[2]
+        local v499 = arg25[3]
+        v425 = nil
+        v429 = nil
 
-        if v503 == "small" then
-            v419 = game.ReplicatedStorage.enemyProjectiles.smallIceSpikes:Clone()
-            v424 = 40
-        elseif v503 == "medium" then
-            v419 = game.ReplicatedStorage.enemyProjectiles.mediumIceSpikes:Clone()
-            v424 = 60
-        elseif v503 == "large" then
-            v419 = game.ReplicatedStorage.enemyProjectiles.largeIceSpikes:Clone()
-            v424 = 100
+        if v497 == "small" then
+            v425 = game.ReplicatedStorage.enemyProjectiles.smallIceSpikes:Clone()
+            v429 = 40
+        elseif v497 == "medium" then
+            v425 = game.ReplicatedStorage.enemyProjectiles.mediumIceSpikes:Clone()
+            v429 = 60
+        elseif v497 == "large" then
+            v425 = game.ReplicatedStorage.enemyProjectiles.largeIceSpikes:Clone()
+            v429 = 100
         end
 
-        Debris:AddItem(v419, 10)
-        v419:SetPrimaryPartCFrame(v504)
-        v419.Parent = workspace
-        local v514 = nil
-        v514 = RunService.Heartbeat:Connect(function() -- line: 2041
+        Debris:AddItem(v425, 10)
+        v425:SetPrimaryPartCFrame(v498)
+        v425.Parent = workspace
+        local v508 = nil
+        v508 = RunService.Heartbeat:Connect(function() -- line: 2100
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v505 (copy)
-            --  [3] v514 (ref)
-            --  [4] v419 (ref)
+            --  [2] v499 (copy)
+            --  [3] v508 (ref)
+            --  [4] v425 (ref)
             --  [5] TweenService (ref)
-            --  [6] v424 (ref)
+            --  [6] v429 (ref)
 
-            if TimeSync_m:GetTime() > v505 then
-                v514:Disconnect()
-                v514 = nil
-                v419.PrimaryPart.bigIceSpikeNoise:Play()
-                v419.precast.Transparency = 0
-                v419.PrimaryPart.particles:Emit(150)
+            if TimeSync_m:GetTime() > v499 then
+                v508:Disconnect()
+                v508 = nil
+                v425.PrimaryPart.bigIceSpikeNoise:Play()
+                v425.precast.Transparency = 0
+                v425.PrimaryPart.particles:Emit(150)
 
-                for _, val_32 in pairs(v419:GetChildren()) do
-                    if val_32.Name == "Ice" then
-                        local v517 = TweenService
+                for _, val_33 in pairs(v425:GetChildren()) do
+                    if val_33.Name == "Ice" then
+                        local v511 = TweenService
                         local tweenInfo_45 = TweenInfo.new(
                             0.1,
                             Enum.EasingStyle.Quart,
                             Enum.EasingDirection.Out
                         )
-                        local v518 = v517:Create(
-                            val_32,
+                        local v512 = v511:Create(
+                            val_33,
                             tweenInfo_45,
-                            { Position = val_32.Position + Vector3.new(0, v424, 0) }
+                            { Position = val_33.Position + Vector3.new(0, v429, 0) }
                         )
-                        v518.Completed:Connect(function() -- line: 2053
+                        v512.Completed:Connect(function() -- line: 2112
                             -- upvalues:
                             --  [1] TweenService (ref)
-                            --  [2] val_32 (copy)
+                            --  [2] val_33 (copy)
 
                             wait(0.25)
                             TweenService:Create(
-                                val_32,
+                                val_33,
                                 TweenInfo.new(
                                     0.3,
                                     Enum.EasingStyle.Linear,
@@ -3228,10 +3295,10 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
                                 { Transparency = 1 }
                             ):Play()
                         end)
-                        v518:Play()
-                    elseif val_32.Name == "precast" then
+                        v512:Play()
+                    elseif val_33.Name == "precast" then
                         TweenService:Create(
-                            val_32,
+                            val_33,
                             TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                             { Transparency = 1 }
                         ):Play()
@@ -3243,217 +3310,221 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
         return
     end
 
-    if arg23 == "Second Boss Moving Beam" then
-        local v523 = arg24[1]
-        local v524 = arg24[2]
-        local v525 = arg24[3]
-        local v526 = arg24[4]
-        local v527 = arg24[5]
-        local v528 = game.ReplicatedStorage.enemyProjectiles.secondBossMovingBeam:Clone()
-        Debris:AddItem(v528, 120)
-        v528:SetPrimaryPartCFrame(v527)
-        v528.Parent = workspace
-        local v534 = 0
-        local v535 = nil
-        v535 = RunService.Heartbeat:Connect(function() -- line: 2079
+    if arg24 == "Second Boss Moving Beam" then
+        local v517 = arg25[1]
+        local v518 = arg25[2]
+        local v519 = arg25[3]
+        local v520 = arg25[4]
+        local v521 = arg25[5]
+        local v522 = game.ReplicatedStorage.enemyProjectiles.secondBossMovingBeam:Clone()
+        Debris:AddItem(v522, 120)
+        v522:SetPrimaryPartCFrame(v521)
+        v522.Parent = workspace
+        local v528 = 0
+        local v529 = nil
+        v529 = RunService.Heartbeat:Connect(function() -- line: 2138
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v525 (copy)
-            --  [3] v524 (copy)
-            --  [4] v527 (copy)
-            --  [5] v523 (copy)
-            --  [6] v528 (copy)
-            --  [7] v534 (ref)
-            --  [8] v526 (copy)
-            --  [9] v535 (ref)
+            --  [2] v519 (copy)
+            --  [3] v518 (copy)
+            --  [4] v521 (copy)
+            --  [5] v517 (copy)
+            --  [6] v522 (copy)
+            --  [7] v528 (ref)
+            --  [8] v520 (copy)
+            --  [9] v529 (ref)
 
-            local v537 = TimeSync_m:GetTime()
-            local v538 = math.clamp((v537 - v525) / v524, 0, 1)
-            v528:SetPrimaryPartCFrame(
-                (v527 + v527.LookVector * (v538 * v523)) * CFrame.Angles(math.rad(v534), 0, 0)
+            local v531 = TimeSync_m:GetTime()
+            local v532 = math.clamp((v531 - v519) / v518, 0, 1)
+            v522:SetPrimaryPartCFrame(
+                (v521 + v521.LookVector * (v532 * v517)) * CFrame.Angles(math.rad(v528), 0, 0)
             )
-            v534 += 10
+            v528 += 10
 
-            if v537 > v526 then
-                v535:Disconnect()
-                v535 = nil
-                v528:Destroy()
+            if v531 > v520 then
+                v529:Disconnect()
+                v529 = nil
+                v522:Destroy()
             end
         end)
 
         return
     end
 
-    if arg23 == "Second Boss Orb Explosion" then
-        local v542 = arg24[1]
-        local v543 = arg24[2]
-        local v544 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v544.Transparency = 0
-        v544.Color = v543
-        Debris:AddItem(v544, 3)
-        v544.Parent = workspace
-        v544.CFrame = v542
+    if arg24 == "Second Boss Orb Explosion" then
+        local v536 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall
+        local v537 = arg25[1]
+        local v538 = arg25[2]
+        v536 = v536:Clone()
+        v536.Transparency = 0
+        v536.Color = v538
+        Debris:AddItem(v536, 3)
+        v536.Parent = workspace
+        v536.CFrame = v537
         TweenService:Create(
-            v544,
+            v536,
             TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Size = Vector3.new(120, 120, 120), Transparency = 1 }
         ):Play()
-        v544.seondBossOrbExplosion:Play()
+        v536.seondBossOrbExplosion:Play()
 
         return
     end
 
-    if arg23 == "Third Boss Bouncing Orb Beam" then
-        local v553 = game.ReplicatedStorage.enemyProjectiles.thirdBossBouncingOrbBeam:Clone()
-        Debris:AddItem(v553, 20)
-        v553:SetPrimaryPartCFrame(arg24 + Vector3.new(0, 4, 0))
-        v553.Parent = workspace
+    if arg24 == "Third Boss Bouncing Orb Beam" then
+        local v547 = game.ReplicatedStorage.enemyProjectiles.thirdBossBouncingOrbBeam:Clone()
+        Debris:AddItem(v547, 20)
+        v547:SetPrimaryPartCFrame(arg25 + Vector3.new(0, 4, 0))
+        v547.Parent = workspace
         TweenService:Create(
-            v553.Beam,
+            v547.Beam,
             TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
             { Size = Vector3.new(24.429, 66.597, 24.429) }
         ):Play()
         TweenService:Create(
-            v553.Ring1,
+            v547.Ring1,
             TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
             { Size = Vector3.new(33.447, 1.898, 33.447) }
         ):Play()
         TweenService:Create(
-            v553.Ring2,
+            v547.Ring2,
             TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
             { Size = Vector3.new(45.049, 2.556, 45.049) }
         ):Play()
-        local v566 = tick() + 6
-        local v567 = nil
-        v567 = RunService.Heartbeat:Connect(function() -- line: 2121
+        local v558 = tick() + 6
+        local v559 = nil
+        v559 = RunService.Heartbeat:Connect(function() -- line: 2180
             -- upvalues:
-            --  [1] v553 (copy)
-            --  [2] v566 (copy)
-            --  [3] v567 (ref)
+            --  [1] v547 (copy)
+            --  [2] v558 (copy)
+            --  [3] v559 (ref)
 
-            v553.Ring1.CFrame = v553.Ring1.CFrame * CFrame.Angles(0, 0.20943951023931956, 0)
-            v553.Ring2.CFrame = v553.Ring2.CFrame * CFrame.Angles(0, 0.2792526803190927, 0)
+            v547.Ring1.CFrame = v547.Ring1.CFrame * CFrame.Angles(0, 0.20943951023931956, 0)
+            v547.Ring2.CFrame = v547.Ring2.CFrame * CFrame.Angles(0, 0.2792526803190927, 0)
 
-            if tick() > v566 then
-                v567:Disconnect()
-                v567 = nil
-                v553:Destroy()
+            if tick() > v558 then
+                v559:Disconnect()
+                v559 = nil
+                v547:Destroy()
             end
         end)
 
         return
     end
 
-    if arg23 == "Third Boss Orb Explosion" then
-        local v572 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v572.Transparency = 0
-        v572.Color = Color3.fromRGB(255, 186, 129)
-        Debris:AddItem(v572, 3)
-        v572.Parent = workspace
-        v572.CFrame = arg24
+    if arg24 == "Third Boss Orb Explosion" then
+        local v564 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+        v564.Transparency = 0
+        v564.Color = Color3.fromRGB(255, 186, 129)
+        Debris:AddItem(v564, 3)
+        v564.Parent = workspace
+        v564.CFrame = arg25
         TweenService:Create(
-            v572,
+            v564,
             TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Size = Vector3.new(90, 90, 90), Transparency = 1 }
         ):Play()
-        v572.firstBossLand:Play()
+        v564.firstBossLand:Play()
 
         return
     end
 
-    if arg23 == "Third Boss Sideways Missile" then
-        local v584 = arg24[1]
-        local v585 = arg24[2]
-        local v586 = arg24[3]
-        local v587 = arg24[4]
-        local v588 = arg24[5]
-        local v589 = game.ReplicatedStorage.enemyProjectiles.thirdBossMissile:Clone()
-        Debris:AddItem(v589, 10)
-        v589.CFrame = v588
-        v589.Parent = workspace
-        local v594 = game.ReplicatedStorage.enemyProjectiles.thirdBossBeamPart:Clone()
-        Debris:AddItem(v594, 0.4)
-        v594.Position = v588.Position
-        v594.Attachment2.WorldPosition = (v588 + v588.LookVector * v584).Position
-        v594.Parent = workspace
-        local v600 = 0
-        local v601 = nil
-        v601 = RunService.Heartbeat:Connect(function() -- line: 2163
+    if arg24 == "Third Boss Sideways Missile" then
+        local v573 = arg25[1]
+        local v574 = arg25[2]
+        local v575 = arg25[3]
+        local v576 = arg25[4]
+        local v577 = arg25[5]
+        local v578 = game.ReplicatedStorage.enemyProjectiles.thirdBossMissile:Clone()
+        Debris:AddItem(v578, 10)
+        v578.CFrame = v577
+        v578.Parent = workspace
+        local v583 = game.ReplicatedStorage.enemyProjectiles.thirdBossBeamPart:Clone()
+        Debris:AddItem(v583, 0.4)
+        v583.Position = v577.Position
+        v583.Attachment2.WorldPosition = (v577 + v577.LookVector * v573).Position
+        v583.Parent = workspace
+        local v589 = 0
+        local v590 = nil
+        v590 = RunService.Heartbeat:Connect(function() -- line: 2222
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v586 (copy)
-            --  [3] v585 (copy)
-            --  [4] v588 (copy)
-            --  [5] v584 (copy)
-            --  [6] v589 (copy)
-            --  [7] v600 (ref)
-            --  [8] v587 (copy)
-            --  [9] v601 (ref)
+            --  [2] v575 (copy)
+            --  [3] v574 (copy)
+            --  [4] v577 (copy)
+            --  [5] v573 (copy)
+            --  [6] v578 (copy)
+            --  [7] v589 (ref)
+            --  [8] v576 (copy)
+            --  [9] v590 (ref)
 
-            local v603 = TimeSync_m:GetTime()
-            local v604 = math.clamp((v603 - v586) / v585, 0, 1)
-            local v606 = (v588 + v588.LookVector * (v604 * v584 - 10)) * CFrame.Angles(
+            local v592 = TimeSync_m:GetTime()
+            local v593 = math.clamp((v592 - v575) / v574, 0, 1)
+            local v595 = (v577 + v577.LookVector * (v593 * v573 - 10)) * CFrame.Angles(
                 0,
                 3.141592653589793,
                 0
             )
-            v589.CFrame = v606 * CFrame.Angles(0, 0, (math.rad(v600)))
-            v600 += 10
+            v578.CFrame = v595 * CFrame.Angles(0, 0, (math.rad(v589)))
+            v589 += 10
 
-            if v603 > v587 then
-                v601:Disconnect()
-                v601 = nil
-                v589.Transparency = 1
+            if v592 > v576 then
+                v590:Disconnect()
+                v590 = nil
+                v578.Transparency = 1
             end
         end)
 
         return
     end
 
-    if arg23 == "Spearman Strike" then
-        spawn(function() -- line: 2184
+    if arg24 == "Spearman Strike" then
+        spawn(function() -- line: 2243
             -- upvalues:
             --  [1] Debris (ref)
-            --  [2] arg24 (copy)
+            --  [2] arg25 (copy)
             --  [3] TweenService (ref)
 
-            local v608 = game.ReplicatedStorage.enemyProjectiles.spearmanStrike:Clone()
-            Debris:AddItem(v608, 5)
-            v608.CFrame = arg24
-            v608.Parent = workspace
+            local v597 = game.ReplicatedStorage.enemyProjectiles.spearmanStrike:Clone()
+            Debris:AddItem(v597, 5)
+            v597.CFrame = arg25
+            v597.Parent = workspace
             TweenService:Create(
-                v608,
+                v597,
                 TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
                 {
                     Size = Vector3.new(10.888, 3.905, 31),
-                    CFrame = v608.CFrame - v608.CFrame.LookVector * 65
+                    CFrame = v597.CFrame - v597.CFrame.LookVector * 65
                 }
             ):Play()
             wait(0.2)
             TweenService:Create(
-                v608,
+                v597,
                 TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
                 { Transparency = 1 }
             ):Play()
         end)
-        local v612 = game.ReplicatedStorage.enemyProjectiles.spearmanStrike:Clone()
-        Debris:AddItem(v612, 5)
+        local v600 = game.ReplicatedStorage.enemyProjectiles.spearmanStrike:Clone()
+        Debris:AddItem(v600, 5)
         local Angles_15 = CFrame.Angles(0, 3.141592653589793, 0)
-        v612.CFrame = arg24 * Angles_15
-        v612.Parent = workspace
-        local v621 = TweenService
-        local New_20 = TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-        v621:Create(
-            v612,
+        v600.CFrame = arg25 * Angles_15
+        v600.Parent = workspace
+        local New_20 = TweenInfo.new
+        local EasingStyle_Linear_6 = Enum.EasingStyle.Linear
+        local EasingDirection_Out_17 = Enum.EasingDirection.Out
+        local v608 = TweenService
+        New_20 = New_20(0.25, EasingStyle_Linear_6, EasingDirection_Out_17)
+        v608:Create(
+            v600,
             New_20,
             {
                 Size = Vector3.new(10.888, 3.905, 31),
-                CFrame = v612.CFrame - v612.CFrame.LookVector * 65
+                CFrame = v600.CFrame - v600.CFrame.LookVector * 65
             }
         ):Play()
         wait(0.2)
         TweenService:Create(
-            v612,
+            v600,
             TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
             { Transparency = 1 }
         ):Play()
@@ -3461,32 +3532,32 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
         return
     end
 
-    if arg23 == "Warrior Line Strike" then
-        local v632 = game.ReplicatedStorage.enemyProjectiles.spearmanStrike:Clone()
-        v632.Color = Color3.fromRGB(0, 125, 140)
-        local Trail = v632:FindFirstChildWhichIsA("Trail")
+    if arg24 == "Warrior Line Strike" then
+        local v617 = game.ReplicatedStorage.enemyProjectiles.spearmanStrike:Clone()
+        v617.Color = Color3.fromRGB(0, 125, 140)
+        local Trail = v617:FindFirstChildWhichIsA("Trail")
 
         if Trail then
             Trail.Color = ColorSequence.new(Color3.fromRGB(0, 125, 140))
         end
 
-        Debris:AddItem(v632, 5)
+        Debris:AddItem(v617, 5)
         local Angles_16 = CFrame.Angles(0, 3.141592653589793, 0)
-        v632.CFrame = arg24 * Angles_16
-        v632.Parent = workspace
-        local v649 = TweenService
+        v617.CFrame = arg25 * Angles_16
+        v617.Parent = workspace
+        local v634 = TweenService
         local New_23 = TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-        v649:Create(
-            v632,
+        v634:Create(
+            v617,
             New_23,
             {
                 Size = Vector3.new(10.888, 3.905, 31),
-                CFrame = v632.CFrame - v632.CFrame.LookVector * 65
+                CFrame = v617.CFrame - v617.CFrame.LookVector * 65
             }
         ):Play()
         wait(0.2)
         TweenService:Create(
-            v632,
+            v617,
             TweenInfo.new(0.25, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
             { Transparency = 1 }
         ):Play()
@@ -3494,41 +3565,41 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
         return
     end
 
-    if arg23 == "Bonus Boss Rune Color Change" then
-        local FromRGB_6 = Color3.fromRGB(255, 89, 89)
-        local t_69 = {}
-        local v662 = pairs
-        local v663 = workspace
+    if arg24 == "Bonus Boss Rune Color Change" then
+        local color_2 = Color3.fromRGB(255, 89, 89)
+        local t_72 = {}
+        local v646 = pairs
+        local v647 = workspace
 
-        for _, val_33 in v662(v663:GetChildren()) do
-            if val_33.Name == "bossRoomRunes" then
-                table.insert(t_69, val_33)
+        for _, val_34 in v646(v647:GetChildren()) do
+            if val_34.Name == "bossRoomRunes" then
+                table.insert(t_72, val_34)
             end
         end
 
-        if #t_69 == 0 then
-            local v667 = pairs
-            local v668 = workspace
+        if #t_72 == 0 then
+            local v651 = pairs
+            local v652 = workspace
 
-            for _, val_34 in v667(v668:GetDescendants()) do
-                if val_34.Name == "bossRoomRunes" then
-                    table.insert(t_69, val_34)
+            for _, val_35 in v651(v652:GetDescendants()) do
+                if val_35.Name == "bossRoomRunes" then
+                    table.insert(t_72, val_35)
                 end
             end
         end
 
-        local v671 = pairs
-        local v672 = t_69
+        local v655 = pairs
+        local v656 = t_72
 
-        for _, val_35 in v671(v672) do
-            if val_35:IsA("BasePart") then
-                val_35.Color = FromRGB_6
+        for _, val_36 in v655(v656) do
+            if val_36:IsA("BasePart") then
+                val_36.Color = color_2
             else
-                local v675 = pairs
+                local v659 = pairs
 
-                for _, val_36 in v675(val_35:GetDescendants()) do
-                    if val_36:IsA("BasePart") then
-                        val_36.Color = FromRGB_6
+                for _, val_37 in v659(val_36:GetDescendants()) do
+                    if val_37:IsA("BasePart") then
+                        val_37.Color = color_2
                     end
                 end
             end
@@ -3537,16 +3608,13 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
         return
     end
 
-    if arg23 == "Bonus Boss Safe Color Zone Activated" then
-        local v676 = pairs
-        local BonusBossColorSafeSpots = workspace.bonusBossColorSafeSpots
+    if arg24 == "Bonus Boss Safe Color Zone Activated" then
+        for _, val_38 in pairs(workspace.bonusBossColorSafeSpots:GetChildren()) do
+            local v661 = pairs
 
-        for _, val_37 in v676(BonusBossColorSafeSpots:GetChildren()) do
-            local v678 = pairs
-
-            for _, val_38 in v678(val_37:GetChildren()) do
-                if val_38:IsA("Beam") then
-                    val_38.Enabled = true
+            for _, val_39 in v661(val_38:GetChildren()) do
+                if val_39:IsA("Beam") then
+                    val_39.Enabled = true
                 end
             end
         end
@@ -3554,16 +3622,13 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
         return
     end
 
-    if arg23 == "Bonus Boss Safe Color Zone Deactivated" then
-        local v679 = pairs
-        local BonusBossColorSafeSpots_1 = workspace.bonusBossColorSafeSpots
+    if arg24 == "Bonus Boss Safe Color Zone Deactivated" then
+        for _, val_40 in pairs(workspace.bonusBossColorSafeSpots:GetChildren()) do
+            local v663 = pairs
 
-        for _, val_39 in v679(BonusBossColorSafeSpots_1:GetChildren()) do
-            local v681 = pairs
-
-            for _, val_40 in v681(val_39:GetChildren()) do
-                if val_40:IsA("Beam") then
-                    val_40.Enabled = false
+            for _, val_41 in v663(val_40:GetChildren()) do
+                if val_41:IsA("Beam") then
+                    val_41.Enabled = false
                 end
             end
         end
@@ -3571,72 +3636,103 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
         return
     end
 
-    if arg23 == "Bonus Boss Tall Swirly" then
-        local v682 = arg24[1]
-        local v683 = arg24[2]
-        local t_77 = {}
-        local FromRGB_7 = Color3.fromRGB(255, 78, 78)
-        t_77.red = FromRGB_7
-        local FromRGB_8 = Color3.fromRGB(255, 250, 94)
-        t_77.yellow = FromRGB_8
-        local FromRGB_9 = Color3.fromRGB(78, 255, 69)
-        t_77.green = FromRGB_9
-        local v694 = game.ReplicatedStorage.enemyProjectiles.bonusBossTallSwirly:Clone()
-        Debris:AddItem(v694, 10)
-        v694:SetPrimaryPartCFrame(workspace.thirdBossMiddlePart.CFrame)
-        local v699 = ipairs
+    if arg24 == "Bonus Boss Tall Swirly" then
+        local v664 = arg25[1]
+        local v665 = game.ReplicatedStorage.enemyProjectiles.bonusBossTallSwirly
+        local v666 = arg25[2]
+        v665 = v665:Clone()
+        Debris:AddItem(v665, 10)
+        v665:SetPrimaryPartCFrame(workspace.thirdBossMiddlePart.CFrame)
+        local t_73 = { swirly = v665, color = t_55.colors[v664], timeToExplode = v666 }
+        t_73.colorName = v664
+        t_55.active = t_73
+        setSafeColorArrow(v664)
+        local v676 = ipairs
 
-        for _, val_41 in v699(v694:GetDescendants()) do
-            if val_41:IsA("BasePart") then
-                val_41.Color = t_77[v682]
-                val_41.CanCollide = false
-                val_41.CanTouch = false
-                val_41.CanQuery = false
+        for _, val_42 in v676(v665:GetDescendants()) do
+            if val_42:IsA("BasePart") then
+                val_42.Color = t_73.color
+                val_42.CanCollide = false
+                val_42.CanTouch = false
+                val_42.CanQuery = false
             end
         end
 
-        v694.Parent = workspace
-        local v706 = nil
-        v706 = RunService.Heartbeat:Connect(function() -- line: 2301
+        v665.Parent = workspace
+        local v682 = nil
+        v682 = RunService.Heartbeat:Connect(function() -- line: 2364
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v683 (copy)
-            --  [3] v706 (ref)
-            --  [4] TweenService (ref)
-            --  [5] v694 (copy)
-            --  [6] t_77 (copy)
-            --  [7] v682 (copy)
+            --  [2] t_73 (copy)
+            --  [3] v682 (ref)
+            --  [4] t_55 (ref)
+            --  [5] LocalPlayer (ref)
+            --  [6] TweenService (ref)
+            --  [7] v665 (copy)
             --  [8] Debris (ref)
 
-            if TimeSync_m:GetTime() > v683 then
-                v706:Disconnect()
-                v706 = nil
+            if TimeSync_m:GetTime() > t_73.timeToExplode then
+                v682:Disconnect()
+                v682 = nil
+
+                if t_55.active == t_73 then
+                    t_55.active = nil
+                    local PlayerGui_1 = LocalPlayer:FindFirstChild("PlayerGui")
+                    local v685 = PlayerGui_1
+
+                    if v685 then
+                        v685 = PlayerGui_1:FindFirstChild("bonusBossHealth")
+                    end
+
+                    local v686 = v685
+
+                    if v686 then
+                        v686 = v685:FindFirstChild("healthFrame")
+                    end
+
+                    local v687 = v686
+
+                    if v687 then
+                        v687 = v686:FindFirstChild("safeColorArrow")
+                    end
+
+                    local v688 = v687
+
+                    if v688 then
+                        v688 = v687:FindFirstChild("arrow")
+                    end
+
+                    if v688 then
+                        v687.Visible = false
+                    end
+                end
+
                 TweenService:Create(
-                    v694.tallSwirl,
+                    v665.tallSwirl,
                     TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Size = Vector3.new(150, 106.241, 150), Transparency = 1 }
                 ):Play()
                 TweenService:Create(
-                    v694.Whirl1,
+                    v665.Whirl1,
                     TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Size = Vector3.new(150, 15, 150), Transparency = 1 }
                 ):Play()
                 TweenService:Create(
-                    v694.Whirl2,
+                    v665.Whirl2,
                     TweenInfo.new(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Size = Vector3.new(170, 25, 170), Transparency = 1 }
                 ):Play()
-                local v711 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-                v711.Transparency = 0
-                v711.Color = t_77[v682]
-                v711.CanCollide = false
-                v711.CanTouch = false
-                v711.CanQuery = false
-                Debris:AddItem(v711, 3)
-                v711.Parent = workspace
-                v711.CFrame = workspace.thirdBossMiddlePart.CFrame
+                local v692 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+                v692.Transparency = 0
+                v692.Color = t_73.color
+                v692.CanCollide = false
+                v692.CanTouch = false
+                v692.CanQuery = false
+                Debris:AddItem(v692, 3)
+                v692.Parent = workspace
+                v692.CFrame = workspace.thirdBossMiddlePart.CFrame
                 TweenService:Create(
-                    v711,
+                    v692,
                     TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Size = Vector3.new(260, 260, 260), Transparency = 1 }
                 ):Play()
@@ -3644,307 +3740,333 @@ game.ReplicatedStorage.remotes:WaitForChild("northernBossSpecficEvents").OnClien
                 return
             end
 
-            v694.tallSwirl.CFrame = v694.tallSwirl.CFrame * CFrame.Angles(0, 0.5235987755982988, 0)
-            v694.Whirl1.CFrame = v694.Whirl1.CFrame * CFrame.Angles(0, 0.4363323129985824, 0)
-            v694.Whirl2.CFrame = v694.Whirl2.CFrame * CFrame.Angles(0, -0.5235987755982988, 0)
+            v665.tallSwirl.CFrame = v665.tallSwirl.CFrame * CFrame.Angles(0, 0.5235987755982988, 0)
+            v665.Whirl1.CFrame = v665.Whirl1.CFrame * CFrame.Angles(0, 0.4363323129985824, 0)
+            v665.Whirl2.CFrame = v665.Whirl2.CFrame * CFrame.Angles(0, -0.5235987755982988, 0)
         end)
 
         return
     end
 
-    if arg23 == "Bonus Boss Flame Pre Target" then
-        local v717 = arg24[1]
-        local v718 = arg24[2]
-        local v719 = game.ReplicatedStorage.enemyProjectiles.bonusBossFlamePreCast:Clone()
-        Debris:AddItem(v719, 10)
-        v719.Parent = workspace
-        local v724 = nil
-        v724 = RunService.Heartbeat:Connect(function() -- line: 2355
-            -- upvalues:
-            --  [1] TimeSync_m (ref)
-            --  [2] v718 (copy)
-            --  [3] v717 (copy)
-            --  [4] v719 (copy)
-            --  [5] v724 (ref)
+    if arg24 == "Bonus Boss Tall Swirly Recolor" then
+        local v698 = arg25[1]
+        local Active = t_55.active
 
-            if TimeSync_m:GetTime() < v718 then
-                if v717 then
-                    local Humanoid_9 = v717:FindFirstChild("Humanoid")
-                    local HumanoidRootPart_23 = v717:FindFirstChild("HumanoidRootPart")
+        if Active then
+            if Active.swirly.Parent then
+                local v701 = t_55.colors[v698]
+                local v702 = arg25[2]
+                Active.color = v701
+                Active.timeToExplode = v702
+                Active.colorName = v698
+                setSafeColorArrow(v698)
+                local v705 = ipairs
+                local Swirly_1 = Active.swirly
 
-                    if Humanoid_9 and Humanoid_9.Health > 0 and HumanoidRootPart_23 then
-                        v719.CFrame = CFrame.new(
-                            HumanoidRootPart_23.Position - Vector3.new(0, 1.5, 0)
-                        ) * CFrame.Angles(0, 0, 1.5707963267948966)
-
-                        return
+                for _, val_43 in v705(Swirly_1:GetDescendants()) do
+                    if val_43:IsA("BasePart") then
+                        val_43.Color = Active.color
                     end
                 end
-            else
-                v724:Disconnect()
-                v724 = nil
-                v719:Destroy()
+
+                return
             end
-        end)
+        end
+    else
+        if arg24 == "Bonus Boss Flame Pre Target" then
+            local v707 = arg25[1]
+            local v708 = arg25[2]
+            local v709 = game.ReplicatedStorage.enemyProjectiles.bonusBossFlamePreCast:Clone()
+            Debris:AddItem(v709, 10)
+            v709.Parent = workspace
+            local v714 = nil
+            v714 = RunService.Heartbeat:Connect(function() -- line: 2446
+                -- upvalues:
+                --  [1] TimeSync_m (ref)
+                --  [2] v708 (copy)
+                --  [3] v707 (copy)
+                --  [4] v709 (copy)
+                --  [5] v714 (ref)
 
-        return
-    end
+                if TimeSync_m:GetTime() < v708 then
+                    if v707 then
+                        local Humanoid_9 = v707:FindFirstChild("Humanoid")
+                        local HumanoidRootPart_23 = v707:FindFirstChild("HumanoidRootPart")
 
-    if arg23 == "Bonus Boss Bad Orb Explosion" then
-        local v728 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v728.Transparency = 0
-        v728.Color = Color3.fromRGB(255, 70, 70)
-        Debris:AddItem(v728, 3)
-        v728.Parent = workspace
-        v728.CFrame = arg24
-        TweenService:Create(
-            v728,
-            TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-            { Size = Vector3.new(260, 260, 260), Transparency = 1 }
-        ):Play()
+                        if Humanoid_9 and Humanoid_9.Health > 0 and HumanoidRootPart_23 then
+                            v709.CFrame = CFrame.new(
+                                HumanoidRootPart_23.Position - Vector3.new(0, 1.5, 0)
+                            ) * CFrame.Angles(0, 0, 1.5707963267948966)
 
-        return
-    end
+                            return
+                        end
+                    end
+                else
+                    v714:Disconnect()
+                    v714 = nil
+                    v709:Destroy()
+                end
+            end)
 
-    if arg23 == "Bonus Boss Good Orb Explosion" then
-        local v740 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v740.Transparency = 0
-        v740.Color = Color3.fromRGB(83, 255, 94)
-        Debris:AddItem(v740, 3)
-        v740.Parent = workspace
-        v740.CFrame = arg24
-        TweenService:Create(
-            v740,
-            TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-            { Size = Vector3.new(260, 260, 260), Transparency = 1 }
-        ):Play()
+            return
+        end
 
-        return
-    end
+        if arg24 == "Bonus Boss Bad Orb Explosion" then
+            local v718 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+            v718.Transparency = 0
+            v718.Color = Color3.fromRGB(255, 70, 70)
+            Debris:AddItem(v718, 3)
+            v718.Parent = workspace
+            v718.CFrame = arg25
+            TweenService:Create(
+                v718,
+                TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                { Size = Vector3.new(260, 260, 260), Transparency = 1 }
+            ):Play()
 
-    if arg23 == "Bonus Boss Freezing Orb Beam" then
-        local v752 = game.ReplicatedStorage.enemyProjectiles.bonusBossFreezingOrbBeam:Clone()
-        Debris:AddItem(v752, 20)
-        v752:SetPrimaryPartCFrame(arg24 + Vector3.new(0, 4, 0))
-        v752.Parent = workspace
-        TweenService:Create(
-            v752.Beam,
-            TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-            { Size = Vector3.new(24.429, 66.597, 24.429) }
-        ):Play()
-        TweenService:Create(
-            v752.Ring1,
-            TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-            { Size = Vector3.new(33.447, 1.898, 33.447) }
-        ):Play()
-        TweenService:Create(
-            v752.Ring2,
-            TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-            { Size = Vector3.new(45.049, 2.556, 45.049) }
-        ):Play()
-        local v765 = tick() + 6
-        local v766 = nil
-        v766 = RunService.Heartbeat:Connect(function() -- line: 2409
-            -- upvalues:
-            --  [1] v752 (copy)
-            --  [2] v765 (copy)
-            --  [3] v766 (ref)
+            return
+        end
 
-            v752.Ring1.CFrame = v752.Ring1.CFrame * CFrame.Angles(0, 0.20943951023931956, 0)
-            v752.Ring2.CFrame = v752.Ring2.CFrame * CFrame.Angles(0, 0.2792526803190927, 0)
+        if arg24 == "Bonus Boss Good Orb Explosion" then
+            local v727 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+            v727.Transparency = 0
+            v727.Color = Color3.fromRGB(83, 255, 94)
+            Debris:AddItem(v727, 3)
+            v727.Parent = workspace
+            v727.CFrame = arg25
+            TweenService:Create(
+                v727,
+                TweenInfo.new(0.8, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                { Size = Vector3.new(260, 260, 260), Transparency = 1 }
+            ):Play()
 
-            if tick() > v765 then
-                v766:Disconnect()
-                v766 = nil
-                v752:Destroy()
-            end
-        end)
+            return
+        end
 
-        return
-    end
+        if arg24 == "Bonus Boss Freezing Orb Beam" then
+            local v736 = game.ReplicatedStorage.enemyProjectiles.bonusBossFreezingOrbBeam:Clone()
+            Debris:AddItem(v736, 20)
+            v736:SetPrimaryPartCFrame(arg25 + Vector3.new(0, 4, 0))
+            v736.Parent = workspace
+            TweenService:Create(
+                v736.Beam,
+                TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                { Size = Vector3.new(24.429, 66.597, 24.429) }
+            ):Play()
+            TweenService:Create(
+                v736.Ring1,
+                TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                { Size = Vector3.new(33.447, 1.898, 33.447) }
+            ):Play()
+            TweenService:Create(
+                v736.Ring2,
+                TweenInfo.new(0.3, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+                { Size = Vector3.new(45.049, 2.556, 45.049) }
+            ):Play()
+            local v747 = tick() + 6
+            local v748 = nil
+            v748 = RunService.Heartbeat:Connect(function() -- line: 2500
+                -- upvalues:
+                --  [1] v736 (copy)
+                --  [2] v747 (copy)
+                --  [3] v748 (ref)
 
-    if arg23 == "Bonus Boss Orb Explosion" then
-        local v771 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v771.Transparency = 0
-        v771.Color = Color3.fromRGB(0, 251, 255)
-        Debris:AddItem(v771, 3)
-        v771.Parent = workspace
-        v771.CFrame = arg24
-        TweenService:Create(
-            v771,
-            TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-            { Size = Vector3.new(45, 45, 45), Transparency = 1 }
-        ):Play()
-        v771.firstBossLand:Play()
+                v736.Ring1.CFrame = v736.Ring1.CFrame * CFrame.Angles(0, 0.20943951023931956, 0)
+                v736.Ring2.CFrame = v736.Ring2.CFrame * CFrame.Angles(0, 0.2792526803190927, 0)
 
-        return
-    end
+                if tick() > v747 then
+                    v748:Disconnect()
+                    v748 = nil
+                    v736:Destroy()
+                end
+            end)
 
-    if arg23 == "Bonus Boss Sideways Missile" then
-        local v783 = arg24[1]
-        local v784 = arg24[2]
-        local v785 = arg24[3]
-        local v786 = arg24[4]
-        local v787 = arg24[5]
-        local FromRGB_13 = Color3.fromRGB(255, 89, 89)
-        local v791 = game.ReplicatedStorage.enemyProjectiles.thirdBossMissile:Clone()
-        Debris:AddItem(v791, 10)
-        v791.Color = FromRGB_13
-        v791.CFrame = v787
-        v791.Parent = workspace
-        local v795 = game.ReplicatedStorage.enemyProjectiles.thirdBossBeamPart:Clone()
-        Debris:AddItem(v795, 0.4)
-        v795.Beam.Color = ColorSequence.new(FromRGB_13)
-        v795.Position = v787.Position
-        v795.Attachment2.WorldPosition = (v787 + v787.LookVector * v783).Position
-        v795.Parent = workspace
-        local v799 = 0
-        local v800 = nil
-        v800 = RunService.Heartbeat:Connect(function() -- line: 2461
-            -- upvalues:
-            --  [1] TimeSync_m (ref)
-            --  [2] v785 (copy)
-            --  [3] v784 (copy)
-            --  [4] v787 (copy)
-            --  [5] v783 (copy)
-            --  [6] v791 (copy)
-            --  [7] v799 (ref)
-            --  [8] v786 (copy)
-            --  [9] v800 (ref)
+            return
+        end
 
-            local v801 = TimeSync_m:GetTime()
-            local v802 = math.clamp((v801 - v785) / v784, 0, 1)
-            local v804 = (v787 + v787.LookVector * (v802 * v783 - 10)) * CFrame.Angles(
-                0,
-                3.141592653589793,
-                0
-            )
-            v791.CFrame = v804 * CFrame.Angles(0, 0, (math.rad(v799)))
-            v799 += 10
+        if arg24 == "Bonus Boss Orb Explosion" then
+            local v753 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+            v753.Transparency = 0
+            v753.Color = Color3.fromRGB(0, 251, 255)
+            Debris:AddItem(v753, 3)
+            v753.Parent = workspace
+            v753.CFrame = arg25
+            TweenService:Create(
+                v753,
+                TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                { Size = Vector3.new(45, 45, 45), Transparency = 1 }
+            ):Play()
+            v753.firstBossLand:Play()
 
-            if v801 > v786 then
-                v800:Disconnect()
-                v800 = nil
-                v791.Transparency = 1
-            end
-        end)
+            return
+        end
 
-        return
-    end
+        if arg24 == "Bonus Boss Sideways Missile" then
+            local v762 = arg25[1]
+            local v763 = arg25[2]
+            local v764 = arg25[3]
+            local v765 = arg25[4]
+            local v766 = arg25[5]
+            local FromRGB_2 = Color3.fromRGB(255, 89, 89)
+            local v770 = game.ReplicatedStorage.enemyProjectiles.thirdBossMissile:Clone()
+            Debris:AddItem(v770, 10)
+            v770.Color = FromRGB_2
+            v770.CFrame = v766
+            v770.Parent = workspace
+            local v774 = game.ReplicatedStorage.enemyProjectiles.thirdBossBeamPart:Clone()
+            Debris:AddItem(v774, 0.4)
+            v774.Beam.Color = ColorSequence.new(FromRGB_2)
+            v774.Position = v766.Position
+            v774.Attachment2.WorldPosition = (v766 + v766.LookVector * v762).Position
+            v774.Parent = workspace
+            local v778 = 0
+            local v779 = nil
+            v779 = RunService.Heartbeat:Connect(function() -- line: 2552
+                -- upvalues:
+                --  [1] TimeSync_m (ref)
+                --  [2] v764 (copy)
+                --  [3] v763 (copy)
+                --  [4] v766 (copy)
+                --  [5] v762 (copy)
+                --  [6] v770 (copy)
+                --  [7] v778 (ref)
+                --  [8] v765 (copy)
+                --  [9] v779 (ref)
 
-    if arg23 == "Bonus Boss Missile Explosion" then
-        local v806 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v806.Transparency = 0
-        v806.Color = Color3.fromRGB(255, 70, 70)
-        Debris:AddItem(v806, 3)
-        v806.Parent = workspace
-        v806.CFrame = arg24
-        TweenService:Create(
-            v806,
-            TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-            { Size = Vector3.new(90, 90, 90), Transparency = 1 }
-        ):Play()
-        v806.firstBossLand:Play()
+                local v780 = TimeSync_m:GetTime()
+                local v781 = math.clamp((v780 - v764) / v763, 0, 1)
+                local v783 = (v766 + v766.LookVector * (v781 * v762 - 10)) * CFrame.Angles(
+                    0,
+                    3.141592653589793,
+                    0
+                )
+                v770.CFrame = v783 * CFrame.Angles(0, 0, (math.rad(v778)))
+                v778 += 10
+
+                if v780 > v765 then
+                    v779:Disconnect()
+                    v779 = nil
+                    v770.Transparency = 1
+                end
+            end)
+
+            return
+        end
+
+        if arg24 == "Bonus Boss Missile Explosion" then
+            local v785 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+            v785.Transparency = 0
+            v785.Color = Color3.fromRGB(255, 70, 70)
+            Debris:AddItem(v785, 3)
+            v785.Parent = workspace
+            v785.CFrame = arg25
+            TweenService:Create(
+                v785,
+                TweenInfo.new(0.45, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
+                { Size = Vector3.new(90, 90, 90), Transparency = 1 }
+            ):Play()
+            v785.firstBossLand:Play()
+        end
     end
 end)
-local t_78 = {}
-local t_79 = {}
+local t_81 = {}
+local t_82 = {}
 game.ReplicatedStorage.remotes:WaitForChild("gildedBossSpecficEvents").OnClientEvent:Connect(function(
-    arg25,
-    arg26
-) -- line: 2494
+    arg26,
+    arg27
+) -- line: 2585
     -- upvalues:
     --  [1] v1 (copy)
     --  [2] CameraShaker_m (copy)
-    --  [3] t_79 (copy)
+    --  [3] t_82 (copy)
     --  [4] Debris (copy)
     --  [5] TweenService (copy)
     --  [6] RunService (copy)
     --  [7] TimeSync_m (copy)
     --  [8] rng (copy)
-    --  [9] t_78 (copy)
+    --  [9] t_81 (copy)
     --  [10] LocalPlayer (copy)
 
-    if arg25 == "Shake Screens" then
-        v1:Shake(CameraShaker_m.Presets[arg26])
+    if arg26 == "Shake Screens" then
+        v1:Shake(CameraShaker_m.Presets[arg27])
 
         return
     end
 
-    if arg25 == "First Boss Move Orb" then
-        local v819 = arg26[1]
-        local v820 = arg26[2]
-        local v821 = arg26[3]
-        local v822 = arg26[4]
-        local v823 = arg26[5]
-        local v824 = nil
+    if arg26 == "First Boss Move Orb" then
+        local v795 = arg27[1]
+        local v796 = arg27[2]
+        local v797 = arg27[3]
+        local v798 = arg27[4]
+        local v799 = arg27[5]
+        local v800 = nil
 
-        if t_79[v823] then
-            v824 = t_79[v823]
+        if t_82[v799] then
+            v800 = t_82[v799]
         else
-            v824 = game.ReplicatedStorage.enemyProjectiles.firstBossMovingOrb:Clone()
-            Debris:AddItem(v824, 18)
-            v824.CFrame = v819
-            v824.Parent = workspace
-            t_79[v823] = v824
+            v800 = game.ReplicatedStorage.enemyProjectiles.firstBossMovingOrb:Clone()
+            Debris:AddItem(v800, 18)
+            v800.CFrame = v795
+            v800.Parent = workspace
+            t_82[v799] = v800
         end
 
-        local v833 = nil
-        local New_33 = CFrame.new(v819.Position, v820)
-        local Magnitude_2 = (v819.Position - v820).Magnitude
-        local v835 = Magnitude_2 / v822
-        local v836 = v821 + v835
-        local v837 = game.ReplicatedStorage.enemyProjectiles.firstBossOrbPrecastLine:Clone()
-        Debris:AddItem(v837, 4)
-        v837:SetPrimaryPartCFrame(v819)
-        v837.precast.Size = Vector3.new(10, 2.5, Magnitude_2)
-        v837.precast.CFrame += v819.LookVector * Magnitude_2 / 2
-        v837.circlePrecast.CFrame += v819.LookVector * Magnitude_2
-        v837.Parent = workspace
-        spawn(function() -- line: 2537
+        local v809 = nil
+        local New_33 = CFrame.new(v795.Position, v796)
+        local Magnitude_2 = (v795.Position - v796).Magnitude
+        local v811 = Magnitude_2 / v798
+        local v812 = v797 + v811
+        local v813 = game.ReplicatedStorage.enemyProjectiles.firstBossOrbPrecastLine:Clone()
+        Debris:AddItem(v813, 4)
+        v813:SetPrimaryPartCFrame(v795)
+        v813.precast.Size = Vector3.new(10, 2.5, Magnitude_2)
+        v813.precast.CFrame += v795.LookVector * Magnitude_2 / 2
+        v813.circlePrecast.CFrame += v795.LookVector * Magnitude_2
+        v813.Parent = workspace
+        spawn(function() -- line: 2628
             -- upvalues:
             --  [1] TweenService (ref)
-            --  [2] v837 (copy)
+            --  [2] v813 (copy)
 
             wait(0.2)
             TweenService:Create(
-                v837.precast,
+                v813.precast,
                 TweenInfo.new(1.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                 { Transparency = 1 }
             ):Play()
             TweenService:Create(
-                v837.circlePrecast,
+                v813.circlePrecast,
                 TweenInfo.new(1.2, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                 { Transparency = 1 }
             ):Play()
         end)
-        v833 = RunService.Heartbeat:Connect(function() -- line: 2542
+        v809 = RunService.Heartbeat:Connect(function() -- line: 2633
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v836 (copy)
-            --  [3] v833 (ref)
+            --  [2] v812 (copy)
+            --  [3] v809 (ref)
             --  [4] Debris (ref)
-            --  [5] v820 (copy)
+            --  [5] v796 (copy)
             --  [6] TweenService (ref)
-            --  [7] v821 (copy)
-            --  [8] v835 (copy)
+            --  [7] v797 (copy)
+            --  [8] v811 (copy)
             --  [9] New_33 (copy)
             --  [10] Magnitude_2 (copy)
-            --  [11] v824 (ref)
+            --  [11] v800 (ref)
 
-            local v840 = TimeSync_m:GetTime()
+            local v816 = TimeSync_m:GetTime()
 
-            if v840 > v836 then
-                v833:Disconnect()
-                v833 = nil
-                local v841 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-                v841.Transparency = 0
-                v841.Color = Color3.fromRGB(97, 255, 137)
-                Debris:AddItem(v841, 5)
-                v841.Position = v820
-                v841.Parent = workspace
+            if v816 > v812 then
+                v809:Disconnect()
+                v809 = nil
+                local v817 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                v817.Transparency = 0
+                v817.Color = Color3.fromRGB(97, 255, 137)
+                Debris:AddItem(v817, 5)
+                v817.Position = v796
+                v817.Parent = workspace
                 TweenService:Create(
-                    v841,
+                    v817,
                     TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Size = Vector3.new(35, 35, 35), Transparency = 1 }
                 ):Play()
@@ -3952,289 +4074,289 @@ game.ReplicatedStorage.remotes:WaitForChild("gildedBossSpecficEvents").OnClientE
                 return
             end
 
-            v824.CFrame = New_33 + New_33.LookVector * (math.clamp((v840 - v821) / v835, 0, 1) * Magnitude_2)
+            v800.CFrame = New_33 + New_33.LookVector * (math.clamp((v816 - v797) / v811, 0, 1) * Magnitude_2)
         end)
 
         return
     end
 
-    if arg25 == "First Boss Fire Beam" then
-        local _ = arg26[1]
-        local _ = arg26[2]
+    if arg26 == "First Boss Fire Beam" then
+        local _ = arg27[1]
+        local _ = arg27[2]
 
         return
     end
 
-    if arg25 == "First Boss Beam Track" then
-        local v846 = arg26[1]
-        local v847 = arg26[2]
-        local v848 = workspace.firstBossSunDiskBeamPart.Beam:Clone()
-        Debris:AddItem(v848, 10)
-        v848.Parent = workspace.firstBossSunDiskBeamPart
-        v848.Attachment0 = workspace.firstBossSunDiskBeamPart.Attachment
-        v848.Attachment1 = v846.HumanoidRootPart.RootRigAttachment
-        local v854 = game.ReplicatedStorage.enemyProjectiles.firstBossBeamParticles:Clone()
-        Debris:AddItem(v854, 10)
-        v854.Parent = v846.HumanoidRootPart
-        local v858 = nil
-        v858 = RunService.Heartbeat:Connect(function() -- line: 2583
+    if arg26 == "First Boss Beam Track" then
+        local v822 = arg27[1]
+        local v823 = arg27[2]
+        local v824 = workspace.firstBossSunDiskBeamPart.Beam:Clone()
+        Debris:AddItem(v824, 10)
+        v824.Parent = workspace.firstBossSunDiskBeamPart
+        v824.Attachment0 = workspace.firstBossSunDiskBeamPart.Attachment
+        v824.Attachment1 = v822.HumanoidRootPart.RootRigAttachment
+        local v830 = game.ReplicatedStorage.enemyProjectiles.firstBossBeamParticles:Clone()
+        Debris:AddItem(v830, 10)
+        v830.Parent = v822.HumanoidRootPart
+        local v834 = nil
+        v834 = RunService.Heartbeat:Connect(function() -- line: 2674
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v847 (copy)
-            --  [3] v858 (ref)
-            --  [4] v848 (copy)
-            --  [5] v854 (copy)
+            --  [2] v823 (copy)
+            --  [3] v834 (ref)
+            --  [4] v824 (copy)
+            --  [5] v830 (copy)
 
-            if TimeSync_m:GetTime() > v847 then
-                v858:Disconnect()
-                v858 = nil
-                v848:Destroy()
-                v854:Destroy()
+            if TimeSync_m:GetTime() > v823 then
+                v834:Disconnect()
+                v834 = nil
+                v824:Destroy()
+                v830:Destroy()
             end
         end)
 
         return
     end
 
-    if arg25 == "Second Boss Add Highlight" then
-        local v861 = game.ReplicatedStorage.enemyProjectiles.secondBossPassiveHighlight:Clone()
-        Debris:AddItem(v861, 5)
-        v861.Parent = arg26
+    if arg26 == "Second Boss Add Highlight" then
+        local v837 = game.ReplicatedStorage.enemyProjectiles.secondBossPassiveHighlight:Clone()
+        Debris:AddItem(v837, 5)
+        v837.Parent = arg27
 
         return
     end
 
-    if arg25 == "Second Boss Orb Beam" then
-        local v864 = arg26[1]
-        local v865 = arg26[2]
-        v864.Transparency = 0
-        v864.PointLight.Enabled = true
-        v864.Beam.Attachment1 = v865.HumanoidRootPart.RootRigAttachment
+    if arg26 == "Second Boss Orb Beam" then
+        local v840 = arg27[1]
+        local v841 = arg27[2]
+        v840.Transparency = 0
+        v840.PointLight.Enabled = true
+        v840.Beam.Attachment1 = v841.HumanoidRootPart.RootRigAttachment
 
         return
     end
 
-    if arg25 == "Second Boss Orb Deactivate" then
-        arg26.Transparency = 1
-        arg26.PointLight.Enabled = false
-        arg26.Beam.Attachment1 = nil
+    if arg26 == "Second Boss Orb Deactivate" then
+        arg27.Transparency = 1
+        arg27.PointLight.Enabled = false
+        arg27.Beam.Attachment1 = nil
 
         return
     end
 
-    if arg25 == "Second Boss Big Circle" then
-        local v867 = arg26[1]
-        local v868 = arg26[2]
-        local v869 = arg26[3]
-        local v870 = v869 - v868
-        spawn(function() -- line: 2620
+    if arg26 == "Second Boss Big Circle" then
+        local v843 = arg27[1]
+        local v844 = arg27[2]
+        local v845 = arg27[3]
+        local v846 = v845 - v844
+        spawn(function() -- line: 2711
             -- upvalues:
             --  [1] Debris (ref)
             --  [2] TweenService (ref)
             --  [3] rng (ref)
 
-            local v871 = workspace.secondBossMiddlePart.CFrame
+            local v847 = workspace.secondBossMiddlePart.CFrame
             wait(0.6)
-            local v872 = game.ReplicatedStorage.enemyProjectiles.bigRock:Clone()
-            Debris:AddItem(v872, 5)
-            v872.CFrame = v871
-            v872.Parent = workspace
+            local v848 = game.ReplicatedStorage.enemyProjectiles.bigRock:Clone()
+            Debris:AddItem(v848, 5)
+            v848.CFrame = v847
+            v848.Parent = workspace
             TweenService:Create(
-                v872,
+                v848,
                 TweenInfo.new(0.7, Enum.EasingStyle.Linear),
-                { CFrame = v871 + Vector3.new(0, 200, 0) }
+                { CFrame = v847 + Vector3.new(0, 200, 0) }
             ):Play()
 
             for _ = 1, 10 do
-                spawn(function() -- line: 2629
+                spawn(function() -- line: 2720
                     -- upvalues:
                     --  [1] Debris (ref)
-                    --  [2] v871 (copy)
+                    --  [2] v847 (copy)
                     --  [3] rng (ref)
 
-                    local v874 = game.ReplicatedStorage.enemyProjectiles.secondBossBigRockDebris:Clone()
-                    Debris:AddItem(v874, 2.2)
-                    local v875 = v871
-                    local v876 = rng:NextNumber(-4, 4)
-                    v874.CFrame = v875 + Vector3.new(v876, 0, rng:NextNumber(-4, 4)) * 2
-                    local v877 = rng:NextNumber(6, 9)
-                    local v878 = rng:NextNumber(6, 9)
-                    v874.Size = Vector3.new(v877, v878, rng:NextNumber(6, 9))
-                    v874.Parent = workspace
-                    local Attachment0 = v874.Attachment0
-                    local v879 = rng:NextNumber(-2, 2)
-                    local v880 = rng:NextNumber(-2, 2)
-                    Attachment0.Position = Vector3.new(v879, v880, rng:NextNumber(-2, 2))
-                    local VectorForce = v874.VectorForce
-                    local v881 = rng:NextInteger(-33000, 33000)
-                    local v882 = rng:NextInteger(60000, 110000)
-                    VectorForce.Force = Vector3.new(v881, v882, rng:NextInteger(-33000, 33000)) * 8
-                    v874.VectorForce.Enabled = true
+                    local v850 = game.ReplicatedStorage.enemyProjectiles.secondBossBigRockDebris:Clone()
+                    Debris:AddItem(v850, 2.2)
+                    local v851 = v847
+                    local v852 = rng:NextNumber(-4, 4)
+                    v850.CFrame = v851 + Vector3.new(v852, 0, rng:NextNumber(-4, 4)) * 2
+                    local v853 = rng:NextNumber(6, 9)
+                    local v854 = rng:NextNumber(6, 9)
+                    v850.Size = Vector3.new(v853, v854, rng:NextNumber(6, 9))
+                    v850.Parent = workspace
+                    local Attachment0 = v850.Attachment0
+                    local v855 = rng:NextNumber(-2, 2)
+                    local v856 = rng:NextNumber(-2, 2)
+                    Attachment0.Position = Vector3.new(v855, v856, rng:NextNumber(-2, 2))
+                    local VectorForce = v850.VectorForce
+                    local v857 = rng:NextInteger(-33000, 33000)
+                    local v858 = rng:NextInteger(60000, 110000)
+                    VectorForce.Force = Vector3.new(v857, v858, rng:NextInteger(-33000, 33000)) * 8
+                    v850.VectorForce.Enabled = true
                     wait(0.15)
-                    v874.VectorForce.Enabled = false
+                    v850.VectorForce.Enabled = false
                 end)
             end
         end)
-        local v884 = game.ReplicatedStorage.enemyProjectiles.secondBossBigCircle:Clone()
-        Debris:AddItem(v884, 10)
-        v884:SetPrimaryPartCFrame(v867)
-        v884.Parent = workspace
-        local BigRock = v884.bigRock.Position.Y
-        local v890 = v884.PrimaryPart.Position.Y - BigRock
-        local math_abs = math.abs(v890)
-        local v891 = nil
-        v891 = RunService.Heartbeat:Connect(function() -- line: 2655
+        local v860 = game.ReplicatedStorage.enemyProjectiles.secondBossBigCircle:Clone()
+        Debris:AddItem(v860, 10)
+        v860:SetPrimaryPartCFrame(v843)
+        v860.Parent = workspace
+        local BigRock = v860.bigRock.Position.Y
+        local v866 = v860.PrimaryPart.Position.Y - BigRock
+        local math_abs = math.abs(v866)
+        local v867 = nil
+        v867 = RunService.Heartbeat:Connect(function() -- line: 2746
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v869 (copy)
-            --  [3] v891 (ref)
-            --  [4] v884 (copy)
+            --  [2] v845 (copy)
+            --  [3] v867 (ref)
+            --  [4] v860 (copy)
             --  [5] TweenService (ref)
             --  [6] Debris (ref)
-            --  [7] v867 (copy)
+            --  [7] v843 (copy)
             --  [8] rng (ref)
-            --  [9] v868 (copy)
-            --  [10] v870 (copy)
+            --  [9] v844 (copy)
+            --  [10] v846 (copy)
             --  [11] BigRock (copy)
             --  [12] math_abs (copy)
 
-            local v892 = TimeSync_m:GetTime()
+            local v868 = TimeSync_m:GetTime()
 
-            if v892 > v869 then
-                v891:Disconnect()
-                v891 = nil
-                v884.growingPrecast.Size = Vector3.new(2.1, 80, 80)
-                v884.growingPrecast.Transparency = 0
+            if v868 > v845 then
+                v867:Disconnect()
+                v867 = nil
+                v860.growingPrecast.Size = Vector3.new(2.1, 80, 80)
+                v860.growingPrecast.Transparency = 0
                 TweenService:Create(
-                    v884.growingPrecast,
+                    v860.growingPrecast,
                     TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Transparency = 1 }
                 ):Play()
-                v884.precast.Transparency = 1
+                v860.precast.Transparency = 1
                 TweenService:Create(
-                    v884.bigRock,
+                    v860.bigRock,
                     TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
                     { Transparency = 1 }
                 ):Play()
-                local v895 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-                v895.Transparency = 0
-                v895.Color = Color3.fromRGB(255, 110, 110)
-                Debris:AddItem(v895, 5)
-                v895.CFrame = v867
-                v895.Parent = workspace
+                local v871 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                v871.Transparency = 0
+                v871.Color = Color3.fromRGB(255, 110, 110)
+                Debris:AddItem(v871, 5)
+                v871.CFrame = v843
+                v871.Parent = workspace
                 TweenService:Create(
-                    v895,
+                    v871,
                     TweenInfo.new(0.6, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Size = Vector3.new(100, 100, 100), Transparency = 1 }
                 ):Play()
 
                 for _ = 1, 10 do
-                    spawn(function() -- line: 2676
+                    spawn(function() -- line: 2767
                         -- upvalues:
                         --  [1] Debris (ref)
-                        --  [2] v867 (ref)
+                        --  [2] v843 (ref)
                         --  [3] rng (ref)
 
-                        local v897 = game.ReplicatedStorage.enemyProjectiles.secondBossBigRockDebris:Clone()
-                        Debris:AddItem(v897, 2.2)
-                        local v898 = v867
-                        local v899 = rng:NextNumber(-4, 4)
-                        v897.CFrame = v898 + Vector3.new(v899, 0, rng:NextNumber(-4, 4)) * 2
-                        local v900 = rng:NextNumber(6, 9)
-                        local v901 = rng:NextNumber(6, 9)
-                        v897.Size = Vector3.new(v900, v901, rng:NextNumber(6, 9))
-                        v897.Parent = workspace
-                        local Attachment0_1 = v897.Attachment0
-                        local v902 = rng:NextNumber(-2, 2)
-                        local v903 = rng:NextNumber(-2, 2)
-                        Attachment0_1.Position = Vector3.new(v902, v903, rng:NextNumber(-2, 2))
-                        local VectorForce_1 = v897.VectorForce
-                        local v904 = rng:NextInteger(-33000, 33000)
-                        local v905 = rng:NextInteger(60000, 110000)
+                        local v873 = game.ReplicatedStorage.enemyProjectiles.secondBossBigRockDebris:Clone()
+                        Debris:AddItem(v873, 2.2)
+                        local v874 = v843
+                        local v875 = rng:NextNumber(-4, 4)
+                        v873.CFrame = v874 + Vector3.new(v875, 0, rng:NextNumber(-4, 4)) * 2
+                        local v876 = rng:NextNumber(6, 9)
+                        local v877 = rng:NextNumber(6, 9)
+                        v873.Size = Vector3.new(v876, v877, rng:NextNumber(6, 9))
+                        v873.Parent = workspace
+                        local Attachment0_1 = v873.Attachment0
+                        local v878 = rng:NextNumber(-2, 2)
+                        local v879 = rng:NextNumber(-2, 2)
+                        Attachment0_1.Position = Vector3.new(v878, v879, rng:NextNumber(-2, 2))
+                        local VectorForce_1 = v873.VectorForce
+                        local v880 = rng:NextInteger(-33000, 33000)
+                        local v881 = rng:NextInteger(60000, 110000)
                         VectorForce_1.Force = Vector3.new(
-                            v904,
-                            v905,
+                            v880,
+                            v881,
                             rng:NextInteger(-33000, 33000)
                         ) * 8
-                        v897.VectorForce.Enabled = true
+                        v873.VectorForce.Enabled = true
                         wait(0.15)
-                        v897.VectorForce.Enabled = false
+                        v873.VectorForce.Enabled = false
                     end)
                 end
 
                 return
             end
 
-            local v906 = math.clamp((v892 - v868) / v870, 0, 1)
-            v884.growingPrecast.Size = Vector3.new(2.1, v906 * 80, v906 * 80)
-            v884.bigRock.Position = Vector3.new(
-                v867.Position.X,
-                BigRock - v906 * math_abs,
-                v867.Position.Z
+            local v882 = math.clamp((v868 - v844) / v846, 0, 1)
+            v860.growingPrecast.Size = Vector3.new(2.1, v882 * 80, v882 * 80)
+            v860.bigRock.Position = Vector3.new(
+                v843.Position.X,
+                BigRock - v882 * math_abs,
+                v843.Position.Z
             )
         end)
 
         return
     end
 
-    if arg25 == "Third Boss Passive Orb Spawn" then
-        local v907 = arg26[1]
-        local v908 = arg26[2]
-        local v909 = arg26[3]
-        local v910 = v909 - v908
-        local v911 = arg26[4]
-        local v912 = arg26[5]
-        local v913 = game.ReplicatedStorage.enemyProjectiles.thirdBossPassiveOrb:Clone()
-        Debris:AddItem(v913, 20)
-        v913.CFrame = v907
-        v913.Parent = workspace
-        local v916 = nil
-        t_78[v912] = { v913, v916 }
-        v916 = RunService.Heartbeat:Connect(function() -- line: 2715
+    if arg26 == "Third Boss Passive Orb Spawn" then
+        local v883 = arg27[1]
+        local v884 = arg27[2]
+        local v885 = arg27[3]
+        local v886 = v885 - v884
+        local v887 = arg27[4]
+        local v888 = arg27[5]
+        local v889 = game.ReplicatedStorage.enemyProjectiles.thirdBossPassiveOrb:Clone()
+        Debris:AddItem(v889, 20)
+        v889.CFrame = v883
+        v889.Parent = workspace
+        local v892 = nil
+        t_81[v888] = { v889, v892 }
+        v892 = RunService.Heartbeat:Connect(function() -- line: 2806
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v909 (copy)
-            --  [3] v916 (ref)
-            --  [4] v913 (copy)
-            --  [5] v908 (copy)
-            --  [6] v910 (copy)
-            --  [7] v907 (copy)
-            --  [8] v911 (copy)
+            --  [2] v885 (copy)
+            --  [3] v892 (ref)
+            --  [4] v889 (copy)
+            --  [5] v884 (copy)
+            --  [6] v886 (copy)
+            --  [7] v883 (copy)
+            --  [8] v887 (copy)
 
-            local v919 = TimeSync_m:GetTime()
+            local v895 = TimeSync_m:GetTime()
 
-            if v919 > v909 then
-                v916:Disconnect()
-                v916 = nil
-                v913:Destroy()
+            if v895 > v885 then
+                v892:Disconnect()
+                v892 = nil
+                v889:Destroy()
 
                 return
             end
 
-            v913.CFrame = v907 + v907.LookVector * (math.clamp((v919 - v908) / v910, 0, 1) * v911)
+            v889.CFrame = v883 + v883.LookVector * (math.clamp((v895 - v884) / v886, 0, 1) * v887)
         end)
 
         return
     end
 
-    if arg25 == "Third Boss Passive Orb Explode" then
-        local v921 = arg26[1]
-        local v922 = arg26[2]
-        local v925 = t_78[v922][2]
+    if arg26 == "Third Boss Passive Orb Explode" then
+        local v897 = arg27[1]
+        local v898 = arg27[2]
+        local v901 = t_81[v898][2]
 
-        if v925 then
-            v925:Disconnect()
+        if v901 then
+            v901:Disconnect()
         end
 
-        t_78[v922][1]:Destroy()
-        local v929 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-        v929.Transparency = 0
-        v929.Color = Color3.fromRGB(255, 110, 110)
-        Debris:AddItem(v929, 5)
-        v929.CFrame = v921
-        v929.Parent = workspace
+        t_81[v898][1]:Destroy()
+        local v905 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+        v905.Transparency = 0
+        v905.Color = Color3.fromRGB(255, 110, 110)
+        Debris:AddItem(v905, 5)
+        v905.CFrame = v897
+        v905.Parent = workspace
         TweenService:Create(
-            v929,
+            v905,
             TweenInfo.new(0.75, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Size = Vector3.new(120, 120, 120), Transparency = 1 }
         ):Play()
@@ -4242,87 +4364,87 @@ game.ReplicatedStorage.remotes:WaitForChild("gildedBossSpecficEvents").OnClientE
         return
     end
 
-    if arg25 == "Third Boss Flame Wall" then
-        local v941 = arg26[1]
-        local v942 = arg26[2]
-        local v943 = arg26[3]
-        local v944 = v943 - v942
-        local v945 = arg26[4]
-        local v946 = game.ReplicatedStorage.enemyProjectiles.thirdBossFlameWall:Clone()
-        Debris:AddItem(v946, 20)
-        v946:SetPrimaryPartCFrame(v941)
-        v946.Parent = workspace
-        local v951 = nil
-        v951 = RunService.Heartbeat:Connect(function() -- line: 2761
+    if arg26 == "Third Boss Flame Wall" then
+        local v917 = arg27[1]
+        local v918 = arg27[2]
+        local v919 = arg27[3]
+        local v920 = v919 - v918
+        local v921 = arg27[4]
+        local v922 = game.ReplicatedStorage.enemyProjectiles.thirdBossFlameWall:Clone()
+        Debris:AddItem(v922, 20)
+        v922:SetPrimaryPartCFrame(v917)
+        v922.Parent = workspace
+        local v927 = nil
+        v927 = RunService.Heartbeat:Connect(function() -- line: 2852
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v943 (copy)
-            --  [3] v951 (ref)
-            --  [4] v946 (copy)
-            --  [5] v942 (copy)
-            --  [6] v944 (copy)
-            --  [7] v941 (copy)
-            --  [8] v945 (copy)
+            --  [2] v919 (copy)
+            --  [3] v927 (ref)
+            --  [4] v922 (copy)
+            --  [5] v918 (copy)
+            --  [6] v920 (copy)
+            --  [7] v917 (copy)
+            --  [8] v921 (copy)
 
-            local v953 = TimeSync_m:GetTime()
+            local v929 = TimeSync_m:GetTime()
 
-            if v953 > v943 then
-                v951:Disconnect()
-                v951 = nil
-                v946:Destroy()
+            if v929 > v919 then
+                v927:Disconnect()
+                v927 = nil
+                v922:Destroy()
 
                 return
             end
 
-            v946:SetPrimaryPartCFrame(
-                v941 + v941.LookVector * (math.clamp((v953 - v942) / v944, 0, 1) * v945)
+            v922:SetPrimaryPartCFrame(
+                v917 + v917.LookVector * (math.clamp((v929 - v918) / v920, 0, 1) * v921)
             )
         end)
 
         return
     end
 
-    if arg25 == "Third Boss Fireball Particles" then
-        for _, val_42 in pairs(arg26:GetDescendants()) do
-            if val_42:IsA("ParticleEmitter") then
-                val_42:Emit(150)
+    if arg26 == "Third Boss Fireball Particles" then
+        for _, val_44 in pairs(arg27:GetDescendants()) do
+            if val_44:IsA("ParticleEmitter") then
+                val_44:Emit(150)
             end
         end
 
         return
     end
 
-    if arg25 == "Dracani Wizard Shot" then
-        for _, val_43 in pairs(arg26:GetDescendants()) do
-            if val_43:IsA("Attachment") then
+    if arg26 == "Dracani Wizard Shot" then
+        for _, val_45 in pairs(arg27:GetDescendants()) do
+            if val_45:IsA("Attachment") then
                 TweenService:Create(
-                    val_43,
+                    val_45,
                     TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-                    { Position = val_43.Position + Vector3.new(0, -15, 0) }
+                    { Position = val_45.Position + Vector3.new(0, -15, 0) }
                 ):Play()
-            elseif val_43:IsA("Beam") then
-                val_43.Enabled = true
+            elseif val_45:IsA("Beam") then
+                val_45.Enabled = true
                 TweenService:Create(
-                    val_43,
+                    val_45,
                     TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Width0 = 0 }
                 ):Play()
                 TweenService:Create(
-                    val_43,
+                    val_45,
                     TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Width1 = 0 }
                 ):Play()
-                spawn(function() -- line: 2798
+                spawn(function() -- line: 2889
                     -- upvalues:
-                    --  [1] val_43 (copy)
+                    --  [1] val_45 (copy)
 
                     wait(0.4)
-                    val_43.Enabled = false
+                    val_45.Enabled = false
                 end)
-            elseif val_43.Name == "precast" then
-                val_43.Transparency = 0
+            elseif val_45.Name == "precast" then
+                val_45.Transparency = 0
                 TweenService:Create(
-                    val_43,
+                    val_45,
                     TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Transparency = 1 }
                 ):Play()
@@ -4332,68 +4454,68 @@ game.ReplicatedStorage.remotes:WaitForChild("gildedBossSpecficEvents").OnClientE
         return
     end
 
-    if arg25 == "Third Boss Show Safe Zones" then
+    if arg26 == "Third Boss Show Safe Zones" then
         local _ = { "cyan", "yellow", "purple" }
 
-        for _, val_44 in pairs(workspace.thirdBossSafeZones:GetDescendants()) do
-            if not val_44:IsA("Beam") then
-                if not val_44:IsA("PointLight") then
-                    if val_44:IsA("BillboardGui") then
-                        val_44.Enabled = true
+        for _, val_46 in pairs(workspace.thirdBossSafeZones:GetDescendants()) do
+            if not val_46:IsA("Beam") then
+                if not val_46:IsA("PointLight") then
+                    if val_46:IsA("BillboardGui") then
+                        val_46.Enabled = true
                     end
                 else
-                    val_44.Enabled = true
+                    val_46.Enabled = true
                 end
             else
-                val_44.Enabled = true
+                val_46.Enabled = true
             end
         end
 
-        for _, val_45 in pairs(arg26) do
-            local Char = val_45.char
+        for _, val_47 in pairs(arg27) do
+            local Char = val_47.char
 
             if Char then
                 local _ = Char:FindFirstChild("HumanoidRootPart")
-                local v984 = game.ReplicatedStorage.enemyProjectiles[val_45.color .. "SafeZoneMarker"]:Clone()
-                Debris:AddItem(v984, 60)
-                v984.Parent = Char
-                v984.Adornee = Char.HumanoidRootPart
-                v984.Name = "safeZoneMarker"
+                local v960 = game.ReplicatedStorage.enemyProjectiles[val_47.color .. "SafeZoneMarker"]:Clone()
+                Debris:AddItem(v960, 60)
+                v960.Parent = Char
+                v960.Adornee = Char.HumanoidRootPart
+                v960.Name = "safeZoneMarker"
             end
         end
 
         return
     end
 
-    if arg25 == "Third Boss Hide Safe Zones" then
-        local v985 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-        v985.Transparency = 0
-        v985.Color = Color3.fromRGB(255, 64, 64)
-        Debris:AddItem(v985, 5)
-        v985.Position = workspace.thirdBossMiddlePart.Position
-        v985.Parent = workspace
+    if arg26 == "Third Boss Hide Safe Zones" then
+        local v961 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+        v961.Transparency = 0
+        v961.Color = Color3.fromRGB(255, 64, 64)
+        Debris:AddItem(v961, 5)
+        v961.Position = workspace.thirdBossMiddlePart.Position
+        v961.Parent = workspace
         TweenService:Create(
-            v985,
+            v961,
             TweenInfo.new(1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Size = Vector3.new(300, 300, 300), Transparency = 1 }
         ):Play()
 
-        for _, val_46 in pairs(workspace.thirdBossSafeZones:GetDescendants()) do
-            if not val_46:IsA("Beam") then
-                if not val_46:IsA("PointLight") then
-                    if val_46:IsA("BillboardGui") then
-                        val_46.Enabled = false
+        for _, val_48 in pairs(workspace.thirdBossSafeZones:GetDescendants()) do
+            if not val_48:IsA("Beam") then
+                if not val_48:IsA("PointLight") then
+                    if val_48:IsA("BillboardGui") then
+                        val_48.Enabled = false
                     end
                 else
-                    val_46.Enabled = false
+                    val_48.Enabled = false
                 end
             else
-                val_46.Enabled = false
+                val_48.Enabled = false
             end
         end
 
-        for _, val_47 in pairs(game.Players:GetPlayers()) do
-            local Character_2 = val_47.Character
+        for _, val_49 in pairs(game.Players:GetPlayers()) do
+            local Character_2 = val_49.Character
 
             if Character_2 then
                 local SafeZoneMarker = Character_2:FindFirstChild("safeZoneMarker")
@@ -4407,56 +4529,56 @@ game.ReplicatedStorage.remotes:WaitForChild("gildedBossSpecficEvents").OnClientE
         return
     end
 
-    if arg25 == "Second Boss Horizontal Line" then
-        local v1002 = arg26[2]
-        local v1003 = arg26[1]
-        local v1004 = game.ReplicatedStorage.enemyProjectiles.secondBossHorizontalLine:Clone()
-        Debris:AddItem(v1004, 5)
-        v1004:SetPrimaryPartCFrame(v1003)
-        v1004.Parent = workspace
-        local v1010 = nil
-        v1010 = RunService.Heartbeat:Connect(function() -- line: 2873
+    if arg26 == "Second Boss Horizontal Line" then
+        local v978 = arg27[2]
+        local v979 = arg27[1]
+        local v980 = game.ReplicatedStorage.enemyProjectiles.secondBossHorizontalLine:Clone()
+        Debris:AddItem(v980, 5)
+        v980:SetPrimaryPartCFrame(v979)
+        v980.Parent = workspace
+        local v986 = nil
+        v986 = RunService.Heartbeat:Connect(function() -- line: 2964
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] v1002 (copy)
-            --  [3] v1010 (ref)
-            --  [4] v1004 (copy)
+            --  [2] v978 (copy)
+            --  [3] v986 (ref)
+            --  [4] v980 (copy)
             --  [5] TweenService (ref)
 
-            if TimeSync_m:GetTime() > v1002 then
-                v1010:Disconnect()
-                v1010 = nil
+            if TimeSync_m:GetTime() > v978 then
+                v986:Disconnect()
+                v986 = nil
 
-                for _, val_48 in pairs(v1004:GetDescendants()) do
-                    if val_48:IsA("Attachment") then
+                for _, val_50 in pairs(v980:GetDescendants()) do
+                    if val_50:IsA("Attachment") then
                         TweenService:Create(
-                            val_48,
+                            val_50,
                             TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-                            { Position = val_48.Position + Vector3.new(0, -15, 0) }
+                            { Position = val_50.Position + Vector3.new(0, -15, 0) }
                         ):Play()
-                    elseif val_48:IsA("Beam") then
-                        val_48.Enabled = true
+                    elseif val_50:IsA("Beam") then
+                        val_50.Enabled = true
                         TweenService:Create(
-                            val_48,
+                            val_50,
                             TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                             { Width0 = 0 }
                         ):Play()
                         TweenService:Create(
-                            val_48,
+                            val_50,
                             TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                             { Width1 = 0 }
                         ):Play()
-                        spawn(function() -- line: 2888
+                        spawn(function() -- line: 2979
                             -- upvalues:
-                            --  [1] val_48 (copy)
+                            --  [1] val_50 (copy)
 
                             wait(0.4)
-                            val_48.Enabled = false
+                            val_50.Enabled = false
                         end)
-                    elseif val_48.Name == "precast" then
-                        val_48.Transparency = 0
+                    elseif val_50.Name == "precast" then
+                        val_50.Transparency = 0
                         TweenService:Create(
-                            val_48,
+                            val_50,
                             TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                             { Transparency = 1 }
                         ):Play()
@@ -4468,15 +4590,15 @@ game.ReplicatedStorage.remotes:WaitForChild("gildedBossSpecficEvents").OnClientE
         return
     end
 
-    if arg25 == "Second Boss Orb Beam Explode" then
-        local v1018 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-        v1018.Transparency = 0
-        v1018.Color = Color3.fromRGB(255, 64, 64)
-        Debris:AddItem(v1018, 5)
-        v1018.CFrame = arg26
-        v1018.Parent = workspace
+    if arg26 == "Second Boss Orb Beam Explode" then
+        local v994 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+        v994.Transparency = 0
+        v994.Color = Color3.fromRGB(255, 64, 64)
+        Debris:AddItem(v994, 5)
+        v994.CFrame = arg27
+        v994.Parent = workspace
         TweenService:Create(
-            v1018,
+            v994,
             TweenInfo.new(1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Size = Vector3.new(300, 300, 300), Transparency = 1 }
         ):Play()
@@ -4484,130 +4606,130 @@ game.ReplicatedStorage.remotes:WaitForChild("gildedBossSpecficEvents").OnClientE
         return
     end
 
-    if arg25 == "First Boss Blinding Blast" then
+    if arg26 == "First Boss Blinding Blast" then
         local WorldCFrame = workspace.firstBossMiddlePart.blindingBlastAttachment.WorldCFrame
-        local v1026 = game.ReplicatedStorage.enemyProjectiles.firstBossLookAwayGui:Clone()
-        Debris:AddItem(v1026, 10)
-        v1026.Parent = LocalPlayer.PlayerGui
-        local v1030 = game.ReplicatedStorage.enemyProjectiles.firstBossBlindingBlastBeam:Clone()
-        Debris:AddItem(v1030, 7)
-        v1030:SetPrimaryPartCFrame(WorldCFrame - Vector3.new(0, 5, 0))
-        v1030.Parent = workspace
+        local v1002 = game.ReplicatedStorage.enemyProjectiles.firstBossLookAwayGui:Clone()
+        Debris:AddItem(v1002, 10)
+        v1002.Parent = LocalPlayer.PlayerGui
+        local v1006 = game.ReplicatedStorage.enemyProjectiles.firstBossBlindingBlastBeam:Clone()
+        Debris:AddItem(v1006, 7)
+        v1006:SetPrimaryPartCFrame(WorldCFrame - Vector3.new(0, 5, 0))
+        v1006.Parent = workspace
         TweenService:Create(
-            v1030.concussiveBlast,
+            v1006.concussiveBlast,
             TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             { Size = Vector3.new(83.103, 1.187, 83.103), Transparency = 1 }
         ):Play()
-        local v1039 = TweenService
-        local OuterSphereWind_1 = v1030.outerSphereWind
+        local v1015 = TweenService
+        local OuterSphereWind_1 = v1006.outerSphereWind
         local New_42 = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        v1039:Create(
+        v1015:Create(
             OuterSphereWind_1,
             New_42,
             {
                 Size = Vector3.new(33.98, 17.796, 37.382),
-                Position = v1030.innerSphere.outerSphereWind.WorldPosition
+                Position = v1006.innerSphere.outerSphereWind.WorldPosition
             }
         ):Play()
-        local v1041 = TweenService
-        local OuterSphere_1 = v1030.outerSphere
+        local v1017 = TweenService
+        local OuterSphere_1 = v1006.outerSphere
         local New_43 = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        v1041:Create(
+        v1017:Create(
             OuterSphere_1,
             New_43,
             {
                 Size = Vector3.new(33.515, 16.757, 34.374),
-                Position = v1030.innerSphere.outerSphere.WorldPosition
+                Position = v1006.innerSphere.outerSphere.WorldPosition
             }
         ):Play()
         TweenService:Create(
-            v1030.innerSphere,
+            v1006.innerSphere,
             TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             { Size = Vector3.new(21.188, 10.594, 21.731) }
         ):Play()
-        local v1045 = TweenService
-        local InnerBeam_1 = v1030.innerBeam
+        local v1021 = TweenService
+        local InnerBeam_1 = v1006.innerBeam
         local New_45 = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        v1045:Create(
+        v1021:Create(
             InnerBeam_1,
             New_45,
             {
                 Size = Vector3.new(16, 147, 16),
-                Position = v1030.innerSphere.innerBeam.WorldPosition
+                Position = v1006.innerSphere.innerBeam.WorldPosition
             }
         ):Play()
-        local v1047 = TweenService
-        local OuterBeam_1 = v1030.outerBeam
+        local v1023 = TweenService
+        local OuterBeam_1 = v1006.outerBeam
         local New_46 = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        v1047:Create(
+        v1023:Create(
             OuterBeam_1,
             New_46,
             {
                 Size = Vector3.new(18, 113, 18),
-                Position = v1030.innerSphere.outerBeam.WorldPosition
+                Position = v1006.innerSphere.outerBeam.WorldPosition
             }
         ):Play()
-        local v1049 = TweenService
-        local OuterRing_1 = v1030.outerRing
+        local v1025 = TweenService
+        local OuterRing_1 = v1006.outerRing
         local New_47 = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        v1049:Create(
+        v1025:Create(
             OuterRing_1,
             New_47,
             {
                 Size = Vector3.new(51.116, 3.33, 51.669),
-                Position = v1030.innerSphere.outerRing.WorldPosition
+                Position = v1006.innerSphere.outerRing.WorldPosition
             }
         ):Play()
-        local t_94 = {}
-        t_94.outerSphereWind = 15
-        t_94.innerBeam = 10
-        t_94.outerBeam = 7
-        t_94.outerRing = 6
-        local v1055 = nil
-        v1055 = RunService.Heartbeat:Connect(function() -- line: 2945
+        local t_97 = {}
+        t_97.outerSphereWind = 15
+        t_97.innerBeam = 10
+        t_97.outerBeam = 7
+        t_97.outerRing = 6
+        local v1031 = nil
+        v1031 = RunService.Heartbeat:Connect(function() -- line: 3036
             -- upvalues:
             --  [1] TimeSync_m (ref)
-            --  [2] arg26 (copy)
-            --  [3] v1055 (ref)
+            --  [2] arg27 (copy)
+            --  [3] v1031 (ref)
             --  [4] Debris (ref)
             --  [5] WorldCFrame (copy)
             --  [6] TweenService (ref)
-            --  [7] v1026 (copy)
-            --  [8] v1030 (copy)
-            --  [9] t_94 (copy)
+            --  [7] v1002 (copy)
+            --  [8] v1006 (copy)
+            --  [9] t_97 (copy)
 
-            if TimeSync_m:GetTime() > arg26 then
-                v1055:Disconnect()
-                v1055 = nil
-                local v1057 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-                v1057.Transparency = 0
-                v1057.Color = Color3.fromRGB(255, 251, 142)
-                Debris:AddItem(v1057, 5)
-                v1057.CFrame = WorldCFrame
-                v1057.Parent = workspace
+            if TimeSync_m:GetTime() > arg27 then
+                v1031:Disconnect()
+                v1031 = nil
+                local v1033 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+                v1033.Transparency = 0
+                v1033.Color = Color3.fromRGB(255, 251, 142)
+                Debris:AddItem(v1033, 5)
+                v1033.CFrame = WorldCFrame
+                v1033.Parent = workspace
                 TweenService:Create(
-                    v1057,
+                    v1033,
                     TweenInfo.new(1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
                     { Size = Vector3.new(300, 300, 300), Transparency = 1 }
                 ):Play()
                 wait(0.1)
-                v1026:Destroy()
-                v1030:Destroy()
+                v1002:Destroy()
+                v1006:Destroy()
 
                 return
             end
 
-            for key_50, val_49 in pairs(t_94) do
-                local v1059 = v1030[key_50]
-                v1059.CFrame = v1059.CFrame * CFrame.Angles(0, math.rad(val_49), 0)
+            for key_52, val_51 in pairs(t_97) do
+                local v1035 = v1006[key_52]
+                v1035.CFrame = v1035.CFrame * CFrame.Angles(0, math.rad(val_51), 0)
             end
         end)
     end
 end)
 game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Connect(function(
-    arg27,
-    arg28
-) -- line: 2973
+    arg28,
+    arg29
+) -- line: 3064
     -- upvalues:
     --  [1] v1 (copy)
     --  [2] CameraShaker_m (copy)
@@ -4615,43 +4737,43 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
     --  [4] Debris (copy)
     --  [5] rng (copy)
 
-    if arg27 == "Shake Screens" then
-        v1:Shake(CameraShaker_m.Presets[arg28])
+    if arg28 == "Shake Screens" then
+        v1:Shake(CameraShaker_m.Presets[arg29])
 
         return
     end
 
-    if arg27 == "Steampunk Back Flames" then
+    if arg28 == "Steampunk Back Flames" then
         wait(0.5)
 
-        for _, val_50 in pairs(arg28:GetChildren()) do
-            if val_50.Name == "flamePart" then
-                val_50.flame.Enabled = true
+        for _, val_52 in pairs(arg29:GetChildren()) do
+            if val_52.Name == "flamePart" then
+                val_52.flame.Enabled = true
             end
         end
 
         wait(1)
 
-        for _, val_51 in pairs(arg28:GetChildren()) do
-            if val_51.Name == "flamePart" then
-                val_51.flame.Enabled = false
+        for _, val_53 in pairs(arg29:GetChildren()) do
+            if val_53.Name == "flamePart" then
+                val_53.flame.Enabled = false
             end
         end
 
         return
     end
 
-    if arg27 == "ROTG Enable Clouds Emitter" then
-        arg28.Enabled = true
+    if arg28 == "ROTG Enable Clouds Emitter" then
+        arg29.Enabled = true
 
         return
     end
 
-    if arg27 == "ROTG Minion Glow" then
-        for _, val_52 in pairs(arg28:GetChildren()) do
-            if val_52:IsA("BasePart") then
+    if arg28 == "ROTG Minion Glow" then
+        for _, val_54 in pairs(arg29:GetChildren()) do
+            if val_54:IsA("BasePart") then
                 TweenService:Create(
-                    val_52,
+                    val_54,
                     TweenInfo.new(
                         1,
                         Enum.EasingStyle.Linear,
@@ -4662,20 +4784,20 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
                     ),
                     { Color = Color3.fromRGB(213, 115, 61) }
                 ):Play()
-                val_52.Material = Enum.Material.Neon
+                val_54.Material = Enum.Material.Neon
             end
         end
 
         return
     end
 
-    if arg27 == "ROTG Minion Explosion" then
-        local v1065 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].minionExplosionBall:Clone()
-        Debris:AddItem(v1065, 5)
-        v1065.Parent = workspace
-        v1065.CFrame = arg28
+    if arg28 == "ROTG Minion Explosion" then
+        local v1041 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].minionExplosionBall:Clone()
+        Debris:AddItem(v1041, 5)
+        v1041.Parent = workspace
+        v1041.CFrame = arg29
         TweenService:Create(
-            v1065,
+            v1041,
             TweenInfo.new(
                 0.5,
                 Enum.EasingStyle.Quart,
@@ -4690,34 +4812,34 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
         return
     end
 
-    if arg27 == "ROTG Breath Fire" then
-        arg28.Enabled = true
+    if arg28 == "ROTG Breath Fire" then
+        arg29.Enabled = true
         wait(1.8)
-        arg28.Enabled = false
+        arg29.Enabled = false
 
         return
     end
 
-    if arg27 == "ROTG Breath Fire2" then
-        arg28.Enabled = true
+    if arg28 == "ROTG Breath Fire2" then
+        arg29.Enabled = true
         wait(1.2)
-        arg28.Enabled = false
+        arg29.Enabled = false
 
         return
     end
 
-    if arg27 == "ROTG2 Rock Fall" then
-        local v1066 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].rockDebri:Clone()
-        v1066.CFrame = arg28 + Vector3.new(0, 50, 0)
-        local v1067 = v1066.CFrame
+    if arg28 == "ROTG2 Rock Fall" then
+        local v1042 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].rockDebri:Clone()
+        v1042.CFrame = arg29 + Vector3.new(0, 50, 0)
+        local v1043 = v1042.CFrame
         local Angles_19 = CFrame.Angles
-        local v1068 = rng:NextInteger(0, 360)
-        v1066.CFrame = v1067 * Angles_19(v1068, rng:NextInteger(0, 360), rng:NextInteger(0, 360))
-        v1066.Parent = workspace
-        Debris:AddItem(v1066, 6)
+        local v1044 = rng:NextInteger(0, 360)
+        v1042.CFrame = v1043 * Angles_19(v1044, rng:NextInteger(0, 360), rng:NextInteger(0, 360))
+        v1042.Parent = workspace
+        Debris:AddItem(v1042, 6)
         wait(0.6)
-        local v1070 = TweenService:Create(
-            v1066,
+        local v1046 = TweenService:Create(
+            v1042,
             TweenInfo.new(
                 0.5,
                 Enum.EasingStyle.Linear,
@@ -4726,20 +4848,20 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
                 false,
                 0
             ),
-            { CFrame = v1066.CFrame + Vector3.new(0, -53, 0) }
+            { CFrame = v1042.CFrame + Vector3.new(0, -53, 0) }
         )
-        v1070.Completed:Connect(function() -- line: 3051
+        v1046.Completed:Connect(function() -- line: 3142
             -- upvalues:
             --  [1] Debris (ref)
-            --  [2] v1066 (copy)
+            --  [2] v1042 (copy)
             --  [3] TweenService (ref)
 
-            local v1071 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].minionExplosionBall:Clone()
-            Debris:AddItem(v1071, 5)
-            v1071.Parent = workspace
-            v1071.CFrame = v1066.CFrame
+            local v1047 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].minionExplosionBall:Clone()
+            Debris:AddItem(v1047, 5)
+            v1047.Parent = workspace
+            v1047.CFrame = v1042.CFrame
             TweenService:Create(
-                v1071,
+                v1047,
                 TweenInfo.new(
                     0.5,
                     Enum.EasingStyle.Quart,
@@ -4751,35 +4873,35 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
                 { Size = Vector3.new(45, 45, 45), Transparency = 1 }
             ):Play()
             wait(0.1)
-            v1066:Destroy()
+            v1042:Destroy()
         end)
-        v1070:Play()
+        v1046:Play()
 
         return
     end
 
-    if arg27 == "ROTG2 Player Pulled Bubble" then
-        local v1072 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].playerPulledBubble:Clone()
-        Debris:AddItem(v1072, 2.5)
-        v1072.Parent = workspace
-        v1072.CFrame = arg28.CFrame
-        v1072.WeldConstraint.Part0 = arg28
+    if arg28 == "ROTG2 Player Pulled Bubble" then
+        local v1048 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].playerPulledBubble:Clone()
+        Debris:AddItem(v1048, 2.5)
+        v1048.Parent = workspace
+        v1048.CFrame = arg29.CFrame
+        v1048.WeldConstraint.Part0 = arg29
 
         return
     end
 
-    if arg27 == "ROTG2 Boss Arm Glow" then
-        for _, val_53 in pairs(arg28.goldenParts:GetChildren()) do
-            val_53.Material = Enum.Material.Neon
+    if arg28 == "ROTG2 Boss Arm Glow" then
+        for _, val_55 in pairs(arg29.goldenParts:GetChildren()) do
+            val_55.Material = Enum.Material.Neon
         end
 
         wait(0.85)
-        local v1074 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].minionExplosionBall:Clone()
-        Debris:AddItem(v1074, 5)
-        v1074.Parent = workspace
-        v1074.CFrame = arg28:GetPrimaryPartCFrame() + arg28:GetPrimaryPartCFrame().LookVector * 8 + Vector3.new(0, -4, 0)
+        local v1050 = game.ReplicatedStorage.enemyProjectiles["Realm Of The Gods"].minionExplosionBall:Clone()
+        Debris:AddItem(v1050, 5)
+        v1050.Parent = workspace
+        v1050.CFrame = arg29:GetPrimaryPartCFrame() + arg29:GetPrimaryPartCFrame().LookVector * 8 + Vector3.new(0, -4, 0)
         TweenService:Create(
-            v1074,
+            v1050,
             TweenInfo.new(
                 0.75,
                 Enum.EasingStyle.Quart,
@@ -4791,7 +4913,7 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
             { Size = Vector3.new(60, 60, 60), Transparency = 1 }
         ):Play()
         wait(0.35)
-        local v1076 = pairs
+        local v1052 = pairs
         local _ = TweenInfo.new(
             0.75,
             Enum.EasingStyle.Quart,
@@ -4801,66 +4923,66 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
             0
         )
 
-        for _, val_54 in v1076(arg28.goldenParts:GetChildren()) do
-            val_54.Material = Enum.Material.Glass
+        for _, val_56 in v1052(arg29.goldenParts:GetChildren()) do
+            val_56.Material = Enum.Material.Glass
         end
 
         return
     end
 
-    if arg27 == "ROTG2 Charge" then
-        for _, val_55 in pairs(arg28.goldenParts:GetChildren()) do
-            val_55.Material = Enum.Material.Neon
+    if arg28 == "ROTG2 Charge" then
+        for _, val_57 in pairs(arg29.goldenParts:GetChildren()) do
+            val_57.Material = Enum.Material.Neon
         end
 
-        for _, val_56 in pairs(arg28:GetDescendants()) do
-            if val_56.Name == "chargeTrail" then
-                val_56.Enabled = true
-            end
-        end
-
-        return
-    end
-
-    if arg27 == "ROTG2 Charge End" then
-        for _, val_57 in pairs(arg28.goldenParts:GetChildren()) do
-            val_57.Material = Enum.Material.Glass
-        end
-
-        for _, val_58 in pairs(arg28:GetDescendants()) do
+        for _, val_58 in pairs(arg29:GetDescendants()) do
             if val_58.Name == "chargeTrail" then
-                val_58.Enabled = false
+                val_58.Enabled = true
             end
         end
 
         return
     end
 
-    if arg27 == "ROTG2 Raise Arms Glow" then
-        for _, val_59 in pairs(arg28.goldenParts:GetChildren()) do
-            val_59.Material = Enum.Material.Neon
+    if arg28 == "ROTG2 Charge End" then
+        for _, val_59 in pairs(arg29.goldenParts:GetChildren()) do
+            val_59.Material = Enum.Material.Glass
+        end
+
+        for _, val_60 in pairs(arg29:GetDescendants()) do
+            if val_60.Name == "chargeTrail" then
+                val_60.Enabled = false
+            end
+        end
+
+        return
+    end
+
+    if arg28 == "ROTG2 Raise Arms Glow" then
+        for _, val_61 in pairs(arg29.goldenParts:GetChildren()) do
+            val_61.Material = Enum.Material.Neon
         end
 
         wait(2)
 
-        for _, val_60 in pairs(arg28.goldenParts:GetChildren()) do
-            val_60.Material = Enum.Material.Glass
+        for _, val_62 in pairs(arg29.goldenParts:GetChildren()) do
+            val_62.Material = Enum.Material.Glass
         end
 
         return
     end
 
-    if arg27 == "Mystical Garden Shoot Earth Spikes" then
-        for _, val_61 in pairs(arg28:GetChildren()) do
-            if val_61:IsA("Model") then
-                local v1084 = game.ReplicatedStorage.enemyProjectiles["Mystical Garden"].secondBossLocalSpike:Clone()
-                Debris:AddItem(v1084, 1)
-                v1084.Parent = workspace
-                v1084:SetPrimaryPartCFrame(val_61.PrimaryPart.CFrame)
-                local t_100 = {}
-                t_100.CFrame = v1084:GetPrimaryPartCFrame() + v1084:GetPrimaryPartCFrame().LookVector * 180
+    if arg28 == "Mystical Garden Shoot Earth Spikes" then
+        for _, val_63 in pairs(arg29:GetChildren()) do
+            if val_63:IsA("Model") then
+                local v1060 = game.ReplicatedStorage.enemyProjectiles["Mystical Garden"].secondBossLocalSpike:Clone()
+                Debris:AddItem(v1060, 1)
+                v1060.Parent = workspace
+                v1060:SetPrimaryPartCFrame(val_63.PrimaryPart.CFrame)
+                local t_103 = {}
+                t_103.CFrame = v1060:GetPrimaryPartCFrame() + v1060:GetPrimaryPartCFrame().LookVector * 180
                 TweenService:Create(
-                    v1084.PrimaryPart,
+                    v1060.PrimaryPart,
                     TweenInfo.new(
                         0.3,
                         Enum.EasingStyle.Linear,
@@ -4869,7 +4991,7 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
                         false,
                         0
                     ),
-                    t_100
+                    t_103
                 ):Play()
             end
         end
@@ -4877,14 +4999,14 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
         return
     end
 
-    if arg27 == "Mystical Garden Random Strike" then
-        local v1086 = arg28.PrimaryPart.CFrame
-        local v1087 = game.ReplicatedStorage.enemyProjectiles["Mystical Garden"].secondBossLocalRockFall:Clone()
-        Debris:AddItem(v1087, 1.7)
-        v1087.Parent = workspace
-        v1087:SetPrimaryPartCFrame(arg28.PrimaryPart.CFrame + Vector3.new(0, 100, 0))
-        local v1089 = TweenService:Create(
-            v1087.PrimaryPart,
+    if arg28 == "Mystical Garden Random Strike" then
+        local v1062 = arg29.PrimaryPart.CFrame
+        local v1063 = game.ReplicatedStorage.enemyProjectiles["Mystical Garden"].secondBossLocalRockFall:Clone()
+        Debris:AddItem(v1063, 1.7)
+        v1063.Parent = workspace
+        v1063:SetPrimaryPartCFrame(arg29.PrimaryPart.CFrame + Vector3.new(0, 100, 0))
+        local v1065 = TweenService:Create(
+            v1063.PrimaryPart,
             TweenInfo.new(
                 0.7,
                 Enum.EasingStyle.Linear,
@@ -4893,25 +5015,25 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
                 false,
                 0
             ),
-            { CFrame = v1086 }
+            { CFrame = v1062 }
         )
-        v1089.Completed:Connect(function() -- line: 3166
+        v1065.Completed:Connect(function() -- line: 3257
             -- upvalues:
             --  [1] Debris (ref)
-            --  [2] arg28 (copy)
+            --  [2] arg29 (copy)
             --  [3] TweenService (ref)
 
             for index_8 = 1, 4 do
-                local v1090 = game.ReplicatedStorage.enemyProjectiles["Mystical Garden"].secondBossLocalSpike:Clone()
-                Debris:AddItem(v1090, 1)
-                v1090.Parent = workspace
-                v1090:SetPrimaryPartCFrame(
-                    arg28.PrimaryPart.CFrame * CFrame.Angles(0, math.rad(index_8 * 90), 0)
+                local v1066 = game.ReplicatedStorage.enemyProjectiles["Mystical Garden"].secondBossLocalSpike:Clone()
+                Debris:AddItem(v1066, 1)
+                v1066.Parent = workspace
+                v1066:SetPrimaryPartCFrame(
+                    arg29.PrimaryPart.CFrame * CFrame.Angles(0, math.rad(index_8 * 90), 0)
                 )
-                local t_102 = {}
-                t_102.CFrame = v1090:GetPrimaryPartCFrame() + v1090:GetPrimaryPartCFrame().LookVector * 150
+                local t_105 = {}
+                t_105.CFrame = v1066:GetPrimaryPartCFrame() + v1066:GetPrimaryPartCFrame().LookVector * 150
                 TweenService:Create(
-                    v1090.PrimaryPart,
+                    v1066.PrimaryPart,
                     TweenInfo.new(
                         0.3,
                         Enum.EasingStyle.Linear,
@@ -4920,16 +5042,16 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
                         false,
                         0
                     ),
-                    t_102
+                    t_105
                 ):Play()
             end
         end)
-        v1089:Play()
+        v1065:Play()
 
         return
     end
 
-    if arg27 == "Mystical Garden Throw Debris Up" then
+    if arg28 == "Mystical Garden Throw Debris Up" then
         local ParticlePart = workspace.Arena.particlePart
         ParticlePart.particle1.Enabled = true
         ParticlePart.particle2.Enabled = true
@@ -4940,7 +5062,7 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
         return
     end
 
-    if arg27 == "Mystical Garden Stab Ground" then
+    if arg28 == "Mystical Garden Stab Ground" then
         local ParticlePart_1 = workspace.Arena.particlePart
         ParticlePart_1.particle1.Enabled = true
         ParticlePart_1.particle2.Enabled = true
@@ -4951,12 +5073,12 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
         return
     end
 
-    if arg27 == "Mystical Garden Orb Explosion" then
-        arg28.particle.Enabled = false
-        arg28.PointLight.Enabled = false
-        arg28.Trail.Enabled = false
+    if arg28 == "Mystical Garden Orb Explosion" then
+        arg29.particle.Enabled = false
+        arg29.PointLight.Enabled = false
+        arg29.Trail.Enabled = false
         TweenService:Create(
-            arg28,
+            arg29,
             TweenInfo.new(
                 0.5,
                 Enum.EasingStyle.Quart,
@@ -4971,9 +5093,9 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
         return
     end
 
-    if arg27 == "Mystical Garden Raise Shield" then
+    if arg28 == "Mystical Garden Raise Shield" then
         local PrimaryPart_3 = workspace.Arena.forceField.PrimaryPart
-        local v1094 = TweenService:Create(
+        local v1070 = TweenService:Create(
             PrimaryPart_3,
             TweenInfo.new(
                 0.65,
@@ -4987,14 +5109,14 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
         )
         PrimaryPart_3.Parent.forceField.Beam1.Enabled = true
         PrimaryPart_3.Parent.forceField.Beam2.Enabled = true
-        v1094:Play()
+        v1070:Play()
 
         return
     end
 
-    if arg27 == "Mystical Garden Lower Shield" then
+    if arg28 == "Mystical Garden Lower Shield" then
         local PrimaryPart_4 = workspace.Arena.forceField.PrimaryPart
-        local v1095 = TweenService:Create(
+        local v1071 = TweenService:Create(
             PrimaryPart_4,
             TweenInfo.new(
                 0.65,
@@ -5006,43 +5128,43 @@ game.ReplicatedStorage.remotes:WaitForChild("mapSpecificEvent").OnClientEvent:Co
             ),
             { CFrame = PrimaryPart_4.CFrame + Vector3.new(0, -50, 0) }
         )
-        v1095.Completed:Connect(function() -- line: 3232
+        v1071.Completed:Connect(function() -- line: 3323
             -- upvalues:
             --  [1] PrimaryPart_4 (copy)
 
             PrimaryPart_4.Parent.forceField.Beam1.Enabled = false
             PrimaryPart_4.Parent.forceField.Beam2.Enabled = false
         end)
-        v1095:Play()
+        v1071:Play()
     end
 end)
 game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnClientEvent:Connect(
-    function(arg29, arg30) -- line: 3241
+    function(arg30, arg31) -- line: 3332
         -- upvalues:
         --  [1] v1 (copy)
         --  [2] CameraShaker_m (copy)
         --  [3] Debris (copy)
         --  [4] TweenService (copy)
 
-        if arg29 == "Shake Screens" then
-            v1:Shake(CameraShaker_m.Presets[arg30])
+        if arg30 == "Shake Screens" then
+            v1:Shake(CameraShaker_m.Presets[arg31])
 
             return
         end
 
-        if arg29 == "First Boss Explosive Bomb Throw" then
-            local RightHand = arg30[1].rightHand
-            local v1096 = arg30[2]
-            local v1097 = game.ReplicatedStorage.enemyProjectiles.explosiveBomb:Clone()
-            Debris:AddItem(v1097, 10)
-            v1097.Parent = workspace
-            v1097.PrimaryPart.CFrame = CFrame.new(RightHand.Position)
-            v1097.PrimaryPart.handWeld.Part0 = RightHand
+        if arg30 == "First Boss Explosive Bomb Throw" then
+            local RightHand = arg31[1].rightHand
+            local v1072 = arg31[2]
+            local v1073 = game.ReplicatedStorage.enemyProjectiles.explosiveBomb:Clone()
+            Debris:AddItem(v1073, 10)
+            v1073.Parent = workspace
+            v1073.PrimaryPart.CFrame = CFrame.new(RightHand.Position)
+            v1073.PrimaryPart.handWeld.Part0 = RightHand
             wait(0.7)
-            v1097.PrimaryPart.handWeld:Destroy()
-            v1097.PrimaryPart.Anchored = true
+            v1073.PrimaryPart.handWeld:Destroy()
+            v1073.PrimaryPart.Anchored = true
             TweenService:Create(
-                v1097.PrimaryPart,
+                v1073.PrimaryPart,
                 TweenInfo.new(
                     0.48,
                     Enum.EasingStyle.Linear,
@@ -5051,17 +5173,17 @@ game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnC
                     false,
                     0
                 ),
-                { CFrame = v1096 }
+                { CFrame = v1072 }
             ):Play()
             wait(0.8)
-            local v1098 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-            v1098.Transparency = 0
-            v1098.Color = Color3.fromRGB(255, 140, 0)
-            Debris:AddItem(v1098, 10)
-            v1098.Parent = workspace
-            v1098.CFrame = v1096
+            local v1074 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+            v1074.Transparency = 0
+            v1074.Color = Color3.fromRGB(255, 140, 0)
+            Debris:AddItem(v1074, 10)
+            v1074.Parent = workspace
+            v1074.CFrame = v1072
             TweenService:Create(
-                v1098,
+                v1074,
                 TweenInfo.new(
                     0.35,
                     Enum.EasingStyle.Quart,
@@ -5072,18 +5194,18 @@ game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnC
                 ),
                 { Size = Vector3.new(40, 40, 40), Transparency = 1 }
             ):Play()
-            v1097:Destroy()
+            v1073:Destroy()
 
             return
         end
 
-        if arg29 == "First Boss Poison Bomb" then
-            local v1099 = game.ReplicatedStorage.enemyProjectiles.poisonBomb:Clone()
-            Debris:AddItem(v1099, 10)
-            v1099.Parent = workspace
-            v1099.PrimaryPart.CFrame = arg30 + Vector3.new(0, 50, 0)
+        if arg30 == "First Boss Poison Bomb" then
+            local v1075 = game.ReplicatedStorage.enemyProjectiles.poisonBomb:Clone()
+            Debris:AddItem(v1075, 10)
+            v1075.Parent = workspace
+            v1075.PrimaryPart.CFrame = arg31 + Vector3.new(0, 50, 0)
             TweenService:Create(
-                v1099.PrimaryPart,
+                v1075.PrimaryPart,
                 TweenInfo.new(
                     0.5,
                     Enum.EasingStyle.Linear,
@@ -5092,27 +5214,27 @@ game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnC
                     false,
                     0
                 ),
-                { CFrame = arg30 }
+                { CFrame = arg31 }
             ):Play()
             wait(0.5)
-            v1099.PrimaryPart.Poison.Enabled = true
-            v1099.Union.Transparency = 0
+            v1075.PrimaryPart.Poison.Enabled = true
+            v1075.Union.Transparency = 0
             wait(7)
-            v1099.Union.Transparency = 1
-            v1099.PrimaryPart.Poison.Enabled = false
-            v1099.eggPart:Destroy()
-            v1099.fuse:Destroy()
+            v1075.Union.Transparency = 1
+            v1075.PrimaryPart.Poison.Enabled = false
+            v1075.eggPart:Destroy()
+            v1075.fuse:Destroy()
 
             return
         end
 
-        if arg29 == "First Boss Ice Bomb" then
-            local v1100 = game.ReplicatedStorage.enemyProjectiles.iceBomb:Clone()
-            Debris:AddItem(v1100, 10)
-            v1100.Parent = workspace
-            v1100.PrimaryPart.CFrame = arg30 + Vector3.new(0, 50, 0)
+        if arg30 == "First Boss Ice Bomb" then
+            local v1076 = game.ReplicatedStorage.enemyProjectiles.iceBomb:Clone()
+            Debris:AddItem(v1076, 10)
+            v1076.Parent = workspace
+            v1076.PrimaryPart.CFrame = arg31 + Vector3.new(0, 50, 0)
             TweenService:Create(
-                v1100.PrimaryPart,
+                v1076.PrimaryPart,
                 TweenInfo.new(
                     0.5,
                     Enum.EasingStyle.Linear,
@@ -5121,17 +5243,17 @@ game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnC
                     false,
                     0
                 ),
-                { CFrame = arg30 }
+                { CFrame = arg31 }
             ):Play()
             wait(1.65)
-            local v1101 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-            v1101.Transparency = 0
-            v1101.Color = Color3.fromRGB(69, 206, 255)
-            Debris:AddItem(v1101, 5)
-            v1101.Parent = workspace
-            v1101.CFrame = arg30
+            local v1077 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+            v1077.Transparency = 0
+            v1077.Color = Color3.fromRGB(69, 206, 255)
+            Debris:AddItem(v1077, 5)
+            v1077.Parent = workspace
+            v1077.CFrame = arg31
             TweenService:Create(
-                v1101,
+                v1077,
                 TweenInfo.new(
                     0.35,
                     Enum.EasingStyle.Quart,
@@ -5142,18 +5264,18 @@ game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnC
                 ),
                 { Size = Vector3.new(42, 42, 42), Transparency = 1 }
             ):Play()
-            v1100:Destroy()
+            v1076:Destroy()
 
             return
         end
 
-        if arg29 == "Second Boss Rock Fall" then
-            local v1102 = game.ReplicatedStorage.enemyProjectiles.rock:Clone()
-            Debris:AddItem(v1102, 5)
-            v1102.Parent = workspace
-            v1102.CFrame = arg30 + Vector3.new(0, 50, 0)
+        if arg30 == "Second Boss Rock Fall" then
+            local v1078 = game.ReplicatedStorage.enemyProjectiles.rock:Clone()
+            Debris:AddItem(v1078, 5)
+            v1078.Parent = workspace
+            v1078.CFrame = arg31 + Vector3.new(0, 50, 0)
             TweenService:Create(
-                v1102,
+                v1078,
                 TweenInfo.new(
                     0.3,
                     Enum.EasingStyle.Linear,
@@ -5162,19 +5284,19 @@ game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnC
                     false,
                     0
                 ),
-                { CFrame = arg30 }
+                { CFrame = arg31 }
             ):Play()
             wait(0.3)
-            v1102.hitSound:Play()
-            v1102.Transparency = 1
-            local v1103 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-            v1103.Transparency = 0
-            v1103.Color = Color3.fromRGB(109, 101, 91)
-            Debris:AddItem(v1103, 5)
-            v1103.Parent = workspace
-            v1103.CFrame = arg30
+            v1078.hitSound:Play()
+            v1078.Transparency = 1
+            local v1079 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+            v1079.Transparency = 0
+            v1079.Color = Color3.fromRGB(109, 101, 91)
+            Debris:AddItem(v1079, 5)
+            v1079.Parent = workspace
+            v1079.CFrame = arg31
             TweenService:Create(
-                v1103,
+                v1079,
                 TweenInfo.new(
                     0.35,
                     Enum.EasingStyle.Quart,
@@ -5189,9 +5311,9 @@ game.ReplicatedStorage.remotes:WaitForChild("easterIslandBossSpecficEvents").OnC
     end
 )
 game.ReplicatedStorage.remotes:WaitForChild("glitchBossSpecficEvents").OnClientEvent:Connect(function(
-    arg31,
-    arg32
-) -- line: 3382
+    arg32,
+    arg33
+) -- line: 3473
     -- upvalues:
     --  [1] v1 (copy)
     --  [2] CameraShaker_m (copy)
@@ -5199,37 +5321,37 @@ game.ReplicatedStorage.remotes:WaitForChild("glitchBossSpecficEvents").OnClientE
     --  [4] TweenService (copy)
     --  [5] rng (copy)
 
-    if arg31 == "Shake Screens" then
-        v1:Shake(CameraShaker_m.Presets[arg32])
+    if arg32 == "Shake Screens" then
+        v1:Shake(CameraShaker_m.Presets[arg33])
 
         return
     end
 
-    if arg31 == "First Boss Right Hand Blast Shot" then
-        local Particles_4 = arg32[1].rightHandModel.rightHandModel.Attachment.particles
-        Particles_4.Enabled = true
+    if arg32 == "First Boss Right Hand Blast Shot" then
+        local Particles = arg33[1].rightHandModel.rightHandModel.Attachment.particles
+        Particles.Enabled = true
         wait(0.35)
-        Particles_4.Enabled = false
+        Particles.Enabled = false
 
         return
     end
 
-    if arg31 == "First Boss Left Hand Blast Shot" then
-        local Particles_5 = arg32[1].leftHandModel.leftHand.Attachment.particles
-        Particles_5.Enabled = true
+    if arg32 == "First Boss Left Hand Blast Shot" then
+        local Particles_1 = arg33[1].leftHandModel.leftHand.Attachment.particles
+        Particles_1.Enabled = true
         wait(0.35)
-        Particles_5.Enabled = false
+        Particles_1.Enabled = false
 
         return
     end
 
-    if arg31 == "First Boss Poison Bomb" then
-        local v1104 = game.ReplicatedStorage.enemyProjectiles.poisonBomb:Clone()
-        Debris:AddItem(v1104, 10)
-        v1104.Parent = workspace
-        v1104.PrimaryPart.CFrame = arg32 + Vector3.new(0, 50, 0)
+    if arg32 == "First Boss Poison Bomb" then
+        local v1080 = game.ReplicatedStorage.enemyProjectiles.poisonBomb:Clone()
+        Debris:AddItem(v1080, 10)
+        v1080.Parent = workspace
+        v1080.PrimaryPart.CFrame = arg33 + Vector3.new(0, 50, 0)
         TweenService:Create(
-            v1104.PrimaryPart,
+            v1080.PrimaryPart,
             TweenInfo.new(
                 0.5,
                 Enum.EasingStyle.Linear,
@@ -5238,27 +5360,27 @@ game.ReplicatedStorage.remotes:WaitForChild("glitchBossSpecficEvents").OnClientE
                 false,
                 0
             ),
-            { CFrame = arg32 }
+            { CFrame = arg33 }
         ):Play()
         wait(0.5)
-        v1104.PrimaryPart.Poison.Enabled = true
-        v1104.Union.Transparency = 0
+        v1080.PrimaryPart.Poison.Enabled = true
+        v1080.Union.Transparency = 0
         wait(7)
-        v1104.Union.Transparency = 1
-        v1104.PrimaryPart.Poison.Enabled = false
-        v1104.eggPart:Destroy()
-        v1104.fuse:Destroy()
+        v1080.Union.Transparency = 1
+        v1080.PrimaryPart.Poison.Enabled = false
+        v1080.eggPart:Destroy()
+        v1080.fuse:Destroy()
 
         return
     end
 
-    if arg31 == "First Boss Ice Bomb" then
-        local v1105 = game.ReplicatedStorage.enemyProjectiles.iceBomb:Clone()
-        Debris:AddItem(v1105, 10)
-        v1105.Parent = workspace
-        v1105.PrimaryPart.CFrame = arg32 + Vector3.new(0, 50, 0)
+    if arg32 == "First Boss Ice Bomb" then
+        local v1081 = game.ReplicatedStorage.enemyProjectiles.iceBomb:Clone()
+        Debris:AddItem(v1081, 10)
+        v1081.Parent = workspace
+        v1081.PrimaryPart.CFrame = arg33 + Vector3.new(0, 50, 0)
         TweenService:Create(
-            v1105.PrimaryPart,
+            v1081.PrimaryPart,
             TweenInfo.new(
                 0.5,
                 Enum.EasingStyle.Linear,
@@ -5267,17 +5389,17 @@ game.ReplicatedStorage.remotes:WaitForChild("glitchBossSpecficEvents").OnClientE
                 false,
                 0
             ),
-            { CFrame = arg32 }
+            { CFrame = arg33 }
         ):Play()
         wait(1.65)
-        local v1107 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
-        v1107.Transparency = 0
-        v1107.Color = Color3.fromRGB(69, 206, 255)
-        Debris:AddItem(v1107, 5)
-        v1107.Parent = workspace
-        v1107.CFrame = arg32
+        local v1083 = game.ReplicatedStorage.enemyProjectiles.genericNeonBall:Clone()
+        v1083.Transparency = 0
+        v1083.Color = Color3.fromRGB(69, 206, 255)
+        Debris:AddItem(v1083, 5)
+        v1083.Parent = workspace
+        v1083.CFrame = arg33
         TweenService:Create(
-            v1107,
+            v1083,
             TweenInfo.new(
                 0.35,
                 Enum.EasingStyle.Quart,
@@ -5288,62 +5410,62 @@ game.ReplicatedStorage.remotes:WaitForChild("glitchBossSpecficEvents").OnClientE
             ),
             { Size = Vector3.new(42, 42, 42), Transparency = 1 }
         ):Play()
-        v1105:Destroy()
+        v1081:Destroy()
 
         return
     end
 
-    if arg31 == "First Boss Death" then
+    if arg32 == "First Boss Death" then
         for _ = 1, 15 do
-            local v1108 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-            v1108.Transparency = 0
-            Debris:AddItem(v1108, 5)
-            v1108.Color = Color3.fromRGB(92, 167, 162)
-            v1108.Parent = workspace
-            local v1109 = workspace.bossSpawnPart.CFrame
-            local v1110 = rng:NextInteger(-2, 2)
-            v1108.CFrame = v1109 + Vector3.new(
-                v1110,
+            local v1084 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+            v1084.Transparency = 0
+            Debris:AddItem(v1084, 5)
+            v1084.Color = Color3.fromRGB(92, 167, 162)
+            v1084.Parent = workspace
+            local v1085 = workspace.bossSpawnPart.CFrame
+            local v1086 = rng:NextInteger(-2, 2)
+            v1084.CFrame = v1085 + Vector3.new(
+                v1086,
                 rng:NextInteger(-2, 2),
                 rng:NextInteger(-2, 2)
             )
-            v1108.sound:Play()
-            local v1112 = TweenService
-            local tweenInfo_72 = TweenInfo.new(
+            v1084.sound:Play()
+            local v1088 = TweenService
+            local tweenInfo_71 = TweenInfo.new(
                 0.35,
                 Enum.EasingStyle.Quart,
                 Enum.EasingDirection.Out
             )
-            local t_116 = { Size = nil, Transparency = 1 }
-            local v1113 = rng:NextInteger(30, 45)
-            t_116.Size = Vector3.new(v1113, rng:NextInteger(30, 45), rng:NextInteger(30, 45))
-            v1112:Create(v1108, tweenInfo_72, t_116):Play()
+            local t_119 = { Size = nil, Transparency = 1 }
+            local v1089 = rng:NextInteger(30, 45)
+            t_119.Size = Vector3.new(v1089, rng:NextInteger(30, 45), rng:NextInteger(30, 45))
+            v1088:Create(v1084, tweenInfo_71, t_119):Play()
             wait(0.1)
         end
 
-        local v1115 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
-        v1115.Transparency = 0
-        Debris:AddItem(v1115, 5)
-        v1115.Color = Color3.fromRGB(92, 167, 162)
-        v1115.Parent = workspace
-        v1115.CFrame = workspace.bossSpawnPart.CFrame
-        v1115.sound.Volume = 0.5
-        v1115.sound.PlaybackSpeed = 0.5
-        v1115.sound:Play()
+        local v1091 = game.ReplicatedStorage.projectiles.genericNeonBall:Clone()
+        v1091.Transparency = 0
+        Debris:AddItem(v1091, 5)
+        v1091.Color = Color3.fromRGB(92, 167, 162)
+        v1091.Parent = workspace
+        v1091.CFrame = workspace.bossSpawnPart.CFrame
+        v1091.sound.Volume = 0.5
+        v1091.sound.PlaybackSpeed = 0.5
+        v1091.sound:Play()
         TweenService:Create(
-            v1115,
+            v1091,
             TweenInfo.new(1, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
             { Size = Vector3.new(100, 100, 100), Transparency = 1 }
         ):Play()
 
-        for _, val_62 in pairs(workspace:GetDescendants()) do
-            if val_62:IsA("BasePart") and val_62.Name == "neonEndFlash" then
-                val_62.Color = Color3.fromRGB(92, 167, 162)
+        for _, val_64 in pairs(workspace:GetDescendants()) do
+            if val_64:IsA("BasePart") and val_64.Name == "neonEndFlash" then
+                val_64.Color = Color3.fromRGB(92, 167, 162)
             end
         end
     end
 end)
-task.spawn(function() -- line: 3498
+task.spawn(function() -- line: 3589
     -- upvalues:
     --  [1] LocalPlayer (copy)
 
@@ -5360,7 +5482,7 @@ task.spawn(function() -- line: 3498
         return
     end
 
-    UnderworldBossSpecficEvents.OnClientEvent:Connect(function(arguments) -- line: 3503
+    UnderworldBossSpecficEvents.OnClientEvent:Connect(function(arguments) -- line: 3594
         -- upvalues:
         --  [1] LocalPlayer (ref)
         --  [2] PirateBossSpecficEvents (copy)
@@ -5370,36 +5492,36 @@ task.spawn(function() -- line: 3498
         end
 
         local Character_3 = LocalPlayer.Character
-        local v1118 = Character_3
+        local v1094 = Character_3
 
-        if v1118 then
-            v1118 = Character_3:FindFirstChildOfClass("Humanoid")
+        if v1094 then
+            v1094 = Character_3:FindFirstChildOfClass("Humanoid")
         end
 
-        if not v1118 then
+        if not v1094 then
             return
         end
 
         local HumanoidRootPart_28 = Character_3:FindFirstChild("HumanoidRootPart")
-        local t_117 = {}
-        local t_118 = {
-            walkSpeed = v1118.WalkSpeed,
-            hipHeight = v1118.HipHeight,
+        local t_120 = {}
+        local t_121 = {
+            walkSpeed = v1094.WalkSpeed,
+            hipHeight = v1094.HipHeight,
             jumpPower = nil,
             platformStand = nil,
             rootSizeMagnitude = nil
         }
-        local v1119 = v1118.JumpPower
-        local v1120 = PirateBossSpecficEvents
+        local v1095 = v1094.JumpPower
+        local v1096 = PirateBossSpecficEvents
 
-        if not v1118.UseJumpPower or not v1119 then
-            v1119 = v1118.JumpHeight
+        if not v1094.UseJumpPower or not v1095 then
+            v1095 = v1094.JumpHeight
         end
 
-        t_118.jumpPower = v1119
-        t_118.platformStand = v1118.PlatformStand
-        t_118.rootSizeMagnitude = HumanoidRootPart_28 and HumanoidRootPart_28.Size.Magnitude or nil
-        t_117[arguments] = t_118
-        v1120:FireServer(t_117)
+        t_121.jumpPower = v1095
+        t_121.platformStand = v1094.PlatformStand
+        t_121.rootSizeMagnitude = HumanoidRootPart_28 and HumanoidRootPart_28.Size.Magnitude or nil
+        t_120[arguments] = t_121
+        v1096:FireServer(t_120)
     end)
 end)

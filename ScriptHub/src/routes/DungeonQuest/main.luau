@@ -54,7 +54,8 @@ return function(self)
 	--// Tabs
 	local tabGroup = window:TabGroup()
 	local tabs = {
-		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://10734975692" }),
+		-- Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://10734975692" }), -- [TẠM PHONG ẤN TAB COMBAT NẶNG]
+		SmartDodgeV2 = tabGroup:Tab({ Name = "Smart Dodge V2", Image = "rbxassetid://10723346959" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734886202" }),
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10709769841" }),
 		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10747383470" }),
@@ -65,13 +66,15 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = require("@routes/DungeonQuest/tabs/Combat/main")
+	-- local combatTab = require("@routes/DungeonQuest/tabs/Combat/main") -- [TẠM PHONG ẤN]
+	local smartDodgeV2Tab = require("@routes/DungeonQuest/tabs/SmartDodgeV2/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local inventoryTab = require("@routes/DungeonQuest/tabs/Inventory/main")
 	local utilitiesTab = require("@routes/DungeonQuest/tabs/Utilities/main")
 	local configsTab = require("@routes/DungeonQuest/tabs/Configs/main")
 
-	combatTab(window, tabs.Combat)
+	-- if tabs.Combat then combatTab(window, tabs.Combat) end -- [TẠM PHONG ẤN]
+	smartDodgeV2Tab(window, tabs.SmartDodgeV2)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	utilitiesTab(window, tabs.Utilities)
@@ -98,25 +101,37 @@ return function(self)
 	contextual.Init()
 
 	--// Khởi chạy
-	tabs.Combat:Select()
+	if tabs.Combat then
+		tabs.Combat:Select()
+	elseif tabs.SmartDodgeV2 then
+		tabs.SmartDodgeV2:Select()
+	end
 
-	local coordinator = require("@routes/DungeonQuest/core/coordinator")
-	local smartAutoPlay = require("@routes/DungeonQuest/core/smartAutoPlay")
-
-	coordinator.SetLocked(true)
-	macLib:LoadAutoLoadConfig()
-
-	task.delay(0.3, function()
-		coordinator.SetLocked(false)
-
-		-- Đảm bảo Smart Auto Play kích hoạt chính xác nếu toggle được lưu là ON
-		local sapOpt = macLib.Options and macLib.Options["Toggle_SAP_Master"]
-		if sapOpt and sapOpt:GetState() == true then
-			if not smartAutoPlay.IsMasterEnabled() then
-				smartAutoPlay.SetMasterEnabled(true)
+	-- Dọn dẹp triệt để các hộp cam và visual cũ còn sót lại từ V1 trong Terrain & Workspace
+	pcall(function()
+		local oldSD = require("@routes/DungeonQuest/core/smartDodge")
+		if oldSD and oldSD.StopEngine then oldSD.StopEngine() end
+		if oldSD and oldSD.ClearTrajectoryVisuals then oldSD.ClearTrajectoryVisuals() end
+	end)
+	pcall(function()
+		local terrain = workspace:FindFirstChildOfClass("Terrain") or workspace.Terrain
+		if terrain then
+			for _, obj in ipairs(terrain:GetChildren()) do
+				if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") then
+					pcall(function() obj:Destroy() end)
+				end
 			end
 		end
 	end)
+	pcall(function()
+		for _, obj in ipairs(workspace:GetChildren()) do
+			if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") then
+				pcall(function() obj:Destroy() end)
+			end
+		end
+	end)
+
+	macLib:LoadAutoLoadConfig()
 
 	--// Kích hoạt lại autoSave sau khi toàn bộ UI và config đã nạp xong ổn định
 	task.delay(1.5, function()

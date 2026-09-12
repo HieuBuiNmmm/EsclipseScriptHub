@@ -175,12 +175,20 @@ local function getBossCrystal(colorName)
 end
 
 local cachedFirstBossPart = nil
+local lastFirstPartSearchTime = 0
 
 --// Tìm kiếm Part giới hạn sàn đấu Boss 1 của game (workspace.FirstPart)
+--// Tối ưu hóa: Throttled 5.0s để tránh quét đệ quy Workspace liên tục 20 lần/giây gây lag
 local function getFirstBossArenaPart()
 	if cachedFirstBossPart and cachedFirstBossPart.Parent then
 		return cachedFirstBossPart
 	end
+
+	local now = os.clock()
+	if now - lastFirstPartSearchTime < 5.0 then
+		return nil
+	end
+	lastFirstPartSearchTime = now
 
 	-- 1. Tìm trực tiếp tại root Workspace (0.001ms)
 	local p = Workspace:FindFirstChild("FirstPart")
@@ -191,7 +199,7 @@ local function getFirstBossArenaPart()
 			p = dungeon:FindFirstChild("FirstPart", true)
 		end
 	end
-	-- 3. Fallback quét toàn bộ Workspace 1 lần duy nhất
+	-- 3. Fallback quét toàn bộ Workspace 1 lần duy nhất (được throttle 5s)
 	if not p then
 		p = Workspace:FindFirstChild("FirstPart", true)
 	end
@@ -977,7 +985,13 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 
 	-- Quản lý Arena Center & Visual cho Boss 1:
 	local isBoss1 = shared.IsBossActive() and shared.GetCurrentBossIndex() == 1
-	if isBoss1 then
+	if not isBoss1 then
+		if boss1ArenaCenter then
+			boss1ArenaCenter = nil
+			boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
+			clearBoss1ArenaVisual()
+		end
+	elseif not boss1ArenaCenter or not (boss1ArenaVisualPart and boss1ArenaVisualPart.Parent) then
 		local firstPart = getFirstBossArenaPart()
 		if firstPart then
 			local fpPos = firstPart.Position
@@ -1000,15 +1014,19 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
 				updateBoss1ArenaVisual(boss1ArenaCenter, playerPos, nil)
 			end
-		elseif boss1ArenaCenter then
-			updateBoss1ArenaVisual(boss1ArenaCenter, playerPos, nil)
 		end
-	else
-		if boss1ArenaCenter then
-			boss1ArenaCenter = nil
-			boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
-			clearBoss1ArenaVisual()
+	end
+
+	-- TỐI ƯU HIỆU SUẤT ĐỈNH CAO: Zero Hazard Short-Circuit
+	-- Nếu detection xác nhận có 0 hiểm họa trong thế giới -> Thoát ngay lập tức trong 0ms!
+	local totalHazards = detection.GetHazardCount and detection.GetHazardCount() or 0
+	if totalHazards == 0 then
+		if lockedSafeSpot then
+			lockedSafeSpot = nil
+			lockedHazardCount = 0
 		end
+		clearCrystalHighlight()
+		return false, nil, nil, 0
 	end
 
 	-- Tầng 1 & 3: Nếu không còn kẻ địch nào trong phòng và không ở boss room -> Hoàn toàn an toàn
@@ -1105,14 +1123,16 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 				local hasActiveFloorHazard = false
 				local allHazards = detection.GetActiveHazards and detection.GetActiveHazards()
 				if allHazards and #allHazards > 0 then
+					local hasOtherHazard = false
 					for _, hData in ipairs(allHazards) do
 						local hInst = hData.Instance
 						if hInst and hInst ~= activeOrbPart and hInst ~= (activeOrbPart and activeOrbPart.Parent) then
-							if not geometry.IsSpotFullySafe(playerPos, 4.5, activeOrbPart) then
-								hasActiveFloorHazard = true
-								break
-							end
+							hasOtherHazard = true
+							break
 						end
+					end
+					if hasOtherHazard and not geometry.IsSpotFullySafe(playerPos, 4.5, activeOrbPart) then
+						hasActiveFloorHazard = true
 					end
 				end
 
@@ -1515,6 +1535,10 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 		local isBossOrb = (dangerTraj and dangerTraj.isBossOrb)
 			or (hazardName:lower():find("orb") ~= nil)
 			or (dangerPart and dangerPart.Name:lower():find("orb") ~= nil)
+		local isExpandingCone = (dangerTraj and dangerTraj.isExpandingCone)
+			or hazardName:lower():find("cricle") ~= nil
+			or hazardName:lower():find("circle") ~= nil
+			or (dangerPart and (dangerPart.Name:lower():find("cricle") ~= nil or dangerPart.Name:lower():find("circle") ~= nil))
 
 		local trajCandidates = {}
 
@@ -1553,6 +1577,27 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 4.0))
 			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 8.0))
 			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 12.0))
+		elseif isExpandingCone then
+			-- CHIẾN LƯỢC CHO KỸ NĂNG VÒNG TRÒN NỐI TIẾP MỞ RỘNG (secondBossCricleHitbox - Boss 2):
+			-- Đặc điểm: Vòng tròn spawn nối tiếp từ Boss về phía Player, càng ra xa bán kính càng mở rộng lớn.
+			-- NGUYÊN TẮC VÀNG:
+			-- 1) Lách sườn ngang vuông góc 90° (Perpendicular Left / Right) để nhanh chóng bước ra ngoài rìa nón
+			local coneSteps = { stepNeeded, stepNeeded + 3.0, stepNeeded + 6.0, stepNeeded + 10.0 }
+			for _, sDist in ipairs(coneSteps) do
+				table.insert(trajCandidates, playerPos + perpRight * sDist)
+				table.insert(trajCandidates, playerPos + perpLeft * sDist)
+			end
+
+			-- 2) Lách chéo chếch về phía trước (-forward2D, hướng về phía Boss):
+			-- Vì càng gần Boss thì bán kính nón càng hẹp, việc tiến chéo sườn giúp thoát vùng đỏ nhanh hơn gấp nhiều lần
+			local forwardOffsets = { 4.0, 8.0, 12.0 }
+			for _, fOff in ipairs(forwardOffsets) do
+				local forwardVec = -forward2D * fOff
+				for _, sDist in ipairs({ stepNeeded, stepNeeded + 3.0, stepNeeded + 6.0 }) do
+					table.insert(trajCandidates, playerPos + perpRight * sDist + forwardVec)
+					table.insert(trajCandidates, playerPos + perpLeft * sDist + forwardVec)
+				end
+			end
 		else
 			-- CHIẾN LƯỢC PROJECTILE / BEAM CỦA BOSS 1 (firstBossBigSpike, seekingSpikes):
 			-- ƯU TIÊN TUYỆT ĐỐI: Lách ngang vuông góc thuần túy 90° (Điểm 1) - Thoát hiểm nhanh nhất
@@ -1601,6 +1646,13 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 					if dotForward < -0.25 then
 						continue
 					end
+				elseif isExpandingCone then
+					-- Với kỹ năng hình nón mở rộng (forward2D hướng từ Boss ra Player):
+					-- TUYỆT ĐỐI KHÔNG NÉ LÙI RA XA THEO HƯỚNG LAN TỎA (dotForward > 0.15)
+					-- Vì càng lùi ra xa thì vòng tròn càng phình to, né lùi chắc chắn dính sát thương
+					if dotForward > 0.15 then
+						continue
+					end
 				else
 					-- Với Tia bắn thẳng / Moving Beam (forward2D hướng theo chiều đạn bay):
 					-- Tuyệt đối không chọn điểm nằm về phía trước theo hướng bay của chiêu (dotForward > 0.25)
@@ -1630,6 +1682,21 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
 					if dotPerp >= 0.65 then
 						score = score - 8.0 -- Thưởng lách sườn
+					end
+				elseif isExpandingCone then
+					-- Thưởng tối đa cho lách ngang sườn vuông góc thuần túy 90° (Thoát khỏi mép nón nhanh nhất)
+					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
+					if dotPerp >= 0.85 then
+						score = score - 15.0 -- Thưởng cực lớn khi lách ngang sườn
+					elseif dotPerp < 0.65 then
+						score = score + 6.0
+					end
+
+					-- Thưởng thêm nếu lách chếch về phía trước (-forward2D, vùng nón hẹp hơn):
+					if dotFwd < -0.2 then
+						score = score - 8.0 -- Thưởng tiến chéo về phía trước nón
+					elseif dotFwd > 0 then
+						score = score + 20.0 -- Phạt nặng bất kỳ chuyển động lùi nào
 					end
 				elseif isMovingBeam and dotFwd < -0.2 then
 					-- Chỉ thưởng lùi ra sau cho Moving Beam của Boss 2!
@@ -1685,6 +1752,7 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 			local fwdAngleDeg = math.deg(math.atan2(forward2D.Z, forward2D.X))
 			local testAngles = isMovingBeam and { 90, -90, 120, -120, 150, -150, 180 }
 				or isBossOrb and { 0, 15, -15, 30, -30, 45, -45, 60, -60 }
+				or isExpandingCone and { 90, -90, 105, -105, 120, -120, 135, -135 }
 				or { 90, -90, 75, -75, 105, -105, 60, -60, 120, -120 }
 			local backRadii = { 4.0, 7.0, 11.0, 16.0, 22.0 }
 
