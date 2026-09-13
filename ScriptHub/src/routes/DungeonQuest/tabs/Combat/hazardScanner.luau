@@ -1,12 +1,8 @@
--- Module Hazard Scanner trong tab Combat (DungeonQuest): quét hiểm họa & highlight vùng nguy hiểm.
--- Chỉ hiển thị vùng nguy hiểm của skill cực kỳ trực quan:
---   - SelectionBox ESP quanh phần threat (Neon ring, projectile, beam...)
---   - Hành lang quỹ đạo cảnh báo (trajectory corridor) của projectile
---   - Đếm ngược 3D thời gian tồn tại skill (Skill Lifetime Timers)
--- Không né chiêu tự động, không safe spot, không panic.
+-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
+-- trong Workspace sau sự kiện start dungeon và vẽ SelectionBox đơn giản cho từng đối tượng.
+-- Không còn trajectory / whitelist / ngoại lệ / hitbox padding / tên 3D.
 
 --// Imports
-local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
 
@@ -21,16 +17,6 @@ return function(window, tab)
 	local statusLabel = rightSection:Label({ Text = "Detector: <font color='rgb(255,80,80)'>Disabled</font>" })
 	local activeCountLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
 	local lastHazardLabel = rightSection:Label({ Text = "Last Detected: <font color='rgb(160,160,160)'>None</font>" })
-	local whitelistLabel = rightSection:Label({ Text = "Projectile Whitelist: <font color='rgb(160,160,160)'>Lazy</font>" })
-
-	local function updateWhitelistLabel()
-		local size = pcall(hazardScanner.GetProjectileWhitelistSize) and hazardScanner.GetProjectileWhitelistSize() or 0
-		local color = size > 0 and "0, 255, 0" or "255, 80, 80"
-		local text = size > 0 and ("%d templates"):format(size) or "empty / not found"
-		pcall(function()
-			whitelistLabel:UpdateName("Projectile Whitelist: <font color='rgb(" .. color .. ")'>" .. text .. "</font>")
-		end)
-	end
 
 	local function updateMonitor(count, lastInfo)
 		count = count or hazardScanner.GetHazardCount()
@@ -38,7 +24,7 @@ return function(window, tab)
 
 		local isEnabled = hazardScanner.IsEnabled()
 		local statusColor = isEnabled and "0, 255, 0" or "255, 80, 80"
-		local statusText = isEnabled and "Active (Scanning & Highlighting)" or "Disabled"
+		local statusText = isEnabled and "Active (Scanning & SelectionBox)" or "Disabled"
 
 		pcall(function()
 			statusLabel:UpdateName("Detector: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
@@ -76,53 +62,6 @@ return function(window, tab)
 		end),
 	}, "Toggle_SmartDodgeThreatDetection")
 
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Hitbox Padding",
-		Suffix = " std",
-		Default = hazardScanner.GetHitboxPadding(),
-		Minimum = 0,
-		Maximum = 5,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(value)
-			hazardScanner.SetHitboxPadding(value)
-		end),
-	}, "Slider_SmartDodgeHitboxPadding"))
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Trajectory Lookahead",
-		Suffix = " std",
-		Default = hazardScanner.GetTrajectoryLookahead(),
-		Minimum = 20,
-		Maximum = 150,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(value)
-			hazardScanner.SetTrajectoryLookahead(value)
-		end),
-	}, "Slider_SmartDodgeTrajLookahead"))
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Trajectory Width",
-		Suffix = " std",
-		Default = hazardScanner.GetTrajectoryWidthPadding(),
-		Minimum = 0.5,
-		Maximum = 6.0,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(value)
-			hazardScanner.SetTrajectoryWidthPadding(value)
-		end),
-	}, "Slider_SmartDodgeTrajPadding"))
-
-	leftSection:Toggle({
-		Name = "Threat Visual ESP (SelectionBox)",
-		Default = hazardScanner.IsVisualEspEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetVisualEsp(state)
-		end),
-	}, "Toggle_SmartDodgeVisualEsp")
-
 	leftSection:Toggle({
 		Name = "Log Hazards (Spawns / Despawns)",
 		Default = hazardScanner.IsLogHazardsEnabled(),
@@ -142,5 +81,4 @@ return function(window, tab)
 
 	-- Khởi tạo monitor
 	updateMonitor()
-	updateWhitelistLabel()
 end

@@ -42,6 +42,27 @@ return function(window, tab)
 		updateBossIndex()
 	end)
 
+	local roomLabel = section:Label({
+		Text = "Room: --",
+	})
+
+	local function updateRoom()
+		local room = shared.GetCurrentRoomIndex()
+		if room <= 0 then
+			roomLabel:UpdateName("Room: <font color='rgb(160, 160, 160)'>--</font>")
+			return
+		end
+		local isBoss = room >= 100
+		local color = isBoss and "255, 200, 80" or "0, 255, 0"
+		roomLabel:UpdateName("Room: <font color='rgb(" .. color .. ")'>" .. tostring(room) .. "</font>")
+	end
+
+	updateRoom()
+
+	shared.OnRoomIndexChanged(function()
+		updateRoom()
+	end)
+
 	local enemyCountLabel = section:Label({
 		Text = "Enemies: 0",
 	})
@@ -87,6 +108,7 @@ return function(window, tab)
 		while task.wait(0.5) do
 			updateBoss(shared.IsBossActive())
 			updateBossIndex()
+			updateRoom()
 			updateEnemyCount()
 			updateLobby()
 			updateTimeLeft()
