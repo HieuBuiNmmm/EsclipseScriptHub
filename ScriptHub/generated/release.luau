@@ -1449,20 +1449,22 @@ BackgroundTransparency=bR.DefaultTransparency,TextTransparency=bR.
 DefaultTransparency2}):Play()elseif bS=='Hover'then u(bO,TweenInfo.new(0.2,bR.
 EasingStyle),{BackgroundTransparency=bR.HoverTransparency,TextTransparency=bR.
 HoverTransparency2}):Play()end end bO.MouseButton1Click:Connect(function()if bq.
-GroupTransparency~=0 then return end if bN.Callback then bN.Callback()end bL()
-end)bO.MouseEnter:Connect(function()bS'Hover'end)bO.MouseLeave:Connect(function(
-)bS'Idle'end)end bK()function bp:UpdateTitle(bM)bz.Text=bM end function bp:
-UpdateDescription(bM)bB.Text=bM end function bp:Cancel()bL()end return bp end
-function w:SetNotificationsState(bo)y.Visible=bo end function w:
-GetNotificationsState(bo)return y.Visible end function w:SetState(bo)p=bo B.
-Visible=bo end function w:GetState()return p end local bo function w:Unload()if
-bo then bo()end x:Destroy()n=true end function w.onUnloaded(bp)bo=bp end local
-bp=v.Keybind or Enum.KeyCode.RightControl local bq=function()local bq=not w:
-GetState()w:SetState(bq)w:Notify{Title=v.Title,Description=(bq and'Maximized 'or
-'Minimized ')..'the menu. Use '..tostring(bp.Name)..' to toggle it.',Lifetime=5}
-end g.InputEnded:Connect(function(br,bs)if bs then return end if br.KeyCode==bp
-then bq()end end)Q.MouseButton1Click:Connect(bq)O.MouseButton1Click:Connect(
-function()w:Dialog{Title=v.Title,Description=
+GroupTransparency~=0 then return end local bT,bU=pcall(function()if bN.Callback
+then bN.Callback()end end)bL()if not bT then warn(
+'[Dialog] Button callback error: '..tostring(bU))end end)bO.MouseEnter:Connect(
+function()bS'Hover'end)bO.MouseLeave:Connect(function()bS'Idle'end)end bK()
+function bp:UpdateTitle(bM)bz.Text=bM end function bp:UpdateDescription(bM)bB.
+Text=bM end function bp:Cancel()bL()end return bp end function w:
+SetNotificationsState(bo)y.Visible=bo end function w:GetNotificationsState(bo)
+return y.Visible end function w:SetState(bo)p=bo B.Visible=bo end function w:
+GetState()return p end local bo function w:Unload()if bo then bo()end x:Destroy(
+)n=true end function w.onUnloaded(bp)bo=bp end local bp=v.Keybind or Enum.
+KeyCode.RightControl local bq=function()local bq=not w:GetState()w:SetState(bq)w
+:Notify{Title=v.Title,Description=(bq and'Maximized 'or'Minimized ')..
+'the menu. Use '..tostring(bp.Name)..' to toggle it.',Lifetime=5}end g.
+InputEnded:Connect(function(br,bs)if bs then return end if br.KeyCode==bp then
+bq()end end)Q.MouseButton1Click:Connect(bq)O.MouseButton1Click:Connect(function(
+)w:Dialog{Title=v.Title,Description=
 [[Are you sure you want to exit the menu? You will lose any unsaved configurations.]]
 ,Buttons={{Name='Confirm',Callback=function()w:Unload()end},{Name='Cancel'}}}end
 )function w:SetKeybind(br)bp=br end function w:SetAcrylicBlurState(br)q=br B.
@@ -1780,63 +1782,65 @@ do pcall(ap[a6],ao)end end function ag.OnBossIndexChanged(a6)if type(a6)~=
 'function'then return function()end end table.insert(ap,a6)return function()for
 a7,a8 in ipairs(ap)do if a8==a6 then table.remove(ap,a7)break end end end end
 local a6=function(a6)if type(a6)~='string'then return 0 end local a7=string.
-match(a6,'^room(%d+)$')if not a7 then return 0 end return tonumber(a7)or 0 end
-local a7=function()if not dungeon then return 0 end for a7,a8 in pairs(at)do if
-a8 and a8.Room then local a9=a6(a8.Room.Name)if a9>0 then return a9 end end end
-return 0 end aN=function()local a8=a7()if a8==aq then return end aq=a8 for a9=#
-ar,1,-1 do pcall(ar[a9],aq)end end function ag.GetCurrentRoomIndex()return aq
-end function ag.OnRoomIndexChanged(a8)if type(a8)~='function'then return
-function()end end table.insert(ar,a8)return function()for a9,b in ipairs(ar)do
-if b==a8 then table.remove(ar,a9)break end end end end function ag.
-GetCurrentDungeonName()return aJ end function ag.OnDungeonNameChanged(a8)if
-type(a8)~='function'then return function()end end table.insert(aA,a8)return
-function()for a9,b in ipairs(aA)do if b==a8 then table.remove(aA,a9)break end
-end end end function ag.IsInLobby()return aC end function ag.OnLobbyChanged(a8)
-if type(a8)~='function'then return function()end end table.insert(aD,a8)return
-function()for a9,b in ipairs(aD)do if b==a8 then table.remove(aD,a9)break end
-end end end local a8,a9=function(a8)if am==a8 then return end am=a8 if a8 then
-ao+=1 for a9=#ap,1,-1 do pcall(ap[a9],ao)end end for a9=#an,1,-1 do pcall(an[a9]
-,am)end end local function b()if not ac then return end local ba=ac:
-FindFirstChild'PlayerGui'if not ba then a9=nil a8(false)return end local bb=ba:
-FindFirstChild('bossHealth',true)if bb then if bb~=a9 then a9=bb if a9:IsA
-'ScreenGui'then aQ(a9:GetPropertyChangedSignal'Enabled':Connect(b))elseif a9:IsA
-'GuiObject'then aQ(a9:GetPropertyChangedSignal'Visible':Connect(b))end end local
-bc=if bb:IsA'ScreenGui'then bb.Enabled elseif bb:IsA'GuiObject'then bb.Visible
-else true a8(bc)else a9=nil a8(false)end end task.spawn(function()if not ac then
-return end local ba=ac:WaitForChild('PlayerGui',30)if not ba then return end aQ(
-ba.DescendantAdded:Connect(b))aQ(ba.DescendantRemoving:Connect(b))b()while ab.
-IsActive()and task.wait(0.5)do b()end end)ab.Register(function()if aO then aO:
-Disconnect()aO=nil end for ba,bb in ipairs(aF)do pcall(function()bb:Disconnect()
-end)end table.clear(aF)aM()end)return ag end function a.g()local aa={}function
-aa.PatchSliderLoadCallback(ab)if not ab or type(ab.UpdateValue)~='function'then
-return ab end local ac=ab.UpdateValue ab.UpdateValue=function(ad,ae)ac(ad,ae)
-local af=ad.Settings if af and af.Callback then task.spawn(function()pcall(af.
-Callback,tonumber(ae))end)end end return ab end function aa.PatchDropdownRestore
-(ab,ac)if not ab or type(ab.UpdateSelection)~='function'then return ab end local
-ad=ab.UpdateSelection ab.UpdateSelection=function(ae,af)if type(af)=='string'and
-af~=''and not ae:IsOption(af)then if ac then pcall(function()ae:InsertOptions{af
-}end)else local ag=ae.Settings and ae.Settings.Options if type(ag)=='table'and#
-ag>0 then af=ag[1]else local ah=next(ae:GetOptions())if ah then af=ah end end
-end end ad(ae,af)end return ab end return aa end function a.h()local aa,ab,ac=a.
-load'e',a.load'f',a.load'b'local ad,ae,af,ag,ah=aa.UserInputService,aa.
-VirtualInputManager,{},false function af.IsMouseComboEnabled()return ag end
-function af.SetMouseComboEnabled(ai)ag=ai==true end local ai=function()task.
-spawn(function()ae:SendKeyEvent(true,Enum.KeyCode.Q,false,game)ae:SendKeyEvent(
-true,Enum.KeyCode.E,false,game)task.wait(ab.GetKeyHoldTime())ae:SendKeyEvent(
-false,Enum.KeyCode.Q,false,game)ae:SendKeyEvent(false,Enum.KeyCode.E,false,game)
-end)end function af.Init()if af.inited then return end af.inited=true ah=ad.
-InputBegan:Connect(function(aj,ak)if aj.UserInputType==Enum.UserInputType.
-MouseButton2 then if ad:GetFocusedTextBox()then return end if ag then ai()end
-end end)end ac.Register(function()if ah then ah:Disconnect()ah=nil end af.inited
-=false end)return af end function a.i()local aa,ab,ac,ad=a.load'f',a.load'g',a.
-load'd',a.load'h'return function(ae,af)local ag=af:Section{Side='Right'}ag:
-Header{Name='Movement Speed'}ag:Toggle({Name='Fast Speed',Default=aa.
-IsSpeedEnabled(),Callback=ac.Wrap(function(ah)aa.SetSpeedEnabled(ah)end)},
-'Toggle_FastSpeed')ab.PatchSliderLoadCallback(ag:Slider({Name=
-'Custom Fast Speed',Default=aa.GetFastSpeed(),Minimum=16,Maximum=24,
-DisplayMethod='Round',Precision=0,Callback=ac.Wrap(function(ah)aa.SetFastSpeed(
-ah)end)},'Slider_FastSpeed'))ag:Toggle({Name=
-'Instant Acceleration (Max Speed t\u{1ee9}c th\u{ec})',Default=aa.
+lower(a6)local a8=string.match(a7,'boss.*(%d+)')if a8 then return 100+(tonumber(
+a8)or 1)end if string.find(a7,'boss')then return 100+math.max(1,ao)end local a9=
+string.match(a6,'^room(%d+)$')if not a9 then return 0 end return tonumber(a9)or
+0 end local a7=function()if not dungeon then return 0 end for a7,a8 in pairs(at)
+do if a8 and a8.Room then local a9=a6(a8.Room.Name)if a9>0 then return a9 end
+end end if am then return 100+math.max(1,ao)end return 0 end aN=function()local
+a8=a7()if a8==aq then return end aq=a8 for a9=#ar,1,-1 do pcall(ar[a9],aq)end
+end function ag.GetCurrentRoomIndex()return aq end function ag.
+OnRoomIndexChanged(a8)if type(a8)~='function'then return function()end end table
+.insert(ar,a8)return function()for a9,b in ipairs(ar)do if b==a8 then table.
+remove(ar,a9)break end end end end function ag.GetCurrentDungeonName()return aJ
+end function ag.OnDungeonNameChanged(a8)if type(a8)~='function'then return
+function()end end table.insert(aA,a8)return function()for a9,b in ipairs(aA)do
+if b==a8 then table.remove(aA,a9)break end end end end function ag.IsInLobby()
+return aC end function ag.OnLobbyChanged(a8)if type(a8)~='function'then return
+function()end end table.insert(aD,a8)return function()for a9,b in ipairs(aD)do
+if b==a8 then table.remove(aD,a9)break end end end end local a8,a9=function(a8)
+if am==a8 then return end am=a8 if a8 then ao+=1 for a9=#ap,1,-1 do pcall(ap[a9]
+,ao)end end for a9=#an,1,-1 do pcall(an[a9],am)end aN()end local function b()if
+not ac then return end local ba=ac:FindFirstChild'PlayerGui'if not ba then a9=
+nil a8(false)return end local bb=ba:FindFirstChild('bossHealth',true)if bb then
+if bb~=a9 then a9=bb if a9:IsA'ScreenGui'then aQ(a9:GetPropertyChangedSignal
+'Enabled':Connect(b))elseif a9:IsA'GuiObject'then aQ(a9:GetPropertyChangedSignal
+'Visible':Connect(b))end end local bc=if bb:IsA'ScreenGui'then bb.Enabled elseif
+bb:IsA'GuiObject'then bb.Visible else true a8(bc)else a9=nil a8(false)end end
+task.spawn(function()if not ac then return end local ba=ac:WaitForChild(
+'PlayerGui',30)if not ba then return end aQ(ba.DescendantAdded:Connect(b))aQ(ba.
+DescendantRemoving:Connect(b))b()while ab.IsActive()and task.wait(0.5)do b()end
+end)ab.Register(function()if aO then aO:Disconnect()aO=nil end for ba,bb in
+ipairs(aF)do pcall(function()bb:Disconnect()end)end table.clear(aF)aM()end)
+return ag end function a.g()local aa={}function aa.PatchSliderLoadCallback(ab)if
+not ab or type(ab.UpdateValue)~='function'then return ab end local ac=ab.
+UpdateValue ab.UpdateValue=function(ad,ae)ac(ad,ae)local af=ad.Settings if af
+and af.Callback then task.spawn(function()pcall(af.Callback,tonumber(ae))end)end
+end return ab end function aa.PatchDropdownRestore(ab,ac)if not ab or type(ab.
+UpdateSelection)~='function'then return ab end local ad=ab.UpdateSelection ab.
+UpdateSelection=function(ae,af)if type(af)=='string'and af~=''and not ae:
+IsOption(af)then if ac then pcall(function()ae:InsertOptions{af}end)else local
+ag=ae.Settings and ae.Settings.Options if type(ag)=='table'and#ag>0 then af=ag[1
+]else local ah=next(ae:GetOptions())if ah then af=ah end end end end ad(ae,af)
+end return ab end return aa end function a.h()local aa,ab,ac=a.load'e',a.load'f'
+,a.load'b'local ad,ae,af,ag,ah=aa.UserInputService,aa.VirtualInputManager,{},
+false function af.IsMouseComboEnabled()return ag end function af.
+SetMouseComboEnabled(ai)ag=ai==true end local ai=function()task.spawn(function()
+ae:SendKeyEvent(true,Enum.KeyCode.Q,false,game)ae:SendKeyEvent(true,Enum.KeyCode
+.E,false,game)task.wait(ab.GetKeyHoldTime())ae:SendKeyEvent(false,Enum.KeyCode.Q
+,false,game)ae:SendKeyEvent(false,Enum.KeyCode.E,false,game)end)end function af.
+Init()if af.inited then return end af.inited=true ah=ad.InputBegan:Connect(
+function(aj,ak)if aj.UserInputType==Enum.UserInputType.MouseButton2 then if ad:
+GetFocusedTextBox()then return end if ag then ai()end end end)end ac.Register(
+function()if ah then ah:Disconnect()ah=nil end af.inited=false end)return af end
+function a.i()local aa,ab,ac,ad=a.load'f',a.load'g',a.load'd',a.load'h'return
+function(ae,af)local ag=af:Section{Side='Right'}ag:Header{Name='Movement Speed'}
+ag:Toggle({Name='Fast Speed',Default=aa.IsSpeedEnabled(),Callback=ac.Wrap(
+function(ah)aa.SetSpeedEnabled(ah)end)},'Toggle_FastSpeed')ab.
+PatchSliderLoadCallback(ag:Slider({Name='Custom Fast Speed',Default=aa.
+GetFastSpeed(),Minimum=16,Maximum=24,DisplayMethod='Round',Precision=0,Callback=
+ac.Wrap(function(ah)aa.SetFastSpeed(ah)end)},'Slider_FastSpeed'))ag:Toggle({Name
+='Instant Acceleration (Max Speed t\u{1ee9}c th\u{ec})',Default=aa.
 IsInstantAccelEnabled(),Callback=ac.Wrap(function(ah)aa.SetInstantAccelEnabled(
 ah)end)},'Toggle_InstantAcceleration')ag:Header{Name='Shortcuts'}ag:Toggle({Name
 ='Right Click Combo (Q+E)',Default=ad.IsMouseComboEnabled(),Callback=ac.Wrap(
@@ -3346,11 +3350,11 @@ ClearTrajectoryVisuals()af.ResetLock()aj=false ao=nil ap=nil av(false,nil,nil,0)
 ag.FireStatus'Idle'end local ay,az=function()ad.StartScan()aw()end,function()ad.
 StopScan()ax()end function ar.StartEngine()if ai then return end ai=true ad.
 SetEnabled(true)ay()end function ar.StopEngine()if not ai then return end ai=
-false ax()local aA=ad.skillTimingManager if not(aA and aA.IsRecording())then ad.
-SetEnabled(false)ad.StopScan()end end function ar.Toggle(aA)if aA then ar.
-StartEngine()ac.EnableExclusive'SmartDodge'else ar.StopEngine()end end function
-ar.IsEnabled()return ai end function ar.Shutdown()ai=false az()af.
-DestroyVisuals()ad.ClearTrajectoryVisuals()ag.Cancel()end function ar.
+false ax()ag.Cancel()local aA=ad.skillTimingManager if not(aA and aA.
+IsRecording())then ad.SetEnabled(false)ad.StopScan()end end function ar.Toggle(
+aA)if aA then ar.StartEngine()ac.EnableExclusive'SmartDodge'else ar.StopEngine()
+end end function ar.IsEnabled()return ai end function ar.Shutdown()ai=false az()
+af.DestroyVisuals()ad.ClearTrajectoryVisuals()ag.Cancel()end function ar.
 SetLogInDanger(aA)am=aA and true or false end function ar.IsLogInDangerEnabled()
 return am end function ar.SetIgnoreDodgeWhenInvulnerable(aA)an=aA and true or
 false end function ar.IsIgnoreDodgeWhenInvulnerableEnabled()return an end
@@ -5109,262 +5113,381 @@ Button{Name='Log Enemy Types to Console',Callback=function()local av=aa.
 GetEnemyNames()print('[DungeonQuest] Enemy types in map ('..#av..'):')if#av==0
 then print'  (no enemies found)'else for aw,ax in ipairs(av)do print('  - '..ax)
 end end end}end end function a.ab()return function(aa,ab)a.load'_'(aa,ab)a.load
-'aa'(aa,ab)end end function a.ac()local aa,ab,ac,ad,ae,af=a.load'a',a.load'd',{}
-,'pathRecord',3,{}local ag,ah,ai,aj,ak,al=function()for ag=#af,1,-1 do pcall(af[
-ag])end end,function()local ag=aa.contextData if type(ag)~='table'then return
-nil end return ag[ad]end,function(ag)if not ag then return nil end return{X=ag.X
-,Y=ag.Y,Z=ag.Z}end,function(ag)if not ag or type(ag)~='table'then return nil end
-return Vector3.new(ag.X or 0,ag.Y or 0,ag.Z or 0)end,function(ag)return type(ag)
-=='table'and type(ag.points)=='table'and#ag.points>0 end,function(ag)if type(ag)
-~='table'or type(ag.X)~='number'then return nil end local ah=Vector3.new(ag.X,0,
-ag.Z)if ah.Magnitude<0.001 then return nil end return ah.Unit end local am,an,ao
-=function(am)if type(am)~='table'then return nil end local an={}for ao,ap in
-ipairs(am.dwells or{})do local aq=aj(ap.pos)if aq then an[#an+1]={pos=aq,dur=
-tonumber(ap.dur)or 0,facing=al(ap.facing)}end end local ao={}for ap,aq in
-ipairs(am.skills or{})do local ar=aj(aq.pos)if ar then ao[#ao+1]={pos=ar,facing=
-al(aq.facing),dw=math.floor(tonumber(aq.dw)or 0),dwT=tonumber(aq.dwT)or 0}end
-end if#an==0 and#ao==0 then return nil end return{dwells=an,skills=ao}end,0.2,
-function(am,an)local ao,ap=am.X-an.X,am.Z-an.Z return math.sqrt(ao*ao+ap*ap)end
-function ac.SimplifyPath(ap,aq)local ar=#ap if ar<=2 then return ap end local as
-={}for at=1,ar do as[at]=false end as[1]=true as[ar]=true local at,au=aq*aq,{{1,
-ar}}while#au>0 do local av=table.remove(au)local aw,ax=av[1],av[2]local ay,az,aA
-,aB=ap[aw].X,ap[aw].Z,ap[ax].X,ap[ax].Z local aC,aD=aA-ay,aB-az local aE,aF,aG=
-aC*aC+aD*aD,-1,0 for aH=aw+1,ax-1 do local aI=0 if aE>0 then aI=((ap[aH].X-ay)*
-aC+(ap[aH].Z-az)*aD)/aE aI=math.clamp(aI,0,1)end local aJ,aK=ap[aH].X-(ay+aC*aI)
-,ap[aH].Z-(az+aD*aI)local aL=aJ*aJ+aK*aK if aL>aF then aF=aL aG=aH end end if aG
->0 and aF>at then as[aG]=true table.insert(au,{aw,aG})table.insert(au,{aG,ax})
-end end local av={}for aw=1,ar do if as[aw]and(#av==0 or ao(av[#av],ap[aw])>=an)
-then table.insert(av,ap[aw])end end if#av==1 then table.insert(av,ap[ar])end
-return av end function ac.OnChanged(ap)if type(ap)~='function'then return
-function()end end table.insert(af,ap)return function()for aq,ar in ipairs(af)do
-if ar==ap then table.remove(af,aq)break end end end end function ac.HasMap(ap)if
-type(ap)~='string'or#ap==0 then return false end local aq=ah()return aq~=nil and
-aq[ap]~=nil end function ac.GetRoomSegment(ap,aq)if type(ap)~='string'or type(aq
-)~='number'then return nil end local ar=ah()if not ar then return nil end local
-as=ar[ap]if not as or type(as.rooms)~='table'then return nil end local at=as.
-rooms[tostring(aq)]if not ak(at)then return nil end local au={}for av,aw in
-ipairs(at.points)do local ax=aj(aw)if ax then au[#au+1]=ax end end if#au==0 then
-return nil end return{startPos=aj(at.startPos)or au[1],points=au,events=at.
-events and am(at.events)or nil,speed=tonumber(at.speed)or 0}end function ac.
-HasSegmentOrMacro(ap,aq)return ac.GetRoomSegment(ap,aq)~=nil end function ac.
-GetMap(ap)if not ac.HasMap(ap)then return nil end local aq=ah()local ar,as=aq[ap
-],{}for at,au in pairs(ar.rooms or{})do local av=tonumber(at)if av and ak(au)
-then local aw={}for ax,ay in ipairs(au.points)do local az=aj(ay)if az then aw[#
-aw+1]=az end end if#aw>0 then as[av]={startPos=aj(au.startPos)or aw[1],points=aw
-,events=au.events and am(au.events)or nil,speed=tonumber(au.speed)or 0}end end
-end return{map=ap,version=ar.version,rooms=as,created=ar.created,updated=ar.
-updated}end function ac.GetMaps()local ap=ah()if not ap then return{}end local
-aq={}for ar,as in pairs(ap)do if type(ar)=='string'and type(as)=='table'and as.
-map==ar and type(as.rooms)=='table'then local at,au=0,0 for av,aw in pairs(as.
-rooms)do if tonumber(av)~=nil and ak(aw)then at+=1 au+=#aw.points end end if at>
-0 then table.insert(aq,{map=ar,roomCount=at,pointCount=au,updated=as.updated})
-end end end table.sort(aq,function(ar,as)return ar.map<as.map end)return aq end
-function ac.Count()return#ac.GetMaps()end function ac.SaveSegment(ap,aq,ar,as,at
-,au)if type(ap)~='string'or#ap==0 then return false end if type(aq)~='number'or
-aq<=0 then return false end if not ar or not as or#as==0 then return false end
-local av=aa.contextData if type(av)~='table'then av={}aa.contextData=av end
-local aw=av[ad]if not aw then aw={}av[ad]=aw end local ax=aw[ap]if not ax or
-type(ax)~='table'then ax={map=ap,version=ae,created=os.time(),updated=os.time(),
-rooms={}}aw[ap]=ax end if type(ax.rooms)~='table'then ax.rooms={}end local ay={}
-for az,aA in ipairs(as)do ay[#ay+1]=ai(aA)end local az={startPos=ai(ar)or ay[1],
-points=ay}if type(au)=='number'and au>0 then az.speed=au end if at and type(at)
-=='table'then local aA,aB=#(at.dwells or{}),#(at.skills or{})if aA>0 or aB>0
-then local aC={dwells={},skills={}}for aD,aE in ipairs(at.dwells)do aC.dwells[#
-aC.dwells+1]={pos=ai(aE.pos),dur=aE.dur or 0,facing=aE.facing}end for aD,aE in
-ipairs(at.skills)do aC.skills[#aC.skills+1]={pos=ai(aE.pos),facing=aE.facing,dw=
-aE.dw or 0,dwT=aE.dwT or 0}end az.events=aC end end ax.rooms[tostring(aq)]=az ax
-.version=ae ax.map=ap ax.updated=os.time()ab.Save()ag()return true end function
-ac.RemoveMap(ap)local aq=ah()if not aq or not aq[ap]then return false end aq[ap]
-=nil if next(aq)==nil then local ar=aa.contextData if type(ar)=='table'then ar[
-ad]=nil end end ab.Save()ag()return true end function ac.ClearAll()local ap,aq=
-ah(),false if ap then for ar,as in pairs(ap)do if type(ar)=='string'then aq=true
-break end end end if not aq then return end table.clear(ap)local ar=aa.
-contextData if type(ar)=='table'then ar[ad]=nil end ab.Save()ag()end function ac
-.ReloadFromConfig()ag()end return ac end function a.ad()local aa,ab,ac,ad=a.load
-'e',a.load'f',a.load'ac',a.load'c'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao=aa.
-RunService,aa.player,aa.UserInputService,0.2,4000,1,0.5,0.15,{},true,true
-function am.SetCapture(ap)ap=ap and true or false an=ap ao=ap end function am.
-IsCaptureEnabled()return an or ao end local ap,aq,ar,as,at,au,av,aw,ax,ay,az,aA,
-aB,aC,aD,aE,aF,aG,aH,aI,aJ,aK,aL,aM,aN=false,0,{},0,{},{},0,false,0,0,{}local aO
-,aP=function()local aO={recording=ap,map=aA,room=aq,pointCount=#ar,dwellCount=#
-at,skillCount=#au}for aP,aQ in ipairs(az)do pcall(aQ,aO)end end,function()local
-aO=af and af.Character local aP=aO and aO:FindFirstChild'HumanoidRootPart'if aP
-and aP.Parent then return aP end return nil end local aQ,aR,aS=function()local
-aQ=aP()if not aQ then return nil end local aR=aQ.CFrame.LookVector if aR.
-Magnitude<0.001 then return nil end return{X=aR.X/aR.Magnitude,Z=aR.Z/aR.
-Magnitude}end,function()if aC then aC:Disconnect()aC=nil end if aD then aD:
-Disconnect()aD=nil end if aE then aE()aE=nil end if aF then aF()aF=nil end if aG
-then aG()aG=nil end if aH then aH()aH=nil end end,function()local aQ=aP()if not
-aQ then return false end local aR=aQ.Position aB=aR ar={aR}at={}au={}aI=nil av=0
-aJ=nil aK=nil aL=nil aM=aR ax=0 ay=0 as=os.clock()aN=os.clock()aO()return true
-end function am.IsRecording()return ap end function am.GetStartRoom()return aq
-end function am.GetCurrentPoints()return ar end function am.GetStatus()return{
-recording=ap,map=aA,room=aq,pointCount=#ar}end function am.OnStatusChanged(aT)if
-type(aT)=='function'then table.insert(az,aT)end end function am.Start()if ap
-then return false,'\u{111}ang record r\u{1ed3}i'end local aT=aP()if not aT then
-return false,'ch\u{1b0}a c\u{f3} nh\u{e2}n v\u{1ead}t'end if ab.IsDead()then
-return false,'nh\u{e2}n v\u{1ead}t \u{111}ang ch\u{1ebf}t'end if ab.
-IsBossActive()then return false,'boss room (d\u{f9}ng Smart Dodge)'end local aU=
-ab.GetCurrentRoomIndex()if aU<=0 then return false,
-'kh\u{f4}ng n\u{1eb1}m trong dungeon'end local aV=ab.GetCurrentDungeonName()if
-not aV or#aV==0 then return false,
-'kh\u{f4}ng x\u{e1}c \u{111}\u{1ecb}nh \u{111}\u{1b0}\u{1ee3}c map'end aA=aV aq=
-aU aB=aT.Position ar={aB}ap=true as=os.clock()at={}au={}aI=nil av=0 aJ=nil aK=
-nil aL=nil aM=aT.Position aw=false ax=0 ay=0 aN=os.clock()aC=ae.Heartbeat:
-Connect(function()if not ap then return end if ab.IsDead()then aJ=nil aI=nil aM=
-nil return end local aW=aP()if not aW then return end if ab.IsBossActive()then
-return end local aX,aZ=aW.Position,ar[#ar]if aZ and(aX-aZ).Magnitude>35 then aS(
-)return end local a_,a0=os.clock(),aM and(aX-aM).Magnitude or 0 aM=aX local a1=
-aN and math.max(0,a_-aN)or 0 aN=a_ if a0>=al then ax+=a0 ay+=a1 end if an then
-if a0<al then if not aJ then aJ=a_ aK=aX aL=aQ()end if aI then aI.dur=a_-aJ aI.
-facing=aQ()or aL elseif a_-aJ>=ak then av=aJ-as aI={pos=aK,dur=a_-aJ,facing=aL,
-index=#at+1}table.insert(at,aI)end else aJ=nil aI=nil end end local a2=ar[#ar]if
-a2 and(aX-a2).Magnitude<ah then return end if#ar>=ai then am.Stop
-'\u{111}\u{1ea1}t gi\u{1edb}i h\u{1ea1}n \u{111}i\u{1ec3}m'return end table.
-insert(ar,aX)end)if ao then aD=ag.InputBegan:Connect(function(aW,aX)if not ap or
-not ao then return end if aW.UserInputType~=Enum.UserInputType.MouseButton2 then
-return end if aX then return end if ag:GetFocusedTextBox()then return end if ab.
-IsDead()then return end local aZ=aP()if not aZ then return end local a_={pos=aZ.
-Position,facing=aQ(),dw=0,dwT=0}if aI then a_.dw=aI.index a_.dwT=math.max(0,(os.
-clock()-as)-av)end table.insert(au,a_)end)end aE=ab.OnRoomIndexChanged(function(
-)if ap then local aW=ab.GetCurrentRoomIndex()if aW~=aq and not aw then aw=true
-task.delay(1,function()aw=false if ap then am.Stop'chuy\u{1ec3}n room'end end)
-end end end)aG=ab.OnBossActiveChanged(function(aW)if ap and aW then am.Stop
-'v\u{e0}o boss room'end end)aF=ab.OnLobbyChanged(function(aW)if ap and aW then
-am.Stop'v\u{1ec1} lobby'end end)aH=ab.OnRespawn(function()if not ap then return
-end task.delay(0.2,function()if not ap or ab.IsDead()then return end if aS()then
-ad.Notify('Path Record',(
-'Ph\u{e1}t hi\u{1ec7}n h\u{1ed3}i sinh: T\u{1ef1} \u{111}\u{1ed9}ng ghi l\u{1ea1}i room %d t\u{1eeb} \u{111}i\u{1ec3}m h\u{1ed3}i sinh'
-):format(aq),3)end end)end)ad.Notify('Path Record',(
-'B\u{1eaf}t \u{111}\u{1ea7}u record room %d (%s)'):format(aU,aV),2)aO()return
-true end function am.Stop(aT)if not ap then return false end ap=false aR()local
-aU if#at>0 or#au>0 then aU={dwells=at,skills=au}end local aV=0 if ay>0.5 and ax>
-5 then aV=math.clamp(ax/ay,5,100)end local aW=ac.SimplifyPath(ar,aj)local aX=ac.
-SaveSegment(aA,aq,aB,aW,aU,aV)if aX then local aZ=''if aU then aZ=(
-' (%d \u{111}i\u{1ec3}m g\u{1ed1}c -> %d m\u{1ecb}n, %d skill, %d nh\u{1ecb}p d\u{1eeb}ng, %.1fspd)'
-):format(#ar,#aW,#au,#at,aV)else aZ=(
-' (%d \u{111}i\u{1ec3}m g\u{1ed1}c -> %d m\u{1ecb}n, %.1fspd)'):format(#ar,#aW,
-aV)end ad.Notify('Path Record',(
-'\u{110}\u{e3} l\u{1b0}u room %d%s v\u{e0}o map [%s] %s'):format(aq,aZ,aA,aT and
-('- '..aT)or''),3)end aA=nil aq=0 aB=nil ar={}at={}au={}aI=nil aJ=nil aM=nil aw=
-false ax=0 ay=0 aN=nil aO()return aX end function am.Cancel()if not ap then
-return end aR()aA=nil aq=0 aB=nil ar={}at={}au={}aI=nil aJ=nil aM=nil aw=false
-ax=0 ay=0 aN=nil ap=false aO()end return am end function a.ae()local aa,ab,ac,ad
-=a.load'e',a.load'f',a.load'ac',a.load'c'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,
-ap,aq,ar,as,at,au,av=aa.player,aa.VirtualInputManager,aa.UserInputService,1,1,8,
-7,8,14,8,2,0.5,2,{},true,true,true,0.6 function ar.SetSkillFaceHold(aw)if type(
-aw)=='number'then av=math.clamp(aw,ap,aq)end end function ar.GetSkillFaceHold()
-return av end function ar.SetReplayTimeline(aw)aw=aw and true or false as=aw at=
-aw au=aw end function ar.IsReplayTimelineEnabled()return as end local aw,ax,ay=
-true function ar.SetSpeedMatch(az)aw=az and true or false end function ar.
-IsSpeedMatchEnabled()return aw end local az,aA,aB,aC,aD,aE,aF=function(az)if not
-aw then return end if type(az)~='number'or az<=0 then return end local aA=ab.
-GetHumanoid()if not aA then return end if ax==nil then ay=aA.WalkSpeed end ax=az
-if aA.WalkSpeed~=az then aA.WalkSpeed=az end end,function()if ax==nil then
-return end local az=ab.GetHumanoid()if ay and az and az.WalkSpeed~=ay then az.
-WalkSpeed=ay end ax=nil ay=nil end,false,false,{}local aG,aH,aI,aJ=function(aG)
-local aH={playing=aB,map=aE,room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive()
-,resume=aC,reason=aG}for aI,aJ in ipairs(aD)do pcall(aJ,aH)end end,function()
-local aG=ae and ae.Character local aH=aG and aG:FindFirstChild'HumanoidRootPart'
-if aH and aH.Parent then return aH end return nil end,function(aG)if not aG or
-not aG.Parent then return nil end local aH,aI=pcall(function()return aG.Position
-end)if not aH or not aI then return nil end return aI end,function(aG,aH)local
-aI,aJ=aG.X-aH.X,aG.Z-aH.Z return math.sqrt(aI*aI+aJ*aJ)end local aK,aL,aM,aN=
-function(aK)local aL=aH()if aL and aK then local aM=aI(aL)if aM then pcall(
-function()aK:MoveTo(aM)end)end end end,function()local aK,aL=ab.GetKeyHoldTime()
-or 0.05,ag:GetMouseLocation()pcall(function()af:SendMouseButtonEvent(aL.X,aL.Y,1
-,true,game,false)task.wait(aK)af:SendMouseButtonEvent(aL.X,aL.Y,1,false,game,
-false)task.wait(0.005)af:SendMouseButtonEvent(aL.X,aL.Y,1,true,game,false)task.
-wait(aK)af:SendMouseButtonEvent(aL.X,aL.Y,1,false,game,false)end)end,function(aK
-,aL)if not aK or not aK.Parent then return end local aM=ab.GetHumanoid()if aM
-then aM.AutoRotate=false end local aN=aL or Vector3.new(1,0,0)if aN.Magnitude<
-0.1 then aN=Vector3.new(1,0,0)end aN=Vector3.new(aN.X,0,aN.Z).Unit pcall(
-function()local aO=aK.Position aK.CFrame=CFrame.lookAt(aO,aO+aN)end)end,function
-()local aK=ab.GetHumanoid()if aK then aK.AutoRotate=true end end local aO=
-function(aO,aP)local aQ,aR=ab.GetHumanoid(),aH()if not aQ or not aR then return
-end az(aO.speed)local aS=ac.SimplifyPath(aO.points,ah)local aT=#aS if aT<2 then
-return end local aU,aV=0,{}aV[1]=0 for aW=2,aT do local aX=aJ(aS[aW-1],aS[aW])aU
-+=aX aV[aW]=aU end local aW,aX,aZ,a_=function(aW,aX,aZ)aX=aX or 0 aZ=aZ or aU
-local a_,a0=0,math.huge for a1=2,aT do if aV[a1]<aX then continue end if aV[a1-1
-]>aZ then continue end local a2,a3=aS[a1-1],aS[a1]local a4,a5=a2.X,a2.Z local a6
-,a7=a3.X-a4,a3.Z-a5 local a8,a9=a6*a6+a7*a7,0 if a8>0 then a9=((aW.X-a4)*a6+(aW.
-Z-a5)*a7)/a8 a9=math.clamp(a9,0,1)end local b,ba=aW.X-(a4+a6*a9),aW.Z-(a5+a7*a9)
-local bb=b*b+ba*ba if bb<a0 then a0=bb a_=aV[a1-1]+math.sqrt(a8)*a9 end end
-return a_ end,function(aW)local aX=2 while aX<=aT and aV[aX]<aW do aX+=1 end aX=
-math.min(aX,aT)local aZ=aV[aX]-aV[aX-1]if aZ<=0 then return aS[aX]end local a_,
-a0,a1=math.clamp((aW-aV[aX-1])/aZ,0,1),aS[aX-1],aS[aX]return Vector3.new(a0.X+(
-a1.X-a0.X)*a_,a0.Y+(a1.Y-a0.Y)*a_,a0.Z+(a1.Z-a0.Z)*a_)end,{},{}if aO.events and(
-as or at or au)then local a0,a1=aO.events.dwells or{},aO.events.skills or{}for
-a2,a3 in ipairs(a0)do aZ[a2]={arc=aW(a3.pos),dur=a3.dur or 0,facing=a3.facing,
-skills={}}end for a2,a3 in ipairs(a1)do local a4=(as and a3.dw>0 and aZ[a3.dw])
-and aZ[a3.dw]or nil if a4 then table.insert(a4.skills,{tOff=a3.dwT or 0,facing=
-a3.facing})else table.insert(a_,{arc=aW(a3.pos),facing=a3.facing})end end table.
-sort(a_,function(a2,a3)return a2.arc<a3.arc end)end local a0,a1,a2=function(a0)
-if not aB or a0.dur<=0 then return true end if as then if au then aM(aR,a0.
-facing)end local a1,a2,a3=aI(aR),os.clock(),1 while aB and os.clock()-a2<a0.dur
-do if not aR or not aR.Parent then return false,'no_root'end if ab.IsDead()then
-return false,'dead'end if ab.GetCurrentRoomIndex()~=aP then return false,
-'room_changed'end if ab.IsBossActive()then return false,'boss'end local a4=a1 or
-aI(aR)if a4 then pcall(function()aQ:MoveTo(a4)end)end local a5=a0.skills[a3]if
-a5 and os.clock()-a2>=a5.tOff then if at then if au then aM(aR,a5.facing)end aL(
-)elseif au then aM(aR,a5.facing)end a3+=1 end task.wait(0.05)end if au then aN()
-end end return true end,aS[1],os.clock()+aj while aB do if not aR or not aR.
-Parent then aN()return false,'no_root'end if ab.IsDead()then aN()return false,
-'dead'end if ab.GetCurrentRoomIndex()~=aP then aN()return false,'room_changed'
-end if ab.IsBossActive()then aN()return false,'boss'end local a3=aI(aR)if not a3
-then task.wait(0.08)continue end if aJ(a3,a1)<=ai then break end pcall(function(
-)aQ:MoveTo(a1)end)if os.clock()>=a2 then break end task.wait(0.08)end local a3,
-a4,a5,a6,a7,a8,a9,b,ba=0,aI(aR),os.clock(),1,1,0,0 local bb=function(bb)local bc
-,bd=os.clock(),ba and aJ(ba,bb)or math.huge if bd>0.5 or bc-a9>=0.25 then ba=bb
-a9=bc pcall(function()aQ:MoveTo(bb)end)end end while aB do if not aR or not aR.
-Parent then aN()return false,'no_root'end if ab.IsDead()then aN()return false,
-'dead'end if ab.GetCurrentRoomIndex()~=aP then aN()return false,'room_changed'
-end if ab.IsBossActive()then aN()return false,'boss'end local bc=aI(aR)if not bc
-then task.wait(0.08)continue end local bd=aW(bc,math.max(0,a3-al),math.min(aU,a3
-+am))if bd>a3 then a3=bd end if a4 then if aJ(bc,a4)>0.02 then a5=os.clock()end
-end a4=bc if os.clock()-a5>an then a3=math.min(a3+ao,aU-ai)a5=os.clock()a4=bc
-end while a7<=#a_ and a_[a7].arc<=a3 do local be=a_[a7]if au then aM(aR,be.
-facing)b=be.facing a8=os.clock()+av end if at then aL()end a7+=1 end local be=aZ
-[a6]if be and a3>=be.arc then local bf,bg=a0(be)if not bf then aN()return false,
-bg end a6+=1 a4=aI(aR)a5=os.clock()continue end if a3>=aU-ai then aN()pcall(
-function()aQ:MoveTo(aS[aT])end)local bf=os.clock()+5 while aB do local bg=aI(aR)
-if bg and aJ(bg,aS[aT])<=ai then break end if ab.GetCurrentRoomIndex()~=aP then
-aN()return false,'room_changed'end if ab.IsBossActive()or ab.IsDead()then aN()
-return false,'dead'end if os.clock()>=bf then break end if os.clock()>=a8 and aQ
-.AutoRotate~=true then aQ.AutoRotate=true end task.wait(0.08)end aN()return true
-,'completed'end if os.clock()<a8 then if aQ.AutoRotate~=false then aQ.AutoRotate
-=false end if b then aM(aR,b)end elseif aQ.AutoRotate~=true then aQ.AutoRotate=
-true end local bf=aX(math.min(a3+ak,aU-0.01))bb(bf)task.wait(0.1)end aN()return
-false,'stopped'end local aP=function()local aP,aQ,aR=0,false,false while aB do
-if aC then break end if ab.IsDead()then aR=true task.wait(0.25)continue end if
-aR then aR=false aP=0 aQ=false end if ab.IsInLobby()then aC=false aB=false break
-end if ab.IsBossActive()then task.wait(0.25)continue end local aS=ab.
-GetCurrentRoomIndex()if aS<=0 then task.wait(0.1)continue end if aS~=aP then aP=
-aS aQ=false end local aT=ac.GetRoomSegment(aE,aS)if not aT then task.wait(0.1)
-continue end if aQ then task.wait(0.1)continue end local aU,aV=aO(aT,aS)aN()if
-aU then aQ=true else if aV=='dead'then ad.Notify('Path Record',
-'T\u{1eed} tr\u{1ead}n: \u{110}ang ch\u{1edd} h\u{1ed3}i sinh \u{111}\u{1ec3} ti\u{1ebf}p t\u{1ee5}c...'
-,2)while aB and ab.IsDead()do task.wait(0.2)end task.wait(0.6)end end end aA()
-aN()aF=nil aG()end function ar.IsPlaying()return aB end function ar.ResumeWanted
-()return aC end function ar.GetActiveMap()return aE end function ar.GetStatus()
-return{playing=aB,map=aE,room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive(),
-resume=aC}end function ar.OnStatusChanged(aQ)if type(aQ)=='function'then table.
-insert(aD,aQ)end end function ar.Start()if aB then return false,
+'aa'(aa,ab)end end function a.ac()local aa,ab,ac=a.load'e',a.load'a',a.load'd'
+local ad,ae,af,ag,ah,ai,aj=aa.HttpService or game:GetService'HttpService',{},
+'DQMacro','pathRecord',3,'normal','full'local ak,al,am,an,ao=function(ak)if ak==
+aj then return aj end return ai end,(isfile~=nil and writefile~=nil and
+makefolder~=nil and isfolder~=nil),{},false,{}local ap,aq=function()for ap=#ao,1
+,-1 do pcall(ao[ap])end end,function()local ap=ab.Folder or'EsclipseHub'return
+ap..'/'..af end local ar,as=function()if not al then return end pcall(function()
+local ar=ab.Folder or'EsclipseHub'if not isfolder(ar)then makefolder(ar)end
+local as=aq()if not isfolder(as)then makefolder(as)end end)end,function(ar)if
+type(ar)~='string'then return'Unknown'end return(string.gsub(ar,'[/\\:*?"<>|]',
+'_'))end local at,au,av,aw,ax=function(at)return aq()..'/'..as(at)..'.json'end,
+function(at)if not at then return nil end return{X=at.X,Y=at.Y,Z=at.Z}end,
+function(at)if not at or type(at)~='table'then return nil end return Vector3.
+new(at.X or 0,at.Y or 0,at.Z or 0)end,function(at)return type(at)=='table'and
+type(at.points)=='table'and#at.points>0 end,function(at)if type(at)~='table'or
+type(at.X)~='number'then return nil end local au=Vector3.new(at.X,0,at.Z)if au.
+Magnitude<0.001 then return nil end return au.Unit end local ay,az,aA,aB,aC,aD=
+function(ay)if type(ay)~='table'then return nil end local az={}for aA,aB in
+ipairs(ay.dwells or{})do local aC=av(aB.pos)if aC then az[#az+1]={pos=aC,dur=
+tonumber(aB.dur)or 0,facing=ax(aB.facing)}end end local aA={}for aB,aC in
+ipairs(ay.skills or{})do local aD=av(aC.pos)if aD then aA[#aA+1]={pos=aD,facing=
+ax(aC.facing),key=aC.key,dw=math.floor(tonumber(aC.dw)or 0),dwT=tonumber(aC.dwT)
+or 0}end end if#az==0 and#aA==0 then return nil end return{dwells=az,skills=aA}
+end,function()if an then return end an=true if al then ar()local ay=aq()if
+isfolder'DQMacro'and listfiles then pcall(function()local az=listfiles'DQMacro'
+if type(az)=='table'then for aA,aB in ipairs(az)do if type(aB)=='string'and
+string.lower(string.sub(aB,-5))=='.json'and isfile(aB)then local aC=string.
+match(aB,'([^/\\]+)$')or'unknown.json'local aD,aE=ay..'/'..aC,readfile(aB)
+writefile(aD,aE)delfile(aB)end end end end)end if listfiles and isfolder(ay)then
+local az,aA=pcall(function()return listfiles(ay)end)if az and type(aA)=='table'
+then for aB,aC in ipairs(aA)do if type(aC)=='string'and string.lower(string.sub(
+aC,-5))=='.json'then pcall(function()if isfile(aC)then local aD=readfile(aC)
+local aE=ad:JSONDecode(aD)if type(aE)=='table'and type(aE.map)=='string'and
+type(aE.rooms)=='table'then am[aE.map]=aE end end end)end end end end local az=
+ab.contextData if type(az)=='table'and type(az[ag])=='table'then local aA,aB=az[
+ag],false for aC,aD in pairs(aA)do if type(aC)=='string'and type(aD)=='table'
+then if not am[aC]then am[aC]=aD end pcall(function()writefile(at(aC),ad:
+JSONEncode(aD))end)aB=true end end if aB then az[ag]=nil ac.Save()end end else
+local ay=ab.contextData if type(ay)=='table'and type(ay[ag])=='table'then for az
+,aA in pairs(ay[ag])do if type(az)=='string'and type(aA)=='table'then am[az]=aA
+end end end end end,0.1,0.82,0.3,function(ay,az)local aA,aB=ay.X-az.X,ay.Z-az.Z
+return math.sqrt(aA*aA+aB*aB)end function ae.SimplifyPath(aE,aF)local aG=#aE if
+aG<=2 then return aE end local aH={}for aI=1,aG do aH[aI]=false end aH[1]=true
+aH[aG]=true local aI={1}for aJ=2,aG-1 do local aK,aL,aM=aE[aJ-1],aE[aJ],aE[aJ+1]
+local aN,aO=aL.X-aK.X,aL.Z-aK.Z local aP,aQ,aR=math.sqrt(aN*aN+aO*aO),aM.X-aL.X,
+aM.Z-aL.Z local aS=math.sqrt(aQ*aQ+aR*aR)if aP>=aC and aS>=aC then local aT=(aN*
+aQ+aO*aR)/(aP*aS)if aT<aB then aH[aJ]=true table.insert(aI,aJ)end end end table.
+insert(aI,aG)local aJ,aK=aF*aF,{}for aL=1,#aI-1 do local aM,aN=aI[aL],aI[aL+1]if
+aN-aM>1 then table.insert(aK,{aM,aN})end end while#aK>0 do local aL=table.
+remove(aK)local aM,aN=aL[1],aL[2]local aO,aP,aQ,aR=aE[aM].X,aE[aM].Z,aE[aN].X,aE
+[aN].Z local aS,aT=aQ-aO,aR-aP local aU,aV,aW=aS*aS+aT*aT,-1,0 for aX=aM+1,aN-1
+do local aZ=0 if aU>0 then aZ=((aE[aX].X-aO)*aS+(aE[aX].Z-aP)*aT)/aU aZ=math.
+clamp(aZ,0,1)end local a_,a0=aE[aX].X-(aO+aS*aZ),aE[aX].Z-(aP+aT*aZ)local a1=a_*
+a_+a0*a0 if a1>aV then aV=a1 aW=aX end end if aW>0 and aV>aJ then aH[aW]=true
+table.insert(aK,{aM,aW})table.insert(aK,{aW,aN})end end local aL={}for aM=1,aG
+do if aH[aM]and(#aL==0 or aD(aL[#aL],aE[aM])>=aA or aM==aG)then table.insert(aL,
+aE[aM])end end if#aL==1 then table.insert(aL,aE[aG])end return aL end function
+ae.OnChanged(aE)if type(aE)~='function'then return function()end end table.
+insert(ao,aE)return function()for aF,aG in ipairs(ao)do if aG==aE then table.
+remove(ao,aF)break end end end end function ae.HasMap(aE)if type(aE)~='string'or
+#aE==0 then return false end az()local aF=am[aE]if not aF or type(aF.rooms)~=
+'table'then return false end for aG,aH in pairs(aF.rooms)do if aw(aH)and#aH.
+points>0 then return true end end return false end local aE=function(aE)if not
+aE or type(aE)~='table'or type(aE.points)~='table'then return nil end local aF={
+}for aG,aH in ipairs(aE.points)do local aI=av(aH)if aI then aF[#aF+1]=aI end end
+if#aF==0 then return nil end return{startPos=av(aE.startPos)or aF[1],points=aF,
+events=aE.events and ay(aE.events)or nil,speed=tonumber(aE.speed)or 0}end
+function ae.GetRoomSegment(aF,aG)if type(aF)~='string'or type(aG)~='number'then
+return nil end az()local aH=am[aF]if not aH or type(aH.rooms)~='table'then
+return nil end local aI=aH.rooms[tostring(aG)]if not aw(aI)then return nil end
+local aJ={}for aK,aL in ipairs(aI.points)do local aM=av(aL)if aM then aJ[#aJ+1]=
+aM end end if#aJ==0 then return nil end local aK,aL={startPos=av(aI.startPos)or
+aJ[1],points=aJ,events=aI.events and ay(aI.events)or nil,speed=tonumber(aI.speed
+)or 0,boss=aI.boss==true},{}if type(aI.phases)=='table'and#aI.phases>0 then for
+aM,aN in ipairs(aI.phases)do local aO=aE(aN)if aO then aO.boss=aI.boss==true aL[
+#aL+1]=aO end end end if#aL==0 then aL[1]=aK end aK.phases=aL return aK end
+function ae.HasSegmentOrMacro(aF,aG)return ae.GetRoomSegment(aF,aG)~=nil end
+function ae.GetMap(aF)if not ae.HasMap(aF)then return nil end az()local aG=am[aF
+]if not aG then return nil end local aH={}for aI,aJ in pairs(aG.rooms or{})do
+local aK=tonumber(aI)if aK and aw(aJ)then local aL=ae.GetRoomSegment(aF,aK)if aL
+then aH[aK]=aL end end end return{map=aF,version=aG.version,rooms=aH,created=aG.
+created,updated=aG.updated,mode=ak(aG.mode)}end function ae.GetMaps()az()local
+aF={}for aG,aH in pairs(am)do if type(aG)=='string'and type(aH)=='table'and aH.
+map==aG and type(aH.rooms)=='table'then local aI,aJ,aK,aL=0,0,0,0 for aM,aN in
+pairs(aH.rooms)do if tonumber(aM)~=nil and aw(aN)then aI+=1 if aN.boss==true
+then aJ+=1 end aK+=#aN.points if type(aN.phases)=='table'and#aN.phases>0 then aL
++=#aN.phases for aO,aP in ipairs(aN.phases)do if aP~=aN and type(aP.points)==
+'table'then aK+=#aP.points end end else aL+=1 end end end if aI>0 then table.
+insert(aF,{map=aG,roomCount=aI,bossCount=aJ,pointCount=aK,phaseCount=aL,updated=
+aH.updated,mode=ak(aH.mode)})end end end table.sort(aF,function(aG,aH)return aG.
+map<aH.map end)return aF end function ae.Count()return#ae.GetMaps()end function
+ae.SaveSegment(aF,aG,aH,aI,aJ,aK,aL,aM)if type(aF)~='string'or#aF==0 then return
+false end if type(aG)~='number'or aG<=0 then return false end if not aH or not
+aI or#aI==0 then return false end az()local aN=am[aF]if not aN or type(aN)~=
+'table'then aN={map=aF,version=ah,created=os.time(),updated=os.time(),mode=ai,
+rooms={}}am[aF]=aN end if type(aN.rooms)~='table'then aN.rooms={}end local aO={}
+for aP,aQ in ipairs(aI)do aO[#aO+1]=au(aQ)end local aP={startPos=au(aH)or aO[1],
+points=aO}if aL then aP.boss=true end if type(aK)=='number'and aK>0 then aP.
+speed=aK end local aQ=function(aQ)if not aQ or type(aQ)~='table'then return nil
+end local aR,aS=#(aQ.dwells or{}),#(aQ.skills or{})if aR==0 and aS==0 then
+return nil end local aT={dwells={},skills={}}for aU,aV in ipairs(aQ.dwells or{})
+do aT.dwells[#aT.dwells+1]={pos=au(aV.pos),dur=aV.dur or 0,facing=aV.facing}end
+for aU,aV in ipairs(aQ.skills or{})do aT.skills[#aT.skills+1]={pos=au(aV.pos),
+facing=aV.facing,key=aV.key,dw=aV.dw or 0,dwT=aV.dwT or 0}end return aT end if
+aJ and type(aJ)=='table'then local aR=aQ(aJ)if aR then aP.events=aR end end if
+type(aM)=='table'and#aM>0 then local aR={}for aS,aT in ipairs(aM)do if aT and aT
+.points and#aT.points>0 then local aU={}for aV,aW in ipairs(aT.points)do aU[#aU+
+1]=au(aW)end local aV={startPos=au(aT.startPos)or aU[1],points=aU,speed=type(aT.
+speed)=='number'and aT.speed>0 and aT.speed or nil,events=aQ(aT.events)}aR[#aR+1
+]=aV end end if#aR>0 then aP.phases=aR end end aN.rooms[tostring(aG)]=aP aN.
+version=ah aN.map=aF aN.updated=os.time()if al then ar()pcall(function()
+writefile(at(aF),ad:JSONEncode(aN))end)else local aR=ab.contextData if type(aR)
+=='table'then if not aR[ag]then aR[ag]={}end aR[ag][aF]=aN ac.Save()end end ap()
+return true end function ae.GetMapMode(aF)if type(aF)~='string'or#aF==0 then
+return ai end az()local aG=am[aF]if type(aG)~='table'then return ai end return
+ak(aG.mode)end function ae.SetMapMode(aF,aG)if type(aF)~='string'or#aF==0 then
+return false end local aH=ak(aG)az()local aI=am[aF]if not aI or type(aI)~=
+'table'then aI={map=aF,version=ah,created=os.time(),updated=os.time(),mode=ai,
+rooms={}}am[aF]=aI end aI.mode=aH aI.map=aF aI.updated=os.time()if al then ar()
+pcall(function()writefile(at(aF),ad:JSONEncode(aI))end)else local aJ=ab.
+contextData if type(aJ)=='table'then if not aJ[ag]then aJ[ag]={}end aJ[ag][aF]=
+aI ac.Save()end end ap()return true end function ae.RemoveMap(aF)az()if not am[
+aF]then return false end am[aF]=nil if al then local aG=at(aF)pcall(function()if
+isfile(aG)then delfile(aG)end end)else local aG=ab.contextData if type(aG)==
+'table'and aG[ag]then aG[ag][aF]=nil ac.Save()end end ap()return true end
+function ae.ClearAll()az()if next(am)==nil then return end local aF=aq()if al
+and isfolder(aF)and listfiles then pcall(function()local aG=listfiles(aF)if
+type(aG)=='table'then for aH,aI in ipairs(aG)do if type(aI)=='string'and string.
+lower(string.sub(aI,-5))=='.json'and isfile(aI)then delfile(aI)end end end end)
+end table.clear(am)local aG=ab.contextData if type(aG)=='table'and aG[ag]then aG
+[ag]=nil ac.Save()end ap()end function ae.ReloadFromDisk()table.clear(am)an=
+false az()ap()end function ae.ReloadFromConfig()ae.ReloadFromDisk()end return ae
+end function a.ad()local aa,ab,ac,ad=a.load'e',a.load'f',a.load'ac',a.load'c'
+local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq=aa.RunService,aa.player,aa.
+UserInputService,0.1,8000,0.4,0.25,0.15,1,6,{},true,true function ao.SetCapture(
+ar)ar=ar and true or false ap=ar aq=ar end function ao.IsCaptureEnabled()return
+ap or aq end local ar,as,at,au,av,aw,ax,ay,az,aA,aB,aC,aD,aE,aF,aG,aH,aI,aJ,aK,
+aL,aM,aN,aO,aP,aQ,aR,aS,aT,aU,aV,aW=false,0,{},0,{},{},0,false,0,0,false,false,
+false,{},0,0,0,{}local aX,aZ=function()local aX={recording=ar,map=aJ,room=as,
+pointCount=#at,phaseCount=#aE+1,dwellCount=#av,skillCount=#aw,savedRooms=aF}for
+aZ,a_ in ipairs(aI)do pcall(a_,aX)end end,function()local aX=af and af.Character
+local aZ=aX and aX:FindFirstChild'HumanoidRootPart'if aZ and aZ.Parent then
+return aZ end return nil end local a_,a0,a1,a2,a3=function()local a_=aZ()if not
+a_ then return nil end local a0=a_.CFrame.LookVector if a0.Magnitude<0.001 then
+return nil end return{X=a0.X/a0.Magnitude,Z=a0.Z/a0.Magnitude}end,function()if
+aL then aL:Disconnect()aL=nil end if aM then aM:Disconnect()aM=nil end if aN
+then aN()aN=nil end if aO then aO()aO=nil end if aP then aP()aP=nil end if aQ
+then aQ()aQ=nil end end,function(a_,a0)as=a_ aK=a0 aD=true at={a0}av={}aw={}aR=
+nil ax=0 aS=nil aT=nil aU=nil aV=a0 az=0 aA=0 au=os.clock()aW=os.clock()ay=false
+aC=ab.IsBossActive()aE={}end,function(a_)if not aD then return false end local
+a0=ac.SimplifyPath(at,aj)if#a0>=2 then local a1 if#av>0 or#aw>0 then a1={dwells=
+av,skills=aw}end local a2=0 if aA>0.5 and az>5 then a2=math.clamp(az/aA,5,100)
+end table.insert(aE,{startPos=aK,points=a0,events=a1,speed=a2})aH+=#at end aK=a_
+at={a_}av={}aw={}aR=nil ax=0 aS=nil aT=nil aU=nil aV=a_ az=0 aA=0 au=os.clock()
+aW=os.clock()ay=false aX()return true end,function(a_,a0)if not aD then return
+nil end local a1=ac.SimplifyPath(at,aj)if#a1>=2 then local a2 if#av>0 or#aw>0
+then a2={dwells=av,skills=aw}end local a3=0 if aA>0.5 and az>5 then a3=math.
+clamp(az/aA,5,100)end table.insert(aE,{startPos=aK,points=a1,events=a2,speed=a3}
+)aH+=#at end if#aE==0 then return nil end local a2=aE[1]local a3=ac.SaveSegment(
+aJ,as,a2.startPos,a2.points,a2.events,a2.speed,aC,aE)if not a3 then return nil
+end aF+=1 if aC then aG+=1 end if not a0 then local a4=''if#aE>1 then a4=(
+' (%d phases/m\u{1ea1}ng h\u{1ed3}i sinh, %d \u{111}i\u{1ec3}m phase 1)'):
+format(#aE,#a2.points)elseif a2.events then a4=(
+' (%d \u{111}i\u{1ec3}m m\u{1ecb}n, %d skill, %d nh\u{1ecb}p d\u{1eeb}ng, %.1fspd)'
+):format(#a2.points,#(a2.events.skills or{}),#(a2.events.dwells or{}),a2.speed
+or 0)else a4=(' (%d \u{111}i\u{1ec3}m m\u{1ecb}n, %.1fspd)'):format(#a2.points,
+a2.speed or 0)end ad.Notify('Path Record',(
+'\u{110}\u{e3} l\u{1b0}u room %d%s v\u{e0}o map [%s] %s'):format(as,a4,aJ,a_ and
+('- '..a_)or''),3)end return{phaseCount=#aE,phase1=a2}end function ao.
+IsRecording()return ar end function ao.GetStartRoom()return as end function ao.
+GetCurrentPhaseIndex()return#aE+1 end function ao.GetCurrentPoints()return at
+end function ao.GetStatus()return{recording=ar,map=aJ,room=as,pointCount=#at,
+phaseCount=#aE+1,savedRooms=aF}end function ao.OnStatusChanged(a4)if type(a4)==
+'function'then table.insert(aI,a4)end end function ao.Start()if ar then return
+false,'\u{111}ang record r\u{1ed3}i'end local a4=aZ()if not a4 then return false
+,'ch\u{1b0}a c\u{f3} nh\u{e2}n v\u{1ead}t'end if ab.IsDead()then return false,
+'nh\u{e2}n v\u{1ead}t \u{111}ang ch\u{1ebf}t'end local a5=ab.
+GetCurrentRoomIndex()if a5<=0 then return false,
+'kh\u{f4}ng n\u{1eb1}m trong dungeon'end local a6=ab.GetCurrentDungeonName()if
+not a6 or#a6==0 then return false,
+'kh\u{f4}ng x\u{e1}c \u{111}\u{1ecb}nh \u{111}\u{1b0}\u{1ee3}c map'end aB=ac.
+GetMapMode(a6)=='full'if ab.IsBossActive()and not aB then return false,
+'boss room (d\u{f9}ng Smart Dodge)'end aJ=a6 a1(a5,a4.Position)ar=true aF=0 aG=0
+aH=0 aL=ae.Heartbeat:Connect(function()if not ar then return end if ab.IsDead()
+then aS=nil aR=nil aV=nil return end local a7=aZ()if not a7 then return end
+local a8,a9=a7.Position,at[#at]if a9 and(a8-a9).Magnitude>35 then a3(
+'d\u{1ecb}ch chuy\u{1ec3}n l\u{1edb}n',true)local b=ab.GetCurrentRoomIndex()if b
+==as then b=0 end a1(b,a8)aX()task.spawn(function()task.wait(an)if ar and as<=0
+then ao.Stop'h\u{1ebf}t map'end end)return end local b,ba=os.clock(),aV and(a8-
+aV).Magnitude or 0 aV=a8 local bb=aW and math.max(0,b-aW)or 0 aW=b if ba>=al
+then az+=ba aA+=bb end if ap then if ba<al then if not aS then aS=b aT=a8 aU=a_(
+)end if aR then aR.dur=b-aS aR.facing=a_()or aU elseif b-aS>=ak then ax=aS-au aR
+={pos=aT,dur=b-aS,facing=aU,index=#av+1}table.insert(av,aR)end else aS=nil aR=
+nil end end local bc=at[#at]if bc and(a8-bc).Magnitude<ah then return end if#at
+>=ai then ao.Stop'\u{111}\u{1ea1}t gi\u{1edb}i h\u{1ea1}n \u{111}i\u{1ec3}m'
+return end table.insert(at,a8)end)if aq then aM=ag.InputBegan:Connect(function(
+a7,a8)if not ar or not aq then return end if ag:GetFocusedTextBox()then return
+end if ab.IsDead()then return end local a9 if a7.UserInputType==Enum.
+UserInputType.MouseButton2 then if a8 then return end a9='M2'elseif a7.
+UserInputType==Enum.UserInputType.Keyboard and(a7.KeyCode==Enum.KeyCode.Q or a7.
+KeyCode==Enum.KeyCode.E)then a9=a7.KeyCode==Enum.KeyCode.Q and'Q'or'E'else
+return end local b=aZ()if not b then return end local ba={pos=b.Position,facing=
+a_(),key=a9,dw=0,dwT=0}if aR then ba.dw=aR.index ba.dwT=math.max(0,(os.clock()-
+au)-ax)end table.insert(aw,ba)end)end aN=ab.OnRoomIndexChanged(function()if ar
+then local a7=ab.GetCurrentRoomIndex()if aD and as<=0 and a7>0 then as=a7 return
+end if a7~=as and not ay then ay=true task.delay(am,function()ay=false if ar
+then ao.Rollover()end end)end end end)aP=ab.OnBossActiveChanged(function(a7)if
+not ar then return end if a7 then if aB then aC=true else ao.Stop
+'v\u{e0}o boss room'end return end if aB and aC then a3('xong boss',true)aC=
+false aD=false task.spawn(function()task.wait(an)if ar and not aD then ao.Stop
+'h\u{1ebf}t map'end end)end end)aO=ab.OnLobbyChanged(function(a7)if ar and a7
+then ao.Stop'v\u{1ec1} lobby'end end)aQ=ab.OnRespawn(function()if not ar then
+return end task.delay(0.2,function()if not ar or ab.IsDead()then return end
+local a7=aZ()if not a7 then return end if a2(a7.Position)then local a8=#aE+1 ad.
+Notify('Path Record',(
+'H\u{1ed3}i sinh: \u{110}\u{e3} l\u{1b0}u Phase %d, \u{111}ang ghi ti\u{1ebf}p Phase %d cho room %d'
+):format(a8-1,a8,as),3)end end)end)ad.Notify('Path Record',(
+'B\u{1eaf}t \u{111}\u{1ea7}u record room %d (%s)'):format(a5,a6),2)aX()return
+true end function ao.Rollover()if not ar then return false end a3(
+'chuy\u{1ec3}n room',true)local a4=aZ()local a5=a4 and a4.Position or aK a1(ab.
+GetCurrentRoomIndex(),a5)aX()return true end function ao.Stop(a4)if not ar then
+return false end ar=false a0()local a5=a3(a4,true)if a5 then if aF>1 then local
+a6=aG>0 and(' | %d boss'):format(aG)or''ad.Notify('Path Record',(
+'\u{110}\u{e3} l\u{1b0}u map [%s] %s: %d room%s (%d \u{111}i\u{1ec3}m g\u{1ed1}c)'
+):format(aJ,a4 or'xong',aF,a6,aH),4)else local a6=''if a5.events then a6=(
+' (%d skill, %d nh\u{1ecb}p d\u{1eeb}ng, %.1fspd)'):format(a5.skills,a5.dwells,
+a5.avgSpeed)else a6=(' (%.1fspd)'):format(a5.avgSpeed)end local a7=as>0 and(aC
+and' (boss)'or'')or''ad.Notify('Path Record',(
+'\u{110}\u{e3} l\u{1b0}u room %d%s%s v\u{e0}o map [%s] %s'):format(as,a6,a7,aJ,
+a4 and('- '..a4)or''),3)end elseif aF>0 then local a6=aG>0 and(' | %d boss'):
+format(aG)or''ad.Notify('Path Record',(
+'\u{110}\u{e3} l\u{1b0}u map [%s] %s: %d room%s (%d \u{111}i\u{1ec3}m g\u{1ed1}c)'
+):format(aJ,a4 or'xong',aF,a6,aH),4)end aJ=nil as=0 aK=nil at={}av={}aw={}aR=nil
+ax=0 aS=nil aT=nil aU=nil aV=nil ay=false az=0 aA=0 aW=nil aC=false aD=false aB=
+false aF=0 aG=0 aH=0 aX()return a5~=nil end function ao.Cancel()if not ar then
+return end a0()aJ=nil as=0 aK=nil at={}av={}aw={}aR=nil ax=0 aS=nil aT=nil aU=
+nil aV=nil ay=false az=0 aA=0 aW=nil aC=false aD=false aB=false aF=0 aG=0 aH=0
+ar=false aX()end return ao end function a.ae()local aa,ab,ac,ad=a.load'e',a.load
+'f',a.load'ac',a.load'c'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au
+,av,aw,ax,ay,az,aA=aa.player,aa.VirtualInputManager,aa.UserInputService,0.4,0.5,
+8,2,4.5,1.5,8,14,8,2,0.5,2,0.001,0.1,{},true,true,true,0.6,0.005 function av.
+SetSkillFaceHold(aB)if type(aB)=='number'then az=math.clamp(aB,ar,as)end end
+function av.GetSkillFaceHold()return az end function av.SetDoubleClickDelay(aB)
+if type(aB)=='number'then aA=math.clamp(aB,at,au)end end function av.
+GetDoubleClickDelay()return aA end function av.SetReplayTimeline(aB)aB=aB and
+true or false aw=aB ax=aB ay=aB end function av.IsReplayTimelineEnabled()return
+aw end local aB,aC,aD,aE=true,false function av.SetSpeedMatch(aF)aB=aF and true
+or false end function av.IsSpeedMatchEnabled()return aB end function av.
+SetUseFastSpeed(aF)aC=aF and true or false end function av.IsUseFastSpeedEnabled
+()return aC end local aF,aG,aH,aI,aJ,aK,aL,aM,aN=function(aF)local aG if aC then
+local aH=ab.GetFastSpeed()if type(aH)=='number'and aH>0 then aG=aH end elseif aB
+then if type(aF)=='number'and aF>0 then aG=aF end end if not aG or aG<=0 then
+return end local aH=ab.GetHumanoid()if not aH then return end if aD==nil then aE
+=aH.WalkSpeed end aD=aG if aH.WalkSpeed~=aG then aH.WalkSpeed=aG end end,
+function()if aD==nil then return end local aF=ab.GetHumanoid()if aE and aF and
+aF.WalkSpeed~=aE then aF.WalkSpeed=aE end aD=nil aE=nil end,false,false,false,1,
+{}local aO=function(aO)local aP={playing=aH,map=aM,room=ab.GetCurrentRoomIndex()
+,boss=ab.IsBossActive(),phase=aK,resume=aI,reason=aO}for aQ,aR in ipairs(aL)do
+pcall(aR,aP)end end function av.GetCurrentPhaseIndex()return aK end local aP,aQ,
+aR=function()local aP=ae and ae.Character local aQ=aP and aP:FindFirstChild
+'HumanoidRootPart'if aQ and aQ.Parent then return aQ end return nil end,function
+(aP)if not aP or not aP.Parent then return nil end local aQ,aR=pcall(function()
+return aP.Position end)if not aQ or not aR then return nil end return aR end,
+function(aP,aQ)local aR,aS=aP.X-aQ.X,aP.Z-aQ.Z return math.sqrt(aR*aR+aS*aS)end
+local aS,aT,aU,aV=function(aS)local aT=aP()if aT and aS then local aU=aQ(aT)if
+aU then pcall(function()aS:MoveTo(aU)end)end end end,function(aS)local aT,aU,aV=
+ab.GetKeyHoldTime()or 0.05,aA,ag:GetMouseLocation()task.spawn(function()pcall(
+function()local aW=function(aW)if aS=='Q'or aS=='E'then local aX=aS=='Q'and Enum
+.KeyCode.Q or Enum.KeyCode.E af:SendKeyEvent(aW,aX,false,game)else af:
+SendMouseButtonEvent(aV.X,aV.Y,1,aW,game,false)end end aW(true)task.wait(aT)aW(
+false)if aU>0 then task.wait(aU)end aW(true)task.wait(aT)aW(false)end)end)end,
+function(aS,aT)if not aS or not aS.Parent then return end local aU=ab.
+GetHumanoid()if aU then aU.AutoRotate=false end local aV=aT or Vector3.new(1,0,0
+)if aV.Magnitude<0.1 then aV=Vector3.new(1,0,0)end aV=Vector3.new(aV.X,0,aV.Z).
+Unit pcall(function()local aW=aS.Position aS.CFrame=CFrame.lookAt(aW,aW+aV)end)
+end,function()local aS=ab.GetHumanoid()if aS then aS.AutoRotate=true end end
+local aW=function(aW,aX,aZ)local a_,a0=ab.GetHumanoid(),aP()if not a_ or not a0
+then return end aF(aW.speed)local a1=ac.SimplifyPath(aW.points,ah)local a2=#a1
+if a2<2 then return end local a3,a4=0,{}a4[1]=0 for a5=2,a2 do local a6=aR(a1[a5
+-1],a1[a5])a3+=a6 a4[a5]=a3 end local a5,a6=function(a5,a6,a7)a6=a6 or 0 a7=a7
+or a3 local a8,a9=0,math.huge for b=2,a2 do if a4[b]<a6 then continue end if a4[
+b-1]>a7 then continue end local ba,bb=a1[b-1],a1[b]local bc,bd=ba.X,ba.Z local
+be,bf=bb.X-bc,bb.Z-bd local bg,bh=be*be+bf*bf,0 if bg>0 then bh=((a5.X-bc)*be+(
+a5.Z-bd)*bf)/bg bh=math.clamp(bh,0,1)end local bi,bj=a5.X-(bc+be*bh),a5.Z-(bd+bf
+*bh)local bk=bi*bi+bj*bj if bk<a9 then a9=bk a8=a4[b-1]+math.sqrt(bg)*bh end end
+return a8 end,function(a5)local a6=2 while a6<=a2 and a4[a6]<a5 do a6+=1 end a6=
+math.min(a6,a2)local a7=a4[a6]-a4[a6-1]if a7<=0 then return a1[a6]end local a8,
+a9,b=math.clamp((a5-a4[a6-1])/a7,0,1),a1[a6-1],a1[a6]return Vector3.new(a9.X+(b.
+X-a9.X)*a8,a9.Y+(b.Y-a9.Y)*a8,a9.Z+(b.Z-a9.Z)*a8)end local a7,a8,a9=function(a7)
+local a8,a9=math.min(a7+2.5,a3),math.min(a7+5.5,a3)if a9-a7<1 then return ak end
+local b,ba,bb=a6(a7),a6(a8),a6(a9)local bc,bd,be,bf=ba.X-b.X,ba.Z-b.Z,bb.X-ba.X,
+bb.Z-ba.Z local bg,bh=math.sqrt(bc*bc+bd*bd),math.sqrt(be*be+bf*bf)if bg>0.1 and
+bh>0.1 then local bi=math.clamp((bc*be+bd*bf)/(bg*bh),-1,1)local bj=math.clamp((
+bi+0.2)/1.2,0,1)return ak+(al-ak)*bj end return al end,{},{}if aW.events and(aw
+or ax or ay)then local b,ba=aW.events.dwells or{},aW.events.skills or{}for bb,bc
+in ipairs(b)do a8[bb]={arc=a5(bc.pos),dur=bc.dur or 0,facing=bc.facing,skills={}
+}end for bb,bc in ipairs(ba)do local bd=(aw and bc.dw>0 and a8[bc.dw])and a8[bc.
+dw]or nil if bd then table.insert(bd.skills,{tOff=bc.dwT or 0,facing=bc.facing,
+key=bc.key})else table.insert(a9,{arc=a5(bc.pos),facing=bc.facing,key=bc.key})
+end end table.sort(a9,function(bb,bc)return bb.arc<bc.arc end)end local b,ba,bb=
+function(b)if not aH or b.dur<=0 then return true end if aw then if ay then aU(
+a0,b.facing)end local ba,bb,bc=aQ(a0),os.clock(),1 while aH and os.clock()-bb<b.
+dur do if not a0 or not a0.Parent then return false,'no_root'end if ab.IsDead()
+then return false,'dead'end if ab.GetCurrentRoomIndex()~=aX then return false,
+'room_changed'end if ab.IsBossActive()and not aZ then return false,'boss'end
+local bd=ba or aQ(a0)if bd then pcall(function()a_:MoveTo(bd)end)end local be=b.
+skills[bc]if be and os.clock()-bb>=be.tOff then if ax then if ay then aU(a0,be.
+facing)end aT(be.key or'M2')elseif ay then aU(a0,be.facing)end bc+=1 end task.
+wait(0.05)end if ay then aV()end end return true end,a1[1],os.clock()+aj while
+aH do if not a0 or not a0.Parent then aV()return false,'no_root'end if ab.
+IsDead()then aV()return false,'dead'end if ab.GetCurrentRoomIndex()~=aX then aV(
+)return false,'room_changed'end if ab.IsBossActive()and not aZ then aV()return
+false,'boss'end local bc=aQ(a0)if not bc then task.wait(0.08)continue end if aR(
+bc,ba)<=ai then break end pcall(function()a_:MoveTo(ba)end)if os.clock()>=bb
+then break end task.wait(0.08)end local bc,bd,be,bf,bg,bh,bi,bj,bk=0,aQ(a0),os.
+clock(),1,1,0,0 local bl=function(bl)local bm,bn=os.clock(),bk and aR(bk,bl)or
+math.huge if bn>0.5 or bm-bi>=0.25 then bk=bl bi=bm pcall(function()a_:MoveTo(bl
+)end)end end while aH do if not a0 or not a0.Parent then aV()return false,
+'no_root'end if ab.IsDead()then aV()return false,'dead'end if ab.
+GetCurrentRoomIndex()~=aX then aV()return false,'room_changed'end if ab.
+IsBossActive()and not aZ then aV()return false,'boss'end local bm=aQ(a0)if not
+bm then task.wait(0.08)continue end local bn=a5(bm,math.max(0,bc-an),math.min(a3
+,bc+ao))if bn>bc then bc=bn end if bd then if aR(bm,bd)>0.02 then be=os.clock()
+end end bd=bm if os.clock()-be>ap then bc=math.min(bc+aq,a3-ai)be=os.clock()bd=
+bm end local bo,bp=a9[bg],false if bo and ay and bo.facing then if bc>=bo.arc-am
+and bc<bo.arc then aU(a0,bo.facing)bp=true end end while bg<=#a9 and a9[bg].arc
+<=bc do local bq=a9[bg]if ay then aU(a0,bq.facing)bj=bq.facing bh=os.clock()+az
+end if ax then aT(bq.key or'M2')end bg+=1 end local bq=a8[bf]if bq and bc>=bq.
+arc then local br,bs=b(bq)if not br then aV()return false,bs end bf+=1 bd=aQ(a0)
+be=os.clock()continue end if bc>=a3-ai then aV()pcall(function()a_:MoveTo(a1[a2]
+)end)local br=os.clock()+5 while aH do local bs=aQ(a0)if bs and aR(bs,a1[a2])<=
+ai then break end if ab.GetCurrentRoomIndex()~=aX then aV()return false,
+'room_changed'end if(ab.IsBossActive()and not aZ)or ab.IsDead()then aV()return
+false,'dead'end if os.clock()>=br then break end if os.clock()>=bh and a_.
+AutoRotate~=true then a_.AutoRotate=true end task.wait(0.08)end aV()return true,
+'completed'end if os.clock()<bh or bp then if a_.AutoRotate~=false then a_.
+AutoRotate=false end elseif a_.AutoRotate~=true then a_.AutoRotate=true end
+local br=a7(bc)local bs=a6(math.min(bc+br,a3-0.01))bl(bs)task.wait(0.1)end aV()
+return false,'stopped'end local aX=function()local aX,aZ,a_=0,false,false aK=1
+while aH do if aI then break end if ab.IsDead()then a_=true task.wait(0.25)
+continue end if a_ then a_=false end if ab.IsInLobby()then aI=false aH=false
+break end if ab.IsBossActive()and not aJ then task.wait(0.25)continue end local
+a0=ab.GetCurrentRoomIndex()if a0<=0 then task.wait(0.1)continue end if a0~=aX
+then aX=a0 aZ=false aK=1 end local a1=ac.GetRoomSegment(aM,a0)if not a1 then
+task.wait(0.1)continue end local a2=a1.phases or{a1}local a3=#a2 if aZ then task
+.wait(0.1)continue end local a4=a2[math.min(aK,a3)]or a1 local a5,a6=aW(a4,a0,aJ
+)aV()if a5 then aZ=true else if a6=='dead'then aK+=1 local a7=math.min(aK,a3)if
+a3>1 then ad.Notify('Path Record',(
+'T\u{1eed} tr\u{1ead}n (Phase %d/%d): Ch\u{1edd} h\u{1ed3}i sinh \u{111}\u{1ec3} ch\u{1ea1}y Phase %d...'
+):format(aK-1,a3,a7),3)else ad.Notify('Path Record',
+'T\u{1eed} tr\u{1ead}n: \u{110}ang ch\u{1edd} h\u{1ed3}i sinh \u{111}\u{1ec3} \u{111}i l\u{1ea1}i...'
+,2)end while aH and ab.IsDead()do task.wait(0.2)end task.wait(0.6)end end end
+aG()aV()aN=nil aO()end function av.IsPlaying()return aH end function av.
+ResumeWanted()return aI end function av.GetActiveMap()return aM end function av.
+IsBossPlayActive()return aJ end function av.GetStatus()return{playing=aH,map=aM,
+room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive(),phase=aK,resume=aI}end
+function av.OnStatusChanged(aZ)if type(aZ)=='function'then table.insert(aL,aZ)
+end end function av.Start()if aH then return false,
 '\u{111}ang ph\u{e1}t r\u{1ed3}i'end if ab.IsInLobby()then return false,
-'\u{111}ang \u{1edf} lobby'end if ab.IsBossActive()then return false,
-'boss room (h\u{e3}y d\u{f9}ng Smart Dodge)'end local aQ=ab.GetCurrentRoomIndex(
-)if aQ<=0 then return false,'ch\u{1b0}a c\u{f3} room'end local aR=ab.
-GetCurrentDungeonName()if not aR or#aR==0 then return false,
+'\u{111}ang \u{1edf} lobby'end local aZ=ab.GetCurrentRoomIndex()if aZ<=0 then
+return false,'ch\u{1b0}a c\u{f3} room'end local a_=ab.GetCurrentDungeonName()if
+not a_ or#a_==0 then return false,
 'kh\u{f4}ng x\u{e1}c \u{111}\u{1ecb}nh \u{111}\u{1b0}\u{1ee3}c map'end if not ac
-.HasSegmentOrMacro(aR,aQ)then return false,(
-'map [%s] ch\u{1b0}a c\u{f3} segment room %d'):format(aR,aQ)end aE=aR aC=false
-aB=true aF=task.spawn(aP)aG'started'return true end function ar.Stop()aB=false
-aC=false aE=nil if aF then task.cancel(aF)aF=nil end aK(ab.GetHumanoid())aA()aN(
-)aG'stopped'end function ar.PauseForExclusive()if not aB then return end aC=true
-aB=false if aF then task.cancel(aF)aF=nil end aK(ab.GetHumanoid())aA()aN()ad.
-Notify('Path Record',
+.HasSegmentOrMacro(a_,aZ)then return false,(
+'map [%s] ch\u{1b0}a c\u{f3} segment room %d'):format(a_,aZ)end local a0=ac.
+GetMapMode(a_)=='full'if ab.IsBossActive()and(not a0 or not ac.
+HasSegmentOrMacro(a_,aZ))then return false,
+'boss room (h\u{e3}y d\u{f9}ng Smart Dodge)'end aM=a_ aJ=a0 aI=false aK=1 aH=
+true aN=task.spawn(aX)aO'started'return true end function av.Stop()aH=false aI=
+false aM=nil aJ=false aK=1 if aN then task.cancel(aN)aN=nil end aS(ab.
+GetHumanoid())aG()aV()aO'stopped'end function av.PauseForExclusive()if not aH
+then return end aI=true aH=false aJ=false if aN then task.cancel(aN)aN=nil end
+aS(ab.GetHumanoid())aG()aV()ad.Notify('Path Record',
 'Nh\u{1b0}\u{1edd}ng \u{111}i\u{1ec1}u khi\u{1ec3}n: s\u{1ebd} t\u{1ef1} ph\u{e1}t ti\u{1ebf}p khi v\u{e0}o room c\u{f3} b\u{1ea3}n ghi'
-,3)aG'paused'end return ar end function a.af()local aa,ab,ac,ad,ae,af,ag=game:
+,3)aO'paused'end return av end function a.af()local aa,ab,ac,ad,ae,af,ag=game:
 GetService'Workspace',{},{},0,{thickness=3,transparency=0.25}function ab.
 SetStyle(ah)if type(ah)~='table'then return end if ah.thickness~=nil then ae.
 thickness=math.clamp(ah.thickness,1,10)end if ah.transparency~=nil then ae.
@@ -5384,202 +5507,380 @@ then return end ab.Clear()ag=am ad=os.clock()local an=ai()for ao,ap in ipairs(aj
 Thickness=ae.thickness av.Transparency=ae.transparency av.Color3=ap.color or
 Color3.fromRGB(0,230,255)av.ZIndex=1 av.CFrame=CFrame.lookAt(as,at)av.Parent=aa
 table.insert(ac,av)end end end end if#ac==0 then ag=nil end end return ab end
-function a.ag()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'e',a.load'f',a.load'b',a.
-load'j',a.load'c',a.load'ac',a.load'ad',a.load'ae',a.load'af'local aj,ak,al,am=
-aa.RunService,{},true,'Default (Red/Cyan/Teal)'local an,ao={[am]={rec=Color3.
-fromRGB(255,60,60),play=Color3.fromRGB(0,230,255),idle=Color3.fromRGB(90,190,200
-)},Oceana={rec=Color3.fromRGB(0,190,255),play=Color3.fromRGB(80,255,220),idle=
-Color3.fromRGB(120,210,255)},Sunset={rec=Color3.fromRGB(255,120,60),play=Color3.
-fromRGB(255,220,80),idle=Color3.fromRGB(255,150,160)},Emerald={rec=Color3.
-fromRGB(80,255,140),play=Color3.fromRGB(0,220,120),idle=Color3.fromRGB(140,255,
-180)},Violet={rec=Color3.fromRGB(200,90,255),play=Color3.fromRGB(170,120,255),
-idle=Color3.fromRGB(150,150,255)}},{thickness=3,transparency=0.25,theme=am}
-function ak.GetStyle()return{thickness=ao.thickness,transparency=ao.transparency
-,theme=ao.theme}end function ak.GetThemeNames()local ap={}for aq in pairs(an)do
-ap[#ap+1]=aq end table.sort(ap)return ap end function ak.SetStyle(ap)if type(ap)
-~='table'then return end if ap.thickness~=nil then ao.thickness=math.clamp(ap.
-thickness,1,10)end if ap.transparency~=nil then ao.transparency=math.clamp(ap.
-transparency,0,0.9)end if ap.theme and an[ap.theme]then ao.theme=ap.theme end ai
-.SetStyle{thickness=ao.thickness,transparency=ao.transparency}lastBuildKey=nil
-fireStatus'style'end local ap,aq=true,true function ak.IsTimelineCaptureEnabled(
-)return ap end function ak.SetTimelineCapture(ar)ap=ar and true or false ag.
-SetCapture(ap)fireStatus'timeline'end function ak.IsTimelineReplayEnabled()
-return aq end function ak.SetTimelineReplay(ar)aq=ar and true or false ah.
-SetReplayTimeline(aq)fireStatus'timeline'end function ak.IsSpeedMatchEnabled()
-return ah.IsSpeedMatchEnabled()end function ak.SetSpeedMatch(ar)ah.
-SetSpeedMatch(ar and true or false)fireStatus'speedmatch'end function ak.
-GetSkillFaceHold()return ah.GetSkillFaceHold()end function ak.SetSkillFaceHold(
-ar)ah.SetSkillFaceHold(ar)fireStatus'facehold'end local ar,as,at,au,av,aw={}
-local ax=function(ax)local ay={recording=ag.IsRecording(),playing=ah.IsPlaying()
-,resume=ah.ResumeWanted(),map=ab.GetCurrentDungeonName(),room=ab.
+function a.ag()local aa,ab,ac=a.load'e',a.load'f',a.load'b'local ad,ae,af,ag,ah,
+ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax=aa.player,aa.RunService,aa.
+CoreGui or game:GetService'CoreGui',game:GetService'Workspace',{},{Cyan=Color3.
+fromRGB(0,230,255),Red=Color3.fromRGB(255,60,60),Orange=Color3.fromRGB(255,140,0
+),Yellow=Color3.fromRGB(255,220,40),Green=Color3.fromRGB(0,255,120),Emerald=
+Color3.fromRGB(40,220,160),Blue=Color3.fromRGB(0,140,255),Purple=Color3.fromRGB(
+180,80,255),Magenta=Color3.fromRGB(255,60,200),White=Color3.fromRGB(255,255,255)
+},false,25,0.4,true,true,'Cyan','Red',0.8,0.15,'PR_InRange_Highlight',{}local ay
+,az,aA,aB=function()return ai[ao]or ai.Cyan end,function()return ai[ap]or ai.Red
+end,function()local ay=ad and ad.Character if not ay or not ay.Parent then
+return nil end local az=ay:FindFirstChildOfClass'Humanoid'if az and az.Health<=0
+then return nil end local aA=ay:FindFirstChild'HumanoidRootPart'if aA and aA.
+Parent then return aA end return nil end,function()for ay,az in pairs(at)do
+pcall(function()az:Destroy()end)end table.clear(at)pcall(function()for ay,az in
+ipairs(ag:GetDescendants())do if az.Name==as then pcall(function()az:Destroy()
+end)end end end)end local aC,aD=function()if au then pcall(function()au:Destroy(
+)end)au=nil end if av then pcall(function()av:Destroy()end)av=nil end ax=nil aB(
+)end,function()if not au or not au.Parent then pcall(function()if au then au:
+Destroy()end end)au=Instance.new'CylinderHandleAdornment'au.Name=
+'PR_SkillRangeRing'au.AlwaysOnTop=true au.ZIndex=5 au.Parent=af end if am then
+if not av or not av.Parent then pcall(function()if av then av:Destroy()end end)
+av=Instance.new'CylinderHandleAdornment'av.Name='PR_SkillRangeFill'av.
+AlwaysOnTop=true av.ZIndex=4 av.Parent=af end else if av then pcall(function()av
+:Destroy()end)av=nil end end end local aE,aF=function(aE)if not aj then aC()
+return end aD()local aF,aG=2.6,ay()if au then au.Adornee=aE au.Height=0.06 au.
+Radius=ak au.InnerRadius=math.max(0.1,ak-al)au.Color3=aG au.Transparency=1-aq au
+.CFrame=CFrame.Angles(math.rad(90),0,0)*CFrame.new(0,0,aF)au.Visible=(aE~=nil
+and aE.Parent~=nil)end if av and am then av.Adornee=aE av.Height=0.02 av.Radius=
+ak av.InnerRadius=0 av.Color3=aG av.Transparency=1-ar av.CFrame=CFrame.Angles(
+math.rad(90),0,0)*CFrame.new(0,0,aF)av.Visible=(aE~=nil and aE.Parent~=nil)end
+end,function(aE)if not aj or not an or not aE then if next(at)~=nil then aB()end
+return end local aF,aG,aH,aI,aJ=ab.GetTrackedEnemyData(),aE.Position,ak*ak,{},
+az()for aK,aL in ipairs(aF)do local aM,aN,aO=aL.Model,aL.Root,aL.Humanoid if aM
+and aM.Parent and aN and aN.Parent and aO and aO.Health>0 then local aP,aQ=aN.
+Position.X-aG.X,aN.Position.Z-aG.Z if(aP*aP+aQ*aQ)<=aH then aI[aM]=true end end
+end for aK,aL in pairs(at)do if not aI[aK]or not aK.Parent then pcall(function()
+aL:Destroy()end)at[aK]=nil end end for aK in pairs(aI)do if not at[aK]or not at[
+aK].Parent then local aL=aK:FindFirstChild(as)local aM=(aL and aL:IsA'Highlight'
+)and aL or Instance.new'Highlight'aM.Name=as aM.Adornee=aK aM.FillColor=aJ aM.
+FillTransparency=0.35 aM.OutlineColor=Color3.fromRGB(255,255,255)aM.
+OutlineTransparency=0.1 aM.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop aM.
+Parent=aK at[aK]=aM else local aL=at[aK]if aL.FillColor~=aJ then aL.FillColor=aJ
+end if not aL.Enabled then aL.Enabled=true end end end end local aG=function()if
+not aj then return end local aG=aA()if not aG then if au then au.Visible=false
+end if av then av.Visible=false end if next(at)~=nil then aB()end ax=nil return
+end if not au or not au.Parent or aG~=ax then ax=aG aE(aG)else if au.Adornee~=aG
+then au.Adornee=aG end if not au.Visible then au.Visible=true end if am then if
+not av or not av.Parent then aE(aG)else if av.Adornee~=aG then av.Adornee=aG end
+if not av.Visible then av.Visible=true end end elseif av and av.Visible then av.
+Visible=false end end aF(aG)end function ah.SetEnabled(aH)aj=aH and true or
+false if aj then local aI=aA()if aI then aE(aI)ax=aI aF(aI)end if not aw then aw
+=ae.Heartbeat:Connect(aG)end else aC()if aw then aw:Disconnect()aw=nil end ax=
+nil end end function ah.IsEnabled()return aj end function ah.SetRadius(aH)if
+type(aH)=='number'then ak=math.clamp(aH,5,150)local aI=aA()if aj and aI then aE(
+aI)aF(aI)end end end function ah.GetRadius()return ak end function ah.
+SetFillEnabled(aH)am=aH and true or false local aI=aA()if aj and aI then aE(aI)
+end end function ah.IsFillEnabled()return am end function ah.SetHighlightInRange
+(aH)an=aH and true or false if not an then aB()else local aI=aA()if aj and aI
+then aF(aI)end end end function ah.IsHighlightInRangeEnabled()return an end
+function ah.GetColorNames()local aH={'Cyan','Red','Orange','Yellow','Green',
+'Emerald','Blue','Purple','Magenta','White'}return aH end function ah.
+GetSelectedCircleColor()return ao end function ah.SetCircleColor(aH)if type(aH)
+=='string'and ai[aH]then ao=aH local aI=aA()if aj and aI then aE(aI)end end end
+function ah.GetSelectedHighlightColor()return ap end function ah.
+SetHighlightColor(aH)if type(aH)=='string'and ai[aH]then ap=aH local aI=aA()if
+aj and aI then aF(aI)end end end if ad then ad.CharacterAdded:Connect(function(
+aH)if aj then task.spawn(function()local aI=aH:WaitForChild('HumanoidRootPart',
+10)if aI and aj then aE(aI)ax=aI aF(aI)end end)end end)end ab.OnRespawn(function
+()if aj then task.delay(0.2,function()local aH=aA()if aH and aj then aE(aH)ax=aH
+aF(aH)end end)end end)ac.Register(function()ah.SetEnabled(false)aC()end)return
+ah end function a.ah()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj=a.load'e',a.load'f',a.
+load'b',a.load'j',a.load'c',a.load'ac',a.load'ad',a.load'ae',a.load'af',a.load
+'ag'local ak,al,am,an=aa.RunService,{},true,'Default (Red/Cyan/Teal)'local ao,ap
+={[an]={rec=Color3.fromRGB(255,60,60),play=Color3.fromRGB(0,230,255),idle=Color3
+.fromRGB(90,190,200)},Oceana={rec=Color3.fromRGB(0,190,255),play=Color3.fromRGB(
+80,255,220),idle=Color3.fromRGB(120,210,255)},Sunset={rec=Color3.fromRGB(255,120
+,60),play=Color3.fromRGB(255,220,80),idle=Color3.fromRGB(255,150,160)},Emerald={
+rec=Color3.fromRGB(80,255,140),play=Color3.fromRGB(0,220,120),idle=Color3.
+fromRGB(140,255,180)},Violet={rec=Color3.fromRGB(200,90,255),play=Color3.
+fromRGB(170,120,255),idle=Color3.fromRGB(150,150,255)}},{thickness=3,
+transparency=0.25,theme=an}function al.GetStyle()return{thickness=ap.thickness,
+transparency=ap.transparency,theme=ap.theme}end function al.GetThemeNames()local
+aq={}for ar in pairs(ao)do aq[#aq+1]=ar end table.sort(aq)return aq end function
+al.SetStyle(aq)if type(aq)~='table'then return end if aq.thickness~=nil then ap.
+thickness=math.clamp(aq.thickness,1,10)end if aq.transparency~=nil then ap.
+transparency=math.clamp(aq.transparency,0,0.9)end if aq.theme and ao[aq.theme]
+then ap.theme=aq.theme end ai.SetStyle{thickness=ap.thickness,transparency=ap.
+transparency}lastBuildKey=nil fireStatus'style'end local aq,ar=true,true
+function al.IsTimelineCaptureEnabled()return aq end function al.
+SetTimelineCapture(as)aq=as and true or false ag.SetCapture(aq)fireStatus
+'timeline'end function al.IsTimelineReplayEnabled()return ar end function al.
+SetTimelineReplay(as)ar=as and true or false ah.SetReplayTimeline(ar)fireStatus
+'timeline'end function al.IsSpeedMatchEnabled()return ah.IsSpeedMatchEnabled()
+end function al.SetSpeedMatch(as)ah.SetSpeedMatch(as and true or false)
+fireStatus'speedmatch'end function al.IsUseFastSpeedEnabled()return ah.
+IsUseFastSpeedEnabled()end function al.SetUseFastSpeed(as)ah.SetUseFastSpeed(as
+and true or false)fireStatus'usefastspeed'end function al.GetSkillFaceHold()
+return ah.GetSkillFaceHold()end function al.SetSkillFaceHold(as)ah.
+SetSkillFaceHold(as)fireStatus'facehold'end function al.GetDoubleClickDelay()
+return ah.GetDoubleClickDelay()end function al.SetDoubleClickDelay(as)ah.
+SetDoubleClickDelay(as)fireStatus'doubleclick'end local as,at,au,av,aw,ax={}
+local ay=function(ay)local az=ag.GetStatus()local aA={recording=ag.IsRecording()
+,playing=ah.IsPlaying(),resume=ah.ResumeWanted(),autoPlayWanted=autoPlayWanted,
+inLobby=ab.IsInLobby(),map=ab.GetCurrentDungeonName(),room=ab.
 GetCurrentRoomIndex(),boss=ab.IsBossActive(),recordedMaps=af.Count(),pointCount=
-ag.IsRecording()and ag.GetStatus().pointCount or 0,reason=ax}for az,aA in
-ipairs(ar)do pcall(aA,ay)end end function ak.ToggleRecord(ay)if ay then if ag.
-IsRecording()then return true end if ah.IsPlaying()then ah.Stop()end local az,aA
-=ag.Start()if not az then ae.Notify('Path Record',
-'Kh\u{f4}ng b\u{1eaf}t \u{111}\u{1ea7}u record: '..tostring(aA),3)end ax()return
-az else local az=ag.IsRecording()ag.Stop()ax()return az end end function ak.
-IsRecording()return ag.IsRecording()end function ak.CurrentRoomHasRecord()return
+ag.IsRecording()and az.pointCount or 0,phase=ah.IsPlaying()and ah.
+GetCurrentPhaseIndex()or(ag.IsRecording()and az.phaseCount or 1),reason=ay}for
+aB,aC in ipairs(as)do pcall(aC,aA)end end function al.ToggleRecord(az)if az then
+if ag.IsRecording()then return true end if ah.IsPlaying()then ah.Stop()end local
+aA,aB=ag.Start()if not aA then ae.Notify('Path Record',
+'Kh\u{f4}ng b\u{1eaf}t \u{111}\u{1ea7}u record: '..tostring(aB),3)end ay()return
+aA else local aA=ag.IsRecording()ag.Stop()ay()return aA end end function al.
+IsRecording()return ag.IsRecording()end function al.CurrentRoomHasRecord()return
 af.HasSegmentOrMacro(ab.GetCurrentDungeonName(),ab.GetCurrentRoomIndex())end
-function ak.TogglePlay(ay)if ay then if ah.IsPlaying()then return true end if ag
-.IsRecording()then ag.Stop()end if ab.IsInLobby()then ae.Notify('Path Record',
-'Kh\u{f4}ng ph\u{e1}t \u{111}\u{1b0}\u{1ee3}c: \u{111}ang \u{1edf} lobby',3)ax()
-return false end if ab.IsBossActive()then ae.Notify('Path Record',
-'Kh\u{f4}ng ph\u{e1}t \u{111}\u{1b0}\u{1ee3}c: boss room (h\u{e3}y d\u{f9}ng Smart Dodge)'
-,3)ax()return false end local az=ab.GetCurrentDungeonName()if not az or#az==0
-then ae.Notify('Path Record',
-'Kh\u{f4}ng ph\u{e1}t \u{111}\u{1b0}\u{1ee3}c: kh\u{f4}ng x\u{e1}c \u{111}\u{1ecb}nh \u{111}\u{1b0}\u{1ee3}c map'
-,3)ax()return false end if not af.HasSegmentOrMacro(az,ab.GetCurrentRoomIndex())
-then ae.Notify('Path Record',
-'Kh\u{f4}ng ph\u{e1}t \u{111}\u{1b0}\u{1ee3}c: room n\u{e0}y ch\u{1b0}a c\u{f3} b\u{1ea3}n ghi trong macro'
-,3)ax()return false end ad.EnableExclusive'PathRecord'local aA,aB=ah.Start()if
-not aA then ae.Notify('Path Record',
-'Kh\u{f4}ng ph\u{e1}t \u{111}\u{1b0}\u{1ee3}c: '..tostring(aB),3)end ax()return
-aA else local az=ah.IsPlaying()ah.Stop()ax()return az end end function ak.
-IsPlaying()return ah.IsPlaying()end function ak.IsEnabled()return ah.IsPlaying()
-end function ak.SetShowVisual(ay)al=ay and true or false if not al then ai.
-Clear()end ax()end function ak.IsShowVisualEnabled()return al end function ak.
-GetMaps()return af.GetMaps()end function ak.GetMacro(ay)return af.GetMap(ay)end
-function ak.RemoveMap(ay)af.RemoveMap(ay)ax'removed'end function ak.ClearAll()af
-.ClearAll()ax'cleared'end function ak.GetStatus()local ay=ag.GetStatus()return{
-recording=ag.IsRecording(),playing=ah.IsPlaying(),resume=ah.ResumeWanted(),map=
-ab.GetCurrentDungeonName(),room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive(),
-recordedMaps=af.Count(),pointCount=ay.pointCount}end function ak.OnStatusChanged
-(ay)if type(ay)=='function'then table.insert(ar,ay)end end as=ab.
-OnBossActiveChanged(function(ay)if ay and ah.IsPlaying()then ae.Notify(
-'Path Record','Boss room: t\u{1ea1}m d\u{1eeb}ng, d\u{f9}ng Smart Dodge',3)ax
-'boss'end end)au=af.OnChanged(function()ax'storage'end)av=ab.OnRoomIndexChanged(
-function()if not ah.ResumeWanted()then return end local ay=ab.
-GetCurrentRoomIndex()if ay<=0 or ab.IsInLobby()or ab.IsBossActive()or ab.IsDead(
-)then return end local az=ab.GetCurrentDungeonName()if not az or#az==0 then
-return end if ah.GetActiveMap()and ah.GetActiveMap()~=az then return end if not
-af.HasSegmentOrMacro(az,ay)then return end ad.EnableExclusive'PathRecord'ah.
-Start()ax'resumed'end)aw=ab.OnDungeonNameChanged(function(ay)if ag.IsRecording()
-then ag.Cancel()ae.Notify('Path Record',
-'\u{110}\u{1ed5}i map: h\u{1ee7}y record \u{111}ang d\u{1edf}',3)end if ah.
-ResumeWanted()and(not ah.GetActiveMap()or ah.GetActiveMap()~=ay)then ah.Stop()
-end ax'map'end)local ay,az,aA=function(ay)if not ay or#ay==0 then return'-'end
-for az,aA in ipairs(af.GetMaps())do if aA.map==ay then return tostring(aA.
-updated or'-')..':'..tostring(aA.roomCount)end end return'-'end ai.SetStyle{
-thickness=ao.thickness,transparency=ao.transparency}ag.SetCapture(ap)ah.
-SetReplayTimeline(aq)at=aj.Heartbeat:Connect(function()if not al then if az then
-ai.Clear()az=nil end return end local aB,aC,aD=ab.GetCurrentDungeonName(),(ab.
-GetCurrentRoomIndex())if ag.IsRecording()then aD='rec:'..#ag.GetCurrentPoints()
-elseif ah.IsPlaying()then aD='play:'..tostring(aC)..':'..ay(aB)else aD='idle:'..
-ay(aB)end if aD==aA then return end aA=aD local aE,aF=an[ao.theme]or an[am],{}if
-ag.IsRecording()then local aG=ag.GetCurrentPoints()if#aG>=2 then aF[1]={points=
-aG,color=aE.rec,tag='rec'}end elseif ah.IsPlaying()then if aB and aC>0 then
-local aG=af.GetRoomSegment(aB,aC)if aG and#aG.points>=2 then aF[1]={points=af.
-SimplifyPath(aG.points,1),color=aE.play,tag='play_'..tostring(aC)}end end else
-if aB then local aG=af.GetMap(aB)if aG then local aH={}for aI in pairs(aG.rooms)
-do aH[#aH+1]=aI end table.sort(aH)for aI,aJ in ipairs(aH)do local aK=aG.rooms[aJ
-]if aK and#aK.points>=2 then aF[#aF+1]={points=af.SimplifyPath(aK.points,1),
-color=aE.idle,tag='macro_'..tostring(aJ)}end end end end end if#aF>0 then local
-aG={}for aH,aI in ipairs(aF)do aG[#aG+1]=(aI.tag or'x')..':'..#aI.points end ai.
-DrawPolylines(aF,table.concat(aG,'|'))az='drawn'elseif az then ai.Clear()az=nil
-end end)ad.Register('PathRecord',function(aB)if not aB then ah.
-PauseForExclusive()end ax'disabled'end,ak.IsEnabled)ac.Register(function()ah.
-Stop()ag.Cancel()ai.Clear()if as then as()as=nil end if at then at:Disconnect()
-at=nil end if av then av()av=nil end if aw then aw()aw=nil end if au then au()au
-=nil end end)return ak end function a.ah()local aa,ab,ac,ad,ae,af=a.load'e',a.
-load'b',a.load'ag',a.load'd',a.load'g',a.load'c'local ag=aa.RunService return
-function(ah,ai)local aj=ai:Section{Side='Left'}aj:Header{Name='Path Record'}aj:
-Label{Text=
-"Macro = 1 b\u{1ea3}n ghi cho c\u{1ea3} map, ch\u{1ee9}a to\u{e0}n b\u{1ed9} <font color='rgb(0,255,120)'>ROOM QU\u{c1}I TH\u{1af}\u{1edc}NG</font>. T\u{1ef1} l\u{1b0}u khi h\u{1ebf}t map / t\u{1eaf}t record. Boss -> d\u{f9}ng Smart Dodge."
-}local ak,al,am=false,false,false local an=aj:Toggle{Name='Record Path (Macro)',
-Default=ac.IsRecording(),Callback=function(an)if ak then return end if an then
-if ac.IsRecording()then return end if ac.CurrentRoomHasRecord()then if am then
-return end am=true ah:Dialog{Title='Confirm Record',Description=
+function al.GetMapMode(az)return af.GetMapMode(az)end function al.SetMapMode(az,
+aA)if af.SetMapMode(az,aA)then ay'mode'end end local az=false function al.
+IsAutoPlayWanted()return az end function al.TogglePlay(aA)az=aA and true or
+false if az then if ah.IsPlaying()then ay'already_playing'return true end if ag.
+IsRecording()then ag.Stop()end if ab.IsInLobby()then ay'armed_lobby'return true
+end local aB,aC=ab.GetCurrentDungeonName(),ab.GetCurrentRoomIndex()if not aB or#
+aB==0 or aC<=0 then ay'armed_waiting'return true end if ab.IsBossActive()and af.
+GetMapMode(aB)~='full'then ay'armed_boss'return true end if af.
+HasSegmentOrMacro(aB,aC)then ad.EnableExclusive'PathRecord'ah.Start()end ay
+'play_started'return true else local aB=ah.IsPlaying()ah.Stop()ay'play_stopped'
+return aB end end function al.IsPlaying()return ah.IsPlaying()end function al.
+IsEnabled()return ah.IsPlaying()end function al.SetShowVisual(aA)am=aA and true
+or false if not am then ai.Clear()end ay()end function al.IsShowVisualEnabled()
+return am end function al.SetRangeVisual(aA)aj.SetEnabled(aA)ay'rangevisual'end
+function al.IsRangeVisualEnabled()return aj.IsEnabled()end function al.
+SetRangeVisualRadius(aA)aj.SetRadius(aA)ay'rangeradius'end function al.
+GetRangeVisualRadius()return aj.GetRadius()end function al.SetRangeVisualFill(aA
+)aj.SetFillEnabled(aA)ay'rangefill'end function al.IsRangeVisualFillEnabled()
+return aj.IsFillEnabled()end function al.SetHighlightInRange(aA)aj.
+SetHighlightInRange(aA)ay'rangehighlight'end function al.
+IsHighlightInRangeEnabled()return aj.IsHighlightInRangeEnabled()end function al.
+GetRangeColorNames()return aj.GetColorNames()end function al.
+GetSelectedCircleColor()return aj.GetSelectedCircleColor()end function al.
+SetCircleColor(aA)aj.SetCircleColor(aA)ay'circlecolor'end function al.
+GetSelectedHighlightColor()return aj.GetSelectedHighlightColor()end function al.
+SetHighlightColor(aA)aj.SetHighlightColor(aA)ay'highlightcolor'end function al.
+GetMaps()return af.GetMaps()end function al.GetMacro(aA)return af.GetMap(aA)end
+function al.RemoveMap(aA)af.RemoveMap(aA)ay'removed'end function al.ClearAll()af
+.ClearAll()ay'cleared'end function al.ReloadFromDisk()af.ReloadFromDisk()ay
+'reloaded'end function al.GetStatus()local aA=ag.GetStatus()return{recording=ag.
+IsRecording(),playing=ah.IsPlaying(),resume=ah.ResumeWanted(),autoPlayWanted=az,
+inLobby=ab.IsInLobby(),map=ab.GetCurrentDungeonName(),room=ab.
+GetCurrentRoomIndex(),boss=ab.IsBossActive(),recordedMaps=af.Count(),pointCount=
+aA.pointCount,phase=ah.IsPlaying()and ah.GetCurrentPhaseIndex()or(ag.
+IsRecording()and aA.phaseCount or 1)}end function al.OnStatusChanged(aA)if type(
+aA)=='function'then table.insert(as,aA)end end at=ab.OnBossActiveChanged(
+function(aA)if not aA then return end if ah.ResumeWanted()or az then local aB=ah
+.GetActiveMap()or ab.GetCurrentDungeonName()if aB and af.GetMapMode(aB)=='full'
+then local aC=ab.GetCurrentRoomIndex()if aC>0 and af.HasSegmentOrMacro(aB,aC)
+then ad.EnableExclusive'PathRecord'ah.Start()ay'boss'end end return end if ah.
+IsPlaying()then local aB=ah.GetActiveMap()or ab.GetCurrentDungeonName()if aB and
+af.GetMapMode(aB)=='full'then ad.EnableExclusive'PathRecord'else ae.Notify(
+'Path Record','Boss room: t\u{1ea1}m d\u{1eeb}ng, d\u{f9}ng Smart Dodge',3)ay
+'boss'end end end)av=af.OnChanged(function()ay'storage'end)aw=ab.
+OnRoomIndexChanged(function()if not az and not ah.ResumeWanted()then return end
+local aA=ab.GetCurrentRoomIndex()if aA<=0 or ab.IsInLobby()or ab.IsDead()then
+return end local aB=ab.GetCurrentDungeonName()if not aB or#aB==0 then return end
+if ah.GetActiveMap()and ah.GetActiveMap()~=aB then return end if ab.
+IsBossActive()and af.GetMapMode(aB)~='full'then return end if not af.
+HasSegmentOrMacro(aB,aA)then return end if not ah.IsPlaying()then ad.
+EnableExclusive'PathRecord'ah.Start()ay'resumed'end end)ax=ab.
+OnDungeonNameChanged(function(aA)if ag.IsRecording()then ag.Stop
+'\u{111}\u{1ed5}i map'end if ah.IsPlaying()or ah.ResumeWanted()then local aB=ah.
+GetActiveMap()if aB and aB~=aA then ah.Stop()end end if az and aA and#aA>0 then
+task.delay(0.3,function()if not az or ah.IsPlaying()or ag.IsRecording()then
+return end local aB=ab.GetCurrentRoomIndex()if aB>0 and af.HasSegmentOrMacro(aA,
+aB)then if not(ab.IsBossActive()and af.GetMapMode(aA)~='full')then ad.
+EnableExclusive'PathRecord'ah.Start()ay'map_autoplay'end end end)end ay'map'end)
+local aA,aB,aC=function(aA)if not aA or#aA==0 then return'-'end for aB,aC in
+ipairs(af.GetMaps())do if aC.map==aA then return tostring(aC.updated or'-')..':'
+..tostring(aC.roomCount)end end return'-'end ai.SetStyle{thickness=ap.thickness,
+transparency=ap.transparency}ag.SetCapture(aq)ah.SetReplayTimeline(ar)au=ak.
+Heartbeat:Connect(function()if not am then if aB then ai.Clear()aB=nil end
+return end local aD,aE,aF=ab.GetCurrentDungeonName(),(ab.GetCurrentRoomIndex())
+if ag.IsRecording()then aF='rec:'..ag.GetCurrentPhaseIndex()..':'..#ag.
+GetCurrentPoints()elseif ah.IsPlaying()then aF='play:'..tostring(aE)..':'..ah.
+GetCurrentPhaseIndex()..':'..aA(aD)else aF='idle:'..aA(aD)end if aF==aC then
+return end aC=aF local aG,aH=ao[ap.theme]or ao[an],{}if ag.IsRecording()then
+local aI=ag.GetCurrentPoints()if#aI>=2 then aH[1]={points=aI,color=aG.rec,tag=
+'rec'}end elseif ah.IsPlaying()then if aD and aE>0 then local aI=af.
+GetRoomSegment(aD,aE)if aI then local aJ,aK=aI.phases or{aI},ah.
+GetCurrentPhaseIndex()or 1 local aL=aJ[math.min(aK,#aJ)]or aI if aL and aL.
+points and#aL.points>=2 then aH[1]={points=af.SimplifyPath(aL.points,0.4),color=
+aG.play,tag=('play_%s_p%d'):format(tostring(aE),aK)}end end end else if aD then
+local aI=af.GetMap(aD)if aI then local aJ={}for aK in pairs(aI.rooms)do aJ[#aJ+1
+]=aK end table.sort(aJ)for aK,aL in ipairs(aJ)do local aM=aI.rooms[aL]if aM then
+local aN=aM.phases or{aM}for aO,aP in ipairs(aN)do if aP and aP.points and#aP.
+points>=2 then aH[#aH+1]={points=af.SimplifyPath(aP.points,0.4),color=aM.boss
+and Color3.fromRGB(255,140,255)or aG.idle,tag=('macro_%s_p%d'):format(tostring(
+aL),aO)}end end end end end end end if#aH>0 then local aI={}for aJ,aK in ipairs(
+aH)do aI[#aI+1]=(aK.tag or'x')..':'..#aK.points end ai.DrawPolylines(aH,table.
+concat(aI,'|'))aB='drawn'elseif aB then ai.Clear()aB=nil end end)ad.Register(
+'PathRecord',function(aD)if not aD then ah.PauseForExclusive()end ay'disabled'
+end,al.IsEnabled)task.delay(1,function()if az and not ah.IsPlaying()and not ag.
+IsRecording()then local aD=ab.GetCurrentDungeonName()if aD and#aD>0 and not ab.
+IsInLobby()then if af.HasSegmentOrMacro(aD,ab.GetCurrentRoomIndex())then al.
+TogglePlay(true)end end end end)ac.Register(function()ah.Stop()ag.Cancel()ai.
+Clear()if at then at()at=nil end if au then au:Disconnect()au=nil end if aw then
+aw()aw=nil end if ax then ax()ax=nil end if av then av()av=nil end end)return al
+end function a.ai()local aa,ab,ac,ad,ae,af=a.load'e',a.load'b',a.load'ah',a.load
+'d',a.load'g',a.load'c'local ag=aa.RunService return function(ah,ai)local aj=ai:
+Section{Side='Left'}aj:Header{Name='Path Record'}aj:Label{Text=
+"Macro = 1 b\u{1ea3}n ghi cho c\u{1ea3} map, <font color='rgb(0,255,120)'>b\u{1ea5}m Record 1 l\u{1ea7}n l\u{e0} ghi li\u{ea}n t\u{1ee5}c</font> qua t\u{1eeb}ng room (t\u{1ef1} l\u{1b0}u khi v\u{1ec1} lobby). Mode FULL -> record & ph\u{e1}t lu\u{f4}n c\u{1ea3} boss room."
+}local ak,al,am,an,ao,ap,aq=false,false,false,false local ar,as=function()if not
+ao then return nil end local ar=ao:GetOptions()for as,at in pairs(ar)do if at
+and as~='None'then local au=string.match(as,'^Map %[(.+)%] %(%d+ rooms%)$')if au
+and#au>0 then return au end end end return nil end,aj:Toggle{Name=
+'Record Path (Macro)',Default=ac.IsRecording(),Callback=function(ar)if ak then
+return end if ar then if ac.IsRecording()then return end if ac.
+CurrentRoomHasRecord()then if an then return end an=true ah:Dialog{Title=
+'Confirm Record',Description=
 "Room n\u{e0}y <font color='rgb(255,200,0)'>\u{111}\u{e3} c\u{f3} macro \u{111}\u{1b0}\u{1ee3}c l\u{1b0}u</font>.\n\nRecord b\u{e2}y gi\u{1edd} s\u{1ebd} <b>GHI \u{110}\u{c8} segment c\u{169}</b> c\u{1ee7}a room \u{111}\u{f3}.\nB\u{1ea1}n v\u{1eab}n mu\u{1ed1}n record l\u{1ea1}i ch\u{1ee9}?"
-,Buttons={{Name='Record (Overwrite)',Callback=function()am=false local ao=ac.
-ToggleRecord(true)if not ao then ak=true recordToggle:UpdateState(false)ak=false
-end end},{Name='Cancel',Callback=function()am=false ak=true recordToggle:
-UpdateState(false)ak=false end}}}return end ac.ToggleRecord(true)else am=false
-if ac.IsRecording()then ac.ToggleRecord(false)end end end}aj:Label{Text=
-"Record s\u{1ebd} b\u{1eaf}t c\u{1ea3} <font color='rgb(255,150,80)'>kho\u{1ea3}ng \u{111}\u{1ee9}ng ch\u{1edd}</font> + <font color='rgb(255,80,80)'>skill chu\u{1ed9}t ph\u{1ea3}i</font> + h\u{1b0}\u{1edb}ng m\u{1eb7}t, Play s\u{1ebd} t\u{e1}i hi\u{1ec7}n l\u{1ea1}i \u{111}\u{fa}ng v\u{1ecb} tr\u{ed} & gi\u{e2}y \u{111}\u{e3} record."
-}local ao,ap,aq,ar=aj:Toggle{Name='Play Path (Macro)',Default=ac.IsPlaying(),
-Callback=function(ao)if al then return end ac.TogglePlay(ao)end},aj:Toggle({Name
-='Record Pauses & Skills',Default=ac.IsTimelineCaptureEnabled(),Callback=ad.
-Wrap(function(ao)ac.SetTimelineCapture(ao)end)},'Toggle_PR_TimelineCapture'),aj:
-Toggle({Name='Replay Pauses & Skills',Default=ac.IsTimelineReplayEnabled(),
-Callback=ad.Wrap(function(ao)ac.SetTimelineReplay(ao)end)},
-'Toggle_PR_TimelineReplay'),aj:Toggle({Name='Match Record Speed (Precise)',
-Default=ac.IsSpeedMatchEnabled(),Callback=ad.Wrap(function(ao)ac.SetSpeedMatch(
-ao)end)},'Toggle_PR_SpeedMatch')ae.PatchSliderLoadCallback(aj:Slider({Name=
-'Skill Face Hold (s)',Default=ac.GetSkillFaceHold(),Minimum=0.5,Maximum=2,
-DisplayMethod='Value',Precision=2,Callback=ad.Wrap(function(as)ac.
-SetSkillFaceHold(as)end),onInputComplete=function(as)ad.SaveNow()af.Notify(
-'Path Record',('Saved Skill Face Hold = %ss'):format(tostring(as)),2)end},
-'Slider_PR_SkillFaceHold'))local as,at=aj:Toggle({Name='Show Path Visual',
-Default=ac.IsShowVisualEnabled(),Callback=ad.Wrap(function(as)ac.SetShowVisual(
-as)end)},'Toggle_PR_Visual'),ac.GetStyle()ae.PatchSliderLoadCallback(aj:Slider({
-Name='Line Thickness',Default=at.thickness,Minimum=1,Maximum=10,DisplayMethod=
-'Value',Precision=1,Callback=ad.Wrap(function(au)ac.SetStyle{thickness=au}end),
-onInputComplete=function(au)ad.SaveNow()end},'Slider_PR_LineThickness'))ae.
-PatchSliderLoadCallback(aj:Slider({Name='Line Opacity',Default=math.round((1-at.
+,Buttons={{Name='Record (Overwrite)',Callback=function()an=false local as=ac.
+ToggleRecord(true)if not as then pcall(function()ak=true recordToggle:
+UpdateState(false)ak=false end)end end},{Name='Cancel',Callback=function()an=
+false local as,at=pcall(function()ak=true recordToggle:UpdateState(false)ak=
+false end)if not as then ak=false warn(
+'Path Record: Cancel failed to reset toggle - '..tostring(at))end end}}}return
+end ac.ToggleRecord(true)else an=false if ac.IsRecording()then ac.ToggleRecord(
+false)end end end}aj:Label{Text=
+"Record s\u{1ebd} b\u{1eaf}t c\u{1ea3} <font color='rgb(255,150,80)'>kho\u{1ea3}ng \u{111}\u{1ee9}ng ch\u{1edd}</font> + <font color='rgb(255,80,80)'>skill (chu\u{1ed9}t ph\u{1ea3}i / Q / E)</font> + h\u{1b0}\u{1edb}ng m\u{1eb7}t, Play s\u{1ebd} t\u{e1}i hi\u{1ec7}n l\u{1ea1}i \u{111}\u{fa}ng v\u{1ecb} tr\u{ed}, gi\u{e2}y & n\u{fa}t \u{111}\u{e3} record."
+}local at,au=aj:Label{Text=
+[[Record Mode (theo map): <font color='rgb(120,200,255)'>NORMAL</font>]]},aj:
+Toggle{Name='Full Mode (Record & Play Boss Rooms)',Default=false,Callback=
+function(at)if am then return end local au=ac.GetStatus().map local av=(au and#
+au>0)and au or ar()if not av or#av==0 then af.Notify('Path Record',
+'Ch\u{1b0}a c\u{f3} map n\u{e0}o \u{111}\u{1b0}\u{1ee3}c ch\u{1ecd}n. H\u{e3}y ch\u{1ecd}n map trong dropdown ho\u{1eb7}c v\u{e0}o dungeon.'
+,3)pcall(function()am=true recordBossToggle:UpdateState(false)am=false end)
+return end ac.SetMapMode(av,at and'full'or'normal')af.Notify('Path Record',(
+'Map [%s]: Ch\u{1ebf} \u{111}\u{1ed9} %s'):format(av,at and
+'FULL (record & ph\u{e1}t c\u{1ea3} boss room)'or
+'NORMAL (b\u{1ecf} qua boss, d\u{f9}ng Smart Dodge)'),3)if ap then ap(ac.
+GetStatus())end end}aj:Label{Text=
+"Mode l\u{1b0}u theo <font color='rgb(150,255,150)'>t\u{1eeb}ng map</font>. <font color='rgb(255,140,255)'>FULL</font>: ghi li\u{ea}n t\u{1ee5}c qua c\u{1ea3} boss room & ph\u{e1}t theo path \u{111}\u{e3} record. <font color='rgb(120,200,255)'>NORMAL</font> (m\u{1eb7}c \u{111}\u{1ecb}nh): ch\u{1ec9} room qu\u{e1}i th\u{1b0}\u{1edd}ng, boss d\u{f9}ng Smart Dodge."
+}local av,aw,ax,ay,az=aj:Toggle({Name='Play Path (Macro)',Default=ac.
+IsAutoPlayWanted(),Callback=ad.Wrap(function(av)if al then return end ac.
+TogglePlay(av)end)},'Toggle_PR_Play'),aj:Toggle({Name='Record Pauses & Skills',
+Default=ac.IsTimelineCaptureEnabled(),Callback=ad.Wrap(function(av)ac.
+SetTimelineCapture(av)end)},'Toggle_PR_TimelineCapture'),aj:Toggle({Name=
+'Replay Pauses & Skills',Default=ac.IsTimelineReplayEnabled(),Callback=ad.Wrap(
+function(av)ac.SetTimelineReplay(av)end)},'Toggle_PR_TimelineReplay'),aj:Toggle(
+{Name='Match Record Speed (Precise)',Default=ac.IsSpeedMatchEnabled(),Callback=
+ad.Wrap(function(av)ac.SetSpeedMatch(av)end)},'Toggle_PR_SpeedMatch'),aj:Toggle(
+{Name='Use Player Fast Speed',Default=ac.IsUseFastSpeedEnabled(),Callback=ad.
+Wrap(function(av)ac.SetUseFastSpeed(av)end)},'Toggle_PR_UseFastSpeed')ae.
+PatchSliderLoadCallback(aj:Slider({Name='Skill Face Hold (s)',Default=ac.
+GetSkillFaceHold(),Minimum=0.5,Maximum=2,DisplayMethod='Value',Precision=2,
+Callback=ad.Wrap(function(aA)ac.SetSkillFaceHold(aA)end),onInputComplete=
+function(aA)ad.SaveNow()af.Notify('Path Record',('Saved Skill Face Hold = %ss'):
+format(tostring(aA)),2)end},'Slider_PR_SkillFaceHold'))ae.
+PatchSliderLoadCallback(aj:Slider({Name='Skill Double Click Delay (s)',Default=
+ac.GetDoubleClickDelay(),Minimum=0.005,Maximum=0.1,DisplayMethod='Value',
+Precision=3,Callback=ad.Wrap(function(aA)ac.SetDoubleClickDelay(aA)end),
+onInputComplete=function(aA)ad.SaveNow()af.Notify('Path Record',(
+'Saved Double Click Delay = %ss'):format(tostring(aA)),2)end},
+'Slider_PR_DoubleClickDelay'))local aA,aB=aj:Toggle({Name='Show Path Visual',
+Default=ac.IsShowVisualEnabled(),Callback=ad.Wrap(function(aA)ac.SetShowVisual(
+aA)end)},'Toggle_PR_Visual'),ac.GetStyle()ae.PatchSliderLoadCallback(aj:Slider({
+Name='Line Thickness',Default=aB.thickness,Minimum=1,Maximum=10,DisplayMethod=
+'Value',Precision=1,Callback=ad.Wrap(function(aC)ac.SetStyle{thickness=aC}end),
+onInputComplete=function(aC)ad.SaveNow()end},'Slider_PR_LineThickness'))ae.
+PatchSliderLoadCallback(aj:Slider({Name='Line Opacity',Default=math.round((1-aB.
 transparency)*100),Minimum=10,Maximum=100,DisplayMethod='Value',Precision=0,
-Callback=ad.Wrap(function(au)ac.SetStyle{transparency=1-au/100}end),
-onInputComplete=function(au)ad.SaveNow()end},'Slider_PR_LineOpacity'))local au,
-av=ac.GetThemeNames(),1 for aw,ax in ipairs(au)do if ax==at.theme then av=aw
+Callback=ad.Wrap(function(aC)ac.SetStyle{transparency=1-aC/100}end),
+onInputComplete=function(aC)ad.SaveNow()end},'Slider_PR_LineOpacity'))local aC,
+aD=ac.GetThemeNames(),1 for aE,aF in ipairs(aC)do if aF==aB.theme then aD=aE
 break end end ae.PatchDropdownRestore(aj:Dropdown({Name='Path Color Theme',
-Options=au,Default=av,Required=true,Callback=ad.Wrap(function(aw)ac.SetStyle{
-theme=aw}end)},'Dropdown_PR_Theme'),false)aj:Header{Name='Macros'}local aw=ae.
+Options=aC,Default=aD,Required=true,Callback=ad.Wrap(function(aE)ac.SetStyle{
+theme=aE}end)},'Dropdown_PR_Theme'),false)aj:Header{Name='Macros'}ao=ae.
 PatchDropdownRestore(aj:Dropdown{Name='Map Recording',Options={'None'},Default=1
-,Required=true,Callback=function(aw)end},false)local ax,ay,az,aA,aB=aj:Button{
-Name='Delete Selected Map',Callback=ad.Wrap(function()local ax=aw:GetOptions()
-for ay,az in pairs(ax)do if az then local aA=string.match(ay,
-'^Map (%b[]) %(%d+ rooms%)$')if not aA or#aA<=2 then aA=string.match(ay,
-'^Map (.-) %(%d+ rooms%)$')end if aA and#aA>2 then aA=aA:sub(2,-2)ac.RemoveMap(
-aA)end return end end end)},false,'Clear All Recordings',
-"<font color='rgb(255,80,80)'>Confirm Clear All?</font>",3 local aC=function()if
-not ay then return end ay=false if clearTimer then task.cancel(clearTimer)
-clearTimer=nil end pcall(function()clearBtn:UpdateName(az)end)end local aD,aE=aj
-:Button{Name=az,Callback=function()if not ay then ay=true if clearTimer then
-task.cancel(clearTimer)end clearTimer=task.delay(aB,aC)pcall(function()clearBtn:
-UpdateName(aA)end)return end aC()ac.ClearAll()end},ai:Section{Side='Right'}aE:
-Header{Name='Status Monitor'}local aF,aG,aH,aI,aJ,aK,aL=aE:Label{Text=
-"State: <font color='rgb(160,160,160)'>Idle</font>"},aE:Label{Text=
+,Required=true,Callback=function(aE)local aF=ac.GetStatus()if ap then ap(aF)end
+if aq then aq(aF)end end},false)local aE,aF,aG,aH,aI,aJ=aj:Button{Name=
+'Delete Selected Map',Callback=ad.Wrap(function()local aE=ar()if aE and#aE>0
+then ac.RemoveMap(aE)end end)},aj:Button{Name=
+'Reload Macros (EsclipseHub/DQMacro)',Callback=function()ac.ReloadFromDisk()af.
+Notify('Path Record',
+'\u{110}\u{e3} qu\u{e9}t v\u{e0} t\u{1ea3}i l\u{1ea1}i c\u{e1}c file macro t\u{1eeb} EsclipseHub/DQMacro/'
+,2)end},false,'Clear All Recordings',
+"<font color='rgb(255,80,80)'>Confirm Clear All?</font>",3 local aK=function()if
+not aG then return end aG=false if clearTimer then task.cancel(clearTimer)
+clearTimer=nil end pcall(function()clearBtn:UpdateName(aH)end)end local aL,aM=aj
+:Button{Name=aH,Callback=function()if not aG then aG=true if clearTimer then
+task.cancel(clearTimer)end clearTimer=task.delay(aJ,aK)pcall(function()clearBtn:
+UpdateName(aI)end)return end aK()ac.ClearAll()end},ai:Section{Side='Right'}aM:
+Header{Name='Status Monitor'}local aN,aO,aP,aQ,aR=aM:Label{Text=
+"State: <font color='rgb(160,160,160)'>Idle</font>"},aM:Label{Text=
 [[Room: <font color='rgb(160,160,160)'>-</font> | Boss: <font color='rgb(160,160,160)'>-</font>]]
-},aE:Label{Text="Points: <font color='rgb(160,160,160)'>-</font>"},aE:Label{Text
-="Macros: <font color='rgb(160,160,160)'>None</font>"},function(aF)if not am
-then pcall(function()if an and an.GetState and an:GetState()~=aF.recording then
-ak=true an:UpdateState(aF.recording)ak=false end end)end pcall(function()if ao
-and ao.GetState and ao:GetState()~=aF.playing then al=true ao:UpdateState(aF.
-playing)al=false end end)pcall(function()if as and as.GetState and as:GetState()
-~=ac.IsShowVisualEnabled()then as:UpdateState(ac.IsShowVisualEnabled())end end)
-end,function(aF)local aG={}for aH,aI in ipairs(aF)do aG[#aG+1]=(
-'Map [%s] (%d rooms)'):format(aI.map,aI.roomCount)end if#aG==0 then aG[1]='None'
-end return aG end local aM=function(aM)local aN=aK(aM)local aO=table.concat(aN,
-'|')if aO==aL then return end aL=aO local aP for aQ,aR in pairs(aw:GetOptions())
-do if aR then aP=aQ break end end pcall(function()aw:ClearOptions()end)pcall(
-function()aw:InsertOptions(aN)end)local aQ=aP if not aQ or not aw:IsOption(aQ)
-then aQ=aN[1]end pcall(function()aw:UpdateSelection(aQ)end)end local aN=function
-(aN)local aO if aN.recording then aO=
-"<font color='rgb(255,90,90)'>Recording...</font>"elseif aN.playing then aO=
-"<font color='rgb(0,230,255)'>Playing</font>"elseif aN.resume then aO=
-"<font color='rgb(255,200,0)'>Waiting (auto-resume)</font>"else aO=
-"<font color='rgb(160,160,160)'>Idle</font>"end pcall(function()aF:UpdateName(
-'State: '..aO)end)local aP,aQ,aR=aN.boss and
-"<font color='rgb(255,80,80)'>YES (d\u{f9}ng Smart Dodge)</font>"or
-"<font color='rgb(0,255,120)'>No</font>",aN.room and aN.room>0 and(
-"<font color='rgb(0,255,255)'>room %d</font>"):format(aN.room)or
-"<font color='rgb(160,160,160)'>-</font>",aN.map and#aN.map>0 and(
-"<font color='rgb(150,255,150)'>%s</font>"):format(aN.map)or
-"<font color='rgb(160,160,160)'>-</font>"pcall(function()aG:UpdateName('Map: '..
-aR..' | Room: '..aQ..' | Boss: '..aP)end)if aN.recording then pcall(function()aH
-:UpdateName(("Points: <font color='rgb(255,170,60)'>%d</font> (room %s)"):
-format(aN.pointCount,tostring(aN.room)))end)else pcall(function()aH:UpdateName
-"Points: <font color='rgb(160,160,160)'>-</font>"end)end local aS=ac.GetMaps()if
-#aS==0 then pcall(function()aI:UpdateName
-"Macros: <font color='rgb(160,160,160)'>None</font>"end)else local aT={}for aU,
-aV in ipairs(aS)do aT[#aT+1]=('%s(%dr/%dp)'):format(aV.map,aV.roomCount,aV.
-pointCount)end pcall(function()aI:UpdateName(
-"Macros: <font color='rgb(150,255,150)'>"..table.concat(aT,', ')..'</font>')end)
-end aM(aS)end ac.OnStatusChanged(function(aO)aN(aO)aJ(aO)end)local aO=0 local aP
-=ag.Heartbeat:Connect(function()local aP=os.clock()if aP-aO<0.4 then return end
-aO=aP local aQ=ac.GetStatus()aN(aQ)aJ(aQ)end)ab.Register(function()if aP then aP
-:Disconnect()aP=nil end end)aN(ac.GetStatus())aJ(ac.GetStatus())end end function
-a.ai()return function(aa)local ab,ac=game:GetService'Players',os.clock()+15
+},aM:Label{Text="Points: <font color='rgb(160,160,160)'>-</font>"},aM:Label{Text
+="Macros: <font color='rgb(160,160,160)'>None</font>"},ai:Section{Side='Right'}
+aR:Header{Name='Skill Range Visual'}aR:Label{Text=
+"V\u{f2}ng tr\u{f2}n quanh nh\u{e2}n v\u{1ead}t gi\u{fa}p \u{1b0}\u{1edb}c l\u{1b0}\u{1ee3}ng <font color='rgb(0,255,200)'>t\u{1ea7}m \u{111}\u{e1}nh / ph\u{1ea1}m vi AOE</font> c\u{1ee7}a skill \u{111}\u{1ec3} c\u{103}n g\u{f3}c v\u{e0} v\u{1ecb} tr\u{ed} x\u{1ea3} chi\u{ea}u khi record."
+}local aS=aR:Toggle({Name='Show Range Circle',Default=ac.IsRangeVisualEnabled(),
+Callback=ad.Wrap(function(aS)ac.SetRangeVisual(aS)end)},'Toggle_PR_RangeVisual')
+ae.PatchSliderLoadCallback(aR:Slider({Name='Skill Range (Studs)',Default=ac.
+GetRangeVisualRadius(),Minimum=5,Maximum=120,DisplayMethod='Round',Precision=0,
+Callback=ad.Wrap(function(aT)ac.SetRangeVisualRadius(aT)end),onInputComplete=
+function(aT)ad.SaveNow()end},'Slider_PR_RangeRadius'))aR:Toggle({Name=
+'Fill Circle Area',Default=ac.IsRangeVisualFillEnabled(),Callback=ad.Wrap(
+function(aT)ac.SetRangeVisualFill(aT)end)},'Toggle_PR_RangeFill')local aT,aU,aV=
+ac.GetRangeColorNames(),ac.GetSelectedCircleColor(),1 for aW,aX in ipairs(aT)do
+if aX==aU then aV=aW break end end ae.PatchDropdownRestore(aR:Dropdown({Name=
+'Circle Color',Options=aT,Default=aV,Required=true,Callback=ad.Wrap(function(aW)
+ac.SetCircleColor(aW)end)},'Dropdown_PR_CircleColor'),false)local aW,aX,aZ=aR:
+Toggle({Name='Highlight In-Range Enemies (Glow)',Default=ac.
+IsHighlightInRangeEnabled(),Callback=ad.Wrap(function(aW)ac.SetHighlightInRange(
+aW)end)},'Toggle_PR_HighlightInRange'),ac.GetSelectedHighlightColor(),2 for a_,
+a0 in ipairs(aT)do if a0==aX then aZ=a_ break end end ae.PatchDropdownRestore(aR
+:Dropdown({Name='Enemy Highlight Color',Options=aT,Default=aZ,Required=true,
+Callback=ad.Wrap(function(a_)ac.SetHighlightColor(a_)end)},
+'Dropdown_PR_HighlightColor'),false)aq=function(a_)if not an then pcall(function
+()if as and as.GetState and as:GetState()~=a_.recording then ak=true as:
+UpdateState(a_.recording)ak=false end end)end pcall(function()local a0=ac.
+IsAutoPlayWanted()if av and av.GetState and av:GetState()~=a0 then al=true av:
+UpdateState(a0)al=false end end)pcall(function()local a0=a_.map local a1=(a0 and
+#a0>0)and a0 or ar()local a2=a1 and ac.GetMapMode(a1)=='full'or false if au and
+au.GetState and au:GetState()~=a2 then am=true au:UpdateState(a2)am=false end
+end)pcall(function()if aA and aA.GetState and aA:GetState()~=ac.
+IsShowVisualEnabled()then aA:UpdateState(ac.IsShowVisualEnabled())end end)pcall(
+function()if aS and aS.GetState and aS:GetState()~=ac.IsRangeVisualEnabled()then
+aS:UpdateState(ac.IsRangeVisualEnabled())end end)pcall(function()if aW and aW.
+GetState and aW:GetState()~=ac.IsHighlightInRangeEnabled()then aW:UpdateState(ac
+.IsHighlightInRangeEnabled())end end)end local a_,a0=function(a_)local a0={}for
+a1,a2 in ipairs(a_)do a0[#a0+1]=('Map [%s] (%d rooms)'):format(a2.map,a2.
+roomCount)end if#a0==0 then a0[1]='None'end return a0 end local a1=function(a1)
+local a2=a_(a1)local a3=table.concat(a2,'|')if a3==a0 then return end a0=a3
+local a4 for a5,a6 in pairs(ao:GetOptions())do if a6 then a4=a5 break end end
+pcall(function()ao:ClearOptions()end)pcall(function()ao:InsertOptions(a2)end)
+local a5=a4 if not a5 or not ao:IsOption(a5)then a5=a2[1]end pcall(function()ao:
+UpdateSelection(a5)end)end ap=function(a2)local a3,a4=false,a2.map local a5=(a4
+and#a4>0)and a4 or ar()if a5 then a3=ac.GetMapMode(a5)=='full'end local a6 if a2
+.recording then a6="<font color='rgb(255,90,90)'>Recording...</font>"elseif a2.
+playing then a6="<font color='rgb(0,230,255)'>Playing</font>"elseif a2.resume
+then a6="<font color='rgb(255,200,0)'>Waiting (auto-resume)</font>"elseif a2.
+autoPlayWanted then if a2.inLobby then a6=
+"<font color='rgb(100,220,100)'>Armed (Lobby)</font>"elseif not a2.map or#a2.map
+==0 then a6="<font color='rgb(100,220,100)'>Armed (Loading...)</font>"elseif a2.
+boss and not a3 then a6=
+"<font color='rgb(255,160,50)'>Waiting (Boss Room)</font>"else a6=
+[[<font color='rgb(100,220,100)'>Armed (Waiting for Room)</font>]]end else a6=
+"<font color='rgb(160,160,160)'>Idle</font>"end pcall(function()aN:UpdateName(
+'State: '..a6)end)local a7,a8=a3 and"<font color='rgb(255,140,255)'>FULL</font>"
+or"<font color='rgb(120,200,255)'>NORMAL</font>",a5 and(' (map ['..a5..'])')or
+' (theo map)'pcall(function()at:UpdateName('Record Mode'..a8..': '..a7)end)local
+a9 if a2.boss then if a3 then a9=
+"<font color='rgb(255,140,255)'>YES (FULL path)</font>"else a9=
+"<font color='rgb(255,80,80)'>YES (d\u{f9}ng Smart Dodge)</font>"end else a9=
+"<font color='rgb(0,255,120)'>No</font>"end local b,ba=a2.room and a2.room>0 and
+("<font color='rgb(0,255,255)'>room %d</font>"):format(a2.room)or
+"<font color='rgb(160,160,160)'>-</font>",a2.map and#a2.map>0 and(
+"<font color='rgb(150,255,150)'>%s</font>"):format(a2.map)or
+"<font color='rgb(160,160,160)'>-</font>"pcall(function()aO:UpdateName('Map: '..
+ba..' | Room: '..b..' | Boss: '..a9)end)if a2.recording then local bb=a2.phase
+or 1 pcall(function()aP:UpdateName((
+[[Points: <font color='rgb(255,170,60)'>%d</font> (room %s | Phase %d)]]):
+format(a2.pointCount,tostring(a2.room),bb))end)elseif a2.playing then local bb=
+a2.phase or 1 pcall(function()aP:UpdateName((
+"Playing: <font color='rgb(0,230,255)'>Phase %d</font>"):format(bb))end)else
+pcall(function()aP:UpdateName"Points: <font color='rgb(160,160,160)'>-</font>"
+end)end local bb=ac.GetMaps()if#bb==0 then pcall(function()aQ:UpdateName
+"Macros: <font color='rgb(160,160,160)'>None</font>"end)else local bc={}for bd,
+be in ipairs(bb)do local bf,bg=be.bossCount and be.bossCount>0 and('+%db'):
+format(be.bossCount)or'',be.phaseCount and be.phaseCount>be.roomCount and(
+'/%dph'):format(be.phaseCount)or''bc[#bc+1]=('%s(%dr%s/%dp%s)'):format(be.map,be
+.roomCount,bg,be.pointCount,bf)end pcall(function()aQ:UpdateName(
+"Macros: <font color='rgb(150,255,150)'>"..table.concat(bc,', ')..'</font>')end)
+end a1(bb)end ac.OnStatusChanged(function(a2)ap(a2)aq(a2)end)local a2=0 local a3
+=ag.Heartbeat:Connect(function()local a3=os.clock()if a3-a2<0.4 then return end
+a2=a3 local a4=ac.GetStatus()ap(a4)aq(a4)end)ab.Register(function()if a3 then a3
+:Disconnect()a3=nil end end)ap(ac.GetStatus())aq(ac.GetStatus())end end function
+a.aj()return function(aa)local ab,ac=game:GetService'Players',os.clock()+15
 while not ab.LocalPlayer do if os.clock()>ac then break end task.wait(0.1)end
 local ad=ab.LocalPlayer if not ad then return warn
 '[DungeonQuest] Kh\u{f4}ng l\u{1ea5}y \u{111}\u{1b0}\u{1ee3}c LocalPlayer, h\u{1ee7}y kh\u{1edf}i t\u{1ea1}o script.'
@@ -5596,7 +5897,7 @@ local aj=ah:TabGroup()local ak={Combat=aj:Tab{Name='Combat',Image=
 'rbxassetid://10747383470'},Configs=aj:Tab{Name='Configs',Image=
 'rbxassetid://10734950309'},PathRecord=aj:Tab{Name='Path Record',Image=
 'rbxassetid://10734950309'}}ae:SetFolder'EsclipseHub'local al,am,an,ao,ap,aq=a.
-load'H',a.load'M',a.load'O',a.load'Y',a.load'ab',a.load'ah'al(ah,ak.Combat)am(ah
+load'H',a.load'M',a.load'O',a.load'Y',a.load'ab',a.load'ai'al(ah,ak.Combat)am(ah
 ,ak.Dungeon)an(ah,ak.Inventory)ao(ah,ak.Utilities)ap(ah,ak.Configs)aq(ah,ak.
 PathRecord)local ar=a.load'h'ar.Init()local as=a.load'T'as.Init()a.load'Q'local
 at=a.load'Z'at.SetWindow(ah)at.Execute()local au=a.load'B'au.Init()ak.Combat:
@@ -5606,38 +5907,38 @@ isfile(ax)then local ay,az=pcall(readfile,ax)if ay and type(az)=='string'and#az>
 0 then ag.SetActive(az)end end end ax()task.delay(0.3,function()av.SetLocked(
 false)local ay=ae.Options and ae.Options.Toggle_SAP_Master if ay and ay:
 GetState()==true then if not aw.IsMasterEnabled()then aw.SetMasterEnabled(true)
-end end end)task.delay(1.5,function()ag.Resume()end)end end function a.aj()local
+end end end)task.delay(1.5,function()ag.Resume()end)end end function a.ak()local
 aa={}function aa:Export()local ab={}for ac,ad in pairs(self)do if typeof(ad)==
 'Instance'or type(ad)=='table'then local ae,af=pcall(function()end)if ae and af
 ~=nil then ab[ac]=af end end end return ab end function aa:Import(ab)for ac,ad
 in pairs(ab)do local ae=self[ac]if ae and ae.Value~=nil then local af=pcall(
 function()end)if not af then warn(`Failed to import value for flag "{ac}"`)end
 end end end function aa:Reset()for ab in pairs(self)do self[ab]=nil end end
-return aa end function a.ak()local aa,ab=a.load'V',{}function ab:Window(ac)ac=ac
+return aa end function a.al()local aa,ab=a.load'V',{}function ab:Window(ac)ac=ac
 or{}print'Made a window'local ad=aa.Wrap(ac,{Visible=function(ad)print(
 'Set window visibility to:',ad)end})return aa.Apply(ac,ad)end return ab end
-function a.al()local aa,ab=a.load'V',{}return(aa.Wrap(ab,{Enabled=function(ac)
-print(`{ac and'Enabled'or'Disabled'} ESP.`)end}))end function a.am()local aa,ab,
-ac=a.load'aj',a.load'ak',a.load'al'local ad=ab:Window{Visible=true}return{Flags=
+function a.am()local aa,ab=a.load'V',{}return(aa.Wrap(ab,{Enabled=function(ac)
+print(`{ac and'Enabled'or'Disabled'} ESP.`)end}))end function a.an()local aa,ab,
+ac=a.load'ak',a.load'al',a.load'am'local ad=ab:Window{Visible=true}return{Flags=
 aa,Esp=ac,Interface=ab,Window=ad,Tabs={Home=function(ae)end,Visuals=function(ae)
-end,Settings=function(ae)end,Config=function(ae)end}}end function a.an()local aa
+end,Settings=function(ae)end,Config=function(ae)end}}end function a.ao()local aa
 ={}function aa.GetPlayer()local ab,ac=pcall(function()return game:GetService
 'Players'end)return ab and(ac).LocalPlayer end function aa.GetCharacter(ab)local
 ac,ad=pcall(function()return ab and ab.Character end)return ac and ad end
 function aa.GetHumanoid(ab)local ac,ad=pcall(function()local ac=aa.GetCharacter(
 ab)return ac and ac:FindFirstChildOfClass'Humanoid'end)return ac and ad end
-return aa end function a.ao()local aa=function(aa)return game:GetService(aa)end
-return{Players=(aa'Players')}end function a.ap()return function(aa)local ab,ac,
-ad=a.load'am',a.load'an',a.load'ao'local ae,af,ag,ah,ai,aj,ak=ab.Flags,ab.Esp,ab
+return aa end function a.ap()local aa=function(aa)return game:GetService(aa)end
+return{Players=(aa'Players')}end function a.aq()return function(aa)local ab,ac,
+ad=a.load'an',a.load'ao',a.load'ap'local ae,af,ag,ah,ai,aj,ak=ab.Flags,ab.Esp,ab
 .Interface,ab.Window,ab.Tabs,ac.GetPlayer(),ad.Players do ai.Home(aa)end do
 local al=ah:Tab{Name='Exploits'}al:Toggle{Name='Flight'}end do ai.Visuals(aa)end
 do local al=ai.Settings(aa)al:Toggle{Name='Dark Mode'}end do ai.Config(aa)end ah
 .Title=aa.Name end end end local aa=_G.ScriptHub_Cleanup if typeof(aa)==
 'function'then pcall(aa)end _G.ScriptHub_Cleanup=nil local ab=_G.ScriptHub_UI if
 typeof(ab)=='table'and typeof(ab.Unload)=='function'then pcall(ab.Unload,ab)end
-_G.ScriptHub_UI=nil local ac={{Name='DungeonQuest',Load=a.load'ai',UniverseId=
+_G.ScriptHub_UI=nil local ac={{Name='DungeonQuest',Load=a.load'aj',UniverseId=
 9931749389,Places={77649408247578,3220968688,2414851778}},{Name='Game 2',Load=a.
-load'ap',Places={123456789,987654321}}}for ad=1,300 do if game.GameId~=0 and
+load'aq',Places={123456789,987654321}}}for ad=1,300 do if game.GameId~=0 and
 game.PlaceId~=0 then break end task.wait(0.1)end for ad,ae in pairs(ac)do if ae.
 Places then for af,ag in ipairs(ae.Places)do if ag==game.PlaceId then return ae:
 Load()end end end if ae.UniverseId and ae.UniverseId==game.GameId then return ae

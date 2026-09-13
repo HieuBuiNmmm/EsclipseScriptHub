@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-13T00:52:54.622358100+00:00",
+    genDate = "2026-09-12T09:32:23.252585+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6948,17 +6948,11 @@ function shared.OnBossIndexChanged(callback)
 	end
 end
 
+--// ---- Room index ----
+
 --// Đọc số room từ tên (room1 -> 1, room12 -> 12...). Trả 0 nếu không khớp.
 local function parseRoomNumber(name)
 	if type(name) ~= "string" then return 0 end
-	local lower = string.lower(name)
-	local bossMatch = string.match(lower, "boss.*(%d+)")
-	if bossMatch then
-		return 100 + (tonumber(bossMatch) or 1)
-	end
-	if string.find(lower, "boss") then
-		return 100 + math.max(1, bossIndex)
-	end
 	local number = string.match(name, "^room(%d+)$")
 	if not number then return 0 end
 	return tonumber(number) or 0
@@ -6969,7 +6963,6 @@ end
 --// tại 1 thời điểm chỉ có đúng 1 room có quái -> room của bất kỳ quái đang track
 --// chính là room hiện tại (không cần scan theo khoảng cách).
 --// Room nhận diện qua TÊN "room<so>" (room1, room2...). Không có enemy/dungeon -> 0.
---// Fallback phòng Boss: nếu bossActive = true, trả về 100 + math.max(1, bossIndex) (101, 102...).
 local function computeRoomIndex()
 	if not dungeon then return 0 end
 	for model, data in pairs(trackedEnemies) do
@@ -6977,9 +6970,6 @@ local function computeRoomIndex()
 			local idx = parseRoomNumber(data.Room.Name)
 			if idx > 0 then return idx end
 		end
-	end
-	if bossActive then
-		return 100 + math.max(1, bossIndex)
 	end
 	return 0
 end
@@ -7052,7 +7042,6 @@ local function setBossActive(active)
 	for i = #bossCallbacks, 1, -1 do
 		pcall(bossCallbacks[i], bossActive)
 	end
-	refreshRoomIndex()
 end
 
 local function scanBossGui()
@@ -14647,7 +14636,6 @@ function engine.StopEngine()
 	if not isEngineActive then return end
 	isEngineActive = false
 	stopSafeSpotLoop()
-	dodge.Cancel()
 
 	-- Chỉ dừng bộ quét detection nếu tính năng Record cũng không đang chạy
 	local skillTimingManager = detection.skillTimingManager
@@ -23450,32 +23438,10 @@ end
 function storage.HasMap(mapName)
 	if type(mapName) ~= "string" or #mapName == 0 then return false end
 	initStorage()
-	local macro = cache[mapName]
-	if not macro or type(macro.rooms) ~= "table" then return false end
-	for _, r in pairs(macro.rooms) do
-		if isRoomSeg(r) and #r.points > 0 then return true end
-	end
-	return false
+	return cache[mapName] ~= nil
 end
 
---// Decode 1 phase segment độc lập
-local function decodePhaseSeg(raw)
-	if not raw or type(raw) ~= "table" or type(raw.points) ~= "table" then return nil end
-	local points = {}
-	for _, p in ipairs(raw.points) do
-		local vec = decodeVec(p)
-		if vec then points[#points + 1] = vec end
-	end
-	if #points == 0 then return nil end
-	return {
-		startPos = decodeVec(raw.startPos) or points[1],
-		points = points,
-		events = raw.events and decodeEvents(raw.events) or nil,
-		speed = tonumber(raw.speed) or 0,
-	}
-end
-
---// Lấy 1 segment (room) từ macro của map. Trả về { startPos, points, events, speed, boss, phases } hoặc nil.
+--// Lấy 1 segment (room) từ macro của map. Trả về { startPos, points } hoặc nil.
 function storage.GetRoomSegment(mapName, roomIndex)
 	if type(mapName) ~= "string" or type(roomIndex) ~= "number" then return nil end
 	initStorage()
@@ -23492,33 +23458,13 @@ function storage.GetRoomSegment(mapName, roomIndex)
 	end
 	if #points == 0 then return nil end
 
-	local mainSeg = {
+	return {
 		startPos = decodeVec(raw.startPos) or points[1],
 		points = points,
 		events = raw.events and decodeEvents(raw.events) or nil,
 		speed = tonumber(raw.speed) or 0,
 		boss = raw.boss == true,
 	}
-
-	-- Decode phases nếu có (multi-phase / multi-life)
-	local phases = {}
-	if type(raw.phases) == "table" and #raw.phases > 0 then
-		for _, rawP in ipairs(raw.phases) do
-			local pSeg = decodePhaseSeg(rawP)
-			if pSeg then
-				pSeg.boss = raw.boss == true
-				phases[#phases + 1] = pSeg
-			end
-		end
-	end
-
-	-- Fallback nếu file macro cũ chỉ có 1 path đơn: phase 1 chính là mainSeg
-	if #phases == 0 then
-		phases[1] = mainSeg
-	end
-	mainSeg.phases = phases
-
-	return mainSeg
 end
 
 --// Có segment (room) trong macro của map không?
@@ -23526,7 +23472,7 @@ function storage.HasSegmentOrMacro(mapName, roomIndex)
 	return storage.GetRoomSegment(mapName, roomIndex) ~= nil
 end
 
---// Macro map đầy đủ (đã decode): { map, version, rooms = {[idx] = {startPos, points, events, speed, boss, phases}}, created, updated }
+--// Macro map đầy đủ (đã decode): { map, version, rooms = {[idx] = {startPos, points}}, created, updated }
 function storage.GetMap(mapName)
 	if not storage.HasMap(mapName) then return nil end
 	initStorage()
@@ -23537,9 +23483,19 @@ function storage.GetMap(mapName)
 	for key, raw in pairs(macro.rooms or {}) do
 		local room = tonumber(key)
 		if room and isRoomSeg(raw) then
-			local seg = storage.GetRoomSegment(mapName, room)
-			if seg then
-				rooms[room] = seg
+			local points = {}
+			for _, p in ipairs(raw.points) do
+				local vec = decodeVec(p)
+				if vec then points[#points + 1] = vec end
+			end
+			if #points > 0 then
+				rooms[room] = {
+					startPos = decodeVec(raw.startPos) or points[1],
+					points = points,
+					events = raw.events and decodeEvents(raw.events) or nil,
+					speed = tonumber(raw.speed) or 0,
+					boss = raw.boss == true,
+				}
 			end
 		end
 	end
@@ -23563,22 +23519,11 @@ function storage.GetMaps()
 			local roomCount = 0
 			local bossCount = 0
 			local pointCount = 0
-			local phaseCount = 0
 			for key, raw in pairs(macro.rooms) do
 				if tonumber(key) ~= nil and isRoomSeg(raw) then
 					roomCount += 1
 					if raw.boss == true then bossCount += 1 end
 					pointCount += #raw.points
-					if type(raw.phases) == "table" and #raw.phases > 0 then
-						phaseCount += #raw.phases
-						for _, p in ipairs(raw.phases) do
-							if p ~= raw and type(p.points) == "table" then
-								pointCount += #p.points
-							end
-						end
-					else
-						phaseCount += 1
-					end
 				end
 			end
 			if roomCount > 0 then
@@ -23587,7 +23532,6 @@ function storage.GetMaps()
 					roomCount = roomCount,
 					bossCount = bossCount,
 					pointCount = pointCount,
-					phaseCount = phaseCount,
 					updated = macro.updated,
 					mode = normalizeMode(macro.mode),
 				})
@@ -23604,11 +23548,10 @@ function storage.Count()
 	return #storage.GetMaps()
 end
 
---// Lưu/ghi đè 1 segment (room) vào macro của map (hỗ trợ multi-phase / nhiều mạng).
---// phasesList (optional): danh sách các phase { { startPos, points, events, speed }, ... }
+--// Lưu/ghi đè 1 segment (room) vào macro của map.
 --// isBoss (optional): segment thuộc phòng boss -> đánh dấu `boss: true`.
 --// Ghi trực tiếp ra file EsclipseHub/DQMacro/<mapName>.json.
-function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed, isBoss, phasesList)
+function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed, isBoss)
 	if type(mapName) ~= "string" or #mapName == 0 then return false end
 	if type(roomIndex) ~= "number" or roomIndex <= 0 then return false end
 	if not startPos or not points or #points == 0 then return false end
@@ -23644,56 +23587,28 @@ function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed
 		seg.speed = speed
 	end
 
-	local function encodeEventsTable(ev)
-		if not ev or type(ev) ~= "table" then return nil end
-		local nD = #(ev.dwells or {})
-		local nS = #(ev.skills or {})
-		if nD == 0 and nS == 0 then return nil end
-		local encEvents = { dwells = {}, skills = {} }
-		for _, d in ipairs(ev.dwells or {}) do
-			encEvents.dwells[#encEvents.dwells + 1] = {
-				pos = encodeVec(d.pos),
-				dur = d.dur or 0,
-				facing = d.facing,
-			}
-		end
-		for _, s in ipairs(ev.skills or {}) do
-			encEvents.skills[#encEvents.skills + 1] = {
-				pos = encodeVec(s.pos),
-				facing = s.facing,
-				key = s.key,
-				dw = s.dw or 0,
-				dwT = s.dwT or 0,
-			}
-		end
-		return encEvents
-	end
-
 	if events and type(events) == "table" then
-		local enc = encodeEventsTable(events)
-		if enc then seg.events = enc end
-	end
-
-	-- Lưu danh sách phases (nếu có nhiều phase được truyền vào)
-	if type(phasesList) == "table" and #phasesList > 0 then
-		local encPhases = {}
-		for _, pData in ipairs(phasesList) do
-			if pData and pData.points and #pData.points > 0 then
-				local pEncoded = {}
-				for _, pt in ipairs(pData.points) do
-					pEncoded[#pEncoded + 1] = encodeVec(pt)
-				end
-				local pSeg = {
-					startPos = encodeVec(pData.startPos) or pEncoded[1],
-					points = pEncoded,
-					speed = type(pData.speed) == "number" and pData.speed > 0 and pData.speed or nil,
-					events = encodeEventsTable(pData.events),
+		local nD = #(events.dwells or {})
+		local nS = #(events.skills or {})
+		if nD > 0 or nS > 0 then
+			local encEvents = { dwells = {}, skills = {} }
+			for _, d in ipairs(events.dwells) do
+				encEvents.dwells[#encEvents.dwells + 1] = {
+					pos = encodeVec(d.pos),
+					dur = d.dur or 0,
+					facing = d.facing,
 				}
-				encPhases[#encPhases + 1] = pSeg
 			end
-		end
-		if #encPhases > 0 then
-			seg.phases = encPhases
+			for _, s in ipairs(events.skills) do
+				encEvents.skills[#encEvents.skills + 1] = {
+					pos = encodeVec(s.pos),
+					facing = s.facing,
+					key = s.key,
+					dw = s.dw or 0,
+					dwT = s.dwT or 0,
+				}
+			end
+			seg.events = encEvents
 		end
 	end
 
@@ -23867,7 +23782,6 @@ local SIMPLIFY_TOL = 0.4 -- Studs: dung sai làm mịn Douglas-Peucker khi lưu 
 local DWELL_MIN = 0.25 -- Giây đứng yên tối thiểu mới ghi event "dừng" (bắt cả nhấp nhả ngắn)
 local MOVING_EPS = 0.15 -- Studs/frame: coi là đang di chuyển nếu vượt ngưỡng này
 local ROLLOVER_DELAY = 1.0 -- Giây trễ khi phát hiện đổi room: ghi nốt đoạn đi qua cửa rồi mới rollover
-local RUN_END_TIMEOUT = 6.0 -- Giây chờ room mới sau khi boss chết / teleport; hết mà chưa có room -> hết map, dừng record
 
 --// Table
 local recorder = {}
@@ -23919,11 +23833,6 @@ local lastFrameT = nil
 local allowBoss = false
 --// Slice hiện tại có phải phòng boss không (đánh dấu segment khi lưu).
 local sliceIsBoss = false
---// Slice đang-active hay đã "mồ côi" (finalize xong, chờ room mới / hết map).
---// Deactivated: finalizeSlice bỏ qua (không ghi đè room vừa lưu).
-local sliceActive = false
---// Danh sách các phase đã hoàn thành trong room hiện tại (chết -> chốt phase cũ, mở phase mới)
-local roomPhases = {}
 --// Thống kê TOÀN SESSION đã rollover: số slice đã lưu + boss + tổng điểm gốc (dùng cho notify gộp).
 local sessionRooms = 0
 local sessionBossRooms = 0
@@ -23938,7 +23847,6 @@ local function fireStatus()
 		map = recMap,
 		room = startRoom,
 		pointCount = #points,
-		phaseCount = #roomPhases + 1,
 		dwellCount = #dwells,
 		skillCount = #skills,
 		savedRooms = sessionRooms,
@@ -23974,11 +23882,10 @@ local function stopSubscriptions()
 end
 
 --// Bắt đầu 1 SLICE (room) mới của session: reset points + timeline tại vị trí hiện tại.
---// Gọi khi rollover sang room khác.
+--// Gọi khi rollover sang room khác hoặc restart segment sau hồi sinh.
 local function beginSlice(room, pos)
 	startRoom = room
 	startPos = pos
-	sliceActive = true
 	points = { pos }
 	dwells = {}
 	skills = {}
@@ -23994,105 +23901,53 @@ local function beginSlice(room, pos)
 	lastFrameT = os.clock()
 	roomChangePending = false
 	sliceIsBoss = shared.IsBossActive()
-	roomPhases = {}
 end
 
---// Chốt phase hiện tại (do chết / hồi sinh) và mở phase tiếp theo từ điểm hồi sinh mới.
-local function sealCurrentPhaseAndStartNext(newRespawnPos)
-	if not sliceActive then return false end
-	local clean = storage.SimplifyPath(points, SIMPLIFY_TOL)
-	if #clean >= 2 then
-		local events
-		if #dwells > 0 or #skills > 0 then
-			events = { dwells = dwells, skills = skills }
-		end
-		local avgSpeed = 0
-		if movingTime > 0.5 and movedDist > 5 then
-			avgSpeed = math.clamp(movedDist / movingTime, 5, 100)
-		end
-		table.insert(roomPhases, {
-			startPos = startPos,
-			points = clean,
-			events = events,
-			speed = avgSpeed,
-		})
-		sessionRawPts += #points
-	end
-
-	-- Khởi tạo phase tiếp theo từ vị trí hồi sinh mới
-	startPos = newRespawnPos
-	points = { newRespawnPos }
-	dwells = {}
-	skills = {}
-	currentDwell = nil
-	currentDwellStartRel = 0
-	stationarySince = nil
-	standingAnchor = nil
-	standingFacing = nil
-	prevFramePos = newRespawnPos
-	movedDist = 0
-	movingTime = 0
-	recStartT = os.clock()
-	lastFrameT = os.clock()
-	roomChangePending = false
+--// Khởi động LẠI slice từ vị trí hiện tại (chết/hồi sinh hoặc dịch chuyển lớn):
+--// xoá points + timeline cũ -> KHÔNG còn đường nối thẳng (teleport line) từ chỗ cũ.
+local function restartSegment()
+	local target = getPlayerRoot()
+	if not target then return false end
+	beginSlice(startRoom, target.Position)
 	fireStatus()
 	return true
 end
 
 --// Chốt slice hiện tại: gói timeline + tốc độ + làm mịn + ghi ĐÈ segment của room này
---// vào macro (hỗ trợ multi-phase). Mặc định silent (rollover không spam notify).
+--// vào macro (đánh dấu `boss` nếu đang record phòng boss). Mặc định silent (rollover
+--// không spam notify); Stop cuối session sẽ chỉ báo tổng hợp.
 local function finalizeSlice(reason, silent)
-	if not sliceActive then return nil end
 	local clean = storage.SimplifyPath(points, SIMPLIFY_TOL)
-	if #clean >= 2 then
-		local events
-		if #dwells > 0 or #skills > 0 then
-			events = { dwells = dwells, skills = skills }
-		end
-		local avgSpeed = 0
-		if movingTime > 0.5 and movedDist > 5 then
-			avgSpeed = math.clamp(movedDist / movingTime, 5, 100)
-		end
-		table.insert(roomPhases, {
-			startPos = startPos,
-			points = clean,
-			events = events,
-			speed = avgSpeed,
-		})
-		sessionRawPts += #points
+	if #clean < 2 then return nil end
+
+	local events
+	if #dwells > 0 or #skills > 0 then
+		events = { dwells = dwells, skills = skills }
 	end
 
-	if #roomPhases == 0 then return nil end
+	local avgSpeed = 0
+	if movingTime > 0.5 and movedDist > 5 then
+		avgSpeed = math.clamp(movedDist / movingTime, 5, 100)
+	end
 
-	local phase1 = roomPhases[1]
-	local saved = storage.SaveSegment(
-		recMap,
-		startRoom,
-		phase1.startPos,
-		phase1.points,
-		phase1.events,
-		phase1.speed,
-		sliceIsBoss,
-		roomPhases
-	)
+	local saved = storage.SaveSegment(recMap, startRoom, startPos, clean, events, avgSpeed, sliceIsBoss)
 	if not saved then return nil end
 
 	sessionRooms += 1
 	if sliceIsBoss then sessionBossRooms += 1 end
+	sessionRawPts += #points
 
 	if not silent then
 		local extra = ""
-		if #roomPhases > 1 then
-			extra = (" (%d phases/mạng hồi sinh, %d điểm phase 1)"):format(#roomPhases, #phase1.points)
-		elseif phase1.events then
-			extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#phase1.points, #(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
+		if events then
+			extra = (" (%d điểm gốc -> %d mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#points, #clean, #skills, #dwells, avgSpeed)
 		else
-			extra = (" (%d điểm mịn, %.1fspd)"):format(#phase1.points, phase1.speed or 0)
+			extra = (" (%d điểm gốc -> %d mịn, %.1fspd)"):format(#points, #clean, avgSpeed)
 		end
 		notifier.Notify("Path Record", ("Đã lưu room %d%s vào map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
 	end
 
-	return { phaseCount = #roomPhases, phase1 = phase1 }
+	return { points = #points, clean = #clean, skills = #skills, dwells = #dwells, avgSpeed = avgSpeed, events = events }
 end
 
 function recorder.IsRecording()
@@ -24101,10 +23956,6 @@ end
 
 function recorder.GetStartRoom()
 	return startRoom
-end
-
-function recorder.GetCurrentPhaseIndex()
-	return #roomPhases + 1
 end
 
 --// Điểm đang ghi (cho visual / status).
@@ -24118,7 +23969,6 @@ function recorder.GetStatus()
 		map = recMap,
 		room = startRoom,
 		pointCount = #points,
-		phaseCount = #roomPhases + 1,
 		savedRooms = sessionRooms,
 	}
 end
@@ -24168,23 +24018,11 @@ function recorder.Start()
 		if not target then return end
 		local pos = target.Position
 
-		--// Nhảy vọt vị trí bất thường (teleport / hết run, respawn KHÔNG có CharacterAdded):
-		--// LƯU slice hiện tại TRƯỚC (không vứt — trước đây vứt làm mất đoạn đánh boss cuối
-		--// khi kết thúc run), rồi cmt lại từ vị trí mới, không nối thẳng sang vị trí mới.
+		--// Nhảy vọt vị trí bất thường (chết/teleport/respawn KHÔNG có CharacterAdded):
+		--// cmt lại segment từ điểm hiện tại, không nối thẳng sang vị trí mới.
 		local lastPt = points[#points]
 		if lastPt and (pos - lastPt).Magnitude > 35 then
-			finalizeSlice("dịch chuyển lớn", true)
-			local r = shared.GetCurrentRoomIndex()
-			if r == startRoom then r = 0 end -- deactivate nếu room cũ chưa untrack (không ghi đè)
-			beginSlice(r, pos)
-			fireStatus()
-			--// Room không xác định -> có thể hết map: chờ room mới, không có thì tự dừng.
-			task.spawn(function()
-				task.wait(RUN_END_TIMEOUT)
-				if isRecording and startRoom <= 0 then
-					recorder.Stop("hết map")
-				end
-			end)
+			restartSegment()
 			return
 		end
 
@@ -24276,16 +24114,9 @@ function recorder.Start()
 	--// ĐỔI ROOM giữa session: TRỄ 1 GIÂY ghi nốt đoạn đi qua cửa rồi ROLLOVER
 	--// (lưu slice room cũ + mở slice mới cho room hiện tại) -> record 1 lần cả map.
 	--// roomChangePending chống stack nhiều lần đổi room trong khoảng chờ.
-	--// Lazy-bind: khi slice mới đang mở ở room 0 (khe giữa 2 room / boss chưa bind
-	--// room do rollover chạy trước khi enemy phòng mới spawn), room resolve về >0
-	--// thì bind NGAY về room thật -> boss chết lưu đúng room thay vì lưu room 0 (mất đoạn).
 	roomChangeConnection = shared.OnRoomIndexChanged(function()
 		if isRecording then
 			local current = shared.GetCurrentRoomIndex()
-			if sliceActive and startRoom <= 0 and current > 0 then
-				startRoom = current
-				return
-			end
 			if current ~= startRoom and not roomChangePending then
 				roomChangePending = true
 				task.delay(ROLLOVER_DELAY, function()
@@ -24300,31 +24131,13 @@ function recorder.Start()
 
 	--// Vào boss: mode NORMAL -> tắt + lưu segment đã ghi; mode FULL -> đánh dấu
 	--// slice là phòng boss (heartbeat vẫn sample để record đường né).
-	--// Boss chết (active=false) khi đang record phòng boss (FULL): chốt slice NGAY tại đó
-	--// (không phụ thuộc teleport/đổi room — trước đây bị teleport hết run xóa mất đoạn
-	--// đánh boss cuối), rồi tạm "mồ côi" (deactivate) chờ room mới.
-	--// Không mở được room mới trong RUN_END_TIMEOUT -> tự dừng (hết map / hết run).
 	bossConnection = shared.OnBossActiveChanged(function(active)
-		if not isRecording then return end
-		if active then
+		if isRecording and active then
 			if allowBoss then
 				sliceIsBoss = true
 			else
 				recorder.Stop("vào boss room")
 			end
-			return
-		end
-
-		if allowBoss and sliceIsBoss then
-			finalizeSlice("xong boss", true)
-			sliceIsBoss = false
-			sliceActive = false
-			task.spawn(function()
-				task.wait(RUN_END_TIMEOUT)
-				if isRecording and not sliceActive then
-					recorder.Stop("hết map")
-				end
-			end)
 		end
 	end)
 
@@ -24335,21 +24148,15 @@ function recorder.Start()
 		end
 	end)
 
-	--// Bắt sự kiện hồi sinh khi đang record: chốt Phase của mạng trước và mở Phase tiếp theo từ điểm hồi sinh mới.
-	--// Người chơi không bị mất tiến trình đã đi; khi replay, bot sẽ đi lần lượt từng Phase tương ứng mỗi lần chết.
+	--// Bắt sự kiện hồi sinh khi đang record: làm mới segment room hiện tại từ vị trí hồi sinh mới,
+	--// loại bỏ hoàn toàn đoạn nối thẳng (teleport line) từ điểm chết về điểm hồi sinh.
+	--// (TH hồi sinh KHÔNG có CharacterAdded vẫn được bắt qua guard gap > 35 ở heartbeat.)
 	respawnConnection = shared.OnRespawn(function()
 		if not isRecording then return end
 		task.delay(0.2, function()
 			if not isRecording or shared.IsDead() then return end
-			local target = getPlayerRoot()
-			if not target then return end
-			if sealCurrentPhaseAndStartNext(target.Position) then
-				local curP = #roomPhases + 1
-				notifier.Notify(
-					"Path Record",
-					("Hồi sinh: Đã lưu Phase %d, đang ghi tiếp Phase %d cho room %d"):format(curP - 1, curP, startRoom),
-					3
-				)
+			if restartSegment() then
+				notifier.Notify("Path Record", ("Phát hiện hồi sinh: Tự động ghi lại room %d từ điểm hồi sinh"):format(startRoom), 3)
 			end
 		end)
 	end)
@@ -24394,11 +24201,6 @@ function recorder.Stop(reason)
 			local bossTag = startRoom > 0 and (sliceIsBoss and " (boss)" or "") or ""
 			notifier.Notify("Path Record", ("Đã lưu room %d%s%s vào map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
 		end
-	elseif sessionRooms > 0 then
-		--// Slice cuối bị "mồ côi" (room 0: kết thúc run tại boss hoặc teleport hết map):
-		--// các room trước đã lưu xong, vẫn báo tổng hợp để người dùng biết đã lưu.
-		local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-		notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
 	end
 
 	recMap = nil
@@ -24418,7 +24220,6 @@ function recorder.Stop(reason)
 	movingTime = 0
 	lastFrameT = nil
 	sliceIsBoss = false
-	sliceActive = false
 	allowBoss = false
 	sessionRooms = 0
 	sessionBossRooms = 0
@@ -24449,7 +24250,6 @@ function recorder.Cancel()
 	movingTime = 0
 	lastFrameT = nil
 	sliceIsBoss = false
-	sliceActive = false
 	allowBoss = false
 	sessionRooms = 0
 	sessionBossRooms = 0
@@ -24600,7 +24400,6 @@ local resumeWanted = false -- Bật cờ "tự resume" khi room có segment xu�
 local activeMap = nil -- Map đang playback
 local playFullMap = false -- Mode FULL của map: đi qua cả boss room theo path đã ghi
 local playThread = nil
-local currentPhaseIndex = 1
 local statusListeners = {}
 
 local function fireStatus(reason)
@@ -24609,17 +24408,12 @@ local function fireStatus(reason)
 		map = activeMap,
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
-		phase = currentPhaseIndex,
 		resume = resumeWanted,
 		reason = reason,
 	}
 	for _, cb in ipairs(statusListeners) do
 		pcall(cb, info)
 	end
-end
-
-function mover.GetCurrentPhaseIndex()
-	return currentPhaseIndex
 end
 
 local function getPlayerRoot()
@@ -25037,7 +24831,6 @@ local function playbackLoop()
 	local visitedRoom = 0
 	local walkedThisVisit = false
 	local wasDead = false
-	currentPhaseIndex = 1
 
 	while isPlaying do
 		if resumeWanted then break end
@@ -25048,7 +24841,10 @@ local function playbackLoop()
 			continue
 		end
 		if wasDead then
+			--// Vừa hồi sinh: reset lượt để ĐI LẠI room hiện tại (không bỏ giữa chừng vì đã chết).
 			wasDead = false
+			visitedRoom = 0
+			walkedThisVisit = false
 		end
 		if shared.IsInLobby() then
 			--// Hết run: dừng playback, không tự phát lại (đi 1 lần).
@@ -25068,11 +24864,10 @@ local function playbackLoop()
 			continue
 		end
 
-		--// Đổi room -> lượt đi mới cho room đó (reset về Phase 1).
+		--// Đổi room -> lượt đi mới cho room đó.
 		if room ~= visitedRoom then
 			visitedRoom = room
 			walkedThisVisit = false
-			currentPhaseIndex = 1
 		end
 
 		local segment = storage.GetRoomSegment(activeMap, room)
@@ -25082,40 +24877,21 @@ local function playbackLoop()
 			continue
 		end
 
-		local phases = segment.phases or { segment }
-		local totalPhases = #phases
-
 		if walkedThisVisit then
-			--// Đã đi xong lượt của room -> đứng yên, chờ đổi room.
+			--// Đã đi hết 1 lượt segment -> đứng yên, chờ đổi room.
 			task.wait(0.1)
 			continue
 		end
 
-		local phaseData = phases[math.min(currentPhaseIndex, totalPhases)] or segment
-
-		local ok, reason = walkThrough(phaseData, room, playFullMap)
+		local ok, reason = walkThrough(segment, room, playFullMap)
 		restoreAutoRotate()
 		if ok then
 			walkedThisVisit = true
 		else
-			--// Bị chết giữa chừng: tăng phase index để khi hồi sinh chạy Phase tiếp theo
+			--// Nếu bị chết hoặc gián đoạn giữa chừng: không đánh dấu walkedThisVisit
+			--// để khi hồi sinh sẽ tự động đi lại / đi tiếp cho xong room.
 			if reason == "dead" then
-				currentPhaseIndex += 1
-				local nextPhaseNum = math.min(currentPhaseIndex, totalPhases)
-				if totalPhases > 1 then
-					notifier.Notify(
-						"Path Record",
-						("Tử trận (Phase %d/%d): Chờ hồi sinh để chạy Phase %d..."):format(
-							currentPhaseIndex - 1,
-							totalPhases,
-							nextPhaseNum
-						),
-						3
-					)
-				else
-					notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
-				end
-
+				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để tiếp tục...", 2)
 				while isPlaying and shared.IsDead() do
 					task.wait(0.2)
 				end
@@ -25152,7 +24928,6 @@ function mover.GetStatus()
 		map = activeMap,
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
-		phase = currentPhaseIndex,
 		resume = resumeWanted,
 	}
 end
@@ -25186,7 +24961,6 @@ function mover.Start()
 	activeMap = map
 	playFullMap = full
 	resumeWanted = false
-	currentPhaseIndex = 1
 	isPlaying = true
 	playThread = task.spawn(playbackLoop)
 	fireStatus("started")
@@ -25199,7 +24973,6 @@ function mover.Stop()
 	resumeWanted = false
 	activeMap = nil
 	playFullMap = false
-	currentPhaseIndex = 1
 	if playThread then
 		task.cancel(playThread)
 		playThread = nil
@@ -25889,19 +25662,15 @@ local roomUnsub = nil
 local mapUnsub = nil
 
 local function fireStatus(reason)
-	local recStat = recorder.GetStatus()
 	local info = {
 		recording = recorder.IsRecording(),
 		playing = mover.IsPlaying(),
 		resume = mover.ResumeWanted(),
-		autoPlayWanted = autoPlayWanted,
-		inLobby = shared.IsInLobby(),
 		map = shared.GetCurrentDungeonName(),
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
-		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
-		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
+		pointCount = recorder.IsRecording() and recorder.GetStatus().pointCount or 0,
 		reason = reason,
 	}
 	for _, cb in ipairs(statusListeners) do
@@ -25954,56 +25723,58 @@ end
 
 --// ---------- Playback ----------
 
---// Flag persists "wants to auto-play macro" (được lưu qua config, không phải runtime state).
---// Khi bật: đang ở dungeon có macro -> phát ngay; phòng boss đang active -> bỏ qua nếu mode NORMAL.
---// Giữ nguyên trạng thái armed khi ở lobby hoặc khi room đang load.
-local autoPlayWanted = false
-
-function pathRecord.IsAutoPlayWanted()
-	return autoPlayWanted
-end
-
 function pathRecord.TogglePlay(state)
-	autoPlayWanted = state and true or false
+	if state then
+		if mover.IsPlaying() then return true end
+		if recorder.IsRecording() then recorder.Stop() end
 
-	if autoPlayWanted then
-		if mover.IsPlaying() then
-			fireStatus("already_playing")
-			return true
-		end
-		if recorder.IsRecording() then
-			recorder.Stop()
-		end
-
+		--// Pre-check trước khi chiếm độc quyền, tránh tự tắt hệ thống khác
+		--// (AutoFarm/SmartDodge) nhưng rồi playback lại không chạy được.
 		if shared.IsInLobby() then
-			fireStatus("armed_lobby")
-			return true
+			notifier.Notify("Path Record", "Không phát được: đang ở lobby", 3)
+			fireStatus()
+			return false
+		end
+		if shared.IsBossActive() then
+			--// Chỉ phát được trong boss room nếu map ở mode FULL và room có segment đã ghi.
+			local mapB = shared.GetCurrentDungeonName()
+			local canPlayBoss = mapB and #mapB > 0
+				and storage.GetMapMode(mapB) == "full"
+				and storage.HasSegmentOrMacro(mapB, shared.GetCurrentRoomIndex())
+			if not canPlayBoss then
+				notifier.Notify("Path Record", "Không phát được: boss room (hãy dùng Smart Dodge)", 3)
+				fireStatus()
+				return false
+			end
 		end
 
-		local map = shared.GetCurrentDungeonName()
-		local room = shared.GetCurrentRoomIndex()
-
-		if not map or #map == 0 or room <= 0 then
-			fireStatus("armed_waiting")
-			return true
+		--// Pre-check segment để KHÔNG chiếm độc quyền (không tự tắt AutoFarm/
+		--// SmartDodge) trong khi room hiện tại chưa có bản ghi để chạy.
+		local mapN = shared.GetCurrentDungeonName()
+		if not mapN or #mapN == 0 then
+			notifier.Notify("Path Record", "Không phát được: không xác định được map", 3)
+			fireStatus()
+			return false
+		end
+		if not storage.HasSegmentOrMacro(mapN, shared.GetCurrentRoomIndex()) then
+			notifier.Notify("Path Record", "Không phát được: room này chưa có bản ghi trong macro", 3)
+			fireStatus()
+			return false
 		end
 
-		if shared.IsBossActive() and storage.GetMapMode(map) ~= "full" then
-			fireStatus("armed_boss")
-			return true
-		end
+		--// Playback điều khiển nhân vật -> chiếm độc quyền, tắt các hệ thống khác.
+		coordinator.EnableExclusive("PathRecord")
 
-		if storage.HasSegmentOrMacro(map, room) then
-			coordinator.EnableExclusive("PathRecord")
-			mover.Start()
+		local ok, err = mover.Start()
+		if not ok then
+			notifier.Notify("Path Record", "Không phát được: " .. tostring(err), 3)
 		end
-
-		fireStatus("play_started")
-		return true
+		fireStatus()
+		return ok
 	else
 		local was = mover.IsPlaying()
 		mover.Stop()
-		fireStatus("play_stopped")
+		fireStatus()
 		return was
 	end
 end
@@ -26122,14 +25893,11 @@ function pathRecord.GetStatus()
 		recording = recorder.IsRecording(),
 		playing = mover.IsPlaying(),
 		resume = mover.ResumeWanted(),
-		autoPlayWanted = autoPlayWanted,
-		inLobby = shared.IsInLobby(),
 		map = shared.GetCurrentDungeonName(),
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
 		pointCount = recStat.pointCount,
-		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
 	}
 end
 
@@ -26143,27 +25911,24 @@ end
 
 --// Vào boss room:
 --//   - Mode FULL: đang phát -> giữ/giành độc quyền (đi path đã record qua boss);
---//     đang chờ resume hoặc autoPlayWanted -> gọi phát lại luôn vào boss room có segment.
+--//     đang chờ resume -> gọi phát lại luôn vào boss room có segment.
 --//   - Mode NORMAL: chỉ báo + đứng yên (dùng SmartDodge); nếu bật SmartDodge nó chiếm
 --//     độc quyền -> pathRecord nhường và auto-resume khi sang room thường.
 bossConnection = shared.OnBossActiveChanged(function(active)
 	if not active then return end
 
-	if mover.ResumeWanted() or autoPlayWanted then
-		local map = mover.GetActiveMap() or shared.GetCurrentDungeonName()
+	if mover.ResumeWanted() then
+		local map = mover.GetActiveMap()
 		if map and storage.GetMapMode(map) == "full" then
-			local room = shared.GetCurrentRoomIndex()
-			if room > 0 and storage.HasSegmentOrMacro(map, room) then
-				coordinator.EnableExclusive("PathRecord")
-				mover.Start()
-				fireStatus("boss")
-			end
+			coordinator.EnableExclusive("PathRecord")
+			mover.Start()
+			fireStatus("boss")
 		end
 		return
 	end
 
 	if mover.IsPlaying() then
-		local map = mover.GetActiveMap() or shared.GetCurrentDungeonName()
+		local map = mover.GetActiveMap()
 		if map and storage.GetMapMode(map) == "full" then
 			coordinator.EnableExclusive("PathRecord")
 		else
@@ -26178,10 +25943,11 @@ storageUnsub = storage.OnChanged(function()
 	fireStatus("storage")
 end)
 
---// Auto-resume & Auto-play: khi sang room mới có segment trong macro -> tự động phát tiếp.
+--// Auto-resume: đang chờ (do nhường quyền cho hệ thống khác giữa chừng) mà sang
+--// được room có segment trong macro của map đang chạy -> phát tiếp nốt lượt.
 --// Room boss được auto-resume chỉ khi map ở mode FULL (room đó đã được record).
 roomUnsub = shared.OnRoomIndexChanged(function()
-	if not autoPlayWanted and not mover.ResumeWanted() then return end
+	if not mover.ResumeWanted() then return end
 
 	local room = shared.GetCurrentRoomIndex()
 	if room <= 0 or shared.IsInLobby() or shared.IsDead() then return end
@@ -26192,37 +25958,18 @@ roomUnsub = shared.OnRoomIndexChanged(function()
 	if shared.IsBossActive() and storage.GetMapMode(map) ~= "full" then return end
 	if not storage.HasSegmentOrMacro(map, room) then return end
 
-	if not mover.IsPlaying() then
-		coordinator.EnableExclusive("PathRecord")
-		mover.Start()
-		fireStatus("resumed")
-	end
+	coordinator.EnableExclusive("PathRecord")
+	mover.Start() -- Resume; lỗi nhỏ (race) thì bỏ qua, room event tiếp theo sẽ thử lại.
+	fireStatus("resumed")
 end)
 
---// Đổi map giữa chừng: commit nốt record đang dở + dọn trạng thái playback map cũ.
---// Khi vào map mới và autoPlayWanted bật: nếu room 1 đã có macro -> tự động khởi chạy.
+--// Đổi map giữa chừng: commit nốt record đang dở (không vứt) + hủy ý định resume.
 mapUnsub = shared.OnDungeonNameChanged(function(name)
 	if recorder.IsRecording() then
 		recorder.Stop("đổi map")
 	end
-	if mover.IsPlaying() or mover.ResumeWanted() then
-		local currentMap = mover.GetActiveMap()
-		if currentMap and currentMap ~= name then
-			mover.Stop()
-		end
-	end
-	if autoPlayWanted and name and #name > 0 then
-		task.delay(0.3, function()
-			if not autoPlayWanted or mover.IsPlaying() or recorder.IsRecording() then return end
-			local room = shared.GetCurrentRoomIndex()
-			if room > 0 and storage.HasSegmentOrMacro(name, room) then
-				if not (shared.IsBossActive() and storage.GetMapMode(name) ~= "full") then
-					coordinator.EnableExclusive("PathRecord")
-					mover.Start()
-					fireStatus("map_autoplay")
-				end
-			end
-		end)
+	if mover.ResumeWanted() and (not mover.GetActiveMap() or mover.GetActiveMap() ~= name) then
+		mover.Stop()
 	end
 	fireStatus("map")
 end)
@@ -26257,9 +26004,9 @@ drawConnection = RunService.Heartbeat:Connect(function()
 
 	local buildKey
 	if recorder.IsRecording() then
-		buildKey = "rec:" .. recorder.GetCurrentPhaseIndex() .. ":" .. #recorder.GetCurrentPoints()
+		buildKey = "rec:" .. #recorder.GetCurrentPoints()
 	elseif mover.IsPlaying() then
-		buildKey = "play:" .. tostring(room) .. ":" .. mover.GetCurrentPhaseIndex() .. ":" .. macroStamp(map)
+		buildKey = "play:" .. tostring(room) .. ":" .. macroStamp(map)
 	else
 		buildKey = "idle:" .. macroStamp(map)
 	end
@@ -26276,24 +26023,19 @@ drawConnection = RunService.Heartbeat:Connect(function()
 			polys[1] = { points = pts, color = theme.rec, tag = "rec" }
 		end
 	elseif mover.IsPlaying() then
-		--// Đang play: vẽ segment/phase của room hiện tại (đã làm mịn như lúc đi).
+		--// Đang play: vẽ segment của room hiện tại (đã làm mịn như lúc đi).
 		if map and room > 0 then
 			local seg = storage.GetRoomSegment(map, room)
-			if seg then
-				local phases = seg.phases or { seg }
-				local curPIdx = mover.GetCurrentPhaseIndex() or 1
-				local pData = phases[math.min(curPIdx, #phases)] or seg
-				if pData and pData.points and #pData.points >= 2 then
-					polys[1] = {
-						points = storage.SimplifyPath(pData.points, 0.4),
-						color = theme.play,
-						tag = ("play_%s_p%d"):format(tostring(room), curPIdx),
-					}
-				end
+			if seg and #seg.points >= 2 then
+				polys[1] = {
+					points = storage.SimplifyPath(seg.points, 0.4),
+					color = theme.play,
+					tag = "play_" .. tostring(room),
+				}
 			end
 		end
 	else
-		--// Idle: xem trước toàn bộ macro của map hiện tại (bao gồm các phase).
+		--// Idle: xem trước toàn bộ macro của map hiện tại.
 		if map then
 			local macro = storage.GetMap(map)
 			if macro then
@@ -26304,17 +26046,12 @@ drawConnection = RunService.Heartbeat:Connect(function()
 				table.sort(roomKeys)
 				for _, r in ipairs(roomKeys) do
 					local seg = macro.rooms[r]
-					if seg then
-						local phases = seg.phases or { seg }
-						for pIdx, pData in ipairs(phases) do
-							if pData and pData.points and #pData.points >= 2 then
-								polys[#polys + 1] = {
-									points = storage.SimplifyPath(pData.points, 0.4),
-									color = seg.boss and Color3.fromRGB(255, 140, 255) or theme.idle,
-									tag = ("macro_%s_p%d"):format(tostring(r), pIdx),
-								}
-							end
-						end
+					if seg and #seg.points >= 2 then
+						polys[#polys + 1] = {
+							points = storage.SimplifyPath(seg.points, 0.4),
+							color = seg.boss and Color3.fromRGB(255, 140, 255) or theme.idle,
+							tag = "macro_" .. tostring(r),
+						}
 					end
 				end
 			end
@@ -26344,18 +26081,6 @@ coordinator.Register("PathRecord", function(state)
 	end
 	fireStatus("disabled")
 end, pathRecord.IsEnabled)
-
---// Startup: nếu autoPlayWanted (từ config) và đang ở dungeon có macro -> auto-play.
-task.delay(1.0, function()
-	if autoPlayWanted and not mover.IsPlaying() and not recorder.IsRecording() then
-		local map = shared.GetCurrentDungeonName()
-		if map and #map > 0 and not shared.IsInLobby() then
-			if storage.HasSegmentOrMacro(map, shared.GetCurrentRoomIndex()) then
-				pathRecord.TogglePlay(true)
-			end
-		end
-	end
-end)
 
 lifecycle.Register(function()
 	mover.Stop()
@@ -26398,23 +26123,6 @@ return function(window, tab)
 	local isSyncingPlay = false
 	local isSyncingMode = false
 	local isPromptingRecord = false
-	local macroDropdown = nil
-	local updateStatus = nil
-	local syncToggles = nil
-
-	local function getSelectedMapFromDropdown()
-		if not macroDropdown then return nil end
-		local selected = macroDropdown:GetOptions()
-		for option, isSelected in pairs(selected) do
-			if isSelected and option ~= "None" then
-				local mapName = string.match(option, "^Map %[(.+)%] %(%d+ rooms%)$")
-				if mapName and #mapName > 0 then
-					return mapName
-				end
-			end
-		end
-		return nil
-	end
 
 	local recordToggle = left:Toggle({
 		Name = "Record Path (Macro)",
@@ -26493,11 +26201,9 @@ return function(window, tab)
 		Callback = function(state)
 			if isSyncingMode then return end
 
-			local currentMap = pathRecord.GetStatus().map
-			local targetMap = (currentMap and #currentMap > 0) and currentMap or getSelectedMapFromDropdown()
-
-			if not targetMap or #targetMap == 0 then
-				notifier.Notify("Path Record", "Chưa có map nào được chọn. Hãy chọn map trong dropdown hoặc vào dungeon.", 3)
+			local map = pathRecord.GetStatus().map
+			if not map or #map == 0 then
+				notifier.Notify("Path Record", "Không trong dungeon: chưa áp dụng mode. Vào map rồi bật để lưu theo map.", 3)
 				pcall(function()
 					isSyncingMode = true
 					recordBossToggle:UpdateState(false)
@@ -26505,11 +26211,8 @@ return function(window, tab)
 				end)
 				return
 			end
-			pathRecord.SetMapMode(targetMap, state and "full" or "normal")
-			notifier.Notify("Path Record", ("Map [%s]: Chế độ %s"):format(targetMap, state and "FULL (record & phát cả boss room)" or "NORMAL (bỏ qua boss, dùng Smart Dodge)"), 3)
-			if updateStatus then
-				updateStatus(pathRecord.GetStatus())
-			end
+			pathRecord.SetMapMode(map, state and "full" or "normal")
+			notifier.Notify("Path Record", ("Map [%s]: mode %s"):format(map, state and "FULL (record & phát cả boss room)" or "NORMAL (bỏ qua boss, dùng Smart Dodge)"), 3)
 		end,
 	})
 	left:Label({
@@ -26518,12 +26221,12 @@ return function(window, tab)
 
 	local playToggle = left:Toggle({
 		Name = "Play Path (Macro)",
-		Default = pathRecord.IsAutoPlayWanted(),
-		Callback = autoSave.Wrap(function(state)
+		Default = pathRecord.IsPlaying(),
+		Callback = function(state)
 			if isSyncingPlay then return end
 			pathRecord.TogglePlay(state)
-		end),
-	}, "Toggle_PR_Play")
+		end,
+	})
 
 	--// Timeline: ghi/tái hiện khoảng dừng + skill chuột phải + hướng mặt.
 	local captureTimeline = left:Toggle({
@@ -26656,24 +26359,30 @@ return function(window, tab)
 	--// ============================================================
 	left:Header({ Name = "Macros" })
 
-	macroDropdown = ui.PatchDropdownRestore(left:Dropdown({
+	local macroDropdown = ui.PatchDropdownRestore(left:Dropdown({
 		Name = "Map Recording",
 		Options = { "None" },
 		Default = 1,
 		Required = true,
-		Callback = function(option)
-			local info = pathRecord.GetStatus()
-			if updateStatus then updateStatus(info) end
-			if syncToggles then syncToggles(info) end
-		end,
+		Callback = function(option) end,
 	}), false)
 
 	local deleteBtn = left:Button({
 		Name = "Delete Selected Map",
 		Callback = autoSave.Wrap(function()
-			local mapName = getSelectedMapFromDropdown()
-			if mapName and #mapName > 0 then
-				pathRecord.RemoveMap(mapName)
+			local selected = macroDropdown:GetOptions()
+			for option, isSelected in pairs(selected) do
+				if isSelected then
+					local mapName = string.match(option, "^Map (%b[]) %(%d+ rooms%)$")
+					if not mapName or #mapName <= 2 then
+						mapName = string.match(option, "^Map (.-) %(%d+ rooms%)$")
+					end
+					if mapName and #mapName > 2 then
+						mapName = mapName:sub(2, -2)
+						pathRecord.RemoveMap(mapName)
+					end
+					return
+				end
 			end
 		end),
 	})
@@ -26815,7 +26524,7 @@ return function(window, tab)
 	}, "Dropdown_PR_HighlightColor"), false)
 
 	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop).
-	syncToggles = function(info)
+	local function syncToggles(info)
 		if not isPromptingRecord then
 			pcall(function()
 				if recordToggle and recordToggle.GetState and recordToggle:GetState() ~= info.recording then
@@ -26826,17 +26535,14 @@ return function(window, tab)
 			end)
 		end
 		pcall(function()
-			local wantPlay = pathRecord.IsAutoPlayWanted()
-			if playToggle and playToggle.GetState and playToggle:GetState() ~= wantPlay then
+			if playToggle and playToggle.GetState and playToggle:GetState() ~= info.playing then
 				isSyncingPlay = true
-				playToggle:UpdateState(wantPlay)
+				playToggle:UpdateState(info.playing)
 				isSyncingPlay = false
 			end
 		end)
 		pcall(function()
-			local currentMap = info.map
-			local targetMap = (currentMap and #currentMap > 0) and currentMap or getSelectedMapFromDropdown()
-			local wantMode = targetMap and pathRecord.GetMapMode(targetMap) == "full" or false
+			local wantMode = info.map and #info.map > 0 and pathRecord.GetMapMode(info.map) == "full" or false
 			if recordBossToggle and recordBossToggle.GetState and recordBossToggle:GetState() ~= wantMode then
 				isSyncingMode = true
 				recordBossToggle:UpdateState(wantMode)
@@ -26897,14 +26603,7 @@ return function(window, tab)
 		pcall(function() macroDropdown:UpdateSelection(newSelection) end)
 	end
 
-	updateStatus = function(info)
-		local isFullMap = false
-		local currentMap = info.map
-		local targetMap = (currentMap and #currentMap > 0) and currentMap or getSelectedMapFromDropdown()
-		if targetMap then
-			isFullMap = pathRecord.GetMapMode(targetMap) == "full"
-		end
-
+	local function updateStatus(info)
 		local stateText
 		if info.recording then
 			stateText = "<font color='rgb(255,90,90)'>Recording...</font>"
@@ -26912,26 +26611,16 @@ return function(window, tab)
 			stateText = "<font color='rgb(0,230,255)'>Playing</font>"
 		elseif info.resume then
 			stateText = "<font color='rgb(255,200,0)'>Waiting (auto-resume)</font>"
-		elseif info.autoPlayWanted then
-			if info.inLobby then
-				stateText = "<font color='rgb(100,220,100)'>Armed (Lobby)</font>"
-			elseif not info.map or #info.map == 0 then
-				stateText = "<font color='rgb(100,220,100)'>Armed (Loading...)</font>"
-			elseif info.boss and not isFullMap then
-				stateText = "<font color='rgb(255,160,50)'>Waiting (Boss Room)</font>"
-			else
-				stateText = "<font color='rgb(100,220,100)'>Armed (Waiting for Room)</font>"
-			end
 		else
 			stateText = "<font color='rgb(160,160,160)'>Idle</font>"
 		end
 		pcall(function() stateLabel:UpdateName("State: " .. stateText) end)
 
+		local isFullMap = info.map and #info.map > 0 and pathRecord.GetMapMode(info.map) == "full"
 		local modeText = isFullMap
 			and "<font color='rgb(255,140,255)'>FULL</font>"
 			or "<font color='rgb(120,200,255)'>NORMAL</font>"
-		local mapContextText = targetMap and (" (map [" .. targetMap .. "])") or " (theo map)"
-		pcall(function() modeLabel:UpdateName("Record Mode" .. mapContextText .. ": " .. modeText) end)
+		pcall(function() modeLabel:UpdateName("Record Mode (theo map): " .. modeText) end)
 
 		local bossText
 		if info.boss then
@@ -26952,11 +26641,7 @@ return function(window, tab)
 		pcall(function() roomLabel:UpdateName("Map: " .. mapText .. " | Room: " .. roomText .. " | Boss: " .. bossText) end)
 
 		if info.recording then
-			local curP = info.phase or 1
-			pcall(function() pointsLabel:UpdateName(("Points: <font color='rgb(255,170,60)'>%d</font> (room %s | Phase %d)"):format(info.pointCount, tostring(info.room), curP)) end)
-		elseif info.playing then
-			local curP = info.phase or 1
-			pcall(function() pointsLabel:UpdateName(("Playing: <font color='rgb(0,230,255)'>Phase %d</font>"):format(curP)) end)
+			pcall(function() pointsLabel:UpdateName(("Points: <font color='rgb(255,170,60)'>%d</font> (room %s)"):format(info.pointCount, tostring(info.room))) end)
 		else
 			pcall(function() pointsLabel:UpdateName("Points: <font color='rgb(160,160,160)'>-</font>") end)
 		end
@@ -26968,8 +26653,7 @@ return function(window, tab)
 			local parts = {}
 			for _, rec in ipairs(maps) do
 				local bossPart = rec.bossCount and rec.bossCount > 0 and ("+%db"):format(rec.bossCount) or ""
-				local phasePart = rec.phaseCount and rec.phaseCount > rec.roomCount and ("/%dph"):format(rec.phaseCount) or ""
-				parts[#parts + 1] = ("%s(%dr%s/%dp%s)"):format(rec.map, rec.roomCount, phasePart, rec.pointCount, bossPart)
+				parts[#parts + 1] = ("%s(%dr/%dp%s)"):format(rec.map, rec.roomCount, rec.pointCount, bossPart)
 			end
 			pcall(function() recordingsLabel:UpdateName("Macros: <font color='rgb(150,255,150)'>" .. table.concat(parts, ", ") .. "</font>") end)
 		end

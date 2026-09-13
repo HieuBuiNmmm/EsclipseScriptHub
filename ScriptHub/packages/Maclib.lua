@@ -5215,11 +5215,17 @@ function MacLib:Window(Settings)
 
 			button.MouseButton1Click:Connect(function()
 				if dialogCanvas.GroupTransparency ~= 0 then return end
-				if v.Callback then
-					v.Callback()
-				end
+				local ok, err = pcall(function()
+					if v.Callback then
+						v.Callback()
+					end
+				end)
 
 				dialogOut()
+
+				if not ok then
+					warn("[Dialog] Button callback error: " .. tostring(err))
+				end
 			end)
 
 			button.MouseEnter:Connect(function()

@@ -184,6 +184,7 @@ function engine.StopEngine()
 	if not isEngineActive then return end
 	isEngineActive = false
 	stopSafeSpotLoop()
+	dodge.Cancel()
 
 	-- Chỉ dừng bộ quét detection nếu tính năng Record cũng không đang chạy
 	local skillTimingManager = detection.skillTimingManager

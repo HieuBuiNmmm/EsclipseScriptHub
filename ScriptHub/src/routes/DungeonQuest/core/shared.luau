@@ -840,11 +840,17 @@ function shared.OnBossIndexChanged(callback)
 	end
 end
 
---// ---- Room index ----
-
 --// Đọc số room từ tên (room1 -> 1, room12 -> 12...). Trả 0 nếu không khớp.
 local function parseRoomNumber(name)
 	if type(name) ~= "string" then return 0 end
+	local lower = string.lower(name)
+	local bossMatch = string.match(lower, "boss.*(%d+)")
+	if bossMatch then
+		return 100 + (tonumber(bossMatch) or 1)
+	end
+	if string.find(lower, "boss") then
+		return 100 + math.max(1, bossIndex)
+	end
 	local number = string.match(name, "^room(%d+)$")
 	if not number then return 0 end
 	return tonumber(number) or 0
@@ -855,6 +861,7 @@ end
 --// tại 1 thời điểm chỉ có đúng 1 room có quái -> room của bất kỳ quái đang track
 --// chính là room hiện tại (không cần scan theo khoảng cách).
 --// Room nhận diện qua TÊN "room<so>" (room1, room2...). Không có enemy/dungeon -> 0.
+--// Fallback phòng Boss: nếu bossActive = true, trả về 100 + math.max(1, bossIndex) (101, 102...).
 local function computeRoomIndex()
 	if not dungeon then return 0 end
 	for model, data in pairs(trackedEnemies) do
@@ -862,6 +869,9 @@ local function computeRoomIndex()
 			local idx = parseRoomNumber(data.Room.Name)
 			if idx > 0 then return idx end
 		end
+	end
+	if bossActive then
+		return 100 + math.max(1, bossIndex)
 	end
 	return 0
 end
@@ -934,6 +944,7 @@ local function setBossActive(active)
 	for i = #bossCallbacks, 1, -1 do
 		pcall(bossCallbacks[i], bossActive)
 	end
+	refreshRoomIndex()
 end
 
 local function scanBossGui()

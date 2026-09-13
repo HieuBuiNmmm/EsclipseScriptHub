@@ -1,7 +1,10 @@
 -- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
---   - Macro = 1 bản ghi cho cả MAP, chứa toàn bộ ROOM QUÁI THƯỜNG.
---   - Chỉ hoạt động với room quái thường; BOSS ngẫu nhiên -> dùng SmartDodge
---     (pathRecord tự nhường quyền và auto-resume khi sang room có bản ghi).
+--   - Macro = 1 bản ghi cho cả MAP, record liên tục nhiều room trong 1 session
+--     (tự auto-split theo room; segment phòng boss đánh dấu `boss`).
+--   - Mode của map do người dùng chọn (lưu trong file macro):
+--       * NORMAL (mặc định): chỉ room quái thường; BOSS ngẫu nhiên -> dùng SmartDodge
+--         (pathRecord tự nhường quyền + auto-resume khi sang room có bản ghi).
+--       * FULL: record + phát luôn cả boss room theo path đã ghi; giữ độc quyền khi boss.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -14,6 +17,7 @@ local storage = require("@routes/DungeonQuest/core/pathRecord/storage")
 local recorder = require("@routes/DungeonQuest/core/pathRecord/recorder")
 local mover = require("@routes/DungeonQuest/core/pathRecord/player")
 local visual = require("@routes/DungeonQuest/core/pathRecord/visual")
+local rangeVisual = require("@routes/DungeonQuest/core/pathRecord/rangeVisual")
 
 local RunService = services.RunService
 
@@ -121,6 +125,16 @@ function pathRecord.SetSpeedMatch(state)
 	fireStatus("speedmatch")
 end
 
+--// Dùng tốc độ Fast Speed từ tab Combat/Player khi phát macro
+function pathRecord.IsUseFastSpeedEnabled()
+	return mover.IsUseFastSpeedEnabled()
+end
+
+function pathRecord.SetUseFastSpeed(state)
+	mover.SetUseFastSpeed(state and true or false)
+	fireStatus("usefastspeed")
+end
+
 --// Giữ facing sau khi xả skill khi đang đi (0.5s - 2s) để game kịp ghi nhận hướng cast.
 function pathRecord.GetSkillFaceHold()
 	return mover.GetSkillFaceHold()
@@ -129,6 +143,16 @@ end
 function pathRecord.SetSkillFaceHold(seconds)
 	mover.SetSkillFaceHold(seconds)
 	fireStatus("facehold")
+end
+
+--// Khoảng nghỉ giữa 2 lần click khi double-cast skill (0.001s - 0.1s).
+function pathRecord.GetDoubleClickDelay()
+	return mover.GetDoubleClickDelay()
+end
+
+function pathRecord.SetDoubleClickDelay(seconds)
+	mover.SetDoubleClickDelay(seconds)
+	fireStatus("doubleclick")
 end
 
 --// State
@@ -140,15 +164,19 @@ local roomUnsub = nil
 local mapUnsub = nil
 
 local function fireStatus(reason)
+	local recStat = recorder.GetStatus()
 	local info = {
 		recording = recorder.IsRecording(),
 		playing = mover.IsPlaying(),
 		resume = mover.ResumeWanted(),
+		autoPlayWanted = autoPlayWanted,
+		inLobby = shared.IsInLobby(),
 		map = shared.GetCurrentDungeonName(),
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
-		pointCount = recorder.IsRecording() and recorder.GetStatus().pointCount or 0,
+		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
+		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
 		reason = reason,
 	}
 	for _, cb in ipairs(statusListeners) do
@@ -186,53 +214,71 @@ function pathRecord.CurrentRoomHasRecord()
 	return storage.HasSegmentOrMacro(shared.GetCurrentDungeonName(), shared.GetCurrentRoomIndex())
 end
 
+--// ---------- Map Mode (NORMAL / FULL) ----------
+
+--// Mode cho 1 map: "normal" (skip boss, dùng SmartDodge) hoặc "full" (record + phát cả boss room).
+function pathRecord.GetMapMode(mapName)
+	return storage.GetMapMode(mapName)
+end
+
+function pathRecord.SetMapMode(mapName, mode)
+	if storage.SetMapMode(mapName, mode) then
+		fireStatus("mode")
+	end
+end
+
 --// ---------- Playback ----------
 
+--// Flag persists "wants to auto-play macro" (được lưu qua config, không phải runtime state).
+--// Khi bật: đang ở dungeon có macro -> phát ngay; phòng boss đang active -> bỏ qua nếu mode NORMAL.
+--// Giữ nguyên trạng thái armed khi ở lobby hoặc khi room đang load.
+local autoPlayWanted = false
+
+function pathRecord.IsAutoPlayWanted()
+	return autoPlayWanted
+end
+
 function pathRecord.TogglePlay(state)
-	if state then
-		if mover.IsPlaying() then return true end
-		if recorder.IsRecording() then recorder.Stop() end
+	autoPlayWanted = state and true or false
 
-		--// Pre-check trước khi chiếm độc quyền, tránh tự tắt hệ thống khác
-		--// (AutoFarm/SmartDodge) nhưng rồi playback lại không chạy được.
+	if autoPlayWanted then
+		if mover.IsPlaying() then
+			fireStatus("already_playing")
+			return true
+		end
+		if recorder.IsRecording() then
+			recorder.Stop()
+		end
+
 		if shared.IsInLobby() then
-			notifier.Notify("Path Record", "Không phát được: đang ở lobby", 3)
-			fireStatus()
-			return false
-		end
-		if shared.IsBossActive() then
-			notifier.Notify("Path Record", "Không phát được: boss room (hãy dùng Smart Dodge)", 3)
-			fireStatus()
-			return false
+			fireStatus("armed_lobby")
+			return true
 		end
 
-		--// Pre-check segment để KHÔNG chiếm độc quyền (không tự tắt AutoFarm/
-		--// SmartDodge) trong khi room hiện tại chưa có bản ghi để chạy.
-		local mapN = shared.GetCurrentDungeonName()
-		if not mapN or #mapN == 0 then
-			notifier.Notify("Path Record", "Không phát được: không xác định được map", 3)
-			fireStatus()
-			return false
-		end
-		if not storage.HasSegmentOrMacro(mapN, shared.GetCurrentRoomIndex()) then
-			notifier.Notify("Path Record", "Không phát được: room này chưa có bản ghi trong macro", 3)
-			fireStatus()
-			return false
+		local map = shared.GetCurrentDungeonName()
+		local room = shared.GetCurrentRoomIndex()
+
+		if not map or #map == 0 or room <= 0 then
+			fireStatus("armed_waiting")
+			return true
 		end
 
-		--// Playback điều khiển nhân vật -> chiếm độc quyền, tắt các hệ thống khác.
-		coordinator.EnableExclusive("PathRecord")
-
-		local ok, err = mover.Start()
-		if not ok then
-			notifier.Notify("Path Record", "Không phát được: " .. tostring(err), 3)
+		if shared.IsBossActive() and storage.GetMapMode(map) ~= "full" then
+			fireStatus("armed_boss")
+			return true
 		end
-		fireStatus()
-		return ok
+
+		if storage.HasSegmentOrMacro(map, room) then
+			coordinator.EnableExclusive("PathRecord")
+			mover.Start()
+		end
+
+		fireStatus("play_started")
+		return true
 	else
 		local was = mover.IsPlaying()
 		mover.Stop()
-		fireStatus()
+		fireStatus("play_stopped")
 		return was
 	end
 end
@@ -258,6 +304,66 @@ function pathRecord.IsShowVisualEnabled()
 	return showVisual
 end
 
+--// ---------- Skill Range Visual (Vòng tròn quanh nhân vật) ----------
+
+function pathRecord.SetRangeVisual(state)
+	rangeVisual.SetEnabled(state)
+	fireStatus("rangevisual")
+end
+
+function pathRecord.IsRangeVisualEnabled()
+	return rangeVisual.IsEnabled()
+end
+
+function pathRecord.SetRangeVisualRadius(radius)
+	rangeVisual.SetRadius(radius)
+	fireStatus("rangeradius")
+end
+
+function pathRecord.GetRangeVisualRadius()
+	return rangeVisual.GetRadius()
+end
+
+function pathRecord.SetRangeVisualFill(state)
+	rangeVisual.SetFillEnabled(state)
+	fireStatus("rangefill")
+end
+
+function pathRecord.IsRangeVisualFillEnabled()
+	return rangeVisual.IsFillEnabled()
+end
+
+function pathRecord.SetHighlightInRange(state)
+	rangeVisual.SetHighlightInRange(state)
+	fireStatus("rangehighlight")
+end
+
+function pathRecord.IsHighlightInRangeEnabled()
+	return rangeVisual.IsHighlightInRangeEnabled()
+end
+
+function pathRecord.GetRangeColorNames()
+	return rangeVisual.GetColorNames()
+end
+
+function pathRecord.GetSelectedCircleColor()
+	return rangeVisual.GetSelectedCircleColor()
+end
+
+function pathRecord.SetCircleColor(name)
+	rangeVisual.SetCircleColor(name)
+	fireStatus("circlecolor")
+end
+
+function pathRecord.GetSelectedHighlightColor()
+	return rangeVisual.GetSelectedHighlightColor()
+end
+
+function pathRecord.SetHighlightColor(name)
+	rangeVisual.SetHighlightColor(name)
+	fireStatus("highlightcolor")
+end
+
 --// ---------- Storage passthrough ----------
 
 function pathRecord.GetMaps()
@@ -278,6 +384,11 @@ function pathRecord.ClearAll()
 	fireStatus("cleared")
 end
 
+function pathRecord.ReloadFromDisk()
+	storage.ReloadFromDisk()
+	fireStatus("reloaded")
+end
+
 --// ---------- Status ----------
 
 function pathRecord.GetStatus()
@@ -286,11 +397,14 @@ function pathRecord.GetStatus()
 		recording = recorder.IsRecording(),
 		playing = mover.IsPlaying(),
 		resume = mover.ResumeWanted(),
+		autoPlayWanted = autoPlayWanted,
+		inLobby = shared.IsInLobby(),
 		map = shared.GetCurrentDungeonName(),
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
 		pointCount = recStat.pointCount,
+		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
 	}
 end
 
@@ -302,12 +416,35 @@ end
 
 --// ---------- Autonomous behavior ----------
 
---// Vào boss room khi đang phát -> chỉ báo + đứng yên (dùng SmartDodge).
---// Nếu bật SmartDodge, nó chiếm độc quyền -> pathRecord nhường và auto-resume.
+--// Vào boss room:
+--//   - Mode FULL: đang phát -> giữ/giành độc quyền (đi path đã record qua boss);
+--//     đang chờ resume hoặc autoPlayWanted -> gọi phát lại luôn vào boss room có segment.
+--//   - Mode NORMAL: chỉ báo + đứng yên (dùng SmartDodge); nếu bật SmartDodge nó chiếm
+--//     độc quyền -> pathRecord nhường và auto-resume khi sang room thường.
 bossConnection = shared.OnBossActiveChanged(function(active)
-	if active and mover.IsPlaying() then
-		notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Smart Dodge", 3)
-		fireStatus("boss")
+	if not active then return end
+
+	if mover.ResumeWanted() or autoPlayWanted then
+		local map = mover.GetActiveMap() or shared.GetCurrentDungeonName()
+		if map and storage.GetMapMode(map) == "full" then
+			local room = shared.GetCurrentRoomIndex()
+			if room > 0 and storage.HasSegmentOrMacro(map, room) then
+				coordinator.EnableExclusive("PathRecord")
+				mover.Start()
+				fireStatus("boss")
+			end
+		end
+		return
+	end
+
+	if mover.IsPlaying() then
+		local map = mover.GetActiveMap() or shared.GetCurrentDungeonName()
+		if map and storage.GetMapMode(map) == "full" then
+			coordinator.EnableExclusive("PathRecord")
+		else
+			notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Smart Dodge", 3)
+			fireStatus("boss")
+		end
 	end
 end)
 
@@ -316,32 +453,51 @@ storageUnsub = storage.OnChanged(function()
 	fireStatus("storage")
 end)
 
---// Auto-resume: đang chờ (do nhường quyền cho hệ thống khác giữa chừng) mà sang
---// được room quái thường có segment trong macro của map đang chạy -> phát tiếp nốt lượt.
+--// Auto-resume & Auto-play: khi sang room mới có segment trong macro -> tự động phát tiếp.
+--// Room boss được auto-resume chỉ khi map ở mode FULL (room đó đã được record).
 roomUnsub = shared.OnRoomIndexChanged(function()
-	if not mover.ResumeWanted() then return end
+	if not autoPlayWanted and not mover.ResumeWanted() then return end
 
 	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 or shared.IsInLobby() or shared.IsBossActive() or shared.IsDead() then return end
+	if room <= 0 or shared.IsInLobby() or shared.IsDead() then return end
 
 	local map = shared.GetCurrentDungeonName()
 	if not map or #map == 0 then return end
 	if mover.GetActiveMap() and mover.GetActiveMap() ~= map then return end
+	if shared.IsBossActive() and storage.GetMapMode(map) ~= "full" then return end
 	if not storage.HasSegmentOrMacro(map, room) then return end
 
-	coordinator.EnableExclusive("PathRecord")
-	mover.Start() -- Resume; lỗi nhỏ (race) thì bỏ qua, room event tiếp theo sẽ thử lại.
-	fireStatus("resumed")
+	if not mover.IsPlaying() then
+		coordinator.EnableExclusive("PathRecord")
+		mover.Start()
+		fireStatus("resumed")
+	end
 end)
 
---// Đổi map giữa chừng: hủy ý định resume + dừng nếu đang phát/đang record.
+--// Đổi map giữa chừng: commit nốt record đang dở + dọn trạng thái playback map cũ.
+--// Khi vào map mới và autoPlayWanted bật: nếu room 1 đã có macro -> tự động khởi chạy.
 mapUnsub = shared.OnDungeonNameChanged(function(name)
 	if recorder.IsRecording() then
-		recorder.Cancel()
-		notifier.Notify("Path Record", "Đổi map: hủy record đang dở", 3)
+		recorder.Stop("đổi map")
 	end
-	if mover.ResumeWanted() and (not mover.GetActiveMap() or mover.GetActiveMap() ~= name) then
-		mover.Stop()
+	if mover.IsPlaying() or mover.ResumeWanted() then
+		local currentMap = mover.GetActiveMap()
+		if currentMap and currentMap ~= name then
+			mover.Stop()
+		end
+	end
+	if autoPlayWanted and name and #name > 0 then
+		task.delay(0.3, function()
+			if not autoPlayWanted or mover.IsPlaying() or recorder.IsRecording() then return end
+			local room = shared.GetCurrentRoomIndex()
+			if room > 0 and storage.HasSegmentOrMacro(name, room) then
+				if not (shared.IsBossActive() and storage.GetMapMode(name) ~= "full") then
+					coordinator.EnableExclusive("PathRecord")
+					mover.Start()
+					fireStatus("map_autoplay")
+				end
+			end
+		end)
 	end
 	fireStatus("map")
 end)
@@ -376,9 +532,9 @@ drawConnection = RunService.Heartbeat:Connect(function()
 
 	local buildKey
 	if recorder.IsRecording() then
-		buildKey = "rec:" .. #recorder.GetCurrentPoints()
+		buildKey = "rec:" .. recorder.GetCurrentPhaseIndex() .. ":" .. #recorder.GetCurrentPoints()
 	elseif mover.IsPlaying() then
-		buildKey = "play:" .. tostring(room) .. ":" .. macroStamp(map)
+		buildKey = "play:" .. tostring(room) .. ":" .. mover.GetCurrentPhaseIndex() .. ":" .. macroStamp(map)
 	else
 		buildKey = "idle:" .. macroStamp(map)
 	end
@@ -395,19 +551,24 @@ drawConnection = RunService.Heartbeat:Connect(function()
 			polys[1] = { points = pts, color = theme.rec, tag = "rec" }
 		end
 	elseif mover.IsPlaying() then
-		--// Đang play: vẽ segment của room hiện tại (đã làm mịn như lúc đi).
+		--// Đang play: vẽ segment/phase của room hiện tại (đã làm mịn như lúc đi).
 		if map and room > 0 then
 			local seg = storage.GetRoomSegment(map, room)
-			if seg and #seg.points >= 2 then
-				polys[1] = {
-					points = storage.SimplifyPath(seg.points, 1.0),
-					color = theme.play,
-					tag = "play_" .. tostring(room),
-				}
+			if seg then
+				local phases = seg.phases or { seg }
+				local curPIdx = mover.GetCurrentPhaseIndex() or 1
+				local pData = phases[math.min(curPIdx, #phases)] or seg
+				if pData and pData.points and #pData.points >= 2 then
+					polys[1] = {
+						points = storage.SimplifyPath(pData.points, 0.4),
+						color = theme.play,
+						tag = ("play_%s_p%d"):format(tostring(room), curPIdx),
+					}
+				end
 			end
 		end
 	else
-		--// Idle: xem trước toàn bộ macro của map hiện tại.
+		--// Idle: xem trước toàn bộ macro của map hiện tại (bao gồm các phase).
 		if map then
 			local macro = storage.GetMap(map)
 			if macro then
@@ -418,12 +579,17 @@ drawConnection = RunService.Heartbeat:Connect(function()
 				table.sort(roomKeys)
 				for _, r in ipairs(roomKeys) do
 					local seg = macro.rooms[r]
-					if seg and #seg.points >= 2 then
-						polys[#polys + 1] = {
-							points = storage.SimplifyPath(seg.points, 1.0),
-							color = theme.idle,
-							tag = "macro_" .. tostring(r),
-						}
+					if seg then
+						local phases = seg.phases or { seg }
+						for pIdx, pData in ipairs(phases) do
+							if pData and pData.points and #pData.points >= 2 then
+								polys[#polys + 1] = {
+									points = storage.SimplifyPath(pData.points, 0.4),
+									color = seg.boss and Color3.fromRGB(255, 140, 255) or theme.idle,
+									tag = ("macro_%s_p%d"):format(tostring(r), pIdx),
+								}
+							end
+						end
 					end
 				end
 			end
@@ -453,6 +619,18 @@ coordinator.Register("PathRecord", function(state)
 	end
 	fireStatus("disabled")
 end, pathRecord.IsEnabled)
+
+--// Startup: nếu autoPlayWanted (từ config) và đang ở dungeon có macro -> auto-play.
+task.delay(1.0, function()
+	if autoPlayWanted and not mover.IsPlaying() and not recorder.IsRecording() then
+		local map = shared.GetCurrentDungeonName()
+		if map and #map > 0 and not shared.IsInLobby() then
+			if storage.HasSegmentOrMacro(map, shared.GetCurrentRoomIndex()) then
+				pathRecord.TogglePlay(true)
+			end
+		end
+	end
+end)
 
 lifecycle.Register(function()
 	mover.Stop()

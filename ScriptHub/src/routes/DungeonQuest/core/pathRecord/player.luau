@@ -1,9 +1,12 @@
--- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room quái thường) ĐÚNG 1 LẦN.
+-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
 --   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
 --     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
---   - BOSS room: KHÔNG đi (ngẫu nhiên, dùng SmartDodge) -> đứng yên chờ. Nếu
---     hệ thống khác (SmartDodge/AutoFarm) chiếm quyền -> PauseForExclusive:
---     nhường + tự resume khi sang room quái thường có segment (để đi nốt lượt).
+--   - BOSS room:
+--       * Mode NORMAL: KHÔNG đi (ngẫu nhiên, dùng SmartDodge) -> đứng yên chờ. Nếu
+--         hệ thống khác (SmartDodge/AutoFarm) chiếm quyền -> PauseForExclusive:
+--         nhường + tự resume khi sang room quái thường có segment.
+--       * Mode FULL (map tùy chỉnh): ĐI theo path đã record qua cả boss room; giữ
+--         độc quyền và KHÔNG đứng yên ở boss.
 --   - Room chưa có segment trong macro -> đứng yên chờ đổi room.
 --   - Hết map (lobby) -> dừng hẳn playback (đi 1 lần, không tự phát lại).
 
@@ -18,16 +21,20 @@ local VirtualInputManager = services.VirtualInputManager
 local UserInputService = services.UserInputService
 
 --// Constants
-local SIMPLIFY_TOL = 1.0 -- Studs: làm mịn quỹ đạo khi load (macro cũ dày đặc cũng đi trơn)
-local ARRIVE_DIST = 1.0 -- Studs: ngưỡng coi là đã tới đích cuối
+local SIMPLIFY_TOL = 0.4 -- Studs: làm mịn quỹ đạo khi load (độ chính xác cao, bám sát từng centimet)
+local ARRIVE_DIST = 0.5 -- Studs: ngưỡng coi là đã tới đích cuối (chuẩn xác từng node)
 local START_REPOSITION_TIMEOUT = 8.0 -- Giây tối đa đi về node đầu trước khi phát
-local LOOKAHEAD = 7.0 -- Studs: đích luôn cách phía trước theo quỹ đạo (ngăn việc dừng)
+local LOOKAHEAD_MIN = 2.0 -- Studs: lookahead tối thiểu tại góc cua gắt (chống cắt góc/rơi vực)
+local LOOKAHEAD_MAX = 4.5 -- Studs: lookahead tối đa trên đường thẳng (bám sát lòng đường tuyệt đối)
+local PRE_AIM_DIST = 1.5 -- Studs: khoảng cách bắt đầu xoay mặt đón đầu trước khi chạm mốc xả skill
 local PROJECT_BACK = 8.0 -- Studs: hình chiếu chỉ tìm trong cửa sổ quanh progress (chống nhảy nhánh giao)
-local PROJECT_FRONT = 14.0 -- Studs: >= LOOKAHEAD + margin; nhánh giao/đường vòng nằm ngoài -> không bao giờ bị bắt hụt
+local PROJECT_FRONT = 14.0 -- Studs: >= LOOKAHEAD_MAX + margin; nhánh giao/đường vòng nằm ngoài -> không bao giờ bị bắt hụt
 local STUCK_TIMEOUT = 8.0 -- Giây không nhúc nhích -> nghi bị kẹt
 local STUCK_BUMP = 2.0 -- Studs: nhảy tới trước khi nghi kẹt
 local SKILL_FACE_HOLD_MIN = 0.5 -- Giây tối thiểu giữ facing sau khi xả skill
 local SKILL_FACE_HOLD_MAX = 2.0 -- Giây tối đa giữ facing sau khi xả skill
+local DOUBLE_CLICK_DELAY_MIN = 0.001 -- Giây tối thiểu giữa 2 lần click
+local DOUBLE_CLICK_DELAY_MAX = 0.1 -- Giây tối đa giữa 2 lần click
 
 --// Table
 local mover = {}
@@ -37,6 +44,7 @@ local replayPauses = true
 local replaySkills = true
 local replayFacing = true
 local skillFaceHold = 0.6 -- Giây giữ facing sau khi xả skill khi đang đi (mặc định 0.6s)
+local doubleClickDelay = 0.005 -- Giây khoảng nghỉ giữa 2 lần click (mặc định 0.005s)
 
 function mover.SetSkillFaceHold(seconds)
 	if type(seconds) == "number" then
@@ -46,6 +54,16 @@ end
 
 function mover.GetSkillFaceHold()
 	return skillFaceHold
+end
+
+function mover.SetDoubleClickDelay(seconds)
+	if type(seconds) == "number" then
+		doubleClickDelay = math.clamp(seconds, DOUBLE_CLICK_DELAY_MIN, DOUBLE_CLICK_DELAY_MAX)
+	end
+end
+
+function mover.GetDoubleClickDelay()
+	return doubleClickDelay
 end
 
 function mover.SetReplayTimeline(state)
@@ -60,8 +78,10 @@ function mover.IsReplayTimelineEnabled()
 end
 
 --// Settings: ép tốc chạy = tốc độ record để VỊ TRÍ và THỜI GIAN khớp nhau
---// (nhân vật tới điểm bắn skill/dừng đúng lúc như người chơi đã làm).
+--// (nhân vật tới điểm bắn skill/dừng đúng lúc như người chơi đã làm)
+--// hoặc ép theo tốc độ Fast Speed ở tab Combat/Player.
 local matchRecordSpeed = true
+local useFastSpeed = false
 local appliedSpeed = nil
 local restoreSpeed = nil
 
@@ -73,15 +93,34 @@ function mover.IsSpeedMatchEnabled()
 	return matchRecordSpeed
 end
 
---// Ép WalkSpeed theo tốc độ đã ghi của segment; nhớ giá trị gốc để khôi phục.
-local function applyRecordSpeed(speed)
-	if not matchRecordSpeed then return end
-	if type(speed) ~= "number" or speed <= 0 then return end
+function mover.SetUseFastSpeed(state)
+	useFastSpeed = state and true or false
+end
+
+function mover.IsUseFastSpeedEnabled()
+	return useFastSpeed
+end
+
+--// Ép WalkSpeed theo tốc độ đã ghi của segment hoặc Fast Speed; nhớ giá trị gốc để khôi phục.
+local function applyPlaybackSpeed(segmentSpeed)
+	local targetSpeed = nil
+	if useFastSpeed then
+		local fs = shared.GetFastSpeed()
+		if type(fs) == "number" and fs > 0 then
+			targetSpeed = fs
+		end
+	elseif matchRecordSpeed then
+		if type(segmentSpeed) == "number" and segmentSpeed > 0 then
+			targetSpeed = segmentSpeed
+		end
+	end
+
+	if not targetSpeed or targetSpeed <= 0 then return end
 	local hum = shared.GetHumanoid()
 	if not hum then return end
 	if appliedSpeed == nil then restoreSpeed = hum.WalkSpeed end
-	appliedSpeed = speed
-	if hum.WalkSpeed ~= speed then hum.WalkSpeed = speed end
+	appliedSpeed = targetSpeed
+	if hum.WalkSpeed ~= targetSpeed then hum.WalkSpeed = targetSpeed end
 end
 
 local function restorePlaybackSpeed()
@@ -98,7 +137,9 @@ end
 local isPlaying = false
 local resumeWanted = false -- Bật cờ "tự resume" khi room có segment xuất hiện
 local activeMap = nil -- Map đang playback
+local playFullMap = false -- Mode FULL của map: đi qua cả boss room theo path đã ghi
 local playThread = nil
+local currentPhaseIndex = 1
 local statusListeners = {}
 
 local function fireStatus(reason)
@@ -107,12 +148,17 @@ local function fireStatus(reason)
 		map = activeMap,
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
+		phase = currentPhaseIndex,
 		resume = resumeWanted,
 		reason = reason,
 	}
 	for _, cb in ipairs(statusListeners) do
 		pcall(cb, info)
 	end
+end
+
+function mover.GetCurrentPhaseIndex()
+	return currentPhaseIndex
 end
 
 local function getPlayerRoot()
@@ -146,24 +192,40 @@ local function cancelMove(humanoid)
 	end
 end
 
---// Mô phỏng chuột phải (kích hoạt skill như người chơi vừa làm lúc record).
---// Double-cast (gần như double click, cách nhau 0.005s) để chống trượt do CD/timing bị lệch nhẹ.
-local function fireRightClick()
+--// Mô phỏng kích hoạt skill ThĐÚNG nút như lúc record:
+--//   - "Q"/"E": VirtualInputManager:SendKeyEvent
+--//   - "M2" (hoặc nil = macro cũ): chuột phải như trước.
+--// Double-cast không đồng bộ (task.spawn) để hoàn toàn KHÔNG chặn luồng di chuyển, chống khựng bước.
+local function fireSkill(skillKey)
 	local hold = shared.GetKeyHoldTime() or 0.05
+	local delayTime = doubleClickDelay
 	local mouse = UserInputService:GetMouseLocation()
-	pcall(function()
-		-- Lần click 1
-		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, true, game, false)
-		task.wait(hold)
-		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, false, game, false)
+	task.spawn(function()
+		pcall(function()
+			local function send(down)
+				if skillKey == "Q" or skillKey == "E" then
+					local code = skillKey == "Q" and Enum.KeyCode.Q or Enum.KeyCode.E
+					VirtualInputManager:SendKeyEvent(down, code, false, game)
+				else
+					VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, down, game, false)
+				end
+			end
 
-		-- Khoảng nghỉ 0.005s trước lần click 2
-		task.wait(0.005)
+			-- Lần bấm 1
+			send(true)
+			task.wait(hold)
+			send(false)
 
-		-- Lần click 2 (double-tap đảm bảo ăn skill nếu lệch CD tích tắc)
-		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, true, game, false)
-		task.wait(hold)
-		VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, false, game, false)
+			-- Khoảng nghỉ trước lần bấm 2 (tùy chỉnh qua slider)
+			if delayTime > 0 then
+				task.wait(delayTime)
+			end
+
+			-- Lần bấm 2 (double-tap đảm bảo ăn skill nếu lệch CD tích tắc)
+			send(true)
+			task.wait(hold)
+			send(false)
+		end)
 	end)
 end
 
@@ -187,6 +249,7 @@ local function restoreAutoRotate()
 end
 
 --// Đi liên tục toàn bộ quỹ đạo 1 segment — KHÔNG bao giờ dừng giữa chừng.
+--// allowBoss (true khi mode FULL): bỏ check boss -> đi theo path đã record qua boss room.
 --// Cách hoạt động (bám quỹ đạo + projection + lookahead):
 --//   1. Làm mịn đường (Douglas-Peucker) khi load: macro cũ ghi dày 0.3 stud + wiggle
 --//      sẽ bị "kéo thẳng" thành đường chính, tránh việc dừng gật gù từng phần.
@@ -195,13 +258,13 @@ end
 --//   3. Đích = điểm cách LOOKAHEAD studs phía trước trên đường -> humanoid không
 --//      bao giờ "tới đích" để giảm tốc/dừng, chạy liền mạch theo quỹ đạo.
 --//   4. Nhân vật đứng yên quá STUCK_TIMEOUT -> đẩy progress tới trước để lách vật cản.
-local function walkThrough(segment, room)
+local function walkThrough(segment, room, allowBoss)
 	local humanoid = shared.GetHumanoid()
 	local root = getPlayerRoot()
 	if not humanoid or not root then return end
 
-	--// Ép đúng tốc độ record trước cả bước kéo về node đầu (để timing khớp ngay từ đầu).
-	applyRecordSpeed(segment.speed)
+	--// Ép đúng tốc độ record hoặc fast speed trước cả bước kéo về node đầu (để timing khớp ngay từ đầu).
+	applyPlaybackSpeed(segment.speed)
 
 	local path = storage.SimplifyPath(segment.points, SIMPLIFY_TOL)
 	local n = #path
@@ -267,6 +330,33 @@ local function walkThrough(segment, room)
 		)
 	end
 
+	--// Tính Lookahead thích ứng theo độ uốn của quỹ đạo phía trước (Adaptive Lookahead):
+	--// - Góc cua gấp (>= 60°-90°): Lookahead giảm xuống LOOKAHEAD_MIN (2.5 - 3.5 studs) để bám sát cua (chống cắt góc/rơi vực).
+	--// - Đường thẳng: Lookahead tăng lên LOOKAHEAD_MAX (7.0 studs) để chạy liền mạch, mượt mà.
+	local function getAdaptiveLookahead(curProgress)
+		local d1 = math.min(curProgress + 2.5, total)
+		local d2 = math.min(curProgress + 5.5, total)
+		if d2 - curProgress < 1.0 then return LOOKAHEAD_MIN end
+
+		local p0 = pointAt(curProgress)
+		local p1 = pointAt(d1)
+		local p2 = pointAt(d2)
+
+		local dx1, dz1 = p1.X - p0.X, p1.Z - p0.Z
+		local dx2, dz2 = p2.X - p1.X, p2.Z - p1.Z
+		local len1 = math.sqrt(dx1 * dx1 + dz1 * dz1)
+		local len2 = math.sqrt(dx2 * dx2 + dz2 * dz2)
+
+		if len1 > 0.1 and len2 > 0.1 then
+			local dot = math.clamp((dx1 * dx2 + dz1 * dz2) / (len1 * len2), -1, 1)
+			-- dot = 1.0 (thẳng) -> t = 1.0 -> LOOKAHEAD_MAX
+			-- dot <= 0 (cua gắt >= 90°) -> t = 0 -> LOOKAHEAD_MIN
+			local t = math.clamp((dot + 0.2) / 1.2, 0, 1)
+			return LOOKAHEAD_MIN + (LOOKAHEAD_MAX - LOOKAHEAD_MIN) * t
+		end
+		return LOOKAHEAD_MAX
+	end
+
 	--// ---- Timeline events (record: đứng chờ + skill chuột phải) ----
 	--// Anchor theo VỊ TRÍ trên đường (project lên path đã làm mịn) -> tốc độ
 	--// chạy lại khác bản gốc vẫn khớp. Skill trong khoảng đứng yên được nội
@@ -288,11 +378,12 @@ local function walkThrough(segment, room)
 		for _, s in ipairs(rawSkills) do
 			local attached = (replayPauses and s.dw > 0 and dwells[s.dw]) and dwells[s.dw] or nil
 			if attached then
-				table.insert(attached.skills, { tOff = s.dwT or 0, facing = s.facing })
+				table.insert(attached.skills, { tOff = s.dwT or 0, facing = s.facing, key = s.key })
 			else
 				table.insert(walkSkills, {
 					arc = projectPoint(s.pos),
 					facing = s.facing,
+					key = s.key,
 				})
 			end
 		end
@@ -311,7 +402,7 @@ local function walkThrough(segment, room)
 				if not root or not root.Parent then return false, "no_root" end
 				if shared.IsDead() then return false, "dead" end
 				if shared.GetCurrentRoomIndex() ~= room then return false, "room_changed" end
-				if shared.IsBossActive() then return false, "boss" end
+				if shared.IsBossActive() and not allowBoss then return false, "boss" end
 				--// Giữ chân tại chỗ (chống đẩy lệch) trong suốt khoảng dừng.
 				local anchor = p0 or getSafePosition(root)
 				if anchor then pcall(function() humanoid:MoveTo(anchor) end) end
@@ -319,7 +410,7 @@ local function walkThrough(segment, room)
 				if sk and os.clock() - startT >= sk.tOff then
 					if replaySkills then
 						if replayFacing then setFacing(root, sk.facing) end
-						fireRightClick()
+						fireSkill(sk.key or "M2")
 					elseif replayFacing then
 						setFacing(root, sk.facing)
 					end
@@ -340,7 +431,7 @@ local function walkThrough(segment, room)
 		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
 		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
 		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
-		if shared.IsBossActive() then restoreAutoRotate(); return false, "boss" end
+		if shared.IsBossActive() and not allowBoss then restoreAutoRotate(); return false, "boss" end
 		local p0 = getSafePosition(root)
 		if not p0 then
 			task.wait(0.08)
@@ -378,7 +469,7 @@ local function walkThrough(segment, room)
 		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
 		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
 		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
-		if shared.IsBossActive() then restoreAutoRotate(); return false, "boss" end -- boss mới xuất hiện -> đứng yên
+		if shared.IsBossActive() and not allowBoss then restoreAutoRotate(); return false, "boss" end -- boss mới xuất hiện -> đứng yên (chỉ khi NORMAL)
 
 		local pos = getSafePosition(root)
 		if not pos then
@@ -405,6 +496,17 @@ local function walkThrough(segment, room)
 			prevPos = pos
 		end
 
+		--// Pre-Aim Skill: Xoay mặt đón đầu trước khi chạm điểm xả chiêu (cách PRE_AIM_DIST studs).
+		--// Đảm bảo khi tới điểm xả thì hướng mặt đã ổn định 100%, không bị lệch tia.
+		local nextSkill = walkSkills[skillIdx]
+		local isPreAiming = false
+		if nextSkill and replayFacing and nextSkill.facing then
+			if progress >= nextSkill.arc - PRE_AIM_DIST and progress < nextSkill.arc then
+				setFacing(root, nextSkill.facing)
+				isPreAiming = true
+			end
+		end
+
 		--// Bắn skill lúc di chuyển: nhân vật cắt qua đúng vị trí đã bấm chuột phải.
 		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast
 		--// (không quay về hướng đi ngay -> skill không bị bắn lệch).
@@ -416,7 +518,7 @@ local function walkThrough(segment, room)
 				faceLockUntil = os.clock() + skillFaceHold
 			end
 			if replaySkills then
-				fireRightClick()
+				fireSkill(sk.key or "M2")
 			end
 			skillIdx += 1
 		end
@@ -441,7 +543,7 @@ local function walkThrough(segment, room)
 				local p2 = getSafePosition(root)
 				if p2 and flatDistance(p2, path[n]) <= ARRIVE_DIST then break end
 				if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
-				if shared.IsBossActive() or shared.IsDead() then restoreAutoRotate(); return false, "dead" end
+				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then restoreAutoRotate(); return false, "dead" end
 				if os.clock() >= deadline then break end
 				if os.clock() >= faceLockUntil and humanoid.AutoRotate ~= true then
 					humanoid.AutoRotate = true
@@ -452,15 +554,15 @@ local function walkThrough(segment, room)
 			return true, "completed"
 		end
 
-		--// Đích luôn ở phía trước -> humanoid đi liền mạch.
-		if os.clock() < faceLockUntil then
-			--// Đang trong cửa sổ giữ facing: khoá AutoRotate + resnap mỗi tick.
+		--// Đích luôn ở phía trước -> humanoid đi liền mạch (Adaptive Lookahead).
+		if os.clock() < faceLockUntil or isPreAiming then
+			--// Đang trong cửa sổ giữ facing hoặc Pre-Aim: khoá AutoRotate để nhân vật giữ góc quay lúc cast chiêu.
 			if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
-			if lastSkillFacing then setFacing(root, lastSkillFacing) end
 		elseif humanoid.AutoRotate ~= true then
 			humanoid.AutoRotate = true
 		end
-		local target = pointAt(math.min(progress + LOOKAHEAD, total - 0.01))
+		local currentLookahead = getAdaptiveLookahead(progress)
+		local target = pointAt(math.min(progress + currentLookahead, total - 0.01))
 		sendMove(target)
 		task.wait(0.1)
 	end
@@ -474,6 +576,7 @@ local function playbackLoop()
 	local visitedRoom = 0
 	local walkedThisVisit = false
 	local wasDead = false
+	currentPhaseIndex = 1
 
 	while isPlaying do
 		if resumeWanted then break end
@@ -484,10 +587,7 @@ local function playbackLoop()
 			continue
 		end
 		if wasDead then
-			--// Vừa hồi sinh: reset lượt để ĐI LẠI room hiện tại (không bỏ giữa chừng vì đã chết).
 			wasDead = false
-			visitedRoom = 0
-			walkedThisVisit = false
 		end
 		if shared.IsInLobby() then
 			--// Hết run: dừng playback, không tự phát lại (đi 1 lần).
@@ -495,8 +595,8 @@ local function playbackLoop()
 			isPlaying = false
 			break
 		end
-		if shared.IsBossActive() then
-			--// Boss: đứng yên (dùng SmartDodge).
+		if shared.IsBossActive() and not playFullMap then
+			--// Boss (mode NORMAL): đứng yên (dùng SmartDodge).
 			task.wait(0.25)
 			continue
 		end
@@ -507,10 +607,11 @@ local function playbackLoop()
 			continue
 		end
 
-		--// Đổi room -> lượt đi mới cho room đó.
+		--// Đổi room -> lượt đi mới cho room đó (reset về Phase 1).
 		if room ~= visitedRoom then
 			visitedRoom = room
 			walkedThisVisit = false
+			currentPhaseIndex = 1
 		end
 
 		local segment = storage.GetRoomSegment(activeMap, room)
@@ -520,21 +621,40 @@ local function playbackLoop()
 			continue
 		end
 
+		local phases = segment.phases or { segment }
+		local totalPhases = #phases
+
 		if walkedThisVisit then
-			--// Đã đi hết 1 lượt segment -> đứng yên, chờ đổi room.
+			--// Đã đi xong lượt của room -> đứng yên, chờ đổi room.
 			task.wait(0.1)
 			continue
 		end
 
-		local ok, reason = walkThrough(segment, room)
+		local phaseData = phases[math.min(currentPhaseIndex, totalPhases)] or segment
+
+		local ok, reason = walkThrough(phaseData, room, playFullMap)
 		restoreAutoRotate()
 		if ok then
 			walkedThisVisit = true
 		else
-			--// Nếu bị chết hoặc gián đoạn giữa chừng: không đánh dấu walkedThisVisit
-			--// để khi hồi sinh sẽ tự động đi lại / đi tiếp cho xong room.
+			--// Bị chết giữa chừng: tăng phase index để khi hồi sinh chạy Phase tiếp theo
 			if reason == "dead" then
-				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để tiếp tục...", 2)
+				currentPhaseIndex += 1
+				local nextPhaseNum = math.min(currentPhaseIndex, totalPhases)
+				if totalPhases > 1 then
+					notifier.Notify(
+						"Path Record",
+						("Tử trận (Phase %d/%d): Chờ hồi sinh để chạy Phase %d..."):format(
+							currentPhaseIndex - 1,
+							totalPhases,
+							nextPhaseNum
+						),
+						3
+					)
+				else
+					notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
+				end
+
 				while isPlaying and shared.IsDead() do
 					task.wait(0.2)
 				end
@@ -560,12 +680,18 @@ function mover.GetActiveMap()
 	return activeMap
 end
 
+--// Playback đang ở chế độ FULL (đi qua boss room theo path)?
+function mover.IsBossPlayActive()
+	return playFullMap
+end
+
 function mover.GetStatus()
 	return {
 		playing = isPlaying,
 		map = activeMap,
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
+		phase = currentPhaseIndex,
 		resume = resumeWanted,
 	}
 end
@@ -580,7 +706,6 @@ end
 function mover.Start()
 	if isPlaying then return false, "đang phát rồi" end
 	if shared.IsInLobby() then return false, "đang ở lobby" end
-	if shared.IsBossActive() then return false, "boss room (hãy dùng Smart Dodge)" end
 
 	local room = shared.GetCurrentRoomIndex()
 	if room <= 0 then return false, "chưa có room" end
@@ -591,8 +716,16 @@ function mover.Start()
 		return false, ("map [%s] chưa có segment room %d"):format(map, room)
 	end
 
+	--// Mode FULL: đi qua luôn boss room (miễn room đó có segment đã ghi).
+	local full = storage.GetMapMode(map) == "full"
+	if shared.IsBossActive() and (not full or not storage.HasSegmentOrMacro(map, room)) then
+		return false, "boss room (hãy dùng Smart Dodge)"
+	end
+
 	activeMap = map
+	playFullMap = full
 	resumeWanted = false
+	currentPhaseIndex = 1
 	isPlaying = true
 	playThread = task.spawn(playbackLoop)
 	fireStatus("started")
@@ -604,6 +737,8 @@ function mover.Stop()
 	isPlaying = false
 	resumeWanted = false
 	activeMap = nil
+	playFullMap = false
+	currentPhaseIndex = 1
 	if playThread then
 		task.cancel(playThread)
 		playThread = nil
@@ -615,12 +750,13 @@ function mover.Stop()
 end
 
 --// Nhường độc quyền cho hệ thống khác (SmartDodge/AutoFarm...): dừng nhưng
---// giữ ý định tự resume khi vào room quái thường có segment.
+--// giữ ý định tự resume khi vào room có segment.
 function mover.PauseForExclusive()
 	if not isPlaying then return end
 
 	resumeWanted = true
 	isPlaying = false
+	playFullMap = false
 	if playThread then
 		task.cancel(playThread)
 		playThread = nil
