@@ -137,6 +137,8 @@ smartDodge.IsLogInDangerEnabled = engine.IsLogInDangerEnabled
 smartDodge.IsInDanger = engine.IsInDanger
 smartDodge.GetCurrentSafeSpot = engine.GetCurrentSafeSpot
 smartDodge.OnSafeSpotChanged = engine.OnSafeSpotChanged
+smartDodge.SetTargetScope = engine.SetTargetScope
+smartDodge.GetTargetScope = engine.GetTargetScope
 
 --// Invulnerability & Respawn Protection
 smartDodge.SetIgnoreDodgeWhenInvulnerable = engine.SetIgnoreDodgeWhenInvulnerable

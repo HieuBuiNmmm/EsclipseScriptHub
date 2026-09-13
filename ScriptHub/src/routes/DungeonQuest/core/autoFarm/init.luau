@@ -369,7 +369,7 @@ local function ensureDebugTargetPart()
 	debugTargetPart.Size = Vector3.new(2, 2, 2)
 	debugTargetPart.Transparency = 0.4
 	debugTargetPart.Color = Color3.fromRGB(255, 50, 50)
-	debugTargetPart.Material = Enum.Material.Neon
+	debugTargetPart.Material = Enum.Material.SmoothPlastic
 	debugTargetPart.Parent = workspace
 	return debugTargetPart
 end
@@ -512,7 +512,7 @@ local function updateVisualDebugs()
 				debugActualMarkerPart.Shape = Enum.PartType.Ball
 				debugActualMarkerPart.Size = Vector3.new(1.3, 1.3, 1.3)
 				debugActualMarkerPart.Transparency = 0.2
-				debugActualMarkerPart.Material = Enum.Material.Neon
+				debugActualMarkerPart.Material = Enum.Material.SmoothPlastic
 				debugActualMarkerPart.Color = Color3.fromRGB(0, 230, 255)
 				debugActualMarkerPart.Parent = workspace
 			end
@@ -566,7 +566,7 @@ local function updateVisualDebugs()
 						debugBlockerHitMarker.CanTouch = false
 						debugBlockerHitMarker.Shape = Enum.PartType.Ball
 						debugBlockerHitMarker.Size = Vector3.new(1.0, 1.0, 1.0)
-						debugBlockerHitMarker.Material = Enum.Material.Neon
+						debugBlockerHitMarker.Material = Enum.Material.SmoothPlastic
 						debugBlockerHitMarker.Color = Color3.fromRGB(255, 30, 30)
 						debugBlockerHitMarker.Parent = workspace
 					end
@@ -796,6 +796,17 @@ function autoFarm.GetDebugInfo()
 	}
 end
 
+
+function autoFarm.SetTargetScope(scope)
+	scanner.SetTargetScope(scope)
+	if enabled and running then
+		task.defer(evaluateTarget)
+	end
+end
+
+function autoFarm.GetTargetScope()
+	return scanner.GetTargetScope()
+end
 
 function autoFarm.Toggle(state, bypassCoordinator)
 	if state == enabled then return end

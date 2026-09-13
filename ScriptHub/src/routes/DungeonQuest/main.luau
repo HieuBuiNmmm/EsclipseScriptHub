@@ -112,12 +112,14 @@ return function(self)
 		local oldSD = require("@routes/DungeonQuest/core/smartDodge")
 		if oldSD and oldSD.StopEngine then oldSD.StopEngine() end
 		if oldSD and oldSD.ClearTrajectoryVisuals then oldSD.ClearTrajectoryVisuals() end
+		if oldSD and oldSD.SetShowPlayerRadar then oldSD.SetShowPlayerRadar(false) end
+		if oldSD and oldSD.ClearPlayerRadar then oldSD.ClearPlayerRadar() end
 	end)
 	pcall(function()
 		local terrain = workspace:FindFirstChildOfClass("Terrain") or workspace.Terrain
 		if terrain then
 			for _, obj in ipairs(terrain:GetChildren()) do
-				if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") then
+				if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") or obj.Name:find("SmartDodge_PlayerShaft") or obj.Name:find("SmartDodge_PlayerHead") then
 					pcall(function() obj:Destroy() end)
 				end
 			end
@@ -125,7 +127,7 @@ return function(self)
 	end)
 	pcall(function()
 		for _, obj in ipairs(workspace:GetChildren()) do
-			if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") then
+			if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") or obj.Name:find("SmartDodge_PlayerShaft") or obj.Name:find("SmartDodge_PlayerHead") then
 				pcall(function() obj:Destroy() end)
 			end
 		end

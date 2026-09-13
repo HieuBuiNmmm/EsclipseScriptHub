@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-12T00:28:02.845453900+00:00",
+    genDate = "2026-09-13T14:00:31.080610100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -31,7 +31,17 @@ type ActiveHazard__DARKLUA_TYPE_a = {
 	telegraphLength: number?,
 	isHomingToPlayer: boolean?,
 	isMultiWave: boolean?,
-	width: number?
+	width: number?,
+	isBossHazard: boolean?,
+	forward2D: Vector3?,
+	beamOrigin: Vector3?,
+	dangerRadius: number?,
+	maxLookahead: number?,
+	lastPos: Vector3?,
+	hasLaunched: boolean?,
+	launchTime: number?,
+	isExpandingCone: boolean?,
+	expansionRate: number?
 }
 
 type CustomHazardConfig__DARKLUA_TYPE_b = {
@@ -43,7 +53,10 @@ type CustomHazardConfig__DARKLUA_TYPE_b = {
 	hasSyntheticTelegraph: boolean?, -- Tự động tạo hành lang màu Cam dự đoán quỹ đạo bắn thẳng
 	telegraphLength: number?,        -- Chiều dài hành lang dự đoán (mặc định 120 studs)
 	isHomingToPlayer: boolean?,      -- Tự động quay hướng hành lang bám theo Player
-	isMultiWave: boolean?
+	isMultiWave: boolean?,           -- Đòn đánh đa đợt sóng: tái sử dụng part con, không xóa vĩnh viễn khi mờ
+	width: number?,                  -- Bề rộng hành lang sát thương thực tế (studs)
+	isExpandingCone: boolean?,       -- Kỹ năng nón mở rộng (Boss 2 Circle Hitbox)
+	expansionRate: number?
 }
 --// Types
 type Window__DARKLUA_TYPE_c = { Visible: boolean? }
@@ -5534,30 +5547,40 @@ function MacLib:Window(Settings)
 
 		for i = 1, #paths do
 			local str = paths[i]
-			if not isfolder(str) then
-				makefolder(str)
-			end
+			pcall(function()
+				if not isfolder(str) then
+					makefolder(str)
+				end
+			end)
 		end
 	end
 
 	function MacLib:LoadAutoLoadConfig()
 		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
 
-		if isfile(MacLib.Folder .. "/settings/autoload.txt") then
-			local name = readfile(MacLib.Folder .. "/settings/autoload.txt")
+		local autoFile = MacLib.Folder .. "/settings/autoload.txt"
+		local hasAuto = false
+		pcall(function() hasAuto = isfile(autoFile) end)
 
-			local suc, err = MacLib:LoadConfig(name)
-			if not suc then
-				WindowFunctions:Notify({
-					Title = "Interface",
-					Description = "Error loading autoload config: " .. err
-				})
+		if hasAuto then
+			local ok, rawName = pcall(readfile, autoFile)
+			if ok and rawName then
+				local name = string.match(rawName, "^%s*(.-)%s*$") -- Loại bỏ khoảng trắng và \r\n
+				if name and name ~= "" then
+					local suc, err = MacLib:LoadConfig(name)
+					if not suc then
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = "Error loading autoload config: " .. tostring(err)
+						})
+					else
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = string.format("Autoloaded config: %q", name),
+						})
+					end
+				end
 			end
-
-			WindowFunctions:Notify({
-				Title = "Interface",
-				Description = string.format("Autoloaded config: %q", name),
-			})
 		end
 	end
 
@@ -5569,11 +5592,13 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:SaveConfig(Path)
-		if isStudio or not writefile then return "Config system unavailable." end
+		if isStudio or not writefile then return false, "Config system unavailable." end
 
 		if (not Path) then
 			return false, "Please select a config file."
 		end
+
+		BuildFolderTree()
 
 		local fullPath = MacLib.Folder .. "/settings/" .. Path .. ".json"
 
@@ -5594,21 +5619,29 @@ function MacLib:Window(Settings)
 			return false, "Unable to encode into JSON data"
 		end
 
-		writefile(fullPath, encoded)
+		local writeOk, writeErr = pcall(writefile, fullPath, encoded)
+		if not writeOk then
+			return false, "Unable to write file: " .. tostring(writeErr)
+		end
 		return true
 	end
 
 	function MacLib:LoadConfig(Path)
-		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
+		if isStudio or not (isfile and readfile) then return false, "Config system unavailable." end
 
 		if (not Path) then
 			return false, "Please select a config file."
 		end
 
 		local file = MacLib.Folder .. "/settings/" .. Path .. ".json"
-		if not isfile(file) then return false, "Invalid file" end
+		local fileExists = false
+		pcall(function() fileExists = isfile(file) end)
+		if not fileExists then return false, "Invalid file" end
 
-		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
+		local readOk, fileContent = pcall(readfile, file)
+		if not readOk or not fileContent then return false, "Unable to read file: " .. tostring(fileContent) end
+
+		local success, decoded = pcall(HttpService.JSONDecode, HttpService, fileContent)
 		if not success then return false, "Unable to decode JSON data." end
 
 		MacLib.LoadingConfig = true
@@ -5630,28 +5663,27 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:RefreshConfigList()
-		if isStudio or not (isfolder and listfiles) then return "Config system unavailable." end
+		if isStudio or not (isfolder and listfiles) then return {} end
 
-		local list = (isfolder(MacLib.Folder) and isfolder(MacLib.Folder .. "/settings")) and listfiles(MacLib.Folder .. "/settings") or {}
+		BuildFolderTree()
+
+		local ok, list = pcall(function()
+			if isfolder(MacLib.Folder) and isfolder(MacLib.Folder .. "/settings") then
+				return listfiles(MacLib.Folder .. "/settings")
+			end
+			return {}
+		end)
+
+		if not ok or type(list) ~= "table" then return {} end
 
 		local out = {}
 		for i = 1, #list do
-			local file = list[i]
+			local file = tostring(list[i])
 			if file:sub(-5) == ".json" then
-				local pos = file:find(".json", 1, true)
-				local start = pos
-
-				local char = file:sub(pos, pos)
-				while char ~= "/" and char ~= "\\" and char ~= "" do
-					pos = pos - 1
-					char = file:sub(pos, pos)
-				end
-
-				if char == "/" or char == "\\" then
-					local name = file:sub(pos + 1, start - 1)
-					if name ~= "options" then
-						table.insert(out, name)
-					end
+				-- Trích xuất tên file (tương thích mọi định dạng: tên thuần, đường dẫn tương đối hoặc tuyệt đối)
+				local name = file:match("([^/\\]+)%.json$")
+				if name and name ~= "options" then
+					table.insert(out, name)
 				end
 			end
 		end
@@ -6092,15 +6124,25 @@ local ui = {}
 
 -- Fix: Maclib Slider Load chỉ cập nhật UI (SetValue ignorecallback=true),
 -- nên patch UpdateValue để sau khi load vẫn gọi lại Callback => backend đồng bộ.
-function ui.PatchSliderLoadCallback(sliderElement)
+function ui.PatchSliderLoadCallback(sliderElement, valueTransform)
 	if not sliderElement or type(sliderElement.UpdateValue) ~= "function" then return sliderElement end
 	local originalUpdateValue = sliderElement.UpdateValue
 	sliderElement.UpdateValue = function(self, Value)
-		originalUpdateValue(self, Value)
+		local numVal = tonumber(Value)
+		if numVal and valueTransform then
+			numVal = valueTransform(numVal)
+		end
 		local settings = self.Settings
+		if settings and numVal then
+			local min = settings.Minimum or 0
+			local max = settings.Maximum or 100
+			numVal = math.clamp(numVal, math.min(min, max), math.max(min, max))
+		end
+		originalUpdateValue(self, numVal or Value)
 		if settings and settings.Callback then
+			local finalVal = self.Value or numVal or tonumber(Value)
 			task.spawn(function()
-				pcall(settings.Callback, tonumber(Value))
+				pcall(settings.Callback, finalVal)
 			end)
 		end
 	end
@@ -6138,6 +6180,16 @@ end
 
 return ui
 end function __DIST.f()
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -6232,6 +6284,47 @@ function filter.RegisterIgnoredSkill(skillName: string)
 	end
 end
 
+--// Kiểm tra xem đối tượng có phải là vật thể debug, marker, hoặc visual nội bộ của script/hub không
+local function isInternalDebugOrVisual(inst: Instance): boolean
+	if not inst then return true end
+	local name = inst.Name
+	local lower = name:lower()
+
+	-- 1. Chứa từ khóa debug
+	if lower:find("debug", 1, true) then return true end
+
+	-- 2. Tiền tố TM_ hoặc AutoFarm debug helper
+	if name:sub(1, 3) == "TM_" or lower:find("tm_", 1, true) then return true end
+
+	-- 3. Các đối tượng của SmartDodge, AutoPlay, SmartAutoPlay
+	if lower:find("smartdodge", 1, true) or lower:find("dodgenode", 1, true) then return true end
+	if lower:find("smartautoplay", 1, true) or lower:find("autoplay", 1, true) then return true end
+
+	-- 4. Các visual spheres và markers của Hub
+	if lower:find("radiussphere", 1, true) or lower:find("skillsphere", 1, true) then return true end
+	if lower:find("safemarker", 1, true) or lower:find("repositionmarker", 1, true) then return true end
+	if lower:find("beaconpillar", 1, true) or lower:find("hitboxcircle", 1, true) then return true end
+	if lower:find("areavisual", 1, true) or lower:find("crystalguidebox", 1, true) then return true end
+	if lower:find("movingtrajectory", 1, true) or lower:find("telegraphcorridor", 1, true) then return true end
+
+	-- 5. SelectionBox, BillboardGui, Highlight, Adornments
+	if inst:IsA("SelectionBox") or inst:IsA("BillboardGui") or inst:IsA("Highlight") or inst:IsA("HandleAdornment") then
+		return true
+	end
+
+	-- 6. Kiểm tra Parent nếu là con của các folder/model debug nội bộ
+	if inst.Parent and inst.Parent ~= Workspace then
+		local pName = inst.Parent.Name
+		local pLower = pName:lower()
+		if pLower:find("debug", 1, true) or pName:sub(1, 3) == "TM_" then return true end
+		if pLower:find("smartdodge", 1, true) or pLower:find("smartautoplay", 1, true) then return true end
+		if pLower:find("safemarker", 1, true) or pLower:find("repositionmarker", 1, true) then return true end
+		if pLower:find("radiusvisual", 1, true) then return true end
+	end
+
+	return false
+end
+
 --// Kiểm tra xem một Instance cấp cao (Model / Folder / Part) có bị bỏ qua không
 function filter.IsIgnoredInstance(inst: Instance): boolean
 	if not inst then return true end
@@ -6241,30 +6334,30 @@ function filter.IsIgnoredInstance(inst: Instance): boolean
 		return true
 	end
 
-	-- 2. Bỏ qua các object do chính Smart Dodge tạo ra
-	if inst.Name:find("SmartDodge") or inst.Name:find("DodgeNode") then
+	-- 2. Bỏ qua TUYỆT ĐỐI các đối tượng Debug / Visual nội bộ của Hub
+	if isInternalDebugOrVisual(inst) then
 		return true
 	end
 
-	-- 2. Bỏ qua danh sách cố định
+	-- 3. Bỏ qua danh sách cố định
 	if IGNORED_WORKSPACE_NAMES[inst.Name] then
 		return true
 	end
 
-	-- 3. Bỏ qua nếu là Character của bất kỳ Player nào trong server
+	-- 4. Bỏ qua nếu là Character của bất kỳ Player nào trong server
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p.Character == inst then
 			return true
 		end
 	end
 
-	-- 4. Bỏ qua theo tên kỹ năng Player đã học được
+	-- 5. Bỏ qua theo tên kỹ năng Player đã học được
 	local nameLower = inst.Name:lower():gsub("%s+", "")
 	if ignoredSkillNames[inst.Name] or ignoredSkillNames[nameLower] then
 		return true
 	end
 
-	-- 5. Bỏ qua các hiệu ứng Aura thông dụng
+	-- 6. Bỏ qua các hiệu ứng Aura thông dụng
 	if nameLower:find("enhancedaura", 1, true) or nameLower:find("auraring", 1, true) or nameLower:find("groundaura", 1, true) then
 		return true
 	end
@@ -6281,8 +6374,10 @@ function filter.IsIgnoredPart(part: BasePart): boolean
 		return true
 	end
 
-	-- 2. Bỏ qua Part của Smart Dodge
-	if part.Name:find("SmartDodge") then return true end
+	-- 2. Bỏ qua TUYỆT ĐỐI các đối tượng Debug / Visual nội bộ của Hub
+	if isInternalDebugOrVisual(part) then
+		return true
+	end
 
 	-- 3. Bỏ qua các Part xương cốt / helper
 	local nameLower = part.Name:lower():gsub("%s+", "")
@@ -6389,7 +6484,7 @@ end
 
 return filter
 end function __DIST.h()-- Smart Dodge V2: Visuals Engine
--- Quản lý toàn bộ hiển thị 3D ESP (SelectionBox, Name Tag Billboards, Trajectory Box, Timers).
+-- Quản lý toàn bộ hiển thị 3D ESP (SelectionBox, Name Tag Billboards, Trajectory Box).
 -- Tách rời hoàn toàn khỏi logic toán học phát hiện, dễ dàng bật/tắt độc lập và tùy biến màu sắc.
 
 
@@ -6711,8 +6806,10 @@ function visuals.AttachPartVisual(hazard: ActiveHazard__DARKLUA_TYPE_a, part: Ba
 		end
 	end
 
-	-- 2. Name Tag Billboard hiển thị tên: Chỉ tạo 1 nhãn đại diện cho hazard để tránh rối mắt
-	if #data.nameTags == 0 then
+	-- 2. Name Tag Billboard hiển thị tên: CHỈ tạo cho Object chính có khung vàng (hazard.isTelegraph == false), TUYỆT ĐỐI không gắn cho debug/marker
+	local hNameLower = hazard.name:lower()
+	local isDebugOrMarker = hNameLower:find("debug", 1, true) or hazard.name:sub(1, 3) == "TM_" or hNameLower:find("smartdodge", 1, true) or hNameLower:find("smartautoplay", 1, true) or hNameLower:find("marker", 1, true)
+	if not isDebugOrMarker and not hazard.isTelegraph and #data.nameTags == 0 then
 		local displayName = ""
 		if hazard.instance and hazard.instance ~= part then
 			displayName = ("%s(%s)"):format(hazard.instance.Name, part.ClassName)
@@ -6747,6 +6844,10 @@ end
 --// Gắn SelectionBox 3D và các visual lên hazard
 function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 	if hazardVisualMap[hazard] then return end
+	local hNameLower = hazard.name:lower()
+	if hNameLower:find("debug", 1, true) or hazard.name:sub(1, 3) == "TM_" or hNameLower:find("smartdodge", 1, true) or hNameLower:find("smartautoplay", 1, true) then
+		return
+	end
 
 	local data = {
 		boxes = {},
@@ -6777,91 +6878,112 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 
 		-- Dựa trực tiếp vào độ rộng của Beam thật trong game hoặc SelectionBox của Spike xuất phát cùng vị trí
 		local beam = firstPart:FindFirstChildOfClass("Beam") or (firstPart.Parent and firstPart.Parent:FindFirstChildOfClass("Beam"))
-		local width = nil
 
-		-- 1. Nếu là tia Big Spike (Beam.Width0 = 40 trong game script hoặc tên chứa bigspike)
+		-- Xác định chính xác đòn đánh là Big Spike hay Seeking Spikes:
 		local isBigSpike = (beam and beam.Width0 and beam.Width0 >= 20)
 			or (firstPart.Name:lower():find("bigspike") ~= nil)
 			or (firstPart.Parent and firstPart.Parent.Name:lower():find("bigspike") ~= nil)
 
-		if isBigSpike then
-			width = beam and math.max(beam.Width0, beam.Width1 or 0) or 40.0
-			if width < 20 then width = 40.0 end
-		else
-			-- 2. Với Seeking Spikes hoặc các đòn khác:
-			-- Beam.Width0 trong ReplicatedStorage template chỉ là tia mỏng mặc định (~1-2 studs),
-			-- KHÔNG phải độ rộng thực của chiêu! Spike thật trong game có độ rộng ~10-14 studs!
-			-- Ưu tiên đo trực tiếp từ SelectionBox / SpecialMesh của Companion Spike Part!
-			width = getCompanionSpikeBoxWidth(startPos)
-			if not width or width < 4.0 then
-				-- Fallback chuẩn xác cho Seeking Spikes (độ rộng gai ~12 studs thay vì 6 studs)
-				width = 12.0
+		if not isBigSpike then
+			local compH, compP = findCompanionProjectile(startPos)
+			if (compH and compH.name and compH.name:lower():find("bigspike")) or (compP and compP.Name:lower():find("bigspike")) then
+				isBigSpike = true
 			end
 		end
+
+		local isSeekingSpike = (firstPart.Name:lower():find("seekingspike") ~= nil)
+			or (firstPart.Parent and firstPart.Parent.Name:lower():find("seekingspike") ~= nil)
+		if not isSeekingSpike and not isBigSpike then
+			local compH, compP = findCompanionProjectile(startPos)
+			if (compH and compH.name and compH.name:lower():find("seekingspike")) or (compP and compP.Name:lower():find("seekingspike")) then
+				isSeekingSpike = true
+			end
+		end
+
+		local width = 40.0
+		if isBigSpike then
+			width = 40.0
+		elseif isSeekingSpike then
+			width = 16.0
+		else
+			width = hazard.width or 20.0
+		end
 		width = math.clamp(width, 4.0, 50.0)
+		hazard.width = width
+		hazard.dangerRadius = width / 2
 
-		-- Tạo khối hành lang 3D vô hình mô phỏng đường đi của đạn với bề ngang = SelectionBox của Spike
-		local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -length / 2)
-		local corridor = Instance.new("Part")
-		corridor.Name = "SmartDodge_TelegraphCorridor"
-		corridor.Transparency = 1
-		corridor.Anchored = true
-		corridor.CanCollide = false
-		corridor.CanQuery = false
-		corridor.CanTouch = false
-		corridor.Size = Vector3.new(width, 0.4, length)
-		corridor.CFrame = centerCF
-		corridor.Parent = Workspace
-		data.corridorPart = corridor
-		data.telegraphStartPos = startPos
+		if hazard.maxLookahead and hazard.maxLookahead > length then
+			length = hazard.maxLookahead
+			local dir = delta.Magnitude > 0.001 and delta.Unit or Vector3.new(0, 0, -1)
+			endPos = startPos + dir * length
+		end
 
-		-- Bọc SelectionBox Cam Neon lên toàn bộ hành lang tia định hướng
-		local box = Instance.new("SelectionBox")
-		box.Name = "SmartDodge_SelectionBox_Telegraph"
-		box.Color3 = TELEGRAPH_BOX_COLOR
-		box.SurfaceColor3 = TELEGRAPH_BOX_COLOR
-		box.SurfaceTransparency = surfaceTransparency
-		box.LineThickness = lineThickness
-		box.Adornee = corridor
-		box.Visible = espEnabled
-		box.Parent = corridor
-		table.insert(data.boxes, box)
+		-- Kiểm tra xem Companion Spike đã tạo corridor trước đó chưa để dùng chung
+		local compHazard, compPart = findCompanionProjectile(startPos)
+		local existingCorridor = compHazard and hazardVisualMap[compHazard] and hazardVisualMap[compHazard].corridorPart
+		if existingCorridor and existingCorridor.Parent then
+			local compData = hazardVisualMap[compHazard]
+			data.corridorPart = compData.corridorPart
+			data.corridorBox = compData.corridorBox
+			data.corridorNameTag = compData.corridorNameTag
+			data.telegraphStartPos = compData.telegraphStartPos
+			data.companionHazard = compHazard
+			data.companionPart = compPart
+		else
+			-- Tạo khối hành lang 3D vô hình mô phỏng tia định hướng
+			local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -length / 2)
+			local corridor = Instance.new("Part")
+			corridor.Name = "SmartDodge_TelegraphCorridor"
+			corridor.Transparency = 1
+			corridor.Anchored = true
+			corridor.CanCollide = false
+			corridor.CanQuery = false
+			corridor.CanTouch = false
+			corridor.Size = Vector3.new(width, 0.4, length)
+			corridor.CFrame = centerCF
+			corridor.Parent = Workspace
+			data.corridorPart = corridor
+			data.telegraphStartPos = startPos
 
-		-- Nhãn tên tia định hướng
-		local bb = Instance.new("BillboardGui")
-		bb.Name = "SmartDodge_NameTag_Telegraph"
-		bb.Size = UDim2.fromOffset(220, 24)
-		bb.StudsOffset = Vector3.new(0, 2.5, 0)
-		bb.AlwaysOnTop = true
-		bb.Enabled = nameTagsEnabled
-		bb.Adornee = corridor
+			-- Bọc SelectionBox Cam Neon lên toàn bộ hành lang tia định hướng
+			local box = Instance.new("SelectionBox")
+			box.Name = "SmartDodge_SelectionBox_Telegraph"
+			box.Color3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceColor3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceTransparency = surfaceTransparency
+			box.LineThickness = lineThickness
+			box.Adornee = corridor
+			box.Visible = espEnabled
+			box.Parent = corridor
+			data.corridorBox = box
+			table.insert(data.boxes, box)
 
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.fromScale(1, 1)
-		label.BackgroundTransparency = 1
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 12
-		label.TextColor3 = TELEGRAPH_TEXT_COLOR
-		label.TextStrokeTransparency = 0
-		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-		label.Text = ("%s [Beam W:%.1f]"):format(hazard.instance.Name, width)
-		label.Parent = bb
-		bb.Parent = corridor
-		table.insert(data.nameTags, bb)
+			-- Tự động liên kết với companion spike nếu đã xuất hiện
+			if compHazard and hazardVisualMap[compHazard] then
+				local compData = hazardVisualMap[compHazard]
+				compData.corridorPart = corridor
+				compData.corridorBox = box
+				compData.telegraphStartPos = startPos
+				data.companionHazard = compHazard
+				data.companionPart = compPart
+			end
+		end
 
 		-- 2. Dynamic Shrinking Corridor Runner:
-		-- Tự động co ngắn hành lang từ phía sau theo vị trí đầu đạn (sau lưng tên lửa là SAFE)
-		local pathVec = (endPos - startPos)
-		local totalLength = pathVec.Magnitude
-		local pathDir = (totalLength > 0.001) and (pathVec / totalLength) or Vector3.new(0, 0, -1)
+		-- Chỉ co ngắn cho đạn bay (Missile / Projectile), TUYỆT ĐỐI KHÔNG co ngắn tia Beam liên tục (Beam Part)!
+		local isBeamType = hazard.instance.Name:lower():find("beam") ~= nil or (firstPart and firstPart:FindFirstChildOfClass("Beam") ~= nil)
+		if not isBeamType then
+			local pathVec = (endPos - startPos)
+			local totalLength = pathVec.Magnitude
+			local pathDir = (totalLength > 0.001) and (pathVec / totalLength) or Vector3.new(0, 0, -1)
 
-		local compHazard, compPart = findCompanionProjectile(startPos)
-		data.companionPart = compPart
-		data.companionHazard = compHazard
+			local compHazard, compPart = findCompanionProjectile(startPos)
+			data.companionPart = compPart
+			data.companionHazard = compHazard
 
-		local heartbeatConn: RBXScriptConnection?
-		local searchStartTime = os.clock()
-		local compHasBeenVisible = false
+			local heartbeatConn: RBXScriptConnection?
+			local searchStartTime = os.clock()
+			local compHasBeenVisible = false
 
 		heartbeatConn = RunService.Heartbeat:Connect(function()
 			if not corridor or not corridor.Parent then
@@ -6935,6 +7057,7 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 		end)
 
 		data.heartbeatConn = heartbeatConn
+		end
 	elseif shouldUnify then
 		-- Gộp toàn bộ các part con (>= 2): Vẽ DUY NHẤT 1 SelectionBox bao quát toàn bộ Model
 		local box = Instance.new("SelectionBox")
@@ -6967,7 +7090,9 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 			end
 		end
 
-		if anchorPart then
+		local hNameLower = hazard.name:lower()
+		local isDebugOrMarker = hNameLower:find("debug", 1, true) or hazard.name:sub(1, 3) == "TM_" or hNameLower:find("smartdodge", 1, true) or hNameLower:find("smartautoplay", 1, true) or hNameLower:find("marker", 1, true)
+		if anchorPart and not isDebugOrMarker and not hazard.isTelegraph and #data.nameTags == 0 then
 			local bb = Instance.new("BillboardGui")
 			bb.Name = "SmartDodge_NameTag_Model"
 			bb.Size = UDim2.fromOffset(200, 24)
@@ -6981,7 +7106,7 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 			label.BackgroundTransparency = 1
 			label.Font = Enum.Font.GothamBold
 			label.TextSize = 12
-			label.TextColor3 = textColor
+			label.TextColor3 = HAZARD_TEXT_COLOR
 			label.TextStrokeTransparency = 0
 			label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 			label.Text = ("%s(Model)"):format(hazard.instance.Name)
@@ -6994,6 +7119,68 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 		-- Nếu chỉ có 1 Part hoặc Part đơn lẻ: Vẽ theo từng Part
 		for part in pairs(hazard.activeParts) do
 			visuals.AttachPartVisual(hazard, part)
+		end
+	end
+
+	-- 3b. Dedicated Direction Beam cho 2 skill Spike (firstBossSeekingSpikes và firstBossBigSpike):
+	-- User yêu cầu: Vùng màu cam của 2 skill Spike chính là tia định hướng (Direction Beam)!
+	local isSpikeSkill = hazard.name:lower():find("seekingspike") ~= nil or hazard.name:lower():find("bigspike") ~= nil
+	if isSpikeSkill and not data.corridorPart then
+		-- 1. Tìm xem firstBossBeamPart đã tạo corridor gần vị trí xuất phát chưa
+		local originPos = hazard.beamOrigin or hazard.position
+		local foundCorridor = false
+		for h, bData in pairs(hazardVisualMap) do
+			if h ~= hazard and (h.isTelegraph or h.name:lower():find("beam") ~= nil) and bData.corridorPart and bData.corridorPart.Parent then
+				local bOrigin = bData.telegraphStartPos or (h.beamOrigin or h.position)
+				if (Vector3.new(bOrigin.X - originPos.X, 0, bOrigin.Z - originPos.Z)).Magnitude < 25 then
+					data.corridorPart = bData.corridorPart
+					data.corridorBox = bData.corridorBox
+					data.corridorNameTag = bData.corridorNameTag
+					data.telegraphStartPos = bOrigin
+					bData.companionHazard = hazard
+					bData.companionPart = (hazard.instance and hazard.instance:IsA("BasePart")) and hazard.instance or next(hazard.activeParts)
+					foundCorridor = true
+					break
+				end
+			end
+		end
+
+		-- 2. Nếu firstBossBeamPart chưa có hoặc đã bị hủy sớm (sau 1.5s), tự tạo tia định hướng cho chính Spike:
+		if not foundCorridor then
+			local isBig = hazard.name:lower():find("bigspike") ~= nil
+			local w = isBig and 40.0 or 16.0
+			local len = hazard.maxLookahead or hazard.telegraphLength or (isBig and 140.0 or 120.0)
+			local fwd = hazard.forward2D or Vector3.new(0, 0, -1)
+			local startPos = hazard.beamOrigin or hazard.position
+			local endPos = startPos + fwd * len
+
+			local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -len / 2)
+			local corridor = Instance.new("Part")
+			corridor.Name = "SmartDodge_TelegraphCorridor"
+			corridor.Transparency = 1
+			corridor.Anchored = true
+			corridor.CanCollide = false
+			corridor.CanQuery = false
+			corridor.CanTouch = false
+			corridor.Size = Vector3.new(w, 0.4, len)
+			corridor.CFrame = centerCF
+			corridor.Parent = Workspace
+			data.corridorPart = corridor
+			data.telegraphStartPos = startPos
+
+			local box = Instance.new("SelectionBox")
+			box.Name = "SmartDodge_SelectionBox_Telegraph"
+			box.Color3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceColor3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceTransparency = surfaceTransparency
+			box.LineThickness = lineThickness
+			box.Adornee = corridor
+			box.Visible = espEnabled
+			box.Parent = corridor
+			data.corridorBox = box
+			table.insert(data.boxes, box)
+
+
 		end
 	end
 
@@ -7065,27 +7252,7 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 			box.Parent = corridor
 			table.insert(data.boxes, box)
 
-			local bb = Instance.new("BillboardGui")
-			bb.Name = "SmartDodge_NameTag_Trajectory"
-			bb.Size = UDim2.fromOffset(200, 24)
-			bb.StudsOffset = Vector3.new(0, 2.5, 0)
-			bb.AlwaysOnTop = true
-			bb.Enabled = nameTagsEnabled
-			bb.Adornee = corridor
 
-			local label = Instance.new("TextLabel")
-			label.Size = UDim2.fromScale(1, 1)
-			label.BackgroundTransparency = 1
-			label.Font = Enum.Font.GothamBold
-			label.TextSize = 12
-			label.TextColor3 = TELEGRAPH_TEXT_COLOR
-			label.TextStrokeTransparency = 0
-			label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-			local trajTitle = hazard.isHomingToPlayer and "Homing Trajectory" or "Moving Trajectory"
-			label.Text = ("%s [%s]"):format(hazard.instance.Name, trajTitle)
-			label.Parent = bb
-			bb.Parent = corridor
-			table.insert(data.nameTags, bb)
 
 			-- Heartbeat Runner (Chuẩn V1):
 			-- Khóa hướng bay theo vector chuyển động thực tế (Delta Position) hoặc bám theo Player (Homing).
@@ -7105,7 +7272,7 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 
 				local pPos = (hazard.instance and hazard.instance:IsA("Model") and hazard.instance.PrimaryPart) and hazard.instance.PrimaryPart.Position or projPart.Position
 
-				local currentDepth = lookaheadDepth
+				local currentDepth = hazard.telegraphLength or lookaheadDepth
 				if hazard.isHomingToPlayer then
 					local localPlayer = Players.LocalPlayer
 					local char = localPlayer and localPlayer.Character
@@ -7116,8 +7283,8 @@ function visuals.AttachHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 						if distToPlayer > 0.3 then
 							lockedForward2D = toPlayer.Unit
 						end
-						-- Giới hạn độ dài: Không nối 100% tới player nếu player ở xa, nhưng che phủ đủ khoảng cách gần
-						currentDepth = math.clamp(distToPlayer + 2.0, 6.0, lookaheadDepth)
+						-- Giữ nguyên toàn bộ chiều dài hành lang Cam (hazard.telegraphLength), KHÔNG thu ngắn khi Player lại gần
+						currentDepth = hazard.telegraphLength or lookaheadDepth
 					else
 						local moveDelta = pPos - lastPos
 						local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
@@ -7210,38 +7377,74 @@ function visuals.RemoveHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 	local data = hazardVisualMap[hazard]
 	if not data then return end
 
-	-- Nếu hazard này là tia định hướng (Telegraph Beam) mà viên tên lửa companion vẫn đang bay:
-	-- KHÔNG xóa hành lang màu cam! Chuyển quyền quản lý corridor sang hazard của tên lửa
+	-- Nếu hazard này là tia định hướng (Telegraph Beam) mà companion spike vẫn đang tồn tại:
+	-- Chuyển quyền quản lý corridor sang hazard của spike để không bị xóa sớm khi beam despawn sau 1.5s!
 	if hazard.isTelegraph and data.corridorPart and data.corridorPart.Parent then
-		local compPart = data.companionPart
-		if not compPart or not compPart.Parent then
-			local h, p = findCompanionProjectile(data.telegraphStartPos or data.corridorPart.Position)
-			compPart = p
-			data.companionPart = p
-			data.companionHazard = h
-		end
-
-		if compPart and compPart.Parent and compPart.Transparency < 0.85 then
-			local compHazard = data.companionHazard
-			if not compHazard then
-				for h in pairs(hazardVisualMap) do
-					if h.instance == compPart or (h.activeParts and h.activeParts[compPart]) or (compPart.Parent and h.instance == compPart.Parent) then
+		local compHazard = data.companionHazard
+		if not compHazard or not hazardVisualMap[compHazard] then
+			local origin = data.telegraphStartPos or (hazard.beamOrigin or hazard.position)
+			for h in pairs(hazardVisualMap) do
+				if h ~= hazard and (h.name:lower():find("spike") or (h.instance and h.instance.Name:lower():find("spike"))) then
+					local hPos = h.beamOrigin or h.position
+					if (Vector3.new(hPos.X - origin.X, 0, hPos.Z - origin.Z)).Magnitude < 30 then
 						compHazard = h
 						break
 					end
 				end
 			end
+		end
 
-			if compHazard and hazardVisualMap[compHazard] then
-				local compData = hazardVisualMap[compHazard]
-				compData.corridorPart = data.corridorPart
-				compData.heartbeatConn = data.heartbeatConn
-				compData.companionPart = data.companionPart
+		if compHazard and hazardVisualMap[compHazard] then
+			local compData = hazardVisualMap[compHazard]
+			compData.corridorPart = data.corridorPart
+			compData.corridorBox = data.corridorBox
+			compData.corridorNameTag = data.corridorNameTag
+			compData.telegraphStartPos = data.telegraphStartPos
+
+			-- Đưa box và name tag sang compData để compData quản lý vòng đời
+			if data.corridorBox and not table.find(compData.boxes, data.corridorBox) then
+				table.insert(compData.boxes, data.corridorBox)
+			end
+			if data.corridorNameTag and not table.find(compData.nameTags, data.corridorNameTag) then
+				table.insert(compData.nameTags, data.corridorNameTag)
 			end
 
-			-- Tách corridorPart ra khỏi data của beam để không bị Destroy() ngay dưới đây
+			-- Gỡ khỏi data của beam để vòng lặp Destroy() bên dưới KHÔNG xóa visual của corridor
+			if data.corridorBox then
+				local idx = table.find(data.boxes, data.corridorBox)
+				if idx then table.remove(data.boxes, idx) end
+			end
+			if data.corridorNameTag then
+				local idx = table.find(data.nameTags, data.corridorNameTag)
+				if idx then table.remove(data.nameTags, idx) end
+			end
+
 			data.corridorPart = nil
+			data.corridorBox = nil
+			data.corridorNameTag = nil
 			data.heartbeatConn = nil
+		end
+	end
+
+	-- Ngược lại, nếu hazard là companion spike mà beam vẫn còn tồn tại thì nhường corridor cho beam
+	local isSpike = hazard.name:lower():find("spike") ~= nil or (hazard.instance and hazard.instance.Name:lower():find("spike") ~= nil)
+	if isSpike and data.corridorPart and data.corridorPart.Parent then
+		for h, bData in pairs(hazardVisualMap) do
+			if h ~= hazard and h.isTelegraph and bData.corridorPart == data.corridorPart then
+				-- Corridor vẫn thuộc về beam, gỡ khỏi spike để không destroy nhầm
+				if data.corridorBox then
+					local idx = table.find(data.boxes, data.corridorBox)
+					if idx then table.remove(data.boxes, idx) end
+				end
+				if data.corridorNameTag then
+					local idx = table.find(data.nameTags, data.corridorNameTag)
+					if idx then table.remove(data.nameTags, idx) end
+				end
+				data.corridorPart = nil
+				data.corridorBox = nil
+				data.corridorNameTag = nil
+				break
+			end
 		end
 	end
 
@@ -7266,6 +7469,19 @@ function visuals.RemoveHazardVisuals(hazard: ActiveHazard__DARKLUA_TYPE_a)
 	end
 
 	hazardVisualMap[hazard] = nil
+end
+
+--// Cập nhật độ dài hành lang Cam trực tiếp trên Workspace
+function visuals.UpdateCorridorLength(hazard: ActiveHazard__DARKLUA_TYPE_a, newLength: number)
+	local data = hazardVisualMap[hazard]
+	if not data or not data.corridorPart or not data.corridorPart.Parent then return end
+	local corridor = data.corridorPart
+	local startPos = data.telegraphStartPos or (hazard.beamOrigin or hazard.position)
+	local fwd = hazard.forward2D or Vector3.new(0, 0, -1)
+	local endPos = startPos + fwd * newLength
+	local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -newLength / 2)
+	corridor.Size = Vector3.new(corridor.Size.X, corridor.Size.Y, newLength)
+	corridor.CFrame = centerCF
 end
 
 --// Xóa toàn bộ visual khi tắt hệ thống
@@ -7366,1286 +7582,7 @@ function visuals.UpdatePlayerHitboxVisual(playerPos: Vector3?, inDanger: boolean
 end
 
 return visuals
-end function __DIST.i()-- Smart Dodge V2: Core Threat Detection Engine (Pure Neon & Dynamic Detection)
--- Quét Workspace Depth 1, nhận diện mọi BasePart có Material == Neon (trực tiếp hoặc con cháu trong Model),
--- bọc SelectionBox 3D vàng đậm và gắn Name Tag dạng Parent(Part).
-
-
-local Workspace = game:GetService("Workspace")
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-local lifecycle = __DIST.load('b')
-local types = __DIST.load('f')
-local filter = __DIST.load('g')
-local visuals = __DIST.load('h')
-
-local detection = {}
-
---// State
-local enabled = false
-local logHazards = false
-local activeHazards: { [Instance]: ActiveHazard__DARKLUA_TYPE_a} = {}
-local hazardCount = 0
-
---// Callbacks
-local hazardAddedCallbacks: { (ActiveHazard__DARKLUA_TYPE_a) -> () } = {}
-local hazardRemovedCallbacks: { (ActiveHazard__DARKLUA_TYPE_a) -> () } = {}
-local hazardChangedCallbacks: { (number, ActiveHazard__DARKLUA_TYPE_a?) -> () } = {}
-
-local connections: { RBXScriptConnection } = {}
-local FADE_THRESHOLD = 0.85
-
---// Danh sách các chiêu thức / đòn đánh ngoại lệ theo tên (không bắt buộc Material == Neon)
-
-
-
-
-
-
-
-
-
-
-
-
-local CUSTOM_HAZARDS: { [string]: CustomHazardConfig__DARKLUA_TYPE_b } = {
-	["firstbossseekingspikes"] = {
-		name = "firstBossSeekingSpikes",
-		isTelegraph = false, -- Đòn đánh / Spike (màu Vàng tiêu chuẩn), vùng màu Cam tạo bởi tia firstBossBeamPart
-		telegraphLength = 140,
-	},
-	["firstbossbigspike"] = {
-		name = "firstBossBigSpike",
-		isTelegraph = false, -- Đòn đánh / Gai khổng lồ (màu Vàng tiêu chuẩn), vùng màu Cam tạo bởi tia firstBossBeamPart
-		telegraphLength = 140,
-	},
-	["firstbossbeampart"] = {
-		name = "firstBossBeamPart",
-		isTelegraph = true,  -- Tia định hướng báo trước (quy ước màu Cam định hướng)
-		telegraphLength = 140,
-	},
-	["firstbosscrisscross"] = {
-		name = "firstBossCrissCross",
-		isTelegraph = false,
-		hasSyntheticTelegraph = true, -- Tự tạo vùng Moving Trajectory màu Cam đi theo đạn chuẩn V1
-		telegraphLength = 40,         -- Độ dài giới hạn nhìn trước 40 studs (chuẩn V1)
-	},
-	["smallicespikes"] = {
-		name = "smallIceSpikes",
-		isTelegraph = false,
-		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
-	},
-	["mediumicespikes"] = {
-		name = "mediumIceSpikes",
-		isTelegraph = false,
-		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
-	},
-	["largeicespikes"] = {
-		name = "largeIceSpikes",
-		isTelegraph = false,
-		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
-	},
-	["icespikes"] = {
-		name = "iceSpikes",
-		isTelegraph = false,
-		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
-	},
-	["thirdbossmissile"] = {
-		name = "thirdBossMissile",
-		isTelegraph = false,
-		hasSyntheticTelegraph = true, -- Vùng Moving Trajectory màu Cam di chuyển theo tên lửa chuẩn V1
-		telegraphLength = 40,         -- Giới hạn 40 studs phía trước đầu tên lửa (tối đa hóa vùng SAFE)
-	},
-	["thirdbossmultirings"] = {
-		name = "thirdBossMultiRings",
-		isTelegraph = false,
-		targetChildContains = "ring", -- Chỉ lấy các part con có tên chứa "ring"
-		neverUnify = true,           -- Bắt buộc vẽ SelectionBox riêng trên từng vòng ring, không gộp kín sàn
-		isMultiWave = true,          -- Tái sử dụng các part con qua nhiều đợt sóng (Wave 1, 2, 3), KHÔNG xóa vĩnh viễn khi mờ đi
-	},
-	["secondbossmovingbeam"] = {
-		name = "secondBossMovingBeam",
-		isTelegraph = false,
-		hasSyntheticTelegraph = true, -- Moving Trajectory Box màu Cam đi cùng beam chuẩn V1
-		telegraphLength = 40,         -- Độ dài nhìn trước 40 studs phía trước thanh beam
-	},
-	["thirdbossbouncingorb"] = {
-		name = "thirdBossBouncingOrb",
-		isTelegraph = false,
-		hasSyntheticTelegraph = true, -- Moving Trajectory Box màu Cam di chuyển theo quả cầu nảy
-		telegraphLength = 28,         -- Độ dài nhìn trước 28 studs phía trước quả cầu
-	},
-	["secondbossyelloworb"] = {
-		name = "secondBossYellowOrb",
-		isTelegraph = false,
-		hasSyntheticTelegraph = true,
-		isHomingToPlayer = true,      -- Hướng màu Cam luôn quay bám theo Player
-		telegraphLength = 25,         -- Giới hạn độ dài tối đa 25 studs (không nối 100% tới player)
-	},
-	["secondbossredorb"] = {
-		name = "secondBossRedOrb",
-		isTelegraph = false,
-		hasSyntheticTelegraph = true,
-		isHomingToPlayer = true,
-		telegraphLength = 25,
-	},
-	["secondbossgreenorb"] = {
-		name = "secondBossGreenOrb",
-		isTelegraph = false,
-		hasSyntheticTelegraph = true,
-		isHomingToPlayer = true,
-		telegraphLength = 25,
-	},
-}
-
-local function getCustomHazardConfig(inst: Instance): CustomHazardConfig__DARKLUA_TYPE_b?
-	if not inst then return nil end
-	local nameLower = inst.Name:lower():gsub("%s+", "")
-	local cfg = CUSTOM_HAZARDS[nameLower]
-	if cfg then return cfg end
-	if nameLower:find("seekingspike") then
-		return CUSTOM_HAZARDS["firstbossseekingspikes"]
-	end
-	if nameLower:find("bigspike") then
-		return CUSTOM_HAZARDS["firstbossbigspike"]
-	end
-	if nameLower:find("beampart") then
-		return CUSTOM_HAZARDS["firstbossbeampart"]
-	end
-	if nameLower:find("multiring") then
-		return CUSTOM_HAZARDS["thirdbossmultirings"]
-	end
-	if nameLower:find("crisscross") then
-		return CUSTOM_HAZARDS["firstbosscrisscross"]
-	end
-	if nameLower:find("movingbeam") then
-		return CUSTOM_HAZARDS["secondbossmovingbeam"]
-	end
-	if nameLower:find("bouncingorb") and not nameLower:find("beam") then
-		return CUSTOM_HAZARDS["thirdbossbouncingorb"]
-	end
-	if nameLower:find("yelloworb") then
-		return CUSTOM_HAZARDS["secondbossyelloworb"]
-	end
-	if nameLower:find("redorb") then
-		return CUSTOM_HAZARDS["secondbossredorb"]
-	end
-	if nameLower:find("greenorb") then
-		return CUSTOM_HAZARDS["secondbossgreenorb"]
-	end
-	if nameLower:find("secondboss") and nameLower:find("orb") and not nameLower:find("explosion") then
-		return CUSTOM_HAZARDS["secondbossyelloworb"]
-	end
-	if inst.Parent and inst.Parent ~= Workspace then
-		local parentLower = inst.Parent.Name:lower():gsub("%s+", "")
-		local pCfg = CUSTOM_HAZARDS[parentLower]
-		if pCfg then return pCfg end
-		if parentLower:find("seekingspike") then
-			return CUSTOM_HAZARDS["firstbossseekingspikes"]
-		end
-		if parentLower:find("bigspike") then
-			return CUSTOM_HAZARDS["firstbossbigspike"]
-		end
-		if parentLower:find("beampart") then
-			return CUSTOM_HAZARDS["firstbossbeampart"]
-		end
-		if parentLower:find("multiring") then
-			return CUSTOM_HAZARDS["thirdbossmultirings"]
-		end
-		if parentLower:find("crisscross") then
-			return CUSTOM_HAZARDS["firstbosscrisscross"]
-		end
-		if parentLower:find("movingbeam") then
-			return CUSTOM_HAZARDS["secondbossmovingbeam"]
-		end
-		if parentLower:find("bouncingorb") and not parentLower:find("beam") then
-			return CUSTOM_HAZARDS["thirdbossbouncingorb"]
-		end
-		if parentLower:find("yelloworb") then
-			return CUSTOM_HAZARDS["secondbossyelloworb"]
-		end
-		if parentLower:find("redorb") then
-			return CUSTOM_HAZARDS["secondbossredorb"]
-		end
-		if parentLower:find("greenorb") then
-			return CUSTOM_HAZARDS["secondbossgreenorb"]
-		end
-		if parentLower:find("secondboss") and parentLower:find("orb") and not parentLower:find("explosion") then
-			return CUSTOM_HAZARDS["secondbossyelloworb"]
-		end
-	end
-	return nil
-end
-
---// Trích xuất các BasePart nguy hiểm từ Instance (Part hoặc Model/Folder)
-local function extractHazardParts(instance: Instance, customConfig: CustomHazardConfig__DARKLUA_TYPE_b?): { [BasePart]: boolean }
-	local parts: { [BasePart]: boolean } = {}
-
-	local function isValidPart(p: Instance): boolean
-		if not p or not p:IsA("BasePart") or filter.IsIgnoredPart(p) then return false end
-
-		if customConfig then
-			-- Chiêu thức ngoại lệ theo danh sách tên: hợp lệ khi còn tồn tại trong Workspace
-			return p.Parent ~= nil
-		end
-
-		-- Mặc định cho mọi chiêu thức khác: bắt buộc Material == Neon và chưa mờ
-		return p.Material == Enum.Material.Neon and p.Transparency < FADE_THRESHOLD
-	end
-
-	if instance:IsA("BasePart") then
-		if isValidPart(instance) then
-			parts[instance] = true
-		end
-	elseif instance:IsA("Model") then
-		-- Nếu cấu hình trong Whitelist chỉ định rõ ràng Part con cần lấy (theo tên chính xác hoặc từ khóa chứa)
-		if customConfig and (customConfig.targetChildName or customConfig.targetChildContains) then
-			local targetExact = customConfig.targetChildName and customConfig.targetChildName:lower()
-			local targetContains = customConfig.targetChildContains and customConfig.targetChildContains:lower()
-			for _, desc in ipairs(instance:GetDescendants()) do
-				if desc:IsA("BasePart") and desc.Parent and not filter.IsIgnoredPart(desc) then
-					local descName = desc.Name:lower()
-					local matches = false
-					if targetExact and descName == targetExact then
-						matches = true
-					elseif targetContains and descName:find(targetContains) then
-						matches = true
-					end
-					if matches then
-						parts[desc] = true
-					end
-				end
-			end
-			return parts
-		end
-
-		-- Mặc định cho Model thông thường: duyệt lấy các part hợp lệ
-		for _, desc in ipairs(instance:GetDescendants()) do
-			if isValidPart(desc) then
-				parts[desc] = true
-			end
-		end
-	end
-
-	return parts
-end
-
---// Hủy đăng ký hiểm họa
-local function unregisterHazard(instance: Instance, reason: string?)
-	local hazard = activeHazards[instance]
-	if not hazard then return end
-
-	-- Dọn dẹp connections
-	for _, c in ipairs(hazard.connections) do
-		pcall(function() c:Disconnect() end)
-	end
-	table.clear(hazard.connections)
-
-	-- Xóa visual (SelectionBox + Name Tag)
-	visuals.RemoveHazardVisuals(hazard)
-
-	activeHazards[instance] = nil
-	hazardCount = math.max(0, hazardCount - 1)
-
-	if logHazards then
-		print(("[SmartDodgeV2] 🟢 Threat Cleared: %s (%s)"):format(hazard.name, reason or "Ended"))
-	end
-
-	-- Dispatch events
-	for _, cb in ipairs(hazardRemovedCallbacks) do
-		pcall(cb, hazard)
-	end
-	for _, cb in ipairs(hazardChangedCallbacks) do
-		pcall(cb, hazardCount, hazard)
-	end
-end
-
---// Đăng ký một hiểm họa mới khi phát hiện part Neon hoặc chiêu trong danh sách tên
-local function registerHazard(instance: Instance)
-	if not enabled or activeHazards[instance] or instance:IsA("Folder") or filter.IsIgnoredInstance(instance) then
-		return
-	end
-
-	local customConfig = getCustomHazardConfig(instance)
-	local parts = extractHazardParts(instance, customConfig)
-
-	-- Nếu chưa có part nào hợp lệ lúc vừa spawn:
-	if next(parts) == nil then
-		-- Giống V1: Nếu là Model mới tạo, các part con có thể chưa kịp replicate vào Model
-		-- Thiết lập watcher 1.5s để đón đầu khi part con xuất hiện
-		if instance:IsA("Model") then
-			local c: RBXScriptConnection?
-			c = instance.DescendantAdded:Connect(function(desc)
-				if desc:IsA("BasePart") and not filter.IsIgnoredPart(desc) then
-					local isValid = false
-					if customConfig then
-						if customConfig.targetChildName then
-							isValid = (desc.Name:lower() == customConfig.targetChildName:lower())
-						elseif customConfig.targetChildContains then
-							isValid = (desc.Name:lower():find(customConfig.targetChildContains:lower()) ~= nil)
-						else
-							isValid = (desc.Parent ~= nil)
-						end
-					else
-						isValid = (desc.Material == Enum.Material.Neon and desc.Transparency < FADE_THRESHOLD)
-					end
-					if isValid then
-						if c then c:Disconnect(); c = nil end
-						registerHazard(instance)
-					end
-				end
-			end)
-			task.delay(1.5, function()
-				if c then c:Disconnect(); c = nil end
-			end)
-		end
-		return
-	end
-
-	local isMultiWave = (customConfig and customConfig.isMultiWave) == true
-
-	-- Đối với Model hoặc đòn đánh đa part, xác định tâm chuẩn xác nhất:
-	local pos = Vector3.zero
-	if instance:IsA("BasePart") then
-		pos = instance.Position
-	elseif instance:IsA("Model") then
-		local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or instance.PrimaryPart
-		pos = (centerPart and centerPart:IsA("BasePart")) and centerPart.Position or instance:GetPivot().Position
-	else
-		local firstPart = next(parts)
-		pos = firstPart and firstPart.Position or Vector3.zero
-	end
-
-	local localPlayer = Players.LocalPlayer
-	local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-	local dist = rootPart and (rootPart.Position - pos).Magnitude or 0
-
-	-- Tập hợp toàn bộ các part thuộc về hazard này (dùng để lắng nghe kết nối)
-	local trackedParts: { [BasePart]: boolean } = {}
-	for p in pairs(parts) do
-		trackedParts[p] = true
-	end
-
-	-- Đối với đòn đánh đa đợt sóng (như thirdBossMultiRings):
-	-- Ở thời điểm spawn, chỉ giữ lại trong hazard.activeParts những part ĐANG SÁNG (< FADE_THRESHOLD).
-	-- Các part chưa kích hoạt sẽ ở trạng thái chờ (vẫn nằm trong trackedParts) để đón Wave 2, Wave 3.
-	if isMultiWave then
-		for p in pairs(trackedParts) do
-			if p.Transparency >= FADE_THRESHOLD then
-				parts[p] = nil
-			end
-		end
-	end
-
-	local neonCount = 0
-	for _ in pairs(parts) do neonCount = neonCount + 1 end
-
-	local hazard: ActiveHazard__DARKLUA_TYPE_a= {
-		instance = instance,
-		name = instance.Name,
-		cleanName = instance.Name:gsub("^%s+", ""):gsub("%s+$", ""),
-		spawnTime = os.clock(),
-		activeParts = parts,
-		neonCount = neonCount,
-		position = pos,
-		distanceToPlayer = dist,
-		connections = {},
-		isTelegraph = customConfig and customConfig.isTelegraph or false,
-		isCustomHazard = customConfig ~= nil,
-		neverUnify = customConfig and customConfig.neverUnify or false,
-		hasSyntheticTelegraph = customConfig and customConfig.hasSyntheticTelegraph or false,
-		telegraphLength = customConfig and customConfig.telegraphLength or nil,
-		isHomingToPlayer = customConfig and customConfig.isHomingToPlayer or false,
-		isMultiWave = isMultiWave,
-	}
-
-	activeHazards[instance] = hazard
-	hazardCount = hazardCount + 1
-
-	local partMinTrans: { [BasePart]: number } = {}
-	local partHasFlashed: { [BasePart]: boolean } = {}
-	for p in pairs(trackedParts) do
-		local curT = p.Transparency
-		partMinTrans[p] = curT
-		if curT <= 0.35 then
-			partHasFlashed[p] = true
-		end
-	end
-
-	-- Lắng nghe từng part khi mờ đi / sáng lên / bị hủy
-	local function checkPart(p: BasePart)
-		local isValid = (p.Parent ~= nil)
-		if not isValid then
-			trackedParts[p] = nil
-			parts[p] = nil
-			visuals.RemoveHazardPart(hazard, p)
-			local rem = 0
-			for _ in pairs(trackedParts) do rem = rem + 1 end
-			if rem == 0 then
-				unregisterHazard(instance, "All parts destroyed")
-			end
-			return
-		end
-
-		if isMultiWave then
-			local curTrans = p.Transparency
-			if curTrans < FADE_THRESHOLD then
-				-- Part sáng lên trong đợt sóng tấn công mới
-				if not parts[p] then
-					parts[p] = true
-					hazard.neonCount = hazard.neonCount + 1
-					visuals.AttachPartVisual(hazard, p)
-				end
-			else
-				-- Part mờ đi khi đợt sóng nổ xong hoặc đang chờ
-				if parts[p] then
-					parts[p] = nil
-					hazard.neonCount = math.max(0, hazard.neonCount - 1)
-					visuals.RemoveHazardPart(hazard, p)
-				end
-			end
-			-- TUYỆT ĐỐI KHÔNG gọi unregisterHazard khi parts trống ở giữa các wave!
-			return
-		end
-
-		local curTrans = p.Transparency
-		local minT = partMinTrans[p] or curTrans
-		if curTrans < minT then
-			minT = curTrans
-			partMinTrans[p] = minT
-		end
-		if minT <= 0.35 then
-			partHasFlashed[p] = true
-		end
-		-- Pha tan biến sớm: Khi đã từng rõ nét (<= 0.35), chỉ cần độ mờ tăng thêm >= 0.15 hoặc >= 0.40 là xóa ngay
-		local hasDecayedAfterFlash = (partHasFlashed[p] == true) and (curTrans >= (minT + 0.15) or curTrans >= 0.40)
-
-		if not hazard.isCustomHazard then
-			-- Chiêu thông thường: yêu cầu còn Neon, chưa mờ và chưa tan biến
-			if curTrans >= FADE_THRESHOLD or p.Material ~= Enum.Material.Neon or hasDecayedAfterFlash then
-				isValid = false
-			end
-		elseif hazard.isTelegraph then
-			-- Tia định hướng: chỉ mất khi bị hủy khỏi Workspace
-			isValid = (p.Parent ~= nil)
-		else
-			-- Custom Hazard (như Seeking Spike, Big Spike, Third Boss Missile, Ice Spikes):
-			if curTrans < FADE_THRESHOLD then
-				partHasFlashed[p] = true
-			end
-			if partHasFlashed[p] and (curTrans >= FADE_THRESHOLD or hasDecayedAfterFlash) then
-				-- Đã từng xuất hiện và nay trở lại tàng hình hoặc bắt đầu tan biến -> đòn đánh đã kết thúc
-				isValid = false
-			end
-		end
-
-		if not isValid then
-			trackedParts[p] = nil
-			parts[p] = nil
-			visuals.RemoveHazardPart(hazard, p)
-			local rem = 0
-			for _ in pairs(parts) do rem = rem + 1 end
-			hazard.neonCount = rem
-			if rem == 0 then
-				unregisterHazard(instance, "Faded / Destroyed")
-			end
-		end
-	end
-
-	for part in pairs(trackedParts) do
-		table.insert(hazard.connections, part:GetPropertyChangedSignal("Transparency"):Connect(function()
-			checkPart(part)
-		end))
-		if not hazard.isCustomHazard then
-			table.insert(hazard.connections, part:GetPropertyChangedSignal("Material"):Connect(function()
-				checkPart(part)
-			end))
-		end
-		table.insert(hazard.connections, part.AncestryChanged:Connect(function()
-			checkPart(part)
-		end))
-	end
-
-	-- Lắng nghe các part con được nạp trễ vào Model
-	if instance:IsA("Model") then
-		table.insert(hazard.connections, instance.DescendantAdded:Connect(function(desc)
-			if not activeHazards[instance] then return end
-			if desc:IsA("BasePart") and not filter.IsIgnoredPart(desc) then
-				local isValid = false
-				if customConfig then
-					if customConfig.targetChildName then
-						isValid = (desc.Name:lower() == customConfig.targetChildName:lower())
-					elseif customConfig.targetChildContains then
-						isValid = (desc.Name:lower():find(customConfig.targetChildContains:lower()) ~= nil)
-					else
-						isValid = hazard.isTelegraph or (desc.Transparency < FADE_THRESHOLD)
-					end
-				else
-					isValid = (desc.Transparency < FADE_THRESHOLD and desc.Material == Enum.Material.Neon)
-				end
-
-				if isValid and not trackedParts[desc] then
-					trackedParts[desc] = true
-					table.insert(hazard.connections, desc:GetPropertyChangedSignal("Transparency"):Connect(function()
-						checkPart(desc)
-					end))
-					if not hazard.isCustomHazard then
-						table.insert(hazard.connections, desc:GetPropertyChangedSignal("Material"):Connect(function()
-							checkPart(desc)
-						end))
-					end
-					table.insert(hazard.connections, desc.AncestryChanged:Connect(function()
-						checkPart(desc)
-					end))
-					checkPart(desc)
-				end
-			end
-		end))
-	end
-
-	table.insert(hazard.connections, instance.AncestryChanged:Connect(function()
-		if not instance.Parent then
-			unregisterHazard(instance, "Removed from Workspace")
-		end
-	end))
-
-	-- Gắn SelectionBox 3D vàng đậm và Name Tag Parent(Part)
-	visuals.AttachHazardVisuals(hazard)
-
-	if logHazards then
-		print(("[SmartDodgeV2] 🚨 Neon Threat Detected: %s | Neon Parts: %d | Dist: %.1f studs"):format(
-			hazard.name, hazard.neonCount, hazard.distanceToPlayer
-		))
-	end
-
-	-- Dispatch events
-	for _, cb in ipairs(hazardAddedCallbacks) do
-		pcall(cb, hazard)
-	end
-	for _, cb in ipairs(hazardChangedCallbacks) do
-		pcall(cb, hazardCount, hazard)
-	end
-end
-
---// Vòng lặp cập nhật cự ly tới Player theo thời gian thực
-local function startUpdateLoop()
-	table.insert(connections, RunService.Heartbeat:Connect(function()
-		if not enabled then return end
-		local localPlayer = Players.LocalPlayer
-		local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-		local pPos = rootPart and rootPart.Position
-
-		for inst, hazard in pairs(activeHazards) do
-			if not inst.Parent then
-				unregisterHazard(inst, "Parent Nil")
-				continue
-			end
-
-			-- Cập nhật cự ly tới Player
-			if pPos then
-				hazard.distanceToPlayer = (hazard.position - pPos).Magnitude
-			end
-		end
-	end))
-end
-
---// API Public
-function detection.SetEnabled(state: boolean)
-	enabled = state
-	if enabled then
-		filter.Init()
-		startUpdateLoop()
-
-		-- Quét các object đã có sẵn trong Workspace
-		for _, child in ipairs(Workspace:GetChildren()) do
-			task.spawn(registerHazard, child)
-		end
-
-		-- Lắng nghe object mới sinh ra ở Workspace Depth 1
-		table.insert(connections, Workspace.ChildAdded:Connect(function(child)
-			task.spawn(registerHazard, child)
-		end))
-
-		if logHazards then
-			print("[SmartDodgeV2] Threat Detection Engine Started (Pure Neon).")
-		end
-	else
-		for _, c in ipairs(connections) do
-			pcall(function() c:Disconnect() end)
-		end
-		table.clear(connections)
-
-		for inst in pairs(activeHazards) do
-			unregisterHazard(inst, "Detector Disabled")
-		end
-		visuals.ClearAll()
-		filter.Cleanup()
-
-		if logHazards then
-			print("[SmartDodgeV2] Threat Detection Engine Stopped.")
-		end
-	end
-end
-
-function detection.IsEnabled(): boolean
-	return enabled
-end
-
-function detection.SetLogHazards(state: boolean)
-	logHazards = state
-end
-
-function detection.IsLogHazards(): boolean
-	return logHazards
-end
-
-function detection.GetActiveHazards(): { [Instance]: ActiveHazard__DARKLUA_TYPE_a}
-	return activeHazards
-end
-
-function detection.GetHazardCount(): number
-	return hazardCount
-end
-
-function detection.OnHazardAdded(cb: (ActiveHazard__DARKLUA_TYPE_a) -> ())
-	table.insert(hazardAddedCallbacks, cb)
-end
-
-function detection.OnHazardRemoved(cb: (ActiveHazard__DARKLUA_TYPE_a) -> ())
-	table.insert(hazardRemovedCallbacks, cb)
-end
-
-function detection.OnHazardsChanged(cb: (number, ActiveHazard__DARKLUA_TYPE_a?) -> ())
-	table.insert(hazardChangedCallbacks, cb)
-end
-
---// Đăng ký dọn dẹp khi Hub unload
-lifecycle.Register(function()
-	detection.SetEnabled(false)
-end)
-
-return detection
-end function __DIST.j()-- Smart Dodge V2: Danger Detection & Geometry Engine
--- Chuyên trách: Nhận diện trạng thái IN DANGER theo thời gian thực (Player / Point in Hazard).
--- Hỗ trợ 100% các dạng hình học: OBB, Circle AoE, Polar Annulus Ring, Moving Beam, và Moving Trajectory Corridors.
-
-
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
-
-local types = __DIST.load('f')
-local detection = __DIST.load('i')
-local visuals = __DIST.load('h')
-
-local danger = {}
-
---// Cấu hình & Tham số
-local enabled = true
-local playerHitboxPadding = 1.8      -- Bù trừ bán kính cơ thể nhân vật (studs)
-local hitboxDownwardOffset = 2.85    -- Khoảng cách hạ thấp từ HumanoidRootPart xuống sát chân (studs)
-local MAX_HEIGHT_TOLERANCE = 150.0   -- Cột không gian sát thương chiều dọc trong Dungeon Quest
-local RAYCAST_DOWN_DIST = 150.0      -- Khoảng cách quét sàn nhà
-
---// Trạng thái InDanger
-local isPlayerInDanger = false
-local currentDangerHazard: ActiveHazard__DARKLUA_TYPE_a? = nil
-local dangerCallbacks: { (inDanger: boolean, hazard: ActiveHazard__DARKLUA_TYPE_a?) -> () } = {}
-
---// Raycast Parameters
-local raycastParams = RaycastParams.new()
-raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-raycastParams.IgnoreWater = true
-local cachedIgnoreList: { Instance } = {}
-local lastFilterRebuildTime = 0
-
-local function updateRaycastFilter(force: boolean?)
-	local now = os.clock()
-	if not force and (now - lastFilterRebuildTime < 0.3) then
-		return
-	end
-	lastFilterRebuildTime = now
-
-	table.clear(cachedIgnoreList)
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p.Character then table.insert(cachedIgnoreList, p.Character) end
-	end
-	if Workspace:FindFirstChild("RaycastIgnore") then
-		table.insert(cachedIgnoreList, Workspace.RaycastIgnore)
-	end
-	for inst in pairs(detection.GetActiveHazards()) do
-		table.insert(cachedIgnoreList, inst)
-	end
-	raycastParams.FilterDescendantsInstances = cachedIgnoreList
-end
-
---// Bắn raycast kiểm tra sàn nhà và snap tọa độ xuống mặt đất
-function danger.GetFloorPosition(pos: Vector3): (Vector3, boolean)
-	updateRaycastFilter(false)
-
-	local rayOrigin = Vector3.new(pos.X, pos.Y + 10, pos.Z)
-	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
-	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
-
-	if result and result.Position then
-		return Vector3.new(pos.X, result.Position.Y + 3, pos.Z), true
-	end
-	return pos, false
-end
-
---// Bắn raycast kiểm tra sàn nhà và trả về cao độ Y thực tế của mặt sàn
-function danger.GetRawFloorY(pos: Vector3): (number, boolean)
-	updateRaycastFilter(false)
-
-	local rayOrigin = Vector3.new(pos.X, pos.Y + 12, pos.Z)
-	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
-	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
-
-	if result and result.Position then
-		return result.Position.Y, true
-	end
-
-	local localPlayer = Players.LocalPlayer
-	local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-	if rootPart and rootPart:IsA("BasePart") then
-		return rootPart.Position.Y - 2.8, false
-	end
-
-	return pos.Y, false
-end
-
---// 1. Kiểm tra hình chữ nhật định hướng (Oriented Bounding Box - OBB)
-function danger.IsPointInPartOBB(point: Vector3, part: BasePart, padding: number?): boolean
-	if not part or not part:IsA("BasePart") or not part.Parent then return false end
-
-	local pad = padding or playerHitboxPadding
-	local partPos = part.Position
-
-	-- Broadphase Pruning: Bỏ qua nhanh nếu quá xa
-	local dX = point.X - partPos.X
-	local dZ = point.Z - partPos.Z
-	local pSize = part.Size
-	local maxDim = math.max(pSize.X, pSize.Z)
-	local maxRadius = (maxDim * 0.7072) + pad + 3.0
-	if (dX * dX + dZ * dZ) > (maxRadius * maxRadius) then
-		return false
-	end
-
-	-- Kiểm tra độ cao Y
-	local heightDiff = math.abs(point.Y - partPos.Y)
-	if heightDiff > MAX_HEIGHT_TOLERANCE then
-		return false
-	end
-
-	-- Chuyển tọa độ sang Local Space của Part
-	local localPos = part.CFrame:PointToObjectSpace(point)
-	local halfX = (pSize.X / 2) + pad
-	local halfZ = (pSize.Z / 2) + pad
-	local halfY = math.max(MAX_HEIGHT_TOLERANCE, (pSize.Y / 2) + 5)
-
-	return math.abs(localPos.X) <= halfX
-		and math.abs(localPos.Z) <= halfZ
-		and math.abs(localPos.Y) <= halfY
-end
-
---// 2. Kiểm tra hình cầu / hình trụ (Circle / Ball / Cylinder AoE)
-function danger.IsPointInSphere(point: Vector3, part: BasePart, padding: number?): boolean
-	if not part or not part:IsA("BasePart") or not part.Parent then return false end
-
-	local pad = padding or playerHitboxPadding
-	local partPos = part.Position
-
-	local heightDiff = math.abs(point.Y - partPos.Y)
-	if heightDiff > MAX_HEIGHT_TOLERANCE then
-		return false
-	end
-
-	local dX = point.X - partPos.X
-	local dZ = point.Z - partPos.Z
-	local radius = (math.max(part.Size.X, part.Size.Z) / 2) + pad
-	return (dX * dX + dZ * dZ) <= (radius * radius)
-end
-
---// 3. Kiểm tra vành khuyên / bán nguyệt (Polar Annulus Ring - thirdBossMultiRings)
-function danger.IsPointInRing(point: Vector3, ringPart: BasePart, padding: number?): boolean
-	if not ringPart or not ringPart:IsA("BasePart") or not ringPart.Parent then return false end
-
-	-- Đòn đánh chỉ gây sát thương khi đang hiển thị rõ nét (chưa mờ / chưa tan biến)
-	if ringPart.Transparency >= 0.85 then
-		return false
-	end
-
-	local pad = padding or playerHitboxPadding
-
-	-- 1. Tìm tâm thực của Model chứa các vòng Ring (Center Part)
-	local parentModel = ringPart:FindFirstAncestorOfClass("Model") or ringPart.Parent
-	local centerPart = parentModel and (parentModel:FindFirstChild("center") or parentModel:FindFirstChild("Center") or (parentModel:IsA("Model") and parentModel.PrimaryPart))
-	local centerPos = (centerPart and centerPart:IsA("BasePart")) and centerPart.Position
-		or (parentModel and parentModel:IsA("Model") and parentModel:GetPivot().Position)
-		or ringPart.Position
-
-	-- 2. Kiểm tra độ cao Y
-	local heightDiff = math.abs(point.Y - centerPos.Y)
-	if heightDiff > MAX_HEIGHT_TOLERANCE then
-		return false
-	end
-
-	-- 3. Bán kính 2D từ tâm Model tới điểm P
-	local diffX = point.X - centerPos.X
-	local diffZ = point.Z - centerPos.Z
-	local r = math.sqrt(diffX * diffX + diffZ * diffZ)
-
-	-- 4. Bán kính ngoài thực tế của Ring từ Size.Z
-	local radiusOuter = ringPart.Size.Z
-	if radiusOuter < 1 then
-		radiusOuter = math.max(ringPart.Size.X, ringPart.Size.Z) / 2
-	end
-
-	-- Bề dày dải Ring sát thương (13 studs cho vòng nhỏ, 18 studs cho vòng lớn)
-	local bandThickness = (radiusOuter > 90) and 18.0 or 13.0
-	local radiusInner = math.max(0, radiusOuter - bandThickness)
-
-	-- 5. Kiểm tra khoảng rỗng ở tâm (lỗ an toàn)
-	if r < (radiusInner - pad) then
-		return false
-	end
-
-	-- 6. Kiểm tra nằm ngoài bán kính ngoài
-	if r > (radiusOuter + pad) then
-		return false
-	end
-
-	-- 7. Kiểm tra hướng bán nguyệt (Semicircle Direction)
-	local offX = ringPart.Position.X - centerPos.X
-	local offZ = ringPart.Position.Z - centerPos.Z
-	local offMag = math.sqrt(offX * offX + offZ * offZ)
-	if offMag > 0.5 then
-		local dirUnitX = offX / offMag
-		local dirUnitZ = offZ / offMag
-		local dot = (diffX * dirUnitX) + (diffZ * dirUnitZ)
-		-- Nếu dot < -pad: nằm ở nửa đối diện (vùng an toàn 100%)
-		if dot < -pad then
-			return false
-		end
-	end
-
-	return true
-end
-
---// 4. Kiểm tra Moving Beam (Boss 2 - Thanh beam lăn tròn quanh trục X)
-function danger.IsPointInMovingBeam(point: Vector3, part: BasePart, padding: number?): boolean
-	if not part or not part:IsA("BasePart") or not part.Parent then return false end
-
-	local pad = padding or playerHitboxPadding
-	local localPos = part.CFrame:PointToObjectSpace(point)
-	local pSize = part.Size
-
-	-- Chiều dài sải ngang quét phòng dọc theo trục X
-	local halfLength = (math.max(pSize.X, pSize.Z) / 2) + pad
-	-- Bán kính tiết diện xoay quanh trục X
-	local beamRadius = (math.max(pSize.Y, math.min(pSize.X, pSize.Z)) / 2) + pad
-	if beamRadius < 3.5 then beamRadius = 3.5 end
-
-	local radialDistSq = localPos.Y * localPos.Y + localPos.Z * localPos.Z
-	return (math.abs(localPos.X) <= halfLength)
-		and (radialDistSq <= (beamRadius + 1.5) * (beamRadius + 1.5))
-end
-
---// 5. Kiểm tra xem một điểm P có nằm trong vùng nguy hiểm của một Hazard cụ thể không
-function danger.IsPointInHazard(point: Vector3, hazard: ActiveHazard__DARKLUA_TYPE_a, padding: number?): boolean
-	if not hazard or not hazard.instance or not hazard.instance.Parent then return false end
-
-	local pad = padding or playerHitboxPadding
-
-	-- Bước 1: ƯU TIÊN KIỂM TRA HÀNH LANG TIA ĐỊNH HƯỚNG / MOVING TRAJECTORY (Vùng màu Cam)
-	-- Nếu hazard có hành lang màu Cam (corridorPart do Visuals tạo ra), kiểm tra OBB của corridorPart trước!
-	-- Lưu ý: Phải kiểm tra TRƯỚC broadphase distance pruning vì hành lang kéo dài xuyên suốt phòng (100-140 studs),
-	-- trong khi tâm hazard.position nằm ở Boss nên pruning theo Boss sẽ loại nhầm người chơi ở xa!
-	local visualData = visuals.GetHazardVisualData(hazard)
-	if visualData and visualData.corridorPart and visualData.corridorPart.Parent then
-		local inCorridor = danger.IsPointInPartOBB(point, visualData.corridorPart, pad)
-		if inCorridor then
-			return true
-		end
-	end
-
-	-- Bước 2: Broadphase distance pruning theo tâm hazard cho các Part vật lý
-	local instNameLower = hazard.instance.Name:lower():gsub("%s+", "")
-	local isMultiRings = instNameLower:find("multiring") ~= nil
-	local isMovingBeam = instNameLower:find("movingbeam") ~= nil
-
-	local maxReach = (hazard.telegraphLength or 50.0) + pad + 25.0
-	local checkCenter = hazard.position
-
-	if isMultiRings then
-		-- MultiRings có bán kính ngoài lên tới 105 studs + padding -> mở rộng maxReach lên 135 studs
-		maxReach = 135.0
-		local centerPart = hazard.instance:FindFirstChild("center") or hazard.instance:FindFirstChild("Center")
-		if centerPart and centerPart:IsA("BasePart") then
-			checkCenter = centerPart.Position
-		elseif hazard.instance:IsA("Model") then
-			checkCenter = hazard.instance:GetPivot().Position
-		end
-	elseif isMovingBeam then
-		maxReach = 140.0
-	end
-
-	local diffX = point.X - checkCenter.X
-	local diffZ = point.Z - checkCenter.Z
-	if (diffX * diffX + diffZ * diffZ) > (maxReach * maxReach) then
-		return false
-	end
-
-	-- Bước 3: Kiểm tra các Part vật lý nguy hiểm (Vùng màu Vàng / Part thực tế)
-
-	for part in pairs(hazard.activeParts) do
-		if part and part.Parent and part:IsA("BasePart") then
-			if isMultiRings or part.Name:lower():find("ring") then
-				if danger.IsPointInRing(point, part, pad) then
-					return true
-				end
-			elseif isMovingBeam then
-				if danger.IsPointInMovingBeam(point, part, pad) then
-					return true
-				end
-			elseif part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder) then
-				if danger.IsPointInSphere(point, part, pad) then
-					return true
-				end
-			else
-				if danger.IsPointInPartOBB(point, part, pad) then
-					return true
-				end
-			end
-		end
-	end
-
-	return false
-end
-
---// 6. Kiểm tra xem một điểm P có bị dính bất kỳ hiểm họa nào đang kích hoạt không
-function danger.IsPointInAnyHazard(point: Vector3, ignoredInstance: Instance?): (boolean, ActiveHazard__DARKLUA_TYPE_a?)
-	if not enabled or not detection.IsEnabled() then
-		return false, nil
-	end
-
-	local activeHazards = detection.GetActiveHazards()
-	for _, hazard in pairs(activeHazards) do
-		if ignoredInstance and (hazard.instance == ignoredInstance or hazard.instance.Name == ignoredInstance.Name) then
-			continue
-		end
-
-		if danger.IsPointInHazard(point, hazard) then
-			return true, hazard
-		end
-	end
-
-	return false, nil
-end
-
---// 7. Kiểm tra trạng thái của Nhân vật Player hiện tại
-function danger.IsPlayerInDanger(): (boolean, ActiveHazard__DARKLUA_TYPE_a?)
-	local localPlayer = Players.LocalPlayer
-	local character = localPlayer and localPlayer.Character
-	if not character then return false, nil end
-
-	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
-	if not rootPart or not rootPart:IsA("BasePart") then return false, nil end
-
-	return danger.IsPointInAnyHazard(rootPart.Position)
-end
-
---// Lắng nghe sự kiện thay đổi trạng thái Danger
-function danger.OnDangerStateChanged(callback: (inDanger: boolean, hazard: ActiveHazard__DARKLUA_TYPE_a?) -> ())
-	if type(callback) == "function" then
-		table.insert(dangerCallbacks, callback)
-	end
-end
-
---// Getters & Setters
-function danger.GetHitboxPadding(): number
-	return playerHitboxPadding
-end
-
-function danger.SetHitboxPadding(value: number)
-	if type(value) == "number" and value >= 0 then
-		playerHitboxPadding = value
-	end
-end
-
-function danger.GetHitboxDownwardOffset(): number
-	return hitboxDownwardOffset
-end
-
-function danger.SetHitboxDownwardOffset(value: number)
-	if type(value) == "number" and value >= 0 then
-		hitboxDownwardOffset = value
-	end
-end
-
-function danger.IsEnabled(): boolean
-	return enabled
-end
-
-function danger.SetEnabled(state: boolean)
-	enabled = (state == true)
-	if not enabled then
-		isPlayerInDanger = false
-		currentDangerHazard = nil
-	end
-end
-
-function danger.GetCurrentDangerHazard(): ActiveHazard__DARKLUA_TYPE_a?
-	return currentDangerHazard
-end
-
---// Heartbeat Runner: Theo dõi và cập nhật trạng thái IN DANGER thời gian thực
-RunService.Heartbeat:Connect(function()
-	if not enabled or not detection.IsEnabled() then
-		if isPlayerInDanger then
-			isPlayerInDanger = false
-			currentDangerHazard = nil
-			for _, cb in ipairs(dangerCallbacks) do
-				pcall(cb, false, nil)
-			end
-		end
-		visuals.UpdatePlayerHitboxVisual(nil)
-		return
-	end
-
-	local inDanger, hazard = danger.IsPlayerInDanger()
-	if inDanger ~= isPlayerInDanger or hazard ~= currentDangerHazard then
-		isPlayerInDanger = inDanger
-		currentDangerHazard = hazard
-
-		for _, cb in ipairs(dangerCallbacks) do
-			pcall(cb, inDanger, hazard)
-		end
-	end
-
-	-- Cập nhật vòng tròn 3D Hitbox quanh chân nhân vật (luôn neo theo tâm Player với offset hạ thấp)
-	local localPlayer = Players.LocalPlayer
-	local character = localPlayer and localPlayer.Character
-	local rootPart = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso"))
-	if rootPart and rootPart:IsA("BasePart") then
-		local pPos = rootPart.Position
-		local footY = pPos.Y - hitboxDownwardOffset
-		visuals.UpdatePlayerHitboxVisual(pPos, inDanger, playerHitboxPadding, footY)
-	else
-		visuals.UpdatePlayerHitboxVisual(nil)
-	end
-end)
-
-return danger end function __DIST.k()-- Smart Dodge V2: Main Module Entry
--- Gom các subsystem thành một module thống nhất
-
-
-local types = __DIST.load('f')
-local filter = __DIST.load('g')
-local visuals = __DIST.load('h')
-local detection = __DIST.load('i')
-local danger = __DIST.load('j')
-
-local smartDodgeV2 = {
-	types = types,
-	filter = filter,
-	visuals = visuals,
-	detection = detection,
-	danger = danger,
-	geometry = danger,
-}
-
-return smartDodgeV2
-end function __DIST.l()-- Tab Smart Dodge V2: Section Detection
--- Điều khiển Threat Detection Engine V2, Visuals ESP, và Live Threat Monitor
-
-
-local ui = __DIST.load('e')
-local autoSave = __DIST.load('d')
-local smartDodgeV2 = __DIST.load('k')
-local detection = smartDodgeV2.detection
-local visuals = smartDodgeV2.visuals
-local danger = smartDodgeV2.danger
-
-return function(window, tab)
-	local leftSection = tab:Section({ Side = "Left" })
-	leftSection:Header({ Name = "Threat Detection V2" })
-
-	local rightSection = tab:Section({ Side = "Right" })
-	rightSection:Header({ Name = "Live Threat Inspector" })
-
-	--// Right Section: Real-time Monitor Labels
-	local statusLabel = rightSection:Label({ Text = "Detector V2: <font color='rgb(255,80,80)'>Disabled</font>" })
-	local dangerLabel = rightSection:Label({ Text = "Danger State: <font color='rgb(50,255,50)'>SAFE</font>" })
-	local countLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
-	local lastHazardLabel = rightSection:Label({ Text = "Last Threat: <font color='rgb(160,160,160)'>None</font>" })
-	local trackedListLabel = rightSection:Label({ Text = "Tracked Hazards: <font color='rgb(160,160,160)'>None</font>" })
-
-	local function updateMonitor(count, lastHazard)
-		count = count or detection.GetHazardCount()
-		local isEnabled = detection.IsEnabled()
-		local statusColor = isEnabled and "0, 255, 0" or "255, 80, 80"
-		local statusText = isEnabled and "Active (Real-time V2)" or "Disabled"
-
-		pcall(function()
-			statusLabel:UpdateName("Detector V2: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
-		end)
-
-		local countColor = count > 0 and "255, 60, 60" or "0, 255, 0"
-		pcall(function()
-			countLabel:UpdateName("Active Hazards: <font color='rgb(" .. countColor .. ")'>" .. tostring(count) .. "</font>")
-		end)
-
-		if lastHazard then
-			pcall(function()
-				lastHazardLabel:UpdateName(("Last Threat: <font color='rgb(255,200,60)'>%s</font> (%d parts, %.1fm)"):format(
-					lastHazard.name, lastHazard.neonCount, lastHazard.distanceToPlayer
-				))
-			end)
-		end
-
-		-- Danh sách tóm tắt các hazard đang hoạt động
-		local activeMap = detection.GetActiveHazards()
-		local names = {}
-		for _, h in pairs(activeMap) do
-			table.insert(names, ("%s (%d parts)"):format(h.name, h.neonCount))
-		end
-		pcall(function()
-			if #names > 0 then
-				trackedListLabel:UpdateName("Tracked Hazards: <font color='rgb(255,150,50)'>" .. table.concat(names, ", ") .. "</font>")
-			else
-				trackedListLabel:UpdateName("Tracked Hazards: <font color='rgb(160,160,160)'>None</font>")
-			end
-		end)
-	end
-
-	-- Lắng nghe sự kiện từ Detection V2
-	detection.OnHazardsChanged(function(count, lastHazard)
-		updateMonitor(count, lastHazard)
-	end)
-
-	-- Lắng nghe sự kiện IN DANGER từ Danger Engine V2
-	danger.OnDangerStateChanged(function(inDanger, currentHazard)
-		pcall(function()
-			if inDanger and currentHazard then
-				dangerLabel:UpdateName(("Danger State: <font color='rgb(255,40,40)'><b>IN DANGER</b></font> (<font color='rgb(255,200,50)'>%s</font>)"):format(currentHazard.name))
-			else
-				dangerLabel:UpdateName("Danger State: <font color='rgb(50,255,50)'>SAFE</font>")
-			end
-		end)
-	end)
-
-	--// Left Section: Controls
-	leftSection:Toggle({
-		Name = "Enable Threat Detection V2",
-		Default = false,
-		Callback = function(state)
-			detection.SetEnabled(state)
-			updateMonitor()
-		end,
-	}, "Toggle_SDV2_Enabled")
-
-	leftSection:Toggle({
-		Name = "3D ESP Highlighting",
-		Default = true,
-		Callback = function(state)
-			visuals.SetEspEnabled(state)
-		end,
-	}, "Toggle_SDV2_VisualESP")
-
-	leftSection:Toggle({
-		Name = "Unified Model Box (Gộp khung Model >= 2 Parts)",
-		Default = true,
-		Callback = function(state)
-			visuals.SetUnifiedModelBoxes(state)
-		end,
-	}, "Toggle_SDV2_UnifiedModel")
-
-	leftSection:Toggle({
-		Name = "Show Part Name Tags [Parent(ClassName)]",
-		Default = true,
-		Callback = function(state)
-			visuals.SetNameTagsEnabled(state)
-		end,
-	}, "Toggle_SDV2_NameTags")
-
-	leftSection:Toggle({
-		Name = "Show Player Hitbox Radius (Vòng chân)",
-		Default = true,
-		Callback = function(state)
-			visuals.SetHitboxVisualEnabled(state)
-		end,
-	}, "Toggle_SDV2_HitboxCircle")
-
-
-	leftSection:Toggle({
-		Name = "Console Threat Logging",
-		Default = false,
-		Callback = function(state)
-			detection.SetLogHazards(state)
-		end,
-	}, "Toggle_SDV2_LogHazards")
-
-	leftSection:Slider({
-		Name = "Box Outline Thickness",
-		Default = 8,
-		Minimum = 2,
-		Maximum = 25,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = function(val)
-			visuals.SetLineThickness(val / 100)
-		end,
-	}, "Slider_SDV2_Thickness")
-
-	leftSection:Slider({
-		Name = "Box Surface Opacity",
-		Default = 35,
-		Minimum = 0,
-		Maximum = 100,
-		DisplayMethod = "Percent",
-		Precision = 0,
-		Callback = function(val)
-			visuals.SetSurfaceTransparency(1 - (val / 100))
-		end,
-	}, "Slider_SDV2_Opacity")
-
-	leftSection:Slider({
-		Name = "Player Hitbox Padding (studs x10)",
-		Default = 18,
-		Minimum = 5,
-		Maximum = 40,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = function(val)
-			danger.SetHitboxPadding(val / 10)
-		end,
-	}, "Slider_SDV2_Padding")
-
-	leftSection:Slider({
-		Name = "Hitbox Height Offset (Hạ thấp x10)",
-		Default = 28,
-		Minimum = 10,
-		Maximum = 50,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = function(val)
-			danger.SetHitboxDownwardOffset(val / 10)
-		end,
-	}, "Slider_SDV2_HeightOffset")
-
-	updateMonitor()
-end
-end function __DIST.m()-- Tab Smart Dodge V2 (DungeonQuest): Khởi tạo giao diện Smart Dodge V2
--- Module hóa sạch sẽ, bắt đầu với Section Detection
-
-
-return function(window, tab)
-__DIST.load('l')(window, tab)
-end
-end function __DIST.n()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
+end function __DIST.i()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
 
 --// Services
 
@@ -8673,214 +7610,13 @@ return {
 	VirtualInputManager = VirtualInputManager,
 	player = player,
 }
-end function __DIST.o()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
--- Map thường: fetch động qua remote getDungeonStats (có cache).
--- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
-
---// Data
-
-local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
-
-local DUNGEONS = {
-	"Desert Temple",
-	"Winter Outpost",
-	"Pirate Island",
-	"King's Castle",
-	"The Underworld",
-	"Samurai Palace",
-	"The Canals",
-	"Ghastly Harbor",
-	"Steampunk Sewers",
-	"Orbital Outpost",
-	"Volcanic Chambers",
-	"Aquatic Temple",
-	"Enchanted Forest",
-	"Egg Island",
-	"Krampus",
-	"Tutorial Dungeon",
-}
-
-local SPECIAL_DUNGEONS = {
-	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
-	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
-	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
-}
-
---// Table
-local dungeonCatalog = {}
-
---// Cache
-local statsCache = {}
-local dynamicDungeons = nil
-
---// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
-local HttpService = game:GetService("HttpService")
-local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
-
-local function persistMapList(list)
-	if not (isfile and writefile and makefolder and isfolder) then return end
-	pcall(function()
-		if not isfolder("Maclib") then makefolder("Maclib") end
-	end)
-	pcall(function()
-		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
-	end)
-end
-
-local function loadPersistedMapList()
-	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
-	local ok, data = pcall(function()
-		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
-	end)
-	if not ok or typeof(data) ~= "table" then return nil end
-
-	local list = {}
-	for _, name in ipairs(data) do
-		if type(name) == "string" and #name > 0 then
-			table.insert(list, name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
-local function mergeDungeonLists(primary)
-	local seen = {}
-	local merged = {}
-	for _, name in ipairs(primary or {}) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	for _, name in ipairs(DUNGEONS) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	return merged
-end
-
---// Helpers
-local function findScrollingFrame()
-	local player = game:GetService("Players").LocalPlayer
-	if not player then return nil end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then return nil end
-	local queueGui = playerGui:FindFirstChild("queueGui")
-	if not queueGui then return nil end
-	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
-	if not chooseDungeon then return nil end
-	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
-	if not backgroundFillLeft then return nil end
-	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
-end
-
-local function collectDungeonsFromUi()
-	local scrollingFrame = findScrollingFrame()
-	if not scrollingFrame then return nil end
-
-	local list = {}
-	for _, child in ipairs(scrollingFrame:GetChildren()) do
-		if child:IsA("ImageLabel") and #child.Name > 0 then
-			table.insert(list, child.Name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
---// Methods
-function dungeonCatalog.GetDungeons()
-	if dynamicDungeons then return dynamicDungeons end
-
-	local uiList = collectDungeonsFromUi()
-	if uiList then
-		local merged = mergeDungeonLists(uiList)
-		dynamicDungeons = merged
-		persistMapList(merged)
-		return merged
-	end
-
-	local persisted = loadPersistedMapList()
-	if persisted then
-		local merged = mergeDungeonLists(persisted)
-		dynamicDungeons = merged
-		return merged
-	end
-
-	return DUNGEONS
-end
-
-function dungeonCatalog.RefreshDungeons()
-	dynamicDungeons = nil
-	return dungeonCatalog.GetDungeons()
-end
-
-function dungeonCatalog.GetDungeonStats(name)
-	if type(name) ~= "string" or #name == 0 then return nil end
-	if statsCache[name] ~= nil then return statsCache[name] end
-
-	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
-	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
-	if not getStats then return nil end
-
-	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
-	if ok and typeof(result) == "table" then
-		statsCache[name] = result
-		return result
-	end
-	return nil
-end
-
-function dungeonCatalog.GetAllowedDifficulties(name)
-	if type(name) ~= "string" then return DIFFICULTIES end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.Difficulties end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	local allowed = {}
-	if stats then
-		for _, difficulty in ipairs(DIFFICULTIES) do
-			if stats[difficulty] then table.insert(allowed, difficulty) end
-		end
-	end
-	if #allowed > 0 then return allowed end
-	return DIFFICULTIES
-end
-
-function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
-	if type(difficulty) ~= "string" then return false end
-	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
-		if option == difficulty then return true end
-	end
-	return false
-end
-
-function dungeonCatalog.GetLevelReq(name, difficulty)
-	if type(name) ~= "string" then return 0 end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.LevelReq or 0 end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	if stats and type(difficulty) == "string" and stats[difficulty] then
-		return tonumber(stats[difficulty].levelReq) or 0
-	end
-	return 0
-end
-
---// Table
-dungeonCatalog.DUNGEONS = DUNGEONS
-dungeonCatalog.DIFFICULTIES = DIFFICULTIES
-
-return dungeonCatalog end function __DIST.p()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
+end function __DIST.j()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
 -- speed và các API cho module chuyên biệt (webhook, ESP...)
 -- thao tác lên module này để tránh circular dependency.
 
 --// Imports
 
-local services = __DIST.load('n')
+local services = __DIST.load('i')
 local lifecycle = __DIST.load('b')
 
 --// References
@@ -8968,7 +7704,7 @@ local cleanupConnections = {}
 local speedConnection = nil
 local diedConnection = nil
 local lastRespawnTime = 0
-local respawnProtectionDuration = 4.0 -- Thời gian bảo vệ chuyển giao sau khi hồi sinh (giây)
+local respawnProtectionDuration = 2.0 -- Thời gian bảo vệ chuyển giao sau khi hồi sinh (giây, đồng bộ theo Slider)
 local wasDead = false
 
 local function trackCleanupConnection(connection)
@@ -9019,47 +7755,24 @@ function shared.IsDead()
 	return false
 end
 
---// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
---// Hỗ trợ: ForceField của Roblox, Tag/Attribute chuẩn của game, và Bộ đếm bảo vệ sau khi hồi sinh
+--// Kiểm tra xem nhân vật hiện tại có đang trong thời gian bảo vệ sau hồi sinh không
+--// Hoàn toàn tuân thủ theo Slider n(s), tự động kết thúc khi hết thời gian, bỏ qua các cơ chế dư thừa
 function shared.IsInvulnerable()
-	local char = player and player.Character
-	if not char or not char.Parent then return false, nil end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum and hum.Health <= 0 then
-		return false, nil -- Khi đã chết thì không tính là bất tử
-	end
-
-	-- 1. Kiểm tra ForceField nguyên bản của Roblox
-	local ff = char:FindFirstChildOfClass("ForceField")
-	if ff and ff.Visible ~= false then
-		return true, "ForceField"
-	end
-
-	-- 2. Kiểm tra Attribute hoặc Tag của game (chỉ nhận khi có giá trị true chính xác)
-	local attrInvuln = char:GetAttribute("Invulnerable")
-	local attrImmune = char:GetAttribute("Immune")
-	local attrRespawn = char:GetAttribute("Respawning")
-	if attrInvuln == true or attrImmune == true or attrRespawn == true then
-		return true, "Attribute"
-	end
-
-	-- 3. Kiểm tra BoolValue của game (chỉ nhận khi đúng là BoolValue và Value == true)
-	local valInvuln = char:FindFirstChild("Invulnerable")
-	local valImmune = char:FindFirstChild("Immune")
-	local valRespawn = char:FindFirstChild("Respawning")
-	if (valInvuln and valInvuln:IsA("BoolValue") and valInvuln.Value == true)
-		or (valImmune and valImmune:IsA("BoolValue") and valImmune.Value == true)
-		or (valRespawn and valRespawn:IsA("BoolValue") and valRespawn.Value == true) then
-		return true, "Value"
-	end
-
-	-- 4. Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
+	-- 1. Kiểm tra bộ đếm thời gian bảo vệ sau khi hồi sinh (thuần túy theo Slider n giây)
 	local remaining = shared.GetRespawnProtectionRemaining()
-	if remaining > 0 then
-		return true, ("Respawn Shield (%.1fs)"):format(remaining)
+	if remaining <= 0 then
+		return false, nil
 	end
 
-	return false, nil
+	-- 2. Chỉ coi là không bất tử nếu nhân vật ĐÃ CHẾT HẲN (Health <= 0)
+	-- (Không return false khi character đang tải / chưa gán Parent để tránh lọt frame né chiêu)
+	local char = (player and player.Character) or (humanoid and humanoid.Parent)
+	local hum = humanoid or (char and char:FindFirstChildOfClass("Humanoid"))
+	if hum and hum.Health <= 0 then
+		return false, nil
+	end
+
+	return true, ("Respawn (%.1fs)"):format(remaining)
 end
 
 --// Enemy helpers
@@ -9409,6 +8122,10 @@ function shared.SetHumanoid(character)
 			wasDead = true
 		elseif wasDead and health > 0 then
 			wasDead = false
+			lastRespawnTime = os.clock()
+			for _, callback in ipairs(respawnCallbacks) do
+				pcall(callback)
+			end
 		end
 	end))
 end
@@ -9556,6 +8273,7 @@ if player then
 	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
 		local ok, err = pcall(function()
 			if not character then return end
+			wasDead = false
 			lastRespawnTime = os.clock()
 			shared.SetHumanoid(character)
 			connectSpeedListener()
@@ -9865,15 +8583,2496 @@ end)
 
 --// Table
 return shared
-end function __DIST.q()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.k()-- Smart Dodge V2: Core Threat Detection Engine (Pure Neon & Dynamic Detection)
+-- Quét Workspace Depth 1, nhận diện mọi BasePart có Material == Neon (trực tiếp hoặc con cháu trong Model),
+-- bọc SelectionBox 3D vàng đậm và gắn Name Tag dạng Parent(Part).
+
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local lifecycle = __DIST.load('b')
+local types = __DIST.load('f')
+local filter = __DIST.load('g')
+local visuals = __DIST.load('h')
+local shared = __DIST.load('j')
+
+local detection = {}
+
+--// State
+local enabled = false
+local logHazards = false
+local activeHazards: { [Instance]: ActiveHazard__DARKLUA_TYPE_a} = {}
+local hazardCount = 0
+
+--// Callbacks
+local hazardAddedCallbacks: { (ActiveHazard__DARKLUA_TYPE_a) -> () } = {}
+local hazardRemovedCallbacks: { (ActiveHazard__DARKLUA_TYPE_a) -> () } = {}
+local hazardChangedCallbacks: { (number, ActiveHazard__DARKLUA_TYPE_a?) -> () } = {}
+
+local connections: { RBXScriptConnection } = {}
+local FADE_THRESHOLD = 0.85
+local orbCorridorLength = 90.0
+local beamCorridorLength = 140.0
+local lastBossSpawnTime = (shared.IsBossActive and shared.IsBossActive()) and os.clock() or 0
+
+--// Danh sách các chiêu thức / đòn đánh ngoại lệ theo tên (không bắt buộc Material == Neon)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local CUSTOM_HAZARDS: { [string]: CustomHazardConfig__DARKLUA_TYPE_b } = {
+	["firstbossseekingspikes"] = {
+		name = "firstBossSeekingSpikes",
+		isTelegraph = false,
+		hasSyntheticTelegraph = false, -- Vùng cam của Spike chính là tia định hướng (không dùng moving box)
+		telegraphLength = 120,
+		width = 16,
+	},
+	["firstbossbigspike"] = {
+		name = "firstBossBigSpike",
+		isTelegraph = false,
+		hasSyntheticTelegraph = false, -- Vùng cam của Spike chính là tia định hướng (không dùng moving box)
+		telegraphLength = 140,
+		width = 40,
+	},
+	["firstbossbeampart"] = {
+		name = "firstBossBeamPart",
+		isTelegraph = true,  -- Tia định hướng báo trước (quy ước màu Cam định hướng)
+		telegraphLength = 140,
+		-- Width tự động phân biệt: 16 studs (Seeking Spikes) hoặc 40 studs (Big Spike)
+	},
+	["firstbosslaserprecast"] = {
+		name = "firstBossLaserPrecast",
+		isTelegraph = true,
+		targetChildName = "precast",
+		telegraphLength = 140,
+		width = 24,
+	},
+	["firstbossattachpart"] = {
+		name = "firstBossAttachPart",
+		isTelegraph = true,
+		telegraphLength = 140,
+		width = 24,
+	},
+	["firstbosssundiskbeampart"] = {
+		name = "firstBossSunDiskBeamPart",
+		isTelegraph = true,
+		telegraphLength = 140,
+		width = 20,
+	},
+	["firstbossblindingblastbeam"] = {
+		name = "firstBossBlindingBlastBeam",
+		isTelegraph = true,
+		telegraphLength = 140,
+		width = 40,
+	},
+	["firstbossskyshot"] = {
+		name = "firstBossSkyShot",
+		isTelegraph = false,
+		hasSyntheticTelegraph = true,
+		telegraphLength = 60,
+		width = 20,
+	},
+	["firstbosscrisscross"] = {
+		name = "firstBossCrissCross",
+		isTelegraph = false,
+		hasSyntheticTelegraph = true, -- Tự tạo vùng Moving Trajectory đi theo đạn chuẩn V1
+		telegraphLength = 28,         -- Độ dài nhìn trước 28 studs (vừa đủ để né, không bao trùm cả phòng)
+		width = 8,                    -- Bề rộng chuẩn V1: 8 studs (radius 4.0 studs)
+	},
+	["smallicespikes"] = {
+		name = "smallIceSpikes",
+		isTelegraph = false,
+		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
+	},
+	["mediumicespikes"] = {
+		name = "mediumIceSpikes",
+		isTelegraph = false,
+		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
+	},
+	["largeicespikes"] = {
+		name = "largeIceSpikes",
+		isTelegraph = false,
+		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
+	},
+	["icespikes"] = {
+		name = "iceSpikes",
+		isTelegraph = false,
+		targetChildName = "precast", -- Chỉ bọc riêng part precast (Plastic) sát đất
+	},
+	["thirdbossmissile"] = {
+		name = "thirdBossMissile",
+		isTelegraph = false,
+		hasSyntheticTelegraph = true, -- Vùng Moving Trajectory màu Cam di chuyển theo tên lửa chuẩn V1
+		telegraphLength = 40,         -- Giới hạn 40 studs phía trước đầu tên lửa (tối đa hóa vùng SAFE)
+	},
+	["thirdbossmultirings"] = {
+		name = "thirdBossMultiRings",
+		isTelegraph = false,
+		targetChildContains = "ring", -- Chỉ lấy các part con có tên chứa "ring"
+		neverUnify = true,           -- Bắt buộc vẽ SelectionBox riêng trên từng vòng ring, không gộp kín sàn
+		isMultiWave = true,          -- Tái sử dụng các part con qua nhiều đợt sóng (Wave 1, 2, 3), KHÔNG xóa vĩnh viễn khi mờ đi
+	},
+	["secondbossmovingbeam"] = {
+		name = "secondBossMovingBeam",
+		isTelegraph = false,
+		hasSyntheticTelegraph = true, -- Moving Trajectory Box màu Cam đi cùng beam chuẩn V1
+		telegraphLength = 40,         -- Độ dài nhìn trước 40 studs phía trước thanh beam
+	},
+	["thirdbossbouncingorb"] = {
+		name = "thirdBossBouncingOrb",
+		isTelegraph = false,
+		hasSyntheticTelegraph = true, -- Moving Trajectory Box màu Cam di chuyển theo quả cầu nảy
+		telegraphLength = 28,         -- Độ dài nhìn trước 28 studs phía trước quả cầu
+	},
+	["secondbossyelloworb"] = {
+		name = "secondBossYellowOrb",
+		isTelegraph = false,
+		hasSyntheticTelegraph = false, -- Quả cầu vật lý lăn/bay, KHÔNG phải tia laser và không có vùng cam gây sát thương
+	},
+	["secondbossredorb"] = {
+		name = "secondBossRedOrb",
+		isTelegraph = false,
+		hasSyntheticTelegraph = false,
+	},
+	["secondbossgreenorb"] = {
+		name = "secondBossGreenOrb",
+		isTelegraph = false,
+		hasSyntheticTelegraph = false,
+	},
+	["secondbosscriclehitbox"] = {
+		name = "secondBossCricleHitbox",
+		isTelegraph = false,
+		hasSyntheticTelegraph = true,
+		telegraphLength = 95.0,
+		dangerRadius = 8.0,
+		isExpandingCone = true,
+		expansionRate = 0.25,
+	},
+	["secondbosscirclehitbox"] = {
+		name = "secondBossCircleHitbox",
+		isTelegraph = false,
+		hasSyntheticTelegraph = true,
+		telegraphLength = 95.0,
+		dangerRadius = 8.0,
+		isExpandingCone = true,
+		expansionRate = 0.25,
+	},
+}
+
+local function getCustomHazardConfig(inst: Instance): CustomHazardConfig__DARKLUA_TYPE_b?
+	if not inst then return nil end
+	local nameLower = inst.Name:lower():gsub("%s+", "")
+	local cfg = CUSTOM_HAZARDS[nameLower]
+	if cfg then return cfg end
+	if nameLower:find("seekingspike") then
+		return CUSTOM_HAZARDS["firstbossseekingspikes"]
+	end
+	if nameLower:find("bigspike") then
+		return CUSTOM_HAZARDS["firstbossbigspike"]
+	end
+	if nameLower:find("beampart") or nameLower:find("firstbossbeam") then
+		return CUSTOM_HAZARDS["firstbossbeampart"]
+	end
+	if nameLower:find("laserprecast") or (nameLower == "model" and inst:FindFirstChild("precast")) then
+		return CUSTOM_HAZARDS["firstbosslaserprecast"]
+	end
+	if nameLower:find("attachpart") then
+		return CUSTOM_HAZARDS["firstbossattachpart"]
+	end
+	if nameLower:find("sundisk") then
+		return CUSTOM_HAZARDS["firstbosssundiskbeampart"]
+	end
+	if nameLower:find("blindingblast") then
+		return CUSTOM_HAZARDS["firstbossblindingblastbeam"]
+	end
+	if nameLower:find("skyshot") then
+		return CUSTOM_HAZARDS["firstbossskyshot"]
+	end
+	if nameLower:find("multiring") then
+		return CUSTOM_HAZARDS["thirdbossmultirings"]
+	end
+	if nameLower:find("crisscross") then
+		return CUSTOM_HAZARDS["firstbosscrisscross"]
+	end
+	if nameLower:find("movingbeam") then
+		return CUSTOM_HAZARDS["secondbossmovingbeam"]
+	end
+	if nameLower:find("bouncingorb") and not nameLower:find("beam") then
+		return CUSTOM_HAZARDS["thirdbossbouncingorb"]
+	end
+	if nameLower:find("yelloworb") then
+		return CUSTOM_HAZARDS["secondbossyelloworb"]
+	end
+	if nameLower:find("redorb") then
+		return CUSTOM_HAZARDS["secondbossredorb"]
+	end
+	if nameLower:find("greenorb") then
+		return CUSTOM_HAZARDS["secondbossgreenorb"]
+	end
+	if nameLower:find("secondboss") and nameLower:find("orb") and not nameLower:find("explosion") then
+		return CUSTOM_HAZARDS["secondbossyelloworb"]
+	end
+	if nameLower:find("cricle") or nameLower:find("circlehitbox") then
+		return CUSTOM_HAZARDS["secondbosscriclehitbox"]
+	end
+	if inst.Parent and inst.Parent ~= Workspace then
+		local parentLower = inst.Parent.Name:lower():gsub("%s+", "")
+		local pCfg = CUSTOM_HAZARDS[parentLower]
+		if pCfg then return pCfg end
+		if parentLower:find("seekingspike") then
+			return CUSTOM_HAZARDS["firstbossseekingspikes"]
+		end
+		if parentLower:find("bigspike") then
+			return CUSTOM_HAZARDS["firstbossbigspike"]
+		end
+		if parentLower:find("beampart") or parentLower:find("firstbossbeam") then
+			return CUSTOM_HAZARDS["firstbossbeampart"]
+		end
+		if parentLower:find("laserprecast") then
+			return CUSTOM_HAZARDS["firstbosslaserprecast"]
+		end
+		if parentLower:find("attachpart") then
+			return CUSTOM_HAZARDS["firstbossattachpart"]
+		end
+		if parentLower:find("sundisk") then
+			return CUSTOM_HAZARDS["firstbosssundiskbeampart"]
+		end
+		if parentLower:find("blindingblast") then
+			return CUSTOM_HAZARDS["firstbossblindingblastbeam"]
+		end
+		if parentLower:find("skyshot") then
+			return CUSTOM_HAZARDS["firstbossskyshot"]
+		end
+		if parentLower:find("multiring") then
+			return CUSTOM_HAZARDS["thirdbossmultirings"]
+		end
+		if parentLower:find("crisscross") then
+			return CUSTOM_HAZARDS["firstbosscrisscross"]
+		end
+		if parentLower:find("movingbeam") then
+			return CUSTOM_HAZARDS["secondbossmovingbeam"]
+		end
+		if parentLower:find("bouncingorb") and not parentLower:find("beam") then
+			return CUSTOM_HAZARDS["thirdbossbouncingorb"]
+		end
+		if parentLower:find("yelloworb") then
+			return CUSTOM_HAZARDS["secondbossyelloworb"]
+		end
+		if parentLower:find("redorb") then
+			return CUSTOM_HAZARDS["secondbossredorb"]
+		end
+		if parentLower:find("greenorb") then
+			return CUSTOM_HAZARDS["secondbossgreenorb"]
+		end
+		if parentLower:find("secondboss") and parentLower:find("orb") and not parentLower:find("explosion") then
+			return CUSTOM_HAZARDS["secondbossyelloworb"]
+		end
+		if parentLower:find("cricle") or parentLower:find("circlehitbox") then
+			return CUSTOM_HAZARDS["secondbosscriclehitbox"]
+		end
+	end
+	return nil
+end
+
+--// Trích xuất các BasePart nguy hiểm từ Instance (Part hoặc Model/Folder)
+local function extractHazardParts(instance: Instance, customConfig: CustomHazardConfig__DARKLUA_TYPE_b?): { [BasePart]: boolean }
+	local parts: { [BasePart]: boolean } = {}
+
+	local function isValidPart(p: Instance): boolean
+		if not p or not p:IsA("BasePart") or filter.IsIgnoredPart(p) then return false end
+		local pLower = p.Name:lower()
+		if pLower:find("debug", 1, true) or p.Name:sub(1, 3) == "TM_" or pLower:find("smartdodge", 1, true) or pLower:find("smartautoplay", 1, true) then
+			return false
+		end
+
+		if customConfig then
+			-- Chiêu thức ngoại lệ theo danh sách tên: hợp lệ khi còn tồn tại trong Workspace
+			return p.Parent ~= nil
+		end
+
+		-- Mặc định cho mọi chiêu thức khác: bắt buộc Material == Neon và chưa mờ
+		return p.Material == Enum.Material.Neon and p.Transparency < FADE_THRESHOLD
+	end
+
+	if instance:IsA("BasePart") then
+		if isValidPart(instance) then
+			parts[instance] = true
+		end
+	elseif instance:IsA("Model") then
+		-- Nếu cấu hình trong Whitelist chỉ định rõ ràng Part con cần lấy (theo tên chính xác hoặc từ khóa chứa)
+		if customConfig and (customConfig.targetChildName or customConfig.targetChildContains) then
+			local targetExact = customConfig.targetChildName and customConfig.targetChildName:lower()
+			local targetContains = customConfig.targetChildContains and customConfig.targetChildContains:lower()
+			for _, desc in ipairs(instance:GetDescendants()) do
+				if desc:IsA("BasePart") and desc.Parent and not filter.IsIgnoredPart(desc) then
+					local descName = desc.Name:lower()
+					local matches = false
+					if targetExact and descName == targetExact then
+						matches = true
+					elseif targetContains and descName:find(targetContains) then
+						matches = true
+					end
+					if matches then
+						parts[desc] = true
+					end
+				end
+			end
+			return parts
+		end
+
+		-- Mặc định cho Model thông thường: duyệt lấy các part hợp lệ
+		for _, desc in ipairs(instance:GetDescendants()) do
+			if isValidPart(desc) then
+				parts[desc] = true
+			end
+		end
+	end
+
+	return parts
+end
+
+--// Trích xuất thông số tia Beam / Projectile giải tích (chuẩn V1)
+local function extractBeamGeometry(instance: Instance, customConfig: CustomHazardConfig__DARKLUA_TYPE_b?): (Vector3?, Vector3?, number?, number?)
+	local nameLower = instance.Name:lower():gsub("%s+", "")
+	local isBeamHazard = (customConfig and (customConfig.isTelegraph or customConfig.hasSyntheticTelegraph))
+		or nameLower:find("beampart") ~= nil
+		or nameLower:find("bigspike") ~= nil
+		or nameLower:find("seekingspike") ~= nil
+
+	if not isBeamHazard then
+		return nil, nil, nil, nil
+	end
+
+	local originPos = Vector3.zero
+	if instance:IsA("BasePart") then
+		originPos = instance.Position
+	elseif instance:IsA("Model") then
+		local p = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
+		originPos = p and p.Position or instance:GetPivot().Position
+	end
+
+	local forward2D: Vector3? = nil
+	local detectedLength: number? = nil
+
+	-- 1. Ưu tiên tìm Attachment2 (điểm đích của tia Beam trong Dungeon Quest)
+	local att2 = instance:FindFirstChild("Attachment2", true)
+	if att2 and att2:IsA("Attachment") then
+		local delta = att2.WorldPosition - originPos
+		local delta2D = Vector3.new(delta.X, 0, delta.Z)
+		if delta2D.Magnitude > 0.5 then
+			forward2D = delta2D.Unit
+			detectedLength = delta2D.Magnitude
+		end
+	end
+
+	-- 2. Tìm Beam instance (Attachment0 -> Attachment1)
+	if not forward2D then
+		local beam = instance:FindFirstChildWhichIsA("Beam", true)
+		if beam and beam.Attachment0 and beam.Attachment1 then
+			local delta = beam.Attachment1.WorldPosition - beam.Attachment0.WorldPosition
+			local delta2D = Vector3.new(delta.X, 0, delta.Z)
+			if delta2D.Magnitude > 0.5 then
+				forward2D = delta2D.Unit
+				detectedLength = delta2D.Magnitude
+			end
+		end
+	end
+
+	-- 3. Tìm companion Beam trong ActiveHazards hoặc Workspace (CHỈ tìm Beam thật như firstBossBeamPart, thirdBossBeamPart)
+	if not forward2D and not nameLower:find("crisscross") then
+		for otherInst, otherHazard in pairs(activeHazards) do
+			if otherHazard and otherHazard.forward2D and otherHazard.instance ~= instance then
+				local isTrueBeam = otherHazard.isTelegraph or (otherHazard.name and otherHazard.name:lower():find("beam") ~= nil)
+				if isTrueBeam then
+					local otherOrigin = otherHazard.beamOrigin or otherHazard.position
+					local dist = (Vector3.new(otherOrigin.X - originPos.X, 0, otherOrigin.Z - originPos.Z)).Magnitude
+					if dist <= 25.0 then
+						forward2D = otherHazard.forward2D
+						detectedLength = otherHazard.maxLookahead
+						originPos = otherOrigin
+						break
+					end
+				end
+			end
+		end
+	end
+
+	-- 3b. Tìm companion Beam Part trong Workspace nếu chưa kịp đăng ký trong activeHazards
+	if not forward2D and not nameLower:find("crisscross") then
+		for _, child in ipairs(Workspace:GetChildren()) do
+			if child ~= instance and child:IsA("BasePart") and child.Name:lower():find("beampart") then
+				local dist = (Vector3.new(child.Position.X - originPos.X, 0, child.Position.Z - originPos.Z)).Magnitude
+				if dist <= 25.0 then
+					local att = child:FindFirstChild("Attachment2", true)
+					if att and att:IsA("Attachment") then
+						local delta = att.WorldPosition - child.Position
+						local delta2D = Vector3.new(delta.X, 0, delta.Z)
+						if delta2D.Magnitude > 0.5 then
+							forward2D = delta2D.Unit
+							detectedLength = delta2D.Magnitude
+							originPos = child.Position
+							break
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- 0. Nếu là Expanding Cone (secondBossCricleHitbox - Boss 2):
+	-- Hướng lan tỏa xuất phát từ vị trí spawn của vòng tròn hướng thẳng về phía Player
+	if customConfig and customConfig.isExpandingCone then
+		local localPlayer = Players.LocalPlayer
+		local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local playerPos = rootPart and rootPart.Position
+		if playerPos then
+			local diff = Vector3.new(playerPos.X - originPos.X, 0, playerPos.Z - originPos.Z)
+			local dist = diff.Magnitude
+			if dist > 0.3 then
+				forward2D = diff.Unit
+				detectedLength = math.clamp(dist + 35.0, 85.0, 160.0)
+			end
+		end
+	end
+
+	-- 4. Fallback theo LookVector của Part / Model
+	if not forward2D then
+		-- TUYỆT ĐỐI KHÔNG dùng LookVector cho CrissCross vì mesh đang xoay tròn (spinning) quanh trục Y liên tục trong script game!
+		-- Hướng của CrissCross sẽ được xác định chính xác 100% bằng độ dịch chuyển tọa độ (Motion Delta) ngay trên Heartbeat.
+		if not nameLower:find("crisscross") then
+			local look = (instance:IsA("BasePart") and instance.CFrame.LookVector)
+				or (instance:IsA("Model") and instance:GetPivot().LookVector)
+			if look then
+				local look2D = Vector3.new(look.X, 0, look.Z)
+				if look2D.Magnitude > 0.001 then
+					forward2D = look2D.Unit
+				end
+			end
+		end
+	end
+
+	if not forward2D and not nameLower:find("crisscross") then
+		forward2D = Vector3.new(0, 0, -1)
+	end
+
+	-- 5. Xác định dangerRadius (bán kính nguy hiểm 1/2 bề rộng) và maxLookahead (chiều dài tia định hướng)
+	local isSeekingSpike = nameLower:find("seekingspike") ~= nil
+	local isBigSpike = nameLower:find("bigspike") ~= nil
+
+	-- Nếu là firstBossBeamPart: Xác định xem nó thuộc về Big Spike hay Seeking Spikes
+	if not isSeekingSpike and not isBigSpike and nameLower:find("beampart") then
+		local beamInst = instance:FindFirstChildWhichIsA("Beam", true)
+		if beamInst and beamInst.Width0 and beamInst.Width0 >= 20 then
+			isBigSpike = true
+		else
+			-- Quét kiểm tra companion spike ở quanh originPos trong activeHazards
+			for _, other in pairs(activeHazards) do
+				local oName = other.cleanName:lower()
+				local oOrigin = other.beamOrigin or other.position
+				if (Vector3.new(oOrigin.X - originPos.X, 0, oOrigin.Z - originPos.Z)).Magnitude < 25 then
+					if oName:find("bigspike") then
+						isBigSpike = true
+						break
+					elseif oName:find("seekingspike") then
+						isSeekingSpike = true
+						break
+					end
+				end
+			end
+			-- Quét kiểm tra companion spike trong Workspace nếu chưa có trong activeHazards
+			if not isBigSpike and not isSeekingSpike then
+				for _, child in ipairs(Workspace:GetChildren()) do
+					if child ~= instance and child:IsA("BasePart") then
+						local cName = child.Name:lower()
+						if cName:find("bigspike") and (child.Position - originPos).Magnitude < 25 then
+							isBigSpike = true
+							break
+						elseif cName:find("seekingspike") and (child.Position - originPos).Magnitude < 25 then
+							isSeekingSpike = true
+							break
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local dangerRadius = 20.0
+	local defaultLen = 140.0
+	if isSeekingSpike then
+		dangerRadius = 8.0 -- Bề rộng 16 studs (chuẩn Seeking Spikes)
+		defaultLen = (SKILL_CORRIDOR_MAP and SKILL_CORRIDOR_MAP["boss1_seekingspikes"] and SKILL_CORRIDOR_MAP["boss1_seekingspikes"].currentLength) or 120.0
+	elseif isBigSpike then
+		dangerRadius = 20.0 -- Bề rộng 40 studs (chuẩn Big Spike)
+		defaultLen = (SKILL_CORRIDOR_MAP and SKILL_CORRIDOR_MAP["boss1_bigspike"] and SKILL_CORRIDOR_MAP["boss1_bigspike"].currentLength) or 140.0
+	elseif customConfig and customConfig.isExpandingCone then
+		dangerRadius = customConfig.dangerRadius or 8.0
+		defaultLen = customConfig.telegraphLength or 95.0
+	else
+		local beam = instance:FindFirstChildWhichIsA("Beam", true)
+		if beam then
+			local maxW = math.max(beam.Width0 or 0, beam.Width1 or 0)
+			if maxW >= 20 then
+				dangerRadius = maxW / 2
+			elseif maxW > 0 then
+				dangerRadius = math.max(maxW / 2, 8.0)
+			end
+		elseif customConfig and customConfig.width then
+			dangerRadius = customConfig.width / 2
+		end
+	end
+
+	local maxLookahead = math.clamp(detectedLength or (customConfig and customConfig.telegraphLength) or defaultLen, 40.0, 250.0)
+
+	return originPos, forward2D, dangerRadius, maxLookahead
+end
+
+--// Hủy đăng ký hiểm họa
+local function unregisterHazard(instance: Instance, reason: string?)
+	local hazard = activeHazards[instance]
+	if not hazard then return end
+
+	-- Dọn dẹp connections
+	for _, c in ipairs(hazard.connections) do
+		pcall(function() c:Disconnect() end)
+	end
+	table.clear(hazard.connections)
+
+	-- Xóa visual (SelectionBox + Name Tag)
+	visuals.RemoveHazardVisuals(hazard)
+
+	activeHazards[instance] = nil
+	hazardCount = math.max(0, hazardCount - 1)
+
+	if logHazards then
+		print(("[SmartDodgeV2] 🟢 Threat Cleared: %s (%s)"):format(hazard.name, reason or "Ended"))
+	end
+
+	-- Dispatch events
+	for _, cb in ipairs(hazardRemovedCallbacks) do
+		pcall(cb, hazard)
+	end
+	for _, cb in ipairs(hazardChangedCallbacks) do
+		pcall(cb, hazardCount, hazard)
+	end
+end
+
+--// Đăng ký một hiểm họa mới khi phát hiện part Neon hoặc chiêu trong danh sách tên
+local function registerHazard(instance: Instance)
+	if not enabled or activeHazards[instance] or instance:IsA("Folder") or filter.IsIgnoredInstance(instance) then
+		return
+	end
+	local nameLower = instance.Name:lower()
+	if nameLower:find("debug", 1, true) or instance.Name:sub(1, 3) == "TM_" or nameLower:find("smartdodge", 1, true) or nameLower:find("smartautoplay", 1, true) then
+		return
+	end
+
+	local customConfig = getCustomHazardConfig(instance)
+	local parts = extractHazardParts(instance, customConfig)
+
+	-- Nếu chưa có part nào hợp lệ lúc vừa spawn:
+	if next(parts) == nil then
+		-- Giống V1: Nếu là Model mới tạo, các part con có thể chưa kịp replicate vào Model
+		-- Thiết lập watcher 1.5s để đón đầu khi part con xuất hiện
+		if instance:IsA("Model") then
+			local c: RBXScriptConnection?
+			c = instance.DescendantAdded:Connect(function(desc)
+				if desc:IsA("BasePart") and not filter.IsIgnoredPart(desc) then
+					local isValid = false
+					if customConfig then
+						if customConfig.targetChildName then
+							isValid = (desc.Name:lower() == customConfig.targetChildName:lower())
+						elseif customConfig.targetChildContains then
+							isValid = (desc.Name:lower():find(customConfig.targetChildContains:lower()) ~= nil)
+						else
+							isValid = (desc.Parent ~= nil)
+						end
+					else
+						isValid = (desc.Material == Enum.Material.Neon and desc.Transparency < FADE_THRESHOLD)
+					end
+					if isValid then
+						if c then c:Disconnect(); c = nil end
+						registerHazard(instance)
+					end
+				end
+			end)
+			task.delay(1.5, function()
+				if c then c:Disconnect(); c = nil end
+			end)
+		end
+		return
+	end
+
+	local isMultiWave = (customConfig and customConfig.isMultiWave) == true
+
+	-- Đối với Model hoặc đòn đánh đa part, xác định tâm chuẩn xác nhất:
+	local pos = Vector3.zero
+	if instance:IsA("BasePart") then
+		pos = instance.Position
+	elseif instance:IsA("Model") then
+		local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or instance.PrimaryPart
+		pos = (centerPart and centerPart:IsA("BasePart")) and centerPart.Position or instance:GetPivot().Position
+	else
+		local firstPart = next(parts)
+		pos = firstPart and firstPart.Position or Vector3.zero
+	end
+
+	local localPlayer = Players.LocalPlayer
+	local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+	local dist = rootPart and (rootPart.Position - pos).Magnitude or 0
+
+	-- Tập hợp toàn bộ các part thuộc về hazard này (dùng để lắng nghe kết nối)
+	local trackedParts: { [BasePart]: boolean } = {}
+	for p in pairs(parts) do
+		trackedParts[p] = true
+	end
+
+	-- Đối với đòn đánh đa đợt sóng (như thirdBossMultiRings):
+	-- Ở thời điểm spawn, chỉ giữ lại trong hazard.activeParts những part ĐANG SÁNG (< FADE_THRESHOLD).
+	-- Các part chưa kích hoạt sẽ ở trạng thái chờ (vẫn nằm trong trackedParts) để đón Wave 2, Wave 3.
+	if isMultiWave then
+		for p in pairs(trackedParts) do
+			if p.Transparency >= FADE_THRESHOLD then
+				parts[p] = nil
+			end
+		end
+	end
+
+	local neonCount = 0
+	for _ in pairs(parts) do neonCount = neonCount + 1 end
+
+	local isBoss = false
+	-- Mốc thời gian & trạng thái: Nếu Boss chưa spawn thì tại thời điểm này KHÔNG THỂ là chiêu của Boss (100% Enemy/Mob)
+	local bossIsActive = (shared.IsBossActive and shared.IsBossActive()) or (lastBossSpawnTime > 0)
+	if bossIsActive then
+		if customConfig ~= nil then
+			isBoss = true
+		else
+			local nameLower = instance.Name:lower()
+			if nameLower:find("boss") ~= nil then
+				isBoss = true
+			elseif instance.Parent and instance.Parent ~= Workspace and instance.Parent.Name:lower():find("boss") ~= nil then
+				isBoss = true
+			else
+				isBoss = true
+			end
+		end
+	end
+
+	local hazard: ActiveHazard__DARKLUA_TYPE_a= {
+		instance = instance,
+		name = instance.Name,
+		cleanName = instance.Name:gsub("^%s+", ""):gsub("%s+$", ""),
+		spawnTime = os.clock(),
+		activeParts = parts,
+		neonCount = neonCount,
+		position = pos,
+		lastPos = pos,
+		distanceToPlayer = dist,
+		connections = {},
+		isTelegraph = customConfig and customConfig.isTelegraph or false,
+		isCustomHazard = customConfig ~= nil,
+		neverUnify = customConfig and customConfig.neverUnify or false,
+		hasSyntheticTelegraph = customConfig and customConfig.hasSyntheticTelegraph or false,
+		telegraphLength = customConfig and customConfig.telegraphLength or nil,
+		isHomingToPlayer = customConfig and customConfig.isHomingToPlayer or false,
+		isMultiWave = isMultiWave,
+		isBossHazard = isBoss,
+		isExpandingCone = (customConfig and customConfig.isExpandingCone) or false,
+		expansionRate = (customConfig and customConfig.expansionRate) or 0.25,
+		hasLaunched = (instance:IsA("BasePart") and instance.Transparency < 0.5) or false,
+		launchTime = (instance:IsA("BasePart") and instance.Transparency < 0.5) and os.clock() or nil,
+	}
+
+	activeHazards[instance] = hazard
+	hazardCount = hazardCount + 1
+
+	local bOrigin, bFwd, bRadius, bReach = extractBeamGeometry(instance, customConfig)
+	if bFwd and bRadius then
+		hazard.beamOrigin = bOrigin
+		hazard.forward2D = bFwd
+		hazard.dangerRadius = bRadius
+		hazard.maxLookahead = bReach
+		hazard.width = bRadius * 2
+
+		-- Tự động đồng bộ hướng tia và gốc tia sang companion spike / beam nếu đã đăng ký trước đó
+		for _, otherHazard in pairs(activeHazards) do
+			if otherHazard ~= hazard and (otherHazard.name:lower():find("spike") or otherHazard.name:lower():find("beam")) then
+				local oPos = otherHazard.beamOrigin or otherHazard.position
+				if (Vector3.new(oPos.X - bOrigin.X, 0, oPos.Z - bOrigin.Z)).Magnitude < 25 then
+					if not otherHazard.forward2D or otherHazard.isCustomHazard then
+						otherHazard.forward2D = bFwd
+						otherHazard.beamOrigin = bOrigin
+						otherHazard.maxLookahead = bReach
+					end
+				end
+			end
+		end
+	end
+
+	-- Lắng nghe Attachment2 nếu vị trí WorldPosition được cập nhật trễ
+	local att2 = instance:FindFirstChild("Attachment2", true)
+	if att2 and att2:IsA("Attachment") then
+		table.insert(hazard.connections, att2:GetPropertyChangedSignal("WorldPosition"):Connect(function()
+			local origin = hazard.beamOrigin or hazard.position
+			local delta = att2.WorldPosition - origin
+			local delta2D = Vector3.new(delta.X, 0, delta.Z)
+			if delta2D.Magnitude > 0.5 then
+				hazard.forward2D = delta2D.Unit
+				hazard.maxLookahead = delta2D.Magnitude
+			end
+		end))
+	end
+
+	local partMinTrans: { [BasePart]: number } = {}
+	local partHasFlashed: { [BasePart]: boolean } = {}
+	for p in pairs(trackedParts) do
+		local curT = p.Transparency
+		partMinTrans[p] = curT
+		if curT <= 0.35 then
+			partHasFlashed[p] = true
+		end
+	end
+
+	-- Lắng nghe từng part khi mờ đi / sáng lên / bị hủy
+	local function checkPart(p: BasePart)
+		local isValid = (p.Parent ~= nil)
+		if not isValid then
+			trackedParts[p] = nil
+			parts[p] = nil
+			visuals.RemoveHazardPart(hazard, p)
+			local rem = 0
+			for _ in pairs(trackedParts) do rem = rem + 1 end
+			if rem == 0 then
+				unregisterHazard(instance, "All parts destroyed")
+			end
+			return
+		end
+
+		if isMultiWave then
+			local curTrans = p.Transparency
+			if curTrans < FADE_THRESHOLD then
+				-- Part sáng lên trong đợt sóng tấn công mới
+				if not parts[p] then
+					parts[p] = true
+					hazard.neonCount = hazard.neonCount + 1
+					visuals.AttachPartVisual(hazard, p)
+				end
+			else
+				-- Part mờ đi khi đợt sóng nổ xong hoặc đang chờ
+				if parts[p] then
+					parts[p] = nil
+					hazard.neonCount = math.max(0, hazard.neonCount - 1)
+					visuals.RemoveHazardPart(hazard, p)
+				end
+			end
+			-- TUYỆT ĐỐI KHÔNG gọi unregisterHazard khi parts trống ở giữa các wave!
+			return
+		end
+
+		local curTrans = p.Transparency
+		local minT = partMinTrans[p] or curTrans
+		if curTrans < minT then
+			minT = curTrans
+			partMinTrans[p] = minT
+		end
+		if minT <= 0.35 or curTrans < 0.5 then
+			partHasFlashed[p] = true
+			if not hazard.hasLaunched then
+				hazard.hasLaunched = true
+				hazard.launchTime = os.clock()
+			end
+		end
+		-- Pha tan biến sớm: Khi đã từng rõ nét (<= 0.35), chỉ cần độ mờ tăng thêm >= 0.15 hoặc >= 0.40 là xóa ngay
+		local hasDecayedAfterFlash = (partHasFlashed[p] == true) and (curTrans >= (minT + 0.15) or curTrans >= 0.40)
+
+		if not hazard.isCustomHazard then
+			-- Chiêu thông thường: yêu cầu còn Neon, chưa mờ và chưa tan biến
+			if curTrans >= FADE_THRESHOLD or p.Material ~= Enum.Material.Neon or hasDecayedAfterFlash then
+				isValid = false
+			end
+		elseif hazard.isTelegraph then
+			-- Tia định hướng: chỉ mất khi bị hủy khỏi Workspace
+			isValid = (p.Parent ~= nil)
+		else
+			-- Custom Hazard (như Seeking Spike, Big Spike, Third Boss Missile, Ice Spikes):
+			-- Trong giai đoạn tụ lực / precast (chưa từng sáng và chưa hết thời gian tụ lực 5s) thì luôn coi là hợp lệ!
+			if (not partHasFlashed[p]) and (not hazard.hasLaunched) and ((os.clock() - hazard.spawnTime) < 5.0) then
+				isValid = (p.Parent ~= nil)
+			else
+				isValid = (p.Parent ~= nil) and (curTrans < FADE_THRESHOLD)
+			end
+		end
+
+		if not isValid then
+			trackedParts[p] = nil
+			parts[p] = nil
+			visuals.RemoveHazardPart(hazard, p)
+			local rem = 0
+			for _ in pairs(parts) do rem = rem + 1 end
+			hazard.neonCount = rem
+			if rem == 0 then
+				unregisterHazard(instance, "Faded / Destroyed")
+			end
+		end
+	end
+
+	for part in pairs(trackedParts) do
+		table.insert(hazard.connections, part:GetPropertyChangedSignal("Transparency"):Connect(function()
+			checkPart(part)
+		end))
+		if not hazard.isCustomHazard then
+			table.insert(hazard.connections, part:GetPropertyChangedSignal("Material"):Connect(function()
+				checkPart(part)
+			end))
+		end
+		table.insert(hazard.connections, part.AncestryChanged:Connect(function()
+			checkPart(part)
+		end))
+	end
+
+	-- Lắng nghe các part con được nạp trễ vào Model
+	if instance:IsA("Model") then
+		table.insert(hazard.connections, instance.DescendantAdded:Connect(function(desc)
+			if not activeHazards[instance] then return end
+			if desc:IsA("BasePart") and not filter.IsIgnoredPart(desc) then
+				local isValid = false
+				if customConfig then
+					if customConfig.targetChildName then
+						isValid = (desc.Name:lower() == customConfig.targetChildName:lower())
+					elseif customConfig.targetChildContains then
+						isValid = (desc.Name:lower():find(customConfig.targetChildContains:lower()) ~= nil)
+					else
+						isValid = hazard.isTelegraph or (desc.Transparency < FADE_THRESHOLD)
+					end
+				else
+					isValid = (desc.Transparency < FADE_THRESHOLD and desc.Material == Enum.Material.Neon)
+				end
+
+				if isValid and not trackedParts[desc] then
+					trackedParts[desc] = true
+					table.insert(hazard.connections, desc:GetPropertyChangedSignal("Transparency"):Connect(function()
+						checkPart(desc)
+					end))
+					if not hazard.isCustomHazard then
+						table.insert(hazard.connections, desc:GetPropertyChangedSignal("Material"):Connect(function()
+							checkPart(desc)
+						end))
+					end
+					table.insert(hazard.connections, desc.AncestryChanged:Connect(function()
+						checkPart(desc)
+					end))
+					checkPart(desc)
+				end
+			end
+		end))
+	end
+
+	table.insert(hazard.connections, instance.AncestryChanged:Connect(function()
+		if not instance.Parent then
+			unregisterHazard(instance, "Removed from Workspace")
+		end
+	end))
+
+	-- Gắn SelectionBox 3D vàng đậm và Name Tag Parent(Part)
+	visuals.AttachHazardVisuals(hazard)
+
+	if logHazards then
+		print(("[SmartDodgeV2] 🚨 Neon Threat Detected: %s | Neon Parts: %d | Dist: %.1f studs"):format(
+			hazard.name, hazard.neonCount, hazard.distanceToPlayer
+		))
+	end
+
+	-- Dispatch events
+	for _, cb in ipairs(hazardAddedCallbacks) do
+		pcall(cb, hazard)
+	end
+	for _, cb in ipairs(hazardChangedCallbacks) do
+		pcall(cb, hazardCount, hazard)
+	end
+end
+
+--// Vòng lặp cập nhật vị trí thực tế, chuyển động đạn bay và cự ly tới Player theo thời gian thực
+local function startUpdateLoop()
+	table.insert(connections, RunService.Heartbeat:Connect(function()
+		if not enabled then return end
+		local localPlayer = Players.LocalPlayer
+		local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+		local pPos = rootPart and rootPart.Position
+
+		for inst, hazard in pairs(activeHazards) do
+			if not inst.Parent then
+				unregisterHazard(inst, "Parent Nil")
+				continue
+			end
+
+			-- Tự động dọn dẹp các đạn bay đã tan biến (Transparency >= FADE_THRESHOLD) khi hết hành trình bay
+			-- TUYỆT ĐỐI KHÔNG dọn dẹp tia định hướng (luôn có Part trong suốt) hoặc Custom Hazard đang tụ lực (precast)
+			if inst:IsA("BasePart") and not hazard.isTelegraph and not hazard.isMultiWave then
+				if inst.Transparency < 0.5 then
+					hazard.hasLaunched = true
+				end
+				local isPrecasting = hazard.isCustomHazard and (not hazard.hasLaunched) and ((os.clock() - hazard.spawnTime) < 5.0)
+				if not isPrecasting and inst.Transparency >= FADE_THRESHOLD then
+					if (not hazard.isCustomHazard) or hazard.hasLaunched or ((os.clock() - hazard.spawnTime) >= 5.0) then
+						unregisterHazard(inst, "Faded Projectile")
+						continue
+					end
+				end
+			end
+
+			-- 1. Cập nhật vị trí thực tế theo thời gian thực (Real-time Position Tracking)
+			local curPos = (inst:IsA("BasePart") and inst.Position)
+				or (inst:IsA("Model") and (inst.PrimaryPart and inst.PrimaryPart.Position or inst:GetPivot().Position))
+				or hazard.position
+
+			-- 2. Tự động tính toán hướng di chuyển thực tế từ độ dịch chuyển frame-to-frame (Motion Delta Vector)
+			-- Miễn nhiễm 100% với việc mesh đạn bị xoay tròn (spinning mesh / drill animation của Boss 1)
+			if hazard.lastPos then
+				local moveDelta = curPos - hazard.lastPos
+				local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
+				if moveDelta2D.Magnitude > 0.08 then
+					hazard.forward2D = moveDelta2D.Unit
+				end
+			end
+			hazard.lastPos = curPos
+			hazard.position = curPos
+
+			-- 3. Cập nhật cự ly tới Player
+			if pPos then
+				hazard.distanceToPlayer = (hazard.position - pPos).Magnitude
+			end
+		end
+	end))
+end
+
+--// API Public
+function detection.SetEnabled(state: boolean)
+	enabled = state
+	if enabled then
+		filter.Init()
+		startUpdateLoop()
+
+		-- Quét các object đã có sẵn trong Workspace
+		for _, child in ipairs(Workspace:GetChildren()) do
+			task.spawn(registerHazard, child)
+		end
+
+		-- Lắng nghe object mới sinh ra ở Workspace Depth 1
+		table.insert(connections, Workspace.ChildAdded:Connect(function(child)
+			task.spawn(registerHazard, child)
+		end))
+
+		if logHazards then
+			print("[SmartDodgeV2] Threat Detection Engine Started (Pure Neon).")
+		end
+	else
+		for _, c in ipairs(connections) do
+			pcall(function() c:Disconnect() end)
+		end
+		table.clear(connections)
+
+		for inst in pairs(activeHazards) do
+			unregisterHazard(inst, "Detector Disabled")
+		end
+		visuals.ClearAll()
+		filter.Cleanup()
+
+		if logHazards then
+			print("[SmartDodgeV2] Threat Detection Engine Stopped.")
+		end
+	end
+end
+
+function detection.IsEnabled(): boolean
+	return enabled
+end
+
+function detection.SetLogHazards(state: boolean)
+	logHazards = state
+end
+
+function detection.IsLogHazards(): boolean
+	return logHazards
+end
+
+function detection.GetActiveHazards(): { [Instance]: ActiveHazard__DARKLUA_TYPE_a}
+	return activeHazards
+end
+
+--// Trả về Boss 2 Orb đang kích hoạt (nếu có): part, colorName ("yellow"|"red"|"green"), instance, hazard
+function detection.GetActiveBossOrb(): (BasePart?, string?, Instance?, ActiveHazard__DARKLUA_TYPE_a?)
+	for inst, hazard in pairs(activeHazards) do
+		if inst and inst.Parent then
+			local cleanName = (inst.Name or ""):lower():gsub("%s+", "")
+			local colorName: string? = nil
+
+			if cleanName:find("yelloworb") then
+				colorName = "yellow"
+			elseif cleanName:find("redorb") then
+				colorName = "red"
+			elseif cleanName:find("greenorb") then
+				colorName = "green"
+			elseif cleanName:find("secondboss") and cleanName:find("orb") and not cleanName:find("explosion") then
+				colorName = "yellow"
+			end
+
+			if colorName then
+				local part: BasePart? = inst:IsA("BasePart") and inst or nil
+				if not part and hazard.activeParts then
+					for p in pairs(hazard.activeParts) do
+						if p and p.Parent and p:IsA("BasePart") then
+							part = p
+							break
+						end
+					end
+				end
+				if not part then
+					part = inst:FindFirstChildWhichIsA("BasePart")
+				end
+				if part and part.Parent then
+					return part, colorName, inst, hazard
+				end
+			end
+		end
+	end
+	return nil, nil, nil, nil
+end
+
+function detection.GetHazardCount(): number
+	return hazardCount
+end
+
+function detection.OnHazardAdded(cb: (ActiveHazard__DARKLUA_TYPE_a) -> ())
+	table.insert(hazardAddedCallbacks, cb)
+end
+
+function detection.OnHazardRemoved(cb: (ActiveHazard__DARKLUA_TYPE_a) -> ())
+	table.insert(hazardRemovedCallbacks, cb)
+end
+
+function detection.OnHazardsChanged(cb: (number, ActiveHazard__DARKLUA_TYPE_a?) -> ())
+	table.insert(hazardChangedCallbacks, cb)
+end
+
+--// Bảng ánh xạ các chiêu thức có vùng màu Cam (Orange Corridor / Telegraph Length)
+local SKILL_CORRIDOR_MAP: { [string]: { keys: { string }, currentLength: number, defaultLength: number } } = {
+	["boss2_orbs"] = {
+		keys = { "secondbossyelloworb", "secondbossredorb", "secondbossgreenorb" },
+		currentLength = 90,
+		defaultLength = 90,
+	},
+	["boss1_beam"] = {
+		keys = { "firstbossbeampart", "firstbosslaserprecast", "firstbossattachpart", "firstbosssundiskbeampart", "firstbossblindingblastbeam" },
+		currentLength = 140,
+		defaultLength = 140,
+	},
+	["boss1_seekingspikes"] = {
+		keys = { "firstbossseekingspikes" },
+		currentLength = 120,
+		defaultLength = 120,
+	},
+	["boss1_bigspike"] = {
+		keys = { "firstbossbigspike" },
+		currentLength = 140,
+		defaultLength = 140,
+	},
+	["boss1_skyshot"] = {
+		keys = { "firstbossskyshot" },
+		currentLength = 60,
+		defaultLength = 60,
+	},
+	["boss1_crisscross"] = {
+		keys = { "firstbosscrisscross" },
+		currentLength = 28,
+		defaultLength = 28,
+	},
+	["boss2_movingbeam"] = {
+		keys = { "secondbossmovingbeam" },
+		currentLength = 40,
+		defaultLength = 40,
+	},
+	["boss3_missile"] = {
+		keys = { "thirdbossmissile" },
+		currentLength = 40,
+		defaultLength = 40,
+	},
+	["boss3_bouncingorb"] = {
+		keys = { "thirdbossbouncingorb" },
+		currentLength = 28,
+		defaultLength = 28,
+	},
+}
+
+--// Cấu hình độ dài hành lang Cam chi tiết theo từng Skill
+function detection.SetSkillCorridorLength(skillKey: string, val: number)
+	if type(val) ~= "number" or val < 10 then return end
+	local item = SKILL_CORRIDOR_MAP[skillKey]
+	if not item then return end
+	item.currentLength = val
+
+	for _, k in ipairs(item.keys) do
+		if CUSTOM_HAZARDS[k] then
+			CUSTOM_HAZARDS[k].telegraphLength = val
+		end
+	end
+
+	for _, hazard in pairs(activeHazards) do
+		local n = hazard.name:lower():gsub("%s+", "")
+		for _, k in ipairs(item.keys) do
+			if n:find(k) or k:find(n) then
+				hazard.telegraphLength = val
+				hazard.maxLookahead = val
+
+				-- Cập nhật cả companion hazard (spike / beam) nếu có
+				for _, other in pairs(activeHazards) do
+					if other ~= hazard and (other.name:lower():find("spike") or other.name:lower():find("beam")) then
+						local oOrigin = other.beamOrigin or other.position
+						local hOrigin = hazard.beamOrigin or hazard.position
+						if (Vector3.new(oOrigin.X - hOrigin.X, 0, oOrigin.Z - hOrigin.Z)).Magnitude < 25 then
+							other.telegraphLength = val
+							other.maxLookahead = val
+							pcall(function()
+								visuals.UpdateCorridorLength(other, val)
+							end)
+						end
+					end
+				end
+
+				pcall(function()
+					visuals.UpdateCorridorLength(hazard, val)
+				end)
+				break
+			end
+		end
+	end
+end
+
+function detection.GetSkillCorridorLength(skillKey: string): number
+	local item = SKILL_CORRIDOR_MAP[skillKey]
+	return item and item.currentLength or 40
+end
+
+function detection.SetOrbCorridorLength(val: number)
+	detection.SetSkillCorridorLength("boss2_orbs", val)
+end
+
+function detection.GetOrbCorridorLength(): number
+	return detection.GetSkillCorridorLength("boss2_orbs")
+end
+
+function detection.SetBeamCorridorLength(val: number)
+	detection.SetSkillCorridorLength("boss1_beam", val)
+end
+
+function detection.GetBeamCorridorLength(): number
+	return detection.GetSkillCorridorLength("boss1_beam")
+end
+
+function detection.GetLastBossSpawnTime(): number
+	return lastBossSpawnTime
+end
+
+function detection.RemoveHazard(instance: Instance, reason: string?)
+	unregisterHazard(instance, reason)
+end
+
+--// Khi Boss kích hoạt: Cập nhật mốc thời gian spawn Boss, xóa sạch toàn bộ các chiêu thức của quái thường cũ còn sót lại
+if shared.OnBossActiveChanged then
+	shared.OnBossActiveChanged(function(active)
+		if active then
+			lastBossSpawnTime = os.clock()
+			for inst, haz in pairs(activeHazards) do
+				if haz then
+					-- Mọi skill sinh trước thời điểm này 100% là của enemy cũ
+					if haz.spawnTime and haz.spawnTime < lastBossSpawnTime then
+						haz.isBossHazard = false
+					end
+					if not haz.isBossHazard then
+						unregisterHazard(inst, "Pre-boss enemy hazard purged")
+					end
+				end
+			end
+		else
+			lastBossSpawnTime = 0
+		end
+	end)
+end
+
+--// Đăng ký dọn dẹp khi Hub unload
+lifecycle.Register(function()
+	detection.SetEnabled(false)
+end)
+
+return detection
+end function __DIST.l()-- Smart Dodge V2: Danger Detection & Geometry Engine
+-- Chuyên trách: Nhận diện trạng thái IN DANGER theo thời gian thực (Player / Point in Hazard).
+-- Hỗ trợ 100% các dạng hình học: OBB, Circle AoE, Polar Annulus Ring, Moving Beam, và Moving Trajectory Corridors.
+
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+
+local types = __DIST.load('f')
+local detection = __DIST.load('k')
+local visuals = __DIST.load('h')
+local shared = __DIST.load('j')
+
+local danger = {}
+
+--// Cấu hình & Tham số
+local enabled = true
+local targetScope = "All"            -- "All" | "Boss" | "Mobs"
+local dodgeBossEnabled = true        -- Bật/tắt né chiêu của Boss
+local dodgeEnemyEnabled = true       -- Bật/tắt né chiêu của Quái thường
+local playerHitboxPadding = 1.8      -- Bù trừ bán kính cơ thể nhân vật (studs)
+local hitboxDownwardOffset = 2.85    -- Khoảng cách hạ thấp từ HumanoidRootPart xuống sát chân (studs)
+local MAX_HEIGHT_TOLERANCE = 150.0   -- Cột không gian sát thương chiều dọc trong Dungeon Quest
+local RAYCAST_DOWN_DIST = 150.0      -- Khoảng cách quét sàn nhà
+
+--// Trạng thái InDanger
+local isPlayerInDanger = false
+local currentDangerHazard: ActiveHazard__DARKLUA_TYPE_a? = nil
+local dangerCallbacks: { (inDanger: boolean, hazard: ActiveHazard__DARKLUA_TYPE_a?) -> () } = {}
+
+--// Raycast Parameters
+local raycastParams = RaycastParams.new()
+raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+raycastParams.IgnoreWater = true
+local cachedIgnoreList: { Instance } = {}
+local lastFilterRebuildTime = 0
+
+local function updateRaycastFilter(force: boolean?)
+	local now = os.clock()
+	if not force and (now - lastFilterRebuildTime < 0.3) then
+		return
+	end
+	lastFilterRebuildTime = now
+
+	table.clear(cachedIgnoreList)
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then table.insert(cachedIgnoreList, p.Character) end
+	end
+	if Workspace:FindFirstChild("RaycastIgnore") then
+		table.insert(cachedIgnoreList, Workspace.RaycastIgnore)
+	end
+	for inst in pairs(detection.GetActiveHazards()) do
+		table.insert(cachedIgnoreList, inst)
+	end
+	raycastParams.FilterDescendantsInstances = cachedIgnoreList
+end
+
+--// Bắn raycast kiểm tra sàn nhà và snap tọa độ xuống mặt đất
+function danger.GetFloorPosition(pos: Vector3): (Vector3, boolean)
+	updateRaycastFilter(false)
+
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 10, pos.Z)
+	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
+	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
+
+	if result and result.Position then
+		return Vector3.new(pos.X, result.Position.Y + 3, pos.Z), true
+	end
+	return pos, false
+end
+
+--// Bắn raycast kiểm tra sàn nhà và trả về cao độ Y thực tế của mặt sàn
+function danger.GetRawFloorY(pos: Vector3): (number, boolean)
+	updateRaycastFilter(false)
+
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 12, pos.Z)
+	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
+	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
+
+	if result and result.Position then
+		return result.Position.Y, true
+	end
+
+	local localPlayer = Players.LocalPlayer
+	local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
+	if rootPart and rootPart:IsA("BasePart") then
+		return rootPart.Position.Y - 2.8, false
+	end
+
+	return pos.Y, false
+end
+
+--// Lấy kích thước thực tế của Part (tính cả độ phóng đại của SpecialMesh nếu có)
+local function getEffectivePartSize(part: BasePart): Vector3
+	local mesh = part:FindFirstChildOfClass("SpecialMesh")
+	if mesh then
+		local s = mesh.Scale
+		return Vector3.new(
+			part.Size.X * math.abs(s.X),
+			part.Size.Y * math.abs(s.Y),
+			part.Size.Z * math.abs(s.Z)
+		)
+	end
+	return part.Size
+end
+
+--// 1. Kiểm tra hình chữ nhật định hướng (Oriented Bounding Box - OBB)
+function danger.IsPointInPartOBB(point: Vector3, part: BasePart, padding: number?): boolean
+	if not part or not part:IsA("BasePart") or not part.Parent then return false end
+
+	local pad = padding or playerHitboxPadding
+	local partPos = part.Position
+	local pSize = getEffectivePartSize(part)
+
+	-- Broadphase Pruning: Bỏ qua nhanh nếu quá xa
+	local dX = point.X - partPos.X
+	local dZ = point.Z - partPos.Z
+	local maxDim = math.max(pSize.X, pSize.Z)
+	local maxRadius = (maxDim * 0.7072) + pad + 3.0
+	if (dX * dX + dZ * dZ) > (maxRadius * maxRadius) then
+		return false
+	end
+
+	-- Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - partPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false
+	end
+
+	-- Chuyển tọa độ sang Local Space của Part
+	local localPos = part.CFrame:PointToObjectSpace(point)
+	local halfX = (pSize.X / 2) + pad
+	local halfZ = (pSize.Z / 2) + pad
+	local halfY = math.max(MAX_HEIGHT_TOLERANCE, (pSize.Y / 2) + 5)
+
+	return math.abs(localPos.X) <= halfX
+		and math.abs(localPos.Z) <= halfZ
+		and math.abs(localPos.Y) <= halfY
+end
+
+--// 2. Kiểm tra hình cầu / hình trụ (Circle / Ball / Cylinder AoE)
+function danger.IsPointInSphere(point: Vector3, part: BasePart, padding: number?): boolean
+	if not part or not part:IsA("BasePart") or not part.Parent then return false end
+
+	local pad = padding or playerHitboxPadding
+	local partPos = part.Position
+	local pSize = getEffectivePartSize(part)
+
+	local heightDiff = math.abs(point.Y - partPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false
+	end
+
+	local dX = point.X - partPos.X
+	local dZ = point.Z - partPos.Z
+	local radius = (math.max(pSize.X, pSize.Z) / 2) + pad
+	return (dX * dX + dZ * dZ) <= (radius * radius)
+end
+
+--// 3. Kiểm tra vành khuyên / bán nguyệt (Polar Annulus Ring - thirdBossMultiRings)
+function danger.IsPointInRing(point: Vector3, ringPart: BasePart, padding: number?): boolean
+	if not ringPart or not ringPart:IsA("BasePart") or not ringPart.Parent then return false end
+
+	-- Đòn đánh chỉ gây sát thương khi đang hiển thị rõ nét (chưa mờ / chưa tan biến)
+	if ringPart.Transparency >= 0.85 then
+		return false
+	end
+
+	local pad = padding or playerHitboxPadding
+
+	-- 1. Tìm tâm thực của Model chứa các vòng Ring (Center Part)
+	local parentModel = ringPart:FindFirstAncestorOfClass("Model") or ringPart.Parent
+	local centerPart = parentModel and (parentModel:FindFirstChild("center") or parentModel:FindFirstChild("Center") or (parentModel:IsA("Model") and parentModel.PrimaryPart))
+	local centerPos = (centerPart and centerPart:IsA("BasePart")) and centerPart.Position
+		or (parentModel and parentModel:IsA("Model") and parentModel:GetPivot().Position)
+		or ringPart.Position
+
+	-- 2. Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - centerPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false
+	end
+
+	-- 3. Bán kính 2D từ tâm Model tới điểm P
+	local diffX = point.X - centerPos.X
+	local diffZ = point.Z - centerPos.Z
+	local r = math.sqrt(diffX * diffX + diffZ * diffZ)
+
+	-- 4. Bán kính ngoài thực tế của Ring từ Size.Z
+	local radiusOuter = ringPart.Size.Z
+	if radiusOuter < 1 then
+		radiusOuter = math.max(ringPart.Size.X, ringPart.Size.Z) / 2
+	end
+
+	-- Bề dày dải Ring sát thương (13 studs cho vòng nhỏ, 18 studs cho vòng lớn)
+	local bandThickness = (radiusOuter > 90) and 18.0 or 13.0
+	local radiusInner = math.max(0, radiusOuter - bandThickness)
+
+	-- 5. Kiểm tra khoảng rỗng ở tâm (lỗ an toàn)
+	if r < (radiusInner - pad) then
+		return false
+	end
+
+	-- 6. Kiểm tra nằm ngoài bán kính ngoài
+	if r > (radiusOuter + pad) then
+		return false
+	end
+
+	-- 7. Kiểm tra hướng bán nguyệt (Semicircle Direction)
+	local offX = ringPart.Position.X - centerPos.X
+	local offZ = ringPart.Position.Z - centerPos.Z
+	local offMag = math.sqrt(offX * offX + offZ * offZ)
+	if offMag > 0.5 then
+		local dirUnitX = offX / offMag
+		local dirUnitZ = offZ / offMag
+		local dot = (diffX * dirUnitX) + (diffZ * dirUnitZ)
+		-- Nếu dot < -pad: nằm ở nửa đối diện (vùng an toàn 100%)
+		if dot < -pad then
+			return false
+		end
+	end
+
+	return true
+end
+
+--// 4. Kiểm tra Moving Beam (Boss 2 - Thanh beam lăn tròn quanh trục X)
+function danger.IsPointInMovingBeam(point: Vector3, part: BasePart, padding: number?): boolean
+	if not part or not part:IsA("BasePart") or not part.Parent then return false end
+
+	local pad = padding or playerHitboxPadding
+	local localPos = part.CFrame:PointToObjectSpace(point)
+	local pSize = part.Size
+
+	-- Chiều dài sải ngang quét phòng dọc theo trục X
+	local halfLength = (math.max(pSize.X, pSize.Z) / 2) + pad
+	-- Bán kính tiết diện xoay quanh trục X
+	local beamRadius = (math.max(pSize.Y, math.min(pSize.X, pSize.Z)) / 2) + pad
+	if beamRadius < 3.5 then beamRadius = 3.5 end
+
+	local radialDistSq = localPos.Y * localPos.Y + localPos.Z * localPos.Z
+	return (math.abs(localPos.X) <= halfLength)
+		and (radialDistSq <= (beamRadius + 1.5) * (beamRadius + 1.5))
+end
+
+--// 4b. Kiểm tra xem một điểm P có nằm trong hành lang tia Beam / Laser / Projectile thẳng không (Pure 2D Cylinder Math chuẩn V1)
+function danger.IsPointInBeamCorridor(
+	point: Vector3,
+	originPos: Vector3,
+	forward2D: Vector3,
+	beamRadius: number,
+	maxReach: number,
+	padding: number?
+): (boolean, number, number)
+	local pad = padding or playerHitboxPadding
+	local effectiveRadius = beamRadius + pad
+
+	-- Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - originPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false, 0, 0
+	end
+
+	-- Vector 2D từ origin tới điểm point
+	local toP = Vector3.new(point.X - originPos.X, 0, point.Z - originPos.Z)
+	local dotForward = toP:Dot(forward2D)
+
+	-- Cho phép lùi sau gốc phát tia (-effectiveRadius) để bảo vệ người chơi khi đứng sát/trong người Boss
+	if dotForward < -effectiveRadius or dotForward > (maxReach + pad) then
+		return false, 0, 0
+	end
+
+	-- Khoảng cách vuông góc tới trục tia (Perpendicular Distance)
+	local proj = forward2D * dotForward
+	local perpDist = (toP - proj).Magnitude
+
+	if perpDist <= effectiveRadius then
+		return true, perpDist, dotForward
+	end
+
+	return false, perpDist, dotForward
+end
+
+--// 4c. Kiểm tra xem một điểm P có nằm trong vùng nón mở rộng (Expanding Cone Corridor - Boss 2 Circle Hitbox chuẩn V1)
+function danger.IsPointInExpandingCone(
+	point: Vector3,
+	originPos: Vector3,
+	forward2D: Vector3,
+	baseRadius: number,
+	maxReach: number,
+	expansionRate: number?,
+	padding: number?
+): (boolean, number, number, number)
+	local pad = padding or playerHitboxPadding
+	local rate = expansionRate or 0.25
+
+	-- Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - originPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false, 0, 0, baseRadius
+	end
+
+	-- Vector 2D từ origin tới điểm point
+	local toP = Vector3.new(point.X - originPos.X, 0, point.Z - originPos.Z)
+	local dotForward = toP:Dot(forward2D)
+
+	-- Bán kính phình to dần theo chiều dọc đòn đánh
+	local effectiveRadius = baseRadius + math.max(0, dotForward * rate)
+	if dotForward < -effectiveRadius or dotForward > (maxReach + pad) then
+		return false, 0, dotForward, effectiveRadius
+	end
+
+	-- Khoảng cách vuông góc tới trục chính
+	local proj = forward2D * dotForward
+	local perpDist = (toP - proj).Magnitude
+
+	if perpDist <= (effectiveRadius + pad) then
+		return true, perpDist, dotForward, effectiveRadius
+	end
+
+	return false, perpDist, dotForward, effectiveRadius
+end
+
+--// Kiểm tra xem một hiểm họa có phải là Quả Cầu rượt đuổi của Boss 2 hay không
+function danger.IsBoss2OrbHazard(hazard: ActiveHazard__DARKLUA_TYPE_a): boolean
+	if not hazard then return false end
+	local name = (hazard.cleanName or hazard.name or ""):lower():gsub("%s+", "")
+	return (name:find("secondboss") ~= nil and name:find("orb") ~= nil and name:find("explosion") == nil)
+		or name:find("yelloworb") ~= nil
+		or name:find("redorb") ~= nil
+		or name:find("greenorb") ~= nil
+end
+
+--// 5. Kiểm tra xem một điểm P có nằm trong vùng nguy hiểm của một Hazard cụ thể không
+function danger.IsPointInHazard(point: Vector3, hazard: ActiveHazard__DARKLUA_TYPE_a, padding: number?): boolean
+	if not hazard or not hazard.instance or not hazard.instance.Parent then return false end
+
+	local isSpikeBeam = hazard.cleanName:lower():find("seekingspike") ~= nil or hazard.cleanName:lower():find("bigspike") ~= nil
+
+	-- Nếu part chính đã mờ hoặc tan biến (Transparency >= 0.85): chiêu thức đã kết thúc, TUYỆT ĐỐI không gây sát thương
+	-- NGOẠI TRỪ: tia định hướng (luôn có Part trong suốt) hoặc đòn Spike (có giai đoạn tụ lực trong suốt trước khi phóng)
+	if not hazard.isTelegraph and not isSpikeBeam and hazard.instance:IsA("BasePart") and hazard.instance.Transparency >= 0.85 and not hazard.isMultiWave then
+		return false
+	end
+
+	-- Nếu tất cả các part trong activeParts đều đã mờ (Transparency >= 0.85): bỏ qua không xét
+	if not hazard.isTelegraph and not isSpikeBeam and not hazard.isMultiWave and hazard.activeParts then
+		local hasActiveVisible = false
+		for p in pairs(hazard.activeParts) do
+			if p and p.Parent and p:IsA("BasePart") and p.Transparency < 0.85 then
+				hasActiveVisible = true
+				break
+			end
+		end
+		if not hasActiveVisible and next(hazard.activeParts) ~= nil then
+			return false
+		end
+	end
+
+	local pad = padding or playerHitboxPadding
+	local isBoss2Orb = danger.IsBoss2OrbHazard(hazard)
+
+	-- Bước 1: ƯU TIÊN GIẢI TÍCH TOÁN HỌC 2D CHO TIA BEAM / PROJECTILE / EXPANDING CONE (Độc lập 100% với Visuals, chuẩn V1)
+	-- Quả Cầu Boss 2 là quả cầu vật lý lăn/bay theo người chơi, TUYỆT ĐỐI không áp dụng hình học Beam
+	if not isBoss2Orb and hazard.forward2D and hazard.dangerRadius then
+		local origin: Vector3
+		local reach: number
+		local isExpandingCone = hazard.isExpandingCone or hazard.cleanName:lower():find("cricle") ~= nil or hazard.cleanName:lower():find("circle") ~= nil
+
+		if isExpandingCone then
+			origin = hazard.beamOrigin or hazard.position
+			reach = hazard.maxLookahead or hazard.telegraphLength or 95.0
+			local inCone = danger.IsPointInExpandingCone(point, origin, hazard.forward2D, hazard.dangerRadius, reach, hazard.expansionRate or 0.25, pad)
+			if inCone then
+				return true
+			end
+		elseif hazard.isTelegraph or isSpikeBeam then
+			-- Tia định hướng (Beam hoặc Spike Direction Beam): xuất phát từ gốc phát tia và bao quát toàn bộ chiều dài telegraph
+			origin = hazard.beamOrigin or hazard.position
+			reach = hazard.maxLookahead or hazard.telegraphLength or 140.0
+			local inBeam = danger.IsPointInBeamCorridor(point, origin, hazard.forward2D, hazard.dangerRadius, reach, pad)
+			if inBeam then
+				return true
+			end
+		else
+			-- Đạn bay / Moving Projectile: vùng nguy hiểm xuất phát từ vị trí hiện tại của đạn tiến về phía trước
+			origin = hazard.position
+			reach = hazard.telegraphLength or hazard.maxLookahead or 40.0
+			local inBeam = danger.IsPointInBeamCorridor(point, origin, hazard.forward2D, hazard.dangerRadius, reach, pad)
+			if inBeam then
+				return true
+			end
+		end
+	end
+
+	-- Bước 2: KIỂM TRA HÀNH LANG TIA ĐỊNH HƯỚNG / MOVING TRAJECTORY (Vùng màu Cam)
+	-- Quả Cầu Boss 2 TUYỆT ĐỐI không coi hành lang cam định hướng là hitbox gây sát thương
+	if not isBoss2Orb then
+		local visualData = visuals.GetHazardVisualData(hazard)
+		if visualData and visualData.corridorPart and visualData.corridorPart.Parent then
+			local inCorridor = danger.IsPointInPartOBB(point, visualData.corridorPart, pad)
+			if inCorridor then
+				return true
+			end
+		end
+	end
+
+	-- Bước 3: Kiểm tra các Part vật lý nguy hiểm (Vùng màu Vàng / Part thực tế)
+	local instNameLower = hazard.instance.Name:lower():gsub("%s+", "")
+	local isMultiRings = instNameLower:find("multiring") ~= nil
+	local isMovingBeam = instNameLower:find("movingbeam") ~= nil
+
+	for part in pairs(hazard.activeParts) do
+		if part and part.Parent and part:IsA("BasePart") then
+			if isMultiRings or part.Name:lower():find("ring") then
+				if danger.IsPointInRing(point, part, pad) then
+					return true
+				end
+			elseif isMovingBeam then
+				if danger.IsPointInMovingBeam(point, part, pad) then
+					return true
+				end
+			elseif part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder) then
+				if danger.IsPointInSphere(point, part, pad) then
+					return true
+				end
+			else
+				if danger.IsPointInPartOBB(point, part, pad) then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+--// Phân loại đòn đánh xuất phát từ Boss hay Quái thường
+function danger.IsBossHazard(hazard: ActiveHazard__DARKLUA_TYPE_a): boolean
+	if not hazard then return false end
+
+	-- Mốc thời gian: Mọi chiêu thức sinh ra TRƯỚC thời điểm Boss spawn thì 100% là của Enemy/Quái cũ
+	local bossSpawnTime = detection.GetLastBossSpawnTime and detection.GetLastBossSpawnTime() or 0
+	if bossSpawnTime > 0 and hazard.spawnTime and hazard.spawnTime < bossSpawnTime then
+		return false
+	end
+
+	-- Nếu Boss hiện tại không active trong game, không thể có đòn đánh nào của Boss
+	if shared.IsBossActive and not shared.IsBossActive() then
+		return false
+	end
+
+	if hazard.isBossHazard ~= nil then
+		return hazard.isBossHazard
+	end
+	local nameLower = hazard.name:lower()
+	if nameLower:find("boss") ~= nil then
+		return true
+	end
+	if hazard.instance and hazard.instance.Parent and hazard.instance.Parent.Name:lower():find("boss") ~= nil then
+		return true
+	end
+	return false
+end
+
+--// Kiểm tra xem một hiểm họa có bị bỏ qua né dựa theo cài đặt Boss/Enemy không
+function danger.IsHazardIgnored(hazard: ActiveHazard__DARKLUA_TYPE_a): boolean
+	if not hazard then return true end
+	local isBoss = danger.IsBossHazard(hazard)
+	if targetScope == "Boss" and not isBoss then
+		return true
+	elseif targetScope == "Mobs" and isBoss then
+		return true
+	end
+	if isBoss then
+		return not dodgeBossEnabled
+	else
+		return not dodgeEnemyEnabled
+	end
+end
+
+--// 6. Kiểm tra xem một điểm P có bị dính bất kỳ hiểm họa nào đang kích hoạt không (hỗ trợ custom padding)
+function danger.IsPointInAnyHazard(point: Vector3, ignoredInstance: Instance?, padding: number?): (boolean, ActiveHazard__DARKLUA_TYPE_a?)
+	if not enabled or not detection.IsEnabled() then
+		return false, nil
+	end
+
+	local activeHazards = detection.GetActiveHazards()
+	local list = {}
+	for _, hazard in pairs(activeHazards) do
+		if ignoredInstance then
+			local shouldIgnore = (hazard.instance == ignoredInstance)
+				or (hazard.instance and hazard.instance.Name == ignoredInstance.Name)
+				or (hazard.instance and hazard.instance:IsDescendantOf(ignoredInstance))
+				or (ignoredInstance:IsDescendantOf(hazard.instance))
+
+			if not shouldIgnore and danger.IsBoss2OrbHazard(hazard) then
+				local ignName = ignoredInstance.Name:lower():gsub("%s+", "")
+				if ignName:find("orb") or ignName:find("secondboss") then
+					shouldIgnore = true
+				end
+			end
+
+			if shouldIgnore then
+				continue
+			end
+		end
+
+		-- Bỏ qua hiểm họa nếu người dùng tắt né Boss hoặc tắt né Quái thường
+		if danger.IsHazardIgnored(hazard) then
+			continue
+		end
+
+		table.insert(list, hazard)
+	end
+
+	if #list > 1 then
+		table.sort(list, function(a, b)
+			local da = (Vector3.new(a.position.X - point.X, 0, a.position.Z - point.Z)).Magnitude
+			local db = (Vector3.new(b.position.X - point.X, 0, b.position.Z - point.Z)).Magnitude
+			if math.abs(da - db) > 0.5 then
+				return da < db
+			end
+			return (a.name or "") < (b.name or "")
+		end)
+	end
+
+	for _, hazard in ipairs(list) do
+		if danger.IsPointInHazard(point, hazard, padding) then
+			return true, hazard
+		end
+	end
+
+	return false, nil
+end
+
+--// Kiểm tra xem đoạn đường di chuyển từ fromPos -> toPos có an toàn không (Path Clearance)
+function danger.IsPathSafe(fromPos: Vector3, toPos: Vector3, ignoredInstance: Instance?): boolean
+	local dist = (toPos - fromPos).Magnitude
+	if dist <= 1.2 then return true end
+
+	-- Bước chia mẫu 2.8 studs (tối đa 14 bước để tối ưu CPU)
+	local steps = math.clamp(math.ceil(dist / 2.8), 2, 14)
+	for i = 1, steps - 1 do
+		local t = i / steps
+		local samplePos = fromPos:Lerp(toPos, t)
+		if danger.IsPointInAnyHazard(samplePos, ignoredInstance) then
+			return false
+		end
+	end
+	return true
+end
+
+--// 7. Kiểm tra trạng thái của Nhân vật Player hiện tại
+function danger.IsPlayerInDanger(): (boolean, ActiveHazard__DARKLUA_TYPE_a?)
+	local localPlayer = Players.LocalPlayer
+	local character = localPlayer and localPlayer.Character
+	if not character then return false, nil end
+
+	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
+	if not rootPart or not rootPart:IsA("BasePart") then return false, nil end
+
+	-- 1. Kiểm tra vị trí ngang thắt lưng (RootPart)
+	local inDanger, hazard = danger.IsPointInAnyHazard(rootPart.Position)
+	if inDanger then
+		return true, hazard
+	end
+
+	-- 2. Kiểm tra vị trí ngang bàn chân (chạm sàn nhà, tránh bỏ sót đòn bệt mặt đất)
+	local footPos = rootPart.Position - Vector3.new(0, hitboxDownwardOffset, 0)
+	return danger.IsPointInAnyHazard(footPos)
+end
+
+--// Lắng nghe sự kiện thay đổi trạng thái Danger
+function danger.OnDangerStateChanged(callback: (inDanger: boolean, hazard: ActiveHazard__DARKLUA_TYPE_a?) -> ())
+	if type(callback) == "function" then
+		table.insert(dangerCallbacks, callback)
+	end
+end
+
+--// Getters & Setters
+function danger.GetHitboxPadding(): number
+	return playerHitboxPadding
+end
+
+function danger.SetHitboxPadding(value: number)
+	if type(value) == "number" and value >= 0 then
+		playerHitboxPadding = value
+	end
+end
+
+function danger.GetHitboxDownwardOffset(): number
+	return hitboxDownwardOffset
+end
+
+function danger.SetHitboxDownwardOffset(value: number)
+	if type(value) == "number" and value >= 0 then
+		hitboxDownwardOffset = value
+	end
+end
+
+function danger.IsEnabled(): boolean
+	return enabled
+end
+
+function danger.SetEnabled(state: boolean)
+	enabled = (state == true)
+	if not enabled then
+		isPlayerInDanger = false
+		currentDangerHazard = nil
+	end
+end
+
+function danger.GetCurrentDangerHazard(): ActiveHazard__DARKLUA_TYPE_a?
+	return currentDangerHazard
+end
+
+function danger.SetDodgeBossEnabled(state: boolean)
+	dodgeBossEnabled = (state == true)
+	if dodgeBossEnabled and not dodgeEnemyEnabled then
+		targetScope = "Boss"
+	elseif not dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "Mobs"
+	elseif dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "All"
+	end
+end
+
+function danger.IsDodgeBossEnabled(): boolean
+	return dodgeBossEnabled
+end
+
+function danger.SetDodgeEnemyEnabled(state: boolean)
+	dodgeEnemyEnabled = (state == true)
+	if dodgeBossEnabled and not dodgeEnemyEnabled then
+		targetScope = "Boss"
+	elseif not dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "Mobs"
+	elseif dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "All"
+	end
+end
+
+function danger.IsDodgeEnemyEnabled(): boolean
+	return dodgeEnemyEnabled
+end
+
+function danger.SetTargetScope(scope: string)
+	if scope == "Boss" then
+		targetScope = "Boss"
+		dodgeBossEnabled = true
+		dodgeEnemyEnabled = false
+	elseif scope == "Mobs" then
+		targetScope = "Mobs"
+		dodgeBossEnabled = false
+		dodgeEnemyEnabled = true
+	else
+		targetScope = "All"
+		dodgeBossEnabled = true
+		dodgeEnemyEnabled = true
+	end
+end
+
+function danger.GetTargetScope(): string
+	return targetScope
+end
+
+--// Heartbeat Runner: Theo dõi và cập nhật trạng thái IN DANGER thời gian thực
+RunService.Heartbeat:Connect(function()
+	if not enabled or not detection.IsEnabled() then
+		if isPlayerInDanger then
+			isPlayerInDanger = false
+			currentDangerHazard = nil
+			for _, cb in ipairs(dangerCallbacks) do
+				pcall(cb, false, nil)
+			end
+		end
+		visuals.UpdatePlayerHitboxVisual(nil)
+		return
+	end
+
+	local inDanger, hazard = danger.IsPlayerInDanger()
+	if inDanger ~= isPlayerInDanger or hazard ~= currentDangerHazard then
+		isPlayerInDanger = inDanger
+		currentDangerHazard = hazard
+
+		for _, cb in ipairs(dangerCallbacks) do
+			pcall(cb, inDanger, hazard)
+		end
+	end
+
+	-- Cập nhật vòng tròn 3D Hitbox quanh chân nhân vật (luôn neo theo tâm Player với offset hạ thấp)
+	local localPlayer = Players.LocalPlayer
+	local character = localPlayer and localPlayer.Character
+	local rootPart = character and (character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso"))
+	if rootPart and rootPart:IsA("BasePart") then
+		local pPos = rootPart.Position
+		local footY = pPos.Y - hitboxDownwardOffset
+		visuals.UpdatePlayerHitboxVisual(pPos, inDanger, playerHitboxPadding, footY)
+	else
+		visuals.UpdatePlayerHitboxVisual(nil)
+	end
+end)
+
+danger.IsPointInDanger = danger.IsPointInAnyHazard
+
+return danger end function __DIST.m()-- Threat Detection Engine (Pure Neon & Dynamic Detection)
+-- Chuyên trách: Phát hiện mối nguy hiểm (Hazards), Beam, Orb, Quỹ đạo, Geometry Hitbox
+
+
+local types = __DIST.load('f')
+local filter = __DIST.load('g')
+local visuals = __DIST.load('h')
+local detection = __DIST.load('k')
+local danger = __DIST.load('l')
+
+local smartDodgeV2 = {
+	types = types,
+	filter = filter,
+	visuals = visuals,
+	detection = detection,
+	danger = danger,
+	geometry = danger,
+
+	-- Orange Corridor Length Controls (Vùng màu Cam)
+	SetSkillCorridorLength = detection.SetSkillCorridorLength,
+	GetSkillCorridorLength = detection.GetSkillCorridorLength,
+	SetOrbCorridorLength = detection.SetOrbCorridorLength,
+	GetOrbCorridorLength = detection.GetOrbCorridorLength,
+	SetBeamCorridorLength = detection.SetBeamCorridorLength,
+	GetBeamCorridorLength = detection.GetBeamCorridorLength,
+
+	-- Target Scope Control (All / Boss / Mobs)
+	SetTargetScope = danger.SetTargetScope,
+	GetTargetScope = danger.GetTargetScope,
+}
+
+return smartDodgeV2
+end function __DIST.n()-- Tab Threat Detection V2: Section Detection
+-- Điều khiển Threat Detection Engine V2, Visuals ESP, và Live Threat Monitor
+
+
+local ui = __DIST.load('e')
+local autoSave = __DIST.load('d')
+local smartDodgeV2 = __DIST.load('m')
+local detection = smartDodgeV2.detection
+local visuals = smartDodgeV2.visuals
+local danger = smartDodgeV2.danger
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Threat Detection V2" })
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Live Threat Inspector" })
+
+	--// Right Section: Real-time Monitor Labels
+	local statusLabel = rightSection:Label({ Text = "Detector V2: <font color='rgb(255,80,80)'>Disabled</font>" })
+	local dangerLabel = rightSection:Label({ Text = "Danger State: <font color='rgb(50,255,50)'>SAFE</font>" })
+	local countLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
+	local lastHazardLabel = rightSection:Label({ Text = "Last Threat: <font color='rgb(160,160,160)'>None</font>" })
+
+	local function updateMonitor(count, lastHazard)
+		count = count or detection.GetHazardCount()
+		local isEnabled = detection.IsEnabled()
+		local statusColor = isEnabled and "0, 255, 0" or "255, 80, 80"
+		local statusText = isEnabled and "Active (Real-time V2)" or "Disabled"
+
+		pcall(function()
+			statusLabel:UpdateName("Detector V2: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
+		end)
+
+		local countColor = count > 0 and "255, 60, 60" or "0, 255, 0"
+		pcall(function()
+			countLabel:UpdateName("Active Hazards: <font color='rgb(" .. countColor .. ")'>" .. tostring(count) .. "</font>")
+		end)
+
+		if lastHazard then
+			pcall(function()
+				lastHazardLabel:UpdateName(("Last Threat: <font color='rgb(255,200,60)'>%s</font> (%d parts, %.1fm)"):format(
+					lastHazard.name, lastHazard.neonCount, lastHazard.distanceToPlayer
+				))
+			end)
+		end
+	end
+
+	-- Lắng nghe sự kiện từ Detection V2
+	detection.OnHazardsChanged(function(count, lastHazard)
+		updateMonitor(count, lastHazard)
+	end)
+
+	-- Lắng nghe sự kiện IN DANGER từ Danger Engine V2
+	danger.OnDangerStateChanged(function(inDanger, currentHazard)
+		pcall(function()
+			if inDanger and currentHazard then
+				dangerLabel:UpdateName(("Danger State: <font color='rgb(255,40,40)'><b>IN DANGER</b></font> (<font color='rgb(255,200,50)'>%s</font>)"):format(currentHazard.name))
+			else
+				dangerLabel:UpdateName("Danger State: <font color='rgb(50,255,50)'>SAFE</font>")
+			end
+		end)
+	end)
+
+	--// Right Section: Specific Skill Orange Corridor Lengths (Chỉnh độ dài vùng Cam cho từng Skill riêng biệt)
+	rightSection:Header({ Name = "Orange Corridor Lengths (Độ dài Vùng Cam từng Skill)" })
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 2: Homing Orbs",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss2_orbs"),
+		Minimum = 15,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss2_orbs", val)
+		end),
+	}, "Slider_SDV2_Len_Boss2Orbs"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Laser & Telegraph Beams",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_beam"),
+		Minimum = 40,
+		Maximum = 250,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_beam", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1Beam"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Seeking Spikes",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_seekingspikes"),
+		Minimum = 15,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_seekingspikes", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1SeekSpikes"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Big Spike",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_bigspike"),
+		Minimum = 15,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_bigspike", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1BigSpike"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Sky Shot",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_skyshot"),
+		Minimum = 20,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_skyshot", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1SkyShot"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Criss Cross",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_crisscross"),
+		Minimum = 15,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_crisscross", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1CrissCross"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 2: Moving Beam",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss2_movingbeam"),
+		Minimum = 15,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss2_movingbeam", val)
+		end),
+	}, "Slider_SDV2_Len_Boss2MovingBeam"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 3: Homing Missile",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss3_missile"),
+		Minimum = 15,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss3_missile", val)
+		end),
+	}, "Slider_SDV2_Len_Boss3Missile"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 3: Bouncing Orb",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss3_bouncingorb"),
+		Minimum = 10,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss3_bouncingorb", val)
+		end),
+	}, "Slider_SDV2_Len_Boss3BouncingOrb"))
+
+	--// Left Section: Controls Detection
+	leftSection:Toggle({
+		Name = "Enable Threat Detection V2",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			detection.SetEnabled(state)
+			updateMonitor()
+		end),
+	}, "Toggle_SDV2_Enabled")
+
+	leftSection:Toggle({
+		Name = "3D ESP Highlighting",
+		Default = true,
+		Callback = autoSave.Wrap(function(state)
+			visuals.SetEspEnabled(state)
+		end),
+	}, "Toggle_SDV2_VisualESP")
+
+	leftSection:Toggle({
+		Name = "Unified Model Box (Gộp khung Model >= 2 Parts)",
+		Default = true,
+		Callback = autoSave.Wrap(function(state)
+			visuals.SetUnifiedModelBoxes(state)
+		end),
+	}, "Toggle_SDV2_UnifiedModel")
+
+	leftSection:Toggle({
+		Name = "Show Part Name Tags [Parent(ClassName)]",
+		Default = true,
+		Callback = autoSave.Wrap(function(state)
+			visuals.SetNameTagsEnabled(state)
+		end),
+	}, "Toggle_SDV2_NameTags")
+
+	leftSection:Toggle({
+		Name = "Show Player Hitbox Radius (Vòng chân)",
+		Default = true,
+		Callback = autoSave.Wrap(function(state)
+			visuals.SetHitboxVisualEnabled(state)
+		end),
+	}, "Toggle_SDV2_HitboxCircle")
+
+	leftSection:Toggle({
+		Name = "Console Threat Logging",
+		Default = false,
+		Callback = autoSave.Wrap(function(state)
+			detection.SetLogHazards(state)
+		end),
+	}, "Toggle_SDV2_LogHazards")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Box Outline Thickness",
+		Default = 8,
+		Minimum = 2,
+		Maximum = 25,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			visuals.SetLineThickness(val / 100)
+		end),
+	}, "Slider_SDV2_Thickness"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Box Surface Opacity",
+		Default = 35,
+		Minimum = 0,
+		Maximum = 100,
+		DisplayMethod = "Percent",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			visuals.SetSurfaceTransparency(1 - (val / 100))
+		end),
+	}, "Slider_SDV2_Opacity"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Player Hitbox Padding (studs)",
+		Default = danger.GetHitboxPadding(),
+		Minimum = 0.5,
+		Maximum = 5.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			local padding = tonumber(val) or 1.8
+			if padding > 5.0 then
+				padding = padding / 10
+			end
+			danger.SetHitboxPadding(padding)
+		end),
+	}, "Slider_SDV2_Padding"), function(val)
+		if val > 5.0 then return val / 10 end
+		return val
+	end)
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Hitbox Height Offset (studs)",
+		Default = danger.GetHitboxDownwardOffset(),
+		Minimum = 1.0,
+		Maximum = 5.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			local offset = tonumber(val) or 2.85
+			if offset > 5.0 then
+				offset = offset / 10
+			end
+			danger.SetHitboxDownwardOffset(offset)
+		end),
+	}, "Slider_SDV2_HeightOffset"), function(val)
+		if val > 5.0 then return val / 10 end
+		return val
+	end)
+
+	updateMonitor()
+end
+end function __DIST.o()-- Tab Smart Dodge V2 (DungeonQuest): Khởi tạo giao diện Threat Detection
+-- Giữ lại Detection Engine
+
+
+return function(window, tab)
+__DIST.load('n')(window, tab)
+end
+end function __DIST.p()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+-- Map thường: fetch động qua remote getDungeonStats (có cache).
+-- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
+
+--// Data
+
+local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
+
+local DUNGEONS = {
+	"Desert Temple",
+	"Winter Outpost",
+	"Pirate Island",
+	"King's Castle",
+	"The Underworld",
+	"Samurai Palace",
+	"The Canals",
+	"Ghastly Harbor",
+	"Steampunk Sewers",
+	"Orbital Outpost",
+	"Volcanic Chambers",
+	"Aquatic Temple",
+	"Enchanted Forest",
+	"Egg Island",
+	"Krampus",
+	"Tutorial Dungeon",
+}
+
+local SPECIAL_DUNGEONS = {
+	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
+	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
+	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
+}
+
+--// Table
+local dungeonCatalog = {}
+
+--// Cache
+local statsCache = {}
+local dynamicDungeons = nil
+
+--// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
+local HttpService = game:GetService("HttpService")
+local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
+
+local function persistMapList(list)
+	if not (isfile and writefile and makefolder and isfolder) then return end
+	pcall(function()
+		if not isfolder("Maclib") then makefolder("Maclib") end
+	end)
+	pcall(function()
+		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
+	end)
+end
+
+local function loadPersistedMapList()
+	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
+	end)
+	if not ok or typeof(data) ~= "table" then return nil end
+
+	local list = {}
+	for _, name in ipairs(data) do
+		if type(name) == "string" and #name > 0 then
+			table.insert(list, name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+local function mergeDungeonLists(primary)
+	local seen = {}
+	local merged = {}
+	for _, name in ipairs(primary or {}) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	for _, name in ipairs(DUNGEONS) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	return merged
+end
+
+--// Helpers
+local function findScrollingFrame()
+	local player = game:GetService("Players").LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local queueGui = playerGui:FindFirstChild("queueGui")
+	if not queueGui then return nil end
+	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
+	if not chooseDungeon then return nil end
+	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
+	if not backgroundFillLeft then return nil end
+	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
+end
+
+local function collectDungeonsFromUi()
+	local scrollingFrame = findScrollingFrame()
+	if not scrollingFrame then return nil end
+
+	local list = {}
+	for _, child in ipairs(scrollingFrame:GetChildren()) do
+		if child:IsA("ImageLabel") and #child.Name > 0 then
+			table.insert(list, child.Name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+--// Methods
+function dungeonCatalog.GetDungeons()
+	if dynamicDungeons then return dynamicDungeons end
+
+	local uiList = collectDungeonsFromUi()
+	if uiList then
+		local merged = mergeDungeonLists(uiList)
+		dynamicDungeons = merged
+		persistMapList(merged)
+		return merged
+	end
+
+	local persisted = loadPersistedMapList()
+	if persisted then
+		local merged = mergeDungeonLists(persisted)
+		dynamicDungeons = merged
+		return merged
+	end
+
+	return DUNGEONS
+end
+
+function dungeonCatalog.RefreshDungeons()
+	dynamicDungeons = nil
+	return dungeonCatalog.GetDungeons()
+end
+
+function dungeonCatalog.GetDungeonStats(name)
+	if type(name) ~= "string" or #name == 0 then return nil end
+	if statsCache[name] ~= nil then return statsCache[name] end
+
+	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
+	if not getStats then return nil end
+
+	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
+	if ok and typeof(result) == "table" then
+		statsCache[name] = result
+		return result
+	end
+	return nil
+end
+
+function dungeonCatalog.GetAllowedDifficulties(name)
+	if type(name) ~= "string" then return DIFFICULTIES end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.Difficulties end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	local allowed = {}
+	if stats then
+		for _, difficulty in ipairs(DIFFICULTIES) do
+			if stats[difficulty] then table.insert(allowed, difficulty) end
+		end
+	end
+	if #allowed > 0 then return allowed end
+	return DIFFICULTIES
+end
+
+function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
+	if type(difficulty) ~= "string" then return false end
+	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
+		if option == difficulty then return true end
+	end
+	return false
+end
+
+function dungeonCatalog.GetLevelReq(name, difficulty)
+	if type(name) ~= "string" then return 0 end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.LevelReq or 0 end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	if stats and type(difficulty) == "string" and stats[difficulty] then
+		return tonumber(stats[difficulty].levelReq) or 0
+	end
+	return 0
+end
+
+--// Table
+dungeonCatalog.DUNGEONS = DUNGEONS
+dungeonCatalog.DIFFICULTIES = DIFFICULTIES
+
+return dungeonCatalog end function __DIST.q()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
-local services = __DIST.load('n')
+local services = __DIST.load('i')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('o')
-local shared = __DIST.load('p')
+local dungeonCatalog = __DIST.load('p')
+local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 
 local playerName = services.player.Name
@@ -10059,7 +11258,7 @@ end function __DIST.r()-- Auto Start Game cho DungeonQuest: chờ tới khi đan
 
 --// Imports
 
-local shared = __DIST.load('p')
+local shared = __DIST.load('j')
 local notifier = __DIST.load('c')
 
 --// Lobby placeId — ngoài các place này ra thì đều là dungeon
@@ -10283,7 +11482,7 @@ return autoStartLobby end function __DIST.t()-- Auto Retry Dungeon cho DungeonQu
 
 --// Imports
 
-local services = __DIST.load('n')
+local services = __DIST.load('i')
 local notifier = __DIST.load('c')
 
 --// References
@@ -10507,7 +11706,7 @@ local autoStart = __DIST.load('r')
 local autoStartLobby = __DIST.load('s')
 local autoRetry = __DIST.load('t')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('o')
+local dungeonCatalog = __DIST.load('p')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -10719,7 +11918,7 @@ end function __DIST.v()-- Auto Sell (DungeonQuest): bán vật phẩm trong inve
 
 local lifecycle = __DIST.load('b')
 local notifier = __DIST.load('c')
-local shared = __DIST.load('p')
+local shared = __DIST.load('j')
 
 --// Lobby placeId — ngoài các place này ra thì đều là dungeon
 local LOBBY_PLACE_IDS = {
@@ -11454,8 +12653,8 @@ end function __DIST.x()-- ESP hitbox cho DungeonQuest.
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 
 --// Table
 local esp = {}
@@ -11806,8 +13005,8 @@ end function __DIST.y()-- ESP Enemy (Highlight) cho DungeonQuest.
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 
 --// Table
 local enemyEsp = {}
@@ -11946,7 +13145,7 @@ end function __DIST.z()-- Map Optimizer (DungeonQuest): Clean Map
 
 --// Imports
 
-local services = __DIST.load('n')
+local services = __DIST.load('i')
 local lifecycle = __DIST.load('b')
 
 --// Table
@@ -12546,7 +13745,7 @@ end function __DIST.B()-- Webhook Discord cho DungeonQuest: gửi thông báo WI
 
 local macLib = __DIST.load('a')
 local notifier = __DIST.load('c')
-local shared = __DIST.load('p')
+local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 
 --// Services
@@ -13509,7 +14708,11 @@ return function(window, tab)
 
 	local function getAutoloadName()
 		if isfile and isfile(autoloadPath) then
-			return readfile(autoloadPath)
+			local ok, raw = pcall(readfile, autoloadPath)
+			if ok and raw then
+				local trimmed = string.match(raw, "^%s*(.-)%s*$")
+				return (trimmed and #trimmed > 0) and trimmed or nil
+			end
 		end
 		return nil
 	end
@@ -13625,7 +14828,11 @@ return function(window, tab)
 				return
 			end
 
-			writefile(autoloadPath, name)
+			local ok, writeErr = pcall(writefile, autoloadPath, name)
+			if not ok then
+				window:Notify({ Title = "Interface", Description = "Unable to set autoload: " .. tostring(writeErr) })
+				return
+			end
 			autoloadLabel:UpdateName("Autoload config: " .. name)
 			window:Notify({ Title = "Interface", Description = string.format("Set %q as autoload", name) })
 			activate(name)
@@ -13662,7 +14869,7 @@ end function __DIST.J()-- Module State trong tab Configs (DungeonQuest): hiển 
 
 --// Imports
 
-local shared = __DIST.load('p')
+local shared = __DIST.load('j')
 local autoRetry = __DIST.load('t')
 
 local BOSS_LABEL = "Boss Active"
@@ -13819,8 +15026,8 @@ end end function __DIST.L()-- Phím tắt: chuột phải kích hoạt combo Q+E
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 
 --// References
@@ -13924,11 +15131,22 @@ return coordinator end function __DIST.N()-- Auto Farm System – Component A & 
 -- Spec: Sections 3 & 4 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local player = services.player
 
 local scanner = {}
+local targetScope = "All" -- "All" | "Boss" | "Mobs"
+
+function scanner.SetTargetScope(scope)
+	if scope == "Boss" or scope == "Mobs" or scope == "All" then
+		targetScope = scope
+	end
+end
+
+function scanner.GetTargetScope()
+	return targetScope
+end
 
 --// B. Enemy Validation (Section 4)
 -- An enemy is valid only if:
@@ -13937,10 +15155,24 @@ local scanner = {}
 -- 3. Enemy is alive (Humanoid.Health > 0).
 -- 4. Required movement/root component exists.
 -- 5. Enemy belongs to a valid/relevant room.
+-- 6. Matches targetScope filter (All / Boss / Mobs)
 function scanner.Validate(enemyData)
 	if not enemyData then return false end
 	local model = enemyData.Model
 	if not model or not model.Parent or model == player.Character then return false end
+
+	-- Lọc theo targetScope nếu có
+	if targetScope ~= "All" then
+		local isBossActive = shared.IsBossActive and shared.IsBossActive()
+		local eName = (model and model.Name) or ""
+		local isBossName = tostring(eName):lower():find("boss") ~= nil
+		local isBoss = isBossActive or isBossName
+		if targetScope == "Boss" and not isBoss then
+			return false
+		elseif targetScope == "Mobs" and isBoss then
+			return false
+		end
+	end
 
 	local humanoid = enemyData.Humanoid
 	if not humanoid or not humanoid.Parent then
@@ -14210,7 +15442,7 @@ end function __DIST.Q()-- Target Movement System – Component E & F: Movement C
 -- Spec: Sections 9, 10, 11, 12, 13 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
-local services = __DIST.load('n')
+local services = __DIST.load('i')
 local player = services.player
 
 local movement = {}
@@ -14421,8 +15653,8 @@ end function __DIST.R()-- Auto Farm System – Component G: State / Interrupt Ma
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 local coordinator = __DIST.load('M')
 
@@ -14788,7 +16020,7 @@ local function ensureDebugTargetPart()
 	debugTargetPart.Size = Vector3.new(2, 2, 2)
 	debugTargetPart.Transparency = 0.4
 	debugTargetPart.Color = Color3.fromRGB(255, 50, 50)
-	debugTargetPart.Material = Enum.Material.Neon
+	debugTargetPart.Material = Enum.Material.SmoothPlastic
 	debugTargetPart.Parent = workspace
 	return debugTargetPart
 end
@@ -14931,7 +16163,7 @@ local function updateVisualDebugs()
 				debugActualMarkerPart.Shape = Enum.PartType.Ball
 				debugActualMarkerPart.Size = Vector3.new(1.3, 1.3, 1.3)
 				debugActualMarkerPart.Transparency = 0.2
-				debugActualMarkerPart.Material = Enum.Material.Neon
+				debugActualMarkerPart.Material = Enum.Material.SmoothPlastic
 				debugActualMarkerPart.Color = Color3.fromRGB(0, 230, 255)
 				debugActualMarkerPart.Parent = workspace
 			end
@@ -14985,7 +16217,7 @@ local function updateVisualDebugs()
 						debugBlockerHitMarker.CanTouch = false
 						debugBlockerHitMarker.Shape = Enum.PartType.Ball
 						debugBlockerHitMarker.Size = Vector3.new(1.0, 1.0, 1.0)
-						debugBlockerHitMarker.Material = Enum.Material.Neon
+						debugBlockerHitMarker.Material = Enum.Material.SmoothPlastic
 						debugBlockerHitMarker.Color = Color3.fromRGB(255, 30, 30)
 						debugBlockerHitMarker.Parent = workspace
 					end
@@ -15216,6 +16448,17 @@ function autoFarm.GetDebugInfo()
 end
 
 
+function autoFarm.SetTargetScope(scope)
+	scanner.SetTargetScope(scope)
+	if enabled and running then
+		task.defer(evaluateTarget)
+	end
+end
+
+function autoFarm.GetTargetScope()
+	return scanner.GetTargetScope()
+end
+
 function autoFarm.Toggle(state, bypassCoordinator)
 	if state == enabled then return end
 	enabled = state
@@ -15312,8 +16555,8 @@ end function __DIST.S()-- Core Contextual cho DungeonQuest: quản lý thiết l
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local shared = __DIST.load('p')
-local dungeonCatalog = __DIST.load('o')
+local shared = __DIST.load('j')
+local dungeonCatalog = __DIST.load('p')
 local notifier = __DIST.load('c')
 local lifecycle = __DIST.load('b')
 local autoFarm = __DIST.load('R')
@@ -15558,9 +16801,9 @@ end function __DIST.T()--=======================================================
 --==============================================================--
 
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
-local dungeonCatalog = __DIST.load('o')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
+local dungeonCatalog = __DIST.load('p')
 local notifier = __DIST.load('c')
 local macLib = __DIST.load('a')
 
@@ -16648,8 +17891,8 @@ return geometry end function __DIST.V()-- Smart Dodge – Module 1: Threat Detec
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local macLib = __DIST.load('a')
 local lifecycle = __DIST.load('b')
 local skillTimingManager = __DIST.load('T')
@@ -16676,8 +17919,8 @@ local detection = {}
 --// State
 local threatDetectorEnabled = false
 local logHazards = false
-local visualEspEnabled = true
-local showSkillTimers = true
+local visualEspEnabled = false
+local showSkillTimers = false
 local autoLearnSkillLifetimes = true
 local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
 local hazardCount = 0
@@ -19109,8 +20352,8 @@ return detection end function __DIST.W()-- Smart Dodge – Module phụ: Target 
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 local tracker = __DIST.load('P')
 
@@ -19301,8 +20544,8 @@ end function __DIST.X()-- Smart Dodge – Module 3+4: Safe Spot Calculation & Pl
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local geometry = __DIST.load('U')
 local detection = __DIST.load('V')
 local targetFacing = __DIST.load('W')
@@ -19312,8 +20555,8 @@ local Workspace = game:GetService("Workspace")
 local player = services.player
 
 --// State
-local showSafeMarker = true
-local showPlayerRadar = true
+local showSafeMarker = false
+local showPlayerRadar = false
 local lockedSafeSpot = nil
 local lockedHazardCount = 0
 local safeSpotMarkerPart = nil
@@ -19390,6 +20633,18 @@ end
 
 function safeSpot.GetBoss1ArenaRadius()
 	return boss1ArenaRadius or BOSS1_DEFAULT_RADIUS
+end
+
+local targetScope = "All"
+
+function safeSpot.SetTargetScope(scope)
+	if scope == "Boss" or scope == "Mobs" or scope == "All" then
+		targetScope = scope
+	end
+end
+
+function safeSpot.GetTargetScope()
+	return targetScope
 end
 
 --// Quản lý Highlight cột pha lê Boss 2 (secondBossCrystals)
@@ -20329,6 +21584,19 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 
 	-- Tầng 1 & 3: Nếu không còn kẻ địch nào trong phòng và không ở boss room -> Hoàn toàn an toàn
 	if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then
+		lockedSafeSpot = nil
+		lockedHazardCount = 0
+		clearCrystalHighlight()
+		return false, nil, nil, 0
+	end
+
+	-- Lọc theo Target Scope (Boss / Mobs / All)
+	if targetScope == "Boss" and not shared.IsBossActive() then
+		lockedSafeSpot = nil
+		lockedHazardCount = 0
+		clearCrystalHighlight()
+		return false, nil, nil, 0
+	elseif targetScope == "Mobs" and shared.IsBossActive() then
 		lockedSafeSpot = nil
 		lockedHazardCount = 0
 		clearCrystalHighlight()
@@ -21287,8 +22555,8 @@ return safeSpot end function __DIST.Y()--=======================================
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local targetFacing = __DIST.load('W')
 local RunService = services.RunService
 
@@ -22392,8 +23660,8 @@ return dodge end function __DIST.Z()-- Smart Dodge – Module 6: Engine Orchestr
 
 --// Imports
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local coordinator = __DIST.load('M')
 local detection = __DIST.load('V')
 local geometry = __DIST.load('U')
@@ -22639,6 +23907,14 @@ function engine.OnSafeSpotChanged(callback)
 	table.insert(safeSpotCallbacks, callback)
 end
 
+function engine.SetTargetScope(scope)
+	safeSpot.SetTargetScope(scope)
+end
+
+function engine.GetTargetScope()
+	return safeSpot.GetTargetScope()
+end
+
 return engine end function __DIST._()--==============================================================--
 -- Smart Dodge – Speed Debug HUD
 -- Hiển thị trực quan tốc độ hiện tại (WalkSpeed) của Player
@@ -22649,8 +23925,8 @@ return engine end function __DIST._()--=========================================
 --==============================================================--
 
 
-local services = __DIST.load('n')
-local shared = __DIST.load('p')
+local services = __DIST.load('i')
+local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 
 local RunService = services.RunService
@@ -22884,7 +24160,7 @@ local engine = __DIST.load('Z')
 local targetFacing = __DIST.load('W')
 local speedDebugHud = __DIST.load('_')
 local skillTimingManager = __DIST.load('T')
-local shared = __DIST.load('p')
+local shared = __DIST.load('j')
 
 --// Table
 local smartDodge = {}
@@ -23007,6 +24283,8 @@ smartDodge.IsLogInDangerEnabled = engine.IsLogInDangerEnabled
 smartDodge.IsInDanger = engine.IsInDanger
 smartDodge.GetCurrentSafeSpot = engine.GetCurrentSafeSpot
 smartDodge.OnSafeSpotChanged = engine.OnSafeSpotChanged
+smartDodge.SetTargetScope = engine.SetTargetScope
+smartDodge.GetTargetScope = engine.GetTargetScope
 
 --// Invulnerability & Respawn Protection
 smartDodge.SetIgnoreDodgeWhenInvulnerable = engine.SetIgnoreDodgeWhenInvulnerable
@@ -23096,7 +24374,7 @@ return function(self)
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	-- local combatTab = require("@routes/DungeonQuest/tabs/Combat/main") -- [TẠM PHONG ẤN]
-	local smartDodgeV2Tab = __DIST.load('m')
+	local smartDodgeV2Tab = __DIST.load('o')
 	local dungeonTab = __DIST.load('u')
 	local inventoryTab = __DIST.load('w')
 	local utilitiesTab = __DIST.load('G')
@@ -23141,12 +24419,14 @@ local autoHide = __DIST.load('H')
 		local oldSD = __DIST.load('aa')
 		if oldSD and oldSD.StopEngine then oldSD.StopEngine() end
 		if oldSD and oldSD.ClearTrajectoryVisuals then oldSD.ClearTrajectoryVisuals() end
+		if oldSD and oldSD.SetShowPlayerRadar then oldSD.SetShowPlayerRadar(false) end
+		if oldSD and oldSD.ClearPlayerRadar then oldSD.ClearPlayerRadar() end
 	end)
 	pcall(function()
 		local terrain = workspace:FindFirstChildOfClass("Terrain") or workspace.Terrain
 		if terrain then
 			for _, obj in ipairs(terrain:GetChildren()) do
-				if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") then
+				if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") or obj.Name:find("SmartDodge_PlayerShaft") or obj.Name:find("SmartDodge_PlayerHead") then
 					pcall(function() obj:Destroy() end)
 				end
 			end
@@ -23154,7 +24434,7 @@ local autoHide = __DIST.load('H')
 	end)
 	pcall(function()
 		for _, obj in ipairs(workspace:GetChildren()) do
-			if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") then
+			if obj.Name:find("SmartDodge_TrajectoryBox") or obj.Name:find("SmartDodge_SafeMarker") or obj.Name:find("SmartDodge_PlayerShaft") or obj.Name:find("SmartDodge_PlayerHead") then
 				pcall(function() obj:Destroy() end)
 			end
 		end

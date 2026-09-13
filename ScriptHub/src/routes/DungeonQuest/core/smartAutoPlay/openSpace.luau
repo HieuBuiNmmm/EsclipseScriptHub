@@ -317,28 +317,6 @@ local function getOrCreateBlueMarker()
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
-	part.CanTouch = false
-
-	local bb = Instance.new("BillboardGui")
-	bb.Name = "MarkerGui"
-	bb.Size = UDim2.fromOffset(140, 24)
-	bb.StudsOffset = Vector3.new(0, 1.8, 0)
-	bb.AlwaysOnTop = true
-	bb.Adornee = part
-	bb.Parent = part
-
-	local label = Instance.new("TextLabel")
-	label.Name = "Label"
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextColor3 = BLUE_LABEL_COLOR
-	label.TextStrokeTransparency = 0
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 12
-	label.Text = "🔵 REPOSITION SPOT"
-	label.Parent = bb
-
 	blueMarkerPart = part
 	return part
 end
@@ -360,16 +338,6 @@ function openSpace.UpdateVisualMarker(spotPos, visible, distance)
 	marker.CFrame = CFrame.new(newPos)
 	if not marker.Parent then
 		marker.Parent = Workspace.Terrain
-	end
-
-	local curDist = distance or 0
-	if math.abs(curDist - lastRenderedDist) >= 0.2 then
-		lastRenderedDist = curDist
-		local bb = marker:FindFirstChild("MarkerGui")
-		local label = bb and bb:FindFirstChild("Label")
-		if label then
-			label.Text = string.format("🔵 REPOSITION (%.1fm)", curDist)
-		end
 	end
 end
 

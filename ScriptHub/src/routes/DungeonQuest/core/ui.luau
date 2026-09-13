@@ -5,15 +5,25 @@ local ui = {}
 
 -- Fix: Maclib Slider Load chỉ cập nhật UI (SetValue ignorecallback=true),
 -- nên patch UpdateValue để sau khi load vẫn gọi lại Callback => backend đồng bộ.
-function ui.PatchSliderLoadCallback(sliderElement)
+function ui.PatchSliderLoadCallback(sliderElement, valueTransform)
 	if not sliderElement or type(sliderElement.UpdateValue) ~= "function" then return sliderElement end
 	local originalUpdateValue = sliderElement.UpdateValue
 	sliderElement.UpdateValue = function(self, Value)
-		originalUpdateValue(self, Value)
+		local numVal = tonumber(Value)
+		if numVal and valueTransform then
+			numVal = valueTransform(numVal)
+		end
 		local settings = self.Settings
+		if settings and numVal then
+			local min = settings.Minimum or 0
+			local max = settings.Maximum or 100
+			numVal = math.clamp(numVal, math.min(min, max), math.max(min, max))
+		end
+		originalUpdateValue(self, numVal or Value)
 		if settings and settings.Callback then
+			local finalVal = self.Value or numVal or tonumber(Value)
 			task.spawn(function()
-				pcall(settings.Callback, tonumber(Value))
+				pcall(settings.Callback, finalVal)
 			end)
 		end
 	end

@@ -14,8 +14,8 @@ local Workspace = game:GetService("Workspace")
 local player = services.player
 
 --// State
-local showSafeMarker = true
-local showPlayerRadar = true
+local showSafeMarker = false
+local showPlayerRadar = false
 local lockedSafeSpot = nil
 local lockedHazardCount = 0
 local safeSpotMarkerPart = nil
@@ -92,6 +92,18 @@ end
 
 function safeSpot.GetBoss1ArenaRadius()
 	return boss1ArenaRadius or BOSS1_DEFAULT_RADIUS
+end
+
+local targetScope = "All"
+
+function safeSpot.SetTargetScope(scope)
+	if scope == "Boss" or scope == "Mobs" or scope == "All" then
+		targetScope = scope
+	end
+end
+
+function safeSpot.GetTargetScope()
+	return targetScope
 end
 
 --// Quản lý Highlight cột pha lê Boss 2 (secondBossCrystals)
@@ -1031,6 +1043,19 @@ function safeSpot.CalculateSafeSpot(customPlayerPos)
 
 	-- Tầng 1 & 3: Nếu không còn kẻ địch nào trong phòng và không ở boss room -> Hoàn toàn an toàn
 	if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then
+		lockedSafeSpot = nil
+		lockedHazardCount = 0
+		clearCrystalHighlight()
+		return false, nil, nil, 0
+	end
+
+	-- Lọc theo Target Scope (Boss / Mobs / All)
+	if targetScope == "Boss" and not shared.IsBossActive() then
+		lockedSafeSpot = nil
+		lockedHazardCount = 0
+		clearCrystalHighlight()
+		return false, nil, nil, 0
+	elseif targetScope == "Mobs" and shared.IsBossActive() then
 		lockedSafeSpot = nil
 		lockedHazardCount = 0
 		clearCrystalHighlight()

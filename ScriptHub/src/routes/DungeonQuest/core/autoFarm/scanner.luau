@@ -6,6 +6,17 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local player = services.player
 
 local scanner = {}
+local targetScope = "All" -- "All" | "Boss" | "Mobs"
+
+function scanner.SetTargetScope(scope)
+	if scope == "Boss" or scope == "Mobs" or scope == "All" then
+		targetScope = scope
+	end
+end
+
+function scanner.GetTargetScope()
+	return targetScope
+end
 
 --// B. Enemy Validation (Section 4)
 -- An enemy is valid only if:
@@ -14,10 +25,24 @@ local scanner = {}
 -- 3. Enemy is alive (Humanoid.Health > 0).
 -- 4. Required movement/root component exists.
 -- 5. Enemy belongs to a valid/relevant room.
+-- 6. Matches targetScope filter (All / Boss / Mobs)
 function scanner.Validate(enemyData)
 	if not enemyData then return false end
 	local model = enemyData.Model
 	if not model or not model.Parent or model == player.Character then return false end
+
+	-- Lọc theo targetScope nếu có
+	if targetScope ~= "All" then
+		local isBossActive = shared.IsBossActive and shared.IsBossActive()
+		local eName = (model and model.Name) or ""
+		local isBossName = tostring(eName):lower():find("boss") ~= nil
+		local isBoss = isBossActive or isBossName
+		if targetScope == "Boss" and not isBoss then
+			return false
+		elseif targetScope == "Mobs" and isBoss then
+			return false
+		end
+	end
 
 	local humanoid = enemyData.Humanoid
 	if not humanoid or not humanoid.Parent then

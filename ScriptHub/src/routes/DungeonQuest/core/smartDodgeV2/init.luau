@@ -1,5 +1,5 @@
--- Smart Dodge V2: Main Module Entry
--- Gom các subsystem thành một module thống nhất
+-- Threat Detection Engine (Pure Neon & Dynamic Detection)
+-- Chuyên trách: Phát hiện mối nguy hiểm (Hazards), Beam, Orb, Quỹ đạo, Geometry Hitbox
 
 local types = require("@routes/DungeonQuest/core/smartDodgeV2/types")
 local filter = require("@routes/DungeonQuest/core/smartDodgeV2/filter")
@@ -14,6 +14,18 @@ local smartDodgeV2 = {
 	detection = detection,
 	danger = danger,
 	geometry = danger,
+
+	-- Orange Corridor Length Controls (Vùng màu Cam)
+	SetSkillCorridorLength = detection.SetSkillCorridorLength,
+	GetSkillCorridorLength = detection.GetSkillCorridorLength,
+	SetOrbCorridorLength = detection.SetOrbCorridorLength,
+	GetOrbCorridorLength = detection.GetOrbCorridorLength,
+	SetBeamCorridorLength = detection.SetBeamCorridorLength,
+	GetBeamCorridorLength = detection.GetBeamCorridorLength,
+
+	-- Target Scope Control (All / Boss / Mobs)
+	SetTargetScope = danger.SetTargetScope,
+	GetTargetScope = danger.GetTargetScope,
 }
 
 return smartDodgeV2

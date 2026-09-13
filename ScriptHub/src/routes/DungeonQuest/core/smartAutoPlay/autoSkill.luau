@@ -10,8 +10,6 @@
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
-local smartDodge = require("@routes/DungeonQuest/core/smartDodge")
 local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
 
 local UserInputService = services.UserInputService
@@ -29,7 +27,11 @@ local castInterval = 0.25 -- Chu kỳ kiểm tra & xả chiêu cho Full Dame (gi
 local keyHoldDuration = 0.08
 local buffDelay = 0.25 -- Thời gian chờ sau khi ấn Buff để nhận hiệu lực rồi mới xả Dame (giây)
 local comboCooldownOverride = 0 -- 0 = tự động nhận từ game, >0 = ghi đè thủ công
-local castDamageWhileWaitingBuff = true -- Vẫn xả chiêu Dame khi Buff đang hồi chiêu
+local castDamageWhileWaitingBuff = false -- Giữ tương thích ngược
+local buffDuration = 6.0 -- Thời gian hiệu lực của buff (giây, cấu hình bằng slider)
+local autoBuffForSpeed = true -- Tự động Buff ngoài giao tranh để tối ưu speed chạy map
+local skillRadius = 25.0 -- Bán kính quét mục tiêu để cast skill dame (studs)
+local targetScope = "All" -- Phạm vi hoạt động: "All" | "Boss" | "Mobs"
 
 -- Playstyle Mode: "Auto" | "FullDamage" | "BuffAndDamage"
 local playstyleModeSetting = "Auto"
@@ -74,6 +76,16 @@ function autoSkill.BindRadiusGetter(getterFn)
 	getSkillRange = getterFn
 end
 autoSkill.BindSkillRangeGetter = autoSkill.BindRadiusGetter
+
+local function getCurrentSkillRadius(): number
+	if getSkillRange then
+		local r = getSkillRange()
+		if type(r) == "number" and r > 0 then
+			return r
+		end
+	end
+	return skillRadius
+end
 
 local function getEffectivePlaystyle()
 	if playstyleModeSetting == "FullDamage" then
@@ -128,6 +140,36 @@ local function isCharacterBusyCasting()
 	return false
 end
 
+local function isBuffActive(): boolean
+	if lastBuffCastTime == 0 then return false end
+	return (os.clock() - lastBuffCastTime) < buffDuration
+end
+
+local function getBuffRemaining(): number
+	if lastBuffCastTime == 0 then return 0 end
+	return math.max(0, buffDuration - (os.clock() - lastBuffCastTime))
+end
+
+local function isBuffSkillReady(): boolean
+	if not buffSkill then return false end
+	local buffTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
+	if comboCooldownOverride > 0 then
+		local elapsed = os.clock() - lastBuffCastTime
+		return (lastBuffCastTime == 0 or elapsed >= comboCooldownOverride)
+	elseif buffTool and buffTool.Parent then
+		local cdVal = buffTool:FindFirstChild("cooldown")
+		if cdVal and cdVal:IsA("ValueBase") then
+			return (tonumber(cdVal.Value) or 0) <= 0.05
+		else
+			local elapsed = os.clock() - lastBuffCastTime
+			return (lastBuffCastTime == 0 or elapsed >= (buffSkill.cooldown or 15.0))
+		end
+	else
+		local elapsed = os.clock() - lastBuffCastTime
+		return (lastBuffCastTime == 0 or elapsed >= (buffSkill.cooldown or 15.0))
+	end
+end
+
 local function getComboCooldownRemaining()
 	local activeStyle = getEffectivePlaystyle()
 	if activeStyle ~= "BuffAndDamage" or not buffSkill then return 0 end
@@ -168,6 +210,11 @@ local function fireStatusChange()
 		buffSkill = buffSkill,
 		damageSkill = damageSkill,
 		cooldownRemaining = getComboCooldownRemaining(),
+		buffActive = isBuffActive(),
+		buffRemaining = getBuffRemaining(),
+		buffDuration = buffDuration,
+		autoBuffForSpeed = autoBuffForSpeed,
+		targetScope = targetScope,
 		enemyCount = currentEnemyCount,
 		targetName = nearestTargetInfo and nearestTargetInfo.name or nil,
 		targetDist = nearestTargetInfo and nearestTargetInfo.dist or nil,
@@ -181,8 +228,21 @@ end
 local function castAbility(tool, key)
 	-- Quay mặt ngay tức thì về hướng mục tiêu (ưu tiên Centroid Override khi gom quái AoE)
 	local char = player and player.Character
-	local root = char and char:FindFirstChild("HumanoidRootPart")
-	local aimOverride = targetFacing.GetTargetOverride and targetFacing.GetTargetOverride()
+	local aimOverride = nil
+	pcall(function()
+		local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
+		if sdv2 and sdv2.facing and sdv2.facing.GetTargetOverride then
+			aimOverride = sdv2.facing.GetTargetOverride()
+		end
+	end)
+	if not aimOverride then
+		pcall(function()
+			local tf = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
+			if tf and tf.GetTargetOverride then
+				aimOverride = tf.GetTargetOverride()
+			end
+		end)
+	end
 	local tPos = aimOverride or (nearestTargetInfo and nearestTargetInfo.pos)
 	if root and tPos then
 		local pPos = root.Position
@@ -311,6 +371,20 @@ task.spawn(function()
 	autoSkill.ScanEquippedSkills()
 end)
 
+-- Kiểm tra xem kẻ địch có khớp với phạm vi targetScope ("All" | "Boss" | "Mobs") không
+local function isEnemyMatchingScope(name: string?): boolean
+	if targetScope == "All" then return true end
+	local isBossActive = shared.IsBossActive and shared.IsBossActive()
+	local isBossName = name and (tostring(name):lower():find("boss") ~= nil)
+	local isBoss = isBossActive or isBossName
+	if targetScope == "Boss" then
+		return isBoss
+	elseif targetScope == "Mobs" then
+		return not isBoss
+	end
+	return true
+end
+
 -- Tìm tất cả kẻ địch còn sống trong bán kính R phẳng (X/Z) xung quanh người chơi
 local function getEnemiesInRadius(r)
 	local char = player and player.Character
@@ -334,14 +408,17 @@ local function getEnemiesInRadius(r)
 				local dz = data.Root.Position.Z - pPos.Z
 				local flatDist = math.sqrt(dx * dx + dz * dz)
 				if flatDist <= r and math.abs(dy) <= maxAllowedDy then
-					seenModels[data.Model] = true
-					table.insert(inRange, {
-						data = data,
-						dist = flatDist,
-						model = data.Model,
-						name = (data.Model and data.Model.Name) or "Enemy",
-						pos = data.Root.Position,
-					})
+					local eName = (data.Model and data.Model.Name) or "Enemy"
+					if isEnemyMatchingScope(eName) then
+						seenModels[data.Model] = true
+						table.insert(inRange, {
+							data = data,
+							dist = flatDist,
+							model = data.Model,
+							name = eName,
+							pos = data.Root.Position,
+						})
+					end
 				end
 			end
 		end
@@ -357,13 +434,16 @@ local function getEnemiesInRadius(r)
 			local dz = afTarget.Root.Position.Z - pPos.Z
 			local flatDist = math.sqrt(dx * dx + dz * dz)
 			if flatDist <= r and math.abs(dy) <= maxAllowedDy then
-				table.insert(inRange, {
-					data = afTarget,
-					dist = flatDist,
-					model = afTarget.Model,
-					name = (afTarget.Model and afTarget.Model.Name) or "Target",
-					pos = afTarget.Root.Position,
-				})
+				local tName = (afTarget.Model and afTarget.Model.Name) or "Target"
+				if isEnemyMatchingScope(tName) then
+					table.insert(inRange, {
+						data = afTarget,
+						dist = flatDist,
+						model = afTarget.Model,
+						name = tName,
+						pos = afTarget.Root.Position,
+					})
+				end
 			end
 		end
 	end
@@ -372,8 +452,8 @@ local function getEnemiesInRadius(r)
 	return inRange
 end
 
--- Kích hoạt đòn đánh / phím kỹ năng
-local function executeCombat()
+-- Kích hoạt đòn đánh / phím kỹ năng (Đảm bảo phát hiện địch trong RADIUS r trước khi cast dame)
+local function executeCombat(r)
 	local activeStyle = getEffectivePlaystyle()
 
 	-- Đảm bảo Tool reference luôn hợp lệ
@@ -389,23 +469,7 @@ local function executeCombat()
 		local buffTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
 		local damageTool = damageSkill.tool or findAbilityTool(damageSkill.slotKey)
 
-		-- Kiểm tra xem chiêu Buff đã hồi xong chưa
-		local isBuffReady = false
-		if comboCooldownOverride > 0 then
-			local elapsed = os.clock() - lastBuffCastTime
-			isBuffReady = (lastBuffCastTime == 0 or elapsed >= comboCooldownOverride)
-		elseif buffTool and buffTool.Parent then
-			local cdVal = buffTool:FindFirstChild("cooldown")
-			if cdVal and cdVal:IsA("ValueBase") then
-				isBuffReady = (tonumber(cdVal.Value) or 0) <= 0.05
-			else
-				local elapsed = os.clock() - lastBuffCastTime
-				isBuffReady = (lastBuffCastTime == 0 or elapsed >= buffSkill.cooldown)
-			end
-		else
-			local elapsed = os.clock() - lastBuffCastTime
-			isBuffReady = (lastBuffCastTime == 0 or elapsed >= buffSkill.cooldown)
-		end
+		local isBuffReady = isBuffSkillReady()
 
 		if isBuffReady and not isCharacterBusyCasting() then
 			isCasting = true
@@ -417,53 +481,71 @@ local function executeCombat()
 			-- Bước 2: Chờ nhận hiệu lực buff (buffDelay)
 			task.wait(buffDelay)
 
-			-- Bước 3: Kích hoạt DAME
-			castAbility(damageTool, damageSkill.key)
-			lastDamageCastTime = os.clock()
+			-- Bước 3: KIỂM TRA LẠI: PHÁT HIỆN ĐỊCH TRONG RADIUS RỒI MỚI CAST DAME!
+			local freshEnemies = getEnemiesInRadius(r)
+			if #freshEnemies > 0 and not isCharacterBusyCasting() then
+				nearestTargetInfo = freshEnemies[1]
+				castAbility(damageTool, damageSkill.key)
+				lastDamageCastTime = os.clock()
+			end
 
 			isCasting = false
-		elseif castDamageWhileWaitingBuff and not isCharacterBusyCasting() then
-			-- Khi Buff đang hồi chiêu: Tiếp tục xả chiêu Dame khi chiêu Dame đã hồi để tối ưu DPS
-			local dCdVal = damageTool and damageTool:FindFirstChild("cooldown")
-			local dReady = not dCdVal or ((tonumber(dCdVal.Value) or 0) <= 0.05)
-			if dReady then
-				local elapsedSinceLastDamage = os.clock() - lastDamageCastTime
-				local dCd = damageSkill.cooldown or 2.5
-				if lastDamageCastTime == 0 or elapsedSinceLastDamage >= dCd then
-					isCasting = true
-					castAbility(damageTool, damageSkill.key)
-					lastDamageCastTime = os.clock()
-					isCasting = false
+		elseif isBuffActive() and not isCharacterBusyCasting() then
+			-- Buff vẫn ĐANG TRONG THỜI GIAN HIỆU LỰC:
+			-- Phát hiện địch trong RADIUS rồi mới cast skill dame
+			local freshEnemies = getEnemiesInRadius(r)
+			if #freshEnemies > 0 then
+				nearestTargetInfo = freshEnemies[1]
+				local dCdVal = damageTool and damageTool:FindFirstChild("cooldown")
+				local dReady = not dCdVal or ((tonumber(dCdVal.Value) or 0) <= 0.05)
+				if dReady then
+					local elapsedSinceLastDamage = os.clock() - lastDamageCastTime
+					local dCd = damageSkill.cooldown or 2.5
+					if lastDamageCastTime == 0 or elapsedSinceLastDamage >= dCd then
+						isCasting = true
+						castAbility(damageTool, damageSkill.key)
+						lastDamageCastTime = os.clock()
+						isCasting = false
+					end
 				end
 			end
+		else
+			-- Buff HẾT THỜI GIAN HIỆU LỰC và đang hồi chiêu:
+			-- TUYỆT ĐỐI KHÔNG XẢ DAME! Chờ Buff hồi chiêu để cast cùng Buff.
 		end
 	else
-		-- LỐI CHƠI 1: FULL DAMAGE (Spam Q & E như bình thường)
-		isCasting = true
-		local castedQ = false
-		if useSkillQ then
-			local qTool = skillQ.tool or findAbilityTool("q")
-			local qCdVal = qTool and qTool:FindFirstChild("cooldown")
-			local qReady = not qCdVal or ((tonumber(qCdVal.Value) or 0) <= 0.05)
-			if qReady and not isCharacterBusyCasting() then
-				castAbility(qTool, Enum.KeyCode.Q)
-				castedQ = true
+		-- LỐI CHƠI 1: FULL DAMAGE (Spam Q & E, chỉ cast khi phát hiện địch trong RADIUS)
+		local freshEnemies = getEnemiesInRadius(r)
+		if #freshEnemies > 0 then
+			isCasting = true
+			local castedQ = false
+			if useSkillQ then
+				local qTool = skillQ.tool or findAbilityTool("q")
+				local qCdVal = qTool and qTool:FindFirstChild("cooldown")
+				local qReady = not qCdVal or ((tonumber(qCdVal.Value) or 0) <= 0.05)
+				if qReady and not isCharacterBusyCasting() then
+					nearestTargetInfo = freshEnemies[1]
+					castAbility(qTool, Enum.KeyCode.Q)
+					castedQ = true
+				end
 			end
-		end
 
-		if castedQ then
-			task.wait(0.08)
-		end
-
-		if useSkillE then
-			local eTool = skillE.tool or findAbilityTool("e")
-			local eCdVal = eTool and eTool:FindFirstChild("cooldown")
-			local eReady = not eCdVal or ((tonumber(eCdVal.Value) or 0) <= 0.05)
-			if eReady then
-				castAbility(eTool, Enum.KeyCode.E)
+			if castedQ then
+				task.wait(0.08)
 			end
+
+			local freshEnemiesE = getEnemiesInRadius(r)
+			if #freshEnemiesE > 0 and useSkillE then
+				local eTool = skillE.tool or findAbilityTool("e")
+				local eCdVal = eTool and eTool:FindFirstChild("cooldown")
+				local eReady = not eCdVal or ((tonumber(eCdVal.Value) or 0) <= 0.05)
+				if eReady and not isCharacterBusyCasting() then
+					nearestTargetInfo = freshEnemiesE[1]
+					castAbility(eTool, Enum.KeyCode.E)
+				end
+			end
+			isCasting = false
 		end
-		isCasting = false
 	end
 end
 
@@ -476,29 +558,44 @@ local function startLoop()
 
 	loopThread = task.spawn(function()
 		while enabled do
-			-- Không thao tác khi nhân vật đã chết hoặc đang mở khung gõ chữ (chat box)
-			if not shared.IsDead() and not UserInputService:GetFocusedTextBox() then
-				local r = (getSkillRange and getSkillRange()) or 25.0
-				local enemies = getEnemiesInRadius(r)
-				currentEnemyCount = #enemies
+			pcall(function()
+				-- Không thao tác khi nhân vật đã chết hoặc đang mở khung gõ chữ (chat box)
+				if not shared.IsDead() and not UserInputService:GetFocusedTextBox() then
+					local r = getCurrentSkillRadius()
+					local enemies = getEnemiesInRadius(r)
+					currentEnemyCount = #enemies
 
-				if #enemies > 0 then
-					nearestTargetInfo = enemies[1]
+					local activeStyle = getEffectivePlaystyle()
 
-					-- Thực thi tấn công theo lối chơi tương ứng
-					executeCombat()
+					if #enemies > 0 then
+						nearestTargetInfo = enemies[1]
+
+						-- Thực thi tấn công theo lối chơi tương ứng (chỉ cast skill dame khi có địch trong r)
+						executeCombat(r)
+					else
+						nearestTargetInfo = nil
+						isCasting = false
+
+						-- Tự động Buff ngoài giao tranh (chạy map / di chuyển) để tối ưu tốc độ người chơi
+						if autoBuffForSpeed and activeStyle == "BuffAndDamage" and buffSkill then
+							if isBuffSkillReady() and not isCharacterBusyCasting() then
+								local buffTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
+								isCasting = true
+								castAbility(buffTool, buffSkill.key)
+								lastBuffCastTime = os.clock()
+								isCasting = false
+							end
+						end
+					end
+
+					fireStatusChange()
 				else
-					nearestTargetInfo = nil
 					isCasting = false
+					currentEnemyCount = 0
+					nearestTargetInfo = nil
+					fireStatusChange()
 				end
-
-				fireStatusChange()
-			else
-				isCasting = false
-				currentEnemyCount = 0
-				nearestTargetInfo = nil
-				fireStatusChange()
-			end
+			end)
 
 			local activeStyle = getEffectivePlaystyle()
 			if activeStyle == "BuffAndDamage" then
@@ -566,7 +663,18 @@ end
 function autoSkill.SetAutoFace(state)
 	autoFace = state and true or false
 	if not autoFace and not enabled then
-		targetFacing.SetEnabled(false)
+		pcall(function()
+			local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
+			if sdv2 and sdv2.facing and sdv2.facing.SetEnabled then
+				sdv2.facing.SetEnabled(false)
+			end
+		end)
+		pcall(function()
+			local tf = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
+			if tf and tf.SetEnabled then
+				tf.SetEnabled(false)
+			end
+		end)
 	end
 end
 
@@ -647,6 +755,58 @@ function autoSkill.GetComboCooldownRemaining()
 	return getComboCooldownRemaining()
 end
 
+function autoSkill.SetBuffDuration(val)
+	if type(val) == "number" and val >= 0.5 then
+		buffDuration = math.clamp(val, 0.5, 60.0)
+		fireStatusChange()
+	end
+end
+
+function autoSkill.GetBuffDuration()
+	return buffDuration
+end
+
+function autoSkill.SetAutoBuffForSpeed(state)
+	autoBuffForSpeed = state and true or false
+	fireStatusChange()
+end
+
+function autoSkill.IsAutoBuffForSpeedEnabled()
+	return autoBuffForSpeed
+end
+
+function autoSkill.IsBuffActive()
+	return isBuffActive()
+end
+
+function autoSkill.GetBuffRemaining()
+	return getBuffRemaining()
+end
+
+function autoSkill.SetRadius(val)
+	if type(val) == "number" and val > 0 then
+		skillRadius = math.clamp(val, 4.0, 150.0)
+		fireStatusChange()
+	end
+end
+autoSkill.SetSkillRadius = autoSkill.SetRadius
+
+function autoSkill.GetRadius()
+	return getCurrentSkillRadius()
+end
+autoSkill.GetSkillRadius = autoSkill.GetRadius
+
+function autoSkill.SetTargetScope(scope)
+	if scope == "Boss" or scope == "Mobs" or scope == "All" then
+		targetScope = scope
+		fireStatusChange()
+	end
+end
+
+function autoSkill.GetTargetScope()
+	return targetScope
+end
+
 function autoSkill.GetStatus()
 	local activeStyle = getEffectivePlaystyle()
 	return {
@@ -657,7 +817,13 @@ function autoSkill.GetStatus()
 		skillE = skillE,
 		buffSkill = buffSkill,
 		damageSkill = damageSkill,
+		radius = getCurrentSkillRadius(),
 		cooldownRemaining = getComboCooldownRemaining(),
+		buffActive = isBuffActive(),
+		buffRemaining = getBuffRemaining(),
+		buffDuration = buffDuration,
+		autoBuffForSpeed = autoBuffForSpeed,
+		targetScope = targetScope,
 		enemyCount = currentEnemyCount,
 		targetName = nearestTargetInfo and nearestTargetInfo.name or nil,
 		targetDist = nearestTargetInfo and nearestTargetInfo.dist or nil,

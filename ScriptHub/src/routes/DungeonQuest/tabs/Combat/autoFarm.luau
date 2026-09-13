@@ -27,7 +27,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoFarm")
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Rescan Interval",
 		Suffix = "s",
 		Default = autoFarm.GetScanInterval(),
@@ -37,9 +37,9 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetScanInterval(val)
 		end),
-	}, "Slider_AF_ScanInterval")
+	}, "Slider_AF_ScanInterval"))
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Target Reach Distance",
 		Suffix = " std",
 		Default = autoFarm.GetReachDistance(),
@@ -50,9 +50,9 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetReachDistance(val)
 		end),
-	}, "Slider_AF_ReachDistance")
+	}, "Slider_AF_ReachDistance"))
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Repath Distance",
 		Suffix = " std",
 		Default = autoFarm.GetRepathDistance(),
@@ -63,7 +63,7 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetRepathDistance(val)
 		end),
-	}, "Slider_AF_RepathDistance")
+	}, "Slider_AF_RepathDistance"))
 
 	leftSection:Toggle({
 		Name = "Auto Jump When Stuck (Low Velocity)",

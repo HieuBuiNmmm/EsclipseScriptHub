@@ -1,5 +1,5 @@
 -- Smart Dodge V2: Visuals Engine
--- Quản lý toàn bộ hiển thị 3D ESP (SelectionBox, Name Tag Billboards, Trajectory Box, Timers).
+-- Quản lý toàn bộ hiển thị 3D ESP (SelectionBox, Name Tag Billboards, Trajectory Box).
 -- Tách rời hoàn toàn khỏi logic toán học phát hiện, dễ dàng bật/tắt độc lập và tùy biến màu sắc.
 
 local Players = game:GetService("Players")
@@ -320,8 +320,10 @@ function visuals.AttachPartVisual(hazard: types.ActiveHazard, part: BasePart)
 		end
 	end
 
-	-- 2. Name Tag Billboard hiển thị tên: Chỉ tạo 1 nhãn đại diện cho hazard để tránh rối mắt
-	if #data.nameTags == 0 then
+	-- 2. Name Tag Billboard hiển thị tên: CHỈ tạo cho Object chính có khung vàng (hazard.isTelegraph == false), TUYỆT ĐỐI không gắn cho debug/marker
+	local hNameLower = hazard.name:lower()
+	local isDebugOrMarker = hNameLower:find("debug", 1, true) or hazard.name:sub(1, 3) == "TM_" or hNameLower:find("smartdodge", 1, true) or hNameLower:find("smartautoplay", 1, true) or hNameLower:find("marker", 1, true)
+	if not isDebugOrMarker and not hazard.isTelegraph and #data.nameTags == 0 then
 		local displayName = ""
 		if hazard.instance and hazard.instance ~= part then
 			displayName = ("%s(%s)"):format(hazard.instance.Name, part.ClassName)
@@ -356,6 +358,10 @@ end
 --// Gắn SelectionBox 3D và các visual lên hazard
 function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 	if hazardVisualMap[hazard] then return end
+	local hNameLower = hazard.name:lower()
+	if hNameLower:find("debug", 1, true) or hazard.name:sub(1, 3) == "TM_" or hNameLower:find("smartdodge", 1, true) or hNameLower:find("smartautoplay", 1, true) then
+		return
+	end
 
 	local data = {
 		boxes = {},
@@ -386,91 +392,112 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 
 		-- Dựa trực tiếp vào độ rộng của Beam thật trong game hoặc SelectionBox của Spike xuất phát cùng vị trí
 		local beam = firstPart:FindFirstChildOfClass("Beam") or (firstPart.Parent and firstPart.Parent:FindFirstChildOfClass("Beam"))
-		local width = nil
 
-		-- 1. Nếu là tia Big Spike (Beam.Width0 = 40 trong game script hoặc tên chứa bigspike)
+		-- Xác định chính xác đòn đánh là Big Spike hay Seeking Spikes:
 		local isBigSpike = (beam and beam.Width0 and beam.Width0 >= 20)
 			or (firstPart.Name:lower():find("bigspike") ~= nil)
 			or (firstPart.Parent and firstPart.Parent.Name:lower():find("bigspike") ~= nil)
 
-		if isBigSpike then
-			width = beam and math.max(beam.Width0, beam.Width1 or 0) or 40.0
-			if width < 20 then width = 40.0 end
-		else
-			-- 2. Với Seeking Spikes hoặc các đòn khác:
-			-- Beam.Width0 trong ReplicatedStorage template chỉ là tia mỏng mặc định (~1-2 studs),
-			-- KHÔNG phải độ rộng thực của chiêu! Spike thật trong game có độ rộng ~10-14 studs!
-			-- Ưu tiên đo trực tiếp từ SelectionBox / SpecialMesh của Companion Spike Part!
-			width = getCompanionSpikeBoxWidth(startPos)
-			if not width or width < 4.0 then
-				-- Fallback chuẩn xác cho Seeking Spikes (độ rộng gai ~12 studs thay vì 6 studs)
-				width = 12.0
+		if not isBigSpike then
+			local compH, compP = findCompanionProjectile(startPos)
+			if (compH and compH.name and compH.name:lower():find("bigspike")) or (compP and compP.Name:lower():find("bigspike")) then
+				isBigSpike = true
 			end
 		end
+
+		local isSeekingSpike = (firstPart.Name:lower():find("seekingspike") ~= nil)
+			or (firstPart.Parent and firstPart.Parent.Name:lower():find("seekingspike") ~= nil)
+		if not isSeekingSpike and not isBigSpike then
+			local compH, compP = findCompanionProjectile(startPos)
+			if (compH and compH.name and compH.name:lower():find("seekingspike")) or (compP and compP.Name:lower():find("seekingspike")) then
+				isSeekingSpike = true
+			end
+		end
+
+		local width = 40.0
+		if isBigSpike then
+			width = 40.0
+		elseif isSeekingSpike then
+			width = 16.0
+		else
+			width = hazard.width or 20.0
+		end
 		width = math.clamp(width, 4.0, 50.0)
+		hazard.width = width
+		hazard.dangerRadius = width / 2
 
-		-- Tạo khối hành lang 3D vô hình mô phỏng đường đi của đạn với bề ngang = SelectionBox của Spike
-		local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -length / 2)
-		local corridor = Instance.new("Part")
-		corridor.Name = "SmartDodge_TelegraphCorridor"
-		corridor.Transparency = 1
-		corridor.Anchored = true
-		corridor.CanCollide = false
-		corridor.CanQuery = false
-		corridor.CanTouch = false
-		corridor.Size = Vector3.new(width, 0.4, length)
-		corridor.CFrame = centerCF
-		corridor.Parent = Workspace
-		data.corridorPart = corridor
-		data.telegraphStartPos = startPos
+		if hazard.maxLookahead and hazard.maxLookahead > length then
+			length = hazard.maxLookahead
+			local dir = delta.Magnitude > 0.001 and delta.Unit or Vector3.new(0, 0, -1)
+			endPos = startPos + dir * length
+		end
 
-		-- Bọc SelectionBox Cam Neon lên toàn bộ hành lang tia định hướng
-		local box = Instance.new("SelectionBox")
-		box.Name = "SmartDodge_SelectionBox_Telegraph"
-		box.Color3 = TELEGRAPH_BOX_COLOR
-		box.SurfaceColor3 = TELEGRAPH_BOX_COLOR
-		box.SurfaceTransparency = surfaceTransparency
-		box.LineThickness = lineThickness
-		box.Adornee = corridor
-		box.Visible = espEnabled
-		box.Parent = corridor
-		table.insert(data.boxes, box)
+		-- Kiểm tra xem Companion Spike đã tạo corridor trước đó chưa để dùng chung
+		local compHazard, compPart = findCompanionProjectile(startPos)
+		local existingCorridor = compHazard and hazardVisualMap[compHazard] and hazardVisualMap[compHazard].corridorPart
+		if existingCorridor and existingCorridor.Parent then
+			local compData = hazardVisualMap[compHazard]
+			data.corridorPart = compData.corridorPart
+			data.corridorBox = compData.corridorBox
+			data.corridorNameTag = compData.corridorNameTag
+			data.telegraphStartPos = compData.telegraphStartPos
+			data.companionHazard = compHazard
+			data.companionPart = compPart
+		else
+			-- Tạo khối hành lang 3D vô hình mô phỏng tia định hướng
+			local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -length / 2)
+			local corridor = Instance.new("Part")
+			corridor.Name = "SmartDodge_TelegraphCorridor"
+			corridor.Transparency = 1
+			corridor.Anchored = true
+			corridor.CanCollide = false
+			corridor.CanQuery = false
+			corridor.CanTouch = false
+			corridor.Size = Vector3.new(width, 0.4, length)
+			corridor.CFrame = centerCF
+			corridor.Parent = Workspace
+			data.corridorPart = corridor
+			data.telegraphStartPos = startPos
 
-		-- Nhãn tên tia định hướng
-		local bb = Instance.new("BillboardGui")
-		bb.Name = "SmartDodge_NameTag_Telegraph"
-		bb.Size = UDim2.fromOffset(220, 24)
-		bb.StudsOffset = Vector3.new(0, 2.5, 0)
-		bb.AlwaysOnTop = true
-		bb.Enabled = nameTagsEnabled
-		bb.Adornee = corridor
+			-- Bọc SelectionBox Cam Neon lên toàn bộ hành lang tia định hướng
+			local box = Instance.new("SelectionBox")
+			box.Name = "SmartDodge_SelectionBox_Telegraph"
+			box.Color3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceColor3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceTransparency = surfaceTransparency
+			box.LineThickness = lineThickness
+			box.Adornee = corridor
+			box.Visible = espEnabled
+			box.Parent = corridor
+			data.corridorBox = box
+			table.insert(data.boxes, box)
 
-		local label = Instance.new("TextLabel")
-		label.Size = UDim2.fromScale(1, 1)
-		label.BackgroundTransparency = 1
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 12
-		label.TextColor3 = TELEGRAPH_TEXT_COLOR
-		label.TextStrokeTransparency = 0
-		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-		label.Text = ("%s [Beam W:%.1f]"):format(hazard.instance.Name, width)
-		label.Parent = bb
-		bb.Parent = corridor
-		table.insert(data.nameTags, bb)
+			-- Tự động liên kết với companion spike nếu đã xuất hiện
+			if compHazard and hazardVisualMap[compHazard] then
+				local compData = hazardVisualMap[compHazard]
+				compData.corridorPart = corridor
+				compData.corridorBox = box
+				compData.telegraphStartPos = startPos
+				data.companionHazard = compHazard
+				data.companionPart = compPart
+			end
+		end
 
 		-- 2. Dynamic Shrinking Corridor Runner:
-		-- Tự động co ngắn hành lang từ phía sau theo vị trí đầu đạn (sau lưng tên lửa là SAFE)
-		local pathVec = (endPos - startPos)
-		local totalLength = pathVec.Magnitude
-		local pathDir = (totalLength > 0.001) and (pathVec / totalLength) or Vector3.new(0, 0, -1)
+		-- Chỉ co ngắn cho đạn bay (Missile / Projectile), TUYỆT ĐỐI KHÔNG co ngắn tia Beam liên tục (Beam Part)!
+		local isBeamType = hazard.instance.Name:lower():find("beam") ~= nil or (firstPart and firstPart:FindFirstChildOfClass("Beam") ~= nil)
+		if not isBeamType then
+			local pathVec = (endPos - startPos)
+			local totalLength = pathVec.Magnitude
+			local pathDir = (totalLength > 0.001) and (pathVec / totalLength) or Vector3.new(0, 0, -1)
 
-		local compHazard, compPart = findCompanionProjectile(startPos)
-		data.companionPart = compPart
-		data.companionHazard = compHazard
+			local compHazard, compPart = findCompanionProjectile(startPos)
+			data.companionPart = compPart
+			data.companionHazard = compHazard
 
-		local heartbeatConn: RBXScriptConnection?
-		local searchStartTime = os.clock()
-		local compHasBeenVisible = false
+			local heartbeatConn: RBXScriptConnection?
+			local searchStartTime = os.clock()
+			local compHasBeenVisible = false
 
 		heartbeatConn = RunService.Heartbeat:Connect(function()
 			if not corridor or not corridor.Parent then
@@ -544,6 +571,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 		end)
 
 		data.heartbeatConn = heartbeatConn
+		end
 	elseif shouldUnify then
 		-- Gộp toàn bộ các part con (>= 2): Vẽ DUY NHẤT 1 SelectionBox bao quát toàn bộ Model
 		local box = Instance.new("SelectionBox")
@@ -576,7 +604,9 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 			end
 		end
 
-		if anchorPart then
+		local hNameLower = hazard.name:lower()
+		local isDebugOrMarker = hNameLower:find("debug", 1, true) or hazard.name:sub(1, 3) == "TM_" or hNameLower:find("smartdodge", 1, true) or hNameLower:find("smartautoplay", 1, true) or hNameLower:find("marker", 1, true)
+		if anchorPart and not isDebugOrMarker and not hazard.isTelegraph and #data.nameTags == 0 then
 			local bb = Instance.new("BillboardGui")
 			bb.Name = "SmartDodge_NameTag_Model"
 			bb.Size = UDim2.fromOffset(200, 24)
@@ -590,7 +620,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 			label.BackgroundTransparency = 1
 			label.Font = Enum.Font.GothamBold
 			label.TextSize = 12
-			label.TextColor3 = textColor
+			label.TextColor3 = HAZARD_TEXT_COLOR
 			label.TextStrokeTransparency = 0
 			label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 			label.Text = ("%s(Model)"):format(hazard.instance.Name)
@@ -603,6 +633,68 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 		-- Nếu chỉ có 1 Part hoặc Part đơn lẻ: Vẽ theo từng Part
 		for part in pairs(hazard.activeParts) do
 			visuals.AttachPartVisual(hazard, part)
+		end
+	end
+
+	-- 3b. Dedicated Direction Beam cho 2 skill Spike (firstBossSeekingSpikes và firstBossBigSpike):
+	-- User yêu cầu: Vùng màu cam của 2 skill Spike chính là tia định hướng (Direction Beam)!
+	local isSpikeSkill = hazard.name:lower():find("seekingspike") ~= nil or hazard.name:lower():find("bigspike") ~= nil
+	if isSpikeSkill and not data.corridorPart then
+		-- 1. Tìm xem firstBossBeamPart đã tạo corridor gần vị trí xuất phát chưa
+		local originPos = hazard.beamOrigin or hazard.position
+		local foundCorridor = false
+		for h, bData in pairs(hazardVisualMap) do
+			if h ~= hazard and (h.isTelegraph or h.name:lower():find("beam") ~= nil) and bData.corridorPart and bData.corridorPart.Parent then
+				local bOrigin = bData.telegraphStartPos or (h.beamOrigin or h.position)
+				if (Vector3.new(bOrigin.X - originPos.X, 0, bOrigin.Z - originPos.Z)).Magnitude < 25 then
+					data.corridorPart = bData.corridorPart
+					data.corridorBox = bData.corridorBox
+					data.corridorNameTag = bData.corridorNameTag
+					data.telegraphStartPos = bOrigin
+					bData.companionHazard = hazard
+					bData.companionPart = (hazard.instance and hazard.instance:IsA("BasePart")) and hazard.instance or next(hazard.activeParts)
+					foundCorridor = true
+					break
+				end
+			end
+		end
+
+		-- 2. Nếu firstBossBeamPart chưa có hoặc đã bị hủy sớm (sau 1.5s), tự tạo tia định hướng cho chính Spike:
+		if not foundCorridor then
+			local isBig = hazard.name:lower():find("bigspike") ~= nil
+			local w = isBig and 40.0 or 16.0
+			local len = hazard.maxLookahead or hazard.telegraphLength or (isBig and 140.0 or 120.0)
+			local fwd = hazard.forward2D or Vector3.new(0, 0, -1)
+			local startPos = hazard.beamOrigin or hazard.position
+			local endPos = startPos + fwd * len
+
+			local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -len / 2)
+			local corridor = Instance.new("Part")
+			corridor.Name = "SmartDodge_TelegraphCorridor"
+			corridor.Transparency = 1
+			corridor.Anchored = true
+			corridor.CanCollide = false
+			corridor.CanQuery = false
+			corridor.CanTouch = false
+			corridor.Size = Vector3.new(w, 0.4, len)
+			corridor.CFrame = centerCF
+			corridor.Parent = Workspace
+			data.corridorPart = corridor
+			data.telegraphStartPos = startPos
+
+			local box = Instance.new("SelectionBox")
+			box.Name = "SmartDodge_SelectionBox_Telegraph"
+			box.Color3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceColor3 = TELEGRAPH_BOX_COLOR
+			box.SurfaceTransparency = surfaceTransparency
+			box.LineThickness = lineThickness
+			box.Adornee = corridor
+			box.Visible = espEnabled
+			box.Parent = corridor
+			data.corridorBox = box
+			table.insert(data.boxes, box)
+
+
 		end
 	end
 
@@ -674,27 +766,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 			box.Parent = corridor
 			table.insert(data.boxes, box)
 
-			local bb = Instance.new("BillboardGui")
-			bb.Name = "SmartDodge_NameTag_Trajectory"
-			bb.Size = UDim2.fromOffset(200, 24)
-			bb.StudsOffset = Vector3.new(0, 2.5, 0)
-			bb.AlwaysOnTop = true
-			bb.Enabled = nameTagsEnabled
-			bb.Adornee = corridor
 
-			local label = Instance.new("TextLabel")
-			label.Size = UDim2.fromScale(1, 1)
-			label.BackgroundTransparency = 1
-			label.Font = Enum.Font.GothamBold
-			label.TextSize = 12
-			label.TextColor3 = TELEGRAPH_TEXT_COLOR
-			label.TextStrokeTransparency = 0
-			label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-			local trajTitle = hazard.isHomingToPlayer and "Homing Trajectory" or "Moving Trajectory"
-			label.Text = ("%s [%s]"):format(hazard.instance.Name, trajTitle)
-			label.Parent = bb
-			bb.Parent = corridor
-			table.insert(data.nameTags, bb)
 
 			-- Heartbeat Runner (Chuẩn V1):
 			-- Khóa hướng bay theo vector chuyển động thực tế (Delta Position) hoặc bám theo Player (Homing).
@@ -714,7 +786,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 
 				local pPos = (hazard.instance and hazard.instance:IsA("Model") and hazard.instance.PrimaryPart) and hazard.instance.PrimaryPart.Position or projPart.Position
 
-				local currentDepth = lookaheadDepth
+				local currentDepth = hazard.telegraphLength or lookaheadDepth
 				if hazard.isHomingToPlayer then
 					local localPlayer = Players.LocalPlayer
 					local char = localPlayer and localPlayer.Character
@@ -725,8 +797,8 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 						if distToPlayer > 0.3 then
 							lockedForward2D = toPlayer.Unit
 						end
-						-- Giới hạn độ dài: Không nối 100% tới player nếu player ở xa, nhưng che phủ đủ khoảng cách gần
-						currentDepth = math.clamp(distToPlayer + 2.0, 6.0, lookaheadDepth)
+						-- Giữ nguyên toàn bộ chiều dài hành lang Cam (hazard.telegraphLength), KHÔNG thu ngắn khi Player lại gần
+						currentDepth = hazard.telegraphLength or lookaheadDepth
 					else
 						local moveDelta = pPos - lastPos
 						local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
@@ -819,38 +891,74 @@ function visuals.RemoveHazardVisuals(hazard: types.ActiveHazard)
 	local data = hazardVisualMap[hazard]
 	if not data then return end
 
-	-- Nếu hazard này là tia định hướng (Telegraph Beam) mà viên tên lửa companion vẫn đang bay:
-	-- KHÔNG xóa hành lang màu cam! Chuyển quyền quản lý corridor sang hazard của tên lửa
+	-- Nếu hazard này là tia định hướng (Telegraph Beam) mà companion spike vẫn đang tồn tại:
+	-- Chuyển quyền quản lý corridor sang hazard của spike để không bị xóa sớm khi beam despawn sau 1.5s!
 	if hazard.isTelegraph and data.corridorPart and data.corridorPart.Parent then
-		local compPart = data.companionPart
-		if not compPart or not compPart.Parent then
-			local h, p = findCompanionProjectile(data.telegraphStartPos or data.corridorPart.Position)
-			compPart = p
-			data.companionPart = p
-			data.companionHazard = h
-		end
-
-		if compPart and compPart.Parent and compPart.Transparency < 0.85 then
-			local compHazard = data.companionHazard
-			if not compHazard then
-				for h in pairs(hazardVisualMap) do
-					if h.instance == compPart or (h.activeParts and h.activeParts[compPart]) or (compPart.Parent and h.instance == compPart.Parent) then
+		local compHazard = data.companionHazard
+		if not compHazard or not hazardVisualMap[compHazard] then
+			local origin = data.telegraphStartPos or (hazard.beamOrigin or hazard.position)
+			for h in pairs(hazardVisualMap) do
+				if h ~= hazard and (h.name:lower():find("spike") or (h.instance and h.instance.Name:lower():find("spike"))) then
+					local hPos = h.beamOrigin or h.position
+					if (Vector3.new(hPos.X - origin.X, 0, hPos.Z - origin.Z)).Magnitude < 30 then
 						compHazard = h
 						break
 					end
 				end
 			end
+		end
 
-			if compHazard and hazardVisualMap[compHazard] then
-				local compData = hazardVisualMap[compHazard]
-				compData.corridorPart = data.corridorPart
-				compData.heartbeatConn = data.heartbeatConn
-				compData.companionPart = data.companionPart
+		if compHazard and hazardVisualMap[compHazard] then
+			local compData = hazardVisualMap[compHazard]
+			compData.corridorPart = data.corridorPart
+			compData.corridorBox = data.corridorBox
+			compData.corridorNameTag = data.corridorNameTag
+			compData.telegraphStartPos = data.telegraphStartPos
+
+			-- Đưa box và name tag sang compData để compData quản lý vòng đời
+			if data.corridorBox and not table.find(compData.boxes, data.corridorBox) then
+				table.insert(compData.boxes, data.corridorBox)
+			end
+			if data.corridorNameTag and not table.find(compData.nameTags, data.corridorNameTag) then
+				table.insert(compData.nameTags, data.corridorNameTag)
 			end
 
-			-- Tách corridorPart ra khỏi data của beam để không bị Destroy() ngay dưới đây
+			-- Gỡ khỏi data của beam để vòng lặp Destroy() bên dưới KHÔNG xóa visual của corridor
+			if data.corridorBox then
+				local idx = table.find(data.boxes, data.corridorBox)
+				if idx then table.remove(data.boxes, idx) end
+			end
+			if data.corridorNameTag then
+				local idx = table.find(data.nameTags, data.corridorNameTag)
+				if idx then table.remove(data.nameTags, idx) end
+			end
+
 			data.corridorPart = nil
+			data.corridorBox = nil
+			data.corridorNameTag = nil
 			data.heartbeatConn = nil
+		end
+	end
+
+	-- Ngược lại, nếu hazard là companion spike mà beam vẫn còn tồn tại thì nhường corridor cho beam
+	local isSpike = hazard.name:lower():find("spike") ~= nil or (hazard.instance and hazard.instance.Name:lower():find("spike") ~= nil)
+	if isSpike and data.corridorPart and data.corridorPart.Parent then
+		for h, bData in pairs(hazardVisualMap) do
+			if h ~= hazard and h.isTelegraph and bData.corridorPart == data.corridorPart then
+				-- Corridor vẫn thuộc về beam, gỡ khỏi spike để không destroy nhầm
+				if data.corridorBox then
+					local idx = table.find(data.boxes, data.corridorBox)
+					if idx then table.remove(data.boxes, idx) end
+				end
+				if data.corridorNameTag then
+					local idx = table.find(data.nameTags, data.corridorNameTag)
+					if idx then table.remove(data.nameTags, idx) end
+				end
+				data.corridorPart = nil
+				data.corridorBox = nil
+				data.corridorNameTag = nil
+				break
+			end
 		end
 	end
 
@@ -875,6 +983,19 @@ function visuals.RemoveHazardVisuals(hazard: types.ActiveHazard)
 	end
 
 	hazardVisualMap[hazard] = nil
+end
+
+--// Cập nhật độ dài hành lang Cam trực tiếp trên Workspace
+function visuals.UpdateCorridorLength(hazard: types.ActiveHazard, newLength: number)
+	local data = hazardVisualMap[hazard]
+	if not data or not data.corridorPart or not data.corridorPart.Parent then return end
+	local corridor = data.corridorPart
+	local startPos = data.telegraphStartPos or (hazard.beamOrigin or hazard.position)
+	local fwd = hazard.forward2D or Vector3.new(0, 0, -1)
+	local endPos = startPos + fwd * newLength
+	local centerCF = CFrame.lookAt(startPos, endPos) * CFrame.new(0, 0, -newLength / 2)
+	corridor.Size = Vector3.new(corridor.Size.X, corridor.Size.Y, newLength)
+	corridor.CFrame = centerCF
 end
 
 --// Xóa toàn bộ visual khi tắt hệ thống

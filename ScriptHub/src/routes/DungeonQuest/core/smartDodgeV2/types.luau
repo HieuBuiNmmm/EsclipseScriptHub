@@ -19,6 +19,16 @@ export type ActiveHazard = {
 	isHomingToPlayer: boolean?,
 	isMultiWave: boolean?,
 	width: number?,
+	isBossHazard: boolean?,
+	forward2D: Vector3?,
+	beamOrigin: Vector3?,
+	dangerRadius: number?,
+	maxLookahead: number?,
+	lastPos: Vector3?,
+	hasLaunched: boolean?,
+	launchTime: number?,
+	isExpandingCone: boolean?,
+	expansionRate: number?,
 }
 
 return {}

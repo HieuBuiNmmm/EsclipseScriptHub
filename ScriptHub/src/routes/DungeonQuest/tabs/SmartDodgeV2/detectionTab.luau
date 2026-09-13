@@ -1,4 +1,4 @@
--- Tab Smart Dodge V2: Section Detection
+-- Tab Threat Detection V2: Section Detection
 -- Điều khiển Threat Detection Engine V2, Visuals ESP, và Live Threat Monitor
 
 local ui = require("@routes/DungeonQuest/core/ui")
@@ -20,7 +20,6 @@ return function(window, tab)
 	local dangerLabel = rightSection:Label({ Text = "Danger State: <font color='rgb(50,255,50)'>SAFE</font>" })
 	local countLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
 	local lastHazardLabel = rightSection:Label({ Text = "Last Threat: <font color='rgb(160,160,160)'>None</font>" })
-	local trackedListLabel = rightSection:Label({ Text = "Tracked Hazards: <font color='rgb(160,160,160)'>None</font>" })
 
 	local function updateMonitor(count, lastHazard)
 		count = count or detection.GetHazardCount()
@@ -44,20 +43,6 @@ return function(window, tab)
 				))
 			end)
 		end
-
-		-- Danh sách tóm tắt các hazard đang hoạt động
-		local activeMap = detection.GetActiveHazards()
-		local names = {}
-		for _, h in pairs(activeMap) do
-			table.insert(names, ("%s (%d parts)"):format(h.name, h.neonCount))
-		end
-		pcall(function()
-			if #names > 0 then
-				trackedListLabel:UpdateName("Tracked Hazards: <font color='rgb(255,150,50)'>" .. table.concat(names, ", ") .. "</font>")
-			else
-				trackedListLabel:UpdateName("Tracked Hazards: <font color='rgb(160,160,160)'>None</font>")
-			end
-		end)
 	end
 
 	-- Lắng nghe sự kiện từ Detection V2
@@ -76,104 +61,237 @@ return function(window, tab)
 		end)
 	end)
 
-	--// Left Section: Controls
+	--// Right Section: Specific Skill Orange Corridor Lengths (Chỉnh độ dài vùng Cam cho từng Skill riêng biệt)
+	rightSection:Header({ Name = "Orange Corridor Lengths (Độ dài Vùng Cam từng Skill)" })
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 2: Homing Orbs",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss2_orbs"),
+		Minimum = 15,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss2_orbs", val)
+		end),
+	}, "Slider_SDV2_Len_Boss2Orbs"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Laser & Telegraph Beams",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_beam"),
+		Minimum = 40,
+		Maximum = 250,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_beam", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1Beam"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Seeking Spikes",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_seekingspikes"),
+		Minimum = 15,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_seekingspikes", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1SeekSpikes"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Big Spike",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_bigspike"),
+		Minimum = 15,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_bigspike", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1BigSpike"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Sky Shot",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_skyshot"),
+		Minimum = 20,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_skyshot", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1SkyShot"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 1: Criss Cross",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss1_crisscross"),
+		Minimum = 15,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss1_crisscross", val)
+		end),
+	}, "Slider_SDV2_Len_Boss1CrissCross"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 2: Moving Beam",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss2_movingbeam"),
+		Minimum = 15,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss2_movingbeam", val)
+		end),
+	}, "Slider_SDV2_Len_Boss2MovingBeam"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 3: Homing Missile",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss3_missile"),
+		Minimum = 15,
+		Maximum = 150,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss3_missile", val)
+		end),
+	}, "Slider_SDV2_Len_Boss3Missile"))
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Boss 3: Bouncing Orb",
+		Suffix = " studs",
+		Default = detection.GetSkillCorridorLength("boss3_bouncingorb"),
+		Minimum = 10,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			detection.SetSkillCorridorLength("boss3_bouncingorb", val)
+		end),
+	}, "Slider_SDV2_Len_Boss3BouncingOrb"))
+
+	--// Left Section: Controls Detection
 	leftSection:Toggle({
 		Name = "Enable Threat Detection V2",
 		Default = false,
-		Callback = function(state)
+		Callback = autoSave.Wrap(function(state)
 			detection.SetEnabled(state)
 			updateMonitor()
-		end,
+		end),
 	}, "Toggle_SDV2_Enabled")
 
 	leftSection:Toggle({
 		Name = "3D ESP Highlighting",
 		Default = true,
-		Callback = function(state)
+		Callback = autoSave.Wrap(function(state)
 			visuals.SetEspEnabled(state)
-		end,
+		end),
 	}, "Toggle_SDV2_VisualESP")
 
 	leftSection:Toggle({
 		Name = "Unified Model Box (Gộp khung Model >= 2 Parts)",
 		Default = true,
-		Callback = function(state)
+		Callback = autoSave.Wrap(function(state)
 			visuals.SetUnifiedModelBoxes(state)
-		end,
+		end),
 	}, "Toggle_SDV2_UnifiedModel")
 
 	leftSection:Toggle({
 		Name = "Show Part Name Tags [Parent(ClassName)]",
 		Default = true,
-		Callback = function(state)
+		Callback = autoSave.Wrap(function(state)
 			visuals.SetNameTagsEnabled(state)
-		end,
+		end),
 	}, "Toggle_SDV2_NameTags")
 
 	leftSection:Toggle({
 		Name = "Show Player Hitbox Radius (Vòng chân)",
 		Default = true,
-		Callback = function(state)
+		Callback = autoSave.Wrap(function(state)
 			visuals.SetHitboxVisualEnabled(state)
-		end,
+		end),
 	}, "Toggle_SDV2_HitboxCircle")
-
 
 	leftSection:Toggle({
 		Name = "Console Threat Logging",
 		Default = false,
-		Callback = function(state)
+		Callback = autoSave.Wrap(function(state)
 			detection.SetLogHazards(state)
-		end,
+		end),
 	}, "Toggle_SDV2_LogHazards")
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Box Outline Thickness",
 		Default = 8,
 		Minimum = 2,
 		Maximum = 25,
 		DisplayMethod = "Round",
 		Precision = 0,
-		Callback = function(val)
+		Callback = autoSave.Wrap(function(val)
 			visuals.SetLineThickness(val / 100)
-		end,
-	}, "Slider_SDV2_Thickness")
+		end),
+	}, "Slider_SDV2_Thickness"))
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Box Surface Opacity",
 		Default = 35,
 		Minimum = 0,
 		Maximum = 100,
 		DisplayMethod = "Percent",
 		Precision = 0,
-		Callback = function(val)
+		Callback = autoSave.Wrap(function(val)
 			visuals.SetSurfaceTransparency(1 - (val / 100))
-		end,
-	}, "Slider_SDV2_Opacity")
+		end),
+	}, "Slider_SDV2_Opacity"))
 
-	leftSection:Slider({
-		Name = "Player Hitbox Padding (studs x10)",
-		Default = 18,
-		Minimum = 5,
-		Maximum = 40,
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Player Hitbox Padding (studs)",
+		Default = danger.GetHitboxPadding(),
+		Minimum = 0.5,
+		Maximum = 5.0,
 		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = function(val)
-			danger.SetHitboxPadding(val / 10)
-		end,
-	}, "Slider_SDV2_Padding")
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			local padding = tonumber(val) or 1.8
+			if padding > 5.0 then
+				padding = padding / 10
+			end
+			danger.SetHitboxPadding(padding)
+		end),
+	}, "Slider_SDV2_Padding"), function(val)
+		if val > 5.0 then return val / 10 end
+		return val
+	end)
 
-	leftSection:Slider({
-		Name = "Hitbox Height Offset (Hạ thấp x10)",
-		Default = 28,
-		Minimum = 10,
-		Maximum = 50,
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Hitbox Height Offset (studs)",
+		Default = danger.GetHitboxDownwardOffset(),
+		Minimum = 1.0,
+		Maximum = 5.0,
 		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = function(val)
-			danger.SetHitboxDownwardOffset(val / 10)
-		end,
-	}, "Slider_SDV2_HeightOffset")
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			local offset = tonumber(val) or 2.85
+			if offset > 5.0 then
+				offset = offset / 10
+			end
+			danger.SetHitboxDownwardOffset(offset)
+		end),
+	}, "Slider_SDV2_HeightOffset"), function(val)
+		if val > 5.0 then return val / 10 end
+		return val
+	end)
 
 	updateMonitor()
 end

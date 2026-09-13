@@ -251,4 +251,12 @@ function engine.OnSafeSpotChanged(callback)
 	table.insert(safeSpotCallbacks, callback)
 end
 
+function engine.SetTargetScope(scope)
+	safeSpot.SetTargetScope(scope)
+end
+
+function engine.GetTargetScope()
+	return safeSpot.GetTargetScope()
+end
+
 return engine

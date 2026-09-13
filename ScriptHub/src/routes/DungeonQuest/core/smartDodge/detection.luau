@@ -32,8 +32,8 @@ local detection = {}
 --// State
 local threatDetectorEnabled = false
 local logHazards = false
-local visualEspEnabled = true
-local showSkillTimers = true
+local visualEspEnabled = false
+local showSkillTimers = false
 local autoLearnSkillLifetimes = true
 local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
 local hazardCount = 0

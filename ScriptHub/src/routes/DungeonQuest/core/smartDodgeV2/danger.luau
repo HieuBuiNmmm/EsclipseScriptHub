@@ -9,11 +9,15 @@ local RunService = game:GetService("RunService")
 local types = require("@routes/DungeonQuest/core/smartDodgeV2/types")
 local detection = require("@routes/DungeonQuest/core/smartDodgeV2/detection")
 local visuals = require("@routes/DungeonQuest/core/smartDodgeV2/visuals")
+local shared = require("@routes/DungeonQuest/core/shared")
 
 local danger = {}
 
 --// Cấu hình & Tham số
 local enabled = true
+local targetScope = "All"            -- "All" | "Boss" | "Mobs"
+local dodgeBossEnabled = true        -- Bật/tắt né chiêu của Boss
+local dodgeEnemyEnabled = true       -- Bật/tắt né chiêu của Quái thường
 local playerHitboxPadding = 1.8      -- Bù trừ bán kính cơ thể nhân vật (studs)
 local hitboxDownwardOffset = 2.85    -- Khoảng cách hạ thấp từ HumanoidRootPart xuống sát chân (studs)
 local MAX_HEIGHT_TOLERANCE = 150.0   -- Cột không gian sát thương chiều dọc trong Dungeon Quest
@@ -86,17 +90,31 @@ function danger.GetRawFloorY(pos: Vector3): (number, boolean)
 	return pos.Y, false
 end
 
+--// Lấy kích thước thực tế của Part (tính cả độ phóng đại của SpecialMesh nếu có)
+local function getEffectivePartSize(part: BasePart): Vector3
+	local mesh = part:FindFirstChildOfClass("SpecialMesh")
+	if mesh then
+		local s = mesh.Scale
+		return Vector3.new(
+			part.Size.X * math.abs(s.X),
+			part.Size.Y * math.abs(s.Y),
+			part.Size.Z * math.abs(s.Z)
+		)
+	end
+	return part.Size
+end
+
 --// 1. Kiểm tra hình chữ nhật định hướng (Oriented Bounding Box - OBB)
 function danger.IsPointInPartOBB(point: Vector3, part: BasePart, padding: number?): boolean
 	if not part or not part:IsA("BasePart") or not part.Parent then return false end
 
 	local pad = padding or playerHitboxPadding
 	local partPos = part.Position
+	local pSize = getEffectivePartSize(part)
 
 	-- Broadphase Pruning: Bỏ qua nhanh nếu quá xa
 	local dX = point.X - partPos.X
 	local dZ = point.Z - partPos.Z
-	local pSize = part.Size
 	local maxDim = math.max(pSize.X, pSize.Z)
 	local maxRadius = (maxDim * 0.7072) + pad + 3.0
 	if (dX * dX + dZ * dZ) > (maxRadius * maxRadius) then
@@ -126,6 +144,7 @@ function danger.IsPointInSphere(point: Vector3, part: BasePart, padding: number?
 
 	local pad = padding or playerHitboxPadding
 	local partPos = part.Position
+	local pSize = getEffectivePartSize(part)
 
 	local heightDiff = math.abs(point.Y - partPos.Y)
 	if heightDiff > MAX_HEIGHT_TOLERANCE then
@@ -134,7 +153,7 @@ function danger.IsPointInSphere(point: Vector3, part: BasePart, padding: number?
 
 	local dX = point.X - partPos.X
 	local dZ = point.Z - partPos.Z
-	local radius = (math.max(part.Size.X, part.Size.Z) / 2) + pad
+	local radius = (math.max(pSize.X, pSize.Z) / 2) + pad
 	return (dX * dX + dZ * dZ) <= (radius * radius)
 end
 
@@ -223,52 +242,172 @@ function danger.IsPointInMovingBeam(point: Vector3, part: BasePart, padding: num
 		and (radialDistSq <= (beamRadius + 1.5) * (beamRadius + 1.5))
 end
 
+--// 4b. Kiểm tra xem một điểm P có nằm trong hành lang tia Beam / Laser / Projectile thẳng không (Pure 2D Cylinder Math chuẩn V1)
+function danger.IsPointInBeamCorridor(
+	point: Vector3,
+	originPos: Vector3,
+	forward2D: Vector3,
+	beamRadius: number,
+	maxReach: number,
+	padding: number?
+): (boolean, number, number)
+	local pad = padding or playerHitboxPadding
+	local effectiveRadius = beamRadius + pad
+
+	-- Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - originPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false, 0, 0
+	end
+
+	-- Vector 2D từ origin tới điểm point
+	local toP = Vector3.new(point.X - originPos.X, 0, point.Z - originPos.Z)
+	local dotForward = toP:Dot(forward2D)
+
+	-- Cho phép lùi sau gốc phát tia (-effectiveRadius) để bảo vệ người chơi khi đứng sát/trong người Boss
+	if dotForward < -effectiveRadius or dotForward > (maxReach + pad) then
+		return false, 0, 0
+	end
+
+	-- Khoảng cách vuông góc tới trục tia (Perpendicular Distance)
+	local proj = forward2D * dotForward
+	local perpDist = (toP - proj).Magnitude
+
+	if perpDist <= effectiveRadius then
+		return true, perpDist, dotForward
+	end
+
+	return false, perpDist, dotForward
+end
+
+--// 4c. Kiểm tra xem một điểm P có nằm trong vùng nón mở rộng (Expanding Cone Corridor - Boss 2 Circle Hitbox chuẩn V1)
+function danger.IsPointInExpandingCone(
+	point: Vector3,
+	originPos: Vector3,
+	forward2D: Vector3,
+	baseRadius: number,
+	maxReach: number,
+	expansionRate: number?,
+	padding: number?
+): (boolean, number, number, number)
+	local pad = padding or playerHitboxPadding
+	local rate = expansionRate or 0.25
+
+	-- Kiểm tra độ cao Y
+	local heightDiff = math.abs(point.Y - originPos.Y)
+	if heightDiff > MAX_HEIGHT_TOLERANCE then
+		return false, 0, 0, baseRadius
+	end
+
+	-- Vector 2D từ origin tới điểm point
+	local toP = Vector3.new(point.X - originPos.X, 0, point.Z - originPos.Z)
+	local dotForward = toP:Dot(forward2D)
+
+	-- Bán kính phình to dần theo chiều dọc đòn đánh
+	local effectiveRadius = baseRadius + math.max(0, dotForward * rate)
+	if dotForward < -effectiveRadius or dotForward > (maxReach + pad) then
+		return false, 0, dotForward, effectiveRadius
+	end
+
+	-- Khoảng cách vuông góc tới trục chính
+	local proj = forward2D * dotForward
+	local perpDist = (toP - proj).Magnitude
+
+	if perpDist <= (effectiveRadius + pad) then
+		return true, perpDist, dotForward, effectiveRadius
+	end
+
+	return false, perpDist, dotForward, effectiveRadius
+end
+
+--// Kiểm tra xem một hiểm họa có phải là Quả Cầu rượt đuổi của Boss 2 hay không
+function danger.IsBoss2OrbHazard(hazard: types.ActiveHazard): boolean
+	if not hazard then return false end
+	local name = (hazard.cleanName or hazard.name or ""):lower():gsub("%s+", "")
+	return (name:find("secondboss") ~= nil and name:find("orb") ~= nil and name:find("explosion") == nil)
+		or name:find("yelloworb") ~= nil
+		or name:find("redorb") ~= nil
+		or name:find("greenorb") ~= nil
+end
+
 --// 5. Kiểm tra xem một điểm P có nằm trong vùng nguy hiểm của một Hazard cụ thể không
 function danger.IsPointInHazard(point: Vector3, hazard: types.ActiveHazard, padding: number?): boolean
 	if not hazard or not hazard.instance or not hazard.instance.Parent then return false end
 
-	local pad = padding or playerHitboxPadding
+	local isSpikeBeam = hazard.cleanName:lower():find("seekingspike") ~= nil or hazard.cleanName:lower():find("bigspike") ~= nil
 
-	-- Bước 1: ƯU TIÊN KIỂM TRA HÀNH LANG TIA ĐỊNH HƯỚNG / MOVING TRAJECTORY (Vùng màu Cam)
-	-- Nếu hazard có hành lang màu Cam (corridorPart do Visuals tạo ra), kiểm tra OBB của corridorPart trước!
-	-- Lưu ý: Phải kiểm tra TRƯỚC broadphase distance pruning vì hành lang kéo dài xuyên suốt phòng (100-140 studs),
-	-- trong khi tâm hazard.position nằm ở Boss nên pruning theo Boss sẽ loại nhầm người chơi ở xa!
-	local visualData = visuals.GetHazardVisualData(hazard)
-	if visualData and visualData.corridorPart and visualData.corridorPart.Parent then
-		local inCorridor = danger.IsPointInPartOBB(point, visualData.corridorPart, pad)
-		if inCorridor then
-			return true
-		end
-	end
-
-	-- Bước 2: Broadphase distance pruning theo tâm hazard cho các Part vật lý
-	local instNameLower = hazard.instance.Name:lower():gsub("%s+", "")
-	local isMultiRings = instNameLower:find("multiring") ~= nil
-	local isMovingBeam = instNameLower:find("movingbeam") ~= nil
-
-	local maxReach = (hazard.telegraphLength or 50.0) + pad + 25.0
-	local checkCenter = hazard.position
-
-	if isMultiRings then
-		-- MultiRings có bán kính ngoài lên tới 105 studs + padding -> mở rộng maxReach lên 135 studs
-		maxReach = 135.0
-		local centerPart = hazard.instance:FindFirstChild("center") or hazard.instance:FindFirstChild("Center")
-		if centerPart and centerPart:IsA("BasePart") then
-			checkCenter = centerPart.Position
-		elseif hazard.instance:IsA("Model") then
-			checkCenter = hazard.instance:GetPivot().Position
-		end
-	elseif isMovingBeam then
-		maxReach = 140.0
-	end
-
-	local diffX = point.X - checkCenter.X
-	local diffZ = point.Z - checkCenter.Z
-	if (diffX * diffX + diffZ * diffZ) > (maxReach * maxReach) then
+	-- Nếu part chính đã mờ hoặc tan biến (Transparency >= 0.85): chiêu thức đã kết thúc, TUYỆT ĐỐI không gây sát thương
+	-- NGOẠI TRỪ: tia định hướng (luôn có Part trong suốt) hoặc đòn Spike (có giai đoạn tụ lực trong suốt trước khi phóng)
+	if not hazard.isTelegraph and not isSpikeBeam and hazard.instance:IsA("BasePart") and hazard.instance.Transparency >= 0.85 and not hazard.isMultiWave then
 		return false
 	end
 
+	-- Nếu tất cả các part trong activeParts đều đã mờ (Transparency >= 0.85): bỏ qua không xét
+	if not hazard.isTelegraph and not isSpikeBeam and not hazard.isMultiWave and hazard.activeParts then
+		local hasActiveVisible = false
+		for p in pairs(hazard.activeParts) do
+			if p and p.Parent and p:IsA("BasePart") and p.Transparency < 0.85 then
+				hasActiveVisible = true
+				break
+			end
+		end
+		if not hasActiveVisible and next(hazard.activeParts) ~= nil then
+			return false
+		end
+	end
+
+	local pad = padding or playerHitboxPadding
+	local isBoss2Orb = danger.IsBoss2OrbHazard(hazard)
+
+	-- Bước 1: ƯU TIÊN GIẢI TÍCH TOÁN HỌC 2D CHO TIA BEAM / PROJECTILE / EXPANDING CONE (Độc lập 100% với Visuals, chuẩn V1)
+	-- Quả Cầu Boss 2 là quả cầu vật lý lăn/bay theo người chơi, TUYỆT ĐỐI không áp dụng hình học Beam
+	if not isBoss2Orb and hazard.forward2D and hazard.dangerRadius then
+		local origin: Vector3
+		local reach: number
+		local isExpandingCone = hazard.isExpandingCone or hazard.cleanName:lower():find("cricle") ~= nil or hazard.cleanName:lower():find("circle") ~= nil
+
+		if isExpandingCone then
+			origin = hazard.beamOrigin or hazard.position
+			reach = hazard.maxLookahead or hazard.telegraphLength or 95.0
+			local inCone = danger.IsPointInExpandingCone(point, origin, hazard.forward2D, hazard.dangerRadius, reach, hazard.expansionRate or 0.25, pad)
+			if inCone then
+				return true
+			end
+		elseif hazard.isTelegraph or isSpikeBeam then
+			-- Tia định hướng (Beam hoặc Spike Direction Beam): xuất phát từ gốc phát tia và bao quát toàn bộ chiều dài telegraph
+			origin = hazard.beamOrigin or hazard.position
+			reach = hazard.maxLookahead or hazard.telegraphLength or 140.0
+			local inBeam = danger.IsPointInBeamCorridor(point, origin, hazard.forward2D, hazard.dangerRadius, reach, pad)
+			if inBeam then
+				return true
+			end
+		else
+			-- Đạn bay / Moving Projectile: vùng nguy hiểm xuất phát từ vị trí hiện tại của đạn tiến về phía trước
+			origin = hazard.position
+			reach = hazard.telegraphLength or hazard.maxLookahead or 40.0
+			local inBeam = danger.IsPointInBeamCorridor(point, origin, hazard.forward2D, hazard.dangerRadius, reach, pad)
+			if inBeam then
+				return true
+			end
+		end
+	end
+
+	-- Bước 2: KIỂM TRA HÀNH LANG TIA ĐỊNH HƯỚNG / MOVING TRAJECTORY (Vùng màu Cam)
+	-- Quả Cầu Boss 2 TUYỆT ĐỐI không coi hành lang cam định hướng là hitbox gây sát thương
+	if not isBoss2Orb then
+		local visualData = visuals.GetHazardVisualData(hazard)
+		if visualData and visualData.corridorPart and visualData.corridorPart.Parent then
+			local inCorridor = danger.IsPointInPartOBB(point, visualData.corridorPart, pad)
+			if inCorridor then
+				return true
+			end
+		end
+	end
+
 	-- Bước 3: Kiểm tra các Part vật lý nguy hiểm (Vùng màu Vàng / Part thực tế)
+	local instNameLower = hazard.instance.Name:lower():gsub("%s+", "")
+	local isMultiRings = instNameLower:find("multiring") ~= nil
+	local isMovingBeam = instNameLower:find("movingbeam") ~= nil
 
 	for part in pairs(hazard.activeParts) do
 		if part and part.Parent and part:IsA("BasePart") then
@@ -295,24 +434,120 @@ function danger.IsPointInHazard(point: Vector3, hazard: types.ActiveHazard, padd
 	return false
 end
 
---// 6. Kiểm tra xem một điểm P có bị dính bất kỳ hiểm họa nào đang kích hoạt không
-function danger.IsPointInAnyHazard(point: Vector3, ignoredInstance: Instance?): (boolean, types.ActiveHazard?)
+--// Phân loại đòn đánh xuất phát từ Boss hay Quái thường
+function danger.IsBossHazard(hazard: types.ActiveHazard): boolean
+	if not hazard then return false end
+
+	-- Mốc thời gian: Mọi chiêu thức sinh ra TRƯỚC thời điểm Boss spawn thì 100% là của Enemy/Quái cũ
+	local bossSpawnTime = detection.GetLastBossSpawnTime and detection.GetLastBossSpawnTime() or 0
+	if bossSpawnTime > 0 and hazard.spawnTime and hazard.spawnTime < bossSpawnTime then
+		return false
+	end
+
+	-- Nếu Boss hiện tại không active trong game, không thể có đòn đánh nào của Boss
+	if shared.IsBossActive and not shared.IsBossActive() then
+		return false
+	end
+
+	if hazard.isBossHazard ~= nil then
+		return hazard.isBossHazard
+	end
+	local nameLower = hazard.name:lower()
+	if nameLower:find("boss") ~= nil then
+		return true
+	end
+	if hazard.instance and hazard.instance.Parent and hazard.instance.Parent.Name:lower():find("boss") ~= nil then
+		return true
+	end
+	return false
+end
+
+--// Kiểm tra xem một hiểm họa có bị bỏ qua né dựa theo cài đặt Boss/Enemy không
+function danger.IsHazardIgnored(hazard: types.ActiveHazard): boolean
+	if not hazard then return true end
+	local isBoss = danger.IsBossHazard(hazard)
+	if targetScope == "Boss" and not isBoss then
+		return true
+	elseif targetScope == "Mobs" and isBoss then
+		return true
+	end
+	if isBoss then
+		return not dodgeBossEnabled
+	else
+		return not dodgeEnemyEnabled
+	end
+end
+
+--// 6. Kiểm tra xem một điểm P có bị dính bất kỳ hiểm họa nào đang kích hoạt không (hỗ trợ custom padding)
+function danger.IsPointInAnyHazard(point: Vector3, ignoredInstance: Instance?, padding: number?): (boolean, types.ActiveHazard?)
 	if not enabled or not detection.IsEnabled() then
 		return false, nil
 	end
 
 	local activeHazards = detection.GetActiveHazards()
+	local list = {}
 	for _, hazard in pairs(activeHazards) do
-		if ignoredInstance and (hazard.instance == ignoredInstance or hazard.instance.Name == ignoredInstance.Name) then
+		if ignoredInstance then
+			local shouldIgnore = (hazard.instance == ignoredInstance)
+				or (hazard.instance and hazard.instance.Name == ignoredInstance.Name)
+				or (hazard.instance and hazard.instance:IsDescendantOf(ignoredInstance))
+				or (ignoredInstance:IsDescendantOf(hazard.instance))
+
+			if not shouldIgnore and danger.IsBoss2OrbHazard(hazard) then
+				local ignName = ignoredInstance.Name:lower():gsub("%s+", "")
+				if ignName:find("orb") or ignName:find("secondboss") then
+					shouldIgnore = true
+				end
+			end
+
+			if shouldIgnore then
+				continue
+			end
+		end
+
+		-- Bỏ qua hiểm họa nếu người dùng tắt né Boss hoặc tắt né Quái thường
+		if danger.IsHazardIgnored(hazard) then
 			continue
 		end
 
-		if danger.IsPointInHazard(point, hazard) then
+		table.insert(list, hazard)
+	end
+
+	if #list > 1 then
+		table.sort(list, function(a, b)
+			local da = (Vector3.new(a.position.X - point.X, 0, a.position.Z - point.Z)).Magnitude
+			local db = (Vector3.new(b.position.X - point.X, 0, b.position.Z - point.Z)).Magnitude
+			if math.abs(da - db) > 0.5 then
+				return da < db
+			end
+			return (a.name or "") < (b.name or "")
+		end)
+	end
+
+	for _, hazard in ipairs(list) do
+		if danger.IsPointInHazard(point, hazard, padding) then
 			return true, hazard
 		end
 	end
 
 	return false, nil
+end
+
+--// Kiểm tra xem đoạn đường di chuyển từ fromPos -> toPos có an toàn không (Path Clearance)
+function danger.IsPathSafe(fromPos: Vector3, toPos: Vector3, ignoredInstance: Instance?): boolean
+	local dist = (toPos - fromPos).Magnitude
+	if dist <= 1.2 then return true end
+
+	-- Bước chia mẫu 2.8 studs (tối đa 14 bước để tối ưu CPU)
+	local steps = math.clamp(math.ceil(dist / 2.8), 2, 14)
+	for i = 1, steps - 1 do
+		local t = i / steps
+		local samplePos = fromPos:Lerp(toPos, t)
+		if danger.IsPointInAnyHazard(samplePos, ignoredInstance) then
+			return false
+		end
+	end
+	return true
 end
 
 --// 7. Kiểm tra trạng thái của Nhân vật Player hiện tại
@@ -324,7 +559,15 @@ function danger.IsPlayerInDanger(): (boolean, types.ActiveHazard?)
 	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
 	if not rootPart or not rootPart:IsA("BasePart") then return false, nil end
 
-	return danger.IsPointInAnyHazard(rootPart.Position)
+	-- 1. Kiểm tra vị trí ngang thắt lưng (RootPart)
+	local inDanger, hazard = danger.IsPointInAnyHazard(rootPart.Position)
+	if inDanger then
+		return true, hazard
+	end
+
+	-- 2. Kiểm tra vị trí ngang bàn chân (chạm sàn nhà, tránh bỏ sót đòn bệt mặt đất)
+	local footPos = rootPart.Position - Vector3.new(0, hitboxDownwardOffset, 0)
+	return danger.IsPointInAnyHazard(footPos)
 end
 
 --// Lắng nghe sự kiện thay đổi trạng thái Danger
@@ -371,6 +614,56 @@ function danger.GetCurrentDangerHazard(): types.ActiveHazard?
 	return currentDangerHazard
 end
 
+function danger.SetDodgeBossEnabled(state: boolean)
+	dodgeBossEnabled = (state == true)
+	if dodgeBossEnabled and not dodgeEnemyEnabled then
+		targetScope = "Boss"
+	elseif not dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "Mobs"
+	elseif dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "All"
+	end
+end
+
+function danger.IsDodgeBossEnabled(): boolean
+	return dodgeBossEnabled
+end
+
+function danger.SetDodgeEnemyEnabled(state: boolean)
+	dodgeEnemyEnabled = (state == true)
+	if dodgeBossEnabled and not dodgeEnemyEnabled then
+		targetScope = "Boss"
+	elseif not dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "Mobs"
+	elseif dodgeBossEnabled and dodgeEnemyEnabled then
+		targetScope = "All"
+	end
+end
+
+function danger.IsDodgeEnemyEnabled(): boolean
+	return dodgeEnemyEnabled
+end
+
+function danger.SetTargetScope(scope: string)
+	if scope == "Boss" then
+		targetScope = "Boss"
+		dodgeBossEnabled = true
+		dodgeEnemyEnabled = false
+	elseif scope == "Mobs" then
+		targetScope = "Mobs"
+		dodgeBossEnabled = false
+		dodgeEnemyEnabled = true
+	else
+		targetScope = "All"
+		dodgeBossEnabled = true
+		dodgeEnemyEnabled = true
+	end
+end
+
+function danger.GetTargetScope(): string
+	return targetScope
+end
+
 --// Heartbeat Runner: Theo dõi và cập nhật trạng thái IN DANGER thời gian thực
 RunService.Heartbeat:Connect(function()
 	if not enabled or not detection.IsEnabled() then
@@ -407,5 +700,7 @@ RunService.Heartbeat:Connect(function()
 		visuals.UpdatePlayerHitboxVisual(nil)
 	end
 end)
+
+danger.IsPointInDanger = danger.IsPointInAnyHazard
 
 return danger

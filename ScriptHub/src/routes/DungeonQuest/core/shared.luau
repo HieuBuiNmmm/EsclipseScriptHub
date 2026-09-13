@@ -91,7 +91,7 @@ local cleanupConnections = {}
 local speedConnection = nil
 local diedConnection = nil
 local lastRespawnTime = 0
-local respawnProtectionDuration = 4.0 -- Thời gian bảo vệ chuyển giao sau khi hồi sinh (giây)
+local respawnProtectionDuration = 2.0 -- Thời gian bảo vệ chuyển giao sau khi hồi sinh (giây, đồng bộ theo Slider)
 local wasDead = false
 
 local function trackCleanupConnection(connection)
@@ -142,47 +142,24 @@ function shared.IsDead()
 	return false
 end
 
---// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
---// Hỗ trợ: ForceField của Roblox, Tag/Attribute chuẩn của game, và Bộ đếm bảo vệ sau khi hồi sinh
+--// Kiểm tra xem nhân vật hiện tại có đang trong thời gian bảo vệ sau hồi sinh không
+--// Hoàn toàn tuân thủ theo Slider n(s), tự động kết thúc khi hết thời gian, bỏ qua các cơ chế dư thừa
 function shared.IsInvulnerable()
-	local char = player and player.Character
-	if not char or not char.Parent then return false, nil end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum and hum.Health <= 0 then
-		return false, nil -- Khi đã chết thì không tính là bất tử
-	end
-
-	-- 1. Kiểm tra ForceField nguyên bản của Roblox
-	local ff = char:FindFirstChildOfClass("ForceField")
-	if ff and ff.Visible ~= false then
-		return true, "ForceField"
-	end
-
-	-- 2. Kiểm tra Attribute hoặc Tag của game (chỉ nhận khi có giá trị true chính xác)
-	local attrInvuln = char:GetAttribute("Invulnerable")
-	local attrImmune = char:GetAttribute("Immune")
-	local attrRespawn = char:GetAttribute("Respawning")
-	if attrInvuln == true or attrImmune == true or attrRespawn == true then
-		return true, "Attribute"
-	end
-
-	-- 3. Kiểm tra BoolValue của game (chỉ nhận khi đúng là BoolValue và Value == true)
-	local valInvuln = char:FindFirstChild("Invulnerable")
-	local valImmune = char:FindFirstChild("Immune")
-	local valRespawn = char:FindFirstChild("Respawning")
-	if (valInvuln and valInvuln:IsA("BoolValue") and valInvuln.Value == true)
-		or (valImmune and valImmune:IsA("BoolValue") and valImmune.Value == true)
-		or (valRespawn and valRespawn:IsA("BoolValue") and valRespawn.Value == true) then
-		return true, "Value"
-	end
-
-	-- 4. Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
+	-- 1. Kiểm tra bộ đếm thời gian bảo vệ sau khi hồi sinh (thuần túy theo Slider n giây)
 	local remaining = shared.GetRespawnProtectionRemaining()
-	if remaining > 0 then
-		return true, ("Respawn Shield (%.1fs)"):format(remaining)
+	if remaining <= 0 then
+		return false, nil
 	end
 
-	return false, nil
+	-- 2. Chỉ coi là không bất tử nếu nhân vật ĐÃ CHẾT HẲN (Health <= 0)
+	-- (Không return false khi character đang tải / chưa gán Parent để tránh lọt frame né chiêu)
+	local char = (player and player.Character) or (humanoid and humanoid.Parent)
+	local hum = humanoid or (char and char:FindFirstChildOfClass("Humanoid"))
+	if hum and hum.Health <= 0 then
+		return false, nil
+	end
+
+	return true, ("Respawn (%.1fs)"):format(remaining)
 end
 
 --// Enemy helpers
@@ -532,6 +509,10 @@ function shared.SetHumanoid(character)
 			wasDead = true
 		elseif wasDead and health > 0 then
 			wasDead = false
+			lastRespawnTime = os.clock()
+			for _, callback in ipairs(respawnCallbacks) do
+				pcall(callback)
+			end
 		end
 	end))
 end
@@ -679,6 +660,7 @@ if player then
 	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
 		local ok, err = pcall(function()
 			if not character then return end
+			wasDead = false
 			lastRespawnTime = os.clock()
 			shared.SetHumanoid(character)
 			connectSpeedListener()

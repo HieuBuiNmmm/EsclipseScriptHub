@@ -25,6 +25,39 @@ return function(window, tab)
 	-- 2. Combat Radii & Visuals
 	leftSection:Header({ Name = "Combat Radii & Visuals" })
 
+	leftSection:Toggle({
+		Name = "Enable Maintain Distance (Kiting)",
+		Default = smartAutoPlay.IsMaintainDistanceEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetMaintainDistance(state)
+		end),
+	}, "Toggle_SAP_MaintainDistance")
+
+	local TARGET_SCOPE_OPTIONS = { "All (Boss & Mobs)", "Boss Only", "Mobs Only" }
+	local curScopeIdx = 1
+	local curScope = smartAutoPlay.GetTargetScope()
+	if curScope == "Boss" then
+		curScopeIdx = 2
+	elseif curScope == "Mobs" then
+		curScopeIdx = 3
+	end
+
+	leftSection:Dropdown({
+		Name = "Combat Target Scope",
+		Options = TARGET_SCOPE_OPTIONS,
+		Default = curScopeIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if selected == "Boss Only" then
+				smartAutoPlay.SetTargetScope("Boss")
+			elseif selected == "Mobs Only" then
+				smartAutoPlay.SetTargetScope("Mobs")
+			else
+				smartAutoPlay.SetTargetScope("All")
+			end
+		end),
+	}, "Dropdown_SAP_CombatTargetScope")
+
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Mobs Kiting Radius (Cyan)",
 		Suffix = " std",
@@ -107,17 +140,30 @@ return function(window, tab)
 	}, "Toggle_SAP_SkillCircle")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Sphere Size",
+		Name = "Cyan Sphere Size (Kiting Radius)",
 		Suffix = " std",
-		Default = smartAutoPlay.GetSphereSize(),
-		Minimum = 0.1,
+		Default = smartAutoPlay.GetCyanSphereSize(),
+		Minimum = 0.05,
 		Maximum = 2.0,
 		DisplayMethod = "Round",
 		Precision = 2,
 		Callback = autoSave.Wrap(function(val)
-			smartAutoPlay.SetSphereSize(val)
+			smartAutoPlay.SetCyanSphereSize(val)
 		end),
-	}, "Slider_SAP_SphereSize"))
+	}, "Slider_SAP_CyanSphereSize"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Magenta Sphere Size (Skill Radius)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetMagentaSphereSize(),
+		Minimum = 0.05,
+		Maximum = 2.0,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetMagentaSphereSize(val)
+		end),
+	}, "Slider_SAP_MagentaSphereSize"))
 
 	-- Right Section: Combat Settings & Monitor
 	local rightSection = tab:Section({ Side = "Right" })
@@ -157,6 +203,27 @@ return function(window, tab)
 			end
 		end),
 	}, "Dropdown_SAP_PlaystyleMode")
+
+	rightSection:Toggle({
+		Name = "Auto Buff For Speed (Travel)",
+		Default = autoSkill.IsAutoBuffForSpeedEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSkill.SetAutoBuffForSpeed(state)
+		end),
+	}, "Toggle_SAP_AutoBuffForSpeed")
+
+	ui.PatchSliderLoadCallback(rightSection:Slider({
+		Name = "Buff Duration",
+		Suffix = " s",
+		Default = autoSkill.GetBuffDuration(),
+		Minimum = 1.0,
+		Maximum = 30.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoSkill.SetBuffDuration(val)
+		end),
+	}, "Slider_SAP_BuffDuration"))
 
 	rightSection:Toggle({
 		Name = "Cast Damage While Waiting Buff",
@@ -342,6 +409,12 @@ return function(window, tab)
 				stateMonitorLabel:UpdateName("State: <font color='rgb(0, 210, 255)'>🏃 APPROACHING (AutoFarm Pathfind)</font>")
 				targetMonitorLabel:UpdateName("Target: " .. targetText)
 				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
+			elseif info.state == "HoldingPosition" then
+				local targetText = info.targetName and string.format("%s (%.1f std)", info.targetName, info.targetDist or 0) or "Target"
+				masterStatusLabel:UpdateName(string.format("Status: <font color='rgb(220, 200, 100)'>🛑 HOLDING POSITION: Outside Approach Scope (%s)</font>", targetText))
+				stateMonitorLabel:UpdateName("State: <font color='rgb(220, 200, 100)'>🛑 Holding Position</font>")
+				targetMonitorLabel:UpdateName("Target: " .. targetText)
+				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
 			elseif info.state == "RoomCleared" then
 				masterStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 0)'>🏆 ROOM CLEARED: Waiting for enemies</font>")
 				stateMonitorLabel:UpdateName("State: <font color='rgb(255, 200, 0)'>🏆 Room Cleared</font>")
@@ -392,10 +465,14 @@ return function(window, tab)
 				comboCdMonitorLabel:UpdateName("Combo CD: <font color='rgb(160, 160, 160)'>Disabled</font>")
 			elseif style == "BuffAndDamage" then
 				local rem = info.cooldownRemaining or 0
-				if rem > 0 then
-					comboCdMonitorLabel:UpdateName(string.format("Combo CD: <font color='rgb(255, 160, 50)'>⏳ %.1fs remaining</font>", rem))
+				local buffActive = info.buffActive
+				local buffRem = info.buffRemaining or 0
+				if buffActive and buffRem > 0 then
+					comboCdMonitorLabel:UpdateName(string.format("Combo CD: <font color='rgb(0, 225, 255)'>⚡ Buff Active: %.1fs (Damage Allowed)</font>", buffRem))
+				elseif rem > 0 then
+					comboCdMonitorLabel:UpdateName(string.format("Combo CD: <font color='rgb(255, 160, 50)'>⏳ Buff CD: %.1fs (Waiting Buff)</font>", rem))
 				else
-					comboCdMonitorLabel:UpdateName("Combo CD: <font color='rgb(0, 255, 120)'>⚡ Ready to Cast</font>")
+					comboCdMonitorLabel:UpdateName("Combo CD: <font color='rgb(0, 255, 120)'>⚡ Buff Ready (Combo Ready)</font>")
 				end
 			else
 				comboCdMonitorLabel:UpdateName("Combo CD: <font color='rgb(160, 160, 160)'>N/A (Full Damage Mode)</font>")

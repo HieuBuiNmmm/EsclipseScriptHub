@@ -5484,30 +5484,40 @@ function MacLib:Window(Settings)
 
 		for i = 1, #paths do
 			local str = paths[i]
-			if not isfolder(str) then
-				makefolder(str)
-			end
+			pcall(function()
+				if not isfolder(str) then
+					makefolder(str)
+				end
+			end)
 		end
 	end
 
 	function MacLib:LoadAutoLoadConfig()
 		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
 
-		if isfile(MacLib.Folder .. "/settings/autoload.txt") then
-			local name = readfile(MacLib.Folder .. "/settings/autoload.txt")
+		local autoFile = MacLib.Folder .. "/settings/autoload.txt"
+		local hasAuto = false
+		pcall(function() hasAuto = isfile(autoFile) end)
 
-			local suc, err = MacLib:LoadConfig(name)
-			if not suc then
-				WindowFunctions:Notify({
-					Title = "Interface",
-					Description = "Error loading autoload config: " .. err
-				})
+		if hasAuto then
+			local ok, rawName = pcall(readfile, autoFile)
+			if ok and rawName then
+				local name = string.match(rawName, "^%s*(.-)%s*$") -- Loại bỏ khoảng trắng và \r\n
+				if name and name ~= "" then
+					local suc, err = MacLib:LoadConfig(name)
+					if not suc then
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = "Error loading autoload config: " .. tostring(err)
+						})
+					else
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = string.format("Autoloaded config: %q", name),
+						})
+					end
+				end
 			end
-
-			WindowFunctions:Notify({
-				Title = "Interface",
-				Description = string.format("Autoloaded config: %q", name),
-			})
 		end
 	end
 
@@ -5519,11 +5529,13 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:SaveConfig(Path)
-		if isStudio or not writefile then return "Config system unavailable." end
+		if isStudio or not writefile then return false, "Config system unavailable." end
 
 		if (not Path) then
 			return false, "Please select a config file."
 		end
+
+		BuildFolderTree()
 
 		local fullPath = MacLib.Folder .. "/settings/" .. Path .. ".json"
 
@@ -5544,21 +5556,29 @@ function MacLib:Window(Settings)
 			return false, "Unable to encode into JSON data"
 		end
 
-		writefile(fullPath, encoded)
+		local writeOk, writeErr = pcall(writefile, fullPath, encoded)
+		if not writeOk then
+			return false, "Unable to write file: " .. tostring(writeErr)
+		end
 		return true
 	end
 
 	function MacLib:LoadConfig(Path)
-		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
+		if isStudio or not (isfile and readfile) then return false, "Config system unavailable." end
 
 		if (not Path) then
 			return false, "Please select a config file."
 		end
 
 		local file = MacLib.Folder .. "/settings/" .. Path .. ".json"
-		if not isfile(file) then return false, "Invalid file" end
+		local fileExists = false
+		pcall(function() fileExists = isfile(file) end)
+		if not fileExists then return false, "Invalid file" end
 
-		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
+		local readOk, fileContent = pcall(readfile, file)
+		if not readOk or not fileContent then return false, "Unable to read file: " .. tostring(fileContent) end
+
+		local success, decoded = pcall(HttpService.JSONDecode, HttpService, fileContent)
 		if not success then return false, "Unable to decode JSON data." end
 
 		MacLib.LoadingConfig = true
@@ -5580,28 +5600,27 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:RefreshConfigList()
-		if isStudio or not (isfolder and listfiles) then return "Config system unavailable." end
+		if isStudio or not (isfolder and listfiles) then return {} end
 
-		local list = (isfolder(MacLib.Folder) and isfolder(MacLib.Folder .. "/settings")) and listfiles(MacLib.Folder .. "/settings") or {}
+		BuildFolderTree()
+
+		local ok, list = pcall(function()
+			if isfolder(MacLib.Folder) and isfolder(MacLib.Folder .. "/settings") then
+				return listfiles(MacLib.Folder .. "/settings")
+			end
+			return {}
+		end)
+
+		if not ok or type(list) ~= "table" then return {} end
 
 		local out = {}
 		for i = 1, #list do
-			local file = list[i]
+			local file = tostring(list[i])
 			if file:sub(-5) == ".json" then
-				local pos = file:find(".json", 1, true)
-				local start = pos
-
-				local char = file:sub(pos, pos)
-				while char ~= "/" and char ~= "\\" and char ~= "" do
-					pos = pos - 1
-					char = file:sub(pos, pos)
-				end
-
-				if char == "/" or char == "\\" then
-					local name = file:sub(pos + 1, start - 1)
-					if name ~= "options" then
-						table.insert(out, name)
-					end
+				-- Trích xuất tên file (tương thích mọi định dạng: tên thuần, đường dẫn tương đối hoặc tuyệt đối)
+				local name = file:match("([^/\\]+)%.json$")
+				if name and name ~= "options" then
+					table.insert(out, name)
 				end
 			end
 		end

@@ -13,7 +13,11 @@ return function(window, tab)
 
 	local function getAutoloadName()
 		if isfile and isfile(autoloadPath) then
-			return readfile(autoloadPath)
+			local ok, raw = pcall(readfile, autoloadPath)
+			if ok and raw then
+				local trimmed = string.match(raw, "^%s*(.-)%s*$")
+				return (trimmed and #trimmed > 0) and trimmed or nil
+			end
 		end
 		return nil
 	end
@@ -129,7 +133,11 @@ return function(window, tab)
 				return
 			end
 
-			writefile(autoloadPath, name)
+			local ok, writeErr = pcall(writefile, autoloadPath, name)
+			if not ok then
+				window:Notify({ Title = "Interface", Description = "Unable to set autoload: " .. tostring(writeErr) })
+				return
+			end
 			autoloadLabel:UpdateName("Autoload config: " .. name)
 			window:Notify({ Title = "Interface", Description = string.format("Set %q as autoload", name) })
 			activate(name)

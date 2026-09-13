@@ -67,6 +67,47 @@ function filter.RegisterIgnoredSkill(skillName: string)
 	end
 end
 
+--// Kiểm tra xem đối tượng có phải là vật thể debug, marker, hoặc visual nội bộ của script/hub không
+local function isInternalDebugOrVisual(inst: Instance): boolean
+	if not inst then return true end
+	local name = inst.Name
+	local lower = name:lower()
+
+	-- 1. Chứa từ khóa debug
+	if lower:find("debug", 1, true) then return true end
+
+	-- 2. Tiền tố TM_ hoặc AutoFarm debug helper
+	if name:sub(1, 3) == "TM_" or lower:find("tm_", 1, true) then return true end
+
+	-- 3. Các đối tượng của SmartDodge, AutoPlay, SmartAutoPlay
+	if lower:find("smartdodge", 1, true) or lower:find("dodgenode", 1, true) then return true end
+	if lower:find("smartautoplay", 1, true) or lower:find("autoplay", 1, true) then return true end
+
+	-- 4. Các visual spheres và markers của Hub
+	if lower:find("radiussphere", 1, true) or lower:find("skillsphere", 1, true) then return true end
+	if lower:find("safemarker", 1, true) or lower:find("repositionmarker", 1, true) then return true end
+	if lower:find("beaconpillar", 1, true) or lower:find("hitboxcircle", 1, true) then return true end
+	if lower:find("areavisual", 1, true) or lower:find("crystalguidebox", 1, true) then return true end
+	if lower:find("movingtrajectory", 1, true) or lower:find("telegraphcorridor", 1, true) then return true end
+
+	-- 5. SelectionBox, BillboardGui, Highlight, Adornments
+	if inst:IsA("SelectionBox") or inst:IsA("BillboardGui") or inst:IsA("Highlight") or inst:IsA("HandleAdornment") then
+		return true
+	end
+
+	-- 6. Kiểm tra Parent nếu là con của các folder/model debug nội bộ
+	if inst.Parent and inst.Parent ~= Workspace then
+		local pName = inst.Parent.Name
+		local pLower = pName:lower()
+		if pLower:find("debug", 1, true) or pName:sub(1, 3) == "TM_" then return true end
+		if pLower:find("smartdodge", 1, true) or pLower:find("smartautoplay", 1, true) then return true end
+		if pLower:find("safemarker", 1, true) or pLower:find("repositionmarker", 1, true) then return true end
+		if pLower:find("radiusvisual", 1, true) then return true end
+	end
+
+	return false
+end
+
 --// Kiểm tra xem một Instance cấp cao (Model / Folder / Part) có bị bỏ qua không
 function filter.IsIgnoredInstance(inst: Instance): boolean
 	if not inst then return true end
@@ -76,30 +117,30 @@ function filter.IsIgnoredInstance(inst: Instance): boolean
 		return true
 	end
 
-	-- 2. Bỏ qua các object do chính Smart Dodge tạo ra
-	if inst.Name:find("SmartDodge") or inst.Name:find("DodgeNode") then
+	-- 2. Bỏ qua TUYỆT ĐỐI các đối tượng Debug / Visual nội bộ của Hub
+	if isInternalDebugOrVisual(inst) then
 		return true
 	end
 
-	-- 2. Bỏ qua danh sách cố định
+	-- 3. Bỏ qua danh sách cố định
 	if IGNORED_WORKSPACE_NAMES[inst.Name] then
 		return true
 	end
 
-	-- 3. Bỏ qua nếu là Character của bất kỳ Player nào trong server
+	-- 4. Bỏ qua nếu là Character của bất kỳ Player nào trong server
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p.Character == inst then
 			return true
 		end
 	end
 
-	-- 4. Bỏ qua theo tên kỹ năng Player đã học được
+	-- 5. Bỏ qua theo tên kỹ năng Player đã học được
 	local nameLower = inst.Name:lower():gsub("%s+", "")
 	if ignoredSkillNames[inst.Name] or ignoredSkillNames[nameLower] then
 		return true
 	end
 
-	-- 5. Bỏ qua các hiệu ứng Aura thông dụng
+	-- 6. Bỏ qua các hiệu ứng Aura thông dụng
 	if nameLower:find("enhancedaura", 1, true) or nameLower:find("auraring", 1, true) or nameLower:find("groundaura", 1, true) then
 		return true
 	end
@@ -116,8 +157,10 @@ function filter.IsIgnoredPart(part: BasePart): boolean
 		return true
 	end
 
-	-- 2. Bỏ qua Part của Smart Dodge
-	if part.Name:find("SmartDodge") then return true end
+	-- 2. Bỏ qua TUYỆT ĐỐI các đối tượng Debug / Visual nội bộ của Hub
+	if isInternalDebugOrVisual(part) then
+		return true
+	end
 
 	-- 3. Bỏ qua các Part xương cốt / helper
 	local nameLower = part.Name:lower():gsub("%s+", "")
