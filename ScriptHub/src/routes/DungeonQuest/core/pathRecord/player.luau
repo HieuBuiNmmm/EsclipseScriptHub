@@ -2,8 +2,8 @@
 --   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
 --     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
 --   - BOSS room:
---       * Mode NORMAL: KHÔNG đi (ngẫu nhiên, dùng SmartDodge) -> đứng yên chờ. Nếu
---         hệ thống khác (SmartDodge/AutoFarm) chiếm quyền -> PauseForExclusive:
+--       * Mode NORMAL: KHÔNG đi (ngẫu nhiên, dùng Hazard Scanner) -> đứng yên chờ. Nếu
+--         hệ thống khác (HazardScanner/AutoFarm) chiếm quyền -> PauseForExclusive:
 --         nhường + tự resume khi sang room quái thường có segment.
 --       * Mode FULL (map tùy chỉnh): ĐI theo path đã record qua cả boss room; giữ
 --         độc quyền và KHÔNG đứng yên ở boss.
@@ -15,6 +15,8 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local storage = require("@routes/DungeonQuest/core/pathRecord/storage")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+local selector = require("@routes/DungeonQuest/core/autoFarm/selector")
+local movement = require("@routes/DungeonQuest/core/autoFarm/movement")
 
 local player = services.player
 local VirtualInputManager = services.VirtualInputManager
@@ -248,6 +250,111 @@ local function restoreAutoRotate()
 	if hum then hum.AutoRotate = true end
 end
 
+--// Đánh bóng: dẫn đường bằng Pathfinding (tái sử dụng pha CHASE của AutoFarm) để
+--// tiếp cận node đầu của segment thay vì MoveTo thẳng (kẹt tường/cầu thang/mương).
+--//  - Tìm path: thử params chuẩn -> relaxed (nhỏ hơn, leo dốc cao hơn).
+--//  - Bám waypoint: tới gần cách <= 3.5 stud -> nhảy waypoint tiếp theo.
+--//  - Blocking checker: MoveTo thẳng đích kẹt tường/mương -> lùi chọn node waypoint
+--//    còn nhìn thấy; hết sạch -> repath.
+--//  - Kẹt (vận tốc thấp): tự nhảy + repath sau 1.5s.
+--// Trả về true khi tới node đầu; false + lý do khi bị ngắt giữa chừng.
+local function chaseToStart(humanoid, root, room, allowBoss, target, deadline)
+	local ignoreList = { player.Character }
+	local pathInstance = nil
+	local waypoints = {}
+	local waypointIdx = 1
+	local stuckTimer = 0
+	local lastJumpTime = 0
+
+	while isPlaying do
+		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
+		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
+		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
+		if shared.IsBossActive() and not allowBoss then restoreAutoRotate(); return false, "boss" end
+
+		local pos = getSafePosition(root)
+		if not pos then
+			task.wait(0.08)
+			continue
+		end
+
+		--// Tới node đầu -> xong.
+		if flatDistance(pos, target) <= ARRIVE_DIST then break end
+		if os.clock() >= deadline then break end
+
+		--// Nếu chưa có path hoặc bị BLOCKED/REPATHING -> tìm lại đường.
+		if not pathInstance or #waypoints == 0 then
+			if pathInstance then pcall(function() pathInstance:Destroy() end) end
+			pathInstance, waypoints = nil, {}
+			local p, wps = selector.ComputePathWithCost(pos, target)
+			if p and wps and #wps > 0 then
+				pathInstance = p
+				waypoints = wps
+				waypointIdx = 1
+				stuckTimer = 0
+			else
+				--// Không tìm thấy đường (navmesh thiếu) -> nhảy thẳng về đích,
+				--// chờ repath khi gần hoặc kẹt.
+				pcall(function() humanoid:MoveTo(target) end)
+				task.wait(0.1)
+				continue
+			end
+		end
+
+		--// Bám waypoint: đã tới cách <= 3.5 stud -> tăng chỉ số.
+		local wp = waypoints[waypointIdx]
+		if wp and flatDistance(pos, wp.Position) <= 3.5 then
+			waypointIdx = math.min(#waypoints + 1, waypointIdx + 1)
+		end
+
+		--// Blocking checker (giống AutoFarm CHASE): MoveTo thẳng trúng vật cản thì
+		--// lùi chọn node waypoint còn "nhìn thấy"; hết sạch -> repath frame sau.
+		local chosenDest, mode = movement.ResolveDestination(pos, target, waypoints, waypointIdx, ignoreList)
+		if mode == "Blocked" or not chosenDest then
+			if pathInstance then pcall(function() pathInstance:Destroy() end) end
+			pathInstance, waypoints = nil, {}
+			pcall(function() humanoid:MoveTo(pos) end)
+			task.wait(0.1)
+			continue
+		end
+
+		--// Di chuyển + nhảy nếu vượt chướng ngại cao / waypoint yêu cầu Jump.
+		movement.ExecuteMove(humanoid, pos, chosenDest, waypoints, waypointIdx)
+
+		--// Kẹt bằng vận tốc: vận tốc ngang thấp -> nhảy (chống vướng chân),
+		--// kẹt lâu 1.5s -> repath.
+		local distToDest = (chosenDest - pos).Magnitude
+		if distToDest >= 1.5 then
+			local vel = root.AssemblyLinearVelocity or root.Velocity
+			local speed = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
+			local now = os.clock()
+			if speed < 10 then
+				stuckTimer += 0.1
+				if (now - lastJumpTime) >= 0.4 then
+					pcall(function() humanoid.Jump = true end)
+					lastJumpTime = now
+				end
+				if stuckTimer >= 1.5 then
+					if pathInstance then pcall(function() pathInstance:Destroy() end) end
+					pathInstance, waypoints = nil, {}
+					stuckTimer = 0
+				end
+			else
+				stuckTimer = 0
+			end
+		else
+			stuckTimer = 0
+		end
+
+		task.wait(0.1)
+	end
+
+	if pathInstance then pcall(function() pathInstance:Destroy() end) end
+	pathInstance = nil
+	if not isPlaying then return false, "stopped" end
+	return true
+end
+
 --// Đi liên tục toàn bộ quỹ đạo 1 segment — KHÔNG bao giờ dừng giữa chừng.
 --// allowBoss (true khi mode FULL): bỏ check boss -> đi theo path đã record qua boss room.
 --// Cách hoạt động (bám quỹ đạo + projection + lookahead):
@@ -425,22 +532,12 @@ local function walkThrough(segment, room, allowBoss)
 
 	--// Đảm bảo khi bắt đầu di chuyển: luôn đi về NODE ĐẦU TIÊN (path[1] - vị trí xuất phát).
 	--// Không chiếu tìm node giữa đường (tránh bị nhảy cóc sang nhánh khác khi đi ngang qua).
+	--// Tiếp cận bằng Pathfinding (giống pha CHASE của AutoFarm) thay vì MoveTo thẳng.
 	local repositionStart = path[1]
 	local repositionDeadline = os.clock() + START_REPOSITION_TIMEOUT
-	while isPlaying do
-		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
-		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
-		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
-		if shared.IsBossActive() and not allowBoss then restoreAutoRotate(); return false, "boss" end
-		local p0 = getSafePosition(root)
-		if not p0 then
-			task.wait(0.08)
-			continue
-		end
-		if flatDistance(p0, repositionStart) <= ARRIVE_DIST then break end
-		pcall(function() humanoid:MoveTo(repositionStart) end)
-		if os.clock() >= repositionDeadline then break end
-		task.wait(0.08)
+	local rpOk, rpErr = chaseToStart(humanoid, root, room, allowBoss, repositionStart, repositionDeadline)
+	if (not rpOk) and rpErr and rpErr ~= "stopped" then
+		return false, rpErr
 	end
 
 	local progress = 0
@@ -596,7 +693,7 @@ local function playbackLoop()
 			break
 		end
 		if shared.IsBossActive() and not playFullMap then
-			--// Boss (mode NORMAL): đứng yên (dùng SmartDodge).
+			--// Boss (mode NORMAL): đứng yên (dùng Hazard Scanner).
 			task.wait(0.25)
 			continue
 		end
@@ -719,7 +816,7 @@ function mover.Start()
 	--// Mode FULL: đi qua luôn boss room (miễn room đó có segment đã ghi).
 	local full = storage.GetMapMode(map) == "full"
 	if shared.IsBossActive() and (not full or not storage.HasSegmentOrMacro(map, room)) then
-		return false, "boss room (hãy dùng Smart Dodge)"
+		return false, "boss room (hãy dùng Hazard Scanner)"
 	end
 
 	activeMap = map
@@ -749,7 +846,7 @@ function mover.Stop()
 	fireStatus("stopped")
 end
 
---// Nhường độc quyền cho hệ thống khác (SmartDodge/AutoFarm...): dừng nhưng
+--// Nhường độc quyền cho hệ thống khác (HazardScanner/AutoFarm...): dừng nhưng
 --// giữ ý định tự resume khi vào room có segment.
 function mover.PauseForExclusive()
 	if not isPlaying then return end

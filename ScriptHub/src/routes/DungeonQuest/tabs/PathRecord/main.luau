@@ -1,7 +1,7 @@
 -- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
 --   - MACRO = 1 bản ghi cho cả map: bấm Record 1 lần, tự ghi liên tục qua các room
 --     (auto-split segment theo room), tự lưu khi về lobby. Record lại room nào thì ghi đè room đó.
---   - Mode theo map: NORMAL (mặc định) skip boss, dùng SmartDodge; FULL record & phát luôn cả boss room.
+--   - Mode theo map: NORMAL (mặc định) skip boss, dùng Hazard Scanner; FULL record & phát luôn cả boss room.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -111,7 +111,7 @@ return function(window, tab)
 		Text = "Record sẽ bắt cả <font color='rgb(255,150,80)'>khoảng đứng chờ</font> + <font color='rgb(255,80,80)'>skill (chuột phải / Q / E)</font> + hướng mặt, Play sẽ tái hiện lại đúng vị trí, giây & nút đã record.",
 	})
 
-	--// Mode theo map: NORMAL = skip boss (dùng Smart Dodge); FULL = record & phát luôn cả boss room.
+	--// Mode theo map: NORMAL = skip boss (dùng Hazard Scanner); FULL = record & phát luôn cả boss room.
 	local modeLabel = left:Label({
 		Text = "Record Mode (theo map): <font color='rgb(120,200,255)'>NORMAL</font>",
 	})
@@ -135,14 +135,14 @@ return function(window, tab)
 				return
 			end
 			pathRecord.SetMapMode(targetMap, state and "full" or "normal")
-			notifier.Notify("Path Record", ("Map [%s]: Chế độ %s"):format(targetMap, state and "FULL (record & phát cả boss room)" or "NORMAL (bỏ qua boss, dùng Smart Dodge)"), 3)
+			notifier.Notify("Path Record", ("Map [%s]: Chế độ %s"):format(targetMap, state and "FULL (record & phát cả boss room)" or "NORMAL (bỏ qua boss, dùng Hazard Scanner)"), 3)
 			if updateStatus then
 				updateStatus(pathRecord.GetStatus())
 			end
 		end,
 	})
 	left:Label({
-		Text = "Mode lưu theo <font color='rgb(150,255,150)'>từng map</font>. <font color='rgb(255,140,255)'>FULL</font>: ghi liên tục qua cả boss room & phát theo path đã record. <font color='rgb(120,200,255)'>NORMAL</font> (mặc định): chỉ room quái thường, boss dùng Smart Dodge.",
+		Text = "Mode lưu theo <font color='rgb(150,255,150)'>từng map</font>. <font color='rgb(255,140,255)'>FULL</font>: ghi liên tục qua cả boss room & phát theo path đã record. <font color='rgb(120,200,255)'>NORMAL</font> (mặc định): chỉ room quái thường, boss dùng Hazard Scanner.",
 	})
 
 	local playToggle = left:Toggle({
@@ -567,7 +567,7 @@ return function(window, tab)
 			if isFullMap then
 				bossText = "<font color='rgb(255,140,255)'>YES (FULL path)</font>"
 			else
-				bossText = "<font color='rgb(255,80,80)'>YES (dùng Smart Dodge)</font>"
+				bossText = "<font color='rgb(255,80,80)'>YES (dùng Hazard Scanner)</font>"
 			end
 		else
 			bossText = "<font color='rgb(0,255,120)'>No</font>"

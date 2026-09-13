@@ -1,7 +1,7 @@
--- Smart Dodge – Module 2: Geometry & Hazard Hit-testing (DungeonQuest).
+-- HazardScanner – Geometry & Hazard Hit-testing (DungeonQuest).
 -- Các "thuật toán chấm điểm": isPointInPart (OBB), ring bán nguyệt phân cực, hành lang
--- projectile, isPointInAnyHazard, getFloorPosition. Data hiểm họa được Engine bơm vào qua
--- BindDetection (đứt vòng phụ thuộc detection -> geometry), nên module thuần số học + logic.
+-- projectile, isPointInAnyHazard, getFloorPosition. Data hiểm họa được HazardScanner bơm vào
+-- qua BindDetection (đứt vòng phụ thuộc detection -> geometry), nên module thuần số học + logic.
 
 --// References
 local Players = game:GetService("Players")

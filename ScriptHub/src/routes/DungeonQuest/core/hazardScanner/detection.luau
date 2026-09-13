@@ -1,4 +1,4 @@
--- Smart Dodge – Module 1: Threat Detection Engine (DungeonQuest).
+-- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
 -- Chuyên trách: quét Workspace Depth 1, nhận diện hiểm họa (Neon / ngoại lệ), khóa quỹ đạo
 -- projectile, SelectionBox ESP, hành lang quỹ đạo cảnh báo, registry tên skill player.
 -- State riêng: activeHazards, lockedProjectiles, activeTrajectoryVisuals, các flag debug.
@@ -8,13 +8,12 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local macLib = require("@packages/Maclib")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local skillTimingManager = require("@routes/DungeonQuest/core/smartDodge/skillTimingManager")
 
 --// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
 local geometryRef
 local function getGeometry()
 	if not geometryRef then
-		geometryRef = require("@routes/DungeonQuest/core/smartDodge/geometry")
+		geometryRef = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 	end
 	return geometryRef
 end
@@ -33,33 +32,12 @@ local detection = {}
 local threatDetectorEnabled = false
 local logHazards = false
 local visualEspEnabled = true
-local showSkillTimers = true
-local autoLearnSkillLifetimes = true
-local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
+local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Caster, CasterHumanoid, TimerBillboard }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
 local lastHazardInfo = nil
 local connections = {}
 local sharedCleanups = {}
-
---// Bảng cơ sở dữ liệu thời gian sống học được từ các kỹ năng (Skill Lifetime Profiler)
-local skillProfiles = {} -- [string skillName] = { count = number, avgLifetime = number, minLifetime = number, maxLifetime = number }
-
---// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây): { hitDelay, totalLifetime }
-local KNOWN_SKILL_LIFETIMES = {
-	["smallIceSpikes"] = { hitDelay = 0.8, totalLifetime = 1.2 },
-	["mediumIceSpikes"] = { hitDelay = 1.1, totalLifetime = 1.5 },
-	["largeIceSpikes"] = { hitDelay = 1.4, totalLifetime = 1.8 },
-	["thirdBossMultiRings"] = { hitDelay = 2.0, totalLifetime = 2.8 },
-	["firstBossCrissCross"] = { hitDelay = 1.6, totalLifetime = 2.2 },
-	["firstBossSeekingSpikes"] = { hitDelay = 1.8, totalLifetime = 2.5 },
-	["firstBossBigSpike"] = { hitDelay = 1.5, totalLifetime = 2.0 },
-	["firstBossBeamPart"] = { hitDelay = 1.5, totalLifetime = 2.0 },
-	["secondBossMovingBeam"] = { hitDelay = 0.0, totalLifetime = 3.5 },
-	["secondbossyelloworb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
-	["secondbossredorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
-	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
-}
 
 local ignoredSkillNames = {
 	["DodgeNode_ESP"] = true,
@@ -221,6 +199,117 @@ local TRAJECTORY_PROJECTILE_CONFIGS = {
 	},
 }
 
+--// ==========================================================================
+--// PROJECTILE WHITELIST (data-driven từ ReplicatedStorage.enemyProjectiles)
+--// ==========================================================================
+--// Nguyên tắc: Mọi Projectile thật của game đều được spawn từ template chứa trong
+--// `ReplicatedStorage.enemyProjectiles`. Nhờ đó:
+--//   - "Projectile thật" => CHẮC CHẮN có tên match 1 entry trong folder này.
+--//   - Ngược lại, 1 entry trong folder CHƯA CHẮC là projectile (có thể là mô hình
+--//     chung / mẫu phụ trợ) => cần danh sách LOẠI TRỪ (exception) để gỡ những entry đó.
+--// Đây là WHITELIST dạng superset: projectile luôn nằm trong list, nhưng list có
+--// thể chứa phần tử không phải projectile.
+local projectileWhitelist = {}            -- [cleanName] = true
+local projectileWhitelistExceptions = {}  -- [cleanName] = true (bị loại trừ, KHÔNG coi là projectile)
+local projectileWhitelistLoaded = false
+local projectileWhitelistCount = 0
+
+local function toCleanName(name)
+	return (name or ""):lower():gsub("%s+", "")
+end
+
+--// Quét ReplicatedStorage.enemyProjectiles (Buffer: toàn bộ tên child/descendant)
+local function loadProjectileWhitelist()
+	projectileWhitelist = {}
+	projectileWhitelistLoaded = false
+	projectileWhitelistCount = 0
+
+	local folder = ReplicatedStorage:FindFirstChild("enemyProjectiles")
+	if not folder then
+		for _, child in ipairs(ReplicatedStorage:GetChildren()) do
+			if toCleanName(child.Name) == "enemyprojectiles" then
+				folder = child
+				break
+			end
+		end
+	end
+
+	if not folder or not folder.Parent then
+		if logHazards then
+			print("[HazardScanner] ⚠️ Projectile Whitelist: ReplicatedStorage.enemyProjectiles NOT FOUND")
+		end
+		return
+	end
+
+	local function addName(inst)
+		local clean = toCleanName(inst.Name)
+		if #clean > 0 and not projectileWhitelist[clean] then
+			projectileWhitelist[clean] = true
+			projectileWhitelistCount = projectileWhitelistCount + 1
+		end
+	end
+
+	addName(folder)
+	for _, desc in ipairs(folder:GetDescendants()) do
+		if desc:IsA("BasePart") or desc:IsA("Model") or desc:IsA("Folder") then
+			addName(desc)
+		end
+	end
+
+	projectileWhitelistLoaded = true
+	if logHazards then
+		print(("[HazardScanner] 📦 Projectile Whitelist loaded: %d unique names from %s"):format(projectileWhitelistCount, folder:GetFullName()))
+	end
+end
+
+local function ensureProjectileWhitelistLoaded()
+	if not projectileWhitelistLoaded then
+		loadProjectileWhitelist()
+	end
+	return projectileWhitelistCount
+end
+
+--// Lấy config trajectory cho 1 tên NẾU thuộc whitelist (và không bị exception)
+local function getProjectileWhitelistConfig(cleanName, displayName)
+	if not cleanName or #cleanName == 0 then return nil end
+	if not projectileWhitelistLoaded then
+		loadProjectileWhitelist()
+	end
+	if not projectileWhitelist[cleanName] then return nil end
+	if projectileWhitelistExceptions[cleanName] then return nil end
+	-- Config mặc định cho projectile từ whitelist: kích thước thật vẫn được đo động
+	-- (getPartAutoDimensions), dangerRadius/lookahead chỉ là sàn an toàn.
+	return {
+		name = displayName or cleanName,
+		dangerRadius = 6.0,
+		maxLookahead = 40.0,
+		visualColor = Color3.fromRGB(255, 130, 0),
+		isWhitelisted = true,
+	}
+end
+
+detection.LoadProjectileWhitelist = loadProjectileWhitelist
+detection.GetProjectileWhitelistSize = function()
+	ensureProjectileWhitelistLoaded()
+	return projectileWhitelistCount
+end
+detection.GetProjectileWhitelist = function()
+	ensureProjectileWhitelistLoaded()
+	return projectileWhitelist
+end
+detection.SetProjectileWhitelistException = function(name)
+	if type(name) ~= "string" or #name == 0 then return end
+	local clean = toCleanName(name)
+	projectileWhitelistExceptions[clean] = true
+	projectileWhitelist[clean] = nil
+	if logHazards then
+		print(("[HazardScanner] 🚫 Projectile Whitelist Exception: %s (%s)"):format(clean, name))
+	end
+end
+detection.IsProjectileWhitelistException = function(name)
+	return typeof(name) == "string" and projectileWhitelistExceptions[toCleanName(name)] == true
+end
+
 --// Cấu hình động cho hành lang quỹ đạo đạn (Trajectory Tuning)
 local trajectoryLookahead = 50.0          -- Chiều dài hành lang dự đoán (mặc định 50 studs thay vì 300 để tránh tắc map)
 local trajectoryWidthPadding = 2.5        -- Khoảng đệm nới rộng 2 bên sườn dựa trên kích thước thật của chiêu (studs)
@@ -298,7 +387,7 @@ function detection.AddTrajectoryProjectile(skillName, dangerRadius, maxLookahead
 			visualColor = Color3.fromRGB(255, 130, 0),
 		}
 		if logHazards then
-			print(("[SmartDodge] 🚀 Registered Trajectory Projectile: %s"):format(skillName))
+			print(("[HazardScanner] 🚀 Registered Trajectory Projectile: %s"):format(skillName))
 		end
 	end
 end
@@ -306,16 +395,33 @@ end
 --// Kiểm tra xem part có thuộc cấu hình kỹ năng Trajectory hay không
 local function getTrajectoryConfigForPart(part)
 	if not part then return nil end
-	local nameLower = part.Name:lower():gsub("%s+", "")
+	local nameLower = toCleanName(part.Name)
+
+	-- 1. Cấu hình hardcode (ưu tiên cao, có config chi tiết nhất)
 	if TRAJECTORY_PROJECTILE_CONFIGS[nameLower] then
 		return TRAJECTORY_PROJECTILE_CONFIGS[nameLower]
 	end
 	if part.Parent and part.Parent:IsA("Model") then
-		local parentLower = part.Parent.Name:lower():gsub("%s+", "")
+		local parentLower = toCleanName(part.Parent.Name)
 		if TRAJECTORY_PROJECTILE_CONFIGS[parentLower] then
 			return TRAJECTORY_PROJECTILE_CONFIGS[parentLower]
 		end
 	end
+
+	-- 2. Whitelist data-driven từ ReplicatedStorage.enemyProjectiles
+	--    (superset: projectile thật chắc chắn có trong danh sách, but có thể dư)
+	local wlConfig = getProjectileWhitelistConfig(nameLower, part.Name)
+	if wlConfig then
+		return wlConfig
+	end
+	if part.Parent then
+		local parentLower = toCleanName(part.Parent.Name)
+		wlConfig = getProjectileWhitelistConfig(parentLower, part.Parent.Name)
+		if wlConfig then
+			return wlConfig
+		end
+	end
+
 	return nil
 end
 
@@ -506,7 +612,7 @@ local function lockTrajectoryForPart(part)
 
 	lockedProjectiles[part] = data
 	if logHazards then
-		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm | Auto Width: %.1fm (Radius: %.1fm) | Locked Floor Y: %.2f"):format(
+		print(("[HazardScanner] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm | Auto Width: %.1fm (Radius: %.1fm) | Locked Floor Y: %.2f"):format(
 			part.Name, forward2D.X, forward2D.Z, data.maxLookahead, autoWidth, data.dangerRadius, rawFloorY
 		))
 	end
@@ -639,7 +745,7 @@ function detection.RegisterPlayerSkill(skillName)
 			local normalized = cleanName:lower():gsub("%s+", "")
 			ignoredSkillNames[normalized] = true
 			if logHazards then
-				print(("[SmartDodge] 🛡️ Registered Player Skill (Ignored): %s"):format(cleanName))
+				print(("[HazardScanner] 🛡️ Registered Player Skill (Ignored): %s"):format(cleanName))
 			end
 		end
 	end
@@ -749,7 +855,7 @@ local function initReplicatedAbilitiesWatcher()
 			scanAbilityInstance(child)
 		end)
 		if logHazards then
-			print(("[SmartDodge] 📚 Loaded %d player abilities from ReplicatedStorage.abilities"):format(#folder:GetChildren()))
+			print(("[HazardScanner] 📚 Loaded %d player abilities from ReplicatedStorage.abilities"):format(#folder:GetChildren()))
 		end
 	end
 
@@ -788,7 +894,7 @@ local function initReplicatedProjectilesWatcher()
 			scanProjectileInstance(child)
 		end)
 		if logHazards then
-			print(("[SmartDodge] 🎆 Loaded %d player projectiles/effects from ReplicatedStorage.projectiles"):format(#folder:GetChildren()))
+			print(("[HazardScanner] 🎆 Loaded %d player projectiles/effects from ReplicatedStorage.projectiles"):format(#folder:GetChildren()))
 		end
 	end
 
@@ -1123,25 +1229,8 @@ local function attachSelectionBoxes(hazardParts)
 	return boxes
 end
 
---// Ước tính tổng thời gian tồn tại và thời điểm kích nổ sát thương (Total Lifetime & Hit Delay)
-local function getEstimatedSkillLifetime(skillName)
-	if skillTimingManager then
-		return skillTimingManager.GetSkillTiming(skillName)
-	end
-	local known = KNOWN_SKILL_LIFETIMES[skillName]
-	if known then
-		if type(known) == "table" then
-			return known.totalLifetime or 2.0, known.hitDelay or 1.5
-		else
-			return known, known * 0.70
-		end
-	end
-	return 2.5, 1.8
-end
-
---// Gắn BillboardGui 3D đếm ngược thời gian tồn tại của hazard
-local function attachHazardTimerBillboard(instance, hazardParts, skillName)
-	if not showSkillTimers then return nil, nil end
+--// Gắn BillboardGui 3D hiển thị tên chiêu thức của hazard (không đếm ngược)
+local function attachHazardNameBillboard(instance, hazardParts, skillName)
 	local targetPart = hazardParts and hazardParts[1]
 	if not targetPart or not targetPart:IsA("BasePart") then
 		if instance:IsA("BasePart") then
@@ -1149,26 +1238,26 @@ local function attachHazardTimerBillboard(instance, hazardParts, skillName)
 		elseif instance:IsA("Model") then
 			targetPart = instance:FindFirstChildWhichIsA("BasePart")
 		else
-			return nil, nil
+			return nil
 		end
 	end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "SmartDodge_TimerBillboard"
 	billboard.Adornee = targetPart
-	billboard.Size = UDim2.new(0, 160, 0, 40)
-	billboard.StudsOffset = Vector3.new(0, 4.0, 0)
+	billboard.Size = UDim2.new(0, 180, 0, 26)
+	billboard.StudsOffset = Vector3.new(0, 3.0, 0)
 	billboard.AlwaysOnTop = true
 	billboard.ResetOnSpawn = false
 
 	local label = Instance.new("TextLabel")
-	label.Name = "TimerLabel"
+	label.Name = "SkillNameLabel"
 	label.Size = UDim2.new(1, 0, 1, 0)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.GothamBold
 	label.TextSize = 13
 	label.TextColor3 = Color3.fromRGB(255, 220, 80)
-	label.Text = skillName .. "\n⏳ calculating..."
+	label.Text = skillName or "Unknown Hazard"
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(0, 0, 0)
@@ -1178,7 +1267,7 @@ local function attachHazardTimerBillboard(instance, hazardParts, skillName)
 	label.Parent = billboard
 	billboard.Parent = targetPart
 
-	return billboard, label
+	return billboard
 end
 
 --// Tìm đối tượng tung chiêu (Caster) để theo dõi vòng đời sống/chết (Tầng 2)
@@ -1243,10 +1332,7 @@ local function registerHazard(instance)
 	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] then return end
 
 	-- FAST REJECTION (Tầng 1): Nếu phòng đã dọn sạch quái và không ở Boss room -> Bỏ qua
-	-- Ngoại lệ: khi đang bật Huấn luyện (Recording) thì không bỏ qua để đảm bảo bắt trọn mọi chiêu thức
-	if not (skillTimingManager and skillTimingManager.IsRecording()) then
-		if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then return end
-	end
+	if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then return end
 
 	-- FAST REJECTION: Trích xuất part hiểm họa trước.
 	-- Nếu không có part Neon và không thuộc ngoại lệ -> Bỏ qua ngay lập tức trong 0.0001ms mà KHÔNG chạy isPlayerAsset
@@ -1311,10 +1397,7 @@ local function registerHazard(instance)
 	end
 
 	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
-	local timerBillboard, timerLabel = nil, nil
-	if showSkillTimers then
-		timerBillboard, timerLabel = attachHazardTimerBillboard(instance, hazardParts, instance.Name)
-	end
+	local timerBillboard = attachHazardNameBillboard(instance, hazardParts, instance.Name)
 
 	local info = {
 		Instance = instance,
@@ -1325,12 +1408,10 @@ local function registerHazard(instance)
 		Distance = dist,
 		NeonCount = #hazardParts,
 		SpawnTime = os.clock(),
-		HitTime = nil, -- Ghi nhận thời điểm nháy kích nổ sát thương
 		Connections = partConnections,
 		ActiveParts = activePartsSet,
 		VisualBoxes = visualBoxes,
 		TimerBillboard = timerBillboard,
-		TimerLabel = timerLabel,
 		IsException = isException,
 		Caster = casterModel,
 		CasterHumanoid = casterHumanoid,
@@ -1348,25 +1429,6 @@ local function registerHazard(instance)
 		table.insert(partConnections, casterModel.AncestryChanged:Connect(function(_, parent)
 			if not parent then
 				unregisterHazard(instance, "Caster Removed")
-			end
-		end))
-	end
-
-	-- Lắng nghe âm thanh nổ hoặc particles bung ra để bắt trọn thời điểm nháy damage
-	for _, desc in ipairs(instance:GetDescendants()) do
-		if desc:IsA("Sound") then
-			table.insert(partConnections, desc.Played:Connect(function()
-				if not info.HitTime then
-					info.HitTime = os.clock()
-				end
-			end))
-		end
-	end
-
-	if instance:IsA("Model") then
-		table.insert(partConnections, instance.DescendantAdded:Connect(function(desc)
-			if not info.HitTime and (desc:IsA("ParticleEmitter") or desc:IsA("Sound") or (desc:IsA("BasePart") and desc.Name ~= "precast")) then
-				info.HitTime = os.clock()
 			end
 		end))
 	end
@@ -1406,9 +1468,6 @@ local function registerHazard(instance)
 		-- Pha Kích nổ / Sát thương: Khi part đạt độ sáng chói (Transparency tụt xuống <= 0.28)
 		if minT <= 0.28 then
 			partHasFlashed[part] = true
-			if not info.HitTime then
-				info.HitTime = os.clock()
-			end
 		end
 
 		-- Pha Tan biến sau khi chớp sáng (Early Hitbox Clearance):
@@ -1548,7 +1607,7 @@ local function registerHazard(instance)
 	end
 
 	if logHazards then
-		print(("[SmartDodge][Hazard] 🚨 Hazard Detected: %s | Class: %s | Parts: %d | Dist: %d studs%s")
+		print(("[HazardScanner][Hazard] 🚨 Hazard Detected: %s | Class: %s | Parts: %d | Dist: %d studs%s")
 			:format(info.Name, info.Class, info.NeonCount, info.Distance, isException and " (Exception)" or ""))
 	end
 
@@ -1593,46 +1652,6 @@ function unregisterHazard(instance, reason)
 	if info.TimerBillboard then
 		pcall(function() info.TimerBillboard:Destroy() end)
 		info.TimerBillboard = nil
-		info.TimerLabel = nil
-	end
-
-	-- Nếu đang bật chế độ Huấn luyện chơi chay (Manual Training): Ghi nhận nhịp chiêu vào RAM buffer
-	if skillTimingManager and skillTimingManager.IsRecording() and info.SpawnTime then
-		local duration = os.clock() - info.SpawnTime
-		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
-
-		-- Nhận diện xem chiêu thức có phải là Projectile / Đạn bay di chuyển hay không
-		local currentPos = getInstancePosition(instance, nil)
-		local travelDist = (currentPos - (info.SpawnPosition or info.Position or Vector3.zero)).Magnitude
-		local nameClean = (info.Name or ""):lower():gsub("%s+", "")
-		local isProjectile = (TRAJECTORY_PROJECTILE_CONFIGS[nameClean] ~= nil)
-			or (nameClean:find("projectile") ~= nil)
-			or (nameClean:find("missile") ~= nil)
-			or (nameClean:find("orb") ~= nil)
-			or (nameClean:find("bullet") ~= nil)
-			or (nameClean:find("ball") ~= nil)
-			or (nameClean:find("movingbeam") ~= nil)
-			or (nameClean:find("crisscross") ~= nil)
-			or (nameClean:find("seekingspike") ~= nil)
-			or (travelDist >= 6.0)
-
-		if isProjectile then
-			-- Chiêu projectile gây sát thương xuyên suốt toàn bộ vòng đời bay (HitDelay = 0.0s)
-			hitDelay = 0.0
-		elseif not hitDelay or hitDelay < 0.1 or hitDelay > duration then
-			local _, defaultHit = getEstimatedSkillLifetime(info.Name)
-			hitDelay = math.min(defaultHit, duration * 0.75)
-		end
-
-		if duration >= 0.2 and duration <= 25.0 then
-			skillTimingManager.RecordSkill(info.Name, duration, hitDelay, isProjectile)
-			local typeTag = isProjectile and "🚀 Projectile" or "💥 AoE"
-			print(("[SkillTiming] 📝 Recorded: '%s' [%s] | Lifetime: %.2fs | HitDelay: %.2fs (%s)")
-				:format(info.Name, typeTag, duration, hitDelay, reason or "Despawned"))
-		else
-			print(("[SkillTiming] ⚠️ Skipped '%s': duration %.2fs out of range [0.2, 25.0]")
-				:format(info.Name, duration))
-		end
 	end
 
 	activeHazards[instance] = nil
@@ -1640,7 +1659,7 @@ function unregisterHazard(instance, reason)
 
 	if logHazards and info then
 		local reasonStr = reason and (" (" .. reason .. ")") or ""
-		print(("[SmartDodge][Hazard] 🟢 Hazard Expired: %s%s")
+		print(("[HazardScanner][Hazard] 🟢 Hazard Expired: %s%s")
 			:format(info.Name, reasonStr))
 	end
 
@@ -1813,6 +1832,27 @@ function detection.UpdateTrajectories()
 	end
 end
 
+--// Gắn visual quỹ đạo vào world pose chuẩn:
+--// - Nếu projectile là 1 BasePart (đang di chuyển hợp lệ) -> parent box vào ngay phần tử đó
+--//   để nó "cưỡi" chuyển động của đạn giữa các lần update (0.05s) cho mượt hơn nhiều,
+--//   sau đó mỗi update sẽ được nắn lại về world pose (bù xoay của đạn + ép Y sàn).
+--// - Nếu không phải BasePart (Model như Moving Beam / Boss Orb, vì GetBoundingBox() sẽ
+--//   bị phình to nếu box là con) -> parent vào Terrain như cũ.
+local function positionTrajectoryVisual(vPart, targetPart, worldCFrame)
+	if targetPart and targetPart:IsA("BasePart") and targetPart.Parent then
+		-- Khớp trạng thái anchored với part cha:
+		-- - Cha đang chuyển động (non-anchored): box không anchored để được weld vào assembly
+		--   của cha, cưỡi motion physics mỗi frame (mượt) chứ không ngăn đạn bay tới.
+		-- - Cha tĩnh (anchored): box anchored để không bị trọng lực kéo rơi.
+		vPart.Anchored = targetPart.Anchored
+		vPart.Parent = targetPart
+		vPart.CFrame = targetPart.CFrame:ToObjectSpace(worldCFrame)
+	else
+		vPart.Parent = Workspace.Terrain
+		vPart.CFrame = worldCFrame
+	end
+end
+
 --// Cập nhật Visual ESP cho các hành lang quỹ đạo (Trajectory Boxes)
 function detection.UpdateTrajectoryVisuals()
 	if not visualEspEnabled or not threatDetectorEnabled then
@@ -1903,8 +1943,7 @@ function detection.UpdateTrajectoryVisuals()
 
 					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
 					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 1.5)
-					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-					vPart.Parent = Workspace.Terrain
+					positionTrajectoryVisual(vPart, inst:IsA("BasePart") and inst or nil, CFrame.lookAt(visualCenter, visualCenter + forward2D))
 				end
 			elseif isBossOrb then
 				-- =========================================================================
@@ -1974,8 +2013,7 @@ function detection.UpdateTrajectoryVisuals()
 
 					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
 					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 2.0)
-					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-					vPart.Parent = Workspace.Terrain
+					positionTrajectoryVisual(vPart, inst:IsA("BasePart") and inst or nil, CFrame.lookAt(visualCenter, visualCenter + forward2D))
 				end
 			else
 				-- =========================================================================
@@ -2068,8 +2106,7 @@ function detection.UpdateTrajectoryVisuals()
 
 										vPart.Size = Vector3.new(boxWidth, thickness, depth)
 										local visualCenter = Vector3.new(centerPos.X, lockedY, centerPos.Z)
-										vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-										vPart.Parent = Workspace.Terrain
+										positionTrajectoryVisual(vPart, part, CFrame.lookAt(visualCenter, visualCenter + forward2D))
 									end
 								end
 							end
@@ -2112,11 +2149,11 @@ function detection.ClearAllHazards(reason)
 	detection.ClearTrajectoryVisuals()
 	fireHazardChanged()
 	if logHazards and reason then
-		print(("[SmartDodge][Hazard] 🧹 All hazards cleared: %s"):format(reason))
+		print(("[HazardScanner][Hazard] 🧹 All hazards cleared: %s"):format(reason))
 	end
 end
 
---// Bắt đầu quét & lắng nghe sự kiện Workspace cấp 1 (được engine gọi khi StartEngine)
+--// Bắt đầu quét & lắng nghe sự kiện Workspace cấp 1 (được HazardScanner gọi khi StartScan)
 function detection.StartScan()
 	-- Dọn dẹp connection cũ nếu có
 	for _, c in ipairs(connections) do c:Disconnect() end
@@ -2127,6 +2164,10 @@ function detection.StartScan()
 
 	-- Dọn dẹp hazards cũ
 	detection.ClearAllHazards("StartScan Reset")
+
+	-- Nạp Projectile Whitelist từ ReplicatedStorage.enemyProjectiles (trước khi quét
+	-- để part spawn sớm cũng được nhận diện trajectory chính xác)
+	ensureProjectileWhitelistLoaded()
 
 	-- 1. Quét tức thời các child Depth 1 hiện tại trong Workspace
 	for _, child in ipairs(Workspace:GetChildren()) do
@@ -2170,11 +2211,11 @@ function detection.StartScan()
 	table.insert(sharedCleanups, unsubEnemy)
 
 	if logHazards then
-		print("[SmartDodge] 📡 Threat Detector & Safe Spot Engine started!")
+		print("[HazardScanner] 📡 Threat Detector started!")
 	end
 end
 
---// Dừng quét, dọn hazards và connection (được engine gọi khi StopEngine/Shutdown)
+--// Dừng quét, dọn hazards và connection (được HazardScanner gọi khi StopScan/Shutdown)
 function detection.StopScan()
 	for _, c in ipairs(connections) do c:Disconnect() end
 	table.clear(connections)
@@ -2185,7 +2226,7 @@ function detection.StopScan()
 	detection.ClearAllHazards("StopScan")
 
 	if logHazards then
-		print("[SmartDodge] 🛑 Threat Detector stopped.")
+		print("[HazardScanner] 🛑 Threat Detector stopped.")
 	end
 end
 
@@ -2287,102 +2328,5 @@ function detection.GetActiveBossOrb()
 	end
 	return nil, nil, nil, nil
 end
-
---// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất và trước khi giáng damage
-function detection.GetHazardTimeRemaining(instance)
-	local info = activeHazards[instance]
-	if not info or not info.SpawnTime then return nil, nil, 0, nil, nil end
-	local elapsed = os.clock() - info.SpawnTime
-	local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
-	local remainingTotal = math.max(0, estTotal - elapsed)
-	local remainingToHit = math.max(0, estHit - elapsed)
-	return remainingTotal, estTotal, elapsed, remainingToHit, estHit
-end
-
---// Lấy thông tin thống kê thời gian sống của một kỹ năng
-function detection.GetSkillProfile(skillName)
-	return skillProfiles[skillName]
-end
-
---// Lấy toàn bộ hồ sơ thời gian sống của các chiêu thức đã học
-function detection.GetAllSkillProfiles()
-	return skillProfiles
-end
-
---// Cập nhật nhãn đếm ngược 3D trên đầu các hazard đang hoạt động
-function detection.UpdateHazardTimers()
-	if not showSkillTimers then return end
-	local now = os.clock()
-	for _, info in pairs(activeHazards) do
-		if info.TimerLabel and info.SpawnTime then
-			local elapsed = now - info.SpawnTime
-			local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
-			local remainingTotal = math.max(0, estTotal - elapsed)
-			local remainingToHit = math.max(0, estHit - elapsed)
-
-			local color
-			local text
-			if remainingToHit > 0 then
-				-- Đang trong giai đoạn telegraph / chuẩn bị giáng damage
-				if remainingToHit <= 0.4 then
-					color = Color3.fromRGB(255, 60, 60) -- Đỏ rực: sát thương sắp giáng xuống!
-				elseif remainingToHit <= 1.0 then
-					color = Color3.fromRGB(255, 160, 0) -- Cam: sắp nổ
-				else
-					color = Color3.fromRGB(255, 230, 80) -- Vàng: đang precast
-				end
-				text = string.format("%s\n💥 HIT IN: %.1fs (⏳ %.1fs)", info.Name, remainingToHit, remainingTotal)
-			else
-				-- Đã kích nổ damage xong! Đang trong giai đoạn tàn dư animation/fading
-				color = Color3.fromRGB(80, 255, 120) -- Xanh neon: Đã nổ xong (an toàn để bước vào nếu tàn dư vô hại)
-				text = string.format("%s\n✅ DETONATED! (⏳ %.1fs)", info.Name, remainingTotal)
-			end
-
-			info.TimerLabel.TextColor3 = color
-			info.TimerLabel.Text = text
-		end
-	end
-end
-
---// Bật/tắt hiển thị đếm ngược 3D Countdown trên đầu chiêu thức
-function detection.SetShowSkillTimers(state)
-	showSkillTimers = state and true or false
-	if not showSkillTimers then
-		for _, info in pairs(activeHazards) do
-			if info.TimerBillboard then
-				pcall(function() info.TimerBillboard:Destroy() end)
-				info.TimerBillboard = nil
-				info.TimerLabel = nil
-			end
-		end
-	else
-		for inst, info in pairs(activeHazards) do
-			if not info.TimerBillboard and info.ActiveParts then
-				local partsList = {}
-				for p in pairs(info.ActiveParts) do
-					table.insert(partsList, p)
-				end
-				info.TimerBillboard, info.TimerLabel = attachHazardTimerBillboard(inst, partsList, info.Name)
-			end
-		end
-	end
-end
-
-function detection.IsShowSkillTimersEnabled()
-	return showSkillTimers
-end
-
---// Bật/tắt chế độ tự động học thời gian tồn tại & điểm kích nổ sát thương của kỹ năng
-function detection.SetAutoLearnSkillLifetimes(state)
-	autoLearnSkillLifetimes = state and true or false
-end
-
-function detection.IsAutoLearnSkillLifetimesEnabled()
-	return autoLearnSkillLifetimes
-end
-
-detection.SaveSkillProfiles = skillTimingManager.SaveRecordedData
-detection.LoadSkillProfiles = skillTimingManager.LoadMapData
-detection.skillTimingManager = skillTimingManager
 
 return detection

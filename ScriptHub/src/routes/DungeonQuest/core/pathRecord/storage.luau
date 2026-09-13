@@ -35,7 +35,7 @@ local SUB_FOLDER = "DQMacro"
 local LEGACY_STORAGE_KEY = "pathRecord"
 local CURRENT_VERSION = 3
 
---// Mode của map (lưu trong file macro): NORMAL = bỏ qua boss (dùng SmartDodge),
+--// Mode của map (lưu trong file macro): NORMAL = bỏ qua boss (dùng Hazard Scanner),
 --// FULL = record + phát luôn cả phòng boss theo path đã ghi.
 local MODE_NORMAL = "normal"
 local MODE_FULL = "full"

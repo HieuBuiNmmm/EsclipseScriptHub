@@ -300,7 +300,7 @@ function recorder.Start()
 	if not map or #map == 0 then return false, "không xác định được map" end
 
 	allowBoss = storage.GetMapMode(map) == "full"
-	if shared.IsBossActive() and not allowBoss then return false, "boss room (dùng Smart Dodge)" end
+	if shared.IsBossActive() and not allowBoss then return false, "boss room (dùng Hazard Scanner)" end
 
 	recMap = map
 	beginSlice(room, root.Position)

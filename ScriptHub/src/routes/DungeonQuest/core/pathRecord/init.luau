@@ -2,7 +2,7 @@
 --   - Macro = 1 bản ghi cho cả MAP, record liên tục nhiều room trong 1 session
 --     (tự auto-split theo room; segment phòng boss đánh dấu `boss`).
 --   - Mode của map do người dùng chọn (lưu trong file macro):
---       * NORMAL (mặc định): chỉ room quái thường; BOSS ngẫu nhiên -> dùng SmartDodge
+--       * NORMAL (mặc định): chỉ room quái thường; BOSS ngẫu nhiên -> dùng Hazard Scanner
 --         (pathRecord tự nhường quyền + auto-resume khi sang room có bản ghi).
 --       * FULL: record + phát luôn cả boss room theo path đã ghi; giữ độc quyền khi boss.
 
@@ -216,7 +216,7 @@ end
 
 --// ---------- Map Mode (NORMAL / FULL) ----------
 
---// Mode cho 1 map: "normal" (skip boss, dùng SmartDodge) hoặc "full" (record + phát cả boss room).
+--// Mode cho 1 map: "normal" (skip boss, dùng Hazard Scanner) hoặc "full" (record + phát cả boss room).
 function pathRecord.GetMapMode(mapName)
 	return storage.GetMapMode(mapName)
 end
@@ -419,8 +419,8 @@ end
 --// Vào boss room:
 --//   - Mode FULL: đang phát -> giữ/giành độc quyền (đi path đã record qua boss);
 --//     đang chờ resume hoặc autoPlayWanted -> gọi phát lại luôn vào boss room có segment.
---//   - Mode NORMAL: chỉ báo + đứng yên (dùng SmartDodge); nếu bật SmartDodge nó chiếm
---//     độc quyền -> pathRecord nhường và auto-resume khi sang room thường.
+--//   - Mode NORMAL: chỉ báo + đứng yên (dùng Hazard Scanner); nếu bật Hazard Scanner
+--//     nó chiếm độc quyền -> pathRecord nhường và auto-resume khi sang room thường.
 bossConnection = shared.OnBossActiveChanged(function(active)
 	if not active then return end
 
@@ -442,7 +442,7 @@ bossConnection = shared.OnBossActiveChanged(function(active)
 		if map and storage.GetMapMode(map) == "full" then
 			coordinator.EnableExclusive("PathRecord")
 		else
-			notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Smart Dodge", 3)
+			notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Hazard Scanner", 3)
 			fireStatus("boss")
 		end
 	end
@@ -612,7 +612,7 @@ end)
 
 --// ---------- Coordinator & Lifecycle ----------
 
---// Hệ thống khác chiếm độc quyền (SmartDodge/AutoFarm...) -> nhường + auto-resume.
+--// Hệ thống khác chiếm độc quyền (HazardScanner/AutoFarm...) -> nhường + auto-resume.
 coordinator.Register("PathRecord", function(state)
 	if not state then
 		mover.PauseForExclusive()
