@@ -45,8 +45,8 @@ return function(window, tab)
 		Default = autoFarm.GetReachDistance(),
 		Minimum = 2,
 		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetReachDistance(val)
 		end),
@@ -58,8 +58,8 @@ return function(window, tab)
 		Default = autoFarm.GetRepathDistance(),
 		Minimum = 2,
 		Maximum = 20,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetRepathDistance(val)
 		end),
@@ -79,8 +79,8 @@ return function(window, tab)
 		Default = autoFarm.GetStuckVelocityThreshold(),
 		Minimum = 2,
 		Maximum = 20,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetStuckVelocityThreshold(val)
 		end),
@@ -294,8 +294,8 @@ return function(window, tab)
 		Default = contextual.GetField(editDungeon, editTarget, "TargetReachDistance"),
 		Minimum = 2,
 		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(Value)
 			if isSyncing then return end
 			contextual.SetField(editDungeon, editTarget, "TargetReachDistance", Value)

@@ -5,6 +5,7 @@
 --// Imports
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local ui = require("@routes/DungeonQuest/core/ui")
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -63,12 +64,41 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeThreatDetection")
 
 	leftSection:Toggle({
+		Name = "Show Danger Zones (Ground Visualizer)",
+		Default = hazardScanner.IsVisualizerEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetVisualizerEnabled(state)
+		end),
+	}, "Toggle_HazardGroundVisualizer")
+
+	leftSection:Toggle({
 		Name = "Log Hazards (Spawns / Despawns)",
 		Default = hazardScanner.IsLogHazardsEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetLogHazards(state)
 		end),
 	}, "Toggle_SmartDodgeLogHazards")
+
+	leftSection:Toggle({
+		Name = "Log Rejected (Không vẽ được)",
+		Default = hazardScanner.IsLogFailedEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetLogFailed(state)
+		end),
+	}, "Toggle_SmartDodgeLogRejected")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Hitbox Padding",
+		Suffix = " studs",
+		Default = hazardScanner.GetHitboxPadding(),
+		Minimum = 0,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetHitboxPadding(val)
+		end),
+	}, "Slider_HazardScannerHitboxPadding"))
 
 	leftSection:Button({
 		Name = "Clear Console",

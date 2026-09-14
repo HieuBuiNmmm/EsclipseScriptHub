@@ -26,8 +26,8 @@ return function(window, tab)
 		Default = antiAfk.GetInterval(),
 		Minimum = 5,
 		Maximum = 300,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(value)
 			antiAfk.SetInterval(value)
 		end),

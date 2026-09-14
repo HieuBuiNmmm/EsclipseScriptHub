@@ -119,7 +119,7 @@ return function(window, tab)
 		Default = 3,
 		Minimum = 0,
 		Maximum = 15,
-		DisplayMethod = "Round",
+		DisplayMethod = "Value",
 		Precision = 1,
 		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
@@ -147,7 +147,7 @@ return function(window, tab)
 		Default = autoStart.GetDelay(),
 		Minimum = 0,
 		Maximum = 15,
-		DisplayMethod = "Round",
+		DisplayMethod = "Value",
 		Precision = 1,
 		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
@@ -193,8 +193,8 @@ return function(window, tab)
 		Default = autoRetry.GetTimeRetryThreshold(),
 		Minimum = 5,
 		Maximum = 120,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
 			autoRetry.SetTimeRetryThreshold(Value)

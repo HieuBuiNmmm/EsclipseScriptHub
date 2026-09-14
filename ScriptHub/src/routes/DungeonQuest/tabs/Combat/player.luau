@@ -23,8 +23,8 @@ return function(window, tab)
 		Default = shared.GetFastSpeed(),
 		Minimum = 16,
 		Maximum = 24,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(Value)
 			shared.SetFastSpeed(Value)
 		end),

@@ -7,9 +7,26 @@
 --// Imports
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local detection = require("@routes/DungeonQuest/core/hazardScanner/detection")
+local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
+local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
 
 --// Table
 local hazardScanner = {}
+
+--// Bind data sources (tranh vong phu thuoc)
+geometry.BindDetection(detection)
+visualizer.BindDetection(detection)
+
+--// Geometry (Danger Zones)
+hazardScanner.IsPointInAnyHazard = geometry.IsPointInAnyHazard
+hazardScanner.GetHitboxPadding = geometry.GetHitboxPadding
+hazardScanner.SetHitboxPadding = geometry.SetHitboxPadding
+hazardScanner.GetHazardZones = geometry.GetHazardZones
+
+--// Ground Visualizer (Debug Danger Zones)
+hazardScanner.SetVisualizerEnabled = visualizer.SetEnabled
+hazardScanner.IsVisualizerEnabled = visualizer.IsEnabled
+hazardScanner.RefreshVisuals = visualizer.RefreshAll
 
 --// Detection (Scan + SelectionBox)
 hazardScanner.StartDetection = detection.StartScan
@@ -22,6 +39,9 @@ hazardScanner.IsLogHazardsEnabled = detection.IsLogHazardsEnabled
 -- Backward compatibility aliases
 hazardScanner.SetLogThreats = hazardScanner.SetLogHazards
 hazardScanner.IsLogThreatsEnabled = hazardScanner.IsLogHazardsEnabled
+
+hazardScanner.SetLogFailed = detection.SetLogFailed
+hazardScanner.IsLogFailedEnabled = detection.IsLogFailedEnabled
 
 hazardScanner.GetHazardCount = detection.GetHazardCount
 hazardScanner.GetActiveHazards = detection.GetActiveHazards

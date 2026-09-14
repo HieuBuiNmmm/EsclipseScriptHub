@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-13T15:36:33.938755600+00:00",
+    genDate = "2026-09-14T01:25:01.129324100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7175,8 +7175,8 @@ return function(window, tab)
 		Default = shared.GetFastSpeed(),
 		Minimum = 16,
 		Maximum = 24,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(Value)
 			shared.SetFastSpeed(Value)
 		end),
@@ -7199,7 +7199,400 @@ return function(window, tab)
 			shortcuts.SetMouseComboEnabled(state)
 		end),
 	}, "Toggle_MouseCombo")
-endend function __DIST.j()-- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
+endend function __DIST.j()-- HazardScanner - Geometry & Danger Zones (DungeonQuest).
+-- Range quét: chỉ X-Z (bỏ hẳn Y - chiêu đánh cả sàn).
+-- Zone = union per-part: mỗi BasePart còn rõ (Transparency <= 0.85) trở thành 1 vùng con
+-- (vòng tròn nếu Ball/Cylinder, OBB nếu box/union/mesh). Query point nặng 1 vùng con
+-- nào là dính hazard. Broad phase: distSq tới bounding radius -> reject nhanh.
+-- HazardZones cache trong info, nhưng mỗi vùng con vẫn re-check part còn sống lúc query
+-- (part mờ > 0.85 tự ngừng gây nguy hiểm).
+
+--// Table
+
+local geometry = {}
+
+--// State
+local FADE_TRANSPARENCY_THRESHOLD = 0.85
+local playerHitboxPadding = 1.8
+local data = nil
+local paddingChangedCallbacks = {}
+
+--// Gioi han so vung con toi da 1 hazard (chong DoS qua nhieu part/mot object)
+local MAX_PARTS_PER_HAZARD = 64
+
+--// Data source do detection bom vao (tranh vong phu thuoc)
+function geometry.BindDetection(dataSource)
+	data = dataSource or nil
+end
+
+function geometry.GetHitboxPadding()
+	return playerHitboxPadding
+end
+
+--// Xoa toan bo HazardZones cache tren cac hazard hien tai
+function geometry.InvalidateCache()
+	if data and data.GetActiveHazardsMap then
+		for _, info in pairs(data.GetActiveHazardsMap()) do
+			info.HazardZones = nil
+		end
+	end
+end
+
+function geometry.OnPaddingChanged(callback)
+	if type(callback) == "function" then
+		table.insert(paddingChangedCallbacks, callback)
+	end
+end
+
+function geometry.SetHitboxPadding(value)
+	if type(value) == "number" and value >= 0 and value ~= playerHitboxPadding then
+		playerHitboxPadding = value
+		geometry.InvalidateCache()
+		for _, cb in ipairs(paddingChangedCallbacks) do
+			pcall(cb, playerHitboxPadding)
+		end
+	end
+end
+
+--// Kiem tra part con hoat dong (khong mo qua nguong, con nam trong Workspace)
+local function isPartAlive(part)
+	return part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD
+end
+
+--// Tinh zone con cho 1 BasePart theo shape:
+--// - Part Ball/Cylinder -> vong tron X-Z (radius)
+--// - Box / Union / Mesh  -> OBB theo CFrame
+local function computePartZone(part)
+	local size = part.Size
+	if part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder) then
+		return { radius = math.max(size.X, size.Z) / 2 }
+	end
+
+	local half = Vector3.new(math.max(size.X, 0) / 2 + playerHitboxPadding, 0, math.max(size.Z, 0) / 2 + playerHitboxPadding)
+	return { half = half, cframe = part.CFrame }
+end
+
+--// Kiem tra diem P (X-Z) co nam trong 1 zone con (da ke padding) khong
+local function isPointInZone(point, zone)
+	if not zone then return false end
+	local px, pz = point.X, point.Z
+
+	if zone.radius then
+		local dx = px - zone.cx
+		local dz = pz - zone.cz
+		local r = zone.radius + playerHitboxPadding
+		return (dx * dx + dz * dz) <= (r * r)
+	end
+
+	if zone.cframe then
+		local localPoint = zone.cframe:PointToObjectSpace(point)
+		return math.abs(localPoint.X) <= zone.half.X
+			and math.abs(localPoint.Z) <= zone.half.Z
+	end
+
+	return false
+end
+
+--// Chuan bi danh sach zone + bounding radius cua 1 hazard (cache vao info.HazardZones)
+local function buildHazardZones(hazardInfo)
+	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then return nil end
+
+	local instance = hazardInfo.Instance
+	local parts
+
+	if instance:IsA("BasePart") then
+		if not isPartAlive(instance) then return nil end
+		parts = { instance }
+	elseif instance:IsA("Model") then
+		parts = {}
+		for _, desc in ipairs(instance:GetDescendants()) do
+			if #parts >= MAX_PARTS_PER_HAZARD then break end
+			if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+				parts[#parts + 1] = desc
+			end
+		end
+		if #parts == 0 then return nil end
+	else
+		return nil
+	end
+
+	local zones = {}
+	local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
+
+	for _, part in ipairs(parts) do
+		local pos = part.Position
+		local size = part.Size
+		local radius2D = math.max(size.X, size.Z) / 2 + playerHitboxPadding
+
+		minX = math.min(minX, pos.X - radius2D)
+		maxX = math.max(maxX, pos.X + radius2D)
+		minZ = math.min(minZ, pos.Z - radius2D)
+		maxZ = math.max(maxZ, pos.Z + radius2D)
+
+		local zone = computePartZone(part)
+		if zone then
+			if zone.radius then
+				zone.cx, zone.cz = pos.X, pos.Z
+			end
+			zone.part = part
+			zones[#zones + 1] = zone
+		end
+	end
+
+	if #zones == 0 then return nil end
+
+	local centerX = (minX + maxX) / 2
+	local centerZ = (minZ + maxZ) / 2
+	local halfX = (maxX - minX) / 2
+	local halfZ = (maxZ - minZ) / 2
+
+	return {
+		zones = zones,
+		center = Vector3.new(centerX, 0, centerZ),
+		boundingRadius = math.sqrt(halfX * halfX + halfZ * halfZ),
+	}
+end
+
+--// Lay hoac cache HazardZones cho 1 hazard
+local function getHazardZones(info)
+	local zones = info and info.HazardZones
+	if not zones then
+		zones = buildHazardZones(info)
+		if zones and info then info.HazardZones = zones end
+	end
+	return zones
+end
+
+function geometry.GetHazardZones(info)
+	return getHazardZones(info)
+end
+
+--// Query: kiem tra diem P co dính hazard nao khong
+--// Tra ve: hit (bool), hazardInfo (gan nhat), hitPart
+function geometry.IsPointInAnyHazard(point, ignoredInstance)
+	local det = data
+	if not det then return false, nil, nil end
+
+	local bestDistSq = math.huge
+	local foundInfo, foundPart = nil, nil
+
+	for inst, info in pairs(det.GetActiveHazardsMap()) do
+		if ignoredInstance and (ignoredInstance == inst or ignoredInstance.Name == inst.Name) then
+			continue
+		end
+
+		local hazardZones = getHazardZones(info)
+		if not hazardZones then continue end
+
+		-- Broad phase: reject nhanh bang distSq to center
+		local dx = point.X - hazardZones.center.X
+		local dz = point.Z - hazardZones.center.Z
+		local distSq = dx * dx + dz * dz
+		if distSq > hazardZones.boundingRadius * hazardZones.boundingRadius then
+			continue
+		end
+
+		-- Narrow phase: union per-part, re-check part con song
+		for i = 1, #hazardZones.zones do
+			local zone = hazardZones.zones[i]
+			if isPartAlive(zone.part) and isPointInZone(point, zone) then
+				local d2 = (point - zone.part.Position).Magnitude
+				if d2 < bestDistSq then
+					bestDistSq = d2
+					foundInfo = info
+					foundPart = zone.part
+				end
+				break
+			end
+		end
+	end
+
+	return foundPart ~= nil, foundInfo, foundPart
+end
+
+return geometry end function __DIST.k()-- HazardScanner – Visualizer: Vẽ trực quan vùng toán học (Ground Visualizer)
+-- dựa trên mô hình hình học của geometry.luau (đã bao gồm Hitbox Padding).
+-- Hỗ trợ vẽ đĩa tròn phẳng (CylinderHandleAdornment) cho Ball/Cylinder
+-- và hộp chữ nhật phẳng (BoxHandleAdornment) cho Box/OBB.
+
+--// Imports
+
+local services = __DIST.load('e')
+local lifecycle = __DIST.load('b')
+local geometry = __DIST.load('j')
+
+--// Table
+local visualizer = {}
+
+--// State
+local enabled = false
+local data = nil
+local activeVisuals = {} -- [hazardInfo] = { adornments = {}, connections = {} }
+local player = services.player
+
+--// Constants
+local FADE_TRANSPARENCY_THRESHOLD = 0.85
+local ZONE_COLOR = Color3.fromRGB(255, 45, 45)
+local ZONE_TRANSPARENCY = 0.55
+local GROUND_THICKNESS = 0.25
+
+--// Lay do cao mat san theo chan nguoi choi tai thoi diem ve
+local function getPlayerGroundY()
+	local char = player and player.Character
+	if not char then return nil end
+	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+	if not root then return nil end
+	return root.Position.Y - 2.5
+end
+
+--// Gán data source từ detection (tránh circular dependency)
+function visualizer.BindDetection(dataSource)
+	data = dataSource or nil
+end
+
+function visualizer.IsEnabled()
+	return enabled
+end
+
+--// Xóa visual của một hazard
+function visualizer.DetachZoneVisuals(hazardInfo)
+	if not hazardInfo then return end
+	local record = activeVisuals[hazardInfo]
+	if not record then return end
+
+	if record.adornments then
+		for _, ad in ipairs(record.adornments) do
+			pcall(function() ad:Destroy() end)
+		end
+		table.clear(record.adornments)
+	end
+
+	if record.connections then
+		for _, c in ipairs(record.connections) do
+			pcall(function() c:Disconnect() end)
+		end
+		table.clear(record.connections)
+	end
+
+	activeVisuals[hazardInfo] = nil
+end
+
+--// Vẽ visual cho một hazard (căn chỉnh Y theo độ cao người chơi)
+function visualizer.AttachZoneVisuals(hazardInfo)
+	if not enabled or not hazardInfo then return end
+	if activeVisuals[hazardInfo] then
+		visualizer.DetachZoneVisuals(hazardInfo)
+	end
+
+	local hazardZones = geometry.GetHazardZones(hazardInfo)
+	if not hazardZones or not hazardZones.zones then return end
+
+	local padding = geometry.GetHitboxPadding()
+	local targetY = getPlayerGroundY()
+	local adornments = {}
+	local connections = {}
+
+	for _, zone in ipairs(hazardZones.zones) do
+		local part = zone.part
+		if part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+			local worldPos = part.Position
+			local worldTargetPos = Vector3.new(worldPos.X, targetY or worldPos.Y, worldPos.Z)
+			local localOffset = part.CFrame:PointToObjectSpace(worldTargetPos)
+			local ad = nil
+
+			if zone.radius then
+				-- Vùng tròn (Ball / Cylinder) -> Đĩa tròn phẳng ngang tầm người chơi
+				local cyl = Instance.new("CylinderHandleAdornment")
+				cyl.Name = "HazardGroundCircle"
+				cyl.Adornee = part
+				cyl.Radius = zone.radius + padding
+				cyl.Height = GROUND_THICKNESS
+				cyl.Color3 = ZONE_COLOR
+				cyl.Transparency = ZONE_TRANSPARENCY
+				cyl.ZIndex = 2
+				cyl.AlwaysOnTop = true
+				-- Căn CFrame tại localOffset và xoay 90 độ quanh trục X để mặt phẳng nằm ngang
+				cyl.CFrame = CFrame.new(localOffset) * CFrame.Angles(math.rad(90), 0, 0)
+				cyl.Parent = part
+				ad = cyl
+			elseif zone.half and zone.cframe then
+				-- Vùng hộp (Box / Mesh / OBB) -> Khối hộp phẳng ngang tầm người chơi
+				local box = Instance.new("BoxHandleAdornment")
+				box.Name = "HazardGroundBox"
+				box.Adornee = part
+				box.Size = Vector3.new(zone.half.X * 2, GROUND_THICKNESS, zone.half.Z * 2)
+				box.Color3 = ZONE_COLOR
+				box.Transparency = ZONE_TRANSPARENCY
+				box.ZIndex = 2
+				box.AlwaysOnTop = true
+				box.CFrame = CFrame.new(localOffset)
+				box.Parent = part
+				ad = box
+			end
+
+			if ad then
+				table.insert(adornments, ad)
+				-- Tự động destroy visual khi part mờ dần
+				local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
+					if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then
+						pcall(function() ad:Destroy() end)
+					end
+				end)
+				table.insert(connections, conn)
+			end
+		end
+	end
+
+	if #adornments > 0 then
+		activeVisuals[hazardInfo] = {
+			adornments = adornments,
+			connections = connections,
+		}
+	end
+end
+
+--// Xóa toàn bộ visual
+function visualizer.ClearAll()
+	for info in pairs(activeVisuals) do
+		visualizer.DetachZoneVisuals(info)
+	end
+	table.clear(activeVisuals)
+end
+
+--// Refresh lại toàn bộ visual đang hoạt động
+function visualizer.RefreshAll()
+	visualizer.ClearAll()
+	if not enabled or not data then return end
+
+	for _, info in pairs(data.GetActiveHazardsMap()) do
+		visualizer.AttachZoneVisuals(info)
+	end
+end
+
+--// Bật / tắt Ground Visualizer
+function visualizer.SetEnabled(state)
+	enabled = state and true or false
+	if enabled then
+		visualizer.RefreshAll()
+	else
+		visualizer.ClearAll()
+	end
+end
+
+--// Lang nghe thay doi padding de refresh visual
+geometry.OnPaddingChanged(function()
+	if enabled then
+		visualizer.RefreshAll()
+	end
+end)
+
+--// Dọn dẹp khi script shutdown
+lifecycle.Register(function()
+	visualizer.ClearAll()
+end)
+
+return visualizer
+end function __DIST.l()-- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
 -- Đơn giản hóa hoàn toàn: chỉ phát hiện đối tượng skill xuất hiện trong Workspace
 -- qua ChildAdded/ChildRemoved, CHỈ chạy sau sự kiện start dungeon (không còn ở lobby),
 -- và vẽ SelectionBox đơn giản cho từng đối tượng được xác định.
@@ -7210,6 +7603,7 @@ endend function __DIST.j()-- HazardScanner – Module: Threat Detection Engine 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
+local visualizer = __DIST.load('k')
 
 --// References
 local Players = game:GetService("Players")
@@ -7224,6 +7618,7 @@ local detection = {}
 local enabled = false
 local inDungeon = false
 local logHazards = false
+local logFailed = false
 local activeHazards = {} -- [Instance] = { Name, Class, Distance, Boxes = {} }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
@@ -7269,6 +7664,68 @@ end
 
 --// Ngưỡng coi như part đã mờ hoàn toàn -> không vẽ box
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
+
+--// Retry: object xuất hiện nhưng chưa kịp khởi tạo đủ parts (DescendantAdded đến sau
+--// ChildAdded). Retry tối đa MAX_REGISTER_RETRIES lần mỗi khi có descendant mới.
+local MAX_REGISTER_RETRIES = 10
+local retryStates = {} -- [Instance] = { count = number, connection = RBXScriptConnection }
+
+local function stopRetry(instance)
+	local state = retryStates[instance]
+	if state then
+		if state.connection then
+			pcall(function() state.connection:Disconnect() end)
+		end
+		retryStates[instance] = nil
+	end
+end
+
+local function stopAllRetries()
+	for inst in pairs(retryStates) do
+		stopRetry(inst)
+	end
+	table.clear(retryStates)
+end
+
+--// Log đối tượng không vẽ được (bị loại qua gate hoặc không có gì để vẽ)
+local function logReject(instance, reason)
+	if not logFailed then return end
+	local name = instance and instance.Name or "?"
+	local class = instance and instance.ClassName or "?"
+	print(("[HazardScanner][Reject] ⚪ %s (%s) — %s"):format(name, class, reason))
+end
+
+local registerHazard
+
+--// Lên lịch retry khi object chưa đủ parts để vẽ.
+--// Mỗi lần có descendant mới -> thử register lại; quá MAX_REGISTER_RETRIES thì bỏ.
+local function retryRegister(instance)
+	if not instance or not instance.Parent then return end
+	if activeHazards[instance] then return end
+
+	local state = retryStates[instance]
+	if not state then
+		state = { count = 0, connection = nil }
+		retryStates[instance] = state
+	end
+
+	state.count += 1
+	if state.count > MAX_REGISTER_RETRIES then
+		logReject(instance, "Hết lượt retry")
+		stopRetry(instance)
+		return
+	end
+
+	if not state.connection then
+		state.connection = instance.DescendantAdded:Connect(function()
+			if not instance.Parent then
+				stopRetry(instance)
+				return
+			end
+			registerHazard(instance)
+		end)
+	end
+end
 
 --// Lay danh sach BasePart cua instance (BasePart -> chinh no; Model -> cac BasePart descendant)
 --// Chỉ lấy part còn rõ (Transparency <= 0.85)
@@ -7347,33 +7804,54 @@ local function attachSelectionBoxes(parts, fadeConnections)
 end
 
 --// Dang ky hazard: vẽ SelectionBox quanh moi object xuat hien trong Workspace
-local function registerHazard(instance)
-	if not enabled or not inDungeon then return false end
-	if not instance or not instance.Parent then return false end
+registerHazard = function(instance)
+	if not enabled or not inDungeon then
+		logReject(instance, "Chưa trong dungeon")
+		return false
+	end
+	if not instance or not instance.Parent then
+		logReject(instance, "Không còn Parent")
+		return false
+	end
 	if activeHazards[instance] then return true end
 
 	loadIgnoreNames()
-	if isIgnoredName(instance) then return false end
+	if isIgnoredName(instance) then
+		logReject(instance, "Trùng tên trong ReplicatedStorage (abilities/projectiles)")
+		return false
+	end
 
 	local parts = getBaseParts(instance)
-	if #parts == 0 then return false end
+	if #parts == 0 then
+		logReject(instance, "Chưa có part để vẽ (sẽ retry)")
+		retryRegister(instance)
+		return false
+	end
 
 	local fadeConnections = {}
 	local boxes = attachSelectionBoxes(parts, fadeConnections)
 	local distance = computeDistance(instance)
 
-	activeHazards[instance] = {
+	local info = {
+		Instance = instance,
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Distance = distance,
 		Boxes = boxes,
 		Connections = fadeConnections,
 	}
+	activeHazards[instance] = info
 	lastHazardInfo = {
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Distance = distance,
 	}
+
+	if visualizer.IsEnabled() then
+		visualizer.AttachZoneVisuals(info)
+	end
+
+	stopRetry(instance)
 
 	if logHazards then
 		print(("[HazardScanner][Hazard] 🔴 Hazard Detected: %s (%s, %d studs)")
@@ -7386,7 +7864,12 @@ end
 --// Huy dong hazard: gỡ SelectionBox va xoa khoi activeHazards
 local function unregisterHazard(instance, reason)
 	local info = activeHazards[instance]
-	if not info then return end
+	if not info then
+		stopRetry(instance)
+		return
+	end
+
+	visualizer.DetachZoneVisuals(info)
 
 	if info.Boxes then
 		for _, box in ipairs(info.Boxes) do
@@ -7414,6 +7897,8 @@ end
 
 --// Xoa toan bo hazard hien tai
 function detection.ClearAllHazards(reason)
+	visualizer.ClearAll()
+	stopAllRetries()
 	local toRemove = {}
 	for inst in pairs(activeHazards) do
 		table.insert(toRemove, inst)
@@ -7431,6 +7916,7 @@ function detection.StartScan()
 	if enabled then return end
 	enabled = true
 
+	visualizer.BindDetection(detection)
 	detection.ClearAllHazards("StartScan Reset")
 
 	for _, c in ipairs(connections) do c:Disconnect() end
@@ -7502,6 +7988,14 @@ function detection.IsLogHazardsEnabled()
 	return logHazards
 end
 
+function detection.SetLogFailed(state)
+	logFailed = state and true or false
+end
+
+function detection.IsLogFailedEnabled()
+	return logFailed
+end
+
 function detection.GetHazardCount()
 	return hazardCount
 end
@@ -7514,6 +8008,10 @@ function detection.GetActiveHazards()
 		end
 	end
 	return list
+end
+
+function detection.GetActiveHazardsMap()
+	return activeHazards
 end
 
 function detection.GetLastHazardInfo()
@@ -7531,7 +8029,7 @@ lifecycle.Register(function()
 	detection.ClearAllHazards("Shutdown")
 end)
 
-return detection end function __DIST.k()-- HazardScanner (DungeonQuest) – Facade: quét hiểm họa + vẽ SelectionBox đơn giản.
+return detection end function __DIST.m()-- HazardScanner (DungeonQuest) – Facade: quét hiểm họa + vẽ SelectionBox đơn giản.
 -- Đơn giản hóa hoàn toàn: chỉ phát hiện đối tượng xuất hiện trong Workspace qua
 -- ChildAdded/ChildRemoved sau sự kiện start dungeon, vẽ SelectionBox quanh từng đối tượng.
 -- Không còn trajectory / whitelist / boss orb / ngoại lệ / hitbox padding / tên 3D.
@@ -7540,10 +8038,27 @@ return detection end function __DIST.k()-- HazardScanner (DungeonQuest) – Faca
 --// Imports
 
 local lifecycle = __DIST.load('b')
-local detection = __DIST.load('j')
+local detection = __DIST.load('l')
+local geometry = __DIST.load('j')
+local visualizer = __DIST.load('k')
 
 --// Table
 local hazardScanner = {}
+
+--// Bind data sources (tranh vong phu thuoc)
+geometry.BindDetection(detection)
+visualizer.BindDetection(detection)
+
+--// Geometry (Danger Zones)
+hazardScanner.IsPointInAnyHazard = geometry.IsPointInAnyHazard
+hazardScanner.GetHitboxPadding = geometry.GetHitboxPadding
+hazardScanner.SetHitboxPadding = geometry.SetHitboxPadding
+hazardScanner.GetHazardZones = geometry.GetHazardZones
+
+--// Ground Visualizer (Debug Danger Zones)
+hazardScanner.SetVisualizerEnabled = visualizer.SetEnabled
+hazardScanner.IsVisualizerEnabled = visualizer.IsEnabled
+hazardScanner.RefreshVisuals = visualizer.RefreshAll
 
 --// Detection (Scan + SelectionBox)
 hazardScanner.StartDetection = detection.StartScan
@@ -7556,6 +8071,9 @@ hazardScanner.IsLogHazardsEnabled = detection.IsLogHazardsEnabled
 -- Backward compatibility aliases
 hazardScanner.SetLogThreats = hazardScanner.SetLogHazards
 hazardScanner.IsLogThreatsEnabled = hazardScanner.IsLogHazardsEnabled
+
+hazardScanner.SetLogFailed = detection.SetLogFailed
+hazardScanner.IsLogFailedEnabled = detection.IsLogFailedEnabled
 
 hazardScanner.GetHazardCount = detection.GetHazardCount
 hazardScanner.GetActiveHazards = detection.GetActiveHazards
@@ -7590,14 +8108,15 @@ lifecycle.Register(function()
 	detection.StopScan()
 end)
 
-return hazardScanner end function __DIST.l()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
+return hazardScanner end function __DIST.n()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
 -- trong Workspace sau sự kiện start dungeon và vẽ SelectionBox đơn giản cho từng đối tượng.
 -- Không còn trajectory / whitelist / ngoại lệ / hitbox padding / tên 3D.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local hazardScanner = __DIST.load('k')
+local hazardScanner = __DIST.load('m')
+local ui = __DIST.load('g')
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -7656,12 +8175,41 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeThreatDetection")
 
 	leftSection:Toggle({
+		Name = "Show Danger Zones (Ground Visualizer)",
+		Default = hazardScanner.IsVisualizerEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetVisualizerEnabled(state)
+		end),
+	}, "Toggle_HazardGroundVisualizer")
+
+	leftSection:Toggle({
 		Name = "Log Hazards (Spawns / Despawns)",
 		Default = hazardScanner.IsLogHazardsEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetLogHazards(state)
 		end),
 	}, "Toggle_SmartDodgeLogHazards")
+
+	leftSection:Toggle({
+		Name = "Log Rejected (Không vẽ được)",
+		Default = hazardScanner.IsLogFailedEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetLogFailed(state)
+		end),
+	}, "Toggle_SmartDodgeLogRejected")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Hitbox Padding",
+		Suffix = " studs",
+		Default = hazardScanner.GetHitboxPadding(),
+		Minimum = 0,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetHitboxPadding(val)
+		end),
+	}, "Slider_HazardScannerHitboxPadding"))
 
 	leftSection:Button({
 		Name = "Clear Console",
@@ -7674,7 +8222,7 @@ return function(window, tab)
 
 	-- Khởi tạo monitor
 	updateMonitor()
-end end function __DIST.m()-- Coordinator (DungeonQuest): Điều phối loại trừ lẫn nhau giữa các hệ thống điều khiển nhân vật.
+end end function __DIST.o()-- Coordinator (DungeonQuest): Điều phối loại trừ lẫn nhau giữa các hệ thống điều khiển nhân vật.
 -- Module lá — không require ai để tránh cycle import bị darklua (bundler) phát hiện.
 
 
@@ -7717,7 +8265,7 @@ function coordinator.IsEnabled(name)
 	return feat ~= nil and feat.isEnabled()
 end
 
-return coordinator end function __DIST.n()-- Auto Farm System – Component A & B: Enemy Scanner & Enemy Validator
+return coordinator end function __DIST.p()-- Auto Farm System – Component A & B: Enemy Scanner & Enemy Validator
 -- Spec: Sections 3 & 4 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
@@ -7778,7 +8326,7 @@ function scanner.Scan()
 end
 
 return scanner
-end function __DIST.o()-- Target Movement System – Component C: Target Selector & Path Calculator
+end function __DIST.q()-- Target Movement System – Component C: Target Selector & Path Calculator
 -- Spec: Sections 5 & 6 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
@@ -7872,12 +8420,12 @@ function selector.SelectBestTarget(playerPos, validEnemies, cancelCheck)
 end
 
 return selector
-end function __DIST.p()-- Target Movement System – Component D: Target Tracker & Path Manager
+end function __DIST.r()-- Target Movement System – Component D: Target Tracker & Path Manager
 -- Spec: Sections 7, 8, 14, 15 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
-local selector = __DIST.load('o')
-local scanner = __DIST.load('n')
+local selector = __DIST.load('q')
+local scanner = __DIST.load('p')
 
 local tracker = {}
 
@@ -8003,7 +8551,7 @@ function tracker.Repath(playerPos, currentEnemyPos)
 end
 
 return tracker
-end function __DIST.q()-- Target Movement System – Component E & F: Movement Controller & Blocking Checker
+end function __DIST.s()-- Target Movement System – Component E & F: Movement Controller & Blocking Checker
 -- Spec: Sections 9, 10, 11, 12, 13 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 
@@ -8213,7 +8761,7 @@ end
 
 return movement
 
-end function __DIST.r()-- Auto Farm System – Component G: State / Interrupt Manager & Facade
+end function __DIST.t()-- Auto Farm System – Component G: State / Interrupt Manager & Facade
 -- Spec: Sections 2, 16, 17, 18, 19, 20 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 --// Imports
@@ -8221,12 +8769,12 @@ end function __DIST.r()-- Auto Farm System – Component G: State / Interrupt Ma
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
-local coordinator = __DIST.load('m')
+local coordinator = __DIST.load('o')
 
-local scanner = __DIST.load('n')
-local selector = __DIST.load('o')
-local tracker = __DIST.load('p')
-local movement = __DIST.load('q')
+local scanner = __DIST.load('p')
+local selector = __DIST.load('q')
+local tracker = __DIST.load('r')
+local movement = __DIST.load('s')
 
 --// Services
 local RunService = services.RunService
@@ -9101,7 +9649,7 @@ lifecycle.Register(function()
 end)
 
 return autoFarm
-end function __DIST.s()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+end function __DIST.u()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -9302,7 +9850,7 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.t()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
+return dungeonCatalog end function __DIST.v()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
 -- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
 -- Dữ liệu lưu trong file config JSON qua macLib.contextData.
 
@@ -9311,10 +9859,10 @@ return dungeonCatalog end function __DIST.t()-- Core Contextual cho DungeonQuest
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
 local shared = __DIST.load('f')
-local dungeonCatalog = __DIST.load('s')
+local dungeonCatalog = __DIST.load('u')
 local notifier = __DIST.load('c')
 local lifecycle = __DIST.load('b')
-local autoFarm = __DIST.load('r')
+local autoFarm = __DIST.load('t')
 
 --// Table
 local contextual = {}
@@ -9544,15 +10092,15 @@ function contextual.Init()
 end
 
 return contextual
-end function __DIST.u()-- Module Auto Farm trong tab Combat (DungeonQuest)
+end function __DIST.w()-- Module Auto Farm trong tab Combat (DungeonQuest)
 -- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
 -- và Auto Farm Context (Target Reach Distance theo từng Dungeon x Target).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoFarm = __DIST.load('r')
-local contextual = __DIST.load('t')
+local autoFarm = __DIST.load('t')
+local contextual = __DIST.load('v')
 local shared = __DIST.load('f')
 local services = __DIST.load('e')
 local ui = __DIST.load('g')
@@ -9592,8 +10140,8 @@ return function(window, tab)
 		Default = autoFarm.GetReachDistance(),
 		Minimum = 2,
 		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetReachDistance(val)
 		end),
@@ -9605,8 +10153,8 @@ return function(window, tab)
 		Default = autoFarm.GetRepathDistance(),
 		Minimum = 2,
 		Maximum = 20,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetRepathDistance(val)
 		end),
@@ -9626,8 +10174,8 @@ return function(window, tab)
 		Default = autoFarm.GetStuckVelocityThreshold(),
 		Minimum = 2,
 		Maximum = 20,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetStuckVelocityThreshold(val)
 		end),
@@ -9841,8 +10389,8 @@ return function(window, tab)
 		Default = contextual.GetField(editDungeon, editTarget, "TargetReachDistance"),
 		Minimum = 2,
 		Maximum = 200,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(Value)
 			if isSyncing then return end
 			contextual.SetField(editDungeon, editTarget, "TargetReachDistance", Value)
@@ -9897,24 +10445,24 @@ return function(window, tab)
 	refreshContextControls()
 	setEditControlsVisible(editDungeon ~= nil)
 end
-end function __DIST.v()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Hazard Scanner (vùng nguy hiểm) + AutoFarm.
+end function __DIST.x()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Hazard Scanner (vùng nguy hiểm) + AutoFarm.
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
 __DIST.load('i')(window, tab)
-__DIST.load('l')(window, tab)
-__DIST.load('u')(window, tab)
+__DIST.load('n')(window, tab)
+__DIST.load('w')(window, tab)
 end
 
-end function __DIST.w()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.y()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('s')
+local dungeonCatalog = __DIST.load('u')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
@@ -10094,7 +10642,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.x()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.z()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -10214,7 +10762,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.y()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.A()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -10321,7 +10869,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.z()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.B()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -10538,18 +11086,18 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.A()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.C()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('g')
-local autoJoin = __DIST.load('w')
-local autoStart = __DIST.load('x')
-local autoStartLobby = __DIST.load('y')
-local autoRetry = __DIST.load('z')
+local autoJoin = __DIST.load('y')
+local autoStart = __DIST.load('z')
+local autoStartLobby = __DIST.load('A')
+local autoRetry = __DIST.load('B')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('s')
+local dungeonCatalog = __DIST.load('u')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -10660,7 +11208,7 @@ return function(window, tab)
 		Default = 3,
 		Minimum = 0,
 		Maximum = 15,
-		DisplayMethod = "Round",
+		DisplayMethod = "Value",
 		Precision = 1,
 		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
@@ -10688,7 +11236,7 @@ return function(window, tab)
 		Default = autoStart.GetDelay(),
 		Minimum = 0,
 		Maximum = 15,
-		DisplayMethod = "Round",
+		DisplayMethod = "Value",
 		Precision = 1,
 		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
@@ -10734,8 +11282,8 @@ return function(window, tab)
 		Default = autoRetry.GetTimeRetryThreshold(),
 		Minimum = 5,
 		Maximum = 120,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
 			autoRetry.SetTimeRetryThreshold(Value)
@@ -10752,7 +11300,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.B()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.D()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -11220,14 +11768,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.C()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.E()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('B')
+local autoSell = __DIST.load('D')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -11491,7 +12039,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.D()-- ESP hitbox cho DungeonQuest.
+end function __DIST.F()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -11841,7 +12389,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.E()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.G()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -11982,7 +12530,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.F()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.H()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -12436,14 +12984,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.G()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.I()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('D')
-	local enemyEsp = __DIST.load('E')
-	local mapOptimizer = __DIST.load('F')
+	local esp = __DIST.load('F')
+	local enemyEsp = __DIST.load('G')
+	local mapOptimizer = __DIST.load('H')
 	local ui = __DIST.load('g')
 
 --// Hitbox mode options
@@ -12580,7 +13128,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.H()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.J()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -13178,12 +13726,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.I()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.K()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('H')
+local webhook = __DIST.load('J')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -13250,7 +13798,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.J()
+end function __DIST.L()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -13319,12 +13867,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.K()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.M()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('J')
+local binder = __DIST.load('L')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -13416,13 +13964,13 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.L()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.N()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
-local antiAfk = __DIST.load('K')
+local antiAfk = __DIST.load('M')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -13445,22 +13993,22 @@ return function(window, tab)
 		Default = antiAfk.GetInterval(),
 		Minimum = 5,
 		Maximum = 300,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(value)
 			antiAfk.SetInterval(value)
 		end),
 	}, "Slider_AntiAFKInterval"))
 end
-end function __DIST.M()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.O()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('G')(window, tab)
 __DIST.load('I')(window, tab)
-__DIST.load('L')(window, tab)
-end end function __DIST.N()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('K')(window, tab)
+__DIST.load('N')(window, tab)
+end end function __DIST.P()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -13535,7 +14083,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.O()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.Q()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -13543,7 +14091,7 @@ end function __DIST.O()-- Module Config trong tab Configs (DungeonQuest): tự b
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('N')
+local autoHide = __DIST.load('P')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -13700,12 +14248,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.P()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.R()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('f')
-local autoRetry = __DIST.load('z')
+local autoRetry = __DIST.load('B')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -13872,14 +14420,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.Q()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.S()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('O')(window, tab)
-__DIST.load('P')(window, tab)
-end end function __DIST.R()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
+__DIST.load('Q')(window, tab)
+__DIST.load('R')(window, tab)
+end end function __DIST.T()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
 --   - Macro = 1 bản ghi cho cả map, chứa toàn bộ segment của các room đã record.
 --   - Mỗi segment = 1 room (auto-split khi record liên tục xuyên các room); segment
 --     phòng bosss được đánh dấu `boss: true`.
@@ -14616,7 +15164,7 @@ function storage.ReloadFromConfig()
 	storage.ReloadFromDisk()
 end
 
-return storage end function __DIST.S()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
+return storage end function __DIST.U()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
 --   - Bấm Record 1 lần ở map = ghi NHIỀU room: khi CHUYỂN ROOM tự "rollover"
 --     (lưu segment room cũ + mở slice mới cho room mới tại vị trí cạnh cửa).
 --   - TỰ TẮT + lưu khi về LOBBY (hết map), vào BOSS (mode NORMAL), hoặc giới hạn điểm.
@@ -14628,7 +15176,7 @@ return storage end function __DIST.S()-- Path Record System – Recorder: ghi 1 
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('R')
+local storage = __DIST.load('T')
 local notifier = __DIST.load('c')
 
 local RunService = services.RunService
@@ -15233,7 +15781,7 @@ function recorder.Cancel()
 	fireStatus()
 end
 
-return recorder end function __DIST.T()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
+return recorder end function __DIST.V()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
 --   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
 --     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
 --   - BOSS room:
@@ -15249,10 +15797,10 @@ return recorder end function __DIST.T()-- Path Record System – Player: chạy 
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('R')
+local storage = __DIST.load('T')
 local notifier = __DIST.load('c')
-local selector = __DIST.load('o')
-local movement = __DIST.load('q')
+local selector = __DIST.load('q')
+local movement = __DIST.load('s')
 
 local player = services.player
 local VirtualInputManager = services.VirtualInputManager
@@ -16101,7 +16649,7 @@ function mover.PauseForExclusive()
 	fireStatus("paused")
 end
 
-return mover end function __DIST.U()-- Path Record System – Visual: vẽ quỹ đạo record (đỏ khi đang record /
+return mover end function __DIST.W()-- Path Record System – Visual: vẽ quỹ đạo record (đỏ khi đang record /
 -- cyan khi đang play / xám xanh nhạt khi xem trước macro của map).
 
 --// Imports
@@ -16206,7 +16754,7 @@ function visual.DrawPolylines(polys, key, force)
 	if #lines == 0 then drawnKey = nil end
 end
 
-return visual end function __DIST.V()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
+return visual end function __DIST.X()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
 -- giúp người chơi ước lượng phạm vi/tầm đánh của Skill (AOE) để căn điểm record.
 -- Đồng thời tự động HIGHLIGHT kẻ địch khi chúng bước vào trong tầm (in-range).
 
@@ -16594,7 +17142,7 @@ lifecycle.Register(function()
 end)
 
 return rangeVisual
-end function __DIST.W()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
+end function __DIST.Y()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
 --   - Macro = 1 bản ghi cho cả MAP, record liên tục nhiều room trong 1 session
 --     (tự auto-split theo room; segment phòng boss đánh dấu `boss`).
 --   - Mode của map do người dùng chọn (lưu trong file macro):
@@ -16607,14 +17155,14 @@ end function __DIST.W()-- Path Record System (DungeonQuest) – Facade: điều 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
-local coordinator = __DIST.load('m')
+local coordinator = __DIST.load('o')
 local notifier = __DIST.load('c')
 
-local storage = __DIST.load('R')
-local recorder = __DIST.load('S')
-local mover = __DIST.load('T')
-local visual = __DIST.load('U')
-local rangeVisual = __DIST.load('V')
+local storage = __DIST.load('T')
+local recorder = __DIST.load('U')
+local mover = __DIST.load('V')
+local visual = __DIST.load('W')
+local rangeVisual = __DIST.load('X')
 
 local RunService = services.RunService
 
@@ -17240,7 +17788,7 @@ lifecycle.Register(function()
 	if storageUnsub then storageUnsub(); storageUnsub = nil end
 end)
 
-return pathRecord end function __DIST.X()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
+return pathRecord end function __DIST.Z()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
 --   - MACRO = 1 bản ghi cho cả map: bấm Record 1 lần, tự ghi liên tục qua các room
 --     (auto-split segment theo room), tự lưu khi về lobby. Record lại room nào thì ghi đè room đó.
 --   - Mode theo map: NORMAL (mặc định) skip boss, dùng Hazard Scanner; FULL record & phát luôn cả boss room.
@@ -17249,7 +17797,7 @@ return pathRecord end function __DIST.X()-- Tab Path Record (DungeonQuest): th�
 
 local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
-local pathRecord = __DIST.load('W')
+local pathRecord = __DIST.load('Y')
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
 local notifier = __DIST.load('c')
@@ -17496,7 +18044,7 @@ return function(window, tab)
 		Minimum = 10,
 		Maximum = 100,
 		DisplayMethod = "Value",
-		Precision = 0,
+		Precision = 1,
 		Callback = autoSave.Wrap(function(v)
 			pathRecord.SetStyle({ transparency = 1 - v / 100 })
 		end),
@@ -17620,8 +18168,8 @@ return function(window, tab)
 		Default = pathRecord.GetRangeVisualRadius(),
 		Minimum = 5,
 		Maximum = 120,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(v)
 			pathRecord.SetRangeVisualRadius(v)
 		end),
@@ -17871,7 +18419,7 @@ return function(window, tab)
 
 	updateStatus(pathRecord.GetStatus())
 	syncToggles(pathRecord.GetStatus())
-end end function __DIST.Y()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end end function __DIST._()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -17940,12 +18488,12 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('v')
-	local dungeonTab = __DIST.load('A')
-	local inventoryTab = __DIST.load('C')
-	local utilitiesTab = __DIST.load('M')
-	local configsTab = __DIST.load('Q')
-	local pathRecordTab = __DIST.load('X')
+	local combatTab = __DIST.load('x')
+	local dungeonTab = __DIST.load('C')
+	local inventoryTab = __DIST.load('E')
+	local utilitiesTab = __DIST.load('O')
+	local configsTab = __DIST.load('S')
+	local pathRecordTab = __DIST.load('Z')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -17959,25 +18507,25 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('H')
+	local webhook = __DIST.load('J')
 	webhook.Init()
-__DIST.load('E')
+__DIST.load('G')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	
 
-local autoHide = __DIST.load('N')
+local autoHide = __DIST.load('P')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
 	--// Contextual (tự động áp dụng setting theo Dungeon x Target)
-	local contextual = __DIST.load('t')
+	local contextual = __DIST.load('v')
 	contextual.Init()
 
 	--// Khởi chạy
 	tabs.Combat:Select()
 
-	local coordinator = __DIST.load('m')
+	local coordinator = __DIST.load('o')
 
 	coordinator.SetLocked(true)
 	macLib:LoadAutoLoadConfig()
@@ -18004,7 +18552,7 @@ local autoHide = __DIST.load('N')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.Z()
+end function __DIST.aa()
 local flags = {}
 
 function flags:Export()
@@ -18047,12 +18595,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST._()
+return flags end function __DIST.ab()
 --// Imports
 
 
 
-local binder = __DIST.load('J')
+local binder = __DIST.load('L')
 
 --// Variables
 local interface = {}
@@ -18072,9 +18620,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.aa()--// Imports
+end function __DIST.ac()--// Imports
 
-local binder = __DIST.load('J')
+local binder = __DIST.load('L')
 
 --// Variables
 local esp = {}
@@ -18085,11 +18633,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.ab()--// Imports
+end function __DIST.ad()--// Imports
 
-local flags = __DIST.load('Z')
-local interface = __DIST.load('_')
-local esp = __DIST.load('aa')
+local flags = __DIST.load('aa')
+local interface = __DIST.load('ab')
+local esp = __DIST.load('ac')
 
 --// Initialize
 local window = interface:Window({
@@ -18128,7 +18676,7 @@ return {
 		end,
 	},
 }
-end function __DIST.ac()--// Variables
+end function __DIST.ae()--// Variables
 
 local utility = {}
 
@@ -18160,7 +18708,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.ad()--// Functions
+end function __DIST.af()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -18170,14 +18718,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.ae()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.ag()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('ab')
-	local utility = __DIST.load('ac')
-	local services = __DIST.load('ad')
+	local base = __DIST.load('ad')
+	local utility = __DIST.load('ae')
+	local services = __DIST.load('af')
 
 	--// References
 	local flags = base.Flags
@@ -18243,7 +18791,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('Y'),
+		Load = __DIST.load('_'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -18254,7 +18802,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('ae'),
+		Load = __DIST.load('ag'),
 		Places = {
 			123456789,
 			987654321,

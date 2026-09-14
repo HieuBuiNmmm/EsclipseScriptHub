@@ -253,7 +253,7 @@ return function(window, tab)
 		Minimum = 10,
 		Maximum = 100,
 		DisplayMethod = "Value",
-		Precision = 0,
+		Precision = 1,
 		Callback = autoSave.Wrap(function(v)
 			pathRecord.SetStyle({ transparency = 1 - v / 100 })
 		end),
@@ -377,8 +377,8 @@ return function(window, tab)
 		Default = pathRecord.GetRangeVisualRadius(),
 		Minimum = 5,
 		Maximum = 120,
-		DisplayMethod = "Round",
-		Precision = 0,
+		DisplayMethod = "Value",
+		Precision = 1,
 		Callback = autoSave.Wrap(function(v)
 			pathRecord.SetRangeVisualRadius(v)
 		end),

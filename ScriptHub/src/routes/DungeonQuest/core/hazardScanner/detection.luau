@@ -8,6 +8,7 @@
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
 
 --// References
 local Players = game:GetService("Players")
@@ -22,6 +23,7 @@ local detection = {}
 local enabled = false
 local inDungeon = false
 local logHazards = false
+local logFailed = false
 local activeHazards = {} -- [Instance] = { Name, Class, Distance, Boxes = {} }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
@@ -67,6 +69,68 @@ end
 
 --// Ngưỡng coi như part đã mờ hoàn toàn -> không vẽ box
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
+
+--// Retry: object xuất hiện nhưng chưa kịp khởi tạo đủ parts (DescendantAdded đến sau
+--// ChildAdded). Retry tối đa MAX_REGISTER_RETRIES lần mỗi khi có descendant mới.
+local MAX_REGISTER_RETRIES = 10
+local retryStates = {} -- [Instance] = { count = number, connection = RBXScriptConnection }
+
+local function stopRetry(instance)
+	local state = retryStates[instance]
+	if state then
+		if state.connection then
+			pcall(function() state.connection:Disconnect() end)
+		end
+		retryStates[instance] = nil
+	end
+end
+
+local function stopAllRetries()
+	for inst in pairs(retryStates) do
+		stopRetry(inst)
+	end
+	table.clear(retryStates)
+end
+
+--// Log đối tượng không vẽ được (bị loại qua gate hoặc không có gì để vẽ)
+local function logReject(instance, reason)
+	if not logFailed then return end
+	local name = instance and instance.Name or "?"
+	local class = instance and instance.ClassName or "?"
+	print(("[HazardScanner][Reject] ⚪ %s (%s) — %s"):format(name, class, reason))
+end
+
+local registerHazard
+
+--// Lên lịch retry khi object chưa đủ parts để vẽ.
+--// Mỗi lần có descendant mới -> thử register lại; quá MAX_REGISTER_RETRIES thì bỏ.
+local function retryRegister(instance)
+	if not instance or not instance.Parent then return end
+	if activeHazards[instance] then return end
+
+	local state = retryStates[instance]
+	if not state then
+		state = { count = 0, connection = nil }
+		retryStates[instance] = state
+	end
+
+	state.count += 1
+	if state.count > MAX_REGISTER_RETRIES then
+		logReject(instance, "Hết lượt retry")
+		stopRetry(instance)
+		return
+	end
+
+	if not state.connection then
+		state.connection = instance.DescendantAdded:Connect(function()
+			if not instance.Parent then
+				stopRetry(instance)
+				return
+			end
+			registerHazard(instance)
+		end)
+	end
+end
 
 --// Lay danh sach BasePart cua instance (BasePart -> chinh no; Model -> cac BasePart descendant)
 --// Chỉ lấy part còn rõ (Transparency <= 0.85)
@@ -145,33 +209,54 @@ local function attachSelectionBoxes(parts, fadeConnections)
 end
 
 --// Dang ky hazard: vẽ SelectionBox quanh moi object xuat hien trong Workspace
-local function registerHazard(instance)
-	if not enabled or not inDungeon then return false end
-	if not instance or not instance.Parent then return false end
+registerHazard = function(instance)
+	if not enabled or not inDungeon then
+		logReject(instance, "Chưa trong dungeon")
+		return false
+	end
+	if not instance or not instance.Parent then
+		logReject(instance, "Không còn Parent")
+		return false
+	end
 	if activeHazards[instance] then return true end
 
 	loadIgnoreNames()
-	if isIgnoredName(instance) then return false end
+	if isIgnoredName(instance) then
+		logReject(instance, "Trùng tên trong ReplicatedStorage (abilities/projectiles)")
+		return false
+	end
 
 	local parts = getBaseParts(instance)
-	if #parts == 0 then return false end
+	if #parts == 0 then
+		logReject(instance, "Chưa có part để vẽ (sẽ retry)")
+		retryRegister(instance)
+		return false
+	end
 
 	local fadeConnections = {}
 	local boxes = attachSelectionBoxes(parts, fadeConnections)
 	local distance = computeDistance(instance)
 
-	activeHazards[instance] = {
+	local info = {
+		Instance = instance,
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Distance = distance,
 		Boxes = boxes,
 		Connections = fadeConnections,
 	}
+	activeHazards[instance] = info
 	lastHazardInfo = {
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Distance = distance,
 	}
+
+	if visualizer.IsEnabled() then
+		visualizer.AttachZoneVisuals(info)
+	end
+
+	stopRetry(instance)
 
 	if logHazards then
 		print(("[HazardScanner][Hazard] 🔴 Hazard Detected: %s (%s, %d studs)")
@@ -184,7 +269,12 @@ end
 --// Huy dong hazard: gỡ SelectionBox va xoa khoi activeHazards
 local function unregisterHazard(instance, reason)
 	local info = activeHazards[instance]
-	if not info then return end
+	if not info then
+		stopRetry(instance)
+		return
+	end
+
+	visualizer.DetachZoneVisuals(info)
 
 	if info.Boxes then
 		for _, box in ipairs(info.Boxes) do
@@ -212,6 +302,8 @@ end
 
 --// Xoa toan bo hazard hien tai
 function detection.ClearAllHazards(reason)
+	visualizer.ClearAll()
+	stopAllRetries()
 	local toRemove = {}
 	for inst in pairs(activeHazards) do
 		table.insert(toRemove, inst)
@@ -229,6 +321,7 @@ function detection.StartScan()
 	if enabled then return end
 	enabled = true
 
+	visualizer.BindDetection(detection)
 	detection.ClearAllHazards("StartScan Reset")
 
 	for _, c in ipairs(connections) do c:Disconnect() end
@@ -300,6 +393,14 @@ function detection.IsLogHazardsEnabled()
 	return logHazards
 end
 
+function detection.SetLogFailed(state)
+	logFailed = state and true or false
+end
+
+function detection.IsLogFailedEnabled()
+	return logFailed
+end
+
 function detection.GetHazardCount()
 	return hazardCount
 end
@@ -312,6 +413,10 @@ function detection.GetActiveHazards()
 		end
 	end
 	return list
+end
+
+function detection.GetActiveHazardsMap()
+	return activeHazards
 end
 
 function detection.GetLastHazardInfo()
