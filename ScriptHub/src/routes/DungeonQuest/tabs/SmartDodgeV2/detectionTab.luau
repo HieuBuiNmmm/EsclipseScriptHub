@@ -7,6 +7,7 @@ local smartDodgeV2 = require("@routes/DungeonQuest/core/smartDodgeV2")
 local detection = smartDodgeV2.detection
 local visuals = smartDodgeV2.visuals
 local danger = smartDodgeV2.danger
+local safeSpot = smartDodgeV2.safeSpot
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -20,6 +21,36 @@ return function(window, tab)
 	local dangerLabel = rightSection:Label({ Text = "Danger State: <font color='rgb(50,255,50)'>SAFE</font>" })
 	local countLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
 	local lastHazardLabel = rightSection:Label({ Text = "Last Threat: <font color='rgb(160,160,160)'>None</font>" })
+
+	--// Right Section: Safe Spot Radar V2 Monitor
+	rightSection:Header({ Name = "Safe Spot Radar V2 Monitor" })
+	local radarStateLabel = rightSection:Label({ Text = "Radar: <font color='rgb(160,160,160)'>Idle</font>" })
+	local radarTargetLabel = rightSection:Label({ Text = "Safe Target: <font color='rgb(160,160,160)'>None</font>" })
+	local radarStatsLabel = rightSection:Label({ Text = "Scan: <font color='rgb(160,160,160)'>-</font>" })
+
+	local function updateRadarMonitor(hasSpot, pos, hazardName, dist, chosen)
+		pcall(function()
+			if hasSpot and pos then
+				radarStateLabel:UpdateName(("Radar: <font color='rgb(60,255,130)'>LOCKED</font> (<font color='rgb(255,200,50)'>Vector #%d</font>)"):format((chosen or 0) + 1))
+				radarTargetLabel:UpdateName(("Safe Target: <font color='rgb(60,255,130)'>(%.1f, %.1f, %.1f)</font> - %.1f std"):format(pos.X, pos.Y, pos.Z, dist or 0))
+			elseif hazardName then
+				radarStateLabel:UpdateName(("Radar: <font color='rgb(255,90,90)'>NO EXIT (%s)</font>"):format(hazardName))
+				radarTargetLabel:UpdateName("Safe Target: <font color='rgb(255,140,0)'>No vector escaped</font>")
+			else
+				radarStateLabel:UpdateName("Radar: <font color='rgb(160,160,160)'>Idle</font>")
+				radarTargetLabel:UpdateName("Safe Target: <font color='rgb(160,160,160)'>None</font>")
+			end
+		end)
+		pcall(function()
+			local found, total, chosen, refineFound = safeSpot.GetLastScanStats()
+			if found > 0 then
+				radarStatsLabel:UpdateName(("Scan: <font color='rgb(60,255,130)'>%d/%d</font> escaped (<font color='rgb(200,200,200)'>seed %d, refine %d</font>)")
+					:format(found, total, found - (refineFound or 0), refineFound or 0))
+			else
+				radarStatsLabel:UpdateName(("Scan: <font color='rgb(255,90,90)'>%d/%d</font> vectors escaped"):format(found, total))
+			end
+		end)
+	end
 
 	local function updateMonitor(count, lastHazard)
 		count = count or detection.GetHazardCount()
@@ -50,7 +81,7 @@ return function(window, tab)
 		updateMonitor(count, lastHazard)
 	end)
 
-	-- Lắng nghe sự kiện IN DANGER từ Danger Engine V2
+	-- Lắng nghe sự kiện từ Danger Engine V2
 	danger.OnDangerStateChanged(function(inDanger, currentHazard)
 		pcall(function()
 			if inDanger and currentHazard then
@@ -61,12 +92,17 @@ return function(window, tab)
 		end)
 	end)
 
+	-- Lắng nghe sự kiện Safe Spot Radar V2
+	safeSpot.OnSafeSpotChanged(function(hasSpot, pos, hazardName, dist, chosen)
+		updateRadarMonitor(hasSpot, pos, hazardName, dist, chosen)
+	end)
+
 	--// Right Section: Specific Skill Orange Corridor Lengths (Chỉnh độ dài vùng Cam cho từng Skill riêng biệt)
 	rightSection:Header({ Name = "Orange Corridor Lengths (Độ dài Vùng Cam từng Skill)" })
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 2: Homing Orbs",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss2_orbs"),
 		Minimum = 15,
 		Maximum = 200,
@@ -79,7 +115,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 1: Laser & Telegraph Beams",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss1_beam"),
 		Minimum = 40,
 		Maximum = 250,
@@ -92,7 +128,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 1: Seeking Spikes",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss1_seekingspikes"),
 		Minimum = 15,
 		Maximum = 120,
@@ -105,7 +141,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 1: Big Spike",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss1_bigspike"),
 		Minimum = 15,
 		Maximum = 150,
@@ -118,7 +154,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 1: Sky Shot",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss1_skyshot"),
 		Minimum = 20,
 		Maximum = 150,
@@ -131,7 +167,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 1: Criss Cross",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss1_crisscross"),
 		Minimum = 15,
 		Maximum = 120,
@@ -144,7 +180,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 2: Moving Beam",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss2_movingbeam"),
 		Minimum = 15,
 		Maximum = 150,
@@ -157,7 +193,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 3: Homing Missile",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss3_missile"),
 		Minimum = 15,
 		Maximum = 150,
@@ -170,7 +206,7 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 3: Bouncing Orb",
-		Suffix = " studs",
+		Suffix = " std",
 		Default = detection.GetSkillCorridorLength("boss3_bouncingorb"),
 		Minimum = 10,
 		Maximum = 100,
@@ -256,14 +292,14 @@ return function(window, tab)
 	}, "Slider_SDV2_Opacity"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Player Hitbox Padding (studs)",
+		Name = "Player Hitbox Padding (std)",
 		Default = danger.GetHitboxPadding(),
-		Minimum = 0.5,
+		Minimum = 0.1,
 		Maximum = 5.0,
 		DisplayMethod = "Round",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			local padding = tonumber(val) or 1.8
+			local padding = tonumber(val) or 0.35
 			if padding > 5.0 then
 				padding = padding / 10
 			end
@@ -275,7 +311,7 @@ return function(window, tab)
 	end)
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Hitbox Height Offset (studs)",
+		Name = "Hitbox Height Offset (std)",
 		Default = danger.GetHitboxDownwardOffset(),
 		Minimum = 1.0,
 		Maximum = 5.0,
@@ -294,4 +330,88 @@ return function(window, tab)
 	end)
 
 	updateMonitor()
+
+	--// Safe Spot Radar V2 Controls
+	local radarSection = tab:Section({ Side = "Left" })
+	radarSection:Header({ Name = "Safe Spot Radar V2 (Adaptive Search)" })
+
+	radarSection:Toggle({
+		Name = "Enable Safe Spot Radar",
+		Default = safeSpot.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			safeSpot.SetEnabled(state)
+		end),
+	}, "Toggle_SDV2_SafeSpotRadar")
+
+	radarSection:Toggle({
+		Name = "Adaptive Direction Search (Seed + Refine)",
+		Default = safeSpot.IsAdaptive(),
+		Callback = autoSave.Wrap(function(state)
+			safeSpot.SetAdaptive(state)
+		end),
+	}, "Toggle_SDV2_AdaptiveSearch")
+
+	radarSection:Toggle({
+		Name = "Show Scan Vectors (Radar Lines)",
+		Default = safeSpot.IsShowVectors(),
+		Callback = autoSave.Wrap(function(state)
+			safeSpot.SetShowVectors(state)
+		end),
+	}, "Toggle_SDV2_ShowVectors")
+
+	radarSection:Toggle({
+		Name = "Show Safe Spot Marker (Green)",
+		Default = safeSpot.IsShowMarker(),
+		Callback = autoSave.Wrap(function(state)
+			safeSpot.SetShowMarker(state)
+		end),
+	}, "Toggle_SDV2_ShowSafeMarker")
+
+	radarSection:Toggle({
+		Name = "Debug: Number Each Vector (#1..#N)",
+		Default = safeSpot.IsShowVectorNumbers(),
+		Callback = autoSave.Wrap(function(state)
+			safeSpot.SetShowVectorNumbers(state)
+		end),
+	}, "Toggle_SDV2_ShowVectorNumbers")
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Vector Count",
+		Default = safeSpot.GetRayCount(),
+		Minimum = 8,
+		Maximum = 48,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			safeSpot.SetRayCount(val)
+		end),
+	}, "Slider_SDV2_RayCount"))
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Max Scan Radius",
+		Suffix = " std",
+		Default = safeSpot.GetMaxRadius(),
+		Minimum = 5,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			safeSpot.SetMaxRadius(val)
+		end),
+	}, "Slider_SDV2_MaxRadius"))
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Escape Margin",
+		Suffix = " std",
+		Default = safeSpot.GetEscapeMargin(),
+		Minimum = 0,
+		Maximum = 8,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			safeSpot.SetEscapeMargin(val)
+		end),
+	}, "Slider_SDV2_EscapeMargin"))
+
+	updateRadarMonitor(false, nil, nil, 0, nil)
 end

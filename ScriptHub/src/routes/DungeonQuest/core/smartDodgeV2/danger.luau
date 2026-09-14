@@ -18,7 +18,7 @@ local enabled = true
 local targetScope = "All"            -- "All" | "Boss" | "Mobs"
 local dodgeBossEnabled = true        -- Bật/tắt né chiêu của Boss
 local dodgeEnemyEnabled = true       -- Bật/tắt né chiêu của Quái thường
-local playerHitboxPadding = 1.8      -- Bù trừ bán kính cơ thể nhân vật (studs)
+local playerHitboxPadding = 0.35      -- Bù trừ bán kính cơ thể nhân vật (studs)
 local hitboxDownwardOffset = 2.85    -- Khoảng cách hạ thấp từ HumanoidRootPart xuống sát chân (studs)
 local MAX_HEIGHT_TOLERANCE = 150.0   -- Cột không gian sát thương chiều dọc trong Dungeon Quest
 local RAYCAST_DOWN_DIST = 150.0      -- Khoảng cách quét sàn nhà
@@ -560,14 +560,14 @@ function danger.IsPlayerInDanger(): (boolean, types.ActiveHazard?)
 	if not rootPart or not rootPart:IsA("BasePart") then return false, nil end
 
 	-- 1. Kiểm tra vị trí ngang thắt lưng (RootPart)
-	local inDanger, hazard = danger.IsPointInAnyHazard(rootPart.Position)
+	local inDanger, hazard = danger.IsPointInAnyHazard(rootPart.Position, nil, playerHitboxPadding)
 	if inDanger then
 		return true, hazard
 	end
 
 	-- 2. Kiểm tra vị trí ngang bàn chân (chạm sàn nhà, tránh bỏ sót đòn bệt mặt đất)
 	local footPos = rootPart.Position - Vector3.new(0, hitboxDownwardOffset, 0)
-	return danger.IsPointInAnyHazard(footPos)
+	return danger.IsPointInAnyHazard(footPos, nil, playerHitboxPadding)
 end
 
 --// Lắng nghe sự kiện thay đổi trạng thái Danger

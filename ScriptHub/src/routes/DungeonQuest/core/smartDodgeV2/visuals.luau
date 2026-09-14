@@ -1084,7 +1084,7 @@ function visuals.UpdatePlayerHitboxVisual(playerPos: Vector3?, inDanger: boolean
 	end
 
 	local part = getOrCreateHitboxPart()
-	local pad = padding or 1.8
+	local pad = padding or 0.35
 	local diameter = math.max(0.4, pad * 2)
 
 	part.Size = Vector3.new(0.12, diameter, diameter)
