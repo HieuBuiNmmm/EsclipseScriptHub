@@ -16,8 +16,42 @@ return function(window, tab)
 
 	--// Right Section Labels
 	local statusLabel = rightSection:Label({ Text = "Detector: <font color='rgb(255,80,80)'>Disabled</font>" })
+	local playerDangerLabel = rightSection:Label({ Text = "Player: <font color='rgb(0,255,170)'>SAFE</font>" })
+	local safeSpotLabel = rightSection:Label({ Text = "Safe Spot: <font color='rgb(160,160,160)'>None Needed</font>" })
 	local activeCountLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
 	local lastHazardLabel = rightSection:Label({ Text = "Last Detected: <font color='rgb(160,160,160)'>None</font>" })
+
+	local function updatePlayerDanger(inDanger, threatInfo, threatType)
+		if inDanger then
+			local threatName = threatInfo and threatInfo.Name or "Unknown Threat"
+			local typeStr = threatType and (" [" .. threatType .. "]") or ""
+			pcall(function()
+				playerDangerLabel:UpdateName(("Player: <font color='rgb(255,50,50)'><b>DANGER</b></font> (%s%s)"):format(
+					threatName, typeStr
+				))
+			end)
+		else
+			pcall(function()
+				playerDangerLabel:UpdateName("Player: <font color='rgb(0,255,170)'><b>SAFE</b></font>")
+			end)
+		end
+	end
+
+	hazardScanner.OnPlayerDangerChanged(function(inDanger, threatInfo, threatType)
+		updatePlayerDanger(inDanger, threatInfo, threatType)
+	end)
+
+	hazardScanner.OnSafeSpotChanged(function(inDanger, spot, dist)
+		if inDanger and spot then
+			pcall(function()
+				safeSpotLabel:UpdateName(("Safe Spot: <font color='rgb(0,255,120)'><b>Found (%.1f studs)</b></font>"):format(dist))
+			end)
+		else
+			pcall(function()
+				safeSpotLabel:UpdateName("Safe Spot: <font color='rgb(160,160,160)'>None Needed</font>")
+			end)
+		end
+	end)
 
 	local function updateMonitor(count, lastInfo)
 		count = count or hazardScanner.GetHazardCount()
@@ -49,6 +83,27 @@ return function(window, tab)
 		end
 	end
 
+	--// Right Section - Specific Skill Inspector
+	rightSection:Header({ Name = "Specific Skill Inspector" })
+
+	rightSection:Toggle({
+		Name = "Enable Deep Inspector",
+		Default = hazardScanner.IsInspectEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetInspectEnabled(state)
+		end),
+	}, "Toggle_HazardDeepInspector")
+
+	rightSection:Input({
+		Name = "Target Skill Name",
+		Placeholder = "e.g. Meteor, Spike, Flame...",
+		AcceptedCharacters = "All",
+		Default = hazardScanner.GetInspectTarget(),
+		Callback = autoSave.Wrap(function(text)
+			hazardScanner.SetInspectTarget(text)
+		end),
+	})
+
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
 	end)
@@ -64,12 +119,70 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeThreatDetection")
 
 	leftSection:Toggle({
+		Name = "Show Player 2D Hitbox (Ground Visual)",
+		Default = hazardScanner.IsPlayerVisualEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetPlayerVisualEnabled(state)
+		end),
+	}, "Toggle_HazardPlayer2DVisual")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Player 2D Hitbox Radius",
+		Suffix = " studs",
+		Default = hazardScanner.GetPlayerHitboxRadius(),
+		Minimum = 0.5,
+		Maximum = 8,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetPlayerHitboxRadius(val)
+		end),
+	}, "Slider_HazardPlayer2DHitboxRadius"))
+
+	leftSection:Toggle({
+		Name = "Show 3D Selection Boxes (Parts)",
+		Default = hazardScanner.IsSelectionBoxesEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetSelectionBoxesEnabled(state)
+		end),
+	}, "Toggle_HazardSelectionBoxes")
+
+	leftSection:Toggle({
 		Name = "Show Danger Zones (Ground Visualizer)",
 		Default = hazardScanner.IsVisualizerEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetVisualizerEnabled(state)
 		end),
 	}, "Toggle_HazardGroundVisualizer")
+
+	leftSection:Toggle({
+		Name = "Show Trajectory Paths (Orange)",
+		Default = hazardScanner.IsTrajectoryEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetTrajectoryEnabled(state)
+		end),
+	}, "Toggle_HazardTrajectoryVisualizer")
+
+	leftSection:Toggle({
+		Name = "Show Safe Spot Marker (Green Visual)",
+		Default = hazardScanner.IsSafeSpotVisualEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetSafeSpotVisualEnabled(state)
+		end),
+	}, "Toggle_HazardSafeSpotVisual")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Trajectory Length",
+		Suffix = " studs",
+		Default = hazardScanner.GetTrajectoryLength(),
+		Minimum = 10,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetTrajectoryLength(val)
+		end),
+	}, "Slider_HazardTrajectoryLength"))
 
 	leftSection:Toggle({
 		Name = "Log Hazards (Spawns / Despawns)",

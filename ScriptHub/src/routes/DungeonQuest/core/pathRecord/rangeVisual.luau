@@ -131,6 +131,9 @@ local function applyAdornmentProperties(root)
 
 	local floorOffset = 2.6 -- Đẩy xuống mặt sàn dưới chân nhân vật
 	local color = getCircleColor()
+	local worldTargetPos = Vector3.new(root.Position.X, root.Position.Y - floorOffset, root.Position.Z)
+	local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
+	local localCFrame = root.CFrame:ToObjectSpace(desiredWorldCFrame)
 
 	if ringAdornment then
 		ringAdornment.Adornee = root
@@ -139,7 +142,7 @@ local function applyAdornmentProperties(root)
 		ringAdornment.InnerRadius = math.max(0.1, rangeRadius - ringThickness)
 		ringAdornment.Color3 = color
 		ringAdornment.Transparency = 1 - ringOpacity
-		ringAdornment.CFrame = CFrame.Angles(math.rad(90), 0, 0) * CFrame.new(0, 0, floorOffset)
+		ringAdornment.CFrame = localCFrame
 		ringAdornment.Visible = (root ~= nil and root.Parent ~= nil)
 	end
 
@@ -150,7 +153,7 @@ local function applyAdornmentProperties(root)
 		fillAdornment.InnerRadius = 0
 		fillAdornment.Color3 = color
 		fillAdornment.Transparency = 1 - fillOpacity
-		fillAdornment.CFrame = CFrame.Angles(math.rad(90), 0, 0) * CFrame.new(0, 0, floorOffset)
+		fillAdornment.CFrame = localCFrame
 		fillAdornment.Visible = (root ~= nil and root.Parent ~= nil)
 	end
 end
@@ -223,12 +226,19 @@ local function onHeartbeat()
 		return
 	end
 
+	-- Khóa mặt phẳng vòng tròn nằm ngang phẳng tuyệt đối theo World X-Z dưới chân nhân vật
+	local floorOffset = 2.6
+	local worldTargetPos = Vector3.new(root.Position.X, root.Position.Y - floorOffset, root.Position.Z)
+	local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
+	local localCFrame = root.CFrame:ToObjectSpace(desiredWorldCFrame)
+
 	-- Nếu chưa tạo adornment hoặc đổi nhân vật/HumanoidRootPart mới
 	if not ringAdornment or not ringAdornment.Parent or root ~= lastRoot then
 		lastRoot = root
 		applyAdornmentProperties(root)
 	else
 		if ringAdornment.Adornee ~= root then ringAdornment.Adornee = root end
+		ringAdornment.CFrame = localCFrame
 		if not ringAdornment.Visible then ringAdornment.Visible = true end
 
 		if fillEnabled then
@@ -236,6 +246,7 @@ local function onHeartbeat()
 				applyAdornmentProperties(root)
 			else
 				if fillAdornment.Adornee ~= root then fillAdornment.Adornee = root end
+				fillAdornment.CFrame = localCFrame
 				if not fillAdornment.Visible then fillAdornment.Visible = true end
 			end
 		elseif fillAdornment and fillAdornment.Visible then

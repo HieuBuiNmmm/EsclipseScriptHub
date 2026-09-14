@@ -52,18 +52,54 @@ function geometry.SetHitboxPadding(value)
 	end
 end
 
+--// Danh sách ngoại lệ: các đối tượng (theo tên hoặc từ khóa) bị xem là Box/Mesh
+--// nhưng thực tế nên được vẽ và tính toán thành VÙNG TRÒN (Circle Danger Zone).
+local FORCE_CIRCLE_NAMES = {
+	"firstBossCrissCross",
+	"firstBossBigSpike",
+	"firstBossSeekingSpikes",
+}
+
+local function isForceCircle(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	for _, target in ipairs(FORCE_CIRCLE_NAMES) do
+		local cleanTarget = target:lower():gsub("%s+", "")
+		if #cleanTarget > 0 and string.find(clean, cleanTarget, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsForceCircle(hazardName)
+	return isForceCircle(hazardName)
+end
+
+function geometry.AddForceCircleName(name)
+	if type(name) == "string" and #name > 0 then
+		table.insert(FORCE_CIRCLE_NAMES, name)
+		geometry.InvalidateCache()
+	end
+end
+
+function geometry.GetForceCircleNames()
+	return FORCE_CIRCLE_NAMES
+end
+
 --// Kiem tra part con hoat dong (khong mo qua nguong, con nam trong Workspace)
 local function isPartAlive(part)
 	return part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD
 end
 
 --// Tinh zone con cho 1 BasePart theo shape:
---// - Part Ball/Cylinder -> vong tron X-Z (radius)
+--// - Part Ball/Cylinder HOẶC nằm trong danh sách ngoại lệ (isForceCircle) -> vong tron X-Z (radius = 1/2 cạnh vuông)
 --// - Box / Union / Mesh  -> OBB theo CFrame
-local function computePartZone(part)
+local function computePartZone(part, forceCircle)
 	local size = part.Size
-	if part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder) then
-		return { radius = math.max(size.X, size.Z) / 2 }
+	if forceCircle or (part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder)) then
+		return { radius = math.max(size.X, size.Y, size.Z) / 2 }
 	end
 
 	local half = Vector3.new(math.max(size.X, 0) / 2 + playerHitboxPadding, 0, math.max(size.Z, 0) / 2 + playerHitboxPadding)
@@ -76,14 +112,18 @@ local function isPointInZone(point, zone)
 	local px, pz = point.X, point.Z
 
 	if zone.radius then
-		local dx = px - zone.cx
-		local dz = pz - zone.cz
+		local pos = (zone.part and zone.part.Parent) and zone.part.Position
+		local cx = pos and pos.X or zone.cx or 0
+		local cz = pos and pos.Z or zone.cz or 0
+		local dx = px - cx
+		local dz = pz - cz
 		local r = zone.radius + playerHitboxPadding
 		return (dx * dx + dz * dz) <= (r * r)
 	end
 
-	if zone.cframe then
-		local localPoint = zone.cframe:PointToObjectSpace(point)
+	local cf = (zone.part and zone.part.Parent) and zone.part.CFrame or zone.cframe
+	if cf then
+		local localPoint = cf:PointToObjectSpace(point)
 		return math.abs(localPoint.X) <= zone.half.X
 			and math.abs(localPoint.Z) <= zone.half.Z
 	end
@@ -96,12 +136,14 @@ local function buildHazardZones(hazardInfo)
 	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then return nil end
 
 	local instance = hazardInfo.Instance
+	local hazardName = hazardInfo.Name or (instance and instance.Name) or ""
+	local forceCircle = isForceCircle(hazardName)
 	local parts
 
 	if instance:IsA("BasePart") then
 		if not isPartAlive(instance) then return nil end
 		parts = { instance }
-	elseif instance:IsA("Model") then
+	else
 		parts = {}
 		for _, desc in ipairs(instance:GetDescendants()) do
 			if #parts >= MAX_PARTS_PER_HAZARD then break end
@@ -110,8 +152,6 @@ local function buildHazardZones(hazardInfo)
 			end
 		end
 		if #parts == 0 then return nil end
-	else
-		return nil
 	end
 
 	local zones = {}
@@ -120,14 +160,14 @@ local function buildHazardZones(hazardInfo)
 	for _, part in ipairs(parts) do
 		local pos = part.Position
 		local size = part.Size
-		local radius2D = math.max(size.X, size.Z) / 2 + playerHitboxPadding
+		local radius2D = math.max(size.X, size.Y, size.Z) / 2 + playerHitboxPadding
 
 		minX = math.min(minX, pos.X - radius2D)
 		maxX = math.max(maxX, pos.X + radius2D)
 		minZ = math.min(minZ, pos.Z - radius2D)
 		maxZ = math.max(maxZ, pos.Z + radius2D)
 
-		local zone = computePartZone(part)
+		local zone = computePartZone(part, forceCircle)
 		if zone then
 			if zone.radius then
 				zone.cx, zone.cz = pos.X, pos.Z
@@ -182,9 +222,19 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 		local hazardZones = getHazardZones(info)
 		if not hazardZones then continue end
 
-		-- Broad phase: reject nhanh bang distSq to center
-		local dx = point.X - hazardZones.center.X
-		local dz = point.Z - hazardZones.center.Z
+		-- Broad phase: reject nhanh bang distSq to center (uu tien vi tri part thoi gian thuc)
+		local cx = hazardZones.center.X
+		local cz = hazardZones.center.Z
+		if inst and inst.Parent then
+			local livePart = inst:IsA("BasePart") and inst or inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+			if livePart then
+				cx = livePart.Position.X
+				cz = livePart.Position.Z
+			end
+		end
+
+		local dx = point.X - cx
+		local dz = point.Z - cz
 		local distSq = dx * dx + dz * dz
 		if distSq > hazardZones.boundingRadius * hazardZones.boundingRadius then
 			continue
