@@ -10,6 +10,7 @@ local visuals = smartDodgeV2.visuals
 local danger = smartDodgeV2.danger
 local safeSpot = smartDodgeV2.safeSpot
 local dodge = smartDodgeV2.dodge
+local bossArea = smartDodgeV2.bossArea
 local autoSkill = smartAutoPlay.autoSkill
 
 return function(window, tab)
@@ -104,7 +105,9 @@ return function(window, tab)
 	-- Lắng nghe trạng thái Dodge Engine V2
 	dodge.OnDodgeStatusChanged(function(status)
 		pcall(function()
-			if status == "Dodging" then
+			if danger.IsRespawnProtected and danger.IsRespawnProtected() then
+				dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(0,220,255)'>Bypassed (Respawn)</font>")
+			elseif status == "Dodging" then
 				dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(255,200,50)'>DODGING (HumanoidMove)</font>")
 			elseif status == "Safe" then
 				dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(60,255,130)'>SAFE (Snapped)</font>")
@@ -112,6 +115,29 @@ return function(window, tab)
 				dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(160,160,160)'>Idle</font>")
 			end
 		end)
+	end)
+
+	-- Giám sát đếm ngược Bảo vệ sau hồi sinh (Respawn Protection Countdown)
+	task.spawn(function()
+		local wasProtected = false
+		while true do
+			task.wait(0.2)
+			local isProtected = danger.IsRespawnProtected and danger.IsRespawnProtected()
+			if isProtected then
+				wasProtected = true
+				local rem = danger.GetRespawnProtectionRemaining and danger.GetRespawnProtectionRemaining() or 0
+				pcall(function()
+					dangerLabel:UpdateName(string.format("Danger State: <font color='rgb(0,220,255)'><b>PROTECTED</b></font> <font color='rgb(200,200,200)'>(%.1fs)</font>", rem))
+					dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(0,220,255)'>Bypassed (Respawn)</font>")
+				end)
+			elseif wasProtected then
+				wasProtected = false
+				pcall(function()
+					dangerLabel:UpdateName("Danger State: <font color='rgb(50,255,50)'>SAFE</font>")
+					dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(160,160,160)'>Idle</font>")
+				end)
+			end
+		end
 	end)
 
 	--// Right Section: Specific Skill Orange Corridor Lengths (Chỉnh độ dài vùng Cam cho từng Skill riêng biệt)
@@ -410,7 +436,7 @@ return function(window, tab)
 		Suffix = " std",
 		Default = safeSpot.GetMaxRadius(),
 		Minimum = 5,
-		Maximum = 120,
+		Maximum = 200,
 		DisplayMethod = "Round",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
@@ -430,6 +456,98 @@ return function(window, tab)
 			safeSpot.SetEscapeMargin(val)
 		end),
 	}, "Slider_SDV2_EscapeMargin"))
+
+	--// Universal Boss Arena Limiter Controls (Per-Boss Spawn Anchor)
+	radarSection:Header({ Name = "Universal Boss Arena Limiter (Spawn Anchor)" })
+
+	local arenaStatusLabel = radarSection:Label({ Text = "Arena Status: <font color='rgb(160,160,160)'>Inactive</font>" })
+
+	radarSection:Toggle({
+		Name = "Show Arena Boundary (Hologram Ring)",
+		Default = bossArea.IsShowVisual(),
+		Callback = autoSave.Wrap(function(state)
+			bossArea.SetShowVisual(state)
+		end),
+	}, "Toggle_SDV2_BossAreaVisual")
+
+	-- Boss 1
+	radarSection:Toggle({
+		Name = "Enable Arena Limiter: Boss 1",
+		Default = bossArea.IsBossEnabled(1),
+		Callback = autoSave.Wrap(function(state)
+			bossArea.SetBossEnabled(1, state)
+		end),
+	}, "Toggle_SDV2_BossArea_B1_Enabled")
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Arena Radius: Boss 1",
+		Suffix = " std",
+		Default = bossArea.GetBossRadius(1),
+		Minimum = 15,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			bossArea.SetBossRadius(1, val)
+		end),
+	}, "Slider_SDV2_BossArea_B1_Radius"))
+
+	-- Boss 2
+	radarSection:Toggle({
+		Name = "Enable Arena Limiter: Boss 2",
+		Default = bossArea.IsBossEnabled(2),
+		Callback = autoSave.Wrap(function(state)
+			bossArea.SetBossEnabled(2, state)
+		end),
+	}, "Toggle_SDV2_BossArea_B2_Enabled")
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Arena Radius: Boss 2",
+		Suffix = " std",
+		Default = bossArea.GetBossRadius(2),
+		Minimum = 15,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			bossArea.SetBossRadius(2, val)
+		end),
+	}, "Slider_SDV2_BossArea_B2_Radius"))
+
+	-- Boss 3+
+	radarSection:Toggle({
+		Name = "Enable Arena Limiter: Boss 3+",
+		Default = bossArea.IsBossEnabled(3),
+		Callback = autoSave.Wrap(function(state)
+			bossArea.SetBossEnabled(3, state)
+		end),
+	}, "Toggle_SDV2_BossArea_B3_Enabled")
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Arena Radius: Boss 3+",
+		Suffix = " std",
+		Default = bossArea.GetBossRadius(3),
+		Minimum = 15,
+		Maximum = 200,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			bossArea.SetBossRadius(3, val)
+		end),
+	}, "Slider_SDV2_BossArea_B3_Radius"))
+
+	bossArea.OnStatusChanged(function(isLocked, center, radius, bossIdx)
+		pcall(function()
+			if isLocked and center then
+				arenaStatusLabel:UpdateName(string.format(
+					"Arena Status: <font color='rgb(60,255,130)'>LOCKED (Boss %d)</font> <font color='rgb(200,200,200)'>(%.1f, %.1f) R: %.0fm</font>",
+					bossIdx or 1, center.X, center.Z, radius or 45
+				))
+			else
+				arenaStatusLabel:UpdateName("Arena Status: <font color='rgb(160,160,160)'>Inactive</font>")
+			end
+		end)
+	end)
 
 	--// Smart Auto Play V2 Section
 	local autoPlaySection = tab:Section({ Side = "Left" })
@@ -587,6 +705,27 @@ return function(window, tab)
 			dodge.SetEnabled(state)
 		end),
 	}, "Toggle_SDV2_AutoDodge")
+
+	dodgeSection:Toggle({
+		Name = "Respawn Dodge Bypass (Bỏ qua né sau hồi sinh)",
+		Default = dodge.IsRespawnBypassEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			dodge.SetRespawnBypassEnabled(state)
+		end),
+	}, "Toggle_SDV2_RespawnBypass")
+
+	ui.PatchSliderLoadCallback(dodgeSection:Slider({
+		Name = "Respawn Bypass Duration",
+		Suffix = " s",
+		Default = dodge.GetRespawnBypassDuration(),
+		Minimum = 1.0,
+		Maximum = 8.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			dodge.SetRespawnBypassDuration(val)
+		end),
+	}, "Slider_SDV2_RespawnBypassDuration"))
 
 	ui.PatchSliderLoadCallback(dodgeSection:Slider({
 		Name = "Max Snap Distance (Cự ly Snap)",

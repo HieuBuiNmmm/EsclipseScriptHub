@@ -20,6 +20,8 @@ local dodgeBossEnabled = true        -- Bật/tắt né chiêu của Boss
 local dodgeEnemyEnabled = true       -- Bật/tắt né chiêu của Quái thường
 local playerHitboxPadding = 0.35      -- Bù trừ bán kính cơ thể nhân vật (studs)
 local hitboxDownwardOffset = 2.85    -- Khoảng cách hạ thấp từ HumanoidRootPart xuống sát chân (studs)
+local respawnBypassEnabled = true     -- Bật/tắt bỏ qua né đòn sau khi hồi sinh
+local respawnBypassDuration = 3.0    -- Thời gian miễn nhiễm né sau khi hồi sinh (giây)
 local MAX_HEIGHT_TOLERANCE = 150.0   -- Cột không gian sát thương chiều dọc trong Dungeon Quest
 local RAYCAST_DOWN_DIST = 150.0      -- Khoảng cách quét sàn nhà
 
@@ -566,6 +568,17 @@ function danger.IsPlayerInDanger(): (boolean, types.ActiveHazard?)
 	local character = localPlayer and localPlayer.Character
 	if not character then return false, nil end
 
+	-- 0. Kiểm tra tử trận hoặc đang trong thời gian bảo vệ sau hồi sinh (Respawn Protection)
+	if shared.IsDead and shared.IsDead() then
+		return false, nil
+	end
+	if danger.IsRespawnProtected() then
+		return false, nil
+	end
+
+	local hum = character:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health <= 0 then return false, nil end
+
 	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
 	if not rootPart or not rootPart:IsA("BasePart") then return false, nil end
 
@@ -578,6 +591,46 @@ function danger.IsPlayerInDanger(): (boolean, types.ActiveHazard?)
 	-- 2. Kiểm tra vị trí ngang bàn chân (chạm sàn nhà, tránh bỏ sót đòn bệt mặt đất)
 	local footPos = rootPart.Position - Vector3.new(0, hitboxDownwardOffset, 0)
 	return danger.IsPointInAnyHazard(footPos, nil, playerHitboxPadding)
+end
+
+--// Respawn Dodge Bypass Getters & Setters
+function danger.SetRespawnBypassEnabled(state: boolean)
+	respawnBypassEnabled = (state == true)
+end
+
+function danger.IsRespawnBypassEnabled(): boolean
+	return respawnBypassEnabled
+end
+
+function danger.SetRespawnBypassDuration(value: number)
+	if type(value) == "number" and value >= 0.5 then
+		respawnBypassDuration = value
+		if shared.SetRespawnProtectionDuration then
+			shared.SetRespawnProtectionDuration(value)
+		end
+	end
+end
+
+function danger.GetRespawnBypassDuration(): number
+	return respawnBypassDuration
+end
+
+function danger.IsRespawnProtected(): boolean
+	if not respawnBypassEnabled then return false end
+	if shared.IsDead and shared.IsDead() then return true end
+	if shared.IsJustRespawned then
+		return shared.IsJustRespawned(respawnBypassDuration)
+	end
+	return false
+end
+
+function danger.GetRespawnProtectionRemaining(): number
+	if not respawnBypassEnabled then return 0 end
+	local lastTime = shared.GetLastRespawnTime and shared.GetLastRespawnTime() or 0
+	if lastTime == 0 then return 0 end
+	local elapsed = os.clock() - lastTime
+	local remaining = respawnBypassDuration - elapsed
+	return math.max(0, remaining)
 end
 
 --// Lắng nghe sự kiện thay đổi trạng thái Danger

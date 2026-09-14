@@ -51,6 +51,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local types = require("@routes/DungeonQuest/core/smartDodgeV2/types")
 local detection = require("@routes/DungeonQuest/core/smartDodgeV2/detection")
 local danger = require("@routes/DungeonQuest/core/smartDodgeV2/danger")
+local bossArea = require("@routes/DungeonQuest/core/smartDodgeV2/bossArea")
 
 local player = services.player
 
@@ -150,6 +151,9 @@ local function getPlayerState()
 end
 
 local function isPointSafe(p: Vector3, pad: number): boolean
+	if not bossArea.IsPointInArena(p, 0) then
+		return false
+	end
 	return not danger.IsPointInAnyHazard(p, nil, pad)
 end
 
@@ -301,6 +305,16 @@ local function resolveExitDistance(
 	local wallDist = getWallDistance(origin, dir, maxRadius)
 	local maxSearch = wallDist and math.max(0.5, wallDist - 0.8) or maxRadius
 
+	-- 1.1 Kiểm tra giới hạn Sàn Đấu Boss 1 (Boss 1 Arena Virtual Boundary)
+	local arenaLimit, hasArenaLimit = bossArea.GetRayLimit(origin, dir, maxRadius)
+	local isArenaCapped = false
+	if hasArenaLimit and arenaLimit then
+		if arenaLimit < maxSearch then
+			maxSearch = math.max(0.5, arenaLimit)
+			isArenaCapped = true
+		end
+	end
+
 	-- 2. Warm start hint nếu còn hợp lệ
 	if hint and hint >= MARCH_STEP and hint <= maxSearch then
 		if sampleSafe(origin, dir, hint, pad) then
@@ -353,6 +367,9 @@ local function resolveExitDistance(
 	end
 
 	-- 4. Bị chặn ở cuối đường:
+	if isArenaCapped and maxSearch < maxRadius and (not wallDist or maxSearch <= wallDist) then
+		return nil, maxSearch, "boss1_arena"
+	end
 	if wallDist and wallDist < maxRadius then
 		return nil, wallDist, "wall"
 	end
@@ -817,7 +834,7 @@ local function updateVisuals()
 					bWidth = 0.04
 					bHeight = 0.04
 					bTrans = 0.65
-					tSize = (entry.blockedReason == "wall" or entry.blockedReason == "skill") and 0.40 or 0.25
+					tSize = (entry.blockedReason == "wall" or entry.blockedReason == "skill" or entry.blockedReason == "boss1_arena") and 0.40 or 0.25
 					tTrans = 0.50
 				end
 
@@ -961,6 +978,10 @@ end
 local function scanSafeSpot(): boolean
 	if cleaned then return false end
 	if not enabled or not detection.IsEnabled() or not danger.IsEnabled() then
+		return false
+	end
+	if danger.IsRespawnProtected and danger.IsRespawnProtected() then
+		clearRadar()
 		return false
 	end
 
@@ -1281,6 +1302,8 @@ function safeSpot.OnSafeSpotChanged(cb: (boolean, Vector3?, string?, number, num
 		table.insert(safeSpotCallbacks, cb)
 	end
 end
+
+safeSpot.ClearRadar = clearRadar
 
 --// ------------------------------------------------------------------ //
 -- Wiring: sự kiện danger/detection + heartbeart + cleanup

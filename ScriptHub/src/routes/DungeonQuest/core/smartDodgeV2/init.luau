@@ -8,6 +8,7 @@ local detection = require("@routes/DungeonQuest/core/smartDodgeV2/detection")
 local danger = require("@routes/DungeonQuest/core/smartDodgeV2/danger")
 local safeSpot = require("@routes/DungeonQuest/core/smartDodgeV2/safeSpot")
 local dodge = require("@routes/DungeonQuest/core/smartDodgeV2/dodge")
+local bossArea = require("@routes/DungeonQuest/core/smartDodgeV2/bossArea")
 
 local smartDodgeV2 = {
 	types = types,
@@ -18,6 +19,7 @@ local smartDodgeV2 = {
 	geometry = danger,
 	safeSpot = safeSpot,
 	dodge = dodge,
+	bossArea = bossArea,
 
 	-- Orange Corridor Length Controls (Vùng màu Cam)
 	SetSkillCorridorLength = detection.SetSkillCorridorLength,

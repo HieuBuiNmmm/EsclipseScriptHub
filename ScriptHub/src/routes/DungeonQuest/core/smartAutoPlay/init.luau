@@ -24,6 +24,7 @@ local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing"
 local autoSkill = require("@routes/DungeonQuest/core/smartAutoPlay/autoSkill")
 local autoApproach = require("@routes/DungeonQuest/core/smartAutoPlay/autoApproach")
 local openSpace = require("@routes/DungeonQuest/core/smartAutoPlay/openSpace")
+local bossArea = require("@routes/DungeonQuest/core/smartDodgeV2/bossArea")
 
 local RunService = services.RunService
 local player = services.player
@@ -553,6 +554,12 @@ local function getFirstBossArenaPart()
 end
 
 local function getBoss1ArenaInfo()
+	local v2Center = bossArea.GetAnchorCenter and bossArea.GetAnchorCenter()
+	local v2Radius = bossArea.GetRadius and bossArea.GetRadius()
+	if v2Center and v2Radius and v2Radius > 0 then
+		return v2Center, v2Radius
+	end
+
 	local center = smartDodge.GetBoss1ArenaCenter and smartDodge.GetBoss1ArenaCenter()
 	local radius = smartDodge.GetBoss1ArenaRadius and smartDodge.GetBoss1ArenaRadius()
 	if center and radius and radius > 0 then

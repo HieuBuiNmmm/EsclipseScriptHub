@@ -192,6 +192,10 @@ function dodge.Perform(safePos: Vector3?, escapeDist: number?, hazardName: strin
 	if not enabled then return end
 	if not safePos then return end
 
+	-- Bỏ qua né đòn nếu đang tử trận hoặc đang trong thời gian bảo vệ sau hồi sinh
+	if shared.IsDead and shared.IsDead() then return end
+	if danger.IsRespawnProtected and danger.IsRespawnProtected() then return end
+
 	local char, rootPart, humanoid = getCharacterParts()
 	if not rootPart or not humanoid or humanoid.Health <= 0 then
 		return
@@ -446,11 +450,36 @@ function dodge.OnDodgeStatusChanged(cb: (string) -> ())
 	end
 end
 
+function dodge.SetRespawnBypassEnabled(state: boolean)
+	danger.SetRespawnBypassEnabled(state)
+end
+
+function dodge.IsRespawnBypassEnabled(): boolean
+	return danger.IsRespawnBypassEnabled()
+end
+
+function dodge.SetRespawnBypassDuration(val: number)
+	danger.SetRespawnBypassDuration(val)
+end
+
+function dodge.GetRespawnBypassDuration(): number
+	return danger.GetRespawnBypassDuration()
+end
+
+function dodge.IsRespawnProtected(): boolean
+	return danger.IsRespawnProtected()
+end
+
+function dodge.GetRespawnProtectionRemaining(): number
+	return danger.GetRespawnProtectionRemaining()
+end
+
 --================================================================--
 -- Tự động kết nối với Safe Spot Radar V2
 --================================================================--
 safeSpot.OnSafeSpotChanged(function(hasSpot: boolean, pos: Vector3?, hazardName: string?, dist: number)
 	if not enabled then return end
+	if danger.IsRespawnProtected and danger.IsRespawnProtected() then return end
 	if hasSpot and pos then
 		dodge.Perform(pos, dist, hazardName)
 	end
@@ -460,6 +489,13 @@ danger.OnDangerStateChanged(function(inDanger: boolean)
 	if not inDanger and isDodging then
 		-- Khi nguy hiểm kết thúc, hủy bỏ né đòn nếu còn đang dở
 		dodge.Cancel()
+	end
+end)
+
+shared.OnRespawn(function()
+	dodge.Cancel()
+	if safeSpot and safeSpot.ClearRadar then
+		safeSpot.ClearRadar()
 	end
 end)
 
