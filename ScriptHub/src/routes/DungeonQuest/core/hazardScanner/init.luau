@@ -29,6 +29,7 @@ hazardScanner.SetHazardPadding = geometry.SetHazardPadding
 hazardScanner.GetHitboxPadding = geometry.GetHazardPadding
 hazardScanner.SetHitboxPadding = geometry.SetHazardPadding
 hazardScanner.GetHazardZones = geometry.GetHazardZones
+hazardScanner.GetNearbyHazards = geometry.GetNearbyHazards
 hazardScanner.AddForceCircleName = geometry.AddForceCircleName
 hazardScanner.GetForceCircleNames = geometry.GetForceCircleNames
 hazardScanner.IsForceCircle = geometry.IsForceCircle
@@ -76,6 +77,7 @@ hazardScanner.SetTrajectoryLength = trajectory.SetPredictionLength
 hazardScanner.GetTrajectoryLength = trajectory.GetPredictionLength
 hazardScanner.RefreshTrajectory = trajectory.RefreshAll
 hazardScanner.IsPointInAnyTrajectory = trajectory.IsPointInAnyTrajectory
+hazardScanner.GetNearbyTrajectories = trajectory.GetNearbyTrajectories
 
 --// 3D Selection Box (Parts)
 hazardScanner.SetSelectionBoxesEnabled = detection.SetSelectionBoxesEnabled

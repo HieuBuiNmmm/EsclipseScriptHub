@@ -217,18 +217,56 @@ function geometry.GetHazardZones(info)
 	return getHazardZones(info)
 end
 
+--// Lấy danh sách các Hazards nằm trong phạm vi maxRadius xung quanh origin (Broad-Phase Spatial Culling)
+function geometry.GetNearbyHazards(origin, maxRadius)
+	local det = data
+	if not det then return {} end
+	maxRadius = maxRadius or 65
+
+	local nearby = {}
+	local ox, oz = origin.X, origin.Z
+
+	for _, info in pairs(det.GetActiveHazardsMap()) do
+		local inst = info.Instance
+		local hazardZones = getHazardZones(info)
+		if hazardZones then
+			local cx = hazardZones.center.X
+			local cz = hazardZones.center.Z
+			if inst and inst.Parent then
+				local livePart = inst:IsA("BasePart") and inst or inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+				if livePart then
+					cx = livePart.Position.X
+					cz = livePart.Position.Z
+				end
+			end
+
+			local dx = ox - cx
+			local dz = oz - cz
+			local distSq = dx * dx + dz * dz
+			local totalReach = maxRadius + hazardZones.boundingRadius
+			if distSq <= totalReach * totalReach then
+				table.insert(nearby, info)
+			end
+		end
+	end
+
+	return nearby
+end
+
 --// Query: kiem tra diem P (hoac vong tron player ban kinh extraRadius) co dính hazard nao khong
 --// Tra ve: hit (bool), hazardInfo (gan nhat), hitPart
-function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius)
+function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazardList)
 	local det = data
 	if not det then return false, nil, nil end
 	extraRadius = extraRadius or 0
 
 	local bestDistSq = math.huge
 	local foundInfo, foundPart = nil, nil
+	local list = hazardList or det.GetActiveHazardsMap()
 
-	for inst, info in pairs(det.GetActiveHazardsMap()) do
-		if ignoredInstance and (ignoredInstance == inst or ignoredInstance.Name == inst.Name) then
+	for key, info in pairs(list) do
+		local inst = info.Instance or (typeof(key) == "Instance" and key)
+		if ignoredInstance and (ignoredInstance == inst or (inst and ignoredInstance.Name == inst.Name)) then
 			continue
 		end
 

@@ -1,7 +1,8 @@
 -- HazardScanner – Trajectory Visualizer (DungeonQuest):
--- Dự báo và vẽ đường quỹ đạo nguy hiểm (Orange Trajectory Corridor) cho các chiêu thức đang di chuyển.
--- Tự động tính vector vận tốc thực tế, tính trọng tâm (centroid) và độ rộng bao quát (span width) của toàn bộ hazard
--- dựng dải hình hộp màu cam đối xứng hoàn hảo kéo dài về phía trước chiêu thức trên mặt phẳng sàn X-Z.
+-- Dự báo và vẽ đường quỹ đạo nguy hiểm (Orange Trajectory Corridor) tĩnh cho các chiêu thức đang di chuyển.
+-- Chiều dài dải cam được cố định theo cấu hình slider (predictionLength).
+-- Vùng màu cam được đối xử như một Danger Zone thực thụ: bất kỳ điểm nào nằm trong hành lang cam đều là Nguy Hiểm,
+-- buộc hệ thống tìm Safe Spot bước ngang thoát hoàn toàn ra ngoài quỹ đạo đạn (Side-Step Escape).
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -17,7 +18,7 @@ local trajectory = {}
 --// State
 local enabled = false
 local data = nil
-local predictionLength = 60 -- studs (chiều dài dự báo quỹ đạo)
+local predictionLength = 45 -- studs (chiều dài dải visual hiển thị quỹ đạo đạn)
 local activeRecords = {} -- [hazardInfo] = { ad = BoxHandleAdornment, mainPart = BasePart, connections = {}, lastPos = Vector3, lastClock = number, velocity = Vector3, dir = Vector3, isMoving = boolean }
 local heartbeatConnection = nil
 
@@ -28,7 +29,7 @@ local TRAJECTORY_TRANSPARENCY = 0.65
 local GROUND_THICKNESS = 0.20
 local MOVING_SPEED_THRESHOLD = 3.5 -- studs/s (ngưỡng tốc độ để coi là đang di chuyển)
 
---// Lay do cao mat san theo chan nguoi choi
+--// Lấy độ cao mặt sàn theo chân người chơi
 local function getPlayerGroundY()
 	local char = player and player.Character
 	if not char then return nil end
@@ -152,7 +153,7 @@ local function updateTrajectoryCFrame(ad, mainPart, centroid, dir, targetY, leng
 	if not ad.Visible then ad.Visible = true end
 end
 
---// Vòng lặp Heartbeat: đo vận tốc và ghim dải quỹ đạo theo thời gian thực
+--// Vòng lặp Heartbeat: theo dõi hướng di chuyển và ghim dải quỹ đạo tĩnh
 local function onHeartbeat()
 	if not enabled then return end
 	local hasAny = false
@@ -170,7 +171,7 @@ local function onHeartbeat()
 				local currentPos = mainPart.Position
 				local dt = now - (record.lastClock or now)
 
-				-- Cập nhật vận tốc định kỳ (mỗi ~0.035s)
+				-- Cập nhật hướng di chuyển định kỳ (mỗi ~0.035s)
 				if dt >= 0.035 then
 					local delta = currentPos - (record.lastPos or currentPos)
 					local speed = delta.Magnitude / dt
@@ -190,7 +191,7 @@ local function onHeartbeat()
 					record.lastClock = now
 				end
 
-				-- Nếu đang di chuyển, cập nhật visual quỹ đạo đối xứng theo trọng tâm
+				-- Nếu đang di chuyển, cập nhật visual quỹ đạo tĩnh theo predictionLength
 				if record.isMoving and record.dir and record.ad then
 					local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 					if centroid then
@@ -273,7 +274,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	box.Transparency = TRAJECTORY_TRANSPARENCY
 	box.ZIndex = 1 -- Nằm dưới đĩa đỏ (ZIndex = 2)
 	box.AlwaysOnTop = true
-	box.Visible = false -- Tạm ẩn đến khi đo được vận tốc di chuyển
+	box.Visible = false -- Tạm ẩn cho đến khi đo được hướng di chuyển thực tế
 	box.Parent = mainPart
 
 	local connections = {}
@@ -284,14 +285,6 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	end)
 	table.insert(connections, conn)
 
-	local initialLook = mainPart.CFrame.LookVector
-	local initialDir = Vector3.new(initialLook.X, 0, initialLook.Z)
-	if initialDir.Magnitude > 0.01 then
-		initialDir = initialDir.Unit
-	else
-		initialDir = Vector3.new(0, 0, -1)
-	end
-
 	activeRecords[hazardInfo] = {
 		ad = box,
 		connections = connections,
@@ -299,9 +292,10 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		lastPos = mainPart.Position,
 		lastClock = os.clock(),
 		velocity = Vector3.zero,
-		dir = initialDir,
+		dir = nil,
 		isMoving = false,
 	}
+
 	ensureHeartbeat()
 end
 
@@ -327,10 +321,76 @@ function trajectory.RefreshAll()
 	end
 end
 
---// Kiểm tra xem điểm P (hoặc vòng tròn bán kính extraRadius) có đang giao thoa với dải quỹ đạo nào không
-function trajectory.IsPointInAnyTrajectory(point, extraRadius)
+--// Kiểm tra xem điểm P (hoặc vòng tròn bán kính extraRadius) có đang nằm trong hành lang nguy hiểm màu cam hay không.
+--// Lấy danh sách các Trajectory Records nằm trong phạm vi maxRadius xung quanh origin (Broad-Phase Spatial Culling)
+function trajectory.GetNearbyTrajectories(origin, maxRadius)
+	maxRadius = maxRadius or 65
+	local nearby = {}
+	local ox, oz = origin.X, origin.Z
+
+	for info, record in pairs(activeRecords) do
+		if record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
+			local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
+			if centroid and spanWidth then
+				local cx = centroid.X
+				local cz = centroid.Z
+				local dx = ox - cx
+				local dz = oz - cz
+				local distSq = dx * dx + dz * dz
+				local totalReach = maxRadius + predictionLength + (spanWidth / 2)
+				if distSq <= totalReach * totalReach then
+					table.insert(nearby, { info = info, record = record })
+				end
+			end
+		end
+	end
+
+	return nearby
+end
+
+--// Kiểm tra xem điểm P (hoặc vòng tròn bán kính extraRadius) có đang nằm trong hành lang nguy hiểm màu cam hay không.
+--// Đối xử vùng màu cam như một Danger Zone thực thụ: Bất kỳ điểm nào giao thoa với vùng cam đều là NGUY HIỂM.
+function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 	local px, pz = point.X, point.Z
 	extraRadius = extraRadius or 0
+
+	if trajectoryList then
+		for _, item in ipairs(trajectoryList) do
+			local info = item.info
+			local record = item.record
+			if record and record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
+				local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
+				if centroid and spanWidth then
+					local dir = record.dir
+					local normal = Vector3.new(-dir.Z, 0, dir.X)
+					local vx = px - centroid.X
+					local vz = pz - centroid.Z
+
+					local projU = vx * dir.X + vz * dir.Z
+					local projN = vx * normal.X + vz * normal.Z
+					local halfWidth = spanWidth / 2
+
+					if extraRadius <= 0 then
+						if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
+							return true, info
+						end
+					else
+						local dU = 0
+						if projU < 0 then
+							dU = -projU
+						elseif projU > predictionLength then
+							dU = projU - predictionLength
+						end
+						local dN = math.max(0, math.abs(projN) - halfWidth)
+						if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
+							return true, info
+						end
+					end
+				end
+			end
+		end
+		return false, nil
+	end
 
 	for info, record in pairs(activeRecords) do
 		if record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
@@ -344,14 +404,14 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius)
 				-- Chiếu tọa độ điểm P lên trục di chuyển U và trục pháp tuyến N
 				local projU = vx * dir.X + vz * dir.Z
 				local projN = vx * normal.X + vz * normal.Z
-
 				local halfWidth = spanWidth / 2
+
+				-- Kiểm tra giao thoa hình học trực tiếp với dải hình hộp màu cam cố định
 				if extraRadius <= 0 then
 					if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
 						return true, info
 					end
 				else
-					-- Giao thoa Vòng tròn (Player Circle) với dải hộp quỹ đạo
 					local dU = 0
 					if projU < 0 then
 						dU = -projU
@@ -366,6 +426,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius)
 			end
 		end
 	end
+
 	return false, nil
 end
 
@@ -379,7 +440,7 @@ function trajectory.SetEnabled(state)
 	end
 end
 
---// Lang nghe thay doi padding de refresh visual
+--// Lắng nghe thay đổi padding để refresh visual
 geometry.OnPaddingChanged(function()
 	if enabled then
 		trajectory.RefreshAll()

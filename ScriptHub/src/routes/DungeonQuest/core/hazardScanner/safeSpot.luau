@@ -1,7 +1,6 @@
 -- HazardScanner – Safe Spot Engine (DungeonQuest).
--- Logic xác định điểm an toàn gần nhất (Safe Spot) bằng thuật toán Radial Escape Sampling.
--- Khi người chơi bị dính vùng nguy hiểm (Đỏ/Cam), hệ thống quét đa hướng theo các vòng tròn đồng tâm
--- để tìm ra vị trí an toàn gần nhất (thoát hiểm với quãng đường ngắn nhất) và vẽ visual chỉ đường trên sàn.
+-- Logic xác định điểm an toàn gần nhất (Safe Spot) bằng thuật toán Progressive Radial Sampling.
+-- Tích hợp Broad-Phase Spatial Culling, Momentum Alignment (ưu tiên theo đà chạy) và Dynamic Scheduling (tiết kiệm CPU khi rảnh rỗi).
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -9,9 +8,10 @@ local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
 local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
+local candidateGenerator = require("@routes/DungeonQuest/core/hazardScanner/candidateGenerator")
+local safeSpotVisual = require("@routes/DungeonQuest/core/hazardScanner/safeSpotVisual")
 
 local RunService = services.RunService or game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local player = services.player
 
@@ -22,41 +22,17 @@ local safeSpot = {}
 local enabled = true
 local visualEnabled = true
 local showCandidatesVisual = true
-local safetyBuffer = 2.0 -- studs (khoảng cách đẩy xa thêm ra khỏi mép danger zone để đứng thoải mái)
+local safetyBuffer = 2.0 -- studs (khoảng cách đẩy xa thêm ra khỏi mép danger zone để đứng an toàn)
 local currentTargetSafeSpot = nil
 local currentThreatInstance = nil
 local currentThreatType = nil
 local lastDistance = 0
 local isFindingSafeSpot = false
 local heartbeatConnection = nil
+local dangerChangedConnection = nil
 local safeSpotChangedCallbacks = {}
 local lastEvaluatedCandidates = {}
-
---// Visual Adornments
-local markerAdornment = nil
-local centerAdornment = nil
-local lineAdornment = nil
-local candidatePool = {}
-
---// Constants & Colors
-local COLOR_SAFE_SPOT = Color3.fromRGB(0, 255, 120) -- Xanh lá Neon dạ quang
-local COLOR_LINE = Color3.fromRGB(0, 255, 150)
-local COLOR_CENTER = Color3.fromRGB(255, 255, 255) -- Tâm trắng nổi bật
-local GROUND_THICKNESS = 0.20
-local MARKER_RADIUS = 1.4 -- studs
-local CENTER_RADIUS = 0.45 -- studs
-
---// Cấu hình Radial Sampling
--- 16 hướng quét bao quanh 360 độ (mỗi hướng lệch 22.5 độ)
-local SAMPLE_DIRECTIONS = {}
-local NUM_DIRECTIONS = 16
-for i = 1, NUM_DIRECTIONS do
-	local angle = (i - 1) * (2 * math.pi / NUM_DIRECTIONS)
-	SAMPLE_DIRECTIONS[i] = Vector3.new(math.cos(angle), 0, math.sin(angle))
-end
-
--- Bán kính lấy mẫu tăng dần từ gần tới xa (studs)
-local SAMPLE_RADII = { 1.5, 3.0, 4.5, 6.0, 8.0, 10.5, 13.5, 17.0, 21.0, 26.0, 32.0, 40.0 }
+local lastIdleCheck = 0
 
 --// Lấy HumanoidRootPart của người chơi
 local function getPlayerRoot()
@@ -69,24 +45,55 @@ local function getPlayerRoot()
 	return char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
 end
 
+--// Lấy vector hướng đang chạy thực tế của người chơi (Running Momentum Direction)
+local function getPlayerRunningDirection(root)
+	local lp = player or Players.LocalPlayer
+	if not lp then return nil end
+	local char = lp.Character
+	if not char or not char.Parent then return nil end
+
+	-- 1. Ưu tiên đọc Humanoid.MoveDirection (hướng người chơi đang chủ động di chuyển bằng phím/joystick/script)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health > 0 then
+		local moveDir = hum.MoveDirection
+		if moveDir and moveDir.Magnitude > 0.1 then
+			return Vector3.new(moveDir.X, 0, moveDir.Z).Unit
+		end
+	end
+
+	-- 2. Đọc theo vận tốc vật lý thực tế của HumanoidRootPart nếu đang di chuyển
+	if root and root.Parent then
+		local vel = Vector3.zero
+		pcall(function()
+			vel = root.AssemblyLinearVelocity or root.Velocity or Vector3.zero
+		end)
+		local hVel = Vector3.new(vel.X, 0, vel.Z)
+		if hVel.Magnitude >= 2.0 then
+			return hVel.Unit
+		end
+	end
+
+	return nil
+end
+
 --// Lấy độ cao mặt sàn dưới chân người chơi
 local function getPlayerGroundY(root)
 	if not root then return 0 end
 	return root.Position.Y - 2.5
 end
 
---// Kiểm tra xem một điểm P (X-Z) có hoàn toàn an toàn (toàn bộ vòng tròn Player nằm ngoài mọi Ground Zone & Trajectory) không
-function safeSpot.IsPointSafe(point)
+--// Kiểm tra xem một điểm P (X-Z) có an toàn (Player Circle nằm ngoài mọi Ground Zone & Trajectory) không
+function safeSpot.IsPointSafe(point, extraMargin)
 	if not point then return false end
 	local p2D = Vector3.new(point.X, 0, point.Z)
-	local playerRad = playerVisual.GetRadius and playerVisual.GetRadius() or 1.8
+	local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
 
-	-- 1. Kiểm tra Ground Danger Zones với bán kính vòng tròn Player
+	-- 1. Kiểm tra Ground Danger Zones (Đĩa đỏ / Vùng tròn / OBB trên mặt sàn)
 	if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad) then
 		return false
 	end
 
-	-- 2. Kiểm tra Trajectory Corridors với bán kính vòng tròn Player
+	-- 2. Kiểm tra Trajectory Corridors (Hành lang cam của đạn đang bay)
 	if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, playerRad) then
 		return false
 	end
@@ -94,300 +101,111 @@ function safeSpot.IsPointSafe(point)
 	return true
 end
 
---// Thuật toán Radial Escape Sampling: Tìm điểm an toàn gần nhất từ tọa độ origin
+--// Thuật toán Progressive Radial Escape Sampling: Tìm điểm an toàn gần nhất từ tọa độ origin
+--// Tích hợp Broad-Phase Spatial Culling và Momentum Alignment (ưu tiên theo đà chạy của nhân vật)
 function safeSpot.FindNearestSafeSpot(origin)
 	local root = getPlayerRoot()
 	if not origin then
-		if not root then return nil, false, 0 end
+		if not root then return nil, false, 0, Vector3.zero end
 		origin = root.Position
 	end
 
 	local origin2D = Vector3.new(origin.X, 0, origin.Z)
+	local momentumDir = getPlayerRunningDirection(root)
 	table.clear(lastEvaluatedCandidates)
 
-	-- Nếu vị trí hiện tại đã an toàn -> Safe Spot chính là vị trí hiện tại
-	if safeSpot.IsPointSafe(origin2D) then
+	-- 1. Broad-Phase Spatial Culling: Lọc nhanh các hazard & trajectory trong phạm vi ảnh hưởng (65 studs)
+	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 65) or nil
+	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 65) or nil
+
+	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc
+	local function isPointSafeScoped(candPoint, extraMargin)
+		if not candPoint then return false end
+		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
+		local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
+
+		if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad, relevantHazards) then
+			return false
+		end
+
+		if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, playerRad, relevantTrajectories) then
+			return false
+		end
+
+		return true
+	end
+
+	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi hoặc vị trí hiện tại đã an toàn -> Xong ngay lập tức
+	if (relevantHazards and #relevantHazards == 0 and relevantTrajectories and #relevantTrajectories == 0) or isPointSafeScoped(origin2D, 0) then
 		table.insert(lastEvaluatedCandidates, { pos = origin2D, isSafe = true, isChosen = true })
 		return origin2D, true, 0, Vector3.zero
 	end
 
-	-- Quét theo từng vòng bán kính tăng dần
-	local bestPoint = nil
-	local bestDist = math.huge
-	local bestDir = Vector3.zero
+	-- Tier 1: Coarse Pass (8 hướng, bán kính thưa, yêu cầu buffer an toàn, ưu tiên theo đà chạy)
+	local bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
+		origin2D,
+		candidateGenerator.COARSE_DIRECTIONS,
+		candidateGenerator.COARSE_RADII,
+		safetyBuffer,
+		true,
+		isPointSafeScoped,
+		lastEvaluatedCandidates,
+		momentumDir
+	)
 
-	for _, radius in ipairs(SAMPLE_RADII) do
-		local foundAtThisRadius = false
-
-		for _, dir in ipairs(SAMPLE_DIRECTIONS) do
-			local candidate = origin2D + dir * radius
-			local isSafe = safeSpot.IsPointSafe(candidate)
-
-			table.insert(lastEvaluatedCandidates, {
-				pos = candidate,
-				isSafe = isSafe,
-				isChosen = false,
-			})
-
-			if isSafe then
-				local dist = (candidate - origin2D).Magnitude
-				if dist < bestDist then
-					bestDist = dist
-					bestPoint = candidate
-					bestDir = dir
-					foundAtThisRadius = true
-				end
-			end
-		end
-
-		-- Do bán kính tăng dần, điểm an toàn đầu tiên tìm thấy ở vòng nhỏ nhất chính là điểm gần nhất
-		if foundAtThisRadius and bestPoint then
-			-- Đẩy xa thêm một đoạn safetyBuffer theo hướng thoát để đứng cách xa mép nguy hiểm thoải mái
-			if safetyBuffer > 0 and bestDir ~= Vector3.zero then
-				local pushedPoint = bestPoint + bestDir * safetyBuffer
-				if safeSpot.IsPointSafe(pushedPoint) then
-					bestPoint = pushedPoint
-					bestDist = (bestPoint - origin2D).Magnitude
-				end
-			end
-
-			-- Đánh dấu candidate được chọn
-			for _, cand in ipairs(lastEvaluatedCandidates) do
-				if (cand.pos - bestPoint).Magnitude < 0.2 then
-					cand.isChosen = true
-					break
-				end
-			end
-
-			return bestPoint, true, bestDist, bestDir
-		end
+	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết, yêu cầu buffer an toàn, ưu tiên theo đà chạy)
+	if not found then
+		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
+			origin2D,
+			candidateGenerator.FINE_DIRECTIONS,
+			candidateGenerator.FINE_RADII,
+			safetyBuffer,
+			true,
+			isPointSafeScoped,
+			lastEvaluatedCandidates,
+			momentumDir
+		)
 	end
 
-	-- Không tìm thấy điểm an toàn trong phạm vi tối đa 40 studs
+	-- Tier 3: Emergency Fallback Pass (16 hướng, bán kính chi tiết, không bắt buộc buffer, ưu tiên theo đà chạy)
+	if not found then
+		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
+			origin2D,
+			candidateGenerator.FINE_DIRECTIONS,
+			candidateGenerator.FINE_RADII,
+			0,
+			false,
+			isPointSafeScoped,
+			lastEvaluatedCandidates,
+			momentumDir
+		)
+	end
+
+	if found and bestPoint then
+		-- Đánh dấu candidate được chọn trong danh sách debug visual
+		for _, cand in ipairs(lastEvaluatedCandidates) do
+			if (cand.pos - bestPoint).Magnitude < 0.25 then
+				cand.isChosen = true
+				break
+			end
+		end
+		return bestPoint, true, bestDist, bestDir
+	end
+
+	-- Không tìm thấy điểm an toàn trong phạm vi tối đa
 	return origin2D, false, math.huge, Vector3.zero
 end
 
---// Khởi tạo Adornments hiển thị Safe Spot
-local function ensureVisuals(root)
-	if not root then return end
-
-	-- Marker đĩa tròn xanh lá ngoài
-	if not markerAdornment or not markerAdornment.Parent then
-		if markerAdornment then pcall(function() markerAdornment:Destroy() end) end
-		local ad = Instance.new("CylinderHandleAdornment")
-		ad.Name = "SafeSpot_OuterMarker"
-		ad.Adornee = root
-		ad.Radius = MARKER_RADIUS
-		ad.Height = GROUND_THICKNESS
-		ad.Color3 = COLOR_SAFE_SPOT
-		ad.Transparency = 0.35
-		ad.ZIndex = 6
-		ad.AlwaysOnTop = false
-		ad.Visible = false
-		ad.Parent = root
-		markerAdornment = ad
-	end
-
-	-- Điểm tâm tròn màu trắng
-	if not centerAdornment or not centerAdornment.Parent then
-		if centerAdornment then pcall(function() centerAdornment:Destroy() end) end
-		local cad = Instance.new("CylinderHandleAdornment")
-		cad.Name = "SafeSpot_CenterDot"
-		cad.Adornee = root
-		cad.Radius = CENTER_RADIUS
-		cad.Height = GROUND_THICKNESS + 0.05
-		cad.Color3 = COLOR_CENTER
-		cad.Transparency = 0.15
-		cad.ZIndex = 7
-		cad.AlwaysOnTop = false
-		cad.Visible = false
-		cad.Parent = root
-		centerAdornment = cad
-	end
-
-	-- Đường dẫn nối từ Player -> Safe Spot
-	if not lineAdornment or not lineAdornment.Parent then
-		if lineAdornment then pcall(function() lineAdornment:Destroy() end) end
-		local lad = Instance.new("LineHandleAdornment")
-		lad.Name = "SafeSpot_EscapeLine"
-		lad.Adornee = root
-		lad.Color3 = COLOR_LINE
-		lad.Thickness = 3.5
-		lad.Transparency = 0.20
-		lad.ZIndex = 6
-		lad.AlwaysOnTop = false
-		lad.Visible = false
-		lad.Parent = root
-		lineAdornment = lad
-	end
-end
-
---// Khởi tạo adornment cho từng điểm candidate
-local function ensureCandidateAdornment(index, root)
-	local entry = candidatePool[index]
-	if not entry then
-		local dot = Instance.new("CylinderHandleAdornment")
-		dot.Name = "SafeSpot_CandidateDot_" .. index
-		dot.Adornee = root
-		dot.Radius = 0.25
-		dot.Height = GROUND_THICKNESS
-		dot.ZIndex = 4
-		dot.AlwaysOnTop = false
-		dot.Visible = false
-		dot.Parent = root
-
-		local line = Instance.new("LineHandleAdornment")
-		line.Name = "SafeSpot_CandidateLine_" .. index
-		line.Adornee = root
-		line.Thickness = 1.2
-		line.ZIndex = 4
-		line.AlwaysOnTop = false
-		line.Visible = false
-		line.Parent = root
-
-		entry = { dot = dot, line = line }
-		candidatePool[index] = entry
-	else
-		if entry.dot and entry.dot.Adornee ~= root then
-			entry.dot.Adornee = root
-			entry.dot.Parent = root
-		end
-		if entry.line and entry.line.Adornee ~= root then
-			entry.line.Adornee = root
-			entry.line.Parent = root
-		end
-	end
-	return entry
-end
-
---// Ẩn visual candidate
-local function hideCandidateVisuals()
-	for _, entry in ipairs(candidatePool) do
-		if entry.dot and entry.dot.Parent then entry.dot.Visible = false end
-		if entry.line and entry.line.Parent then entry.line.Visible = false end
-	end
-end
-
---// Ẩn toàn bộ visual
-local function hideVisuals()
-	if markerAdornment and markerAdornment.Parent then markerAdornment.Visible = false end
-	if centerAdornment and centerAdornment.Parent then centerAdornment.Visible = false end
-	if lineAdornment and lineAdornment.Parent then lineAdornment.Visible = false end
-	hideCandidateVisuals()
-end
-
---// Cập nhật visual cho các điểm candidate đã quét
-local function updateCandidateVisuals(root, targetY)
-	if not showCandidatesVisual or not visualEnabled or not root or not root.Parent then
-		hideCandidateVisuals()
-		return
-	end
-
-	local playerFeetWorld = Vector3.new(root.Position.X, targetY + 0.05, root.Position.Z)
-	local localStart = root.CFrame:PointToObjectSpace(playerFeetWorld)
-
-	for i, cand in ipairs(lastEvaluatedCandidates) do
-		local entry = ensureCandidateAdornment(i, root)
-		local candWorld = Vector3.new(cand.pos.X, targetY + 0.05, cand.pos.Z)
-		local localEnd = root.CFrame:PointToObjectSpace(candWorld)
-
-		local color = cand.isSafe and Color3.fromRGB(0, 235, 140) or Color3.fromRGB(255, 60, 60)
-		local alpha = cand.isSafe and 0.35 or 0.55
-
-		-- 1. Dot tại điểm candidate
-		if entry.dot and entry.dot.Parent then
-			local desiredDotCF = CFrame.new(candWorld) * CFrame.Angles(math.rad(90), 0, 0)
-			entry.dot.CFrame = root.CFrame:ToObjectSpace(desiredDotCF)
-			entry.dot.Color3 = color
-			entry.dot.Transparency = alpha
-			entry.dot.Radius = cand.isSafe and 0.30 or 0.20
-			entry.dot.Visible = true
-		end
-
-		-- 2. Line nối từ chân Player -> candidate
-		if entry.line and entry.line.Parent then
-			local delta = localEnd - localStart
-			local length = delta.Magnitude
-			if length > 0.2 then
-				entry.line.CFrame = CFrame.lookAt(localStart, localEnd)
-				entry.line.Length = length
-				entry.line.Color3 = color
-				entry.line.Transparency = alpha + 0.15
-				entry.line.Thickness = cand.isSafe and 1.4 or 0.9
-				entry.line.Visible = true
-			else
-				entry.line.Visible = false
-			end
-		end
-	end
-
-	-- Ẩn các adornment không dùng đến
-	for i = #lastEvaluatedCandidates + 1, #candidatePool do
-		local entry = candidatePool[i]
-		if entry.dot and entry.dot.Parent then entry.dot.Visible = false end
-		if entry.line and entry.line.Parent then entry.line.Visible = false end
-	end
-end
-
---// Cập nhật vị trí hiển thị Safe Spot Marker trên sàn
-local function updateVisuals(root, safePos, targetY)
-	if not root or not root.Parent or not visualEnabled then
-		hideVisuals()
-		return
-	end
-
-	ensureVisuals(root)
-
-	local worldTargetPos = Vector3.new(safePos.X, targetY, safePos.Z)
-
-	-- 1. Cập nhật Marker ngoài
-	if markerAdornment and markerAdornment.Parent then
-		local desiredWorldCF = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
-		markerAdornment.CFrame = root.CFrame:ToObjectSpace(desiredWorldCF)
-		markerAdornment.Visible = true
-	end
-
-	-- 2. Cập nhật Center dot
-	if centerAdornment and centerAdornment.Parent then
-		local desiredCenterCF = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
-		centerAdornment.CFrame = root.CFrame:ToObjectSpace(desiredCenterCF)
-		centerAdornment.Visible = true
-	end
-
-	-- 3. Cập nhật Line dẫn đường từ chân Player -> Safe Spot
-	if lineAdornment and lineAdornment.Parent then
-		local playerFeetWorld = Vector3.new(root.Position.X, targetY + 0.1, root.Position.Z)
-		local safeFeetWorld = Vector3.new(safePos.X, targetY + 0.1, safePos.Z)
-
-		local localStart = root.CFrame:PointToObjectSpace(playerFeetWorld)
-		local localEnd = root.CFrame:PointToObjectSpace(safeFeetWorld)
-		local delta = localEnd - localStart
-		local length = delta.Magnitude
-
-		if length > 0.3 then
-			lineAdornment.CFrame = CFrame.new(localStart)
-			lineAdornment.Length = length
-			lineAdornment.CFrame = CFrame.lookAt(localStart, localEnd)
-			lineAdornment.Visible = true
-		else
-			lineAdornment.Visible = false
-		end
-	end
-
-	-- 4. Cập nhật Candidate Dots & Lines
-	updateCandidateVisuals(root, targetY)
-end
-
---// Vòng lặp Heartbeat: Khi Player dính nguy hiểm, tự động tính và giữ ổn định Safe Spot
+--// Vòng lặp Heartbeat: Thực hiện kiểm tra với Dynamic Scheduling (tiết kiệm CPU khi an toàn)
 local function onHeartbeat()
 	if not enabled then
-		hideVisuals()
+		safeSpotVisual.Hide()
 		return
 	end
 
 	local root = getPlayerRoot()
 	if not root or not root.Parent then
-		hideVisuals()
+		safeSpotVisual.Hide()
 		return
 	end
 
@@ -397,14 +215,24 @@ local function onHeartbeat()
 		inDanger, threatInfo, threatType = playerVisual.IsPlayerInDanger()
 	end
 
+	-- Dynamic Scheduling: Khi Player hoàn toàn an toàn và không đang tìm/né Safe Spot, throttle kiểm tra ~20Hz
+	local isCurrentlyActive = inDanger or (currentTargetSafeSpot ~= nil) or isFindingSafeSpot
+	if not isCurrentlyActive then
+		local now = os.clock()
+		if now - lastIdleCheck < 0.05 then
+			return
+		end
+		lastIdleCheck = now
+	end
+
 	local targetY = getPlayerGroundY(root)
+	local playerPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
 
 	if inDanger then
-		local playerPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
-
 		-- Kiểm tra xem Safe Spot đã chọn trước đó còn hợp lệ không:
-		-- 1. Điểm đó vẫn phải Safe (không bị chiêu mới đè lên).
+		-- 1. Điểm đó vẫn phải Safe (không bị đè bởi vùng đỏ hoặc vùng cam mới).
 		-- 2. Mối đe dọa (threat) của Player không bị đổi sang chiêu/loại khác.
+		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
 		local isSameThreat = (threatInfo == currentThreatInstance and threatType == currentThreatType)
 
@@ -419,37 +247,34 @@ local function onHeartbeat()
 				lastDistance = dist
 				isFindingSafeSpot = true
 
-				updateVisuals(root, spot, targetY)
+				safeSpotVisual.Update(root, spot, targetY, lastEvaluatedCandidates, visualEnabled, showCandidatesVisual)
 
 				for _, cb in ipairs(safeSpotChangedCallbacks) do
 					pcall(cb, true, spot, dist)
 				end
 			else
-				hideVisuals()
+				safeSpotVisual.Hide()
 			end
 		else
-			-- Safe Spot cũ vẫn an toàn và cùng mối nguy -> GIỮ NGUYÊN để không bị giật rung
-			local currentDist = (currentTargetSafeSpot - playerPos2D).Magnitude
-			lastDistance = currentDist
-
-			updateVisuals(root, currentTargetSafeSpot, targetY)
+			-- Safe Spot cũ vẫn an toàn và cùng mối nguy -> GIỮ NGUYÊN để chuyển động né mượt mà không rung lắc
+			lastDistance = distToTarget
+			safeSpotVisual.Update(root, currentTargetSafeSpot, targetY, lastEvaluatedCandidates, visualEnabled, showCandidatesVisual)
 
 			for _, cb in ipairs(safeSpotChangedCallbacks) do
-				pcall(cb, true, currentTargetSafeSpot, currentDist)
+				pcall(cb, true, currentTargetSafeSpot, distToTarget)
 			end
 		end
 	else
-		-- Khi player không còn trong vùng nguy hiểm:
-		-- Nếu vẫn còn targetSafeSpot và người chơi chưa chạm tới đích (currentDist > 0.8 studs), tiếp tục duy trì visual
-		local playerPos2D = Vector3.new(root.Position.X, 0, root.Position.Z)
+		-- Khi player đã bước ra ngoài vùng nguy hiểm:
+		-- Nếu vẫn còn targetSafeSpot và người chơi chưa chạm tới đích (distToTarget > 0.8 studs), tiếp tục duy trì để Auto-Dodge snap hoàn tất
+		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
-		local currentDist = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 
-		if isTargetStillSafe and currentDist > 0.8 then
-			lastDistance = currentDist
-			updateVisuals(root, currentTargetSafeSpot, targetY)
+		if isTargetStillSafe and distToTarget > 0.8 then
+			lastDistance = distToTarget
+			safeSpotVisual.Update(root, currentTargetSafeSpot, targetY, lastEvaluatedCandidates, visualEnabled, showCandidatesVisual)
 			for _, cb in ipairs(safeSpotChangedCallbacks) do
-				pcall(cb, true, currentTargetSafeSpot, currentDist)
+				pcall(cb, true, currentTargetSafeSpot, distToTarget)
 			end
 		else
 			-- Khi đã thực sự tới đích hoặc điểm không còn an toàn -> ẩn visual và reset
@@ -459,7 +284,7 @@ local function onHeartbeat()
 				currentThreatInstance = nil
 				currentThreatType = nil
 				lastDistance = 0
-				hideVisuals()
+				safeSpotVisual.Hide()
 
 				for _, cb in ipairs(safeSpotChangedCallbacks) do
 					pcall(cb, false, nil, 0)
@@ -474,6 +299,14 @@ local function startTracking()
 	if not heartbeatConnection then
 		heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
 	end
+	if not dangerChangedConnection and playerVisual.OnDangerStatusChanged then
+		-- Event-Driven Wakeup: Phản hồi ngay lập tức tại frame nguy hiểm xuất hiện
+		dangerChangedConnection = playerVisual.OnDangerStatusChanged(function(nowInDanger)
+			if nowInDanger and enabled then
+				onHeartbeat()
+			end
+		end)
+	end
 end
 
 --// Dọn dẹp Safe Spot
@@ -482,20 +315,14 @@ function safeSpot.Cleanup()
 		heartbeatConnection:Disconnect()
 		heartbeatConnection = nil
 	end
-	if markerAdornment then pcall(function() markerAdornment:Destroy() end); markerAdornment = nil end
-	if centerAdornment then pcall(function() centerAdornment:Destroy() end); centerAdornment = nil end
-	if lineAdornment then pcall(function() lineAdornment:Destroy() end); lineAdornment = nil end
-	for _, entry in ipairs(candidatePool) do
-		if entry.dot then pcall(function() entry.dot:Destroy() end) end
-		if entry.line then pcall(function() entry.line:Destroy() end) end
-	end
-	table.clear(candidatePool)
+	safeSpotVisual.Cleanup()
 	table.clear(lastEvaluatedCandidates)
 	currentTargetSafeSpot = nil
 	currentThreatInstance = nil
 	currentThreatType = nil
 	lastDistance = 0
 	isFindingSafeSpot = false
+	lastIdleCheck = 0
 end
 
 --// API Public
@@ -512,7 +339,7 @@ end
 function safeSpot.SetVisualEnabled(state)
 	visualEnabled = state and true or false
 	if not visualEnabled then
-		hideVisuals()
+		safeSpotVisual.Hide()
 	end
 end
 
@@ -523,7 +350,7 @@ end
 function safeSpot.SetShowCandidates(state)
 	showCandidatesVisual = state and true or false
 	if not showCandidatesVisual then
-		hideCandidateVisuals()
+		safeSpotVisual.HideCandidates()
 	end
 end
 
@@ -534,7 +361,7 @@ end
 function safeSpot.SetEnabled(state)
 	enabled = state and true or false
 	if not enabled then
-		hideVisuals()
+		safeSpotVisual.Hide()
 	end
 end
 
@@ -557,14 +384,7 @@ local function hookRespawn()
 	local lp = player or Players.LocalPlayer
 	if not lp then return end
 	lp.CharacterAdded:Connect(function()
-		if markerAdornment then pcall(function() markerAdornment:Destroy() end); markerAdornment = nil end
-		if centerAdornment then pcall(function() centerAdornment:Destroy() end); centerAdornment = nil end
-		if lineAdornment then pcall(function() lineAdornment:Destroy() end); lineAdornment = nil end
-		for _, entry in ipairs(candidatePool) do
-			if entry.dot then pcall(function() entry.dot:Destroy() end) end
-			if entry.line then pcall(function() entry.line:Destroy() end) end
-		end
-		table.clear(candidatePool)
+		safeSpotVisual.Cleanup()
 	end)
 end
 hookRespawn()
