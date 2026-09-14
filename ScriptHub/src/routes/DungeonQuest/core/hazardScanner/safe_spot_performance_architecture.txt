@@ -1,0 +1,594 @@
+SAFE SPOT / DANGER PREDICTION ARCHITECTURE
+Performance-first design for continuously changing DangerZones
+===============================================================
+
+0. PURPOSE
+----------
+Mục tiêu không phải tìm Safe Spot tối ưu tuyệt đối ở mỗi frame.
+
+Mục tiêu:
+- duy trì một Safe Spot đủ tốt;
+- phản ứng nhanh khi nguy hiểm thực sự thay đổi;
+- không tính lại toàn bộ khi thay đổi không ảnh hưởng quyết định;
+- hạn chế tối đa PathfindingService;
+- dùng phép tính rẻ trước phép tính đắt.
+
+Source hiện tại đã có:
+- Radial Escape Sampling;
+- 16 hướng và nhiều bán kính;
+- IsPointSafe;
+- hazard + trajectory query;
+- currentTargetSafeSpot và target persistence;
+- Heartbeat tracking.
+
+Thiết kế mới giữ các ý tưởng này nhưng chuyển sang incremental + budgeted computation.
+
+
+1. CORE PRINCIPLE
+-----------------
+"Không tính lại Safe Spot chỉ vì DangerZone đã thay đổi.
+Chỉ tính lại khi thay đổi đó có khả năng làm thay đổi quyết định."
+
+Không dùng:
+Heartbeat -> scan tất cả -> predict tất cả -> test tất cả -> pathfinding tất cả.
+
+Dùng:
+DangerZone update
+ -> relevance check
+ -> invalidate nếu cần
+ -> budgeted Safe Spot solve.
+
+
+2. HIGH-LEVEL ARCHITECTURE
+--------------------------
+
+DangerZone Source
+      |
+      v
+DangerZoneRegistry / State Cache
+      |
+      +------------------+
+      |                  |
+      v                  v
+Spatial Index       Motion/Trajectory State
+      |                  |
+      +---------+--------+
+                v
+      Relevance / Invalidation
+                |
+        only when necessary
+                v
+        SafeSpotResolver
+                |
+       +--------+--------+
+       |        |        |
+       v        v        v
+ Candidate   Danger   Reachability
+ Generator   Filter    Evaluator
+       |        |        |
+       +--------+--------+
+                v
+        Candidate Scorer
+                |
+                v
+        Target Persistence
+                |
+                v
+          Current Safe Spot
+
+
+3. MODULE RESPONSIBILITIES
+--------------------------
+
+DangerZoneRegistry
+- là nguồn state chuẩn của dynamic DangerZone.
+- lưu id, shape/type, position, previousPosition, velocity/motion,
+  extent/radius, active, dangerType, trajectory/target data,
+  lastUpdateTime, revision.
+- API dự kiến: GetNearbyZones(), GetRelevantZones(), GetZone(),
+  GetRevision().
+
+DangerZoneSpatialIndex
+- broad-phase spatial filtering.
+- grid/bucket là lựa chọn ban đầu đơn giản.
+- mục tiêu là loại zone quá xa trước narrow-phase.
+
+DangerPredictor
+- xử lý hai nhóm:
+  1) trajectory-based;
+  2) homing/targeted.
+- dự đoán ngắn hạn, không mô phỏng vô hạn.
+- không gọi PathfindingService.
+
+DangerQuery
+- point/segment/time safety query.
+- dùng state từ Registry + Predictor.
+
+SafeSpotInvalidation
+- quyết định một thay đổi DangerZone có thực sự cần recompute không.
+- không đồng nhất "zone changed" với "target invalid".
+
+CandidateGenerator
+- giữ Radial Sampling.
+- có thể progressive: coarse -> expand resolution nếu chưa đủ tốt.
+
+CandidateFilter
+- cheap rejection.
+- không pathfinding.
+
+ClearanceEvaluator
+- đánh giá khoảng cách an toàn / clearance / risk.
+
+ReachabilityEvaluator
+- cheap reachability trước;
+- PathfindingService chỉ cho top-K candidate.
+
+CandidateScorer
+- ranking cuối cùng.
+- không tự mutate world state.
+
+SafeSpotState
+- current target, threat identity/type, revisions, timestamps.
+
+SafeSpotScheduler
+- update frequency, event handling, computation budget.
+
+SafeSpotVisualizer
+- chỉ debug/visualization, không tham gia solver.
+
+
+4. PLAYER RELEVANCE REGION
+--------------------------
+Không xét toàn map.
+
+Tạo vùng ảnh hưởng bao quanh:
+- player;
+- current Safe Spot;
+- candidate escape region;
+- prediction margin;
+- nếu cần, path corridor.
+
+Chỉ DangerZone có khả năng giao vùng này mới vào expensive checks.
+
+
+5. CURRENT SAFE SPOT FIRST
+--------------------------
+Trước mọi solve:
+1. current target còn trong bounds?
+2. còn reachable?
+3. clearance còn đủ?
+4. có predicted collision?
+
+Nếu vẫn hợp lệ:
+=> KEEP.
+
+Không generate candidate.
+Không gọi Pathfinding.
+Không score lại toàn bộ.
+
+Target persistence là optimization quan trọng.
+
+
+6. CANDIDATE GENERATION
+-----------------------
+Giữ cấu trúc hiện tại:
+- 16 directions;
+- nhiều radii;
+- tối đa 192 candidate.
+
+Nhưng không nhất thiết xét cả 192.
+
+Progressive sampling:
+PASS 1: 8 directions + vài radii.
+Nếu tìm được candidate đủ tốt -> stop.
+Nếu chưa -> mở rộng directions/radii.
+Cuối cùng mới dùng full 16 x 12.
+
+192 là upper bound, không phải workload bắt buộc.
+
+
+7. CHEAP-TO-EXPENSIVE FILTER PIPELINE
+-------------------------------------
+
+Candidate
+   |
+   v
+[1] Basic bounds
+   |
+   v
+[2] Static geometry
+   |
+   v
+[3] Broad-phase dynamic danger
+   |
+   v
+[4] Short-horizon prediction
+   |
+   v
+[5] Clearance
+   |
+   v
+[6] Reachability
+   |
+   v
+[7] Final score
+
+Fail ở tầng nào thì dừng ngay.
+
+
+8. FUTURE DANGER / TEMPORAL CHECK
+---------------------------------
+Không chỉ hỏi:
+"Candidate hiện tại có nằm trong DangerZone không?"
+
+Cần hỏi:
+"Nếu player di chuyển tới candidate này, DangerZone có thể chiếm vị trí đó trong khoảng thời gian di chuyển không?"
+
+Dùng prediction horizon hữu hạn:
+t0, t1, t2, ... tN.
+
+Adaptive sampling:
+- zone gần / nhanh -> kiểm tra dày hơn;
+- zone xa / chậm -> kiểm tra thưa hơn.
+
+Không cần mô phỏng toàn bộ tương lai.
+
+
+9. HOMING DANGERZONE
+--------------------
+Homing không nên được xem như trajectory cố định.
+
+State:
+- current position;
+- speed;
+- direction-to-player;
+- target;
+- retarget behavior.
+
+Prediction chỉ cần đủ chính xác cho short horizon.
+
+Nếu player/zone chưa thay đổi đáng kể:
+=> không cần rebuild prediction ở mọi frame.
+
+Dùng threshold:
+- position delta;
+- velocity delta;
+- direction angle;
+- target delta;
+- time since last prediction.
+
+
+10. TIME-TO-IMPACT / ARRIVAL
+----------------------------
+Candidate nên có dữ liệu:
+- arrivalTime;
+- timeToDanger;
+- minimumClearance;
+- predictedCollision;
+- dangerSeverity.
+
+Ví dụ:
+arrival = 0.8s, danger = 0.5s -> reject.
+arrival = 0.8s, danger = 1.8s -> có thể giữ.
+
+
+11. PATHFINDING
+---------------
+Không chạy PathfindingService cho toàn bộ candidates.
+
+Ví dụ:
+192
+ -> 60 sau geometry
+ -> 15 sau prediction
+ -> 5 sau clearance
+ -> Pathfinding top 5.
+
+Pathfinding là final-stage evaluator, không phải candidate generator.
+
+
+12. SCORING
+----------
+Không chỉ chọn điểm gần player.
+
+Score có thể gồm:
+score =
+    pathCostWeight * normalizedPathCost
+  + dangerRiskWeight * dangerRisk
+  + clearanceWeight * inverseClearance
+  + directionChangeWeight * directionChange
+  + instabilityWeight * targetInstability
+
+Hard constraints phải filter trước; score chỉ chạy trên tập nhỏ.
+
+
+13. TARGET HYSTERESIS
+---------------------
+Không đổi target chỉ vì candidate mới tốt hơn rất ít.
+
+Switch khi:
+- current target invalid;
+- predicted danger chạm target;
+- clearance dưới threshold;
+- path không còn reachable;
+- candidate mới tốt hơn đáng kể;
+- threat state thay đổi nghiêm trọng.
+
+Mục tiêu:
+- giảm jitter;
+- giảm pathfinding;
+- giảm recomputation.
+
+
+14. UPDATE SCHEDULING
+--------------------
+Không để mọi thứ chạy cùng frequency trên Heartbeat.
+
+EVENT:
+- zone spawn/remove;
+- trajectory change;
+- target change.
+
+FAST:
+- current target validity;
+- nearby high-speed zones;
+- critical threats.
+
+SLOW:
+- far/low-risk zones;
+- cache maintenance.
+
+ON-DEMAND:
+- Safe Spot solve chỉ chạy khi invalidated.
+
+
+15. COMPUTATION BUDGET
+----------------------
+Đặt budget:
+- max prediction checks per slice;
+- max candidates per slice;
+- max Pathfinding calls;
+- max solver time budget.
+
+Nếu chưa hoàn thành trong slice:
+- giữ current target nếu còn hợp lệ;
+- tiếp tục ở tick sau;
+- tránh CPU spike.
+
+
+16. CACHE / REVISION
+--------------------
+Cache:
+- player radius;
+- candidate directions;
+- local candidate offsets;
+- static geometry;
+- prediction state;
+- path results nếu context còn hợp lệ.
+
+Dynamic data phải có revision/version.
+
+Cache validity dựa trên:
+zoneRevision
++ playerRegionRevision
++ candidateId
++ relevantStateRevision.
+
+
+17. STATIC VS DYNAMIC
+---------------------
+Static:
+- map geometry;
+- permanent obstacles/hazards.
+
+Dynamic:
+- projectile;
+- moving DangerZone;
+- homing DangerZone;
+- temporary attack area.
+
+Static data có thể cache/precompute.
+Dynamic data cần incremental update.
+
+
+18. DANGERZONE CHANGE SIGNIFICANCE
+----------------------------------
+Không phải mọi movement đều đáng kể.
+
+Chỉ invalidate khi thay đổi vượt threshold:
+- positionDeltaThreshold;
+- velocityDeltaThreshold;
+- directionAngleThreshold;
+- targetDeltaThreshold.
+
+Ví dụ:
+zone dịch 0.05 stud ở xa -> không invalidate.
+zone đổi hướng mạnh ngay cạnh current target -> invalidate.
+
+
+19. SUGGESTED MODULE TREE
+-------------------------
+SafeSpot/
+  SafeSpotResolver.luau
+  SafeSpotState.luau
+  SafeSpotScheduler.luau
+  SafeSpotInvalidation.luau
+  CandidateGenerator.luau
+  CandidateFilter.luau
+  CandidateScorer.luau
+  DangerZoneRegistry.luau
+  DangerZoneSpatialIndex.luau
+  DangerPredictor.luau
+  DangerQuery.luau
+  ClearanceEvaluator.luau
+  ReachabilityEvaluator.luau
+  SafeSpotVisualizer.luau
+  SafeSpotConfig.luau
+
+
+20. RESPONSIBILITY RULES
+------------------------
+SafeSpotResolver:
+- orchestration only.
+
+DangerZoneRegistry:
+- state management only.
+
+DangerPredictor:
+- prediction only.
+
+CandidateGenerator:
+- candidate generation only.
+
+CandidateFilter:
+- cheap rejection only.
+
+ReachabilityEvaluator:
+- reachability/pathfinding only.
+
+CandidateScorer:
+- ranking only.
+
+SafeSpotState:
+- decision state only.
+
+SafeSpotVisualizer:
+- debug only.
+
+
+21. RECOMMENDED SOLVE FLOW
+--------------------------
+
+REQUEST SOLVE
+    |
+    v
+Check current Safe Spot
+    |
+    +-- VALID --> KEEP
+    |
+    +-- INVALID
+          |
+          v
+Query relevant DangerZones
+          |
+          v
+Generate coarse candidates
+          |
+          v
+Static geometry filter
+          |
+          v
+Dynamic danger prediction
+          |
+          v
+Clearance filter
+          |
+          v
+Enough good candidates?
+       /          \
+     YES           NO
+      |             |
+      v             v
+    Top-K       Expand sampling
+      |             |
+      +------<------+
+             |
+             v
+       Reachability
+             |
+             v
+          Score
+             |
+             v
+        Commit target
+
+
+22. PERFORMANCE INVARIANTS
+--------------------------
+1. Không full-world scan mỗi Heartbeat.
+2. Không Pathfinding cho toàn bộ candidates.
+3. Không recompute khi current target vẫn hợp lệ.
+4. Không predict zone không liên quan.
+5. Cheap query trước expensive query.
+6. Dynamic zone có update priority khác nhau.
+7. Visualizer không tham gia solver.
+8. Có budget chống CPU spike.
+9. Revision-based invalidation cho cache.
+10. Solver có thể defer một tick mà không phá current decision.
+
+
+23. KEEP / CHANGE FROM CURRENT safeSpot
+---------------------------------------
+NÊN GIỮ:
+- Radial Escape Sampling;
+- 16 directions;
+- nhiều radius;
+- player radius;
+- safety buffer;
+- currentTargetSafeSpot;
+- threat instance/type tracking;
+- visualizer.
+
+NÊN THAY:
+- IsPointSafe -> pipeline nhiều tầng;
+- Heartbeat -> scheduler/invalidation;
+- full hazard query -> registry + spatial broad-phase;
+- fixed full sampling -> progressive sampling;
+- direct expensive checks -> cheap-to-expensive;
+- Pathfinding -> top-K final stage.
+
+
+24. MIGRATION STRATEGY
+----------------------
+Phase 1: tách State + CandidateGenerator + Visualizer.
+Phase 2: tạo DangerZoneRegistry.
+Phase 3: thêm SpatialIndex.
+Phase 4: thêm DangerPredictor cho trajectory/homing.
+Phase 5: tạo CandidateFilter pipeline.
+Phase 6: đưa Pathfinding xuống top-K.
+Phase 7: thêm invalidation + scheduler + budget.
+Phase 8: benchmark và tune thresholds.
+
+Không refactor toàn bộ một lần.
+
+
+25. BENCHMARK METRICS
+---------------------
+Theo dõi:
+- solve count/sec;
+- average/worst solve time;
+- Pathfinding calls/sec;
+- candidates generated/solve;
+- rejection count theo từng stage;
+- relevant zones/solve;
+- prediction checks/solve;
+- target switches/sec;
+- frame spikes;
+- tỷ lệ solve giữ current target.
+
+Tối ưu performance trước khi tăng algorithmic complexity.
+
+
+26. IMPORTANT SOURCE LIMITATION
+-------------------------------
+File safeSpot hiện tại cho biết cách Safe Spot QUERY hazard/trajectory và duy trì target.
+Nó chưa đủ để kết luận:
+- DangerZone được tạo ở đâu;
+- movement state nằm ở đâu;
+- trajectory sinh ở đâu;
+- homing target update thế nào;
+- registry hiện có hay không;
+- lifecycle spawn/remove;
+- số lượng zone thực tế;
+- shape cụ thể của từng loại zone.
+
+Vì vậy Registry, SpatialIndex, Predictor và Scheduler ở tài liệu này là
+KIẾN TRÚC ĐỀ XUẤT, không phải mô tả implementation hiện tại.
+
+Trước khi code cần inspect:
+- geometry module;
+- trajectory module;
+- DangerZone creator/manager/registry;
+- source tạo moving/homing DangerZone.
+
+===============================================================
+END

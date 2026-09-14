@@ -12,6 +12,7 @@ local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
 local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
 local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
 local safeSpot = require("@routes/DungeonQuest/core/hazardScanner/safeSpot")
+local dodgeController = require("@routes/DungeonQuest/core/hazardScanner/dodgeController")
 
 --// Table
 local hazardScanner = {}
@@ -23,8 +24,10 @@ trajectory.BindDetection(detection)
 
 --// Geometry (Danger Zones)
 hazardScanner.IsPointInAnyHazard = geometry.IsPointInAnyHazard
-hazardScanner.GetHitboxPadding = geometry.GetHitboxPadding
-hazardScanner.SetHitboxPadding = geometry.SetHitboxPadding
+hazardScanner.GetHazardPadding = geometry.GetHazardPadding
+hazardScanner.SetHazardPadding = geometry.SetHazardPadding
+hazardScanner.GetHitboxPadding = geometry.GetHazardPadding
+hazardScanner.SetHitboxPadding = geometry.SetHazardPadding
 hazardScanner.GetHazardZones = geometry.GetHazardZones
 hazardScanner.AddForceCircleName = geometry.AddForceCircleName
 hazardScanner.GetForceCircleNames = geometry.GetForceCircleNames
@@ -48,6 +51,18 @@ hazardScanner.SetSafeSpotVisualEnabled = safeSpot.SetVisualEnabled
 hazardScanner.IsSafeSpotVisualEnabled = safeSpot.IsVisualEnabled
 hazardScanner.SetSafeSpotEnabled = safeSpot.SetEnabled
 hazardScanner.IsSafeSpotEnabled = safeSpot.IsEnabled
+hazardScanner.SetSafeSpotBuffer = safeSpot.SetSafetyBuffer
+hazardScanner.GetSafeSpotBuffer = safeSpot.GetSafetyBuffer
+hazardScanner.SetShowCandidates = safeSpot.SetShowCandidates
+hazardScanner.IsShowCandidates = safeSpot.IsShowCandidates
+
+--// Auto Dodge Controller (MoveTo + Final Snap)
+hazardScanner.SetAutoDodgeEnabled = dodgeController.SetEnabled
+hazardScanner.IsAutoDodgeEnabled = dodgeController.IsEnabled
+hazardScanner.SetDodgeSnapDistance = dodgeController.SetSnapDistance
+hazardScanner.GetDodgeSnapDistance = dodgeController.GetSnapDistance
+hazardScanner.IsCurrentlyDodging = dodgeController.IsDodging
+hazardScanner.OnDodgeStateChanged = dodgeController.OnDodgeStateChanged
 
 --// Ground Visualizer (Debug Danger Zones)
 hazardScanner.SetVisualizerEnabled = visualizer.SetEnabled

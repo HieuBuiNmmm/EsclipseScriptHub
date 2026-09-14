@@ -126,16 +126,16 @@ local function onHeartbeat()
 		ad.CFrame = root.CFrame:ToObjectSpace(desiredWorldCFrame)
 	end
 
-	-- 2. Đánh giá trạng thái nguy hiểm (In Danger Check)
+	-- 2. Đánh giá trạng thái nguy hiểm (In Danger Check: Giao thoa Vòng tròn Player với Danger Zones)
 	local playerPos = Vector3.new(root.Position.X, 0, root.Position.Z)
 
-	-- Kiểm tra Ground Danger Zones trước
-	local inGround, hazardInfo, hitPart = geometry.IsPointInAnyHazard(playerPos)
+	-- Kiểm tra Ground Danger Zones với bán kính vòng tròn Player
+	local inGround, hazardInfo, hitPart = geometry.IsPointInAnyHazard(playerPos, nil, playerRadius)
 	local inTraj, trajHazard = false, nil
 
-	-- Nếu chưa dính Ground Zone, kiểm tra tiếp Trajectory Corridor
+	-- Nếu chưa dính Ground Zone, kiểm tra tiếp Trajectory Corridor với bán kính vòng tròn Player
 	if not inGround and trajectory.IsPointInAnyTrajectory then
-		inTraj, trajHazard = trajectory.IsPointInAnyTrajectory(playerPos)
+		inTraj, trajHazard = trajectory.IsPointInAnyTrajectory(playerPos, playerRadius)
 	end
 
 	local nowInDanger = (inGround or inTraj)
@@ -214,25 +214,12 @@ function playerVisual.SetRadius(val)
 		if playerAdornment and playerAdornment.Parent then
 			playerAdornment.Radius = playerRadius
 		end
-		if geometry.GetHitboxPadding() ~= playerRadius then
-			geometry.SetHitboxPadding(playerRadius)
-		end
 	end
 end
 
 function playerVisual.GetRadius()
 	return playerRadius
 end
-
---// Lắng nghe thay đổi từ geometry padding để đồng bộ ngược lại
-geometry.OnPaddingChanged(function(newPadding)
-	if type(newPadding) == "number" and newPadding >= 0.1 and newPadding ~= playerRadius then
-		playerRadius = newPadding
-		if playerAdornment and playerAdornment.Parent then
-			playerAdornment.Radius = playerRadius
-		end
-	end
-end)
 
 --// Tự động dọn dẹp và kết nối khi hồi sinh nhân vật mới
 local function hookLocalPlayer()

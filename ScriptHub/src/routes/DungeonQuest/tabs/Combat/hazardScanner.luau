@@ -18,6 +18,7 @@ return function(window, tab)
 	local statusLabel = rightSection:Label({ Text = "Detector: <font color='rgb(255,80,80)'>Disabled</font>" })
 	local playerDangerLabel = rightSection:Label({ Text = "Player: <font color='rgb(0,255,170)'>SAFE</font>" })
 	local safeSpotLabel = rightSection:Label({ Text = "Safe Spot: <font color='rgb(160,160,160)'>None Needed</font>" })
+	local dodgeStatusLabel = rightSection:Label({ Text = "Auto Dodge: <font color='rgb(160,160,160)'>Idle</font>" })
 	local activeCountLabel = rightSection:Label({ Text = "Active Hazards: <font color='rgb(160,160,160)'>0</font>" })
 	local lastHazardLabel = rightSection:Label({ Text = "Last Detected: <font color='rgb(160,160,160)'>None</font>" })
 
@@ -49,6 +50,18 @@ return function(window, tab)
 		else
 			pcall(function()
 				safeSpotLabel:UpdateName("Safe Spot: <font color='rgb(160,160,160)'>None Needed</font>")
+			end)
+		end
+	end)
+
+	hazardScanner.OnDodgeStateChanged(function(isDodging, spot, dist)
+		if isDodging and spot then
+			pcall(function()
+				dodgeStatusLabel:UpdateName(("Auto Dodge: <font color='rgb(0,255,200)'><b>Dodging (%.1f studs)</b></font>"):format(dist))
+			end)
+		else
+			pcall(function()
+				dodgeStatusLabel:UpdateName("Auto Dodge: <font color='rgb(160,160,160)'>Idle</font>")
 			end)
 		end
 	end)
@@ -171,6 +184,48 @@ return function(window, tab)
 		end),
 	}, "Toggle_HazardSafeSpotVisual")
 
+	leftSection:Toggle({
+		Name = "Show Candidate Points & Rays (Scan Grid)",
+		Default = hazardScanner.IsShowCandidates(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetShowCandidates(state)
+		end),
+	}, "Toggle_HazardShowCandidates")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Safe Spot Safety Margin",
+		Suffix = " studs",
+		Default = hazardScanner.GetSafeSpotBuffer(),
+		Minimum = 0.0,
+		Maximum = 6.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetSafeSpotBuffer(val)
+		end),
+	}, "Slider_HazardSafeSpotBuffer"))
+
+	leftSection:Toggle({
+		Name = "Enable Auto Dodge (MoveTo + Snap)",
+		Default = hazardScanner.IsAutoDodgeEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetAutoDodgeEnabled(state)
+		end),
+	}, "Toggle_HazardAutoDodgeEnabled")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Dodge Snap Distance",
+		Suffix = " studs",
+		Default = hazardScanner.GetDodgeSnapDistance(),
+		Minimum = 0.5,
+		Maximum = 5.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetDodgeSnapDistance(val)
+		end),
+	}, "Slider_HazardDodgeSnapDistance"))
+
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Trajectory Length",
 		Suffix = " studs",
@@ -201,17 +256,17 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeLogRejected")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Hitbox Padding",
+		Name = "Danger Zone Padding",
 		Suffix = " studs",
-		Default = hazardScanner.GetHitboxPadding(),
+		Default = hazardScanner.GetHazardPadding(),
 		Minimum = 0,
 		Maximum = 10,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetHitboxPadding(val)
+			hazardScanner.SetHazardPadding(val)
 		end),
-	}, "Slider_HazardScannerHitboxPadding"))
+	}, "Slider_HazardZonePadding"))
 
 	leftSection:Button({
 		Name = "Clear Console",

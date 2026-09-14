@@ -327,9 +327,10 @@ function trajectory.RefreshAll()
 	end
 end
 
---// Kiểm tra xem điểm P (X-Z) có đang nằm trong dải quỹ đạo (Orange Corridor) của bất kỳ projectile di chuyển nào không
-function trajectory.IsPointInAnyTrajectory(point)
+--// Kiểm tra xem điểm P (hoặc vòng tròn bán kính extraRadius) có đang giao thoa với dải quỹ đạo nào không
+function trajectory.IsPointInAnyTrajectory(point, extraRadius)
 	local px, pz = point.X, point.Z
+	extraRadius = extraRadius or 0
 
 	for info, record in pairs(activeRecords) do
 		if record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
@@ -344,8 +345,23 @@ function trajectory.IsPointInAnyTrajectory(point)
 				local projU = vx * dir.X + vz * dir.Z
 				local projN = vx * normal.X + vz * normal.Z
 
-				if projU >= 0 and projU <= predictionLength and math.abs(projN) <= (spanWidth / 2) then
-					return true, info
+				local halfWidth = spanWidth / 2
+				if extraRadius <= 0 then
+					if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
+						return true, info
+					end
+				else
+					-- Giao thoa Vòng tròn (Player Circle) với dải hộp quỹ đạo
+					local dU = 0
+					if projU < 0 then
+						dU = -projU
+					elseif projU > predictionLength then
+						dU = projU - predictionLength
+					end
+					local dN = math.max(0, math.abs(projN) - halfWidth)
+					if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
+						return true, info
+					end
 				end
 			end
 		end

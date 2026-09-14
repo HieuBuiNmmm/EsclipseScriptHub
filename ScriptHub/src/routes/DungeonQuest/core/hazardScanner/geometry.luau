@@ -11,7 +11,7 @@ local geometry = {}
 
 --// State
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
-local playerHitboxPadding = 1.8
+local hazardPadding = 0.0 -- Mặc định = 0.0 (vừa khít 100% với kích thước thực tế của part)
 local data = nil
 local paddingChangedCallbacks = {}
 
@@ -23,9 +23,10 @@ function geometry.BindDetection(dataSource)
 	data = dataSource or nil
 end
 
-function geometry.GetHitboxPadding()
-	return playerHitboxPadding
+function geometry.GetHazardPadding()
+	return hazardPadding
 end
+geometry.GetHitboxPadding = geometry.GetHazardPadding
 
 --// Xoa toan bo HazardZones cache tren cac hazard hien tai
 function geometry.InvalidateCache()
@@ -42,15 +43,16 @@ function geometry.OnPaddingChanged(callback)
 	end
 end
 
-function geometry.SetHitboxPadding(value)
-	if type(value) == "number" and value >= 0 and value ~= playerHitboxPadding then
-		playerHitboxPadding = value
+function geometry.SetHazardPadding(value)
+	if type(value) == "number" and value >= 0 and value ~= hazardPadding then
+		hazardPadding = value
 		geometry.InvalidateCache()
 		for _, cb in ipairs(paddingChangedCallbacks) do
-			pcall(cb, playerHitboxPadding)
+			pcall(cb, hazardPadding)
 		end
 	end
 end
+geometry.SetHitboxPadding = geometry.SetHazardPadding
 
 --// Danh sách ngoại lệ: các đối tượng (theo tên hoặc từ khóa) bị xem là Box/Mesh
 --// nhưng thực tế nên được vẽ và tính toán thành VÙNG TRÒN (Circle Danger Zone).
@@ -102,14 +104,15 @@ local function computePartZone(part, forceCircle)
 		return { radius = math.max(size.X, size.Y, size.Z) / 2 }
 	end
 
-	local half = Vector3.new(math.max(size.X, 0) / 2 + playerHitboxPadding, 0, math.max(size.Z, 0) / 2 + playerHitboxPadding)
+	local half = Vector3.new(math.max(size.X, 0) / 2 + hazardPadding, 0, math.max(size.Z, 0) / 2 + hazardPadding)
 	return { half = half, cframe = part.CFrame }
 end
 
---// Kiem tra diem P (X-Z) co nam trong 1 zone con (da ke padding) khong
-local function isPointInZone(point, zone)
+--// Kiem tra diem P (X-Z) hoac vong tron ban kinh extraRadius co giao thoa voi 1 zone con khong
+local function isPointInZone(point, zone, extraRadius)
 	if not zone then return false end
 	local px, pz = point.X, point.Z
+	extraRadius = extraRadius or 0
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
@@ -117,15 +120,24 @@ local function isPointInZone(point, zone)
 		local cz = pos and pos.Z or zone.cz or 0
 		local dx = px - cx
 		local dz = pz - cz
-		local r = zone.radius + playerHitboxPadding
+		local r = zone.radius + hazardPadding + extraRadius
 		return (dx * dx + dz * dz) <= (r * r)
 	end
 
 	local cf = (zone.part and zone.part.Parent) and zone.part.CFrame or zone.cframe
 	if cf then
 		local localPoint = cf:PointToObjectSpace(point)
-		return math.abs(localPoint.X) <= zone.half.X
-			and math.abs(localPoint.Z) <= zone.half.Z
+		local halfX = zone.half.X
+		local halfZ = zone.half.Z
+
+		if extraRadius <= 0 then
+			return math.abs(localPoint.X) <= halfX and math.abs(localPoint.Z) <= halfZ
+		else
+			-- Giao thoa chính xác giữa Vòng tròn Player (bán kính extraRadius) với Hộp OBB
+			local dx = math.max(0, math.abs(localPoint.X) - halfX)
+			local dz = math.max(0, math.abs(localPoint.Z) - halfZ)
+			return (dx * dx + dz * dz) <= (extraRadius * extraRadius)
+		end
 	end
 
 	return false
@@ -160,7 +172,7 @@ local function buildHazardZones(hazardInfo)
 	for _, part in ipairs(parts) do
 		local pos = part.Position
 		local size = part.Size
-		local radius2D = math.max(size.X, size.Y, size.Z) / 2 + playerHitboxPadding
+		local radius2D = math.max(size.X, size.Y, size.Z) / 2 + hazardPadding
 
 		minX = math.min(minX, pos.X - radius2D)
 		maxX = math.max(maxX, pos.X + radius2D)
@@ -205,11 +217,12 @@ function geometry.GetHazardZones(info)
 	return getHazardZones(info)
 end
 
---// Query: kiem tra diem P co dính hazard nao khong
+--// Query: kiem tra diem P (hoac vong tron player ban kinh extraRadius) co dính hazard nao khong
 --// Tra ve: hit (bool), hazardInfo (gan nhat), hitPart
-function geometry.IsPointInAnyHazard(point, ignoredInstance)
+function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius)
 	local det = data
 	if not det then return false, nil, nil end
+	extraRadius = extraRadius or 0
 
 	local bestDistSq = math.huge
 	local foundInfo, foundPart = nil, nil
@@ -236,14 +249,15 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance)
 		local dx = point.X - cx
 		local dz = point.Z - cz
 		local distSq = dx * dx + dz * dz
-		if distSq > hazardZones.boundingRadius * hazardZones.boundingRadius then
+		local totalBounding = hazardZones.boundingRadius + extraRadius
+		if distSq > totalBounding * totalBounding then
 			continue
 		end
 
 		-- Narrow phase: union per-part, re-check part con song
 		for i = 1, #hazardZones.zones do
 			local zone = hazardZones.zones[i]
-			if isPartAlive(zone.part) and isPointInZone(point, zone) then
+			if isPartAlive(zone.part) and isPointInZone(point, zone, extraRadius) then
 				local d2 = (point - zone.part.Position).Magnitude
 				if d2 < bestDistSq then
 					bestDistSq = d2
