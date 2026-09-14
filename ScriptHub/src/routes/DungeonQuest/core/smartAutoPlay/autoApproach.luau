@@ -16,8 +16,8 @@ local player = services.player
 
 local autoApproach = {}
 
---// Settings
 local enabled = false
+local targetScope = "All" -- "All" | "Boss" | "Mobs"
 local hysteresisBuffer = 2.0 -- Đệm chống rung giật mép vòng tròn (studs)
 local checkInterval = 0.15 -- Chu kỳ kiểm tra (giây)
 
@@ -64,18 +64,21 @@ local function evaluateEnemies(r)
 		if data and data.Root and data.Root.Parent then
 			local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
 			if hum and hum.Health > 0 then
-				totalAlive = totalAlive + 1
-				local dx = data.Root.Position.X - pPos.X
-				local dz = data.Root.Position.Z - pPos.Z
-				local flatDist = math.sqrt(dx * dx + dz * dz)
+				local eName = (data.Model and data.Model.Name) or "Enemy"
+				if shared.IsEnemyMatchingScope(data.Model, eName, targetScope) then
+					totalAlive = totalAlive + 1
+					local dx = data.Root.Position.X - pPos.X
+					local dz = data.Root.Position.Z - pPos.Z
+					local flatDist = math.sqrt(dx * dx + dz * dz)
 
-				if flatDist < nearestDist then
-					nearestDist = flatDist
-					nearestName = (data.Model and data.Model.Name) or "Enemy"
-				end
+					if flatDist < nearestDist then
+						nearestDist = flatDist
+						nearestName = eName
+					end
 
-				if flatDist <= r then
-					hasEnemyInRadius = true
+					if flatDist <= r then
+						hasEnemyInRadius = true
+					end
 				end
 			end
 		end
@@ -86,15 +89,18 @@ local function evaluateEnemies(r)
 	if afTarget and afTarget.Root and afTarget.Root.Parent then
 		local hum = afTarget.Humanoid or (afTarget.Model and afTarget.Model:FindFirstChildOfClass("Humanoid"))
 		if hum and hum.Health > 0 then
-			local dx = afTarget.Root.Position.X - pPos.X
-			local dz = afTarget.Root.Position.Z - pPos.Z
-			local flatDist = math.sqrt(dx * dx + dz * dz)
-			if flatDist <= r then
-				hasEnemyInRadius = true
-			end
-			if flatDist < nearestDist then
-				nearestDist = flatDist
-				nearestName = (afTarget.Model and afTarget.Model.Name) or "Target"
+			local tName = (afTarget.Model and afTarget.Model.Name) or "Target"
+			if shared.IsEnemyMatchingScope(afTarget.Model, tName, targetScope) then
+				local dx = afTarget.Root.Position.X - pPos.X
+				local dz = afTarget.Root.Position.Z - pPos.Z
+				local flatDist = math.sqrt(dx * dx + dz * dz)
+				if flatDist <= r then
+					hasEnemyInRadius = true
+				end
+				if flatDist < nearestDist then
+					nearestDist = flatDist
+					nearestName = tName
+				end
 			end
 		end
 	end
@@ -191,6 +197,14 @@ end
 
 function autoApproach.IsEnabled()
 	return enabled
+end
+
+function autoApproach.SetTargetScope(scope)
+	targetScope = shared.NormalizeTargetScope(scope)
+end
+
+function autoApproach.GetTargetScope()
+	return targetScope
 end
 
 function autoApproach.GetStatus()

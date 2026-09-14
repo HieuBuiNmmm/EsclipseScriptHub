@@ -29,8 +29,10 @@ local hazardChangedCallbacks: { (number, types.ActiveHazard?) -> () } = {}
 local connections: { RBXScriptConnection } = {}
 local FADE_THRESHOLD = 0.85
 local orbCorridorLength = 90.0
-local beamCorridorLength = 140.0
 local lastBossSpawnTime = (shared.IsBossActive and shared.IsBossActive()) and os.clock() or 0
+
+-- State theo dõi nhịp sóng cho Boss 2 Circle Hitbox (Hướng 2: Expanding Cone)
+local boss2CircleLastTime = 0
 
 type CustomHazardConfig = {
 	name: string,
@@ -45,6 +47,8 @@ type CustomHazardConfig = {
 	width: number?,                  -- Bề rộng hành lang sát thương thực tế (studs)
 	isExpandingCone: boolean?,       -- Kỹ năng nón mở rộng (Boss 2 Circle Hitbox)
 	expansionRate: number?,          -- Tỷ lệ phình to theo chiều dài
+	isCrissCross: boolean?,          -- Kỹ năng Criss Cross (né tạt sườn 90 độ, cấm chạy dọc)
+	isMovingBeam: boolean?,          -- Kỹ năng Moving Beam (né tạt sườn 90 độ, cấm chạy dọc)
 }
 
 --// Danh sách các chiêu thức / đòn đánh ngoại lệ theo tên (không bắt buộc Material == Neon)
@@ -54,59 +58,55 @@ local CUSTOM_HAZARDS: { [string]: CustomHazardConfig } = {
 		isTelegraph = false,
 		hasSyntheticTelegraph = false, -- Vùng cam của Spike chính là tia định hướng (không dùng moving box)
 		telegraphLength = 120,
-		width = 16,
+		dangerRadius = 4.0,           -- Sàn an toàn tối thiểu (tự động bóc tách kích thước thật như V1)
 	},
 	["firstbossbigspike"] = {
 		name = "firstBossBigSpike",
 		isTelegraph = false,
 		hasSyntheticTelegraph = false, -- Vùng cam của Spike chính là tia định hướng (không dùng moving box)
 		telegraphLength = 140,
-		width = 40,
+		dangerRadius = 20.0,          -- Chuẩn Big Spike (bán kính 20 studs, bề rộng 40 studs)
 	},
 	["firstbossbeampart"] = {
 		name = "firstBossBeamPart",
 		isTelegraph = true,  -- Tia định hướng báo trước (quy ước màu Cam định hướng)
 		telegraphLength = 140,
-		-- Width tự động phân biệt: 16 studs (Seeking Spikes) hoặc 40 studs (Big Spike)
+		-- Tự động bóc tách độ rộng tia beam (Width0 / Width1) từ game
 	},
 	["firstbosslaserprecast"] = {
 		name = "firstBossLaserPrecast",
 		isTelegraph = true,
 		targetChildName = "precast",
 		telegraphLength = 140,
-		width = 24,
 	},
 	["firstbossattachpart"] = {
 		name = "firstBossAttachPart",
 		isTelegraph = true,
 		telegraphLength = 140,
-		width = 24,
 	},
 	["firstbosssundiskbeampart"] = {
 		name = "firstBossSunDiskBeamPart",
 		isTelegraph = true,
 		telegraphLength = 140,
-		width = 20,
 	},
 	["firstbossblindingblastbeam"] = {
 		name = "firstBossBlindingBlastBeam",
 		isTelegraph = true,
 		telegraphLength = 140,
-		width = 40,
 	},
 	["firstbossskyshot"] = {
 		name = "firstBossSkyShot",
 		isTelegraph = false,
 		hasSyntheticTelegraph = true,
 		telegraphLength = 60,
-		width = 20,
 	},
 	["firstbosscrisscross"] = {
 		name = "firstBossCrissCross",
 		isTelegraph = false,
 		hasSyntheticTelegraph = true, -- Tự tạo vùng Moving Trajectory đi theo đạn chuẩn V1
 		telegraphLength = 28,         -- Độ dài nhìn trước 28 studs (vừa đủ để né, không bao trùm cả phòng)
-		width = 8,                    -- Bề rộng chuẩn V1: 8 studs (radius 4.0 studs)
+		dangerRadius = 4.0,           -- Sàn an toàn tối thiểu như V1
+		isCrissCross = true,          -- Ngoại lệ Criss Cross: né tạt sườn 90 độ
 	},
 	["smallicespikes"] = {
 		name = "smallIceSpikes",
@@ -133,6 +133,7 @@ local CUSTOM_HAZARDS: { [string]: CustomHazardConfig } = {
 		isTelegraph = false,
 		hasSyntheticTelegraph = true, -- Vùng Moving Trajectory màu Cam di chuyển theo tên lửa chuẩn V1
 		telegraphLength = 40,         -- Giới hạn 40 studs phía trước đầu tên lửa (tối đa hóa vùng SAFE)
+		dangerRadius = 4.0,           -- Sàn an toàn tối thiểu như V1
 	},
 	["thirdbossmultirings"] = {
 		name = "thirdBossMultiRings",
@@ -146,12 +147,14 @@ local CUSTOM_HAZARDS: { [string]: CustomHazardConfig } = {
 		isTelegraph = false,
 		hasSyntheticTelegraph = true, -- Moving Trajectory Box màu Cam đi cùng beam chuẩn V1
 		telegraphLength = 40,         -- Độ dài nhìn trước 40 studs phía trước thanh beam
+		isMovingBeam = true,          -- Ngoại lệ Moving Beam: né tạt sườn 90 độ, cấm chạy dọc
 	},
 	["thirdbossbouncingorb"] = {
 		name = "thirdBossBouncingOrb",
 		isTelegraph = false,
 		hasSyntheticTelegraph = true, -- Moving Trajectory Box màu Cam di chuyển theo quả cầu nảy
 		telegraphLength = 28,         -- Độ dài nhìn trước 28 studs phía trước quả cầu
+		dangerRadius = 3.0,           -- Sàn an toàn tối thiểu (tự động đọc kích thước quả cầu như V1)
 	},
 	["secondbossyelloworb"] = {
 		name = "secondBossYellowOrb",
@@ -171,20 +174,12 @@ local CUSTOM_HAZARDS: { [string]: CustomHazardConfig } = {
 	["secondbosscriclehitbox"] = {
 		name = "secondBossCricleHitbox",
 		isTelegraph = false,
-		hasSyntheticTelegraph = true,
-		telegraphLength = 95.0,
-		dangerRadius = 8.0,
-		isExpandingCone = true,
-		expansionRate = 0.25,
+		hasSyntheticTelegraph = false,
 	},
 	["secondbosscirclehitbox"] = {
 		name = "secondBossCircleHitbox",
 		isTelegraph = false,
-		hasSyntheticTelegraph = true,
-		telegraphLength = 95.0,
-		dangerRadius = 8.0,
-		isExpandingCone = true,
-		expansionRate = 0.25,
+		hasSyntheticTelegraph = false,
 	},
 }
 
@@ -360,6 +355,86 @@ local function extractHazardParts(instance: Instance, customConfig: CustomHazard
 	return parts
 end
 
+--// TỰ ĐỘNG BÓC TÁCH KÍCH THƯỚC THẬT (Auto Dimension Detection - Chuẩn V1):
+--// Tự động đo Beam.Width, SpecialMesh.Scale, Model BoundingBox hoặc Part.Size thực tế
+local function getPartAutoDimensions(instance: Instance): (number, number?)
+	local detectedWidth: number? = nil
+	local detectedLength: number? = nil
+
+	-- 1. ƯU TIÊN 1: Tia Beam / Laser (Roblox Beam instance)
+	local beam = instance:FindFirstChildWhichIsA("Beam", true)
+	if beam then
+		local w0 = beam.Width0 or 0
+		local w1 = beam.Width1 or 0
+		local maxW = math.max(w0, w1)
+		if maxW > 0.5 then
+			detectedWidth = maxW
+		end
+	end
+
+	-- Đo chiều dài từ Attachment2 nếu có (vết đích của tia beam)
+	local att2 = instance:FindFirstChild("Attachment2", true)
+	if att2 and att2:IsA("Attachment") then
+		local instPos = if instance:IsA("BasePart") then instance.Position else instance:GetPivot().Position
+		local delta = att2.WorldPosition - instPos
+		if delta.Magnitude > 5 then
+			detectedLength = delta.Magnitude
+		end
+	end
+
+	-- 2. ƯU TIÊN 2: SpecialMesh với Scale nhân trực tiếp lên Size của Part
+	local mesh = instance:FindFirstChildWhichIsA("SpecialMesh", true)
+	local scaleX = (mesh and mesh.Scale.X) or 1
+	local scaleY = (mesh and mesh.Scale.Y) or 1
+	local scaleZ = (mesh and mesh.Scale.Z) or 1
+
+	local pSize = Vector3.new(6, 6, 6)
+	if instance:IsA("BasePart") then
+		pSize = instance.Size
+	elseif instance:IsA("Model") then
+		local _, mSize = instance:GetBoundingBox()
+		pSize = mSize
+	end
+
+	local effectiveSize = Vector3.new(
+		pSize.X * math.abs(scaleX),
+		pSize.Y * math.abs(scaleY),
+		pSize.Z * math.abs(scaleZ)
+	)
+
+	if not detectedWidth then
+		local nameLower = instance.Name:lower():gsub("%s+", "")
+		local isMovingBeam = nameLower:find("movingbeam") ~= nil
+		local isBigSpike = nameLower:find("bigspike") ~= nil
+		local isSeekingSpike = nameLower:find("seekingspike") ~= nil
+
+		if isMovingBeam then
+			-- Với Moving Beam quét ngang sân, bề ngang của hiểm họa chính là chiều dài sải ngang của thanh beam
+			detectedWidth = math.max(effectiveSize.X, effectiveSize.Z)
+		elseif isBigSpike then
+			detectedWidth = 40.0
+			if not detectedLength then detectedLength = 140.0 end
+		elseif isSeekingSpike then
+			detectedWidth = 16.0
+			if not detectedLength then detectedLength = 120.0 end
+		else
+			-- Đo tiết diện ngang vuông góc (loại trừ trục dài nhất của đạn theo chuẩn V1)
+			local minDim = math.min(effectiveSize.X, effectiveSize.Z)
+			local maxDim = math.max(effectiveSize.X, effectiveSize.Z)
+
+			if minDim < 1.2 and maxDim >= 1.2 then
+				detectedWidth = maxDim
+			else
+				detectedWidth = minDim
+			end
+		end
+	end
+
+	-- 3. Giới hạn khoảng an toàn hợp lý (tối thiểu 3.0 studs, tối đa 60.0 studs)
+	local finalWidth = math.clamp(detectedWidth or 6.0, 3.0, 60.0)
+	return finalWidth, detectedLength
+end
+
 --// Trích xuất thông số tia Beam / Projectile giải tích (chuẩn V1)
 local function extractBeamGeometry(instance: Instance, customConfig: CustomHazardConfig?): (Vector3?, Vector3?, number?, number?)
 	local nameLower = instance.Name:lower():gsub("%s+", "")
@@ -407,8 +482,10 @@ local function extractBeamGeometry(instance: Instance, customConfig: CustomHazar
 		end
 	end
 
+	local isSpinningOrRolling = nameLower:find("crisscross") ~= nil or nameLower:find("movingbeam") ~= nil
+
 	-- 3. Tìm companion Beam trong ActiveHazards hoặc Workspace (CHỈ tìm Beam thật như firstBossBeamPart, thirdBossBeamPart)
-	if not forward2D and not nameLower:find("crisscross") then
+	if not forward2D and not isSpinningOrRolling then
 		for otherInst, otherHazard in pairs(activeHazards) do
 			if otherHazard and otherHazard.forward2D and otherHazard.instance ~= instance then
 				local isTrueBeam = otherHazard.isTelegraph or (otherHazard.name and otherHazard.name:lower():find("beam") ~= nil)
@@ -427,7 +504,7 @@ local function extractBeamGeometry(instance: Instance, customConfig: CustomHazar
 	end
 
 	-- 3b. Tìm companion Beam Part trong Workspace nếu chưa kịp đăng ký trong activeHazards
-	if not forward2D and not nameLower:find("crisscross") then
+	if not forward2D and not isSpinningOrRolling then
 		for _, child in ipairs(Workspace:GetChildren()) do
 			if child ~= instance and child:IsA("BasePart") and child.Name:lower():find("beampart") then
 				local dist = (Vector3.new(child.Position.X - originPos.X, 0, child.Position.Z - originPos.Z)).Magnitude
@@ -448,27 +525,18 @@ local function extractBeamGeometry(instance: Instance, customConfig: CustomHazar
 		end
 	end
 
-	-- 0. Nếu là Expanding Cone (secondBossCricleHitbox - Boss 2):
-	-- Hướng lan tỏa xuất phát từ vị trí spawn của vòng tròn hướng thẳng về phía Player
-	if customConfig and customConfig.isExpandingCone then
-		local localPlayer = Players.LocalPlayer
-		local rootPart = localPlayer and localPlayer.Character and localPlayer.Character:FindFirstChild("HumanoidRootPart")
-		local playerPos = rootPart and rootPart.Position
-		if playerPos then
-			local diff = Vector3.new(playerPos.X - originPos.X, 0, playerPos.Z - originPos.Z)
-			local dist = diff.Magnitude
-			if dist > 0.3 then
-				forward2D = diff.Unit
-				detectedLength = math.clamp(dist + 35.0, 85.0, 160.0)
-			end
-		end
+	-- 0. Xử lý riêng cho Boss 2 Circle Hitbox (secondBossCricleHitbox):
+	-- User yêu cầu: Loại bỏ hoàn toàn vùng màu cam (synthetic telegraph) cho skill này
+	local isCircleHitbox = nameLower:find("cricle") ~= nil or nameLower:find("circle") ~= nil
+	if isCircleHitbox then
+		return nil, nil, nil, nil
 	end
 
 	-- 4. Fallback theo LookVector của Part / Model
 	if not forward2D then
-		-- TUYỆT ĐỐI KHÔNG dùng LookVector cho CrissCross vì mesh đang xoay tròn (spinning) quanh trục Y liên tục trong script game!
-		-- Hướng của CrissCross sẽ được xác định chính xác 100% bằng độ dịch chuyển tọa độ (Motion Delta) ngay trên Heartbeat.
-		if not nameLower:find("crisscross") then
+		-- TUYỆT ĐỐI KHÔNG dùng LookVector cho CrissCross & MovingBeam vì mesh đang xoay tròn (spinning/rolling) liên tục trong game!
+		-- Hướng của chúng sẽ được xác định chính xác 100% bằng độ dịch chuyển tọa độ (Motion Delta) ngay trên Heartbeat.
+		if not isSpinningOrRolling then
 			local look = (instance:IsA("BasePart") and instance.CFrame.LookVector)
 				or (instance:IsA("Model") and instance:GetPivot().LookVector)
 			if look then
@@ -480,7 +548,7 @@ local function extractBeamGeometry(instance: Instance, customConfig: CustomHazar
 		end
 	end
 
-	if not forward2D and not nameLower:find("crisscross") then
+	if not forward2D and not isSpinningOrRolling then
 		forward2D = Vector3.new(0, 0, -1)
 	end
 
@@ -526,32 +594,26 @@ local function extractBeamGeometry(instance: Instance, customConfig: CustomHazar
 		end
 	end
 
-	local dangerRadius = 20.0
-	local defaultLen = 140.0
-	if isSeekingSpike then
-		dangerRadius = 8.0 -- Bề rộng 16 studs (chuẩn Seeking Spikes)
-		defaultLen = (SKILL_CORRIDOR_MAP and SKILL_CORRIDOR_MAP["boss1_seekingspikes"] and SKILL_CORRIDOR_MAP["boss1_seekingspikes"].currentLength) or 120.0
-	elseif isBigSpike then
-		dangerRadius = 20.0 -- Bề rộng 40 studs (chuẩn Big Spike)
-		defaultLen = (SKILL_CORRIDOR_MAP and SKILL_CORRIDOR_MAP["boss1_bigspike"] and SKILL_CORRIDOR_MAP["boss1_bigspike"].currentLength) or 140.0
-	elseif customConfig and customConfig.isExpandingCone then
-		dangerRadius = customConfig.dangerRadius or 8.0
-		defaultLen = customConfig.telegraphLength or 95.0
-	else
-		local beam = instance:FindFirstChildWhichIsA("Beam", true)
-		if beam then
-			local maxW = math.max(beam.Width0 or 0, beam.Width1 or 0)
-			if maxW >= 20 then
-				dangerRadius = maxW / 2
-			elseif maxW > 0 then
-				dangerRadius = math.max(maxW / 2, 8.0)
-			end
-		elseif customConfig and customConfig.width then
-			dangerRadius = customConfig.width / 2
-		end
+	-- 5. Tự động bóc tách kích thước thật (Auto Dimension Detection - Chuẩn V1)
+	local autoWidth, autoLength = getPartAutoDimensions(instance)
+	local autoRadius = autoWidth / 2
+
+	-- Tôn trọng sàn an toàn tối thiểu (safety floor) từ customConfig nếu có (chuẩn V1)
+	if customConfig and customConfig.dangerRadius and customConfig.dangerRadius > autoRadius then
+		autoRadius = customConfig.dangerRadius
 	end
 
-	local maxLookahead = math.clamp(detectedLength or (customConfig and customConfig.telegraphLength) or defaultLen, 40.0, 250.0)
+	local dangerRadius = autoRadius
+	local defaultLen = 140.0
+	if isSeekingSpike then
+		defaultLen = (SKILL_CORRIDOR_MAP and SKILL_CORRIDOR_MAP["boss1_seekingspikes"] and SKILL_CORRIDOR_MAP["boss1_seekingspikes"].currentLength) or 120.0
+	elseif isBigSpike then
+		defaultLen = (SKILL_CORRIDOR_MAP and SKILL_CORRIDOR_MAP["boss1_bigspike"] and SKILL_CORRIDOR_MAP["boss1_bigspike"].currentLength) or 140.0
+	elseif customConfig and customConfig.isExpandingCone then
+		defaultLen = customConfig.telegraphLength or 95.0
+	end
+
+	local maxLookahead = math.clamp(detectedLength or autoLength or (customConfig and customConfig.telegraphLength) or defaultLen, 10.0, 250.0)
 
 	return originPos, forward2D, dangerRadius, maxLookahead
 end
@@ -560,6 +622,24 @@ end
 local function unregisterHazard(instance: Instance, reason: string?)
 	local hazard = activeHazards[instance]
 	if not hazard then return end
+
+	-- Quản lý vòng đời Vùng Nguy Hiểm Hình Phễu (Boss 2 Expanding Cone):
+	-- Vòng #1 xuất hiện và thiết lập Expanding Cone kéo dài 3.6s (bao trọn cả 10 vòng tròn).
+	-- Khi Part của Vòng #1 bị Roblox hủy/mờ sau ~1.18s, ta vẫn duy trì hazard này trong activeHazards
+	-- để Safe Spot tiếp tục bảo vệ người chơi cho đến khi đợt sóng hoàn tất (3.6s)!
+	local isForcedClear = (reason and (reason:find("purged") or reason:find("disabled") or reason:find("Reset")))
+	if not isForcedClear and hazard.isExpandingCone and (os.clock() - hazard.spawnTime < 3.6) then
+		if not hazard._waveDelayScheduled then
+			hazard._waveDelayScheduled = true
+			local remaining = math.max(0.1, 3.6 - (os.clock() - hazard.spawnTime))
+			task.delay(remaining, function()
+				if activeHazards[instance] == hazard then
+					unregisterHazard(instance, "Expanding Cone Wave Completed (3.6s)")
+				end
+			end)
+		end
+		return
+	end
 
 	-- Dọn dẹp connections
 	for _, c in ipairs(hazard.connections) do
@@ -576,6 +656,7 @@ local function unregisterHazard(instance: Instance, reason: string?)
 	if logHazards then
 		print(("[SmartDodgeV2] 🟢 Threat Cleared: %s (%s)"):format(hazard.name, reason or "Ended"))
 	end
+
 
 	-- Dispatch events
 	for _, cb in ipairs(hazardRemovedCallbacks) do
@@ -711,12 +792,72 @@ local function registerHazard(instance: Instance)
 		expansionRate = (customConfig and customConfig.expansionRate) or 0.25,
 		hasLaunched = (instance:IsA("BasePart") and instance.Transparency < 0.5) or false,
 		launchTime = (instance:IsA("BasePart") and instance.Transparency < 0.5) and os.clock() or nil,
+		isCrissCross = (customConfig and customConfig.isCrissCross) or (instance.Name:lower():find("crisscross") ~= nil) or false,
+		isMovingBeam = (customConfig and customConfig.isMovingBeam) or (instance.Name:lower():find("movingbeam") ~= nil) or false,
 	}
 
 	activeHazards[instance] = hazard
 	hazardCount = hazardCount + 1
 
+	-- Debug Log chi tiết các thông số kích thước của Boss 2 Circle Hitbox:
+	local isCircleThreat = (nameLower:find("cricle") ~= nil or nameLower:find("circlehitbox") ~= nil)
+	if isCircleThreat then
+		local now = os.clock()
+		local isRootCircle = (now - boss2CircleLastTime > 3.0)
+		boss2CircleLastTime = now
+
+		if isRootCircle then
+			-- CIRCLE #1 LÀ GỐC ĐỢT SÓNG (HƯỚNG 2 - TIÊN TRI TOÀN BỘ 10 VÒNG TRÒN):
+			hazard.isExpandingCone = true
+			hazard.expansionRate = 3.0 / 22.0 -- Nở 6 studs đường kính (+3 studs bán kính) mỗi 22 studs tiến tới
+			hazard.dangerRadius = 11.0       -- Bán kính Vòng #1 (đường kính 22 studs)
+			hazard.maxRadius = 38.0          -- Bán kính Vòng #10 (đường kính 76 studs - mức tối đa)
+			hazard.maxLookahead = 236.0      -- Tầm xa tổng: 198 studs tới tâm Vòng 10 + 38 studs bán kính Vòng 10
+			hazard.beamOrigin = pos
+			hazard.isBossHazard = true
+			hazard.hasSyntheticTelegraph = false
+
+			-- Khóa hướng cố định từ Vòng #1 tới Player tại khoảnh khắc t = 0
+			local char = localPlayer and localPlayer.Character
+			local root = char and (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso"))
+			local pPos = root and root.Position
+
+			local fwd2D: Vector3? = nil
+			if pPos then
+				local diff = Vector3.new(pPos.X - pos.X, 0, pPos.Z - pos.Z)
+				if diff.Magnitude > 0.3 then
+					fwd2D = diff.Unit
+				end
+			end
+			if not fwd2D then
+				local look = (instance:IsA("BasePart") and instance.CFrame.LookVector)
+					or (instance:IsA("Model") and instance:GetPivot().LookVector)
+				if look then
+					local l2D = Vector3.new(look.X, 0, look.Z)
+					if l2D.Magnitude > 0.05 then
+						fwd2D = l2D.Unit
+					end
+				end
+			end
+			hazard.forward2D = fwd2D or Vector3.new(0, 0, -1)
+
+			if logHazards then
+				print("[SmartDodgeV2] 🛡️ [Boss 2] Locked Expanding Cone: Reach 236 std, Radius 11 -> 38 std")
+			end
+		else
+			-- Các vòng tròn con (#2 đến #10) KHÔNG sinh thêm nón nguy hiểm để tránh trùng lặp
+			hazard.isExpandingCone = false
+			hazard.forward2D = nil
+			hazard.hasSyntheticTelegraph = false
+		end
+	end
+
 	local bOrigin, bFwd, bRadius, bReach = extractBeamGeometry(instance, customConfig)
+	local isCircle = (instance.Name:lower():find("cricle") ~= nil or instance.Name:lower():find("circle") ~= nil)
+	if isCircle and not bFwd then
+		hazard.hasSyntheticTelegraph = false
+	end
+
 	if bFwd and bRadius then
 		hazard.beamOrigin = bOrigin
 		hazard.forward2D = bFwd
@@ -1197,6 +1338,8 @@ end
 function detection.GetBeamCorridorLength(): number
 	return detection.GetSkillCorridorLength("boss1_beam")
 end
+
+
 
 function detection.GetLastBossSpawnTime(): number
 	return lastBossSpawnTime

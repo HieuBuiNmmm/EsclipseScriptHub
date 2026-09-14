@@ -89,10 +89,10 @@ local function getCurrentTargetRadius(targetName)
 end
 
 local showRadiusCircle = false
-local showSkillCircle = false
+local showSkillCircle = true -- Mặc định bật Visual đường tròn Skill Range
 local skillRange = 25.0 -- Skill Cast Range in studs
-local SKILL_SPHERE_COUNT = 36
-local skillSphereSize = 0.28 -- Đường kính hạt vòng skill (nhỏ hơn một chút để phân biệt)
+local SKILL_SPHERE_COUNT = 48 -- 48 hạt neon tạo đường tròn mềm mại, sắc nét
+local skillSphereSize = 0.28 -- Đường kính hạt vòng skill
 local SKILL_SPHERE_COLOR = Color3.fromRGB(225, 75, 255) -- Vibrant Neon Magenta / Purple
 
 local sphereParts = {}
@@ -148,7 +148,55 @@ local function updateRayFilter()
 	if rayIgnore then
 		table.insert(ignore, rayIgnore)
 	end
+	if visualFolder then
+		table.insert(ignore, visualFolder)
+	end
+	local proj = workspace:FindFirstChild("enemyProjectiles")
+	if proj then
+		table.insert(ignore, proj)
+	end
 	floorRayParams.FilterDescendantsInstances = ignore
+end
+
+-- Dò sàn cứng thực sự: bỏ qua chiêu thức hazard, particle, aura, quái vật để chống nảy Y
+local function getSolidFloorY(pPos: Vector3, fallbackY: number): number
+	updateRayFilter()
+	local rayOrigin = Vector3.new(pPos.X, pPos.Y + 2.5, pPos.Z)
+	local rayDir = Vector3.new(0, -60.0, 0)
+
+	local attempts = 0
+	local curOrigin = rayOrigin
+	local curDir = rayDir
+	local filterList = floorRayParams.FilterDescendantsInstances
+
+	while attempts < 4 do
+		local hit = workspace:Raycast(curOrigin, curDir, floorRayParams)
+		if not hit then
+			break
+		end
+
+		local inst = hit.Instance
+		local isSolid = inst and inst.CanCollide and inst.Transparency < 0.95
+		local model = inst and inst:FindFirstAncestorOfClass("Model")
+		local hasHumanoid = model and model:FindFirstChildOfClass("Humanoid") ~= nil
+
+		if isSolid and not hasHumanoid then
+			return hit.Position.Y
+		end
+
+		-- Bỏ qua part này (vùng chiêu, aura, hitbox xuyên thấu) và dò tiếp xuống dưới
+		attempts += 1
+		table.insert(filterList, inst)
+		floorRayParams.FilterDescendantsInstances = filterList
+
+		local nextY = hit.Position.Y - 0.05
+		local remainingDist = (rayOrigin.Y - 60.0) - nextY
+		if remainingDist >= 0 then break end
+		curOrigin = Vector3.new(hit.Position.X, nextY, hit.Position.Z)
+		curDir = Vector3.new(0, remainingDist, 0)
+	end
+
+	return fallbackY
 end
 
 local function getOrCreateVisualFolder()
@@ -227,26 +275,49 @@ local function hideSkillSpheres()
 	end
 end
 
+local stableCircleFloorY = nil
+local lastVisualUpdateTime = os.clock()
+
 local function updateCirclePositions()
 	local char = player and player.Character
 	local root = char and char:FindFirstChild("HumanoidRootPart")
 	if not root or not root.Parent then
 		hideSpheres()
 		hideSkillSpheres()
+		stableCircleFloorY = nil
 		return
 	end
 
+	local now = os.clock()
+	local dt = math.clamp(now - lastVisualUpdateTime, 0.001, 0.1)
+	lastVisualUpdateTime = now
+
 	local pPos = root.Position
+	local defaultFallback = stableCircleFloorY or (pPos.Y - 2.8)
+	local rawFloorY = getSolidFloorY(pPos, defaultFallback)
+
+	-- Khóa chặt và làm mượt trục Y (chống rung giật, chống nảy khi nhảy, chống leo lên đỉnh chiêu thức)
+	if not stableCircleFloorY then
+		stableCircleFloorY = rawFloorY
+	else
+		local dy = rawFloorY - stableCircleFloorY
+		if math.abs(dy) > 15.0 then
+			-- Chuyển tầng / teleport: snap tức thì
+			stableCircleFloorY = rawFloorY
+		elseif math.abs(dy) < 0.12 then
+			-- Dao động nhỏ (bước chân chạy, nhấp nhô nhẹ, nhảy thấp): KHÓA CHẶT độ cao không đổi!
+		else
+			-- Leo dốc / cầu thang thật sự: trượt êm ái
+			stableCircleFloorY = stableCircleFloorY + dy * math.clamp(dt * 14, 0.15, 1.0)
+		end
+	end
 
 	-- 1. Kiting / Movement Radius Circle (Neon Cyan)
 	local curTargetRadius = getCurrentTargetRadius(currentTargetName)
 	if showRadiusCircle then
-		updateRayFilter()
 		local spheres = getOrCreateSpheres()
 		local angleStep = (2 * math.pi) / SPHERE_COUNT
-
-		local floorHit = workspace:Raycast(pPos, Vector3.new(0, -12.0, 0), floorRayParams)
-		local lockedY = floorHit and (floorHit.Position.Y + (sphereSize / 2)) or (pPos.Y - 2.8)
+		local lockedY = stableCircleFloorY + (sphereSize / 2) + 0.04
 
 		for i = 1, SPHERE_COUNT do
 			local angle = (i - 1) * angleStep
@@ -266,13 +337,10 @@ local function updateCirclePositions()
 
 	-- 2. Skill Cast Range Circle (Neon Magenta)
 	if showSkillCircle then
-		updateRayFilter()
 		local skillSpheres = getOrCreateSkillSpheres()
-		local effectiveSkillR = math.max(skillRange, curTargetRadius)
+		local effectiveSkillR = skillRange
 		local angleStep = (2 * math.pi) / SKILL_SPHERE_COUNT
-
-		local floorHit = workspace:Raycast(pPos, Vector3.new(0, -12.0, 0), floorRayParams)
-		local lockedY = floorHit and (floorHit.Position.Y + (skillSphereSize / 2)) or (pPos.Y - 2.8)
+		local lockedY = stableCircleFloorY + (skillSphereSize / 2) + 0.04
 
 		for i = 1, SKILL_SPHERE_COUNT do
 			local angle = (i - 1) * angleStep
@@ -282,7 +350,7 @@ local function updateCirclePositions()
 			local part = skillSpheres[i]
 			if part and part.Parent then
 				part.Position = Vector3.new(targetX, lockedY, targetZ)
-				part.Transparency = 0.3
+				part.Transparency = 0.25
 				part.Color = SKILL_SPHERE_COLOR
 			end
 		end
@@ -346,31 +414,34 @@ local function evaluateEnemies(checkRadius)
 		if data and data.Root and data.Root.Parent then
 			local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
 			if hum and hum.Health > 0 then
-				totalAlive = totalAlive + 1
-				local ePos = data.Root.Position
-				local dx = ePos.X - pPos.X
-				local dy = ePos.Y - pPos.Y
-				local dz = ePos.Z - pPos.Z
-				local flatDist = math.sqrt(dx * dx + dz * dz)
+				local eName = (data.Model and data.Model.Name) or "Enemy"
+				if shared.IsEnemyMatchingScope(data.Model, eName, targetScope) then
+					totalAlive = totalAlive + 1
+					local ePos = data.Root.Position
+					local dx = ePos.X - pPos.X
+					local dy = ePos.Y - pPos.Y
+					local dz = ePos.Z - pPos.Z
+					local flatDist = math.sqrt(dx * dx + dz * dz)
 
-				if flatDist < nearestDist then
-					nearestDist = flatDist
-					nearestName = (data.Model and data.Model.Name) or "Enemy"
-					nearestPos = ePos
-				end
+					if flatDist < nearestDist then
+						nearestDist = flatDist
+						nearestName = eName
+						nearestPos = ePos
+					end
 
-				-- Chỉ tính quái trong tầm bán kính nếu độ cao chênh lệch Y không quá lớn (|dy| <= 8.0)
-				-- Giúp phân biệt quái ở tầng dưới/vực sâu khi người chơi đang đứng trên mỏm đá hoặc lối vào
-				if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
-					hasEnemyInRadius = true
-				end
+					-- Chỉ tính quái trong tầm bán kính nếu độ cao chênh lệch Y không quá lớn (|dy| <= 8.0)
+					-- Giúp phân biệt quái ở tầng dưới/vực sâu khi người chơi đang đứng trên mỏm đá hoặc lối vào
+					if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
+						hasEnemyInRadius = true
+					end
 
-				-- Tính toán trọng tâm cụm quái xung quanh người chơi
-				if flatDist <= clusterMaxDist and math.abs(dy) <= 8.0 then
-					clusterSumX += ePos.X
-					clusterSumY += ePos.Y
-					clusterSumZ += ePos.Z
-					clusterCount += 1
+					-- Tính toán trọng tâm cụm quái xung quanh người chơi
+					if flatDist <= clusterMaxDist and math.abs(dy) <= 8.0 then
+						clusterSumX += ePos.X
+						clusterSumY += ePos.Y
+						clusterSumZ += ePos.Z
+						clusterCount += 1
+					end
 				end
 			end
 		end
@@ -381,18 +452,21 @@ local function evaluateEnemies(checkRadius)
 	if afTarget and afTarget.Root and afTarget.Root.Parent then
 		local hum = afTarget.Humanoid or (afTarget.Model and afTarget.Model:FindFirstChildOfClass("Humanoid"))
 		if hum and hum.Health > 0 then
-			local ePos = afTarget.Root.Position
-			local dx = ePos.X - pPos.X
-			local dy = ePos.Y - pPos.Y
-			local dz = ePos.Z - pPos.Z
-			local flatDist = math.sqrt(dx * dx + dz * dz)
-			if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
-				hasEnemyInRadius = true
-			end
-			if flatDist < nearestDist then
-				nearestDist = flatDist
-				nearestName = (afTarget.Model and afTarget.Model.Name) or "Target"
-				nearestPos = ePos
+			local tName = (afTarget.Model and afTarget.Model.Name) or "Target"
+			if shared.IsEnemyMatchingScope(afTarget.Model, tName, targetScope) then
+				local ePos = afTarget.Root.Position
+				local dx = ePos.X - pPos.X
+				local dy = ePos.Y - pPos.Y
+				local dz = ePos.Z - pPos.Z
+				local flatDist = math.sqrt(dx * dx + dz * dz)
+				if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
+					hasEnemyInRadius = true
+				end
+				if flatDist < nearestDist then
+					nearestDist = flatDist
+					nearestName = tName
+					nearestPos = ePos
+				end
 			end
 		end
 	end
@@ -1208,7 +1282,9 @@ local function startMasterLoop()
 				else
 					-- Đường đi an toàn -> Mở đường cho AutoFarm tiếp cận mục tiêu
 					targetFacing.SetTargetOverride(nil)
-					targetFacing.SetEnabled(false)
+					if targetFacing and targetFacing.GetTargetScope and targetFacing.GetTargetScope() == "Boss" then
+						targetFacing.SetEnabled(true)
+					end
 
 					-- Luôn duy trì reachDistance chuẩn bằng radius R (15.0 studs), TUYỆT ĐỐI không ép về 2.5 studs!
 					if autoFarm.GetReachDistance and autoFarm.SetReachDistance then
@@ -1256,7 +1332,9 @@ local function stopMasterLoop()
 	if autoFarm.IsEnabled() then
 		autoFarm.Toggle(false)
 	end
-	autoSkill.SetEnabled(false)
+	if not smartAutoSkillEnabled then
+		autoSkill.SetEnabled(false)
+	end
 	targetFacing.SetTargetOverride(nil)
 	targetFacing.SetEnabled(false)
 	smartDodge.StopEngine()
@@ -1342,11 +1420,10 @@ end
 
 function smartAutoPlay.SetAutoSkillEnabled(state)
 	smartAutoSkillEnabled = state and true or false
-	if masterEnabled then
-		autoSkill.SetEnabled(smartAutoSkillEnabled)
-	else
-		autoSkill.SetEnabled(false)
+	if autoSkill and autoSkill.SetTargetScope then
+		autoSkill.SetTargetScope(targetScope)
 	end
+	autoSkill.SetEnabled(smartAutoSkillEnabled)
 	fireMasterStatus()
 end
 
@@ -1483,7 +1560,11 @@ end
 
 function smartAutoPlay.SetSkillRange(val)
 	if type(val) == "number" and val > 0 then
-		skillRange = math.clamp(val, 4.0, 100.0)
+		skillRange = math.clamp(val, 2.0, 200.0)
+		if autoSkill and autoSkill.SetSkillRadius then
+			autoSkill.SetSkillRadius(skillRange)
+		end
+		fireMasterStatus()
 	end
 end
 
@@ -1492,7 +1573,7 @@ function smartAutoPlay.GetSkillRange()
 end
 
 function smartAutoPlay.GetEffectiveSkillRange()
-	return math.max(skillRange, getCurrentTargetRadius(currentTargetName))
+	return skillRange
 end
 
 function smartAutoPlay.SetCyanSphereSize(val)
@@ -1528,7 +1609,7 @@ smartAutoPlay.GetSkillSphereSize = smartAutoPlay.GetMagentaSphereSize
 function smartAutoPlay.SetSphereSize(val)
 	if type(val) == "number" and val > 0 then
 		smartAutoPlay.SetCyanSphereSize(val)
-		smartAutoPlay.SetMagentaSphereSize(val * 0.8)
+		smartAutoPlay.SetMagentaSphereSize(val)
 	end
 end
 
@@ -1554,27 +1635,36 @@ function smartAutoPlay.IsMaintainDistanceEnabled()
 end
 
 function smartAutoPlay.SetTargetScope(scope)
-	if scope == "Boss" or scope == "Mobs" or scope == "All" then
-		targetScope = scope
-		maintainDistanceScope = scope
-		approachScope = scope
-		if autoSkill and autoSkill.SetTargetScope then
-			autoSkill.SetTargetScope(scope)
-		end
-		if autoFarm and autoFarm.SetTargetScope then
-			autoFarm.SetTargetScope(scope)
-		end
-		if smartDodge and smartDodge.SetTargetScope then
-			smartDodge.SetTargetScope(scope)
-		end
-		pcall(function()
-			local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
-			if sdv2 and sdv2.SetTargetScope then
-				sdv2.SetTargetScope(scope)
-			end
-		end)
-		fireMasterStatus()
+	local normalizedScope = shared.NormalizeTargetScope(scope)
+	targetScope = normalizedScope
+	maintainDistanceScope = normalizedScope
+	approachScope = normalizedScope
+
+	if autoSkill and autoSkill.SetTargetScope then
+		autoSkill.SetTargetScope(normalizedScope)
 	end
+	if autoApproach and autoApproach.SetTargetScope then
+		autoApproach.SetTargetScope(normalizedScope)
+	end
+	if autoFarm and autoFarm.SetTargetScope then
+		autoFarm.SetTargetScope(normalizedScope)
+	end
+	if smartDodge and smartDodge.SetTargetScope then
+		smartDodge.SetTargetScope(normalizedScope)
+	end
+	pcall(function()
+		local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
+		if sdv2 and sdv2.SetTargetScope then
+			sdv2.SetTargetScope(normalizedScope)
+		end
+		if sdv2 and sdv2.dodge and sdv2.dodge.SetStrafeFacingMode then
+			sdv2.dodge.SetStrafeFacingMode(normalizedScope)
+		end
+	end)
+	if targetFacing and targetFacing.SetTargetScope then
+		targetFacing.SetTargetScope(normalizedScope)
+	end
+	fireMasterStatus()
 end
 smartAutoPlay.SetCombatTargetScope = smartAutoPlay.SetTargetScope
 smartAutoPlay.SetMaintainDistanceScope = smartAutoPlay.SetTargetScope
@@ -1659,5 +1749,7 @@ lifecycle.Register(function()
 		visualFolder = nil
 	end
 end)
+
+checkVisualLoop()
 
 return smartAutoPlay

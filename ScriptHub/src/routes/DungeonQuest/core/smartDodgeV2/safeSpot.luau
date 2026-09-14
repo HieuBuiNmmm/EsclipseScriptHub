@@ -65,6 +65,7 @@ local showVectors = true
 local showMarker = true
 local showVectorNumbers = false -- Đánh số thứ tự từng vector (#1..#N) trên đầu mút
 local adaptive = true          -- Bật/tắt Adaptive Direction Search
+local lastLateralActive = false   -- Theo dõi trạng thái né đạn/beam tạt sườn (Criss Cross, Moving Beam)
 
 --// Hằng số
 local MARCH_STEP = 0.75        -- Bước sweep cơ bản (studs)
@@ -124,7 +125,6 @@ local visualFolder: Folder? = nil
 local rayItems: { [number]: RayVisualItem } = {}
 local originPad: Part? = nil
 local originDot: Part? = nil
-local markerBall: Part? = nil
 local markerHalo: Part? = nil
 local markerBeacon: Part? = nil
 local markerLabel: BillboardGui? = nil
@@ -633,21 +633,9 @@ end
 
 local function ensureMarkerParts()
 	local folder = ensureVisualFolder()
-	if not markerBall or not markerBall.Parent then
-		markerBall = Instance.new("Part")
-		markerBall.Name = "SDV2_MarkerBall"
-		markerBall.Material = Enum.Material.Neon
-		markerBall.Color = COLOR_MARKER
-		markerBall.Shape = Enum.PartType.Ball
-		markerBall.Size = Vector3.new(1.8, 1.8, 1.8)
-		markerBall.Transparency = 0.1
-		markerBall.Anchored = true
-		markerBall.CanCollide = false
-		markerBall.CanQuery = false
-		markerBall.CanTouch = false
-		markerBall.CastShadow = false
-		markerBall.Massless = true
-		markerBall.Parent = folder
+	local oldBall = folder:FindFirstChild("SDV2_MarkerBall")
+	if oldBall then
+		pcall(function() oldBall:Destroy() end)
 	end
 	if not markerHalo or not markerHalo.Parent then
 		markerHalo = Instance.new("Part")
@@ -686,9 +674,9 @@ local function ensureMarkerParts()
 		markerLabel.Name = "SDV2_MarkerLabel"
 		markerLabel.AlwaysOnTop = true
 		markerLabel.Size = UDim2.fromOffset(190, 42)
-		markerLabel.StudsOffset = Vector3.new(0, 2.4, 0)
-		markerLabel.Adornee = markerBall
-		markerLabel.Parent = markerBall
+		markerLabel.StudsOffsetWorldSpace = Vector3.new(0, 2.6, 0)
+		markerLabel.Adornee = markerHalo
+		markerLabel.Parent = markerHalo
 
 		local frame = Instance.new("Frame")
 		frame.Name = "Container"
@@ -724,7 +712,6 @@ local function ensureMarkerParts()
 end
 
 local function hideMarkerVisual()
-	if markerBall then markerBall.Transparency = 1 end
 	if markerHalo then markerHalo.Transparency = 1 end
 	if markerBeacon then markerBeacon.Transparency = 1 end
 	if markerLabel then markerLabel.Enabled = false end
@@ -736,7 +723,7 @@ local function showMarkerVisual()
 		return
 	end
 	ensureMarkerParts()
-	if not markerBall or not markerHalo or not markerBeacon or not markerLabel then return end
+	if not markerHalo or not markerBeacon or not markerLabel then return end
 
 	local playerRadius = danger.GetHitboxPadding()
 	local diameter = math.max(0.4, playerRadius * 2)
@@ -756,16 +743,12 @@ local function showMarkerVisual()
 		spotFloorY = floorHit.Position.Y
 	end
 
-	-- 1. markerBall (Quả cầu Safe Spot): lơ lửng ngay trên đĩa sàn
-	markerBall.Transparency = 0.1
-	markerBall.CFrame = CFrame.new(safeSpotPos.X, spotFloorY + 1.2, safeSpotPos.Z)
-
-	-- 2. markerHalo (Đĩa tròn Safe Spot): dán sát mặt sàn đồng bộ y hệt đĩa Player Hitbox Padding
+	-- 1. markerHalo (Đĩa tròn Safe Spot): dán sát mặt sàn đồng bộ y hệt đĩa Player Hitbox Padding
 	markerHalo.Size = Vector3.new(0.06, diameter, diameter)
 	markerHalo.Transparency = 0.35
 	markerHalo.CFrame = CFrame.new(safeSpotPos.X, spotFloorY + 0.03, safeSpotPos.Z) * CFrame.Angles(0, 0, math.rad(90))
 
-	-- 3. markerBeacon (Cột sáng): cắm từ mặt sàn vút lên trời
+	-- 2. markerBeacon (Cột sáng): cắm từ mặt sàn vút lên trời
 	markerBeacon.Transparency = 0.55
 	markerBeacon.CFrame = CFrame.new(safeSpotPos.X, spotFloorY + 9.0, safeSpotPos.Z)
 
@@ -889,6 +872,7 @@ local function clearRadar()
 	rayDirsBuilt = false
 	table.clear(slotDist)
 	seedLen = 0
+	lastLateralActive = false
 	hideAllVisuals()
 	fireCallbacks(false, nil, nil, 0, nil)
 end
@@ -912,11 +896,29 @@ local function scanRays(
 	moveDir: Vector3?,
 	results: { any },
 	state: any,
-	initialHazards: { [types.ActiveHazard]: boolean }
+	initialHazards: { [types.ActiveHazard]: boolean },
+	lateralFwd: Vector3?
 )
 	for i = fromIdx, toIdx do
 		local dir = rayDirs[i]
 		local foundDist, blockedDist, blockedReason = resolveExitDistance(origin, dir, slotDist[i], pad, initialHazards)
+
+		-- NGOẠI LỆ CHO SKILL BAY THẲNG (CrissCross, MovingBeam): Cấm tiệt mọi vector chạy dọc theo hướng đạn/beam bay
+		if lateralFwd then
+			local dotFwd = dir:Dot(lateralFwd)
+			if dotFwd > 0.25 then
+				-- Đang chạy thẳng phía trước mũi đạn/beam -> BỊ CHẶN (ngăn triệt để hiện tượng bị lùa/đẩy)
+				foundDist = nil
+				blockedDist = math.min(blockedDist or maxRadius, 15)
+				blockedReason = "lateral_hazard_forward"
+			elseif dotFwd < -0.75 then
+				-- Đang chạy ngược đầu đâm thẳng vào đạn/beam -> BỊ CHẶN
+				foundDist = nil
+				blockedDist = math.min(blockedDist or maxRadius, 10)
+				blockedReason = "lateral_hazard_headon"
+			end
+		end
+
 		if foundDist then
 			slotDist[i] = foundDist
 		else
@@ -936,7 +938,8 @@ local function scanRays(
 		if foundDist then
 			local tieScore = 0
 			if awayVector then
-				tieScore += math.max(0, dir:Dot(awayVector)) * AWAY_BONUS
+				local mult = if lateralFwd then 10.0 else AWAY_BONUS
+				tieScore += math.max(0, dir:Dot(awayVector)) * mult
 			end
 			if moveDir then
 				tieScore += math.max(0, dir:Dot(moveDir)) * FORWARD_BONUS
@@ -978,16 +981,27 @@ local function scanSafeSpot(): boolean
 	local playerRadius = danger.GetHitboxPadding()
 	local pad = playerRadius + math.max(0, escapeMargin)
 
-	-- Vector "ra xa nguồn nguy hiểm" (dùng cho bias + tie-break)
-	local awayVector: Vector3? = nil
-	local hazardPos = hazard and (hazard.beamOrigin or hazard.position)
-	if hazardPos then
-		local dx = playerPos.X - hazardPos.X
-		local dz = playerPos.Z - hazardPos.Z
-		local m = math.sqrt(dx * dx + dz * dz)
-		if m > 0.5 then
-			awayVector = Vector3.new(dx / m, 0, dz / m)
+	local results = {}
+	local state = { best = nil, candidates = {} }
+	local initialHazards = getHazardsAt(playerPos, pad)
+
+	-- NGOẠI LỆ CHO SKILL ĐẠN/BEAM BAY THẲNG (Criss Cross, Moving Beam):
+	local lateralHazard: types.ActiveHazard? = nil
+	if hazard and (hazard.isCrissCross or hazard.isMovingBeam) then
+		lateralHazard = hazard
+	elseif initialHazards then
+		for h in pairs(initialHazards) do
+			if h and (h.isCrissCross or h.isMovingBeam) then
+				lateralHazard = h
+				break
+			end
 		end
+	end
+
+	local isLateral = lateralHazard ~= nil
+	if isLateral ~= lastLateralActive then
+		lastLateralActive = isLateral
+		markDangerContextChanged()
 	end
 
 	-- Hướng đang chạy (dùng cho bias + tie-break)
@@ -997,9 +1011,42 @@ local function scanSafeSpot(): boolean
 		moveDirNorm = Vector3.new(moveDir.X, 0, moveDir.Z).Unit
 	end
 
-	local results = {}
-	local state = { best = nil, candidates = {} }
-	local initialHazards = getHazardsAt(playerPos, pad)
+	-- Vector "ra xa nguồn nguy hiểm" (dùng cho bias + tie-break)
+	local awayVector: Vector3? = nil
+	local lateralFwd: Vector3? = nil
+
+	if isLateral and lateralHazard and lateralHazard.forward2D then
+		local fwd = lateralHazard.forward2D
+		local fwd2D = Vector3.new(fwd.X, 0, fwd.Z)
+		if fwd2D.Magnitude > 0.05 then
+			lateralFwd = fwd2D.Unit
+			local leftNorm = Vector3.new(-lateralFwd.Z, 0, lateralFwd.X)
+			local rightNorm = Vector3.new(lateralFwd.Z, 0, -lateralFwd.X)
+
+			-- Chọn hướng tạt sườn ưu tiên (Lateral Strafe): thuận hướng Player đang di chuyển hoặc thoáng tường
+			if moveDirNorm and moveDirNorm:Dot(leftNorm) > moveDirNorm:Dot(rightNorm) + 0.1 then
+				awayVector = leftNorm
+			elseif moveDirNorm and moveDirNorm:Dot(rightNorm) > moveDirNorm:Dot(leftNorm) + 0.1 then
+				awayVector = rightNorm
+			else
+				local leftWall = getWallDistance(playerPos, leftNorm, 12) or 12
+				local rightWall = getWallDistance(playerPos, rightNorm, 12) or 12
+				awayVector = if leftWall >= rightWall then leftNorm else rightNorm
+			end
+		end
+	end
+
+	if not awayVector then
+		local hazardPos = hazard and (hazard.beamOrigin or hazard.position)
+		if hazardPos then
+			local dx = playerPos.X - hazardPos.X
+			local dz = playerPos.Z - hazardPos.Z
+			local m = math.sqrt(dx * dx + dz * dz)
+			if m > 0.5 then
+				awayVector = Vector3.new(dx / m, 0, dz / m)
+			end
+		end
+	end
 
 	--// DIRECTION SEARCH (Adaptive hoặc Uniform 360°)
 	if not rayDirsBuilt then
@@ -1007,17 +1054,17 @@ local function scanSafeSpot(): boolean
 			-- Chế độ thường: phân bố 360° đều tăm tắp đúng chuẩn 100% rayCount vector
 			seedLen = rayCount
 			rayDirs = buildSeedDirs(rayCount, nil)
-			scanRays(1, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards)
+			scanRays(1, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards, lateralFwd)
 		else
 			-- Chế độ Adaptive (Seed + Refine):
-			local biasDir: Vector3? = moveDirNorm or awayVector
+			local biasDir: Vector3? = if isLateral and awayVector then awayVector else (moveDirNorm or awayVector)
 
 			seedLen = math.clamp(math.floor(rayCount * SEED_FRAC), 4, rayCount)
 			local subCount = rayCount - seedLen
 			rayDirs = buildSeedDirs(seedLen, biasDir)
 
 			-- Phase 1: scan seed
-			scanRays(1, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards)
+			scanRays(1, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards, lateralFwd)
 
 			-- Phase 2: subdivide quanh các hướng seed tốt nhất
 			if subCount > 0 then
@@ -1044,14 +1091,14 @@ local function scanSafeSpot(): boolean
 					for _, nd in ipairs(extra) do
 						table.insert(rayDirs, nd)
 					end
-					scanRays(startIdx, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards)
+					scanRays(startIdx, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards, lateralFwd)
 				end
 			end
 		end
 		rayDirsBuilt = true
 	else
 		-- Pool giữ nguyên -> scan toàn bộ với WARM START
-		scanRays(1, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards)
+		scanRays(1, #rayDirs, playerPos, pad, awayVector, moveDirNorm, results, state, initialHazards, lateralFwd)
 	end
 
 	chosenRayIndex = nil
@@ -1078,14 +1125,6 @@ local function scanSafeSpot(): boolean
 	lastScanTime = os.clock()
 	updateVisuals()
 
-	if showVectorNumbers then
-		local foundCount = 0
-		for _, r in ipairs(results) do
-			if r.found then foundCount += 1 end
-		end
-		print(string.format("[SafeSpot Debug] Total Vectors: %d/%d (Seed: %d, Refine: %d) | Found Safe: %d | Chosen: Vector #%d",
-			#results, rayCount, seedLen, #results - seedLen, foundCount, (chosenRayIndex or 0) + 1))
-	end
 
 	return true
 end
@@ -1302,7 +1341,6 @@ lifecycle.Register(function()
 	rayItems = {}
 	originPad = nil
 	originDot = nil
-	markerBall = nil
 	markerHalo = nil
 	markerBeacon = nil
 	markerLabel = nil

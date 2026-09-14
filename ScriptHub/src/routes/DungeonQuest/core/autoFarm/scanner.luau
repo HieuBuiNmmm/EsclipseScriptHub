@@ -9,9 +9,7 @@ local scanner = {}
 local targetScope = "All" -- "All" | "Boss" | "Mobs"
 
 function scanner.SetTargetScope(scope)
-	if scope == "Boss" or scope == "Mobs" or scope == "All" then
-		targetScope = scope
-	end
+	targetScope = shared.NormalizeTargetScope(scope)
 end
 
 function scanner.GetTargetScope()
@@ -31,17 +29,10 @@ function scanner.Validate(enemyData)
 	local model = enemyData.Model
 	if not model or not model.Parent or model == player.Character then return false end
 
-	-- Lọc theo targetScope nếu có
-	if targetScope ~= "All" then
-		local isBossActive = shared.IsBossActive and shared.IsBossActive()
-		local eName = (model and model.Name) or ""
-		local isBossName = tostring(eName):lower():find("boss") ~= nil
-		local isBoss = isBossActive or isBossName
-		if targetScope == "Boss" and not isBoss then
-			return false
-		elseif targetScope == "Mobs" and isBoss then
-			return false
-		end
+	-- Lọc theo targetScope (MASTER Dropdown: All / Boss / Mobs)
+	local eName = (model and model.Name) or ""
+	if not shared.IsEnemyMatchingScope(model, eName, targetScope) then
+		return false
 	end
 
 	local humanoid = enemyData.Humanoid

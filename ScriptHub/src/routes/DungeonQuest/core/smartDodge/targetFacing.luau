@@ -16,8 +16,17 @@ local enabled = false
 local facingThread = nil
 local isDodging = false
 local targetOverride = nil
+local targetScope = "All"
 
 local targetFacing = {}
+
+function targetFacing.SetTargetScope(scope)
+	targetScope = shared.NormalizeTargetScope(scope)
+end
+
+function targetFacing.GetTargetScope()
+	return targetScope
+end
 
 function targetFacing.SetDodging(state)
 	isDodging = state and true or false
@@ -63,16 +72,19 @@ function targetFacing.GetTargetPosition()
 		return targetOverride
 	end
 
-	-- 1. Ưu tiên target của Auto Farm nếu đang có
+	-- 1. Ưu tiên target của Auto Farm nếu đang có (phải khớp scope)
 	local afTarget = tracker.GetTarget()
 	if afTarget and afTarget.Root and afTarget.Root.Parent then
 		local hum = afTarget.Humanoid or (afTarget.Model and afTarget.Model:FindFirstChildOfClass("Humanoid"))
 		if hum and hum.Health > 0 then
-			return afTarget.Root.Position
+			local eName = (afTarget.Model and afTarget.Model.Name) or ""
+			if shared.IsEnemyMatchingScope(afTarget.Model, eName, targetScope) then
+				return afTarget.Root.Position
+			end
 		end
 	end
 
-	-- 2. Fallback: Lấy quái gần nhất trong danh sách đang track của shared
+	-- 2. Fallback: Lấy quái gần nhất trong danh sách đang track của shared (có lọc theo targetScope)
 	local rootPart = getPlayerRoot()
 	local pPos = rootPart and rootPart.Position
 	local tracked = shared.GetTrackedEnemyData()
@@ -83,10 +95,13 @@ function targetFacing.GetTargetPosition()
 			if data and data.Root and data.Root.Parent then
 				local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
 				if hum and hum.Health > 0 then
-					local distSq = (data.Root.Position - pPos).Magnitude
-					if distSq < nearestDistSq then
-						nearestDistSq = distSq
-						nearestPos = data.Root.Position
+					local eName = (data.Model and data.Model.Name) or ""
+					if shared.IsEnemyMatchingScope(data.Model, eName, targetScope) then
+						local distSq = (data.Root.Position - pPos).Magnitude
+						if distSq < nearestDistSq then
+							nearestDistSq = distSq
+							nearestPos = data.Root.Position
+						end
 					end
 				end
 			end

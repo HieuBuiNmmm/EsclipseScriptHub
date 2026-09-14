@@ -822,6 +822,111 @@ function shared.OnBossIndexChanged(callback)
 	end
 end
 
+--// Target Scope / Boss Enemy Recognition
+function shared.NormalizeTargetScope(scope: any): string
+	local s = tostring(scope or "All"):gsub("%s+", ""):upper()
+	if s:find("BOSS") then
+		return "Boss"
+	elseif s:find("MOB") then
+		return "Mobs"
+	end
+	return "All"
+end
+
+function shared.IsBossActive(): boolean
+	return bossActive
+end
+
+function shared.IsBossEnemy(model: Instance?, name: string?): boolean
+	if not model and not name then return false end
+	local eName = name or (model and model.Name) or ""
+	local lowerName = tostring(eName):lower()
+
+	-- 1. Nếu tên chứa rõ chữ "boss"
+	if lowerName:find("boss") ~= nil then
+		return true
+	end
+
+	-- 2. Kiểm tra room của quái: nếu nằm trong phòng có tên chứa "boss" (ví dụ bossRoom, boss1, boss2...)
+	if model then
+		local room = nil
+		local data = trackedEnemies[model]
+		if data and data.Room then
+			room = data.Room
+		else
+			local p = model.Parent
+			while p and p ~= workspace do
+				if p.Parent == dungeon and (p:IsA("Folder") or p:IsA("Model")) then
+					room = p
+					break
+				end
+				p = p.Parent
+			end
+		end
+
+		if room and tostring(room.Name):lower():find("boss") ~= nil then
+			-- Trong boss room, con có MaxHealth cao nhất chính là Boss (tránh nhầm minion do boss triệu hồi)
+			local maxHpInRoom = 0
+			local bossInRoom = nil
+			for m, d in pairs(trackedEnemies) do
+				if m and m.Parent and d.Room == room then
+					local hum = d.Humanoid or m:FindFirstChildOfClass("Humanoid")
+					if hum and hum.Health > 0 and hum.MaxHealth > maxHpInRoom then
+						maxHpInRoom = hum.MaxHealth
+						bossInRoom = m
+					end
+				end
+			end
+			if bossInRoom and model == bossInRoom then
+				return true
+			end
+			-- Nếu chỉ có 1 quái duy nhất trong boss room
+			if not bossInRoom then
+				return true
+			end
+		end
+	end
+
+	-- 3. Nếu đang có GUI thanh máu Boss active trên màn hình (bossActive == true)
+	if bossActive then
+		local maxHp = 0
+		local bossCandidate = nil
+		for m, data in pairs(trackedEnemies) do
+			if m and m.Parent then
+				-- Ưu tiên con có tên chứa chữ "boss"
+				if tostring(m.Name):lower():find("boss") ~= nil then
+					return model == m
+				end
+				local hum = data.Humanoid or m:FindFirstChildOfClass("Humanoid")
+				if hum and hum.Health > 0 and hum.MaxHealth > maxHp then
+					maxHp = hum.MaxHealth
+					bossCandidate = m
+				end
+			end
+		end
+
+		if bossCandidate and model == bossCandidate then
+			return true
+		end
+	end
+
+	return false
+end
+
+function shared.IsEnemyMatchingScope(model: Instance?, name: string?, scope: any): boolean
+	local normScope = shared.NormalizeTargetScope(scope)
+	if normScope == "All" then
+		return true
+	end
+	local isBoss = shared.IsBossEnemy(model, name)
+	if normScope == "Boss" then
+		return isBoss
+	elseif normScope == "Mobs" then
+		return not isBoss
+	end
+	return true
+end
+
 --// ---- Room index ----
 
 --// Đọc số room từ tên (room1 -> 1, room12 -> 12...). Trả 0 nếu không khớp.
@@ -918,6 +1023,27 @@ local function setBossActive(active)
 	end
 end
 
+local function isGuiActuallyVisible(gui: Instance?): boolean
+	if not gui then return false end
+	if gui:IsA("ScreenGui") then
+		return gui.Enabled
+	end
+	if gui:IsA("GuiObject") then
+		if not gui.Visible then return false end
+		local ancestor = gui:FindFirstAncestorOfClass("ScreenGui")
+		if ancestor and not ancestor.Enabled then
+			return false
+		end
+		local cur = gui.Parent
+		while cur and cur:IsA("GuiObject") do
+			if not cur.Visible then return false end
+			cur = cur.Parent
+		end
+		return true
+	end
+	return false
+end
+
 local function scanBossGui()
 	if not player then return end
 	local playerGui = player:FindFirstChild("PlayerGui")
@@ -927,6 +1053,8 @@ local function scanBossGui()
 		return
 	end
 	local found = playerGui:FindFirstChild("bossHealth", true)
+		or playerGui:FindFirstChild("bonusBossHealth", true)
+		or playerGui:FindFirstChild("bossHealthBar", true)
 	if found then
 		if found ~= bossHealthRef then
 			bossHealthRef = found
@@ -936,8 +1064,7 @@ local function scanBossGui()
 				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Visible"):Connect(scanBossGui))
 			end
 		end
-		local visible = if found:IsA("ScreenGui") then found.Enabled elseif found:IsA("GuiObject") then found.Visible else true
-		setBossActive(visible)
+		setBossActive(isGuiActuallyVisible(found))
 	else
 		bossHealthRef = nil
 		setBossActive(false)

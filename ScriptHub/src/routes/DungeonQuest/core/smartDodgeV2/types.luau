@@ -29,6 +29,10 @@ export type ActiveHazard = {
 	launchTime: number?,
 	isExpandingCone: boolean?,
 	expansionRate: number?,
+	maxRadius: number?,
+	_waveDelayScheduled: boolean?,
+	isCrissCross: boolean?,
+	isMovingBeam: boolean?,
 }
 
 return {}

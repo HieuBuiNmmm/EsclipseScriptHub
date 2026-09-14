@@ -7,6 +7,7 @@ local visuals = require("@routes/DungeonQuest/core/smartDodgeV2/visuals")
 local detection = require("@routes/DungeonQuest/core/smartDodgeV2/detection")
 local danger = require("@routes/DungeonQuest/core/smartDodgeV2/danger")
 local safeSpot = require("@routes/DungeonQuest/core/smartDodgeV2/safeSpot")
+local dodge = require("@routes/DungeonQuest/core/smartDodgeV2/dodge")
 
 local smartDodgeV2 = {
 	types = types,
@@ -16,6 +17,7 @@ local smartDodgeV2 = {
 	danger = danger,
 	geometry = danger,
 	safeSpot = safeSpot,
+	dodge = dodge,
 
 	-- Orange Corridor Length Controls (Vùng màu Cam)
 	SetSkillCorridorLength = detection.SetSkillCorridorLength,
@@ -24,6 +26,7 @@ local smartDodgeV2 = {
 	GetOrbCorridorLength = detection.GetOrbCorridorLength,
 	SetBeamCorridorLength = detection.SetBeamCorridorLength,
 	GetBeamCorridorLength = detection.GetBeamCorridorLength,
+
 
 	-- Target Scope Control (All / Boss / Mobs)
 	SetTargetScope = danger.SetTargetScope,

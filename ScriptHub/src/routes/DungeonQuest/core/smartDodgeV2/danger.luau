@@ -288,7 +288,8 @@ function danger.IsPointInExpandingCone(
 	baseRadius: number,
 	maxReach: number,
 	expansionRate: number?,
-	padding: number?
+	padding: number?,
+	maxRadius: number?
 ): (boolean, number, number, number)
 	local pad = padding or playerHitboxPadding
 	local rate = expansionRate or 0.25
@@ -303,8 +304,10 @@ function danger.IsPointInExpandingCone(
 	local toP = Vector3.new(point.X - originPos.X, 0, point.Z - originPos.Z)
 	local dotForward = toP:Dot(forward2D)
 
-	-- Bán kính phình to dần theo chiều dọc đòn đánh
-	local effectiveRadius = baseRadius + math.max(0, dotForward * rate)
+	-- Bán kính phình to dần theo chiều dọc đòn đánh (giới hạn tối đa nếu có maxRadius)
+	local rawRadius = baseRadius + math.max(0, dotForward * rate)
+	local effectiveRadius = if maxRadius then math.min(maxRadius, rawRadius) else rawRadius
+
 	if dotForward < -effectiveRadius or dotForward > (maxReach + pad) then
 		return false, 0, dotForward, effectiveRadius
 	end
@@ -364,12 +367,12 @@ function danger.IsPointInHazard(point: Vector3, hazard: types.ActiveHazard, padd
 	if not isBoss2Orb and hazard.forward2D and hazard.dangerRadius then
 		local origin: Vector3
 		local reach: number
-		local isExpandingCone = hazard.isExpandingCone or hazard.cleanName:lower():find("cricle") ~= nil or hazard.cleanName:lower():find("circle") ~= nil
+		local isExpandingCone = (hazard.isExpandingCone == true)
 
 		if isExpandingCone then
 			origin = hazard.beamOrigin or hazard.position
 			reach = hazard.maxLookahead or hazard.telegraphLength or 95.0
-			local inCone = danger.IsPointInExpandingCone(point, origin, hazard.forward2D, hazard.dangerRadius, reach, hazard.expansionRate or 0.25, pad)
+			local inCone = danger.IsPointInExpandingCone(point, origin, hazard.forward2D, hazard.dangerRadius, reach, hazard.expansionRate or 0.25, pad, hazard.maxRadius)
 			if inCone then
 				return true
 			end
@@ -382,12 +385,19 @@ function danger.IsPointInHazard(point: Vector3, hazard: types.ActiveHazard, padd
 				return true
 			end
 		else
-			-- Đạn bay / Moving Projectile: vùng nguy hiểm xuất phát từ vị trí hiện tại của đạn tiến về phía trước
-			origin = hazard.position
-			reach = hazard.telegraphLength or hazard.maxLookahead or 40.0
-			local inBeam = danger.IsPointInBeamCorridor(point, origin, hazard.forward2D, hazard.dangerRadius, reach, pad)
-			if inBeam then
-				return true
+			-- Đạn bay / Moving Projectile: Ưu tiên kiểm tra OBB hành lang cam thực tế nếu visual đang hiển thị
+			local visualData = visuals.GetHazardVisualData(hazard)
+			if visualData and visualData.corridorPart and visualData.corridorPart.Parent then
+				if danger.IsPointInPartOBB(point, visualData.corridorPart, pad) then
+					return true
+				end
+			else
+				origin = hazard.position
+				reach = hazard.telegraphLength or hazard.maxLookahead or 40.0
+				local inBeam = danger.IsPointInBeamCorridor(point, origin, hazard.forward2D, hazard.dangerRadius, reach, pad)
+				if inBeam then
+					return true
+				end
 			end
 		end
 	end
@@ -645,16 +655,15 @@ function danger.IsDodgeEnemyEnabled(): boolean
 end
 
 function danger.SetTargetScope(scope: string)
-	if scope == "Boss" then
-		targetScope = "Boss"
+	local norm = shared.NormalizeTargetScope(scope)
+	targetScope = norm
+	if norm == "Boss" then
 		dodgeBossEnabled = true
 		dodgeEnemyEnabled = false
-	elseif scope == "Mobs" then
-		targetScope = "Mobs"
+	elseif norm == "Mobs" then
 		dodgeBossEnabled = false
 		dodgeEnemyEnabled = true
 	else
-		targetScope = "All"
 		dodgeBossEnabled = true
 		dodgeEnemyEnabled = true
 	end

@@ -33,7 +33,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_SAP_MaintainDistance")
 
-	local TARGET_SCOPE_OPTIONS = { "All (Boss & Mobs)", "Boss Only", "Mobs Only" }
+	local MASTER_TARGET_SCOPE_OPTIONS = { "ALL", "CHỈ ĐÁNH BOSS", "CHỈ ĐÁNH MOB" }
 	local curScopeIdx = 1
 	local curScope = smartAutoPlay.GetTargetScope()
 	if curScope == "Boss" then
@@ -43,20 +43,20 @@ return function(window, tab)
 	end
 
 	leftSection:Dropdown({
-		Name = "Combat Target Scope",
-		Options = TARGET_SCOPE_OPTIONS,
+		Name = "Master Target Scope",
+		Options = MASTER_TARGET_SCOPE_OPTIONS,
 		Default = curScopeIdx,
 		Required = true,
 		Callback = autoSave.Wrap(function(selected)
-			if selected == "Boss Only" then
+			if selected == "CHỈ ĐÁNH BOSS" then
 				smartAutoPlay.SetTargetScope("Boss")
-			elseif selected == "Mobs Only" then
+			elseif selected == "CHỈ ĐÁNH MOB" then
 				smartAutoPlay.SetTargetScope("Mobs")
 			else
 				smartAutoPlay.SetTargetScope("All")
 			end
 		end),
-	}, "Dropdown_SAP_CombatTargetScope")
+	}, "Dropdown_SAP_MasterTargetScope")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Mobs Kiting Radius (Cyan)",
@@ -178,6 +178,14 @@ return function(window, tab)
 			smartAutoPlay.SetAutoSkillEnabled(state)
 		end),
 	}, "Toggle_SAP_AutoSkill")
+
+	rightSection:Toggle({
+		Name = "Auto Weapon Attack (M1)",
+		Default = autoSkill.IsAutoAttackEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSkill.SetAutoAttack(state)
+		end),
+	}, "Toggle_SAP_AutoAttack")
 
 	local PLAYSTYLE_OPTIONS = { "Auto (Detect)", "Buff + Damage", "Full Damage" }
 	local defaultPlaystyleIdx = 1

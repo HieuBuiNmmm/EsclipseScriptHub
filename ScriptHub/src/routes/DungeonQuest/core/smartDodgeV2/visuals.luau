@@ -26,6 +26,8 @@ local TELEGRAPH_TEXT_COLOR = Color3.fromRGB(255, 160, 50)
 
 -- Lưu trữ các đối tượng visual: [ActiveHazard] = { boxes = {}, nameTags = {}, trajectoryPart = Part?, corridorPart = Part?, telegraphStartPos = Vector3? }
 local hazardVisualMap: { [types.ActiveHazard]: any } = {}
+local activeConeCorridor: Part? = nil
+local activeConeCorridorTime = 0
 
 function visuals.SetTelegraphColor(color: Color3)
 	TELEGRAPH_BOX_COLOR = color
@@ -419,8 +421,13 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 			width = 40.0
 		elseif isSeekingSpike then
 			width = 16.0
+		elseif hazard.width and hazard.width > 0 then
+			width = hazard.width
+		elseif beam then
+			local maxW = math.max(beam.Width0 or 0, beam.Width1 or 0)
+			width = if maxW > 0.5 then maxW else 20.0
 		else
-			width = hazard.width or 20.0
+			width = 20.0
 		end
 		width = math.clamp(width, 4.0, 50.0)
 		hazard.width = width
@@ -709,7 +716,9 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 
 			-- Đo độ rộng từ SelectionBox của đạn, Model BoundingBox hoặc part.Size
 			local width = 6.0
-			if hazard.instance and hazard.instance:IsA("Model") then
+			if hazard.width and hazard.width > 0 then
+				width = hazard.width
+			elseif hazard.instance and hazard.instance:IsA("Model") then
 				local _, mSize = hazard.instance:GetBoundingBox()
 				width = math.max(mSize.X, mSize.Y, mSize.Z)
 			elseif data.boxes and #data.boxes > 0 then
@@ -719,11 +728,14 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 				width = math.max(projPart.Size.X, projPart.Size.Z)
 			end
 			if width < 3.0 then width = 5.0 end
+			hazard.width = width
+			hazard.dangerRadius = width / 2
 
 			local curPos = (hazard.instance and hazard.instance:IsA("Model") and hazard.instance.PrimaryPart) and hazard.instance.PrimaryPart.Position or projPart.Position
+
 			-- Khóa hướng bay ban đầu (Initial Forward 2D) ngay lúc đạn vừa spawn
 			local initLook = (hazard.instance and hazard.instance:IsA("Model") and hazard.instance.PrimaryPart) and hazard.instance.PrimaryPart.CFrame.LookVector or projPart.CFrame.LookVector
-			local lockedForward2D = Vector3.new(initLook.X, 0, initLook.Z)
+			local lockedForward2D = hazard.forward2D or Vector3.new(initLook.X, 0, initLook.Z)
 			if hazard.isHomingToPlayer then
 				local localPlayer = Players.LocalPlayer
 				local char = localPlayer and localPlayer.Character
@@ -766,8 +778,6 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 			box.Parent = corridor
 			table.insert(data.boxes, box)
 
-
-
 			-- Heartbeat Runner (Chuẩn V1):
 			-- Khóa hướng bay theo vector chuyển động thực tế (Delta Position) hoặc bám theo Player (Homing).
 			-- Hoàn toàn miễn nhiễm với việc viên đạn tự quay tròn quanh trục CFrame!
@@ -777,6 +787,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 					if heartbeatConn then heartbeatConn:Disconnect(); heartbeatConn = nil end
 					return
 				end
+
 
 				if not projPart or not projPart.Parent or projPart.Transparency >= 0.85 then
 					if heartbeatConn then heartbeatConn:Disconnect(); heartbeatConn = nil end
@@ -796,6 +807,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 						local distToPlayer = toPlayer.Magnitude
 						if distToPlayer > 0.3 then
 							lockedForward2D = toPlayer.Unit
+							hazard.forward2D = lockedForward2D
 						end
 						-- Giữ nguyên toàn bộ chiều dài hành lang Cam (hazard.telegraphLength), KHÔNG thu ngắn khi Player lại gần
 						currentDepth = hazard.telegraphLength or lookaheadDepth
@@ -804,6 +816,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 						local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
 						if moveDelta2D.Magnitude > 0.05 then
 							lockedForward2D = moveDelta2D.Unit
+							hazard.forward2D = lockedForward2D
 						end
 					end
 				else
@@ -812,6 +825,7 @@ function visuals.AttachHazardVisuals(hazard: types.ActiveHazard)
 					local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
 					if moveDelta2D.Magnitude > 0.05 then
 						lockedForward2D = moveDelta2D.Unit
+						hazard.forward2D = lockedForward2D
 					end
 				end
 				lastPos = pPos

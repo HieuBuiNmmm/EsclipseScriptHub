@@ -23,6 +23,9 @@ local autoSkill = {}
 local enabled = false
 local useSkillQ = true
 local useSkillE = true
+local useAttack = false -- Tự động đánh thường (M1 / Weapon) khi skill hồi chiêu
+local pauseCastWhileDodging = false -- Tạm hoãn xả skill gây sát thương khi đang né đòn nguy hiểm (mặc định false)
+local wallCheckEnabled = false -- Kiểm tra vật cản (Line of Sight) trước khi tung chiêu (mặc định false)
 local castInterval = 0.25 -- Chu kỳ kiểm tra & xả chiêu cho Full Dame (giây)
 local keyHoldDuration = 0.08
 local buffDelay = 0.25 -- Thời gian chờ sau khi ấn Buff để nhận hiệu lực rồi mới xả Dame (giây)
@@ -32,6 +35,7 @@ local buffDuration = 6.0 -- Thời gian hiệu lực của buff (giây, cấu h�
 local autoBuffForSpeed = true -- Tự động Buff ngoài giao tranh để tối ưu speed chạy map
 local skillRadius = 25.0 -- Bán kính quét mục tiêu để cast skill dame (studs)
 local targetScope = "All" -- Phạm vi hoạt động: "All" | "Boss" | "Mobs"
+local lastAttackTime = 0
 
 -- Playstyle Mode: "Auto" | "FullDamage" | "BuffAndDamage"
 local playstyleModeSetting = "Auto"
@@ -228,6 +232,7 @@ end
 local function castAbility(tool, key)
 	-- Quay mặt ngay tức thì về hướng mục tiêu (ưu tiên Centroid Override khi gom quái AoE)
 	local char = player and player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
 	local aimOverride = nil
 	pcall(function()
 		local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
@@ -372,17 +377,87 @@ task.spawn(function()
 end)
 
 -- Kiểm tra xem kẻ địch có khớp với phạm vi targetScope ("All" | "Boss" | "Mobs") không
-local function isEnemyMatchingScope(name: string?): boolean
-	if targetScope == "All" then return true end
-	local isBossActive = shared.IsBossActive and shared.IsBossActive()
-	local isBossName = name and (tostring(name):lower():find("boss") ~= nil)
-	local isBoss = isBossActive or isBossName
-	if targetScope == "Boss" then
-		return isBoss
-	elseif targetScope == "Mobs" then
-		return not isBoss
+local function isEnemyMatchingScope(model: Instance?, name: string?): boolean
+	return shared.IsEnemyMatchingScope(model, name, targetScope)
+end
+
+-- Tia Raycast kiểm tra đường đạn thông thoáng (Line of Sight / Wall Check)
+local losRayParams = RaycastParams.new()
+losRayParams.FilterType = Enum.RaycastFilterType.Exclude
+losRayParams.IgnoreWater = true
+
+local function isLineOfSightClear(fromPos: Vector3, toPos: Vector3, enemyModel: Instance?): boolean
+	if not wallCheckEnabled then return true end
+	local char = player and player.Character
+	local ignore = {}
+	if char then table.insert(ignore, char) end
+	if enemyModel then table.insert(ignore, enemyModel) end
+	local rayIgnore = workspace:FindFirstChild("RaycastIgnore")
+	if rayIgnore then table.insert(ignore, rayIgnore) end
+	losRayParams.FilterDescendantsInstances = ignore
+
+	local origin = Vector3.new(fromPos.X, fromPos.Y + 2.0, fromPos.Z)
+	local target = Vector3.new(toPos.X, toPos.Y + 2.0, toPos.Z)
+	local dir = target - origin
+	local hit = workspace:Raycast(origin, dir, losRayParams)
+	if hit and hit.Instance and hit.Instance.CanCollide then
+		return false
 	end
 	return true
+end
+
+-- Kiểm tra xem hệ thống SmartDodge V2 có đang né đòn khẩn cấp không
+local function isDodgingNow(): boolean
+	local dodging = false
+	pcall(function()
+		local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
+		if sdv2 and sdv2.dodge and sdv2.dodge.IsDodging and sdv2.dodge.IsDodging() then
+			dodging = true
+		elseif sdv2 and sdv2.danger and sdv2.danger.IsPlayerInDanger and sdv2.danger.IsPlayerInDanger() then
+			dodging = true
+		end
+	end)
+	return dodging
+end
+
+-- Thực hiện đòn đánh thường (Weapon Attack / M1)
+local function performWeaponAttack(targetPos: Vector3?)
+	if not useAttack then return end
+	if isCharacterBusyCasting() then return end
+	if pauseCastWhileDodging and isDodgingNow() then return end
+	if (os.clock() - lastAttackTime) < 0.25 then return end
+
+	local char = player and player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not char or not root then return end
+
+	-- Quay mặt nhanh về mục tiêu nếu có
+	if targetPos then
+		local flatLook = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z)
+		if flatLook.Magnitude > 0.5 then
+			pcall(function()
+				root.CFrame = CFrame.lookAt(root.Position, root.Position + flatLook.Unit)
+			end)
+		end
+	end
+
+	lastAttackTime = os.clock()
+
+	-- Kích hoạt Tool vũ khí đang cầm trên tay (không phải Tool ability slot)
+	for _, child in ipairs(char:GetChildren()) do
+		if child:IsA("Tool") and not child:FindFirstChild("abilitySlot") then
+			pcall(function()
+				child:Activate()
+			end)
+		end
+	end
+
+	pcall(function()
+		VirtualUser:CaptureController()
+		VirtualUser:Button1Down(Vector2.new(0, 0))
+		task.wait(0.03)
+		VirtualUser:Button1Up(Vector2.new(0, 0))
+	end)
 end
 
 -- Tìm tất cả kẻ địch còn sống trong bán kính R phẳng (X/Z) xung quanh người chơi
@@ -409,15 +484,17 @@ local function getEnemiesInRadius(r)
 				local flatDist = math.sqrt(dx * dx + dz * dz)
 				if flatDist <= r and math.abs(dy) <= maxAllowedDy then
 					local eName = (data.Model and data.Model.Name) or "Enemy"
-					if isEnemyMatchingScope(eName) then
-						seenModels[data.Model] = true
-						table.insert(inRange, {
-							data = data,
-							dist = flatDist,
-							model = data.Model,
-							name = eName,
-							pos = data.Root.Position,
-						})
+					if isEnemyMatchingScope(data.Model, eName) then
+						if isLineOfSightClear(pPos, data.Root.Position, data.Model) then
+							seenModels[data.Model] = true
+							table.insert(inRange, {
+								data = data,
+								dist = flatDist,
+								model = data.Model,
+								name = eName,
+								pos = data.Root.Position,
+							})
+						end
 					end
 				end
 			end
@@ -435,14 +512,16 @@ local function getEnemiesInRadius(r)
 			local flatDist = math.sqrt(dx * dx + dz * dz)
 			if flatDist <= r and math.abs(dy) <= maxAllowedDy then
 				local tName = (afTarget.Model and afTarget.Model.Name) or "Target"
-				if isEnemyMatchingScope(tName) then
-					table.insert(inRange, {
-						data = afTarget,
-						dist = flatDist,
-						model = afTarget.Model,
-						name = tName,
-						pos = afTarget.Root.Position,
-					})
+				if isEnemyMatchingScope(afTarget.Model, tName) then
+					if isLineOfSightClear(pPos, afTarget.Root.Position, afTarget.Model) then
+						table.insert(inRange, {
+							data = afTarget,
+							dist = flatDist,
+							model = afTarget.Model,
+							name = tName,
+							pos = afTarget.Root.Position,
+						})
+					end
 				end
 			end
 		end
@@ -464,6 +543,9 @@ local function executeCombat(r)
 		skillE.tool = findAbilityTool("e")
 	end
 
+	-- Kiểm tra Dodge-Priority: Nếu đang né đòn khẩn cấp -> Hoãn xả skill gây sát thương
+	local dodging = pauseCastWhileDodging and isDodgingNow()
+
 	if activeStyle == "BuffAndDamage" and buffSkill and damageSkill then
 		-- LỐI CHƠI 2: BUFF + DAMAGE
 		local buffTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
@@ -474,7 +556,7 @@ local function executeCombat(r)
 		if isBuffReady and not isCharacterBusyCasting() then
 			isCasting = true
 
-			-- Bước 1: Kích hoạt BUFF
+			-- Bước 1: Kích hoạt BUFF (Buff có thể kích hoạt cả khi né để tăng tốc)
 			castAbility(buffTool, buffSkill.key)
 			lastBuffCastTime = os.clock()
 
@@ -482,69 +564,92 @@ local function executeCombat(r)
 			task.wait(buffDelay)
 
 			-- Bước 3: KIỂM TRA LẠI: PHÁT HIỆN ĐỊCH TRONG RADIUS RỒI MỚI CAST DAME!
-			local freshEnemies = getEnemiesInRadius(r)
-			if #freshEnemies > 0 and not isCharacterBusyCasting() then
-				nearestTargetInfo = freshEnemies[1]
-				castAbility(damageTool, damageSkill.key)
-				lastDamageCastTime = os.clock()
+			if not (pauseCastWhileDodging and isDodgingNow()) then
+				local freshEnemies = getEnemiesInRadius(r)
+				if #freshEnemies > 0 and not isCharacterBusyCasting() then
+					nearestTargetInfo = freshEnemies[1]
+					castAbility(damageTool, damageSkill.key)
+					lastDamageCastTime = os.clock()
+				end
 			end
 
 			isCasting = false
 		elseif isBuffActive() and not isCharacterBusyCasting() then
 			-- Buff vẫn ĐANG TRONG THỜI GIAN HIỆU LỰC:
-			-- Phát hiện địch trong RADIUS rồi mới cast skill dame
-			local freshEnemies = getEnemiesInRadius(r)
-			if #freshEnemies > 0 then
-				nearestTargetInfo = freshEnemies[1]
-				local dCdVal = damageTool and damageTool:FindFirstChild("cooldown")
-				local dReady = not dCdVal or ((tonumber(dCdVal.Value) or 0) <= 0.05)
-				if dReady then
-					local elapsedSinceLastDamage = os.clock() - lastDamageCastTime
-					local dCd = damageSkill.cooldown or 2.5
-					if lastDamageCastTime == 0 or elapsedSinceLastDamage >= dCd then
-						isCasting = true
-						castAbility(damageTool, damageSkill.key)
-						lastDamageCastTime = os.clock()
-						isCasting = false
+			if not dodging then
+				local freshEnemies = getEnemiesInRadius(r)
+				if #freshEnemies > 0 then
+					nearestTargetInfo = freshEnemies[1]
+					local dCdVal = damageTool and damageTool:FindFirstChild("cooldown")
+					local dReady = not dCdVal or ((tonumber(dCdVal.Value) or 0) <= 0.05)
+					if dReady then
+						local elapsedSinceLastDamage = os.clock() - lastDamageCastTime
+						local dCd = damageSkill.cooldown or 2.5
+						if lastDamageCastTime == 0 or elapsedSinceLastDamage >= dCd then
+							isCasting = true
+							castAbility(damageTool, damageSkill.key)
+							lastDamageCastTime = os.clock()
+							isCasting = false
+						else
+							performWeaponAttack(freshEnemies[1].pos)
+						end
+					else
+						performWeaponAttack(freshEnemies[1].pos)
 					end
 				end
 			end
 		else
 			-- Buff HẾT THỜI GIAN HIỆU LỰC và đang hồi chiêu:
-			-- TUYỆT ĐỐI KHÔNG XẢ DAME! Chờ Buff hồi chiêu để cast cùng Buff.
+			-- Chờ Buff hồi chiêu để cast cùng Buff. Trong lúc chờ có thể chém thường.
+			if not dodging then
+				local freshEnemies = getEnemiesInRadius(r)
+				if #freshEnemies > 0 then
+					performWeaponAttack(freshEnemies[1].pos)
+				end
+			end
 		end
 	else
 		-- LỐI CHƠI 1: FULL DAMAGE (Spam Q & E, chỉ cast khi phát hiện địch trong RADIUS)
-		local freshEnemies = getEnemiesInRadius(r)
-		if #freshEnemies > 0 then
-			isCasting = true
-			local castedQ = false
-			if useSkillQ then
-				local qTool = skillQ.tool or findAbilityTool("q")
-				local qCdVal = qTool and qTool:FindFirstChild("cooldown")
-				local qReady = not qCdVal or ((tonumber(qCdVal.Value) or 0) <= 0.05)
-				if qReady and not isCharacterBusyCasting() then
-					nearestTargetInfo = freshEnemies[1]
-					castAbility(qTool, Enum.KeyCode.Q)
-					castedQ = true
+		if not dodging then
+			local freshEnemies = getEnemiesInRadius(r)
+			if #freshEnemies > 0 then
+				isCasting = true
+				local castedQ = false
+				if useSkillQ then
+					local qTool = skillQ.tool or findAbilityTool("q")
+					local qCdVal = qTool and qTool:FindFirstChild("cooldown")
+					local qReady = not qCdVal or ((tonumber(qCdVal.Value) or 0) <= 0.05)
+					if qReady and not isCharacterBusyCasting() then
+						nearestTargetInfo = freshEnemies[1]
+						castAbility(qTool, Enum.KeyCode.Q)
+						castedQ = true
+					end
 				end
-			end
 
-			if castedQ then
-				task.wait(0.08)
-			end
-
-			local freshEnemiesE = getEnemiesInRadius(r)
-			if #freshEnemiesE > 0 and useSkillE then
-				local eTool = skillE.tool or findAbilityTool("e")
-				local eCdVal = eTool and eTool:FindFirstChild("cooldown")
-				local eReady = not eCdVal or ((tonumber(eCdVal.Value) or 0) <= 0.05)
-				if eReady and not isCharacterBusyCasting() then
-					nearestTargetInfo = freshEnemiesE[1]
-					castAbility(eTool, Enum.KeyCode.E)
+				if castedQ then
+					task.wait(0.08)
 				end
+
+				local freshEnemiesE = getEnemiesInRadius(r)
+				local castedE = false
+				if #freshEnemiesE > 0 and useSkillE then
+					local eTool = skillE.tool or findAbilityTool("e")
+					local eCdVal = eTool and eTool:FindFirstChild("cooldown")
+					local eReady = not eCdVal or ((tonumber(eCdVal.Value) or 0) <= 0.05)
+					if eReady and not isCharacterBusyCasting() then
+						nearestTargetInfo = freshEnemiesE[1]
+						castAbility(eTool, Enum.KeyCode.E)
+						castedE = true
+					end
+				end
+
+				-- Nếu cả Q lẫn E đều đang cooldown, tự động đánh thường (Weapon Attack)
+				if not castedQ and not castedE then
+					performWeaponAttack(freshEnemies[1].pos)
+				end
+
+				isCasting = false
 			end
-			isCasting = false
 		end
 	end
 end
@@ -796,11 +901,27 @@ function autoSkill.GetRadius()
 end
 autoSkill.GetSkillRadius = autoSkill.GetRadius
 
+function autoSkill.SetPauseCastWhileDodging(state: boolean)
+	pauseCastWhileDodging = (state == true)
+	fireStatusChange()
+end
+
+function autoSkill.IsPauseCastWhileDodgingEnabled(): boolean
+	return pauseCastWhileDodging
+end
+
+function autoSkill.SetWallCheckEnabled(state: boolean)
+	wallCheckEnabled = (state == true)
+	fireStatusChange()
+end
+
+function autoSkill.IsWallCheckEnabled(): boolean
+	return wallCheckEnabled
+end
+
 function autoSkill.SetTargetScope(scope)
-	if scope == "Boss" or scope == "Mobs" or scope == "All" then
-		targetScope = scope
-		fireStatusChange()
-	end
+	targetScope = shared.NormalizeTargetScope(scope)
+	fireStatusChange()
 end
 
 function autoSkill.GetTargetScope()
@@ -815,6 +936,11 @@ function autoSkill.GetStatus()
 		playstyle = activeStyle,
 		skillQ = skillQ,
 		skillE = skillE,
+		useSkillQ = useSkillQ,
+		useSkillE = useSkillE,
+		useAttack = useAttack,
+		pauseCastWhileDodging = pauseCastWhileDodging,
+		wallCheckEnabled = wallCheckEnabled,
 		buffSkill = buffSkill,
 		damageSkill = damageSkill,
 		radius = getCurrentSkillRadius(),

@@ -4,10 +4,13 @@
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local smartDodgeV2 = require("@routes/DungeonQuest/core/smartDodgeV2")
+local smartAutoPlay = require("@routes/DungeonQuest/core/smartAutoPlay")
 local detection = smartDodgeV2.detection
 local visuals = smartDodgeV2.visuals
 local danger = smartDodgeV2.danger
 local safeSpot = smartDodgeV2.safeSpot
+local dodge = smartDodgeV2.dodge
+local autoSkill = smartAutoPlay.autoSkill
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -27,6 +30,7 @@ return function(window, tab)
 	local radarStateLabel = rightSection:Label({ Text = "Radar: <font color='rgb(160,160,160)'>Idle</font>" })
 	local radarTargetLabel = rightSection:Label({ Text = "Safe Target: <font color='rgb(160,160,160)'>None</font>" })
 	local radarStatsLabel = rightSection:Label({ Text = "Scan: <font color='rgb(160,160,160)'>-</font>" })
+	local dodgeStateLabel = rightSection:Label({ Text = "Dodge Engine: <font color='rgb(160,160,160)'>Idle</font>" })
 
 	local function updateRadarMonitor(hasSpot, pos, hazardName, dist, chosen)
 		pcall(function()
@@ -95,6 +99,19 @@ return function(window, tab)
 	-- Lắng nghe sự kiện Safe Spot Radar V2
 	safeSpot.OnSafeSpotChanged(function(hasSpot, pos, hazardName, dist, chosen)
 		updateRadarMonitor(hasSpot, pos, hazardName, dist, chosen)
+	end)
+
+	-- Lắng nghe trạng thái Dodge Engine V2
+	dodge.OnDodgeStatusChanged(function(status)
+		pcall(function()
+			if status == "Dodging" then
+				dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(255,200,50)'>DODGING (HumanoidMove)</font>")
+			elseif status == "Safe" then
+				dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(60,255,130)'>SAFE (Snapped)</font>")
+			else
+				dodgeStateLabel:UpdateName("Dodge Engine: <font color='rgb(160,160,160)'>Idle</font>")
+			end
+		end)
 	end)
 
 	--// Right Section: Specific Skill Orange Corridor Lengths (Chỉnh độ dài vùng Cam cho từng Skill riêng biệt)
@@ -190,6 +207,7 @@ return function(window, tab)
 			detection.SetSkillCorridorLength("boss2_movingbeam", val)
 		end),
 	}, "Slider_SDV2_Len_Boss2MovingBeam"))
+
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
 		Name = "Boss 3: Homing Missile",
@@ -412,6 +430,210 @@ return function(window, tab)
 			safeSpot.SetEscapeMargin(val)
 		end),
 	}, "Slider_SDV2_EscapeMargin"))
+
+	--// Smart Auto Play V2 Section
+	local autoPlaySection = tab:Section({ Side = "Left" })
+	autoPlaySection:Header({ Name = "Smart Auto Play V2" })
+
+	autoPlaySection:Toggle({
+		Name = "Enable Smart Auto Play",
+		Default = smartAutoPlay.IsMasterEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetMasterEnabled(state)
+		end),
+	}, "Toggle_SDV2_SAP_Master")
+
+	local autoPlayStatusLabel = autoPlaySection:Label({
+		Text = "Status: <font color='rgb(160, 160, 160)'>Disabled</font>",
+	})
+
+	local MASTER_TARGET_SCOPE_OPTIONS = { "ALL", "CHỈ ĐÁNH BOSS", "CHỈ ĐÁNH MOB" }
+	local curScopeIdx = 1
+	local curScope = smartAutoPlay.GetTargetScope()
+	if curScope == "Boss" then
+		curScopeIdx = 2
+	elseif curScope == "Mobs" then
+		curScopeIdx = 3
+	end
+
+	ui.PatchDropdownRestore(autoPlaySection:Dropdown({
+		Name = "Master Target Scope",
+		Options = MASTER_TARGET_SCOPE_OPTIONS,
+		Default = curScopeIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if selected == "CHỈ ĐÁNH BOSS" then
+				smartAutoPlay.SetTargetScope("Boss")
+			elseif selected == "CHỈ ĐÁNH MOB" then
+				smartAutoPlay.SetTargetScope("Mobs")
+			else
+				smartAutoPlay.SetTargetScope("All")
+			end
+		end),
+	}, "Dropdown_SDV2_MasterTargetScope"))
+
+	autoPlaySection:Header({ Name = "Auto Skill & Combat Options" })
+
+	autoPlaySection:Toggle({
+		Name = "Enable Smart Auto Skill",
+		Default = smartAutoPlay.IsAutoSkillEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetAutoSkillEnabled(state)
+		end),
+	}, "Toggle_SDV2_SAP_AutoSkill")
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Skill Cast Range",
+		Suffix = " std",
+		Default = smartAutoPlay.GetSkillRange(),
+		Minimum = 4,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetSkillRange(val)
+		end),
+	}, "Slider_SDV2_SkillRange"))
+
+	autoPlaySection:Toggle({
+		Name = "Show Skill Range Circle (Visual)",
+		Default = smartAutoPlay.IsShowSkillCircleEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetShowSkillCircle(state)
+		end),
+	}, "Toggle_SDV2_ShowSkillCircle")
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Sphere Size (Visual)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetSkillSphereSize(),
+		Minimum = 0.05,
+		Maximum = 2.0,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetSkillSphereSize(val)
+			smartAutoPlay.SetCyanSphereSize(val)
+		end),
+	}, "Slider_SDV2_SphereSize"))
+
+	autoPlaySection:Toggle({
+		Name = "Auto Weapon Attack (M1)",
+		Default = autoSkill.IsAutoAttackEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSkill.SetAutoAttack(state)
+		end),
+	}, "Toggle_SDV2_SAP_AutoAttack")
+
+	local PLAYSTYLE_OPTIONS = { "Auto (Detect)", "Buff + Damage", "Full Damage" }
+	local defaultPlaystyleIdx = 1
+	local curMode = autoSkill.GetPlaystyleMode()
+	if curMode == "BuffAndDamage" then
+		defaultPlaystyleIdx = 2
+	elseif curMode == "FullDamage" then
+		defaultPlaystyleIdx = 3
+	end
+
+	ui.PatchDropdownRestore(autoPlaySection:Dropdown({
+		Name = "Playstyle Mode",
+		Options = PLAYSTYLE_OPTIONS,
+		Default = defaultPlaystyleIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if selected == "Buff + Damage" then
+				autoSkill.SetPlaystyleMode("BuffAndDamage")
+			elseif selected == "Full Damage" then
+				autoSkill.SetPlaystyleMode("FullDamage")
+			else
+				autoSkill.SetPlaystyleMode("Auto")
+			end
+		end),
+	}, "Dropdown_SDV2_SAP_PlaystyleMode"))
+
+	autoPlaySection:Toggle({
+		Name = "Auto Buff For Speed (Travel)",
+		Default = autoSkill.IsAutoBuffForSpeedEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSkill.SetAutoBuffForSpeed(state)
+		end),
+	}, "Toggle_SDV2_SAP_AutoBuffForSpeed")
+
+	smartAutoPlay.OnMasterStatusChanged(function(info)
+		pcall(function()
+			if not info.enabled then
+				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(160, 160, 160)'>Disabled</font>")
+			elseif info.state == "Dodging" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(255, 65, 65)'>🛡️ DODGING! %s (%.1f std)</font>", info.hazardName or "Hazard", info.escapeDist or 0))
+			elseif info.state == "InCombat" or info.state == "Strafing" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 255, 120)'>⚔️ IN COMBAT (%s)</font>", info.targetName or "Target"))
+			elseif info.state == "Approaching" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 200, 255)'>🏃 APPROACHING (%s)</font>", info.targetName or "Target"))
+			elseif info.state == "RoomCleared" then
+				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 50)'>✨ ROOM CLEARED</font>")
+			else
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>%s</font>", tostring(info.state)))
+			end
+		end)
+	end)
+
+	--// Dodge Execution Controls (HumanoidMove + Snap đích)
+	local dodgeSection = tab:Section({ Side = "Right" })
+	dodgeSection:Header({ Name = "Dodge Execution (HumanoidMove + Snap)" })
+
+	dodgeSection:Toggle({
+		Name = "Enable Auto Dodge (Tự động né)",
+		Default = dodge.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			dodge.SetEnabled(state)
+		end),
+	}, "Toggle_SDV2_AutoDodge")
+
+	ui.PatchSliderLoadCallback(dodgeSection:Slider({
+		Name = "Max Snap Distance (Cự ly Snap)",
+		Suffix = " std",
+		Default = dodge.GetMaxSnapDistance(),
+		Minimum = 0.5,
+		Maximum = 5.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			dodge.SetMaxSnapDistance(val)
+		end),
+	}, "Slider_SDV2_MaxSnapDist"))
+
+	dodgeSection:Toggle({
+		Name = "Maintain Snap Height (Giữ cao độ)",
+		Default = dodge.IsMaintainSnapHeight(),
+		Callback = autoSave.Wrap(function(state)
+			dodge.SetMaintainSnapHeight(state)
+		end),
+	}, "Toggle_SDV2_MaintainHeight")
+
+	local STRAFE_FACING_OPTIONS = { "All", "Boss", "Mob", "Disabled" }
+	local curFacing = dodge.GetStrafeFacingMode()
+	local curFacingIdx = 1
+	if curFacing == "Boss" then
+		curFacingIdx = 2
+	elseif curFacing == "Mob" then
+		curFacingIdx = 3
+	elseif curFacing == "Disabled" then
+		curFacingIdx = 4
+	end
+
+	ui.PatchDropdownRestore(dodgeSection:Dropdown({
+		Name = "Strafe Facing Target",
+		Options = STRAFE_FACING_OPTIONS,
+		Default = curFacingIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			dodge.SetStrafeFacingMode(selected)
+		end),
+	}, "Dropdown_SDV2_StrafeFacingTarget"))
+
+	-- Kích hoạt facing ngay nếu chế độ hiện tại khác Disabled
+	if curFacing and curFacing ~= "Disabled" then
+		dodge.SetStrafeFacingMode(curFacing)
+	end
 
 	updateRadarMonitor(false, nil, nil, 0, nil)
 end
