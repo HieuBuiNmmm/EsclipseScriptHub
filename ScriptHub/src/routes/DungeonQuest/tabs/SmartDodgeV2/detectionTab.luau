@@ -3,8 +3,11 @@
 
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local shared = require("@routes/DungeonQuest/core/shared")
+local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
 local smartDodgeV2 = require("@routes/DungeonQuest/core/smartDodgeV2")
 local smartAutoPlay = require("@routes/DungeonQuest/core/smartAutoPlay")
+local abilitySet = require("@routes/DungeonQuest/core/abilitySet")
 local detection = smartDodgeV2.detection
 local visuals = smartDodgeV2.visuals
 local danger = smartDodgeV2.danger
@@ -830,6 +833,93 @@ return function(window, tab)
 		end),
 	}, "Slider_SDV2_SAP_BuffDuration"))
 
+	autoPlaySection:Header({ Name = "Ability Loadout (Auto Swap Set)" })
+
+	autoPlaySection:Toggle({
+		Name = "Auto Swap Loadout (Mob vs Boss)",
+		Default = abilitySet.IsAutoSwapEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			abilitySet.SetAutoSwapEnabled(state)
+		end),
+	}, "Toggle_SDV2_AutoSwapAbilitySet")
+
+	local mobDropdown = nil
+	local bossDropdown = nil
+
+	local function getDropdownOptions()
+		return { abilitySet.GetSetLabel(1), abilitySet.GetSetLabel(2) }
+	end
+
+	local function patchSetDropdown(dropdown)
+		if not dropdown or type(dropdown.UpdateSelection) ~= "function" then return dropdown end
+		local origUpdate = dropdown.UpdateSelection
+		dropdown.UpdateSelection = function(self, newSelection)
+			local wantSet = nil
+			if type(newSelection) == "string" then
+				if newSelection:find("Set 2") then
+					wantSet = 2
+				elseif newSelection:find("Set 1") then
+					wantSet = 1
+				end
+			elseif type(newSelection) == "number" then
+				wantSet = newSelection
+			end
+			if wantSet then
+				local label = abilitySet.GetSetLabel(wantSet)
+				if not self:IsOption(label) then
+					pcall(function()
+						self:ClearOptions()
+						self:InsertOptions(getDropdownOptions())
+					end)
+				end
+				origUpdate(self, label)
+				return
+			end
+			origUpdate(self, newSelection)
+		end
+		return dropdown
+	end
+
+	mobDropdown = patchSetDropdown(autoPlaySection:Dropdown({
+		Name = "Mob Room Loadout (Quái thường)",
+		Options = getDropdownOptions(),
+		Default = abilitySet.GetSetLabel(abilitySet.GetMobSet()),
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			local setNum = (type(selected) == "string" and selected:find("Set 2")) and 2 or 1
+			abilitySet.SetMobSet(setNum)
+		end),
+	}, "Dropdown_SDV2_MobLoadout"))
+
+	bossDropdown = patchSetDropdown(autoPlaySection:Dropdown({
+		Name = "Boss Room Loadout (Đánh Boss)",
+		Options = getDropdownOptions(),
+		Default = abilitySet.GetSetLabel(abilitySet.GetBossSet()),
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			local setNum = (type(selected) == "string" and selected:find("Set 2")) and 2 or 1
+			abilitySet.SetBossSet(setNum)
+		end),
+	}, "Dropdown_SDV2_BossLoadout"))
+
+	abilitySet.OnLabelsChanged(function()
+		pcall(function()
+			local opts = getDropdownOptions()
+			if mobDropdown then
+				local curMob = abilitySet.GetMobSet()
+				mobDropdown:ClearOptions()
+				mobDropdown:InsertOptions(opts)
+				mobDropdown:UpdateSelection(abilitySet.GetSetLabel(curMob))
+			end
+			if bossDropdown then
+				local curBoss = abilitySet.GetBossSet()
+				bossDropdown:ClearOptions()
+				bossDropdown:InsertOptions(opts)
+				bossDropdown:UpdateSelection(abilitySet.GetSetLabel(curBoss))
+			end
+		end)
+	end)
+
 	smartAutoPlay.OnMasterStatusChanged(function(info)
 		pcall(function()
 			if not info.enabled then
@@ -937,6 +1027,48 @@ return function(window, tab)
 	if curFacing and curFacing ~= "Disabled" then
 		dodge.SetStrafeFacingMode(curFacing)
 	end
+
+	--// Player Movement Speed (WalkSpeed Custom)
+	local speedSection = tab:Section({ Side = "Right" })
+	speedSection:Header({ Name = "Movement Speed" })
+
+	speedSection:Toggle({
+		Name = "Fast Speed",
+		Default = shared.IsSpeedEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetSpeedEnabled(state)
+		end),
+	}, "Toggle_FastSpeed")
+
+	ui.PatchSliderLoadCallback(speedSection:Slider({
+		Name = "Custom Fast Speed",
+		Default = shared.GetFastSpeed(),
+		Minimum = 16,
+		Maximum = 28,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(Value)
+			shared.SetFastSpeed(math.round(Value * 100) / 100)
+		end),
+	}, "Slider_FastSpeed"))
+
+	speedSection:Toggle({
+		Name = "Instant Acceleration (Max Speed tức thì)",
+		Default = shared.IsInstantAccelEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetInstantAccelEnabled(state)
+		end),
+	}, "Toggle_InstantAcceleration")
+
+	speedSection:Header({ Name = "Shortcuts" })
+
+	speedSection:Toggle({
+		Name = "Right Click Combo (Q+E)",
+		Default = shortcuts.IsMouseComboEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shortcuts.SetMouseComboEnabled(state)
+		end),
+	}, "Toggle_MouseCombo")
 
 	updateRadarMonitor(false, nil, nil, 0, nil)
 end

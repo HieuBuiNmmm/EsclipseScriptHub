@@ -258,9 +258,9 @@ return function(window, tab)
 		Minimum = 18,
 		Maximum = 32,
 		DisplayMethod = "Round",
-		Precision = 0,
+		Precision = 2,
 		Callback = autoSave.Wrap(function(value)
-			smartDodge.SetPanicSpeed(value)
+			smartDodge.SetPanicSpeed(math.round(value * 100) / 100)
 		end),
 	}, "Slider_SmartDodgePanicSpeed"))
 

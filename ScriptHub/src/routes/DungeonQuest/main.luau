@@ -56,6 +56,7 @@ return function(self)
 	local tabs = {
 		-- Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://10734975692" }), -- [TẠM PHONG ẤN TAB COMBAT NẶNG]
 		SmartDodgeV2 = tabGroup:Tab({ Name = "Smart Dodge V2", Image = "rbxassetid://10723346959" }),
+		PathRecord = tabGroup:Tab({ Name = "Path Record", Image = "rbxassetid://10734944747" }),
 		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734886202" }),
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10709769841" }),
 		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10747383470" }),
@@ -68,6 +69,7 @@ return function(self)
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	-- local combatTab = require("@routes/DungeonQuest/tabs/Combat/main") -- [TẠM PHONG ẤN]
 	local smartDodgeV2Tab = require("@routes/DungeonQuest/tabs/SmartDodgeV2/main")
+	local pathRecordTab = require("@routes/DungeonQuest/tabs/PathRecord/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local inventoryTab = require("@routes/DungeonQuest/tabs/Inventory/main")
 	local utilitiesTab = require("@routes/DungeonQuest/tabs/Utilities/main")
@@ -75,6 +77,7 @@ return function(self)
 
 	-- if tabs.Combat then combatTab(window, tabs.Combat) end -- [TẠM PHONG ẤN]
 	smartDodgeV2Tab(window, tabs.SmartDodgeV2)
+	pathRecordTab(window, tabs.PathRecord)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	utilitiesTab(window, tabs.Utilities)

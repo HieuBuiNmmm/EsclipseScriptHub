@@ -124,7 +124,7 @@ local function startFacingLoop()
 
 	facingThread = task.spawn(function()
 		while enabled and lifecycle.IsActive() do
-			if not isDodging then
+			if not isDodging and not (shared.IsPathRecordPlaying and shared.IsPathRecordPlaying()) then
 				local targetPos = targetFacing.GetTargetPosition()
 				local rootPart = getPlayerRoot()
 				local humanoid = getHumanoid()

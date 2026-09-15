@@ -342,13 +342,13 @@ end
 
 --// Speed state (Speed tab thao tác lên đây)
 function shared.SetFastSpeed(value)
-	fastSpeed = value
+	local num = tonumber(value)
+	if not num then return end
+	fastSpeed = math.round(num * 100) / 100
 	if enabled and humanoid and humanoid.Parent then
-		if humanoid.WalkSpeed < fastSpeed then
-			isSettingSpeed = true
-			humanoid.WalkSpeed = fastSpeed
-			isSettingSpeed = false
-		end
+		isSettingSpeed = true
+		humanoid.WalkSpeed = fastSpeed
+		isSettingSpeed = false
 	end
 end
 
@@ -956,6 +956,34 @@ function shared.OnLobbyChanged(callback)
 		end
 	end
 end
+
+--// ---- Path Record Playing State (đồng bộ tránh xung đột với Auto Face Target) ----
+local pathRecordPlaying = false
+local pathRecordCallbacks = {}
+
+function shared.SetPathRecordPlaying(state)
+	local newState = state and true or false
+	if pathRecordPlaying == newState then return end
+	pathRecordPlaying = newState
+	for i = #pathRecordCallbacks, 1, -1 do
+		pcall(pathRecordCallbacks[i], pathRecordPlaying)
+	end
+end
+
+function shared.IsPathRecordPlaying()
+	return pathRecordPlaying
+end
+
+function shared.OnPathRecordPlayingChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(pathRecordCallbacks, callback)
+	return function()
+		for i, cb in ipairs(pathRecordCallbacks) do
+			if cb == callback then table.remove(pathRecordCallbacks, i) break end
+		end
+	end
+end
+
 
 --// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
 local bossHealthRef = nil
