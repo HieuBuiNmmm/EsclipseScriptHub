@@ -244,18 +244,30 @@ an(h)if j then local k,l=j.center.X,j.center.Z if i and i.Parent then local m=i:
 IsA'BasePart'and i or i.PrimaryPart or i:FindFirstChildWhichIsA'BasePart'if m
 then k=m.Position.X l=m.Position.Z end end local m,n=e-k,f-l local o,p=m*m+n*n,b
 +j.boundingRadius if o<=p*p then table.insert(d,h)end end end return d end
-function aa.IsPointInAnyHazard(ao,b,c,d)local e=ag if not e then return false,
-nil,nil end c=c or 0 local f,g,h,i=math.huge,d or e.GetActiveHazardsMap()for j,k
-in pairs(g)do local l=k.Instance or(typeof(j)=='Instance'and j)if b and(b==l or(
-l and b.Name==l.Name))then continue end local m=an(k)if not m then continue end
-local n,o=m.center.X,m.center.Z if l and l.Parent then local p=l:IsA'BasePart'
-and l or l.PrimaryPart or l:FindFirstChildWhichIsA'BasePart'if p then n=p.
-Position.X o=p.Position.Z end end local p,q=ao.X-n,ao.Z-o local r,s=p*p+q*q,m.
-boundingRadius+c if r>s*s then continue end local t=k.IsTrajectory==true for u=1
-,#m.zones do local v=m.zones[u]if aj(v.part)and al(ao,v,c,t or v.isTrajectory)
-then local w=(ao-v.part.Position).Magnitude if w<f then f=w h=k i=v.part end
-break end end end return i~=nil,h,i end return aa end function a.e()local aa,ab,
-ac=a.load'a',a.load'b',a.load'd'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao=aa.
+function aa.IsPointInAnyHazard(ao,b,c,d,e)local f=ag if not f then return false,
+nil,nil end c=c or 0 local g,h,i,j=math.huge,d or f.GetActiveHazardsMap()for k,l
+in pairs(h)do if e and l.IsTrajectory==true then continue end local m=l.Instance
+or(typeof(k)=='Instance'and k)if b and(b==m or(m and b.Name==m.Name))then
+continue end local n=an(l)if not n then continue end local o,p=n.center.X,n.
+center.Z if m and m.Parent then local q=m:IsA'BasePart'and m or m.PrimaryPart or
+m:FindFirstChildWhichIsA'BasePart'if q then o=q.Position.X p=q.Position.Z end
+end local q,r=ao.X-o,ao.Z-p local s,t=q*q+r*r,n.boundingRadius+c if s>t*t then
+continue end local u=l.IsTrajectory==true for v=1,#n.zones do local w=n.zones[v]
+if aj(w.part)and al(ao,w,c,u or w.isTrajectory)then local x=(ao-w.part.Position)
+.Magnitude if x<g then g=x i=l j=w.part end break end end end return j~=nil,i,j
+end function aa.IsPointInAnyRedHazard(ao,b,c,d)return aa.IsPointInAnyHazard(ao,b
+,c,d,true)end function aa.GetHazardsAtPoint(ao,b,c,d)local e=ag if not e then
+return{}end b=b or 0 local f,g={},c or e.GetActiveHazardsMap()for h,i in pairs(g
+)do if d and i.IsTrajectory==true then continue end local j,k=i.Instance or(
+typeof(h)=='Instance'and h),an(i)if not k then continue end local l,m=k.center.X
+,k.center.Z if j and j.Parent then local n=j:IsA'BasePart'and j or j.PrimaryPart
+or j:FindFirstChildWhichIsA'BasePart'if n then l=n.Position.X m=n.Position.Z end
+end local n,o=ao.X-l,ao.Z-m local p,q=n*n+o*o,k.boundingRadius+b if p>q*q then
+continue end local r=i.IsTrajectory==true for s=1,#k.zones do local t=k.zones[s]
+if aj(t.part)and al(ao,t,b,r or t.isTrajectory)then f[i]=true break end end end
+return f end function aa.GetRedHazardsAtPoint(ao,b,c)return aa.
+GetHazardsAtPoint(ao,b,c,true)end return aa end function a.e()local aa,ab,ac=a.
+load'a',a.load'b',a.load'd'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao=aa.
 RunService or game:GetService'RunService',aa.player,{},false,{},0.85,Color3.
 fromRGB(255,45,45),Color3.fromRGB(0,160,255),0.55,0.25 local b=function()local b
 =ae and ae.Character if not b then return nil end local c=b:FindFirstChild

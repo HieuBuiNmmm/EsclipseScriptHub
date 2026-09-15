@@ -60,72 +60,84 @@ center.X,y.center.Z if x and x.Parent then local B=x:IsA'BasePart'and x or x.
 PrimaryPart or x:FindFirstChildWhichIsA'BasePart'if B then z=B.Position.X A=B.
 Position.Z end end local B,C=t-z,u-A local D,E=B*B+C*C,q+y.boundingRadius if D<=
 E*E then table.insert(s,w)end end end return s end function b.IsPointInAnyHazard
-(p,q,r,s)local t=h if not t then return false,nil,nil end r=r or 0 local u,v,w,x
-=math.huge,s or t.GetActiveHazardsMap()for y,z in pairs(v)do local A=z.Instance
-or(typeof(y)=='Instance'and y)if q and(q==A or(A and q.Name==A.Name))then
-continue end local B=o(z)if not B then continue end local C,D=B.center.X,B.
-center.Z if A and A.Parent then local E=A:IsA'BasePart'and A or A.PrimaryPart or
-A:FindFirstChildWhichIsA'BasePart'if E then C=E.Position.X D=E.Position.Z end
-end local E,F=p.X-C,p.Z-D local G,H=E*E+F*F,B.boundingRadius+r if G>H*H then
-continue end local I=z.IsTrajectory==true for J=1,#B.zones do local K=B.zones[J]
-if k(K.part)and m(p,K,r,I or K.isTrajectory)then local L=(p-K.part.Position).
-Magnitude if L<u then u=L w=z x=K.part end break end end end return x~=nil,w,x
-end return b end function a.d()local b,c,d=a.load'a',a.load'b',a.load'c'local e,
-f,g,h,i,j,k,l,m,n,o,p=b.RunService or game:GetService'RunService',b.player,{},
-false,{},0.85,Color3.fromRGB(255,45,45),Color3.fromRGB(0,160,255),0.55,0.25
-local q=function()local q=f and f.Character if not q then return nil end local r
-=q:FindFirstChild'HumanoidRootPart'or q.PrimaryPart if not r then return nil end
-return r.Position.Y-2.5 end function g.BindDetection(r)o=r or nil end function g
-.IsEnabled()return h end local r=function(r,s)local t,u=r.part,r.ad if not t or
-not t.Parent or not u or not u.Parent then return end local v=t.Position local w
-=Vector3.new(v.X,s or v.Y,v.Z)if r.isCircle then local x=CFrame.new(w)*CFrame.
-Angles(math.rad(90),0,0)u.CFrame=t.CFrame:ToObjectSpace(x)else local x,y,z=t.
-CFrame:ToOrientation()local A=CFrame.new(w)*CFrame.Angles(0,y,0)u.CFrame=t.
-CFrame:ToObjectSpace(A)end end local s=function()if not h then return end local
-s,t=false,q()for u,v in pairs(i)do if not u.Instance or not u.Instance.Parent
-then g.DetachZoneVisuals(u)else s=true if v.items then for w,y in ipairs(v.items
-)do r(y,t)end end end end if not s and p then p:Disconnect()p=nil end end local
-t=function()if not p and h then p=e.Heartbeat:Connect(s)end end function g.
-DetachZoneVisuals(u)if not u then return end local v=i[u]if not v then return
-end if v.adornments then for w,y in ipairs(v.adornments)do pcall(function()y:
-Destroy()end)end table.clear(v.adornments)end if v.connections then for w,y in
-ipairs(v.connections)do pcall(function()y:Disconnect()end)end table.clear(v.
-connections)end if v.items then table.clear(v.items)end i[u]=nil end function g.
-UpdateHazardVisualColor(u,v)if not u then return end local w=i[u]if not w or not
-w.items then return end local y=v==true or u.IsTrajectory==true local z,A=y and
-l or k,y and d.GetTrajectoryMargin()or 0 for B,C in ipairs(w.items)do local D,E,
-F=C.ad,C.zone,C.part if D and D.Parent and E and F and F.Parent then D.Color3=z
-if C.isCircle and E.radius then D.Radius=E.radius+A elseif E.half then local G,H
-=math.max(F.Size.X,0)/2+A,math.max(F.Size.Z,0)/2+A D.Size=Vector3.new(G*2,n,H*2)
-end end end end function g.AttachZoneVisuals(u)if not h or not u then return end
-if i[u]then g.DetachZoneVisuals(u)end local v=d.GetHazardZones(u)if not v or not
-v.zones then return end local w=u.IsTrajectory==true local y,z,A,B,C,D=w and l
-or k,w and d.GetTrajectoryMargin()or 0,q(),{},{},{}for E,F in ipairs(v.zones)do
-local G=F.part if G and G.Parent and G.Transparency<=j then local H,I=false if F
-.radius then H=true local J=Instance.new'CylinderHandleAdornment'J.Name=
-'HazardGroundCircle'J.Adornee=G J.Radius=F.radius+z J.Height=n J.Color3=y J.
-Transparency=m J.ZIndex=2 J.AlwaysOnTop=true J.Parent=G I=J elseif F.half and F.
-cframe then local J=Instance.new'BoxHandleAdornment'J.Name='HazardGroundBox'J.
-Adornee=G J.Size=Vector3.new(F.half.X*2,n,F.half.Z*2)J.Color3=y J.Transparency=m
-J.ZIndex=2 J.AlwaysOnTop=true J.Parent=G I=J end if I then local J={ad=I,part=G,
-isCircle=H,zone=F}r(J,A)table.insert(B,J)table.insert(C,I)local K=G:
-GetPropertyChangedSignal'Transparency':Connect(function()if G.Parent and G.
-Transparency>j then pcall(function()I:Destroy()end)end end)table.insert(D,K)end
-end end if#C>0 then i[u]={items=B,adornments=C,connections=D}t()end end function
-g.ClearAll()if p then p:Disconnect()p=nil end for u in pairs(i)do g.
-DetachZoneVisuals(u)end table.clear(i)end function g.RefreshAll()g.ClearAll()if
-not h or not o then return end for u,v in pairs(o.GetActiveHazardsMap())do g.
-AttachZoneVisuals(v)end end function g.SetEnabled(u)h=u and true or false if h
-then g.RefreshAll()else g.ClearAll()end end d.OnPaddingChanged(function()if h
-then g.RefreshAll()end end)c.Register(function()g.ClearAll()end)return g end
-function a.e()local b,c,d=a.load'a',a.load'b',a.load'c'local e,f,g,h,i,j,k,l,m,n
-,o,p,q=b.RunService or game:GetService'RunService',b.player,{},false,45,{},0.85,
-Color3.fromRGB(255,140,0),0.65,0.2,3.5 local r=function()local r=f and f.
-Character if not r then return nil end local s=r:FindFirstChild
-'HumanoidRootPart'or r.PrimaryPart if not s then return nil end return s.
-Position.Y-2.5 end function g.BindDetection(s)p=s or nil end function g.
-IsEnabled()return h end function g.GetPredictionLength()return i end function g.
-SetPredictionLength(s)if type(s)=='number'and s>0 then i=math.clamp(s,10,200)g.
+(p,q,r,s,t)local u=h if not u then return false,nil,nil end r=r or 0 local v,w,x
+,y=math.huge,s or u.GetActiveHazardsMap()for z,A in pairs(w)do if t and A.
+IsTrajectory==true then continue end local B=A.Instance or(typeof(z)=='Instance'
+and z)if q and(q==B or(B and q.Name==B.Name))then continue end local C=o(A)if
+not C then continue end local D,E=C.center.X,C.center.Z if B and B.Parent then
+local F=B:IsA'BasePart'and B or B.PrimaryPart or B:FindFirstChildWhichIsA
+'BasePart'if F then D=F.Position.X E=F.Position.Z end end local F,G=p.X-D,p.Z-E
+local H,I=F*F+G*G,C.boundingRadius+r if H>I*I then continue end local J=A.
+IsTrajectory==true for K=1,#C.zones do local L=C.zones[K]if k(L.part)and m(p,L,r
+,J or L.isTrajectory)then local M=(p-L.part.Position).Magnitude if M<v then v=M
+x=A y=L.part end break end end end return y~=nil,x,y end function b.
+IsPointInAnyRedHazard(p,q,r,s)return b.IsPointInAnyHazard(p,q,r,s,true)end
+function b.GetHazardsAtPoint(p,q,r,s)local t=h if not t then return{}end q=q or
+0 local u,v={},r or t.GetActiveHazardsMap()for w,x in pairs(v)do if s and x.
+IsTrajectory==true then continue end local y,z=x.Instance or(typeof(w)==
+'Instance'and w),o(x)if not z then continue end local A,B=z.center.X,z.center.Z
+if y and y.Parent then local C=y:IsA'BasePart'and y or y.PrimaryPart or y:
+FindFirstChildWhichIsA'BasePart'if C then A=C.Position.X B=C.Position.Z end end
+local C,D=p.X-A,p.Z-B local E,F=C*C+D*D,z.boundingRadius+q if E>F*F then
+continue end local G=x.IsTrajectory==true for H=1,#z.zones do local I=z.zones[H]
+if k(I.part)and m(p,I,q,G or I.isTrajectory)then u[x]=true break end end end
+return u end function b.GetRedHazardsAtPoint(p,q,r)return b.GetHazardsAtPoint(p,
+q,r,true)end return b end function a.d()local b,c,d=a.load'a',a.load'b',a.load
+'c'local e,f,g,h,i,j,k,l,m,n,o,p=b.RunService or game:GetService'RunService',b.
+player,{},false,{},0.85,Color3.fromRGB(255,45,45),Color3.fromRGB(0,160,255),0.55
+,0.25 local q=function()local q=f and f.Character if not q then return nil end
+local r=q:FindFirstChild'HumanoidRootPart'or q.PrimaryPart if not r then return
+nil end return r.Position.Y-2.5 end function g.BindDetection(r)o=r or nil end
+function g.IsEnabled()return h end local r=function(r,s)local t,u=r.part,r.ad if
+not t or not t.Parent or not u or not u.Parent then return end local v=t.
+Position local w=Vector3.new(v.X,s or v.Y,v.Z)if r.isCircle then local x=CFrame.
+new(w)*CFrame.Angles(math.rad(90),0,0)u.CFrame=t.CFrame:ToObjectSpace(x)else
+local x,y,z=t.CFrame:ToOrientation()local A=CFrame.new(w)*CFrame.Angles(0,y,0)u.
+CFrame=t.CFrame:ToObjectSpace(A)end end local s=function()if not h then return
+end local s,t=false,q()for u,v in pairs(i)do if not u.Instance or not u.Instance
+.Parent then g.DetachZoneVisuals(u)else s=true if v.items then for w,y in
+ipairs(v.items)do r(y,t)end end end end if not s and p then p:Disconnect()p=nil
+end end local t=function()if not p and h then p=e.Heartbeat:Connect(s)end end
+function g.DetachZoneVisuals(u)if not u then return end local v=i[u]if not v
+then return end if v.adornments then for w,y in ipairs(v.adornments)do pcall(
+function()y:Destroy()end)end table.clear(v.adornments)end if v.connections then
+for w,y in ipairs(v.connections)do pcall(function()y:Disconnect()end)end table.
+clear(v.connections)end if v.items then table.clear(v.items)end i[u]=nil end
+function g.UpdateHazardVisualColor(u,v)if not u then return end local w=i[u]if
+not w or not w.items then return end local y=v==true or u.IsTrajectory==true
+local z,A=y and l or k,y and d.GetTrajectoryMargin()or 0 for B,C in ipairs(w.
+items)do local D,E,F=C.ad,C.zone,C.part if D and D.Parent and E and F and F.
+Parent then D.Color3=z if C.isCircle and E.radius then D.Radius=E.radius+A
+elseif E.half then local G,H=math.max(F.Size.X,0)/2+A,math.max(F.Size.Z,0)/2+A D
+.Size=Vector3.new(G*2,n,H*2)end end end end function g.AttachZoneVisuals(u)if
+not h or not u then return end if i[u]then g.DetachZoneVisuals(u)end local v=d.
+GetHazardZones(u)if not v or not v.zones then return end local w=u.IsTrajectory
+==true local y,z,A,B,C,D=w and l or k,w and d.GetTrajectoryMargin()or 0,q(),{},{
+},{}for E,F in ipairs(v.zones)do local G=F.part if G and G.Parent and G.
+Transparency<=j then local H,I=false if F.radius then H=true local J=Instance.
+new'CylinderHandleAdornment'J.Name='HazardGroundCircle'J.Adornee=G J.Radius=F.
+radius+z J.Height=n J.Color3=y J.Transparency=m J.ZIndex=2 J.AlwaysOnTop=true J.
+Parent=G I=J elseif F.half and F.cframe then local J=Instance.new
+'BoxHandleAdornment'J.Name='HazardGroundBox'J.Adornee=G J.Size=Vector3.new(F.
+half.X*2,n,F.half.Z*2)J.Color3=y J.Transparency=m J.ZIndex=2 J.AlwaysOnTop=true
+J.Parent=G I=J end if I then local J={ad=I,part=G,isCircle=H,zone=F}r(J,A)table.
+insert(B,J)table.insert(C,I)local K=G:GetPropertyChangedSignal'Transparency':
+Connect(function()if G.Parent and G.Transparency>j then pcall(function()I:
+Destroy()end)end end)table.insert(D,K)end end end if#C>0 then i[u]={items=B,
+adornments=C,connections=D}t()end end function g.ClearAll()if p then p:
+Disconnect()p=nil end for u in pairs(i)do g.DetachZoneVisuals(u)end table.clear(
+i)end function g.RefreshAll()g.ClearAll()if not h or not o then return end for u
+,v in pairs(o.GetActiveHazardsMap())do g.AttachZoneVisuals(v)end end function g.
+SetEnabled(u)h=u and true or false if h then g.RefreshAll()else g.ClearAll()end
+end d.OnPaddingChanged(function()if h then g.RefreshAll()end end)c.Register(
+function()g.ClearAll()end)return g end function a.e()local b,c,d=a.load'a',a.
+load'b',a.load'c'local e,f,g,h,i,j,k,l,m,n,o,p,q=b.RunService or game:GetService
+'RunService',b.player,{},false,45,{},0.85,Color3.fromRGB(255,140,0),0.65,0.2,3.5
+local r=function()local r=f and f.Character if not r then return nil end local s
+=r:FindFirstChild'HumanoidRootPart'or r.PrimaryPart if not s then return nil end
+return s.Position.Y-2.5 end function g.BindDetection(s)p=s or nil end function g
+.IsEnabled()return h end function g.GetPredictionLength()return i end function g
+.SetPredictionLength(s)if type(s)=='number'and s>0 then i=math.clamp(s,10,200)g.
 RefreshAll()end end function g.IsHazardMoving(s)if not s then return false end
 local t=j[s]return t and t.isMoving==true end local s,t=function(s,t)local u=s.
 Instance if not u or not u.Parent then return nil,4 end local v,w,y=d.

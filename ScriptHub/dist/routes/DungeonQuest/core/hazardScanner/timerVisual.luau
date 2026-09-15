@@ -60,34 +60,47 @@ center.X,y.center.Z if x and x.Parent then local B=x:IsA'BasePart'and x or x.
 PrimaryPart or x:FindFirstChildWhichIsA'BasePart'if B then z=B.Position.X A=B.
 Position.Z end end local B,C=t-z,u-A local D,E=B*B+C*C,q+y.boundingRadius if D<=
 E*E then table.insert(s,w)end end end return s end function b.IsPointInAnyHazard
-(p,q,r,s)local t=h if not t then return false,nil,nil end r=r or 0 local u,v,w,x
-=math.huge,s or t.GetActiveHazardsMap()for y,z in pairs(v)do local A=z.Instance
-or(typeof(y)=='Instance'and y)if q and(q==A or(A and q.Name==A.Name))then
-continue end local B=o(z)if not B then continue end local C,D=B.center.X,B.
-center.Z if A and A.Parent then local E=A:IsA'BasePart'and A or A.PrimaryPart or
-A:FindFirstChildWhichIsA'BasePart'if E then C=E.Position.X D=E.Position.Z end
-end local E,F=p.X-C,p.Z-D local G,H=E*E+F*F,B.boundingRadius+r if G>H*H then
-continue end local I=z.IsTrajectory==true for J=1,#B.zones do local K=B.zones[J]
-if k(K.part)and m(p,K,r,I or K.isTrajectory)then local L=(p-K.part.Position).
-Magnitude if L<u then u=L w=z x=K.part end break end end end return x~=nil,w,x
-end return b end end local b,c,d=a.load'a',a.load'b',a.load'c'local e,f,g,h,i,j,
-k,l,m,n=b.RunService or game:GetService'RunService',b.player,{},true,{},0.85,
-Color3.fromRGB(255,60,60),'255,130,130'function g.BindDetection(o)m=o or nil end
-function g.IsEnabled()return h end local o=function()local o=f and f.Character
-if not o then return nil end local p=o:FindFirstChild'HumanoidRootPart'or o.
-PrimaryPart if not p then return nil end return p.Position.Y-2.5 end local p,q=
-function(p)if not p or not p.Parent then return 2.5 end local q=o()if q then
-local r=q+2.5 local s,t=r-p.Position.Y,p.Size.Y/2+1.2 return math.clamp(math.
-max(s,t),1.5,30)end return math.clamp(p.Size.Y/2+1.8,2,10)end,function(p)return
-p and p.Parent and p.Transparency<=j end local r,s=function(r)if not r or not r.
-Parent then return nil end if r:IsA'BasePart'then if q(r)then return r end
-elseif r:IsA'Model'then if r.PrimaryPart and q(r.PrimaryPart)then return r.
-PrimaryPart end local s=r:FindFirstChild'HumanoidRootPart'if s and q(s)then
-return s end for t,u in ipairs(r:GetDescendants())do if u:IsA'BasePart'and q(u)
-then return u end end else for s,t in ipairs(r:GetDescendants())do if t:IsA
-'BasePart'and q(t)then return t end end end return nil end,function(r,s)if not r
-or not r.items or not s then return end local t=s.SpawnClock or os.clock()local
-u,v=math.max(0,os.clock()-t),s.Name or'Red Zone'local w=(
+(p,q,r,s,t)local u=h if not u then return false,nil,nil end r=r or 0 local v,w,x
+,y=math.huge,s or u.GetActiveHazardsMap()for z,A in pairs(w)do if t and A.
+IsTrajectory==true then continue end local B=A.Instance or(typeof(z)=='Instance'
+and z)if q and(q==B or(B and q.Name==B.Name))then continue end local C=o(A)if
+not C then continue end local D,E=C.center.X,C.center.Z if B and B.Parent then
+local F=B:IsA'BasePart'and B or B.PrimaryPart or B:FindFirstChildWhichIsA
+'BasePart'if F then D=F.Position.X E=F.Position.Z end end local F,G=p.X-D,p.Z-E
+local H,I=F*F+G*G,C.boundingRadius+r if H>I*I then continue end local J=A.
+IsTrajectory==true for K=1,#C.zones do local L=C.zones[K]if k(L.part)and m(p,L,r
+,J or L.isTrajectory)then local M=(p-L.part.Position).Magnitude if M<v then v=M
+x=A y=L.part end break end end end return y~=nil,x,y end function b.
+IsPointInAnyRedHazard(p,q,r,s)return b.IsPointInAnyHazard(p,q,r,s,true)end
+function b.GetHazardsAtPoint(p,q,r,s)local t=h if not t then return{}end q=q or
+0 local u,v={},r or t.GetActiveHazardsMap()for w,x in pairs(v)do if s and x.
+IsTrajectory==true then continue end local y,z=x.Instance or(typeof(w)==
+'Instance'and w),o(x)if not z then continue end local A,B=z.center.X,z.center.Z
+if y and y.Parent then local C=y:IsA'BasePart'and y or y.PrimaryPart or y:
+FindFirstChildWhichIsA'BasePart'if C then A=C.Position.X B=C.Position.Z end end
+local C,D=p.X-A,p.Z-B local E,F=C*C+D*D,z.boundingRadius+q if E>F*F then
+continue end local G=x.IsTrajectory==true for H=1,#z.zones do local I=z.zones[H]
+if k(I.part)and m(p,I,q,G or I.isTrajectory)then u[x]=true break end end end
+return u end function b.GetRedHazardsAtPoint(p,q,r)return b.GetHazardsAtPoint(p,
+q,r,true)end return b end end local b,c,d=a.load'a',a.load'b',a.load'c'local e,f
+,g,h,i,j,k,l,m,n=b.RunService or game:GetService'RunService',b.player,{},true,{}
+,0.85,Color3.fromRGB(255,60,60),'255,130,130'function g.BindDetection(o)m=o or
+nil end function g.IsEnabled()return h end local o=function()local o=f and f.
+Character if not o then return nil end local p=o:FindFirstChild
+'HumanoidRootPart'or o.PrimaryPart if not p then return nil end return p.
+Position.Y-2.5 end local p,q=function(p)if not p or not p.Parent then return 2.5
+end local q=o()if q then local r=q+2.5 local s,t=r-p.Position.Y,p.Size.Y/2+1.2
+return math.clamp(math.max(s,t),1.5,30)end return math.clamp(p.Size.Y/2+1.8,2,10
+)end,function(p)return p and p.Parent and p.Transparency<=j end local r,s=
+function(r)if not r or not r.Parent then return nil end if r:IsA'BasePart'then
+if q(r)then return r end elseif r:IsA'Model'then if r.PrimaryPart and q(r.
+PrimaryPart)then return r.PrimaryPart end local s=r:FindFirstChild
+'HumanoidRootPart'if s and q(s)then return s end for t,u in ipairs(r:
+GetDescendants())do if u:IsA'BasePart'and q(u)then return u end end else for s,t
+in ipairs(r:GetDescendants())do if t:IsA'BasePart'and q(t)then return t end end
+end return nil end,function(r,s)if not r or not r.items or not s then return end
+local t=s.SpawnClock or os.clock()local u,v=math.max(0,os.clock()-t),s.Name or
+'Red Zone'local w=(
 [[<font color='rgb(%s)'>%s</font> <font color='rgb(255,255,255)'><b>%.1fs</b></font>]]
 ):format(l,v,u)for x,y in ipairs(r.items)do if y.label and y.label.Parent then y
 .label.Text=w end end end local t=function()if not h then return end local t=

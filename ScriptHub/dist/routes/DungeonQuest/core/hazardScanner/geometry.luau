@@ -46,15 +46,27 @@ local w,x=v.Instance,n(v)if x then local y,z=x.center.X,x.center.Z if w and w.
 Parent then local A=w:IsA'BasePart'and w or w.PrimaryPart or w:
 FindFirstChildWhichIsA'BasePart'if A then y=A.Position.X z=A.Position.Z end end
 local A,B=s-y,t-z local C,D=A*A+B*B,p+x.boundingRadius if C<=D*D then table.
-insert(r,v)end end end return r end function a.IsPointInAnyHazard(o,p,q,r)local
-s=g if not s then return false,nil,nil end q=q or 0 local t,u,v,w=math.huge,r or
-s.GetActiveHazardsMap()for x,y in pairs(u)do local z=y.Instance or(typeof(x)==
-'Instance'and x)if p and(p==z or(z and p.Name==z.Name))then continue end local A
-=n(y)if not A then continue end local B,C=A.center.X,A.center.Z if z and z.
-Parent then local D=z:IsA'BasePart'and z or z.PrimaryPart or z:
-FindFirstChildWhichIsA'BasePart'if D then B=D.Position.X C=D.Position.Z end end
-local D,E=o.X-B,o.Z-C local F,G=D*D+E*E,A.boundingRadius+q if F>G*G then
-continue end local H=y.IsTrajectory==true for I=1,#A.zones do local J=A.zones[I]
-if j(J.part)and l(o,J,q,H or J.isTrajectory)then local K=(o-J.part.Position).
-Magnitude if K<t then t=K v=y w=J.part end break end end end return w~=nil,v,w
-end return a
+insert(r,v)end end end return r end function a.IsPointInAnyHazard(o,p,q,r,s)
+local t=g if not t then return false,nil,nil end q=q or 0 local u,v,w,x=math.
+huge,r or t.GetActiveHazardsMap()for y,z in pairs(v)do if s and z.IsTrajectory==
+true then continue end local A=z.Instance or(typeof(y)=='Instance'and y)if p and
+(p==A or(A and p.Name==A.Name))then continue end local B=n(z)if not B then
+continue end local C,D=B.center.X,B.center.Z if A and A.Parent then local E=A:
+IsA'BasePart'and A or A.PrimaryPart or A:FindFirstChildWhichIsA'BasePart'if E
+then C=E.Position.X D=E.Position.Z end end local E,F=o.X-C,o.Z-D local G,H=E*E+F
+*F,B.boundingRadius+q if G>H*H then continue end local I=z.IsTrajectory==true
+for J=1,#B.zones do local K=B.zones[J]if j(K.part)and l(o,K,q,I or K.
+isTrajectory)then local L=(o-K.part.Position).Magnitude if L<u then u=L w=z x=K.
+part end break end end end return x~=nil,w,x end function a.
+IsPointInAnyRedHazard(o,p,q,r)return a.IsPointInAnyHazard(o,p,q,r,true)end
+function a.GetHazardsAtPoint(o,p,q,r)local s=g if not s then return{}end p=p or
+0 local t,u={},q or s.GetActiveHazardsMap()for v,w in pairs(u)do if r and w.
+IsTrajectory==true then continue end local x,y=w.Instance or(typeof(v)==
+'Instance'and v),n(w)if not y then continue end local z,A=y.center.X,y.center.Z
+if x and x.Parent then local B=x:IsA'BasePart'and x or x.PrimaryPart or x:
+FindFirstChildWhichIsA'BasePart'if B then z=B.Position.X A=B.Position.Z end end
+local B,C=o.X-z,o.Z-A local D,E=B*B+C*C,y.boundingRadius+p if D>E*E then
+continue end local F=w.IsTrajectory==true for G=1,#y.zones do local H=y.zones[G]
+if j(H.part)and l(o,H,p,F or H.isTrajectory)then t[w]=true break end end end
+return t end function a.GetRedHazardsAtPoint(o,p,q)return a.GetHazardsAtPoint(o,
+p,q,true)end return a

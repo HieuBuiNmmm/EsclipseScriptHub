@@ -274,8 +274,9 @@ function geometry.GetNearbyHazards(origin, maxRadius)
 end
 
 --// Query: kiem tra diem P (hoac vong tron player ban kinh extraRadius) co dính hazard nao khong
+--// redOnly: neu true, chi kiem tra cac Red Danger Zone tinh (bo qua trajectory / blue zones)
 --// Tra ve: hit (bool), hazardInfo (gan nhat), hitPart
-function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazardList)
+function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazardList, redOnly)
 	local det = data
 	if not det then return false, nil, nil end
 	extraRadius = extraRadius or 0
@@ -285,6 +286,9 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 	local list = hazardList or det.GetActiveHazardsMap()
 
 	for key, info in pairs(list) do
+		if redOnly and info.IsTrajectory == true then
+			continue
+		end
 		local inst = info.Instance or (typeof(key) == "Instance" and key)
 		if ignoredInstance and (ignoredInstance == inst or (inst and ignoredInstance.Name == inst.Name)) then
 			continue
@@ -329,6 +333,64 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 	end
 
 	return foundPart ~= nil, foundInfo, foundPart
+end
+
+--// Query rieng chi kiem tra Red Danger Zone (Ground Static Danger Zones)
+function geometry.IsPointInAnyRedHazard(point, ignoredInstance, extraRadius, hazardList)
+	return geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazardList, true)
+end
+
+--// Lay danh sach map {[hazardInfo] = true} cua tat ca cac hazard chua diem P (hoac cham vong tron extraRadius)
+function geometry.GetHazardsAtPoint(point, extraRadius, hazardList, redOnly)
+	local det = data
+	if not det then return {} end
+	extraRadius = extraRadius or 0
+
+	local result = {}
+	local list = hazardList or det.GetActiveHazardsMap()
+
+	for key, info in pairs(list) do
+		if redOnly and info.IsTrajectory == true then
+			continue
+		end
+		local inst = info.Instance or (typeof(key) == "Instance" and key)
+		local hazardZones = getHazardZones(info)
+		if not hazardZones then continue end
+
+		local cx = hazardZones.center.X
+		local cz = hazardZones.center.Z
+		if inst and inst.Parent then
+			local livePart = inst:IsA("BasePart") and inst or inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+			if livePart then
+				cx = livePart.Position.X
+				cz = livePart.Position.Z
+			end
+		end
+
+		local dx = point.X - cx
+		local dz = point.Z - cz
+		local distSq = dx * dx + dz * dz
+		local totalBounding = hazardZones.boundingRadius + extraRadius
+		if distSq > totalBounding * totalBounding then
+			continue
+		end
+
+		local isTraj = info.IsTrajectory == true
+		for i = 1, #hazardZones.zones do
+			local zone = hazardZones.zones[i]
+			if isPartAlive(zone.part) and isPointInZone(point, zone, extraRadius, isTraj or zone.isTrajectory) then
+				result[info] = true
+				break
+			end
+		end
+	end
+
+	return result
+end
+
+--// Lay danh sach cac Red Danger Zone chua diem P
+function geometry.GetRedHazardsAtPoint(point, extraRadius, hazardList)
+	return geometry.GetHazardsAtPoint(point, extraRadius, hazardList, true)
 end
 
 return geometry
