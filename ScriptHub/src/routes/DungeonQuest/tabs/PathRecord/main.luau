@@ -11,6 +11,7 @@ local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local ui = require("@routes/DungeonQuest/core/ui")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local abilitySet = require("@routes/DungeonQuest/core/abilitySet")
+local shared = require("@routes/DungeonQuest/core/shared")
 
 local RunService = services.RunService
 
@@ -187,6 +188,41 @@ return function(window, tab)
 	left:Label({
 		Text = "Tự động đổi <font color='rgb(255,200,80)'>Loadout Set</font> (Set 2 cho quái thường, Set 1 khi đánh Boss). Cấu hình chi tiết tại tab Smart Dodge V2.",
 	})
+
+	local autoResetToggle = left:Toggle({
+		Name = "Auto Reset on Room (Tự sát)",
+		Default = shared.IsAutoResetEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetAutoResetEnabled(state)
+		end),
+	}, "Toggle_PR_AutoResetOnRoom")
+	left:Label({
+		Text = "Tự sát (reset nhân vật) <font color='rgb(255,100,100)'>đúng 1 lần</font> ngay khi vào Room chỉ định để farm/restart run.",
+	})
+
+	ui.PatchSliderLoadCallback(left:Slider({
+		Name = "Reset at Room",
+		Default = shared.GetAutoResetTargetRoom(),
+		Minimum = 1,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(v)
+			shared.SetAutoResetTargetRoom(v)
+		end),
+	}, "Slider_PR_AutoResetTargetRoom"))
+
+	ui.PatchSliderLoadCallback(left:Slider({
+		Name = "Reset Delay (s)",
+		Default = shared.GetAutoResetDelay(),
+		Minimum = 0,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(v)
+			shared.SetAutoResetDelay(v)
+		end),
+	}, "Slider_PR_AutoResetDelay"))
 
 	--// Timeline: ghi/tái hiện khoảng dừng + skill chuột phải + hướng mặt.
 	local captureTimeline = left:Toggle({

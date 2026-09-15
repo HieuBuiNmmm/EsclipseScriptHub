@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-15T05:36:37.279266500+00:00",
+    genDate = "2026-09-15T05:52:23.719274600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6232,6 +6232,7 @@ end function __DIST.g()-- Engine dùng chung cho DungeonQuest: quản lý state,
 
 local services = __DIST.load('f')
 local lifecycle = __DIST.load('b')
+local notifier = __DIST.load('c')
 
 --// References
 local player = services.player
@@ -6274,6 +6275,13 @@ local bossIndexCallbacks = {}
 --// Reset khi vào dungeon mới.
 local roomIndex = 0
 local roomIndexCallbacks = {}
+
+--// Auto Reset state (Tự sát khi vào Room X)
+local autoResetEnabled = false
+local autoResetTargetRoom = 2
+local autoResetDelay = 0.5
+local hasResetForThisRoom = false
+local autoResetCallbacks = {}
 
 local dungeon = nil
 local trackedRooms = {}
@@ -6503,6 +6511,7 @@ initializeRooms = function()
 	end
 
 	roomIndex = 0
+	hasResetForThisRoom = false
 	for i = #roomIndexCallbacks, 1, -1 do
 		pcall(roomIndexCallbacks[i], roomIndex)
 	end
@@ -6961,6 +6970,7 @@ task.spawn(function()
 		local lobby = determineLobbyState()
 		if lobby ~= inLobby then
 			inLobby = lobby
+			hasResetForThisRoom = false
 			for i = #lobbyCallbacks, 1, -1 do
 				pcall(lobbyCallbacks[i], inLobby)
 			end
@@ -7130,6 +7140,94 @@ local function computeRoomIndex()
 	return 0
 end
 
+--// ---- Auto Reset on Room (Tự sát khi vào Room X) ----
+local function suicideCharacter()
+	local p = player or services.player or (services.Players and services.Players.LocalPlayer)
+	local char = (p and p.Character) or (humanoid and humanoid.Parent)
+	local hum = humanoid or (char and char:FindFirstChildOfClass("Humanoid"))
+	if hum and hum.Health > 0 then
+		pcall(function() hum.Health = 0 end)
+		pcall(function() hum:ChangeState(Enum.HumanoidStateType.Dead) end)
+		if char then
+			pcall(function() char:BreakJoints() end)
+		end
+		if notifier and notifier.Notify then
+			notifier.Notify("Auto Reset", ("Đã tự sát tại Room %d"):format(autoResetTargetRoom), 3)
+		end
+	end
+end
+
+local function checkAutoReset(newRoom)
+	if not autoResetEnabled then return end
+	if inLobby then return end
+	if newRoom == autoResetTargetRoom then
+		if not hasResetForThisRoom then
+			hasResetForThisRoom = true
+			task.spawn(function()
+				if autoResetDelay > 0 then
+					task.wait(autoResetDelay)
+				end
+				if autoResetEnabled and roomIndex == autoResetTargetRoom and not inLobby then
+					suicideCharacter()
+				end
+			end)
+		end
+	elseif newRoom ~= 0 and newRoom ~= autoResetTargetRoom then
+		hasResetForThisRoom = false
+	end
+end
+
+function shared.IsAutoResetEnabled(): boolean
+	return autoResetEnabled
+end
+
+function shared.SetAutoResetEnabled(state)
+	autoResetEnabled = state and true or false
+	if not autoResetEnabled then
+		hasResetForThisRoom = false
+	else
+		if roomIndex == autoResetTargetRoom then
+			checkAutoReset(roomIndex)
+		end
+	end
+	for _, cb in ipairs(autoResetCallbacks) do
+		pcall(cb, autoResetEnabled)
+	end
+end
+
+function shared.GetAutoResetTargetRoom(): number
+	return autoResetTargetRoom
+end
+
+function shared.SetAutoResetTargetRoom(room)
+	local num = tonumber(room)
+	if num and num >= 1 then
+		autoResetTargetRoom = math.floor(num)
+		hasResetForThisRoom = false
+	end
+end
+
+function shared.GetAutoResetDelay(): number
+	return autoResetDelay
+end
+
+function shared.SetAutoResetDelay(delay)
+	local num = tonumber(delay)
+	if num and num >= 0 then
+		autoResetDelay = math.round(num * 10) / 10
+	end
+end
+
+function shared.OnAutoResetChanged(callback)
+	if type(callback) == "function" then
+		table.insert(autoResetCallbacks, callback)
+	end
+end
+
+function shared.Suicide()
+	suicideCharacter()
+end
+
 --// Đồng bộ roomIndex hiện tại, fire callback nếu đổi.
 refreshRoomIndex = function()
 	local newIndex = computeRoomIndex()
@@ -7138,6 +7236,7 @@ refreshRoomIndex = function()
 	for i = #roomIndexCallbacks, 1, -1 do
 		pcall(roomIndexCallbacks[i], roomIndex)
 	end
+	checkAutoReset(roomIndex)
 end
 
 function shared.GetCurrentRoomIndex()
@@ -24125,6 +24224,7 @@ local autoSave = __DIST.load('d')
 local ui = __DIST.load('e')
 local notifier = __DIST.load('c')
 local abilitySet = __DIST.load('C')
+local shared = __DIST.load('g')
 
 local RunService = services.RunService
 
@@ -24301,6 +24401,41 @@ return function(window, tab)
 	left:Label({
 		Text = "Tự động đổi <font color='rgb(255,200,80)'>Loadout Set</font> (Set 2 cho quái thường, Set 1 khi đánh Boss). Cấu hình chi tiết tại tab Smart Dodge V2.",
 	})
+
+	local autoResetToggle = left:Toggle({
+		Name = "Auto Reset on Room (Tự sát)",
+		Default = shared.IsAutoResetEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			shared.SetAutoResetEnabled(state)
+		end),
+	}, "Toggle_PR_AutoResetOnRoom")
+	left:Label({
+		Text = "Tự sát (reset nhân vật) <font color='rgb(255,100,100)'>đúng 1 lần</font> ngay khi vào Room chỉ định để farm/restart run.",
+	})
+
+	ui.PatchSliderLoadCallback(left:Slider({
+		Name = "Reset at Room",
+		Default = shared.GetAutoResetTargetRoom(),
+		Minimum = 1,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(v)
+			shared.SetAutoResetTargetRoom(v)
+		end),
+	}, "Slider_PR_AutoResetTargetRoom"))
+
+	ui.PatchSliderLoadCallback(left:Slider({
+		Name = "Reset Delay (s)",
+		Default = shared.GetAutoResetDelay(),
+		Minimum = 0,
+		Maximum = 5,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(v)
+			shared.SetAutoResetDelay(v)
+		end),
+	}, "Slider_PR_AutoResetDelay"))
 
 	--// Timeline: ghi/tái hiện khoảng dừng + skill chuột phải + hướng mặt.
 	local captureTimeline = left:Toggle({
@@ -28841,6 +28976,22 @@ return function(window, tab)
 		updateBossIndex()
 	end)
 
+	local roomLabel = section:Label({
+		Text = "Current Room: 0",
+	})
+
+	local function updateRoom()
+		local room = shared.GetCurrentRoomIndex()
+		local color = room > 0 and "0, 255, 0" or "160, 160, 160"
+		roomLabel:UpdateName("Current Room: <font color='rgb(" .. color .. ")'>" .. tostring(room) .. "</font>")
+	end
+
+	updateRoom()
+
+	shared.OnRoomIndexChanged(function()
+		updateRoom()
+	end)
+
 	local enemyCountLabel = section:Label({
 		Text = "Enemies: 0",
 	})
@@ -28886,6 +29037,7 @@ return function(window, tab)
 		while task.wait(0.5) do
 			updateBoss(shared.IsBossActive())
 			updateBossIndex()
+			updateRoom()
 			updateEnemyCount()
 			updateLobby()
 			updateTimeLeft()

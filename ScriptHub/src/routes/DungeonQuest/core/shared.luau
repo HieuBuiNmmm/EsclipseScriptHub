@@ -5,6 +5,7 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local notifier = require("@routes/DungeonQuest/core/notifier")
 
 --// References
 local player = services.player
@@ -47,6 +48,13 @@ local bossIndexCallbacks = {}
 --// Reset khi vào dungeon mới.
 local roomIndex = 0
 local roomIndexCallbacks = {}
+
+--// Auto Reset state (Tự sát khi vào Room X)
+local autoResetEnabled = false
+local autoResetTargetRoom = 2
+local autoResetDelay = 0.5
+local hasResetForThisRoom = false
+local autoResetCallbacks = {}
 
 local dungeon = nil
 local trackedRooms = {}
@@ -276,6 +284,7 @@ initializeRooms = function()
 	end
 
 	roomIndex = 0
+	hasResetForThisRoom = false
 	for i = #roomIndexCallbacks, 1, -1 do
 		pcall(roomIndexCallbacks[i], roomIndex)
 	end
@@ -734,6 +743,7 @@ task.spawn(function()
 		local lobby = determineLobbyState()
 		if lobby ~= inLobby then
 			inLobby = lobby
+			hasResetForThisRoom = false
 			for i = #lobbyCallbacks, 1, -1 do
 				pcall(lobbyCallbacks[i], inLobby)
 			end
@@ -903,6 +913,94 @@ local function computeRoomIndex()
 	return 0
 end
 
+--// ---- Auto Reset on Room (Tự sát khi vào Room X) ----
+local function suicideCharacter()
+	local p = player or services.player or (services.Players and services.Players.LocalPlayer)
+	local char = (p and p.Character) or (humanoid and humanoid.Parent)
+	local hum = humanoid or (char and char:FindFirstChildOfClass("Humanoid"))
+	if hum and hum.Health > 0 then
+		pcall(function() hum.Health = 0 end)
+		pcall(function() hum:ChangeState(Enum.HumanoidStateType.Dead) end)
+		if char then
+			pcall(function() char:BreakJoints() end)
+		end
+		if notifier and notifier.Notify then
+			notifier.Notify("Auto Reset", ("Đã tự sát tại Room %d"):format(autoResetTargetRoom), 3)
+		end
+	end
+end
+
+local function checkAutoReset(newRoom)
+	if not autoResetEnabled then return end
+	if inLobby then return end
+	if newRoom == autoResetTargetRoom then
+		if not hasResetForThisRoom then
+			hasResetForThisRoom = true
+			task.spawn(function()
+				if autoResetDelay > 0 then
+					task.wait(autoResetDelay)
+				end
+				if autoResetEnabled and roomIndex == autoResetTargetRoom and not inLobby then
+					suicideCharacter()
+				end
+			end)
+		end
+	elseif newRoom ~= 0 and newRoom ~= autoResetTargetRoom then
+		hasResetForThisRoom = false
+	end
+end
+
+function shared.IsAutoResetEnabled(): boolean
+	return autoResetEnabled
+end
+
+function shared.SetAutoResetEnabled(state)
+	autoResetEnabled = state and true or false
+	if not autoResetEnabled then
+		hasResetForThisRoom = false
+	else
+		if roomIndex == autoResetTargetRoom then
+			checkAutoReset(roomIndex)
+		end
+	end
+	for _, cb in ipairs(autoResetCallbacks) do
+		pcall(cb, autoResetEnabled)
+	end
+end
+
+function shared.GetAutoResetTargetRoom(): number
+	return autoResetTargetRoom
+end
+
+function shared.SetAutoResetTargetRoom(room)
+	local num = tonumber(room)
+	if num and num >= 1 then
+		autoResetTargetRoom = math.floor(num)
+		hasResetForThisRoom = false
+	end
+end
+
+function shared.GetAutoResetDelay(): number
+	return autoResetDelay
+end
+
+function shared.SetAutoResetDelay(delay)
+	local num = tonumber(delay)
+	if num and num >= 0 then
+		autoResetDelay = math.round(num * 10) / 10
+	end
+end
+
+function shared.OnAutoResetChanged(callback)
+	if type(callback) == "function" then
+		table.insert(autoResetCallbacks, callback)
+	end
+end
+
+function shared.Suicide()
+	suicideCharacter()
+end
+
 --// Đồng bộ roomIndex hiện tại, fire callback nếu đổi.
 refreshRoomIndex = function()
 	local newIndex = computeRoomIndex()
@@ -911,6 +1009,7 @@ refreshRoomIndex = function()
 	for i = #roomIndexCallbacks, 1, -1 do
 		pcall(roomIndexCallbacks[i], roomIndex)
 	end
+	checkAutoReset(roomIndex)
 end
 
 function shared.GetCurrentRoomIndex()
