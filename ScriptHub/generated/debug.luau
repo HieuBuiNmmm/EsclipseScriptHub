@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-14T23:02:37.367948500+00:00",
+    genDate = "2026-09-15T01:25:58.765182200+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -9934,7 +9934,7 @@ end)
 return safeSpot
 end function __DIST.r()-- HazardScanner – Dodge Controller (DungeonQuest).
 -- Quản lý logic tự động né đòn (Auto-Dodge):
--- Di chuyển bằng Humanoid:MoveTo() về hướng Safe Spot và thực hiện Snap pha cuối khi tới gần (flatDist <= snapDistance)
+-- Di chuyển bằng Humanoid:Move() về hướng Safe Spot và thực hiện Snap pha cuối khi tới gần (flatDist <= snapDistance)
 -- để đảm bảo nhân vật đáp đúng 100% tọa độ an toàn, triệt tiêu sai số quán tính của Roblox physics.
 
 --// Imports
@@ -9975,7 +9975,7 @@ end
 --// Dừng di chuyển của Humanoid
 local function stopMove(hum, root)
 	if hum and root and root.Parent then
-		hum:MoveTo(root.Position)
+		pcall(function() hum:MoveTo(root.Position) end)
 	end
 end
 
@@ -10043,7 +10043,7 @@ local function onHeartbeat()
 				end
 			end
 		else
-			-- Pha 2: Di chuyển bình thường bằng MoveTo về hướng Safe Spot
+			-- Pha 2: Di chuyển bằng MoveTo về hướng Safe Spot
 			local moveTarget = Vector3.new(activeTargetSpot.X, playerPos.Y, activeTargetSpot.Z)
 			hum:MoveTo(moveTarget)
 
@@ -10481,7 +10481,7 @@ return function(window, tab)
 	}, "Slider_HazardSafeSpotBuffer"))
 
 	leftSection:Toggle({
-		Name = "Enable Auto Dodge (MoveTo + Snap)",
+		Name = "Enable Auto Dodge (Move + Snap)",
 		Default = hazardScanner.IsAutoDodgeEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetAutoDodgeEnabled(state)
@@ -10658,97 +10658,40 @@ function scanner.Scan()
 end
 
 return scanner
-end function __DIST.w()-- Target Movement System – Component C: Target Selector & Path Calculator
--- Spec: Sections 5 & 6 (Roblox_Target_Movement_System_AI_Spec.txt)
+end function __DIST.w()-- Target Movement System – Component C: Target Selector
+-- Selects the nearest valid enemy instantaneously (0ms, no Pathfinding latency)
 
-
-local PathfindingService = game:GetService("PathfindingService")
 
 local selector = {}
 
-local PATH_PARAMS = {
-	AgentRadius = 1,
-	AgentHeight = 5,
-	AgentCanJump = true,
-	AgentCanClimb = true,
-	AgentMaxSlope = 75,
-	WaypointSpacing = 4,
-	Costs = { Water = 20, Lava = 20 },
-}
-
-local PATH_PARAMS_RELAXED = {
-	AgentRadius = 0.25,
-	AgentHeight = 4,
-	AgentCanJump = true,
-	AgentCanClimb = true,
-	AgentMaxSlope = 90,
-	WaypointSpacing = 6,
-	Costs = {},
-}
-
---// Computes Pathfinding path and movement cost along waypoints.
-function selector.ComputePathWithCost(startPos, destPos)
-	for _, params in ipairs({ PATH_PARAMS, PATH_PARAMS_RELAXED }) do
-		local path = PathfindingService:CreatePath(params)
-		local ok = pcall(function()
-			path:ComputeAsync(startPos, destPos)
-		end)
-		if ok and path.Status == Enum.PathStatus.Success then
-			local waypoints = path:GetWaypoints()
-			if waypoints and #waypoints > 0 then
-				local totalCost = 0
-				local prev = startPos
-				for i = 1, #waypoints do
-					local w = waypoints[i].Position
-					totalCost += (w - prev).Magnitude
-					prev = w
-				end
-				return path, waypoints, totalCost
-			end
-		end
-		pcall(function() path:Destroy() end)
-	end
-	return nil, nil, math.huge
-end
-
---// Evaluates all valid enemies and selects the one with the lowest Pathfinding movement cost.
+--// Evaluates all valid enemies and selects the one nearest to the player
 function selector.SelectBestTarget(playerPos, validEnemies, cancelCheck)
 	local bestTarget = nil
-	local bestCost = math.huge
-	local bestPath = nil
-	local bestWaypoints = nil
+	local bestDistSq = math.huge
 	local bestPos = nil
 
 	for _, enemyData in ipairs(validEnemies) do
 		if cancelCheck and cancelCheck() then
-			if bestPath then pcall(function() bestPath:Destroy() end) end
 			return nil, nil, nil, nil, math.huge
 		end
 
 		local root = enemyData.Root
 		if root and root.Parent then
 			local ePos = root.Position
-			local path, waypoints, cost = selector.ComputePathWithCost(playerPos, ePos)
-			if cancelCheck and cancelCheck() then
-				if path then pcall(function() path:Destroy() end) end
-				if bestPath then pcall(function() bestPath:Destroy() end) end
-				return nil, nil, nil, nil, math.huge
-			end
+			local dx = ePos.X - playerPos.X
+			local dz = ePos.Z - playerPos.Z
+			local distSq = dx * dx + dz * dz
 
-			if path and cost < bestCost then
-				if bestPath then pcall(function() bestPath:Destroy() end) end
-				bestCost = cost
+			if distSq < bestDistSq then
+				bestDistSq = distSq
 				bestTarget = enemyData
-				bestPath = path
-				bestWaypoints = waypoints
 				bestPos = ePos
-			else
-				if path then pcall(function() path:Destroy() end) end
 			end
 		end
 	end
 
-	return bestTarget, bestPath, bestWaypoints, bestPos, bestCost
+	local bestDist = bestDistSq < math.huge and math.sqrt(bestDistSq) or math.huge
+	return bestTarget, nil, nil, bestPos, bestDist
 end
 
 return selector
@@ -11093,7 +11036,241 @@ end
 
 return movement
 
-end function __DIST.z()-- Auto Farm System – Component G: State / Interrupt Manager & Facade
+end function __DIST.z()-- Auto Farm System – Smart Auto Skill Manager (DungeonQuest)
+-- Quản lý logic kích hoạt skill thông minh chạy HOÀN TOÀN ĐỘC LẬP VÀ SONG SONG:
+-- - Có vòng lặp Heartbeat riêng, không bị phụ thuộc/chặn bởi Auto Farm di chuyển hay Auto Dodge né đòn.
+-- - Cast Q và Cast E trong task.spawn riêng biệt, không block lẫn nhau và không block luồng game.
+--
+-- Logic:
+-- 1. Skill Q (Buff Damage & Speed): Tự động kích hoạt/spam khi có Enemy tồn tại còn sống trên map.
+-- 2. Skill E (Damage Skill): Chỉ kích hoạt khi:
+--    - Khoảng cách 2D tới mục tiêu <= Skill E Cast Range (Slider độc lập).
+--    - Chiêu Q đang có hiệu lực buff (nhận biết qua effect 'groundAura' tồn tại trong workspace).
+
+
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
+local lifecycle = __DIST.load('b')
+local tracker = __DIST.load('x')
+
+local RunService = services.RunService or game:GetService("RunService")
+local VirtualInputManager = services.VirtualInputManager or game:GetService("VirtualInputManager")
+local player = services.player
+
+local autoSkill = {}
+
+--// State
+local enabled = false
+local skillERange = 35.0 -- studs (Khoảng cách cast chiêu E độc lập)
+local spamInterval = 0.15 -- giây giữa các lần bấm phím
+
+local lastCastQ = 0
+local lastCastE = 0
+local isCastingQ = false
+local isCastingE = false
+local heartbeatConnection = nil
+
+function autoSkill.IsEnabled()
+	return enabled
+end
+
+-- Forward declaration
+local startHeartbeat, stopHeartbeat
+
+function autoSkill.SetEnabled(state)
+	local want = state == true
+	if want == enabled then return end
+	enabled = want
+	if enabled then
+		startHeartbeat()
+	else
+		stopHeartbeat()
+	end
+end
+
+-- Aliases for backward compatibility
+autoSkill.IsSkillQEnabled = autoSkill.IsEnabled
+autoSkill.SetSkillQEnabled = autoSkill.SetEnabled
+autoSkill.IsSkillEEnabled = autoSkill.IsEnabled
+autoSkill.SetSkillEEnabled = autoSkill.SetEnabled
+
+function autoSkill.GetSkillERange()
+	return skillERange
+end
+
+function autoSkill.SetSkillERange(val)
+	if type(val) == "number" and val >= 2 then
+		skillERange = val
+	end
+end
+
+function autoSkill.GetSpamInterval()
+	return spamInterval
+end
+
+function autoSkill.SetSpamInterval(val)
+	if type(val) == "number" and val >= 0.05 then
+		spamInterval = val
+	end
+end
+
+--// Kiểm tra xem chiêu Q (Buff) có đang có hiệu lực hay không dựa vào effect 'groundAura' trong workspace
+function autoSkill.IsBuffActive()
+	local ok, aura = pcall(function()
+		return workspace:FindFirstChild("groundAura")
+	end)
+	return ok and aura ~= nil
+end
+
+--// Lấy HumanoidRootPart của người chơi
+local function getPlayerRoot()
+	local lp = player or game:GetService("Players").LocalPlayer
+	local char = lp and lp.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	if root and root.Parent then return root end
+	return nil
+end
+
+--// Lấy Enemy mục tiêu tốt nhất và tính khoảng cách 2D phẳng (X-Z)
+local function getBestEnemyAndDistance()
+	local root = getPlayerRoot()
+	if not root then return nil, math.huge, false end
+	local playerPos = root.Position
+
+	-- 1. Ưu tiên target hiện tại của AutoFarm Tracker
+	local curTarget = tracker.GetTarget and tracker.GetTarget()
+	if curTarget and curTarget.Root and curTarget.Root.Parent then
+		local hum = curTarget.Humanoid or (curTarget.Model and curTarget.Model:FindFirstChildOfClass("Humanoid"))
+		if hum and hum.Health > 0 then
+			local ePos = curTarget.Root.Position
+			local flatDist = Vector3.new(ePos.X - playerPos.X, 0, ePos.Z - playerPos.Z).Magnitude
+			return curTarget, flatDist, true
+		end
+	end
+
+	-- 2. Tìm quái sống gần nhất từ shared.GetTrackedEnemyData()
+	local tracked = shared.GetTrackedEnemyData and shared.GetTrackedEnemyData()
+	local closestTarget = nil
+	local closestDistSq = math.huge
+	local hasAnyLivingEnemy = false
+
+	if tracked and #tracked > 0 then
+		for _, data in ipairs(tracked) do
+			if data and data.Root and data.Root.Parent then
+				local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
+				if hum and hum.Health > 0 then
+					hasAnyLivingEnemy = true
+					local ePos = data.Root.Position
+					local dx = ePos.X - playerPos.X
+					local dz = ePos.Z - playerPos.Z
+					local distSq = dx * dx + dz * dz
+					if distSq < closestDistSq then
+						closestDistSq = distSq
+						closestTarget = data
+					end
+				end
+			end
+		end
+	end
+
+	local closestFlatDist = closestDistSq < math.huge and math.sqrt(closestDistSq) or math.huge
+	return closestTarget, closestFlatDist, hasAnyLivingEnemy
+end
+
+--// Bấm và nhả phím Q đơn lập (Buff) trong luồng độc lập
+function autoSkill.CastSkillQ()
+	if isCastingQ then return end
+	isCastingQ = true
+	task.spawn(function()
+		local holdTime = (shared.GetKeyHoldTime and shared.GetKeyHoldTime()) or 0.05
+		pcall(function()
+			VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+		end)
+		task.wait(holdTime)
+		pcall(function()
+			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+		end)
+		isCastingQ = false
+	end)
+end
+
+--// Bấm và nhả phím E đơn lập (Damage) trong luồng độc lập
+function autoSkill.CastSkillE()
+	if isCastingE then return end
+	isCastingE = true
+	task.spawn(function()
+		local holdTime = (shared.GetKeyHoldTime and shared.GetKeyHoldTime()) or 0.05
+		pcall(function()
+			VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+		end)
+		task.wait(holdTime)
+		pcall(function()
+			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+		end)
+		isCastingE = false
+	end)
+end
+
+--// Vòng lặp chính xử lý Smart Skills độc lập trên Heartbeat
+local function onHeartbeat()
+	if not enabled or shared.IsInLobby() then return end
+
+	local root = getPlayerRoot()
+	if not root then return end
+
+	local char = root.Parent
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health <= 0 then return end
+
+	local target, flatDist, hasEnemy = getBestEnemyAndDistance()
+	local now = os.clock()
+
+	-- 1. Xử lý Skill Q (Buff): Kích hoạt song song khi có Enemy tồn tại trên map
+	if (now - lastCastQ >= spamInterval) and not isCastingQ then
+		if hasEnemy then
+			lastCastQ = now
+			autoSkill.CastSkillQ()
+		end
+	end
+
+	-- 2. Xử lý Skill E (Damage): Kích hoạt song song khi có Target, nằm trong tầm range độc lập VÀ chiêu Q đang buff (groundAura)
+	if (now - lastCastE >= spamInterval) and not isCastingE then
+		if target and flatDist <= skillERange then
+			local buffActive = autoSkill.IsBuffActive()
+			if buffActive then
+				lastCastE = now
+				autoSkill.CastSkillE()
+			end
+		end
+	end
+end
+
+startHeartbeat = function()
+	if not heartbeatConnection then
+		heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
+	end
+end
+
+stopHeartbeat = function()
+	if heartbeatConnection then
+		heartbeatConnection:Disconnect()
+		heartbeatConnection = nil
+	end
+	isCastingQ = false
+	isCastingE = false
+end
+
+-- Hook trực tiếp Step từ bên ngoài nếu cần
+function autoSkill.Step(deltaTime, currentTarget, flatDistToTarget)
+	-- Heartbeat riêng đã tự động xử lý 100% song song và độc lập
+end
+
+lifecycle.Register(function()
+	autoSkill.SetEnabled(false)
+end)
+
+return autoSkill
+end function __DIST.A()-- Auto Farm System – Component G: State / Interrupt Manager & Facade
 -- Spec: Sections 2, 16, 17, 18, 19, 20 (Roblox_Target_Movement_System_AI_Spec.txt)
 
 --// Imports
@@ -11107,6 +11284,8 @@ local scanner = __DIST.load('v')
 local selector = __DIST.load('w')
 local tracker = __DIST.load('x')
 local movement = __DIST.load('y')
+local hazardScanner = __DIST.load('s')
+local autoSkill = __DIST.load('z')
 
 --// Services
 local RunService = services.RunService
@@ -11119,6 +11298,7 @@ local State = {
 	TRACKING_TARGET = "TRACKING_TARGET",
 	CHASE = "CHASE",
 	HOLD = "HOLD",
+	KITE = "KITE",
 	BLOCKED = "BLOCKED",
 	REPATHING = "REPATHING",
 }
@@ -11129,7 +11309,9 @@ local autoFarm = {}
 local enabled = false
 local running = false
 local scanInterval = 1.5 -- Seconds between periodic target scans
-local reachDistance = 8.0 -- Studs distance to consider target reached (HOLD state)
+local minCombatDistance = 25.0 -- Studs: khoảng cách tối thiểu (lùi lại kiting khi quái lại gần hơn mức này)
+local maxCombatDistance = 50.0 -- Studs: khoảng cách tối đa (tiến lại gần khi quái xa hơn mức này)
+local autoFaceTarget = true -- Tự động xoay mặt nhìn về phía kẻ địch khi combat
 local repathDistance = 6.0 -- Studs target moves before triggering repath
 
 --// Visual Debug Flags
@@ -11207,30 +11389,22 @@ local function isSameTarget(a, b)
 	return false
 end
 
-local function applyTargetSwitch(newTarget, newPath, newWaypoints, newPos)
+local function applyTargetSwitch(newTarget, newPos)
 	local cur = tracker.GetTarget()
 	if isSameTarget(cur, newTarget) then
-		if newPath then
-			tracker.UpdatePath(newPath, newWaypoints, newPos)
-		end
 		return
 	end
 
 	-- Priority 2: New target selected -> Interrupt current movement
-	tracker.SetTarget(newTarget, newPath, newWaypoints, newPos)
+	tracker.SetTarget(newTarget, nil, nil, newPos)
 	currentDestination = nil
 	currentDestMode = "None"
 	currentDestNodeIndex = nil
 	lastBlockerData = nil
 	stuckTimer = 0
 
-
 	if newTarget then
-		if newPath and newWaypoints and #newWaypoints > 0 then
-			currentState = State.TRACKING_TARGET
-		else
-			currentState = State.REPATHING
-		end
+		currentState = State.CHASE
 	else
 		currentState = State.NO_TARGET
 	end
@@ -11243,44 +11417,35 @@ evaluateTarget = function()
 	local token = selectToken
 	selectRunning = true
 
-	task.spawn(function()
-		local ok, err = pcall(function()
-			local root = getPlayerRoot()
-			local playerPos = root and getSafePosition(root)
-			if not playerPos then
-				selectRunning = false
-				return
-			end
-
-			local validList = scanner.Scan()
-			if #validList == 0 then
-				if token == selectToken and enabled and running then
-					applyTargetSwitch(nil, nil, nil, nil)
-				end
-				selectRunning = false
-				return
-			end
-
-			local bestTarget, bestPath, bestWaypoints, bestPos = selector.SelectBestTarget(
-				playerPos,
-				validList,
-				function()
-					return token ~= selectToken or not enabled or not running
-				end
-			)
-
-			if token == selectToken and enabled and running then
-				applyTargetSwitch(bestTarget, bestPath, bestWaypoints, bestPos)
-			else
-				if bestPath then pcall(function() bestPath:Destroy() end) end
-			end
-		end)
-
+	local root = getPlayerRoot()
+	local playerPos = root and getSafePosition(root)
+	if not playerPos then
 		selectRunning = false
-		if not ok then
-			warn(("[AutoFarm] Error in evaluation: %s"):format(tostring(err)))
+		return
+	end
+
+	local validList = scanner.Scan()
+	if #validList == 0 then
+		if token == selectToken and enabled and running then
+			applyTargetSwitch(nil, nil)
 		end
-	end)
+		selectRunning = false
+		return
+	end
+
+	local bestTarget, _, _, bestPos = selector.SelectBestTarget(
+		playerPos,
+		validList,
+		function()
+			return token ~= selectToken or not enabled or not running
+		end
+	)
+
+	if token == selectToken and enabled and running then
+		applyTargetSwitch(bestTarget, bestPos)
+	end
+
+	selectRunning = false
 end
 
 --// ============================================================
@@ -11299,6 +11464,11 @@ local function stepMovementLoop(deltaTime)
 	local playerPos = getSafePosition(playerRoot)
 	if not playerPos then return end
 
+	-- Nếu Auto-Dodge đang chủ động né nguy hiểm -> tạm nhường quyền điều khiển di chuyển
+	if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+		return
+	end
+
 	-- Nếu đang tạm dừng di chuyển (giữ vị trí khi combat hoặc né) -> không bước tiếp
 	if isPaused then
 		return
@@ -11308,7 +11478,7 @@ local function stepMovementLoop(deltaTime)
 	local now = os.clock()
 	if now - lastScanTime >= scanInterval then
 		lastScanTime = now
-		if currentState ~= State.HOLD then
+		if currentState ~= State.HOLD and currentState ~= State.KITE then
 			evaluateTarget()
 		end
 	end
@@ -11317,14 +11487,16 @@ local function stepMovementLoop(deltaTime)
 	local target = tracker.GetTarget()
 	if target then
 		if not tracker.IsTargetValid() then
-			-- Immediate Target Invalidation (Section 14)
 			tracker.ClearTarget()
 			currentState = State.NO_TARGET
 			currentDestination = nil
 			currentDestMode = "None"
 			lastBlockerData = nil
+			pcall(function()
+				humanoid:MoveTo(playerPos)
+				humanoid.AutoRotate = true
+			end)
 			evaluateTarget()
-			pcall(function() humanoid:MoveTo(playerPos) end)
 			return
 		end
 	end
@@ -11334,6 +11506,10 @@ local function stepMovementLoop(deltaTime)
 		currentDestination = nil
 		currentDestMode = "None"
 		lastBlockerData = nil
+		pcall(function()
+			humanoid:MoveTo(playerPos)
+			humanoid.AutoRotate = true
+		end)
 		if not selectRunning and now - lastScanTime >= 0.5 then
 			lastScanTime = now
 			evaluateTarget()
@@ -11346,102 +11522,122 @@ local function stepMovementLoop(deltaTime)
 		tracker.ClearTarget()
 		currentState = State.NO_TARGET
 		lastBlockerData = nil
+		pcall(function()
+			humanoid:MoveTo(playerPos)
+			humanoid.AutoRotate = true
+		end)
 		return
 	end
 
-	-- Check Target Reach Condition (Enter HOLD State)
-	local flatDist = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z).Magnitude
-	if flatDist <= reachDistance then
+	-- Check Target Reach & Combat Range Condition ([minCombatDistance, maxCombatDistance])
+	local flatDelta = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
+	local flatDist = flatDelta.Magnitude
+
+	-- Auto Face Target (Khóa xoay mặt nhìn thẳng về phía kẻ địch khi trong tầm combat)
+	if autoFaceTarget and flatDist <= (maxCombatDistance + 25) then
+		pcall(function()
+			humanoid.AutoRotate = false
+			local lookPos = Vector3.new(enemyPos.X, playerRoot.Position.Y, enemyPos.Z)
+			if (lookPos - playerRoot.Position).Magnitude > 0.5 then
+				playerRoot.CFrame = CFrame.lookAt(playerRoot.Position, lookPos)
+			end
+		end)
+	else
+		pcall(function() humanoid.AutoRotate = true end)
+	end
+
+	-- Auto Skill: Quản lý smart skill Q (Buff khi có hazard) và E (Damage khi có buff & trong tầm range)
+	autoSkill.Step(deltaTime, target, flatDist)
+
+	if flatDist < minCombatDistance then
+		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly
+		local awayDelta = Vector3.new(playerPos.X - enemyPos.X, 0, playerPos.Z - enemyPos.Z)
+		local awayDir = awayDelta.Magnitude > 0.1 and awayDelta.Unit or Vector3.new(0, 0, 1)
+		local backDist = math.clamp(minCombatDistance - flatDist + 6, 4, 15)
+		local backTarget = playerPos + awayDir * backDist
+
+		-- Kiểm tra xem điểm lùi về có an toàn không
+		local isBackSafe = true
+		if hazardScanner and hazardScanner.IsPointSafe then
+			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
+		end
+
+		if not isBackSafe then
+			currentState = State.HOLD
+			currentDestMode = "Hold (Danger Behind)"
+			currentDestination = nil
+			stuckTimer = 0
+			pcall(function() humanoid:MoveTo(playerPos) end)
+		else
+			currentState = State.KITE
+			currentDestMode = "Kite"
+			stuckTimer = 0
+			currentDestination = backTarget
+			humanoid:MoveTo(backTarget)
+		end
+	elseif flatDist <= maxCombatDistance then
+		-- Case 2: Nằm trong khoảng lý tưởng [minCombatDistance, maxCombatDistance] -> HOLD
 		currentState = State.HOLD
 		currentDestination = nil
 		currentDestMode = "Hold"
 		stuckTimer = 0
 		pcall(function() humanoid:MoveTo(playerPos) end)
-		-- State HOLD: Currently holds position (idle)
-		return
 	else
-		if currentState == State.HOLD then
-			currentState = State.CHASE
-		end
-	end
+		-- Case 3: Quá xa (> maxCombatDistance) -> CHASE / Tiến thẳng lại gần mục tiêu
+		local approachDir = flatDelta.Magnitude > 0.1 and flatDelta.Unit or Vector3.new(0, 0, 1)
 
-	-- Target Tracking & Repath check (Sections 7 & 15)
-	local needsRepath = false
-	if currentState == State.REPATHING or currentState == State.BLOCKED or not tracker.GetPathInstance() then
-		needsRepath = true
-	elseif tracker.NeedsRepath(enemyPos) then
-		needsRepath = true
-	end
-
-	if needsRepath then
-		local repathSuccess = tracker.Repath(playerPos, enemyPos)
-		if repathSuccess then
-			currentState = State.CHASE
-		else
-			-- Target unreachable
-			currentState = State.BLOCKED
-			currentDestination = nil
-			currentDestMode = "Blocked"
-			pcall(function() humanoid:MoveTo(playerPos) end)
-			return
-		end
-	end
-
-	-- Advance Waypoint Progression
-	tracker.AdvanceWaypointIndex(playerPos)
-
-	-- Blocking Checker & Blocked Destination Loop (Sections 10, 11, 12, 13)
-	local waypoints = tracker.GetWaypoints()
-	local waypointIdx = tracker.GetWaypointIndex()
-	local ignoreList = { player.Character }
-	if target.Model then
-		table.insert(ignoreList, target.Model)
-	end
-
-	local chosenDest, mode, nodeIdx, blockerData = movement.ResolveDestination(playerPos, enemyPos, waypoints, waypointIdx, ignoreList)
-	lastBlockerData = blockerData
-
-	if mode == "Blocked" or not chosenDest then
-		-- Blocking loop reached dead-end -> State = BLOCKED -> repath next frame
-		currentState = State.BLOCKED
-		currentDestination = nil
-		currentDestMode = "Blocked"
-		pcall(function() humanoid:MoveTo(playerPos) end)
-		return
-	end
-
-	-- Movement Controller: Freewalk execution (State CHASE)
-	currentState = State.CHASE
-	currentDestination = chosenDest
-	currentDestMode = mode
-	currentDestNodeIndex = nodeIdx
-
-	movement.ExecuteMove(humanoid, playerPos, chosenDest, waypoints, waypointIdx)
-
-	-- Velocity-Based Stuck Detection & Auto-Jump
-	local distToDest = (chosenDest - playerPos).Magnitude
-	if distToDest >= 1.5 then
-		local rootVel = playerRoot.AssemblyLinearVelocity or playerRoot.Velocity
-		local horizontalSpeed = rootVel and Vector3.new(rootVel.X, 0, rootVel.Z).Magnitude or 0
-		local dt = (type(deltaTime) == "number" and deltaTime > 0) and deltaTime or 0.016
-
-		if horizontalSpeed < stuckVelocityThreshold then
-			stuckTimer += dt
-			if autoJumpOnStuck and (now - lastJumpTime) >= 0.4 then
-				humanoid.Jump = true
-				pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
-				lastJumpTime = now
+		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
+		local dangerAhead = false
+		if hazardScanner and hazardScanner.IsPointSafe then
+			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
+			for _, stepDist in ipairs({ 3, 6, 10 }) do
+				if stepDist < flatDist then
+					local checkPoint = playerPos + approachDir * stepDist
+					if not hazardScanner.IsPointSafe(checkPoint, 0.5) then
+						dangerAhead = true
+						break
+					end
+				end
 			end
-			-- If stuck for >= 1.5s despite jumping -> Repath!
-			if stuckTimer >= 1.5 then
-				currentState = State.REPATHING
+		end
+
+		if dangerAhead then
+			-- Phía trước có bẫy / đạn / vùng đỏ -> ĐỨNG YÊN (HOLD) chờ nguy hiểm qua đi, không cắm đầu chạy vào!
+			currentState = State.HOLD
+			currentDestMode = "Hold (Danger Ahead)"
+			currentDestination = nil
+			stuckTimer = 0
+			pcall(function() humanoid:MoveTo(playerPos) end)
+		else
+			currentState = State.CHASE
+			currentDestMode = "Chase"
+			local chaseTarget = Vector3.new(enemyPos.X, playerPos.Y, enemyPos.Z)
+			currentDestination = chaseTarget
+
+			humanoid:MoveTo(chaseTarget)
+
+			-- Auto jump khi có chênh lệch độ cao (bậc thang, dốc)
+			local elevDiff = enemyPos.Y - playerPos.Y
+			if elevDiff > 1.8 and flatDist <= 8.0 then
+				humanoid.Jump = true
+			end
+
+			-- Velocity-Based Stuck Detection & Auto-Jump
+			local rootVel = playerRoot.AssemblyLinearVelocity or playerRoot.Velocity
+			local horizontalSpeed = rootVel and Vector3.new(rootVel.X, 0, rootVel.Z).Magnitude or 0
+			local dt = (type(deltaTime) == "number" and deltaTime > 0) and deltaTime or 0.016
+
+			if horizontalSpeed < stuckVelocityThreshold then
+				stuckTimer += dt
+				if autoJumpOnStuck and (now - lastJumpTime) >= 0.4 then
+					humanoid.Jump = true
+					pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
+					lastJumpTime = now
+				end
+			else
 				stuckTimer = 0
 			end
-		else
-			stuckTimer = 0
 		end
-	else
-		stuckTimer = 0
 	end
 end
 
@@ -11719,13 +11915,55 @@ function autoFarm.SetScanInterval(val)
 	end
 end
 
+function autoFarm.GetMinCombatDistance()
+	return minCombatDistance
+end
+
+function autoFarm.SetMinCombatDistance(val)
+	if type(val) == "number" and val >= 1 then
+		minCombatDistance = val
+		if minCombatDistance > maxCombatDistance then
+			maxCombatDistance = minCombatDistance + 5
+		end
+	end
+end
+
+function autoFarm.GetMaxCombatDistance()
+	return maxCombatDistance
+end
+
+function autoFarm.SetMaxCombatDistance(val)
+	if type(val) == "number" and val >= 2 then
+		maxCombatDistance = val
+		if minCombatDistance > maxCombatDistance then
+			minCombatDistance = math.max(1, maxCombatDistance - 5)
+		end
+	end
+end
+
+function autoFarm.IsAutoFaceTargetEnabled()
+	return autoFaceTarget
+end
+
+function autoFarm.SetAutoFaceTarget(state)
+	autoFaceTarget = state and true or false
+	if not autoFaceTarget then
+		local h = shared.GetHumanoid()
+		if h and h.Parent then
+			pcall(function() h.AutoRotate = true end)
+		end
+	end
+end
+
+-- Backward compatibility for reachDistance
 function autoFarm.GetReachDistance()
-	return reachDistance
+	return maxCombatDistance
 end
 
 function autoFarm.SetReachDistance(val)
-	if type(val) == "number" and val >= 1 then
-		reachDistance = val
+	if type(val) == "number" and val >= 2 then
+		maxCombatDistance = val
+		minCombatDistance = math.clamp(val * 0.6, 2, val - 2)
 	end
 end
 
@@ -11766,10 +12004,10 @@ function autoFarm.SetPaused(state)
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
 		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+			pcall(function()
+				h:MoveTo(r.Position)
+				h.AutoRotate = true
+			end)
 		end
 	end
 end
@@ -11777,6 +12015,21 @@ end
 function autoFarm.IsPaused()
 	return isPaused
 end
+
+--// Auto Skill APIs (Smart Skills Q & E)
+autoFarm.IsAutoSkillEnabled = autoSkill.IsEnabled
+autoFarm.SetAutoSkillEnabled = autoSkill.SetEnabled
+autoFarm.IsAutoSkillQEnabled = autoSkill.IsSkillQEnabled
+autoFarm.SetAutoSkillQEnabled = autoSkill.SetSkillQEnabled
+autoFarm.IsAutoSkillEEnabled = autoSkill.IsSkillEEnabled
+autoFarm.SetAutoSkillEEnabled = autoSkill.SetSkillEEnabled
+autoFarm.GetSkillERange = autoSkill.GetSkillERange
+autoFarm.SetSkillERange = autoSkill.SetSkillERange
+autoFarm.GetSkillSpamInterval = autoSkill.GetSpamInterval
+autoFarm.SetSkillSpamInterval = autoSkill.SetSpamInterval
+autoFarm.IsBuffActive = autoSkill.IsBuffActive
+autoFarm.CastSkillQ = autoSkill.CastSkillQ
+autoFarm.CastSkillE = autoSkill.CastSkillE
 
 function autoFarm.IsPlannedPathVisualEnabled()
 	return showPlannedPath
@@ -11950,10 +12203,10 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
 		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+			pcall(function()
+				h:MoveTo(r.Position)
+				h.AutoRotate = true
+			end)
 		end
 
 		tracker.ClearTarget()
@@ -11981,7 +12234,7 @@ lifecycle.Register(function()
 end)
 
 return autoFarm
-end function __DIST.A()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+end function __DIST.B()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -12182,7 +12435,7 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.B()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
+return dungeonCatalog end function __DIST.C()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
 -- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
 -- Dữ liệu lưu trong file config JSON qua macLib.contextData.
 
@@ -12191,22 +12444,38 @@ return dungeonCatalog end function __DIST.B()-- Core Contextual cho DungeonQuest
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
 local shared = __DIST.load('f')
-local dungeonCatalog = __DIST.load('A')
+local dungeonCatalog = __DIST.load('B')
 local notifier = __DIST.load('c')
 local lifecycle = __DIST.load('b')
-local autoFarm = __DIST.load('z')
+local autoFarm = __DIST.load('A')
 
 --// Table
 local contextual = {}
 
 --// Metadata field -> get/set trên autoFarm
 local FIELD_DEFS = {
-	TargetReachDistance = {
+	MinCombatDistance = {
 		get = function()
-			return autoFarm.GetReachDistance()
+			return autoFarm.GetMinCombatDistance()
 		end,
 		set = function(v)
-			autoFarm.SetReachDistance(v)
+			autoFarm.SetMinCombatDistance(v)
+		end,
+	},
+	MaxCombatDistance = {
+		get = function()
+			return autoFarm.GetMaxCombatDistance()
+		end,
+		set = function(v)
+			autoFarm.SetMaxCombatDistance(v)
+		end,
+	},
+	TargetReachDistance = {
+		get = function()
+			return autoFarm.GetMaxCombatDistance()
+		end,
+		set = function(v)
+			autoFarm.SetMaxCombatDistance(v)
 		end,
 	},
 }
@@ -12424,15 +12693,15 @@ function contextual.Init()
 end
 
 return contextual
-end function __DIST.C()-- Module Auto Farm trong tab Combat (DungeonQuest)
+end function __DIST.D()-- Module Auto Farm trong tab Combat (DungeonQuest)
 -- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
 -- và Auto Farm Context (Target Reach Distance theo từng Dungeon x Target).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoFarm = __DIST.load('z')
-local contextual = __DIST.load('B')
+local autoFarm = __DIST.load('A')
+local contextual = __DIST.load('C')
 local shared = __DIST.load('f')
 local services = __DIST.load('e')
 local ui = __DIST.load('g')
@@ -12467,17 +12736,38 @@ return function(window, tab)
 	}, "Slider_AF_ScanInterval")
 
 	leftSection:Slider({
-		Name = "Target Reach Distance",
-		Suffix = " std",
-		Default = autoFarm.GetReachDistance(),
+		Name = "Min Combat Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetMinCombatDistance(),
 		Minimum = 2,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetMinCombatDistance(val)
+		end),
+	}, "Slider_AF_MinCombatDistance")
+
+	leftSection:Slider({
+		Name = "Max Combat Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetMaxCombatDistance(),
+		Minimum = 5,
 		Maximum = 200,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetReachDistance(val)
+			autoFarm.SetMaxCombatDistance(val)
 		end),
-	}, "Slider_AF_ReachDistance")
+	}, "Slider_AF_MaxCombatDistance")
+
+	leftSection:Toggle({
+		Name = "Auto Face Target (Look At Enemy)",
+		Default = autoFarm.IsAutoFaceTargetEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoFaceTarget(state)
+		end),
+	}, "Toggle_AF_AutoFaceTarget")
 
 	leftSection:Slider({
 		Name = "Repath Distance",
@@ -12512,6 +12802,42 @@ return function(window, tab)
 			autoFarm.SetStuckVelocityThreshold(val)
 		end),
 	}, "Slider_AF_StuckVelocity"))
+
+	leftSection:Header({ Name = "Auto Skill (Smart Buff & Damage)" })
+
+	leftSection:Toggle({
+		Name = "Enable Auto Skill (Smart Q + E)",
+		Default = autoFarm.IsAutoSkillEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoSkillEnabled(state)
+		end),
+	}, "Toggle_AF_AutoSkill")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill E Cast Range",
+		Suffix = " studs",
+		Default = autoFarm.GetSkillERange(),
+		Minimum = 5,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetSkillERange(val)
+		end),
+	}, "Slider_AF_SkillERange"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill Spam Interval",
+		Suffix = "s",
+		Default = autoFarm.GetSkillSpamInterval(),
+		Minimum = 0.05,
+		Maximum = 1.0,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetSkillSpamInterval(val)
+		end),
+	}, "Slider_AF_SkillSpamInterval"))
 
 	leftSection:Header({ Name = "Visual Debug" })
 
@@ -12713,33 +13039,51 @@ return function(window, tab)
 		end),
 	})
 
-	editCtxLabel = ctxSection:Label({ Text = "" })
+	local minDistanceSlider
+	local maxDistanceSlider
 
-	reachDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
-		Name = "Target Reach Distance",
-		Suffix = " std",
-		Default = contextual.GetField(editDungeon, editTarget, "TargetReachDistance"),
+	minDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Min Combat Distance",
+		Suffix = " studs",
+		Default = contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25,
 		Minimum = 2,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "MinCombatDistance", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Slider_AF_CtxMinCombatDistance"))
+
+	maxDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Max Combat Distance",
+		Suffix = " studs",
+		Default = contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50,
+		Minimum = 5,
 		Maximum = 200,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(Value)
 			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "TargetReachDistance", Value)
+			contextual.SetField(editDungeon, editTarget, "MaxCombatDistance", Value)
 			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_AF_CtxReachDistance"))
+	}, "Slider_AF_CtxMaxCombatDistance"))
 
 	refreshContextControls = function()
 		isSyncing = true
 		disarmReset()
-		pcall(function() reachDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "TargetReachDistance")) end)
+		pcall(function() minDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25) end)
+		pcall(function() maxDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50) end)
 		isSyncing = false
 		pcall(function() editCtxLabel:UpdateName("Editing: <font color='rgb(150,255,150)'>" .. (editDungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(editTarget)) end)
 	end
 
 	setEditControlsVisible = function(visible)
-		pcall(function() reachDistanceSlider:SetVisibility(visible) end)
+		pcall(function() minDistanceSlider:SetVisibility(visible) end)
+		pcall(function() maxDistanceSlider:SetVisibility(visible) end)
 		pcall(function() resetCtxButton:SetVisibility(visible) end)
 	end
 
@@ -12777,24 +13121,24 @@ return function(window, tab)
 	refreshContextControls()
 	setEditControlsVisible(editDungeon ~= nil)
 end
-end function __DIST.D()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Hazard Scanner (vùng nguy hiểm) + AutoFarm.
+end function __DIST.E()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Hazard Scanner (vùng nguy hiểm) + AutoFarm.
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
 __DIST.load('i')(window, tab)
 __DIST.load('t')(window, tab)
-__DIST.load('C')(window, tab)
+__DIST.load('D')(window, tab)
 end
 
-end function __DIST.E()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.F()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('A')
+local dungeonCatalog = __DIST.load('B')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
@@ -12974,7 +13318,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.F()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.G()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -13094,7 +13438,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.G()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.H()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -13201,7 +13545,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.H()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.I()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -13418,18 +13762,18 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.I()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.J()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('g')
-local autoJoin = __DIST.load('E')
-local autoStart = __DIST.load('F')
-local autoStartLobby = __DIST.load('G')
-local autoRetry = __DIST.load('H')
+local autoJoin = __DIST.load('F')
+local autoStart = __DIST.load('G')
+local autoStartLobby = __DIST.load('H')
+local autoRetry = __DIST.load('I')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('A')
+local dungeonCatalog = __DIST.load('B')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -13632,7 +13976,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.J()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.K()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -14100,14 +14444,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.K()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.L()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('J')
+local autoSell = __DIST.load('K')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -14371,7 +14715,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.L()-- ESP hitbox cho DungeonQuest.
+end function __DIST.M()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -14721,7 +15065,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.M()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.N()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -14862,7 +15206,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.N()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.O()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -15316,14 +15660,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.O()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.P()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('L')
-	local enemyEsp = __DIST.load('M')
-	local mapOptimizer = __DIST.load('N')
+	local esp = __DIST.load('M')
+	local enemyEsp = __DIST.load('N')
+	local mapOptimizer = __DIST.load('O')
 	local ui = __DIST.load('g')
 
 --// Hitbox mode options
@@ -15460,7 +15804,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.P()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.Q()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -16058,12 +16402,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.Q()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.R()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('P')
+local webhook = __DIST.load('Q')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -16130,7 +16474,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.R()
+end function __DIST.S()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -16199,12 +16543,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.S()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.T()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('R')
+local binder = __DIST.load('S')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -16296,13 +16640,13 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.T()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.U()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
-local antiAfk = __DIST.load('S')
+local antiAfk = __DIST.load('T')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -16332,15 +16676,15 @@ return function(window, tab)
 		end),
 	}, "Slider_AntiAFKInterval"))
 end
-end function __DIST.U()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.V()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('O')(window, tab)
-__DIST.load('Q')(window, tab)
-__DIST.load('T')(window, tab)
-end end function __DIST.V()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('P')(window, tab)
+__DIST.load('R')(window, tab)
+__DIST.load('U')(window, tab)
+end end function __DIST.W()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -16415,7 +16759,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.W()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.X()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -16423,7 +16767,7 @@ end function __DIST.W()-- Module Config trong tab Configs (DungeonQuest): tự b
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('V')
+local autoHide = __DIST.load('W')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -16580,12 +16924,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.X()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.Y()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('f')
-local autoRetry = __DIST.load('H')
+local autoRetry = __DIST.load('I')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -16752,14 +17096,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.Y()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.Z()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('W')(window, tab)
 __DIST.load('X')(window, tab)
-end end function __DIST.Z()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
+__DIST.load('Y')(window, tab)
+end end function __DIST._()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
 --   - Macro = 1 bản ghi cho cả map, chứa toàn bộ segment của các room đã record.
 --   - Mỗi segment = 1 room (auto-split khi record liên tục xuyên các room); segment
 --     phòng bosss được đánh dấu `boss: true`.
@@ -17496,7 +17840,7 @@ function storage.ReloadFromConfig()
 	storage.ReloadFromDisk()
 end
 
-return storage end function __DIST._()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
+return storage end function __DIST.aa()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
 --   - Bấm Record 1 lần ở map = ghi NHIỀU room: khi CHUYỂN ROOM tự "rollover"
 --     (lưu segment room cũ + mở slice mới cho room mới tại vị trí cạnh cửa).
 --   - TỰ TẮT + lưu khi về LOBBY (hết map), vào BOSS (mode NORMAL), hoặc giới hạn điểm.
@@ -17508,7 +17852,7 @@ return storage end function __DIST._()-- Path Record System – Recorder: ghi 1 
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('Z')
+local storage = __DIST.load('_')
 local notifier = __DIST.load('c')
 
 local RunService = services.RunService
@@ -18113,7 +18457,7 @@ function recorder.Cancel()
 	fireStatus()
 end
 
-return recorder end function __DIST.aa()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
+return recorder end function __DIST.ab()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
 --   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
 --     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
 --   - BOSS room:
@@ -18129,7 +18473,7 @@ return recorder end function __DIST.aa()-- Path Record System – Player: chạy
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('Z')
+local storage = __DIST.load('_')
 local notifier = __DIST.load('c')
 local selector = __DIST.load('w')
 local movement = __DIST.load('y')
@@ -18981,7 +19325,7 @@ function mover.PauseForExclusive()
 	fireStatus("paused")
 end
 
-return mover end function __DIST.ab()-- Path Record System – Visual: vẽ quỹ đạo record (đỏ khi đang record /
+return mover end function __DIST.ac()-- Path Record System – Visual: vẽ quỹ đạo record (đỏ khi đang record /
 -- cyan khi đang play / xám xanh nhạt khi xem trước macro của map).
 
 --// Imports
@@ -19086,7 +19430,7 @@ function visual.DrawPolylines(polys, key, force)
 	if #lines == 0 then drawnKey = nil end
 end
 
-return visual end function __DIST.ac()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
+return visual end function __DIST.ad()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
 -- giúp người chơi ước lượng phạm vi/tầm đánh của Skill (AOE) để căn điểm record.
 -- Đồng thời tự động HIGHLIGHT kẻ địch khi chúng bước vào trong tầm (in-range).
 
@@ -19485,7 +19829,7 @@ lifecycle.Register(function()
 end)
 
 return rangeVisual
-end function __DIST.ad()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
+end function __DIST.ae()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
 --   - Macro = 1 bản ghi cho cả MAP, record liên tục nhiều room trong 1 session
 --     (tự auto-split theo room; segment phòng boss đánh dấu `boss`).
 --   - Mode của map do người dùng chọn (lưu trong file macro):
@@ -19501,11 +19845,11 @@ local lifecycle = __DIST.load('b')
 local coordinator = __DIST.load('u')
 local notifier = __DIST.load('c')
 
-local storage = __DIST.load('Z')
-local recorder = __DIST.load('_')
-local mover = __DIST.load('aa')
-local visual = __DIST.load('ab')
-local rangeVisual = __DIST.load('ac')
+local storage = __DIST.load('_')
+local recorder = __DIST.load('aa')
+local mover = __DIST.load('ab')
+local visual = __DIST.load('ac')
+local rangeVisual = __DIST.load('ad')
 
 local RunService = services.RunService
 
@@ -20131,7 +20475,7 @@ lifecycle.Register(function()
 	if storageUnsub then storageUnsub(); storageUnsub = nil end
 end)
 
-return pathRecord end function __DIST.ae()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
+return pathRecord end function __DIST.af()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
 --   - MACRO = 1 bản ghi cho cả map: bấm Record 1 lần, tự ghi liên tục qua các room
 --     (auto-split segment theo room), tự lưu khi về lobby. Record lại room nào thì ghi đè room đó.
 --   - Mode theo map: NORMAL (mặc định) skip boss, dùng Hazard Scanner; FULL record & phát luôn cả boss room.
@@ -20140,7 +20484,7 @@ return pathRecord end function __DIST.ae()-- Tab Path Record (DungeonQuest): th�
 
 local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
-local pathRecord = __DIST.load('ad')
+local pathRecord = __DIST.load('ae')
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
 local notifier = __DIST.load('c')
@@ -20762,7 +21106,7 @@ return function(window, tab)
 
 	updateStatus(pathRecord.GetStatus())
 	syncToggles(pathRecord.GetStatus())
-end end function __DIST.af()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end end function __DIST.ag()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -20831,12 +21175,12 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('D')
-	local dungeonTab = __DIST.load('I')
-	local inventoryTab = __DIST.load('K')
-	local utilitiesTab = __DIST.load('U')
-	local configsTab = __DIST.load('Y')
-	local pathRecordTab = __DIST.load('ae')
+	local combatTab = __DIST.load('E')
+	local dungeonTab = __DIST.load('J')
+	local inventoryTab = __DIST.load('L')
+	local utilitiesTab = __DIST.load('V')
+	local configsTab = __DIST.load('Z')
+	local pathRecordTab = __DIST.load('af')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -20850,19 +21194,19 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('P')
+	local webhook = __DIST.load('Q')
 	webhook.Init()
-__DIST.load('M')
+__DIST.load('N')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	
 
-local autoHide = __DIST.load('V')
+local autoHide = __DIST.load('W')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
 	--// Contextual (tự động áp dụng setting theo Dungeon x Target)
-	local contextual = __DIST.load('B')
+	local contextual = __DIST.load('C')
 	contextual.Init()
 
 	--// Khởi chạy
@@ -20895,7 +21239,7 @@ local autoHide = __DIST.load('V')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.ag()
+end function __DIST.ah()
 local flags = {}
 
 function flags:Export()
@@ -20938,12 +21282,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.ah()
+return flags end function __DIST.ai()
 --// Imports
 
 
 
-local binder = __DIST.load('R')
+local binder = __DIST.load('S')
 
 --// Variables
 local interface = {}
@@ -20963,9 +21307,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.ai()--// Imports
+end function __DIST.aj()--// Imports
 
-local binder = __DIST.load('R')
+local binder = __DIST.load('S')
 
 --// Variables
 local esp = {}
@@ -20976,11 +21320,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.aj()--// Imports
+end function __DIST.ak()--// Imports
 
-local flags = __DIST.load('ag')
-local interface = __DIST.load('ah')
-local esp = __DIST.load('ai')
+local flags = __DIST.load('ah')
+local interface = __DIST.load('ai')
+local esp = __DIST.load('aj')
 
 --// Initialize
 local window = interface:Window({
@@ -21019,7 +21363,7 @@ return {
 		end,
 	},
 }
-end function __DIST.ak()--// Variables
+end function __DIST.al()--// Variables
 
 local utility = {}
 
@@ -21051,7 +21395,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.al()--// Functions
+end function __DIST.am()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -21061,14 +21405,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.am()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.an()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('aj')
-	local utility = __DIST.load('ak')
-	local services = __DIST.load('al')
+	local base = __DIST.load('ak')
+	local utility = __DIST.load('al')
+	local services = __DIST.load('am')
 
 	--// References
 	local flags = base.Flags
@@ -21134,7 +21478,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('af'),
+		Load = __DIST.load('ag'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -21145,7 +21489,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('am'),
+		Load = __DIST.load('an'),
 		Places = {
 			123456789,
 			987654321,

@@ -206,7 +206,7 @@ return function(window, tab)
 	}, "Slider_HazardSafeSpotBuffer"))
 
 	leftSection:Toggle({
-		Name = "Enable Auto Dodge (MoveTo + Snap)",
+		Name = "Enable Auto Dodge (Move + Snap)",
 		Default = hazardScanner.IsAutoDodgeEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetAutoDodgeEnabled(state)

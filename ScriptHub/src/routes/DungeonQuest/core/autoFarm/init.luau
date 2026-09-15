@@ -11,6 +11,8 @@ local scanner = require("@routes/DungeonQuest/core/autoFarm/scanner")
 local selector = require("@routes/DungeonQuest/core/autoFarm/selector")
 local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
 local movement = require("@routes/DungeonQuest/core/autoFarm/movement")
+local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local autoSkill = require("@routes/DungeonQuest/core/autoFarm/autoSkill")
 
 --// Services
 local RunService = services.RunService
@@ -23,6 +25,7 @@ local State = {
 	TRACKING_TARGET = "TRACKING_TARGET",
 	CHASE = "CHASE",
 	HOLD = "HOLD",
+	KITE = "KITE",
 	BLOCKED = "BLOCKED",
 	REPATHING = "REPATHING",
 }
@@ -33,7 +36,9 @@ local autoFarm = {}
 local enabled = false
 local running = false
 local scanInterval = 1.5 -- Seconds between periodic target scans
-local reachDistance = 8.0 -- Studs distance to consider target reached (HOLD state)
+local minCombatDistance = 25.0 -- Studs: khoảng cách tối thiểu (lùi lại kiting khi quái lại gần hơn mức này)
+local maxCombatDistance = 50.0 -- Studs: khoảng cách tối đa (tiến lại gần khi quái xa hơn mức này)
+local autoFaceTarget = true -- Tự động xoay mặt nhìn về phía kẻ địch khi combat
 local repathDistance = 6.0 -- Studs target moves before triggering repath
 
 --// Visual Debug Flags
@@ -111,30 +116,22 @@ local function isSameTarget(a, b)
 	return false
 end
 
-local function applyTargetSwitch(newTarget, newPath, newWaypoints, newPos)
+local function applyTargetSwitch(newTarget, newPos)
 	local cur = tracker.GetTarget()
 	if isSameTarget(cur, newTarget) then
-		if newPath then
-			tracker.UpdatePath(newPath, newWaypoints, newPos)
-		end
 		return
 	end
 
 	-- Priority 2: New target selected -> Interrupt current movement
-	tracker.SetTarget(newTarget, newPath, newWaypoints, newPos)
+	tracker.SetTarget(newTarget, nil, nil, newPos)
 	currentDestination = nil
 	currentDestMode = "None"
 	currentDestNodeIndex = nil
 	lastBlockerData = nil
 	stuckTimer = 0
 
-
 	if newTarget then
-		if newPath and newWaypoints and #newWaypoints > 0 then
-			currentState = State.TRACKING_TARGET
-		else
-			currentState = State.REPATHING
-		end
+		currentState = State.CHASE
 	else
 		currentState = State.NO_TARGET
 	end
@@ -147,44 +144,35 @@ evaluateTarget = function()
 	local token = selectToken
 	selectRunning = true
 
-	task.spawn(function()
-		local ok, err = pcall(function()
-			local root = getPlayerRoot()
-			local playerPos = root and getSafePosition(root)
-			if not playerPos then
-				selectRunning = false
-				return
-			end
-
-			local validList = scanner.Scan()
-			if #validList == 0 then
-				if token == selectToken and enabled and running then
-					applyTargetSwitch(nil, nil, nil, nil)
-				end
-				selectRunning = false
-				return
-			end
-
-			local bestTarget, bestPath, bestWaypoints, bestPos = selector.SelectBestTarget(
-				playerPos,
-				validList,
-				function()
-					return token ~= selectToken or not enabled or not running
-				end
-			)
-
-			if token == selectToken and enabled and running then
-				applyTargetSwitch(bestTarget, bestPath, bestWaypoints, bestPos)
-			else
-				if bestPath then pcall(function() bestPath:Destroy() end) end
-			end
-		end)
-
+	local root = getPlayerRoot()
+	local playerPos = root and getSafePosition(root)
+	if not playerPos then
 		selectRunning = false
-		if not ok then
-			warn(("[AutoFarm] Error in evaluation: %s"):format(tostring(err)))
+		return
+	end
+
+	local validList = scanner.Scan()
+	if #validList == 0 then
+		if token == selectToken and enabled and running then
+			applyTargetSwitch(nil, nil)
 		end
-	end)
+		selectRunning = false
+		return
+	end
+
+	local bestTarget, _, _, bestPos = selector.SelectBestTarget(
+		playerPos,
+		validList,
+		function()
+			return token ~= selectToken or not enabled or not running
+		end
+	)
+
+	if token == selectToken and enabled and running then
+		applyTargetSwitch(bestTarget, bestPos)
+	end
+
+	selectRunning = false
 end
 
 --// ============================================================
@@ -203,6 +191,11 @@ local function stepMovementLoop(deltaTime)
 	local playerPos = getSafePosition(playerRoot)
 	if not playerPos then return end
 
+	-- Nếu Auto-Dodge đang chủ động né nguy hiểm -> tạm nhường quyền điều khiển di chuyển
+	if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+		return
+	end
+
 	-- Nếu đang tạm dừng di chuyển (giữ vị trí khi combat hoặc né) -> không bước tiếp
 	if isPaused then
 		return
@@ -212,7 +205,7 @@ local function stepMovementLoop(deltaTime)
 	local now = os.clock()
 	if now - lastScanTime >= scanInterval then
 		lastScanTime = now
-		if currentState ~= State.HOLD then
+		if currentState ~= State.HOLD and currentState ~= State.KITE then
 			evaluateTarget()
 		end
 	end
@@ -221,14 +214,16 @@ local function stepMovementLoop(deltaTime)
 	local target = tracker.GetTarget()
 	if target then
 		if not tracker.IsTargetValid() then
-			-- Immediate Target Invalidation (Section 14)
 			tracker.ClearTarget()
 			currentState = State.NO_TARGET
 			currentDestination = nil
 			currentDestMode = "None"
 			lastBlockerData = nil
+			pcall(function()
+				humanoid:MoveTo(playerPos)
+				humanoid.AutoRotate = true
+			end)
 			evaluateTarget()
-			pcall(function() humanoid:MoveTo(playerPos) end)
 			return
 		end
 	end
@@ -238,6 +233,10 @@ local function stepMovementLoop(deltaTime)
 		currentDestination = nil
 		currentDestMode = "None"
 		lastBlockerData = nil
+		pcall(function()
+			humanoid:MoveTo(playerPos)
+			humanoid.AutoRotate = true
+		end)
 		if not selectRunning and now - lastScanTime >= 0.5 then
 			lastScanTime = now
 			evaluateTarget()
@@ -250,102 +249,122 @@ local function stepMovementLoop(deltaTime)
 		tracker.ClearTarget()
 		currentState = State.NO_TARGET
 		lastBlockerData = nil
+		pcall(function()
+			humanoid:MoveTo(playerPos)
+			humanoid.AutoRotate = true
+		end)
 		return
 	end
 
-	-- Check Target Reach Condition (Enter HOLD State)
-	local flatDist = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z).Magnitude
-	if flatDist <= reachDistance then
+	-- Check Target Reach & Combat Range Condition ([minCombatDistance, maxCombatDistance])
+	local flatDelta = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
+	local flatDist = flatDelta.Magnitude
+
+	-- Auto Face Target (Khóa xoay mặt nhìn thẳng về phía kẻ địch khi trong tầm combat)
+	if autoFaceTarget and flatDist <= (maxCombatDistance + 25) then
+		pcall(function()
+			humanoid.AutoRotate = false
+			local lookPos = Vector3.new(enemyPos.X, playerRoot.Position.Y, enemyPos.Z)
+			if (lookPos - playerRoot.Position).Magnitude > 0.5 then
+				playerRoot.CFrame = CFrame.lookAt(playerRoot.Position, lookPos)
+			end
+		end)
+	else
+		pcall(function() humanoid.AutoRotate = true end)
+	end
+
+	-- Auto Skill: Quản lý smart skill Q (Buff khi có hazard) và E (Damage khi có buff & trong tầm range)
+	autoSkill.Step(deltaTime, target, flatDist)
+
+	if flatDist < minCombatDistance then
+		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly
+		local awayDelta = Vector3.new(playerPos.X - enemyPos.X, 0, playerPos.Z - enemyPos.Z)
+		local awayDir = awayDelta.Magnitude > 0.1 and awayDelta.Unit or Vector3.new(0, 0, 1)
+		local backDist = math.clamp(minCombatDistance - flatDist + 6, 4, 15)
+		local backTarget = playerPos + awayDir * backDist
+
+		-- Kiểm tra xem điểm lùi về có an toàn không
+		local isBackSafe = true
+		if hazardScanner and hazardScanner.IsPointSafe then
+			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
+		end
+
+		if not isBackSafe then
+			currentState = State.HOLD
+			currentDestMode = "Hold (Danger Behind)"
+			currentDestination = nil
+			stuckTimer = 0
+			pcall(function() humanoid:MoveTo(playerPos) end)
+		else
+			currentState = State.KITE
+			currentDestMode = "Kite"
+			stuckTimer = 0
+			currentDestination = backTarget
+			humanoid:MoveTo(backTarget)
+		end
+	elseif flatDist <= maxCombatDistance then
+		-- Case 2: Nằm trong khoảng lý tưởng [minCombatDistance, maxCombatDistance] -> HOLD
 		currentState = State.HOLD
 		currentDestination = nil
 		currentDestMode = "Hold"
 		stuckTimer = 0
 		pcall(function() humanoid:MoveTo(playerPos) end)
-		-- State HOLD: Currently holds position (idle)
-		return
 	else
-		if currentState == State.HOLD then
-			currentState = State.CHASE
-		end
-	end
+		-- Case 3: Quá xa (> maxCombatDistance) -> CHASE / Tiến thẳng lại gần mục tiêu
+		local approachDir = flatDelta.Magnitude > 0.1 and flatDelta.Unit or Vector3.new(0, 0, 1)
 
-	-- Target Tracking & Repath check (Sections 7 & 15)
-	local needsRepath = false
-	if currentState == State.REPATHING or currentState == State.BLOCKED or not tracker.GetPathInstance() then
-		needsRepath = true
-	elseif tracker.NeedsRepath(enemyPos) then
-		needsRepath = true
-	end
-
-	if needsRepath then
-		local repathSuccess = tracker.Repath(playerPos, enemyPos)
-		if repathSuccess then
-			currentState = State.CHASE
-		else
-			-- Target unreachable
-			currentState = State.BLOCKED
-			currentDestination = nil
-			currentDestMode = "Blocked"
-			pcall(function() humanoid:MoveTo(playerPos) end)
-			return
-		end
-	end
-
-	-- Advance Waypoint Progression
-	tracker.AdvanceWaypointIndex(playerPos)
-
-	-- Blocking Checker & Blocked Destination Loop (Sections 10, 11, 12, 13)
-	local waypoints = tracker.GetWaypoints()
-	local waypointIdx = tracker.GetWaypointIndex()
-	local ignoreList = { player.Character }
-	if target.Model then
-		table.insert(ignoreList, target.Model)
-	end
-
-	local chosenDest, mode, nodeIdx, blockerData = movement.ResolveDestination(playerPos, enemyPos, waypoints, waypointIdx, ignoreList)
-	lastBlockerData = blockerData
-
-	if mode == "Blocked" or not chosenDest then
-		-- Blocking loop reached dead-end -> State = BLOCKED -> repath next frame
-		currentState = State.BLOCKED
-		currentDestination = nil
-		currentDestMode = "Blocked"
-		pcall(function() humanoid:MoveTo(playerPos) end)
-		return
-	end
-
-	-- Movement Controller: Freewalk execution (State CHASE)
-	currentState = State.CHASE
-	currentDestination = chosenDest
-	currentDestMode = mode
-	currentDestNodeIndex = nodeIdx
-
-	movement.ExecuteMove(humanoid, playerPos, chosenDest, waypoints, waypointIdx)
-
-	-- Velocity-Based Stuck Detection & Auto-Jump
-	local distToDest = (chosenDest - playerPos).Magnitude
-	if distToDest >= 1.5 then
-		local rootVel = playerRoot.AssemblyLinearVelocity or playerRoot.Velocity
-		local horizontalSpeed = rootVel and Vector3.new(rootVel.X, 0, rootVel.Z).Magnitude or 0
-		local dt = (type(deltaTime) == "number" and deltaTime > 0) and deltaTime or 0.016
-
-		if horizontalSpeed < stuckVelocityThreshold then
-			stuckTimer += dt
-			if autoJumpOnStuck and (now - lastJumpTime) >= 0.4 then
-				humanoid.Jump = true
-				pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
-				lastJumpTime = now
+		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
+		local dangerAhead = false
+		if hazardScanner and hazardScanner.IsPointSafe then
+			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
+			for _, stepDist in ipairs({ 3, 6, 10 }) do
+				if stepDist < flatDist then
+					local checkPoint = playerPos + approachDir * stepDist
+					if not hazardScanner.IsPointSafe(checkPoint, 0.5) then
+						dangerAhead = true
+						break
+					end
+				end
 			end
-			-- If stuck for >= 1.5s despite jumping -> Repath!
-			if stuckTimer >= 1.5 then
-				currentState = State.REPATHING
+		end
+
+		if dangerAhead then
+			-- Phía trước có bẫy / đạn / vùng đỏ -> ĐỨNG YÊN (HOLD) chờ nguy hiểm qua đi, không cắm đầu chạy vào!
+			currentState = State.HOLD
+			currentDestMode = "Hold (Danger Ahead)"
+			currentDestination = nil
+			stuckTimer = 0
+			pcall(function() humanoid:MoveTo(playerPos) end)
+		else
+			currentState = State.CHASE
+			currentDestMode = "Chase"
+			local chaseTarget = Vector3.new(enemyPos.X, playerPos.Y, enemyPos.Z)
+			currentDestination = chaseTarget
+
+			humanoid:MoveTo(chaseTarget)
+
+			-- Auto jump khi có chênh lệch độ cao (bậc thang, dốc)
+			local elevDiff = enemyPos.Y - playerPos.Y
+			if elevDiff > 1.8 and flatDist <= 8.0 then
+				humanoid.Jump = true
+			end
+
+			-- Velocity-Based Stuck Detection & Auto-Jump
+			local rootVel = playerRoot.AssemblyLinearVelocity or playerRoot.Velocity
+			local horizontalSpeed = rootVel and Vector3.new(rootVel.X, 0, rootVel.Z).Magnitude or 0
+			local dt = (type(deltaTime) == "number" and deltaTime > 0) and deltaTime or 0.016
+
+			if horizontalSpeed < stuckVelocityThreshold then
+				stuckTimer += dt
+				if autoJumpOnStuck and (now - lastJumpTime) >= 0.4 then
+					humanoid.Jump = true
+					pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
+					lastJumpTime = now
+				end
+			else
 				stuckTimer = 0
 			end
-		else
-			stuckTimer = 0
 		end
-	else
-		stuckTimer = 0
 	end
 end
 
@@ -623,13 +642,55 @@ function autoFarm.SetScanInterval(val)
 	end
 end
 
+function autoFarm.GetMinCombatDistance()
+	return minCombatDistance
+end
+
+function autoFarm.SetMinCombatDistance(val)
+	if type(val) == "number" and val >= 1 then
+		minCombatDistance = val
+		if minCombatDistance > maxCombatDistance then
+			maxCombatDistance = minCombatDistance + 5
+		end
+	end
+end
+
+function autoFarm.GetMaxCombatDistance()
+	return maxCombatDistance
+end
+
+function autoFarm.SetMaxCombatDistance(val)
+	if type(val) == "number" and val >= 2 then
+		maxCombatDistance = val
+		if minCombatDistance > maxCombatDistance then
+			minCombatDistance = math.max(1, maxCombatDistance - 5)
+		end
+	end
+end
+
+function autoFarm.IsAutoFaceTargetEnabled()
+	return autoFaceTarget
+end
+
+function autoFarm.SetAutoFaceTarget(state)
+	autoFaceTarget = state and true or false
+	if not autoFaceTarget then
+		local h = shared.GetHumanoid()
+		if h and h.Parent then
+			pcall(function() h.AutoRotate = true end)
+		end
+	end
+end
+
+-- Backward compatibility for reachDistance
 function autoFarm.GetReachDistance()
-	return reachDistance
+	return maxCombatDistance
 end
 
 function autoFarm.SetReachDistance(val)
-	if type(val) == "number" and val >= 1 then
-		reachDistance = val
+	if type(val) == "number" and val >= 2 then
+		maxCombatDistance = val
+		minCombatDistance = math.clamp(val * 0.6, 2, val - 2)
 	end
 end
 
@@ -670,10 +731,10 @@ function autoFarm.SetPaused(state)
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
 		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+			pcall(function()
+				h:MoveTo(r.Position)
+				h.AutoRotate = true
+			end)
 		end
 	end
 end
@@ -681,6 +742,21 @@ end
 function autoFarm.IsPaused()
 	return isPaused
 end
+
+--// Auto Skill APIs (Smart Skills Q & E)
+autoFarm.IsAutoSkillEnabled = autoSkill.IsEnabled
+autoFarm.SetAutoSkillEnabled = autoSkill.SetEnabled
+autoFarm.IsAutoSkillQEnabled = autoSkill.IsSkillQEnabled
+autoFarm.SetAutoSkillQEnabled = autoSkill.SetSkillQEnabled
+autoFarm.IsAutoSkillEEnabled = autoSkill.IsSkillEEnabled
+autoFarm.SetAutoSkillEEnabled = autoSkill.SetSkillEEnabled
+autoFarm.GetSkillERange = autoSkill.GetSkillERange
+autoFarm.SetSkillERange = autoSkill.SetSkillERange
+autoFarm.GetSkillSpamInterval = autoSkill.GetSpamInterval
+autoFarm.SetSkillSpamInterval = autoSkill.SetSpamInterval
+autoFarm.IsBuffActive = autoSkill.IsBuffActive
+autoFarm.CastSkillQ = autoSkill.CastSkillQ
+autoFarm.CastSkillE = autoSkill.CastSkillE
 
 function autoFarm.IsPlannedPathVisualEnabled()
 	return showPlannedPath
@@ -854,10 +930,10 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		local h = shared.GetHumanoid()
 		local r = getPlayerRoot()
 		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+			pcall(function()
+				h:MoveTo(r.Position)
+				h.AutoRotate = true
+			end)
 		end
 
 		tracker.ClearTarget()

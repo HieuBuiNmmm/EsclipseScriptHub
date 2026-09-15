@@ -40,17 +40,38 @@ return function(window, tab)
 	}, "Slider_AF_ScanInterval")
 
 	leftSection:Slider({
-		Name = "Target Reach Distance",
-		Suffix = " std",
-		Default = autoFarm.GetReachDistance(),
+		Name = "Min Combat Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetMinCombatDistance(),
 		Minimum = 2,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetMinCombatDistance(val)
+		end),
+	}, "Slider_AF_MinCombatDistance")
+
+	leftSection:Slider({
+		Name = "Max Combat Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetMaxCombatDistance(),
+		Minimum = 5,
 		Maximum = 200,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetReachDistance(val)
+			autoFarm.SetMaxCombatDistance(val)
 		end),
-	}, "Slider_AF_ReachDistance")
+	}, "Slider_AF_MaxCombatDistance")
+
+	leftSection:Toggle({
+		Name = "Auto Face Target (Look At Enemy)",
+		Default = autoFarm.IsAutoFaceTargetEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoFaceTarget(state)
+		end),
+	}, "Toggle_AF_AutoFaceTarget")
 
 	leftSection:Slider({
 		Name = "Repath Distance",
@@ -85,6 +106,42 @@ return function(window, tab)
 			autoFarm.SetStuckVelocityThreshold(val)
 		end),
 	}, "Slider_AF_StuckVelocity"))
+
+	leftSection:Header({ Name = "Auto Skill (Smart Buff & Damage)" })
+
+	leftSection:Toggle({
+		Name = "Enable Auto Skill (Smart Q + E)",
+		Default = autoFarm.IsAutoSkillEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoSkillEnabled(state)
+		end),
+	}, "Toggle_AF_AutoSkill")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill E Cast Range",
+		Suffix = " studs",
+		Default = autoFarm.GetSkillERange(),
+		Minimum = 5,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetSkillERange(val)
+		end),
+	}, "Slider_AF_SkillERange"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill Spam Interval",
+		Suffix = "s",
+		Default = autoFarm.GetSkillSpamInterval(),
+		Minimum = 0.05,
+		Maximum = 1.0,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetSkillSpamInterval(val)
+		end),
+	}, "Slider_AF_SkillSpamInterval"))
 
 	leftSection:Header({ Name = "Visual Debug" })
 
@@ -286,33 +343,51 @@ return function(window, tab)
 		end),
 	})
 
-	editCtxLabel = ctxSection:Label({ Text = "" })
+	local minDistanceSlider
+	local maxDistanceSlider
 
-	reachDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
-		Name = "Target Reach Distance",
-		Suffix = " std",
-		Default = contextual.GetField(editDungeon, editTarget, "TargetReachDistance"),
+	minDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Min Combat Distance",
+		Suffix = " studs",
+		Default = contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25,
 		Minimum = 2,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(Value)
+			if isSyncing then return end
+			contextual.SetField(editDungeon, editTarget, "MinCombatDistance", Value)
+			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
+		end),
+	}, "Slider_AF_CtxMinCombatDistance"))
+
+	maxDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Max Combat Distance",
+		Suffix = " studs",
+		Default = contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50,
+		Minimum = 5,
 		Maximum = 200,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(Value)
 			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "TargetReachDistance", Value)
+			contextual.SetField(editDungeon, editTarget, "MaxCombatDistance", Value)
 			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
 		end),
-	}, "Slider_AF_CtxReachDistance"))
+	}, "Slider_AF_CtxMaxCombatDistance"))
 
 	refreshContextControls = function()
 		isSyncing = true
 		disarmReset()
-		pcall(function() reachDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "TargetReachDistance")) end)
+		pcall(function() minDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25) end)
+		pcall(function() maxDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50) end)
 		isSyncing = false
 		pcall(function() editCtxLabel:UpdateName("Editing: <font color='rgb(150,255,150)'>" .. (editDungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(editTarget)) end)
 	end
 
 	setEditControlsVisible = function(visible)
-		pcall(function() reachDistanceSlider:SetVisibility(visible) end)
+		pcall(function() minDistanceSlider:SetVisibility(visible) end)
+		pcall(function() maxDistanceSlider:SetVisibility(visible) end)
 		pcall(function() resetCtxButton:SetVisibility(visible) end)
 	end
 

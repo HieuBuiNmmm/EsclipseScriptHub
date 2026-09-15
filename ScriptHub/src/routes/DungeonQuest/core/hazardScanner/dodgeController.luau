@@ -1,6 +1,6 @@
 -- HazardScanner – Dodge Controller (DungeonQuest).
 -- Quản lý logic tự động né đòn (Auto-Dodge):
--- Di chuyển bằng Humanoid:MoveTo() về hướng Safe Spot và thực hiện Snap pha cuối khi tới gần (flatDist <= snapDistance)
+-- Di chuyển bằng Humanoid:Move() về hướng Safe Spot và thực hiện Snap pha cuối khi tới gần (flatDist <= snapDistance)
 -- để đảm bảo nhân vật đáp đúng 100% tọa độ an toàn, triệt tiêu sai số quán tính của Roblox physics.
 
 --// Imports
@@ -40,7 +40,7 @@ end
 --// Dừng di chuyển của Humanoid
 local function stopMove(hum, root)
 	if hum and root and root.Parent then
-		hum:MoveTo(root.Position)
+		pcall(function() hum:MoveTo(root.Position) end)
 	end
 end
 
@@ -108,7 +108,7 @@ local function onHeartbeat()
 				end
 			end
 		else
-			-- Pha 2: Di chuyển bình thường bằng MoveTo về hướng Safe Spot
+			-- Pha 2: Di chuyển bằng MoveTo về hướng Safe Spot
 			local moveTarget = Vector3.new(activeTargetSpot.X, playerPos.Y, activeTargetSpot.Z)
 			hum:MoveTo(moveTarget)
 

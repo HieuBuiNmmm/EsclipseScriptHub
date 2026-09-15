@@ -16,12 +16,28 @@ local contextual = {}
 
 --// Metadata field -> get/set trên autoFarm
 local FIELD_DEFS = {
-	TargetReachDistance = {
+	MinCombatDistance = {
 		get = function()
-			return autoFarm.GetReachDistance()
+			return autoFarm.GetMinCombatDistance()
 		end,
 		set = function(v)
-			autoFarm.SetReachDistance(v)
+			autoFarm.SetMinCombatDistance(v)
+		end,
+	},
+	MaxCombatDistance = {
+		get = function()
+			return autoFarm.GetMaxCombatDistance()
+		end,
+		set = function(v)
+			autoFarm.SetMaxCombatDistance(v)
+		end,
+	},
+	TargetReachDistance = {
+		get = function()
+			return autoFarm.GetMaxCombatDistance()
+		end,
+		set = function(v)
+			autoFarm.SetMaxCombatDistance(v)
 		end,
 	},
 }
