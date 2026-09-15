@@ -1973,23 +1973,23 @@ or 1,Required=true,Callback=af.Wrap(function(ar)ab.SetDifficulty(ar)ap()end)},
 'Private Room',Default=true,Callback=af.Wrap(function(as)ab.SetPrivate(as)end)},
 'Toggle_PrivateAJ')aj:Toggle({Name='Wave Defence',Default=false,Callback=af.
 Wrap(function(as)ab.SetWaveDefence(as)end)},'Toggle_WaveDefenceAJ')aa.
-PatchSliderLoadCallback(aj:Slider({Name='Delay',Default=3,Minimum=0,Maximum=15,
-DisplayMethod='Value',Precision=1,Suffix='s',Callback=af.Wrap(function(as)ab.
+PatchSliderLoadCallback(aj:Slider({Name='Join Delay (s)',Default=3,Minimum=0,
+Maximum=15,DisplayMethod='Value',Precision=1,Callback=af.Wrap(function(as)ab.
 SetDelay(as)end)},'Slider_JoinDelay'))aj:Button{Name='Join Now',Callback=
 function()ab.JoinNow()end}ak:Toggle({Name='Auto Start',Default=false,Callback=af
 .Wrap(function(as)ac.Toggle(as)end)},'Toggle_AutoStart')aa.
-PatchSliderLoadCallback(ak:Slider({Name='Start Delay',Default=ac.GetDelay(),
-Minimum=0,Maximum=15,DisplayMethod='Value',Precision=1,Suffix='s',Callback=af.
-Wrap(function(as)ac.SetDelay(as)end)},'Slider_AutoStartDelay'))ak:Toggle({Name=
+PatchSliderLoadCallback(ak:Slider({Name='Start Delay (s)',Default=ac.GetDelay(),
+Minimum=0,Maximum=15,DisplayMethod='Value',Precision=1,Callback=af.Wrap(function
+(as)ac.SetDelay(as)end)},'Slider_AutoStartDelay'))ak:Toggle({Name=
 'Auto Start Lobby',Default=false,Callback=af.Wrap(function(as)ad.Toggle(as)end)}
 ,'Toggle_AutoStartLobby')ak:Toggle({Name='Auto Retry',Default=false,Callback=af.
 Wrap(function(as)ae.Toggle(as)end)},'Toggle_AutoRetry')ak:Button{Name=
 'Manual Retry',Callback=function()task.spawn(function()ae.RetryNow()end)end}ak:
 Toggle({Name='Retry on Time Low',Default=ae.GetTimeRetryEnabled(),Callback=af.
 Wrap(function(as)ae.SetTimeRetryEnabled(as)end)},'Toggle_RetryTimeLow')aa.
-PatchSliderLoadCallback(ak:Slider({Name='Retry Time Threshold',Default=ae.
+PatchSliderLoadCallback(ak:Slider({Name='Retry Time Threshold (s)',Default=ae.
 GetTimeRetryThreshold(),Minimum=5,Maximum=120,DisplayMethod='Value',Precision=1,
-Suffix='s',Callback=af.Wrap(function(as)ae.SetTimeRetryThreshold(as)end)},
+Callback=af.Wrap(function(as)ae.SetTimeRetryThreshold(as)end)},
 'Slider_RetryTimeThreshold'))ab.OnDungeonChanged(function(as,at)pcall(function()
 ar:ClearOptions()ar:InsertOptions(at)ar:UpdateSelection(ab.
 GetSelectedDifficulty())end)ap()end)end

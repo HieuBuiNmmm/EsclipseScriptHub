@@ -141,8 +141,7 @@ return function(window, tab)
 	}, "Toggle_HazardPlayer2DVisual")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Player 2D Hitbox Radius",
-		Suffix = " studs",
+		Name = "Player 2D Hitbox Radius (studs)",
 		Default = hazardScanner.GetPlayerHitboxRadius(),
 		Minimum = 0.5,
 		Maximum = 8,
@@ -194,8 +193,7 @@ return function(window, tab)
 	}, "Toggle_HazardShowCandidates")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Safe Spot Safety Margin",
-		Suffix = " studs",
+		Name = "Safe Spot Safety Margin (studs)",
 		Default = hazardScanner.GetSafeSpotBuffer(),
 		Minimum = 0.0,
 		Maximum = 6.0,
@@ -215,8 +213,7 @@ return function(window, tab)
 	}, "Toggle_HazardAutoDodgeEnabled")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Dodge Snap Distance",
-		Suffix = " studs",
+		Name = "Dodge Snap Distance (studs)",
 		Default = hazardScanner.GetDodgeSnapDistance(),
 		Minimum = 0.5,
 		Maximum = 5.0,
@@ -228,8 +225,7 @@ return function(window, tab)
 	}, "Slider_HazardDodgeSnapDistance"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Respawn Invulnerability Time",
-		Suffix = "s",
+		Name = "Respawn Invulnerability Time (s)",
 		Default = shared.GetRespawnProtectionDuration(),
 		Minimum = 0.5,
 		Maximum = 10.0,
@@ -241,8 +237,7 @@ return function(window, tab)
 	}, "Slider_HazardRespawnInvulnerabilityTime"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Trajectory Length",
-		Suffix = " studs",
+		Name = "Trajectory Length (studs)",
 		Default = hazardScanner.GetTrajectoryLength(),
 		Minimum = 10,
 		Maximum = 150,
@@ -270,8 +265,7 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeLogRejected")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Blue Danger Zone Margin",
-		Suffix = " studs",
+		Name = "Blue Danger Zone Margin (studs)",
 		Default = hazardScanner.GetTrajectoryMargin(),
 		Minimum = 0,
 		Maximum = 10,

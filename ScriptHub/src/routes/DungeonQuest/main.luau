@@ -117,6 +117,9 @@ return function(self)
 	end
 	syncActiveConfigFromAutoload()
 
+	local contextual = require("@routes/DungeonQuest/core/contextual")
+	contextual.LoadData(macLib.contextData)
+
 	task.delay(0.3, function()
 		coordinator.SetLocked(false)
 	end)

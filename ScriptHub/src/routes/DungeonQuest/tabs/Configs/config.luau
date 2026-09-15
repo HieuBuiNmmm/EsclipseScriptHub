@@ -20,6 +20,8 @@ return function(window, tab)
 
 	local function activate(name)
 		autoSave.SetActive(name)
+		local contextual = require("@routes/DungeonQuest/core/contextual")
+		contextual.LoadData(macLib.contextData)
 	end
 
 	local section = tab:Section({ Side = "Left" })

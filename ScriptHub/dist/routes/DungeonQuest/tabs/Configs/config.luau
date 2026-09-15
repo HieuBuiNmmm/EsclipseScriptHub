@@ -1621,37 +1621,267 @@ function ae.IsEnabled()return af end function ae.Hide()if not af or not ag then
 return end local aj=pcall(function()ag:SetState(false)end)if not aj then warn
 '[AutoHide] Kh\u{f4}ng \u{1ea9}n \u{111}\u{1b0}\u{1ee3}c window'end end function
 ae.Execute()if not af then return end task.spawn(function()task.wait(0.5)ae.
-Hide()end)end ah()return ae end end local aa,ab,ac=a.load'a',a.load'c',a.load'd'
-return function(ad,ae)local af=aa.Folder local ag=af..'/settings/autoload.txt'
-local ah,ai,aj=function()if isfile and isfile(ag)then return readfile(ag)end
-return nil end,function(ah)ab.SetActive(ah)end,ae:Section{Side='Left'}aj:Header{
-Name='Configs'}local ak,al,am local an=function(an)local ao=aa:
-RefreshConfigList()al:ClearOptions()al:InsertOptions(ao)if an then if not al:
-IsOption(an)then al:InsertOptions{an}end al:UpdateSelection(an)end end aj:Input{
-Name='Config Name',Placeholder='Name',AcceptedCharacters='All',Callback=function
-(ao)ak=ao end}al=aj:Dropdown{Name='Select Config',Multi=false,Required=false,
-Options=aa:RefreshConfigList(),Callback=function(ao)ai(ao)end}local ao=ah()if ao
-and ao~=''then if not al:IsOption(ao)then al:InsertOptions{ao}end al:
-UpdateSelection(ao)ai(ao)end aj:Button{Name='Create Config',Callback=function()
-if not ak or string.gsub(ak,' ','')==''then ad:Notify{Title='Interface',
-Description='Config name cannot be empty.'}return end local ap,aq=aa:SaveConfig(
-ak)if not ap then ad:Notify{Title='Interface',Description=
-'Unable to save config: '..tostring(aq)}return end ad:Notify{Title='Interface',
-Description=string.format('Created config %q',ak)}an(ak)ai(ak)end}aj:Button{Name
-='Load Config',Callback=function()local ap=al.Value local aq,ar=aa:LoadConfig(ap
-)if not aq then ad:Notify{Title='Interface',Description=
-'Unable to load config: '..tostring(ar)}return end ad:Notify{Title='Interface',
-Description=string.format('Loaded config %q',ap)}ai(ap)end}aj:Button{Name=
-'Overwrite Config',Callback=function()local ap=al.Value local aq,ar=aa:
-SaveConfig(ap)if not aq then ad:Notify{Title='Interface',Description=
-'Unable to overwrite config: '..tostring(ar)}return end ad:Notify{Title=
-'Interface',Description=string.format('Overwrote config %q',ap)}ai(ap)end}aj:
-Button{Name='Set as autoload',Callback=function()local ap=al.Value if not ap
-then ad:Notify{Title='Interface',Description='Please select a config first.'}
-return end writefile(ag,ap)am:UpdateName('Autoload config: '..ap)ad:Notify{Title
-='Interface',Description=string.format('Set %q as autoload',ap)}ai(ap)end}aj:
-Button{Name='Refresh Config List',Callback=function()an(al.Value)end}am=aj:Label
-{Text='Autoload config: None'}local ap=ah()if ap and ap~=''then am:UpdateName(
+Hide()end)end ah()return ae end function a.e()local aa,ab,ac,ad=game:GetService
+'Players',game:GetService'UserInputService',game:GetService'RunService',game:
+GetService'VirtualInputManager'local ae=aa.LocalPlayer if not ae then local af=
+os.clock()+5 repeat ae=aa.LocalPlayer if ae then break end task.wait(0.1)until
+os.clock()>af end return{Players=aa,UserInputService=ab,RunService=ac,
+VirtualInputManager=ad,player=ae}end function a.f()local aa={cleaned=false,
+callbacks={}}function aa.Register(ab)if type(ab)~='function'then return function
+()end end if aa.cleaned then pcall(ab)return function()end end table.insert(aa.
+callbacks,ab)return function()for ac,ad in ipairs(aa.callbacks)do if ad==ab then
+table.remove(aa.callbacks,ac)break end end end end function aa.Cleanup()if aa.
+cleaned then return end aa.cleaned=true for ab=#aa.callbacks,1,-1 do pcall(aa.
+callbacks[ab])end table.clear(aa.callbacks)end function aa.IsActive()return not
+aa.cleaned end return aa end function a.g()local aa,ab=a.load'e',a.load'f'local
+ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax,ay=aa.player,
+0.05,'enemyProjectiles',0.5,{},false,16,16,true,false,false,{},0,{},0,{},{},{},{
+},{},{},0,{}local az,aA,aB,aC,aD,aE,aF,aG,aH,aI,aJ,aK,aL,aM,aN,aO,aP=function()
+for az=#ay,1,-1 do pcall(ay[az])end end,{},'unknown',true,{},{},{},0,4,false
+local aQ=function(aQ)if aQ then table.insert(aF,aQ)end return aQ end function ag
+.OnRespawn(aR)table.insert(aE,aR)end function ag.GetLastRespawnTime()return aG
+end function ag.GetRespawnProtectionDuration()return aH end function ag.
+SetRespawnProtectionDuration(aR)if type(aR)=='number'and aR>=0 then aH=aR end
+end function ag.GetRespawnProtectionRemaining()if aG==0 then return 0 end local
+aR=os.clock()-aG local aS=aH-aR return math.max(0,aS)end function ag.
+IsJustRespawned(aR)local aS=aR or aH if aG==0 then return false end return(os.
+clock()-aG)<=aS end function ag.WasDead()return aI end function ag.IsDead()local
+aR=ac and ac.Character if not aR or not aR.Parent then return true end local aS=
+aR:FindFirstChildOfClass'Humanoid'if not aS or aS.Health<=0 then return true end
+return false end function ag.IsInvulnerable()local aR=ac and ac.Character if not
+aR or not aR.Parent then return false,nil end local aS=aR:FindFirstChildOfClass
+'Humanoid'if aS and aS.Health<=0 then return false,nil end local aT=aR:
+FindFirstChildOfClass'ForceField'if aT and aT.Visible~=false then return true,
+'ForceField'end local aU,aV,aW=aR:GetAttribute'Invulnerable',aR:GetAttribute
+'Immune',aR:GetAttribute'Respawning'if aU==true or aV==true or aW==true then
+return true,'Attribute'end local aX,aY,aZ=aR:FindFirstChild'Invulnerable',aR:
+FindFirstChild'Immune',aR:FindFirstChild'Respawning'if(aX and aX:IsA'BoolValue'
+and aX.Value==true)or(aY and aY:IsA'BoolValue'and aY.Value==true)or(aZ and aZ:
+IsA'BoolValue'and aZ.Value==true)then return true,'Value'end local a_=ag.
+GetRespawnProtectionRemaining()if a_>0 then return true,(
+'Respawn Shield (%.1fs)'):format(a_)end return false,nil end local aR=function(
+aR)if not aR or not aR:IsA'Model'then return nil end local aS=aR:FindFirstChild
+'HumanoidRootPart'if aS and aS:IsA'BasePart'then return aS end if aR.PrimaryPart
+and aR.PrimaryPart:IsA'BasePart'then return aR.PrimaryPart end for aT,aU in
+ipairs(aR:GetDescendants())do if aU:IsA'BasePart'then return aU end end return
+nil end local aS,aT=function(aS)if not aS or not aS:IsA'Model'or not aS.Parent
+or aS==ac.Character then return false end local aT=aS:FindFirstChildOfClass
+'Humanoid'if not aT or aT.Health<=0 then return false end return aR(aS)~=nil end
+,function(aS)local aT=av[aS]if not aT then return end if aT.Died then aT.Died:
+Disconnect()aT.Died=nil end av[aS]=nil end local aU,aV=function(aU)if not aU or
+not at[aU]then return end aw[aU]=nil at[aU]=nil ax-=1 aT(aU)az()aN()end,function
+(aU)if not dungeon or not aU then return nil end local aV=aU.Parent while aV do
+if aV==dungeon then return nil end if aV.Parent==dungeon and(aV:IsA'Folder'or aV
+:IsA'Model')then return aV end aV=aV.Parent end return nil end local aW=function
+(aW)if not aS(aW)or at[aW]then return end local aX,aY=aR(aW),aW:
+FindFirstChildOfClass'Humanoid'if not aX or not aY then return end at[aW]={Model
+=aW,Root=aX,Humanoid=aY,Room=aV(aW)}ax+=1 av[aW]={Died=aY.Died:Connect(function(
+)aU(aW)end)}az()aN()end local aX=function(aX)if not aX then return end if aS(aX)
+then aW(aX)return end if aw[aX]then return end aw[aX]=true task.spawn(function()
+local aY=os.clock()+2 while aX.Parent and os.clock()<aY do if aS(aX)then aw[aX]=
+nil aW(aX)return end task.wait(0.03)end aw[aX]=nil if aX.Parent and aS(aX)then
+aW(aX)end end)end local aY=function(aY)if not aY or as[aY]then return end as[aY]
+=true for aZ,a_ in ipairs(aY:GetDescendants())do if a_:IsA'Model'and aS(a_)then
+aW(a_)end end au[aY]={Added=aY.DescendantAdded:Connect(function(aZ)if aZ:IsA
+'Model'then aX(aZ)elseif aZ:IsA'Humanoid'then local a_=aZ:
+FindFirstAncestorOfClass'Model'if a_ then aX(a_)end end end),Removed=aY.
+DescendantRemoving:Connect(function(aZ)if aZ:IsA'Model'then aU(aZ)end end)}end
+aL=function()if not dungeon then dungeon=workspace:WaitForChild('dungeon',30)end
+if not dungeon then return false end ao=0 for aZ=#ap,1,-1 do pcall(ap[aZ],ao)end
+aq=0 for aZ=#ar,1,-1 do pcall(ar[aZ],aq)end for aZ,a_ in ipairs(dungeon:
+GetChildren())do if a_:IsA'Folder'or a_:IsA'Model'then aY(a_)end end au[dungeon]
+={Added=dungeon.DescendantAdded:Connect(function(aZ)if aZ:IsA'Model'then aX(aZ)
+elseif aZ:IsA'Humanoid'then local a_=aZ:FindFirstAncestorOfClass'Model'if a_
+then aX(a_)end end end),Removed=dungeon.DescendantRemoving:Connect(function(aZ)
+if aZ:IsA'Model'then aU(aZ)end end)}return true end aM=function()if not dungeon
+then return end for aZ,a_ in pairs(au)do if a_.Added then pcall(function()a_.
+Added:Disconnect()end)end if a_.Removed then pcall(function()a_.Removed:
+Disconnect()end)end end au={}as={}for aZ in pairs(at)do aT(aZ)end at={}ax=0 aw={
+}dungeon=nil end aK=function()for aZ,a_ in pairs(at)do if not aZ or not aZ.
+Parent then aU(aZ)else local a0=a_.Humanoid or aZ:FindFirstChildOfClass
+'Humanoid'a_.Humanoid=a0 if not a0 or a0.Health<=0 then aU(aZ)else local a1=a_.
+Root if not a1 or not a1.Parent then a1=aR(aZ)if a1 then a_.Root=a1 else aU(aZ)
+end end end end end end function ag.SetFastSpeed(aZ)ai=aZ if ah and humanoid and
+humanoid.Parent then if humanoid.WalkSpeed<ai then al=true humanoid.WalkSpeed=ai
+al=false end end end function ag.SetSpeedEnabled(aZ)ah=aZ if humanoid and
+humanoid.Parent then al=true if ah then if humanoid.WalkSpeed<ai then humanoid.
+WalkSpeed=ai end else humanoid.WalkSpeed=aj end al=false end end function ag.
+IsSpeedEnabled()return ah end function ag.GetFastSpeed()return ai end function
+ag.SetInstantAccelEnabled(aZ)ak=aZ and true or false end function ag.
+IsInstantAccelEnabled()return ak end local aZ=function()if aO then aO:
+Disconnect()aO=nil end if not humanoid or not humanoid.Parent then return end aO
+=humanoid:GetPropertyChangedSignal'WalkSpeed':Connect(function()if al then
+return end if not humanoid or not humanoid.Parent then return end local aZ=
+humanoid.WalkSpeed if ah then if aZ<ai then al=true humanoid.WalkSpeed=ai al=
+false end else aj=aZ end end)end function ag.SetHumanoid(a_)if not a_ then
+return end local a0=a_:WaitForChild('Humanoid',10)if not a0 then return end
+humanoid=a0 rootPart=a_:WaitForChild('HumanoidRootPart',10)or a_.PrimaryPart aj=
+humanoid.WalkSpeed if ah and humanoid.WalkSpeed<ai then al=true humanoid.
+WalkSpeed=ai al=false end if aP then aP:Disconnect()aP=nil end aP=humanoid.Died:
+Connect(function()aI=true end)aQ(humanoid.HealthChanged:Connect(function(a1)if
+a1<=0 then aI=true elseif aI and a1>0 then aI=false end end))end local a_=
+function()if not ab.IsActive()then return end if not ak then return end if not
+humanoid or not humanoid.Parent or humanoid.Health<=0 or humanoid.Sit then
+return end if not rootPart or not rootPart.Parent then local a_=ac and ac.
+Character rootPart=a_ and a_:FindFirstChild'HumanoidRootPart'if not rootPart
+then return end end if rootPart.Anchored then return end local a_,a0=humanoid.
+MoveDirection,rootPart.AssemblyLinearVelocity if a_.Magnitude>0.05 then local a1
+=ah and math.max(ai,humanoid.WalkSpeed)or humanoid.WalkSpeed rootPart.
+AssemblyLinearVelocity=Vector3.new(a_.X*a1,a0.Y,a_.Z*a1)end end if aa.RunService
+then local a0=aa.RunService.PreSimulation or aa.RunService.Heartbeat if a0 then
+aQ(a0:Connect(a_))end end function ag.GetDungeonStartTime()return
+dungeonStartTime end function ag.SetDungeonStartTime(a0)dungeonStartTime=a0 end
+function ag.GetDungeonElapsed()if not dungeonStartTime then return nil end
+return os.clock()-dungeonStartTime end function ag.ReadyDungeon()if not dungeon
+and not aL()then return false end return true end function ag.GetHumanoid()
+return humanoid end function ag.GetEnemyNames()local a0={}local a1=function(a1)
+if a1 and a1~=''and a1~=ac.Name then a0[a1]=true end end if dungeon then for a2,
+a3 in ipairs(dungeon:GetChildren())do if a3:IsA'Folder'or a3:IsA'Model'then for
+a4,a5 in ipairs(a3:GetDescendants())do if a5:IsA'Model'and a5:
+FindFirstChildOfClass'Humanoid'then a1(a5.Name)end end end end end for a2 in
+pairs(at)do a1(a2.Name)end local a2={}for a3 in pairs(a0)do table.insert(a2,a3)
+end table.sort(a2)return a2 end function ag.GetEnemyCount()return ax end
+function ag.GetTrackedEnemyData()local a0={}for a1,a2 in pairs(at)do if a2 and
+a2.Root and a2.Root.Parent then a0[#a0+1]=a2 end end return a0 end function ag.
+OnEnemyChanged(a0)if type(a0)~='function'then return function()end end table.
+insert(ay,a0)return function()for a1,a2 in ipairs(ay)do if a2==a0 then table.
+remove(ay,a1)break end end end end function ag.GetEnemyProjectileNames()local a0
+,a1={},game:GetService'ReplicatedStorage'local a2=a1:FindFirstChild(ae)if not a2
+then return a0 end for a3,a4 in ipairs(a2:GetChildren())do local a5=a4.ClassName
+if a5=='Model'or a5=='MeshPart'or a5=='Part'then a0[a4.Name]=true end end return
+a0 end function ag.GetKeyHoldTime()return ad end if ac and ac.Character and ac.
+Character.Parent then ag.SetHumanoid(ac.Character)aZ()else local a0=ac and ac.
+CharacterAdded and task.spawn(function()local a0=ac.CharacterAdded:Wait()if a0
+and ab.IsActive()then ag.SetHumanoid(a0)aZ()end end)end if ac then aQ(ac.
+CharacterAdded:Connect(function(a0)local a1,a2=pcall(function()if not a0 then
+return end aG=os.clock()ag.SetHumanoid(a0)aZ()for a1,a2 in ipairs(aE)do pcall(a2
+)end end)if not a1 then warn('[Shared] respawn handler error:',tostring(a2))end
+end))end task.spawn(function()while ab.IsActive()do task.wait(af)local a0=
+workspace:FindFirstChild'dungeon'if dungeon and a0~=dungeon then aM()elseif not
+dungeon and a0 then aL()end aN()end end)local a0=function()local a0=game:
+GetService'Workspace'for a1,a2 in ipairs(a0:GetDescendants())do if a2.Name==
+'dungeonName'and a2:IsA'ValueBase'then local a3=a2.Value if type(a3)=='string'
+then local a4=string.gsub(a3,'%s+','')if a4~=''and string.lower(a4)~=aB then
+return a3 end end end end return nil end task.spawn(function()while ab.IsActive(
+)do task.wait(af)local a1=a0()if a1~=aJ then aJ=a1 if a1 then ag.ResetBossIndex(
+)end for a2=#aA,1,-1 do pcall(aA[a2],a1)end end end end)local a1=function()
+return not(aJ and#aJ>0)end task.spawn(function()while ab.IsActive()do task.wait(
+af)local a2=a1()if a2~=aC then aC=a2 for a3=#aD,1,-1 do pcall(aD[a3],aC)end end
+end end)task.spawn(function()local a2,a3=pcall(function()return aL()end)if not
+a2 then warn('[EnemyTracker] Initialization error:',a3)end end)local a2,a3=0,2
+task.spawn(function()while ab.IsActive()do task.wait(a3)local a4=os.clock()if a4
+-a2<a3 then continue end a2=a4 if not dungeon then continue end local a5=pcall(
+function()for a5,a6 in ipairs(dungeon:GetChildren())do if a6:IsA'Folder'or a6:
+IsA'Model'then for a7,a8 in ipairs(a6:GetDescendants())do if a8:IsA'Model'then
+aX(a8)end end end end aK()end)if not a5 then warn'[EnemyTracker] rescan error'
+end end end)function ag.IsBossActive()return am end function ag.
+OnBossActiveChanged(a4)if type(a4)~='function'then return function()end end
+table.insert(an,a4)return function()for a5,a6 in ipairs(an)do if a6==a4 then
+table.remove(an,a5)break end end end end function ag.GetCurrentBossIndex()return
+ao end function ag.GetCombatTargetKey()if not am then return'Mob'end local a4=
+math.clamp(ao,1,3)return'Boss'..tostring(a4)end function ag.ResetBossIndex()ao=0
+for a4=#ap,1,-1 do pcall(ap[a4],ao)end end function ag.OnBossIndexChanged(a4)if
+type(a4)~='function'then return function()end end table.insert(ap,a4)return
+function()for a5,a6 in ipairs(ap)do if a6==a4 then table.remove(ap,a5)break end
+end end end local a4=function(a4)if type(a4)~='string'then return 0 end local a5
+=string.lower(a4)local a6=string.match(a5,'boss.*(%d+)')if a6 then return 100+(
+tonumber(a6)or 1)end if string.find(a5,'boss')then return 100+math.max(1,ao)end
+local a7=string.match(a4,'^room(%d+)$')if not a7 then return 0 end return
+tonumber(a7)or 0 end local a5=function()if not dungeon then return 0 end for a5,
+a6 in pairs(at)do if a6 and a6.Room then local a7=a4(a6.Room.Name)if a7>0 then
+return a7 end end end if am then return 100+math.max(1,ao)end return 0 end aN=
+function()local a6=a5()if a6==aq then return end aq=a6 for a7=#ar,1,-1 do pcall(
+ar[a7],aq)end end function ag.GetCurrentRoomIndex()return aq end function ag.
+OnRoomIndexChanged(a6)if type(a6)~='function'then return function()end end table
+.insert(ar,a6)return function()for a7,a8 in ipairs(ar)do if a8==a6 then table.
+remove(ar,a7)break end end end end function ag.GetCurrentDungeonName()return aJ
+end function ag.OnDungeonNameChanged(a6)if type(a6)~='function'then return
+function()end end table.insert(aA,a6)return function()for a7,a8 in ipairs(aA)do
+if a8==a6 then table.remove(aA,a7)break end end end end function ag.IsInLobby()
+return aC end function ag.OnLobbyChanged(a6)if type(a6)~='function'then return
+function()end end table.insert(aD,a6)return function()for a7,a8 in ipairs(aD)do
+if a8==a6 then table.remove(aD,a7)break end end end end local a6,a7=function(a6)
+if am==a6 then return end am=a6 if a6 then ao+=1 for a7=#ap,1,-1 do pcall(ap[a7]
+,ao)end end for a7=#an,1,-1 do pcall(an[a7],am)end aN()end local function a8()if
+not ac then return end local a9=ac:FindFirstChild'PlayerGui'if not a9 then a7=
+nil a6(false)return end local b=a9:FindFirstChild('bossHealth',true)if b then if
+b~=a7 then a7=b if a7:IsA'ScreenGui'then aQ(a7:GetPropertyChangedSignal'Enabled'
+:Connect(a8))elseif a7:IsA'GuiObject'then aQ(a7:GetPropertyChangedSignal
+'Visible':Connect(a8))end end local ba=if b:IsA'ScreenGui'then b.Enabled elseif
+b:IsA'GuiObject'then b.Visible else true a6(ba)else a7=nil a6(false)end end task
+.spawn(function()if not ac then return end local a9=ac:WaitForChild('PlayerGui',
+30)if not a9 then return end aQ(a9.DescendantAdded:Connect(a8))aQ(a9.
+DescendantRemoving:Connect(a8))a8()while ab.IsActive()and task.wait(0.5)do a8()
+end end)ab.Register(function()if aO then aO:Disconnect()aO=nil end for a9,b in
+ipairs(aF)do pcall(function()b:Disconnect()end)end table.clear(aF)aM()end)return
+ag end function a.h()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'a',a.load'c',a.load
+'g',{},{Mob={Min=15,Max=35},Boss1={Min=25,Max=50},Boss2={Min=25,Max=50},Boss3={
+Min=25,Max=50}},{Normal='Mob',['Boss 1']='Boss1',['Boss 2']='Boss2',['Boss 3']=
+'Boss3'},{Mob='Normal',Boss1='Boss 1',Boss2='Boss 2',Boss3='Boss 3'},{},{}
+function ad.GetTargetDisplay(aj)return ag[aj]or'Normal'end function ad.
+GetTargetKey(aj)return af[aj]or'Mob'end function ad.GetTargetOptions()return{
+'Normal','Boss 1','Boss 2','Boss 3'}end function ad.GetSaveData()return ah end
+function ad.LoadData(aj)if type(aj)=='table'then ah=aj else ah={}end aa.
+contextData=ah for ak,al in ipairs(ai)do pcall(al)end end function ad.
+OnDataChanged(aj)if type(aj)~='function'then return function()end end table.
+insert(ai,aj)return function()for ak,al in ipairs(ai)do if al==aj then table.
+remove(ai,ak)break end end end end local aj=function()aa.contextData=ah ab.Save(
+)end function ad.GetCombatDistances(ak,al)local am=al or'Mob'local an=ae[am]or
+ae.Mob if type(ak)=='string'and#ak>0 and ah[ak]and ah[ak][am]then local ao=ah[ak
+][am]local ap,aq=(type(ao.Min)=='number'and ao.Min>0)and ao.Min or an.Min,(type(
+ao.Max)=='number'and ao.Max>0)and ao.Max or an.Max return ap,aq end return an.
+Min,an.Max end function ad.GetActiveCombatDistances(ak)local al,am,an=ac.
+GetCurrentDungeonName(),'Mob',false if ac.IsBossActive and ac.IsBossActive()then
+an=true am=ac.GetCombatTargetKey()elseif ak then if ak.Room and type(ak.Room.
+Name)=='string'and string.find(string.lower(ak.Room.Name),'boss')then an=true
+elseif ak.Model then local ao=string.lower(ak.Model.Name)if string.find(ao,
+'boss')then an=true else local ap=ak.Model.Parent if ap and string.find(string.
+lower(ap.Name),'boss')then an=true end end end if an then local ao=ac.
+GetCurrentBossIndex and ac.GetCurrentBossIndex()or 1 am='Boss'..tostring(math.
+clamp(ao,1,3))end end return ad.GetCombatDistances(al,am)end function ad.
+SetMinCombatDistance(ak,al,am)if not(type(ak)=='string'and#ak>0)then return end
+local an=al or'Mob'if type(am)~='number'or am<=0 then return end ah[ak]=ah[ak]or
+{}ah[ak][an]=ah[ak][an]or{}local ao=ah[ak][an].Max or(ae[an]or ae.Mob).Max ah[ak
+][an].Min=am if am>ao then ah[ak][an].Max=am+5 end aj()end function ad.
+SetMaxCombatDistance(ak,al,am)if not(type(ak)=='string'and#ak>0)then return end
+local an=al or'Mob'if type(am)~='number'or am<=0 then return end ah[ak]=ah[ak]or
+{}ah[ak][an]=ah[ak][an]or{}local ao=ah[ak][an].Min or(ae[an]or ae.Mob).Min ah[ak
+][an].Max=am if am<ao then ah[ak][an].Min=math.max(1,am-5)end aj()end function
+ad.ResetTarget(ak,al)if not(type(ak)=='string'and#ak>0)then return end local am=
+al or'Mob'if ah[ak]then ah[ak][am]=nil if next(ah[ak])==nil then ah[ak]=nil end
+aj()end end function ad.ResetDungeon(ak)if not(type(ak)=='string'and#ak>0)then
+return end if ah[ak]then ah[ak]=nil aj()end end return ad end end local aa,ab,ac
+=a.load'a',a.load'c',a.load'd'return function(ad,ae)local af=aa.Folder local ag=
+af..'/settings/autoload.txt'local ah,ai,aj=function()if isfile and isfile(ag)
+then return readfile(ag)end return nil end,function(ah)ab.SetActive(ah)local ai=
+a.load'h'ai.LoadData(aa.contextData)end,ae:Section{Side='Left'}aj:Header{Name=
+'Configs'}local ak,al,am local an=function(an)local ao=aa:RefreshConfigList()al:
+ClearOptions()al:InsertOptions(ao)if an then if not al:IsOption(an)then al:
+InsertOptions{an}end al:UpdateSelection(an)end end aj:Input{Name='Config Name',
+Placeholder='Name',AcceptedCharacters='All',Callback=function(ao)ak=ao end}al=aj
+:Dropdown{Name='Select Config',Multi=false,Required=false,Options=aa:
+RefreshConfigList(),Callback=function(ao)ai(ao)end}local ao=ah()if ao and ao~=''
+then if not al:IsOption(ao)then al:InsertOptions{ao}end al:UpdateSelection(ao)
+ai(ao)end aj:Button{Name='Create Config',Callback=function()if not ak or string.
+gsub(ak,' ','')==''then ad:Notify{Title='Interface',Description=
+'Config name cannot be empty.'}return end local ap,aq=aa:SaveConfig(ak)if not ap
+then ad:Notify{Title='Interface',Description='Unable to save config: '..
+tostring(aq)}return end ad:Notify{Title='Interface',Description=string.format(
+'Created config %q',ak)}an(ak)ai(ak)end}aj:Button{Name='Load Config',Callback=
+function()local ap=al.Value local aq,ar=aa:LoadConfig(ap)if not aq then ad:
+Notify{Title='Interface',Description='Unable to load config: '..tostring(ar)}
+return end ad:Notify{Title='Interface',Description=string.format(
+'Loaded config %q',ap)}ai(ap)end}aj:Button{Name='Overwrite Config',Callback=
+function()local ap=al.Value local aq,ar=aa:SaveConfig(ap)if not aq then ad:
+Notify{Title='Interface',Description='Unable to overwrite config: '..tostring(ar
+)}return end ad:Notify{Title='Interface',Description=string.format(
+'Overwrote config %q',ap)}ai(ap)end}aj:Button{Name='Set as autoload',Callback=
+function()local ap=al.Value if not ap then ad:Notify{Title='Interface',
+Description='Please select a config first.'}return end writefile(ag,ap)am:
+UpdateName('Autoload config: '..ap)ad:Notify{Title='Interface',Description=
+string.format('Set %q as autoload',ap)}ai(ap)end}aj:Button{Name=
+'Refresh Config List',Callback=function()an(al.Value)end}am=aj:Label{Text=
+'Autoload config: None'}local ap=ah()if ap and ap~=''then am:UpdateName(
 'Autoload config: '..ap)end aj:Header{Name='Auto Hide UI'}aj:Toggle({Name=
 'Hide window after execute',Default=ac.IsEnabled(),Callback=function(aq)ac.
 SetEnabled(aq)end},'Toggle_AutoHide')aj:Label{Text=

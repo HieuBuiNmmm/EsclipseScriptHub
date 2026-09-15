@@ -2502,12 +2502,11 @@ Toggle(aq)ap()end)},'Toggle_SmartDodgeThreatDetection')ag:Toggle({Name=
 'Show Player 2D Hitbox (Ground Visual)',Default=ab.IsPlayerVisualEnabled(),
 Callback=aa.Wrap(function(aq)ab.SetPlayerVisualEnabled(aq)end)},
 'Toggle_HazardPlayer2DVisual')ad.PatchSliderLoadCallback(ag:Slider({Name=
-'Player 2D Hitbox Radius',Suffix=' studs',Default=ab.GetPlayerHitboxRadius(),
-Minimum=0.5,Maximum=8,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(
-function(aq)ab.SetPlayerHitboxRadius(aq)end)},
-'Slider_HazardPlayer2DHitboxRadius'))ag:Toggle({Name=
-'Show 3D Selection Boxes (Parts)',Default=ab.IsSelectionBoxesEnabled(),Callback=
-aa.Wrap(function(aq)ab.SetSelectionBoxesEnabled(aq)end)},
+'Player 2D Hitbox Radius (studs)',Default=ab.GetPlayerHitboxRadius(),Minimum=0.5
+,Maximum=8,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(function(aq)ab.
+SetPlayerHitboxRadius(aq)end)},'Slider_HazardPlayer2DHitboxRadius'))ag:Toggle({
+Name='Show 3D Selection Boxes (Parts)',Default=ab.IsSelectionBoxesEnabled(),
+Callback=aa.Wrap(function(aq)ab.SetSelectionBoxesEnabled(aq)end)},
 'Toggle_HazardSelectionBoxes')ag:Toggle({Name=
 'Show Danger Zones (Ground Visualizer)',Default=ab.IsVisualizerEnabled(),
 Callback=aa.Wrap(function(aq)ab.SetVisualizerEnabled(aq)end)},
@@ -2520,30 +2519,29 @@ Name='Show Safe Spot Marker (Green Visual)',Default=ab.IsSafeSpotVisualEnabled()
 'Show Candidate Points & Rays (Scan Grid)',Default=ab.IsShowCandidates(),
 Callback=aa.Wrap(function(aq)ab.SetShowCandidates(aq)end)},
 'Toggle_HazardShowCandidates')ad.PatchSliderLoadCallback(ag:Slider({Name=
-'Safe Spot Safety Margin',Suffix=' studs',Default=ab.GetSafeSpotBuffer(),Minimum
-=0,Maximum=6,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(function(aq)ab.
+'Safe Spot Safety Margin (studs)',Default=ab.GetSafeSpotBuffer(),Minimum=0,
+Maximum=6,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(function(aq)ab.
 SetSafeSpotBuffer(aq)end)},'Slider_HazardSafeSpotBuffer'))ag:Toggle({Name=
 'Enable Auto Dodge (Move + Snap)',Default=ab.IsAutoDodgeEnabled(),Callback=aa.
 Wrap(function(aq)ab.SetAutoDodgeEnabled(aq)end)},'Toggle_HazardAutoDodgeEnabled'
-)ad.PatchSliderLoadCallback(ag:Slider({Name='Dodge Snap Distance',Suffix=
-' studs',Default=ab.GetDodgeSnapDistance(),Minimum=0.5,Maximum=5,DisplayMethod=
-'Value',Precision=1,Callback=aa.Wrap(function(aq)ab.SetDodgeSnapDistance(aq)end)
-},'Slider_HazardDodgeSnapDistance'))ad.PatchSliderLoadCallback(ag:Slider({Name=
-'Respawn Invulnerability Time',Suffix='s',Default=ac.
-GetRespawnProtectionDuration(),Minimum=0.5,Maximum=10,DisplayMethod='Value',
-Precision=1,Callback=aa.Wrap(function(aq)ac.SetRespawnProtectionDuration(aq)end)
-},'Slider_HazardRespawnInvulnerabilityTime'))ad.PatchSliderLoadCallback(ag:
-Slider({Name='Trajectory Length',Suffix=' studs',Default=ab.GetTrajectoryLength(
-),Minimum=10,Maximum=150,DisplayMethod='Value',Precision=0,Callback=aa.Wrap(
-function(aq)ab.SetTrajectoryLength(aq)end)},'Slider_HazardTrajectoryLength'))ag:
-Toggle({Name='Log Hazards (Spawns / Despawns)',Default=ab.IsLogHazardsEnabled(),
-Callback=aa.Wrap(function(aq)ab.SetLogHazards(aq)end)},
-'Toggle_SmartDodgeLogHazards')ag:Toggle({Name=
-'Log Rejected (Kh\u{f4}ng v\u{1ebd} \u{111}\u{1b0}\u{1ee3}c)',Default=ab.
-IsLogFailedEnabled(),Callback=aa.Wrap(function(aq)ab.SetLogFailed(aq)end)},
-'Toggle_SmartDodgeLogRejected')ad.PatchSliderLoadCallback(ag:Slider({Name=
-'Blue Danger Zone Margin',Suffix=' studs',Default=ab.GetTrajectoryMargin(),
-Minimum=0,Maximum=10,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(function
-(aq)ab.SetTrajectoryMargin(aq)end)},'Slider_HazardTrajectoryMargin'))ag:Button{
-Name='Clear Console',Callback=function()pcall(function()if rconsoleclear then
+)ad.PatchSliderLoadCallback(ag:Slider({Name='Dodge Snap Distance (studs)',
+Default=ab.GetDodgeSnapDistance(),Minimum=0.5,Maximum=5,DisplayMethod='Value',
+Precision=1,Callback=aa.Wrap(function(aq)ab.SetDodgeSnapDistance(aq)end)},
+'Slider_HazardDodgeSnapDistance'))ad.PatchSliderLoadCallback(ag:Slider({Name=
+'Respawn Invulnerability Time (s)',Default=ac.GetRespawnProtectionDuration(),
+Minimum=0.5,Maximum=10,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(
+function(aq)ac.SetRespawnProtectionDuration(aq)end)},
+'Slider_HazardRespawnInvulnerabilityTime'))ad.PatchSliderLoadCallback(ag:Slider(
+{Name='Trajectory Length (studs)',Default=ab.GetTrajectoryLength(),Minimum=10,
+Maximum=150,DisplayMethod='Value',Precision=0,Callback=aa.Wrap(function(aq)ab.
+SetTrajectoryLength(aq)end)},'Slider_HazardTrajectoryLength'))ag:Toggle({Name=
+'Log Hazards (Spawns / Despawns)',Default=ab.IsLogHazardsEnabled(),Callback=aa.
+Wrap(function(aq)ab.SetLogHazards(aq)end)},'Toggle_SmartDodgeLogHazards')ag:
+Toggle({Name='Log Rejected (Kh\u{f4}ng v\u{1ebd} \u{111}\u{1b0}\u{1ee3}c)',
+Default=ab.IsLogFailedEnabled(),Callback=aa.Wrap(function(aq)ab.SetLogFailed(aq)
+end)},'Toggle_SmartDodgeLogRejected')ad.PatchSliderLoadCallback(ag:Slider({Name=
+'Blue Danger Zone Margin (studs)',Default=ab.GetTrajectoryMargin(),Minimum=0,
+Maximum=10,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(function(aq)ab.
+SetTrajectoryMargin(aq)end)},'Slider_HazardTrajectoryMargin'))ag:Button{Name=
+'Clear Console',Callback=function()pcall(function()if rconsoleclear then
 rconsoleclear()end end)end}ap()end

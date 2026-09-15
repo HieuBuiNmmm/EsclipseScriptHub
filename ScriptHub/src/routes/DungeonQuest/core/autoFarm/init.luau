@@ -13,6 +13,7 @@ local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
 local movement = require("@routes/DungeonQuest/core/autoFarm/movement")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
 local autoSkill = require("@routes/DungeonQuest/core/autoFarm/autoSkill")
+local contextual = require("@routes/DungeonQuest/core/contextual")
 
 --// Services
 local RunService = services.RunService
@@ -128,11 +129,7 @@ local function isTargetBoss(target)
 end
 
 local function getActiveCombatDistances(target)
-	if isTargetBoss(target) then
-		return bossMinDistance, bossMaxDistance
-	else
-		return mobMinDistance, mobMaxDistance
-	end
+	return contextual.GetActiveCombatDistances(target)
 end
 
 --// ============================================================

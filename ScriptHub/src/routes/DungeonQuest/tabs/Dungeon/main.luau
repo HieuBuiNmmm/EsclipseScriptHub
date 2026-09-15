@@ -115,13 +115,12 @@ return function(window, tab)
 	}, "Toggle_WaveDefenceAJ")
 
 	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Delay",
+		Name = "Join Delay (s)",
 		Default = 3,
 		Minimum = 0,
 		Maximum = 15,
 		DisplayMethod = "Value",
 		Precision = 1,
-		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
 			autoJoin.SetDelay(Value)
 		end),
@@ -143,13 +142,12 @@ return function(window, tab)
 	}, "Toggle_AutoStart")
 
 	ui.PatchSliderLoadCallback(runSection:Slider({
-		Name = "Start Delay",
+		Name = "Start Delay (s)",
 		Default = autoStart.GetDelay(),
 		Minimum = 0,
 		Maximum = 15,
 		DisplayMethod = "Value",
 		Precision = 1,
-		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
 			autoStart.SetDelay(Value)
 		end),
@@ -189,13 +187,12 @@ return function(window, tab)
 	}, "Toggle_RetryTimeLow")
 
 	ui.PatchSliderLoadCallback(runSection:Slider({
-		Name = "Retry Time Threshold",
+		Name = "Retry Time Threshold (s)",
 		Default = autoRetry.GetTimeRetryThreshold(),
 		Minimum = 5,
 		Maximum = 120,
 		DisplayMethod = "Value",
 		Precision = 1,
-		Suffix = "s",
 		Callback = autoSave.Wrap(function(Value)
 			autoRetry.SetTimeRetryThreshold(Value)
 		end),
