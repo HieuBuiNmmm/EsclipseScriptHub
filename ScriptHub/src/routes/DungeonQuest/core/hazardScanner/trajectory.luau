@@ -58,13 +58,19 @@ function trajectory.SetPredictionLength(val)
 	end
 end
 
+function trajectory.IsHazardMoving(hazardInfo)
+	if not hazardInfo then return false end
+	local record = activeRecords[hazardInfo]
+	return record and record.isMoving == true
+end
+
 --// Tính trọng tâm (Centroid) và Độ rộng bao quát thực tế (Span Width) vuông góc với hướng di chuyển
 --// Sử dụng định lý chiếu OBB (Separating Axis Theorem): chiếu chính xác 3 trục của từng Part lên vector pháp tuyến normal
 local function getHazardCentroidAndSpan(hazardInfo, dir)
 	local inst = hazardInfo.Instance
 	if not inst or not inst.Parent then return nil, 4 end
 
-	local padding = geometry.GetHitboxPadding()
+	local margin = geometry.GetTrajectoryMargin and geometry.GetTrajectoryMargin() or 2.0
 	local parts = {}
 	local hazardName = hazardInfo.Name or (inst and inst.Name) or ""
 	local forceCircle = geometry.IsForceCircle and geometry.IsForceCircle(hazardName)
@@ -118,8 +124,8 @@ local function getHazardCentroidAndSpan(hazardInfo, dir)
 		sumProjU += projU
 	end
 
-	-- Bề rộng chuẩn xác = (max - min) + 2 * padding
-	local spanWidth = math.max(1, (maxProjN - minProjN) + padding * 2)
+	-- Bề rộng chuẩn xác = (max - min) + 2 * margin (khớp 100% với Blue Danger Zone)
+	local spanWidth = math.max(1, (maxProjN - minProjN) + margin * 2)
 
 	-- Tọa độ trung tâm chiếu: trung điểm khoảng cách trên trục normal và trung bình trên trục dir
 	local centerN = (minProjN + maxProjN) / 2
@@ -177,6 +183,7 @@ local function onHeartbeat()
 					local speed = delta.Magnitude / dt
 					local hDelta = Vector3.new(delta.X, 0, delta.Z)
 					local hSpeed = hDelta.Magnitude / dt
+					local wasMoving = record.isMoving == true
 
 					if hSpeed >= MOVING_SPEED_THRESHOLD then
 						record.isMoving = true
@@ -184,6 +191,18 @@ local function onHeartbeat()
 					else
 						if dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
 							record.isMoving = false
+						end
+					end
+
+					if record.isMoving ~= wasMoving then
+						info.IsTrajectory = record.isMoving
+						info.HazardZones = nil
+						if data and data.UpdateHazardVisualColor then
+							pcall(data.UpdateHazardVisualColor, info, record.isMoving)
+						end
+						local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
+						if visualizer and visualizer.UpdateHazardVisualColor then
+							pcall(visualizer.UpdateHazardVisualColor, info, record.isMoving)
 						end
 					end
 

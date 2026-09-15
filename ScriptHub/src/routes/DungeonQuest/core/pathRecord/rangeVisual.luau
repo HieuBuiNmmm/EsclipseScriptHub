@@ -43,10 +43,12 @@ local ringOpacity = 0.8 -- Độ đậm viền ngoài (0.1 - 1.0)
 local fillOpacity = 0.15 -- Độ đậm vùng trong (0.0 - 0.5)
 
 local HIGHLIGHT_NAME = "PR_InRange_Highlight"
+local HIGHLIGHT_UPDATE_INTERVAL = 0.2 -- Giây tối đa scan lại enemy trong tầm (giảm tải mỗi frame)
 local ringAdornment = nil
 local fillAdornment = nil
 local updateConnection = nil
 local lastRoot = nil
+local lastHighlightClock = 0
 local activeHighlights = {} -- [model] = Highlight
 
 local function getCircleColor()
@@ -254,8 +256,12 @@ local function onHeartbeat()
 		end
 	end
 
-	-- Cập nhật highlight kẻ địch trong tầm
-	updateEnemyHighlights(root)
+	-- Cập nhật highlight kẻ địch trong tầm: throttled để không lạm dụng Workspace scan mỗi frame.
+	local nowClock = os.clock()
+	if nowClock - lastHighlightClock >= HIGHLIGHT_UPDATE_INTERVAL then
+		lastHighlightClock = nowClock
+		updateEnemyHighlights(root)
+	end
 end
 
 function rangeVisual.SetEnabled(state)

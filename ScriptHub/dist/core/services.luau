@@ -1,9 +1,1 @@
-
-local function cast(a:string):any
-return game:GetService(a)
-end
-
-
-return{
-Players=cast"Players"::Players,
-}
+local a=function(a)return game:GetService(a)end return{Players=(a'Players')}

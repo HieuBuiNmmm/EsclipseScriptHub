@@ -36,8 +36,10 @@ local autoFarm = {}
 local enabled = false
 local running = false
 local scanInterval = 1.5 -- Seconds between periodic target scans
-local minCombatDistance = 25.0 -- Studs: khoảng cách tối thiểu (lùi lại kiting khi quái lại gần hơn mức này)
-local maxCombatDistance = 50.0 -- Studs: khoảng cách tối đa (tiến lại gần khi quái xa hơn mức này)
+local mobMinDistance = 15.0 -- Studs: khoảng cách tối thiểu quái thường
+local mobMaxDistance = 35.0 -- Studs: khoảng cách tối đa quái thường
+local bossMinDistance = 25.0 -- Studs: khoảng cách tối thiểu Boss
+local bossMaxDistance = 50.0 -- Studs: khoảng cách tối đa Boss
 local autoFaceTarget = true -- Tự động xoay mặt nhìn về phía kẻ địch khi combat
 local repathDistance = 6.0 -- Studs target moves before triggering repath
 
@@ -46,6 +48,7 @@ local showPlannedPath = true
 local showActualPath = true
 local showTargetVisual = true
 local showBlockerRay = true -- Show Red/Green Blocker Detection Ray
+local showCombatRangeVisual = true -- Show Min (Yellow) & Max (Green) Combat Range Circles
 
 --// Runtime State
 local currentState = State.NO_TARGET
@@ -68,19 +71,17 @@ local autoJumpOnStuck = false -- Toggle tự động nhảy khi vận tốc th�
 local stuckVelocityThreshold = 10.0 -- Ngưỡng vận tốc (studs/s)
 local isPaused = false -- Tạm dừng di chuyển mà không hủy path
 
-
-
-
-
---// Visual Instances
-local debugTargetPart = nil
+--// Visual Instances (Exclusively in CoreGui, zero physical parts in Workspace)
 local debugEnemyHighlight = nil
 local debugPathLines = {}
-local debugPathAdornee = nil
 local debugActualLine = nil
-local debugActualMarkerPart = nil
+local debugActualMarker = nil
 local debugBlockerLine = nil
 local debugBlockerHitMarker = nil
+local debugMinDistanceFill = nil
+local debugMinDistanceRing = nil
+local debugMaxDistanceFill = nil
+local debugMaxDistanceRing = nil
 local debugPathCacheKey = nil
 
 --// Forward declarations
@@ -102,6 +103,36 @@ local function getSafePosition(part)
 	local ok, pos = pcall(function() return part.Position end)
 	if not ok or not pos then return nil end
 	return pos
+end
+
+local function isTargetBoss(target)
+	if shared.IsBossActive and shared.IsBossActive() then
+		return true
+	end
+	if target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			return true
+		end
+		if target.Model then
+			local modelName = string.lower(target.Model.Name)
+			if string.find(modelName, "boss") then
+				return true
+			end
+			local parent = target.Model.Parent
+			if parent and string.find(string.lower(parent.Name), "boss") then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function getActiveCombatDistances(target)
+	if isTargetBoss(target) then
+		return bossMinDistance, bossMaxDistance
+	else
+		return mobMinDistance, mobMaxDistance
+	end
 end
 
 --// ============================================================
@@ -257,6 +288,7 @@ local function stepMovementLoop(deltaTime)
 	end
 
 	-- Check Target Reach & Combat Range Condition ([minCombatDistance, maxCombatDistance])
+	local minCombatDistance, maxCombatDistance = getActiveCombatDistances(target)
 	local flatDelta = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
 	local flatDist = flatDelta.Magnitude
 
@@ -283,9 +315,10 @@ local function stepMovementLoop(deltaTime)
 		local backDist = math.clamp(minCombatDistance - flatDist + 6, 4, 15)
 		local backTarget = playerPos + awayDir * backDist
 
-		-- Kiểm tra xem điểm lùi về có an toàn không
+		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh)
 		local isBackSafe = true
-		if hazardScanner and hazardScanner.IsPointSafe then
+		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
+		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
 			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
 		end
 
@@ -315,7 +348,8 @@ local function stepMovementLoop(deltaTime)
 
 		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
 		local dangerAhead = false
-		if hazardScanner and hazardScanner.IsPointSafe then
+		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
+		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
 			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
 			for _, stepDist in ipairs({ 3, 6, 10 }) do
 				if stepDist < flatDist then
@@ -377,22 +411,6 @@ end
 --// VISUAL DEBUGGING (Planned Path, Actual Move, Blocker Ray, Target)
 --// ============================================================
 
-local function ensureDebugTargetPart()
-	if debugTargetPart and debugTargetPart.Parent then return debugTargetPart end
-	debugTargetPart = Instance.new("Part")
-	debugTargetPart.Name = "TM_TargetPart_Debug"
-	debugTargetPart.Anchored = true
-	debugTargetPart.CanCollide = false
-	debugTargetPart.CanQuery = false
-	debugTargetPart.CanTouch = false
-	debugTargetPart.Size = Vector3.new(2, 2, 2)
-	debugTargetPart.Transparency = 0.4
-	debugTargetPart.Color = Color3.fromRGB(255, 50, 50)
-	debugTargetPart.Material = Enum.Material.Neon
-	debugTargetPart.Parent = workspace
-	return debugTargetPart
-end
-
 local function ensureDebugHighlight()
 	if debugEnemyHighlight and debugEnemyHighlight.Parent then return debugEnemyHighlight end
 	if debugEnemyHighlight then
@@ -405,23 +423,12 @@ local function ensureDebugHighlight()
 	debugEnemyHighlight.FillTransparency = 0.5
 	debugEnemyHighlight.OutlineColor = Color3.fromRGB(255, 0, 0)
 	debugEnemyHighlight.OutlineTransparency = 0
-	debugEnemyHighlight.Parent = workspace
+	debugEnemyHighlight.Parent = services.CoreGui or game:GetService("CoreGui")
 	return debugEnemyHighlight
 end
 
-local function ensureDebugPathAdornee()
-	if debugPathAdornee and debugPathAdornee.Parent then return debugPathAdornee end
-	debugPathAdornee = Instance.new("Part")
-	debugPathAdornee.Name = "TM_PathAdornee_Debug"
-	debugPathAdornee.Anchored = true
-	debugPathAdornee.CanCollide = false
-	debugPathAdornee.CanQuery = false
-	debugPathAdornee.CanTouch = false
-	debugPathAdornee.Transparency = 1
-	debugPathAdornee.Size = Vector3.new(1, 1, 1)
-	debugPathAdornee.CFrame = CFrame.new(0, 0, 0)
-	debugPathAdornee.Parent = workspace
-	return debugPathAdornee
+local function getTerrainAdornee()
+	return workspace.Terrain
 end
 
 local function destroyPathVisuals()
@@ -438,21 +445,14 @@ local function updateVisualDebugs()
 	local curTarget = tracker.GetTarget()
 	local playerRoot = getPlayerRoot()
 	local playerPos = playerRoot and getSafePosition(playerRoot)
+	local terrain = getTerrainAdornee()
 
-	-- 1. Target Visuals
+	-- 1. Target Visuals (Chỉ dùng Highlight TM_EnemyHighlight_Debug, không sinh Part vật lý trong workspace)
 	if not showTargetVisual or not curTarget or not curTarget.Root then
-		if debugTargetPart and debugTargetPart.Parent then
-			debugTargetPart.CFrame = CFrame.new(0, -1000, 0)
-		end
 		if debugEnemyHighlight and debugEnemyHighlight.Parent then
 			debugEnemyHighlight.Enabled = false
 		end
 	else
-		local ePos = getSafePosition(curTarget.Root)
-		if ePos then
-			local part = ensureDebugTargetPart()
-			part.CFrame = CFrame.new(ePos)
-		end
 		local hl = ensureDebugHighlight()
 		if curTarget.Model and curTarget.Model.Parent then
 			hl.Adornee = curTarget.Model
@@ -462,16 +462,15 @@ local function updateVisualDebugs()
 		end
 	end
 
-	-- 2. Planned Path Visuals (Green line along waypoints)
+	-- 2. Planned Path Visuals (Green line along waypoints in CoreGui)
 	local waypoints = tracker.GetWaypoints()
 	local pathInst = tracker.GetPathInstance()
-	if not showPlannedPath or not waypoints or #waypoints == 0 then
+	if not showPlannedPath or not waypoints or #waypoints == 0 or not terrain then
 		destroyPathVisuals()
 	else
 		local cacheKey = tostring(pathInst) .. "_" .. tostring(#waypoints)
 		if debugPathCacheKey ~= cacheKey then
 			destroyPathVisuals()
-			local anchor = ensureDebugPathAdornee()
 			for i = 2, #waypoints do
 				local a = waypoints[i - 1].Position
 				local b = waypoints[i].Position
@@ -479,14 +478,15 @@ local function updateVisualDebugs()
 				if dist > 0.01 then
 					local line = Instance.new("LineHandleAdornment")
 					line.Name = "TM_PathLine_Debug"
-					line.Adornee = anchor
+					line.Adornee = terrain
+					line.AlwaysOnTop = true
 					line.Length = dist
 					line.Thickness = 2
 					line.Transparency = 0.3
 					line.Color3 = Color3.fromRGB(0, 255, 120)
 					line.ZIndex = 0
 					line.CFrame = CFrame.lookAt(a, b)
-					line.Parent = workspace
+					line.Parent = services.CoreGui or game:GetService("CoreGui")
 					debugPathLines[#debugPathLines + 1] = line
 				end
 			end
@@ -494,12 +494,10 @@ local function updateVisualDebugs()
 		end
 	end
 
-	-- 3. Actual Destination Visuals (Cyan line + sphere marker)
-	if not showActualPath or not currentDestination or not playerPos then
+	-- 3. Actual Destination Visuals (Cyan line + sphere marker in CoreGui)
+	if not showActualPath or not currentDestination or not playerPos or not terrain then
 		if debugActualLine then debugActualLine.Visible = false end
-		if debugActualMarkerPart and debugActualMarkerPart.Parent then
-			debugActualMarkerPart.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugActualMarker then debugActualMarker.Visible = false end
 	else
 		local pPos = playerPos + Vector3.new(0, 0.5, 0)
 		local dPos = currentDestination + Vector3.new(0, 0.5, 0)
@@ -507,49 +505,43 @@ local function updateVisualDebugs()
 
 		if dist >= 0.3 then
 			if not debugActualLine or not debugActualLine.Parent then
-				local anchor = ensureDebugPathAdornee()
 				debugActualLine = Instance.new("LineHandleAdornment")
 				debugActualLine.Name = "TM_ActualPath_Debug"
-				debugActualLine.Adornee = anchor
+				debugActualLine.Adornee = terrain
+				debugActualLine.AlwaysOnTop = true
 				debugActualLine.Thickness = 3.5
 				debugActualLine.Transparency = 0.15
 				debugActualLine.Color3 = Color3.fromRGB(0, 230, 255)
 				debugActualLine.ZIndex = 2
-				debugActualLine.Parent = workspace
+				debugActualLine.Parent = services.CoreGui or game:GetService("CoreGui")
 			end
 			debugActualLine.Length = dist
 			debugActualLine.CFrame = CFrame.lookAt(pPos, dPos)
 			debugActualLine.Visible = true
 
-			if not debugActualMarkerPart or not debugActualMarkerPart.Parent then
-				debugActualMarkerPart = Instance.new("Part")
-				debugActualMarkerPart.Name = "TM_ActualMarker_Debug"
-				debugActualMarkerPart.Anchored = true
-				debugActualMarkerPart.CanCollide = false
-				debugActualMarkerPart.CanQuery = false
-				debugActualMarkerPart.CanTouch = false
-				debugActualMarkerPart.Shape = Enum.PartType.Ball
-				debugActualMarkerPart.Size = Vector3.new(1.3, 1.3, 1.3)
-				debugActualMarkerPart.Transparency = 0.2
-				debugActualMarkerPart.Material = Enum.Material.Neon
-				debugActualMarkerPart.Color = Color3.fromRGB(0, 230, 255)
-				debugActualMarkerPart.Parent = workspace
+			if not debugActualMarker or not debugActualMarker.Parent then
+				debugActualMarker = Instance.new("SphereHandleAdornment")
+				debugActualMarker.Name = "TM_ActualMarker_Debug"
+				debugActualMarker.Adornee = terrain
+				debugActualMarker.AlwaysOnTop = true
+				debugActualMarker.Radius = 0.65
+				debugActualMarker.Transparency = 0.2
+				debugActualMarker.Color3 = Color3.fromRGB(0, 230, 255)
+				debugActualMarker.ZIndex = 3
+				debugActualMarker.Parent = services.CoreGui or game:GetService("CoreGui")
 			end
-			debugActualMarkerPart.CFrame = CFrame.new(dPos)
+			debugActualMarker.CFrame = CFrame.new(dPos)
+			debugActualMarker.Visible = true
 		else
 			if debugActualLine then debugActualLine.Visible = false end
-			if debugActualMarkerPart and debugActualMarkerPart.Parent then
-				debugActualMarkerPart.CFrame = CFrame.new(0, -1000, 0)
-			end
+			if debugActualMarker then debugActualMarker.Visible = false end
 		end
 	end
 
-	-- 4. Blocker Detection Ray Visual (Red line when blocked, Green when clear)
-	if not showBlockerRay or not lastBlockerData or not playerPos or not curTarget then
+	-- 4. Blocker Detection Ray Visual (Red line when blocked, Green when clear in CoreGui)
+	if not showBlockerRay or not lastBlockerData or not playerPos or not curTarget or not terrain then
 		if debugBlockerLine then debugBlockerLine.Visible = false end
-		if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-			debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugBlockerHitMarker then debugBlockerHitMarker.Visible = false end
 	else
 		local origin = lastBlockerData.origin or (playerPos + Vector3.new(0, 1.5, 0))
 		local targetEnd = lastBlockerData.directHitPos or lastBlockerData.targetPos
@@ -559,14 +551,14 @@ local function updateVisualDebugs()
 			local rayDist = (targetEnd - origin).Magnitude
 			if rayDist >= 0.2 then
 				if not debugBlockerLine or not debugBlockerLine.Parent then
-					local anchor = ensureDebugPathAdornee()
 					debugBlockerLine = Instance.new("LineHandleAdornment")
 					debugBlockerLine.Name = "TM_BlockerRay_Debug"
-					debugBlockerLine.Adornee = anchor
+					debugBlockerLine.Adornee = terrain
+					debugBlockerLine.AlwaysOnTop = true
 					debugBlockerLine.Thickness = 3
 					debugBlockerLine.Transparency = 0.2
 					debugBlockerLine.ZIndex = 3
-					debugBlockerLine.Parent = workspace
+					debugBlockerLine.Parent = services.CoreGui or game:GetService("CoreGui")
 				end
 
 				debugBlockerLine.Length = rayDist
@@ -574,46 +566,133 @@ local function updateVisualDebugs()
 				debugBlockerLine.CFrame = CFrame.lookAt(origin, targetEnd)
 				debugBlockerLine.Visible = true
 
-				-- Marker part at blocker hit location
+				-- Marker adornment at blocker hit location
 				if isBlocked and lastBlockerData.directHitPos then
 					if not debugBlockerHitMarker or not debugBlockerHitMarker.Parent then
-						debugBlockerHitMarker = Instance.new("Part")
+						debugBlockerHitMarker = Instance.new("SphereHandleAdornment")
 						debugBlockerHitMarker.Name = "TM_BlockerHitMarker_Debug"
-						debugBlockerHitMarker.Anchored = true
-						debugBlockerHitMarker.CanCollide = false
-						debugBlockerHitMarker.CanQuery = false
-						debugBlockerHitMarker.CanTouch = false
-						debugBlockerHitMarker.Shape = Enum.PartType.Ball
-						debugBlockerHitMarker.Size = Vector3.new(1.0, 1.0, 1.0)
-						debugBlockerHitMarker.Material = Enum.Material.Neon
-						debugBlockerHitMarker.Color = Color3.fromRGB(255, 30, 30)
-						debugBlockerHitMarker.Parent = workspace
+						debugBlockerHitMarker.Adornee = terrain
+						debugBlockerHitMarker.AlwaysOnTop = true
+						debugBlockerHitMarker.Radius = 0.5
+						debugBlockerHitMarker.Transparency = 0.2
+						debugBlockerHitMarker.Color3 = Color3.fromRGB(255, 30, 30)
+						debugBlockerHitMarker.ZIndex = 4
+						debugBlockerHitMarker.Parent = services.CoreGui or game:GetService("CoreGui")
 					end
 					debugBlockerHitMarker.CFrame = CFrame.new(lastBlockerData.directHitPos)
+					debugBlockerHitMarker.Visible = true
 				else
-					if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-						debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
+					if debugBlockerHitMarker then
+						debugBlockerHitMarker.Visible = false
 					end
 				end
 			else
 				if debugBlockerLine then debugBlockerLine.Visible = false end
-				if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-					debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
-				end
+				if debugBlockerHitMarker then debugBlockerHitMarker.Visible = false end
 			end
 		end
+	end
+
+	-- 5. Combat Range Circles quanh Target Enemy (Min Distance = Yellow [0..min], Max Distance = Green [min..max] - ZERO OVERLAP)
+	local targetRoot = curTarget and curTarget.Root
+	if not showCombatRangeVisual or not targetRoot or not targetRoot.Parent then
+		if debugMinDistanceFill then debugMinDistanceFill.Visible = false end
+		if debugMinDistanceRing then debugMinDistanceRing.Visible = false end
+		if debugMaxDistanceFill then debugMaxDistanceFill.Visible = false end
+		if debugMaxDistanceRing then debugMaxDistanceRing.Visible = false end
+	else
+		local targetPos = getSafePosition(targetRoot) or targetRoot.Position
+		local floorY = playerPos and (playerPos.Y - 2.5) or (targetPos.Y - 2.5)
+		local worldTargetPos = Vector3.new(targetPos.X, floorY, targetPos.Z)
+		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
+		local localCFrame = targetRoot.CFrame:ToObjectSpace(desiredWorldCFrame)
+
+		local minCombatDistance, maxCombatDistance = getActiveCombatDistances(curTarget)
+		local safeMinDist = math.max(1, minCombatDistance)
+		local safeMaxDist = math.max(safeMinDist + 0.5, maxCombatDistance)
+		local ringThickness = 0.35
+
+		-- Min Distance Fill (Yellow solid disk from 0 to minCombatDistance around Target)
+		if not debugMinDistanceFill or not debugMinDistanceFill.Parent then
+			debugMinDistanceFill = Instance.new("CylinderHandleAdornment")
+			debugMinDistanceFill.Name = "TM_MinDistanceFill_Debug"
+			debugMinDistanceFill.AlwaysOnTop = true
+			debugMinDistanceFill.ZIndex = 4
+			debugMinDistanceFill.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMinDistanceFill.Adornee = targetRoot
+		debugMinDistanceFill.Height = 0.02
+		debugMinDistanceFill.InnerRadius = 0
+		debugMinDistanceFill.Radius = safeMinDist
+		debugMinDistanceFill.Color3 = Color3.fromRGB(255, 200, 0)
+		debugMinDistanceFill.Transparency = 0.82
+		debugMinDistanceFill.CFrame = localCFrame
+		debugMinDistanceFill.Visible = true
+
+		-- Min Distance Ring (Yellow outline at minCombatDistance around Target)
+		if not debugMinDistanceRing or not debugMinDistanceRing.Parent then
+			debugMinDistanceRing = Instance.new("CylinderHandleAdornment")
+			debugMinDistanceRing.Name = "TM_MinDistanceRing_Debug"
+			debugMinDistanceRing.AlwaysOnTop = true
+			debugMinDistanceRing.ZIndex = 5
+			debugMinDistanceRing.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMinDistanceRing.Adornee = targetRoot
+		debugMinDistanceRing.Height = 0.05
+		debugMinDistanceRing.InnerRadius = math.max(0.1, safeMinDist - ringThickness)
+		debugMinDistanceRing.Radius = safeMinDist
+		debugMinDistanceRing.Color3 = Color3.fromRGB(255, 215, 20)
+		debugMinDistanceRing.Transparency = 0.25
+		debugMinDistanceRing.CFrame = localCFrame
+		debugMinDistanceRing.Visible = true
+
+		-- Max Distance Fill (Green donut band from minCombatDistance to maxCombatDistance around Target - ZERO OVERLAP)
+		if not debugMaxDistanceFill or not debugMaxDistanceFill.Parent then
+			debugMaxDistanceFill = Instance.new("CylinderHandleAdornment")
+			debugMaxDistanceFill.Name = "TM_MaxDistanceFill_Debug"
+			debugMaxDistanceFill.AlwaysOnTop = true
+			debugMaxDistanceFill.ZIndex = 4
+			debugMaxDistanceFill.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMaxDistanceFill.Adornee = targetRoot
+		debugMaxDistanceFill.Height = 0.02
+		debugMaxDistanceFill.InnerRadius = safeMinDist -- Không đè lên vùng Yellow!
+		debugMaxDistanceFill.Radius = safeMaxDist
+		debugMaxDistanceFill.Color3 = Color3.fromRGB(0, 255, 120)
+		debugMaxDistanceFill.Transparency = 0.82
+		debugMaxDistanceFill.CFrame = localCFrame
+		debugMaxDistanceFill.Visible = true
+
+		-- Max Distance Ring (Green outline at maxCombatDistance around Target)
+		if not debugMaxDistanceRing or not debugMaxDistanceRing.Parent then
+			debugMaxDistanceRing = Instance.new("CylinderHandleAdornment")
+			debugMaxDistanceRing.Name = "TM_MaxDistanceRing_Debug"
+			debugMaxDistanceRing.AlwaysOnTop = true
+			debugMaxDistanceRing.ZIndex = 5
+			debugMaxDistanceRing.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMaxDistanceRing.Adornee = targetRoot
+		debugMaxDistanceRing.Height = 0.05
+		debugMaxDistanceRing.InnerRadius = math.max(0.1, safeMaxDist - ringThickness)
+		debugMaxDistanceRing.Radius = safeMaxDist
+		debugMaxDistanceRing.Color3 = Color3.fromRGB(0, 255, 120)
+		debugMaxDistanceRing.Transparency = 0.25
+		debugMaxDistanceRing.CFrame = localCFrame
+		debugMaxDistanceRing.Visible = true
 	end
 end
 
 local function cleanupDebugVisuals()
-	if debugTargetPart then pcall(function() debugTargetPart:Destroy() end); debugTargetPart = nil end
 	if debugEnemyHighlight then pcall(function() debugEnemyHighlight:Destroy() end); debugEnemyHighlight = nil end
 	if debugActualLine then pcall(function() debugActualLine:Destroy() end); debugActualLine = nil end
-	if debugActualMarkerPart then pcall(function() debugActualMarkerPart:Destroy() end); debugActualMarkerPart = nil end
+	if debugActualMarker then pcall(function() debugActualMarker:Destroy() end); debugActualMarker = nil end
 	if debugBlockerLine then pcall(function() debugBlockerLine:Destroy() end); debugBlockerLine = nil end
 	if debugBlockerHitMarker then pcall(function() debugBlockerHitMarker:Destroy() end); debugBlockerHitMarker = nil end
+	if debugMinDistanceFill then pcall(function() debugMinDistanceFill:Destroy() end); debugMinDistanceFill = nil end
+	if debugMinDistanceRing then pcall(function() debugMinDistanceRing:Destroy() end); debugMinDistanceRing = nil end
+	if debugMaxDistanceFill then pcall(function() debugMaxDistanceFill:Destroy() end); debugMaxDistanceFill = nil end
+	if debugMaxDistanceRing then pcall(function() debugMaxDistanceRing:Destroy() end); debugMaxDistanceRing = nil end
 	destroyPathVisuals()
-	if debugPathAdornee then pcall(function() debugPathAdornee:Destroy() end); debugPathAdornee = nil end
 end
 
 --// ============================================================
@@ -642,31 +721,78 @@ function autoFarm.SetScanInterval(val)
 	end
 end
 
+-- Mob (Normal Enemy) Distance Configuration
+function autoFarm.GetMobMinCombatDistance()
+	return mobMinDistance
+end
+
+function autoFarm.SetMobMinCombatDistance(val)
+	if type(val) == "number" and val >= 1 then
+		mobMinDistance = val
+		if mobMinDistance > mobMaxDistance then
+			mobMaxDistance = mobMinDistance + 5
+		end
+	end
+end
+
+function autoFarm.GetMobMaxCombatDistance()
+	return mobMaxDistance
+end
+
+function autoFarm.SetMobMaxCombatDistance(val)
+	if type(val) == "number" and val >= 2 then
+		mobMaxDistance = val
+		if mobMinDistance > mobMaxDistance then
+			mobMinDistance = math.max(1, mobMaxDistance - 5)
+		end
+	end
+end
+
+-- Boss Distance Configuration
+function autoFarm.GetBossMinCombatDistance()
+	return bossMinDistance
+end
+
+function autoFarm.SetBossMinCombatDistance(val)
+	if type(val) == "number" and val >= 1 then
+		bossMinDistance = val
+		if bossMinDistance > bossMaxDistance then
+			bossMaxDistance = bossMinDistance + 5
+		end
+	end
+end
+
+function autoFarm.GetBossMaxCombatDistance()
+	return bossMaxDistance
+end
+
+function autoFarm.SetBossMaxCombatDistance(val)
+	if type(val) == "number" and val >= 2 then
+		bossMaxDistance = val
+		if bossMinDistance > bossMaxDistance then
+			bossMinDistance = math.max(1, bossMaxDistance - 5)
+		end
+	end
+end
+
+-- Backward compatibility aliases
 function autoFarm.GetMinCombatDistance()
-	return minCombatDistance
+	return mobMinDistance
 end
 
 function autoFarm.SetMinCombatDistance(val)
-	if type(val) == "number" and val >= 1 then
-		minCombatDistance = val
-		if minCombatDistance > maxCombatDistance then
-			maxCombatDistance = minCombatDistance + 5
-		end
-	end
+	autoFarm.SetMobMinCombatDistance(val)
 end
 
 function autoFarm.GetMaxCombatDistance()
-	return maxCombatDistance
+	return mobMaxDistance
 end
 
 function autoFarm.SetMaxCombatDistance(val)
-	if type(val) == "number" and val >= 2 then
-		maxCombatDistance = val
-		if minCombatDistance > maxCombatDistance then
-			minCombatDistance = math.max(1, maxCombatDistance - 5)
-		end
-	end
+	autoFarm.SetMobMaxCombatDistance(val)
 end
+
+autoFarm.IsTargetBoss = isTargetBoss
 
 function autoFarm.IsAutoFaceTargetEnabled()
 	return autoFaceTarget
@@ -689,8 +815,7 @@ end
 
 function autoFarm.SetReachDistance(val)
 	if type(val) == "number" and val >= 2 then
-		maxCombatDistance = val
-		minCombatDistance = math.clamp(val * 0.6, 2, val - 2)
+		autoFarm.SetMaxCombatDistance(val)
 	end
 end
 
@@ -706,7 +831,7 @@ function autoFarm.SetRepathDistance(val)
 end
 
 function autoFarm.SetAutoJumpOnStuck(state)
-	autoJumpOnStuck = state and true or false
+	autoJumpOnStuck = state == true
 end
 
 function autoFarm.IsAutoJumpOnStuckEnabled()
@@ -714,7 +839,7 @@ function autoFarm.IsAutoJumpOnStuckEnabled()
 end
 
 function autoFarm.SetStuckVelocityThreshold(val)
-	if type(val) == "number" and val >= 1 then
+	if type(val) == "number" and val > 0 then
 		stuckVelocityThreshold = val
 	end
 end
@@ -744,8 +869,13 @@ function autoFarm.IsPaused()
 end
 
 --// Auto Skill APIs (Smart Skills Q & E)
-autoFarm.IsAutoSkillEnabled = autoSkill.IsEnabled
-autoFarm.SetAutoSkillEnabled = autoSkill.SetEnabled
+function autoFarm.IsAutoSkillEnabled()
+	return autoSkill.IsEnabled()
+end
+
+function autoFarm.SetAutoSkillEnabled(state)
+	autoSkill.SetEnabled(state)
+end
 autoFarm.IsAutoSkillQEnabled = autoSkill.IsSkillQEnabled
 autoFarm.SetAutoSkillQEnabled = autoSkill.SetSkillQEnabled
 autoFarm.IsAutoSkillEEnabled = autoSkill.IsSkillEEnabled
@@ -753,7 +883,7 @@ autoFarm.SetAutoSkillEEnabled = autoSkill.SetSkillEEnabled
 autoFarm.GetSkillERange = autoSkill.GetSkillERange
 autoFarm.SetSkillERange = autoSkill.SetSkillERange
 autoFarm.GetSkillSpamInterval = autoSkill.GetSpamInterval
-autoFarm.SetSkillSpamInterval = autoSkill.SetSpamInterval
+autoFarm.SetSkillSpamInterval = autoSkill.SetSkillSpamInterval
 autoFarm.IsBuffActive = autoSkill.IsBuffActive
 autoFarm.CastSkillQ = autoSkill.CastSkillQ
 autoFarm.CastSkillE = autoSkill.CastSkillE
@@ -775,9 +905,7 @@ function autoFarm.SetActualPathVisual(val)
 	showActualPath = val == true
 	if not showActualPath then
 		if debugActualLine then debugActualLine.Visible = false end
-		if debugActualMarkerPart and debugActualMarkerPart.Parent then
-			debugActualMarkerPart.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugActualMarker then debugActualMarker.Visible = false end
 	end
 end
 
@@ -789,9 +917,7 @@ function autoFarm.SetBlockerRayVisual(val)
 	showBlockerRay = val == true
 	if not showBlockerRay then
 		if debugBlockerLine then debugBlockerLine.Visible = false end
-		if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-			debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugBlockerHitMarker then debugBlockerHitMarker.Visible = false end
 	end
 end
 
@@ -802,12 +928,23 @@ end
 function autoFarm.SetTargetVisual(val)
 	showTargetVisual = val == true
 	if not showTargetVisual then
-		if debugTargetPart and debugTargetPart.Parent then
-			debugTargetPart.CFrame = CFrame.new(0, -1000, 0)
-		end
 		if debugEnemyHighlight and debugEnemyHighlight.Parent then
 			debugEnemyHighlight.Enabled = false
 		end
+	end
+end
+
+function autoFarm.IsCombatRangeVisualEnabled()
+	return showCombatRangeVisual
+end
+
+function autoFarm.SetCombatRangeVisual(val)
+	showCombatRangeVisual = val == true
+	if not showCombatRangeVisual then
+		if debugMinDistanceFill then debugMinDistanceFill.Visible = false end
+		if debugMinDistanceRing then debugMinDistanceRing.Visible = false end
+		if debugMaxDistanceFill then debugMaxDistanceFill.Visible = false end
+		if debugMaxDistanceRing then debugMaxDistanceRing.Visible = false end
 	end
 end
 

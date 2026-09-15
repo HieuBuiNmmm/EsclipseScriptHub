@@ -28,6 +28,8 @@ hazardScanner.GetHazardPadding = geometry.GetHazardPadding
 hazardScanner.SetHazardPadding = geometry.SetHazardPadding
 hazardScanner.GetHitboxPadding = geometry.GetHazardPadding
 hazardScanner.SetHitboxPadding = geometry.SetHazardPadding
+hazardScanner.GetTrajectoryMargin = geometry.GetTrajectoryMargin
+hazardScanner.SetTrajectoryMargin = geometry.SetTrajectoryMargin
 hazardScanner.GetHazardZones = geometry.GetHazardZones
 hazardScanner.GetNearbyHazards = geometry.GetNearbyHazards
 hazardScanner.AddForceCircleName = geometry.AddForceCircleName
@@ -56,6 +58,7 @@ hazardScanner.SetSafeSpotBuffer = safeSpot.SetSafetyBuffer
 hazardScanner.GetSafeSpotBuffer = safeSpot.GetSafetyBuffer
 hazardScanner.SetShowCandidates = safeSpot.SetShowCandidates
 hazardScanner.IsShowCandidates = safeSpot.IsShowCandidates
+hazardScanner.ClearSafeSpot = safeSpot.Clear
 
 --// Auto Dodge Controller (MoveTo + Final Snap)
 hazardScanner.SetAutoDodgeEnabled = dodgeController.SetEnabled
@@ -64,6 +67,7 @@ hazardScanner.SetDodgeSnapDistance = dodgeController.SetSnapDistance
 hazardScanner.GetDodgeSnapDistance = dodgeController.GetSnapDistance
 hazardScanner.IsCurrentlyDodging = dodgeController.IsDodging
 hazardScanner.OnDodgeStateChanged = dodgeController.OnDodgeStateChanged
+hazardScanner.ClearDodge = dodgeController.Clear
 
 --// Ground Visualizer (Debug Danger Zones)
 hazardScanner.SetVisualizerEnabled = visualizer.SetEnabled

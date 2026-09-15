@@ -5,6 +5,7 @@
 --// Imports
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 
 return function(window, tab)
@@ -227,6 +228,19 @@ return function(window, tab)
 	}, "Slider_HazardDodgeSnapDistance"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Respawn Invulnerability Time",
+		Suffix = "s",
+		Default = shared.GetRespawnProtectionDuration(),
+		Minimum = 0.5,
+		Maximum = 10.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			shared.SetRespawnProtectionDuration(val)
+		end),
+	}, "Slider_HazardRespawnInvulnerabilityTime"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Trajectory Length",
 		Suffix = " studs",
 		Default = hazardScanner.GetTrajectoryLength(),
@@ -256,17 +270,17 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeLogRejected")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Danger Zone Padding",
+		Name = "Blue Danger Zone Margin",
 		Suffix = " studs",
-		Default = hazardScanner.GetHazardPadding(),
+		Default = hazardScanner.GetTrajectoryMargin(),
 		Minimum = 0,
 		Maximum = 10,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetHazardPadding(val)
+			hazardScanner.SetTrajectoryMargin(val)
 		end),
-	}, "Slider_HazardZonePadding"))
+	}, "Slider_HazardTrajectoryMargin"))
 
 	leftSection:Button({
 		Name = "Clear Console",

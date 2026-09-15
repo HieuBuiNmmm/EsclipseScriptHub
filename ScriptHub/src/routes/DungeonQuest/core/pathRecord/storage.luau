@@ -94,7 +94,7 @@ end
 
 local function encodeVec(vec)
 	if not vec then return nil end
-	return { X = vec.X, Y = vec.Y, Z = vec.Z }
+	return { X = math.round(vec.X * 100) / 100, Y = math.round(vec.Y * 100) / 100, Z = math.round(vec.Z * 100) / 100 }
 end
 
 local function decodeVec(t)
@@ -319,14 +319,16 @@ function storage.SimplifyPath(points, tol)
 		end
 	end
 
-	local out = {}
+	local outPts = {}
 	for i = 1, n do
-		if keep[i] and (#out == 0 or flatDistance(out[#out], points[i]) >= MIN_KEEP_SPACING or i == n) then
-			table.insert(out, points[i])
+		if keep[i] and (#outPts == 0 or flatDistance(outPts[#outPts], points[i]) >= MIN_KEEP_SPACING or i == n) then
+			table.insert(outPts, points[i])
 		end
 	end
-	if #out == 1 then table.insert(out, points[n]) end
-	return out
+	if #outPts == 1 then
+		table.insert(outPts, points[n])
+	end
+	return outPts
 end
 
 function storage.OnChanged(callback)
@@ -357,7 +359,9 @@ local function decodePhaseSeg(raw)
 	local points = {}
 	for _, p in ipairs(raw.points) do
 		local vec = decodeVec(p)
-		if vec then points[#points + 1] = vec end
+		if vec then
+			points[#points + 1] = vec
+		end
 	end
 	if #points == 0 then return nil end
 	return {
@@ -381,7 +385,9 @@ function storage.GetRoomSegment(mapName, roomIndex)
 	local points = {}
 	for _, p in ipairs(raw.points) do
 		local vec = decodeVec(p)
-		if vec then points[#points + 1] = vec end
+		if vec then
+			points[#points + 1] = vec
+		end
 	end
 	if #points == 0 then return nil end
 

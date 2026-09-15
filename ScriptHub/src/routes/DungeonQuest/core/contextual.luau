@@ -1,4 +1,4 @@
--- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
+-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Min/Max Combat Distance)
 -- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
 -- Dữ liệu lưu trong file config JSON qua macLib.contextData.
 
@@ -13,6 +13,28 @@ local autoFarm = require("@routes/DungeonQuest/core/autoFarm")
 
 --// Table
 local contextual = {}
+
+--// Default Values per Target Type
+local DEFAULT_DISTANCES = {
+	Mob = { Min = 15, Max = 35 },
+	Boss1 = { Min = 25, Max = 50 },
+	Boss2 = { Min = 25, Max = 50 },
+	Boss3 = { Min = 25, Max = 50 },
+}
+
+local DISPLAY_TO_KEY = {
+	["Normal"] = "Mob",
+	["Boss 1"] = "Boss1",
+	["Boss 2"] = "Boss2",
+	["Boss 3"] = "Boss3",
+}
+
+local KEY_TO_DISPLAY = {
+	["Mob"] = "Normal",
+	["Boss1"] = "Boss 1",
+	["Boss2"] = "Boss 2",
+	["Boss3"] = "Boss 3",
+}
 
 --// Metadata field -> get/set trên autoFarm
 local FIELD_DEFS = {
@@ -32,27 +54,6 @@ local FIELD_DEFS = {
 			autoFarm.SetMaxCombatDistance(v)
 		end,
 	},
-	TargetReachDistance = {
-		get = function()
-			return autoFarm.GetMaxCombatDistance()
-		end,
-		set = function(v)
-			autoFarm.SetMaxCombatDistance(v)
-		end,
-	},
-}
-
-local DISPLAY_TO_KEY = {
-	["Normal"] = "Mob",
-	["Boss 1"] = "Boss1",
-	["Boss 2"] = "Boss2",
-	["Boss 3"] = "Boss3",
-}
-local KEY_TO_DISPLAY = {
-	["Mob"] = "Normal",
-	["Boss1"] = "Boss 1",
-	["Boss2"] = "Boss 2",
-	["Boss3"] = "Boss 3",
 }
 
 --// Storage: data[dungeon][target][field] = value
@@ -61,6 +62,7 @@ local data = {}
 local lastDataRef = nil
 local activeConfig = nil
 local configChangedCallbacks = {}
+local eventConnections = {}
 
 --// Các tab đăng ký callback khi đổi config (để làm mới UI context).
 function contextual.OnConfigChanged(cb)
@@ -99,7 +101,7 @@ local function persist()
 	autoSave.SaveNow()
 end
 
---// Đảm bảo context có đầy đủ tất cả field (điền mặc định = global fallback nếu thiếu)
+--// Đảm bảo context có đầy đủ tất cả field (điền mặc định nếu thiếu)
 local function ensureContextComplete(dungeon, targetKey)
 	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
 	if not KEY_TO_DISPLAY[targetKey] then return end
@@ -108,13 +110,23 @@ local function ensureContextComplete(dungeon, targetKey)
 	data[dungeon][targetKey] = data[dungeon][targetKey] or {}
 	local ctx = data[dungeon][targetKey]
 
+	local defs = DEFAULT_DISTANCES[targetKey] or DEFAULT_DISTANCES.Mob
 	local changed = false
-	for f in pairs(FIELD_DEFS) do
-		if ctx[f] == nil then
-			ctx[f] = FIELD_DEFS[f].get()
-			changed = true
-		end
+
+	if ctx.MinCombatDistance == nil then
+		ctx.MinCombatDistance = defs.Min
+		changed = true
 	end
+	if ctx.MaxCombatDistance == nil then
+		ctx.MaxCombatDistance = ctx.TargetReachDistance or defs.Max
+		changed = true
+	end
+	-- Dọn dẹp key cũ TargetReachDistance để không bị xung đột dữ liệu
+	if ctx.TargetReachDistance ~= nil then
+		ctx.TargetReachDistance = nil
+		changed = true
+	end
+
 	return changed
 end
 
@@ -135,28 +147,40 @@ function contextual.SeedAllDefaults()
 	return seededAny
 end
 
---// Ghi override cho context cụ thể
+--// Ghi override cho context cụ thể (có auto-clamp bảo toàn Min <= Max)
 function contextual.SetField(dungeon, targetKey, field, value)
 	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
 	if not KEY_TO_DISPLAY[targetKey] then return end
 	if not FIELD_DEFS[field] then return end
 
 	ensureContextComplete(dungeon, targetKey)
-	data[dungeon][targetKey][field] = value
+	local ctx = data[dungeon][targetKey]
+	ctx[field] = value
+
+	if field == "MinCombatDistance" and ctx.MaxCombatDistance and value > ctx.MaxCombatDistance then
+		ctx.MaxCombatDistance = value + 5
+	elseif field == "MaxCombatDistance" and ctx.MinCombatDistance and value < ctx.MinCombatDistance then
+		ctx.MinCombatDistance = math.max(1, value - 5)
+	end
+
 	persist()
 end
 
---// Xóa hết override của 1 context (về global)
+--// Xóa override của 1 context (đưa về default chuẩn của loại target đó)
 function contextual.ClearContext(dungeon, targetKey)
 	if type(dungeon) ~= "string" or #dungeon == 0 then return end
-	if data[dungeon] and data[dungeon][targetKey] then
-		data[dungeon][targetKey] = nil
-		if next(data[dungeon]) == nil then data[dungeon] = nil end
-		persist()
-	end
+	if not KEY_TO_DISPLAY[targetKey] then return end
+
+	data[dungeon] = data[dungeon] or {}
+	local defs = DEFAULT_DISTANCES[targetKey] or DEFAULT_DISTANCES.Mob
+	data[dungeon][targetKey] = {
+		MinCombatDistance = defs.Min,
+		MaxCombatDistance = defs.Max,
+	}
+	persist()
 end
 
---// Đọc giá trị 1 field CỦA context (override nếu có, ngược lại global hiện tại)
+--// Đọc giá trị 1 field CỦA context (override nếu có, ngược lại fallback default)
 function contextual.GetField(dungeon, targetKey, field)
 	local def = FIELD_DEFS[field]
 	if not def then return nil end
@@ -164,10 +188,13 @@ function contextual.GetField(dungeon, targetKey, field)
 		local ctx = data[dungeon] and data[dungeon][targetKey]
 		if ctx and ctx[field] ~= nil then return ctx[field] end
 	end
+	local defs = DEFAULT_DISTANCES[targetKey] or DEFAULT_DISTANCES.Mob
+	if field == "MinCombatDistance" then return defs.Min end
+	if field == "MaxCombatDistance" then return defs.Max end
 	return def.get()
 end
 
---// Đọc BỘ giá trị của 1 context (đã fallback global)
+--// Đọc BỘ giá trị của 1 context
 function contextual.GetContext(dungeon, targetKey)
 	local out = {}
 	for field in pairs(FIELD_DEFS) do
@@ -179,8 +206,15 @@ end
 --// Áp bộ giá trị của 1 context vào autoFarm
 function contextual.ApplyContext(dungeon, targetKey)
 	local ctx = contextual.GetContext(dungeon, targetKey)
-	for field, def in pairs(FIELD_DEFS) do
-		def.set(ctx[field])
+	if ctx.MinCombatDistance ~= nil and ctx.MaxCombatDistance ~= nil then
+		autoFarm.SetMinCombatDistance(ctx.MinCombatDistance)
+		autoFarm.SetMaxCombatDistance(ctx.MaxCombatDistance)
+	else
+		for field, def in pairs(FIELD_DEFS) do
+			if ctx[field] ~= nil then
+				def.set(ctx[field])
+			end
+		end
 	end
 end
 
@@ -236,22 +270,16 @@ local function findAndApply(force)
 end
 
 function contextual.Init()
-	contextual.ReloadFromConfig()
-	contextual.SeedAllDefaults()
-	bindMacLib()
-
-	shared.OnDungeonNameChanged(function() findAndApply(false) end)
-	shared.OnBossIndexChanged(function() findAndApply(false) end)
-	shared.OnBossActiveChanged(function() findAndApply(false) end)
-
-	task.spawn(function()
-		while lifecycle.IsActive() do
-			task.wait(1.0)
-			if contextual.ReloadFromConfig() then
-				findAndApply(true)
-			end
-		end
-	end)
+	-- Contextual disabled in favor of 4 direct global distance sliders
 end
+
+lifecycle.Register(function()
+	for _, disconnect in ipairs(eventConnections) do
+		pcall(disconnect)
+	end
+	table.clear(eventConnections)
+	lastApplied = nil
+	lastDungeon = nil
+end)
 
 return contextual

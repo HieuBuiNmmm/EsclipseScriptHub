@@ -20,7 +20,7 @@ local UserInputService = services.UserInputService
 local MIN_SPACING = 0.1 -- Studs tối thiểu giữa 2 điểm khi ghi (bắt siêu mịn để khớp tuyệt đối vị trí)
 local MAX_POINTS = 8000 -- Giới hạn điểm 1 segment
 local SIMPLIFY_TOL = 0.4 -- Studs: dung sai làm mịn Douglas-Peucker khi lưu (độ chính xác cao)
-local DWELL_MIN = 0.25 -- Giây đứng yên tối thiểu mới ghi event "dừng" (bắt cả nhấp nhả ngắn)
+local DWELL_MIN = 0.1 -- Giây đứng yên tối thiểu mới ghi event "dừng" (bắt siêu nhạy cả nhấp nhả 100ms)
 local MOVING_EPS = 0.15 -- Studs/frame: coi là đang di chuyển nếu vượt ngưỡng này
 local ROLLOVER_DELAY = 1.0 -- Giây trễ khi phát hiện đổi room: ghi nốt đoạn đi qua cửa rồi mới rollover
 local RUN_END_TIMEOUT = 6.0 -- Giây chờ room mới sau khi boss chết / teleport; hết mà chưa có room -> hết map, dừng record
@@ -129,12 +129,9 @@ local function stopSubscriptions()
 	if respawnConnection then respawnConnection(); respawnConnection = nil end
 end
 
---// Bắt đầu 1 SLICE (room) mới của session: reset points + timeline tại vị trí hiện tại.
---// Gọi khi rollover sang room khác.
-local function beginSlice(room, pos)
-	startRoom = room
-	startPos = pos
-	sliceActive = true
+--// Reset phần timeline của 1 slice/phase (dùng chung cho beginSlice / seal phase / Stop / Cancel).
+--// Tránh trùng lặp thủ công giữa các nhánh -> không bị sót field gây hành vi "dính" dữ liệu cũ.
+local function resetTimeline(pos)
 	points = { pos }
 	dwells = {}
 	skills = {}
@@ -149,6 +146,42 @@ local function beginSlice(room, pos)
 	recStartT = os.clock()
 	lastFrameT = os.clock()
 	roomChangePending = false
+end
+
+--// Reset toàn bộ state session (Stop / Cancel): xoá mọi dữ liệu đang record.
+--// KHÔNG đụng isRecording (do caller quản lý để giữ ngữ nghĩa Stop/Cancel khác nhau).
+local function clearSessionState()
+	recMap = nil
+	startRoom = 0
+	startPos = nil
+	points = {}
+	dwells = {}
+	skills = {}
+	currentDwell = nil
+	currentDwellStartRel = 0
+	stationarySince = nil
+	standingAnchor = nil
+	standingFacing = nil
+	prevFramePos = nil
+	roomChangePending = false
+	movedDist = 0
+	movingTime = 0
+	lastFrameT = nil
+	sliceIsBoss = false
+	sliceActive = false
+	allowBoss = false
+	sessionRooms = 0
+	sessionBossRooms = 0
+	sessionRawPts = 0
+end
+
+--// Bắt đầu 1 SLICE (room) mới của session: reset points + timeline tại vị trí hiện tại.
+--// Gọi khi rollover sang room khác.
+local function beginSlice(room, pos)
+	startRoom = room
+	startPos = pos
+	sliceActive = true
+	resetTimeline(pos)
 	sliceIsBoss = shared.IsBossActive()
 	roomPhases = {}
 end
@@ -177,20 +210,7 @@ local function sealCurrentPhaseAndStartNext(newRespawnPos)
 
 	-- Khởi tạo phase tiếp theo từ vị trí hồi sinh mới
 	startPos = newRespawnPos
-	points = { newRespawnPos }
-	dwells = {}
-	skills = {}
-	currentDwell = nil
-	currentDwellStartRel = 0
-	stationarySince = nil
-	standingAnchor = nil
-	standingFacing = nil
-	prevFramePos = newRespawnPos
-	movedDist = 0
-	movingTime = 0
-	recStartT = os.clock()
-	lastFrameT = os.clock()
-	roomChangePending = false
+	resetTimeline(newRespawnPos)
 	fireStatus()
 	return true
 end
@@ -268,20 +288,43 @@ function recorder.GetCurrentPoints()
 	return points
 end
 
+function recorder.GetRoomPhases()
+	return roomPhases
+end
+
+function recorder.GetCurrentDwells()
+	return dwells
+end
+
+function recorder.GetCurrentSkills()
+	return skills
+end
+
 function recorder.GetStatus()
 	return {
 		recording = isRecording,
 		map = recMap,
 		room = startRoom,
 		pointCount = #points,
+		dwellCount = #dwells,
+		skillCount = #skills,
 		phaseCount = #roomPhases + 1,
 		savedRooms = sessionRooms,
 	}
 end
 
 function recorder.OnStatusChanged(callback)
-	if type(callback) == "function" then
-		table.insert(statusListeners, callback)
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	table.insert(statusListeners, callback)
+	return function()
+		for i, listener in ipairs(statusListeners) do
+			if listener == callback then
+				table.remove(statusListeners, i)
+				break
+			end
+		end
 	end
 end
 
@@ -391,9 +434,8 @@ function recorder.Start()
 		table.insert(points, pos)
 	end)
 
-	--// Capture skill: chuột phải hoặc phím Q / E (kèm vị trí + facing + thời gian trong dwell).
-	--// Ghi rõ `key` (M2 / Q / E) để player tái hiện đúng nút. Bỏ qua gameProcessed cho Q/E
-	--// vì game xử lý phím này (skill) cũng là thao tác cần ghi lại.
+	--// Capture skill: chuột phải (QE Combo) hoặc phím riêng lẻ Q / E (kèm vị trí + facing + thời gian trong dwell).
+	--// Chuột phải (M2) được quy đổi thành combo cả 2 chiêu Q + E cùng lúc.
 	if captureSkills then
 		inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			if not isRecording or not captureSkills then return end
@@ -403,7 +445,7 @@ function recorder.Start()
 			local skillKey
 			if input.UserInputType == Enum.UserInputType.MouseButton2 then
 				if gameProcessed then return end
-				skillKey = "M2"
+				skillKey = "QE"
 			elseif input.UserInputType == Enum.UserInputType.Keyboard
 				and (input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.E) then
 				skillKey = input.KeyCode == Enum.KeyCode.Q and "Q" or "E"
@@ -414,16 +456,44 @@ function recorder.Start()
 			local target = getPlayerRoot()
 			if not target then return end
 
+			--// Xác định chính xác nhân vật đang đứng yên hay đang di chuyển:
+			--// - Đang di chuyển (speed >= 1.0 studs/s): Lưu thuần túy làm walkSkill (dw = 0), tuyệt đối không tạo dwell.
+			--// - Đang đứng yên (speed < 1.0 hoặc stationarySince ~= nil): Gắn chặt vào Dwell.
+			local vel = target.AssemblyLinearVelocity or target.Velocity
+			local speed = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
+			local isStationary = (stationarySince ~= nil) or (speed < 1.0)
+
+			if captureDwells and isStationary then
+				if not stationarySince then
+					local now = os.clock()
+					stationarySince = now
+					standingAnchor = target.Position
+					standingFacing = getFacing()
+				end
+				if not currentDwell then
+					currentDwellStartRel = stationarySince - recStartT
+					currentDwell = {
+						pos = standingAnchor or target.Position,
+						dur = math.max(0.1, os.clock() - stationarySince),
+						facing = standingFacing or getFacing(),
+						index = #dwells + 1,
+					}
+					table.insert(dwells, currentDwell)
+				end
+			end
+
 			local ev = {
-				pos = target.Position,
+				pos = (currentDwell and isStationary and currentDwell.pos) or target.Position,
 				facing = getFacing(),
 				key = skillKey,
 				dw = 0,
 				dwT = 0,
 			}
-			if currentDwell then
+			if currentDwell and isStationary then
 				ev.dw = currentDwell.index
 				ev.dwT = math.max(0, (os.clock() - recStartT) - currentDwellStartRel)
+				-- Cập nhật facing của dwell theo hướng vừa bắn skill
+				currentDwell.facing = ev.facing or currentDwell.facing
 			end
 			table.insert(skills, ev)
 		end)
@@ -542,10 +612,11 @@ function recorder.Stop(reason)
 			notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
 		else
 			local extra = ""
-			if slice.events then
-				extra = (" (%d skill, %d nhịp dừng, %.1fspd)"):format(slice.skills, slice.dwells, slice.avgSpeed)
-			else
-				extra = (" (%.1fspd)"):format(slice.avgSpeed)
+			local phase1 = slice.phase1
+			if phase1 and phase1.events then
+				extra = (" (%d skill, %d nhịp dừng, %.1fspd)"):format(#(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
+			elseif phase1 then
+				extra = (" (%.1fspd)"):format(phase1.speed or 0)
 			end
 			local bossTag = startRoom > 0 and (sliceIsBoss and " (boss)" or "") or ""
 			notifier.Notify("Path Record", ("Đã lưu room %d%s%s vào map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
@@ -557,28 +628,7 @@ function recorder.Stop(reason)
 		notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
 	end
 
-	recMap = nil
-	startRoom = 0
-	startPos = nil
-	points = {}
-	dwells = {}
-	skills = {}
-	currentDwell = nil
-	currentDwellStartRel = 0
-	stationarySince = nil
-	standingAnchor = nil
-	standingFacing = nil
-	prevFramePos = nil
-	roomChangePending = false
-	movedDist = 0
-	movingTime = 0
-	lastFrameT = nil
-	sliceIsBoss = false
-	sliceActive = false
-	allowBoss = false
-	sessionRooms = 0
-	sessionBossRooms = 0
-	sessionRawPts = 0
+	clearSessionState()
 	fireStatus()
 	return slice ~= nil
 end
@@ -588,28 +638,7 @@ function recorder.Cancel()
 	if not isRecording then return end
 
 	stopSubscriptions()
-	recMap = nil
-	startRoom = 0
-	startPos = nil
-	points = {}
-	dwells = {}
-	skills = {}
-	currentDwell = nil
-	currentDwellStartRel = 0
-	stationarySince = nil
-	standingAnchor = nil
-	standingFacing = nil
-	prevFramePos = nil
-	roomChangePending = false
-	movedDist = 0
-	movingTime = 0
-	lastFrameT = nil
-	sliceIsBoss = false
-	sliceActive = false
-	allowBoss = false
-	sessionRooms = 0
-	sessionBossRooms = 0
-	sessionRawPts = 0
+	clearSessionState()
 	isRecording = false
 	fireStatus()
 end

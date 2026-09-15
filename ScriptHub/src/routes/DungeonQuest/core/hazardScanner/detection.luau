@@ -57,9 +57,42 @@ local function loadIgnoreNames()
 end
 
 local function isIgnoredName(instance)
-	if not instance then return false end
-	local clean = (instance.Name or ""):lower():gsub("%s+", "")
-	return #clean > 0 and ignoreNames[clean] == true
+	if not instance then return true end
+	local name = instance.Name
+	if typeof(name) == "string" then
+		local lower = name:lower()
+		-- 1. Bỏ qua toàn bộ debug part, adornee, marker, visual của script
+		if lower:sub(1, 3) == "tm_"
+			or lower:sub(1, 3) == "pr_"
+			or lower:sub(1, 3) == "dq_"
+			or lower:find("pathrecord")
+			or lower:find("safespot")
+			or lower:find("hazard")
+			or lower:find("adornment")
+			or lower:find("debug")
+			or lower:find("targetpart")
+			or lower:find("actualmarker") then
+			return true
+		end
+
+		-- 2. Bỏ qua các instance nằm trong container visual của script
+		local parent = instance.Parent
+		while parent and parent ~= workspace and parent ~= game do
+			local pName = parent.Name
+			if typeof(pName) == "string" then
+				local pLower = pName:lower()
+				if pLower:find("pathrecord") or pLower:sub(1, 3) == "tm_" or pLower:sub(1, 3) == "pr_" then
+					return true
+				end
+			end
+			parent = parent.Parent
+		end
+
+		-- 3. Bỏ qua các template trong ReplicatedStorage
+		local clean = lower:gsub("%s+", "")
+		if #clean > 0 and ignoreNames[clean] == true then return true end
+	end
+	return false
 end
 
 --// Kiểm tra xem instance có phải là nhân vật người chơi (LocalPlayer hoặc đồng đội) không
@@ -161,16 +194,25 @@ local function computeDistance(instance)
 	return math.floor((rootPos - pos).Magnitude + 0.5)
 end
 
+--// SelectionBox Colors (Red cho chiêu tĩnh, Blue cho chiêu có trajectory)
+local BOX_COLOR_RED = Color3.fromRGB(255, 45, 45)
+local BOX_SURFACE_RED = Color3.fromRGB(255, 30, 30)
+local BOX_COLOR_BLUE = Color3.fromRGB(0, 170, 255)
+local BOX_SURFACE_BLUE = Color3.fromRGB(0, 140, 255)
+
 --// Tao va gan SelectionBox don gian len tung BasePart.
 --// Khi part mo dan (Transparency > 0.85) thi box tu destroy.
-local function attachSelectionBoxes(parts, fadeConnections)
+local function attachSelectionBoxes(parts, fadeConnections, isTrajectory)
 	local boxes = {}
+	local boxColor = isTrajectory and BOX_COLOR_BLUE or BOX_COLOR_RED
+	local surfColor = isTrajectory and BOX_SURFACE_BLUE or BOX_SURFACE_RED
+
 	for _, part in ipairs(parts) do
 		if part and part.Parent then
 			local box = Instance.new("SelectionBox")
 			box.Name = "HazardSelectionBox"
-			box.Color3 = Color3.fromRGB(255, 45, 45)
-			box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
+			box.Color3 = boxColor
+			box.SurfaceColor3 = surfColor
 			box.SurfaceTransparency = 0.6
 			box.LineThickness = 0.05
 			box.Adornee = part
@@ -187,6 +229,20 @@ local function attachSelectionBoxes(parts, fadeConnections)
 		end
 	end
 	return boxes
+end
+
+--// Cập nhật màu SelectionBox khi chuyển trạng thái Trajectory (Red <-> Blue)
+function detection.UpdateHazardVisualColor(hazardInfo, isTrajectory)
+	if not hazardInfo or not hazardInfo.Boxes then return end
+	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
+	local boxColor = isTraj and BOX_COLOR_BLUE or BOX_COLOR_RED
+	local surfColor = isTraj and BOX_SURFACE_BLUE or BOX_SURFACE_RED
+	for _, box in ipairs(hazardInfo.Boxes) do
+		if box and box.Parent then
+			box.Color3 = boxColor
+			box.SurfaceColor3 = surfColor
+		end
+	end
 end
 
 --// Specific Skill Deep Inspector

@@ -43,15 +43,26 @@ local function resolveActiveConfig()
 
 	local folder = macLib.Folder
 	local path = folder .. "/settings/autoload.txt"
-	if not (isfile and readfile) then return nil end
-	if isfile(path) then
+	if isfile and isfile(path) then
 		local ok, name = pcall(readfile, path)
 		if ok and typeof(name) == "string" and #name > 0 then
 			activeConfig = name
 			return activeConfig
 		end
 	end
-	return nil
+
+	-- Fallback tạo config "Default" để luôn lưu được dữ liệu cấu hình người dùng
+	activeConfig = "Default"
+	pcall(function()
+		if writefile and makefolder and isfolder then
+			if not isfolder(folder) then makefolder(folder) end
+			if not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			if not isfile(path) then
+				writefile(path, "Default")
+			end
+		end
+	end)
+	return activeConfig
 end
 
 -- Lưu ngay lập tức (gọi trực tiếp)

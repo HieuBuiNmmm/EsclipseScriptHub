@@ -1,9 +1,9 @@
 -- HazardScanner – Visualizer: Vẽ trực quan vùng toán học (Ground Visualizer)
--- dựa trên mô hình hình học của geometry.luau (đã bao gồm Hitbox Padding).
--- Hỗ trợ vẽ đĩa tròn phẳng (CylinderHandleAdornment) cho Ball/Cylinder
--- và hộp chữ nhật phẳng (BoxHandleAdornment) cho Box/OBB.
+-- dựa trên mô hình hình học của geometry.luau.
+-- Phân loại màu sắc:
+--   - Màu Đỏ (Red): Danger Zone của chiêu thức tĩnh / bình thường.
+--   - Màu Xanh (Blue): Danger Zone của chiêu thức có quỹ đạo bay (Trajectory / Projectile), áp dụng Trajectory Margin riêng.
 
---// Imports
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
@@ -23,11 +23,12 @@ local heartbeatConnection = nil
 
 --// Constants
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
-local ZONE_COLOR = Color3.fromRGB(255, 45, 45)
+local ZONE_COLOR_RED = Color3.fromRGB(255, 45, 45)
+local ZONE_COLOR_BLUE = Color3.fromRGB(0, 160, 255)
 local ZONE_TRANSPARENCY = 0.55
 local GROUND_THICKNESS = 0.25
 
---// Lay do cao mat san theo chan nguoi choi tai thoi diem ve
+--// Lấy độ cao mặt sàn theo chân người chơi tại thời điểm vẽ
 local function getPlayerGroundY()
 	local char = player and player.Character
 	if not char then return nil end
@@ -124,6 +125,33 @@ function visualizer.DetachZoneVisuals(hazardInfo)
 	activeVisuals[hazardInfo] = nil
 end
 
+--// Cập nhật màu sắc và bán kính/kích thước visual khi hazard chuyển trạng thái Trajectory (Red <-> Blue)
+function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
+	if not hazardInfo then return end
+	local record = activeVisuals[hazardInfo]
+	if not record or not record.items then return end
+
+	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
+	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
+
+	for _, item in ipairs(record.items) do
+		local ad = item.ad
+		local zone = item.zone
+		local part = item.part
+		if ad and ad.Parent and zone and part and part.Parent then
+			ad.Color3 = color
+			if item.isCircle and zone.radius then
+				ad.Radius = zone.radius + pad
+			elseif zone.half then
+				local halfX = math.max(part.Size.X, 0) / 2 + pad
+				local halfZ = math.max(part.Size.Z, 0) / 2 + pad
+				ad.Size = Vector3.new(halfX * 2, GROUND_THICKNESS, halfZ * 2)
+			end
+		end
+	end
+end
+
 --// Vẽ visual cho một hazard (Ghim thẳng đứng xuống mặt đất)
 function visualizer.AttachZoneVisuals(hazardInfo)
 	if not enabled or not hazardInfo then return end
@@ -134,7 +162,9 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local hazardZones = geometry.GetHazardZones(hazardInfo)
 	if not hazardZones or not hazardZones.zones then return end
 
-	local padding = geometry.GetHitboxPadding()
+	local isTraj = hazardInfo.IsTrajectory == true
+	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
 	local targetY = getPlayerGroundY()
 	local items = {}
 	local adornments = {}
@@ -151,9 +181,9 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				local cyl = Instance.new("CylinderHandleAdornment")
 				cyl.Name = "HazardGroundCircle"
 				cyl.Adornee = part
-				cyl.Radius = zone.radius + padding
+				cyl.Radius = zone.radius + pad
 				cyl.Height = GROUND_THICKNESS
-				cyl.Color3 = ZONE_COLOR
+				cyl.Color3 = color
 				cyl.Transparency = ZONE_TRANSPARENCY
 				cyl.ZIndex = 2
 				cyl.AlwaysOnTop = true
@@ -164,7 +194,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				box.Name = "HazardGroundBox"
 				box.Adornee = part
 				box.Size = Vector3.new(zone.half.X * 2, GROUND_THICKNESS, zone.half.Z * 2)
-				box.Color3 = ZONE_COLOR
+				box.Color3 = color
 				box.Transparency = ZONE_TRANSPARENCY
 				box.ZIndex = 2
 				box.AlwaysOnTop = true
@@ -236,7 +266,7 @@ function visualizer.SetEnabled(state)
 	end
 end
 
---// Lang nghe thay doi padding de refresh visual
+--// Lắng nghe thay đổi margin/padding để refresh visual
 geometry.OnPaddingChanged(function()
 	if enabled then
 		visualizer.RefreshAll()

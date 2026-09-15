@@ -96,10 +96,6 @@ return function(self)
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
-	--// Contextual (tự động áp dụng setting theo Dungeon x Target)
-	local contextual = require("@routes/DungeonQuest/core/contextual")
-	contextual.Init()
-
 	--// Khởi chạy
 	tabs.Combat:Select()
 

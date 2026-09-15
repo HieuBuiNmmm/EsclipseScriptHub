@@ -4,6 +4,7 @@
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
+local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
@@ -309,6 +310,23 @@ local function startTracking()
 	end
 end
 
+--// Xóa sạch trạng thái Safe Spot hiện tại (khi hết hiểm họa, đổi room, hoặc hết quái)
+function safeSpot.Clear()
+	if isFindingSafeSpot or currentTargetSafeSpot then
+		isFindingSafeSpot = false
+		currentTargetSafeSpot = nil
+		currentThreatInstance = nil
+		currentThreatType = nil
+		lastDistance = 0
+		table.clear(lastEvaluatedCandidates)
+		safeSpotVisual.Hide()
+
+		for _, cb in ipairs(safeSpotChangedCallbacks) do
+			pcall(cb, false, nil, 0)
+		end
+	end
+end
+
 --// Dọn dẹp Safe Spot
 function safeSpot.Cleanup()
 	if heartbeatConnection then
@@ -384,10 +402,37 @@ local function hookRespawn()
 	local lp = player or Players.LocalPlayer
 	if not lp then return end
 	lp.CharacterAdded:Connect(function()
-		safeSpotVisual.Cleanup()
+		safeSpot.Clear()
 	end)
 end
 hookRespawn()
+
+-- Lắng nghe room thay đổi hoặc hết quái để lập tức dọn sạch Safe Spot cũ
+if shared.OnRoomIndexChanged then
+	shared.OnRoomIndexChanged(function()
+		safeSpot.Clear()
+	end)
+end
+
+if shared.OnEnemyChanged then
+	shared.OnEnemyChanged(function()
+		if shared.GetEnemyCount and shared.GetEnemyCount() == 0 then
+			safeSpot.Clear()
+		end
+	end)
+end
+
+if shared.OnLobbyChanged then
+	shared.OnLobbyChanged(function()
+		safeSpot.Clear()
+	end)
+end
+
+if shared.OnBossActiveChanged then
+	shared.OnBossActiveChanged(function()
+		safeSpot.Clear()
+	end)
+end
 
 -- Khởi động tracking
 startTracking()

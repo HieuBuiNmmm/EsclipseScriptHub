@@ -19,77 +19,8 @@ local mover = require("@routes/DungeonQuest/core/pathRecord/player")
 local visual = require("@routes/DungeonQuest/core/pathRecord/visual")
 local rangeVisual = require("@routes/DungeonQuest/core/pathRecord/rangeVisual")
 
-local RunService = services.RunService
-
 --// Table
 local pathRecord = {}
-
---// Settings
-local showVisual = true
-
---// Bộ màu line path (dropdown trong tab) + style kích thước (slider).
-local DEFAULT_THEME = "Default (Red/Cyan/Teal)"
-local THEMES = {
-	[DEFAULT_THEME] = {
-		rec = Color3.fromRGB(255, 60, 60),
-		play = Color3.fromRGB(0, 230, 255),
-		idle = Color3.fromRGB(90, 190, 200),
-	},
-	["Oceana"] = {
-		rec = Color3.fromRGB(0, 190, 255),
-		play = Color3.fromRGB(80, 255, 220),
-		idle = Color3.fromRGB(120, 210, 255),
-	},
-	["Sunset"] = {
-		rec = Color3.fromRGB(255, 120, 60),
-		play = Color3.fromRGB(255, 220, 80),
-		idle = Color3.fromRGB(255, 150, 160),
-	},
-	["Emerald"] = {
-		rec = Color3.fromRGB(80, 255, 140),
-		play = Color3.fromRGB(0, 220, 120),
-		idle = Color3.fromRGB(140, 255, 180),
-	},
-	["Violet"] = {
-		rec = Color3.fromRGB(200, 90, 255),
-		play = Color3.fromRGB(170, 120, 255),
-		idle = Color3.fromRGB(150, 150, 255),
-	},
-}
-
-local visualStyle = {
-	thickness = 3,
-	transparency = 0.25, --// 0 = đậm nhất, 0.9 = gần như mất
-	theme = DEFAULT_THEME,
-}
-
-function pathRecord.GetStyle()
-	return {
-		thickness = visualStyle.thickness,
-		transparency = visualStyle.transparency,
-		theme = visualStyle.theme,
-	}
-end
-
-function pathRecord.GetThemeNames()
-	local names = {}
-	for name in pairs(THEMES) do
-		names[#names + 1] = name
-	end
-	table.sort(names)
-	return names
-end
-
---// Áp style mới (từ slider/dropdown) -> đẩy sang visual + ép redraw sớm nhất.
-function pathRecord.SetStyle(update)
-	if type(update) ~= "table" then return end
-	if update.thickness ~= nil then visualStyle.thickness = math.clamp(update.thickness, 1, 10) end
-	if update.transparency ~= nil then visualStyle.transparency = math.clamp(update.transparency, 0, 0.9) end
-	if update.theme and THEMES[update.theme] then visualStyle.theme = update.theme end
-	visual.SetStyle({ thickness = visualStyle.thickness, transparency = visualStyle.transparency })
-	lastBuildKey = nil
-	fireStatus("style")
-end
 
 --// Timeline record/replay: đứng chờ (dwell) + kích hoạt skill (chuột phải) + facing.
 local timelineCapture = true
@@ -135,6 +66,16 @@ function pathRecord.SetUseFastSpeed(state)
 	fireStatus("usefastspeed")
 end
 
+--// Thời gian xoay đón đầu Pre-Aim trước khi tới mốc skill / dwell (0.1s - 1.5s).
+function pathRecord.GetPreAimTime()
+	return mover.GetPreAimTime()
+end
+
+function pathRecord.SetPreAimTime(seconds)
+	mover.SetPreAimTime(seconds)
+	fireStatus("preaim")
+end
+
 --// Giữ facing sau khi xả skill khi đang đi (0.5s - 2s) để game kịp ghi nhận hướng cast.
 function pathRecord.GetSkillFaceHold()
 	return mover.GetSkillFaceHold()
@@ -155,10 +96,19 @@ function pathRecord.SetDoubleClickDelay(seconds)
 	fireStatus("doubleclick")
 end
 
+--// Thời gian dừng chờ tại node xuất phát (Start Node).
+function pathRecord.GetStartPauseTime()
+	return mover.GetStartPauseTime()
+end
+
+function pathRecord.SetStartPauseTime(seconds)
+	mover.SetStartPauseTime(seconds)
+	fireStatus("startpause")
+end
+
 --// State
 local statusListeners = {}
 local bossConnection = nil
-local drawConnection = nil
 local storageUnsub = nil
 local roomUnsub = nil
 local mapUnsub = nil
@@ -292,18 +242,6 @@ function pathRecord.IsEnabled()
 	return mover.IsPlaying()
 end
 
---// ---------- Settings ----------
-
-function pathRecord.SetShowVisual(state)
-	showVisual = state and true or false
-	if not showVisual then visual.Clear() end
-	fireStatus()
-end
-
-function pathRecord.IsShowVisualEnabled()
-	return showVisual
-end
-
 --// ---------- Skill Range Visual (Vòng tròn quanh nhân vật) ----------
 
 function pathRecord.SetRangeVisual(state)
@@ -364,6 +302,62 @@ function pathRecord.SetHighlightColor(name)
 	fireStatus("highlightcolor")
 end
 
+--// ---------- Path 3D Visualizer (Sphere Nodes & Lines) ----------
+
+function pathRecord.SetVisualEnabled(state)
+	visual.SetEnabled(state)
+	fireStatus("visual")
+end
+
+function pathRecord.IsVisualEnabled()
+	return visual.IsEnabled()
+end
+
+function pathRecord.SetVisualShowLines(state)
+	visual.SetShowLines(state)
+	fireStatus("visuallines")
+end
+
+function pathRecord.IsVisualShowLinesEnabled()
+	return visual.IsShowLinesEnabled()
+end
+
+function pathRecord.SetVisualNodeRadius(radius)
+	visual.SetNodeRadius(radius)
+	fireStatus("visualradius")
+end
+
+function pathRecord.GetVisualNodeRadius()
+	return visual.GetNodeRadius()
+end
+
+function pathRecord.SetVisualAlwaysOnTop(state)
+	visual.SetAlwaysOnTop(state)
+	fireStatus("visualontop")
+end
+
+function pathRecord.IsVisualAlwaysOnTopEnabled()
+	return visual.IsAlwaysOnTopEnabled()
+end
+
+function pathRecord.SetVisualShowEvents(state)
+	visual.SetShowEvents(state)
+	fireStatus("visualevents")
+end
+
+function pathRecord.IsVisualShowEventsEnabled()
+	return visual.IsShowEventsEnabled()
+end
+
+function pathRecord.SetVisualShowFacing(state)
+	visual.SetShowFacingRays(state)
+	fireStatus("visualfacing")
+end
+
+function pathRecord.IsVisualShowFacingEnabled()
+	return visual.IsShowFacingRaysEnabled()
+end
+
 --// ---------- Storage passthrough ----------
 
 function pathRecord.GetMaps()
@@ -393,6 +387,7 @@ end
 
 function pathRecord.GetStatus()
 	local recStat = recorder.GetStatus()
+	local playStat = mover.GetStatus()
 	return {
 		recording = recorder.IsRecording(),
 		playing = mover.IsPlaying(),
@@ -404,13 +399,27 @@ function pathRecord.GetStatus()
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
 		pointCount = recStat.pointCount,
+		dwellCount = recStat.dwellCount or 0,
+		skillCount = recStat.skillCount or 0,
 		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
+		progressPercent = playStat.progressPercent or 0,
+		progressStuds = playStat.progressStuds or 0,
+		totalStuds = playStat.totalStuds or 0,
 	}
 end
 
 function pathRecord.OnStatusChanged(callback)
-	if type(callback) == "function" then
-		table.insert(statusListeners, callback)
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	table.insert(statusListeners, callback)
+	return function()
+		for i, listener in ipairs(statusListeners) do
+			if listener == callback then
+				table.remove(statusListeners, i)
+				break
+			end
+		end
 	end
 end
 
@@ -502,113 +511,8 @@ mapUnsub = shared.OnDungeonNameChanged(function(name)
 	fireStatus("map")
 end)
 
---// Render quỹ đạo: đỏ (record), cyan (play), xanh nhạt (xem trước macro khi idle).
---// Tối ưu: dùng "chìa khoá tín hiệu" (cheap, KHÔNG decode) -> chỉ decode + dựng
---// polyline khi tín hiệu ĐỔI; trước đây decode toàn bộ macro + dựng object mỗi frame.
---// Tổng số LineHandleAdornment cũng giảm mạnh nhờ làm mịn trước khi vẽ.
-local function macroStamp(map)
-	if not map or #map == 0 then return "-" end
-	for _, rec in ipairs(storage.GetMaps()) do
-		if rec.map == map then
-			return tostring(rec.updated or "-") .. ":" .. tostring(rec.roomCount)
-		end
-	end
-	return "-"
-end
-
-local lastDrawTag = nil
-local lastBuildKey = nil
-visual.SetStyle({ thickness = visualStyle.thickness, transparency = visualStyle.transparency })
 recorder.SetCapture(timelineCapture)
 mover.SetReplayTimeline(timelineReplay)
-drawConnection = RunService.Heartbeat:Connect(function()
-	if not showVisual then
-		if lastDrawTag then visual.Clear(); lastDrawTag = nil end
-		return
-	end
-
-	local map = shared.GetCurrentDungeonName()
-	local room = shared.GetCurrentRoomIndex()
-
-	local buildKey
-	if recorder.IsRecording() then
-		buildKey = "rec:" .. recorder.GetCurrentPhaseIndex() .. ":" .. #recorder.GetCurrentPoints()
-	elseif mover.IsPlaying() then
-		buildKey = "play:" .. tostring(room) .. ":" .. mover.GetCurrentPhaseIndex() .. ":" .. macroStamp(map)
-	else
-		buildKey = "idle:" .. macroStamp(map)
-	end
-	if buildKey == lastBuildKey then return end
-	lastBuildKey = buildKey
-
-	local theme = THEMES[visualStyle.theme] or THEMES[DEFAULT_THEME]
-	local polys = {}
-
-	if recorder.IsRecording() then
-		--// Đang record: vẽ segment hiện tại màu sắc theo theme (points là Vector3 sống, không decode).
-		local pts = recorder.GetCurrentPoints()
-		if #pts >= 2 then
-			polys[1] = { points = pts, color = theme.rec, tag = "rec" }
-		end
-	elseif mover.IsPlaying() then
-		--// Đang play: vẽ segment/phase của room hiện tại (đã làm mịn như lúc đi).
-		if map and room > 0 then
-			local seg = storage.GetRoomSegment(map, room)
-			if seg then
-				local phases = seg.phases or { seg }
-				local curPIdx = mover.GetCurrentPhaseIndex() or 1
-				local pData = phases[math.min(curPIdx, #phases)] or seg
-				if pData and pData.points and #pData.points >= 2 then
-					polys[1] = {
-						points = storage.SimplifyPath(pData.points, 0.4),
-						color = theme.play,
-						tag = ("play_%s_p%d"):format(tostring(room), curPIdx),
-					}
-				end
-			end
-		end
-	else
-		--// Idle: xem trước toàn bộ macro của map hiện tại (bao gồm các phase).
-		if map then
-			local macro = storage.GetMap(map)
-			if macro then
-				local roomKeys = {}
-				for r in pairs(macro.rooms) do
-					roomKeys[#roomKeys + 1] = r
-				end
-				table.sort(roomKeys)
-				for _, r in ipairs(roomKeys) do
-					local seg = macro.rooms[r]
-					if seg then
-						local phases = seg.phases or { seg }
-						for pIdx, pData in ipairs(phases) do
-							if pData and pData.points and #pData.points >= 2 then
-								polys[#polys + 1] = {
-									points = storage.SimplifyPath(pData.points, 0.4),
-									color = seg.boss and Color3.fromRGB(255, 140, 255) or theme.idle,
-									tag = ("macro_%s_p%d"):format(tostring(r), pIdx),
-								}
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-
-	if #polys > 0 then
-		--// Key theo nội dung để visual tự skip rebuild (throttle 0.4s).
-		local parts = {}
-		for _, p in ipairs(polys) do
-			parts[#parts + 1] = (p.tag or "x") .. ":" .. #p.points
-		end
-		visual.DrawPolylines(polys, table.concat(parts, "|"))
-		lastDrawTag = "drawn"
-	elseif lastDrawTag then
-		visual.Clear()
-		lastDrawTag = nil
-	end
-end)
 
 --// ---------- Coordinator & Lifecycle ----------
 
@@ -637,7 +541,6 @@ lifecycle.Register(function()
 	recorder.Cancel()
 	visual.Clear()
 	if bossConnection then bossConnection(); bossConnection = nil end
-	if drawConnection then drawConnection:Disconnect(); drawConnection = nil end
 	if roomUnsub then roomUnsub(); roomUnsub = nil end
 	if mapUnsub then mapUnsub(); mapUnsub = nil end
 	if storageUnsub then storageUnsub(); storageUnsub = nil end

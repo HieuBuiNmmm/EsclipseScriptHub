@@ -11,7 +11,8 @@ local geometry = {}
 
 --// State
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
-local hazardPadding = 0.0 -- Mặc định = 0.0 (vừa khít 100% với kích thước thực tế của part)
+local hazardPadding = 0.0 -- Mặc định = 0.0 cố định cho danger zone đỏ bình thường
+local trajectoryMargin = 2.0 -- Margin riêng cho danger zone blue (các chiêu có trajectory)
 local data = nil
 local paddingChangedCallbacks = {}
 
@@ -27,6 +28,20 @@ function geometry.GetHazardPadding()
 	return hazardPadding
 end
 geometry.GetHitboxPadding = geometry.GetHazardPadding
+
+function geometry.GetTrajectoryMargin()
+	return trajectoryMargin
+end
+
+function geometry.SetTrajectoryMargin(value)
+	if type(value) == "number" and value >= 0 and value ~= trajectoryMargin then
+		trajectoryMargin = value
+		geometry.InvalidateCache()
+		for _, cb in ipairs(paddingChangedCallbacks) do
+			pcall(cb, trajectoryMargin)
+		end
+	end
+end
 
 --// Xoa toan bo HazardZones cache tren cac hazard hien tai
 function geometry.InvalidateCache()
@@ -98,21 +113,23 @@ end
 --// Tinh zone con cho 1 BasePart theo shape:
 --// - Part Ball/Cylinder HOẶC nằm trong danh sách ngoại lệ (isForceCircle) -> vong tron X-Z (radius = 1/2 cạnh vuông)
 --// - Box / Union / Mesh  -> OBB theo CFrame
-local function computePartZone(part, forceCircle)
+local function computePartZone(part, forceCircle, isTrajectory)
 	local size = part.Size
+	local pad = isTrajectory and trajectoryMargin or hazardPadding
 	if forceCircle or (part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder)) then
 		return { radius = math.max(size.X, size.Y, size.Z) / 2 }
 	end
 
-	local half = Vector3.new(math.max(size.X, 0) / 2 + hazardPadding, 0, math.max(size.Z, 0) / 2 + hazardPadding)
+	local half = Vector3.new(math.max(size.X, 0) / 2 + pad, 0, math.max(size.Z, 0) / 2 + pad)
 	return { half = half, cframe = part.CFrame }
 end
 
 --// Kiem tra diem P (X-Z) hoac vong tron ban kinh extraRadius co giao thoa voi 1 zone con khong
-local function isPointInZone(point, zone, extraRadius)
+local function isPointInZone(point, zone, extraRadius, isTrajectory)
 	if not zone then return false end
 	local px, pz = point.X, point.Z
 	extraRadius = extraRadius or 0
+	local pad = (isTrajectory or zone.isTrajectory) and trajectoryMargin or hazardPadding
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
@@ -120,7 +137,7 @@ local function isPointInZone(point, zone, extraRadius)
 		local cz = pos and pos.Z or zone.cz or 0
 		local dx = px - cx
 		local dz = pz - cz
-		local r = zone.radius + hazardPadding + extraRadius
+		local r = zone.radius + pad + extraRadius
 		return (dx * dx + dz * dz) <= (r * r)
 	end
 
@@ -150,6 +167,8 @@ local function buildHazardZones(hazardInfo)
 	local instance = hazardInfo.Instance
 	local hazardName = hazardInfo.Name or (instance and instance.Name) or ""
 	local forceCircle = isForceCircle(hazardName)
+	local isTrajectory = hazardInfo.IsTrajectory == true
+	local pad = isTrajectory and trajectoryMargin or hazardPadding
 	local parts
 
 	if instance:IsA("BasePart") then
@@ -172,19 +191,20 @@ local function buildHazardZones(hazardInfo)
 	for _, part in ipairs(parts) do
 		local pos = part.Position
 		local size = part.Size
-		local radius2D = math.max(size.X, size.Y, size.Z) / 2 + hazardPadding
+		local radius2D = math.max(size.X, size.Y, size.Z) / 2 + pad
 
 		minX = math.min(minX, pos.X - radius2D)
 		maxX = math.max(maxX, pos.X + radius2D)
 		minZ = math.min(minZ, pos.Z - radius2D)
 		maxZ = math.max(maxZ, pos.Z + radius2D)
 
-		local zone = computePartZone(part, forceCircle)
+		local zone = computePartZone(part, forceCircle, isTrajectory)
 		if zone then
 			if zone.radius then
 				zone.cx, zone.cz = pos.X, pos.Z
 			end
 			zone.part = part
+			zone.isTrajectory = isTrajectory
 			zones[#zones + 1] = zone
 		end
 	end
@@ -293,9 +313,10 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 		end
 
 		-- Narrow phase: union per-part, re-check part con song
+		local isTraj = info.IsTrajectory == true
 		for i = 1, #hazardZones.zones do
 			local zone = hazardZones.zones[i]
-			if isPartAlive(zone.part) and isPointInZone(point, zone, extraRadius) then
+			if isPartAlive(zone.part) and isPointInZone(point, zone, extraRadius, isTraj or zone.isTrajectory) then
 				local d2 = (point - zone.part.Position).Magnitude
 				if d2 < bestDistSq then
 					bestDistSq = d2

@@ -1,12 +1,10 @@
 -- Module Auto Farm trong tab Combat (DungeonQuest)
 -- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
--- và Auto Farm Context (Target Reach Distance theo từng Dungeon x Target).
+-- và 4 khoảng cách Combat Distance (Mob Min/Max, Boss Min/Max).
 
 --// Imports
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local autoFarm = require("@routes/DungeonQuest/core/autoFarm")
-local contextual = require("@routes/DungeonQuest/core/contextual")
-local shared = require("@routes/DungeonQuest/core/shared")
 local services = require("@routes/DungeonQuest/core/services")
 local ui = require("@routes/DungeonQuest/core/ui")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
@@ -39,31 +37,57 @@ return function(window, tab)
 		end),
 	}, "Slider_AF_ScanInterval")
 
-	leftSection:Slider({
-		Name = "Min Combat Distance",
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Mob Min Distance",
 		Suffix = " studs",
-		Default = autoFarm.GetMinCombatDistance(),
+		Default = autoFarm.GetMobMinCombatDistance(),
 		Minimum = 2,
 		Maximum = 150,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetMinCombatDistance(val)
+			autoFarm.SetMobMinCombatDistance(val)
 		end),
-	}, "Slider_AF_MinCombatDistance")
+	}, "Slider_AF_MobMinCombatDistance"))
 
-	leftSection:Slider({
-		Name = "Max Combat Distance",
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Mob Max Distance",
 		Suffix = " studs",
-		Default = autoFarm.GetMaxCombatDistance(),
+		Default = autoFarm.GetMobMaxCombatDistance(),
 		Minimum = 5,
 		Maximum = 200,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetMaxCombatDistance(val)
+			autoFarm.SetMobMaxCombatDistance(val)
 		end),
-	}, "Slider_AF_MaxCombatDistance")
+	}, "Slider_AF_MobMaxCombatDistance"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Boss Min Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetBossMinCombatDistance(),
+		Minimum = 2,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetBossMinCombatDistance(val)
+		end),
+	}, "Slider_AF_BossMinCombatDistance"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Boss Max Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetBossMaxCombatDistance(),
+		Minimum = 5,
+		Maximum = 200,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetBossMaxCombatDistance(val)
+		end),
+	}, "Slider_AF_BossMaxCombatDistance"))
 
 	leftSection:Toggle({
 		Name = "Auto Face Target (Look At Enemy)",
@@ -177,8 +201,16 @@ return function(window, tab)
 		end),
 	}, "Toggle_AF_TargetVisual")
 
+	leftSection:Toggle({
+		Name = "Show Combat Range Circles (Min/Max)",
+		Default = autoFarm.IsCombatRangeVisualEnabled(),
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetCombatRangeVisual(val)
+		end),
+	}, "Toggle_AF_CombatRangeVisual")
+
 	--// ============================================================
-	--// RIGHT COLUMN TOP: Auto Farm Monitor
+	--// RIGHT COLUMN: Auto Farm Monitor
 	--// ============================================================
 	local rightSection = tab:Section({ Side = "Right" })
 	rightSection:Header({ Name = "Auto Farm Monitor" })
@@ -227,8 +259,6 @@ return function(window, tab)
 			velocityLabel:UpdateName(("Velocity: <font color='rgb(%s)'>%.1f studs/s</font>"):format(velColor, vel))
 		end)
 
-
-
 		pcall(function()
 			if info.hasTarget and info.blocker then
 				if info.blocker.directBlocked then
@@ -272,156 +302,4 @@ return function(window, tab)
 			monitorConnection = nil
 		end
 	end)
-
-	--// ============================================================
-	--// RIGHT COLUMN BOTTOM: Auto Farm Context
-	--// ============================================================
-	local ctxSection = tab:Section({ Side = "Right" })
-	ctxSection:Header({ Name = "Auto Farm Context" })
-
-	local activeCtxLabel = ctxSection:Label({ Text = "" })
-	local function updateActiveCtxLabel()
-		local dungeon = shared.GetCurrentDungeonName()
-		local targetKey = shared.GetCombatTargetKey()
-		activeCtxLabel:UpdateName("Active: <font color='rgb(120,200,255)'>" .. (dungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(targetKey))
-	end
-
-	local editDungeon = shared.GetCurrentDungeonName()
-	local editTarget = "Mob"
-
-	local isSyncing = false
-	local refreshContextControls
-	local setEditControlsVisible
-	local editCtxLabel
-	local editTargetDropdown
-	local reachDistanceSlider
-	local resetCtxButton
-
-	local function isActiveContext()
-		return editDungeon == shared.GetCurrentDungeonName() and editTarget == shared.GetCombatTargetKey()
-	end
-
-	editTargetDropdown = ctxSection:Dropdown({
-		Name = "Edit Target",
-		Options = { "Normal", "Boss 1", "Boss 2", "Boss 3" },
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			local map = { ["Normal"] = "Mob", ["Boss 1"] = "Boss1", ["Boss 2"] = "Boss2", ["Boss 3"] = "Boss3" }
-			editTarget = map[option] or "Mob"
-			refreshContextControls()
-		end),
-	}, "Dropdown_AutoFarmTarget")
-
-	--// Nút Reset 2 bước (arm Confirm -> click lần 2 trong hạn)
-	local resetArmed = false
-	local resetDisarmTimer = nil
-	local RESET_NAME = "Reset Context to Global"
-	local RESET_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Reset?</font>"
-	local RESET_TIMEOUT = 3
-	local function disarmReset()
-		if not resetArmed then return end
-		resetArmed = false
-		if resetDisarmTimer then task.cancel(resetDisarmTimer); resetDisarmTimer = nil end
-		pcall(function() resetCtxButton:UpdateName(RESET_NAME) end)
-	end
-
-	resetCtxButton = ctxSection:Button({
-		Name = RESET_NAME,
-		Callback = autoSave.Wrap(function()
-			if not resetArmed then
-				resetArmed = true
-				if resetDisarmTimer then task.cancel(resetDisarmTimer) end
-				resetDisarmTimer = task.delay(RESET_TIMEOUT, disarmReset)
-				pcall(function() resetCtxButton:UpdateName(RESET_CONFIRM_NAME) end)
-				return
-			end
-			disarmReset()
-			contextual.ClearContext(editDungeon, editTarget)
-			refreshContextControls()
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	})
-
-	local minDistanceSlider
-	local maxDistanceSlider
-
-	minDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
-		Name = "Min Combat Distance",
-		Suffix = " studs",
-		Default = contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25,
-		Minimum = 2,
-		Maximum = 150,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "MinCombatDistance", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_AF_CtxMinCombatDistance"))
-
-	maxDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
-		Name = "Max Combat Distance",
-		Suffix = " studs",
-		Default = contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50,
-		Minimum = 5,
-		Maximum = 200,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "MaxCombatDistance", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_AF_CtxMaxCombatDistance"))
-
-	refreshContextControls = function()
-		isSyncing = true
-		disarmReset()
-		pcall(function() minDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25) end)
-		pcall(function() maxDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50) end)
-		isSyncing = false
-		pcall(function() editCtxLabel:UpdateName("Editing: <font color='rgb(150,255,150)'>" .. (editDungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(editTarget)) end)
-	end
-
-	setEditControlsVisible = function(visible)
-		pcall(function() minDistanceSlider:SetVisibility(visible) end)
-		pcall(function() maxDistanceSlider:SetVisibility(visible) end)
-		pcall(function() resetCtxButton:SetVisibility(visible) end)
-	end
-
-	local function resetToMob()
-		editTarget = "Mob"
-		pcall(function() editTargetDropdown:UpdateSelection("Normal") end)
-		refreshContextControls()
-	end
-
-	local prevDungeonInGame = editDungeon ~= nil
-	local function onDungeonChanged()
-		local newName = shared.GetCurrentDungeonName()
-		local nowInGame = newName ~= nil
-		editDungeon = newName
-		if nowInGame and not prevDungeonInGame then
-			resetToMob()
-		end
-		prevDungeonInGame = nowInGame
-		updateActiveCtxLabel()
-		refreshContextControls()
-		setEditControlsVisible(nowInGame)
-	end
-
-	shared.OnDungeonNameChanged(onDungeonChanged)
-	shared.OnBossIndexChanged(updateActiveCtxLabel)
-	shared.OnBossActiveChanged(updateActiveCtxLabel)
-	contextual.OnConfigChanged(function()
-		editDungeon = shared.GetCurrentDungeonName()
-		updateActiveCtxLabel()
-		refreshContextControls()
-		setEditControlsVisible(editDungeon ~= nil)
-	end)
-
-	updateActiveCtxLabel()
-	refreshContextControls()
-	setEditControlsVisible(editDungeon ~= nil)
 end

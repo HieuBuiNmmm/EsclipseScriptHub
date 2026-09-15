@@ -2,6 +2,8 @@
 --   - MACRO = 1 bản ghi cho cả map: bấm Record 1 lần, tự ghi liên tục qua các room
 --     (auto-split segment theo room), tự lưu khi về lobby. Record lại room nào thì ghi đè room đó.
 --   - Mode theo map: NORMAL (mặc định) skip boss, dùng Hazard Scanner; FULL record & phát luôn cả boss room.
+--   - 3D Visualizer: Đường quỹ đạo, 3D Node Markers (Start, Finish, Dwell, Skill + Facing Ray), In-world Badges.
+--   - Live HUD: Hiển thị thanh % tiến độ hoàn thành room & studs theo thời gian thực.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -15,10 +17,10 @@ local RunService = services.RunService
 
 return function(window, tab)
 	--// ============================================================
-	--// LEFT COLUMN: Điều khiển
+	--// LEFT COLUMN: Section 1 - Điều khiển & Phát Macro
 	--// ============================================================
 	local left = tab:Section({ Side = "Left" })
-	left:Header({ Name = "Path Record" })
+	left:Header({ Name = "Path Record Controls" })
 	left:Label({
 		Text = "Macro = 1 bản ghi cho cả map, <font color='rgb(0,255,120)'>bấm Record 1 lần là ghi liên tục</font> qua từng room (tự lưu khi về lobby). Mode FULL -> record & phát luôn cả boss room.",
 	})
@@ -108,7 +110,7 @@ return function(window, tab)
 		end,
 	})
 	left:Label({
-		Text = "Record sẽ bắt cả <font color='rgb(255,150,80)'>khoảng đứng chờ</font> + <font color='rgb(255,80,80)'>skill (chuột phải / Q / E)</font> + hướng mặt, Play sẽ tái hiện lại đúng vị trí, giây & nút đã record.",
+		Text = "Record bắt <font color='rgb(255,150,80)'>khoảng dừng</font> + <font color='rgb(255,80,80)'>skill (M2 / Q / E)</font> + hướng mặt để phát lại chính xác tuyệt đối.",
 	})
 
 	--// Mode theo map: NORMAL = skip boss (dùng Hazard Scanner); FULL = record & phát luôn cả boss room.
@@ -141,9 +143,6 @@ return function(window, tab)
 			end
 		end,
 	})
-	left:Label({
-		Text = "Mode lưu theo <font color='rgb(150,255,150)'>từng map</font>. <font color='rgb(255,140,255)'>FULL</font>: ghi liên tục qua cả boss room & phát theo path đã record. <font color='rgb(120,200,255)'>NORMAL</font> (mặc định): chỉ room quái thường, boss dùng Hazard Scanner.",
-	})
 
 	local playToggle = left:Toggle({
 		Name = "Play Path (Macro)",
@@ -154,7 +153,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_PR_Play")
 
-	--// Timeline: ghi/tái hiện khoảng dừng + skill chuột phải + hướng mặt.
+	--// Timeline Options
 	local captureTimeline = left:Toggle({
 		Name = "Record Pauses & Skills",
 		Default = pathRecord.IsTimelineCaptureEnabled(),
@@ -187,8 +186,31 @@ return function(window, tab)
 		end),
 	}, "Toggle_PR_UseFastSpeed")
 
+	--// ============================================================
+	--// LEFT COLUMN: Section 2 - Combat & Skill Timing
+	--// ============================================================
+	local combatSection = tab:Section({ Side = "Left" })
+	combatSection:Header({ Name = "Combat & Skill Timing" })
+
+	--// Thời gian xoay đón đầu Pre-Aim trước khi tới mốc skill / dwell (0.1s - 1.5s).
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Pre-Aim Lead Time (s)",
+		Default = pathRecord.GetPreAimTime(),
+		Minimum = 0.1,
+		Maximum = 1.5,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(v)
+			pathRecord.SetPreAimTime(v)
+		end),
+		onInputComplete = function(v)
+			autoSave.SaveNow()
+			notifier.Notify("Path Record", ("Saved Pre-Aim Lead Time = %ss"):format(tostring(v)), 2)
+		end,
+	}, "Slider_PR_PreAimTime"))
+
 	--// Giữ facing sau khi xả skill khi đang đi (0.5s - 2s).
-	ui.PatchSliderLoadCallback(left:Slider({
+	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Skill Face Hold (s)",
 		Default = pathRecord.GetSkillFaceHold(),
 		Minimum = 0.5,
@@ -205,7 +227,7 @@ return function(window, tab)
 	}, "Slider_PR_SkillFaceHold"))
 
 	--// Khoảng nghỉ giữa 2 lần click khi double-cast skill (0.005s - 0.1s).
-	ui.PatchSliderLoadCallback(left:Slider({
+	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Skill Double Click Delay (s)",
 		Default = pathRecord.GetDoubleClickDelay(),
 		Minimum = 0.005,
@@ -221,71 +243,30 @@ return function(window, tab)
 		end,
 	}, "Slider_PR_DoubleClickDelay"))
 
-	local visualToggle = left:Toggle({
-		Name = "Show Path Visual",
-		Default = pathRecord.IsShowVisualEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			pathRecord.SetShowVisual(state)
-		end),
-	}, "Toggle_PR_Visual")
-
-	--// Tuỳ chỉnh cách hiển thị line path (kích thước + màu).
-	local prStyle = pathRecord.GetStyle()
-
-	ui.PatchSliderLoadCallback(left:Slider({
-		Name = "Line Thickness",
-		Default = prStyle.thickness,
-		Minimum = 1,
-		Maximum = 10,
+	--// Thời gian dừng chờ tại node xuất phát & kết thúc (Start / Finish Pause Time) (0s - 3s).
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Start / Finish Pause Time (s)",
+		Default = pathRecord.GetStartPauseTime(),
+		Minimum = 0.0,
+		Maximum = 3.0,
 		DisplayMethod = "Value",
-		Precision = 1,
+		Precision = 2,
 		Callback = autoSave.Wrap(function(v)
-			pathRecord.SetStyle({ thickness = v })
+			pathRecord.SetStartPauseTime(v)
 		end),
 		onInputComplete = function(v)
 			autoSave.SaveNow()
+			notifier.Notify("Path Record", ("Saved Start / Finish Pause Time = %ss"):format(tostring(v)), 2)
 		end,
-	}, "Slider_PR_LineThickness"))
-
-	ui.PatchSliderLoadCallback(left:Slider({
-		Name = "Line Opacity",
-		Default = math.round((1 - prStyle.transparency) * 100),
-		Minimum = 10,
-		Maximum = 100,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(v)
-			pathRecord.SetStyle({ transparency = 1 - v / 100 })
-		end),
-		onInputComplete = function(v)
-			autoSave.SaveNow()
-		end,
-	}, "Slider_PR_LineOpacity"))
-
-	local themeNames = pathRecord.GetThemeNames()
-	local themeIdx = 1
-	for i, name in ipairs(themeNames) do
-		if name == prStyle.theme then
-			themeIdx = i
-			break
-		end
-	end
-	ui.PatchDropdownRestore(left:Dropdown({
-		Name = "Path Color Theme",
-		Options = themeNames,
-		Default = themeIdx,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			pathRecord.SetStyle({ theme = option })
-		end),
-	}, "Dropdown_PR_Theme"), false)
+	}, "Slider_PR_StartPauseTime"))
 
 	--// ============================================================
-	--// LEFT COLUMN: Quản lý macro
+	--// LEFT COLUMN: Section 3 - Quản lý Macro
 	--// ============================================================
-	left:Header({ Name = "Macros" })
+	local macroSection = tab:Section({ Side = "Left" })
+	macroSection:Header({ Name = "Macro Storage" })
 
-	macroDropdown = ui.PatchDropdownRestore(left:Dropdown({
+	macroDropdown = ui.PatchDropdownRestore(macroSection:Dropdown({
 		Name = "Map Recording",
 		Options = { "None" },
 		Default = 1,
@@ -297,7 +278,7 @@ return function(window, tab)
 		end,
 	}), false)
 
-	local deleteBtn = left:Button({
+	local deleteBtn = macroSection:Button({
 		Name = "Delete Selected Map",
 		Callback = autoSave.Wrap(function()
 			local mapName = getSelectedMapFromDropdown()
@@ -307,7 +288,7 @@ return function(window, tab)
 		end),
 	})
 
-	local reloadBtn = left:Button({
+	local reloadBtn = macroSection:Button({
 		Name = "Reload Macros (EsclipseHub/DQMacro)",
 		Callback = function()
 			pathRecord.ReloadFromDisk()
@@ -329,7 +310,7 @@ return function(window, tab)
 		pcall(function() clearBtn:UpdateName(CLEAR_NAME) end)
 	end
 
-	local clearBtn = left:Button({
+	local clearBtn = macroSection:Button({
 		Name = CLEAR_NAME,
 		Callback = function()
 			if not clearArmed then
@@ -345,18 +326,83 @@ return function(window, tab)
 	})
 
 	--// ============================================================
-	--// RIGHT COLUMN: Status & Range Visual
+	--// RIGHT COLUMN: Section 1 - Status Monitor & Live HUD
 	--// ============================================================
 	local right = tab:Section({ Side = "Right" })
-	right:Header({ Name = "Status Monitor" })
+	right:Header({ Name = "Status Monitor & Live HUD" })
 
 	local stateLabel = right:Label({ Text = "State: <font color='rgb(160,160,160)'>Idle</font>" })
+	local progressLabel = right:Label({ Text = "Progress: <font color='rgb(160,160,160)'>-</font>" })
 	local roomLabel = right:Label({ Text = "Room: <font color='rgb(160,160,160)'>-</font> | Boss: <font color='rgb(160,160,160)'>-</font>" })
-	local pointsLabel = right:Label({ Text = "Points: <font color='rgb(160,160,160)'>-</font>" })
+	local pointsLabel = right:Label({ Text = "Events: <font color='rgb(160,160,160)'>-</font>" })
 	local recordingsLabel = right:Label({ Text = "Macros: <font color='rgb(160,160,160)'>None</font>" })
 
 	--// ============================================================
-	--// RIGHT COLUMN: Skill Range Visual (Section riêng)
+	--// RIGHT COLUMN: Section 2 - Path 3D Visualizer (Spheres & Lines)
+	--// ============================================================
+	local pathVisualSection = tab:Section({ Side = "Right" })
+	pathVisualSection:Header({ Name = "Path 3D Visualizer" })
+	pathVisualSection:Label({
+		Text = "Visual từng node đường đi: <font color='rgb(255,90,90)'>🔴 Đỏ khi Record</font> (real-time) | <font color='rgb(0,255,120)'>🟢 Xanh lá khi thường</font> (xem / phát macro).",
+	})
+
+	local pathVisualToggle = pathVisualSection:Toggle({
+		Name = "Show Path Nodes (3D Spheres)",
+		Default = pathRecord.IsVisualEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualEnabled(state)
+		end),
+	}, "Toggle_PR_VisualEnabled")
+
+	local pathLinesToggle = pathVisualSection:Toggle({
+		Name = "Connect Path Lines",
+		Default = pathRecord.IsVisualShowLinesEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualShowLines(state)
+		end),
+	}, "Toggle_PR_VisualShowLines")
+
+	local pathEventsToggle = pathVisualSection:Toggle({
+		Name = "Show Event Spheres & 3D Text",
+		Default = pathRecord.IsVisualShowEventsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualShowEvents(state)
+		end),
+	}, "Toggle_PR_VisualShowEvents")
+
+	local pathFacingToggle = pathVisualSection:Toggle({
+		Name = "Show Skill Facing Rays",
+		Default = pathRecord.IsVisualShowFacingEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualShowFacing(state)
+		end),
+	}, "Toggle_PR_VisualShowFacing")
+
+	ui.PatchSliderLoadCallback(pathVisualSection:Slider({
+		Name = "Sphere Node Size",
+		Default = pathRecord.GetVisualNodeRadius(),
+		Minimum = 0.1,
+		Maximum = 1.2,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(v)
+			pathRecord.SetVisualNodeRadius(v)
+		end),
+		onInputComplete = function(v)
+			autoSave.SaveNow()
+		end,
+	}, "Slider_PR_VisualNodeRadius"))
+
+	pathVisualSection:Toggle({
+		Name = "Always On Top (X-Ray)",
+		Default = pathRecord.IsVisualAlwaysOnTopEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualAlwaysOnTop(state)
+		end),
+	}, "Toggle_PR_VisualAlwaysOnTop")
+
+	--// ============================================================
+	--// RIGHT COLUMN: Section 3 - Skill Range Visual (AOE Indicator)
 	--// ============================================================
 	local rangeSection = tab:Section({ Side = "Right" })
 	rangeSection:Header({ Name = "Skill Range Visual" })
@@ -443,6 +489,16 @@ return function(window, tab)
 		end),
 	}, "Dropdown_PR_HighlightColor"), false)
 
+	--// Hàm vẽ thanh tiến trình %
+	local function formatProgressBar(percent)
+		percent = math.clamp(percent or 0, 0, 100)
+		local totalBlocks = 10
+		local filled = math.round((percent / 100) * totalBlocks)
+		local empty = totalBlocks - filled
+		local bar = string.rep("■", filled) .. string.rep("□", empty)
+		return ("<font color='rgb(0,255,180)'>%s</font> <b>%d%%</b>"):format(bar, percent)
+	end
+
 	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop).
 	syncToggles = function(info)
 		if not isPromptingRecord then
@@ -472,9 +528,25 @@ return function(window, tab)
 				isSyncingMode = false
 			end
 		end)
+
 		pcall(function()
-			if visualToggle and visualToggle.GetState and visualToggle:GetState() ~= pathRecord.IsShowVisualEnabled() then
-				visualToggle:UpdateState(pathRecord.IsShowVisualEnabled())
+			if pathVisualToggle and pathVisualToggle.GetState and pathVisualToggle:GetState() ~= pathRecord.IsVisualEnabled() then
+				pathVisualToggle:UpdateState(pathRecord.IsVisualEnabled())
+			end
+		end)
+		pcall(function()
+			if pathLinesToggle and pathLinesToggle.GetState and pathLinesToggle:GetState() ~= pathRecord.IsVisualShowLinesEnabled() then
+				pathLinesToggle:UpdateState(pathRecord.IsVisualShowLinesEnabled())
+			end
+		end)
+		pcall(function()
+			if pathEventsToggle and pathEventsToggle.GetState and pathEventsToggle:GetState() ~= pathRecord.IsVisualShowEventsEnabled() then
+				pathEventsToggle:UpdateState(pathRecord.IsVisualShowEventsEnabled())
+			end
+		end)
+		pcall(function()
+			if pathFacingToggle and pathFacingToggle.GetState and pathFacingToggle:GetState() ~= pathRecord.IsVisualShowFacingEnabled() then
+				pathFacingToggle:UpdateState(pathRecord.IsVisualShowFacingEnabled())
 			end
 		end)
 		pcall(function()
@@ -556,6 +628,17 @@ return function(window, tab)
 		end
 		pcall(function() stateLabel:UpdateName("State: " .. stateText) end)
 
+		-- Live Progress HUD
+		if info.playing then
+			local pStr = formatProgressBar(info.progressPercent)
+			local studsStr = ("(%.1f / %.1f studs)"):format(info.progressStuds or 0, info.totalStuds or 0)
+			pcall(function() progressLabel:UpdateName("Progress: " .. pStr .. " " .. studsStr) end)
+		elseif info.recording then
+			pcall(function() progressLabel:UpdateName("Progress: <font color='rgb(255,90,90)'>Recording Segment...</font> (" .. tostring(info.pointCount or 0) .. " pts)") end)
+		else
+			pcall(function() progressLabel:UpdateName("Progress: <font color='rgb(160,160,160)'>-</font>") end)
+		end
+
 		local modeText = isFullMap
 			and "<font color='rgb(255,140,255)'>FULL</font>"
 			or "<font color='rgb(120,200,255)'>NORMAL</font>"
@@ -582,12 +665,12 @@ return function(window, tab)
 
 		if info.recording then
 			local curP = info.phase or 1
-			pcall(function() pointsLabel:UpdateName(("Points: <font color='rgb(255,170,60)'>%d</font> (room %s | Phase %d)"):format(info.pointCount, tostring(info.room), curP)) end)
+			pcall(function() pointsLabel:UpdateName(("Events: <font color='rgb(255,170,60)'>%d pts</font> | <font color='rgb(255,90,220)'>%d skills</font> | <font color='rgb(255,215,0)'>%d pauses</font> (Phase %d)"):format(info.pointCount or 0, info.skillCount or 0, info.dwellCount or 0, curP)) end)
 		elseif info.playing then
 			local curP = info.phase or 1
 			pcall(function() pointsLabel:UpdateName(("Playing: <font color='rgb(0,230,255)'>Phase %d</font>"):format(curP)) end)
 		else
-			pcall(function() pointsLabel:UpdateName("Points: <font color='rgb(160,160,160)'>-</font>") end)
+			pcall(function() pointsLabel:UpdateName("Events: <font color='rgb(160,160,160)'>-</font>") end)
 		end
 
 		local maps = pathRecord.GetMaps()
@@ -606,7 +689,7 @@ return function(window, tab)
 		refreshDropdown(maps)
 	end
 
-	pathRecord.OnStatusChanged(function(info)
+	local statusUnsub = pathRecord.OnStatusChanged(function(info)
 		updateStatus(info)
 		syncToggles(info)
 	end)
@@ -615,7 +698,7 @@ return function(window, tab)
 	local lastUpdate = 0
 	local monitorConnection = RunService.Heartbeat:Connect(function()
 		local now = os.clock()
-		if now - lastUpdate < 0.4 then return end
+		if now - lastUpdate < 0.35 then return end
 		lastUpdate = now
 		local info = pathRecord.GetStatus()
 		updateStatus(info)
@@ -624,6 +707,7 @@ return function(window, tab)
 
 	lifecycle.Register(function()
 		if monitorConnection then monitorConnection:Disconnect(); monitorConnection = nil end
+		if statusUnsub then statusUnsub(); statusUnsub = nil end
 	end)
 
 	updateStatus(pathRecord.GetStatus())

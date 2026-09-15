@@ -1,201 +1,42 @@
-
-
-
-
-
-local a={"Easy","Medium","Hard","Insane","Nightmare"}
-
-local b={
-"Desert Temple",
-"Winter Outpost",
-"Pirate Island",
-"King's Castle",
-"The Underworld",
-"Samurai Palace",
-"The Canals",
-"Ghastly Harbor",
-"Steampunk Sewers",
-"Orbital Outpost",
-"Volcanic Chambers",
-"Aquatic Temple",
-"Enchanted Forest",
-"Egg Island",
-"Krampus",
-"Tutorial Dungeon",
-}
-
-local c={
-["Egg Island"]={Difficulties={"Easy","Nightmare"},LevelReq=0},Krampus=
-{Difficulties={"Nightmare"},LevelReq=195},
-["Tutorial Dungeon"]={Difficulties={"Easy"},LevelReq=0},
-}
-
-
-local d={}
-
-
-local e={}
-local f
-
-
-local g=game:GetService"HttpService"
-local h="Maclib/DungeonQuest_MapList.json"
-
-local function persistMapList(i)
-if not(isfile and writefile and makefolder and isfolder)then return end
-pcall(function()
-if not isfolder"Maclib"then makefolder"Maclib"end
-end)
-pcall(function()
-writefile(h,g:JSONEncode(i))
-end)
-end
-
-local function loadPersistedMapList()
-if not(isfile and readfile)or not isfile(h)then return nil end
-local i,j=pcall(function()
-return g:JSONDecode(readfile(h))
-end)
-if not i or typeof(j)~="table"then return nil end
-
-local k={}
-for l,m in ipairs(j)do
-if type(m)=="string"and#m>0 then
-table.insert(k,m)
-end
-end
-return(#k>0)and k or nil
-end
-
-local function mergeDungeonLists(i)
-local j={}
-local k={}
-for l,m in ipairs(i or{})do
-if not j[m]then
-j[m]=true
-table.insert(k,m)
-end
-end
-for l,m in ipairs(b)do
-if not j[m]then
-j[m]=true
-table.insert(k,m)
-end
-end
-return k
-end
-
-
-local function findScrollingFrame()
-local i=game:GetService"Players".LocalPlayer
-if not i then return nil end
-local j=i:FindFirstChild"PlayerGui"
-if not j then return nil end
-local k=j:FindFirstChild"queueGui"
-if not k then return nil end
-local l=k:FindFirstChild"chooseDungeon"
-if not l then return nil end
-local m=l:FindFirstChild"backgroundFillLeft"
-if not m then return nil end
-return m:FindFirstChild"ScrollingFrame"
-end
-
-local function collectDungeonsFromUi()
-local i=findScrollingFrame()
-if not i then return nil end
-
-local j={}
-for k,l in ipairs(i:GetChildren())do
-if l:IsA"ImageLabel"and#l.Name>0 then
-table.insert(j,l.Name)
-end
-end
-return(#j>0)and j or nil
-end
-
-
-function d.GetDungeons()
-if f then return f end
-
-local i=collectDungeonsFromUi()
-if i then
-local j=mergeDungeonLists(i)
-f=j
-persistMapList(j)
-return j
-end
-
-local j=loadPersistedMapList()
-if j then
-local k=mergeDungeonLists(j)
-f=k
-return k
-end
-
-return b
-end
-
-function d.RefreshDungeons()
-f=nil
-return d.GetDungeons()
-end
-
-function d.GetDungeonStats(i)
-if type(i)~="string"or#i==0 then return nil end
-if e[i]~=nil then return e[i]end
-
-local j=game:GetService"ReplicatedStorage":FindFirstChild"remotes"
-local k=j and j:FindFirstChild"getDungeonStats"
-if not k then return nil end
-
-local l,m=pcall(function()return k:InvokeServer(i)end)
-if l and typeof(m)=="table"then
-e[i]=m
-return m
-end
-return nil
-end
-
-function d.GetAllowedDifficulties(i)
-if type(i)~="string"then return a end
-
-local j=c[i]
-if j then return j.Difficulties end
-
-local k=d.GetDungeonStats(i)
-local l={}
-if k then
-for m,n in ipairs(a)do
-if k[n]then table.insert(l,n)end
-end
-end
-if#l>0 then return l end
-return a
-end
-
-function d.IsDifficultyAllowed(i,j)
-if type(j)~="string"then return false end
-for k,l in ipairs(d.GetAllowedDifficulties(i))do
-if l==j then return true end
-end
-return false
-end
-
-function d.GetLevelReq(i,j)
-if type(i)~="string"then return 0 end
-
-local k=c[i]
-if k then return k.LevelReq or 0 end
-
-local l=d.GetDungeonStats(i)
-if l and type(j)=="string"and l[j]then
-return tonumber(l[j].levelReq)or 0
-end
-return 0
-end
-
-
-d.DUNGEONS=b
-d.DIFFICULTIES=a
-
-return d
+local a,b,c,d,e,f,g,h={'Easy','Medium','Hard','Insane','Nightmare'},{
+'Desert Temple','Winter Outpost','Pirate Island',"King's Castle",
+'The Underworld','Samurai Palace','The Canals','Ghastly Harbor',
+'Steampunk Sewers','Orbital Outpost','Volcanic Chambers','Aquatic Temple',
+'Enchanted Forest','Egg Island','Krampus','Tutorial Dungeon'},{['Egg Island']={
+Difficulties={'Easy','Nightmare'},LevelReq=0},Krampus={Difficulties={'Nightmare'
+},LevelReq=195},['Tutorial Dungeon']={Difficulties={'Easy'},LevelReq=0}},{},{},
+game:GetService'HttpService','Maclib/DungeonQuest_MapList.json'local i,j,k,l=
+function(i)if not(isfile and writefile and makefolder and isfolder)then return
+end pcall(function()if not isfolder'Maclib'then makefolder'Maclib'end end)pcall(
+function()writefile(g,f:JSONEncode(i))end)end,function()if not(isfile and
+readfile)or not isfile(g)then return nil end local i,j=pcall(function()return f:
+JSONDecode(readfile(g))end)if not i or typeof(j)~='table'then return nil end
+local k={}for l,m in ipairs(j)do if type(m)=='string'and#m>0 then table.insert(k
+,m)end end return(#k>0)and k or nil end,function(i)local j,k={},{}for l,m in
+ipairs(i or{})do if not j[m]then j[m]=true table.insert(k,m)end end for l,m in
+ipairs(b)do if not j[m]then j[m]=true table.insert(k,m)end end return k end,
+function()local i=game:GetService'Players'.LocalPlayer if not i then return nil
+end local j=i:FindFirstChild'PlayerGui'if not j then return nil end local k=j:
+FindFirstChild'queueGui'if not k then return nil end local l=k:FindFirstChild
+'chooseDungeon'if not l then return nil end local m=l:FindFirstChild
+'backgroundFillLeft'if not m then return nil end return m:FindFirstChild
+'ScrollingFrame'end local m=function()local m=l()if not m then return nil end
+local n={}for o,p in ipairs(m:GetChildren())do if p:IsA'ImageLabel'and#p.Name>0
+then table.insert(n,p.Name)end end return(#n>0)and n or nil end function d.
+GetDungeons()if h then return h end local n=m()if n then local o=k(n)h=o i(o)
+return o end local o=j()if o then local p=k(o)h=p return p end return b end
+function d.RefreshDungeons()h=nil return d.GetDungeons()end function d.
+GetDungeonStats(n)if type(n)~='string'or#n==0 then return nil end if e[n]~=nil
+then return e[n]end local o=game:GetService'ReplicatedStorage':FindFirstChild
+'remotes'local p=o and o:FindFirstChild'getDungeonStats'if not p then return nil
+end local q,r=pcall(function()return p:InvokeServer(n)end)if q and typeof(r)==
+'table'then e[n]=r return r end return nil end function d.GetAllowedDifficulties
+(n)if type(n)~='string'then return a end local o=c[n]if o then return o.
+Difficulties end local p,q=d.GetDungeonStats(n),{}if p then for r,s in ipairs(a)
+do if p[s]then table.insert(q,s)end end end if#q>0 then return q end return a
+end function d.IsDifficultyAllowed(n,o)if type(o)~='string'then return false end
+for p,q in ipairs(d.GetAllowedDifficulties(n))do if q==o then return true end
+end return false end function d.GetLevelReq(n,o)if type(n)~='string'then return
+0 end local p=c[n]if p then return p.LevelReq or 0 end local q=d.
+GetDungeonStats(n)if q and type(o)=='string'and q[o]then return tonumber(q[o].
+levelReq)or 0 end return 0 end d.DUNGEONS=b d.DIFFICULTIES=a return d

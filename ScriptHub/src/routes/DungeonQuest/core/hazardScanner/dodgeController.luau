@@ -5,6 +5,7 @@
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
+local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
 local safeSpot = require("@routes/DungeonQuest/core/hazardScanner/safeSpot")
@@ -64,6 +65,20 @@ local function onHeartbeat()
 		if isDodging or activeTargetSpot then
 			activeTargetSpot = nil
 			isDodging = false
+			for _, cb in ipairs(dodgeStateCallbacks) do
+				pcall(cb, false, nil, 0)
+			end
+		end
+		return
+	end
+
+	-- Kiểm tra trạng thái bất tử (sau khi hồi sinh / có Shield bảo vệ) -> Không né, cho phép chạy thẳng tới quái
+	if shared.IsInvulnerable and shared.IsInvulnerable() then
+		if isDodging or activeTargetSpot then
+			activeTargetSpot = nil
+			isDodging = false
+			local _, hum, root = getPlayerComponents()
+			stopMove(hum, root)
 			for _, cb in ipairs(dodgeStateCallbacks) do
 				pcall(cb, false, nil, 0)
 			end
@@ -139,18 +154,26 @@ local function startTracking()
 	end
 end
 
+--// Xóa sạch trạng thái né đòn hiện tại (khi hết quái, đổi room, hoặc an toàn)
+function dodgeController.Clear()
+	if isDodging or activeTargetSpot then
+		activeTargetSpot = nil
+		isDodging = false
+		local _, hum, root = getPlayerComponents()
+		stopMove(hum, root)
+		for _, cb in ipairs(dodgeStateCallbacks) do
+			pcall(cb, false, nil, 0)
+		end
+	end
+end
+
 --// Dọn dẹp
 function dodgeController.Cleanup()
 	if heartbeatConnection then
 		heartbeatConnection:Disconnect()
 		heartbeatConnection = nil
 	end
-	if isDodging or activeTargetSpot then
-		local _, hum, root = getPlayerComponents()
-		stopMove(hum, root)
-	end
-	activeTargetSpot = nil
-	isDodging = false
+	dodgeController.Clear()
 end
 
 --// Public APIs
@@ -186,6 +209,33 @@ function dodgeController.OnDodgeStateChanged(callback)
 	if type(callback) == "function" then
 		table.insert(dodgeStateCallbacks, callback)
 	end
+end
+
+-- Lắng nghe room thay đổi hoặc hết quái để lập tức hủy lệnh né cũ
+if shared.OnRoomIndexChanged then
+	shared.OnRoomIndexChanged(function()
+		dodgeController.Clear()
+	end)
+end
+
+if shared.OnEnemyChanged then
+	shared.OnEnemyChanged(function()
+		if shared.GetEnemyCount and shared.GetEnemyCount() == 0 then
+			dodgeController.Clear()
+		end
+	end)
+end
+
+if shared.OnLobbyChanged then
+	shared.OnLobbyChanged(function()
+		dodgeController.Clear()
+	end)
+end
+
+if shared.OnBossActiveChanged then
+	shared.OnBossActiveChanged(function()
+		dodgeController.Clear()
+	end)
 end
 
 -- Tự động kích hoạt tracking

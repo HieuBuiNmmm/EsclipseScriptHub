@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-15T01:25:58.765182200+00:00",
+    genDate = "2026-09-15T14:14:41.808146900+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6030,15 +6030,26 @@ local function resolveActiveConfig()
 
 	local folder = macLib.Folder
 	local path = folder .. "/settings/autoload.txt"
-	if not (isfile and readfile) then return nil end
-	if isfile(path) then
+	if isfile and isfile(path) then
 		local ok, name = pcall(readfile, path)
 		if ok and typeof(name) == "string" and #name > 0 then
 			activeConfig = name
 			return activeConfig
 		end
 	end
-	return nil
+
+	-- Fallback tạo config "Default" để luôn lưu được dữ liệu cấu hình người dùng
+	activeConfig = "Default"
+	pcall(function()
+		if writefile and makefolder and isfolder then
+			if not isfolder(folder) then makefolder(folder) end
+			if not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			if not isfile(path) then
+				writefile(path, "Default")
+			end
+		end
+	end)
+	return activeConfig
 end
 
 -- Lưu ngay lập tức (gọi trực tiếp)
@@ -7213,7 +7224,8 @@ local geometry = {}
 
 --// State
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
-local hazardPadding = 0.0 -- Mặc định = 0.0 (vừa khít 100% với kích thước thực tế của part)
+local hazardPadding = 0.0 -- Mặc định = 0.0 cố định cho danger zone đỏ bình thường
+local trajectoryMargin = 2.0 -- Margin riêng cho danger zone blue (các chiêu có trajectory)
 local data = nil
 local paddingChangedCallbacks = {}
 
@@ -7229,6 +7241,20 @@ function geometry.GetHazardPadding()
 	return hazardPadding
 end
 geometry.GetHitboxPadding = geometry.GetHazardPadding
+
+function geometry.GetTrajectoryMargin()
+	return trajectoryMargin
+end
+
+function geometry.SetTrajectoryMargin(value)
+	if type(value) == "number" and value >= 0 and value ~= trajectoryMargin then
+		trajectoryMargin = value
+		geometry.InvalidateCache()
+		for _, cb in ipairs(paddingChangedCallbacks) do
+			pcall(cb, trajectoryMargin)
+		end
+	end
+end
 
 --// Xoa toan bo HazardZones cache tren cac hazard hien tai
 function geometry.InvalidateCache()
@@ -7300,21 +7326,23 @@ end
 --// Tinh zone con cho 1 BasePart theo shape:
 --// - Part Ball/Cylinder HOẶC nằm trong danh sách ngoại lệ (isForceCircle) -> vong tron X-Z (radius = 1/2 cạnh vuông)
 --// - Box / Union / Mesh  -> OBB theo CFrame
-local function computePartZone(part, forceCircle)
+local function computePartZone(part, forceCircle, isTrajectory)
 	local size = part.Size
+	local pad = isTrajectory and trajectoryMargin or hazardPadding
 	if forceCircle or (part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder)) then
 		return { radius = math.max(size.X, size.Y, size.Z) / 2 }
 	end
 
-	local half = Vector3.new(math.max(size.X, 0) / 2 + hazardPadding, 0, math.max(size.Z, 0) / 2 + hazardPadding)
+	local half = Vector3.new(math.max(size.X, 0) / 2 + pad, 0, math.max(size.Z, 0) / 2 + pad)
 	return { half = half, cframe = part.CFrame }
 end
 
 --// Kiem tra diem P (X-Z) hoac vong tron ban kinh extraRadius co giao thoa voi 1 zone con khong
-local function isPointInZone(point, zone, extraRadius)
+local function isPointInZone(point, zone, extraRadius, isTrajectory)
 	if not zone then return false end
 	local px, pz = point.X, point.Z
 	extraRadius = extraRadius or 0
+	local pad = (isTrajectory or zone.isTrajectory) and trajectoryMargin or hazardPadding
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
@@ -7322,7 +7350,7 @@ local function isPointInZone(point, zone, extraRadius)
 		local cz = pos and pos.Z or zone.cz or 0
 		local dx = px - cx
 		local dz = pz - cz
-		local r = zone.radius + hazardPadding + extraRadius
+		local r = zone.radius + pad + extraRadius
 		return (dx * dx + dz * dz) <= (r * r)
 	end
 
@@ -7352,6 +7380,8 @@ local function buildHazardZones(hazardInfo)
 	local instance = hazardInfo.Instance
 	local hazardName = hazardInfo.Name or (instance and instance.Name) or ""
 	local forceCircle = isForceCircle(hazardName)
+	local isTrajectory = hazardInfo.IsTrajectory == true
+	local pad = isTrajectory and trajectoryMargin or hazardPadding
 	local parts
 
 	if instance:IsA("BasePart") then
@@ -7374,19 +7404,20 @@ local function buildHazardZones(hazardInfo)
 	for _, part in ipairs(parts) do
 		local pos = part.Position
 		local size = part.Size
-		local radius2D = math.max(size.X, size.Y, size.Z) / 2 + hazardPadding
+		local radius2D = math.max(size.X, size.Y, size.Z) / 2 + pad
 
 		minX = math.min(minX, pos.X - radius2D)
 		maxX = math.max(maxX, pos.X + radius2D)
 		minZ = math.min(minZ, pos.Z - radius2D)
 		maxZ = math.max(maxZ, pos.Z + radius2D)
 
-		local zone = computePartZone(part, forceCircle)
+		local zone = computePartZone(part, forceCircle, isTrajectory)
 		if zone then
 			if zone.radius then
 				zone.cx, zone.cz = pos.X, pos.Z
 			end
 			zone.part = part
+			zone.isTrajectory = isTrajectory
 			zones[#zones + 1] = zone
 		end
 	end
@@ -7495,9 +7526,10 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 		end
 
 		-- Narrow phase: union per-part, re-check part con song
+		local isTraj = info.IsTrajectory == true
 		for i = 1, #hazardZones.zones do
 			local zone = hazardZones.zones[i]
-			if isPartAlive(zone.part) and isPointInZone(point, zone, extraRadius) then
+			if isPartAlive(zone.part) and isPointInZone(point, zone, extraRadius, isTraj or zone.isTrajectory) then
 				local d2 = (point - zone.part.Position).Magnitude
 				if d2 < bestDistSq then
 					bestDistSq = d2
@@ -7513,11 +7545,11 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 end
 
 return geometry end function __DIST.k()-- HazardScanner – Visualizer: Vẽ trực quan vùng toán học (Ground Visualizer)
--- dựa trên mô hình hình học của geometry.luau (đã bao gồm Hitbox Padding).
--- Hỗ trợ vẽ đĩa tròn phẳng (CylinderHandleAdornment) cho Ball/Cylinder
--- và hộp chữ nhật phẳng (BoxHandleAdornment) cho Box/OBB.
+-- dựa trên mô hình hình học của geometry.luau.
+-- Phân loại màu sắc:
+--   - Màu Đỏ (Red): Danger Zone của chiêu thức tĩnh / bình thường.
+--   - Màu Xanh (Blue): Danger Zone của chiêu thức có quỹ đạo bay (Trajectory / Projectile), áp dụng Trajectory Margin riêng.
 
---// Imports
 --// Imports
 
 local services = __DIST.load('e')
@@ -7538,11 +7570,12 @@ local heartbeatConnection = nil
 
 --// Constants
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
-local ZONE_COLOR = Color3.fromRGB(255, 45, 45)
+local ZONE_COLOR_RED = Color3.fromRGB(255, 45, 45)
+local ZONE_COLOR_BLUE = Color3.fromRGB(0, 160, 255)
 local ZONE_TRANSPARENCY = 0.55
 local GROUND_THICKNESS = 0.25
 
---// Lay do cao mat san theo chan nguoi choi tai thoi diem ve
+--// Lấy độ cao mặt sàn theo chân người chơi tại thời điểm vẽ
 local function getPlayerGroundY()
 	local char = player and player.Character
 	if not char then return nil end
@@ -7639,6 +7672,33 @@ function visualizer.DetachZoneVisuals(hazardInfo)
 	activeVisuals[hazardInfo] = nil
 end
 
+--// Cập nhật màu sắc và bán kính/kích thước visual khi hazard chuyển trạng thái Trajectory (Red <-> Blue)
+function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
+	if not hazardInfo then return end
+	local record = activeVisuals[hazardInfo]
+	if not record or not record.items then return end
+
+	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
+	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
+
+	for _, item in ipairs(record.items) do
+		local ad = item.ad
+		local zone = item.zone
+		local part = item.part
+		if ad and ad.Parent and zone and part and part.Parent then
+			ad.Color3 = color
+			if item.isCircle and zone.radius then
+				ad.Radius = zone.radius + pad
+			elseif zone.half then
+				local halfX = math.max(part.Size.X, 0) / 2 + pad
+				local halfZ = math.max(part.Size.Z, 0) / 2 + pad
+				ad.Size = Vector3.new(halfX * 2, GROUND_THICKNESS, halfZ * 2)
+			end
+		end
+	end
+end
+
 --// Vẽ visual cho một hazard (Ghim thẳng đứng xuống mặt đất)
 function visualizer.AttachZoneVisuals(hazardInfo)
 	if not enabled or not hazardInfo then return end
@@ -7649,7 +7709,9 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local hazardZones = geometry.GetHazardZones(hazardInfo)
 	if not hazardZones or not hazardZones.zones then return end
 
-	local padding = geometry.GetHitboxPadding()
+	local isTraj = hazardInfo.IsTrajectory == true
+	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
 	local targetY = getPlayerGroundY()
 	local items = {}
 	local adornments = {}
@@ -7666,9 +7728,9 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				local cyl = Instance.new("CylinderHandleAdornment")
 				cyl.Name = "HazardGroundCircle"
 				cyl.Adornee = part
-				cyl.Radius = zone.radius + padding
+				cyl.Radius = zone.radius + pad
 				cyl.Height = GROUND_THICKNESS
-				cyl.Color3 = ZONE_COLOR
+				cyl.Color3 = color
 				cyl.Transparency = ZONE_TRANSPARENCY
 				cyl.ZIndex = 2
 				cyl.AlwaysOnTop = true
@@ -7679,7 +7741,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				box.Name = "HazardGroundBox"
 				box.Adornee = part
 				box.Size = Vector3.new(zone.half.X * 2, GROUND_THICKNESS, zone.half.Z * 2)
-				box.Color3 = ZONE_COLOR
+				box.Color3 = color
 				box.Transparency = ZONE_TRANSPARENCY
 				box.ZIndex = 2
 				box.AlwaysOnTop = true
@@ -7751,7 +7813,7 @@ function visualizer.SetEnabled(state)
 	end
 end
 
---// Lang nghe thay doi padding de refresh visual
+--// Lắng nghe thay đổi margin/padding để refresh visual
 geometry.OnPaddingChanged(function()
 	if enabled then
 		visualizer.RefreshAll()
@@ -7825,13 +7887,19 @@ function trajectory.SetPredictionLength(val)
 	end
 end
 
+function trajectory.IsHazardMoving(hazardInfo)
+	if not hazardInfo then return false end
+	local record = activeRecords[hazardInfo]
+	return record and record.isMoving == true
+end
+
 --// Tính trọng tâm (Centroid) và Độ rộng bao quát thực tế (Span Width) vuông góc với hướng di chuyển
 --// Sử dụng định lý chiếu OBB (Separating Axis Theorem): chiếu chính xác 3 trục của từng Part lên vector pháp tuyến normal
 local function getHazardCentroidAndSpan(hazardInfo, dir)
 	local inst = hazardInfo.Instance
 	if not inst or not inst.Parent then return nil, 4 end
 
-	local padding = geometry.GetHitboxPadding()
+	local margin = geometry.GetTrajectoryMargin and geometry.GetTrajectoryMargin() or 2.0
 	local parts = {}
 	local hazardName = hazardInfo.Name or (inst and inst.Name) or ""
 	local forceCircle = geometry.IsForceCircle and geometry.IsForceCircle(hazardName)
@@ -7885,8 +7953,8 @@ local function getHazardCentroidAndSpan(hazardInfo, dir)
 		sumProjU += projU
 	end
 
-	-- Bề rộng chuẩn xác = (max - min) + 2 * padding
-	local spanWidth = math.max(1, (maxProjN - minProjN) + padding * 2)
+	-- Bề rộng chuẩn xác = (max - min) + 2 * margin (khớp 100% với Blue Danger Zone)
+	local spanWidth = math.max(1, (maxProjN - minProjN) + margin * 2)
 
 	-- Tọa độ trung tâm chiếu: trung điểm khoảng cách trên trục normal và trung bình trên trục dir
 	local centerN = (minProjN + maxProjN) / 2
@@ -7944,6 +8012,7 @@ local function onHeartbeat()
 					local speed = delta.Magnitude / dt
 					local hDelta = Vector3.new(delta.X, 0, delta.Z)
 					local hSpeed = hDelta.Magnitude / dt
+					local wasMoving = record.isMoving == true
 
 					if hSpeed >= MOVING_SPEED_THRESHOLD then
 						record.isMoving = true
@@ -7951,6 +8020,18 @@ local function onHeartbeat()
 					else
 						if dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
 							record.isMoving = false
+						end
+					end
+
+					if record.isMoving ~= wasMoving then
+						info.IsTrajectory = record.isMoving
+						info.HazardZones = nil
+						if data and data.UpdateHazardVisualColor then
+							pcall(data.UpdateHazardVisualColor, info, record.isMoving)
+						end
+						local visualizer = __DIST.load('k')
+						if visualizer and visualizer.UpdateHazardVisualColor then
+							pcall(visualizer.UpdateHazardVisualColor, info, record.isMoving)
 						end
 					end
 
@@ -8280,9 +8361,42 @@ local function loadIgnoreNames()
 end
 
 local function isIgnoredName(instance)
-	if not instance then return false end
-	local clean = (instance.Name or ""):lower():gsub("%s+", "")
-	return #clean > 0 and ignoreNames[clean] == true
+	if not instance then return true end
+	local name = instance.Name
+	if typeof(name) == "string" then
+		local lower = name:lower()
+		-- 1. Bỏ qua toàn bộ debug part, adornee, marker, visual của script
+		if lower:sub(1, 3) == "tm_"
+			or lower:sub(1, 3) == "pr_"
+			or lower:sub(1, 3) == "dq_"
+			or lower:find("pathrecord")
+			or lower:find("safespot")
+			or lower:find("hazard")
+			or lower:find("adornment")
+			or lower:find("debug")
+			or lower:find("targetpart")
+			or lower:find("actualmarker") then
+			return true
+		end
+
+		-- 2. Bỏ qua các instance nằm trong container visual của script
+		local parent = instance.Parent
+		while parent and parent ~= workspace and parent ~= game do
+			local pName = parent.Name
+			if typeof(pName) == "string" then
+				local pLower = pName:lower()
+				if pLower:find("pathrecord") or pLower:sub(1, 3) == "tm_" or pLower:sub(1, 3) == "pr_" then
+					return true
+				end
+			end
+			parent = parent.Parent
+		end
+
+		-- 3. Bỏ qua các template trong ReplicatedStorage
+		local clean = lower:gsub("%s+", "")
+		if #clean > 0 and ignoreNames[clean] == true then return true end
+	end
+	return false
 end
 
 --// Kiểm tra xem instance có phải là nhân vật người chơi (LocalPlayer hoặc đồng đội) không
@@ -8384,16 +8498,25 @@ local function computeDistance(instance)
 	return math.floor((rootPos - pos).Magnitude + 0.5)
 end
 
+--// SelectionBox Colors (Red cho chiêu tĩnh, Blue cho chiêu có trajectory)
+local BOX_COLOR_RED = Color3.fromRGB(255, 45, 45)
+local BOX_SURFACE_RED = Color3.fromRGB(255, 30, 30)
+local BOX_COLOR_BLUE = Color3.fromRGB(0, 170, 255)
+local BOX_SURFACE_BLUE = Color3.fromRGB(0, 140, 255)
+
 --// Tao va gan SelectionBox don gian len tung BasePart.
 --// Khi part mo dan (Transparency > 0.85) thi box tu destroy.
-local function attachSelectionBoxes(parts, fadeConnections)
+local function attachSelectionBoxes(parts, fadeConnections, isTrajectory)
 	local boxes = {}
+	local boxColor = isTrajectory and BOX_COLOR_BLUE or BOX_COLOR_RED
+	local surfColor = isTrajectory and BOX_SURFACE_BLUE or BOX_SURFACE_RED
+
 	for _, part in ipairs(parts) do
 		if part and part.Parent then
 			local box = Instance.new("SelectionBox")
 			box.Name = "HazardSelectionBox"
-			box.Color3 = Color3.fromRGB(255, 45, 45)
-			box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
+			box.Color3 = boxColor
+			box.SurfaceColor3 = surfColor
 			box.SurfaceTransparency = 0.6
 			box.LineThickness = 0.05
 			box.Adornee = part
@@ -8410,6 +8533,20 @@ local function attachSelectionBoxes(parts, fadeConnections)
 		end
 	end
 	return boxes
+end
+
+--// Cập nhật màu SelectionBox khi chuyển trạng thái Trajectory (Red <-> Blue)
+function detection.UpdateHazardVisualColor(hazardInfo, isTrajectory)
+	if not hazardInfo or not hazardInfo.Boxes then return end
+	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
+	local boxColor = isTraj and BOX_COLOR_BLUE or BOX_COLOR_RED
+	local surfColor = isTraj and BOX_SURFACE_BLUE or BOX_SURFACE_RED
+	for _, box in ipairs(hazardInfo.Boxes) do
+		if box and box.Parent then
+			box.Color3 = boxColor
+			box.SurfaceColor3 = surfColor
+		end
+	end
 end
 
 --// Specific Skill Deep Inspector
@@ -9538,6 +9675,7 @@ end function __DIST.q()-- HazardScanner – Safe Spot Engine (DungeonQuest).
 --// Imports
 
 local services = __DIST.load('e')
+local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local geometry = __DIST.load('j')
 local trajectory = __DIST.load('l')
@@ -9843,6 +9981,23 @@ local function startTracking()
 	end
 end
 
+--// Xóa sạch trạng thái Safe Spot hiện tại (khi hết hiểm họa, đổi room, hoặc hết quái)
+function safeSpot.Clear()
+	if isFindingSafeSpot or currentTargetSafeSpot then
+		isFindingSafeSpot = false
+		currentTargetSafeSpot = nil
+		currentThreatInstance = nil
+		currentThreatType = nil
+		lastDistance = 0
+		table.clear(lastEvaluatedCandidates)
+		safeSpotVisual.Hide()
+
+		for _, cb in ipairs(safeSpotChangedCallbacks) do
+			pcall(cb, false, nil, 0)
+		end
+	end
+end
+
 --// Dọn dẹp Safe Spot
 function safeSpot.Cleanup()
 	if heartbeatConnection then
@@ -9918,10 +10073,37 @@ local function hookRespawn()
 	local lp = player or Players.LocalPlayer
 	if not lp then return end
 	lp.CharacterAdded:Connect(function()
-		safeSpotVisual.Cleanup()
+		safeSpot.Clear()
 	end)
 end
 hookRespawn()
+
+-- Lắng nghe room thay đổi hoặc hết quái để lập tức dọn sạch Safe Spot cũ
+if shared.OnRoomIndexChanged then
+	shared.OnRoomIndexChanged(function()
+		safeSpot.Clear()
+	end)
+end
+
+if shared.OnEnemyChanged then
+	shared.OnEnemyChanged(function()
+		if shared.GetEnemyCount and shared.GetEnemyCount() == 0 then
+			safeSpot.Clear()
+		end
+	end)
+end
+
+if shared.OnLobbyChanged then
+	shared.OnLobbyChanged(function()
+		safeSpot.Clear()
+	end)
+end
+
+if shared.OnBossActiveChanged then
+	shared.OnBossActiveChanged(function()
+		safeSpot.Clear()
+	end)
+end
 
 -- Khởi động tracking
 startTracking()
@@ -9940,6 +10122,7 @@ end function __DIST.r()-- HazardScanner – Dodge Controller (DungeonQuest).
 --// Imports
 
 local services = __DIST.load('e')
+local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local playerVisual = __DIST.load('n')
 local safeSpot = __DIST.load('q')
@@ -9999,6 +10182,20 @@ local function onHeartbeat()
 		if isDodging or activeTargetSpot then
 			activeTargetSpot = nil
 			isDodging = false
+			for _, cb in ipairs(dodgeStateCallbacks) do
+				pcall(cb, false, nil, 0)
+			end
+		end
+		return
+	end
+
+	-- Kiểm tra trạng thái bất tử (sau khi hồi sinh / có Shield bảo vệ) -> Không né, cho phép chạy thẳng tới quái
+	if shared.IsInvulnerable and shared.IsInvulnerable() then
+		if isDodging or activeTargetSpot then
+			activeTargetSpot = nil
+			isDodging = false
+			local _, hum, root = getPlayerComponents()
+			stopMove(hum, root)
 			for _, cb in ipairs(dodgeStateCallbacks) do
 				pcall(cb, false, nil, 0)
 			end
@@ -10074,18 +10271,26 @@ local function startTracking()
 	end
 end
 
+--// Xóa sạch trạng thái né đòn hiện tại (khi hết quái, đổi room, hoặc an toàn)
+function dodgeController.Clear()
+	if isDodging or activeTargetSpot then
+		activeTargetSpot = nil
+		isDodging = false
+		local _, hum, root = getPlayerComponents()
+		stopMove(hum, root)
+		for _, cb in ipairs(dodgeStateCallbacks) do
+			pcall(cb, false, nil, 0)
+		end
+	end
+end
+
 --// Dọn dẹp
 function dodgeController.Cleanup()
 	if heartbeatConnection then
 		heartbeatConnection:Disconnect()
 		heartbeatConnection = nil
 	end
-	if isDodging or activeTargetSpot then
-		local _, hum, root = getPlayerComponents()
-		stopMove(hum, root)
-	end
-	activeTargetSpot = nil
-	isDodging = false
+	dodgeController.Clear()
 end
 
 --// Public APIs
@@ -10121,6 +10326,33 @@ function dodgeController.OnDodgeStateChanged(callback)
 	if type(callback) == "function" then
 		table.insert(dodgeStateCallbacks, callback)
 	end
+end
+
+-- Lắng nghe room thay đổi hoặc hết quái để lập tức hủy lệnh né cũ
+if shared.OnRoomIndexChanged then
+	shared.OnRoomIndexChanged(function()
+		dodgeController.Clear()
+	end)
+end
+
+if shared.OnEnemyChanged then
+	shared.OnEnemyChanged(function()
+		if shared.GetEnemyCount and shared.GetEnemyCount() == 0 then
+			dodgeController.Clear()
+		end
+	end)
+end
+
+if shared.OnLobbyChanged then
+	shared.OnLobbyChanged(function()
+		dodgeController.Clear()
+	end)
+end
+
+if shared.OnBossActiveChanged then
+	shared.OnBossActiveChanged(function()
+		dodgeController.Clear()
+	end)
 end
 
 -- Tự động kích hoạt tracking
@@ -10163,6 +10395,8 @@ hazardScanner.GetHazardPadding = geometry.GetHazardPadding
 hazardScanner.SetHazardPadding = geometry.SetHazardPadding
 hazardScanner.GetHitboxPadding = geometry.GetHazardPadding
 hazardScanner.SetHitboxPadding = geometry.SetHazardPadding
+hazardScanner.GetTrajectoryMargin = geometry.GetTrajectoryMargin
+hazardScanner.SetTrajectoryMargin = geometry.SetTrajectoryMargin
 hazardScanner.GetHazardZones = geometry.GetHazardZones
 hazardScanner.GetNearbyHazards = geometry.GetNearbyHazards
 hazardScanner.AddForceCircleName = geometry.AddForceCircleName
@@ -10191,6 +10425,7 @@ hazardScanner.SetSafeSpotBuffer = safeSpot.SetSafetyBuffer
 hazardScanner.GetSafeSpotBuffer = safeSpot.GetSafetyBuffer
 hazardScanner.SetShowCandidates = safeSpot.SetShowCandidates
 hazardScanner.IsShowCandidates = safeSpot.IsShowCandidates
+hazardScanner.ClearSafeSpot = safeSpot.Clear
 
 --// Auto Dodge Controller (MoveTo + Final Snap)
 hazardScanner.SetAutoDodgeEnabled = dodgeController.SetEnabled
@@ -10199,6 +10434,7 @@ hazardScanner.SetDodgeSnapDistance = dodgeController.SetSnapDistance
 hazardScanner.GetDodgeSnapDistance = dodgeController.GetSnapDistance
 hazardScanner.IsCurrentlyDodging = dodgeController.IsDodging
 hazardScanner.OnDodgeStateChanged = dodgeController.OnDodgeStateChanged
+hazardScanner.ClearDodge = dodgeController.Clear
 
 --// Ground Visualizer (Debug Danger Zones)
 hazardScanner.SetVisualizerEnabled = visualizer.SetEnabled
@@ -10280,6 +10516,7 @@ return hazardScanner end function __DIST.t()-- Module Hazard Scanner trong tab C
 
 local autoSave = __DIST.load('d')
 local hazardScanner = __DIST.load('s')
+local shared = __DIST.load('f')
 local ui = __DIST.load('g')
 
 return function(window, tab)
@@ -10502,6 +10739,19 @@ return function(window, tab)
 	}, "Slider_HazardDodgeSnapDistance"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Respawn Invulnerability Time",
+		Suffix = "s",
+		Default = shared.GetRespawnProtectionDuration(),
+		Minimum = 0.5,
+		Maximum = 10.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			shared.SetRespawnProtectionDuration(val)
+		end),
+	}, "Slider_HazardRespawnInvulnerabilityTime"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Trajectory Length",
 		Suffix = " studs",
 		Default = hazardScanner.GetTrajectoryLength(),
@@ -10531,17 +10781,17 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeLogRejected")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Danger Zone Padding",
+		Name = "Blue Danger Zone Margin",
 		Suffix = " studs",
-		Default = hazardScanner.GetHazardPadding(),
+		Default = hazardScanner.GetTrajectoryMargin(),
 		Minimum = 0,
 		Maximum = 10,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetHazardPadding(val)
+			hazardScanner.SetTrajectoryMargin(val)
 		end),
-	}, "Slider_HazardZonePadding"))
+	}, "Slider_HazardTrajectoryMargin"))
 
 	leftSection:Button({
 		Name = "Clear Console",
@@ -11309,8 +11559,10 @@ local autoFarm = {}
 local enabled = false
 local running = false
 local scanInterval = 1.5 -- Seconds between periodic target scans
-local minCombatDistance = 25.0 -- Studs: khoảng cách tối thiểu (lùi lại kiting khi quái lại gần hơn mức này)
-local maxCombatDistance = 50.0 -- Studs: khoảng cách tối đa (tiến lại gần khi quái xa hơn mức này)
+local mobMinDistance = 15.0 -- Studs: khoảng cách tối thiểu quái thường
+local mobMaxDistance = 35.0 -- Studs: khoảng cách tối đa quái thường
+local bossMinDistance = 25.0 -- Studs: khoảng cách tối thiểu Boss
+local bossMaxDistance = 50.0 -- Studs: khoảng cách tối đa Boss
 local autoFaceTarget = true -- Tự động xoay mặt nhìn về phía kẻ địch khi combat
 local repathDistance = 6.0 -- Studs target moves before triggering repath
 
@@ -11319,6 +11571,7 @@ local showPlannedPath = true
 local showActualPath = true
 local showTargetVisual = true
 local showBlockerRay = true -- Show Red/Green Blocker Detection Ray
+local showCombatRangeVisual = true -- Show Min (Yellow) & Max (Green) Combat Range Circles
 
 --// Runtime State
 local currentState = State.NO_TARGET
@@ -11341,19 +11594,17 @@ local autoJumpOnStuck = false -- Toggle tự động nhảy khi vận tốc th�
 local stuckVelocityThreshold = 10.0 -- Ngưỡng vận tốc (studs/s)
 local isPaused = false -- Tạm dừng di chuyển mà không hủy path
 
-
-
-
-
---// Visual Instances
-local debugTargetPart = nil
+--// Visual Instances (Exclusively in CoreGui, zero physical parts in Workspace)
 local debugEnemyHighlight = nil
 local debugPathLines = {}
-local debugPathAdornee = nil
 local debugActualLine = nil
-local debugActualMarkerPart = nil
+local debugActualMarker = nil
 local debugBlockerLine = nil
 local debugBlockerHitMarker = nil
+local debugMinDistanceFill = nil
+local debugMinDistanceRing = nil
+local debugMaxDistanceFill = nil
+local debugMaxDistanceRing = nil
 local debugPathCacheKey = nil
 
 --// Forward declarations
@@ -11375,6 +11626,36 @@ local function getSafePosition(part)
 	local ok, pos = pcall(function() return part.Position end)
 	if not ok or not pos then return nil end
 	return pos
+end
+
+local function isTargetBoss(target)
+	if shared.IsBossActive and shared.IsBossActive() then
+		return true
+	end
+	if target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			return true
+		end
+		if target.Model then
+			local modelName = string.lower(target.Model.Name)
+			if string.find(modelName, "boss") then
+				return true
+			end
+			local parent = target.Model.Parent
+			if parent and string.find(string.lower(parent.Name), "boss") then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+local function getActiveCombatDistances(target)
+	if isTargetBoss(target) then
+		return bossMinDistance, bossMaxDistance
+	else
+		return mobMinDistance, mobMaxDistance
+	end
 end
 
 --// ============================================================
@@ -11530,6 +11811,7 @@ local function stepMovementLoop(deltaTime)
 	end
 
 	-- Check Target Reach & Combat Range Condition ([minCombatDistance, maxCombatDistance])
+	local minCombatDistance, maxCombatDistance = getActiveCombatDistances(target)
 	local flatDelta = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
 	local flatDist = flatDelta.Magnitude
 
@@ -11556,9 +11838,10 @@ local function stepMovementLoop(deltaTime)
 		local backDist = math.clamp(minCombatDistance - flatDist + 6, 4, 15)
 		local backTarget = playerPos + awayDir * backDist
 
-		-- Kiểm tra xem điểm lùi về có an toàn không
+		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh)
 		local isBackSafe = true
-		if hazardScanner and hazardScanner.IsPointSafe then
+		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
+		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
 			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
 		end
 
@@ -11588,7 +11871,8 @@ local function stepMovementLoop(deltaTime)
 
 		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
 		local dangerAhead = false
-		if hazardScanner and hazardScanner.IsPointSafe then
+		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
+		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
 			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
 			for _, stepDist in ipairs({ 3, 6, 10 }) do
 				if stepDist < flatDist then
@@ -11650,22 +11934,6 @@ end
 --// VISUAL DEBUGGING (Planned Path, Actual Move, Blocker Ray, Target)
 --// ============================================================
 
-local function ensureDebugTargetPart()
-	if debugTargetPart and debugTargetPart.Parent then return debugTargetPart end
-	debugTargetPart = Instance.new("Part")
-	debugTargetPart.Name = "TM_TargetPart_Debug"
-	debugTargetPart.Anchored = true
-	debugTargetPart.CanCollide = false
-	debugTargetPart.CanQuery = false
-	debugTargetPart.CanTouch = false
-	debugTargetPart.Size = Vector3.new(2, 2, 2)
-	debugTargetPart.Transparency = 0.4
-	debugTargetPart.Color = Color3.fromRGB(255, 50, 50)
-	debugTargetPart.Material = Enum.Material.Neon
-	debugTargetPart.Parent = workspace
-	return debugTargetPart
-end
-
 local function ensureDebugHighlight()
 	if debugEnemyHighlight and debugEnemyHighlight.Parent then return debugEnemyHighlight end
 	if debugEnemyHighlight then
@@ -11678,23 +11946,12 @@ local function ensureDebugHighlight()
 	debugEnemyHighlight.FillTransparency = 0.5
 	debugEnemyHighlight.OutlineColor = Color3.fromRGB(255, 0, 0)
 	debugEnemyHighlight.OutlineTransparency = 0
-	debugEnemyHighlight.Parent = workspace
+	debugEnemyHighlight.Parent = services.CoreGui or game:GetService("CoreGui")
 	return debugEnemyHighlight
 end
 
-local function ensureDebugPathAdornee()
-	if debugPathAdornee and debugPathAdornee.Parent then return debugPathAdornee end
-	debugPathAdornee = Instance.new("Part")
-	debugPathAdornee.Name = "TM_PathAdornee_Debug"
-	debugPathAdornee.Anchored = true
-	debugPathAdornee.CanCollide = false
-	debugPathAdornee.CanQuery = false
-	debugPathAdornee.CanTouch = false
-	debugPathAdornee.Transparency = 1
-	debugPathAdornee.Size = Vector3.new(1, 1, 1)
-	debugPathAdornee.CFrame = CFrame.new(0, 0, 0)
-	debugPathAdornee.Parent = workspace
-	return debugPathAdornee
+local function getTerrainAdornee()
+	return workspace.Terrain
 end
 
 local function destroyPathVisuals()
@@ -11711,21 +11968,14 @@ local function updateVisualDebugs()
 	local curTarget = tracker.GetTarget()
 	local playerRoot = getPlayerRoot()
 	local playerPos = playerRoot and getSafePosition(playerRoot)
+	local terrain = getTerrainAdornee()
 
-	-- 1. Target Visuals
+	-- 1. Target Visuals (Chỉ dùng Highlight TM_EnemyHighlight_Debug, không sinh Part vật lý trong workspace)
 	if not showTargetVisual or not curTarget or not curTarget.Root then
-		if debugTargetPart and debugTargetPart.Parent then
-			debugTargetPart.CFrame = CFrame.new(0, -1000, 0)
-		end
 		if debugEnemyHighlight and debugEnemyHighlight.Parent then
 			debugEnemyHighlight.Enabled = false
 		end
 	else
-		local ePos = getSafePosition(curTarget.Root)
-		if ePos then
-			local part = ensureDebugTargetPart()
-			part.CFrame = CFrame.new(ePos)
-		end
 		local hl = ensureDebugHighlight()
 		if curTarget.Model and curTarget.Model.Parent then
 			hl.Adornee = curTarget.Model
@@ -11735,16 +11985,15 @@ local function updateVisualDebugs()
 		end
 	end
 
-	-- 2. Planned Path Visuals (Green line along waypoints)
+	-- 2. Planned Path Visuals (Green line along waypoints in CoreGui)
 	local waypoints = tracker.GetWaypoints()
 	local pathInst = tracker.GetPathInstance()
-	if not showPlannedPath or not waypoints or #waypoints == 0 then
+	if not showPlannedPath or not waypoints or #waypoints == 0 or not terrain then
 		destroyPathVisuals()
 	else
 		local cacheKey = tostring(pathInst) .. "_" .. tostring(#waypoints)
 		if debugPathCacheKey ~= cacheKey then
 			destroyPathVisuals()
-			local anchor = ensureDebugPathAdornee()
 			for i = 2, #waypoints do
 				local a = waypoints[i - 1].Position
 				local b = waypoints[i].Position
@@ -11752,14 +12001,15 @@ local function updateVisualDebugs()
 				if dist > 0.01 then
 					local line = Instance.new("LineHandleAdornment")
 					line.Name = "TM_PathLine_Debug"
-					line.Adornee = anchor
+					line.Adornee = terrain
+					line.AlwaysOnTop = true
 					line.Length = dist
 					line.Thickness = 2
 					line.Transparency = 0.3
 					line.Color3 = Color3.fromRGB(0, 255, 120)
 					line.ZIndex = 0
 					line.CFrame = CFrame.lookAt(a, b)
-					line.Parent = workspace
+					line.Parent = services.CoreGui or game:GetService("CoreGui")
 					debugPathLines[#debugPathLines + 1] = line
 				end
 			end
@@ -11767,12 +12017,10 @@ local function updateVisualDebugs()
 		end
 	end
 
-	-- 3. Actual Destination Visuals (Cyan line + sphere marker)
-	if not showActualPath or not currentDestination or not playerPos then
+	-- 3. Actual Destination Visuals (Cyan line + sphere marker in CoreGui)
+	if not showActualPath or not currentDestination or not playerPos or not terrain then
 		if debugActualLine then debugActualLine.Visible = false end
-		if debugActualMarkerPart and debugActualMarkerPart.Parent then
-			debugActualMarkerPart.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugActualMarker then debugActualMarker.Visible = false end
 	else
 		local pPos = playerPos + Vector3.new(0, 0.5, 0)
 		local dPos = currentDestination + Vector3.new(0, 0.5, 0)
@@ -11780,49 +12028,43 @@ local function updateVisualDebugs()
 
 		if dist >= 0.3 then
 			if not debugActualLine or not debugActualLine.Parent then
-				local anchor = ensureDebugPathAdornee()
 				debugActualLine = Instance.new("LineHandleAdornment")
 				debugActualLine.Name = "TM_ActualPath_Debug"
-				debugActualLine.Adornee = anchor
+				debugActualLine.Adornee = terrain
+				debugActualLine.AlwaysOnTop = true
 				debugActualLine.Thickness = 3.5
 				debugActualLine.Transparency = 0.15
 				debugActualLine.Color3 = Color3.fromRGB(0, 230, 255)
 				debugActualLine.ZIndex = 2
-				debugActualLine.Parent = workspace
+				debugActualLine.Parent = services.CoreGui or game:GetService("CoreGui")
 			end
 			debugActualLine.Length = dist
 			debugActualLine.CFrame = CFrame.lookAt(pPos, dPos)
 			debugActualLine.Visible = true
 
-			if not debugActualMarkerPart or not debugActualMarkerPart.Parent then
-				debugActualMarkerPart = Instance.new("Part")
-				debugActualMarkerPart.Name = "TM_ActualMarker_Debug"
-				debugActualMarkerPart.Anchored = true
-				debugActualMarkerPart.CanCollide = false
-				debugActualMarkerPart.CanQuery = false
-				debugActualMarkerPart.CanTouch = false
-				debugActualMarkerPart.Shape = Enum.PartType.Ball
-				debugActualMarkerPart.Size = Vector3.new(1.3, 1.3, 1.3)
-				debugActualMarkerPart.Transparency = 0.2
-				debugActualMarkerPart.Material = Enum.Material.Neon
-				debugActualMarkerPart.Color = Color3.fromRGB(0, 230, 255)
-				debugActualMarkerPart.Parent = workspace
+			if not debugActualMarker or not debugActualMarker.Parent then
+				debugActualMarker = Instance.new("SphereHandleAdornment")
+				debugActualMarker.Name = "TM_ActualMarker_Debug"
+				debugActualMarker.Adornee = terrain
+				debugActualMarker.AlwaysOnTop = true
+				debugActualMarker.Radius = 0.65
+				debugActualMarker.Transparency = 0.2
+				debugActualMarker.Color3 = Color3.fromRGB(0, 230, 255)
+				debugActualMarker.ZIndex = 3
+				debugActualMarker.Parent = services.CoreGui or game:GetService("CoreGui")
 			end
-			debugActualMarkerPart.CFrame = CFrame.new(dPos)
+			debugActualMarker.CFrame = CFrame.new(dPos)
+			debugActualMarker.Visible = true
 		else
 			if debugActualLine then debugActualLine.Visible = false end
-			if debugActualMarkerPart and debugActualMarkerPart.Parent then
-				debugActualMarkerPart.CFrame = CFrame.new(0, -1000, 0)
-			end
+			if debugActualMarker then debugActualMarker.Visible = false end
 		end
 	end
 
-	-- 4. Blocker Detection Ray Visual (Red line when blocked, Green when clear)
-	if not showBlockerRay or not lastBlockerData or not playerPos or not curTarget then
+	-- 4. Blocker Detection Ray Visual (Red line when blocked, Green when clear in CoreGui)
+	if not showBlockerRay or not lastBlockerData or not playerPos or not curTarget or not terrain then
 		if debugBlockerLine then debugBlockerLine.Visible = false end
-		if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-			debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugBlockerHitMarker then debugBlockerHitMarker.Visible = false end
 	else
 		local origin = lastBlockerData.origin or (playerPos + Vector3.new(0, 1.5, 0))
 		local targetEnd = lastBlockerData.directHitPos or lastBlockerData.targetPos
@@ -11832,14 +12074,14 @@ local function updateVisualDebugs()
 			local rayDist = (targetEnd - origin).Magnitude
 			if rayDist >= 0.2 then
 				if not debugBlockerLine or not debugBlockerLine.Parent then
-					local anchor = ensureDebugPathAdornee()
 					debugBlockerLine = Instance.new("LineHandleAdornment")
 					debugBlockerLine.Name = "TM_BlockerRay_Debug"
-					debugBlockerLine.Adornee = anchor
+					debugBlockerLine.Adornee = terrain
+					debugBlockerLine.AlwaysOnTop = true
 					debugBlockerLine.Thickness = 3
 					debugBlockerLine.Transparency = 0.2
 					debugBlockerLine.ZIndex = 3
-					debugBlockerLine.Parent = workspace
+					debugBlockerLine.Parent = services.CoreGui or game:GetService("CoreGui")
 				end
 
 				debugBlockerLine.Length = rayDist
@@ -11847,46 +12089,133 @@ local function updateVisualDebugs()
 				debugBlockerLine.CFrame = CFrame.lookAt(origin, targetEnd)
 				debugBlockerLine.Visible = true
 
-				-- Marker part at blocker hit location
+				-- Marker adornment at blocker hit location
 				if isBlocked and lastBlockerData.directHitPos then
 					if not debugBlockerHitMarker or not debugBlockerHitMarker.Parent then
-						debugBlockerHitMarker = Instance.new("Part")
+						debugBlockerHitMarker = Instance.new("SphereHandleAdornment")
 						debugBlockerHitMarker.Name = "TM_BlockerHitMarker_Debug"
-						debugBlockerHitMarker.Anchored = true
-						debugBlockerHitMarker.CanCollide = false
-						debugBlockerHitMarker.CanQuery = false
-						debugBlockerHitMarker.CanTouch = false
-						debugBlockerHitMarker.Shape = Enum.PartType.Ball
-						debugBlockerHitMarker.Size = Vector3.new(1.0, 1.0, 1.0)
-						debugBlockerHitMarker.Material = Enum.Material.Neon
-						debugBlockerHitMarker.Color = Color3.fromRGB(255, 30, 30)
-						debugBlockerHitMarker.Parent = workspace
+						debugBlockerHitMarker.Adornee = terrain
+						debugBlockerHitMarker.AlwaysOnTop = true
+						debugBlockerHitMarker.Radius = 0.5
+						debugBlockerHitMarker.Transparency = 0.2
+						debugBlockerHitMarker.Color3 = Color3.fromRGB(255, 30, 30)
+						debugBlockerHitMarker.ZIndex = 4
+						debugBlockerHitMarker.Parent = services.CoreGui or game:GetService("CoreGui")
 					end
 					debugBlockerHitMarker.CFrame = CFrame.new(lastBlockerData.directHitPos)
+					debugBlockerHitMarker.Visible = true
 				else
-					if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-						debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
+					if debugBlockerHitMarker then
+						debugBlockerHitMarker.Visible = false
 					end
 				end
 			else
 				if debugBlockerLine then debugBlockerLine.Visible = false end
-				if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-					debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
-				end
+				if debugBlockerHitMarker then debugBlockerHitMarker.Visible = false end
 			end
 		end
+	end
+
+	-- 5. Combat Range Circles quanh Target Enemy (Min Distance = Yellow [0..min], Max Distance = Green [min..max] - ZERO OVERLAP)
+	local targetRoot = curTarget and curTarget.Root
+	if not showCombatRangeVisual or not targetRoot or not targetRoot.Parent then
+		if debugMinDistanceFill then debugMinDistanceFill.Visible = false end
+		if debugMinDistanceRing then debugMinDistanceRing.Visible = false end
+		if debugMaxDistanceFill then debugMaxDistanceFill.Visible = false end
+		if debugMaxDistanceRing then debugMaxDistanceRing.Visible = false end
+	else
+		local targetPos = getSafePosition(targetRoot) or targetRoot.Position
+		local floorY = playerPos and (playerPos.Y - 2.5) or (targetPos.Y - 2.5)
+		local worldTargetPos = Vector3.new(targetPos.X, floorY, targetPos.Z)
+		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
+		local localCFrame = targetRoot.CFrame:ToObjectSpace(desiredWorldCFrame)
+
+		local minCombatDistance, maxCombatDistance = getActiveCombatDistances(curTarget)
+		local safeMinDist = math.max(1, minCombatDistance)
+		local safeMaxDist = math.max(safeMinDist + 0.5, maxCombatDistance)
+		local ringThickness = 0.35
+
+		-- Min Distance Fill (Yellow solid disk from 0 to minCombatDistance around Target)
+		if not debugMinDistanceFill or not debugMinDistanceFill.Parent then
+			debugMinDistanceFill = Instance.new("CylinderHandleAdornment")
+			debugMinDistanceFill.Name = "TM_MinDistanceFill_Debug"
+			debugMinDistanceFill.AlwaysOnTop = true
+			debugMinDistanceFill.ZIndex = 4
+			debugMinDistanceFill.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMinDistanceFill.Adornee = targetRoot
+		debugMinDistanceFill.Height = 0.02
+		debugMinDistanceFill.InnerRadius = 0
+		debugMinDistanceFill.Radius = safeMinDist
+		debugMinDistanceFill.Color3 = Color3.fromRGB(255, 200, 0)
+		debugMinDistanceFill.Transparency = 0.82
+		debugMinDistanceFill.CFrame = localCFrame
+		debugMinDistanceFill.Visible = true
+
+		-- Min Distance Ring (Yellow outline at minCombatDistance around Target)
+		if not debugMinDistanceRing or not debugMinDistanceRing.Parent then
+			debugMinDistanceRing = Instance.new("CylinderHandleAdornment")
+			debugMinDistanceRing.Name = "TM_MinDistanceRing_Debug"
+			debugMinDistanceRing.AlwaysOnTop = true
+			debugMinDistanceRing.ZIndex = 5
+			debugMinDistanceRing.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMinDistanceRing.Adornee = targetRoot
+		debugMinDistanceRing.Height = 0.05
+		debugMinDistanceRing.InnerRadius = math.max(0.1, safeMinDist - ringThickness)
+		debugMinDistanceRing.Radius = safeMinDist
+		debugMinDistanceRing.Color3 = Color3.fromRGB(255, 215, 20)
+		debugMinDistanceRing.Transparency = 0.25
+		debugMinDistanceRing.CFrame = localCFrame
+		debugMinDistanceRing.Visible = true
+
+		-- Max Distance Fill (Green donut band from minCombatDistance to maxCombatDistance around Target - ZERO OVERLAP)
+		if not debugMaxDistanceFill or not debugMaxDistanceFill.Parent then
+			debugMaxDistanceFill = Instance.new("CylinderHandleAdornment")
+			debugMaxDistanceFill.Name = "TM_MaxDistanceFill_Debug"
+			debugMaxDistanceFill.AlwaysOnTop = true
+			debugMaxDistanceFill.ZIndex = 4
+			debugMaxDistanceFill.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMaxDistanceFill.Adornee = targetRoot
+		debugMaxDistanceFill.Height = 0.02
+		debugMaxDistanceFill.InnerRadius = safeMinDist -- Không đè lên vùng Yellow!
+		debugMaxDistanceFill.Radius = safeMaxDist
+		debugMaxDistanceFill.Color3 = Color3.fromRGB(0, 255, 120)
+		debugMaxDistanceFill.Transparency = 0.82
+		debugMaxDistanceFill.CFrame = localCFrame
+		debugMaxDistanceFill.Visible = true
+
+		-- Max Distance Ring (Green outline at maxCombatDistance around Target)
+		if not debugMaxDistanceRing or not debugMaxDistanceRing.Parent then
+			debugMaxDistanceRing = Instance.new("CylinderHandleAdornment")
+			debugMaxDistanceRing.Name = "TM_MaxDistanceRing_Debug"
+			debugMaxDistanceRing.AlwaysOnTop = true
+			debugMaxDistanceRing.ZIndex = 5
+			debugMaxDistanceRing.Parent = services.CoreGui or game:GetService("CoreGui")
+		end
+		debugMaxDistanceRing.Adornee = targetRoot
+		debugMaxDistanceRing.Height = 0.05
+		debugMaxDistanceRing.InnerRadius = math.max(0.1, safeMaxDist - ringThickness)
+		debugMaxDistanceRing.Radius = safeMaxDist
+		debugMaxDistanceRing.Color3 = Color3.fromRGB(0, 255, 120)
+		debugMaxDistanceRing.Transparency = 0.25
+		debugMaxDistanceRing.CFrame = localCFrame
+		debugMaxDistanceRing.Visible = true
 	end
 end
 
 local function cleanupDebugVisuals()
-	if debugTargetPart then pcall(function() debugTargetPart:Destroy() end); debugTargetPart = nil end
 	if debugEnemyHighlight then pcall(function() debugEnemyHighlight:Destroy() end); debugEnemyHighlight = nil end
 	if debugActualLine then pcall(function() debugActualLine:Destroy() end); debugActualLine = nil end
-	if debugActualMarkerPart then pcall(function() debugActualMarkerPart:Destroy() end); debugActualMarkerPart = nil end
+	if debugActualMarker then pcall(function() debugActualMarker:Destroy() end); debugActualMarker = nil end
 	if debugBlockerLine then pcall(function() debugBlockerLine:Destroy() end); debugBlockerLine = nil end
 	if debugBlockerHitMarker then pcall(function() debugBlockerHitMarker:Destroy() end); debugBlockerHitMarker = nil end
+	if debugMinDistanceFill then pcall(function() debugMinDistanceFill:Destroy() end); debugMinDistanceFill = nil end
+	if debugMinDistanceRing then pcall(function() debugMinDistanceRing:Destroy() end); debugMinDistanceRing = nil end
+	if debugMaxDistanceFill then pcall(function() debugMaxDistanceFill:Destroy() end); debugMaxDistanceFill = nil end
+	if debugMaxDistanceRing then pcall(function() debugMaxDistanceRing:Destroy() end); debugMaxDistanceRing = nil end
 	destroyPathVisuals()
-	if debugPathAdornee then pcall(function() debugPathAdornee:Destroy() end); debugPathAdornee = nil end
 end
 
 --// ============================================================
@@ -11915,31 +12244,78 @@ function autoFarm.SetScanInterval(val)
 	end
 end
 
+-- Mob (Normal Enemy) Distance Configuration
+function autoFarm.GetMobMinCombatDistance()
+	return mobMinDistance
+end
+
+function autoFarm.SetMobMinCombatDistance(val)
+	if type(val) == "number" and val >= 1 then
+		mobMinDistance = val
+		if mobMinDistance > mobMaxDistance then
+			mobMaxDistance = mobMinDistance + 5
+		end
+	end
+end
+
+function autoFarm.GetMobMaxCombatDistance()
+	return mobMaxDistance
+end
+
+function autoFarm.SetMobMaxCombatDistance(val)
+	if type(val) == "number" and val >= 2 then
+		mobMaxDistance = val
+		if mobMinDistance > mobMaxDistance then
+			mobMinDistance = math.max(1, mobMaxDistance - 5)
+		end
+	end
+end
+
+-- Boss Distance Configuration
+function autoFarm.GetBossMinCombatDistance()
+	return bossMinDistance
+end
+
+function autoFarm.SetBossMinCombatDistance(val)
+	if type(val) == "number" and val >= 1 then
+		bossMinDistance = val
+		if bossMinDistance > bossMaxDistance then
+			bossMaxDistance = bossMinDistance + 5
+		end
+	end
+end
+
+function autoFarm.GetBossMaxCombatDistance()
+	return bossMaxDistance
+end
+
+function autoFarm.SetBossMaxCombatDistance(val)
+	if type(val) == "number" and val >= 2 then
+		bossMaxDistance = val
+		if bossMinDistance > bossMaxDistance then
+			bossMinDistance = math.max(1, bossMaxDistance - 5)
+		end
+	end
+end
+
+-- Backward compatibility aliases
 function autoFarm.GetMinCombatDistance()
-	return minCombatDistance
+	return mobMinDistance
 end
 
 function autoFarm.SetMinCombatDistance(val)
-	if type(val) == "number" and val >= 1 then
-		minCombatDistance = val
-		if minCombatDistance > maxCombatDistance then
-			maxCombatDistance = minCombatDistance + 5
-		end
-	end
+	autoFarm.SetMobMinCombatDistance(val)
 end
 
 function autoFarm.GetMaxCombatDistance()
-	return maxCombatDistance
+	return mobMaxDistance
 end
 
 function autoFarm.SetMaxCombatDistance(val)
-	if type(val) == "number" and val >= 2 then
-		maxCombatDistance = val
-		if minCombatDistance > maxCombatDistance then
-			minCombatDistance = math.max(1, maxCombatDistance - 5)
-		end
-	end
+	autoFarm.SetMobMaxCombatDistance(val)
 end
+
+autoFarm.IsTargetBoss = isTargetBoss
 
 function autoFarm.IsAutoFaceTargetEnabled()
 	return autoFaceTarget
@@ -11962,8 +12338,7 @@ end
 
 function autoFarm.SetReachDistance(val)
 	if type(val) == "number" and val >= 2 then
-		maxCombatDistance = val
-		minCombatDistance = math.clamp(val * 0.6, 2, val - 2)
+		autoFarm.SetMaxCombatDistance(val)
 	end
 end
 
@@ -11979,7 +12354,7 @@ function autoFarm.SetRepathDistance(val)
 end
 
 function autoFarm.SetAutoJumpOnStuck(state)
-	autoJumpOnStuck = state and true or false
+	autoJumpOnStuck = state == true
 end
 
 function autoFarm.IsAutoJumpOnStuckEnabled()
@@ -11987,7 +12362,7 @@ function autoFarm.IsAutoJumpOnStuckEnabled()
 end
 
 function autoFarm.SetStuckVelocityThreshold(val)
-	if type(val) == "number" and val >= 1 then
+	if type(val) == "number" and val > 0 then
 		stuckVelocityThreshold = val
 	end
 end
@@ -12017,8 +12392,13 @@ function autoFarm.IsPaused()
 end
 
 --// Auto Skill APIs (Smart Skills Q & E)
-autoFarm.IsAutoSkillEnabled = autoSkill.IsEnabled
-autoFarm.SetAutoSkillEnabled = autoSkill.SetEnabled
+function autoFarm.IsAutoSkillEnabled()
+	return autoSkill.IsEnabled()
+end
+
+function autoFarm.SetAutoSkillEnabled(state)
+	autoSkill.SetEnabled(state)
+end
 autoFarm.IsAutoSkillQEnabled = autoSkill.IsSkillQEnabled
 autoFarm.SetAutoSkillQEnabled = autoSkill.SetSkillQEnabled
 autoFarm.IsAutoSkillEEnabled = autoSkill.IsSkillEEnabled
@@ -12026,7 +12406,7 @@ autoFarm.SetAutoSkillEEnabled = autoSkill.SetSkillEEnabled
 autoFarm.GetSkillERange = autoSkill.GetSkillERange
 autoFarm.SetSkillERange = autoSkill.SetSkillERange
 autoFarm.GetSkillSpamInterval = autoSkill.GetSpamInterval
-autoFarm.SetSkillSpamInterval = autoSkill.SetSpamInterval
+autoFarm.SetSkillSpamInterval = autoSkill.SetSkillSpamInterval
 autoFarm.IsBuffActive = autoSkill.IsBuffActive
 autoFarm.CastSkillQ = autoSkill.CastSkillQ
 autoFarm.CastSkillE = autoSkill.CastSkillE
@@ -12048,9 +12428,7 @@ function autoFarm.SetActualPathVisual(val)
 	showActualPath = val == true
 	if not showActualPath then
 		if debugActualLine then debugActualLine.Visible = false end
-		if debugActualMarkerPart and debugActualMarkerPart.Parent then
-			debugActualMarkerPart.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugActualMarker then debugActualMarker.Visible = false end
 	end
 end
 
@@ -12062,9 +12440,7 @@ function autoFarm.SetBlockerRayVisual(val)
 	showBlockerRay = val == true
 	if not showBlockerRay then
 		if debugBlockerLine then debugBlockerLine.Visible = false end
-		if debugBlockerHitMarker and debugBlockerHitMarker.Parent then
-			debugBlockerHitMarker.CFrame = CFrame.new(0, -1000, 0)
-		end
+		if debugBlockerHitMarker then debugBlockerHitMarker.Visible = false end
 	end
 end
 
@@ -12075,12 +12451,23 @@ end
 function autoFarm.SetTargetVisual(val)
 	showTargetVisual = val == true
 	if not showTargetVisual then
-		if debugTargetPart and debugTargetPart.Parent then
-			debugTargetPart.CFrame = CFrame.new(0, -1000, 0)
-		end
 		if debugEnemyHighlight and debugEnemyHighlight.Parent then
 			debugEnemyHighlight.Enabled = false
 		end
+	end
+end
+
+function autoFarm.IsCombatRangeVisualEnabled()
+	return showCombatRangeVisual
+end
+
+function autoFarm.SetCombatRangeVisual(val)
+	showCombatRangeVisual = val == true
+	if not showCombatRangeVisual then
+		if debugMinDistanceFill then debugMinDistanceFill.Visible = false end
+		if debugMinDistanceRing then debugMinDistanceRing.Visible = false end
+		if debugMaxDistanceFill then debugMaxDistanceFill.Visible = false end
+		if debugMaxDistanceRing then debugMaxDistanceRing.Visible = false end
 	end
 end
 
@@ -12234,7 +12621,323 @@ lifecycle.Register(function()
 end)
 
 return autoFarm
-end function __DIST.B()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+end function __DIST.B()-- Module Auto Farm trong tab Combat (DungeonQuest)
+-- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
+-- và 4 khoảng cách Combat Distance (Mob Min/Max, Boss Min/Max).
+
+--// Imports
+
+local autoSave = __DIST.load('d')
+local autoFarm = __DIST.load('A')
+local services = __DIST.load('e')
+local ui = __DIST.load('g')
+local lifecycle = __DIST.load('b')
+local RunService = services.RunService
+
+return function(window, tab)
+	--// ============================================================
+	--// LEFT COLUMN: Auto Farm Controls & Visual Debug
+	--// ============================================================
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Auto Farm" })
+
+	leftSection:Toggle({
+		Name = "Enable Auto Farm",
+		Default = autoFarm.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.Toggle(state)
+		end),
+	}, "Toggle_AutoFarm")
+
+	leftSection:Slider({
+		Name = "Rescan Interval",
+		Suffix = "s",
+		Default = autoFarm.GetScanInterval(),
+		Minimum = 0.5,
+		Maximum = 5.0,
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetScanInterval(val)
+		end),
+	}, "Slider_AF_ScanInterval")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Mob Min Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetMobMinCombatDistance(),
+		Minimum = 2,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetMobMinCombatDistance(val)
+		end),
+	}, "Slider_AF_MobMinCombatDistance"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Mob Max Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetMobMaxCombatDistance(),
+		Minimum = 5,
+		Maximum = 200,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetMobMaxCombatDistance(val)
+		end),
+	}, "Slider_AF_MobMaxCombatDistance"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Boss Min Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetBossMinCombatDistance(),
+		Minimum = 2,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetBossMinCombatDistance(val)
+		end),
+	}, "Slider_AF_BossMinCombatDistance"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Boss Max Distance",
+		Suffix = " studs",
+		Default = autoFarm.GetBossMaxCombatDistance(),
+		Minimum = 5,
+		Maximum = 200,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetBossMaxCombatDistance(val)
+		end),
+	}, "Slider_AF_BossMaxCombatDistance"))
+
+	leftSection:Toggle({
+		Name = "Auto Face Target (Look At Enemy)",
+		Default = autoFarm.IsAutoFaceTargetEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoFaceTarget(state)
+		end),
+	}, "Toggle_AF_AutoFaceTarget")
+
+	leftSection:Slider({
+		Name = "Repath Distance",
+		Suffix = " std",
+		Default = autoFarm.GetRepathDistance(),
+		Minimum = 2,
+		Maximum = 20,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetRepathDistance(val)
+		end),
+	}, "Slider_AF_RepathDistance")
+
+	leftSection:Toggle({
+		Name = "Auto Jump When Stuck (Low Velocity)",
+		Default = autoFarm.IsAutoJumpOnStuckEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoJumpOnStuck(state)
+		end),
+	}, "Toggle_AF_AutoJumpOnStuck")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Stuck Velocity Threshold",
+		Suffix = " studs/s",
+		Default = autoFarm.GetStuckVelocityThreshold(),
+		Minimum = 2,
+		Maximum = 20,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetStuckVelocityThreshold(val)
+		end),
+	}, "Slider_AF_StuckVelocity"))
+
+	leftSection:Header({ Name = "Auto Skill (Smart Buff & Damage)" })
+
+	leftSection:Toggle({
+		Name = "Enable Auto Skill (Smart Q + E)",
+		Default = autoFarm.IsAutoSkillEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoFarm.SetAutoSkillEnabled(state)
+		end),
+	}, "Toggle_AF_AutoSkill")
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill E Cast Range",
+		Suffix = " studs",
+		Default = autoFarm.GetSkillERange(),
+		Minimum = 5,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetSkillERange(val)
+		end),
+	}, "Slider_AF_SkillERange"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill Spam Interval",
+		Suffix = "s",
+		Default = autoFarm.GetSkillSpamInterval(),
+		Minimum = 0.05,
+		Maximum = 1.0,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetSkillSpamInterval(val)
+		end),
+	}, "Slider_AF_SkillSpamInterval"))
+
+	leftSection:Header({ Name = "Visual Debug" })
+
+	leftSection:Toggle({
+		Name = "Show Blocker Ray (Red/Green)",
+		Default = autoFarm.IsBlockerRayVisualEnabled(),
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetBlockerRayVisual(val)
+		end),
+	}, "Toggle_AF_BlockerRay")
+
+	leftSection:Toggle({
+		Name = "Show Planned Path (Green)",
+		Default = autoFarm.IsPlannedPathVisualEnabled(),
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetPlannedPathVisual(val)
+		end),
+	}, "Toggle_AF_PlannedPath")
+
+	leftSection:Toggle({
+		Name = "Show Actual Destination (Cyan)",
+		Default = autoFarm.IsActualPathVisualEnabled(),
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetActualPathVisual(val)
+		end),
+	}, "Toggle_AF_ActualPath")
+
+	leftSection:Toggle({
+		Name = "Show Target Indicator (Red/Glow)",
+		Default = autoFarm.IsTargetVisualEnabled(),
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetTargetVisual(val)
+		end),
+	}, "Toggle_AF_TargetVisual")
+
+	leftSection:Toggle({
+		Name = "Show Combat Range Circles (Min/Max)",
+		Default = autoFarm.IsCombatRangeVisualEnabled(),
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetCombatRangeVisual(val)
+		end),
+	}, "Toggle_AF_CombatRangeVisual")
+
+	--// ============================================================
+	--// RIGHT COLUMN: Auto Farm Monitor
+	--// ============================================================
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Auto Farm Monitor" })
+
+	local stateLabel = rightSection:Label({ Text = "State: <font color='rgb(160,160,160)'>NO_TARGET</font>" })
+	local targetLabel = rightSection:Label({ Text = "Target: <font color='rgb(160,160,160)'>None</font>" })
+	local distanceLabel = rightSection:Label({ Text = "Distance: <font color='rgb(160,160,160)'>-</font>" })
+	local velocityLabel = rightSection:Label({ Text = "Velocity: <font color='rgb(160,160,160)'>0.0 studs/s</font>" })
+	local blockerLabel = rightSection:Label({ Text = "Blocker Detection: <font color='rgb(160,160,160)'>-</font>" })
+	local modeLabel = rightSection:Label({ Text = "Destination Mode: <font color='rgb(160,160,160)'>None</font>" })
+	local waypointsLabel = rightSection:Label({ Text = "Path Nodes: <font color='rgb(160,160,160)'>0</font>" })
+
+	local monitorConnection = nil
+
+	local function updateMonitor()
+		local info = autoFarm.GetDebugInfo()
+		local stateColor = "160,160,160"
+
+		if info.state == "CHASE" then
+			stateColor = "0,255,120"
+		elseif info.state == "HOLD" then
+			stateColor = "255,200,0"
+		elseif info.state == "BLOCKED" then
+			stateColor = "255,60,60"
+		elseif info.state == "REPATHING" or info.state == "ACQUIRING_TARGET" or info.state == "TRACKING_TARGET" then
+			stateColor = "0,200,255"
+		end
+
+		pcall(function()
+			stateLabel:UpdateName(("State: <font color='rgb(%s)'>%s</font>"):format(stateColor, info.state))
+		end)
+
+		pcall(function()
+			if info.hasTarget then
+				targetLabel:UpdateName(("Target: <font color='rgb(255,220,120)'>%s</font>"):format(info.enemyName))
+				distanceLabel:UpdateName(("Distance: <font color='rgb(0,255,255)'>%.1f studs (flat %.1f)</font>"):format(info.enemyDist, info.enemyFlat))
+			else
+				targetLabel:UpdateName("Target: <font color='rgb(160,160,160)'>None</font>")
+				distanceLabel:UpdateName("Distance: <font color='rgb(160,160,160)'>-</font>")
+			end
+		end)
+
+		pcall(function()
+			local vel = info.velocity or 0
+			local velColor = vel >= 12.0 and "0,255,120" or (vel >= 10.0 and "255,200,0" or "255,80,80")
+			velocityLabel:UpdateName(("Velocity: <font color='rgb(%s)'>%.1f studs/s</font>"):format(velColor, vel))
+		end)
+
+		pcall(function()
+			if info.hasTarget and info.blocker then
+				if info.blocker.directBlocked then
+					blockerLabel:UpdateName(("Blocker: <font color='rgb(255,60,60)'>BLOCKED by '%s' (%.1fm)</font>"):format(
+						info.blocker.blockerName, info.blocker.blockerDist
+					))
+				else
+					blockerLabel:UpdateName("Blocker: <font color='rgb(0,255,120)'>CLEAR (Direct Line to Target)</font>")
+				end
+			else
+				blockerLabel:UpdateName("Blocker: <font color='rgb(160,160,160)'>None</font>")
+			end
+		end)
+
+		pcall(function()
+			local modeText = info.destMode
+			if info.nodeIndex then
+				modeText = ("%s (Node #%d)"):format(info.destMode, info.nodeIndex)
+			end
+			local modeColor = info.destMode == "Direct" and "0,255,255" or (info.destMode == "Waypoint" and "255,200,0" or (info.destMode == "Hold" and "255,200,0" or "255,80,80"))
+			modeLabel:UpdateName(("Destination Mode: <font color='rgb(%s)'>%s</font>"):format(modeColor, modeText))
+		end)
+
+		pcall(function()
+			waypointsLabel:UpdateName(("Path Nodes: <font color='rgb(160,255,160)'>%d waypoints</font>"):format(info.waypointCount))
+		end)
+	end
+
+	local lastUiUpdate = 0
+	monitorConnection = RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		if now - lastUiUpdate >= 0.25 then
+			lastUiUpdate = now
+			updateMonitor()
+		end
+	end)
+
+	lifecycle.Register(function()
+		if monitorConnection then
+			monitorConnection:Disconnect()
+			monitorConnection = nil
+		end
+	end)
+end
+end function __DIST.C()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Hazard Scanner (vùng nguy hiểm) + AutoFarm.
+-- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
+
+
+return function(window, tab)
+__DIST.load('i')(window, tab)
+__DIST.load('t')(window, tab)
+__DIST.load('B')(window, tab)
+end
+
+end function __DIST.D()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -12435,710 +13138,14 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.C()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
--- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
--- Dữ liệu lưu trong file config JSON qua macLib.contextData.
-
---// Imports
-
-local macLib = __DIST.load('a')
-local autoSave = __DIST.load('d')
-local shared = __DIST.load('f')
-local dungeonCatalog = __DIST.load('B')
-local notifier = __DIST.load('c')
-local lifecycle = __DIST.load('b')
-local autoFarm = __DIST.load('A')
-
---// Table
-local contextual = {}
-
---// Metadata field -> get/set trên autoFarm
-local FIELD_DEFS = {
-	MinCombatDistance = {
-		get = function()
-			return autoFarm.GetMinCombatDistance()
-		end,
-		set = function(v)
-			autoFarm.SetMinCombatDistance(v)
-		end,
-	},
-	MaxCombatDistance = {
-		get = function()
-			return autoFarm.GetMaxCombatDistance()
-		end,
-		set = function(v)
-			autoFarm.SetMaxCombatDistance(v)
-		end,
-	},
-	TargetReachDistance = {
-		get = function()
-			return autoFarm.GetMaxCombatDistance()
-		end,
-		set = function(v)
-			autoFarm.SetMaxCombatDistance(v)
-		end,
-	},
-}
-
-local DISPLAY_TO_KEY = {
-	["Normal"] = "Mob",
-	["Boss 1"] = "Boss1",
-	["Boss 2"] = "Boss2",
-	["Boss 3"] = "Boss3",
-}
-local KEY_TO_DISPLAY = {
-	["Mob"] = "Normal",
-	["Boss1"] = "Boss 1",
-	["Boss2"] = "Boss 2",
-	["Boss3"] = "Boss 3",
-}
-
---// Storage: data[dungeon][target][field] = value
---// Sống trong config đang chọn (nhúng vào file config .json qua macLib.contextData)
-local data = {}
-local lastDataRef = nil
-local activeConfig = nil
-local configChangedCallbacks = {}
-
---// Các tab đăng ký callback khi đổi config (để làm mới UI context).
-function contextual.OnConfigChanged(cb)
-	if type(cb) ~= "function" then return end
-	table.insert(configChangedCallbacks, cb)
-end
-
---// Nạp dữ liệu từ config đang chọn. Trả về true nếu vừa đổi config / đổi data context.
-function contextual.ReloadFromConfig()
-	local macData = macLib.contextData or {}
-	local newActive = autoSave.GetActive()
-
-	local configChanged = newActive ~= activeConfig
-	local dataChanged = macData ~= lastDataRef
-
-	data = macData
-	lastDataRef = macData
-	activeConfig = newActive
-
-	if (configChanged or dataChanged) and #configChangedCallbacks > 0 then
-		for _, cb in ipairs(configChangedCallbacks) do
-			pcall(cb, newActive)
-		end
-	end
-	return configChanged or dataChanged
-end
-
---// Đồng bộ dữ liệu lên macLib để mỗi lần save config là lưu kèm contextData
-local function bindMacLib()
-	macLib.contextData = data
-end
-
---// Lưu dữ liệu vào config đang chọn
-local function persist()
-	bindMacLib()
-	autoSave.SaveNow()
-end
-
---// Đảm bảo context có đầy đủ tất cả field (điền mặc định = global fallback nếu thiếu)
-local function ensureContextComplete(dungeon, targetKey)
-	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
-	if not KEY_TO_DISPLAY[targetKey] then return end
-
-	data[dungeon] = data[dungeon] or {}
-	data[dungeon][targetKey] = data[dungeon][targetKey] or {}
-	local ctx = data[dungeon][targetKey]
-
-	local changed = false
-	for f in pairs(FIELD_DEFS) do
-		if ctx[f] == nil then
-			ctx[f] = FIELD_DEFS[f].get()
-			changed = true
-		end
-	end
-	return changed
-end
-
---// Tự khởi tạo context base cho TOÀN BỘ map x target khi khởi tạo script.
-function contextual.SeedAllDefaults()
-	local targets = { "Mob", "Boss1", "Boss2", "Boss3" }
-	local seededAny = false
-	for _, dungeon in ipairs(dungeonCatalog.GetDungeons()) do
-		for _, targetKey in ipairs(targets) do
-			if ensureContextComplete(dungeon, targetKey) then
-				seededAny = true
-			end
-		end
-	end
-	if seededAny then
-		persist()
-	end
-	return seededAny
-end
-
---// Ghi override cho context cụ thể
-function contextual.SetField(dungeon, targetKey, field, value)
-	if not (dungeon and type(dungeon) == "string" and #dungeon > 0) then return end
-	if not KEY_TO_DISPLAY[targetKey] then return end
-	if not FIELD_DEFS[field] then return end
-
-	ensureContextComplete(dungeon, targetKey)
-	data[dungeon][targetKey][field] = value
-	persist()
-end
-
---// Xóa hết override của 1 context (về global)
-function contextual.ClearContext(dungeon, targetKey)
-	if type(dungeon) ~= "string" or #dungeon == 0 then return end
-	if data[dungeon] and data[dungeon][targetKey] then
-		data[dungeon][targetKey] = nil
-		if next(data[dungeon]) == nil then data[dungeon] = nil end
-		persist()
-	end
-end
-
---// Đọc giá trị 1 field CỦA context (override nếu có, ngược lại global hiện tại)
-function contextual.GetField(dungeon, targetKey, field)
-	local def = FIELD_DEFS[field]
-	if not def then return nil end
-	if type(dungeon) == "string" and #dungeon > 0 then
-		local ctx = data[dungeon] and data[dungeon][targetKey]
-		if ctx and ctx[field] ~= nil then return ctx[field] end
-	end
-	return def.get()
-end
-
---// Đọc BỘ giá trị của 1 context (đã fallback global)
-function contextual.GetContext(dungeon, targetKey)
-	local out = {}
-	for field in pairs(FIELD_DEFS) do
-		out[field] = contextual.GetField(dungeon, targetKey, field)
-	end
-	return out
-end
-
---// Áp bộ giá trị của 1 context vào autoFarm
-function contextual.ApplyContext(dungeon, targetKey)
-	local ctx = contextual.GetContext(dungeon, targetKey)
-	for field, def in pairs(FIELD_DEFS) do
-		def.set(ctx[field])
-	end
-end
-
---// Áp context HIỆN TẠI (dungeon đang chơi + mục tiêu đang farm) lên autoFarm.
-function contextual.ApplyCurrent()
-	local dungeon = shared.GetCurrentDungeonName()
-	local targetKey = shared.GetCombatTargetKey()
-	contextual.ApplyContext(dungeon, targetKey)
-	return dungeon, targetKey
-end
-
---// Metadata
-function contextual.GetFields()
-	local out = {}
-	for field in pairs(FIELD_DEFS) do table.insert(out, field) end
-	return out
-end
-
-function contextual.GetTargets()
-	local out = {}
-	for _, key in ipairs({ "Mob", "Boss1", "Boss2", "Boss3" }) do
-		table.insert(out, { Key = key, Display = KEY_TO_DISPLAY[key] })
-	end
-	return out
-end
-
-function contextual.GetDisplayForTarget(key)
-	return KEY_TO_DISPLAY[key] or "Normal"
-end
-
---// Auto-switch watcher: lắng nghe dungeon/boss đổi -> áp context hiện tại + thông báo.
-local lastApplied = nil
-local lastDungeon = nil
-local function findAndApply(force)
-	local dungeon = shared.GetCurrentDungeonName()
-	local targetKey = shared.GetCombatTargetKey()
-
-	if not dungeon then
-		lastDungeon = nil
-		lastApplied = nil
-		return
-	end
-
-	if not force and dungeon == lastDungeon and targetKey == lastApplied then return end
-
-	contextual.ApplyContext(dungeon, targetKey)
-
-	if targetKey ~= "Mob" then
-		notifier.Notify("Auto Farm Context", dungeon .. " - " .. (KEY_TO_DISPLAY[targetKey] or targetKey), 2)
-	end
-	lastApplied = targetKey
-	lastDungeon = dungeon
-end
-
-function contextual.Init()
-	contextual.ReloadFromConfig()
-	contextual.SeedAllDefaults()
-	bindMacLib()
-
-	shared.OnDungeonNameChanged(function() findAndApply(false) end)
-	shared.OnBossIndexChanged(function() findAndApply(false) end)
-	shared.OnBossActiveChanged(function() findAndApply(false) end)
-
-	task.spawn(function()
-		while lifecycle.IsActive() do
-			task.wait(1.0)
-			if contextual.ReloadFromConfig() then
-				findAndApply(true)
-			end
-		end
-	end)
-end
-
-return contextual
-end function __DIST.D()-- Module Auto Farm trong tab Combat (DungeonQuest)
--- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
--- và Auto Farm Context (Target Reach Distance theo từng Dungeon x Target).
-
---// Imports
-
-local autoSave = __DIST.load('d')
-local autoFarm = __DIST.load('A')
-local contextual = __DIST.load('C')
-local shared = __DIST.load('f')
-local services = __DIST.load('e')
-local ui = __DIST.load('g')
-local lifecycle = __DIST.load('b')
-local RunService = services.RunService
-
-return function(window, tab)
-	--// ============================================================
-	--// LEFT COLUMN: Auto Farm Controls & Visual Debug
-	--// ============================================================
-	local leftSection = tab:Section({ Side = "Left" })
-	leftSection:Header({ Name = "Auto Farm" })
-
-	leftSection:Toggle({
-		Name = "Enable Auto Farm",
-		Default = autoFarm.IsEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoFarm.Toggle(state)
-		end),
-	}, "Toggle_AutoFarm")
-
-	leftSection:Slider({
-		Name = "Rescan Interval",
-		Suffix = "s",
-		Default = autoFarm.GetScanInterval(),
-		Minimum = 0.5,
-		Maximum = 5.0,
-		Precision = 1,
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetScanInterval(val)
-		end),
-	}, "Slider_AF_ScanInterval")
-
-	leftSection:Slider({
-		Name = "Min Combat Distance",
-		Suffix = " studs",
-		Default = autoFarm.GetMinCombatDistance(),
-		Minimum = 2,
-		Maximum = 150,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetMinCombatDistance(val)
-		end),
-	}, "Slider_AF_MinCombatDistance")
-
-	leftSection:Slider({
-		Name = "Max Combat Distance",
-		Suffix = " studs",
-		Default = autoFarm.GetMaxCombatDistance(),
-		Minimum = 5,
-		Maximum = 200,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetMaxCombatDistance(val)
-		end),
-	}, "Slider_AF_MaxCombatDistance")
-
-	leftSection:Toggle({
-		Name = "Auto Face Target (Look At Enemy)",
-		Default = autoFarm.IsAutoFaceTargetEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoFarm.SetAutoFaceTarget(state)
-		end),
-	}, "Toggle_AF_AutoFaceTarget")
-
-	leftSection:Slider({
-		Name = "Repath Distance",
-		Suffix = " std",
-		Default = autoFarm.GetRepathDistance(),
-		Minimum = 2,
-		Maximum = 20,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetRepathDistance(val)
-		end),
-	}, "Slider_AF_RepathDistance")
-
-	leftSection:Toggle({
-		Name = "Auto Jump When Stuck (Low Velocity)",
-		Default = autoFarm.IsAutoJumpOnStuckEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoFarm.SetAutoJumpOnStuck(state)
-		end),
-	}, "Toggle_AF_AutoJumpOnStuck")
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Stuck Velocity Threshold",
-		Suffix = " studs/s",
-		Default = autoFarm.GetStuckVelocityThreshold(),
-		Minimum = 2,
-		Maximum = 20,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetStuckVelocityThreshold(val)
-		end),
-	}, "Slider_AF_StuckVelocity"))
-
-	leftSection:Header({ Name = "Auto Skill (Smart Buff & Damage)" })
-
-	leftSection:Toggle({
-		Name = "Enable Auto Skill (Smart Q + E)",
-		Default = autoFarm.IsAutoSkillEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			autoFarm.SetAutoSkillEnabled(state)
-		end),
-	}, "Toggle_AF_AutoSkill")
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Skill E Cast Range",
-		Suffix = " studs",
-		Default = autoFarm.GetSkillERange(),
-		Minimum = 5,
-		Maximum = 150,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetSkillERange(val)
-		end),
-	}, "Slider_AF_SkillERange"))
-
-	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Skill Spam Interval",
-		Suffix = "s",
-		Default = autoFarm.GetSkillSpamInterval(),
-		Minimum = 0.05,
-		Maximum = 1.0,
-		DisplayMethod = "Value",
-		Precision = 2,
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetSkillSpamInterval(val)
-		end),
-	}, "Slider_AF_SkillSpamInterval"))
-
-	leftSection:Header({ Name = "Visual Debug" })
-
-	leftSection:Toggle({
-		Name = "Show Blocker Ray (Red/Green)",
-		Default = autoFarm.IsBlockerRayVisualEnabled(),
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetBlockerRayVisual(val)
-		end),
-	}, "Toggle_AF_BlockerRay")
-
-	leftSection:Toggle({
-		Name = "Show Planned Path (Green)",
-		Default = autoFarm.IsPlannedPathVisualEnabled(),
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetPlannedPathVisual(val)
-		end),
-	}, "Toggle_AF_PlannedPath")
-
-	leftSection:Toggle({
-		Name = "Show Actual Destination (Cyan)",
-		Default = autoFarm.IsActualPathVisualEnabled(),
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetActualPathVisual(val)
-		end),
-	}, "Toggle_AF_ActualPath")
-
-	leftSection:Toggle({
-		Name = "Show Target Indicator (Red/Glow)",
-		Default = autoFarm.IsTargetVisualEnabled(),
-		Callback = autoSave.Wrap(function(val)
-			autoFarm.SetTargetVisual(val)
-		end),
-	}, "Toggle_AF_TargetVisual")
-
-	--// ============================================================
-	--// RIGHT COLUMN TOP: Auto Farm Monitor
-	--// ============================================================
-	local rightSection = tab:Section({ Side = "Right" })
-	rightSection:Header({ Name = "Auto Farm Monitor" })
-
-	local stateLabel = rightSection:Label({ Text = "State: <font color='rgb(160,160,160)'>NO_TARGET</font>" })
-	local targetLabel = rightSection:Label({ Text = "Target: <font color='rgb(160,160,160)'>None</font>" })
-	local distanceLabel = rightSection:Label({ Text = "Distance: <font color='rgb(160,160,160)'>-</font>" })
-	local velocityLabel = rightSection:Label({ Text = "Velocity: <font color='rgb(160,160,160)'>0.0 studs/s</font>" })
-	local blockerLabel = rightSection:Label({ Text = "Blocker Detection: <font color='rgb(160,160,160)'>-</font>" })
-	local modeLabel = rightSection:Label({ Text = "Destination Mode: <font color='rgb(160,160,160)'>None</font>" })
-	local waypointsLabel = rightSection:Label({ Text = "Path Nodes: <font color='rgb(160,160,160)'>0</font>" })
-
-	local monitorConnection = nil
-
-	local function updateMonitor()
-		local info = autoFarm.GetDebugInfo()
-		local stateColor = "160,160,160"
-
-		if info.state == "CHASE" then
-			stateColor = "0,255,120"
-		elseif info.state == "HOLD" then
-			stateColor = "255,200,0"
-		elseif info.state == "BLOCKED" then
-			stateColor = "255,60,60"
-		elseif info.state == "REPATHING" or info.state == "ACQUIRING_TARGET" or info.state == "TRACKING_TARGET" then
-			stateColor = "0,200,255"
-		end
-
-		pcall(function()
-			stateLabel:UpdateName(("State: <font color='rgb(%s)'>%s</font>"):format(stateColor, info.state))
-		end)
-
-		pcall(function()
-			if info.hasTarget then
-				targetLabel:UpdateName(("Target: <font color='rgb(255,220,120)'>%s</font>"):format(info.enemyName))
-				distanceLabel:UpdateName(("Distance: <font color='rgb(0,255,255)'>%.1f studs (flat %.1f)</font>"):format(info.enemyDist, info.enemyFlat))
-			else
-				targetLabel:UpdateName("Target: <font color='rgb(160,160,160)'>None</font>")
-				distanceLabel:UpdateName("Distance: <font color='rgb(160,160,160)'>-</font>")
-			end
-		end)
-
-		pcall(function()
-			local vel = info.velocity or 0
-			local velColor = vel >= 12.0 and "0,255,120" or (vel >= 10.0 and "255,200,0" or "255,80,80")
-			velocityLabel:UpdateName(("Velocity: <font color='rgb(%s)'>%.1f studs/s</font>"):format(velColor, vel))
-		end)
-
-
-
-		pcall(function()
-			if info.hasTarget and info.blocker then
-				if info.blocker.directBlocked then
-					blockerLabel:UpdateName(("Blocker: <font color='rgb(255,60,60)'>BLOCKED by '%s' (%.1fm)</font>"):format(
-						info.blocker.blockerName, info.blocker.blockerDist
-					))
-				else
-					blockerLabel:UpdateName("Blocker: <font color='rgb(0,255,120)'>CLEAR (Direct Line to Target)</font>")
-				end
-			else
-				blockerLabel:UpdateName("Blocker: <font color='rgb(160,160,160)'>None</font>")
-			end
-		end)
-
-		pcall(function()
-			local modeText = info.destMode
-			if info.nodeIndex then
-				modeText = ("%s (Node #%d)"):format(info.destMode, info.nodeIndex)
-			end
-			local modeColor = info.destMode == "Direct" and "0,255,255" or (info.destMode == "Waypoint" and "255,200,0" or (info.destMode == "Hold" and "255,200,0" or "255,80,80"))
-			modeLabel:UpdateName(("Destination Mode: <font color='rgb(%s)'>%s</font>"):format(modeColor, modeText))
-		end)
-
-		pcall(function()
-			waypointsLabel:UpdateName(("Path Nodes: <font color='rgb(160,255,160)'>%d waypoints</font>"):format(info.waypointCount))
-		end)
-	end
-
-	local lastUiUpdate = 0
-	monitorConnection = RunService.Heartbeat:Connect(function()
-		local now = os.clock()
-		if now - lastUiUpdate >= 0.25 then
-			lastUiUpdate = now
-			updateMonitor()
-		end
-	end)
-
-	lifecycle.Register(function()
-		if monitorConnection then
-			monitorConnection:Disconnect()
-			monitorConnection = nil
-		end
-	end)
-
-	--// ============================================================
-	--// RIGHT COLUMN BOTTOM: Auto Farm Context
-	--// ============================================================
-	local ctxSection = tab:Section({ Side = "Right" })
-	ctxSection:Header({ Name = "Auto Farm Context" })
-
-	local activeCtxLabel = ctxSection:Label({ Text = "" })
-	local function updateActiveCtxLabel()
-		local dungeon = shared.GetCurrentDungeonName()
-		local targetKey = shared.GetCombatTargetKey()
-		activeCtxLabel:UpdateName("Active: <font color='rgb(120,200,255)'>" .. (dungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(targetKey))
-	end
-
-	local editDungeon = shared.GetCurrentDungeonName()
-	local editTarget = "Mob"
-
-	local isSyncing = false
-	local refreshContextControls
-	local setEditControlsVisible
-	local editCtxLabel
-	local editTargetDropdown
-	local reachDistanceSlider
-	local resetCtxButton
-
-	local function isActiveContext()
-		return editDungeon == shared.GetCurrentDungeonName() and editTarget == shared.GetCombatTargetKey()
-	end
-
-	editTargetDropdown = ctxSection:Dropdown({
-		Name = "Edit Target",
-		Options = { "Normal", "Boss 1", "Boss 2", "Boss 3" },
-		Default = 1,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			local map = { ["Normal"] = "Mob", ["Boss 1"] = "Boss1", ["Boss 2"] = "Boss2", ["Boss 3"] = "Boss3" }
-			editTarget = map[option] or "Mob"
-			refreshContextControls()
-		end),
-	}, "Dropdown_AutoFarmTarget")
-
-	--// Nút Reset 2 bước (arm Confirm -> click lần 2 trong hạn)
-	local resetArmed = false
-	local resetDisarmTimer = nil
-	local RESET_NAME = "Reset Context to Global"
-	local RESET_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Reset?</font>"
-	local RESET_TIMEOUT = 3
-	local function disarmReset()
-		if not resetArmed then return end
-		resetArmed = false
-		if resetDisarmTimer then task.cancel(resetDisarmTimer); resetDisarmTimer = nil end
-		pcall(function() resetCtxButton:UpdateName(RESET_NAME) end)
-	end
-
-	resetCtxButton = ctxSection:Button({
-		Name = RESET_NAME,
-		Callback = autoSave.Wrap(function()
-			if not resetArmed then
-				resetArmed = true
-				if resetDisarmTimer then task.cancel(resetDisarmTimer) end
-				resetDisarmTimer = task.delay(RESET_TIMEOUT, disarmReset)
-				pcall(function() resetCtxButton:UpdateName(RESET_CONFIRM_NAME) end)
-				return
-			end
-			disarmReset()
-			contextual.ClearContext(editDungeon, editTarget)
-			refreshContextControls()
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	})
-
-	local minDistanceSlider
-	local maxDistanceSlider
-
-	minDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
-		Name = "Min Combat Distance",
-		Suffix = " studs",
-		Default = contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25,
-		Minimum = 2,
-		Maximum = 150,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "MinCombatDistance", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_AF_CtxMinCombatDistance"))
-
-	maxDistanceSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
-		Name = "Max Combat Distance",
-		Suffix = " studs",
-		Default = contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50,
-		Minimum = 5,
-		Maximum = 200,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(Value)
-			if isSyncing then return end
-			contextual.SetField(editDungeon, editTarget, "MaxCombatDistance", Value)
-			if isActiveContext() then contextual.ApplyContext(editDungeon, editTarget) end
-		end),
-	}, "Slider_AF_CtxMaxCombatDistance"))
-
-	refreshContextControls = function()
-		isSyncing = true
-		disarmReset()
-		pcall(function() minDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MinCombatDistance") or 25) end)
-		pcall(function() maxDistanceSlider:UpdateValue(contextual.GetField(editDungeon, editTarget, "MaxCombatDistance") or 50) end)
-		isSyncing = false
-		pcall(function() editCtxLabel:UpdateName("Editing: <font color='rgb(150,255,150)'>" .. (editDungeon or "Not in dungeon") .. "</font> / " .. contextual.GetDisplayForTarget(editTarget)) end)
-	end
-
-	setEditControlsVisible = function(visible)
-		pcall(function() minDistanceSlider:SetVisibility(visible) end)
-		pcall(function() maxDistanceSlider:SetVisibility(visible) end)
-		pcall(function() resetCtxButton:SetVisibility(visible) end)
-	end
-
-	local function resetToMob()
-		editTarget = "Mob"
-		pcall(function() editTargetDropdown:UpdateSelection("Normal") end)
-		refreshContextControls()
-	end
-
-	local prevDungeonInGame = editDungeon ~= nil
-	local function onDungeonChanged()
-		local newName = shared.GetCurrentDungeonName()
-		local nowInGame = newName ~= nil
-		editDungeon = newName
-		if nowInGame and not prevDungeonInGame then
-			resetToMob()
-		end
-		prevDungeonInGame = nowInGame
-		updateActiveCtxLabel()
-		refreshContextControls()
-		setEditControlsVisible(nowInGame)
-	end
-
-	shared.OnDungeonNameChanged(onDungeonChanged)
-	shared.OnBossIndexChanged(updateActiveCtxLabel)
-	shared.OnBossActiveChanged(updateActiveCtxLabel)
-	contextual.OnConfigChanged(function()
-		editDungeon = shared.GetCurrentDungeonName()
-		updateActiveCtxLabel()
-		refreshContextControls()
-		setEditControlsVisible(editDungeon ~= nil)
-	end)
-
-	updateActiveCtxLabel()
-	refreshContextControls()
-	setEditControlsVisible(editDungeon ~= nil)
-end
-end function __DIST.E()-- Tab Combat (DungeonQuest): gộp Player (Speed) + Hazard Scanner (vùng nguy hiểm) + AutoFarm.
--- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
-
-
-return function(window, tab)
-__DIST.load('i')(window, tab)
-__DIST.load('t')(window, tab)
-__DIST.load('D')(window, tab)
-end
-
-end function __DIST.F()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+return dungeonCatalog end function __DIST.E()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('B')
+local dungeonCatalog = __DIST.load('D')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
@@ -13318,7 +13325,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.G()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.F()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -13438,7 +13445,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.H()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.G()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -13545,7 +13552,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.I()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.H()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -13762,18 +13769,18 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.J()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.I()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('g')
-local autoJoin = __DIST.load('F')
-local autoStart = __DIST.load('G')
-local autoStartLobby = __DIST.load('H')
-local autoRetry = __DIST.load('I')
+local autoJoin = __DIST.load('E')
+local autoStart = __DIST.load('F')
+local autoStartLobby = __DIST.load('G')
+local autoRetry = __DIST.load('H')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('B')
+local dungeonCatalog = __DIST.load('D')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -13976,7 +13983,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.K()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.J()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -14444,14 +14451,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.L()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.K()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('K')
+local autoSell = __DIST.load('J')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -14715,7 +14722,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.M()-- ESP hitbox cho DungeonQuest.
+end function __DIST.L()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -15065,7 +15072,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.N()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.M()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -15206,7 +15213,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.O()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.N()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -15660,14 +15667,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.P()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.O()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('M')
-	local enemyEsp = __DIST.load('N')
-	local mapOptimizer = __DIST.load('O')
+	local esp = __DIST.load('L')
+	local enemyEsp = __DIST.load('M')
+	local mapOptimizer = __DIST.load('N')
 	local ui = __DIST.load('g')
 
 --// Hitbox mode options
@@ -15804,7 +15811,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.Q()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.P()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -16402,12 +16409,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.R()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.Q()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('Q')
+local webhook = __DIST.load('P')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -16474,7 +16481,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.S()
+end function __DIST.R()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -16543,12 +16550,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.T()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.S()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('S')
+local binder = __DIST.load('R')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -16640,13 +16647,13 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.U()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.T()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
-local antiAfk = __DIST.load('T')
+local antiAfk = __DIST.load('S')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -16676,15 +16683,15 @@ return function(window, tab)
 		end),
 	}, "Slider_AntiAFKInterval"))
 end
-end function __DIST.V()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.U()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('P')(window, tab)
-__DIST.load('R')(window, tab)
-__DIST.load('U')(window, tab)
-end end function __DIST.W()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('O')(window, tab)
+__DIST.load('Q')(window, tab)
+__DIST.load('T')(window, tab)
+end end function __DIST.V()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -16759,7 +16766,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.X()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.W()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -16767,7 +16774,7 @@ end function __DIST.X()-- Module Config trong tab Configs (DungeonQuest): tự b
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('W')
+local autoHide = __DIST.load('V')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -16924,12 +16931,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.Y()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.X()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('f')
-local autoRetry = __DIST.load('I')
+local autoRetry = __DIST.load('H')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -17096,14 +17103,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.Z()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.Y()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
+__DIST.load('W')(window, tab)
 __DIST.load('X')(window, tab)
-__DIST.load('Y')(window, tab)
-end end function __DIST._()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
+end end function __DIST.Z()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
 --   - Macro = 1 bản ghi cho cả map, chứa toàn bộ segment của các room đã record.
 --   - Mỗi segment = 1 room (auto-split khi record liên tục xuyên các room); segment
 --     phòng bosss được đánh dấu `boss: true`.
@@ -17200,7 +17207,7 @@ end
 
 local function encodeVec(vec)
 	if not vec then return nil end
-	return { X = vec.X, Y = vec.Y, Z = vec.Z }
+	return { X = math.round(vec.X * 100) / 100, Y = math.round(vec.Y * 100) / 100, Z = math.round(vec.Z * 100) / 100 }
 end
 
 local function decodeVec(t)
@@ -17425,14 +17432,16 @@ function storage.SimplifyPath(points, tol)
 		end
 	end
 
-	local out = {}
+	local outPts = {}
 	for i = 1, n do
-		if keep[i] and (#out == 0 or flatDistance(out[#out], points[i]) >= MIN_KEEP_SPACING or i == n) then
-			table.insert(out, points[i])
+		if keep[i] and (#outPts == 0 or flatDistance(outPts[#outPts], points[i]) >= MIN_KEEP_SPACING or i == n) then
+			table.insert(outPts, points[i])
 		end
 	end
-	if #out == 1 then table.insert(out, points[n]) end
-	return out
+	if #outPts == 1 then
+		table.insert(outPts, points[n])
+	end
+	return outPts
 end
 
 function storage.OnChanged(callback)
@@ -17463,7 +17472,9 @@ local function decodePhaseSeg(raw)
 	local points = {}
 	for _, p in ipairs(raw.points) do
 		local vec = decodeVec(p)
-		if vec then points[#points + 1] = vec end
+		if vec then
+			points[#points + 1] = vec
+		end
 	end
 	if #points == 0 then return nil end
 	return {
@@ -17487,7 +17498,9 @@ function storage.GetRoomSegment(mapName, roomIndex)
 	local points = {}
 	for _, p in ipairs(raw.points) do
 		local vec = decodeVec(p)
-		if vec then points[#points + 1] = vec end
+		if vec then
+			points[#points + 1] = vec
+		end
 	end
 	if #points == 0 then return nil end
 
@@ -17840,7 +17853,7 @@ function storage.ReloadFromConfig()
 	storage.ReloadFromDisk()
 end
 
-return storage end function __DIST.aa()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
+return storage end function __DIST._()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
 --   - Bấm Record 1 lần ở map = ghi NHIỀU room: khi CHUYỂN ROOM tự "rollover"
 --     (lưu segment room cũ + mở slice mới cho room mới tại vị trí cạnh cửa).
 --   - TỰ TẮT + lưu khi về LOBBY (hết map), vào BOSS (mode NORMAL), hoặc giới hạn điểm.
@@ -17852,7 +17865,7 @@ return storage end function __DIST.aa()-- Path Record System – Recorder: ghi 1
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('_')
+local storage = __DIST.load('Z')
 local notifier = __DIST.load('c')
 
 local RunService = services.RunService
@@ -17863,7 +17876,7 @@ local UserInputService = services.UserInputService
 local MIN_SPACING = 0.1 -- Studs tối thiểu giữa 2 điểm khi ghi (bắt siêu mịn để khớp tuyệt đối vị trí)
 local MAX_POINTS = 8000 -- Giới hạn điểm 1 segment
 local SIMPLIFY_TOL = 0.4 -- Studs: dung sai làm mịn Douglas-Peucker khi lưu (độ chính xác cao)
-local DWELL_MIN = 0.25 -- Giây đứng yên tối thiểu mới ghi event "dừng" (bắt cả nhấp nhả ngắn)
+local DWELL_MIN = 0.1 -- Giây đứng yên tối thiểu mới ghi event "dừng" (bắt siêu nhạy cả nhấp nhả 100ms)
 local MOVING_EPS = 0.15 -- Studs/frame: coi là đang di chuyển nếu vượt ngưỡng này
 local ROLLOVER_DELAY = 1.0 -- Giây trễ khi phát hiện đổi room: ghi nốt đoạn đi qua cửa rồi mới rollover
 local RUN_END_TIMEOUT = 6.0 -- Giây chờ room mới sau khi boss chết / teleport; hết mà chưa có room -> hết map, dừng record
@@ -17972,12 +17985,9 @@ local function stopSubscriptions()
 	if respawnConnection then respawnConnection(); respawnConnection = nil end
 end
 
---// Bắt đầu 1 SLICE (room) mới của session: reset points + timeline tại vị trí hiện tại.
---// Gọi khi rollover sang room khác.
-local function beginSlice(room, pos)
-	startRoom = room
-	startPos = pos
-	sliceActive = true
+--// Reset phần timeline của 1 slice/phase (dùng chung cho beginSlice / seal phase / Stop / Cancel).
+--// Tránh trùng lặp thủ công giữa các nhánh -> không bị sót field gây hành vi "dính" dữ liệu cũ.
+local function resetTimeline(pos)
 	points = { pos }
 	dwells = {}
 	skills = {}
@@ -17992,6 +18002,42 @@ local function beginSlice(room, pos)
 	recStartT = os.clock()
 	lastFrameT = os.clock()
 	roomChangePending = false
+end
+
+--// Reset toàn bộ state session (Stop / Cancel): xoá mọi dữ liệu đang record.
+--// KHÔNG đụng isRecording (do caller quản lý để giữ ngữ nghĩa Stop/Cancel khác nhau).
+local function clearSessionState()
+	recMap = nil
+	startRoom = 0
+	startPos = nil
+	points = {}
+	dwells = {}
+	skills = {}
+	currentDwell = nil
+	currentDwellStartRel = 0
+	stationarySince = nil
+	standingAnchor = nil
+	standingFacing = nil
+	prevFramePos = nil
+	roomChangePending = false
+	movedDist = 0
+	movingTime = 0
+	lastFrameT = nil
+	sliceIsBoss = false
+	sliceActive = false
+	allowBoss = false
+	sessionRooms = 0
+	sessionBossRooms = 0
+	sessionRawPts = 0
+end
+
+--// Bắt đầu 1 SLICE (room) mới của session: reset points + timeline tại vị trí hiện tại.
+--// Gọi khi rollover sang room khác.
+local function beginSlice(room, pos)
+	startRoom = room
+	startPos = pos
+	sliceActive = true
+	resetTimeline(pos)
 	sliceIsBoss = shared.IsBossActive()
 	roomPhases = {}
 end
@@ -18020,20 +18066,7 @@ local function sealCurrentPhaseAndStartNext(newRespawnPos)
 
 	-- Khởi tạo phase tiếp theo từ vị trí hồi sinh mới
 	startPos = newRespawnPos
-	points = { newRespawnPos }
-	dwells = {}
-	skills = {}
-	currentDwell = nil
-	currentDwellStartRel = 0
-	stationarySince = nil
-	standingAnchor = nil
-	standingFacing = nil
-	prevFramePos = newRespawnPos
-	movedDist = 0
-	movingTime = 0
-	recStartT = os.clock()
-	lastFrameT = os.clock()
-	roomChangePending = false
+	resetTimeline(newRespawnPos)
 	fireStatus()
 	return true
 end
@@ -18111,20 +18144,43 @@ function recorder.GetCurrentPoints()
 	return points
 end
 
+function recorder.GetRoomPhases()
+	return roomPhases
+end
+
+function recorder.GetCurrentDwells()
+	return dwells
+end
+
+function recorder.GetCurrentSkills()
+	return skills
+end
+
 function recorder.GetStatus()
 	return {
 		recording = isRecording,
 		map = recMap,
 		room = startRoom,
 		pointCount = #points,
+		dwellCount = #dwells,
+		skillCount = #skills,
 		phaseCount = #roomPhases + 1,
 		savedRooms = sessionRooms,
 	}
 end
 
 function recorder.OnStatusChanged(callback)
-	if type(callback) == "function" then
-		table.insert(statusListeners, callback)
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	table.insert(statusListeners, callback)
+	return function()
+		for i, listener in ipairs(statusListeners) do
+			if listener == callback then
+				table.remove(statusListeners, i)
+				break
+			end
+		end
 	end
 end
 
@@ -18234,9 +18290,8 @@ function recorder.Start()
 		table.insert(points, pos)
 	end)
 
-	--// Capture skill: chuột phải hoặc phím Q / E (kèm vị trí + facing + thời gian trong dwell).
-	--// Ghi rõ `key` (M2 / Q / E) để player tái hiện đúng nút. Bỏ qua gameProcessed cho Q/E
-	--// vì game xử lý phím này (skill) cũng là thao tác cần ghi lại.
+	--// Capture skill: chuột phải (QE Combo) hoặc phím riêng lẻ Q / E (kèm vị trí + facing + thời gian trong dwell).
+	--// Chuột phải (M2) được quy đổi thành combo cả 2 chiêu Q + E cùng lúc.
 	if captureSkills then
 		inputConnection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			if not isRecording or not captureSkills then return end
@@ -18246,7 +18301,7 @@ function recorder.Start()
 			local skillKey
 			if input.UserInputType == Enum.UserInputType.MouseButton2 then
 				if gameProcessed then return end
-				skillKey = "M2"
+				skillKey = "QE"
 			elseif input.UserInputType == Enum.UserInputType.Keyboard
 				and (input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.E) then
 				skillKey = input.KeyCode == Enum.KeyCode.Q and "Q" or "E"
@@ -18257,16 +18312,44 @@ function recorder.Start()
 			local target = getPlayerRoot()
 			if not target then return end
 
+			--// Xác định chính xác nhân vật đang đứng yên hay đang di chuyển:
+			--// - Đang di chuyển (speed >= 1.0 studs/s): Lưu thuần túy làm walkSkill (dw = 0), tuyệt đối không tạo dwell.
+			--// - Đang đứng yên (speed < 1.0 hoặc stationarySince ~= nil): Gắn chặt vào Dwell.
+			local vel = target.AssemblyLinearVelocity or target.Velocity
+			local speed = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
+			local isStationary = (stationarySince ~= nil) or (speed < 1.0)
+
+			if captureDwells and isStationary then
+				if not stationarySince then
+					local now = os.clock()
+					stationarySince = now
+					standingAnchor = target.Position
+					standingFacing = getFacing()
+				end
+				if not currentDwell then
+					currentDwellStartRel = stationarySince - recStartT
+					currentDwell = {
+						pos = standingAnchor or target.Position,
+						dur = math.max(0.1, os.clock() - stationarySince),
+						facing = standingFacing or getFacing(),
+						index = #dwells + 1,
+					}
+					table.insert(dwells, currentDwell)
+				end
+			end
+
 			local ev = {
-				pos = target.Position,
+				pos = (currentDwell and isStationary and currentDwell.pos) or target.Position,
 				facing = getFacing(),
 				key = skillKey,
 				dw = 0,
 				dwT = 0,
 			}
-			if currentDwell then
+			if currentDwell and isStationary then
 				ev.dw = currentDwell.index
 				ev.dwT = math.max(0, (os.clock() - recStartT) - currentDwellStartRel)
+				-- Cập nhật facing của dwell theo hướng vừa bắn skill
+				currentDwell.facing = ev.facing or currentDwell.facing
 			end
 			table.insert(skills, ev)
 		end)
@@ -18385,10 +18468,11 @@ function recorder.Stop(reason)
 			notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
 		else
 			local extra = ""
-			if slice.events then
-				extra = (" (%d skill, %d nhịp dừng, %.1fspd)"):format(slice.skills, slice.dwells, slice.avgSpeed)
-			else
-				extra = (" (%.1fspd)"):format(slice.avgSpeed)
+			local phase1 = slice.phase1
+			if phase1 and phase1.events then
+				extra = (" (%d skill, %d nhịp dừng, %.1fspd)"):format(#(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
+			elseif phase1 then
+				extra = (" (%.1fspd)"):format(phase1.speed or 0)
 			end
 			local bossTag = startRoom > 0 and (sliceIsBoss and " (boss)" or "") or ""
 			notifier.Notify("Path Record", ("Đã lưu room %d%s%s vào map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
@@ -18400,28 +18484,7 @@ function recorder.Stop(reason)
 		notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
 	end
 
-	recMap = nil
-	startRoom = 0
-	startPos = nil
-	points = {}
-	dwells = {}
-	skills = {}
-	currentDwell = nil
-	currentDwellStartRel = 0
-	stationarySince = nil
-	standingAnchor = nil
-	standingFacing = nil
-	prevFramePos = nil
-	roomChangePending = false
-	movedDist = 0
-	movingTime = 0
-	lastFrameT = nil
-	sliceIsBoss = false
-	sliceActive = false
-	allowBoss = false
-	sessionRooms = 0
-	sessionBossRooms = 0
-	sessionRawPts = 0
+	clearSessionState()
 	fireStatus()
 	return slice ~= nil
 end
@@ -18431,33 +18494,12 @@ function recorder.Cancel()
 	if not isRecording then return end
 
 	stopSubscriptions()
-	recMap = nil
-	startRoom = 0
-	startPos = nil
-	points = {}
-	dwells = {}
-	skills = {}
-	currentDwell = nil
-	currentDwellStartRel = 0
-	stationarySince = nil
-	standingAnchor = nil
-	standingFacing = nil
-	prevFramePos = nil
-	roomChangePending = false
-	movedDist = 0
-	movingTime = 0
-	lastFrameT = nil
-	sliceIsBoss = false
-	sliceActive = false
-	allowBoss = false
-	sessionRooms = 0
-	sessionBossRooms = 0
-	sessionRawPts = 0
+	clearSessionState()
 	isRecording = false
 	fireStatus()
 end
 
-return recorder end function __DIST.ab()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
+return recorder end function __DIST.aa()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
 --   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
 --     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
 --   - BOSS room:
@@ -18473,10 +18515,8 @@ return recorder end function __DIST.ab()-- Path Record System – Player: chạy
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('_')
+local storage = __DIST.load('Z')
 local notifier = __DIST.load('c')
-local selector = __DIST.load('w')
-local movement = __DIST.load('y')
 
 local player = services.player
 local VirtualInputManager = services.VirtualInputManager
@@ -18488,7 +18528,9 @@ local ARRIVE_DIST = 0.5 -- Studs: ngưỡng coi là đã tới đích cuối (ch
 local START_REPOSITION_TIMEOUT = 8.0 -- Giây tối đa đi về node đầu trước khi phát
 local LOOKAHEAD_MIN = 2.0 -- Studs: lookahead tối thiểu tại góc cua gắt (chống cắt góc/rơi vực)
 local LOOKAHEAD_MAX = 4.5 -- Studs: lookahead tối đa trên đường thẳng (bám sát lòng đường tuyệt đối)
-local PRE_AIM_DIST = 1.5 -- Studs: khoảng cách bắt đầu xoay mặt đón đầu trước khi chạm mốc xả skill
+local PRE_AIM_TIME = 0.45 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng
+local PRE_AIM_DIST_MIN = 6.0 -- Studs tối thiểu để Pre-Aim đón đầu (thấy rõ góc quay)
+local PRE_AIM_DIST_MAX = 14.0 -- Studs tối đa để Pre-Aim đón đầu
 local PROJECT_BACK = 8.0 -- Studs: hình chiếu chỉ tìm trong cửa sổ quanh progress (chống nhảy nhánh giao)
 local PROJECT_FRONT = 14.0 -- Studs: >= LOOKAHEAD_MAX + margin; nhánh giao/đường vòng nằm ngoài -> không bao giờ bị bắt hụt
 local STUCK_TIMEOUT = 8.0 -- Giây không nhúc nhích -> nghi bị kẹt
@@ -18507,6 +18549,28 @@ local replaySkills = true
 local replayFacing = true
 local skillFaceHold = 0.6 -- Giây giữ facing sau khi xả skill khi đang đi (mặc định 0.6s)
 local doubleClickDelay = 0.005 -- Giây khoảng nghỉ giữa 2 lần click (mặc định 0.005s)
+local preAimLeadTime = 0.45 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng
+local startPauseTime = 0.2 -- Giây dừng chờ tại node xuất phát (Start Node), thay thế thời gian dwell gốc
+
+function mover.SetStartPauseTime(seconds)
+	if type(seconds) == "number" then
+		startPauseTime = math.clamp(seconds, 0, 5.0)
+	end
+end
+
+function mover.GetStartPauseTime()
+	return startPauseTime
+end
+
+function mover.SetPreAimTime(seconds)
+	if type(seconds) == "number" then
+		preAimLeadTime = math.clamp(seconds, 0.1, 1.5)
+	end
+end
+
+function mover.GetPreAimTime()
+	return preAimLeadTime
+end
 
 function mover.SetSkillFaceHold(seconds)
 	if type(seconds) == "number" then
@@ -18602,6 +18666,9 @@ local activeMap = nil -- Map đang playback
 local playFullMap = false -- Mode FULL của map: đi qua cả boss room theo path đã ghi
 local playThread = nil
 local currentPhaseIndex = 1
+local currentProgress = 0
+local totalProgress = 0
+local progressPercent = 0
 local statusListeners = {}
 
 local function fireStatus(reason)
@@ -18612,6 +18679,9 @@ local function fireStatus(reason)
 		boss = shared.IsBossActive(),
 		phase = currentPhaseIndex,
 		resume = resumeWanted,
+		progressPercent = progressPercent,
+		progressStuds = currentProgress,
+		totalStuds = totalProgress,
 		reason = reason,
 	}
 	for _, cb in ipairs(statusListeners) do
@@ -18654,29 +18724,41 @@ local function cancelMove(humanoid)
 	end
 end
 
---// Mô phỏng kích hoạt skill ThĐÚNG nút như lúc record:
---//   - "Q"/"E": VirtualInputManager:SendKeyEvent
---//   - "M2" (hoặc nil = macro cũ): chuột phải như trước.
+--// Mô phỏng kích hoạt skill theo đúng nút đã record:
+--//   - "Q": VirtualInputManager:SendKeyEvent(Q)
+--//   - "E": VirtualInputManager:SendKeyEvent(E)
+--//   - "QE" / "Q+E" / "M2" (hoặc nil = macro cũ): Bắn cả 2 chiêu Q + E đồng thời (Dual Cast).
 --// Double-cast không đồng bộ (task.spawn) để hoàn toàn KHÔNG chặn luồng di chuyển, chống khựng bước.
 local function fireSkill(skillKey)
 	local hold = shared.GetKeyHoldTime() or 0.05
 	local delayTime = doubleClickDelay
-	local mouse = UserInputService:GetMouseLocation()
 	task.spawn(function()
 		pcall(function()
-			local function send(down)
-				if skillKey == "Q" or skillKey == "E" then
-					local code = skillKey == "Q" and Enum.KeyCode.Q or Enum.KeyCode.E
-					VirtualInputManager:SendKeyEvent(down, code, false, game)
+			local function sendKey(keyCode, down)
+				VirtualInputManager:SendKeyEvent(down, keyCode, false, game)
+			end
+
+			local function triggerCombo(key)
+				if key == "Q" then
+					sendKey(Enum.KeyCode.Q, true)
+					task.wait(hold)
+					sendKey(Enum.KeyCode.Q, false)
+				elseif key == "E" then
+					sendKey(Enum.KeyCode.E, true)
+					task.wait(hold)
+					sendKey(Enum.KeyCode.E, false)
 				else
-					VirtualInputManager:SendMouseButtonEvent(mouse.X, mouse.Y, 1, down, game, false)
+					-- "QE", "Q+E", "M2" hoặc nil: Bắn đồng thời cả Q và E
+					sendKey(Enum.KeyCode.Q, true)
+					sendKey(Enum.KeyCode.E, true)
+					task.wait(hold)
+					sendKey(Enum.KeyCode.Q, false)
+					sendKey(Enum.KeyCode.E, false)
 				end
 			end
 
 			-- Lần bấm 1
-			send(true)
-			task.wait(hold)
-			send(false)
+			triggerCombo(skillKey)
 
 			-- Khoảng nghỉ trước lần bấm 2 (tùy chỉnh qua slider)
 			if delayTime > 0 then
@@ -18684,9 +18766,7 @@ local function fireSkill(skillKey)
 			end
 
 			-- Lần bấm 2 (double-tap đảm bảo ăn skill nếu lệch CD tích tắc)
-			send(true)
-			task.wait(hold)
-			send(false)
+			triggerCombo(skillKey)
 		end)
 	end)
 end
@@ -18705,114 +18785,24 @@ local function setFacing(root, faceLook)
 	end)
 end
 
+--// Xoay mượt đón đầu (Pre-Aim Lerp) về hướng ngắm mục tiêu từ xa
+local function smoothFacing(root, faceLook, alpha)
+	if not root or not root.Parent then return end
+	local hum = shared.GetHumanoid()
+	if hum and hum.AutoRotate ~= false then hum.AutoRotate = false end
+	local look = faceLook or Vector3.new(1, 0, 0)
+	if look.Magnitude < 0.1 then look = Vector3.new(1, 0, 0) end
+	look = Vector3.new(look.X, 0, look.Z).Unit
+	pcall(function()
+		local p = root.Position
+		local targetCF = CFrame.lookAt(p, p + look)
+		root.CFrame = root.CFrame:Lerp(targetCF, math.clamp(alpha or 0.35, 0.05, 1))
+	end)
+end
+
 local function restoreAutoRotate()
 	local hum = shared.GetHumanoid()
 	if hum then hum.AutoRotate = true end
-end
-
---// Đánh bóng: dẫn đường bằng Pathfinding (tái sử dụng pha CHASE của AutoFarm) để
---// tiếp cận node đầu của segment thay vì MoveTo thẳng (kẹt tường/cầu thang/mương).
---//  - Tìm path: thử params chuẩn -> relaxed (nhỏ hơn, leo dốc cao hơn).
---//  - Bám waypoint: tới gần cách <= 3.5 stud -> nhảy waypoint tiếp theo.
---//  - Blocking checker: MoveTo thẳng đích kẹt tường/mương -> lùi chọn node waypoint
---//    còn nhìn thấy; hết sạch -> repath.
---//  - Kẹt (vận tốc thấp): tự nhảy + repath sau 1.5s.
---// Trả về true khi tới node đầu; false + lý do khi bị ngắt giữa chừng.
-local function chaseToStart(humanoid, root, room, allowBoss, target, deadline)
-	local ignoreList = { player.Character }
-	local pathInstance = nil
-	local waypoints = {}
-	local waypointIdx = 1
-	local stuckTimer = 0
-	local lastJumpTime = 0
-
-	while isPlaying do
-		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
-		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
-		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
-		if shared.IsBossActive() and not allowBoss then restoreAutoRotate(); return false, "boss" end
-
-		local pos = getSafePosition(root)
-		if not pos then
-			task.wait(0.08)
-			continue
-		end
-
-		--// Tới node đầu -> xong.
-		if flatDistance(pos, target) <= ARRIVE_DIST then break end
-		if os.clock() >= deadline then break end
-
-		--// Nếu chưa có path hoặc bị BLOCKED/REPATHING -> tìm lại đường.
-		if not pathInstance or #waypoints == 0 then
-			if pathInstance then pcall(function() pathInstance:Destroy() end) end
-			pathInstance, waypoints = nil, {}
-			local p, wps = selector.ComputePathWithCost(pos, target)
-			if p and wps and #wps > 0 then
-				pathInstance = p
-				waypoints = wps
-				waypointIdx = 1
-				stuckTimer = 0
-			else
-				--// Không tìm thấy đường (navmesh thiếu) -> nhảy thẳng về đích,
-				--// chờ repath khi gần hoặc kẹt.
-				pcall(function() humanoid:MoveTo(target) end)
-				task.wait(0.1)
-				continue
-			end
-		end
-
-		--// Bám waypoint: đã tới cách <= 3.5 stud -> tăng chỉ số.
-		local wp = waypoints[waypointIdx]
-		if wp and flatDistance(pos, wp.Position) <= 3.5 then
-			waypointIdx = math.min(#waypoints + 1, waypointIdx + 1)
-		end
-
-		--// Blocking checker (giống AutoFarm CHASE): MoveTo thẳng trúng vật cản thì
-		--// lùi chọn node waypoint còn "nhìn thấy"; hết sạch -> repath frame sau.
-		local chosenDest, mode = movement.ResolveDestination(pos, target, waypoints, waypointIdx, ignoreList)
-		if mode == "Blocked" or not chosenDest then
-			if pathInstance then pcall(function() pathInstance:Destroy() end) end
-			pathInstance, waypoints = nil, {}
-			pcall(function() humanoid:MoveTo(pos) end)
-			task.wait(0.1)
-			continue
-		end
-
-		--// Di chuyển + nhảy nếu vượt chướng ngại cao / waypoint yêu cầu Jump.
-		movement.ExecuteMove(humanoid, pos, chosenDest, waypoints, waypointIdx)
-
-		--// Kẹt bằng vận tốc: vận tốc ngang thấp -> nhảy (chống vướng chân),
-		--// kẹt lâu 1.5s -> repath.
-		local distToDest = (chosenDest - pos).Magnitude
-		if distToDest >= 1.5 then
-			local vel = root.AssemblyLinearVelocity or root.Velocity
-			local speed = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
-			local now = os.clock()
-			if speed < 10 then
-				stuckTimer += 0.1
-				if (now - lastJumpTime) >= 0.4 then
-					pcall(function() humanoid.Jump = true end)
-					lastJumpTime = now
-				end
-				if stuckTimer >= 1.5 then
-					if pathInstance then pcall(function() pathInstance:Destroy() end) end
-					pathInstance, waypoints = nil, {}
-					stuckTimer = 0
-				end
-			else
-				stuckTimer = 0
-			end
-		else
-			stuckTimer = 0
-		end
-
-		task.wait(0.1)
-	end
-
-	if pathInstance then pcall(function() pathInstance:Destroy() end) end
-	pathInstance = nil
-	if not isPlaying then return false, "stopped" end
-	return true
 end
 
 --// Đi liên tục toàn bộ quỹ đạo 1 segment — KHÔNG bao giờ dừng giữa chừng.
@@ -18845,6 +18835,11 @@ local function walkThrough(segment, room, allowBoss)
 		total += segLen
 		cum[i] = total
 	end
+
+	currentProgress = 0
+	totalProgress = total
+	progressPercent = 0
+	fireStatus("progress_init")
 
 	--// Hình chiếu gần nhất của 1 điểm lên đường -> chiều dài cung tương ứng.
 	--// Chỉ xét các SEGMENT trong cửa sổ [minArc, maxArc] quanh progress hiện tại:
@@ -18898,12 +18893,15 @@ local function walkThrough(segment, room, allowBoss)
 	end
 
 	--// Tính Lookahead thích ứng theo độ uốn của quỹ đạo phía trước (Adaptive Lookahead):
-	--// - Góc cua gấp (>= 60°-90°): Lookahead giảm xuống LOOKAHEAD_MIN (2.5 - 3.5 studs) để bám sát cua (chống cắt góc/rơi vực).
-	--// - Đường thẳng: Lookahead tăng lên LOOKAHEAD_MAX (7.0 studs) để chạy liền mạch, mượt mà.
+	--// - Góc cua gấp (>= 60°-90°): Lookahead giảm xuống LOOKAHEAD_MIN (2.0 studs) để bám sát cua (chống cắt góc/rơi vực).
+	--// - Đường thẳng: Lookahead tăng lên LOOKAHEAD_MAX (4.5 studs) để chạy liền mạch, mượt mà.
 	local function getAdaptiveLookahead(curProgress)
-		local d1 = math.min(curProgress + 2.5, total)
-		local d2 = math.min(curProgress + 5.5, total)
-		if d2 - curProgress < 1.0 then return LOOKAHEAD_MIN end
+		local remain = total - curProgress
+		if remain <= 1.0 then return math.max(0.2, remain) end
+
+		local d1 = math.min(curProgress + 2.0, total)
+		local d2 = math.min(curProgress + 4.5, total)
+		if d2 - curProgress < 0.8 then return math.min(LOOKAHEAD_MIN, remain) end
 
 		local p0 = pointAt(curProgress)
 		local p1 = pointAt(d1)
@@ -18919,9 +18917,10 @@ local function walkThrough(segment, room, allowBoss)
 			-- dot = 1.0 (thẳng) -> t = 1.0 -> LOOKAHEAD_MAX
 			-- dot <= 0 (cua gắt >= 90°) -> t = 0 -> LOOKAHEAD_MIN
 			local t = math.clamp((dot + 0.2) / 1.2, 0, 1)
-			return LOOKAHEAD_MIN + (LOOKAHEAD_MAX - LOOKAHEAD_MIN) * t
+			local lk = LOOKAHEAD_MIN + (LOOKAHEAD_MAX - LOOKAHEAD_MIN) * t
+			return math.min(lk, remain)
 		end
-		return LOOKAHEAD_MAX
+		return math.min(LOOKAHEAD_MAX, remain)
 	end
 
 	--// ---- Timeline events (record: đứng chờ + skill chuột phải) ----
@@ -18935,12 +18934,29 @@ local function walkThrough(segment, room, allowBoss)
 		local rawDwells = segment.events.dwells or {}
 		local rawSkills = segment.events.skills or {}
 		for i, d in ipairs(rawDwells) do
+			local arcVal = projectPoint(d.pos)
+			local durVal = d.dur or 0
+			-- Nếu đây là Dwell ở node xuất phát (arc <= 0.8) hoặc node kết thúc (arc >= total - 0.8), dùng thời gian từ Slider thay thế
+			if arcVal <= 0.8 or arcVal >= total - 0.8 then
+				durVal = startPauseTime
+			end
 			dwells[i] = {
-				arc = projectPoint(d.pos),
-				dur = d.dur or 0,
+				arc = arcVal,
+				dur = durVal,
 				facing = d.facing,
 				skills = {},
+				pos = d.pos,
 			}
+		end
+		-- Nếu chưa có dwell ở start nhưng slider startPauseTime > 0, thêm 1 nhịp dừng xuất phát
+		if startPauseTime > 0 and (#dwells == 0 or dwells[1].arc > 0.8) then
+			table.insert(dwells, 1, {
+				arc = 0,
+				dur = startPauseTime,
+				facing = segment.events and segment.events.startFacing or nil,
+				skills = {},
+				pos = segment.startPos or path[1],
+			})
 		end
 		for _, s in ipairs(rawSkills) do
 			local attached = (replayPauses and s.dw > 0 and dwells[s.dw]) and dwells[s.dw] or nil
@@ -18959,63 +18975,125 @@ local function walkThrough(segment, room, allowBoss)
 
 	--// Đứng yên re-run theo đúng duration record (xoay mặt + xả skill trong khoảng dừng).
 	local function runDwell(dwell)
-		if not isPlaying or dwell.dur <= 0 then return true end
+		if not isPlaying or (dwell.dur or 0) <= 0 then return true end
 		if replayPauses then
-			if replayFacing then setFacing(root, dwell.facing) end
-			local p0 = getSafePosition(root)
+			local dwellTargetPos = dwell.pos or getSafePosition(root)
+			if dwellTargetPos then
+				pcall(function() humanoid:MoveTo(dwellTargetPos) end)
+			end
+
+			if replayFacing and dwell.facing then
+				setFacing(root, dwell.facing)
+			end
+
 			local startT = os.clock()
-			local skIdx = 1
-			while isPlaying and os.clock() - startT < dwell.dur do
+			local firedSkills = {}
+			local dwellFaceHoldUntil = 0
+
+			while isPlaying and (os.clock() - startT < dwell.dur) do
 				if not root or not root.Parent then return false, "no_root" end
 				if shared.IsDead() then return false, "dead" end
 				if shared.GetCurrentRoomIndex() ~= room then return false, "room_changed" end
 				if shared.IsBossActive() and not allowBoss then return false, "boss" end
-				--// Giữ chân tại chỗ (chống đẩy lệch) trong suốt khoảng dừng.
-				local anchor = p0 or getSafePosition(root)
-				if anchor then pcall(function() humanoid:MoveTo(anchor) end) end
-				local sk = dwell.skills[skIdx]
-				if sk and os.clock() - startT >= sk.tOff then
-					if replaySkills then
-						if replayFacing then setFacing(root, sk.facing) end
-						fireSkill(sk.key or "M2")
-					elseif replayFacing then
-						setFacing(root, sk.facing)
-					end
-					skIdx += 1
+
+				-- Ghim chặt chân tại điểm dừng
+				if dwellTargetPos then
+					pcall(function() humanoid:MoveTo(dwellTargetPos) end)
 				end
-				task.wait(0.05)
+
+				-- Kích hoạt mọi skill khi đến mốc tOff
+				local elapsed = os.clock() - startT
+				for sIdx, sk in ipairs(dwell.skills or {}) do
+					if not firedSkills[sIdx] and elapsed >= (sk.tOff or 0) then
+						firedSkills[sIdx] = true
+						if replayFacing and sk.facing then
+							setFacing(root, sk.facing)
+							dwellFaceHoldUntil = os.clock() + skillFaceHold
+						end
+						if replaySkills then
+							fireSkill(sk.key or "QE")
+						end
+					end
+				end
+
+				task.wait(0.04)
 			end
+
+			-- Đảm bảo xả nốt skill nào chưa kịp xả do dwell duration kết thúc sớm
+			for sIdx, sk in ipairs(dwell.skills or {}) do
+				if not firedSkills[sIdx] then
+					firedSkills[sIdx] = true
+					if replayFacing and sk.facing then
+						setFacing(root, sk.facing)
+						dwellFaceHoldUntil = os.clock() + skillFaceHold
+					end
+					if replaySkills then
+						fireSkill(sk.key or "QE")
+					end
+				end
+			end
+
+			-- Giữ facing sau skill cuối trong dwell
+			while isPlaying and os.clock() < dwellFaceHoldUntil do
+				if dwellTargetPos then pcall(function() humanoid:MoveTo(dwellTargetPos) end) end
+				task.wait(0.04)
+			end
+
 			if replayFacing then restoreAutoRotate() end
 		end
 		return true
 	end
 
-	--// Đảm bảo khi bắt đầu di chuyển: luôn đi về NODE ĐẦU TIÊN (path[1] - vị trí xuất phát).
-	--// Không chiếu tìm node giữa đường (tránh bị nhảy cóc sang nhánh khác khi đi ngang qua).
-	--// Tiếp cận bằng Pathfinding (giống pha CHASE của AutoFarm) thay vì MoveTo thẳng.
-	local repositionStart = path[1]
-	local repositionDeadline = os.clock() + START_REPOSITION_TIMEOUT
-	local rpOk, rpErr = chaseToStart(humanoid, root, room, allowBoss, repositionStart, repositionDeadline)
-	if (not rpOk) and rpErr and rpErr ~= "stopped" then
-		return false, rpErr
+	--// Tiếp cận node đầu tiên: di chuyển tới gần trong phạm vi < 3 studs rồi snap vào vị trí xuất phát.
+	local startNode = segment.startPos or path[1]
+	local curPos = getSafePosition(root)
+	if curPos and startNode then
+		local dist = flatDistance(curPos, startNode)
+		if dist >= 3.0 then
+			pcall(function() humanoid:MoveTo(startNode) end)
+			local repositionDeadline = os.clock() + 5.0
+			while isPlaying and os.clock() < repositionDeadline do
+				local p = getSafePosition(root)
+				if not p then break end
+				if flatDistance(p, startNode) < 3.0 then break end
+				if shared.IsDead() or shared.GetCurrentRoomIndex() ~= room then break end
+				task.wait(0.03)
+			end
+		end
+
+		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.5 studs)
+		local finalP = getSafePosition(root)
+		if finalP and flatDistance(finalP, startNode) <= 3.5 then
+			pcall(function()
+				local currentRot = root.CFrame.Rotation
+				root.CFrame = CFrame.new(startNode.X, root.Position.Y, startNode.Z) * currentRot
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+				humanoid:MoveTo(root.Position)
+			end)
+		end
 	end
 
+	-- Chỉ bắt đầu play path sau khi đã snap/đứng tại vị trí xuất phát
 	local progress = 0
-	local prevPos = getSafePosition(root)
+	local prevPos = startNode or getSafePosition(root)
 	local lastMoved = os.clock()
 	local dwellIdx = 1
 	local skillIdx = 1
 	local faceLockUntil = 0
 	local lastSkillFacing = nil
 
-	--// Throttle MoveTo: chỉ gửi lệnh mới khi target nhích ≥ STEP hoặc quá TIMEOUT.
-	--// Giảm tải pathfinding của game (đỡ treo client khi chạy set cấu hình 10Hz).
+	--// Tính khoảng cách Pre-Aim đón đầu (Adaptive Pre-Aim Distance) theo tốc độ di chuyển
+	local currentSpeed = (segment.speed and segment.speed > 5) and segment.speed or (humanoid.WalkSpeed or 20)
+	local preAimDist = math.clamp(currentSpeed * preAimLeadTime, PRE_AIM_DIST_MIN, PRE_AIM_DIST_MAX)
+
+	--// Gửi lệnh di chuyển: nhạy bén, đáp ứng ngay lập tức kể cả đoạn ngắn.
 	local lastTargetPos = nil
 	local lastMoveToAt = 0
 	local function sendMove(target)
 		local now = os.clock()
 		local movedBy = lastTargetPos and flatDistance(lastTargetPos, target) or math.huge
-		if movedBy > 0.5 or now - lastMoveToAt >= 0.25 then
+		if movedBy > 0.15 or now - lastMoveToAt >= 0.08 then
 			lastTargetPos = target
 			lastMoveToAt = now
 			pcall(function() humanoid:MoveTo(target) end)
@@ -19042,6 +19120,9 @@ local function walkThrough(segment, room, allowBoss)
 		)
 		if projected > progress then progress = projected end
 
+		currentProgress = progress
+		progressPercent = total > 0 and math.clamp(math.floor((progress / total) * 100), 0, 100) or 0
+
 		--// Nghi kẹt: vị trí không nhúc nhích trong STUCK_TIMEOUT -> đẩy target tới.
 		if prevPos then
 			if flatDistance(pos, prevPos) > 0.02 then lastMoved = os.clock() end
@@ -19053,46 +19134,79 @@ local function walkThrough(segment, room, allowBoss)
 			prevPos = pos
 		end
 
-		--// Pre-Aim Skill: Xoay mặt đón đầu trước khi chạm điểm xả chiêu (cách PRE_AIM_DIST studs).
-		--// Đảm bảo khi tới điểm xả thì hướng mặt đã ổn định 100%, không bị lệch tia.
+		--// Pre-Aim Skill & Dwell: Xoay mặt đón đầu trước khi chạm điểm dừng hoặc xả chiêu (Adaptive Pre-Aim).
 		local nextSkill = walkSkills[skillIdx]
+		local nextDwell = dwells[dwellIdx]
 		local isPreAiming = false
-		if nextSkill and replayFacing and nextSkill.facing then
-			if progress >= nextSkill.arc - PRE_AIM_DIST and progress < nextSkill.arc then
-				setFacing(root, nextSkill.facing)
-				isPreAiming = true
+		local targetAimFacing = nil
+
+		local dwellDist = nextDwell and (nextDwell.arc - progress) or math.huge
+		local skillDist = nextSkill and (nextSkill.arc - progress) or math.huge
+
+		if dwellDist < skillDist and dwellDist > 0 and dwellDist <= preAimDist then
+			if replayFacing then
+				local dFace = (nextDwell.skills and #nextDwell.skills > 0 and nextDwell.skills[1].facing) or nextDwell.facing
+				if dFace then
+					targetAimFacing = dFace
+				end
+			end
+		elseif skillDist <= dwellDist and skillDist > 0 and skillDist <= preAimDist then
+			if replayFacing and nextSkill.facing then
+				targetAimFacing = nextSkill.facing
 			end
 		end
 
+		if targetAimFacing then
+			isPreAiming = true
+			smoothFacing(root, targetAimFacing, 0.35)
+		end
+
 		--// Bắn skill lúc di chuyển: nhân vật cắt qua đúng vị trí đã bấm chuột phải.
-		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast
-		--// (không quay về hướng đi ngay -> skill không bị bắn lệch).
+		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast.
 		while skillIdx <= #walkSkills and walkSkills[skillIdx].arc <= progress do
 			local sk = walkSkills[skillIdx]
-			if replayFacing then
+			if replayFacing and sk.facing then
 				setFacing(root, sk.facing)
 				lastSkillFacing = sk.facing
 				faceLockUntil = os.clock() + skillFaceHold
 			end
 			if replaySkills then
-				fireSkill(sk.key or "M2")
+				fireSkill(sk.key or "QE")
 			end
 			skillIdx += 1
 		end
 
 		--// Đứng chờ ĐÚNG thời lượng record tại vị trí tương ứng.
-		local nextDwell = dwells[dwellIdx]
-		if nextDwell and progress >= nextDwell.arc then
-			local dOk, dErr = runDwell(nextDwell)
+		while dwellIdx <= #dwells and progress >= dwells[dwellIdx].arc do
+			local currentDw = dwells[dwellIdx]
+			local dOk, dErr = runDwell(currentDw)
 			if not dOk then restoreAutoRotate(); return false, dErr end
 			dwellIdx += 1
 			prevPos = getSafePosition(root)
 			lastMoved = os.clock()
-			continue
 		end
 
 		--// Gần cuối -> đi thẳng nốt tới điểm cuối rồi kết thúc lượt.
 		if progress >= total - ARRIVE_DIST then
+			-- Xả nốt toàn bộ Dwell & Skill còn sót lại ở cuối phòng
+			while dwellIdx <= #dwells do
+				local currentDw = dwells[dwellIdx]
+				local dOk, dErr = runDwell(currentDw)
+				if not dOk then restoreAutoRotate(); return false, dErr end
+				dwellIdx += 1
+			end
+			while skillIdx <= #walkSkills do
+				local sk = walkSkills[skillIdx]
+				if replayFacing and sk.facing then
+					setFacing(root, sk.facing)
+					faceLockUntil = os.clock() + skillFaceHold
+				end
+				if replaySkills then
+					fireSkill(sk.key or "QE")
+				end
+				skillIdx += 1
+			end
+
 			restoreAutoRotate()
 			pcall(function() humanoid:MoveTo(path[n]) end)
 			local deadline = os.clock() + 5
@@ -19108,6 +19222,8 @@ local function walkThrough(segment, room, allowBoss)
 				task.wait(0.08)
 			end
 			restoreAutoRotate()
+			currentProgress = total
+			progressPercent = 100
 			return true, "completed"
 		end
 
@@ -19121,7 +19237,7 @@ local function walkThrough(segment, room, allowBoss)
 		local currentLookahead = getAdaptiveLookahead(progress)
 		local target = pointAt(math.min(progress + currentLookahead, total - 0.01))
 		sendMove(target)
-		task.wait(0.1)
+		task.wait(0.05)
 	end
 	restoreAutoRotate()
 	return false, "stopped"
@@ -19169,6 +19285,9 @@ local function playbackLoop()
 			visitedRoom = room
 			walkedThisVisit = false
 			currentPhaseIndex = 1
+			currentProgress = 0
+			totalProgress = 0
+			progressPercent = 0
 		end
 
 		local segment = storage.GetRoomSegment(activeMap, room)
@@ -19193,6 +19312,8 @@ local function playbackLoop()
 		restoreAutoRotate()
 		if ok then
 			walkedThisVisit = true
+			currentProgress = totalProgress
+			progressPercent = 100
 		else
 			--// Bị chết giữa chừng: tăng phase index để khi hồi sinh chạy Phase tiếp theo
 			if reason == "dead" then
@@ -19250,12 +19371,24 @@ function mover.GetStatus()
 		boss = shared.IsBossActive(),
 		phase = currentPhaseIndex,
 		resume = resumeWanted,
+		progressPercent = progressPercent,
+		progressStuds = currentProgress,
+		totalStuds = totalProgress,
 	}
 end
 
 function mover.OnStatusChanged(callback)
-	if type(callback) == "function" then
-		table.insert(statusListeners, callback)
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	table.insert(statusListeners, callback)
+	return function()
+		for i, listener in ipairs(statusListeners) do
+			if listener == callback then
+				table.remove(statusListeners, i)
+				break
+			end
+		end
 	end
 end
 
@@ -19283,6 +19416,9 @@ function mover.Start()
 	playFullMap = full
 	resumeWanted = false
 	currentPhaseIndex = 1
+	currentProgress = 0
+	totalProgress = 0
+	progressPercent = 0
 	isPlaying = true
 	playThread = task.spawn(playbackLoop)
 	fireStatus("started")
@@ -19296,6 +19432,9 @@ function mover.Stop()
 	activeMap = nil
 	playFullMap = false
 	currentPhaseIndex = 1
+	currentProgress = 0
+	totalProgress = 0
+	progressPercent = 0
 	if playThread then
 		task.cancel(playThread)
 		playThread = nil
@@ -19314,6 +19453,9 @@ function mover.PauseForExclusive()
 	resumeWanted = true
 	isPlaying = false
 	playFullMap = false
+	currentProgress = 0
+	totalProgress = 0
+	progressPercent = 0
 	if playThread then
 		task.cancel(playThread)
 		playThread = nil
@@ -19325,112 +19467,762 @@ function mover.PauseForExclusive()
 	fireStatus("paused")
 end
 
-return mover end function __DIST.ac()-- Path Record System – Visual: vẽ quỹ đạo record (đỏ khi đang record /
--- cyan khi đang play / xám xanh nhạt khi xem trước macro của map).
+return mover end function __DIST.ab()-- Path Record System – Visual: 3D Visualizer cho Path Macro & Real-time Record.
+--   - Hiển thị từng Node của đường đi dưới dạng hình cầu 3D (SphereHandleAdornment).
+--   - Lúc Record: Sphere màu ĐỎ (real-time thêm node khi nhân vật di chuyển).
+--   - Lúc thường (xem room / playback / idle): Sphere màu XANH LÁ (đọc từ macro segment đã lưu của room).
+--   - Event Spheres & 3D Text:
+--       * ⚡ Skill (M2 / QE / Q / E): Sphere Tím + 3D Text + Ray tia hướng mặt (Facing).
+--       * ⏳ Dwell (Nhịp dừng): Sphere Vàng + 3D Text thời gian dừng (vd: 1.5s) + Ray tia hướng mặt.
+--       * 🚩 Start & 🏁 Finish: Sphere Cyan / Pink + 3D Text nổi bật.
+--   - Hỗ trợ đường nối (LineHandleAdornment) và bộ Object Pool hiệu năng cao, không giật lag.
 
 --// Imports
 
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
+local storage = __DIST.load('Z')
+local recorder = __DIST.load('_')
+local mover = __DIST.load('aa')
+local lifecycle = __DIST.load('b')
+
 local Workspace = game:GetService("Workspace")
+local RunService = services.RunService
 
 --// Table
 local visual = {}
 
---// State
-local anchor = nil
-local lines = {}
-local drawnKey = nil
-local lastUpdate = 0
+--// Constants & Colors
+local CONTAINER_NAME = "PR_PathVisual_Container"
+local ANCHOR_NAME = "PR_PathVisual_Anchor"
 
---// Style áp dụng lúc tạo LineHandleAdornment (thay đổi qua tab Path Record).
-local style = {
-	thickness = 3,
-	transparency = 0.25,
-}
+local COLOR_RECORDING_SPHERE = Color3.fromRGB(255, 60, 60) -- Đỏ khi Record
+local COLOR_RECORDING_LINE = Color3.fromRGB(255, 90, 90)
 
-function visual.SetStyle(update)
-	if type(update) ~= "table" then return end
-	if update.thickness ~= nil then
-		style.thickness = math.clamp(update.thickness, 1, 10)
+local COLOR_NORMAL_SPHERE = Color3.fromRGB(0, 255, 120) -- Xanh lá lúc thường
+local COLOR_NORMAL_LINE = Color3.fromRGB(0, 220, 110)
+
+-- Event Colors
+local COLOR_START_NODE = Color3.fromRGB(0, 230, 255) -- Node bắt đầu (Cyan)
+local COLOR_FINISH_NODE = Color3.fromRGB(255, 80, 180) -- Node kết thúc (Pink)
+local COLOR_DWELL_NODE = Color3.fromRGB(255, 190, 30) -- Node Dwell / Dừng (Vàng Amber)
+local COLOR_SKILL_NODE = Color3.fromRGB(200, 70, 255) -- Node Xả chiêu (Tím Neon)
+
+local COLOR_SKILL_RAY = Color3.fromRGB(220, 100, 255)
+local COLOR_DWELL_RAY = Color3.fromRGB(255, 210, 60)
+
+local DEFAULT_SPHERE_RADIUS = 0.35
+local EVENT_SPHERE_RADIUS = 0.55
+local DEFAULT_LINE_THICKNESS = 2.5
+local RAY_THICKNESS = 3.0
+local VERTICAL_OFFSET = 0.35 -- Studs nâng cao nhẹ để không bị chìm dưới sàn gồ ghề
+
+--// Settings
+local enabled = true
+local showLines = true
+local showEvents = true
+local showFacingRays = true
+local nodeRadius = DEFAULT_SPHERE_RADIUS
+local alwaysOnTop = true
+
+--// Runtime State
+local container = nil
+local anchorPart = nil
+local updateConnection = nil
+local lastUpdateClock = 0
+
+--// Object Pools
+local spherePool = {}
+local linePool = {}
+local eventSpherePool = {}
+local facingRayPool = {}
+local badgePool = {}
+
+--// Khởi tạo container và anchor part
+local function ensureContainer()
+	if container and container.Parent and anchorPart and anchorPart.Parent then
+		return anchorPart
 	end
-	if update.transparency ~= nil then
-		style.transparency = math.clamp(update.transparency, 0, 0.9)
+
+	visual.Clear()
+
+	local newContainer = Instance.new("Folder")
+	newContainer.Name = CONTAINER_NAME
+	newContainer.Parent = Workspace
+
+	local newAnchor = Instance.new("Part")
+	newAnchor.Name = ANCHOR_NAME
+	newAnchor.Anchored = true
+	newAnchor.CanCollide = false
+	newAnchor.CanQuery = false
+	newAnchor.CanTouch = false
+	newAnchor.Transparency = 1
+	newAnchor.Size = Vector3.new(1, 1, 1)
+	newAnchor.CFrame = CFrame.new(0, 0, 0)
+	newAnchor.Parent = newContainer
+
+	container = newContainer
+	anchorPart = newAnchor
+	table.clear(spherePool)
+	table.clear(linePool)
+	table.clear(eventSpherePool)
+	table.clear(facingRayPool)
+	table.clear(badgePool)
+
+	return anchorPart
+end
+
+--// Lấy hoặc tạo SphereHandleAdornment cho Node thông thường từ Pool
+local function getSphereAdornment(index, anchor)
+	local ad = spherePool[index]
+	if not ad or not ad.Parent then
+		ad = Instance.new("SphereHandleAdornment")
+		ad.Name = "PR_NodeSphere_" .. tostring(index)
+		ad.Adornee = anchor
+		ad.AlwaysOnTop = alwaysOnTop
+		ad.ZIndex = 5
+		ad.Transparency = 0.2
+		ad.Parent = anchor
+		spherePool[index] = ad
+	end
+	return ad
+end
+
+--// Lấy hoặc tạo LineHandleAdornment từ Pool
+local function getLineAdornment(index, anchor)
+	local ad = linePool[index]
+	if not ad or not ad.Parent then
+		ad = Instance.new("LineHandleAdornment")
+		ad.Name = "PR_PathLine_" .. tostring(index)
+		ad.Adornee = anchor
+		ad.AlwaysOnTop = alwaysOnTop
+		ad.ZIndex = 4
+		ad.Transparency = 0.3
+		ad.Thickness = DEFAULT_LINE_THICKNESS
+		ad.Parent = anchor
+		linePool[index] = ad
+	end
+	return ad
+end
+
+--// Lấy hoặc tạo Event Sphere (kích thước lớn hơn cho Dwell / Skill / Start / Finish)
+local function getEventSphereAdornment(index, anchor)
+	local ad = eventSpherePool[index]
+	if not ad or not ad.Parent then
+		ad = Instance.new("SphereHandleAdornment")
+		ad.Name = "PR_EventSphere_" .. tostring(index)
+		ad.Adornee = anchor
+		ad.AlwaysOnTop = alwaysOnTop
+		ad.ZIndex = 8
+		ad.Transparency = 0.15
+		ad.Radius = EVENT_SPHERE_RADIUS
+		ad.Parent = anchor
+		eventSpherePool[index] = ad
+	end
+	return ad
+end
+
+--// Lấy hoặc tạo Facing Direction Ray
+local function getFacingRayAdornment(index, anchor)
+	local ad = facingRayPool[index]
+	if not ad or not ad.Parent then
+		ad = Instance.new("LineHandleAdornment")
+		ad.Name = "PR_FacingRay_" .. tostring(index)
+		ad.Adornee = anchor
+		ad.AlwaysOnTop = alwaysOnTop
+		ad.ZIndex = 9
+		ad.Transparency = 0.1
+		ad.Thickness = RAY_THICKNESS
+		ad.Parent = anchor
+		facingRayPool[index] = ad
+	end
+	return ad
+end
+
+--// Lấy hoặc tạo 3D Text Badge (BillboardGui + Frame + TextLabel)
+local function getBadge(index, anchor)
+	local entry = badgePool[index]
+	if not entry or not entry.billboard or not entry.billboard.Parent then
+		local att = Instance.new("Attachment")
+		att.Name = "PR_BadgeAtt_" .. tostring(index)
+		att.Parent = anchor
+
+		local bb = Instance.new("BillboardGui")
+		bb.Name = "PR_BadgeGui_" .. tostring(index)
+		bb.Adornee = att
+		bb.Size = UDim2.new(0, 115, 0, 24)
+		bb.StudsOffset = Vector3.new(0, 1.6, 0)
+		bb.AlwaysOnTop = true
+		bb.MaxDistance = 180
+		bb.LightInfluence = 0
+		bb.Parent = container
+
+		local frame = Instance.new("Frame")
+		frame.Name = "BadgeFrame"
+		frame.Size = UDim2.new(1, 0, 1, 0)
+		frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+		frame.BackgroundTransparency = 0.25
+		frame.BorderSizePixel = 0
+		frame.Parent = bb
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = frame
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Name = "Stroke"
+		stroke.Color = COLOR_SKILL_NODE
+		stroke.Thickness = 1.4
+		stroke.Transparency = 0.15
+		stroke.Parent = frame
+
+		local label = Instance.new("TextLabel")
+		label.Name = "Text"
+		label.Size = UDim2.new(1, -6, 1, 0)
+		label.Position = UDim2.new(0, 3, 0, 0)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 11
+		label.TextColor3 = Color3.fromRGB(255, 255, 255)
+		label.RichText = true
+		label.Text = ""
+		label.TextXAlignment = Enum.TextXAlignment.Center
+		label.TextYAlignment = Enum.TextYAlignment.Center
+		label.Parent = frame
+
+		entry = {
+			attachment = att,
+			billboard = bb,
+			frame = frame,
+			stroke = stroke,
+			label = label,
+		}
+		badgePool[index] = entry
+	end
+	return entry
+end
+
+--// Chuyển đổi an toàn hướng facing sang Vector3 unit
+local function toVector3Facing(facing)
+	if not facing then return nil end
+	if typeof(facing) == "Vector3" then
+		if facing.Magnitude > 0.001 then return facing.Unit end
+		return nil
+	end
+	if type(facing) == "table" and type(facing.X) == "number" and type(facing.Z) == "number" then
+		local v = Vector3.new(facing.X, 0, facing.Z)
+		if v.Magnitude > 0.001 then return v.Unit end
+	end
+	return nil
+end
+
+--// Ẩn tất cả adornments đang có trong pool
+local function hideAllAdornments()
+	for _, sphere in ipairs(spherePool) do
+		if sphere and sphere.Parent then sphere.Visible = false end
+	end
+	for _, line in ipairs(linePool) do
+		if line and line.Parent then line.Visible = false end
+	end
+	for _, evSphere in ipairs(eventSpherePool) do
+		if evSphere and evSphere.Parent then evSphere.Visible = false end
+	end
+	for _, ray in ipairs(facingRayPool) do
+		if ray and ray.Parent then ray.Visible = false end
+	end
+	for _, badge in ipairs(badgePool) do
+		if badge and badge.billboard and badge.billboard.Parent then
+			badge.billboard.Enabled = false
+		end
 	end
 end
 
-function visual.GetStyle()
-	return { thickness = style.thickness, transparency = style.transparency }
-end
-
---// Constants
-local THROTTLE = 0.4 -- Giây tối thiểu giữa 2 lần rebuild (đang record điểm đổi liên tục)
-
-local function ensureAnchor()
-	if anchor and anchor.Parent then return anchor end
-	anchor = Instance.new("Part")
-	anchor.Name = "PR_PathAnchor_Visual"
-	anchor.Anchored = true
-	anchor.CanCollide = false
-	anchor.CanQuery = false
-	anchor.CanTouch = false
-	anchor.Transparency = 1
-	anchor.Size = Vector3.new(1, 1, 1)
-	anchor.CFrame = CFrame.new(0, 0, 0)
-	anchor.Parent = Workspace
-	return anchor
-end
-
-function visual.Clear()
-	for _, line in ipairs(lines) do
-		pcall(function() line:Destroy() end)
-	end
-	table.clear(lines)
-	drawnKey = nil
-end
-
---// Vẽ nhiều polyline (mỗi segment 1 màu riêng). Tự skip khi key không đổi.
---// polys: { { points = {Vector3...}, color = Color3, tag = any }, ... }
-function visual.DrawPolylines(polys, key, force)
-	if not polys or #polys == 0 then
-		visual.Clear()
+--// Cập nhật hiển thị path nodes, lines, event spheres & 3D text
+function visual.Update()
+	if not enabled then
+		hideAllAdornments()
 		return
 	end
 
-	local strKey = tostring(key)
-	if strKey == drawnKey then return end
-	if not force and os.clock() - lastUpdate < THROTTLE and #lines > 0 then return end
+	if shared.IsInLobby() then
+		hideAllAdornments()
+		return
+	end
 
-	visual.Clear()
-	drawnKey = strKey
-	lastUpdate = os.clock()
+	local isRecording = recorder.IsRecording()
+	local pointLists = {}
+	local dwellsList = {}
+	local skillsList = {}
 
-	local adornee = ensureAnchor()
-	for _, poly in ipairs(polys) do
-		local points = poly.points
-		if points and #points >= 2 then
-			for i = 2, #points do
-				local a = points[i - 1]
-				local b = points[i]
-				local dist = (b - a).Magnitude
-				if dist > 0.01 then
-					local line = Instance.new("LineHandleAdornment")
-					line.Name = "PR_PathLine_Visual"
-					line.Adornee = adornee
-					line.Length = dist
-					line.Thickness = style.thickness
-					line.Transparency = style.transparency
-					line.Color3 = poly.color or Color3.fromRGB(0, 230, 255)
-					line.ZIndex = 1
-					line.CFrame = CFrame.lookAt(a, b)
-					line.Parent = Workspace
-					table.insert(lines, line)
+	if isRecording then
+		-- Chế độ RECORDING: Lấy toàn bộ points của các phase và phase hiện tại đang ghi
+		local prevPhases = recorder.GetRoomPhases and recorder.GetRoomPhases()
+		if prevPhases and #prevPhases > 0 then
+			for _, p in ipairs(prevPhases) do
+				if p and p.points and #p.points > 0 then
+					table.insert(pointLists, p.points)
+				end
+			end
+		end
+
+		local curPoints = recorder.GetCurrentPoints()
+		if curPoints and #curPoints > 0 then
+			table.insert(pointLists, curPoints)
+		end
+
+		local curDwells = recorder.GetCurrentDwells and recorder.GetCurrentDwells()
+		if curDwells then dwellsList = curDwells end
+
+		local curSkills = recorder.GetCurrentSkills and recorder.GetCurrentSkills()
+		if curSkills then skillsList = curSkills end
+	else
+		-- Chế độ THƯỜNG (Idle / Playback / Xem Room): Lấy points từ segment đã lưu của map & room hiện tại
+		local map = shared.GetCurrentDungeonName()
+		local room = shared.GetCurrentRoomIndex()
+
+		if map and #map > 0 and room > 0 then
+			local seg = storage.GetRoomSegment(map, room)
+			if seg then
+				if seg.phases and #seg.phases > 0 then
+					for _, p in ipairs(seg.phases) do
+						if p and p.points and #p.points > 0 then
+							table.insert(pointLists, p.points)
+						end
+					end
+				elseif seg.points and #seg.points > 0 then
+					table.insert(pointLists, seg.points)
+				end
+
+				if seg.events then
+					dwellsList = seg.events.dwells or {}
+					skillsList = seg.events.skills or {}
 				end
 			end
 		end
 	end
-	if #lines == 0 then drawnKey = nil end
+
+	if #pointLists == 0 then
+		hideAllAdornments()
+		return
+	end
+
+	local anchor = ensureContainer()
+	if not anchor then return end
+
+	local sphereColor = isRecording and COLOR_RECORDING_SPHERE or COLOR_NORMAL_SPHERE
+	local lineColor = isRecording and COLOR_RECORDING_LINE or COLOR_NORMAL_LINE
+
+	local sphereIdx = 0
+	local lineIdx = 0
+	local evSphereIdx = 0
+	local rayIdx = 0
+	local badgeIdx = 0
+
+	local firstGlobalPos = nil
+	local lastGlobalPos = nil
+
+	-- 1. Vẽ các Node Spheres & Connecting Lines
+	for _, pts in ipairs(pointLists) do
+		local numPts = #pts
+		if numPts > 0 then
+			if not firstGlobalPos then firstGlobalPos = pts[1] end
+			lastGlobalPos = pts[numPts]
+
+			for i = 1, numPts do
+				local pos = pts[i]
+				if pos then
+					sphereIdx += 1
+					local sphere = getSphereAdornment(sphereIdx, anchor)
+					sphere.Radius = nodeRadius
+					sphere.Color3 = sphereColor
+					sphere.AlwaysOnTop = alwaysOnTop
+					sphere.CFrame = CFrame.new(pos + Vector3.new(0, VERTICAL_OFFSET, 0))
+					sphere.Visible = true
+				end
+			end
+
+			-- Vẽ đường nối các node
+			if showLines and numPts >= 2 then
+				for i = 1, numPts - 1 do
+					local p1 = pts[i]
+					local p2 = pts[i + 1]
+					if p1 and p2 then
+						local v1 = p1 + Vector3.new(0, VERTICAL_OFFSET, 0)
+						local v2 = p2 + Vector3.new(0, VERTICAL_OFFSET, 0)
+						local dist = (v2 - v1).Magnitude
+						if dist > 0.05 then
+							lineIdx += 1
+							local line = getLineAdornment(lineIdx, anchor)
+							line.Length = dist
+							line.Thickness = DEFAULT_LINE_THICKNESS
+							line.Color3 = lineColor
+							line.AlwaysOnTop = alwaysOnTop
+							line.CFrame = CFrame.lookAt(v1, v2)
+							line.Visible = true
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- 2. Vẽ Event Spheres & 3D Text (Skills / Dwells / Start / Finish)
+	if showEvents then
+		-- Start Marker: Đại diện duy nhất cho điểm xuất phát (gộp cả nhịp dừng Start nếu có)
+		local startDwell = nil
+		if firstGlobalPos then
+			for _, d in ipairs(dwellsList) do
+				if d.pos and (d.pos - firstGlobalPos).Magnitude < 1.5 then
+					startDwell = d
+					break
+				end
+			end
+
+			evSphereIdx += 1
+			local startSphere = getEventSphereAdornment(evSphereIdx, anchor)
+			startSphere.Radius = EVENT_SPHERE_RADIUS
+			startSphere.Color3 = COLOR_START_NODE
+			startSphere.AlwaysOnTop = alwaysOnTop
+			startSphere.CFrame = CFrame.new(firstGlobalPos + Vector3.new(0, VERTICAL_OFFSET, 0))
+			startSphere.Visible = true
+
+			badgeIdx += 1
+			local badge = getBadge(badgeIdx, anchor)
+			badge.attachment.WorldPosition = firstGlobalPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+			badge.stroke.Color = COLOR_START_NODE
+
+			local startPauseSec = mover and mover.GetStartPauseTime and mover.GetStartPauseTime() or 0
+			if startPauseSec > 0 then
+				badge.label.Text = ("<font color='rgb(0,240,255)'><b>🚩 START (%.1fs)</b></font>"):format(startPauseSec)
+			else
+				badge.label.Text = "<font color='rgb(0,240,255)'><b>🚩 START</b></font>"
+			end
+			badge.billboard.Enabled = true
+
+			-- Start Facing Ray (nếu có hướng xoay mặt lúc xuất phát)
+			if showFacingRays and startDwell and startDwell.facing then
+				local facingVec = toVector3Facing(startDwell.facing)
+				if facingVec then
+					rayIdx += 1
+					local ray = getFacingRayAdornment(rayIdx, anchor)
+					local rStart = firstGlobalPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+					local rEnd = rStart + facingVec * 3.5
+					ray.Length = 3.5
+					ray.Color3 = COLOR_START_NODE
+					ray.AlwaysOnTop = alwaysOnTop
+					ray.CFrame = CFrame.lookAt(rStart, rEnd)
+					ray.Visible = true
+				end
+			end
+		end
+
+		-- Dwells (Nhịp dừng): Bỏ qua dwell ở Start Node và Finish Node để không bị đè 2 badge
+		for _, d in ipairs(dwellsList) do
+			local dPos = d.pos
+			local isAtStart = firstGlobalPos and (dPos - firstGlobalPos).Magnitude < 1.5
+			local isAtFinish = lastGlobalPos and (dPos - lastGlobalPos).Magnitude < 1.5
+			if dPos and not isAtStart and not isAtFinish then
+				evSphereIdx += 1
+				local dSphere = getEventSphereAdornment(evSphereIdx, anchor)
+				dSphere.Radius = EVENT_SPHERE_RADIUS
+				dSphere.Color3 = COLOR_DWELL_NODE
+				dSphere.AlwaysOnTop = alwaysOnTop
+				dSphere.CFrame = CFrame.new(dPos + Vector3.new(0, VERTICAL_OFFSET, 0))
+				dSphere.Visible = true
+
+				local durSec = math.round((d.dur or 0) * 10) / 10
+				badgeIdx += 1
+				local badge = getBadge(badgeIdx, anchor)
+				badge.attachment.WorldPosition = dPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+				badge.stroke.Color = COLOR_DWELL_NODE
+				badge.label.Text = ("<font color='rgb(255,200,60)'><b>⏳ Pause (%.1fs)</b></font>"):format(durSec)
+				badge.billboard.Enabled = true
+
+				-- Dwell Facing Ray
+				if showFacingRays then
+					local facingVec = toVector3Facing(d.facing)
+					if facingVec then
+						rayIdx += 1
+						local ray = getFacingRayAdornment(rayIdx, anchor)
+						local rStart = dPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+						local rEnd = rStart + facingVec * 3.0
+						ray.Length = 3.0
+						ray.Color3 = COLOR_DWELL_RAY
+						ray.AlwaysOnTop = alwaysOnTop
+						ray.CFrame = CFrame.lookAt(rStart, rEnd)
+						ray.Visible = true
+					end
+				end
+			end
+		end
+
+		-- Skills (Xả chiêu Q / E / QE)
+		for _, s in ipairs(skillsList) do
+			local sPos = s.pos
+			if sPos then
+				evSphereIdx += 1
+				local sSphere = getEventSphereAdornment(evSphereIdx, anchor)
+				sSphere.Radius = EVENT_SPHERE_RADIUS
+				sSphere.Color3 = COLOR_SKILL_NODE
+				sSphere.AlwaysOnTop = alwaysOnTop
+				sSphere.CFrame = CFrame.new(sPos + Vector3.new(0, VERTICAL_OFFSET, 0))
+				sSphere.Visible = true
+
+				local skillName = (s.key and #s.key > 0) and s.key or "QE"
+				badgeIdx += 1
+				local badge = getBadge(badgeIdx, anchor)
+				badge.attachment.WorldPosition = sPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+				badge.stroke.Color = COLOR_SKILL_NODE
+				badge.label.Text = ("<font color='rgb(220,100,255)'><b>⚡ Skill [%s]</b></font>"):format(skillName)
+				badge.billboard.Enabled = true
+
+				-- Skill Facing Ray
+				if showFacingRays then
+					local facingVec = toVector3Facing(s.facing)
+					if facingVec then
+						rayIdx += 1
+						local ray = getFacingRayAdornment(rayIdx, anchor)
+						local rStart = sPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+						local rEnd = rStart + facingVec * 3.8
+						ray.Length = 3.8
+						ray.Color3 = COLOR_SKILL_RAY
+						ray.AlwaysOnTop = alwaysOnTop
+						ray.CFrame = CFrame.lookAt(rStart, rEnd)
+						ray.Visible = true
+					end
+				end
+			end
+		end
+
+		-- Finish Marker (chỉ hiện lúc thường hoặc khi có nhiều hơn 1 điểm)
+		local finishDwell = nil
+		if lastGlobalPos and lastGlobalPos ~= firstGlobalPos and not isRecording then
+			for _, d in ipairs(dwellsList) do
+				if d.pos and (d.pos - lastGlobalPos).Magnitude < 1.5 then
+					finishDwell = d
+					break
+				end
+			end
+
+			evSphereIdx += 1
+			local finishSphere = getEventSphereAdornment(evSphereIdx, anchor)
+			finishSphere.Radius = EVENT_SPHERE_RADIUS
+			finishSphere.Color3 = COLOR_FINISH_NODE
+			finishSphere.AlwaysOnTop = alwaysOnTop
+			finishSphere.CFrame = CFrame.new(lastGlobalPos + Vector3.new(0, VERTICAL_OFFSET, 0))
+			finishSphere.Visible = true
+
+			badgeIdx += 1
+			local badge = getBadge(badgeIdx, anchor)
+			badge.attachment.WorldPosition = lastGlobalPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+			badge.stroke.Color = COLOR_FINISH_NODE
+
+			local pauseSec = mover and mover.GetStartPauseTime and mover.GetStartPauseTime() or 0
+			if finishDwell and pauseSec > 0 then
+				badge.label.Text = ("<font color='rgb(255,100,200)'><b>🏁 FINISH (%.1fs)</b></font>"):format(pauseSec)
+			else
+				badge.label.Text = "<font color='rgb(255,100,200)'><b>🏁 FINISH</b></font>"
+			end
+			badge.billboard.Enabled = true
+
+			-- Finish Facing Ray (nếu có hướng xoay mặt lúc kết thúc)
+			if showFacingRays and finishDwell and finishDwell.facing then
+				local facingVec = toVector3Facing(finishDwell.facing)
+				if facingVec then
+					rayIdx += 1
+					local ray = getFacingRayAdornment(rayIdx, anchor)
+					local rStart = lastGlobalPos + Vector3.new(0, VERTICAL_OFFSET, 0)
+					local rEnd = rStart + facingVec * 3.5
+					ray.Length = 3.5
+					ray.Color3 = COLOR_FINISH_NODE
+					ray.AlwaysOnTop = alwaysOnTop
+					ray.CFrame = CFrame.lookAt(rStart, rEnd)
+					ray.Visible = true
+				end
+			end
+		end
+	end
+
+	-- Ẩn các sphere thừa trong pool
+	for i = sphereIdx + 1, #spherePool do
+		local sphere = spherePool[i]
+		if sphere and sphere.Parent then sphere.Visible = false end
+	end
+
+	-- Ẩn các line thừa trong pool
+	for i = lineIdx + 1, #linePool do
+		local line = linePool[i]
+		if line and line.Parent then line.Visible = false end
+	end
+
+	-- Ẩn các event sphere thừa trong pool
+	for i = evSphereIdx + 1, #eventSpherePool do
+		local evSphere = eventSpherePool[i]
+		if evSphere and evSphere.Parent then evSphere.Visible = false end
+	end
+
+	-- Ẩn các facing ray thừa trong pool
+	for i = rayIdx + 1, #facingRayPool do
+		local ray = facingRayPool[i]
+		if ray and ray.Parent then ray.Visible = false end
+	end
+
+	-- Ẩn các badge thừa trong pool
+	for i = badgeIdx + 1, #badgePool do
+		local badge = badgePool[i]
+		if badge and badge.billboard and badge.billboard.Parent then
+			badge.billboard.Enabled = false
+		end
+	end
 end
 
-return visual end function __DIST.ad()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
+--// Vòng lặp cập nhật liên tục
+local function startUpdateLoop()
+	if updateConnection then return end
+	updateConnection = RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		local isRec = recorder.IsRecording()
+		-- Khi record thì cập nhật nhanh hơn (0.03s) để bám sát chuyển động; lúc thường 0.1s
+		local interval = isRec and 0.03 or 0.1
+		if now - lastUpdateClock < interval then return end
+		lastUpdateClock = now
+
+		pcall(visual.Update)
+	end)
+end
+
+--// Configuration API
+function visual.SetEnabled(state)
+	enabled = state and true or false
+	if not enabled then
+		hideAllAdornments()
+	else
+		pcall(visual.Update)
+	end
+end
+
+function visual.IsEnabled()
+	return enabled
+end
+
+function visual.SetShowLines(state)
+	showLines = state and true or false
+	if not showLines then
+		for _, line in ipairs(linePool) do
+			if line and line.Parent then line.Visible = false end
+		end
+	else
+		pcall(visual.Update)
+	end
+end
+
+function visual.IsShowLinesEnabled()
+	return showLines
+end
+
+function visual.SetShowEvents(state)
+	showEvents = state and true or false
+	if not showEvents then
+		for _, evSphere in ipairs(eventSpherePool) do
+			if evSphere and evSphere.Parent then evSphere.Visible = false end
+		end
+		for _, badge in ipairs(badgePool) do
+			if badge and badge.billboard and badge.billboard.Parent then badge.billboard.Enabled = false end
+		end
+	else
+		pcall(visual.Update)
+	end
+end
+
+function visual.IsShowEventsEnabled()
+	return showEvents
+end
+
+function visual.SetShowFacingRays(state)
+	showFacingRays = state and true or false
+	if not showFacingRays then
+		for _, ray in ipairs(facingRayPool) do
+			if ray and ray.Parent then ray.Visible = false end
+		end
+	else
+		pcall(visual.Update)
+	end
+end
+
+function visual.IsShowFacingRaysEnabled()
+	return showFacingRays
+end
+
+function visual.SetNodeRadius(radius)
+	if type(radius) == "number" then
+		nodeRadius = math.clamp(radius, 0.1, 1.5)
+		pcall(visual.Update)
+	end
+end
+
+function visual.GetNodeRadius()
+	return nodeRadius
+end
+
+function visual.SetAlwaysOnTop(state)
+	alwaysOnTop = state and true or false
+	for _, sphere in ipairs(spherePool) do
+		if sphere and sphere.Parent then sphere.AlwaysOnTop = alwaysOnTop end
+	end
+	for _, line in ipairs(linePool) do
+		if line and line.Parent then line.AlwaysOnTop = alwaysOnTop end
+	end
+	for _, evSphere in ipairs(eventSpherePool) do
+		if evSphere and evSphere.Parent then evSphere.AlwaysOnTop = alwaysOnTop end
+	end
+	for _, ray in ipairs(facingRayPool) do
+		if ray and ray.Parent then ray.AlwaysOnTop = alwaysOnTop end
+	end
+	for _, badge in ipairs(badgePool) do
+		if badge and badge.billboard and badge.billboard.Parent then badge.billboard.AlwaysOnTop = alwaysOnTop end
+	end
+end
+
+function visual.IsAlwaysOnTopEnabled()
+	return alwaysOnTop
+end
+
+--// Dọn dẹp visual container
+function visual.Clear()
+	hideAllAdornments()
+	table.clear(spherePool)
+	table.clear(linePool)
+	table.clear(eventSpherePool)
+	table.clear(facingRayPool)
+	table.clear(badgePool)
+	local existing = Workspace:FindFirstChild(CONTAINER_NAME)
+	if existing then
+		pcall(function() existing:Destroy() end)
+	end
+	container = nil
+	anchorPart = nil
+end
+
+function visual.Destroy()
+	if updateConnection then
+		updateConnection:Disconnect()
+		updateConnection = nil
+	end
+	visual.Clear()
+end
+
+-- Clear on load once in case an old visual container exists
+visual.Clear()
+
+-- Tự động chạy vòng lặp cập nhật
+startUpdateLoop()
+
+-- Đăng ký dọn dẹp khi script unload
+lifecycle.Register(function()
+	visual.Destroy()
+end)
+
+return visual end function __DIST.ac()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
 -- giúp người chơi ước lượng phạm vi/tầm đánh của Skill (AOE) để căn điểm record.
 -- Đồng thời tự động HIGHLIGHT kẻ địch khi chúng bước vào trong tầm (in-range).
 
@@ -19476,10 +20268,12 @@ local ringOpacity = 0.8 -- Độ đậm viền ngoài (0.1 - 1.0)
 local fillOpacity = 0.15 -- Độ đậm vùng trong (0.0 - 0.5)
 
 local HIGHLIGHT_NAME = "PR_InRange_Highlight"
+local HIGHLIGHT_UPDATE_INTERVAL = 0.2 -- Giây tối đa scan lại enemy trong tầm (giảm tải mỗi frame)
 local ringAdornment = nil
 local fillAdornment = nil
 local updateConnection = nil
 local lastRoot = nil
+local lastHighlightClock = 0
 local activeHighlights = {} -- [model] = Highlight
 
 local function getCircleColor()
@@ -19687,8 +20481,12 @@ local function onHeartbeat()
 		end
 	end
 
-	-- Cập nhật highlight kẻ địch trong tầm
-	updateEnemyHighlights(root)
+	-- Cập nhật highlight kẻ địch trong tầm: throttled để không lạm dụng Workspace scan mỗi frame.
+	local nowClock = os.clock()
+	if nowClock - lastHighlightClock >= HIGHLIGHT_UPDATE_INTERVAL then
+		lastHighlightClock = nowClock
+		updateEnemyHighlights(root)
+	end
 end
 
 function rangeVisual.SetEnabled(state)
@@ -19829,7 +20627,7 @@ lifecycle.Register(function()
 end)
 
 return rangeVisual
-end function __DIST.ae()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
+end function __DIST.ad()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
 --   - Macro = 1 bản ghi cho cả MAP, record liên tục nhiều room trong 1 session
 --     (tự auto-split theo room; segment phòng boss đánh dấu `boss`).
 --   - Mode của map do người dùng chọn (lưu trong file macro):
@@ -19845,83 +20643,14 @@ local lifecycle = __DIST.load('b')
 local coordinator = __DIST.load('u')
 local notifier = __DIST.load('c')
 
-local storage = __DIST.load('_')
-local recorder = __DIST.load('aa')
-local mover = __DIST.load('ab')
-local visual = __DIST.load('ac')
-local rangeVisual = __DIST.load('ad')
-
-local RunService = services.RunService
+local storage = __DIST.load('Z')
+local recorder = __DIST.load('_')
+local mover = __DIST.load('aa')
+local visual = __DIST.load('ab')
+local rangeVisual = __DIST.load('ac')
 
 --// Table
 local pathRecord = {}
-
---// Settings
-local showVisual = true
-
---// Bộ màu line path (dropdown trong tab) + style kích thước (slider).
-local DEFAULT_THEME = "Default (Red/Cyan/Teal)"
-local THEMES = {
-	[DEFAULT_THEME] = {
-		rec = Color3.fromRGB(255, 60, 60),
-		play = Color3.fromRGB(0, 230, 255),
-		idle = Color3.fromRGB(90, 190, 200),
-	},
-	["Oceana"] = {
-		rec = Color3.fromRGB(0, 190, 255),
-		play = Color3.fromRGB(80, 255, 220),
-		idle = Color3.fromRGB(120, 210, 255),
-	},
-	["Sunset"] = {
-		rec = Color3.fromRGB(255, 120, 60),
-		play = Color3.fromRGB(255, 220, 80),
-		idle = Color3.fromRGB(255, 150, 160),
-	},
-	["Emerald"] = {
-		rec = Color3.fromRGB(80, 255, 140),
-		play = Color3.fromRGB(0, 220, 120),
-		idle = Color3.fromRGB(140, 255, 180),
-	},
-	["Violet"] = {
-		rec = Color3.fromRGB(200, 90, 255),
-		play = Color3.fromRGB(170, 120, 255),
-		idle = Color3.fromRGB(150, 150, 255),
-	},
-}
-
-local visualStyle = {
-	thickness = 3,
-	transparency = 0.25, --// 0 = đậm nhất, 0.9 = gần như mất
-	theme = DEFAULT_THEME,
-}
-
-function pathRecord.GetStyle()
-	return {
-		thickness = visualStyle.thickness,
-		transparency = visualStyle.transparency,
-		theme = visualStyle.theme,
-	}
-end
-
-function pathRecord.GetThemeNames()
-	local names = {}
-	for name in pairs(THEMES) do
-		names[#names + 1] = name
-	end
-	table.sort(names)
-	return names
-end
-
---// Áp style mới (từ slider/dropdown) -> đẩy sang visual + ép redraw sớm nhất.
-function pathRecord.SetStyle(update)
-	if type(update) ~= "table" then return end
-	if update.thickness ~= nil then visualStyle.thickness = math.clamp(update.thickness, 1, 10) end
-	if update.transparency ~= nil then visualStyle.transparency = math.clamp(update.transparency, 0, 0.9) end
-	if update.theme and THEMES[update.theme] then visualStyle.theme = update.theme end
-	visual.SetStyle({ thickness = visualStyle.thickness, transparency = visualStyle.transparency })
-	lastBuildKey = nil
-	fireStatus("style")
-end
 
 --// Timeline record/replay: đứng chờ (dwell) + kích hoạt skill (chuột phải) + facing.
 local timelineCapture = true
@@ -19967,6 +20696,16 @@ function pathRecord.SetUseFastSpeed(state)
 	fireStatus("usefastspeed")
 end
 
+--// Thời gian xoay đón đầu Pre-Aim trước khi tới mốc skill / dwell (0.1s - 1.5s).
+function pathRecord.GetPreAimTime()
+	return mover.GetPreAimTime()
+end
+
+function pathRecord.SetPreAimTime(seconds)
+	mover.SetPreAimTime(seconds)
+	fireStatus("preaim")
+end
+
 --// Giữ facing sau khi xả skill khi đang đi (0.5s - 2s) để game kịp ghi nhận hướng cast.
 function pathRecord.GetSkillFaceHold()
 	return mover.GetSkillFaceHold()
@@ -19987,10 +20726,19 @@ function pathRecord.SetDoubleClickDelay(seconds)
 	fireStatus("doubleclick")
 end
 
+--// Thời gian dừng chờ tại node xuất phát (Start Node).
+function pathRecord.GetStartPauseTime()
+	return mover.GetStartPauseTime()
+end
+
+function pathRecord.SetStartPauseTime(seconds)
+	mover.SetStartPauseTime(seconds)
+	fireStatus("startpause")
+end
+
 --// State
 local statusListeners = {}
 local bossConnection = nil
-local drawConnection = nil
 local storageUnsub = nil
 local roomUnsub = nil
 local mapUnsub = nil
@@ -20124,18 +20872,6 @@ function pathRecord.IsEnabled()
 	return mover.IsPlaying()
 end
 
---// ---------- Settings ----------
-
-function pathRecord.SetShowVisual(state)
-	showVisual = state and true or false
-	if not showVisual then visual.Clear() end
-	fireStatus()
-end
-
-function pathRecord.IsShowVisualEnabled()
-	return showVisual
-end
-
 --// ---------- Skill Range Visual (Vòng tròn quanh nhân vật) ----------
 
 function pathRecord.SetRangeVisual(state)
@@ -20196,6 +20932,62 @@ function pathRecord.SetHighlightColor(name)
 	fireStatus("highlightcolor")
 end
 
+--// ---------- Path 3D Visualizer (Sphere Nodes & Lines) ----------
+
+function pathRecord.SetVisualEnabled(state)
+	visual.SetEnabled(state)
+	fireStatus("visual")
+end
+
+function pathRecord.IsVisualEnabled()
+	return visual.IsEnabled()
+end
+
+function pathRecord.SetVisualShowLines(state)
+	visual.SetShowLines(state)
+	fireStatus("visuallines")
+end
+
+function pathRecord.IsVisualShowLinesEnabled()
+	return visual.IsShowLinesEnabled()
+end
+
+function pathRecord.SetVisualNodeRadius(radius)
+	visual.SetNodeRadius(radius)
+	fireStatus("visualradius")
+end
+
+function pathRecord.GetVisualNodeRadius()
+	return visual.GetNodeRadius()
+end
+
+function pathRecord.SetVisualAlwaysOnTop(state)
+	visual.SetAlwaysOnTop(state)
+	fireStatus("visualontop")
+end
+
+function pathRecord.IsVisualAlwaysOnTopEnabled()
+	return visual.IsAlwaysOnTopEnabled()
+end
+
+function pathRecord.SetVisualShowEvents(state)
+	visual.SetShowEvents(state)
+	fireStatus("visualevents")
+end
+
+function pathRecord.IsVisualShowEventsEnabled()
+	return visual.IsShowEventsEnabled()
+end
+
+function pathRecord.SetVisualShowFacing(state)
+	visual.SetShowFacingRays(state)
+	fireStatus("visualfacing")
+end
+
+function pathRecord.IsVisualShowFacingEnabled()
+	return visual.IsShowFacingRaysEnabled()
+end
+
 --// ---------- Storage passthrough ----------
 
 function pathRecord.GetMaps()
@@ -20225,6 +21017,7 @@ end
 
 function pathRecord.GetStatus()
 	local recStat = recorder.GetStatus()
+	local playStat = mover.GetStatus()
 	return {
 		recording = recorder.IsRecording(),
 		playing = mover.IsPlaying(),
@@ -20236,13 +21029,27 @@ function pathRecord.GetStatus()
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
 		pointCount = recStat.pointCount,
+		dwellCount = recStat.dwellCount or 0,
+		skillCount = recStat.skillCount or 0,
 		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
+		progressPercent = playStat.progressPercent or 0,
+		progressStuds = playStat.progressStuds or 0,
+		totalStuds = playStat.totalStuds or 0,
 	}
 end
 
 function pathRecord.OnStatusChanged(callback)
-	if type(callback) == "function" then
-		table.insert(statusListeners, callback)
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	table.insert(statusListeners, callback)
+	return function()
+		for i, listener in ipairs(statusListeners) do
+			if listener == callback then
+				table.remove(statusListeners, i)
+				break
+			end
+		end
 	end
 end
 
@@ -20334,113 +21141,8 @@ mapUnsub = shared.OnDungeonNameChanged(function(name)
 	fireStatus("map")
 end)
 
---// Render quỹ đạo: đỏ (record), cyan (play), xanh nhạt (xem trước macro khi idle).
---// Tối ưu: dùng "chìa khoá tín hiệu" (cheap, KHÔNG decode) -> chỉ decode + dựng
---// polyline khi tín hiệu ĐỔI; trước đây decode toàn bộ macro + dựng object mỗi frame.
---// Tổng số LineHandleAdornment cũng giảm mạnh nhờ làm mịn trước khi vẽ.
-local function macroStamp(map)
-	if not map or #map == 0 then return "-" end
-	for _, rec in ipairs(storage.GetMaps()) do
-		if rec.map == map then
-			return tostring(rec.updated or "-") .. ":" .. tostring(rec.roomCount)
-		end
-	end
-	return "-"
-end
-
-local lastDrawTag = nil
-local lastBuildKey = nil
-visual.SetStyle({ thickness = visualStyle.thickness, transparency = visualStyle.transparency })
 recorder.SetCapture(timelineCapture)
 mover.SetReplayTimeline(timelineReplay)
-drawConnection = RunService.Heartbeat:Connect(function()
-	if not showVisual then
-		if lastDrawTag then visual.Clear(); lastDrawTag = nil end
-		return
-	end
-
-	local map = shared.GetCurrentDungeonName()
-	local room = shared.GetCurrentRoomIndex()
-
-	local buildKey
-	if recorder.IsRecording() then
-		buildKey = "rec:" .. recorder.GetCurrentPhaseIndex() .. ":" .. #recorder.GetCurrentPoints()
-	elseif mover.IsPlaying() then
-		buildKey = "play:" .. tostring(room) .. ":" .. mover.GetCurrentPhaseIndex() .. ":" .. macroStamp(map)
-	else
-		buildKey = "idle:" .. macroStamp(map)
-	end
-	if buildKey == lastBuildKey then return end
-	lastBuildKey = buildKey
-
-	local theme = THEMES[visualStyle.theme] or THEMES[DEFAULT_THEME]
-	local polys = {}
-
-	if recorder.IsRecording() then
-		--// Đang record: vẽ segment hiện tại màu sắc theo theme (points là Vector3 sống, không decode).
-		local pts = recorder.GetCurrentPoints()
-		if #pts >= 2 then
-			polys[1] = { points = pts, color = theme.rec, tag = "rec" }
-		end
-	elseif mover.IsPlaying() then
-		--// Đang play: vẽ segment/phase của room hiện tại (đã làm mịn như lúc đi).
-		if map and room > 0 then
-			local seg = storage.GetRoomSegment(map, room)
-			if seg then
-				local phases = seg.phases or { seg }
-				local curPIdx = mover.GetCurrentPhaseIndex() or 1
-				local pData = phases[math.min(curPIdx, #phases)] or seg
-				if pData and pData.points and #pData.points >= 2 then
-					polys[1] = {
-						points = storage.SimplifyPath(pData.points, 0.4),
-						color = theme.play,
-						tag = ("play_%s_p%d"):format(tostring(room), curPIdx),
-					}
-				end
-			end
-		end
-	else
-		--// Idle: xem trước toàn bộ macro của map hiện tại (bao gồm các phase).
-		if map then
-			local macro = storage.GetMap(map)
-			if macro then
-				local roomKeys = {}
-				for r in pairs(macro.rooms) do
-					roomKeys[#roomKeys + 1] = r
-				end
-				table.sort(roomKeys)
-				for _, r in ipairs(roomKeys) do
-					local seg = macro.rooms[r]
-					if seg then
-						local phases = seg.phases or { seg }
-						for pIdx, pData in ipairs(phases) do
-							if pData and pData.points and #pData.points >= 2 then
-								polys[#polys + 1] = {
-									points = storage.SimplifyPath(pData.points, 0.4),
-									color = seg.boss and Color3.fromRGB(255, 140, 255) or theme.idle,
-									tag = ("macro_%s_p%d"):format(tostring(r), pIdx),
-								}
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-
-	if #polys > 0 then
-		--// Key theo nội dung để visual tự skip rebuild (throttle 0.4s).
-		local parts = {}
-		for _, p in ipairs(polys) do
-			parts[#parts + 1] = (p.tag or "x") .. ":" .. #p.points
-		end
-		visual.DrawPolylines(polys, table.concat(parts, "|"))
-		lastDrawTag = "drawn"
-	elseif lastDrawTag then
-		visual.Clear()
-		lastDrawTag = nil
-	end
-end)
 
 --// ---------- Coordinator & Lifecycle ----------
 
@@ -20469,22 +21171,23 @@ lifecycle.Register(function()
 	recorder.Cancel()
 	visual.Clear()
 	if bossConnection then bossConnection(); bossConnection = nil end
-	if drawConnection then drawConnection:Disconnect(); drawConnection = nil end
 	if roomUnsub then roomUnsub(); roomUnsub = nil end
 	if mapUnsub then mapUnsub(); mapUnsub = nil end
 	if storageUnsub then storageUnsub(); storageUnsub = nil end
 end)
 
-return pathRecord end function __DIST.af()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
+return pathRecord end function __DIST.ae()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
 --   - MACRO = 1 bản ghi cho cả map: bấm Record 1 lần, tự ghi liên tục qua các room
 --     (auto-split segment theo room), tự lưu khi về lobby. Record lại room nào thì ghi đè room đó.
 --   - Mode theo map: NORMAL (mặc định) skip boss, dùng Hazard Scanner; FULL record & phát luôn cả boss room.
+--   - 3D Visualizer: Đường quỹ đạo, 3D Node Markers (Start, Finish, Dwell, Skill + Facing Ray), In-world Badges.
+--   - Live HUD: Hiển thị thanh % tiến độ hoàn thành room & studs theo thời gian thực.
 
 --// Imports
 
 local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
-local pathRecord = __DIST.load('ae')
+local pathRecord = __DIST.load('ad')
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('g')
 local notifier = __DIST.load('c')
@@ -20493,10 +21196,10 @@ local RunService = services.RunService
 
 return function(window, tab)
 	--// ============================================================
-	--// LEFT COLUMN: Điều khiển
+	--// LEFT COLUMN: Section 1 - Điều khiển & Phát Macro
 	--// ============================================================
 	local left = tab:Section({ Side = "Left" })
-	left:Header({ Name = "Path Record" })
+	left:Header({ Name = "Path Record Controls" })
 	left:Label({
 		Text = "Macro = 1 bản ghi cho cả map, <font color='rgb(0,255,120)'>bấm Record 1 lần là ghi liên tục</font> qua từng room (tự lưu khi về lobby). Mode FULL -> record & phát luôn cả boss room.",
 	})
@@ -20586,7 +21289,7 @@ return function(window, tab)
 		end,
 	})
 	left:Label({
-		Text = "Record sẽ bắt cả <font color='rgb(255,150,80)'>khoảng đứng chờ</font> + <font color='rgb(255,80,80)'>skill (chuột phải / Q / E)</font> + hướng mặt, Play sẽ tái hiện lại đúng vị trí, giây & nút đã record.",
+		Text = "Record bắt <font color='rgb(255,150,80)'>khoảng dừng</font> + <font color='rgb(255,80,80)'>skill (M2 / Q / E)</font> + hướng mặt để phát lại chính xác tuyệt đối.",
 	})
 
 	--// Mode theo map: NORMAL = skip boss (dùng Hazard Scanner); FULL = record & phát luôn cả boss room.
@@ -20619,9 +21322,6 @@ return function(window, tab)
 			end
 		end,
 	})
-	left:Label({
-		Text = "Mode lưu theo <font color='rgb(150,255,150)'>từng map</font>. <font color='rgb(255,140,255)'>FULL</font>: ghi liên tục qua cả boss room & phát theo path đã record. <font color='rgb(120,200,255)'>NORMAL</font> (mặc định): chỉ room quái thường, boss dùng Hazard Scanner.",
-	})
 
 	local playToggle = left:Toggle({
 		Name = "Play Path (Macro)",
@@ -20632,7 +21332,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_PR_Play")
 
-	--// Timeline: ghi/tái hiện khoảng dừng + skill chuột phải + hướng mặt.
+	--// Timeline Options
 	local captureTimeline = left:Toggle({
 		Name = "Record Pauses & Skills",
 		Default = pathRecord.IsTimelineCaptureEnabled(),
@@ -20665,8 +21365,31 @@ return function(window, tab)
 		end),
 	}, "Toggle_PR_UseFastSpeed")
 
+	--// ============================================================
+	--// LEFT COLUMN: Section 2 - Combat & Skill Timing
+	--// ============================================================
+	local combatSection = tab:Section({ Side = "Left" })
+	combatSection:Header({ Name = "Combat & Skill Timing" })
+
+	--// Thời gian xoay đón đầu Pre-Aim trước khi tới mốc skill / dwell (0.1s - 1.5s).
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Pre-Aim Lead Time (s)",
+		Default = pathRecord.GetPreAimTime(),
+		Minimum = 0.1,
+		Maximum = 1.5,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(v)
+			pathRecord.SetPreAimTime(v)
+		end),
+		onInputComplete = function(v)
+			autoSave.SaveNow()
+			notifier.Notify("Path Record", ("Saved Pre-Aim Lead Time = %ss"):format(tostring(v)), 2)
+		end,
+	}, "Slider_PR_PreAimTime"))
+
 	--// Giữ facing sau khi xả skill khi đang đi (0.5s - 2s).
-	ui.PatchSliderLoadCallback(left:Slider({
+	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Skill Face Hold (s)",
 		Default = pathRecord.GetSkillFaceHold(),
 		Minimum = 0.5,
@@ -20683,7 +21406,7 @@ return function(window, tab)
 	}, "Slider_PR_SkillFaceHold"))
 
 	--// Khoảng nghỉ giữa 2 lần click khi double-cast skill (0.005s - 0.1s).
-	ui.PatchSliderLoadCallback(left:Slider({
+	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Skill Double Click Delay (s)",
 		Default = pathRecord.GetDoubleClickDelay(),
 		Minimum = 0.005,
@@ -20699,71 +21422,30 @@ return function(window, tab)
 		end,
 	}, "Slider_PR_DoubleClickDelay"))
 
-	local visualToggle = left:Toggle({
-		Name = "Show Path Visual",
-		Default = pathRecord.IsShowVisualEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			pathRecord.SetShowVisual(state)
-		end),
-	}, "Toggle_PR_Visual")
-
-	--// Tuỳ chỉnh cách hiển thị line path (kích thước + màu).
-	local prStyle = pathRecord.GetStyle()
-
-	ui.PatchSliderLoadCallback(left:Slider({
-		Name = "Line Thickness",
-		Default = prStyle.thickness,
-		Minimum = 1,
-		Maximum = 10,
+	--// Thời gian dừng chờ tại node xuất phát & kết thúc (Start / Finish Pause Time) (0s - 3s).
+	ui.PatchSliderLoadCallback(combatSection:Slider({
+		Name = "Start / Finish Pause Time (s)",
+		Default = pathRecord.GetStartPauseTime(),
+		Minimum = 0.0,
+		Maximum = 3.0,
 		DisplayMethod = "Value",
-		Precision = 1,
+		Precision = 2,
 		Callback = autoSave.Wrap(function(v)
-			pathRecord.SetStyle({ thickness = v })
+			pathRecord.SetStartPauseTime(v)
 		end),
 		onInputComplete = function(v)
 			autoSave.SaveNow()
+			notifier.Notify("Path Record", ("Saved Start / Finish Pause Time = %ss"):format(tostring(v)), 2)
 		end,
-	}, "Slider_PR_LineThickness"))
-
-	ui.PatchSliderLoadCallback(left:Slider({
-		Name = "Line Opacity",
-		Default = math.round((1 - prStyle.transparency) * 100),
-		Minimum = 10,
-		Maximum = 100,
-		DisplayMethod = "Value",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(v)
-			pathRecord.SetStyle({ transparency = 1 - v / 100 })
-		end),
-		onInputComplete = function(v)
-			autoSave.SaveNow()
-		end,
-	}, "Slider_PR_LineOpacity"))
-
-	local themeNames = pathRecord.GetThemeNames()
-	local themeIdx = 1
-	for i, name in ipairs(themeNames) do
-		if name == prStyle.theme then
-			themeIdx = i
-			break
-		end
-	end
-	ui.PatchDropdownRestore(left:Dropdown({
-		Name = "Path Color Theme",
-		Options = themeNames,
-		Default = themeIdx,
-		Required = true,
-		Callback = autoSave.Wrap(function(option)
-			pathRecord.SetStyle({ theme = option })
-		end),
-	}, "Dropdown_PR_Theme"), false)
+	}, "Slider_PR_StartPauseTime"))
 
 	--// ============================================================
-	--// LEFT COLUMN: Quản lý macro
+	--// LEFT COLUMN: Section 3 - Quản lý Macro
 	--// ============================================================
-	left:Header({ Name = "Macros" })
+	local macroSection = tab:Section({ Side = "Left" })
+	macroSection:Header({ Name = "Macro Storage" })
 
-	macroDropdown = ui.PatchDropdownRestore(left:Dropdown({
+	macroDropdown = ui.PatchDropdownRestore(macroSection:Dropdown({
 		Name = "Map Recording",
 		Options = { "None" },
 		Default = 1,
@@ -20775,7 +21457,7 @@ return function(window, tab)
 		end,
 	}), false)
 
-	local deleteBtn = left:Button({
+	local deleteBtn = macroSection:Button({
 		Name = "Delete Selected Map",
 		Callback = autoSave.Wrap(function()
 			local mapName = getSelectedMapFromDropdown()
@@ -20785,7 +21467,7 @@ return function(window, tab)
 		end),
 	})
 
-	local reloadBtn = left:Button({
+	local reloadBtn = macroSection:Button({
 		Name = "Reload Macros (EsclipseHub/DQMacro)",
 		Callback = function()
 			pathRecord.ReloadFromDisk()
@@ -20807,7 +21489,7 @@ return function(window, tab)
 		pcall(function() clearBtn:UpdateName(CLEAR_NAME) end)
 	end
 
-	local clearBtn = left:Button({
+	local clearBtn = macroSection:Button({
 		Name = CLEAR_NAME,
 		Callback = function()
 			if not clearArmed then
@@ -20823,18 +21505,83 @@ return function(window, tab)
 	})
 
 	--// ============================================================
-	--// RIGHT COLUMN: Status & Range Visual
+	--// RIGHT COLUMN: Section 1 - Status Monitor & Live HUD
 	--// ============================================================
 	local right = tab:Section({ Side = "Right" })
-	right:Header({ Name = "Status Monitor" })
+	right:Header({ Name = "Status Monitor & Live HUD" })
 
 	local stateLabel = right:Label({ Text = "State: <font color='rgb(160,160,160)'>Idle</font>" })
+	local progressLabel = right:Label({ Text = "Progress: <font color='rgb(160,160,160)'>-</font>" })
 	local roomLabel = right:Label({ Text = "Room: <font color='rgb(160,160,160)'>-</font> | Boss: <font color='rgb(160,160,160)'>-</font>" })
-	local pointsLabel = right:Label({ Text = "Points: <font color='rgb(160,160,160)'>-</font>" })
+	local pointsLabel = right:Label({ Text = "Events: <font color='rgb(160,160,160)'>-</font>" })
 	local recordingsLabel = right:Label({ Text = "Macros: <font color='rgb(160,160,160)'>None</font>" })
 
 	--// ============================================================
-	--// RIGHT COLUMN: Skill Range Visual (Section riêng)
+	--// RIGHT COLUMN: Section 2 - Path 3D Visualizer (Spheres & Lines)
+	--// ============================================================
+	local pathVisualSection = tab:Section({ Side = "Right" })
+	pathVisualSection:Header({ Name = "Path 3D Visualizer" })
+	pathVisualSection:Label({
+		Text = "Visual từng node đường đi: <font color='rgb(255,90,90)'>🔴 Đỏ khi Record</font> (real-time) | <font color='rgb(0,255,120)'>🟢 Xanh lá khi thường</font> (xem / phát macro).",
+	})
+
+	local pathVisualToggle = pathVisualSection:Toggle({
+		Name = "Show Path Nodes (3D Spheres)",
+		Default = pathRecord.IsVisualEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualEnabled(state)
+		end),
+	}, "Toggle_PR_VisualEnabled")
+
+	local pathLinesToggle = pathVisualSection:Toggle({
+		Name = "Connect Path Lines",
+		Default = pathRecord.IsVisualShowLinesEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualShowLines(state)
+		end),
+	}, "Toggle_PR_VisualShowLines")
+
+	local pathEventsToggle = pathVisualSection:Toggle({
+		Name = "Show Event Spheres & 3D Text",
+		Default = pathRecord.IsVisualShowEventsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualShowEvents(state)
+		end),
+	}, "Toggle_PR_VisualShowEvents")
+
+	local pathFacingToggle = pathVisualSection:Toggle({
+		Name = "Show Skill Facing Rays",
+		Default = pathRecord.IsVisualShowFacingEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualShowFacing(state)
+		end),
+	}, "Toggle_PR_VisualShowFacing")
+
+	ui.PatchSliderLoadCallback(pathVisualSection:Slider({
+		Name = "Sphere Node Size",
+		Default = pathRecord.GetVisualNodeRadius(),
+		Minimum = 0.1,
+		Maximum = 1.2,
+		DisplayMethod = "Value",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(v)
+			pathRecord.SetVisualNodeRadius(v)
+		end),
+		onInputComplete = function(v)
+			autoSave.SaveNow()
+		end,
+	}, "Slider_PR_VisualNodeRadius"))
+
+	pathVisualSection:Toggle({
+		Name = "Always On Top (X-Ray)",
+		Default = pathRecord.IsVisualAlwaysOnTopEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetVisualAlwaysOnTop(state)
+		end),
+	}, "Toggle_PR_VisualAlwaysOnTop")
+
+	--// ============================================================
+	--// RIGHT COLUMN: Section 3 - Skill Range Visual (AOE Indicator)
 	--// ============================================================
 	local rangeSection = tab:Section({ Side = "Right" })
 	rangeSection:Header({ Name = "Skill Range Visual" })
@@ -20921,6 +21668,16 @@ return function(window, tab)
 		end),
 	}, "Dropdown_PR_HighlightColor"), false)
 
+	--// Hàm vẽ thanh tiến trình %
+	local function formatProgressBar(percent)
+		percent = math.clamp(percent or 0, 0, 100)
+		local totalBlocks = 10
+		local filled = math.round((percent / 100) * totalBlocks)
+		local empty = totalBlocks - filled
+		local bar = string.rep("■", filled) .. string.rep("□", empty)
+		return ("<font color='rgb(0,255,180)'>%s</font> <b>%d%%</b>"):format(bar, percent)
+	end
+
 	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop).
 	syncToggles = function(info)
 		if not isPromptingRecord then
@@ -20950,9 +21707,25 @@ return function(window, tab)
 				isSyncingMode = false
 			end
 		end)
+
 		pcall(function()
-			if visualToggle and visualToggle.GetState and visualToggle:GetState() ~= pathRecord.IsShowVisualEnabled() then
-				visualToggle:UpdateState(pathRecord.IsShowVisualEnabled())
+			if pathVisualToggle and pathVisualToggle.GetState and pathVisualToggle:GetState() ~= pathRecord.IsVisualEnabled() then
+				pathVisualToggle:UpdateState(pathRecord.IsVisualEnabled())
+			end
+		end)
+		pcall(function()
+			if pathLinesToggle and pathLinesToggle.GetState and pathLinesToggle:GetState() ~= pathRecord.IsVisualShowLinesEnabled() then
+				pathLinesToggle:UpdateState(pathRecord.IsVisualShowLinesEnabled())
+			end
+		end)
+		pcall(function()
+			if pathEventsToggle and pathEventsToggle.GetState and pathEventsToggle:GetState() ~= pathRecord.IsVisualShowEventsEnabled() then
+				pathEventsToggle:UpdateState(pathRecord.IsVisualShowEventsEnabled())
+			end
+		end)
+		pcall(function()
+			if pathFacingToggle and pathFacingToggle.GetState and pathFacingToggle:GetState() ~= pathRecord.IsVisualShowFacingEnabled() then
+				pathFacingToggle:UpdateState(pathRecord.IsVisualShowFacingEnabled())
 			end
 		end)
 		pcall(function()
@@ -21034,6 +21807,17 @@ return function(window, tab)
 		end
 		pcall(function() stateLabel:UpdateName("State: " .. stateText) end)
 
+		-- Live Progress HUD
+		if info.playing then
+			local pStr = formatProgressBar(info.progressPercent)
+			local studsStr = ("(%.1f / %.1f studs)"):format(info.progressStuds or 0, info.totalStuds or 0)
+			pcall(function() progressLabel:UpdateName("Progress: " .. pStr .. " " .. studsStr) end)
+		elseif info.recording then
+			pcall(function() progressLabel:UpdateName("Progress: <font color='rgb(255,90,90)'>Recording Segment...</font> (" .. tostring(info.pointCount or 0) .. " pts)") end)
+		else
+			pcall(function() progressLabel:UpdateName("Progress: <font color='rgb(160,160,160)'>-</font>") end)
+		end
+
 		local modeText = isFullMap
 			and "<font color='rgb(255,140,255)'>FULL</font>"
 			or "<font color='rgb(120,200,255)'>NORMAL</font>"
@@ -21060,12 +21844,12 @@ return function(window, tab)
 
 		if info.recording then
 			local curP = info.phase or 1
-			pcall(function() pointsLabel:UpdateName(("Points: <font color='rgb(255,170,60)'>%d</font> (room %s | Phase %d)"):format(info.pointCount, tostring(info.room), curP)) end)
+			pcall(function() pointsLabel:UpdateName(("Events: <font color='rgb(255,170,60)'>%d pts</font> | <font color='rgb(255,90,220)'>%d skills</font> | <font color='rgb(255,215,0)'>%d pauses</font> (Phase %d)"):format(info.pointCount or 0, info.skillCount or 0, info.dwellCount or 0, curP)) end)
 		elseif info.playing then
 			local curP = info.phase or 1
 			pcall(function() pointsLabel:UpdateName(("Playing: <font color='rgb(0,230,255)'>Phase %d</font>"):format(curP)) end)
 		else
-			pcall(function() pointsLabel:UpdateName("Points: <font color='rgb(160,160,160)'>-</font>") end)
+			pcall(function() pointsLabel:UpdateName("Events: <font color='rgb(160,160,160)'>-</font>") end)
 		end
 
 		local maps = pathRecord.GetMaps()
@@ -21084,7 +21868,7 @@ return function(window, tab)
 		refreshDropdown(maps)
 	end
 
-	pathRecord.OnStatusChanged(function(info)
+	local statusUnsub = pathRecord.OnStatusChanged(function(info)
 		updateStatus(info)
 		syncToggles(info)
 	end)
@@ -21093,7 +21877,7 @@ return function(window, tab)
 	local lastUpdate = 0
 	local monitorConnection = RunService.Heartbeat:Connect(function()
 		local now = os.clock()
-		if now - lastUpdate < 0.4 then return end
+		if now - lastUpdate < 0.35 then return end
 		lastUpdate = now
 		local info = pathRecord.GetStatus()
 		updateStatus(info)
@@ -21102,11 +21886,12 @@ return function(window, tab)
 
 	lifecycle.Register(function()
 		if monitorConnection then monitorConnection:Disconnect(); monitorConnection = nil end
+		if statusUnsub then statusUnsub(); statusUnsub = nil end
 	end)
 
 	updateStatus(pathRecord.GetStatus())
 	syncToggles(pathRecord.GetStatus())
-end end function __DIST.ag()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end end function __DIST.af()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -21175,12 +21960,12 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('E')
-	local dungeonTab = __DIST.load('J')
-	local inventoryTab = __DIST.load('L')
-	local utilitiesTab = __DIST.load('V')
-	local configsTab = __DIST.load('Z')
-	local pathRecordTab = __DIST.load('af')
+	local combatTab = __DIST.load('C')
+	local dungeonTab = __DIST.load('I')
+	local inventoryTab = __DIST.load('K')
+	local utilitiesTab = __DIST.load('U')
+	local configsTab = __DIST.load('Y')
+	local pathRecordTab = __DIST.load('ae')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -21194,20 +21979,16 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('Q')
+	local webhook = __DIST.load('P')
 	webhook.Init()
-__DIST.load('N')
+__DIST.load('M')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	
 
-local autoHide = __DIST.load('W')
+local autoHide = __DIST.load('V')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
-
-	--// Contextual (tự động áp dụng setting theo Dungeon x Target)
-	local contextual = __DIST.load('C')
-	contextual.Init()
 
 	--// Khởi chạy
 	tabs.Combat:Select()
@@ -21239,7 +22020,7 @@ local autoHide = __DIST.load('W')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.ah()
+end function __DIST.ag()
 local flags = {}
 
 function flags:Export()
@@ -21282,12 +22063,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.ai()
+return flags end function __DIST.ah()
 --// Imports
 
 
 
-local binder = __DIST.load('S')
+local binder = __DIST.load('R')
 
 --// Variables
 local interface = {}
@@ -21307,9 +22088,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_a): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.aj()--// Imports
+end function __DIST.ai()--// Imports
 
-local binder = __DIST.load('S')
+local binder = __DIST.load('R')
 
 --// Variables
 local esp = {}
@@ -21320,11 +22101,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.ak()--// Imports
+end function __DIST.aj()--// Imports
 
-local flags = __DIST.load('ah')
-local interface = __DIST.load('ai')
-local esp = __DIST.load('aj')
+local flags = __DIST.load('ag')
+local interface = __DIST.load('ah')
+local esp = __DIST.load('ai')
 
 --// Initialize
 local window = interface:Window({
@@ -21363,7 +22144,7 @@ return {
 		end,
 	},
 }
-end function __DIST.al()--// Variables
+end function __DIST.ak()--// Variables
 
 local utility = {}
 
@@ -21395,7 +22176,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.am()--// Functions
+end function __DIST.al()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -21405,14 +22186,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.an()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.am()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('ak')
-	local utility = __DIST.load('al')
-	local services = __DIST.load('am')
+	local base = __DIST.load('aj')
+	local utility = __DIST.load('ak')
+	local services = __DIST.load('al')
 
 	--// References
 	local flags = base.Flags
@@ -21478,7 +22259,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('ag'),
+		Load = __DIST.load('af'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -21489,7 +22270,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('an'),
+		Load = __DIST.load('am'),
 		Places = {
 			123456789,
 			987654321,
