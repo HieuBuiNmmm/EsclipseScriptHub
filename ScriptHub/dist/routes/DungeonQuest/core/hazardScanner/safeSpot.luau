@@ -364,78 +364,79 @@ then for p,q in ipairs(m)do local r,s=q.info,q.record if s and s.isMoving and s.
 dir and s.mainPart and s.mainPart.Parent then local t,u=f(r,s.dir)if t and u
 then local v=s.dir local w,x,y=Vector3.new(-v.Z,0,v.X),n-t.X,o-t.Z local z,A,B=x
 *v.X+y*v.Z,x*w.X+y*w.Z,u/2 if l<=0 then if z>=0 and z<=ah and math.abs(A)<=B
-then return true,r end else local C=0 if z<0 then C=-z elseif z>ah then C=z-ah
-end local D=math.max(0,math.abs(A)-B)if(C*C+D*D)<=(l*l)then return true,r end
-end end end end return false,nil end for p,q in pairs(ai)do if q.isMoving and q.
-dir and q.mainPart and q.mainPart.Parent then local r,s=f(p,q.dir)if r and s
-then local t=q.dir local u,v,w=Vector3.new(-t.Z,0,t.X),n-r.X,o-r.Z local x,y,z=v
-*t.X+w*t.Z,v*u.X+w*u.Z,s/2 if l<=0 then if x>=0 and x<=ah and math.abs(y)<=z
-then return true,p end else local A=0 if x<0 then A=-x elseif x>ah then A=x-ah
-end local B=math.max(0,math.abs(y)-z)if(A*A+B*B)<=(l*l)then return true,p end
-end end end end return false,nil end function af.SetEnabled(j)ag=j and true or
-false if ag then af.RefreshAll()else af.ClearAll()end end ac.OnPaddingChanged(
-function()if ag then af.RefreshAll()end end)ab.Register(function()af.ClearAll()
-end)return af end function a.g()local aa,ab,ac,ad=a.load'a',a.load'b',a.load'd',
-a.load'f'local ae,af,ag,ah,ai,aj,ak,al,am,b,c,d,e,f,g,h,i,j=aa.RunService or
-game:GetService'RunService',aa.player,{},true,false,{},1.8,Color3.fromRGB(0,255,
-170),Color3.fromRGB(255,35,35),0.45,0.2,0.2,(game:GetService'Players')local l,m,
-n,o=function()local l=af or e.LocalPlayer if not l then return nil end local m=l
-.Character if not m or not m.Parent then return nil end local n=m:
-FindFirstChildOfClass'Humanoid'if n and n.Health<=0 then return nil end return m
-:FindFirstChild'HumanoidRootPart'or m.PrimaryPart end,function(l)if not l then
-return 0 end return l.Position.Y-2.5 end,function(l)if i then if i.Parent~=l or
-not i:IsDescendantOf(workspace)then pcall(function()i:Destroy()end)i=nil else if
-i.Adornee~=l then i.Adornee=l end return i end end if not l or not l.Parent then
-return nil end local m=Instance.new'CylinderHandleAdornment'm.Name=
-'Player_2D_HitboxVisual'm.Adornee=l m.Radius=ak m.Height=d m.Color3=ai and am or
-al m.Transparency=ai and c or b m.ZIndex=5 m.AlwaysOnTop=false m.Visible=ah m.
-Parent=l i=m return m end,function(l)if not i or not i.Parent then return end i.
-Color3=l and am or al i.Transparency=l and c or b end local p=function()local p=
-l()if not p or not p.Parent then if i and i.Parent then i.Visible=false end if
-ai then ai=false f=nil g=nil for q,r in ipairs(aj)do pcall(r,false,nil,nil)end
-end return end local q=n(p)if q and q.Parent then q.Visible=ah q.Radius=ak local
-r=m(p)local s=CFrame.new(Vector3.new(p.Position.X,r,p.Position.Z))*CFrame.
-Angles(math.rad(90),0,0)q.CFrame=p.CFrame:ToObjectSpace(s)end local r=Vector3.
-new(p.Position.X,0,p.Position.Z)local s,t,u=ac.IsPointInAnyHazard(r,nil,ak)local
-v,w=false if not s and ad.IsPointInAnyTrajectory then v,w=ad.
-IsPointInAnyTrajectory(r,ak)end local x,y,z=(s or v),t or w,s and'Ground Zone'or
-(v and'Trajectory Corridor'or nil)if x~=ai or y~=f then ai=x f=y g=z o(x)for A,B
-in ipairs(aj)do pcall(B,x,y,z)end end end local q=function()if not h then h=ae.
-Heartbeat:Connect(p)end end function ag.Cleanup()if h then h:Disconnect()h=nil
-end if i then pcall(function()i:Destroy()end)i=nil end ai=false f=nil g=nil end
-function ag.IsPlayerInDanger()return ai,f,g end function ag.GetCurrentThreat()
-return f,g end function ag.OnDangerStatusChanged(r)if type(r)=='function'then
-table.insert(aj,r)end end function ag.SetVisualEnabled(r)ah=r and true or false
-if i then i.Visible=ah end end function ag.IsVisualEnabled()return ah end
-function ag.SetRadius(r)if type(r)=='number'and r>=0.1 then ak=r if i and i.
-Parent then i.Radius=ak end end end function ag.GetRadius()return ak end local r
-=function()local r=af or e.LocalPlayer if not r then return end local s=function
-(s)if i then pcall(function()i:Destroy()end)i=nil end task.spawn(function()local
-t=s:WaitForChild('Humanoid',3)if t then t.Died:Connect(function()if i then i.
-Visible=false end end)end end)end j=r.CharacterAdded:Connect(s)if r.Character
-then s(r.Character)end end r()q()ab.Register(function()if j then j:Disconnect()j
-=nil end ag.Cleanup()end)return ag end function a.h()local aa,ab,ac={},{},8 for
-ad=1,ac do local ae=(ad-1)*(2*math.pi/ac)ab[ad]=Vector3.new(math.cos(ae),0,math.
-sin(ae))end local ad,ae={},16 for af=1,ae do local ag=(af-1)*(2*math.pi/ae)ad[af
-]=Vector3.new(math.cos(ag),0,math.sin(ag))end local af,ag={1.5,3,5,8,12,18,25},{
-1.5,3,4.5,6,8,10.5,13.5,17,21,26,32,40}aa.COARSE_DIRECTIONS=ab aa.
-FINE_DIRECTIONS=ad aa.COARSE_RADII=af aa.FINE_RADII=ag function aa.SamplePass(ah
-,ai,aj,ak,al,am,b,c)local d,e,f,g,h=math.huge,Vector3.zero,false,ai if c and c.
-Magnitude>0.1 then local i=Vector3.new(c.X,0,c.Z).Unit g=table.clone(ai)table.
-sort(g,function(j,l)local m,n=j.X*i.X+j.Z*i.Z,l.X*i.X+l.Z*i.Z return m>n end)end
-for i,j in ipairs(aj)do local l=false for m,n in ipairs(g)do local o=ah+n*j
-local p=am(o)if b then table.insert(b,{pos=o,isSafe=p,isChosen=false})end if p
-then local q=o if al and ak>0 then local r=o+n*ak if am(r)then q=r end end local
-r=(q-ah).Magnitude if r<d then d=r h=q e=n l=true end end end if l and h then f=
-true break end end return h,f,d,e end return aa end function a.i()local aa,ab,ac
-,ad,ae,af,ag,ah,ai,aj,ak,al,am=Color3.fromRGB(0,255,120),Color3.fromRGB(0,255,
-150),Color3.fromRGB(255,255,255),Color3.fromRGB(0,235,140),Color3.fromRGB(255,60
-,60),0.2,1.4,0.45,{},{}local b,c=function(b)if not b then return end if not ak
-or not ak.Parent then if ak then pcall(function()ak:Destroy()end)end local c=
-Instance.new'CylinderHandleAdornment'c.Name='SafeSpot_OuterMarker'c.Adornee=b c.
-Radius=ag c.Height=af c.Color3=aa c.Transparency=0.35 c.ZIndex=6 c.AlwaysOnTop=
-false c.Visible=false c.Parent=b ak=c end if not al or not al.Parent then if al
-then pcall(function()al:Destroy()end)end local c=Instance.new
+then return true,r,v,t,u end else local C=0 if z<0 then C=-z elseif z>ah then C=
+z-ah end local D=math.max(0,math.abs(A)-B)if(C*C+D*D)<=(l*l)then return true,r,v
+,t,u end end end end end return false,nil,nil,nil,nil end for p,q in pairs(ai)do
+if q.isMoving and q.dir and q.mainPart and q.mainPart.Parent then local r,s=f(p,
+q.dir)if r and s then local t=q.dir local u,v,w=Vector3.new(-t.Z,0,t.X),n-r.X,o-
+r.Z local x,y,z=v*t.X+w*t.Z,v*u.X+w*u.Z,s/2 if l<=0 then if x>=0 and x<=ah and
+math.abs(y)<=z then return true,p,t,r,s end else local A=0 if x<0 then A=-x
+elseif x>ah then A=x-ah end local B=math.max(0,math.abs(y)-z)if(A*A+B*B)<=(l*l)
+then return true,p,t,r,s end end end end end return false,nil,nil,nil,nil end
+function af.SetEnabled(j)ag=j and true or false if ag then af.RefreshAll()else
+af.ClearAll()end end ac.OnPaddingChanged(function()if ag then af.RefreshAll()end
+end)ab.Register(function()af.ClearAll()end)return af end function a.g()local aa,
+ab,ac,ad=a.load'a',a.load'b',a.load'd',a.load'f'local ae,af,ag,ah,ai,aj,ak,al,am
+,b,c,d,e,f,g,h,i,j=aa.RunService or game:GetService'RunService',aa.player,{},
+true,false,{},1.8,Color3.fromRGB(0,255,170),Color3.fromRGB(255,35,35),0.45,0.2,
+0.2,(game:GetService'Players')local l,m,n,o=function()local l=af or e.
+LocalPlayer if not l then return nil end local m=l.Character if not m or not m.
+Parent then return nil end local n=m:FindFirstChildOfClass'Humanoid'if n and n.
+Health<=0 then return nil end return m:FindFirstChild'HumanoidRootPart'or m.
+PrimaryPart end,function(l)if not l then return 0 end return l.Position.Y-2.5
+end,function(l)if i then if i.Parent~=l or not i:IsDescendantOf(workspace)then
+pcall(function()i:Destroy()end)i=nil else if i.Adornee~=l then i.Adornee=l end
+return i end end if not l or not l.Parent then return nil end local m=Instance.
+new'CylinderHandleAdornment'm.Name='Player_2D_HitboxVisual'm.Adornee=l m.Radius=
+ak m.Height=d m.Color3=ai and am or al m.Transparency=ai and c or b m.ZIndex=5 m
+.AlwaysOnTop=false m.Visible=ah m.Parent=l i=m return m end,function(l)if not i
+or not i.Parent then return end i.Color3=l and am or al i.Transparency=l and c
+or b end local p=function()local p=l()if not p or not p.Parent then if i and i.
+Parent then i.Visible=false end if ai then ai=false f=nil g=nil for q,r in
+ipairs(aj)do pcall(r,false,nil,nil)end end return end local q=n(p)if q and q.
+Parent then q.Visible=ah q.Radius=ak local r=m(p)local s=CFrame.new(Vector3.new(
+p.Position.X,r,p.Position.Z))*CFrame.Angles(math.rad(90),0,0)q.CFrame=p.CFrame:
+ToObjectSpace(s)end local r=Vector3.new(p.Position.X,0,p.Position.Z)local s,t,u=
+ac.IsPointInAnyHazard(r,nil,ak)local v,w=false if not s and ad.
+IsPointInAnyTrajectory then v,w=ad.IsPointInAnyTrajectory(r,ak)end local x,y,z=(
+s or v),t or w,s and'Ground Zone'or(v and'Trajectory Corridor'or nil)if x~=ai or
+y~=f then ai=x f=y g=z o(x)for A,B in ipairs(aj)do pcall(B,x,y,z)end end end
+local q=function()if not h then h=ae.Heartbeat:Connect(p)end end function ag.
+Cleanup()if h then h:Disconnect()h=nil end if i then pcall(function()i:Destroy()
+end)i=nil end ai=false f=nil g=nil end function ag.IsPlayerInDanger()return ai,f
+,g end function ag.GetCurrentThreat()return f,g end function ag.
+OnDangerStatusChanged(r)if type(r)=='function'then table.insert(aj,r)end end
+function ag.SetVisualEnabled(r)ah=r and true or false if i then i.Visible=ah end
+end function ag.IsVisualEnabled()return ah end function ag.SetRadius(r)if type(r
+)=='number'and r>=0.1 then ak=r if i and i.Parent then i.Radius=ak end end end
+function ag.GetRadius()return ak end local r=function()local r=af or e.
+LocalPlayer if not r then return end local s=function(s)if i then pcall(function
+()i:Destroy()end)i=nil end task.spawn(function()local t=s:WaitForChild(
+'Humanoid',3)if t then t.Died:Connect(function()if i then i.Visible=false end
+end)end end)end j=r.CharacterAdded:Connect(s)if r.Character then s(r.Character)
+end end r()q()ab.Register(function()if j then j:Disconnect()j=nil end ag.
+Cleanup()end)return ag end function a.h()local aa,ab,ac={},{},8 for ad=1,ac do
+local ae=(ad-1)*(2*math.pi/ac)ab[ad]=Vector3.new(math.cos(ae),0,math.sin(ae))end
+local ad,ae={},16 for af=1,ae do local ag=(af-1)*(2*math.pi/ae)ad[af]=Vector3.
+new(math.cos(ag),0,math.sin(ag))end local af,ag={1.5,3,5,8,12,18,25},{1.5,3,4.5,
+6,8,10.5,13.5,17,21,26,32,40}aa.COARSE_DIRECTIONS=ab aa.FINE_DIRECTIONS=ad aa.
+COARSE_RADII=af aa.FINE_RADII=ag function aa.SamplePass(ah,ai,aj,ak,al,am,b,c)
+local d,e,f,g,h=math.huge,Vector3.zero,false,ai if c and c.Magnitude>0.1 then
+local i=Vector3.new(c.X,0,c.Z).Unit g=table.clone(ai)table.sort(g,function(j,l)
+local m,n=j.X*i.X+j.Z*i.Z,l.X*i.X+l.Z*i.Z return m>n end)end for i,j in ipairs(
+aj)do local l=false for m,n in ipairs(g)do local o=ah+n*j local p=am(o)if b then
+table.insert(b,{pos=o,isSafe=p,isChosen=false})end if p then local q=o if al and
+ak>0 then local r=o+n*ak if am(r)then q=r end end local r=(q-ah).Magnitude if r<
+d then d=r h=q e=n l=true end end end if l and h then f=true break end end
+return h,f,d,e end return aa end function a.i()local aa,ab,ac,ad,ae,af,ag,ah,ai,
+aj,ak,al,am=Color3.fromRGB(0,255,120),Color3.fromRGB(0,255,150),Color3.fromRGB(
+255,255,255),Color3.fromRGB(0,235,140),Color3.fromRGB(255,60,60),0.2,1.4,0.45,{}
+,{}local b,c=function(b)if not b then return end if not ak or not ak.Parent then
+if ak then pcall(function()ak:Destroy()end)end local c=Instance.new
+'CylinderHandleAdornment'c.Name='SafeSpot_OuterMarker'c.Adornee=b c.Radius=ag c.
+Height=af c.Color3=aa c.Transparency=0.35 c.ZIndex=6 c.AlwaysOnTop=false c.
+Visible=false c.Parent=b ak=c end if not al or not al.Parent then if al then
+pcall(function()al:Destroy()end)end local c=Instance.new
 'CylinderHandleAdornment'c.Name='SafeSpot_CenterDot'c.Adornee=b c.Radius=ah c.
 Height=af+0.05 c.Color3=ac c.Transparency=0.15 c.ZIndex=7 c.AlwaysOnTop=false c.
 Visible=false c.Parent=b al=c end if not am or not am.Parent then if am then
@@ -509,14 +510,21 @@ false end local A,B=Vector3.new(y.X,0,y.Z),(af.GetRadius and af.GetRadius()or
 return false end if ae.IsPointInAnyTrajectory and ae.IsPointInAnyTrajectory(A,B,
 x)then return false end return true end if(w and#w==0 and x and#x==0)or y(u,0)
 then table.insert(h,{pos=u,isSafe=true,isChosen=true})return u,true,0,Vector3.
-zero end local z,A,B,C=ag.SamplePass(u,ag.COARSE_DIRECTIONS,ag.COARSE_RADII,d,
-true,y,h,v)if not A then z,A,B,C=ag.SamplePass(u,ag.FINE_DIRECTIONS,ag.
-FINE_RADII,d,true,y,h,v)end if not A then z,A,B,C=ag.SamplePass(u,ag.
-FINE_DIRECTIONS,ag.FINE_RADII,0,false,y,h,v)end if A and z then for D,E in
-ipairs(h)do if(E.pos-z).Magnitude<0.25 then E.isChosen=true break end end return
-z,true,B,C end return u,false,math.huge,Vector3.zero end local s=function()if
-not am then ah.Hide()return end local s=p()if not s or not s.Parent then ah.
-Hide()return end local t,u,v=false if af.IsPlayerInDanger then t,u,v=af.
+zero end local z,A=v,af.GetRadius and af.GetRadius()or 1.8 local B,C,D,E=ae.
+IsPointInAnyTrajectory(u,A,x)if B and D and E then local F,G,H=Vector3.new(-D.Z,
+0,D.X),Vector3.new(D.Z,0,-D.X),u-E local I=H.X*F.X+H.Z*F.Z local J=I>=0 and F or
+G if v and v.Magnitude>0.1 then local K,L=v.X*F.X+v.Z*F.Z,v.X*G.X+v.Z*G.Z if K>L
++0.3 then J=F elseif L>K+0.3 then J=G end end local K=0.45 if v and v.Magnitude>
+0.1 then local L,M=-(v.X*D.X+v.Z*D.Z),math.abs(v.X*J.X+v.Z*J.Z)if M>0.05 then
+local N=L/M K=math.clamp(N,0.18,1)elseif L>0 then K=1 else K=0.18 end end local
+L=(J-K*D).Unit z=L end local F,G,H,I=ag.SamplePass(u,ag.COARSE_DIRECTIONS,ag.
+COARSE_RADII,d,true,y,h,z)if not G then F,G,H,I=ag.SamplePass(u,ag.
+FINE_DIRECTIONS,ag.FINE_RADII,d,true,y,h,z)end if not G then F,G,H,I=ag.
+SamplePass(u,ag.FINE_DIRECTIONS,ag.FINE_RADII,0,false,y,h,z)end if G and F then
+for J,K in ipairs(h)do if(K.pos-F).Magnitude<0.25 then K.isChosen=true break end
+end return F,true,H,I end return u,false,math.huge,Vector3.zero end local s=
+function()if not am then ah.Hide()return end local s=p()if not s or not s.Parent
+then ah.Hide()return end local t,u,v=false if af.IsPlayerInDanger then t,u,v=af.
 IsPlayerInDanger()end local w=t or(j~=nil)or f if not w then local x=os.clock()
 if x-i<0.05 then return end i=x end local x,y=r(s),Vector3.new(s.Position.X,0,s.
 Position.Z)if t then local z,A,B=j and(j-y).Magnitude or 0,j and al.IsPointSafe(

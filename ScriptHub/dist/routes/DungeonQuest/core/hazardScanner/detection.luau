@@ -364,37 +364,38 @@ then for p,q in ipairs(m)do local r,s=q.info,q.record if s and s.isMoving and s.
 dir and s.mainPart and s.mainPart.Parent then local t,u=f(r,s.dir)if t and u
 then local v=s.dir local w,x,y=Vector3.new(-v.Z,0,v.X),n-t.X,o-t.Z local z,A,B=x
 *v.X+y*v.Z,x*w.X+y*w.Z,u/2 if l<=0 then if z>=0 and z<=ah and math.abs(A)<=B
-then return true,r end else local C=0 if z<0 then C=-z elseif z>ah then C=z-ah
-end local D=math.max(0,math.abs(A)-B)if(C*C+D*D)<=(l*l)then return true,r end
-end end end end return false,nil end for p,q in pairs(ai)do if q.isMoving and q.
-dir and q.mainPart and q.mainPart.Parent then local r,s=f(p,q.dir)if r and s
-then local t=q.dir local u,v,w=Vector3.new(-t.Z,0,t.X),n-r.X,o-r.Z local x,y,z=v
-*t.X+w*t.Z,v*u.X+w*u.Z,s/2 if l<=0 then if x>=0 and x<=ah and math.abs(y)<=z
-then return true,p end else local A=0 if x<0 then A=-x elseif x>ah then A=x-ah
-end local B=math.max(0,math.abs(y)-z)if(A*A+B*B)<=(l*l)then return true,p end
-end end end end return false,nil end function af.SetEnabled(j)ag=j and true or
-false if ag then af.RefreshAll()else af.ClearAll()end end ac.OnPaddingChanged(
-function()if ag then af.RefreshAll()end end)ab.Register(function()af.ClearAll()
-end)return af end end local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'a',a.load'c',a.
-load'b',a.load'd',a.load'e',a.load'f',game:GetService'Players',game:GetService
-'Workspace',game:GetService'ReplicatedStorage'local aj,ak,al,am,b,c,d,e,f,g,h,i,
-j,l,m,n,o,p=aa.player,{},false,false,true,false,false,'',false,{},0,{},{},{
-'abilities','projectiles'},false,{}local q,r,s,t,u,v,w,x=function()if m then
-return end m=true for q,r in ipairs(l)do local s=ai:FindFirstChild(r)if s then
-for t,u in ipairs(s:GetChildren())do local v=(u.Name or''):lower():gsub('%s+',''
-)if#v>0 then n[v]=true end end end end end,function(q)if not q then return true
-end local r=q.Name if typeof(r)=='string'then local s=r:lower()if s:sub(1,3)==
-'tm_'or s:sub(1,3)=='pr_'or s:sub(1,3)=='dq_'or s:find'pathrecord'or s:find
-'safespot'or s:find'hazard'or s:find'adornment'or s:find'debug'or s:find
-'targetpart'or s:find'actualmarker'then return true end local t=q.Parent while t
-and t~=workspace and t~=game do local u=t.Name if typeof(u)=='string'then local
-v=u:lower()if v:find'pathrecord'or v:sub(1,3)=='tm_'or v:sub(1,3)=='pr_'then
-return true end end t=t.Parent end local u=s:gsub('%s+','')if#u>0 and n[u]==true
-then return true end end return false end,function(q)if not q then return false
-end if ag:GetPlayerFromCharacter(q)then return true end if ag:FindFirstChild(q.
-Name)then return true end for r,s in ipairs(ag:GetPlayers())do if q.Name==s.Name
-then return true end local t=s.Character if t and(q==t or q:IsDescendantOf(t))
-then return true end end local r=aj and aj.Character if r and(q==r or q:
+then return true,r,v,t,u end else local C=0 if z<0 then C=-z elseif z>ah then C=
+z-ah end local D=math.max(0,math.abs(A)-B)if(C*C+D*D)<=(l*l)then return true,r,v
+,t,u end end end end end return false,nil,nil,nil,nil end for p,q in pairs(ai)do
+if q.isMoving and q.dir and q.mainPart and q.mainPart.Parent then local r,s=f(p,
+q.dir)if r and s then local t=q.dir local u,v,w=Vector3.new(-t.Z,0,t.X),n-r.X,o-
+r.Z local x,y,z=v*t.X+w*t.Z,v*u.X+w*u.Z,s/2 if l<=0 then if x>=0 and x<=ah and
+math.abs(y)<=z then return true,p,t,r,s end else local A=0 if x<0 then A=-x
+elseif x>ah then A=x-ah end local B=math.max(0,math.abs(y)-z)if(A*A+B*B)<=(l*l)
+then return true,p,t,r,s end end end end end return false,nil,nil,nil,nil end
+function af.SetEnabled(j)ag=j and true or false if ag then af.RefreshAll()else
+af.ClearAll()end end ac.OnPaddingChanged(function()if ag then af.RefreshAll()end
+end)ab.Register(function()af.ClearAll()end)return af end end local aa,ab,ac,ad,
+ae,af,ag,ah,ai=a.load'a',a.load'c',a.load'b',a.load'd',a.load'e',a.load'f',game:
+GetService'Players',game:GetService'Workspace',game:GetService
+'ReplicatedStorage'local aj,ak,al,am,b,c,d,e,f,g,h,i,j,l,m,n,o,p=aa.player,{},
+false,false,true,false,false,'',false,{},0,{},{},{'abilities','projectiles'},
+false,{}local q,r,s,t,u,v,w,x=function()if m then return end m=true for q,r in
+ipairs(l)do local s=ai:FindFirstChild(r)if s then for t,u in ipairs(s:
+GetChildren())do local v=(u.Name or''):lower():gsub('%s+','')if#v>0 then n[v]=
+true end end end end end,function(q)if not q then return true end local r=q.Name
+if typeof(r)=='string'then local s=r:lower()if s:sub(1,3)=='tm_'or s:sub(1,3)==
+'pr_'or s:sub(1,3)=='dq_'or s:find'pathrecord'or s:find'safespot'or s:find
+'hazard'or s:find'adornment'or s:find'debug'or s:find'targetpart'or s:find
+'actualmarker'then return true end local t=q.Parent while t and t~=workspace and
+t~=game do local u=t.Name if typeof(u)=='string'then local v=u:lower()if v:find
+'pathrecord'or v:sub(1,3)=='tm_'or v:sub(1,3)=='pr_'then return true end end t=t
+.Parent end local u=s:gsub('%s+','')if#u>0 and n[u]==true then return true end
+end return false end,function(q)if not q then return false end if ag:
+GetPlayerFromCharacter(q)then return true end if ag:FindFirstChild(q.Name)then
+return true end for r,s in ipairs(ag:GetPlayers())do if q.Name==s.Name then
+return true end local t=s.Character if t and(q==t or q:IsDescendantOf(t))then
+return true end end local r=aj and aj.Character if r and(q==r or q:
 IsDescendantOf(r))then return true end return false end,function()local q=0 for
 r in pairs(g)do q+=1 end h=q for r=#i,1,-1 do pcall(i[r],q,o)end end,0.85,50,
 0.05,{}local y,z,A,B,C,D,E,F=function(y)local z=x[y]if z then z.active=false x[y

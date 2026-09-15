@@ -391,7 +391,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 
 					if extraRadius <= 0 then
 						if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
-							return true, info
+							return true, info, dir, centroid, spanWidth
 						end
 					else
 						local dU = 0
@@ -402,13 +402,13 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 						end
 						local dN = math.max(0, math.abs(projN) - halfWidth)
 						if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
-							return true, info
+							return true, info, dir, centroid, spanWidth
 						end
 					end
 				end
 			end
 		end
-		return false, nil
+		return false, nil, nil, nil, nil
 	end
 
 	for info, record in pairs(activeRecords) do
@@ -428,7 +428,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 				-- Kiểm tra giao thoa hình học trực tiếp với dải hình hộp màu cam cố định
 				if extraRadius <= 0 then
 					if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
-						return true, info
+						return true, info, dir, centroid, spanWidth
 					end
 				else
 					local dU = 0
@@ -439,14 +439,14 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 					end
 					local dN = math.max(0, math.abs(projN) - halfWidth)
 					if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
-						return true, info
+						return true, info, dir, centroid, spanWidth
 					end
 				end
 			end
 		end
 	end
 
-	return false, nil
+	return false, nil, nil, nil, nil
 end
 
 --// Bật / tắt Trajectory Visualizer

@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-15T14:32:37.893951500+00:00",
+    genDate = "2026-09-15T15:02:56.920504400+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8220,7 +8220,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 
 					if extraRadius <= 0 then
 						if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
-							return true, info
+							return true, info, dir, centroid, spanWidth
 						end
 					else
 						local dU = 0
@@ -8231,13 +8231,13 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 						end
 						local dN = math.max(0, math.abs(projN) - halfWidth)
 						if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
-							return true, info
+							return true, info, dir, centroid, spanWidth
 						end
 					end
 				end
 			end
 		end
-		return false, nil
+		return false, nil, nil, nil, nil
 	end
 
 	for info, record in pairs(activeRecords) do
@@ -8257,7 +8257,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 				-- Kiểm tra giao thoa hình học trực tiếp với dải hình hộp màu cam cố định
 				if extraRadius <= 0 then
 					if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
-						return true, info
+						return true, info, dir, centroid, spanWidth
 					end
 				else
 					local dU = 0
@@ -8268,14 +8268,14 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 					end
 					local dN = math.max(0, math.abs(projN) - halfWidth)
 					if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
-						return true, info
+						return true, info, dir, centroid, spanWidth
 					end
 				end
 			end
 		end
 	end
 
-	return false, nil
+	return false, nil, nil, nil, nil
 end
 
 --// Bật / tắt Trajectory Visualizer
@@ -9813,7 +9813,54 @@ function safeSpot.FindNearestSafeSpot(origin)
 		return origin2D, true, 0, Vector3.zero
 	end
 
-	-- Tier 1: Coarse Pass (8 hướng, bán kính thưa, yêu cầu buffer an toàn, ưu tiên theo đà chạy)
+	-- 3. Xác định hướng ưu tiên né (Preferred Escape Direction):
+	-- Nếu đang nằm trong quỹ đạo đạn bay (Trajectory Corridor): Ưu tiên góc né xéo lùi ~100°
+	-- (vuông góc thoát mép đạn nhanh nhất kết hợp chếch lùi nhẹ -0.175 để tuyệt đối không bị đầu đạn cắt mặt)
+	local preferredDir = momentumDir
+	local playerRad = playerVisual.GetRadius and playerVisual.GetRadius() or 1.8
+	local inTraj, _, trajDir, trajCentroid = trajectory.IsPointInAnyTrajectory(origin2D, playerRad, relevantTrajectories)
+
+	if inTraj and trajDir and trajCentroid then
+		local normalLeft = Vector3.new(-trajDir.Z, 0, trajDir.X)
+		local normalRight = Vector3.new(trajDir.Z, 0, -trajDir.X)
+		local toPlayer = origin2D - trajCentroid
+		local projLeft = toPlayer.X * normalLeft.X + toPlayer.Z * normalLeft.Z
+
+		local chosenNormal = projLeft >= 0 and normalLeft or normalRight
+
+		if momentumDir and momentumDir.Magnitude > 0.1 then
+			local dotLeft = momentumDir.X * normalLeft.X + momentumDir.Z * normalLeft.Z
+			local dotRight = momentumDir.X * normalRight.X + momentumDir.Z * normalRight.Z
+			if dotLeft > dotRight + 0.3 then
+				chosenNormal = normalLeft
+			elseif dotRight > dotLeft + 0.3 then
+				chosenNormal = normalRight
+			end
+		end
+
+		-- Tính hệ số xéo lùi k linh hoạt trong dải góc từ 100° (k = 0.18) đến 135° (k = 1.0):
+		-- - Khi đứng yên: Mặc định k = 0.45 (~115°, trung tâm của cung né an toàn [100°, 135°])
+		-- - Khi đang chạy: Tự động uốn góc né theo đúng đà di chuyển của người chơi trong khoảng [100°, 135°]
+		local k = 0.45
+		if momentumDir and momentumDir.Magnitude > 0.1 then
+			local dotBack = -(momentumDir.X * trajDir.X + momentumDir.Z * trajDir.Z)
+			local dotNorm = math.abs(momentumDir.X * chosenNormal.X + momentumDir.Z * chosenNormal.Z)
+			if dotNorm > 0.05 then
+				local dynamicK = dotBack / dotNorm
+				k = math.clamp(dynamicK, 0.18, 1.0)
+			elseif dotBack > 0 then
+				k = 1.0 -- Nếu đang có quán tính chạy lùi thì ưu tiên góc 135°
+			else
+				k = 0.18 -- Nếu đang chạy ngang/tiến thì ưu tiên góc 100° để thoát nhanh nhất
+			end
+		end
+
+		-- Vector né xéo lùi dao động linh hoạt [100° .. 135°]
+		local obliqueEscape = (chosenNormal - k * trajDir).Unit
+		preferredDir = obliqueEscape
+	end
+
+	-- Tier 1: Coarse Pass (8 hướng, bán kính thưa, yêu cầu buffer an toàn, ưu tiên theo hướng né tối ưu)
 	local bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
 		origin2D,
 		candidateGenerator.COARSE_DIRECTIONS,
@@ -9822,10 +9869,10 @@ function safeSpot.FindNearestSafeSpot(origin)
 		true,
 		isPointSafeScoped,
 		lastEvaluatedCandidates,
-		momentumDir
+		preferredDir
 	)
 
-	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết, yêu cầu buffer an toàn, ưu tiên theo đà chạy)
+	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết, yêu cầu buffer an toàn, ưu tiên theo hướng né tối ưu)
 	if not found then
 		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
 			origin2D,
@@ -9835,11 +9882,11 @@ function safeSpot.FindNearestSafeSpot(origin)
 			true,
 			isPointSafeScoped,
 			lastEvaluatedCandidates,
-			momentumDir
+			preferredDir
 		)
 	end
 
-	-- Tier 3: Emergency Fallback Pass (16 hướng, bán kính chi tiết, không bắt buộc buffer, ưu tiên theo đà chạy)
+	-- Tier 3: Emergency Fallback Pass (16 hướng, bán kính chi tiết, không bắt buộc buffer, ưu tiên theo hướng né tối ưu)
 	if not found then
 		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
 			origin2D,
@@ -9849,7 +9896,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 			false,
 			isPointSafeScoped,
 			lastEvaluatedCandidates,
-			momentumDir
+			preferredDir
 		)
 	end
 

@@ -188,53 +188,53 @@ for C,D in ipairs(z)do local E,F=D.info,D.record if F and F.isMoving and F.dir
 and F.mainPart and F.mainPart.Parent then local G,H=s(E,F.dir)if G and H then
 local I=F.dir local J,K,L=Vector3.new(-I.Z,0,I.X),A-G.X,B-G.Z local M,N,O=K*I.X+
 L*I.Z,K*J.X+L*J.Z,H/2 if y<=0 then if M>=0 and M<=i and math.abs(N)<=O then
-return true,E end else local P=0 if M<0 then P=-M elseif M>i then P=M-i end
-local Q=math.max(0,math.abs(N)-O)if(P*P+Q*Q)<=(y*y)then return true,E end end
-end end end return false,nil end for C,D in pairs(j)do if D.isMoving and D.dir
-and D.mainPart and D.mainPart.Parent then local E,F=s(C,D.dir)if E and F then
-local G=D.dir local H,I,J=Vector3.new(-G.Z,0,G.X),A-E.X,B-E.Z local K,L,M=I*G.X+
-J*G.Z,I*H.X+J*H.Z,F/2 if y<=0 then if K>=0 and K<=i and math.abs(L)<=M then
-return true,C end else local N=0 if K<0 then N=-K elseif K>i then N=K-i end
-local O=math.max(0,math.abs(L)-M)if(N*N+O*O)<=(y*y)then return true,C end end
-end end end return false,nil end function g.SetEnabled(w)h=w and true or false
-if h then g.RefreshAll()else g.ClearAll()end end d.OnPaddingChanged(function()if
-h then g.RefreshAll()end end)c.Register(function()g.ClearAll()end)return g end
-end local b,c,d,e=a.load'a',a.load'b',a.load'c',a.load'e'local f,g,h,i,j,k,l,m,n
-,o,p,q,r,s,t,u,v,w=b.RunService or game:GetService'RunService',b.player,{},true,
-false,{},1.8,Color3.fromRGB(0,255,170),Color3.fromRGB(255,35,35),0.45,0.2,0.2,(
-game:GetService'Players')local y,z,A,B=function()local y=g or r.LocalPlayer if
-not y then return nil end local z=y.Character if not z or not z.Parent then
-return nil end local A=z:FindFirstChildOfClass'Humanoid'if A and A.Health<=0
-then return nil end return z:FindFirstChild'HumanoidRootPart'or z.PrimaryPart
-end,function(y)if not y then return 0 end return y.Position.Y-2.5 end,function(y
-)if v then if v.Parent~=y or not v:IsDescendantOf(workspace)then pcall(function(
-)v:Destroy()end)v=nil else if v.Adornee~=y then v.Adornee=y end return v end end
-if not y or not y.Parent then return nil end local z=Instance.new
-'CylinderHandleAdornment'z.Name='Player_2D_HitboxVisual'z.Adornee=y z.Radius=l z
-.Height=q z.Color3=j and n or m z.Transparency=j and p or o z.ZIndex=5 z.
-AlwaysOnTop=false z.Visible=i z.Parent=y v=z return z end,function(y)if not v or
-not v.Parent then return end v.Color3=y and n or m v.Transparency=y and p or o
-end local C=function()local C=y()if not C or not C.Parent then if v and v.Parent
-then v.Visible=false end if j then j=false s=nil t=nil for D,E in ipairs(k)do
-pcall(E,false,nil,nil)end end return end local D=A(C)if D and D.Parent then D.
-Visible=i D.Radius=l local E=z(C)local F=CFrame.new(Vector3.new(C.Position.X,E,C
-.Position.Z))*CFrame.Angles(math.rad(90),0,0)D.CFrame=C.CFrame:ToObjectSpace(F)
-end local E=Vector3.new(C.Position.X,0,C.Position.Z)local F,G,H=d.
-IsPointInAnyHazard(E,nil,l)local I,J=false if not F and e.IsPointInAnyTrajectory
-then I,J=e.IsPointInAnyTrajectory(E,l)end local K,L,M=(F or I),G or J,F and
-'Ground Zone'or(I and'Trajectory Corridor'or nil)if K~=j or L~=s then j=K s=L t=
-M B(K)for N,O in ipairs(k)do pcall(O,K,L,M)end end end local D=function()if not
-u then u=f.Heartbeat:Connect(C)end end function h.Cleanup()if u then u:
-Disconnect()u=nil end if v then pcall(function()v:Destroy()end)v=nil end j=false
-s=nil t=nil end function h.IsPlayerInDanger()return j,s,t end function h.
-GetCurrentThreat()return s,t end function h.OnDangerStatusChanged(E)if type(E)==
-'function'then table.insert(k,E)end end function h.SetVisualEnabled(E)i=E and
-true or false if v then v.Visible=i end end function h.IsVisualEnabled()return i
-end function h.SetRadius(E)if type(E)=='number'and E>=0.1 then l=E if v and v.
-Parent then v.Radius=l end end end function h.GetRadius()return l end local E=
-function()local E=g or r.LocalPlayer if not E then return end local F=function(F
-)if v then pcall(function()v:Destroy()end)v=nil end task.spawn(function()local G
-=F:WaitForChild('Humanoid',3)if G then G.Died:Connect(function()if v then v.
-Visible=false end end)end end)end w=E.CharacterAdded:Connect(F)if E.Character
-then F(E.Character)end end E()D()c.Register(function()if w then w:Disconnect()w=
-nil end h.Cleanup()end)return h
+return true,E,I,G,H end else local P=0 if M<0 then P=-M elseif M>i then P=M-i
+end local Q=math.max(0,math.abs(N)-O)if(P*P+Q*Q)<=(y*y)then return true,E,I,G,H
+end end end end end return false,nil,nil,nil,nil end for C,D in pairs(j)do if D.
+isMoving and D.dir and D.mainPart and D.mainPart.Parent then local E,F=s(C,D.dir
+)if E and F then local G=D.dir local H,I,J=Vector3.new(-G.Z,0,G.X),A-E.X,B-E.Z
+local K,L,M=I*G.X+J*G.Z,I*H.X+J*H.Z,F/2 if y<=0 then if K>=0 and K<=i and math.
+abs(L)<=M then return true,C,G,E,F end else local N=0 if K<0 then N=-K elseif K>
+i then N=K-i end local O=math.max(0,math.abs(L)-M)if(N*N+O*O)<=(y*y)then return
+true,C,G,E,F end end end end end return false,nil,nil,nil,nil end function g.
+SetEnabled(w)h=w and true or false if h then g.RefreshAll()else g.ClearAll()end
+end d.OnPaddingChanged(function()if h then g.RefreshAll()end end)c.Register(
+function()g.ClearAll()end)return g end end local b,c,d,e=a.load'a',a.load'b',a.
+load'c',a.load'e'local f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w=b.RunService or game:
+GetService'RunService',b.player,{},true,false,{},1.8,Color3.fromRGB(0,255,170),
+Color3.fromRGB(255,35,35),0.45,0.2,0.2,(game:GetService'Players')local y,z,A,B=
+function()local y=g or r.LocalPlayer if not y then return nil end local z=y.
+Character if not z or not z.Parent then return nil end local A=z:
+FindFirstChildOfClass'Humanoid'if A and A.Health<=0 then return nil end return z
+:FindFirstChild'HumanoidRootPart'or z.PrimaryPart end,function(y)if not y then
+return 0 end return y.Position.Y-2.5 end,function(y)if v then if v.Parent~=y or
+not v:IsDescendantOf(workspace)then pcall(function()v:Destroy()end)v=nil else if
+v.Adornee~=y then v.Adornee=y end return v end end if not y or not y.Parent then
+return nil end local z=Instance.new'CylinderHandleAdornment'z.Name=
+'Player_2D_HitboxVisual'z.Adornee=y z.Radius=l z.Height=q z.Color3=j and n or m
+z.Transparency=j and p or o z.ZIndex=5 z.AlwaysOnTop=false z.Visible=i z.Parent=
+y v=z return z end,function(y)if not v or not v.Parent then return end v.Color3=
+y and n or m v.Transparency=y and p or o end local C=function()local C=y()if not
+C or not C.Parent then if v and v.Parent then v.Visible=false end if j then j=
+false s=nil t=nil for D,E in ipairs(k)do pcall(E,false,nil,nil)end end return
+end local D=A(C)if D and D.Parent then D.Visible=i D.Radius=l local E=z(C)local
+F=CFrame.new(Vector3.new(C.Position.X,E,C.Position.Z))*CFrame.Angles(math.rad(90
+),0,0)D.CFrame=C.CFrame:ToObjectSpace(F)end local E=Vector3.new(C.Position.X,0,C
+.Position.Z)local F,G,H=d.IsPointInAnyHazard(E,nil,l)local I,J=false if not F
+and e.IsPointInAnyTrajectory then I,J=e.IsPointInAnyTrajectory(E,l)end local K,L
+,M=(F or I),G or J,F and'Ground Zone'or(I and'Trajectory Corridor'or nil)if K~=j
+or L~=s then j=K s=L t=M B(K)for N,O in ipairs(k)do pcall(O,K,L,M)end end end
+local D=function()if not u then u=f.Heartbeat:Connect(C)end end function h.
+Cleanup()if u then u:Disconnect()u=nil end if v then pcall(function()v:Destroy()
+end)v=nil end j=false s=nil t=nil end function h.IsPlayerInDanger()return j,s,t
+end function h.GetCurrentThreat()return s,t end function h.OnDangerStatusChanged
+(E)if type(E)=='function'then table.insert(k,E)end end function h.
+SetVisualEnabled(E)i=E and true or false if v then v.Visible=i end end function
+h.IsVisualEnabled()return i end function h.SetRadius(E)if type(E)=='number'and E
+>=0.1 then l=E if v and v.Parent then v.Radius=l end end end function h.
+GetRadius()return l end local E=function()local E=g or r.LocalPlayer if not E
+then return end local F=function(F)if v then pcall(function()v:Destroy()end)v=
+nil end task.spawn(function()local G=F:WaitForChild('Humanoid',3)if G then G.
+Died:Connect(function()if v then v.Visible=false end end)end end)end w=E.
+CharacterAdded:Connect(F)if E.Character then F(E.Character)end end E()D()c.
+Register(function()if w then w:Disconnect()w=nil end h.Cleanup()end)return h
