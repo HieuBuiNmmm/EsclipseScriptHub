@@ -13,6 +13,7 @@ local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
 local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
 local safeSpot = require("@routes/DungeonQuest/core/hazardScanner/safeSpot")
 local dodgeController = require("@routes/DungeonQuest/core/hazardScanner/dodgeController")
+local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
 
 --// Table
 local hazardScanner = {}
@@ -21,6 +22,7 @@ local hazardScanner = {}
 geometry.BindDetection(detection)
 visualizer.BindDetection(detection)
 trajectory.BindDetection(detection)
+timerVisual.BindDetection(detection)
 
 --// Geometry (Danger Zones)
 hazardScanner.IsPointInAnyHazard = geometry.IsPointInAnyHazard
@@ -86,6 +88,11 @@ hazardScanner.GetNearbyTrajectories = trajectory.GetNearbyTrajectories
 --// 3D Selection Box (Parts)
 hazardScanner.SetSelectionBoxesEnabled = detection.SetSelectionBoxesEnabled
 hazardScanner.IsSelectionBoxesEnabled = detection.IsSelectionBoxesEnabled
+
+--// 3D Lifespan Timer Visualizer (Real-time Danger Zone Duration)
+hazardScanner.SetTimerVisualEnabled = timerVisual.SetEnabled
+hazardScanner.IsTimerVisualEnabled = timerVisual.IsEnabled
+hazardScanner.RefreshTimerVisuals = timerVisual.RefreshAll
 
 --// Detection (Scan + SelectionBox)
 hazardScanner.StartDetection = detection.StartScan

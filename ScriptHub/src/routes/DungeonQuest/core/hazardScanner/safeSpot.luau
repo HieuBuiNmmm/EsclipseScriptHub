@@ -11,6 +11,7 @@ local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
 local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
 local candidateGenerator = require("@routes/DungeonQuest/core/hazardScanner/candidateGenerator")
 local safeSpotVisual = require("@routes/DungeonQuest/core/hazardScanner/safeSpotVisual")
+local contextual = require("@routes/DungeonQuest/core/contextual")
 
 local RunService = services.RunService or game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -83,10 +84,20 @@ local function getPlayerGroundY(root)
 	return root.Position.Y - 2.5
 end
 
---// Kiểm tra xem một điểm P (X-Z) có an toàn (Player Circle nằm ngoài mọi Ground Zone & Trajectory) không
+--// Kiểm tra xem một điểm P (X-Z) có an toàn (Player Circle nằm ngoài mọi Ground Zone & Trajectory và trong Boss Area) không
 function safeSpot.IsPointSafe(point, extraMargin)
 	if not point then return false end
 	local p2D = Vector3.new(point.X, 0, point.Z)
+
+	-- 0. Kiểm tra Boss Area Constraint nếu đang đấu Boss
+	local isBossAreaActive, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea()
+	if isBossAreaActive and bossAreaCenter and bossAreaRadius and bossAreaRadius > 0 then
+		local bossCenter2D = Vector3.new(bossAreaCenter.X, 0, bossAreaCenter.Z)
+		if (p2D - bossCenter2D).Magnitude > bossAreaRadius then
+			return false
+		end
+	end
+
 	local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
 
 	-- 1. Kiểm tra Ground Danger Zones (Đĩa đỏ / Vùng tròn / OBB trên mặt sàn)
@@ -115,6 +126,12 @@ function safeSpot.FindNearestSafeSpot(origin)
 	local momentumDir = getPlayerRunningDirection(root)
 	table.clear(lastEvaluatedCandidates)
 
+	-- 0. Kiểm tra Boss Area Constraint
+	local isBossAreaActive, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea()
+	local bossAreaCenter2D = (isBossAreaActive and bossAreaCenter and bossAreaRadius and bossAreaRadius > 0)
+		and Vector3.new(bossAreaCenter.X, 0, bossAreaCenter.Z)
+		or nil
+
 	-- 1. Broad-Phase Spatial Culling: Lọc nhanh các hazard & trajectory trong phạm vi ảnh hưởng (65 studs)
 	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 65) or nil
 	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 65) or nil
@@ -123,6 +140,15 @@ function safeSpot.FindNearestSafeSpot(origin)
 	local function isPointSafeScoped(candPoint, extraMargin)
 		if not candPoint then return false end
 		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
+
+		-- Kiểm tra giới hạn Boss Area (không chọn safe spot nằm ngoài vùng Boss Arena)
+		if bossAreaCenter2D and bossAreaRadius then
+			local distToCenter = (p2D - bossAreaCenter2D).Magnitude
+			if distToCenter > bossAreaRadius then
+				return false
+			end
+		end
+
 		local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
 
 		if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad, relevantHazards) then
@@ -137,14 +163,12 @@ function safeSpot.FindNearestSafeSpot(origin)
 	end
 
 	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi hoặc vị trí hiện tại đã an toàn -> Xong ngay lập tức
-	if (relevantHazards and #relevantHazards == 0 and relevantTrajectories and #relevantTrajectories == 0) or isPointSafeScoped(origin2D, 0) then
+	if (relevantHazards and #relevantHazards == 0 and relevantTrajectories and #relevantTrajectories == 0 and not bossAreaCenter2D) or isPointSafeScoped(origin2D, 0) then
 		table.insert(lastEvaluatedCandidates, { pos = origin2D, isSafe = true, isChosen = true })
 		return origin2D, true, 0, Vector3.zero
 	end
 
 	-- 3. Xác định hướng ưu tiên né (Preferred Escape Direction):
-	-- Nếu đang nằm trong quỹ đạo đạn bay (Trajectory Corridor): Ưu tiên góc né xéo lùi ~100°
-	-- (vuông góc thoát mép đạn nhanh nhất kết hợp chếch lùi nhẹ -0.175 để tuyệt đối không bị đầu đạn cắt mặt)
 	local preferredDir = momentumDir
 	local playerRad = playerVisual.GetRadius and playerVisual.GetRadius() or 1.8
 	local inTraj, _, trajDir, trajCentroid = trajectory.IsPointInAnyTrajectory(origin2D, playerRad, relevantTrajectories)
@@ -167,9 +191,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 			end
 		end
 
-		-- Tính hệ số xéo lùi k linh hoạt trong dải góc từ 100° (k = 0.18) đến 135° (k = 1.0):
-		-- - Khi đứng yên: Mặc định k = 0.45 (~115°, trung tâm của cung né an toàn [100°, 135°])
-		-- - Khi đang chạy: Tự động uốn góc né theo đúng đà di chuyển của người chơi trong khoảng [100°, 135°]
+		-- Tính hệ số xéo lùi k linh hoạt trong dải góc từ 100° (k = 0.18) đến 135° (k = 1.0)
 		local k = 0.45
 		if momentumDir and momentumDir.Magnitude > 0.1 then
 			local dotBack = -(momentumDir.X * trajDir.X + momentumDir.Z * trajDir.Z)
@@ -178,15 +200,17 @@ function safeSpot.FindNearestSafeSpot(origin)
 				local dynamicK = dotBack / dotNorm
 				k = math.clamp(dynamicK, 0.18, 1.0)
 			elseif dotBack > 0 then
-				k = 1.0 -- Nếu đang có quán tính chạy lùi thì ưu tiên góc 135°
+				k = 1.0
 			else
-				k = 0.18 -- Nếu đang chạy ngang/tiến thì ưu tiên góc 100° để thoát nhanh nhất
+				k = 0.18
 			end
 		end
 
-		-- Vector né xéo lùi dao động linh hoạt [100° .. 135°]
 		local obliqueEscape = (chosenNormal - k * trajDir).Unit
 		preferredDir = obliqueEscape
+	elseif bossAreaCenter2D and (origin2D - bossAreaCenter2D).Magnitude > bossAreaRadius then
+		-- Nếu đang đứng ngoài Boss Area và không có quỹ đạo đạn: Ưu tiên hướng né chạy thẳng vào tâm Boss Area
+		preferredDir = (bossAreaCenter2D - origin2D).Unit
 	end
 
 	-- Tier 1: Coarse Pass (8 hướng, bán kính thưa, yêu cầu buffer an toàn, ưu tiên theo hướng né tối ưu)

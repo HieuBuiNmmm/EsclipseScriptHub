@@ -84,6 +84,8 @@ local cleanupEnemies
 local initializeRooms
 local resetDungeon
 local refreshRoomIndex
+local tryCaptureBossSpawnPosition
+local bossInitialSpawnPos = nil
 
 --// Respawn hooks & Invulnerability tracking
 local respawnCallbacks = {}
@@ -244,6 +246,11 @@ local function trackEnemy(enemy)
 	trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid, Room = getEnemyRoom(enemy) }
 	enemyCount += 1
 	enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
+	if bossActive and not bossInitialSpawnPos then
+		if tryCaptureBossSpawnPosition then
+			tryCaptureBossSpawnPosition()
+		end
+	end
 	fireEnemyChanged()
 	refreshRoomIndex()
 end
@@ -340,6 +347,7 @@ resetDungeon = function()
 	trackedEnemies = {}
 	enemyCount = 0
 	pendingModels = {}
+	bossInitialSpawnPos = nil
 	dungeon = nil
 end
 
@@ -752,6 +760,7 @@ end
 
 function shared.ResetBossIndex()
 	bossIndex = 0
+	bossInitialSpawnPos = nil
 	for i = #bossIndexCallbacks, 1, -1 do
 		pcall(bossIndexCallbacks[i], bossIndex)
 	end
@@ -859,19 +868,64 @@ end
 
 --// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
 local bossHealthRef = nil
+
+tryCaptureBossSpawnPosition = function()
+	if not bossActive or bossInitialSpawnPos ~= nil then return end
+	for enemy, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			local isBossCandidate = false
+			if data.Room and type(data.Room.Name) == "string" and string.find(string.lower(data.Room.Name), "boss") then
+				isBossCandidate = true
+			elseif string.find(string.lower(enemy.Name), "boss") then
+				isBossCandidate = true
+			elseif enemy.Parent and string.find(string.lower(enemy.Parent.Name), "boss") then
+				isBossCandidate = true
+			end
+
+			if isBossCandidate then
+				bossInitialSpawnPos = data.Root.Position
+				return
+			end
+		end
+	end
+
+	for _, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			bossInitialSpawnPos = data.Root.Position
+			return
+		end
+	end
+end
+
 local function setBossActive(active)
 	if bossActive == active then return end
 	bossActive = active
 	if active then
 		bossIndex += 1
+		bossInitialSpawnPos = nil
+		tryCaptureBossSpawnPosition()
 		for i = #bossIndexCallbacks, 1, -1 do
 			pcall(bossIndexCallbacks[i], bossIndex)
 		end
+	else
+		bossInitialSpawnPos = nil
 	end
 	for i = #bossCallbacks, 1, -1 do
 		pcall(bossCallbacks[i], bossActive)
 	end
 	refreshRoomIndex()
+end
+
+function shared.GetBossSpawnPosition()
+	if bossInitialSpawnPos then
+		return bossInitialSpawnPos
+	end
+	tryCaptureBossSpawnPosition()
+	return bossInitialSpawnPos
+end
+
+function shared.SetBossSpawnPosition(pos)
+	bossInitialSpawnPos = pos
 end
 
 local function scanBossGui()

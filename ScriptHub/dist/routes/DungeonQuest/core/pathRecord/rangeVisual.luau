@@ -14,49 +14,50 @@ end table.clear(b.callbacks)end function b.IsActive()return not b.cleaned end
 return b end function a.c()local b,c=a.load'a',a.load'b'local d,e,f,g,h,i,j,k,l,
 m,n,o,p,q,r,s,t,u,v,w,x,y,z=b.player,0.05,'enemyProjectiles',0.5,{},false,16,16,
 true,false,false,{},0,{},0,{},{},{},{},{},{},0,{}local A,B,C,D,E,F,G,H,I,J,K,L,M
-,N,O,P,Q=function()for A=#z,1,-1 do pcall(z[A])end end,{},'unknown',true,{},{},{
-},0,4,false local R=function(R)if R then table.insert(G,R)end return R end
-function h.OnRespawn(S)table.insert(F,S)end function h.GetLastRespawnTime()
+,N,O,P,Q,R,S=function()for A=#z,1,-1 do pcall(z[A])end end,{},'unknown',true,{},
+{},{},0,4,false local T=function(T)if T then table.insert(G,T)end return T end
+function h.OnRespawn(U)table.insert(F,U)end function h.GetLastRespawnTime()
 return H end function h.GetRespawnProtectionDuration()return I end function h.
-SetRespawnProtectionDuration(S)if type(S)=='number'and S>=0 then I=S end end
-function h.GetRespawnProtectionRemaining()if H==0 then return 0 end local S=os.
-clock()-H local T=I-S return math.max(0,T)end function h.IsJustRespawned(S)local
-T=S or I if H==0 then return false end return(os.clock()-H)<=T end function h.
-WasDead()return J end function h.IsDead()local S=d and d.Character if not S or
-not S.Parent then return true end local T=S:FindFirstChildOfClass'Humanoid'if
-not T or T.Health<=0 then return true end return false end function h.
-IsInvulnerable()local S=d and d.Character if not S or not S.Parent then return
-false,nil end local T=S:FindFirstChildOfClass'Humanoid'if T and T.Health<=0 then
-return false,nil end local U=S:FindFirstChildOfClass'ForceField'if U and U.
-Visible~=false then return true,'ForceField'end local V,W,X=S:GetAttribute
-'Invulnerable',S:GetAttribute'Immune',S:GetAttribute'Respawning'if V==true or W
-==true or X==true then return true,'Attribute'end local Y,Z,_=S:FindFirstChild
-'Invulnerable',S:FindFirstChild'Immune',S:FindFirstChild'Respawning'if(Y and Y:
-IsA'BoolValue'and Y.Value==true)or(Z and Z:IsA'BoolValue'and Z.Value==true)or(_
-and _:IsA'BoolValue'and _.Value==true)then return true,'Value'end local aa=h.
-GetRespawnProtectionRemaining()if aa>0 then return true,(
-'Respawn Shield (%.1fs)'):format(aa)end return false,nil end local aa=function(
-aa)if not aa or not aa:IsA'Model'then return nil end local S=aa:FindFirstChild
-'HumanoidRootPart'if S and S:IsA'BasePart'then return S end if aa.PrimaryPart
-and aa.PrimaryPart:IsA'BasePart'then return aa.PrimaryPart end for T,U in
+SetRespawnProtectionDuration(U)if type(U)=='number'and U>=0 then I=U end end
+function h.GetRespawnProtectionRemaining()if H==0 then return 0 end local U=os.
+clock()-H local V=I-U return math.max(0,V)end function h.IsJustRespawned(U)local
+V=U or I if H==0 then return false end return(os.clock()-H)<=V end function h.
+WasDead()return J end function h.IsDead()local U=d and d.Character if not U or
+not U.Parent then return true end local V=U:FindFirstChildOfClass'Humanoid'if
+not V or V.Health<=0 then return true end return false end function h.
+IsInvulnerable()local U=d and d.Character if not U or not U.Parent then return
+false,nil end local V=U:FindFirstChildOfClass'Humanoid'if V and V.Health<=0 then
+return false,nil end local W=U:FindFirstChildOfClass'ForceField'if W and W.
+Visible~=false then return true,'ForceField'end local X,Y,Z=U:GetAttribute
+'Invulnerable',U:GetAttribute'Immune',U:GetAttribute'Respawning'if X==true or Y
+==true or Z==true then return true,'Attribute'end local _,aa,ab=U:FindFirstChild
+'Invulnerable',U:FindFirstChild'Immune',U:FindFirstChild'Respawning'if(_ and _:
+IsA'BoolValue'and _.Value==true)or(aa and aa:IsA'BoolValue'and aa.Value==true)or
+(ab and ab:IsA'BoolValue'and ab.Value==true)then return true,'Value'end local ac
+=h.GetRespawnProtectionRemaining()if ac>0 then return true,(
+'Respawn Shield (%.1fs)'):format(ac)end return false,nil end local aa=function(
+aa)if not aa or not aa:IsA'Model'then return nil end local ab=aa:FindFirstChild
+'HumanoidRootPart'if ab and ab:IsA'BasePart'then return ab end if aa.PrimaryPart
+and aa.PrimaryPart:IsA'BasePart'then return aa.PrimaryPart end for ac,U in
 ipairs(aa:GetDescendants())do if U:IsA'BasePart'then return U end end return nil
-end local S,T=function(S)if not S or not S:IsA'Model'or not S.Parent or S==d.
-Character then return false end local T=S:FindFirstChildOfClass'Humanoid'if not
-T or T.Health<=0 then return false end return aa(S)~=nil end,function(S)local T=
-w[S]if not T then return end if T.Died then T.Died:Disconnect()T.Died=nil end w[
-S]=nil end local U,V=function(U)if not U or not u[U]then return end x[U]=nil u[U
-]=nil y-=1 T(U)A()O()end,function(U)if not dungeon or not U then return nil end
-local V=U.Parent while V do if V==dungeon then return nil end if V.Parent==
-dungeon and(V:IsA'Folder'or V:IsA'Model')then return V end V=V.Parent end return
-nil end local W=function(W)if not S(W)or u[W]then return end local X,Y=aa(W),W:
-FindFirstChildOfClass'Humanoid'if not X or not Y then return end u[W]={Model=W,
-Root=X,Humanoid=Y,Room=V(W)}y+=1 w[W]={Died=Y.Died:Connect(function()U(W)end)}A(
-)O()end local X=function(X)if not X then return end if S(X)then W(X)return end
-if x[X]then return end x[X]=true task.spawn(function()local Y=os.clock()+2 while
-X.Parent and os.clock()<Y do if S(X)then x[X]=nil W(X)return end task.wait(0.03)
-end x[X]=nil if X.Parent and S(X)then W(X)end end)end local Y=function(Y)if not
+end local ab,ac=function(ab)if not ab or not ab:IsA'Model'or not ab.Parent or ab
+==d.Character then return false end local ac=ab:FindFirstChildOfClass'Humanoid'
+if not ac or ac.Health<=0 then return false end return aa(ab)~=nil end,function(
+ab)local ac=w[ab]if not ac then return end if ac.Died then ac.Died:Disconnect()
+ac.Died=nil end w[ab]=nil end local U,V=function(U)if not U or not u[U]then
+return end x[U]=nil u[U]=nil y-=1 ac(U)A()O()end,function(U)if not dungeon or
+not U then return nil end local V=U.Parent while V do if V==dungeon then return
+nil end if V.Parent==dungeon and(V:IsA'Folder'or V:IsA'Model')then return V end
+V=V.Parent end return nil end local W=function(W)if not ab(W)or u[W]then return
+end local X,Y=aa(W),W:FindFirstChildOfClass'Humanoid'if not X or not Y then
+return end u[W]={Model=W,Root=X,Humanoid=Y,Room=V(W)}y+=1 w[W]={Died=Y.Died:
+Connect(function()U(W)end)}if n and not Q then if P then P()end end A()O()end
+local X=function(X)if not X then return end if ab(X)then W(X)return end if x[X]
+then return end x[X]=true task.spawn(function()local Y=os.clock()+2 while X.
+Parent and os.clock()<Y do if ab(X)then x[X]=nil W(X)return end task.wait(0.03)
+end x[X]=nil if X.Parent and ab(X)then W(X)end end)end local Y=function(Y)if not
 Y or t[Y]then return end t[Y]=true for Z,_ in ipairs(Y:GetDescendants())do if _:
-IsA'Model'and S(_)then W(_)end end v[Y]={Added=Y.DescendantAdded:Connect(
+IsA'Model'and ab(_)then W(_)end end v[Y]={Added=Y.DescendantAdded:Connect(
 function(Z)if Z:IsA'Model'then X(Z)elseif Z:IsA'Humanoid'then local _=Z:
 FindFirstAncestorOfClass'Model'if _ then X(_)end end end),Removed=Y.
 DescendantRemoving:Connect(function(Z)if Z:IsA'Model'then U(Z)end end)}end M=
@@ -70,186 +71,195 @@ end),Removed=dungeon.DescendantRemoving:Connect(function(Z)if Z:IsA'Model'then
 U(Z)end end)}return true end N=function()if not dungeon then return end for Z,_
 in pairs(v)do if _.Added then pcall(function()_.Added:Disconnect()end)end if _.
 Removed then pcall(function()_.Removed:Disconnect()end)end end v={}t={}for Z in
-pairs(u)do T(Z)end u={}y=0 x={}dungeon=nil end L=function()for Z,_ in pairs(u)do
-if not Z or not Z.Parent then U(Z)else local ab=_.Humanoid or Z:
-FindFirstChildOfClass'Humanoid'_.Humanoid=ab if not ab or ab.Health<=0 then U(Z)
-else local ac=_.Root if not ac or not ac.Parent then ac=aa(Z)if ac then _.Root=
-ac else U(Z)end end end end end end function h.SetFastSpeed(ab)j=ab if i and
+pairs(u)do ac(Z)end u={}y=0 x={}Q=nil dungeon=nil end L=function()for Z,_ in
+pairs(u)do if not Z or not Z.Parent then U(Z)else local ad=_.Humanoid or Z:
+FindFirstChildOfClass'Humanoid'_.Humanoid=ad if not ad or ad.Health<=0 then U(Z)
+else local ae=_.Root if not ae or not ae.Parent then ae=aa(Z)if ae then _.Root=
+ae else U(Z)end end end end end end function h.SetFastSpeed(ad)j=ad if i and
 humanoid and humanoid.Parent then if humanoid.WalkSpeed<j then m=true humanoid.
-WalkSpeed=j m=false end end end function h.SetSpeedEnabled(ab)i=ab if humanoid
+WalkSpeed=j m=false end end end function h.SetSpeedEnabled(ad)i=ad if humanoid
 and humanoid.Parent then m=true if i then if humanoid.WalkSpeed<j then humanoid.
 WalkSpeed=j end else humanoid.WalkSpeed=k end m=false end end function h.
 IsSpeedEnabled()return i end function h.GetFastSpeed()return j end function h.
-SetInstantAccelEnabled(ab)l=ab and true or false end function h.
-IsInstantAccelEnabled()return l end local ab=function()if P then P:Disconnect()P
-=nil end if not humanoid or not humanoid.Parent then return end P=humanoid:
+SetInstantAccelEnabled(ad)l=ad and true or false end function h.
+IsInstantAccelEnabled()return l end local ad=function()if R then R:Disconnect()R
+=nil end if not humanoid or not humanoid.Parent then return end R=humanoid:
 GetPropertyChangedSignal'WalkSpeed':Connect(function()if m then return end if
-not humanoid or not humanoid.Parent then return end local ab=humanoid.WalkSpeed
-if i then if ab<j then m=true humanoid.WalkSpeed=j m=false end else k=ab end end
-)end function h.SetHumanoid(ac)if not ac then return end local Z=ac:
-WaitForChild('Humanoid',10)if not Z then return end humanoid=Z rootPart=ac:
-WaitForChild('HumanoidRootPart',10)or ac.PrimaryPart k=humanoid.WalkSpeed if i
-and humanoid.WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false end if Q then
-Q:Disconnect()Q=nil end Q=humanoid.Died:Connect(function()J=true end)R(humanoid.
+not humanoid or not humanoid.Parent then return end local ad=humanoid.WalkSpeed
+if i then if ad<j then m=true humanoid.WalkSpeed=j m=false end else k=ad end end
+)end function h.SetHumanoid(ae)if not ae then return end local Z=ae:
+WaitForChild('Humanoid',10)if not Z then return end humanoid=Z rootPart=ae:
+WaitForChild('HumanoidRootPart',10)or ae.PrimaryPart k=humanoid.WalkSpeed if i
+and humanoid.WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false end if S then
+S:Disconnect()S=nil end S=humanoid.Died:Connect(function()J=true end)T(humanoid.
 HealthChanged:Connect(function(_)if _<=0 then J=true elseif J and _>0 then J=
-false end end))end local ac=function()if not c.IsActive()then return end if not
+false end end))end local ae=function()if not c.IsActive()then return end if not
 l then return end if not humanoid or not humanoid.Parent or humanoid.Health<=0
 or humanoid.Sit then return end if not rootPart or not rootPart.Parent then
-local ac=d and d.Character rootPart=ac and ac:FindFirstChild'HumanoidRootPart'if
-not rootPart then return end end if rootPart.Anchored then return end local ac,Z
-=humanoid.MoveDirection,rootPart.AssemblyLinearVelocity if ac.Magnitude>0.05
+local ae=d and d.Character rootPart=ae and ae:FindFirstChild'HumanoidRootPart'if
+not rootPart then return end end if rootPart.Anchored then return end local ae,Z
+=humanoid.MoveDirection,rootPart.AssemblyLinearVelocity if ae.Magnitude>0.05
 then local _=i and math.max(j,humanoid.WalkSpeed)or humanoid.WalkSpeed rootPart.
-AssemblyLinearVelocity=Vector3.new(ac.X*_,Z.Y,ac.Z*_)end end if b.RunService
-then local Z=b.RunService.PreSimulation or b.RunService.Heartbeat if Z then R(Z:
-Connect(ac))end end function h.GetDungeonStartTime()return dungeonStartTime end
+AssemblyLinearVelocity=Vector3.new(ae.X*_,Z.Y,ae.Z*_)end end if b.RunService
+then local Z=b.RunService.PreSimulation or b.RunService.Heartbeat if Z then T(Z:
+Connect(ae))end end function h.GetDungeonStartTime()return dungeonStartTime end
 function h.SetDungeonStartTime(Z)dungeonStartTime=Z end function h.
 GetDungeonElapsed()if not dungeonStartTime then return nil end return os.clock()
 -dungeonStartTime end function h.ReadyDungeon()if not dungeon and not M()then
 return false end return true end function h.GetHumanoid()return humanoid end
 function h.GetEnemyNames()local Z={}local _=function(_)if _ and _~=''and _~=d.
-Name then Z[_]=true end end if dungeon then for ad,ae in ipairs(dungeon:
-GetChildren())do if ae:IsA'Folder'or ae:IsA'Model'then for af,ag in ipairs(ae:
-GetDescendants())do if ag:IsA'Model'and ag:FindFirstChildOfClass'Humanoid'then
-_(ag.Name)end end end end end for ad in pairs(u)do _(ad.Name)end local ad={}for
-ae in pairs(Z)do table.insert(ad,ae)end table.sort(ad)return ad end function h.
-GetEnemyCount()return y end function h.GetTrackedEnemyData()local ad={}for ae,af
-in pairs(u)do if af and af.Root and af.Root.Parent then ad[#ad+1]=af end end
-return ad end function h.OnEnemyChanged(ad)if type(ad)~='function'then return
-function()end end table.insert(z,ad)return function()for ae,af in ipairs(z)do if
-af==ad then table.remove(z,ae)break end end end end function h.
-GetEnemyProjectileNames()local ad,ae={},game:GetService'ReplicatedStorage'local
-af=ae:FindFirstChild(f)if not af then return ad end for ag,Z in ipairs(af:
+Name then Z[_]=true end end if dungeon then for af,ag in ipairs(dungeon:
+GetChildren())do if ag:IsA'Folder'or ag:IsA'Model'then for ah,ai in ipairs(ag:
+GetDescendants())do if ai:IsA'Model'and ai:FindFirstChildOfClass'Humanoid'then
+_(ai.Name)end end end end end for af in pairs(u)do _(af.Name)end local af={}for
+ag in pairs(Z)do table.insert(af,ag)end table.sort(af)return af end function h.
+GetEnemyCount()return y end function h.GetTrackedEnemyData()local af={}for ag,ah
+in pairs(u)do if ah and ah.Root and ah.Root.Parent then af[#af+1]=ah end end
+return af end function h.OnEnemyChanged(af)if type(af)~='function'then return
+function()end end table.insert(z,af)return function()for ag,ah in ipairs(z)do if
+ah==af then table.remove(z,ag)break end end end end function h.
+GetEnemyProjectileNames()local af,ag={},game:GetService'ReplicatedStorage'local
+ah=ag:FindFirstChild(f)if not ah then return af end for ai,Z in ipairs(ah:
 GetChildren())do local _=Z.ClassName if _=='Model'or _=='MeshPart'or _=='Part'
-then ad[Z.Name]=true end end return ad end function h.GetKeyHoldTime()return e
+then af[Z.Name]=true end end return af end function h.GetKeyHoldTime()return e
 end if d and d.Character and d.Character.Parent then h.SetHumanoid(d.Character)
-ab()else local ad=d and d.CharacterAdded and task.spawn(function()local ad=d.
-CharacterAdded:Wait()if ad and c.IsActive()then h.SetHumanoid(ad)ab()end end)end
-if d then R(d.CharacterAdded:Connect(function(ad)local ae,af=pcall(function()if
-not ad then return end H=os.clock()h.SetHumanoid(ad)ab()for ae,af in ipairs(F)do
-pcall(af)end end)if not ae then warn('[Shared] respawn handler error:',tostring(
-af))end end))end task.spawn(function()while c.IsActive()do task.wait(g)local ad=
-workspace:FindFirstChild'dungeon'if dungeon and ad~=dungeon then N()elseif not
-dungeon and ad then M()end O()end end)local ad=function()local ad=game:
-GetService'Workspace'for ae,af in ipairs(ad:GetDescendants())do if af.Name==
-'dungeonName'and af:IsA'ValueBase'then local ag=af.Value if type(ag)=='string'
-then local Z=string.gsub(ag,'%s+','')if Z~=''and string.lower(Z)~=C then return
-ag end end end end return nil end task.spawn(function()while c.IsActive()do task
-.wait(g)local ae=ad()if ae~=K then K=ae if ae then h.ResetBossIndex()end for af=
-#B,1,-1 do pcall(B[af],ae)end end end end)local ae=function()return not(K and#K>
-0)end task.spawn(function()while c.IsActive()do task.wait(g)local af=ae()if af~=
-D then D=af for ag=#E,1,-1 do pcall(E[ag],D)end end end end)task.spawn(function(
-)local af,ag=pcall(function()return M()end)if not af then warn(
-'[EnemyTracker] Initialization error:',ag)end end)local af,ag=0,2 task.spawn(
-function()while c.IsActive()do task.wait(ag)local Z=os.clock()if Z-af<ag then
-continue end af=Z if not dungeon then continue end local ah=pcall(function()for
-_,ah in ipairs(dungeon:GetChildren())do if ah:IsA'Folder'or ah:IsA'Model'then
-for ai,aj in ipairs(ah:GetDescendants())do if aj:IsA'Model'then X(aj)end end end
-end L()end)if not ah then warn'[EnemyTracker] rescan error'end end end)function
-h.IsBossActive()return n end function h.OnBossActiveChanged(ah)if type(ah)~=
-'function'then return function()end end table.insert(o,ah)return function()for
-ai,aj in ipairs(o)do if aj==ah then table.remove(o,ai)break end end end end
+ad()else local af=d and d.CharacterAdded and task.spawn(function()local af=d.
+CharacterAdded:Wait()if af and c.IsActive()then h.SetHumanoid(af)ad()end end)end
+if d then T(d.CharacterAdded:Connect(function(af)local ag,ah=pcall(function()if
+not af then return end H=os.clock()h.SetHumanoid(af)ad()for ag,ah in ipairs(F)do
+pcall(ah)end end)if not ag then warn('[Shared] respawn handler error:',tostring(
+ah))end end))end task.spawn(function()while c.IsActive()do task.wait(g)local af=
+workspace:FindFirstChild'dungeon'if dungeon and af~=dungeon then N()elseif not
+dungeon and af then M()end O()end end)local af=function()local af=game:
+GetService'Workspace'for ag,ah in ipairs(af:GetDescendants())do if ah.Name==
+'dungeonName'and ah:IsA'ValueBase'then local ai=ah.Value if type(ai)=='string'
+then local Z=string.gsub(ai,'%s+','')if Z~=''and string.lower(Z)~=C then return
+ai end end end end return nil end task.spawn(function()while c.IsActive()do task
+.wait(g)local ag=af()if ag~=K then K=ag if ag then h.ResetBossIndex()end for ah=
+#B,1,-1 do pcall(B[ah],ag)end end end end)local ag=function()return not(K and#K>
+0)end task.spawn(function()while c.IsActive()do task.wait(g)local ah=ag()if ah~=
+D then D=ah for ai=#E,1,-1 do pcall(E[ai],D)end end end end)task.spawn(function(
+)local ah,ai=pcall(function()return M()end)if not ah then warn(
+'[EnemyTracker] Initialization error:',ai)end end)local ah,ai=0,2 task.spawn(
+function()while c.IsActive()do task.wait(ai)local Z=os.clock()if Z-ah<ai then
+continue end ah=Z if not dungeon then continue end local aj=pcall(function()for
+_,aj in ipairs(dungeon:GetChildren())do if aj:IsA'Folder'or aj:IsA'Model'then
+for ak,al in ipairs(aj:GetDescendants())do if al:IsA'Model'then X(al)end end end
+end L()end)if not aj then warn'[EnemyTracker] rescan error'end end end)function
+h.IsBossActive()return n end function h.OnBossActiveChanged(aj)if type(aj)~=
+'function'then return function()end end table.insert(o,aj)return function()for
+ak,al in ipairs(o)do if al==aj then table.remove(o,ak)break end end end end
 function h.GetCurrentBossIndex()return p end function h.GetCombatTargetKey()if
-not n then return'Mob'end local ah=math.clamp(p,1,3)return'Boss'..tostring(ah)
-end function h.ResetBossIndex()p=0 for ah=#q,1,-1 do pcall(q[ah],p)end end
-function h.OnBossIndexChanged(ah)if type(ah)~='function'then return function()
-end end table.insert(q,ah)return function()for ai,aj in ipairs(q)do if aj==ah
-then table.remove(q,ai)break end end end end local ah=function(ah)if type(ah)~=
-'string'then return 0 end local ai=string.lower(ah)local aj=string.match(ai,
-'boss.*(%d+)')if aj then return 100+(tonumber(aj)or 1)end if string.find(ai,
-'boss')then return 100+math.max(1,p)end local Z=string.match(ah,'^room(%d+)$')if
-not Z then return 0 end return tonumber(Z)or 0 end local ai=function()if not
-dungeon then return 0 end for ai,aj in pairs(u)do if aj and aj.Room then local Z
-=ah(aj.Room.Name)if Z>0 then return Z end end end if n then return 100+math.max(
-1,p)end return 0 end O=function()local aj=ai()if aj==r then return end r=aj for
+not n then return'Mob'end local aj=math.clamp(p,1,3)return'Boss'..tostring(aj)
+end function h.ResetBossIndex()p=0 Q=nil for aj=#q,1,-1 do pcall(q[aj],p)end end
+function h.OnBossIndexChanged(aj)if type(aj)~='function'then return function()
+end end table.insert(q,aj)return function()for ak,al in ipairs(q)do if al==aj
+then table.remove(q,ak)break end end end end local aj=function(aj)if type(aj)~=
+'string'then return 0 end local ak=string.lower(aj)local al=string.match(ak,
+'boss.*(%d+)')if al then return 100+(tonumber(al)or 1)end if string.find(ak,
+'boss')then return 100+math.max(1,p)end local Z=string.match(aj,'^room(%d+)$')if
+not Z then return 0 end return tonumber(Z)or 0 end local ak=function()if not
+dungeon then return 0 end for ak,al in pairs(u)do if al and al.Room then local Z
+=aj(al.Room.Name)if Z>0 then return Z end end end if n then return 100+math.max(
+1,p)end return 0 end O=function()local al=ak()if al==r then return end r=al for
 Z=#s,1,-1 do pcall(s[Z],r)end end function h.GetCurrentRoomIndex()return r end
-function h.OnRoomIndexChanged(aj)if type(aj)~='function'then return function()
-end end table.insert(s,aj)return function()for Z,_ in ipairs(s)do if _==aj then
+function h.OnRoomIndexChanged(al)if type(al)~='function'then return function()
+end end table.insert(s,al)return function()for Z,_ in ipairs(s)do if _==al then
 table.remove(s,Z)break end end end end function h.GetCurrentDungeonName()return
-K end function h.OnDungeonNameChanged(aj)if type(aj)~='function'then return
-function()end end table.insert(B,aj)return function()for Z,_ in ipairs(B)do if _
-==aj then table.remove(B,Z)break end end end end function h.IsInLobby()return D
-end function h.OnLobbyChanged(aj)if type(aj)~='function'then return function()
-end end table.insert(E,aj)return function()for Z,_ in ipairs(E)do if _==aj then
-table.remove(E,Z)break end end end end local aj,Z=function(aj)if n==aj then
-return end n=aj if aj then p+=1 for Z=#q,1,-1 do pcall(q[Z],p)end end for Z=#o,1
-,-1 do pcall(o[Z],n)end O()end local function _()if not d then return end local
-ak=d:FindFirstChild'PlayerGui'if not ak then Z=nil aj(false)return end local al=
-ak:FindFirstChild('bossHealth',true)if al then if al~=Z then Z=al if Z:IsA
-'ScreenGui'then R(Z:GetPropertyChangedSignal'Enabled':Connect(_))elseif Z:IsA
-'GuiObject'then R(Z:GetPropertyChangedSignal'Visible':Connect(_))end end local
-am=if al:IsA'ScreenGui'then al.Enabled elseif al:IsA'GuiObject'then al.Visible
-else true aj(am)else Z=nil aj(false)end end task.spawn(function()if not d then
-return end local ak=d:WaitForChild('PlayerGui',30)if not ak then return end R(ak
-.DescendantAdded:Connect(_))R(ak.DescendantRemoving:Connect(_))_()while c.
-IsActive()and task.wait(0.5)do _()end end)c.Register(function()if P then P:
-Disconnect()P=nil end for ak,al in ipairs(G)do pcall(function()al:Disconnect()
-end)end table.clear(G)N()end)return h end end local aa,ab,ac=a.load'a',a.load'c'
-,a.load'b'local ad,ae,af,ag,ah,ai,aj,ak,al,am,b,c,d,e,f,g,h,i,j,k,l,m,n=aa.
-player,aa.RunService,aa.CoreGui or game:GetService'CoreGui',game:GetService
-'Workspace',{},{Cyan=Color3.fromRGB(0,230,255),Red=Color3.fromRGB(255,60,60),
-Orange=Color3.fromRGB(255,140,0),Yellow=Color3.fromRGB(255,220,40),Green=Color3.
-fromRGB(0,255,120),Emerald=Color3.fromRGB(40,220,160),Blue=Color3.fromRGB(0,140,
-255),Purple=Color3.fromRGB(180,80,255),Magenta=Color3.fromRGB(255,60,200),White=
-Color3.fromRGB(255,255,255)},false,25,0.4,true,true,'Cyan','Red',0.8,0.15,
-'PR_InRange_Highlight',0.2,0,{}local o,p,q,r=function()return ai[c]or ai.Cyan
-end,function()return ai[d]or ai.Red end,function()local o=ad and ad.Character if
-not o or not o.Parent then return nil end local p=o:FindFirstChildOfClass
-'Humanoid'if p and p.Health<=0 then return nil end local q=o:FindFirstChild
-'HumanoidRootPart'if q and q.Parent then return q end return nil end,function()
-for o,p in pairs(j)do pcall(function()p:Destroy()end)end table.clear(j)pcall(
-function()for o,p in ipairs(ag:GetDescendants())do if p.Name==g then pcall(
-function()p:Destroy()end)end end end)end local s,t=function()if k then pcall(
-function()k:Destroy()end)k=nil end if l then pcall(function()l:Destroy()end)l=
-nil end n=nil r()end,function()if not k or not k.Parent then pcall(function()if
-k then k:Destroy()end end)k=Instance.new'CylinderHandleAdornment'k.Name=
-'PR_SkillRangeRing'k.AlwaysOnTop=true k.ZIndex=5 k.Parent=af end if am then if
-not l or not l.Parent then pcall(function()if l then l:Destroy()end end)l=
-Instance.new'CylinderHandleAdornment'l.Name='PR_SkillRangeFill'l.AlwaysOnTop=
-true l.ZIndex=4 l.Parent=af end else if l then pcall(function()l:Destroy()end)l=
-nil end end end local u,v=function(u)if not aj then s()return end t()local v,w=
-2.6,o()local x=Vector3.new(u.Position.X,u.Position.Y-v,u.Position.Z)local y=
-CFrame.new(x)*CFrame.Angles(math.rad(90),0,0)local z=u.CFrame:ToObjectSpace(y)if
-k then k.Adornee=u k.Height=0.06 k.Radius=ak k.InnerRadius=math.max(0.1,ak-al)k.
-Color3=w k.Transparency=1-e k.CFrame=z k.Visible=(u~=nil and u.Parent~=nil)end
-if l and am then l.Adornee=u l.Height=0.02 l.Radius=ak l.InnerRadius=0 l.Color3=
-w l.Transparency=1-f l.CFrame=z l.Visible=(u~=nil and u.Parent~=nil)end end,
-function(u)if not aj or not b or not u then if next(j)~=nil then r()end return
-end local v,w,x,y,z=ab.GetTrackedEnemyData(),u.Position,ak*ak,{},p()for A,B in
-ipairs(v)do local C,D,E=B.Model,B.Root,B.Humanoid if C and C.Parent and D and D.
-Parent and E and E.Health>0 then local F,G=D.Position.X-w.X,D.Position.Z-w.Z if(
-F*F+G*G)<=x then y[C]=true end end end for A,B in pairs(j)do if not y[A]or not A
-.Parent then pcall(function()B:Destroy()end)j[A]=nil end end for A in pairs(y)do
-if not j[A]or not j[A].Parent then local B=A:FindFirstChild(g)local C=(B and B:
-IsA'Highlight')and B or Instance.new'Highlight'C.Name=g C.Adornee=A C.FillColor=
-z C.FillTransparency=0.35 C.OutlineColor=Color3.fromRGB(255,255,255)C.
-OutlineTransparency=0.1 C.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop C.Parent
-=A j[A]=C else local B=j[A]if B.FillColor~=z then B.FillColor=z end if not B.
-Enabled then B.Enabled=true end end end end local w=function()if not aj then
-return end local w=q()if not w then if k then k.Visible=false end if l then l.
-Visible=false end if next(j)~=nil then r()end n=nil return end local x=2.6 local
-y=Vector3.new(w.Position.X,w.Position.Y-x,w.Position.Z)local z=CFrame.new(y)*
-CFrame.Angles(math.rad(90),0,0)local A=w.CFrame:ToObjectSpace(z)if not k or not
-k.Parent or w~=n then n=w u(w)else if k.Adornee~=w then k.Adornee=w end k.CFrame
-=A if not k.Visible then k.Visible=true end if am then if not l or not l.Parent
-then u(w)else if l.Adornee~=w then l.Adornee=w end l.CFrame=A if not l.Visible
-then l.Visible=true end end elseif l and l.Visible then l.Visible=false end end
-local B=os.clock()if B-i>=h then i=B v(w)end end function ah.SetEnabled(x)aj=x
-and true or false if aj then local y=q()if y then u(y)n=y v(y)end if not m then
-m=ae.Heartbeat:Connect(w)end else s()if m then m:Disconnect()m=nil end n=nil end
-end function ah.IsEnabled()return aj end function ah.SetRadius(x)if type(x)==
-'number'then ak=math.clamp(x,5,150)local y=q()if aj and y then u(y)v(y)end end
-end function ah.GetRadius()return ak end function ah.SetFillEnabled(x)am=x and
-true or false local y=q()if aj and y then u(y)end end function ah.IsFillEnabled(
-)return am end function ah.SetHighlightInRange(x)b=x and true or false if not b
-then r()else local y=q()if aj and y then v(y)end end end function ah.
-IsHighlightInRangeEnabled()return b end function ah.GetColorNames()local x={
-'Cyan','Red','Orange','Yellow','Green','Emerald','Blue','Purple','Magenta',
-'White'}return x end function ah.GetSelectedCircleColor()return c end function
-ah.SetCircleColor(x)if type(x)=='string'and ai[x]then c=x local y=q()if aj and y
-then u(y)end end end function ah.GetSelectedHighlightColor()return d end
-function ah.SetHighlightColor(x)if type(x)=='string'and ai[x]then d=x local y=q(
-)if aj and y then v(y)end end end if ad then ad.CharacterAdded:Connect(function(
-x)if aj then task.spawn(function()local y=x:WaitForChild('HumanoidRootPart',10)
-if y and aj then u(y)n=y v(y)end end)end end)end ab.OnRespawn(function()if aj
-then task.delay(0.2,function()local x=q()if x and aj then u(x)n=x v(x)end end)
-end end)ac.Register(function()ah.SetEnabled(false)s()end)return ah
+K end function h.OnDungeonNameChanged(al)if type(al)~='function'then return
+function()end end table.insert(B,al)return function()for Z,_ in ipairs(B)do if _
+==al then table.remove(B,Z)break end end end end function h.IsInLobby()return D
+end function h.OnLobbyChanged(al)if type(al)~='function'then return function()
+end end table.insert(E,al)return function()for Z,_ in ipairs(E)do if _==al then
+table.remove(E,Z)break end end end end local al P=function()if not n or Q~=nil
+then return end for Z,_ in pairs(u)do if _ and _.Root and _.Root.Parent then
+local am=false if _.Room and type(_.Room.Name)=='string'and string.find(string.
+lower(_.Room.Name),'boss')then am=true elseif string.find(string.lower(Z.Name),
+'boss')then am=true elseif Z.Parent and string.find(string.lower(Z.Parent.Name),
+'boss')then am=true end if am then Q=_.Root.Position return end end end for am,Z
+in pairs(u)do if Z and Z.Root and Z.Root.Parent then Q=Z.Root.Position return
+end end end local am=function(am)if n==am then return end n=am if am then p+=1 Q
+=nil P()for Z=#q,1,-1 do pcall(q[Z],p)end else Q=nil end for Z=#o,1,-1 do pcall(
+o[Z],n)end O()end function h.GetBossSpawnPosition()if Q then return Q end P()
+return Q end function h.SetBossSpawnPosition(Z)Q=Z end local function Z()if not
+d then return end local _=d:FindFirstChild'PlayerGui'if not _ then al=nil am(
+false)return end local an=_:FindFirstChild('bossHealth',true)if an then if an~=
+al then al=an if al:IsA'ScreenGui'then T(al:GetPropertyChangedSignal'Enabled':
+Connect(Z))elseif al:IsA'GuiObject'then T(al:GetPropertyChangedSignal'Visible':
+Connect(Z))end end local ao=if an:IsA'ScreenGui'then an.Enabled elseif an:IsA
+'GuiObject'then an.Visible else true am(ao)else al=nil am(false)end end task.
+spawn(function()if not d then return end local an=d:WaitForChild('PlayerGui',30)
+if not an then return end T(an.DescendantAdded:Connect(Z))T(an.
+DescendantRemoving:Connect(Z))Z()while c.IsActive()and task.wait(0.5)do Z()end
+end)c.Register(function()if R then R:Disconnect()R=nil end for an,ao in ipairs(G
+)do pcall(function()ao:Disconnect()end)end table.clear(G)N()end)return h end end
+local aa,ab,ac=a.load'a',a.load'c',a.load'b'local ad,ae,af,ag,ah,ai,aj,ak,al,am,
+an,ao,b,c,d,e,f,g,h,i,j,k,l=aa.player,aa.RunService,aa.CoreGui or game:
+GetService'CoreGui',game:GetService'Workspace',{},{Cyan=Color3.fromRGB(0,230,255
+),Red=Color3.fromRGB(255,60,60),Orange=Color3.fromRGB(255,140,0),Yellow=Color3.
+fromRGB(255,220,40),Green=Color3.fromRGB(0,255,120),Emerald=Color3.fromRGB(40,
+220,160),Blue=Color3.fromRGB(0,140,255),Purple=Color3.fromRGB(180,80,255),
+Magenta=Color3.fromRGB(255,60,200),White=Color3.fromRGB(255,255,255)},false,25,
+0.4,true,true,'Cyan','Red',0.8,0.15,'PR_InRange_Highlight',0.2,0,{}local m,n,o,p
+=function()return ai[ao]or ai.Cyan end,function()return ai[b]or ai.Red end,
+function()local m=ad and ad.Character if not m or not m.Parent then return nil
+end local n=m:FindFirstChildOfClass'Humanoid'if n and n.Health<=0 then return
+nil end local o=m:FindFirstChild'HumanoidRootPart'if o and o.Parent then return
+o end return nil end,function()for m,n in pairs(h)do pcall(function()n:Destroy()
+end)end table.clear(h)pcall(function()for m,n in ipairs(ag:GetDescendants())do
+if n.Name==e then pcall(function()n:Destroy()end)end end end)end local q,r=
+function()if i then pcall(function()i:Destroy()end)i=nil end if j then pcall(
+function()j:Destroy()end)j=nil end l=nil p()end,function()if not i or not i.
+Parent then pcall(function()if i then i:Destroy()end end)i=Instance.new
+'CylinderHandleAdornment'i.Name='PR_SkillRangeRing'i.AlwaysOnTop=true i.ZIndex=5
+i.Parent=af end if am then if not j or not j.Parent then pcall(function()if j
+then j:Destroy()end end)j=Instance.new'CylinderHandleAdornment'j.Name=
+'PR_SkillRangeFill'j.AlwaysOnTop=true j.ZIndex=4 j.Parent=af end else if j then
+pcall(function()j:Destroy()end)j=nil end end end local s,t=function(s)if not aj
+then q()return end r()local t,u=2.6,m()local v=Vector3.new(s.Position.X,s.
+Position.Y-t,s.Position.Z)local w=CFrame.new(v)*CFrame.Angles(math.rad(90),0,0)
+local x=s.CFrame:ToObjectSpace(w)if i then i.Adornee=s i.Height=0.06 i.Radius=ak
+i.InnerRadius=math.max(0.1,ak-al)i.Color3=u i.Transparency=1-c i.CFrame=x i.
+Visible=(s~=nil and s.Parent~=nil)end if j and am then j.Adornee=s j.Height=0.02
+j.Radius=ak j.InnerRadius=0 j.Color3=u j.Transparency=1-d j.CFrame=x j.Visible=(
+s~=nil and s.Parent~=nil)end end,function(s)if not aj or not an or not s then if
+next(h)~=nil then p()end return end local t,u,v,w,x=ab.GetTrackedEnemyData(),s.
+Position,ak*ak,{},n()for y,z in ipairs(t)do local A,B,C=z.Model,z.Root,z.
+Humanoid if A and A.Parent and B and B.Parent and C and C.Health>0 then local D,
+E=B.Position.X-u.X,B.Position.Z-u.Z if(D*D+E*E)<=v then w[A]=true end end end
+for y,z in pairs(h)do if not w[y]or not y.Parent then pcall(function()z:Destroy(
+)end)h[y]=nil end end for y in pairs(w)do if not h[y]or not h[y].Parent then
+local z=y:FindFirstChild(e)local A=(z and z:IsA'Highlight')and z or Instance.new
+'Highlight'A.Name=e A.Adornee=y A.FillColor=x A.FillTransparency=0.35 A.
+OutlineColor=Color3.fromRGB(255,255,255)A.OutlineTransparency=0.1 A.DepthMode=
+Enum.HighlightDepthMode.AlwaysOnTop A.Parent=y h[y]=A else local z=h[y]if z.
+FillColor~=x then z.FillColor=x end if not z.Enabled then z.Enabled=true end end
+end end local u=function()if not aj then return end local u=o()if not u then if
+i then i.Visible=false end if j then j.Visible=false end if next(h)~=nil then p(
+)end l=nil return end local v=2.6 local w=Vector3.new(u.Position.X,u.Position.Y-
+v,u.Position.Z)local x=CFrame.new(w)*CFrame.Angles(math.rad(90),0,0)local y=u.
+CFrame:ToObjectSpace(x)if not i or not i.Parent or u~=l then l=u s(u)else if i.
+Adornee~=u then i.Adornee=u end i.CFrame=y if not i.Visible then i.Visible=true
+end if am then if not j or not j.Parent then s(u)else if j.Adornee~=u then j.
+Adornee=u end j.CFrame=y if not j.Visible then j.Visible=true end end elseif j
+and j.Visible then j.Visible=false end end local z=os.clock()if z-g>=f then g=z
+t(u)end end function ah.SetEnabled(v)aj=v and true or false if aj then local w=
+o()if w then s(w)l=w t(w)end if not k then k=ae.Heartbeat:Connect(u)end else q()
+if k then k:Disconnect()k=nil end l=nil end end function ah.IsEnabled()return aj
+end function ah.SetRadius(v)if type(v)=='number'then ak=math.clamp(v,5,150)local
+w=o()if aj and w then s(w)t(w)end end end function ah.GetRadius()return ak end
+function ah.SetFillEnabled(v)am=v and true or false local w=o()if aj and w then
+s(w)end end function ah.IsFillEnabled()return am end function ah.
+SetHighlightInRange(v)an=v and true or false if not an then p()else local w=o()
+if aj and w then t(w)end end end function ah.IsHighlightInRangeEnabled()return
+an end function ah.GetColorNames()local v={'Cyan','Red','Orange','Yellow',
+'Green','Emerald','Blue','Purple','Magenta','White'}return v end function ah.
+GetSelectedCircleColor()return ao end function ah.SetCircleColor(v)if type(v)==
+'string'and ai[v]then ao=v local w=o()if aj and w then s(w)end end end function
+ah.GetSelectedHighlightColor()return b end function ah.SetHighlightColor(v)if
+type(v)=='string'and ai[v]then b=v local w=o()if aj and w then t(w)end end end
+if ad then ad.CharacterAdded:Connect(function(v)if aj then task.spawn(function()
+local w=v:WaitForChild('HumanoidRootPart',10)if w and aj then s(w)l=w t(w)end
+end)end end)end ab.OnRespawn(function()if aj then task.delay(0.2,function()local
+v=o()if v and aj then s(v)l=v t(v)end end)end end)ac.Register(function()ah.
+SetEnabled(false)q()end)return ah

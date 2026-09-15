@@ -11,6 +11,7 @@ local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
 local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
+local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
 
 --// References
 local Players = game:GetService("Players")
@@ -243,6 +244,7 @@ function detection.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 			box.SurfaceColor3 = surfColor
 		end
 	end
+	timerVisual.UpdateHazardVisualColor(hazardInfo, isTraj)
 end
 
 --// Specific Skill Deep Inspector
@@ -520,6 +522,9 @@ registerHazard = function(instance)
 	if trajectory.IsEnabled() then
 		trajectory.AttachTrajectoryVisuals(info)
 	end
+	if timerVisual.IsEnabled() then
+		timerVisual.AttachTimerVisual(info)
+	end
 
 	stopRetry(instance)
 
@@ -545,6 +550,7 @@ local function unregisterHazard(instance, reason)
 
 	visualizer.DetachZoneVisuals(info)
 	trajectory.DetachTrajectoryVisuals(info)
+	timerVisual.DetachTimerVisual(info)
 
 	if info.Boxes then
 		for _, box in ipairs(info.Boxes) do
@@ -574,6 +580,7 @@ end
 function detection.ClearAllHazards(reason)
 	visualizer.ClearAll()
 	trajectory.ClearAll()
+	timerVisual.ClearAll()
 	stopAllRetries()
 	local toRemove = {}
 	for inst in pairs(activeHazards) do
@@ -594,6 +601,7 @@ function detection.StartScan()
 
 	visualizer.BindDetection(detection)
 	trajectory.BindDetection(detection)
+	timerVisual.BindDetection(detection)
 	detection.ClearAllHazards("StartScan Reset")
 
 	for _, c in ipairs(connections) do c:Disconnect() end

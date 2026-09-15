@@ -264,6 +264,8 @@ return function(window, tab)
 	local isSyncingUI = false
 	local minSlider = nil
 	local maxSlider = nil
+	local bossAreaToggle = nil
+	local bossAreaRadiusSlider = nil
 	local editInfoLabel = nil
 
 	local function updateActiveStatus()
@@ -274,8 +276,15 @@ return function(window, tab)
 		local tText = "<font color='rgb(255,200,0)'>" .. contextual.GetTargetDisplay(curTargetKey) .. "</font>"
 		local rText = ("<font color='rgb(120,255,120)'>%.0f - %.0f studs</font>"):format(curMin, curMax)
 
+		local extraText = ""
+		if curTargetKey ~= "Mob" then
+			local curBossArea, curRadius = contextual.GetBossArea(curDungeon, curTargetKey)
+			local baText = curBossArea and ("<font color='rgb(0,255,255)'>Area: %.0f studs</font>"):format(curRadius) or "<font color='rgb(160,160,160)'>Area: Off</font>"
+			extraText = " | " .. baText
+		end
+
 		pcall(function()
-			activeStatusLabel:UpdateName(("Active: %s | Target: %s (%s)"):format(dText, tText, rText))
+			activeStatusLabel:UpdateName(("Active: %s | Target: %s (%s%s)"):format(dText, tText, rText, extraText))
 		end)
 	end
 
@@ -288,10 +297,29 @@ return function(window, tab)
 		if maxSlider then
 			pcall(function() maxSlider:UpdateValue(curMax) end)
 		end
+
+		if selectedTargetKey == "Mob" then
+			if bossAreaToggle then
+				pcall(function() bossAreaToggle:UpdateState(false) end)
+			end
+			if bossAreaRadiusSlider then
+				pcall(function() bossAreaRadiusSlider:UpdateValue(80) end)
+			end
+		else
+			local baEnabled, baRadius = contextual.GetBossArea(selectedDungeon, selectedTargetKey)
+			if bossAreaToggle then
+				pcall(function() bossAreaToggle:UpdateState(baEnabled) end)
+			end
+			if bossAreaRadiusSlider then
+				pcall(function() bossAreaRadiusSlider:UpdateValue(baRadius) end)
+			end
+		end
+
 		if editInfoLabel then
 			pcall(function()
-				editInfoLabel:UpdateName(("Editing: <font color='rgb(0,255,255)'>%s</font> / <font color='rgb(255,200,0)'>%s</font>"):format(
-					selectedDungeon, contextual.GetTargetDisplay(selectedTargetKey)
+				local extraNote = selectedTargetKey == "Mob" and " <font color='rgb(160,160,160)'>(Boss Area N/A)</font>" or ""
+				editInfoLabel:UpdateName(("Editing: <font color='rgb(0,255,255)'>%s</font> / <font color='rgb(255,200,0)'>%s</font>%s"):format(
+					selectedDungeon, contextual.GetTargetDisplay(selectedTargetKey), extraNote
 				))
 			end)
 		end
@@ -327,7 +355,7 @@ return function(window, tab)
 
 	local initMin, initMax = contextual.GetCombatDistances(selectedDungeon, selectedTargetKey)
 
-	minSlider = ctxSection:Slider({
+	minSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
 		Name = "Min Combat Distance (studs)",
 		Default = initMin,
 		Minimum = 2,
@@ -339,9 +367,9 @@ return function(window, tab)
 			contextual.SetMinCombatDistance(selectedDungeon, selectedTargetKey, val)
 			updateActiveStatus()
 		end,
-	})
+	}))
 
-	maxSlider = ctxSection:Slider({
+	maxSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
 		Name = "Max Combat Distance (studs)",
 		Default = initMax,
 		Minimum = 5,
@@ -353,7 +381,42 @@ return function(window, tab)
 			contextual.SetMaxCombatDistance(selectedDungeon, selectedTargetKey, val)
 			updateActiveStatus()
 		end,
+	}))
+
+	ctxSection:Header({ Name = "Boss Area Constraint (Boss Only)" })
+
+	local initBossAreaEnabled, initBossAreaRadius = contextual.GetBossArea(selectedDungeon, selectedTargetKey)
+
+	bossAreaToggle = ctxSection:Toggle({
+		Name = "Enable Boss Area Constraint",
+		Default = initBossAreaEnabled,
+		Callback = function(state)
+			if isSyncingUI then return end
+			if selectedTargetKey == "Mob" then
+				if bossAreaToggle then
+					pcall(function() bossAreaToggle:UpdateState(false) end)
+				end
+				return
+			end
+			contextual.SetBossAreaEnabled(selectedDungeon, selectedTargetKey, state)
+			updateActiveStatus()
+		end,
 	})
+
+	bossAreaRadiusSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Boss Area Radius (studs)",
+		Default = initBossAreaRadius,
+		Minimum = 10,
+		Maximum = 300,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = function(val)
+			if isSyncingUI then return end
+			if selectedTargetKey == "Mob" then return end
+			contextual.SetBossAreaRadius(selectedDungeon, selectedTargetKey, val)
+			updateActiveStatus()
+		end,
+	}))
 
 	ctxSection:Button({
 		Name = "Reset Target to Default",

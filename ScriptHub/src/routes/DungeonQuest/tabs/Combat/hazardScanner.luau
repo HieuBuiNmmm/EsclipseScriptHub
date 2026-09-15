@@ -161,6 +161,14 @@ return function(window, tab)
 	}, "Toggle_HazardSelectionBoxes")
 
 	leftSection:Toggle({
+		Name = "Show Lifespan Timer (3D Duration)",
+		Default = hazardScanner.IsTimerVisualEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetTimerVisualEnabled(state)
+		end),
+	}, "Toggle_HazardLifespanTimer")
+
+	leftSection:Toggle({
 		Name = "Show Danger Zones (Ground Visualizer)",
 		Default = hazardScanner.IsVisualizerEnabled(),
 		Callback = autoSave.Wrap(function(state)

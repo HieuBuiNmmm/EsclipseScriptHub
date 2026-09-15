@@ -83,6 +83,7 @@ local debugMinDistanceFill = nil
 local debugMinDistanceRing = nil
 local debugMaxDistanceFill = nil
 local debugMaxDistanceRing = nil
+local debugBossAreaRing = nil
 local debugPathCacheKey = nil
 
 --// Forward declarations
@@ -289,6 +290,30 @@ local function stepMovementLoop(deltaTime)
 	local flatDelta = Vector3.new(enemyPos.X - playerPos.X, 0, enemyPos.Z - playerPos.Z)
 	local flatDist = flatDelta.Magnitude
 
+	-- Check Boss Area Constraint (Ưu tiên #1: Giữ vị trí trong vùng Boss Arena)
+	local bossAreaEnabled, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea(target)
+	local isOutsideBossArea = false
+	local bossCenter2D = nil
+
+	if bossAreaEnabled and bossAreaCenter and bossAreaRadius and bossAreaRadius > 0 then
+		bossCenter2D = Vector3.new(bossAreaCenter.X, 0, bossAreaCenter.Z)
+		local distToBossCenter = (Vector3.new(playerPos.X, 0, playerPos.Z) - bossCenter2D).Magnitude
+		if distToBossCenter > bossAreaRadius then
+			isOutsideBossArea = true
+		end
+	end
+
+	-- Nếu đang ở ngoài Boss Area: Ưu tiên quay lại trong Boss Area ngay lập tức!
+	if isOutsideBossArea and bossCenter2D and bossAreaCenter then
+		local enterTarget = Vector3.new(bossAreaCenter.X, playerPos.Y, bossAreaCenter.Z)
+		currentState = State.CHASE
+		currentDestMode = "Enter Boss Area"
+		currentDestination = enterTarget
+		stuckTimer = 0
+		humanoid:MoveTo(enterTarget)
+		return
+	end
+
 	-- Auto Face Target (Khóa xoay mặt nhìn thẳng về phía kẻ địch khi trong tầm combat)
 	if autoFaceTarget and flatDist <= (maxCombatDistance + 25) then
 		pcall(function()
@@ -311,6 +336,23 @@ local function stepMovementLoop(deltaTime)
 		local awayDir = awayDelta.Magnitude > 0.1 and awayDelta.Unit or Vector3.new(0, 0, 1)
 		local backDist = math.clamp(minCombatDistance - flatDist + 6, 4, 15)
 		local backTarget = playerPos + awayDir * backDist
+
+		-- Nếu Boss Area đang bật, đảm bảo điểm lùi không văng ra ngoài Boss Arena
+		if bossCenter2D and bossAreaRadius then
+			local backFlat = Vector3.new(backTarget.X, 0, backTarget.Z)
+			if (backFlat - bossCenter2D).Magnitude > bossAreaRadius then
+				local clampedFlat = bossCenter2D + (backFlat - bossCenter2D).Unit * math.max(1, bossAreaRadius - 2)
+				backTarget = Vector3.new(clampedFlat.X, playerPos.Y, clampedFlat.Z)
+				if (backTarget - playerPos).Magnitude < 2 then
+					currentState = State.HOLD
+					currentDestMode = "Hold (Boss Area Edge)"
+					currentDestination = nil
+					stuckTimer = 0
+					pcall(function() humanoid:MoveTo(playerPos) end)
+					return
+				end
+			end
+		end
 
 		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh)
 		local isBackSafe = true
@@ -676,6 +718,32 @@ local function updateVisualDebugs()
 		debugMaxDistanceRing.Transparency = 0.25
 		debugMaxDistanceRing.CFrame = localCFrame
 		debugMaxDistanceRing.Visible = true
+
+		-- Boss Area Ring (Cyan outline showing the Boss Arena boundary locked at spawn position)
+		local isBossAreaActive, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea(curTarget)
+		if isBossAreaActive and bossAreaCenter and bossAreaRadius and bossAreaRadius > 0 then
+			local bCenterWorld = Vector3.new(bossAreaCenter.X, floorY, bossAreaCenter.Z)
+			local bCenterCFrame = CFrame.new(bCenterWorld) * CFrame.Angles(math.rad(90), 0, 0)
+			local bCenterLocal = targetRoot.CFrame:ToObjectSpace(bCenterCFrame)
+
+			if not debugBossAreaRing or not debugBossAreaRing.Parent then
+				debugBossAreaRing = Instance.new("CylinderHandleAdornment")
+				debugBossAreaRing.Name = "TM_BossAreaRing_Debug"
+				debugBossAreaRing.AlwaysOnTop = true
+				debugBossAreaRing.ZIndex = 5
+				debugBossAreaRing.Parent = services.CoreGui or game:GetService("CoreGui")
+			end
+			debugBossAreaRing.Adornee = targetRoot
+			debugBossAreaRing.Height = 0.05
+			debugBossAreaRing.InnerRadius = math.max(0.1, bossAreaRadius - 0.45)
+			debugBossAreaRing.Radius = bossAreaRadius
+			debugBossAreaRing.Color3 = Color3.fromRGB(0, 200, 255)
+			debugBossAreaRing.Transparency = 0.3
+			debugBossAreaRing.CFrame = bCenterLocal
+			debugBossAreaRing.Visible = true
+		else
+			if debugBossAreaRing then debugBossAreaRing.Visible = false end
+		end
 	end
 end
 
@@ -689,6 +757,7 @@ local function cleanupDebugVisuals()
 	if debugMinDistanceRing then pcall(function() debugMinDistanceRing:Destroy() end); debugMinDistanceRing = nil end
 	if debugMaxDistanceFill then pcall(function() debugMaxDistanceFill:Destroy() end); debugMaxDistanceFill = nil end
 	if debugMaxDistanceRing then pcall(function() debugMaxDistanceRing:Destroy() end); debugMaxDistanceRing = nil end
+	if debugBossAreaRing then pcall(function() debugBossAreaRing:Destroy() end); debugBossAreaRing = nil end
 	destroyPathVisuals()
 end
 

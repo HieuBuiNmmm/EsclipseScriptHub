@@ -14,49 +14,50 @@ end table.clear(b.callbacks)end function b.IsActive()return not b.cleaned end
 return b end function a.c()local b,c=a.load'a',a.load'b'local d,e,f,g,h,i,j,k,l,
 m,n,o,p,q,r,s,t,u,v,w,x,y,z=b.player,0.05,'enemyProjectiles',0.5,{},false,16,16,
 true,false,false,{},0,{},0,{},{},{},{},{},{},0,{}local A,B,C,D,E,F,G,H,I,J,K,L,M
-,N,O,P,Q=function()for A=#z,1,-1 do pcall(z[A])end end,{},'unknown',true,{},{},{
-},0,4,false local R=function(R)if R then table.insert(G,R)end return R end
-function h.OnRespawn(S)table.insert(F,S)end function h.GetLastRespawnTime()
+,N,O,P,Q,R,S=function()for A=#z,1,-1 do pcall(z[A])end end,{},'unknown',true,{},
+{},{},0,4,false local T=function(T)if T then table.insert(G,T)end return T end
+function h.OnRespawn(U)table.insert(F,U)end function h.GetLastRespawnTime()
 return H end function h.GetRespawnProtectionDuration()return I end function h.
-SetRespawnProtectionDuration(S)if type(S)=='number'and S>=0 then I=S end end
-function h.GetRespawnProtectionRemaining()if H==0 then return 0 end local S=os.
-clock()-H local T=I-S return math.max(0,T)end function h.IsJustRespawned(S)local
-T=S or I if H==0 then return false end return(os.clock()-H)<=T end function h.
-WasDead()return J end function h.IsDead()local S=d and d.Character if not S or
-not S.Parent then return true end local T=S:FindFirstChildOfClass'Humanoid'if
-not T or T.Health<=0 then return true end return false end function h.
-IsInvulnerable()local S=d and d.Character if not S or not S.Parent then return
-false,nil end local T=S:FindFirstChildOfClass'Humanoid'if T and T.Health<=0 then
-return false,nil end local U=S:FindFirstChildOfClass'ForceField'if U and U.
-Visible~=false then return true,'ForceField'end local V,W,X=S:GetAttribute
-'Invulnerable',S:GetAttribute'Immune',S:GetAttribute'Respawning'if V==true or W
-==true or X==true then return true,'Attribute'end local Y,Z,_=S:FindFirstChild
-'Invulnerable',S:FindFirstChild'Immune',S:FindFirstChild'Respawning'if(Y and Y:
-IsA'BoolValue'and Y.Value==true)or(Z and Z:IsA'BoolValue'and Z.Value==true)or(_
-and _:IsA'BoolValue'and _.Value==true)then return true,'Value'end local aa=h.
-GetRespawnProtectionRemaining()if aa>0 then return true,(
-'Respawn Shield (%.1fs)'):format(aa)end return false,nil end local aa=function(
-aa)if not aa or not aa:IsA'Model'then return nil end local S=aa:FindFirstChild
-'HumanoidRootPart'if S and S:IsA'BasePart'then return S end if aa.PrimaryPart
-and aa.PrimaryPart:IsA'BasePart'then return aa.PrimaryPart end for T,U in
+SetRespawnProtectionDuration(U)if type(U)=='number'and U>=0 then I=U end end
+function h.GetRespawnProtectionRemaining()if H==0 then return 0 end local U=os.
+clock()-H local V=I-U return math.max(0,V)end function h.IsJustRespawned(U)local
+V=U or I if H==0 then return false end return(os.clock()-H)<=V end function h.
+WasDead()return J end function h.IsDead()local U=d and d.Character if not U or
+not U.Parent then return true end local V=U:FindFirstChildOfClass'Humanoid'if
+not V or V.Health<=0 then return true end return false end function h.
+IsInvulnerable()local U=d and d.Character if not U or not U.Parent then return
+false,nil end local V=U:FindFirstChildOfClass'Humanoid'if V and V.Health<=0 then
+return false,nil end local W=U:FindFirstChildOfClass'ForceField'if W and W.
+Visible~=false then return true,'ForceField'end local X,Y,Z=U:GetAttribute
+'Invulnerable',U:GetAttribute'Immune',U:GetAttribute'Respawning'if X==true or Y
+==true or Z==true then return true,'Attribute'end local _,aa,ab=U:FindFirstChild
+'Invulnerable',U:FindFirstChild'Immune',U:FindFirstChild'Respawning'if(_ and _:
+IsA'BoolValue'and _.Value==true)or(aa and aa:IsA'BoolValue'and aa.Value==true)or
+(ab and ab:IsA'BoolValue'and ab.Value==true)then return true,'Value'end local ac
+=h.GetRespawnProtectionRemaining()if ac>0 then return true,(
+'Respawn Shield (%.1fs)'):format(ac)end return false,nil end local aa=function(
+aa)if not aa or not aa:IsA'Model'then return nil end local ab=aa:FindFirstChild
+'HumanoidRootPart'if ab and ab:IsA'BasePart'then return ab end if aa.PrimaryPart
+and aa.PrimaryPart:IsA'BasePart'then return aa.PrimaryPart end for ac,U in
 ipairs(aa:GetDescendants())do if U:IsA'BasePart'then return U end end return nil
-end local S,T=function(S)if not S or not S:IsA'Model'or not S.Parent or S==d.
-Character then return false end local T=S:FindFirstChildOfClass'Humanoid'if not
-T or T.Health<=0 then return false end return aa(S)~=nil end,function(S)local T=
-w[S]if not T then return end if T.Died then T.Died:Disconnect()T.Died=nil end w[
-S]=nil end local U,V=function(U)if not U or not u[U]then return end x[U]=nil u[U
-]=nil y-=1 T(U)A()O()end,function(U)if not dungeon or not U then return nil end
-local V=U.Parent while V do if V==dungeon then return nil end if V.Parent==
-dungeon and(V:IsA'Folder'or V:IsA'Model')then return V end V=V.Parent end return
-nil end local W=function(W)if not S(W)or u[W]then return end local X,Y=aa(W),W:
-FindFirstChildOfClass'Humanoid'if not X or not Y then return end u[W]={Model=W,
-Root=X,Humanoid=Y,Room=V(W)}y+=1 w[W]={Died=Y.Died:Connect(function()U(W)end)}A(
-)O()end local X=function(X)if not X then return end if S(X)then W(X)return end
-if x[X]then return end x[X]=true task.spawn(function()local Y=os.clock()+2 while
-X.Parent and os.clock()<Y do if S(X)then x[X]=nil W(X)return end task.wait(0.03)
-end x[X]=nil if X.Parent and S(X)then W(X)end end)end local Y=function(Y)if not
+end local ab,ac=function(ab)if not ab or not ab:IsA'Model'or not ab.Parent or ab
+==d.Character then return false end local ac=ab:FindFirstChildOfClass'Humanoid'
+if not ac or ac.Health<=0 then return false end return aa(ab)~=nil end,function(
+ab)local ac=w[ab]if not ac then return end if ac.Died then ac.Died:Disconnect()
+ac.Died=nil end w[ab]=nil end local U,V=function(U)if not U or not u[U]then
+return end x[U]=nil u[U]=nil y-=1 ac(U)A()O()end,function(U)if not dungeon or
+not U then return nil end local V=U.Parent while V do if V==dungeon then return
+nil end if V.Parent==dungeon and(V:IsA'Folder'or V:IsA'Model')then return V end
+V=V.Parent end return nil end local W=function(W)if not ab(W)or u[W]then return
+end local X,Y=aa(W),W:FindFirstChildOfClass'Humanoid'if not X or not Y then
+return end u[W]={Model=W,Root=X,Humanoid=Y,Room=V(W)}y+=1 w[W]={Died=Y.Died:
+Connect(function()U(W)end)}if n and not Q then if P then P()end end A()O()end
+local X=function(X)if not X then return end if ab(X)then W(X)return end if x[X]
+then return end x[X]=true task.spawn(function()local Y=os.clock()+2 while X.
+Parent and os.clock()<Y do if ab(X)then x[X]=nil W(X)return end task.wait(0.03)
+end x[X]=nil if X.Parent and ab(X)then W(X)end end)end local Y=function(Y)if not
 Y or t[Y]then return end t[Y]=true for Z,_ in ipairs(Y:GetDescendants())do if _:
-IsA'Model'and S(_)then W(_)end end v[Y]={Added=Y.DescendantAdded:Connect(
+IsA'Model'and ab(_)then W(_)end end v[Y]={Added=Y.DescendantAdded:Connect(
 function(Z)if Z:IsA'Model'then X(Z)elseif Z:IsA'Humanoid'then local _=Z:
 FindFirstAncestorOfClass'Model'if _ then X(_)end end end),Removed=Y.
 DescendantRemoving:Connect(function(Z)if Z:IsA'Model'then U(Z)end end)}end M=
@@ -70,623 +71,708 @@ end),Removed=dungeon.DescendantRemoving:Connect(function(Z)if Z:IsA'Model'then
 U(Z)end end)}return true end N=function()if not dungeon then return end for Z,_
 in pairs(v)do if _.Added then pcall(function()_.Added:Disconnect()end)end if _.
 Removed then pcall(function()_.Removed:Disconnect()end)end end v={}t={}for Z in
-pairs(u)do T(Z)end u={}y=0 x={}dungeon=nil end L=function()for Z,_ in pairs(u)do
-if not Z or not Z.Parent then U(Z)else local ab=_.Humanoid or Z:
-FindFirstChildOfClass'Humanoid'_.Humanoid=ab if not ab or ab.Health<=0 then U(Z)
-else local ac=_.Root if not ac or not ac.Parent then ac=aa(Z)if ac then _.Root=
-ac else U(Z)end end end end end end function h.SetFastSpeed(ab)j=ab if i and
+pairs(u)do ac(Z)end u={}y=0 x={}Q=nil dungeon=nil end L=function()for Z,_ in
+pairs(u)do if not Z or not Z.Parent then U(Z)else local ad=_.Humanoid or Z:
+FindFirstChildOfClass'Humanoid'_.Humanoid=ad if not ad or ad.Health<=0 then U(Z)
+else local ae=_.Root if not ae or not ae.Parent then ae=aa(Z)if ae then _.Root=
+ae else U(Z)end end end end end end function h.SetFastSpeed(ad)j=ad if i and
 humanoid and humanoid.Parent then if humanoid.WalkSpeed<j then m=true humanoid.
-WalkSpeed=j m=false end end end function h.SetSpeedEnabled(ab)i=ab if humanoid
+WalkSpeed=j m=false end end end function h.SetSpeedEnabled(ad)i=ad if humanoid
 and humanoid.Parent then m=true if i then if humanoid.WalkSpeed<j then humanoid.
 WalkSpeed=j end else humanoid.WalkSpeed=k end m=false end end function h.
 IsSpeedEnabled()return i end function h.GetFastSpeed()return j end function h.
-SetInstantAccelEnabled(ab)l=ab and true or false end function h.
-IsInstantAccelEnabled()return l end local ab=function()if P then P:Disconnect()P
-=nil end if not humanoid or not humanoid.Parent then return end P=humanoid:
+SetInstantAccelEnabled(ad)l=ad and true or false end function h.
+IsInstantAccelEnabled()return l end local ad=function()if R then R:Disconnect()R
+=nil end if not humanoid or not humanoid.Parent then return end R=humanoid:
 GetPropertyChangedSignal'WalkSpeed':Connect(function()if m then return end if
-not humanoid or not humanoid.Parent then return end local ab=humanoid.WalkSpeed
-if i then if ab<j then m=true humanoid.WalkSpeed=j m=false end else k=ab end end
-)end function h.SetHumanoid(ac)if not ac then return end local Z=ac:
-WaitForChild('Humanoid',10)if not Z then return end humanoid=Z rootPart=ac:
-WaitForChild('HumanoidRootPart',10)or ac.PrimaryPart k=humanoid.WalkSpeed if i
-and humanoid.WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false end if Q then
-Q:Disconnect()Q=nil end Q=humanoid.Died:Connect(function()J=true end)R(humanoid.
+not humanoid or not humanoid.Parent then return end local ad=humanoid.WalkSpeed
+if i then if ad<j then m=true humanoid.WalkSpeed=j m=false end else k=ad end end
+)end function h.SetHumanoid(ae)if not ae then return end local Z=ae:
+WaitForChild('Humanoid',10)if not Z then return end humanoid=Z rootPart=ae:
+WaitForChild('HumanoidRootPart',10)or ae.PrimaryPart k=humanoid.WalkSpeed if i
+and humanoid.WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false end if S then
+S:Disconnect()S=nil end S=humanoid.Died:Connect(function()J=true end)T(humanoid.
 HealthChanged:Connect(function(_)if _<=0 then J=true elseif J and _>0 then J=
-false end end))end local ac=function()if not c.IsActive()then return end if not
+false end end))end local ae=function()if not c.IsActive()then return end if not
 l then return end if not humanoid or not humanoid.Parent or humanoid.Health<=0
 or humanoid.Sit then return end if not rootPart or not rootPart.Parent then
-local ac=d and d.Character rootPart=ac and ac:FindFirstChild'HumanoidRootPart'if
-not rootPart then return end end if rootPart.Anchored then return end local ac,Z
-=humanoid.MoveDirection,rootPart.AssemblyLinearVelocity if ac.Magnitude>0.05
+local ae=d and d.Character rootPart=ae and ae:FindFirstChild'HumanoidRootPart'if
+not rootPart then return end end if rootPart.Anchored then return end local ae,Z
+=humanoid.MoveDirection,rootPart.AssemblyLinearVelocity if ae.Magnitude>0.05
 then local _=i and math.max(j,humanoid.WalkSpeed)or humanoid.WalkSpeed rootPart.
-AssemblyLinearVelocity=Vector3.new(ac.X*_,Z.Y,ac.Z*_)end end if b.RunService
-then local Z=b.RunService.PreSimulation or b.RunService.Heartbeat if Z then R(Z:
-Connect(ac))end end function h.GetDungeonStartTime()return dungeonStartTime end
+AssemblyLinearVelocity=Vector3.new(ae.X*_,Z.Y,ae.Z*_)end end if b.RunService
+then local Z=b.RunService.PreSimulation or b.RunService.Heartbeat if Z then T(Z:
+Connect(ae))end end function h.GetDungeonStartTime()return dungeonStartTime end
 function h.SetDungeonStartTime(Z)dungeonStartTime=Z end function h.
 GetDungeonElapsed()if not dungeonStartTime then return nil end return os.clock()
 -dungeonStartTime end function h.ReadyDungeon()if not dungeon and not M()then
 return false end return true end function h.GetHumanoid()return humanoid end
 function h.GetEnemyNames()local Z={}local _=function(_)if _ and _~=''and _~=d.
-Name then Z[_]=true end end if dungeon then for ad,ae in ipairs(dungeon:
-GetChildren())do if ae:IsA'Folder'or ae:IsA'Model'then for af,ag in ipairs(ae:
-GetDescendants())do if ag:IsA'Model'and ag:FindFirstChildOfClass'Humanoid'then
-_(ag.Name)end end end end end for ad in pairs(u)do _(ad.Name)end local ad={}for
-ae in pairs(Z)do table.insert(ad,ae)end table.sort(ad)return ad end function h.
-GetEnemyCount()return y end function h.GetTrackedEnemyData()local ad={}for ae,af
-in pairs(u)do if af and af.Root and af.Root.Parent then ad[#ad+1]=af end end
-return ad end function h.OnEnemyChanged(ad)if type(ad)~='function'then return
-function()end end table.insert(z,ad)return function()for ae,af in ipairs(z)do if
-af==ad then table.remove(z,ae)break end end end end function h.
-GetEnemyProjectileNames()local ad,ae={},game:GetService'ReplicatedStorage'local
-af=ae:FindFirstChild(f)if not af then return ad end for ag,Z in ipairs(af:
+Name then Z[_]=true end end if dungeon then for af,ag in ipairs(dungeon:
+GetChildren())do if ag:IsA'Folder'or ag:IsA'Model'then for ah,ai in ipairs(ag:
+GetDescendants())do if ai:IsA'Model'and ai:FindFirstChildOfClass'Humanoid'then
+_(ai.Name)end end end end end for af in pairs(u)do _(af.Name)end local af={}for
+ag in pairs(Z)do table.insert(af,ag)end table.sort(af)return af end function h.
+GetEnemyCount()return y end function h.GetTrackedEnemyData()local af={}for ag,ah
+in pairs(u)do if ah and ah.Root and ah.Root.Parent then af[#af+1]=ah end end
+return af end function h.OnEnemyChanged(af)if type(af)~='function'then return
+function()end end table.insert(z,af)return function()for ag,ah in ipairs(z)do if
+ah==af then table.remove(z,ag)break end end end end function h.
+GetEnemyProjectileNames()local af,ag={},game:GetService'ReplicatedStorage'local
+ah=ag:FindFirstChild(f)if not ah then return af end for ai,Z in ipairs(ah:
 GetChildren())do local _=Z.ClassName if _=='Model'or _=='MeshPart'or _=='Part'
-then ad[Z.Name]=true end end return ad end function h.GetKeyHoldTime()return e
+then af[Z.Name]=true end end return af end function h.GetKeyHoldTime()return e
 end if d and d.Character and d.Character.Parent then h.SetHumanoid(d.Character)
-ab()else local ad=d and d.CharacterAdded and task.spawn(function()local ad=d.
-CharacterAdded:Wait()if ad and c.IsActive()then h.SetHumanoid(ad)ab()end end)end
-if d then R(d.CharacterAdded:Connect(function(ad)local ae,af=pcall(function()if
-not ad then return end H=os.clock()h.SetHumanoid(ad)ab()for ae,af in ipairs(F)do
-pcall(af)end end)if not ae then warn('[Shared] respawn handler error:',tostring(
-af))end end))end task.spawn(function()while c.IsActive()do task.wait(g)local ad=
-workspace:FindFirstChild'dungeon'if dungeon and ad~=dungeon then N()elseif not
-dungeon and ad then M()end O()end end)local ad=function()local ad=game:
-GetService'Workspace'for ae,af in ipairs(ad:GetDescendants())do if af.Name==
-'dungeonName'and af:IsA'ValueBase'then local ag=af.Value if type(ag)=='string'
-then local Z=string.gsub(ag,'%s+','')if Z~=''and string.lower(Z)~=C then return
-ag end end end end return nil end task.spawn(function()while c.IsActive()do task
-.wait(g)local ae=ad()if ae~=K then K=ae if ae then h.ResetBossIndex()end for af=
-#B,1,-1 do pcall(B[af],ae)end end end end)local ae=function()return not(K and#K>
-0)end task.spawn(function()while c.IsActive()do task.wait(g)local af=ae()if af~=
-D then D=af for ag=#E,1,-1 do pcall(E[ag],D)end end end end)task.spawn(function(
-)local af,ag=pcall(function()return M()end)if not af then warn(
-'[EnemyTracker] Initialization error:',ag)end end)local af,ag=0,2 task.spawn(
-function()while c.IsActive()do task.wait(ag)local Z=os.clock()if Z-af<ag then
-continue end af=Z if not dungeon then continue end local ah=pcall(function()for
-_,ah in ipairs(dungeon:GetChildren())do if ah:IsA'Folder'or ah:IsA'Model'then
-for ai,aj in ipairs(ah:GetDescendants())do if aj:IsA'Model'then X(aj)end end end
-end L()end)if not ah then warn'[EnemyTracker] rescan error'end end end)function
-h.IsBossActive()return n end function h.OnBossActiveChanged(ah)if type(ah)~=
-'function'then return function()end end table.insert(o,ah)return function()for
-ai,aj in ipairs(o)do if aj==ah then table.remove(o,ai)break end end end end
+ad()else local af=d and d.CharacterAdded and task.spawn(function()local af=d.
+CharacterAdded:Wait()if af and c.IsActive()then h.SetHumanoid(af)ad()end end)end
+if d then T(d.CharacterAdded:Connect(function(af)local ag,ah=pcall(function()if
+not af then return end H=os.clock()h.SetHumanoid(af)ad()for ag,ah in ipairs(F)do
+pcall(ah)end end)if not ag then warn('[Shared] respawn handler error:',tostring(
+ah))end end))end task.spawn(function()while c.IsActive()do task.wait(g)local af=
+workspace:FindFirstChild'dungeon'if dungeon and af~=dungeon then N()elseif not
+dungeon and af then M()end O()end end)local af=function()local af=game:
+GetService'Workspace'for ag,ah in ipairs(af:GetDescendants())do if ah.Name==
+'dungeonName'and ah:IsA'ValueBase'then local ai=ah.Value if type(ai)=='string'
+then local Z=string.gsub(ai,'%s+','')if Z~=''and string.lower(Z)~=C then return
+ai end end end end return nil end task.spawn(function()while c.IsActive()do task
+.wait(g)local ag=af()if ag~=K then K=ag if ag then h.ResetBossIndex()end for ah=
+#B,1,-1 do pcall(B[ah],ag)end end end end)local ag=function()return not(K and#K>
+0)end task.spawn(function()while c.IsActive()do task.wait(g)local ah=ag()if ah~=
+D then D=ah for ai=#E,1,-1 do pcall(E[ai],D)end end end end)task.spawn(function(
+)local ah,ai=pcall(function()return M()end)if not ah then warn(
+'[EnemyTracker] Initialization error:',ai)end end)local ah,ai=0,2 task.spawn(
+function()while c.IsActive()do task.wait(ai)local Z=os.clock()if Z-ah<ai then
+continue end ah=Z if not dungeon then continue end local aj=pcall(function()for
+_,aj in ipairs(dungeon:GetChildren())do if aj:IsA'Folder'or aj:IsA'Model'then
+for ak,al in ipairs(aj:GetDescendants())do if al:IsA'Model'then X(al)end end end
+end L()end)if not aj then warn'[EnemyTracker] rescan error'end end end)function
+h.IsBossActive()return n end function h.OnBossActiveChanged(aj)if type(aj)~=
+'function'then return function()end end table.insert(o,aj)return function()for
+ak,al in ipairs(o)do if al==aj then table.remove(o,ak)break end end end end
 function h.GetCurrentBossIndex()return p end function h.GetCombatTargetKey()if
-not n then return'Mob'end local ah=math.clamp(p,1,3)return'Boss'..tostring(ah)
-end function h.ResetBossIndex()p=0 for ah=#q,1,-1 do pcall(q[ah],p)end end
-function h.OnBossIndexChanged(ah)if type(ah)~='function'then return function()
-end end table.insert(q,ah)return function()for ai,aj in ipairs(q)do if aj==ah
-then table.remove(q,ai)break end end end end local ah=function(ah)if type(ah)~=
-'string'then return 0 end local ai=string.lower(ah)local aj=string.match(ai,
-'boss.*(%d+)')if aj then return 100+(tonumber(aj)or 1)end if string.find(ai,
-'boss')then return 100+math.max(1,p)end local Z=string.match(ah,'^room(%d+)$')if
-not Z then return 0 end return tonumber(Z)or 0 end local ai=function()if not
-dungeon then return 0 end for ai,aj in pairs(u)do if aj and aj.Room then local Z
-=ah(aj.Room.Name)if Z>0 then return Z end end end if n then return 100+math.max(
-1,p)end return 0 end O=function()local aj=ai()if aj==r then return end r=aj for
+not n then return'Mob'end local aj=math.clamp(p,1,3)return'Boss'..tostring(aj)
+end function h.ResetBossIndex()p=0 Q=nil for aj=#q,1,-1 do pcall(q[aj],p)end end
+function h.OnBossIndexChanged(aj)if type(aj)~='function'then return function()
+end end table.insert(q,aj)return function()for ak,al in ipairs(q)do if al==aj
+then table.remove(q,ak)break end end end end local aj=function(aj)if type(aj)~=
+'string'then return 0 end local ak=string.lower(aj)local al=string.match(ak,
+'boss.*(%d+)')if al then return 100+(tonumber(al)or 1)end if string.find(ak,
+'boss')then return 100+math.max(1,p)end local Z=string.match(aj,'^room(%d+)$')if
+not Z then return 0 end return tonumber(Z)or 0 end local ak=function()if not
+dungeon then return 0 end for ak,al in pairs(u)do if al and al.Room then local Z
+=aj(al.Room.Name)if Z>0 then return Z end end end if n then return 100+math.max(
+1,p)end return 0 end O=function()local al=ak()if al==r then return end r=al for
 Z=#s,1,-1 do pcall(s[Z],r)end end function h.GetCurrentRoomIndex()return r end
-function h.OnRoomIndexChanged(aj)if type(aj)~='function'then return function()
-end end table.insert(s,aj)return function()for Z,_ in ipairs(s)do if _==aj then
+function h.OnRoomIndexChanged(al)if type(al)~='function'then return function()
+end end table.insert(s,al)return function()for Z,_ in ipairs(s)do if _==al then
 table.remove(s,Z)break end end end end function h.GetCurrentDungeonName()return
-K end function h.OnDungeonNameChanged(aj)if type(aj)~='function'then return
-function()end end table.insert(B,aj)return function()for Z,_ in ipairs(B)do if _
-==aj then table.remove(B,Z)break end end end end function h.IsInLobby()return D
-end function h.OnLobbyChanged(aj)if type(aj)~='function'then return function()
-end end table.insert(E,aj)return function()for Z,_ in ipairs(E)do if _==aj then
-table.remove(E,Z)break end end end end local aj,Z=function(aj)if n==aj then
-return end n=aj if aj then p+=1 for Z=#q,1,-1 do pcall(q[Z],p)end end for Z=#o,1
-,-1 do pcall(o[Z],n)end O()end local function _()if not d then return end local
-ak=d:FindFirstChild'PlayerGui'if not ak then Z=nil aj(false)return end local al=
-ak:FindFirstChild('bossHealth',true)if al then if al~=Z then Z=al if Z:IsA
-'ScreenGui'then R(Z:GetPropertyChangedSignal'Enabled':Connect(_))elseif Z:IsA
-'GuiObject'then R(Z:GetPropertyChangedSignal'Visible':Connect(_))end end local
-am=if al:IsA'ScreenGui'then al.Enabled elseif al:IsA'GuiObject'then al.Visible
-else true aj(am)else Z=nil aj(false)end end task.spawn(function()if not d then
-return end local ak=d:WaitForChild('PlayerGui',30)if not ak then return end R(ak
-.DescendantAdded:Connect(_))R(ak.DescendantRemoving:Connect(_))_()while c.
-IsActive()and task.wait(0.5)do _()end end)c.Register(function()if P then P:
-Disconnect()P=nil end for ak,al in ipairs(G)do pcall(function()al:Disconnect()
-end)end table.clear(G)N()end)return h end function a.d()local aa,ab,ac={},{},
-false function aa.SetLocked(ad)ac=ad and true or false end function aa.IsLocked(
-)return ac end function aa.Register(ad,ae,af)if type(ad)~='string'or type(ae)~=
-'function'or type(af)~='function'then return end ab[ad]={setEnabled=ae,isEnabled
-=af}end function aa.EnableExclusive(ad)if ac then return end for ae,af in pairs(
-ab)do if ae~=ad and af.isEnabled()then pcall(af.setEnabled,false)end end end
-function aa.IsEnabled(ad)local ae=ab[ad]return ae~=nil and ae.isEnabled()end
-return aa end function a.e()local aa,ab=a.load'a',a.load'c'local ac,ad=aa.player
-,{}function ad.Validate(ae)if not ae then return false end local af=ae.Model if
-not af or not af.Parent or af==ac.Character then return false end local ag=ae.
-Humanoid if not ag or not ag.Parent then ag=af:FindFirstChildOfClass'Humanoid'ae
-.Humanoid=ag end if not ag or ag.Health<=0 then return false end local ah=ae.
-Root if not ah or not ah.Parent then ah=af:FindFirstChild'HumanoidRootPart'or af
-.PrimaryPart if not ah then for ai,aj in ipairs(af:GetDescendants())do if aj:IsA
-'BasePart'then ah=aj break end end end if not ah then return false end ae.Root=
-ah end return true end function ad.Scan()local ae,af={},ab.GetTrackedEnemyData()
-for ag,ah in ipairs(af)do if ad.Validate(ah)then table.insert(ae,ah)end end
-return ae end return ad end function a.f()local aa={}function aa.
-SelectBestTarget(ab,ac,ad)local ae,af,ag=(math.huge)for ah,ai in ipairs(ac)do if
-ad and ad()then return nil,nil,nil,nil,math.huge end local aj=ai.Root if aj and
-aj.Parent then local ak=aj.Position local al,am=ak.X-ab.X,ak.Z-ab.Z local b=al*
-al+am*am if b<ae then ae=b af=ai ag=ak end end end local ah=ae<math.huge and
-math.sqrt(ae)or math.huge return af,nil,nil,ag,ah end return aa end function a.g
-()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'f',a.load'e',{},{},1,6 function ac.
-GetTarget()return ag end function ac.GetPathInstance()return ah end function ac.
-GetWaypoints()return ad end function ac.GetWaypointIndex()return ae end function
-ac.SetWaypointIndex(aj)ae=math.clamp(aj,1,math.max(1,#ad))end function ac.
-AdvanceWaypointIndex(aj)if not ad or#ad==0 then return end local ak=ad[ae]if ak
-then local al=Vector3.new(ak.Position.X-aj.X,0,ak.Position.Z-aj.Z).Magnitude if
-al<=3.5 then ae=math.min(#ad+1,ae+1)end end end function ac.GetLastPathDestPos()
-return ai end function ac.SetRepathThreshold(aj)if type(aj)=='number'and aj>0
-then af=aj end end function ac.GetRepathThreshold()return af end function ac.
-SetTarget(aj,ak,al,am)if ah and ah~=ak then pcall(function()ah:Destroy()end)end
-ag=aj ah=ak ad=al or{}ae=1 ai=am end function ac.UpdatePath(aj,ak,al)if ah and
-ah~=aj then pcall(function()ah:Destroy()end)end ah=aj ad=ak or{}ae=1 ai=al end
-function ac.ClearTarget()if ah then pcall(function()ah:Destroy()end)end ag=nil
-ah=nil ad={}ae=1 ai=nil end function ac.IsTargetValid()if not ag then return
-false end return ab.Validate(ag)end function ac.NeedsRepath(aj)if not ah or not
-ad or#ad==0 then return true end if not ai or not aj then return true end return
-(aj-ai).Magnitude>af end function ac.Repath(aj,ak)if not ak then return false
-end local al,am,b=aa.ComputePathWithCost(aj,ak)if al and#am>0 then if ah then
-pcall(function()ah:Destroy()end)end ah=al ad=am ae=1 ai=ak return true end
-return false end return ac end function a.h()local aa=a.load'a'local ab,ac=aa.
-player,{}local ad=function(ad)local ae={}if ad then for af,ag in ipairs(ad)do if
-ag and ag.Parent then table.insert(ae,ag)end end end if ab and ab.Character and
-ab.Character.Parent then table.insert(ae,ab.Character)end local af=workspace:
-FindFirstChild'RaycastIgnore'if af then table.insert(ae,af)end return ae end
-function ac.CastRay(ae,af,ag)local ah=af-ae local ai=ah.Magnitude if ai<0.3 then
-return false,nil,af end local aj=RaycastParams.new()aj.FilterType=Enum.
+K end function h.OnDungeonNameChanged(al)if type(al)~='function'then return
+function()end end table.insert(B,al)return function()for Z,_ in ipairs(B)do if _
+==al then table.remove(B,Z)break end end end end function h.IsInLobby()return D
+end function h.OnLobbyChanged(al)if type(al)~='function'then return function()
+end end table.insert(E,al)return function()for Z,_ in ipairs(E)do if _==al then
+table.remove(E,Z)break end end end end local al P=function()if not n or Q~=nil
+then return end for Z,_ in pairs(u)do if _ and _.Root and _.Root.Parent then
+local am=false if _.Room and type(_.Room.Name)=='string'and string.find(string.
+lower(_.Room.Name),'boss')then am=true elseif string.find(string.lower(Z.Name),
+'boss')then am=true elseif Z.Parent and string.find(string.lower(Z.Parent.Name),
+'boss')then am=true end if am then Q=_.Root.Position return end end end for am,Z
+in pairs(u)do if Z and Z.Root and Z.Root.Parent then Q=Z.Root.Position return
+end end end local am=function(am)if n==am then return end n=am if am then p+=1 Q
+=nil P()for Z=#q,1,-1 do pcall(q[Z],p)end else Q=nil end for Z=#o,1,-1 do pcall(
+o[Z],n)end O()end function h.GetBossSpawnPosition()if Q then return Q end P()
+return Q end function h.SetBossSpawnPosition(Z)Q=Z end local function Z()if not
+d then return end local _=d:FindFirstChild'PlayerGui'if not _ then al=nil am(
+false)return end local an=_:FindFirstChild('bossHealth',true)if an then if an~=
+al then al=an if al:IsA'ScreenGui'then T(al:GetPropertyChangedSignal'Enabled':
+Connect(Z))elseif al:IsA'GuiObject'then T(al:GetPropertyChangedSignal'Visible':
+Connect(Z))end end local ao=if an:IsA'ScreenGui'then an.Enabled elseif an:IsA
+'GuiObject'then an.Visible else true am(ao)else al=nil am(false)end end task.
+spawn(function()if not d then return end local an=d:WaitForChild('PlayerGui',30)
+if not an then return end T(an.DescendantAdded:Connect(Z))T(an.
+DescendantRemoving:Connect(Z))Z()while c.IsActive()and task.wait(0.5)do Z()end
+end)c.Register(function()if R then R:Disconnect()R=nil end for an,ao in ipairs(G
+)do pcall(function()ao:Disconnect()end)end table.clear(G)N()end)return h end
+function a.d()local aa,ab,ac={},{},false function aa.SetLocked(ad)ac=ad and true
+or false end function aa.IsLocked()return ac end function aa.Register(ad,ae,af)
+if type(ad)~='string'or type(ae)~='function'or type(af)~='function'then return
+end ab[ad]={setEnabled=ae,isEnabled=af}end function aa.EnableExclusive(ad)if ac
+then return end for ae,af in pairs(ab)do if ae~=ad and af.isEnabled()then pcall(
+af.setEnabled,false)end end end function aa.IsEnabled(ad)local ae=ab[ad]return
+ae~=nil and ae.isEnabled()end return aa end function a.e()local aa,ab=a.load'a',
+a.load'c'local ac,ad=aa.player,{}function ad.Validate(ae)if not ae then return
+false end local af=ae.Model if not af or not af.Parent or af==ac.Character then
+return false end local ag=ae.Humanoid if not ag or not ag.Parent then ag=af:
+FindFirstChildOfClass'Humanoid'ae.Humanoid=ag end if not ag or ag.Health<=0 then
+return false end local ah=ae.Root if not ah or not ah.Parent then ah=af:
+FindFirstChild'HumanoidRootPart'or af.PrimaryPart if not ah then for ai,aj in
+ipairs(af:GetDescendants())do if aj:IsA'BasePart'then ah=aj break end end end if
+not ah then return false end ae.Root=ah end return true end function ad.Scan()
+local ae,af={},ab.GetTrackedEnemyData()for ag,ah in ipairs(af)do if ad.Validate(
+ah)then table.insert(ae,ah)end end return ae end return ad end function a.f()
+local aa={}function aa.SelectBestTarget(ab,ac,ad)local ae,af,ag=(math.huge)for
+ah,ai in ipairs(ac)do if ad and ad()then return nil,nil,nil,nil,math.huge end
+local aj=ai.Root if aj and aj.Parent then local ak=aj.Position local al,am=ak.X-
+ab.X,ak.Z-ab.Z local an=al*al+am*am if an<ae then ae=an af=ai ag=ak end end end
+local ah=ae<math.huge and math.sqrt(ae)or math.huge return af,nil,nil,ag,ah end
+return aa end function a.g()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'f',a.load'e'
+,{},{},1,6 function ac.GetTarget()return ag end function ac.GetPathInstance()
+return ah end function ac.GetWaypoints()return ad end function ac.
+GetWaypointIndex()return ae end function ac.SetWaypointIndex(aj)ae=math.clamp(aj
+,1,math.max(1,#ad))end function ac.AdvanceWaypointIndex(aj)if not ad or#ad==0
+then return end local ak=ad[ae]if ak then local al=Vector3.new(ak.Position.X-aj.
+X,0,ak.Position.Z-aj.Z).Magnitude if al<=3.5 then ae=math.min(#ad+1,ae+1)end end
+end function ac.GetLastPathDestPos()return ai end function ac.SetRepathThreshold
+(aj)if type(aj)=='number'and aj>0 then af=aj end end function ac.
+GetRepathThreshold()return af end function ac.SetTarget(aj,ak,al,am)if ah and ah
+~=ak then pcall(function()ah:Destroy()end)end ag=aj ah=ak ad=al or{}ae=1 ai=am
+end function ac.UpdatePath(aj,ak,al)if ah and ah~=aj then pcall(function()ah:
+Destroy()end)end ah=aj ad=ak or{}ae=1 ai=al end function ac.ClearTarget()if ah
+then pcall(function()ah:Destroy()end)end ag=nil ah=nil ad={}ae=1 ai=nil end
+function ac.IsTargetValid()if not ag then return false end return ab.Validate(ag
+)end function ac.NeedsRepath(aj)if not ah or not ad or#ad==0 then return true
+end if not ai or not aj then return true end return(aj-ai).Magnitude>af end
+function ac.Repath(aj,ak)if not ak then return false end local al,am,an=aa.
+ComputePathWithCost(aj,ak)if al and#am>0 then if ah then pcall(function()ah:
+Destroy()end)end ah=al ad=am ae=1 ai=ak return true end return false end return
+ac end function a.h()local aa=a.load'a'local ab,ac=aa.player,{}local ad=function
+(ad)local ae={}if ad then for af,ag in ipairs(ad)do if ag and ag.Parent then
+table.insert(ae,ag)end end end if ab and ab.Character and ab.Character.Parent
+then table.insert(ae,ab.Character)end local af=workspace:FindFirstChild
+'RaycastIgnore'if af then table.insert(ae,af)end return ae end function ac.
+CastRay(ae,af,ag)local ah=af-ae local ai=ah.Magnitude if ai<0.3 then return
+false,nil,af end local aj=RaycastParams.new()aj.FilterType=Enum.
 RaycastFilterType.Exclude aj.FilterDescendantsInstances=ad(ag)aj.IgnoreWater=
-true local ak,al,am=ae,ah,8 for b=1,am do local c=workspace:Raycast(ak,al,aj)if
-not c then return false,nil,af end local d=c.Instance if d and d.CanCollide and
-d.CanQuery~=false then if c.Normal.Y>0.65 then local e=(c.Position-ak).Magnitude
-+0.15 if e>=al.Magnitude then return false,nil,af end ak=c.Position+al.Unit*0.15
-al=af-ak else return true,d,c.Position end else local e=(c.Position-ak).
-Magnitude+0.15 if e>=al.Magnitude then return false,nil,af end ak=c.Position+al.
-Unit*0.15 al=af-ak end end return false,nil,af end function ac.CheckClearance(ae
-,af,ag)local ah,ai,aj=ac.CastRay(ae,af,ag)if ah then return true,ai,aj end local
-ak=Vector3.new(af.X-ae.X,0,af.Z-ae.Z)if ak.Magnitude>0.8 then local al=ak.Unit
-local am=Vector3.new(-al.Z,0,al.X)*0.6 local b,c=ae+am,af+am local d=ac.CastRay(
-ae,b,ag)if not d then local e,f,g=ac.CastRay(b,c,ag)if e and(g-b).Magnitude>1
-then return true,f,g end end local e,f=ae-am,af-am local g=ac.CastRay(ae,e,ag)if
-not g then local h,i,j=ac.CastRay(e,f,ag)if h and(j-e).Magnitude>1 then return
-true,i,j end end end return false,nil,af end function ac.ResolveDestination(ae,
-af,ag,ah,ai)local aj,ak=ae,af local al,am,b,c={origin=aj,targetPos=ak,
-directBlocked=false,directHitPart=nil,directHitPos=nil,chosenDest=nil,mode=
-'None',nodeIdx=nil},ac.CheckClearance(aj,ak,ai)al.directBlocked=am al.
-directHitPart=b al.directHitPos=c if not am then al.chosenDest=af al.mode=
-'Direct'return af,'Direct',nil,al end local d=math.clamp(ah or 1,1,ag and#ag or
-1)if ag and#ag>0 then for e=#ag,d,-1 do local f=ag[e]local g=f.Position local h=
-g+Vector3.new(0,2,0)local i,j,k=ac.CheckClearance(aj,h,ai)if not i then al.
-chosenDest=g al.mode='Waypoint'al.nodeIdx=e return g,'Waypoint',e,al end end end
-al.mode='Blocked'return nil,'Blocked',nil,al end function ac.ExecuteMove(ae,af,
-ag,ah,ai)if not ae or not ag then return end ae:MoveTo(ag)local aj,ak=ag.Y-af.Y,
-Vector3.new(ag.X-af.X,0,ag.Z-af.Z).Magnitude if aj>1.8 and ak<=7 then ae.Jump=
-true return end if ah and#ah>0 then local al=math.clamp(ai or 1,1,#ah)for am=al,
-math.min(al+2,#ah)do local b=ah[am]if b then local c=Vector3.new(b.Position.X-af
-.X,0,b.Position.Z-af.Z).Magnitude if c<=5 then if b.Action==Enum.
-PathWaypointAction.Jump or(b.Position.Y-af.Y)>1.8 then ae.Jump=true break end
-end end end end end return ac end function a.i()local aa,ab,ac,ad,ae,af,ag={},
-0.85,0,2,{},64 function aa.BindDetection(ah)ag=ah or nil end function aa.
-GetHazardPadding()return ac end aa.GetHitboxPadding=aa.GetHazardPadding function
-aa.GetTrajectoryMargin()return ad end function aa.SetTrajectoryMargin(ah)if
-type(ah)=='number'and ah>=0 and ah~=ad then ad=ah aa.InvalidateCache()for ai,aj
-in ipairs(ae)do pcall(aj,ad)end end end function aa.InvalidateCache()if ag and
-ag.GetActiveHazardsMap then for ah,ai in pairs(ag.GetActiveHazardsMap())do ai.
-HazardZones=nil end end end function aa.OnPaddingChanged(ah)if type(ah)==
-'function'then table.insert(ae,ah)end end function aa.SetHazardPadding(ah)if
-type(ah)=='number'and ah>=0 and ah~=ac then ac=ah aa.InvalidateCache()for ai,aj
-in ipairs(ae)do pcall(aj,ac)end end end aa.SetHitboxPadding=aa.SetHazardPadding
-local ah={'firstBossCrissCross','firstBossBigSpike','firstBossSeekingSpikes'}
-local ai=function(ai)if not ai or type(ai)~='string'then return false end local
-aj=ai:lower():gsub('%s+','')if#aj==0 then return false end for ak,al in ipairs(
-ah)do local am=al:lower():gsub('%s+','')if#am>0 and string.find(aj,am,1,true)
-then return true end end return false end function aa.IsForceCircle(aj)return
-ai(aj)end function aa.AddForceCircleName(aj)if type(aj)=='string'and#aj>0 then
-table.insert(ah,aj)aa.InvalidateCache()end end function aa.GetForceCircleNames()
-return ah end local aj,ak,al=function(aj)return aj and aj.Parent and aj.
-Transparency<=ab end,function(aj,ak,al)local am,b=aj.Size,al and ad or ac if ak
-or(aj:IsA'Part'and(aj.Shape==Enum.PartType.Ball or aj.Shape==Enum.PartType.
-Cylinder))then return{radius=math.max(am.X,am.Y,am.Z)/2}end local c=Vector3.new(
-math.max(am.X,0)/2+b,0,math.max(am.Z,0)/2+b)return{half=c,cframe=aj.CFrame}end,
-function(aj,ak,al,am)if not ak then return false end local b,c=aj.X,aj.Z al=al
-or 0 local d=(am or ak.isTrajectory)and ad or ac if ak.radius then local e=(ak.
-part and ak.part.Parent)and ak.part.Position local f,g=e and e.X or ak.cx or 0,e
-and e.Z or ak.cz or 0 local h,i,j=b-f,c-g,ak.radius+d+al return(h*h+i*i)<=(j*j)
-end local e=(ak.part and ak.part.Parent)and ak.part.CFrame or ak.cframe if e
-then local f,g,h=e:PointToObjectSpace(aj),ak.half.X,ak.half.Z if al<=0 then
-return math.abs(f.X)<=g and math.abs(f.Z)<=h else local i,j=math.max(0,math.abs(
-f.X)-g),math.max(0,math.abs(f.Z)-h)return(i*i+j*j)<=(al*al)end end return false
-end local am=function(am)if not am or not am.Instance or not am.Instance.Parent
-then return nil end local b=am.Instance local c=am.Name or(b and b.Name)or''
-local d,e=ai(c),am.IsTrajectory==true local f,g=e and ad or ac if b:IsA
-'BasePart'then if not aj(b)then return nil end g={b}else g={}for h,i in ipairs(b
-:GetDescendants())do if#g>=af then break end if i:IsA'BasePart'and aj(i)and i.
-Parent then g[#g+1]=i end end if#g==0 then return nil end end local h,i,j,k,l={}
-,math.huge,-math.huge,math.huge,-math.huge for m,n in ipairs(g)do local o,p=n.
-Position,n.Size local q=math.max(p.X,p.Y,p.Z)/2+f i=math.min(i,o.X-q)j=math.max(
-j,o.X+q)k=math.min(k,o.Z-q)l=math.max(l,o.Z+q)local r=ak(n,d,e)if r then if r.
-radius then r.cx,r.cz=o.X,o.Z end r.part=n r.isTrajectory=e h[#h+1]=r end end if
-#h==0 then return nil end local m,n,o,p=(i+j)/2,(k+l)/2,(j-i)/2,(l-k)/2 return{
-zones=h,center=Vector3.new(m,0,n),boundingRadius=math.sqrt(o*o+p*p)}end local b=
-function(b)local c=b and b.HazardZones if not c then c=am(b)if c and b then b.
-HazardZones=c end end return c end function aa.GetHazardZones(c)return b(c)end
-function aa.GetNearbyHazards(c,d)local e=ag if not e then return{}end d=d or 65
-local f,g,h={},c.X,c.Z for i,j in pairs(e.GetActiveHazardsMap())do local k,l=j.
-Instance,b(j)if l then local m,n=l.center.X,l.center.Z if k and k.Parent then
-local o=k:IsA'BasePart'and k or k.PrimaryPart or k:FindFirstChildWhichIsA
-'BasePart'if o then m=o.Position.X n=o.Position.Z end end local o,p=g-m,h-n
-local q,r=o*o+p*p,d+l.boundingRadius if q<=r*r then table.insert(f,j)end end end
-return f end function aa.IsPointInAnyHazard(c,d,e,f)local g=ag if not g then
-return false,nil,nil end e=e or 0 local h,i,j,k=math.huge,f or g.
-GetActiveHazardsMap()for l,m in pairs(i)do local n=m.Instance or(typeof(l)==
-'Instance'and l)if d and(d==n or(n and d.Name==n.Name))then continue end local o
-=b(m)if not o then continue end local p,q=o.center.X,o.center.Z if n and n.
-Parent then local r=n:IsA'BasePart'and n or n.PrimaryPart or n:
-FindFirstChildWhichIsA'BasePart'if r then p=r.Position.X q=r.Position.Z end end
-local r,s=c.X-p,c.Z-q local t,u=r*r+s*s,o.boundingRadius+e if t>u*u then
-continue end local v=m.IsTrajectory==true for w=1,#o.zones do local x=o.zones[w]
-if aj(x.part)and al(c,x,e,v or x.isTrajectory)then local y=(c-x.part.Position).
-Magnitude if y<h then h=y j=m k=x.part end break end end end return k~=nil,j,k
-end return aa end function a.j()local aa,ab,ac=a.load'a',a.load'b',a.load'i'
-local ad,ae,af,ag,ah,ai,aj,ak,al,am,b,c=aa.RunService or game:GetService
-'RunService',aa.player,{},false,{},0.85,Color3.fromRGB(255,45,45),Color3.
-fromRGB(0,160,255),0.55,0.25 local d=function()local d=ae and ae.Character if
-not d then return nil end local e=d:FindFirstChild'HumanoidRootPart'or d.
-PrimaryPart if not e then return nil end return e.Position.Y-2.5 end function af
-.BindDetection(e)b=e or nil end function af.IsEnabled()return ag end local e=
-function(e,f)local g,h=e.part,e.ad if not g or not g.Parent or not h or not h.
-Parent then return end local i=g.Position local j=Vector3.new(i.X,f or i.Y,i.Z)
-if e.isCircle then local k=CFrame.new(j)*CFrame.Angles(math.rad(90),0,0)h.CFrame
-=g.CFrame:ToObjectSpace(k)else local k,l,m=g.CFrame:ToOrientation()local n=
-CFrame.new(j)*CFrame.Angles(0,l,0)h.CFrame=g.CFrame:ToObjectSpace(n)end end
-local f=function()if not ag then return end local f,g=false,d()for h,i in pairs(
-ah)do if not h.Instance or not h.Instance.Parent then af.DetachZoneVisuals(h)
-else f=true if i.items then for j,l in ipairs(i.items)do e(l,g)end end end end
-if not f and c then c:Disconnect()c=nil end end local g=function()if not c and
-ag then c=ad.Heartbeat:Connect(f)end end function af.DetachZoneVisuals(h)if not
-h then return end local i=ah[h]if not i then return end if i.adornments then for
-j,l in ipairs(i.adornments)do pcall(function()l:Destroy()end)end table.clear(i.
-adornments)end if i.connections then for j,l in ipairs(i.connections)do pcall(
-function()l:Disconnect()end)end table.clear(i.connections)end if i.items then
-table.clear(i.items)end ah[h]=nil end function af.UpdateHazardVisualColor(h,i)if
-not h then return end local j=ah[h]if not j or not j.items then return end local
-l=i==true or h.IsTrajectory==true local m,n=l and ak or aj,l and ac.
-GetTrajectoryMargin()or 0 for o,p in ipairs(j.items)do local q,r,s=p.ad,p.zone,p
-.part if q and q.Parent and r and s and s.Parent then q.Color3=m if p.isCircle
-and r.radius then q.Radius=r.radius+n elseif r.half then local t,u=math.max(s.
-Size.X,0)/2+n,math.max(s.Size.Z,0)/2+n q.Size=Vector3.new(t*2,am,u*2)end end end
-end function af.AttachZoneVisuals(h)if not ag or not h then return end if ah[h]
-then af.DetachZoneVisuals(h)end local i=ac.GetHazardZones(h)if not i or not i.
-zones then return end local j=h.IsTrajectory==true local l,m,n,o,p,q=j and ak or
-aj,j and ac.GetTrajectoryMargin()or 0,d(),{},{},{}for r,s in ipairs(i.zones)do
-local t=s.part if t and t.Parent and t.Transparency<=ai then local u,v=false if
-s.radius then u=true local w=Instance.new'CylinderHandleAdornment'w.Name=
-'HazardGroundCircle'w.Adornee=t w.Radius=s.radius+m w.Height=am w.Color3=l w.
-Transparency=al w.ZIndex=2 w.AlwaysOnTop=true w.Parent=t v=w elseif s.half and s
-.cframe then local w=Instance.new'BoxHandleAdornment'w.Name='HazardGroundBox'w.
-Adornee=t w.Size=Vector3.new(s.half.X*2,am,s.half.Z*2)w.Color3=l w.Transparency=
-al w.ZIndex=2 w.AlwaysOnTop=true w.Parent=t v=w end if v then local w={ad=v,part
-=t,isCircle=u,zone=s}e(w,n)table.insert(o,w)table.insert(p,v)local x=t:
-GetPropertyChangedSignal'Transparency':Connect(function()if t.Parent and t.
-Transparency>ai then pcall(function()v:Destroy()end)end end)table.insert(q,x)end
-end end if#p>0 then ah[h]={items=o,adornments=p,connections=q}g()end end
-function af.ClearAll()if c then c:Disconnect()c=nil end for h in pairs(ah)do af.
-DetachZoneVisuals(h)end table.clear(ah)end function af.RefreshAll()af.ClearAll()
-if not ag or not b then return end for h,i in pairs(b.GetActiveHazardsMap())do
-af.AttachZoneVisuals(i)end end function af.SetEnabled(h)ag=h and true or false
-if ag then af.RefreshAll()else af.ClearAll()end end ac.OnPaddingChanged(function
-()if ag then af.RefreshAll()end end)ab.Register(function()af.ClearAll()end)
-return af end function a.k()local aa,ab,ac=a.load'a',a.load'b',a.load'i'local ad
-,ae,af,ag,ah,ai,aj,ak,al,am,b,c,d=aa.RunService or game:GetService'RunService',
-aa.player,{},false,45,{},0.85,Color3.fromRGB(255,140,0),0.65,0.2,3.5 local e=
-function()local e=ae and ae.Character if not e then return nil end local f=e:
-FindFirstChild'HumanoidRootPart'or e.PrimaryPart if not f then return nil end
-return f.Position.Y-2.5 end function af.BindDetection(f)c=f or nil end function
-af.IsEnabled()return ag end function af.GetPredictionLength()return ah end
-function af.SetPredictionLength(f)if type(f)=='number'and f>0 then ah=math.
-clamp(f,10,200)af.RefreshAll()end end function af.IsHazardMoving(f)if not f then
-return false end local g=ai[f]return g and g.isMoving==true end local f,g=
-function(f,g)local h=f.Instance if not h or not h.Parent then return nil,4 end
-local i,j,l=ac.GetTrajectoryMargin and ac.GetTrajectoryMargin()or 2,{},f.Name or
-(h and h.Name)or''local m=ac.IsForceCircle and ac.IsForceCircle(l)if h:IsA
-'BasePart'then if h.Transparency<=aj then table.insert(j,h)end else for n,o in
-ipairs(h:GetDescendants())do if o:IsA'BasePart'and o.Parent and o.Transparency<=
-aj then table.insert(j,o)end end end if#j==0 then return nil,4 end local n,o,p,q
-=Vector3.new(-g.Z,0,g.X),math.huge,-math.huge,0 for r,s in ipairs(j)do local t,u
-,v=s.Position,s.Size,0 if m or(s:IsA'Part'and(s.Shape==Enum.PartType.Ball or s.
-Shape==Enum.PartType.Cylinder))then v=math.max(u.X,u.Y,u.Z)/2 else local w=s.
-CFrame local x,y,z,A,B,C=w.RightVector,w.UpVector,w.LookVector,u.X/2,u.Y/2,u.Z/2
-v=A*math.abs(x.X*n.X+x.Z*n.Z)+B*math.abs(y.X*n.X+y.Z*n.Z)+C*math.abs(z.X*n.X+z.Z
-*n.Z)end local w=t.X*n.X+t.Z*n.Z o=math.min(o,w-v)p=math.max(p,w+v)local x=t.X*g
-.X+t.Z*g.Z q+=x end local r,s,t=math.max(1,(p-o)+i*2),(o+p)/2,q/#j local u=g*t+n
-*s return u,r end,function(f,g,h,i,j,l,m)if not g or not g.Parent or not f or
-not f.Parent then return end local n=l/2 local o=Vector3.new(h.X+i.X*n,j or h.Y,
-h.Z+i.Z*n)local p=o+Vector3.new(i.X,0,i.Z)local q=CFrame.lookAt(o,p)local r=g.
-CFrame:ToObjectSpace(q)f.CFrame=r f.Size=Vector3.new(m,am,l)if not f.Visible
-then f.Visible=true end end local h=function()if not ag then return end local h,
-i,j=false,os.clock(),e()for l,m in pairs(ai)do local n=l.Instance if not n or
-not n.Parent then af.DetachTrajectoryVisuals(l)else h=true local o=m.mainPart if
-o and o.Parent then local p,q=o.Position,i-(m.lastClock or i)if q>=0.035 then
-local r=p-(m.lastPos or p)local s,t=r.Magnitude/q,Vector3.new(r.X,0,r.Z)local u,
-v=t.Magnitude/q,m.isMoving==true if u>=b then m.isMoving=true m.dir=t.Unit else
-if q>=0.25 and s<b then m.isMoving=false end end if m.isMoving~=v then l.
-IsTrajectory=m.isMoving l.HazardZones=nil if c and c.UpdateHazardVisualColor
-then pcall(c.UpdateHazardVisualColor,l,m.isMoving)end local w=a.load'j'if w and
-w.UpdateHazardVisualColor then pcall(w.UpdateHazardVisualColor,l,m.isMoving)end
-end m.lastPos=p m.lastClock=i end if m.isMoving and m.dir and m.ad then local r,
-s=f(l,m.dir)if r then g(m.ad,o,r,m.dir,j,ah,s)end else if m.ad and m.ad.Visible
-then m.ad.Visible=false end end end end end if not h and d then d:Disconnect()d=
-nil end end local i=function()if not d and ag then d=ad.Heartbeat:Connect(h)end
-end function af.DetachTrajectoryVisuals(j)if not j then return end local l=ai[j]
-if not l then return end if l.ad then pcall(function()l.ad:Destroy()end)l.ad=nil
-end if l.connections then for m,n in ipairs(l.connections)do pcall(function()n:
-Disconnect()end)end table.clear(l.connections)end ai[j]=nil end function af.
-AttachTrajectoryVisuals(j)if not ag or not j then return end if ai[j]then af.
-DetachTrajectoryVisuals(j)end local l=j.Instance if not l or not l.Parent then
-return end local m if l:IsA'BasePart'then m=l else m=l.PrimaryPart or l:
-FindFirstChildWhichIsA'BasePart'if not m then for n,o in ipairs(l:
-GetDescendants())do if o:IsA'BasePart'and o.Parent then m=o break end end end
-end if not m or not m.Parent then return end local n=Instance.new
-'BoxHandleAdornment'n.Name='HazardTrajectoryCorridor'n.Adornee=m n.Size=Vector3.
-new(4,am,ah)n.Color3=ak n.Transparency=al n.ZIndex=1 n.AlwaysOnTop=true n.
-Visible=false n.Parent=m local o,p={},m:GetPropertyChangedSignal'Transparency':
-Connect(function()if m.Parent and m.Transparency>aj then pcall(function()n:
-Destroy()end)end end)table.insert(o,p)ai[j]={ad=n,connections=o,mainPart=m,
-lastPos=m.Position,lastClock=os.clock(),velocity=Vector3.zero,dir=nil,isMoving=
-false}i()end function af.ClearAll()if d then d:Disconnect()d=nil end for j in
-pairs(ai)do af.DetachTrajectoryVisuals(j)end table.clear(ai)end function af.
-RefreshAll()af.ClearAll()if not ag or not c then return end for j,l in pairs(c.
-GetActiveHazardsMap())do af.AttachTrajectoryVisuals(l)end end function af.
-GetNearbyTrajectories(j,l)l=l or 65 local m,n,o={},j.X,j.Z for p,q in pairs(ai)
-do if q.isMoving and q.dir and q.mainPart and q.mainPart.Parent then local r,s=
-f(p,q.dir)if r and s then local t,u=r.X,r.Z local v,w=n-t,o-u local x,y=v*v+w*w,
-l+ah+(s/2)if x<=y*y then table.insert(m,{info=p,record=q})end end end end return
-m end function af.IsPointInAnyTrajectory(j,l,m)local n,o=j.X,j.Z l=l or 0 if m
-then for p,q in ipairs(m)do local r,s=q.info,q.record if s and s.isMoving and s.
-dir and s.mainPart and s.mainPart.Parent then local t,u=f(r,s.dir)if t and u
-then local v=s.dir local w,x,y=Vector3.new(-v.Z,0,v.X),n-t.X,o-t.Z local z,A,B=x
-*v.X+y*v.Z,x*w.X+y*w.Z,u/2 if l<=0 then if z>=0 and z<=ah and math.abs(A)<=B
-then return true,r,v,t,u end else local C=0 if z<0 then C=-z elseif z>ah then C=
-z-ah end local D=math.max(0,math.abs(A)-B)if(C*C+D*D)<=(l*l)then return true,r,v
-,t,u end end end end end return false,nil,nil,nil,nil end for p,q in pairs(ai)do
-if q.isMoving and q.dir and q.mainPart and q.mainPart.Parent then local r,s=f(p,
-q.dir)if r and s then local t=q.dir local u,v,w=Vector3.new(-t.Z,0,t.X),n-r.X,o-
-r.Z local x,y,z=v*t.X+w*t.Z,v*u.X+w*u.Z,s/2 if l<=0 then if x>=0 and x<=ah and
-math.abs(y)<=z then return true,p,t,r,s end else local A=0 if x<0 then A=-x
-elseif x>ah then A=x-ah end local B=math.max(0,math.abs(y)-z)if(A*A+B*B)<=(l*l)
-then return true,p,t,r,s end end end end end return false,nil,nil,nil,nil end
-function af.SetEnabled(j)ag=j and true or false if ag then af.RefreshAll()else
+true local ak,al,am=ae,ah,8 for an=1,am do local ao=workspace:Raycast(ak,al,aj)
+if not ao then return false,nil,af end local b=ao.Instance if b and b.CanCollide
+and b.CanQuery~=false then if ao.Normal.Y>0.65 then local c=(ao.Position-ak).
+Magnitude+0.15 if c>=al.Magnitude then return false,nil,af end ak=ao.Position+al
+.Unit*0.15 al=af-ak else return true,b,ao.Position end else local c=(ao.Position
+-ak).Magnitude+0.15 if c>=al.Magnitude then return false,nil,af end ak=ao.
+Position+al.Unit*0.15 al=af-ak end end return false,nil,af end function ac.
+CheckClearance(ae,af,ag)local ah,ai,aj=ac.CastRay(ae,af,ag)if ah then return
+true,ai,aj end local ak=Vector3.new(af.X-ae.X,0,af.Z-ae.Z)if ak.Magnitude>0.8
+then local al=ak.Unit local am=Vector3.new(-al.Z,0,al.X)*0.6 local an,ao=ae+am,
+af+am local b=ac.CastRay(ae,an,ag)if not b then local c,d,e=ac.CastRay(an,ao,ag)
+if c and(e-an).Magnitude>1 then return true,d,e end end local c,d=ae-am,af-am
+local e=ac.CastRay(ae,c,ag)if not e then local f,g,h=ac.CastRay(c,d,ag)if f and(
+h-c).Magnitude>1 then return true,g,h end end end return false,nil,af end
+function ac.ResolveDestination(ae,af,ag,ah,ai)local aj,ak=ae,af local al,am,an,
+ao={origin=aj,targetPos=ak,directBlocked=false,directHitPart=nil,directHitPos=
+nil,chosenDest=nil,mode='None',nodeIdx=nil},ac.CheckClearance(aj,ak,ai)al.
+directBlocked=am al.directHitPart=an al.directHitPos=ao if not am then al.
+chosenDest=af al.mode='Direct'return af,'Direct',nil,al end local b=math.clamp(
+ah or 1,1,ag and#ag or 1)if ag and#ag>0 then for c=#ag,b,-1 do local d=ag[c]
+local e=d.Position local f=e+Vector3.new(0,2,0)local g,h,i=ac.CheckClearance(aj,
+f,ai)if not g then al.chosenDest=e al.mode='Waypoint'al.nodeIdx=c return e,
+'Waypoint',c,al end end end al.mode='Blocked'return nil,'Blocked',nil,al end
+function ac.ExecuteMove(ae,af,ag,ah,ai)if not ae or not ag then return end ae:
+MoveTo(ag)local aj,ak=ag.Y-af.Y,Vector3.new(ag.X-af.X,0,ag.Z-af.Z).Magnitude if
+aj>1.8 and ak<=7 then ae.Jump=true return end if ah and#ah>0 then local al=math.
+clamp(ai or 1,1,#ah)for am=al,math.min(al+2,#ah)do local an=ah[am]if an then
+local ao=Vector3.new(an.Position.X-af.X,0,an.Position.Z-af.Z).Magnitude if ao<=5
+then if an.Action==Enum.PathWaypointAction.Jump or(an.Position.Y-af.Y)>1.8 then
+ae.Jump=true break end end end end end end return ac end function a.i()local aa,
+ab,ac,ad,ae,af,ag={},0.85,0,2,{},64 function aa.BindDetection(ah)ag=ah or nil
+end function aa.GetHazardPadding()return ac end aa.GetHitboxPadding=aa.
+GetHazardPadding function aa.GetTrajectoryMargin()return ad end function aa.
+SetTrajectoryMargin(ah)if type(ah)=='number'and ah>=0 and ah~=ad then ad=ah aa.
+InvalidateCache()for ai,aj in ipairs(ae)do pcall(aj,ad)end end end function aa.
+InvalidateCache()if ag and ag.GetActiveHazardsMap then for ah,ai in pairs(ag.
+GetActiveHazardsMap())do ai.HazardZones=nil end end end function aa.
+OnPaddingChanged(ah)if type(ah)=='function'then table.insert(ae,ah)end end
+function aa.SetHazardPadding(ah)if type(ah)=='number'and ah>=0 and ah~=ac then
+ac=ah aa.InvalidateCache()for ai,aj in ipairs(ae)do pcall(aj,ac)end end end aa.
+SetHitboxPadding=aa.SetHazardPadding local ah={'firstBossCrissCross',
+'firstBossBigSpike','firstBossSeekingSpikes'}local ai=function(ai)if not ai or
+type(ai)~='string'then return false end local aj=ai:lower():gsub('%s+','')if#aj
+==0 then return false end for ak,al in ipairs(ah)do local am=al:lower():gsub(
+'%s+','')if#am>0 and string.find(aj,am,1,true)then return true end end return
+false end function aa.IsForceCircle(aj)return ai(aj)end function aa.
+AddForceCircleName(aj)if type(aj)=='string'and#aj>0 then table.insert(ah,aj)aa.
+InvalidateCache()end end function aa.GetForceCircleNames()return ah end local aj
+,ak,al=function(aj)return aj and aj.Parent and aj.Transparency<=ab end,function(
+aj,ak,al)local am,an=aj.Size,al and ad or ac if ak or(aj:IsA'Part'and(aj.Shape==
+Enum.PartType.Ball or aj.Shape==Enum.PartType.Cylinder))then return{radius=math.
+max(am.X,am.Y,am.Z)/2}end local ao=Vector3.new(math.max(am.X,0)/2+an,0,math.max(
+am.Z,0)/2+an)return{half=ao,cframe=aj.CFrame}end,function(aj,ak,al,am)if not ak
+then return false end local an,ao=aj.X,aj.Z al=al or 0 local b=(am or ak.
+isTrajectory)and ad or ac if ak.radius then local c=(ak.part and ak.part.Parent)
+and ak.part.Position local d,e=c and c.X or ak.cx or 0,c and c.Z or ak.cz or 0
+local f,g,h=an-d,ao-e,ak.radius+b+al return(f*f+g*g)<=(h*h)end local c=(ak.part
+and ak.part.Parent)and ak.part.CFrame or ak.cframe if c then local d,e,f=c:
+PointToObjectSpace(aj),ak.half.X,ak.half.Z if al<=0 then return math.abs(d.X)<=e
+and math.abs(d.Z)<=f else local g,h=math.max(0,math.abs(d.X)-e),math.max(0,math.
+abs(d.Z)-f)return(g*g+h*h)<=(al*al)end end return false end local am=function(am
+)if not am or not am.Instance or not am.Instance.Parent then return nil end
+local an=am.Instance local ao=am.Name or(an and an.Name)or''local b,c=ai(ao),am.
+IsTrajectory==true local d,e=c and ad or ac if an:IsA'BasePart'then if not aj(an
+)then return nil end e={an}else e={}for f,g in ipairs(an:GetDescendants())do if#
+e>=af then break end if g:IsA'BasePart'and aj(g)and g.Parent then e[#e+1]=g end
+end if#e==0 then return nil end end local f,g,h,i,j={},math.huge,-math.huge,math
+.huge,-math.huge for k,l in ipairs(e)do local m,n=l.Position,l.Size local o=math
+.max(n.X,n.Y,n.Z)/2+d g=math.min(g,m.X-o)h=math.max(h,m.X+o)i=math.min(i,m.Z-o)j
+=math.max(j,m.Z+o)local p=ak(l,b,c)if p then if p.radius then p.cx,p.cz=m.X,m.Z
+end p.part=l p.isTrajectory=c f[#f+1]=p end end if#f==0 then return nil end
+local k,l,m,n=(g+h)/2,(i+j)/2,(h-g)/2,(j-i)/2 return{zones=f,center=Vector3.new(
+k,0,l),boundingRadius=math.sqrt(m*m+n*n)}end local an=function(an)local ao=an
+and an.HazardZones if not ao then ao=am(an)if ao and an then an.HazardZones=ao
+end end return ao end function aa.GetHazardZones(ao)return an(ao)end function aa
+.GetNearbyHazards(ao,b)local c=ag if not c then return{}end b=b or 65 local d,e,
+f={},ao.X,ao.Z for g,h in pairs(c.GetActiveHazardsMap())do local i,j=h.Instance,
+an(h)if j then local k,l=j.center.X,j.center.Z if i and i.Parent then local m=i:
+IsA'BasePart'and i or i.PrimaryPart or i:FindFirstChildWhichIsA'BasePart'if m
+then k=m.Position.X l=m.Position.Z end end local m,n=e-k,f-l local o,p=m*m+n*n,b
++j.boundingRadius if o<=p*p then table.insert(d,h)end end end return d end
+function aa.IsPointInAnyHazard(ao,b,c,d)local e=ag if not e then return false,
+nil,nil end c=c or 0 local f,g,h,i=math.huge,d or e.GetActiveHazardsMap()for j,k
+in pairs(g)do local l=k.Instance or(typeof(j)=='Instance'and j)if b and(b==l or(
+l and b.Name==l.Name))then continue end local m=an(k)if not m then continue end
+local n,o=m.center.X,m.center.Z if l and l.Parent then local p=l:IsA'BasePart'
+and l or l.PrimaryPart or l:FindFirstChildWhichIsA'BasePart'if p then n=p.
+Position.X o=p.Position.Z end end local p,q=ao.X-n,ao.Z-o local r,s=p*p+q*q,m.
+boundingRadius+c if r>s*s then continue end local t=k.IsTrajectory==true for u=1
+,#m.zones do local v=m.zones[u]if aj(v.part)and al(ao,v,c,t or v.isTrajectory)
+then local w=(ao-v.part.Position).Magnitude if w<f then f=w h=k i=v.part end
+break end end end return i~=nil,h,i end return aa end function a.j()local aa,ab,
+ac=a.load'a',a.load'b',a.load'i'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao=aa.
+RunService or game:GetService'RunService',aa.player,{},false,{},0.85,Color3.
+fromRGB(255,45,45),Color3.fromRGB(0,160,255),0.55,0.25 local b=function()local b
+=ae and ae.Character if not b then return nil end local c=b:FindFirstChild
+'HumanoidRootPart'or b.PrimaryPart if not c then return nil end return c.
+Position.Y-2.5 end function af.BindDetection(c)an=c or nil end function af.
+IsEnabled()return ag end local c=function(c,d)local e,f=c.part,c.ad if not e or
+not e.Parent or not f or not f.Parent then return end local g=e.Position local h
+=Vector3.new(g.X,d or g.Y,g.Z)if c.isCircle then local i=CFrame.new(h)*CFrame.
+Angles(math.rad(90),0,0)f.CFrame=e.CFrame:ToObjectSpace(i)else local i,j,k=e.
+CFrame:ToOrientation()local l=CFrame.new(h)*CFrame.Angles(0,j,0)f.CFrame=e.
+CFrame:ToObjectSpace(l)end end local d=function()if not ag then return end local
+d,e=false,b()for f,g in pairs(ah)do if not f.Instance or not f.Instance.Parent
+then af.DetachZoneVisuals(f)else d=true if g.items then for h,j in ipairs(g.
+items)do c(j,e)end end end end if not d and ao then ao:Disconnect()ao=nil end
+end local e=function()if not ao and ag then ao=ad.Heartbeat:Connect(d)end end
+function af.DetachZoneVisuals(f)if not f then return end local g=ah[f]if not g
+then return end if g.adornments then for h,j in ipairs(g.adornments)do pcall(
+function()j:Destroy()end)end table.clear(g.adornments)end if g.connections then
+for h,j in ipairs(g.connections)do pcall(function()j:Disconnect()end)end table.
+clear(g.connections)end if g.items then table.clear(g.items)end ah[f]=nil end
+function af.UpdateHazardVisualColor(f,g)if not f then return end local h=ah[f]if
+not h or not h.items then return end local j=g==true or f.IsTrajectory==true
+local k,l=j and ak or aj,j and ac.GetTrajectoryMargin()or 0 for m,n in ipairs(h.
+items)do local o,p,q=n.ad,n.zone,n.part if o and o.Parent and p and q and q.
+Parent then o.Color3=k if n.isCircle and p.radius then o.Radius=p.radius+l
+elseif p.half then local r,s=math.max(q.Size.X,0)/2+l,math.max(q.Size.Z,0)/2+l o
+.Size=Vector3.new(r*2,am,s*2)end end end end function af.AttachZoneVisuals(f)if
+not ag or not f then return end if ah[f]then af.DetachZoneVisuals(f)end local g=
+ac.GetHazardZones(f)if not g or not g.zones then return end local h=f.
+IsTrajectory==true local j,k,l,m,n,o=h and ak or aj,h and ac.
+GetTrajectoryMargin()or 0,b(),{},{},{}for p,q in ipairs(g.zones)do local r=q.
+part if r and r.Parent and r.Transparency<=ai then local s,t=false if q.radius
+then s=true local u=Instance.new'CylinderHandleAdornment'u.Name=
+'HazardGroundCircle'u.Adornee=r u.Radius=q.radius+k u.Height=am u.Color3=j u.
+Transparency=al u.ZIndex=2 u.AlwaysOnTop=true u.Parent=r t=u elseif q.half and q
+.cframe then local u=Instance.new'BoxHandleAdornment'u.Name='HazardGroundBox'u.
+Adornee=r u.Size=Vector3.new(q.half.X*2,am,q.half.Z*2)u.Color3=j u.Transparency=
+al u.ZIndex=2 u.AlwaysOnTop=true u.Parent=r t=u end if t then local u={ad=t,part
+=r,isCircle=s,zone=q}c(u,l)table.insert(m,u)table.insert(n,t)local v=r:
+GetPropertyChangedSignal'Transparency':Connect(function()if r.Parent and r.
+Transparency>ai then pcall(function()t:Destroy()end)end end)table.insert(o,v)end
+end end if#n>0 then ah[f]={items=m,adornments=n,connections=o}e()end end
+function af.ClearAll()if ao then ao:Disconnect()ao=nil end for f in pairs(ah)do
+af.DetachZoneVisuals(f)end table.clear(ah)end function af.RefreshAll()af.
+ClearAll()if not ag or not an then return end for f,g in pairs(an.
+GetActiveHazardsMap())do af.AttachZoneVisuals(g)end end function af.SetEnabled(f
+)ag=f and true or false if ag then af.RefreshAll()else af.ClearAll()end end ac.
+OnPaddingChanged(function()if ag then af.RefreshAll()end end)ab.Register(
+function()af.ClearAll()end)return af end function a.k()local aa,ab,ac=a.load'a',
+a.load'b',a.load'i'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,b=aa.RunService or
+game:GetService'RunService',aa.player,{},false,45,{},0.85,Color3.fromRGB(255,140
+,0),0.65,0.2,3.5 local c=function()local c=ae and ae.Character if not c then
+return nil end local d=c:FindFirstChild'HumanoidRootPart'or c.PrimaryPart if not
+d then return nil end return d.Position.Y-2.5 end function af.BindDetection(d)ao
+=d or nil end function af.IsEnabled()return ag end function af.
+GetPredictionLength()return ah end function af.SetPredictionLength(d)if type(d)
+=='number'and d>0 then ah=math.clamp(d,10,200)af.RefreshAll()end end function af
+.IsHazardMoving(d)if not d then return false end local e=ai[d]return e and e.
+isMoving==true end local d,e=function(d,e)local f=d.Instance if not f or not f.
+Parent then return nil,4 end local g,h,j=ac.GetTrajectoryMargin and ac.
+GetTrajectoryMargin()or 2,{},d.Name or(f and f.Name)or''local k=ac.IsForceCircle
+and ac.IsForceCircle(j)if f:IsA'BasePart'then if f.Transparency<=aj then table.
+insert(h,f)end else for l,m in ipairs(f:GetDescendants())do if m:IsA'BasePart'
+and m.Parent and m.Transparency<=aj then table.insert(h,m)end end end if#h==0
+then return nil,4 end local l,m,n,o=Vector3.new(-e.Z,0,e.X),math.huge,-math.huge
+,0 for p,q in ipairs(h)do local r,s,t=q.Position,q.Size,0 if k or(q:IsA'Part'and
+(q.Shape==Enum.PartType.Ball or q.Shape==Enum.PartType.Cylinder))then t=math.
+max(s.X,s.Y,s.Z)/2 else local u=q.CFrame local v,w,x,y,z,A=u.RightVector,u.
+UpVector,u.LookVector,s.X/2,s.Y/2,s.Z/2 t=y*math.abs(v.X*l.X+v.Z*l.Z)+z*math.
+abs(w.X*l.X+w.Z*l.Z)+A*math.abs(x.X*l.X+x.Z*l.Z)end local u=r.X*l.X+r.Z*l.Z m=
+math.min(m,u-t)n=math.max(n,u+t)local v=r.X*e.X+r.Z*e.Z o+=v end local p,q,r=
+math.max(1,(n-m)+g*2),(m+n)/2,o/#h local s=e*r+l*q return s,p end,function(d,e,f
+,g,h,j,k)if not e or not e.Parent or not d or not d.Parent then return end local
+l=j/2 local m=Vector3.new(f.X+g.X*l,h or f.Y,f.Z+g.Z*l)local n=m+Vector3.new(g.X
+,0,g.Z)local o=CFrame.lookAt(m,n)local p=e.CFrame:ToObjectSpace(o)d.CFrame=p d.
+Size=Vector3.new(k,am,j)if not d.Visible then d.Visible=true end end local f=
+function()if not ag then return end local f,g,h=false,os.clock(),c()for j,k in
+pairs(ai)do local l=j.Instance if not l or not l.Parent then af.
+DetachTrajectoryVisuals(j)else f=true local m=k.mainPart if m and m.Parent then
+local n,o=m.Position,g-(k.lastClock or g)if o>=0.035 then local p=n-(k.lastPos
+or n)local q,r=p.Magnitude/o,Vector3.new(p.X,0,p.Z)local s,t=r.Magnitude/o,k.
+isMoving==true if s>=an then k.isMoving=true k.dir=r.Unit else if o>=0.25 and q<
+an then k.isMoving=false end end if k.isMoving~=t then j.IsTrajectory=k.isMoving
+j.HazardZones=nil if ao and ao.UpdateHazardVisualColor then pcall(ao.
+UpdateHazardVisualColor,j,k.isMoving)end local u=a.load'j'if u and u.
+UpdateHazardVisualColor then pcall(u.UpdateHazardVisualColor,j,k.isMoving)end
+end k.lastPos=n k.lastClock=g end if k.isMoving and k.dir and k.ad then local p,
+q=d(j,k.dir)if p then e(k.ad,m,p,k.dir,h,ah,q)end else if k.ad and k.ad.Visible
+then k.ad.Visible=false end end end end end if not f and b then b:Disconnect()b=
+nil end end local g=function()if not b and ag then b=ad.Heartbeat:Connect(f)end
+end function af.DetachTrajectoryVisuals(h)if not h then return end local j=ai[h]
+if not j then return end if j.ad then pcall(function()j.ad:Destroy()end)j.ad=nil
+end if j.connections then for k,l in ipairs(j.connections)do pcall(function()l:
+Disconnect()end)end table.clear(j.connections)end ai[h]=nil end function af.
+AttachTrajectoryVisuals(h)if not ag or not h then return end if ai[h]then af.
+DetachTrajectoryVisuals(h)end local j=h.Instance if not j or not j.Parent then
+return end local k if j:IsA'BasePart'then k=j else k=j.PrimaryPart or j:
+FindFirstChildWhichIsA'BasePart'if not k then for l,m in ipairs(j:
+GetDescendants())do if m:IsA'BasePart'and m.Parent then k=m break end end end
+end if not k or not k.Parent then return end local l=Instance.new
+'BoxHandleAdornment'l.Name='HazardTrajectoryCorridor'l.Adornee=k l.Size=Vector3.
+new(4,am,ah)l.Color3=ak l.Transparency=al l.ZIndex=1 l.AlwaysOnTop=true l.
+Visible=false l.Parent=k local m,n={},k:GetPropertyChangedSignal'Transparency':
+Connect(function()if k.Parent and k.Transparency>aj then pcall(function()l:
+Destroy()end)end end)table.insert(m,n)ai[h]={ad=l,connections=m,mainPart=k,
+lastPos=k.Position,lastClock=os.clock(),velocity=Vector3.zero,dir=nil,isMoving=
+false}g()end function af.ClearAll()if b then b:Disconnect()b=nil end for h in
+pairs(ai)do af.DetachTrajectoryVisuals(h)end table.clear(ai)end function af.
+RefreshAll()af.ClearAll()if not ag or not ao then return end for h,j in pairs(ao
+.GetActiveHazardsMap())do af.AttachTrajectoryVisuals(j)end end function af.
+GetNearbyTrajectories(h,j)j=j or 65 local k,l,m={},h.X,h.Z for n,o in pairs(ai)
+do if o.isMoving and o.dir and o.mainPart and o.mainPart.Parent then local p,q=
+d(n,o.dir)if p and q then local r,s=p.X,p.Z local t,u=l-r,m-s local v,w=t*t+u*u,
+j+ah+(q/2)if v<=w*w then table.insert(k,{info=n,record=o})end end end end return
+k end function af.IsPointInAnyTrajectory(h,j,k)local l,m=h.X,h.Z j=j or 0 if k
+then for n,o in ipairs(k)do local p,q=o.info,o.record if q and q.isMoving and q.
+dir and q.mainPart and q.mainPart.Parent then local r,s=d(p,q.dir)if r and s
+then local t=q.dir local u,v,w=Vector3.new(-t.Z,0,t.X),l-r.X,m-r.Z local x,y,z=v
+*t.X+w*t.Z,v*u.X+w*u.Z,s/2 if j<=0 then if x>=0 and x<=ah and math.abs(y)<=z
+then return true,p,t,r,s end else local A=0 if x<0 then A=-x elseif x>ah then A=
+x-ah end local B=math.max(0,math.abs(y)-z)if(A*A+B*B)<=(j*j)then return true,p,t
+,r,s end end end end end return false,nil,nil,nil,nil end for n,o in pairs(ai)do
+if o.isMoving and o.dir and o.mainPart and o.mainPart.Parent then local p,q=d(n,
+o.dir)if p and q then local r=o.dir local s,t,u=Vector3.new(-r.Z,0,r.X),l-p.X,m-
+p.Z local v,w,x=t*r.X+u*r.Z,t*s.X+u*s.Z,q/2 if j<=0 then if v>=0 and v<=ah and
+math.abs(w)<=x then return true,n,r,p,q end else local y=0 if v<0 then y=-v
+elseif v>ah then y=v-ah end local z=math.max(0,math.abs(w)-x)if(y*y+z*z)<=(j*j)
+then return true,n,r,p,q end end end end end return false,nil,nil,nil,nil end
+function af.SetEnabled(h)ag=h and true or false if ag then af.RefreshAll()else
 af.ClearAll()end end ac.OnPaddingChanged(function()if ag then af.RefreshAll()end
 end)ab.Register(function()af.ClearAll()end)return af end function a.l()local aa,
-ab,ac,ad,ae,af,ag,ah,ai=a.load'a',a.load'c',a.load'b',a.load'i',a.load'j',a.load
-'k',game:GetService'Players',game:GetService'Workspace',game:GetService
-'ReplicatedStorage'local aj,ak,al,am,b,c,d,e,f,g,h,i,j,l,m,n,o,p=aa.player,{},
-false,false,true,false,false,'',false,{},0,{},{},{'abilities','projectiles'},
-false,{}local q,r,s,t,u,v,w,x=function()if m then return end m=true for q,r in
-ipairs(l)do local s=ai:FindFirstChild(r)if s then for t,u in ipairs(s:
-GetChildren())do local v=(u.Name or''):lower():gsub('%s+','')if#v>0 then n[v]=
-true end end end end end,function(q)if not q then return true end local r=q.Name
-if typeof(r)=='string'then local s=r:lower()if s:sub(1,3)=='tm_'or s:sub(1,3)==
-'pr_'or s:sub(1,3)=='dq_'or s:find'pathrecord'or s:find'safespot'or s:find
-'hazard'or s:find'adornment'or s:find'debug'or s:find'targetpart'or s:find
-'actualmarker'then return true end local t=q.Parent while t and t~=workspace and
-t~=game do local u=t.Name if typeof(u)=='string'then local v=u:lower()if v:find
-'pathrecord'or v:sub(1,3)=='tm_'or v:sub(1,3)=='pr_'then return true end end t=t
-.Parent end local u=s:gsub('%s+','')if#u>0 and n[u]==true then return true end
-end return false end,function(q)if not q then return false end if ag:
-GetPlayerFromCharacter(q)then return true end if ag:FindFirstChild(q.Name)then
-return true end for r,s in ipairs(ag:GetPlayers())do if q.Name==s.Name then
-return true end local t=s.Character if t and(q==t or q:IsDescendantOf(t))then
-return true end end local r=aj and aj.Character if r and(q==r or q:
-IsDescendantOf(r))then return true end return false end,function()local q=0 for
-r in pairs(g)do q+=1 end h=q for r=#i,1,-1 do pcall(i[r],q,o)end end,0.85,50,
-0.05,{}local y,z,A,B,C,D,E,F=function(y)local z=x[y]if z then z.active=false x[y
-]=nil end end,function()for y,z in pairs(x)do if z then z.active=false end end
-table.clear(x)end,function(y)if not y then return{}end local z={}local A=
-function(A)if A and A.Parent and A.Transparency<=u then z[#z+1]=A end end if y:
-IsA'BasePart'then A(y)else for B,C in ipairs(y:GetDescendants())do if C:IsA
-'BasePart'and C.Parent then A(C)end end end return z end,function(y)local z=aj
-and aj.Character if not z then return 0 end local A=z:FindFirstChild
-'HumanoidRootPart'or z.PrimaryPart if not A then return 0 end local B,C=(A.
-Position)if y:IsA'BasePart'then C=y.Position elseif y:IsA'Model'then local D,E=
-pcall(function()return y:GetPivot().Position end)if D then C=E else local F=y:
-FindFirstChildWhichIsA'BasePart'C=F and F.Position end end if not C then return
-0 end return math.floor((B-C).Magnitude+0.5)end,Color3.fromRGB(255,45,45),Color3
-.fromRGB(255,30,30),Color3.fromRGB(0,170,255),Color3.fromRGB(0,140,255)local G=
-function(G,H,I)local J,K,L={},I and E or C,I and F or D for M,N in ipairs(G)do
-if N and N.Parent then local O=Instance.new'SelectionBox'O.Name=
-'HazardSelectionBox'O.Color3=K O.SurfaceColor3=L O.SurfaceTransparency=0.6 O.
-LineThickness=0.05 O.Adornee=N O.Parent=N local P=N:GetPropertyChangedSignal
-'Transparency':Connect(function()if N.Parent and N.Transparency>u then pcall(
-function()O:Destroy()end)end end)if H then table.insert(H,P)end J[#J+1]=O end
-end return J end function ak.UpdateHazardVisualColor(H,I)if not H or not H.Boxes
-then return end local J=I==true or H.IsTrajectory==true local K,L=J and E or C,J
-and F or D for M,N in ipairs(H.Boxes)do if N and N.Parent then N.Color3=K N.
-SurfaceColor3=L end end end local H,I=function(H)if not f or e==''then return
-false end if not H or type(H)~='string'then return false end local I=e:lower():
-gsub('%s+','')if#I==0 then return false end local J=H:lower():gsub('%s+','')
-return string.find(J,I,1,true)~=nil end,function(H)if not H then return'nil'end
-return('(%.2f, %.2f, %.2f)'):format(H.X,H.Y,H.Z)end local an=function(J,K,L,M)if
-not J then return end local N=J.Name if not H(N)then return end local O,P,Q=J.
-ClassName,J.Parent and J.Parent:GetFullName()or'nil',B(J)print
+ab,ac=a.load'a',a.load'b',a.load'i'local ad,ae,af,ag,ah,ai,aj,ak,al,am=aa.
+RunService or game:GetService'RunService',aa.player,{},true,{},0.85,Color3.
+fromRGB(255,60,60),'255,130,130'function af.BindDetection(an)al=an or nil end
+function af.IsEnabled()return ag end local an=function()local an=ae and ae.
+Character if not an then return nil end local ao=an:FindFirstChild
+'HumanoidRootPart'or an.PrimaryPart if not ao then return nil end return ao.
+Position.Y-2.5 end local ao,b=function(ao)if not ao or not ao.Parent then return
+2.5 end local b=an()if b then local c=b+2.5 local d,e=c-ao.Position.Y,ao.Size.Y/
+2+1.2 return math.clamp(math.max(d,e),1.5,30)end return math.clamp(ao.Size.Y/2+
+1.8,2,10)end,function(ao)return ao and ao.Parent and ao.Transparency<=ai end
+local c,d=function(c)if not c or not c.Parent then return nil end if c:IsA
+'BasePart'then if b(c)then return c end elseif c:IsA'Model'then if c.PrimaryPart
+and b(c.PrimaryPart)then return c.PrimaryPart end local d=c:FindFirstChild
+'HumanoidRootPart'if d and b(d)then return d end for e,f in ipairs(c:
+GetDescendants())do if f:IsA'BasePart'and b(f)then return f end end else for d,e
+in ipairs(c:GetDescendants())do if e:IsA'BasePart'and b(e)then return e end end
+end return nil end,function(c,d)if not c or not c.items or not d then return end
+local e=d.SpawnClock or os.clock()local f,g=math.max(0,os.clock()-e),d.Name or
+'Red Zone'local h=(
+[[<font color='rgb(%s)'>%s</font> <font color='rgb(255,255,255)'><b>%.1fs</b></font>]]
+):format(ak,g,f)for j,k in ipairs(c.items)do if k.label and k.label.Parent then
+k.label.Text=h end end end local e=function()if not ag then return end local e=
+false for f,g in pairs(ah)do local h=f.Instance if f.IsTrajectory==true or not h
+or not h.Parent then af.DetachTimerVisual(f)else if g.items then for j=#g.items,
+1,-1 do local k=g.items[j]local l=k.part if not b(l)then if k.billboard and k.
+billboard.Parent then pcall(function()k.billboard:Destroy()end)end table.remove(
+g.items,j)else if k.billboard and k.billboard.Parent then k.billboard.
+StudsOffset=Vector3.new(0,ao(l),0)end end end if#g.items==0 then af.
+DetachTimerVisual(f)else e=true d(g,f)end else af.DetachTimerVisual(f)end end
+end if not e and am then am:Disconnect()am=nil end end local f,g=function()if
+not am and ag then am=ad.Heartbeat:Connect(e)end end,function(f)local g,h=ao(f),
+Instance.new'BillboardGui'h.Name='HazardLifespanTimer'h.Adornee=f h.AlwaysOnTop=
+true h.MaxDistance=500 h.LightInfluence=0 h.ResetOnSpawn=false h.Active=false h.
+Size=UDim2.new(0,130,0,24)h.StudsOffset=Vector3.new(0,g,0)h.ZIndexBehavior=Enum.
+ZIndexBehavior.Sibling local j=Instance.new'Frame'j.Name='TimerFrame'j.Size=
+UDim2.new(1,0,1,0)j.BackgroundColor3=Color3.fromRGB(15,15,20)j.
+BackgroundTransparency=0.25 j.BorderSizePixel=0 j.Parent=h local k=Instance.new
+'UICorner'k.CornerRadius=UDim.new(0,6)k.Parent=j local l=Instance.new'UIStroke'l
+.Name='Stroke'l.Thickness=1.3 l.Color=aj l.Transparency=0.15 l.Parent=j local m=
+Instance.new'TextLabel'm.Name='TimerLabel'm.Size=UDim2.new(1,-6,1,0)m.Position=
+UDim2.new(0,3,0,0)m.BackgroundTransparency=1 m.Font=Enum.Font.GothamBold m.
+TextSize=11 m.TextColor3=Color3.fromRGB(255,255,255)m.TextStrokeTransparency=0 m
+.TextStrokeColor3=Color3.fromRGB(0,0,0)m.RichText=true m.TextXAlignment=Enum.
+TextXAlignment.Center m.TextYAlignment=Enum.TextYAlignment.Center m.Text=''m.
+Parent=j h.Parent=f return h,m,l end function af.AttachTimerVisual(h)if not ag
+or not h then return end if h.IsTrajectory==true then if ah[h]then af.
+DetachTimerVisual(h)end return end if ah[h]then af.DetachTimerVisual(h)end local
+j=h.Instance if not j or not j.Parent then return end local k=ac.GetHazardZones(
+h)local l,m,n=k and k.zones,{},{}local o=function(o,p,q,r,s)local t={billboard=p
+,label=q,stroke=r,part=o,zone=s}table.insert(m,t)local u=o:
+GetPropertyChangedSignal'Transparency':Connect(function()if not b(o)then pcall(
+function()p:Destroy()end)end end)table.insert(n,u)local v=o.AncestryChanged:
+Connect(function(v,w)if not w then pcall(function()p:Destroy()end)end end)table.
+insert(n,v)end if l and#l>0 then for p,q in ipairs(l)do local r=q.part if b(r)
+then local s,t,u=g(r)o(r,s,t,u,q)end end else local p=c(j)if b(p)then local q,r,
+s=g(p)o(p,q,r,s,nil)end end if#m>0 then local p={items=m,connections=n}ah[h]=p
+d(p,h)f()end end function af.DetachTimerVisual(h)if not h then return end local
+j=ah[h]if not j then return end if j.connections then for k,l in ipairs(j.
+connections)do pcall(function()l:Disconnect()end)end table.clear(j.connections)
+end if j.items then for k,l in ipairs(j.items)do if l.billboard and l.billboard.
+Parent then pcall(function()l.billboard:Destroy()end)end end table.clear(j.items
+)end ah[h]=nil end function af.UpdateHazardVisualColor(h,j)if not h then return
+end local k=j==true or h.IsTrajectory==true if k then af.DetachTimerVisual(h)
+else if not ah[h]then af.AttachTimerVisual(h)end end end function af.ClearAll()
+if am then am:Disconnect()am=nil end for h in pairs(ah)do af.DetachTimerVisual(h
+)end table.clear(ah)end function af.RefreshAll()af.ClearAll()if not ag or not al
+then return end for h,j in pairs(al.GetActiveHazardsMap())do if j and j.
+IsTrajectory~=true then af.AttachTimerVisual(j)end end end function af.
+SetEnabled(h)ag=h and true or false if ag then af.RefreshAll()else af.ClearAll()
+end end ab.Register(function()af.ClearAll()end)return af end function a.m()local
+aa,ab,ac,ad,ae,af,ag,ah,ai,aj=a.load'a',a.load'c',a.load'b',a.load'i',a.load'j',
+a.load'k',a.load'l',game:GetService'Players',game:GetService'Workspace',game:
+GetService'ReplicatedStorage'local ak,al,am,an,ao,b,c,d,e,f,g,h,j,k,l,m,n,o=aa.
+player,{},false,false,true,false,false,'',false,{},0,{},{},{'abilities',
+'projectiles'},false,{}local p,q,r,s,t,u,v,w=function()if l then return end l=
+true for p,q in ipairs(k)do local r=aj:FindFirstChild(q)if r then for s,t in
+ipairs(r:GetChildren())do local u=(t.Name or''):lower():gsub('%s+','')if#u>0
+then m[u]=true end end end end end,function(p)if not p then return true end
+local q=p.Name if typeof(q)=='string'then local r=q:lower()if r:sub(1,3)=='tm_'
+or r:sub(1,3)=='pr_'or r:sub(1,3)=='dq_'or r:find'pathrecord'or r:find'safespot'
+or r:find'hazard'or r:find'adornment'or r:find'debug'or r:find'targetpart'or r:
+find'actualmarker'then return true end local s=p.Parent while s and s~=workspace
+and s~=game do local t=s.Name if typeof(t)=='string'then local u=t:lower()if u:
+find'pathrecord'or u:sub(1,3)=='tm_'or u:sub(1,3)=='pr_'then return true end end
+s=s.Parent end local t=r:gsub('%s+','')if#t>0 and m[t]==true then return true
+end end return false end,function(p)if not p then return false end if ah:
+GetPlayerFromCharacter(p)then return true end if ah:FindFirstChild(p.Name)then
+return true end for q,r in ipairs(ah:GetPlayers())do if p.Name==r.Name then
+return true end local s=r.Character if s and(p==s or p:IsDescendantOf(s))then
+return true end end local q=ak and ak.Character if q and(p==q or p:
+IsDescendantOf(q))then return true end return false end,function()local p=0 for
+q in pairs(f)do p+=1 end g=p for q=#h,1,-1 do pcall(h[q],p,n)end end,0.85,50,
+0.05,{}local x,y,z,A,B,C,D,E=function(x)local y=w[x]if y then y.active=false w[x
+]=nil end end,function()for x,y in pairs(w)do if y then y.active=false end end
+table.clear(w)end,function(x)if not x then return{}end local y={}local z=
+function(z)if z and z.Parent and z.Transparency<=t then y[#y+1]=z end end if x:
+IsA'BasePart'then z(x)else for A,B in ipairs(x:GetDescendants())do if B:IsA
+'BasePart'and B.Parent then z(B)end end end return y end,function(x)local y=ak
+and ak.Character if not y then return 0 end local z=y:FindFirstChild
+'HumanoidRootPart'or y.PrimaryPart if not z then return 0 end local A,B=(z.
+Position)if x:IsA'BasePart'then B=x.Position elseif x:IsA'Model'then local C,D=
+pcall(function()return x:GetPivot().Position end)if C then B=D else local E=x:
+FindFirstChildWhichIsA'BasePart'B=E and E.Position end end if not B then return
+0 end return math.floor((A-B).Magnitude+0.5)end,Color3.fromRGB(255,45,45),Color3
+.fromRGB(255,30,30),Color3.fromRGB(0,170,255),Color3.fromRGB(0,140,255)local F=
+function(F,G,H)local I,J,K={},H and D or B,H and E or C for L,M in ipairs(F)do
+if M and M.Parent then local N=Instance.new'SelectionBox'N.Name=
+'HazardSelectionBox'N.Color3=J N.SurfaceColor3=K N.SurfaceTransparency=0.6 N.
+LineThickness=0.05 N.Adornee=M N.Parent=M local O=M:GetPropertyChangedSignal
+'Transparency':Connect(function()if M.Parent and M.Transparency>t then pcall(
+function()N:Destroy()end)end end)if G then table.insert(G,O)end I[#I+1]=N end
+end return I end function al.UpdateHazardVisualColor(G,H)if not G or not G.Boxes
+then return end local I=H==true or G.IsTrajectory==true local J,K=I and D or B,I
+and E or C for L,M in ipairs(G.Boxes)do if M and M.Parent then M.Color3=J M.
+SurfaceColor3=K end end ag.UpdateHazardVisualColor(G,I)end local G,H=function(G)
+if not e or d==''then return false end if not G or type(G)~='string'then return
+false end local H=d:lower():gsub('%s+','')if#H==0 then return false end local I=
+G:lower():gsub('%s+','')return string.find(I,H,1,true)~=nil end,function(G)if
+not G then return'nil'end return('(%.2f, %.2f, %.2f)'):format(G.X,G.Y,G.Z)end
+local ap=function(I,J,K,L)if not I then return end local M=I.Name if not G(M)
+then return end local N,O,P=I.ClassName,I.Parent and I.Parent:GetFullName()or
+'nil',A(I)print
 '================== \u{1f50d} [HAZARD DEEP INSPECT] \u{1f50d} =================='
-print(('  \u{1f3af} Target Name    : %s (%s)'):format(N,O))print((
-'  \u{1f4cc} Event Type     : %s%s'):format(K,L and(' -> '..tostring(L))or''))
-print(('  \u{1f4cd} Full Path      : %s'):format(P))print((
-'  \u{1f4cf} Dist to Player : %d studs'):format(Q))if K=='SPAWN'then local R={}
-if J:IsA'BasePart'then table.insert(R,J)else for S,T in ipairs(J:GetDescendants(
-))do if T:IsA'BasePart'then table.insert(R,T)end end end print((
-'  \u{1f9e9} Total Parts (%d) :'):format(#R))for S,T in ipairs(R)do local U=T:
-IsA'Part'and tostring(T.Shape.Name)or(T.ClassName=='MeshPart'and'MeshPart'or T.
-ClassName)print(('     [%d] %q (%s)'):format(S,T.Name,T.ClassName))print((
+print(('  \u{1f3af} Target Name    : %s (%s)'):format(M,N))print((
+'  \u{1f4cc} Event Type     : %s%s'):format(J,K and(' -> '..tostring(K))or''))
+print(('  \u{1f4cd} Full Path      : %s'):format(O))print((
+'  \u{1f4cf} Dist to Player : %d studs'):format(P))if J=='SPAWN'then local Q={}
+if I:IsA'BasePart'then table.insert(Q,I)else for R,S in ipairs(I:GetDescendants(
+))do if S:IsA'BasePart'then table.insert(Q,S)end end end print((
+'  \u{1f9e9} Total Parts (%d) :'):format(#Q))for R,S in ipairs(Q)do local T=S:
+IsA'Part'and tostring(S.Shape.Name)or(S.ClassName=='MeshPart'and'MeshPart'or S.
+ClassName)print(('     [%d] %q (%s)'):format(R,S.Name,S.ClassName))print((
 '         \u{2022} Size: %s | Shape: %s | Trans: %.2f | CanCollide: %s'):format(
-I(T.Size),U,T.Transparency,tostring(T.CanCollide)))print((
-'         \u{2022} Pos : %s'):format(I(T.Position)))end local S=ad.
-GetHazardZones(M)if S and S.zones then local T=ad.GetHitboxPadding()print((
-'  \u{1f4d0} Math Geometry (Zones: %d, BoundingRadius: %.1f studs):'):format(#S.
-zones,S.boundingRadius or 0))for U,V in ipairs(S.zones)do if V.radius then
+H(S.Size),T,S.Transparency,tostring(S.CanCollide)))print((
+'         \u{2022} Pos : %s'):format(H(S.Position)))end local R=ad.
+GetHazardZones(L)if R and R.zones then local S=ad.GetHitboxPadding()print((
+'  \u{1f4d0} Math Geometry (Zones: %d, BoundingRadius: %.1f studs):'):format(#R.
+zones,R.boundingRadius or 0))for T,U in ipairs(R.zones)do if U.radius then
 print((
 [[     - Zone [%d]: Circle/Ball (Base Radius: %.2f + Pad: %.2f = %.2f studs)]]):
-format(U,V.radius,T,V.radius+T))elseif V.half then print((
-'     - Zone [%d]: Box/OBB (HalfSize: %s)'):format(U,I(V.half)))end end end task
-.spawn(function()local T if J:IsA'BasePart'then T=J elseif J:IsA'Model'then T=J.
-PrimaryPart or J:FindFirstChildWhichIsA'BasePart'end if not T then return end
-local U,V=os.clock(),T.CFrame task.wait(0.12)if not J.Parent or not T.Parent
-then return end local W,X=os.clock(),T.CFrame local Y=W-U if Y<=0 then return
-end local Z=X*V:Inverse()local _,an=Z:ToAxisAngle()local ao,ap=math.deg(an)/Y,V:
-Inverse()*X local aq,ar=ap:ToAxisAngle()if math.abs(math.deg(an))>=1.5 then
-local as='Tr\u{1ee5}c t\u{1ef1} do / H\u{1ed7}n h\u{1ee3}p'if math.abs(_.Y)>=0.8
-then as='Tr\u{1ee5}c Y (Yaw - Qu\u{e9}t ngang m\u{1eb7}t s\u{e0}n)'elseif math.
-abs(_.X)>=0.8 then as='Tr\u{1ee5}c X (Pitch - L\u{103}n nh\u{e0}o l\u{1ed9}n)'
-elseif math.abs(_.Z)>=0.8 then as=
-'Tr\u{1ee5}c Z (Roll - Nghi\u{ea}ng l\u{1ead}t b\u{ea}n)'end local at=
-'Tr\u{1ee5}c t\u{1ef1} do'if math.abs(aq.Y)>=0.8 then at='Tr\u{1ee5}c Local Y'
-elseif math.abs(aq.X)>=0.8 then at='Tr\u{1ee5}c Local X'elseif math.abs(aq.Z)>=
-0.8 then at='Tr\u{1ee5}c Local Z'end print
+format(T,U.radius,S,U.radius+S))elseif U.half then print((
+'     - Zone [%d]: Box/OBB (HalfSize: %s)'):format(T,H(U.half)))end end end task
+.spawn(function()local S if I:IsA'BasePart'then S=I elseif I:IsA'Model'then S=I.
+PrimaryPart or I:FindFirstChildWhichIsA'BasePart'end if not S then return end
+local T,U=os.clock(),S.CFrame task.wait(0.12)if not I.Parent or not S.Parent
+then return end local V,W=os.clock(),S.CFrame local X=V-T if X<=0 then return
+end local Y=W*U:Inverse()local Z,_=Y:ToAxisAngle()local ap,aq=math.deg(_)/X,U:
+Inverse()*W local ar,as=aq:ToAxisAngle()if math.abs(math.deg(_))>=1.5 then local
+at='Tr\u{1ee5}c t\u{1ef1} do / H\u{1ed7}n h\u{1ee3}p'if math.abs(Z.Y)>=0.8 then
+at='Tr\u{1ee5}c Y (Yaw - Qu\u{e9}t ngang m\u{1eb7}t s\u{e0}n)'elseif math.abs(Z.
+X)>=0.8 then at='Tr\u{1ee5}c X (Pitch - L\u{103}n nh\u{e0}o l\u{1ed9}n)'elseif
+math.abs(Z.Z)>=0.8 then at=
+'Tr\u{1ee5}c Z (Roll - Nghi\u{ea}ng l\u{1ead}t b\u{ea}n)'end local au=
+'Tr\u{1ee5}c t\u{1ef1} do'if math.abs(ar.Y)>=0.8 then au='Tr\u{1ee5}c Local Y'
+elseif math.abs(ar.X)>=0.8 then au='Tr\u{1ee5}c Local X'elseif math.abs(ar.Z)>=
+0.8 then au='Tr\u{1ee5}c Local Z'end print
 '================== \u{1f504} [INSPECT: SPINNING DETECTED] \u{1f504} =================='
-print(('  \u{1f3af} Target Name    : %s (%s)'):format(J.Name,T.Name))print((
+print(('  \u{1f3af} Target Name    : %s (%s)'):format(I.Name,S.Name))print((
 '  \u{26a1} T\u{1ed1}c \u{111}\u{1ed9} xoay    : %.2f \u{b0}/s (%.2f rad/s)'):
-format(ao,an/Y))print(('  \u{1f310} World Spin Axis: %s -> %s'):format(I(_),as))
-print(('  \u{1f9e9} Local Spin Axis: %s -> %s'):format(I(aq),at))print
+format(ap,_/X))print(('  \u{1f310} World Spin Axis: %s -> %s'):format(H(Z),at))
+print(('  \u{1f9e9} Local Spin Axis: %s -> %s'):format(H(ar),au))print
 [[========================================================================]]end
-end)elseif K=='DESPAWN'then if M and M.SpawnClock then local an=os.clock()-M.
-SpawnClock print(('  \u{23f1}\u{fe0f} Lifetime Active: %.2f seconds'):format(an)
-)end elseif K=='REJECTED'then print(('  \u{26a0}\u{fe0f} Rejection Reason: %s'):
-format(tostring(L)))end print
-[[================================================================]]end local ao
-,ap=function(ao,ap)an(ao,'REJECTED',ap,nil)if not d then return end local aq,ar=
-ao and ao.Name or'?',ao and ao.ClassName or'?'print((
-'[HazardScanner][Reject] \u{26aa} %s (%s) \u{2014} %s'):format(aq,ar,ap))end
-local aq=function(aq)if not aq or not aq.Parent then return end if s(aq)then
-return end if g[aq]then return end if x[aq]then return end local ar={active=true
-,count=0}x[aq]=ar task.spawn(function()while ar.active and aq.Parent and al and
-am do if s(aq)then y(aq)return end ar.count+=1 local as,at,J=aq:GetDescendants()
-,A(aq),H(aq.Name)if d or J then print((
+end)elseif J=='DESPAWN'then if L and L.SpawnClock then local ap=os.clock()-L.
+SpawnClock print(('  \u{23f1}\u{fe0f} Lifetime Active: %.2f seconds'):format(ap)
+)end elseif J=='REJECTED'then print(('  \u{26a0}\u{fe0f} Rejection Reason: %s'):
+format(tostring(K)))end print
+[[================================================================]]end local aq
+,ar=function(aq,ar)ap(aq,'REJECTED',ar,nil)if not c then return end local as,at=
+aq and aq.Name or'?',aq and aq.ClassName or'?'print((
+'[HazardScanner][Reject] \u{26aa} %s (%s) \u{2014} %s'):format(as,at,ar))end
+local as=function(as)if not as or not as.Parent then return end if r(as)then
+return end if f[as]then return end if w[as]then return end local at={active=true
+,count=0}w[as]=at task.spawn(function()while at.active and as.Parent and am and
+an do if r(as)then x(as)return end at.count+=1 local au,I,J=as:GetDescendants(),
+z(as),G(as.Name)if c or J then print((
 '[HazardScanner][Retry] \u{1f504} L\u{1ea7}n %d/%d: %q (%s) | Descendants: %d | Valid Parts (Trans<=%.2f): %d'
-):format(ar.count,v,aq.Name,aq.ClassName,#as,u,#at))end if#at>0 then if d or J
+):format(at.count,u,as.Name,as.ClassName,#au,t,#I))end if#I>0 then if c or J
 then print((
 '[HazardScanner][Retry] \u{2705} L\u{1ea7}n %d/%d: %q \u{110}\u{e3} t\u{ec}m th\u{1ea5}y %d part(s)! Ti\u{1ebf}n h\u{e0}nh v\u{1ebd}...'
-):format(ar.count,v,aq.Name,#at))end y(aq)ap(aq)return end if ar.count>=v then
-ao(aq,(
+):format(at.count,u,as.Name,#I))end x(as)ar(as)return end if at.count>=u then
+aq(as,(
 'H\u{1ebf}t %d l\u{1b0}\u{1ee3}t retry m\u{e0} kh\u{f4}ng t\u{ec}m th\u{1ea5}y BasePart h\u{1ee3}p l\u{1ec7} (Descendants: %d)'
-):format(v,#as))y(aq)return end task.wait(w)end y(aq)end)end ap=function(ar)if
-not al or not am then ao(ar,'Ch\u{1b0}a trong dungeon')return false end if not
-ar or not ar.Parent then ao(ar,'Kh\u{f4}ng c\u{f2}n Parent')return false end if
-s(ar)then ao(ar,
+):format(u,#au))x(as)return end task.wait(v)end x(as)end)end ar=function(at)if
+not am or not an then aq(at,'Ch\u{1b0}a trong dungeon')return false end if not
+at or not at.Parent then aq(at,'Kh\u{f4}ng c\u{f2}n Parent')return false end if
+r(at)then aq(at,
 'Nh\u{e2}n v\u{1ead}t ng\u{1b0}\u{1edd}i ch\u{1a1}i (Player/Teammate)')return
-false end if g[ar]then return true end q()if r(ar)then ao(ar,
+false end if f[at]then return true end p()if q(at)then aq(at,
 'Tr\u{f9}ng t\u{ea}n trong ReplicatedStorage (abilities/projectiles)')return
-false end local as=A(ar)if#as==0 then ao(ar,
-'Ch\u{1b0}a c\u{f3} part \u{111}\u{1ec3} v\u{1ebd} (s\u{1ebd} retry)')aq(ar)
-return false end local at,J={},{}if b then J=G(as,at)end local K=B(ar)local L={
-Instance=ar,Name=ar.Name,Class=ar.ClassName,Distance=K,Boxes=J,Connections=at,
-SpawnClock=os.clock()}g[ar]=L o={Name=ar.Name,Class=ar.ClassName,Distance=K}if
+false end local au=z(at)if#au==0 then aq(at,
+'Ch\u{1b0}a c\u{f3} part \u{111}\u{1ec3} v\u{1ebd} (s\u{1ebd} retry)')as(at)
+return false end local I,J={},{}if ao then J=F(au,I)end local K=A(at)local L={
+Instance=at,Name=at.Name,Class=at.ClassName,Distance=K,Boxes=J,Connections=I,
+SpawnClock=os.clock()}f[at]=L n={Name=at.Name,Class=at.ClassName,Distance=K}if
 ae.IsEnabled()then ae.AttachZoneVisuals(L)end if af.IsEnabled()then af.
-AttachTrajectoryVisuals(L)end y(ar)an(ar,'SPAWN','Passed all gates',L)if c then
-print(('[HazardScanner][Hazard] \u{1f534} Hazard Detected: %s (%s, %d studs)'):
-format(ar.Name,ar.ClassName,K))end t()return true end local ar=function(ar,as)
-local at=g[ar]if not at then y(ar)return end an(ar,'DESPAWN',as,at)ae.
-DetachZoneVisuals(at)af.DetachTrajectoryVisuals(at)if at.Boxes then for J,K in
-ipairs(at.Boxes)do pcall(function()K:Destroy()end)end table.clear(at.Boxes)end
-if at.Connections then for J,K in ipairs(at.Connections)do pcall(function()K:
-Disconnect()end)end table.clear(at.Connections)end g[ar]=nil if c then local J=
-as and(' ('..as..')')or''print((
-'[HazardScanner][Hazard] \u{1f7e2} Hazard Expired: %s%s'):format(tostring(at.
-Name),J))end t()end function ak.ClearAllHazards(as)ae.ClearAll()af.ClearAll()z()
-local at={}for J in pairs(g)do table.insert(at,J)end for J,K in ipairs(at)do ar(
-K,as)end if c and as then print((
-'[HazardScanner][Hazard] \u{1f9f9} All hazards cleared: %s'):format(as))end end
-function ak.StartScan()if al then return end al=true ae.BindDetection(ak)af.
-BindDetection(ak)ak.ClearAllHazards'StartScan Reset'for as,at in ipairs(j)do at:
-Disconnect()end table.clear(j)table.insert(j,ah.ChildAdded:Connect(function(as)
-if s(as)then return end ap(as)end))table.insert(j,ah.ChildRemoved:Connect(
-function(as)ar(as,'Destroyed')end))am=ab.GetCurrentRoomIndex()>0 if p then
-pcall(p)p=nil end p=ab.OnRoomIndexChanged(function(as)if as>0 then am=true
-elseif as<=0 and am then am=false ak.ClearAllHazards'Dungeon Ended'end end)if c
-then print'[HazardScanner] \u{1f4e1} Threat Detector started!'end end function
-ak.StopScan()al=false am=false for as,at in ipairs(j)do at:Disconnect()end table
-.clear(j)if p then pcall(p)p=nil end ak.ClearAllHazards'StopScan'if c then print
-'[HazardScanner] \u{1f6d1} Threat Detector stopped.'end end function ak.
-IsEnabled()return al end function ak.SetEnabled(as)if as then ak.StartScan()else
-ak.StopScan()end end function ak.SetSelectionBoxesEnabled(as)b=as and true or
-false if b then for at,J in pairs(g)do if at and at.Parent and(not J.Boxes or#J.
-Boxes==0)then local K=A(at)J.Connections=J.Connections or{}J.Boxes=G(K,J.
-Connections)end end else for at,J in pairs(g)do if J.Boxes then for K,L in
+AttachTrajectoryVisuals(L)end if ag.IsEnabled()then ag.AttachTimerVisual(L)end
+x(at)ap(at,'SPAWN','Passed all gates',L)if b then print((
+'[HazardScanner][Hazard] \u{1f534} Hazard Detected: %s (%s, %d studs)'):format(
+at.Name,at.ClassName,K))end s()return true end local at=function(at,au)local I=f
+[at]if not I then x(at)return end ap(at,'DESPAWN',au,I)ae.DetachZoneVisuals(I)af
+.DetachTrajectoryVisuals(I)ag.DetachTimerVisual(I)if I.Boxes then for J,K in
+ipairs(I.Boxes)do pcall(function()K:Destroy()end)end table.clear(I.Boxes)end if
+I.Connections then for J,K in ipairs(I.Connections)do pcall(function()K:
+Disconnect()end)end table.clear(I.Connections)end f[at]=nil if b then local J=au
+and(' ('..au..')')or''print((
+'[HazardScanner][Hazard] \u{1f7e2} Hazard Expired: %s%s'):format(tostring(I.Name
+),J))end s()end function al.ClearAllHazards(au)ae.ClearAll()af.ClearAll()ag.
+ClearAll()y()local I={}for J in pairs(f)do table.insert(I,J)end for J,K in
+ipairs(I)do at(K,au)end if b and au then print((
+'[HazardScanner][Hazard] \u{1f9f9} All hazards cleared: %s'):format(au))end end
+function al.StartScan()if am then return end am=true ae.BindDetection(al)af.
+BindDetection(al)ag.BindDetection(al)al.ClearAllHazards'StartScan Reset'for au,I
+in ipairs(j)do I:Disconnect()end table.clear(j)table.insert(j,ai.ChildAdded:
+Connect(function(au)if r(au)then return end ar(au)end))table.insert(j,ai.
+ChildRemoved:Connect(function(au)at(au,'Destroyed')end))an=ab.
+GetCurrentRoomIndex()>0 if o then pcall(o)o=nil end o=ab.OnRoomIndexChanged(
+function(au)if au>0 then an=true elseif au<=0 and an then an=false al.
+ClearAllHazards'Dungeon Ended'end end)if b then print
+'[HazardScanner] \u{1f4e1} Threat Detector started!'end end function al.StopScan
+()am=false an=false for au,I in ipairs(j)do I:Disconnect()end table.clear(j)if o
+then pcall(o)o=nil end al.ClearAllHazards'StopScan'if b then print
+'[HazardScanner] \u{1f6d1} Threat Detector stopped.'end end function al.
+IsEnabled()return am end function al.SetEnabled(au)if au then al.StartScan()else
+al.StopScan()end end function al.SetSelectionBoxesEnabled(au)ao=au and true or
+false if ao then for I,J in pairs(f)do if I and I.Parent and(not J.Boxes or#J.
+Boxes==0)then local K=z(I)J.Connections=J.Connections or{}J.Boxes=F(K,J.
+Connections)end end else for I,J in pairs(f)do if J.Boxes then for K,L in
 ipairs(J.Boxes)do pcall(function()L:Destroy()end)end table.clear(J.Boxes)end end
-end end function ak.IsSelectionBoxesEnabled()return b end function ak.
-SetLogHazards(as)c=as and true or false end function ak.IsLogHazardsEnabled()
-return c end function ak.SetLogFailed(as)d=as and true or false end function ak.
-IsLogFailedEnabled()return d end function ak.SetInspectTarget(as)e=type(as)==
-'string'and as or''end function ak.GetInspectTarget()return e end function ak.
-SetInspectEnabled(as)f=as and true or false end function ak.IsInspectEnabled()
-return f end function ak.GetHazardCount()return h end function ak.
-GetActiveHazards()local as={}for at,J in pairs(g)do if at and at.Parent==ah then
-as[#as+1]=J end end return as end function ak.GetActiveHazardsMap()return g end
-function ak.GetLastHazardInfo()return o end function ak.OnHazardChanged(as)if
-type(as)~='function'then return end table.insert(i,as)end ac.Register(function()
-ak.StopScan()ak.ClearAllHazards'Shutdown'end)return ak end function a.m()local
+end end function al.IsSelectionBoxesEnabled()return ao end function al.
+SetLogHazards(au)b=au and true or false end function al.IsLogHazardsEnabled()
+return b end function al.SetLogFailed(au)c=au and true or false end function al.
+IsLogFailedEnabled()return c end function al.SetInspectTarget(au)d=type(au)==
+'string'and au or''end function al.GetInspectTarget()return d end function al.
+SetInspectEnabled(au)e=au and true or false end function al.IsInspectEnabled()
+return e end function al.GetHazardCount()return g end function al.
+GetActiveHazards()local au={}for I,J in pairs(f)do if I and I.Parent==ai then au
+[#au+1]=J end end return au end function al.GetActiveHazardsMap()return f end
+function al.GetLastHazardInfo()return n end function al.OnHazardChanged(au)if
+type(au)~='function'then return end table.insert(h,au)end ac.Register(function()
+al.StopScan()al.ClearAllHazards'Shutdown'end)return al end function a.n()local
 aa,ab,ac,ad=a.load'a',a.load'b',a.load'i',a.load'k'local ae,af,ag,ah,ai,aj,ak,al
-,am,an,ao,ap,aq,ar,as,at,b,c=aa.RunService or game:GetService'RunService',aa.
+,am,an,ao,ap,aq,ar,as,at,au,b=aa.RunService or game:GetService'RunService',aa.
 player,{},true,false,{},1.8,Color3.fromRGB(0,255,170),Color3.fromRGB(255,35,35),
-0.45,0.2,0.2,(game:GetService'Players')local d,e,f,g=function()local d=af or aq.
-LocalPlayer if not d then return nil end local e=d.Character if not e or not e.
-Parent then return nil end local f=e:FindFirstChildOfClass'Humanoid'if f and f.
-Health<=0 then return nil end return e:FindFirstChild'HumanoidRootPart'or e.
-PrimaryPart end,function(d)if not d then return 0 end return d.Position.Y-2.5
-end,function(d)if b then if b.Parent~=d or not b:IsDescendantOf(workspace)then
-pcall(function()b:Destroy()end)b=nil else if b.Adornee~=d then b.Adornee=d end
-return b end end if not d or not d.Parent then return nil end local e=Instance.
-new'CylinderHandleAdornment'e.Name='Player_2D_HitboxVisual'e.Adornee=d e.Radius=
-ak e.Height=ap e.Color3=ai and am or al e.Transparency=ai and ao or an e.ZIndex=
-5 e.AlwaysOnTop=false e.Visible=ah e.Parent=d b=e return e end,function(d)if not
-b or not b.Parent then return end b.Color3=d and am or al b.Transparency=d and
-ao or an end local h=function()local h=d()if not h or not h.Parent then if b and
-b.Parent then b.Visible=false end if ai then ai=false ar=nil as=nil for i,j in
-ipairs(aj)do pcall(j,false,nil,nil)end end return end local i=f(h)if i and i.
-Parent then i.Visible=ah i.Radius=ak local j=e(h)local l=CFrame.new(Vector3.new(
-h.Position.X,j,h.Position.Z))*CFrame.Angles(math.rad(90),0,0)i.CFrame=h.CFrame:
-ToObjectSpace(l)end local j=Vector3.new(h.Position.X,0,h.Position.Z)local l,m,n=
-ac.IsPointInAnyHazard(j,nil,ak)local o,p=false if not l and ad.
-IsPointInAnyTrajectory then o,p=ad.IsPointInAnyTrajectory(j,ak)end local q,r,s=(
-l or o),m or p,l and'Ground Zone'or(o and'Trajectory Corridor'or nil)if q~=ai or
-r~=ar then ai=q ar=r as=s g(q)for t,u in ipairs(aj)do pcall(u,q,r,s)end end end
-local i=function()if not at then at=ae.Heartbeat:Connect(h)end end function ag.
-Cleanup()if at then at:Disconnect()at=nil end if b then pcall(function()b:
-Destroy()end)b=nil end ai=false ar=nil as=nil end function ag.IsPlayerInDanger()
-return ai,ar,as end function ag.GetCurrentThreat()return ar,as end function ag.
-OnDangerStatusChanged(j)if type(j)=='function'then table.insert(aj,j)end end
-function ag.SetVisualEnabled(j)ah=j and true or false if b then b.Visible=ah end
-end function ag.IsVisualEnabled()return ah end function ag.SetRadius(j)if type(j
-)=='number'and j>=0.1 then ak=j if b and b.Parent then b.Radius=ak end end end
-function ag.GetRadius()return ak end local j=function()local j=af or aq.
-LocalPlayer if not j then return end local l=function(l)if b then pcall(function
-()b:Destroy()end)b=nil end task.spawn(function()local m=l:WaitForChild(
-'Humanoid',3)if m then m.Died:Connect(function()if b then b.Visible=false end
-end)end end)end c=j.CharacterAdded:Connect(l)if j.Character then l(j.Character)
-end end j()i()ab.Register(function()if c then c:Disconnect()c=nil end ag.
-Cleanup()end)return ag end function a.n()local aa,ab,ac={},{},8 for ad=1,ac do
-local ae=(ad-1)*(2*math.pi/ac)ab[ad]=Vector3.new(math.cos(ae),0,math.sin(ae))end
-local ad,ae={},16 for af=1,ae do local ag=(af-1)*(2*math.pi/ae)ad[af]=Vector3.
-new(math.cos(ag),0,math.sin(ag))end local af,ag={1.5,3,5,8,12,18,25},{1.5,3,4.5,
-6,8,10.5,13.5,17,21,26,32,40}aa.COARSE_DIRECTIONS=ab aa.FINE_DIRECTIONS=ad aa.
-COARSE_RADII=af aa.FINE_RADII=ag function aa.SamplePass(ah,ai,aj,ak,al,am,an,ao)
-local ap,aq,ar,as,at=math.huge,Vector3.zero,false,ai if ao and ao.Magnitude>0.1
-then local b=Vector3.new(ao.X,0,ao.Z).Unit as=table.clone(ai)table.sort(as,
-function(c,d)local e,f=c.X*b.X+c.Z*b.Z,d.X*b.X+d.Z*b.Z return e>f end)end for b,
-c in ipairs(aj)do local d=false for e,f in ipairs(as)do local g=ah+f*c local h=
-am(g)if an then table.insert(an,{pos=g,isSafe=h,isChosen=false})end if h then
-local i=g if al and ak>0 then local j=g+f*ak if am(j)then i=j end end local j=(i
--ah).Magnitude if j<ap then ap=j at=i aq=f d=true end end end if d and at then
-ar=true break end end return at,ar,ap,aq end return aa end function a.o()local
-aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am=Color3.fromRGB(0,255,120),Color3.fromRGB(
-0,255,150),Color3.fromRGB(255,255,255),Color3.fromRGB(0,235,140),Color3.fromRGB(
-255,60,60),0.2,1.4,0.45,{},{}local an,ao=function(an)if not an then return end
-if not ak or not ak.Parent then if ak then pcall(function()ak:Destroy()end)end
-local ao=Instance.new'CylinderHandleAdornment'ao.Name='SafeSpot_OuterMarker'ao.
-Adornee=an ao.Radius=ag ao.Height=af ao.Color3=aa ao.Transparency=0.35 ao.ZIndex
-=6 ao.AlwaysOnTop=false ao.Visible=false ao.Parent=an ak=ao end if not al or not
-al.Parent then if al then pcall(function()al:Destroy()end)end local ao=Instance.
-new'CylinderHandleAdornment'ao.Name='SafeSpot_CenterDot'ao.Adornee=an ao.Radius=
-ah ao.Height=af+0.05 ao.Color3=ac ao.Transparency=0.15 ao.ZIndex=7 ao.
-AlwaysOnTop=false ao.Visible=false ao.Parent=an al=ao end if not am or not am.
-Parent then if am then pcall(function()am:Destroy()end)end local ao=Instance.new
+0.45,0.2,0.2,(game:GetService'Players')local c,d,e,f=function()local c=af or aq.
+LocalPlayer if not c then return nil end local d=c.Character if not d or not d.
+Parent then return nil end local e=d:FindFirstChildOfClass'Humanoid'if e and e.
+Health<=0 then return nil end return d:FindFirstChild'HumanoidRootPart'or d.
+PrimaryPart end,function(c)if not c then return 0 end return c.Position.Y-2.5
+end,function(c)if au then if au.Parent~=c or not au:IsDescendantOf(workspace)
+then pcall(function()au:Destroy()end)au=nil else if au.Adornee~=c then au.
+Adornee=c end return au end end if not c or not c.Parent then return nil end
+local d=Instance.new'CylinderHandleAdornment'd.Name='Player_2D_HitboxVisual'd.
+Adornee=c d.Radius=ak d.Height=ap d.Color3=ai and am or al d.Transparency=ai and
+ao or an d.ZIndex=5 d.AlwaysOnTop=false d.Visible=ah d.Parent=c au=d return d
+end,function(c)if not au or not au.Parent then return end au.Color3=c and am or
+al au.Transparency=c and ao or an end local g=function()local g=c()if not g or
+not g.Parent then if au and au.Parent then au.Visible=false end if ai then ai=
+false ar=nil as=nil for h,j in ipairs(aj)do pcall(j,false,nil,nil)end end return
+end local h=e(g)if h and h.Parent then h.Visible=ah h.Radius=ak local j=d(g)
+local k=CFrame.new(Vector3.new(g.Position.X,j,g.Position.Z))*CFrame.Angles(math.
+rad(90),0,0)h.CFrame=g.CFrame:ToObjectSpace(k)end local j=Vector3.new(g.Position
+.X,0,g.Position.Z)local k,l,m=ac.IsPointInAnyHazard(j,nil,ak)local n,o=false if
+not k and ad.IsPointInAnyTrajectory then n,o=ad.IsPointInAnyTrajectory(j,ak)end
+local p,q,r=(k or n),l or o,k and'Ground Zone'or(n and'Trajectory Corridor'or
+nil)if p~=ai or q~=ar then ai=p ar=q as=r f(p)for s,t in ipairs(aj)do pcall(t,p,
+q,r)end end end local h=function()if not at then at=ae.Heartbeat:Connect(g)end
+end function ag.Cleanup()if at then at:Disconnect()at=nil end if au then pcall(
+function()au:Destroy()end)au=nil end ai=false ar=nil as=nil end function ag.
+IsPlayerInDanger()return ai,ar,as end function ag.GetCurrentThreat()return ar,as
+end function ag.OnDangerStatusChanged(j)if type(j)=='function'then table.insert(
+aj,j)end end function ag.SetVisualEnabled(j)ah=j and true or false if au then au
+.Visible=ah end end function ag.IsVisualEnabled()return ah end function ag.
+SetRadius(j)if type(j)=='number'and j>=0.1 then ak=j if au and au.Parent then au
+.Radius=ak end end end function ag.GetRadius()return ak end local j=function()
+local j=af or aq.LocalPlayer if not j then return end local k=function(k)if au
+then pcall(function()au:Destroy()end)au=nil end task.spawn(function()local l=k:
+WaitForChild('Humanoid',3)if l then l.Died:Connect(function()if au then au.
+Visible=false end end)end end)end b=j.CharacterAdded:Connect(k)if j.Character
+then k(j.Character)end end j()h()ab.Register(function()if b then b:Disconnect()b
+=nil end ag.Cleanup()end)return ag end function a.o()local aa,ab,ac={},{},8 for
+ad=1,ac do local ae=(ad-1)*(2*math.pi/ac)ab[ad]=Vector3.new(math.cos(ae),0,math.
+sin(ae))end local ad,ae={},16 for af=1,ae do local ag=(af-1)*(2*math.pi/ae)ad[af
+]=Vector3.new(math.cos(ag),0,math.sin(ag))end local af,ag={1.5,3,5,8,12,18,25},{
+1.5,3,4.5,6,8,10.5,13.5,17,21,26,32,40}aa.COARSE_DIRECTIONS=ab aa.
+FINE_DIRECTIONS=ad aa.COARSE_RADII=af aa.FINE_RADII=ag function aa.SamplePass(ah
+,ai,aj,ak,al,am,an,ao)local ap,aq,ar,as,at=math.huge,Vector3.zero,false,ai if ao
+and ao.Magnitude>0.1 then local au=Vector3.new(ao.X,0,ao.Z).Unit as=table.clone(
+ai)table.sort(as,function(b,c)local d,e=b.X*au.X+b.Z*au.Z,c.X*au.X+c.Z*au.Z
+return d>e end)end for au,b in ipairs(aj)do local c=false for d,e in ipairs(as)
+do local f=ah+e*b local g=am(f)if an then table.insert(an,{pos=f,isSafe=g,
+isChosen=false})end if g then local h=f if al and ak>0 then local j=f+e*ak if
+am(j)then h=j end end local j=(h-ah).Magnitude if j<ap then ap=j at=h aq=e c=
+true end end end if c and at then ar=true break end end return at,ar,ap,aq end
+return aa end function a.p()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am=Color3.
+fromRGB(0,255,120),Color3.fromRGB(0,255,150),Color3.fromRGB(255,255,255),Color3.
+fromRGB(0,235,140),Color3.fromRGB(255,60,60),0.2,1.4,0.45,{},{}local an,ao=
+function(an)if not an then return end if not ak or not ak.Parent then if ak then
+pcall(function()ak:Destroy()end)end local ao=Instance.new
+'CylinderHandleAdornment'ao.Name='SafeSpot_OuterMarker'ao.Adornee=an ao.Radius=
+ag ao.Height=af ao.Color3=aa ao.Transparency=0.35 ao.ZIndex=6 ao.AlwaysOnTop=
+false ao.Visible=false ao.Parent=an ak=ao end if not al or not al.Parent then if
+al then pcall(function()al:Destroy()end)end local ao=Instance.new
+'CylinderHandleAdornment'ao.Name='SafeSpot_CenterDot'ao.Adornee=an ao.Radius=ah
+ao.Height=af+0.05 ao.Color3=ac ao.Transparency=0.15 ao.ZIndex=7 ao.AlwaysOnTop=
+false ao.Visible=false ao.Parent=an al=ao end if not am or not am.Parent then if
+am then pcall(function()am:Destroy()end)end local ao=Instance.new
 'LineHandleAdornment'ao.Name='SafeSpot_EscapeLine'ao.Adornee=an ao.Color3=ab ao.
 Thickness=3.5 ao.Transparency=0.2 ao.ZIndex=6 ao.AlwaysOnTop=false ao.Visible=
 false ao.Parent=an am=ao end end,function(an,ao)local ap=aj[an]if not ap then
@@ -703,512 +789,316 @@ Parent then aq.line.Visible=false end end end function ai.Hide()if ak and ak.
 Parent then ak.Visible=false end if al and al.Parent then al.Visible=false end
 if am and am.Parent then am.Visible=false end ai.HideCandidates()end local ap=
 function(ap,aq,ar,as)if not as or not ar or#ar==0 then ai.HideCandidates()return
-end local at=Vector3.new(ap.Position.X,aq+0.05,ap.Position.Z)local b=ap.CFrame:
-PointToObjectSpace(at)for c,d in ipairs(ar)do local e,f=ao(c,ap),Vector3.new(d.
-pos.X,aq+0.05,d.pos.Z)local g,h,i=ap.CFrame:PointToObjectSpace(f),d.isSafe and
-ad or ae,d.isSafe and 0.35 or 0.55 if e.dot and e.dot.Parent then local j=CFrame
-.new(f)*CFrame.Angles(math.rad(90),0,0)e.dot.CFrame=ap.CFrame:ToObjectSpace(j)e.
-dot.Color3=h e.dot.Transparency=i e.dot.Radius=d.isSafe and 0.3 or 0.2 e.dot.
-Visible=true end if e.line and e.line.Parent then local j=g-b local l=j.
-Magnitude if l>0.2 then e.line.CFrame=CFrame.lookAt(b,g)e.line.Length=l e.line.
-Color3=h e.line.Transparency=i+0.15 e.line.Thickness=d.isSafe and 1.4 or 0.9 e.
-line.Visible=true else e.line.Visible=false end end end for c=#ar+1,#aj do local
-d=aj[c]if d.dot and d.dot.Parent then d.dot.Visible=false end if d.line and d.
-line.Parent then d.line.Visible=false end end end function ai.Update(aq,ar,as,at
-,b,c)if not aq or not aq.Parent or not b or not ar then ai.Hide()return end an(
-aq)local d=Vector3.new(ar.X,as,ar.Z)if ak and ak.Parent then local e=CFrame.new(
-d)*CFrame.Angles(math.rad(90),0,0)ak.CFrame=aq.CFrame:ToObjectSpace(e)ak.Visible
-=true end if al and al.Parent then local e=CFrame.new(d)*CFrame.Angles(math.rad(
-90),0,0)al.CFrame=aq.CFrame:ToObjectSpace(e)al.Visible=true end if am and am.
-Parent then local e,f=Vector3.new(aq.Position.X,as+0.1,aq.Position.Z),Vector3.
-new(ar.X,as+0.1,ar.Z)local g,h=aq.CFrame:PointToObjectSpace(e),aq.CFrame:
-PointToObjectSpace(f)local i=h-g local j=i.Magnitude if j>0.3 then am.CFrame=
-CFrame.new(g)am.Length=j am.CFrame=CFrame.lookAt(g,h)am.Visible=true else am.
-Visible=false end end ap(aq,as,at,c)end function ai.Cleanup()if ak then pcall(
+end local at=Vector3.new(ap.Position.X,aq+0.05,ap.Position.Z)local au=ap.CFrame:
+PointToObjectSpace(at)for b,c in ipairs(ar)do local d,e=ao(b,ap),Vector3.new(c.
+pos.X,aq+0.05,c.pos.Z)local f,g,h=ap.CFrame:PointToObjectSpace(e),c.isSafe and
+ad or ae,c.isSafe and 0.35 or 0.55 if d.dot and d.dot.Parent then local j=CFrame
+.new(e)*CFrame.Angles(math.rad(90),0,0)d.dot.CFrame=ap.CFrame:ToObjectSpace(j)d.
+dot.Color3=g d.dot.Transparency=h d.dot.Radius=c.isSafe and 0.3 or 0.2 d.dot.
+Visible=true end if d.line and d.line.Parent then local j=f-au local k=j.
+Magnitude if k>0.2 then d.line.CFrame=CFrame.lookAt(au,f)d.line.Length=k d.line.
+Color3=g d.line.Transparency=h+0.15 d.line.Thickness=c.isSafe and 1.4 or 0.9 d.
+line.Visible=true else d.line.Visible=false end end end for b=#ar+1,#aj do local
+c=aj[b]if c.dot and c.dot.Parent then c.dot.Visible=false end if c.line and c.
+line.Parent then c.line.Visible=false end end end function ai.Update(aq,ar,as,at
+,au,b)if not aq or not aq.Parent or not au or not ar then ai.Hide()return end
+an(aq)local c=Vector3.new(ar.X,as,ar.Z)if ak and ak.Parent then local d=CFrame.
+new(c)*CFrame.Angles(math.rad(90),0,0)ak.CFrame=aq.CFrame:ToObjectSpace(d)ak.
+Visible=true end if al and al.Parent then local d=CFrame.new(c)*CFrame.Angles(
+math.rad(90),0,0)al.CFrame=aq.CFrame:ToObjectSpace(d)al.Visible=true end if am
+and am.Parent then local d,e=Vector3.new(aq.Position.X,as+0.1,aq.Position.Z),
+Vector3.new(ar.X,as+0.1,ar.Z)local f,g=aq.CFrame:PointToObjectSpace(d),aq.CFrame
+:PointToObjectSpace(e)local h=g-f local j=h.Magnitude if j>0.3 then am.CFrame=
+CFrame.new(f)am.Length=j am.CFrame=CFrame.lookAt(f,g)am.Visible=true else am.
+Visible=false end end ap(aq,as,at,b)end function ai.Cleanup()if ak then pcall(
 function()ak:Destroy()end)ak=nil end if al then pcall(function()al:Destroy()end)
 al=nil end if am then pcall(function()am:Destroy()end)am=nil end for aq,ar in
 ipairs(aj)do if ar.dot then pcall(function()ar.dot:Destroy()end)end if ar.line
 then pcall(function()ar.line:Destroy()end)end end table.clear(aj)end return ai
-end function a.p()local aa,ab,ac,ad,ae,af,ag,ah=a.load'a',a.load'c',a.load'b',a.
-load'i',a.load'k',a.load'm',a.load'n',a.load'o'local ai,aj,ak,al,am,an,ao,ap,aq,
-ar,as,at,b,c,d,e,f,g=aa.RunService or game:GetService'RunService',game:
-GetService'Players',aa.player,{},true,true,true,2,0,false,{},{},0 local h,i,j=
-function()local h=ak or aj.LocalPlayer if not h then return nil end local i=h.
-Character if not i or not i.Parent then return nil end local j=i:
-FindFirstChildOfClass'Humanoid'if j and j.Health<=0 then return nil end return i
-:FindFirstChild'HumanoidRootPart'or i.PrimaryPart end,function(h)local i=ak or
-aj.LocalPlayer if not i then return nil end local j=i.Character if not j or not
-j.Parent then return nil end local l=j:FindFirstChildOfClass'Humanoid'if l and l
-.Health>0 then local m=l.MoveDirection if m and m.Magnitude>0.1 then return
-Vector3.new(m.X,0,m.Z).Unit end end if h and h.Parent then local m=Vector3.zero
-pcall(function()m=h.AssemblyLinearVelocity or h.Velocity or Vector3.zero end)
-local n=Vector3.new(m.X,0,m.Z)if n.Magnitude>=2 then return n.Unit end end
-return nil end,function(h)if not h then return 0 end return h.Position.Y-2.5 end
-function al.IsPointSafe(l,m)if not l then return false end local n,o=Vector3.
-new(l.X,0,l.Z),(af.GetRadius and af.GetRadius()or 1.8)+(m or 0)if ad.
-IsPointInAnyHazard and ad.IsPointInAnyHazard(n,nil,o)then return false end if ae
-.IsPointInAnyTrajectory and ae.IsPointInAnyTrajectory(n,o)then return false end
-return true end function al.FindNearestSafeSpot(l)local m=h()if not l then if
-not m then return nil,false,0,Vector3.zero end l=m.Position end local n,o=
-Vector3.new(l.X,0,l.Z),i(m)table.clear(at)local p,q=ad.GetNearbyHazards and ad.
-GetNearbyHazards(n,65)or nil,ae.GetNearbyTrajectories and ae.
-GetNearbyTrajectories(n,65)or nil local r=function(r,s)if not r then return
-false end local t,u=Vector3.new(r.X,0,r.Z),(af.GetRadius and af.GetRadius()or
-1.8)+(s or 0)if ad.IsPointInAnyHazard and ad.IsPointInAnyHazard(t,nil,u,p)then
-return false end if ae.IsPointInAnyTrajectory and ae.IsPointInAnyTrajectory(t,u,
-q)then return false end return true end if(p and#p==0 and q and#q==0)or r(n,0)
-then table.insert(at,{pos=n,isSafe=true,isChosen=true})return n,true,0,Vector3.
-zero end local s,t=o,af.GetRadius and af.GetRadius()or 1.8 local u,v,w,x=ae.
-IsPointInAnyTrajectory(n,t,q)if u and w and x then local y,z,A=Vector3.new(-w.Z,
-0,w.X),Vector3.new(w.Z,0,-w.X),n-x local B=A.X*y.X+A.Z*y.Z local C=B>=0 and y or
-z if o and o.Magnitude>0.1 then local D,E=o.X*y.X+o.Z*y.Z,o.X*z.X+o.Z*z.Z if D>E
-+0.3 then C=y elseif E>D+0.3 then C=z end end local D=0.45 if o and o.Magnitude>
-0.1 then local E,F=-(o.X*w.X+o.Z*w.Z),math.abs(o.X*C.X+o.Z*C.Z)if F>0.05 then
-local G=E/F D=math.clamp(G,0.18,1)elseif E>0 then D=1 else D=0.18 end end local
-E=(C-D*w).Unit s=E end local y,z,A,B=ag.SamplePass(n,ag.COARSE_DIRECTIONS,ag.
-COARSE_RADII,ap,true,r,at,s)if not z then y,z,A,B=ag.SamplePass(n,ag.
-FINE_DIRECTIONS,ag.FINE_RADII,ap,true,r,at,s)end if not z then y,z,A,B=ag.
-SamplePass(n,ag.FINE_DIRECTIONS,ag.FINE_RADII,0,false,r,at,s)end if z and y then
-for C,D in ipairs(at)do if(D.pos-y).Magnitude<0.25 then D.isChosen=true break
-end end return y,true,A,B end return n,false,math.huge,Vector3.zero end local l=
-function()if not am then ah.Hide()return end local l=h()if not l or not l.Parent
-then ah.Hide()return end local m,n,o=false if af.IsPlayerInDanger then m,n,o=af.
-IsPlayerInDanger()end local p=m or(c~=nil)or ar if not p then local q=os.clock()
-if q-b<0.05 then return end b=q end local q,r=j(l),Vector3.new(l.Position.X,0,l.
-Position.Z)if m then local s,t,u=c and(c-r).Magnitude or 0,c and al.IsPointSafe(
-c),(n==d and o==e)if not t or not u or not c then local v,w,x,y=al.
-FindNearestSafeSpot(l.Position)if w and v then c=v d=n e=o aq=x ar=true ah.
-Update(l,v,q,at,an,ao)for z,A in ipairs(as)do pcall(A,true,v,x)end else ah.Hide(
-)end else aq=s ah.Update(l,c,q,at,an,ao)for v,w in ipairs(as)do pcall(w,true,c,s
-)end end else local s,t=c and(c-r).Magnitude or 0,c and al.IsPointSafe(c)if t
-and s>0.8 then aq=s ah.Update(l,c,q,at,an,ao)for u,v in ipairs(as)do pcall(v,
-true,c,s)end else if ar or c then ar=false c=nil d=nil e=nil aq=0 ah.Hide()for u
-,v in ipairs(as)do pcall(v,false,nil,0)end end end end end local m=function()if
-not f then f=ai.Heartbeat:Connect(l)end if not g and af.OnDangerStatusChanged
-then g=af.OnDangerStatusChanged(function(m)if m and am then l()end end)end end
-function al.Clear()if ar or c then ar=false c=nil d=nil e=nil aq=0 table.clear(
-at)ah.Hide()for n,o in ipairs(as)do pcall(o,false,nil,0)end end end function al.
-Cleanup()if f then f:Disconnect()f=nil end ah.Cleanup()table.clear(at)c=nil d=
-nil e=nil aq=0 ar=false b=0 end function al.GetLastSafeSpot()return c,aq,ar end
-function al.OnSafeSpotChanged(n)if type(n)=='function'then table.insert(as,n)end
-end function al.SetVisualEnabled(n)an=n and true or false if not an then ah.
-Hide()end end function al.IsVisualEnabled()return an end function al.
-SetShowCandidates(n)ao=n and true or false if not ao then ah.HideCandidates()end
-end function al.IsShowCandidates()return ao end function al.SetEnabled(n)am=n
-and true or false if not am then ah.Hide()end end function al.IsEnabled()return
-am end function al.SetSafetyBuffer(n)if type(n)=='number'and n>=0 then ap=n end
-end function al.GetSafetyBuffer()return ap end local n=function()local n=ak or
-aj.LocalPlayer if not n then return end n.CharacterAdded:Connect(function()al.
-Clear()end)end n()if ab.OnRoomIndexChanged then ab.OnRoomIndexChanged(function()
-al.Clear()end)end if ab.OnEnemyChanged then ab.OnEnemyChanged(function()if ab.
-GetEnemyCount and ab.GetEnemyCount()==0 then al.Clear()end end)end if ab.
-OnLobbyChanged then ab.OnLobbyChanged(function()al.Clear()end)end if ab.
-OnBossActiveChanged then ab.OnBossActiveChanged(function()al.Clear()end)end m()
-ac.Register(function()al.Cleanup()end)return al end function a.q()local aa,ab,ac
-,ad,ae=a.load'a',a.load'c',a.load'b',a.load'm',a.load'p'local af,ag,ah,ai,aj,ak,
-al,am,an,ao=aa.RunService or game:GetService'RunService',game:GetService
-'Players',aa.player,{},false,2,false,{}local ap,aq=function()local ap=ah or ag.
-LocalPlayer if not ap then return nil,nil,nil end local aq=ap.Character if not
-aq or not aq.Parent then return nil,nil,nil end local ar=aq:
-FindFirstChildOfClass'Humanoid'if ar and ar.Health<=0 then return nil,nil,nil
-end local as=aq:FindFirstChild'HumanoidRootPart'or aq.PrimaryPart if not as then
-return nil,nil,nil end return aq,ar,as end,function(ap,aq)if ap and aq and aq.
-Parent then pcall(function()ap:MoveTo(aq.Position)end)end end local ar=function(
-)if not aj then if al or an then an=nil al=false local ar,as,at=ap()aq(as,at)for
-b,c in ipairs(am)do pcall(c,false,nil,0)end end return end local ar,as,at=ap()if
-not ar or not as or not at then if al or an then an=nil al=false for b,c in
-ipairs(am)do pcall(c,false,nil,0)end end return end if ab.IsInvulnerable and ab.
-IsInvulnerable()then if al or an then an=nil al=false local b,c,d=ap()aq(c,d)for
-e,f in ipairs(am)do pcall(f,false,nil,0)end end return end local b,c,d,e=ad.
-IsPlayerInDanger and ad.IsPlayerInDanger(),ae.GetLastSafeSpot()if c then an=c
-end local f=an and ae.IsPointSafe and ae.IsPointSafe(an)if an and f then local g
-=at.Position local h=Vector3.new(an.X-g.X,0,an.Z-g.Z)local i=h.Magnitude if i<=
-ak then local j,l=at.CFrame,Vector3.new(an.X,g.Y,an.Z)local m=CFrame.new(l)*(j-j
-.Position)ar:PivotTo(m)aq(as,at)local n=an an=nil if al then al=false for o,p in
-ipairs(am)do pcall(p,false,n,i)end end else local j=Vector3.new(an.X,g.Y,an.Z)as
-:MoveTo(j)if not al then al=true for l,m in ipairs(am)do pcall(m,true,an,i)end
-end end else if al or an then an=nil al=false aq(as,at)for g,h in ipairs(am)do
-pcall(h,false,nil,0)end end end end local as=function()if not ao then ao=af.
-Heartbeat:Connect(ar)end end function ai.Clear()if al or an then an=nil al=false
-local at,b,c=ap()aq(b,c)for d,e in ipairs(am)do pcall(e,false,nil,0)end end end
-function ai.Cleanup()if ao then ao:Disconnect()ao=nil end ai.Clear()end function
-ai.SetEnabled(at)aj=at and true or false if not aj then local b,c,d=ap()aq(c,d)
-an=nil al=false end end function ai.IsEnabled()return aj end function ai.
-SetSnapDistance(at)if type(at)=='number'and at>=0.5 then ak=at end end function
-ai.GetSnapDistance()return ak end function ai.IsDodging()return al end function
-ai.OnDodgeStateChanged(at)if type(at)=='function'then table.insert(am,at)end end
-if ab.OnRoomIndexChanged then ab.OnRoomIndexChanged(function()ai.Clear()end)end
-if ab.OnEnemyChanged then ab.OnEnemyChanged(function()if ab.GetEnemyCount and ab
-.GetEnemyCount()==0 then ai.Clear()end end)end if ab.OnLobbyChanged then ab.
-OnLobbyChanged(function()ai.Clear()end)end if ab.OnBossActiveChanged then ab.
-OnBossActiveChanged(function()ai.Clear()end)end as()ac.Register(function()ai.
-Cleanup()end)return ai end function a.r()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load
-'b',a.load'l',a.load'i',a.load'j',a.load'k',a.load'm',a.load'p',a.load'q',{}ac.
-BindDetection(ab)ad.BindDetection(ab)ae.BindDetection(ab)ai.IsPointInAnyHazard=
-ac.IsPointInAnyHazard ai.GetHazardPadding=ac.GetHazardPadding ai.
-SetHazardPadding=ac.SetHazardPadding ai.GetHitboxPadding=ac.GetHazardPadding ai.
-SetHitboxPadding=ac.SetHazardPadding ai.GetTrajectoryMargin=ac.
-GetTrajectoryMargin ai.SetTrajectoryMargin=ac.SetTrajectoryMargin ai.
-GetHazardZones=ac.GetHazardZones ai.GetNearbyHazards=ac.GetNearbyHazards ai.
-AddForceCircleName=ac.AddForceCircleName ai.GetForceCircleNames=ac.
-GetForceCircleNames ai.IsForceCircle=ac.IsForceCircle ai.IsPlayerInDanger=af.
-IsPlayerInDanger ai.GetPlayerThreat=af.GetCurrentThreat ai.OnPlayerDangerChanged
-=af.OnDangerStatusChanged ai.SetPlayerVisualEnabled=af.SetVisualEnabled ai.
-IsPlayerVisualEnabled=af.IsVisualEnabled ai.SetPlayerHitboxRadius=af.SetRadius
-ai.GetPlayerHitboxRadius=af.GetRadius ai.FindNearestSafeSpot=ag.
-FindNearestSafeSpot ai.IsPointSafe=ag.IsPointSafe ai.GetLastSafeSpot=ag.
-GetLastSafeSpot ai.OnSafeSpotChanged=ag.OnSafeSpotChanged ai.
-SetSafeSpotVisualEnabled=ag.SetVisualEnabled ai.IsSafeSpotVisualEnabled=ag.
-IsVisualEnabled ai.SetSafeSpotEnabled=ag.SetEnabled ai.IsSafeSpotEnabled=ag.
-IsEnabled ai.SetSafeSpotBuffer=ag.SetSafetyBuffer ai.GetSafeSpotBuffer=ag.
-GetSafetyBuffer ai.SetShowCandidates=ag.SetShowCandidates ai.IsShowCandidates=ag
-.IsShowCandidates ai.ClearSafeSpot=ag.Clear ai.SetAutoDodgeEnabled=ah.SetEnabled
-ai.IsAutoDodgeEnabled=ah.IsEnabled ai.SetDodgeSnapDistance=ah.SetSnapDistance ai
-.GetDodgeSnapDistance=ah.GetSnapDistance ai.IsCurrentlyDodging=ah.IsDodging ai.
-OnDodgeStateChanged=ah.OnDodgeStateChanged ai.ClearDodge=ah.Clear ai.
-SetVisualizerEnabled=ad.SetEnabled ai.IsVisualizerEnabled=ad.IsEnabled ai.
-RefreshVisuals=ad.RefreshAll ai.SetTrajectoryEnabled=ae.SetEnabled ai.
-IsTrajectoryEnabled=ae.IsEnabled ai.SetTrajectoryLength=ae.SetPredictionLength
-ai.GetTrajectoryLength=ae.GetPredictionLength ai.RefreshTrajectory=ae.RefreshAll
-ai.IsPointInAnyTrajectory=ae.IsPointInAnyTrajectory ai.GetNearbyTrajectories=ae.
-GetNearbyTrajectories ai.SetSelectionBoxesEnabled=ab.SetSelectionBoxesEnabled ai
-.IsSelectionBoxesEnabled=ab.IsSelectionBoxesEnabled ai.StartDetection=ab.
-StartScan ai.StopDetection=ab.StopScan ai.IsDetectionEnabled=ab.IsEnabled ai.
-SetDetectionEnabled=ab.SetEnabled ai.SetLogHazards=ab.SetLogHazards ai.
-IsLogHazardsEnabled=ab.IsLogHazardsEnabled ai.SetLogThreats=ai.SetLogHazards ai.
-IsLogThreatsEnabled=ai.IsLogHazardsEnabled ai.SetLogFailed=ab.SetLogFailed ai.
-IsLogFailedEnabled=ab.IsLogFailedEnabled ai.SetInspectTarget=ab.SetInspectTarget
-ai.GetInspectTarget=ab.GetInspectTarget ai.SetInspectEnabled=ab.
-SetInspectEnabled ai.IsInspectEnabled=ab.IsInspectEnabled ai.GetHazardCount=ab.
-GetHazardCount ai.GetActiveHazards=ab.GetActiveHazards ai.GetLastHazardInfo=ab.
-GetLastHazardInfo ai.OnHazardChanged=ab.OnHazardChanged function ai.StartScan()
-ab.StartScan()end function ai.StopScan()ab.StopScan()end function ai.Toggle(aj)
-if aj then ai.StartScan()else ai.StopScan()end end function ai.IsEnabled()return
-ab.IsEnabled()end aa.Register(function()ab.StopScan()end)return ai end function
-a.s()local aa,ab,ac,ad=a.load'a',a.load'c',a.load'b',a.load'g'local ae,af,ag,ah,
-ai,aj,ak,al,am,an,ao,ap=aa.RunService or game:GetService'RunService',aa.
-VirtualInputManager or game:GetService'VirtualInputManager',aa.player,{},false,
-35,0.15,0,0,false,false function ah.IsEnabled()return ai end local aq,ar
-function ah.SetEnabled(as)local at=as==true if at==ai then return end ai=at if
-ai then aq()else ar()end end ah.IsSkillQEnabled=ah.IsEnabled ah.SetSkillQEnabled
-=ah.SetEnabled ah.IsSkillEEnabled=ah.IsEnabled ah.SetSkillEEnabled=ah.SetEnabled
-function ah.GetSkillERange()return aj end function ah.SetSkillERange(as)if type(
-as)=='number'and as>=2 then aj=as end end function ah.GetSpamInterval()return ak
-end function ah.SetSpamInterval(as)if type(as)=='number'and as>=0.05 then ak=as
-end end function ah.IsBuffActive()local as,at=pcall(function()return workspace:
-FindFirstChild'groundAura'end)return as and at~=nil end local as=function()local
-as=ag or game:GetService'Players'.LocalPlayer local at=as and as.Character local
-b=at and(at:FindFirstChild'HumanoidRootPart'or at.PrimaryPart)if b and b.Parent
-then return b end return nil end local at=function()local at=as()if not at then
-return nil,math.huge,false end local b,c=at.Position,ad.GetTarget and ad.
-GetTarget()if c and c.Root and c.Root.Parent then local d=c.Humanoid or(c.Model
-and c.Model:FindFirstChildOfClass'Humanoid')if d and d.Health>0 then local e=c.
-Root.Position local f=Vector3.new(e.X-b.X,0,e.Z-b.Z).Magnitude return c,f,true
-end end local d,e,f,g=ab.GetTrackedEnemyData and ab.GetTrackedEnemyData(),math.
-huge,false if d and#d>0 then for h,i in ipairs(d)do if i and i.Root and i.Root.
-Parent then local j=i.Humanoid or(i.Model and i.Model:FindFirstChildOfClass
-'Humanoid')if j and j.Health>0 then f=true local l=i.Root.Position local m,n=l.X
--b.X,l.Z-b.Z local o=m*m+n*n if o<e then e=o g=i end end end end end local h=e<
-math.huge and math.sqrt(e)or math.huge return g,h,f end function ah.CastSkillQ()
-if an then return end an=true task.spawn(function()local b=(ab.GetKeyHoldTime
-and ab.GetKeyHoldTime())or 0.05 pcall(function()af:SendKeyEvent(true,Enum.
-KeyCode.Q,false,game)end)task.wait(b)pcall(function()af:SendKeyEvent(false,Enum.
-KeyCode.Q,false,game)end)an=false end)end function ah.CastSkillE()if ao then
-return end ao=true task.spawn(function()local b=(ab.GetKeyHoldTime and ab.
-GetKeyHoldTime())or 0.05 pcall(function()af:SendKeyEvent(true,Enum.KeyCode.E,
-false,game)end)task.wait(b)pcall(function()af:SendKeyEvent(false,Enum.KeyCode.E,
-false,game)end)ao=false end)end local b=function()if not ai or ab.IsInLobby()
-then return end local b=as()if not b then return end local c=b.Parent local d=c
-and c:FindFirstChildOfClass'Humanoid'if d and d.Health<=0 then return end local
-e,f,g=at()local h=os.clock()if(h-al>=ak)and not an then if g then al=h ah.
-CastSkillQ()end end if(h-am>=ak)and not ao then if e and f<=aj then local i=ah.
-IsBuffActive()if i then am=h ah.CastSkillE()end end end end aq=function()if not
-ap then ap=ae.Heartbeat:Connect(b)end end ar=function()if ap then ap:Disconnect(
-)ap=nil end an=false ao=false end function ah.Step(c,d,e)end ac.Register(
-function()ah.SetEnabled(false)end)return ah end function a.t()local aa={Options=
-{},Folder='Maclib',contextData={},GetService=function(aa)return cloneref and
-cloneref(game:GetService(aa))or game:GetService(aa)end}local ab,ac,ad,ae,af,ag,
-ah=aa.GetService'TweenService',aa.GetService'RunService',aa.GetService
-'HttpService',aa.GetService'ContentProvider',aa.GetService'UserInputService',aa.
-GetService'Lighting',aa.GetService'Players'local ai,aj,ak,al,am,an,ao,ap,aq,ar=
-ac:IsStudio(),ah.LocalPlayer,{},0,false,{interFont='rbxassetid://12187365364',
-userInfoBlurred='rbxassetid://18824089198',toggleBackground=
-'rbxassetid://18772190202',togglerHead='rbxassetid://18772309008',buttonImage=
-'rbxassetid://10709791437',searchIcon='rbxassetid://86737463322606',colorWheel=
-'rbxassetid://2849458409',colorTarget='rbxassetid://73265255323268',grid=
-'rbxassetid://121484455191370',globe='rbxassetid://108952102602834',transform=
-'rbxassetid://90336395745819',dropdown='rbxassetid://18865373378',sliderbar=
-'rbxassetid://18772615246',sliderhead='rbxassetid://18772834246'}local as,at=
-function()local as=Instance.new'ScreenGui'as.ScreenInsets=Enum.ScreenInsets.None
-as.ResetOnSpawn=false as.ZIndexBehavior=Enum.ZIndexBehavior.Sibling as.
-DisplayOrder=2147483647 local at=ac:IsStudio()and aj:FindFirstChild'PlayerGui'or
-(gethui and gethui())or(cloneref and cloneref(aa.GetService'CoreGui')or aa.
-GetService'CoreGui')as.Parent=at return as end,function(as,at,b)return ab:
-Create(as,at,b)end function aa:Window(b)local c={Settings=b}if b.AcrylicBlur~=
-nil then ap=b.AcrylicBlur else ap=true end local d,e=as(),Instance.new'Frame'e.
-Name='Notifications'e.BackgroundColor3=Color3.fromRGB(255,255,255)e.
-BackgroundTransparency=1 e.BorderColor3=Color3.fromRGB(0,0,0)e.BorderSizePixel=0
-e.Size=UDim2.fromScale(1,1)e.Parent=d e.ZIndex=2 local f=Instance.new
-'UIListLayout'f.Name='NotificationsUIListLayout'f.Padding=UDim.new(0,10)f.
-HorizontalAlignment=Enum.HorizontalAlignment.Right f.SortOrder=Enum.SortOrder.
-LayoutOrder f.VerticalAlignment=Enum.VerticalAlignment.Bottom f.Parent=e local g
-=Instance.new'UIPadding'g.Name='NotificationsUIPadding'g.PaddingBottom=UDim.new(
-0,10)g.PaddingLeft=UDim.new(0,10)g.PaddingRight=UDim.new(0,10)g.PaddingTop=UDim.
-new(0,10)g.Parent=e local h=Instance.new'Frame'h.Name='Base'h.AnchorPoint=
-Vector2.new(0.5,0.5)h.BackgroundColor3=Color3.fromRGB(15,15,15)h.
-BackgroundTransparency=b.AcrylicBlur and 0.05 or 0 h.BorderColor3=Color3.
-fromRGB(0,0,0)h.BorderSizePixel=0 h.Position=UDim2.fromScale(0.5,0.5)h.Size=b.
-Size or UDim2.fromOffset(868,650)local i=Instance.new'UIScale'i.Name=
-'BaseUIScale'i.Parent=h local j=Instance.new'UICorner'j.Name='BaseUICorner'j.
-CornerRadius=UDim.new(0,10)j.Parent=h local l=Instance.new'UIStroke'l.Name=
-'BaseUIStroke'l.ApplyStrokeMode=Enum.ApplyStrokeMode.Border l.Color=Color3.
-fromRGB(255,255,255)l.Transparency=0.9 l.Parent=h local m=Instance.new'Frame'm.
-Name='Sidebar'm.BackgroundColor3=Color3.fromRGB(255,255,255)m.
-BackgroundTransparency=1 m.BorderColor3=Color3.fromRGB(0,0,0)m.BorderSizePixel=0
-m.Position=UDim2.fromScale(-3.5199999999999996E-8,4.69e-8)m.Size=b.SidebarWidth
-and UDim2.new(0,b.SidebarWidth,1,0)or UDim2.fromScale(0.325,1)local n=Instance.
-new'Frame'n.Name='Divider'n.AnchorPoint=Vector2.new(1,0)n.BackgroundColor3=
-Color3.fromRGB(255,255,255)n.BackgroundTransparency=0.9 n.BorderColor3=Color3.
-fromRGB(0,0,0)n.BorderSizePixel=0 n.Position=UDim2.fromScale(1,0)n.Size=UDim2.
-new(0,1,1,0)n.Parent=m local o=Instance.new'TextButton'o.Name='DividerInteract'o
-.AnchorPoint=Vector2.new(0.5,0)o.BackgroundColor3=Color3.fromRGB(255,255,255)o.
-BackgroundTransparency=1 o.BorderColor3=Color3.fromRGB(0,0,0)o.BorderSizePixel=0
-o.FontFace=Font.new'rbxasset://fonts/families/SourceSansPro.json'o.Position=
-UDim2.fromScale(0.5,0)o.Size=UDim2.new(1,6,1,0)o.Text=''o.TextColor3=Color3.
-fromRGB(0,0,0)o.TextSize=14 o.Parent=n local p=Instance.new'Frame'p.Name=
-'WindowControls'p.BackgroundColor3=Color3.fromRGB(255,255,255)p.
+end function a.q()local aa={Options={},Folder='Maclib',contextData={},GetService
+=function(aa)return cloneref and cloneref(game:GetService(aa))or game:
+GetService(aa)end}local ab,ac,ad,ae,af,ag,ah=aa.GetService'TweenService',aa.
+GetService'RunService',aa.GetService'HttpService',aa.GetService'ContentProvider'
+,aa.GetService'UserInputService',aa.GetService'Lighting',aa.GetService'Players'
+local ai,aj,ak,al,am,an,ao,ap,aq,ar=ac:IsStudio(),ah.LocalPlayer,{},0,false,{
+interFont='rbxassetid://12187365364',userInfoBlurred='rbxassetid://18824089198',
+toggleBackground='rbxassetid://18772190202',togglerHead=
+'rbxassetid://18772309008',buttonImage='rbxassetid://10709791437',searchIcon=
+'rbxassetid://86737463322606',colorWheel='rbxassetid://2849458409',colorTarget=
+'rbxassetid://73265255323268',grid='rbxassetid://121484455191370',globe=
+'rbxassetid://108952102602834',transform='rbxassetid://90336395745819',dropdown=
+'rbxassetid://18865373378',sliderbar='rbxassetid://18772615246',sliderhead=
+'rbxassetid://18772834246'}local as,at=function()local as=Instance.new
+'ScreenGui'as.ScreenInsets=Enum.ScreenInsets.None as.ResetOnSpawn=false as.
+ZIndexBehavior=Enum.ZIndexBehavior.Sibling as.DisplayOrder=2147483647 local at=
+ac:IsStudio()and aj:FindFirstChild'PlayerGui'or(gethui and gethui())or(cloneref
+and cloneref(aa.GetService'CoreGui')or aa.GetService'CoreGui')as.Parent=at
+return as end,function(as,at,au)return ab:Create(as,at,au)end function aa:Window
+(au)local b={Settings=au}if au.AcrylicBlur~=nil then ap=au.AcrylicBlur else ap=
+true end local c,d=as(),Instance.new'Frame'd.Name='Notifications'd.
+BackgroundColor3=Color3.fromRGB(255,255,255)d.BackgroundTransparency=1 d.
+BorderColor3=Color3.fromRGB(0,0,0)d.BorderSizePixel=0 d.Size=UDim2.fromScale(1,1
+)d.Parent=c d.ZIndex=2 local e=Instance.new'UIListLayout'e.Name=
+'NotificationsUIListLayout'e.Padding=UDim.new(0,10)e.HorizontalAlignment=Enum.
+HorizontalAlignment.Right e.SortOrder=Enum.SortOrder.LayoutOrder e.
+VerticalAlignment=Enum.VerticalAlignment.Bottom e.Parent=d local f=Instance.new
+'UIPadding'f.Name='NotificationsUIPadding'f.PaddingBottom=UDim.new(0,10)f.
+PaddingLeft=UDim.new(0,10)f.PaddingRight=UDim.new(0,10)f.PaddingTop=UDim.new(0,
+10)f.Parent=d local g=Instance.new'Frame'g.Name='Base'g.AnchorPoint=Vector2.new(
+0.5,0.5)g.BackgroundColor3=Color3.fromRGB(15,15,15)g.BackgroundTransparency=au.
+AcrylicBlur and 0.05 or 0 g.BorderColor3=Color3.fromRGB(0,0,0)g.BorderSizePixel=
+0 g.Position=UDim2.fromScale(0.5,0.5)g.Size=au.Size or UDim2.fromOffset(868,650)
+local h=Instance.new'UIScale'h.Name='BaseUIScale'h.Parent=g local j=Instance.new
+'UICorner'j.Name='BaseUICorner'j.CornerRadius=UDim.new(0,10)j.Parent=g local k=
+Instance.new'UIStroke'k.Name='BaseUIStroke'k.ApplyStrokeMode=Enum.
+ApplyStrokeMode.Border k.Color=Color3.fromRGB(255,255,255)k.Transparency=0.9 k.
+Parent=g local l=Instance.new'Frame'l.Name='Sidebar'l.BackgroundColor3=Color3.
+fromRGB(255,255,255)l.BackgroundTransparency=1 l.BorderColor3=Color3.fromRGB(0,0
+,0)l.BorderSizePixel=0 l.Position=UDim2.fromScale(-3.5199999999999996E-8,4.69e-8
+)l.Size=au.SidebarWidth and UDim2.new(0,au.SidebarWidth,1,0)or UDim2.fromScale(
+0.325,1)local m=Instance.new'Frame'm.Name='Divider'm.AnchorPoint=Vector2.new(1,0
+)m.BackgroundColor3=Color3.fromRGB(255,255,255)m.BackgroundTransparency=0.9 m.
+BorderColor3=Color3.fromRGB(0,0,0)m.BorderSizePixel=0 m.Position=UDim2.
+fromScale(1,0)m.Size=UDim2.new(0,1,1,0)m.Parent=l local n=Instance.new
+'TextButton'n.Name='DividerInteract'n.AnchorPoint=Vector2.new(0.5,0)n.
+BackgroundColor3=Color3.fromRGB(255,255,255)n.BackgroundTransparency=1 n.
+BorderColor3=Color3.fromRGB(0,0,0)n.BorderSizePixel=0 n.FontFace=Font.new
+'rbxasset://fonts/families/SourceSansPro.json'n.Position=UDim2.fromScale(0.5,0)n
+.Size=UDim2.new(1,6,1,0)n.Text=''n.TextColor3=Color3.fromRGB(0,0,0)n.TextSize=14
+n.Parent=m local o=Instance.new'Frame'o.Name='WindowControls'o.BackgroundColor3=
+Color3.fromRGB(255,255,255)o.BackgroundTransparency=1 o.BorderColor3=Color3.
+fromRGB(0,0,0)o.BorderSizePixel=0 o.Size=UDim2.new(1,0,0,31)local p=Instance.new
+'Frame'p.Name='Controls'p.BackgroundColor3=Color3.fromRGB(119,174,94)p.
 BackgroundTransparency=1 p.BorderColor3=Color3.fromRGB(0,0,0)p.BorderSizePixel=0
-p.Size=UDim2.new(1,0,0,31)local q=Instance.new'Frame'q.Name='Controls'q.
-BackgroundColor3=Color3.fromRGB(119,174,94)q.BackgroundTransparency=1 q.
-BorderColor3=Color3.fromRGB(0,0,0)q.BorderSizePixel=0 q.Size=UDim2.fromScale(1,1
-)local r=Instance.new'UIListLayout'r.Name='UIListLayout'r.Padding=UDim.new(0,5)r
-.FillDirection=Enum.FillDirection.Horizontal r.SortOrder=Enum.SortOrder.
-LayoutOrder r.VerticalAlignment=Enum.VerticalAlignment.Center r.Parent=q local s
-=Instance.new'UIPadding's.Name='UIPadding's.PaddingLeft=UDim.new(0,11)s.Parent=q
-local t,u={sizes={enabled=UDim2.fromOffset(8,8),disabled=UDim2.fromOffset(7,7)},
-transparencies={enabled=0,disabled=1},strokeTransparency=0.9},Instance.new
-'UIStroke'u.Name='BaseUIStroke'u.ApplyStrokeMode=Enum.ApplyStrokeMode.Border u.
-Color=Color3.fromRGB(255,255,255)u.Transparency=t.strokeTransparency local v=
-Instance.new'TextButton'v.Name='Exit'v.FontFace=Font.new
-'rbxasset://fonts/families/SourceSansPro.json'v.Text=''v.TextColor3=Color3.
-fromRGB(0,0,0)v.TextSize=14 v.AutoButtonColor=false v.BackgroundColor3=Color3.
-fromRGB(250,93,86)v.BorderColor3=Color3.fromRGB(0,0,0)v.BorderSizePixel=0 local
-w=Instance.new'UICorner'w.Name='UICorner'w.CornerRadius=UDim.new(1,0)w.Parent=v
-v.Parent=q local x=Instance.new'TextButton'x.Name='Minimize'x.FontFace=Font.new
-'rbxasset://fonts/families/SourceSansPro.json'x.Text=''x.TextColor3=Color3.
-fromRGB(0,0,0)x.TextSize=14 x.AutoButtonColor=false x.BackgroundColor3=Color3.
-fromRGB(252,190,57)x.BorderColor3=Color3.fromRGB(0,0,0)x.BorderSizePixel=0 x.
-LayoutOrder=1 local y=Instance.new'UICorner'y.Name='UICorner'y.CornerRadius=UDim
-.new(1,0)y.Parent=x x.Parent=q local z=Instance.new'TextButton'z.Name='Maximize'
-z.FontFace=Font.new'rbxasset://fonts/families/SourceSansPro.json'z.Text=''z.
-TextColor3=Color3.fromRGB(0,0,0)z.TextSize=14 z.AutoButtonColor=false z.
-BackgroundColor3=Color3.fromRGB(119,174,94)z.BorderColor3=Color3.fromRGB(0,0,0)z
-.BorderSizePixel=0 z.LayoutOrder=1 local A=Instance.new'UICorner'A.Name=
-'UICorner'A.CornerRadius=UDim.new(1,0)A.Parent=z z.Parent=q local B=function(B,C
-)local D,E=C and t.sizes.enabled or t.sizes.disabled,C and t.transparencies.
-enabled or t.transparencies.disabled B.Size=D B.BackgroundTransparency=E B.
-Active=C B.Interactable=C for F,G in ipairs(B:GetChildren())do if G:IsA
-'UIStroke'then G.Transparency=E end end if not C then u:Clone().Parent=B end end
-B(z,false)local C={v,x}for D,E in pairs(C)do local F,G=E.Name,true if b.
-DisabledWindowControls and table.find(b.DisabledWindowControls,F)then G=false
-end B(E,G)end q.Parent=p local D=Instance.new'Frame'D.Name='Divider'D.
-AnchorPoint=Vector2.new(0,1)D.BackgroundColor3=Color3.fromRGB(255,255,255)D.
-BackgroundTransparency=0.9 D.BorderColor3=Color3.fromRGB(0,0,0)D.BorderSizePixel
-=0 D.Position=UDim2.fromScale(0,1)D.Size=UDim2.new(1,0,0,1)D.Parent=p p.Parent=m
-local E=Instance.new'Frame'E.Name='Information'E.BackgroundColor3=Color3.
-fromRGB(255,255,255)E.BackgroundTransparency=1 E.BorderColor3=Color3.fromRGB(0,0
-,0)E.BorderSizePixel=0 E.Position=UDim2.fromOffset(0,31)E.Size=UDim2.new(1,0,0,
-60)local F=Instance.new'Frame'F.Name='Divider'F.AnchorPoint=Vector2.new(0,1)F.
-BackgroundColor3=Color3.fromRGB(255,255,255)F.BackgroundTransparency=0.9 F.
-BorderColor3=Color3.fromRGB(0,0,0)F.BorderSizePixel=0 F.Position=UDim2.
-fromScale(0,1)F.Size=UDim2.new(1,0,0,1)F.Parent=E local G=Instance.new'Frame'G.
-Name='InformationHolder'G.BackgroundColor3=Color3.fromRGB(255,255,255)G.
-BackgroundTransparency=1 G.BorderColor3=Color3.fromRGB(0,0,0)G.BorderSizePixel=0
-G.Size=UDim2.fromScale(1,1)local H=Instance.new'UIPadding'H.Name=
-'InformationHolderUIPadding'H.PaddingBottom=UDim.new(0,10)H.PaddingLeft=UDim.
-new(0,23)H.PaddingRight=UDim.new(0,22)H.PaddingTop=UDim.new(0,10)H.Parent=G
-local I=Instance.new'ImageButton'I.Name='GlobalSettingsButton'I.Image=an.globe I
-.ImageTransparency=0.5 I.AnchorPoint=Vector2.new(1,0.5)I.BackgroundColor3=Color3
-.fromRGB(255,255,255)I.BackgroundTransparency=1 I.BorderColor3=Color3.fromRGB(0,
-0,0)I.BorderSizePixel=0 I.Position=UDim2.fromScale(1,0.5)I.Size=UDim2.
-fromOffset(16,16)I.Parent=G local J=function(J)if J=='Default'then at(I,
-TweenInfo.new(0.2,Enum.EasingStyle.Sine),{ImageTransparency=0.5}):Play()elseif J
-=='Hover'then at(I,TweenInfo.new(0.2,Enum.EasingStyle.Sine),{ImageTransparency=
-0.3}):Play()end end I.MouseEnter:Connect(function()J'Hover'end)I.MouseLeave:
-Connect(function()J'Default'end)local K=Instance.new'Frame'K.Name='TitleFrame'K.
+p.Size=UDim2.fromScale(1,1)local q=Instance.new'UIListLayout'q.Name=
+'UIListLayout'q.Padding=UDim.new(0,5)q.FillDirection=Enum.FillDirection.
+Horizontal q.SortOrder=Enum.SortOrder.LayoutOrder q.VerticalAlignment=Enum.
+VerticalAlignment.Center q.Parent=p local r=Instance.new'UIPadding'r.Name=
+'UIPadding'r.PaddingLeft=UDim.new(0,11)r.Parent=p local s,t={sizes={enabled=
+UDim2.fromOffset(8,8),disabled=UDim2.fromOffset(7,7)},transparencies={enabled=0,
+disabled=1},strokeTransparency=0.9},Instance.new'UIStroke't.Name='BaseUIStroke't
+.ApplyStrokeMode=Enum.ApplyStrokeMode.Border t.Color=Color3.fromRGB(255,255,255)
+t.Transparency=s.strokeTransparency local u=Instance.new'TextButton'u.Name=
+'Exit'u.FontFace=Font.new'rbxasset://fonts/families/SourceSansPro.json'u.Text=''
+u.TextColor3=Color3.fromRGB(0,0,0)u.TextSize=14 u.AutoButtonColor=false u.
+BackgroundColor3=Color3.fromRGB(250,93,86)u.BorderColor3=Color3.fromRGB(0,0,0)u.
+BorderSizePixel=0 local v=Instance.new'UICorner'v.Name='UICorner'v.CornerRadius=
+UDim.new(1,0)v.Parent=u u.Parent=p local w=Instance.new'TextButton'w.Name=
+'Minimize'w.FontFace=Font.new'rbxasset://fonts/families/SourceSansPro.json'w.
+Text=''w.TextColor3=Color3.fromRGB(0,0,0)w.TextSize=14 w.AutoButtonColor=false w
+.BackgroundColor3=Color3.fromRGB(252,190,57)w.BorderColor3=Color3.fromRGB(0,0,0)
+w.BorderSizePixel=0 w.LayoutOrder=1 local x=Instance.new'UICorner'x.Name=
+'UICorner'x.CornerRadius=UDim.new(1,0)x.Parent=w w.Parent=p local y=Instance.new
+'TextButton'y.Name='Maximize'y.FontFace=Font.new
+'rbxasset://fonts/families/SourceSansPro.json'y.Text=''y.TextColor3=Color3.
+fromRGB(0,0,0)y.TextSize=14 y.AutoButtonColor=false y.BackgroundColor3=Color3.
+fromRGB(119,174,94)y.BorderColor3=Color3.fromRGB(0,0,0)y.BorderSizePixel=0 y.
+LayoutOrder=1 local z=Instance.new'UICorner'z.Name='UICorner'z.CornerRadius=UDim
+.new(1,0)z.Parent=y y.Parent=p local A=function(A,B)local C,D=B and s.sizes.
+enabled or s.sizes.disabled,B and s.transparencies.enabled or s.transparencies.
+disabled A.Size=C A.BackgroundTransparency=D A.Active=B A.Interactable=B for E,F
+in ipairs(A:GetChildren())do if F:IsA'UIStroke'then F.Transparency=D end end if
+not B then t:Clone().Parent=A end end A(y,false)local B={u,w}for C,D in pairs(B)
+do local E,F=D.Name,true if au.DisabledWindowControls and table.find(au.
+DisabledWindowControls,E)then F=false end A(D,F)end p.Parent=o local C=Instance.
+new'Frame'C.Name='Divider'C.AnchorPoint=Vector2.new(0,1)C.BackgroundColor3=
+Color3.fromRGB(255,255,255)C.BackgroundTransparency=0.9 C.BorderColor3=Color3.
+fromRGB(0,0,0)C.BorderSizePixel=0 C.Position=UDim2.fromScale(0,1)C.Size=UDim2.
+new(1,0,0,1)C.Parent=o o.Parent=l local D=Instance.new'Frame'D.Name=
+'Information'D.BackgroundColor3=Color3.fromRGB(255,255,255)D.
+BackgroundTransparency=1 D.BorderColor3=Color3.fromRGB(0,0,0)D.BorderSizePixel=0
+D.Position=UDim2.fromOffset(0,31)D.Size=UDim2.new(1,0,0,60)local E=Instance.new
+'Frame'E.Name='Divider'E.AnchorPoint=Vector2.new(0,1)E.BackgroundColor3=Color3.
+fromRGB(255,255,255)E.BackgroundTransparency=0.9 E.BorderColor3=Color3.fromRGB(0
+,0,0)E.BorderSizePixel=0 E.Position=UDim2.fromScale(0,1)E.Size=UDim2.new(1,0,0,1
+)E.Parent=D local F=Instance.new'Frame'F.Name='InformationHolder'F.
+BackgroundColor3=Color3.fromRGB(255,255,255)F.BackgroundTransparency=1 F.
+BorderColor3=Color3.fromRGB(0,0,0)F.BorderSizePixel=0 F.Size=UDim2.fromScale(1,1
+)local G=Instance.new'UIPadding'G.Name='InformationHolderUIPadding'G.
+PaddingBottom=UDim.new(0,10)G.PaddingLeft=UDim.new(0,23)G.PaddingRight=UDim.new(
+0,22)G.PaddingTop=UDim.new(0,10)G.Parent=F local H=Instance.new'ImageButton'H.
+Name='GlobalSettingsButton'H.Image=an.globe H.ImageTransparency=0.5 H.
+AnchorPoint=Vector2.new(1,0.5)H.BackgroundColor3=Color3.fromRGB(255,255,255)H.
+BackgroundTransparency=1 H.BorderColor3=Color3.fromRGB(0,0,0)H.BorderSizePixel=0
+H.Position=UDim2.fromScale(1,0.5)H.Size=UDim2.fromOffset(16,16)H.Parent=F local
+I=function(I)if I=='Default'then at(H,TweenInfo.new(0.2,Enum.EasingStyle.Sine),{
+ImageTransparency=0.5}):Play()elseif I=='Hover'then at(H,TweenInfo.new(0.2,Enum.
+EasingStyle.Sine),{ImageTransparency=0.3}):Play()end end H.MouseEnter:Connect(
+function()I'Hover'end)H.MouseLeave:Connect(function()I'Default'end)local J=
+Instance.new'Frame'J.Name='TitleFrame'J.BackgroundColor3=Color3.fromRGB(255,255,
+255)J.BackgroundTransparency=1 J.BorderColor3=Color3.fromRGB(0,0,0)J.
+BorderSizePixel=0 J.Size=UDim2.fromScale(1,1)local K=Instance.new'TextLabel'K.
+Name='Title'K.FontFace=Font.new(an.interFont,Enum.FontWeight.SemiBold,Enum.
+FontStyle.Normal)K.Text=au.Title K.TextColor3=Color3.fromRGB(255,255,255)K.
+RichText=true K.TextSize=18 K.TextTransparency=0.1 K.TextTruncate=Enum.
+TextTruncate.SplitWord K.TextXAlignment=Enum.TextXAlignment.Left K.
+TextYAlignment=Enum.TextYAlignment.Top K.AutomaticSize=Enum.AutomaticSize.Y K.
 BackgroundColor3=Color3.fromRGB(255,255,255)K.BackgroundTransparency=1 K.
-BorderColor3=Color3.fromRGB(0,0,0)K.BorderSizePixel=0 K.Size=UDim2.fromScale(1,1
-)local L=Instance.new'TextLabel'L.Name='Title'L.FontFace=Font.new(an.interFont,
-Enum.FontWeight.SemiBold,Enum.FontStyle.Normal)L.Text=b.Title L.TextColor3=
-Color3.fromRGB(255,255,255)L.RichText=true L.TextSize=18 L.TextTransparency=0.1
-L.TextTruncate=Enum.TextTruncate.SplitWord L.TextXAlignment=Enum.TextXAlignment.
-Left L.TextYAlignment=Enum.TextYAlignment.Top L.AutomaticSize=Enum.AutomaticSize
-.Y L.BackgroundColor3=Color3.fromRGB(255,255,255)L.BackgroundTransparency=1 L.
-BorderColor3=Color3.fromRGB(0,0,0)L.BorderSizePixel=0 L.Size=UDim2.new(1,-20,0,0
-)L.Parent=K local M=Instance.new'TextLabel'M.Name='Subtitle'M.FontFace=Font.new(
-an.interFont,Enum.FontWeight.Medium,Enum.FontStyle.Normal)M.RichText=true M.Text
-=b.Subtitle M.RichText=true M.TextColor3=Color3.fromRGB(255,255,255)M.TextSize=
-12 M.TextTransparency=0.7 M.TextTruncate=Enum.TextTruncate.SplitWord M.
-TextXAlignment=Enum.TextXAlignment.Left M.TextYAlignment=Enum.TextYAlignment.Top
-M.AutomaticSize=Enum.AutomaticSize.Y M.BackgroundColor3=Color3.fromRGB(255,255,
-255)M.BackgroundTransparency=1 M.BorderColor3=Color3.fromRGB(0,0,0)M.
-BorderSizePixel=0 M.LayoutOrder=1 M.Size=UDim2.new(1,-20,0,0)M.Parent=K local N=
-Instance.new'UIListLayout'N.Name='TitleFrameUIListLayout'N.Padding=UDim.new(0,3)
-N.SortOrder=Enum.SortOrder.LayoutOrder N.VerticalAlignment=Enum.
-VerticalAlignment.Center N.Parent=K K.Parent=G G.Parent=E E.Parent=m local O=
-Instance.new'Frame'O.Name='SidebarGroup'O.BackgroundColor3=Color3.fromRGB(255,
-255,255)O.BackgroundTransparency=1 O.BorderColor3=Color3.fromRGB(0,0,0)O.
-BorderSizePixel=0 O.Position=UDim2.fromOffset(0,91)O.Size=UDim2.new(1,0,1,-91)
-local P=Instance.new'Frame'P.Name='UserInfo'P.AnchorPoint=Vector2.new(0,1)P.
-BackgroundColor3=Color3.fromRGB(255,255,255)P.BackgroundTransparency=1 P.
-BorderColor3=Color3.fromRGB(0,0,0)P.BorderSizePixel=0 P.Position=UDim2.
-fromScale(0,1)P.Size=UDim2.new(1,0,0,107)local Q=Instance.new'Frame'Q.Name=
-'InformationGroup'Q.BackgroundColor3=Color3.fromRGB(255,255,255)Q.
-BackgroundTransparency=1 Q.BorderColor3=Color3.fromRGB(0,0,0)Q.BorderSizePixel=0
-Q.Size=UDim2.fromScale(1,1)local R=Instance.new'UIPadding'R.Name=
-'InformationGroupUIPadding'R.PaddingBottom=UDim.new(0,17)R.PaddingLeft=UDim.new(
-0,25)R.Parent=Q local S=Instance.new'UIListLayout'S.Name=
-'InformationGroupUIListLayout'S.FillDirection=Enum.FillDirection.Horizontal S.
-SortOrder=Enum.SortOrder.LayoutOrder S.VerticalAlignment=Enum.VerticalAlignment.
-Center S.Parent=Q local T,U,V=aj.UserId,Enum.ThumbnailType.AvatarBust,Enum.
-ThumbnailSize.Size48x48 local W,X=ah:GetUserThumbnailAsync(T,U,V)local Y=
-Instance.new'ImageLabel'Y.Name='Headshot'Y.BackgroundColor3=Color3.fromRGB(255,
-255,255)Y.BackgroundTransparency=1 Y.BorderColor3=Color3.fromRGB(0,0,0)Y.
-BorderSizePixel=0 Y.Size=UDim2.fromOffset(32,32)Y.Image=(X and W)or
-'rbxassetid://0'local Z=Instance.new'UICorner'Z.Name='UICorner'Z.CornerRadius=
-UDim.new(1,0)Z.Parent=Y local _=Instance.new'UIStroke'_.Name='BaseUIStroke'_.
-ApplyStrokeMode=Enum.ApplyStrokeMode.Border _.Color=Color3.fromRGB(255,255,255)_
-.Transparency=0.9 _.Parent=Y Y.Parent=Q local au=Instance.new'Frame'au.Name=
-'UserAndDisplayFrame'au.BackgroundColor3=Color3.fromRGB(255,255,255)au.
-BackgroundTransparency=1 au.BorderColor3=Color3.fromRGB(0,0,0)au.BorderSizePixel
-=0 au.LayoutOrder=1 au.Size=UDim2.new(1,-42,0,32)local av=Instance.new
-'TextLabel'av.Name='DisplayName'av.FontFace=Font.new(an.interFont,Enum.
-FontWeight.SemiBold,Enum.FontStyle.Normal)av.Text=aj.DisplayName av.TextColor3=
-Color3.fromRGB(255,255,255)av.TextSize=13 av.TextTransparency=0.1 av.
-TextTruncate=Enum.TextTruncate.SplitWord av.TextXAlignment=Enum.TextXAlignment.
-Left av.TextYAlignment=Enum.TextYAlignment.Top av.AutomaticSize=Enum.
-AutomaticSize.XY av.BackgroundColor3=Color3.fromRGB(255,255,255)av.
-BackgroundTransparency=1 av.BorderColor3=Color3.fromRGB(0,0,0)av.BorderSizePixel
-=0 av.Parent=au av.Size=UDim2.fromScale(1,0)local aw=Instance.new'UIPadding'aw.
-Name='UserAndDisplayFrameUIPadding'aw.PaddingLeft=UDim.new(0,8)aw.PaddingTop=
-UDim.new(0,3)aw.Parent=au local ax=Instance.new'UIListLayout'ax.Name=
-'UserAndDisplayFrameUIListLayout'ax.Padding=UDim.new(0,1)ax.SortOrder=Enum.
-SortOrder.LayoutOrder ax.Parent=au local ay=Instance.new'TextLabel'ay.Name=
-'Username'ay.FontFace=Font.new(an.interFont,Enum.FontWeight.SemiBold,Enum.
-FontStyle.Normal)ay.Text='@'..aj.Name ay.TextColor3=Color3.fromRGB(255,255,255)
-ay.TextSize=12 ay.TextTransparency=0.7 ay.TextTruncate=Enum.TextTruncate.
-SplitWord ay.TextXAlignment=Enum.TextXAlignment.Left ay.TextYAlignment=Enum.
-TextYAlignment.Top ay.AutomaticSize=Enum.AutomaticSize.XY ay.BackgroundColor3=
-Color3.fromRGB(255,255,255)ay.BackgroundTransparency=1 ay.BorderColor3=Color3.
-fromRGB(0,0,0)ay.BorderSizePixel=0 ay.LayoutOrder=1 ay.Parent=au ay.Size=UDim2.
-fromScale(1,0)au.Parent=Q Q.Parent=P local az=Instance.new'UIPadding'az.Name=
-'UserInfoUIPadding'az.PaddingLeft=UDim.new(0,10)az.PaddingRight=UDim.new(0,10)az
-.Parent=P P.Parent=O local aA=Instance.new'UIPadding'aA.Name=
-'SidebarGroupUIPadding'aA.PaddingLeft=UDim.new(0,10)aA.PaddingRight=UDim.new(0,
-10)aA.PaddingTop=UDim.new(0,31)aA.Parent=O local aB=Instance.new'Frame'aB.Name=
-'TabSwitchers'aB.BackgroundColor3=Color3.fromRGB(255,255,255)aB.
-BackgroundTransparency=1 aB.BorderColor3=Color3.fromRGB(0,0,0)aB.BorderSizePixel
-=0 aB.Size=UDim2.new(1,0,1,-107)local aC=Instance.new'ScrollingFrame'aC.Name=
-'TabSwitchersScrollingFrame'aC.AutomaticCanvasSize=Enum.AutomaticSize.Y aC.
-BottomImage=''aC.CanvasSize=UDim2.new()aC.ScrollBarImageTransparency=0.8 aC.
-ScrollBarThickness=1 aC.TopImage=''aC.BackgroundColor3=Color3.fromRGB(255,255,
-255)aC.BackgroundTransparency=1 aC.BorderColor3=Color3.fromRGB(0,0,0)aC.
-BorderSizePixel=0 aC.Size=UDim2.fromScale(1,1)local aD=Instance.new
-'UIListLayout'aD.Name='TabSwitchersScrollingFrameUIListLayout'aD.Padding=UDim.
-new(0,17)aD.SortOrder=Enum.SortOrder.LayoutOrder aD.Parent=aC local aE=Instance.
-new'UIPadding'aE.Name='TabSwitchersScrollingFrameUIPadding'aE.PaddingTop=UDim.
-new(0,2)aE.Parent=aC aC.Parent=aB aB.Parent=O O.Parent=m m.Parent=h local aF=
-Instance.new'Frame'aF.Name='Content'aF.AnchorPoint=Vector2.new(1,0)aF.
-BackgroundColor3=Color3.fromRGB(255,255,255)aF.BackgroundTransparency=1 aF.
-BorderColor3=Color3.fromRGB(0,0,0)aF.BorderSizePixel=0 aF.Position=UDim2.
-fromScale(1,4.69e-8)aF.Size=UDim2.new(0,(h.AbsoluteSize.X-m.AbsoluteSize.X),1,0)
-local aG,aH,aI,aJ,aK,aL=false,m.AbsoluteSize.X,20,107 local aM,aN=h.AbsoluteSize
-.X-aJ,{DefaultTransparency=0.9,HoverTransparency=0.85,EasingStyle=Enum.
-EasingStyle.Sine}local aO=function(aO)at(n,TweenInfo.new(0.2,aN.EasingStyle),{
-BackgroundTransparency=aO=='Idle'and aN.DefaultTransparency or aN.
-HoverTransparency}):Play()end o.MouseEnter:Connect(function()aO'Hover'end)o.
-MouseLeave:Connect(function()aO'Idle'end)o.MouseButton1Down:Connect(function()aG
-=true aK=af:GetMouseLocation().X aL=m.AbsoluteSize.X end)af.InputEnded:Connect(
-function(aP)if aP.UserInputType==Enum.UserInputType.MouseButton1 then aG=false
-end end)af.InputChanged:Connect(function(aP)if aG and aP.UserInputType==Enum.
-UserInputType.MouseMovement then local aQ=af:GetMouseLocation().X-aK local aR=aL
-+aQ if math.abs(aR-aH)<aI then aR=aH else aR=math.clamp(aR,aJ,aM)end m.Size=
-UDim2.new(0,aR,1,0)aF.Size=UDim2.new(0,h.AbsoluteSize.X-aR,1,0)end end)local aP=
-Instance.new'Frame'aP.Name='Topbar'aP.BackgroundColor3=Color3.fromRGB(255,255,
-255)aP.BackgroundTransparency=1 aP.BorderColor3=Color3.fromRGB(0,0,0)aP.
-BorderSizePixel=0 aP.Size=UDim2.new(1,0,0,63)local aQ=Instance.new'Frame'aQ.Name
-='Divider'aQ.AnchorPoint=Vector2.new(0,1)aQ.BackgroundColor3=Color3.fromRGB(255,
-255,255)aQ.BackgroundTransparency=0.9 aQ.BorderColor3=Color3.fromRGB(0,0,0)aQ.
-BorderSizePixel=0 aQ.Position=UDim2.fromScale(0,1)aQ.Size=UDim2.new(1,0,0,1)aQ.
-Parent=aP local aR=Instance.new'Frame'aR.Name='Elements'aR.BackgroundColor3=
-Color3.fromRGB(255,255,255)aR.BackgroundTransparency=1 aR.BorderColor3=Color3.
-fromRGB(0,0,0)aR.BorderSizePixel=0 aR.Size=UDim2.fromScale(1,1)local aS=Instance
-.new'UIPadding'aS.Name='UIPadding'aS.PaddingLeft=UDim.new(0,20)aS.PaddingRight=
-UDim.new(0,20)aS.Parent=aR local aT=Instance.new'ImageButton'aT.Name='MoveIcon'
-aT.Image=an.transform aT.ImageTransparency=0.7 aT.AnchorPoint=Vector2.new(1,0.5)
-aT.BackgroundColor3=Color3.fromRGB(255,255,255)aT.BackgroundTransparency=1 aT.
-BorderColor3=Color3.fromRGB(0,0,0)aT.BorderSizePixel=0 aT.Position=UDim2.
-fromScale(1,0.5)aT.Size=UDim2.fromOffset(15,15)aT.Parent=aR aT.Visible=not b.
-DragStyle or b.DragStyle==1 local aU=Instance.new'TextButton'aU.Name='Interact'
-aU.FontFace=Font.new'rbxasset://fonts/families/SourceSansPro.json'aU.Text=''aU.
-TextColor3=Color3.fromRGB(0,0,0)aU.TextSize=14 aU.AnchorPoint=Vector2.new(0.5,
-0.5)aU.BackgroundColor3=Color3.fromRGB(255,255,255)aU.BackgroundTransparency=1
-aU.BorderColor3=Color3.fromRGB(0,0,0)aU.BorderSizePixel=0 aU.Position=UDim2.
+BorderColor3=Color3.fromRGB(0,0,0)K.BorderSizePixel=0 K.Size=UDim2.new(1,-20,0,0
+)K.Parent=J local L=Instance.new'TextLabel'L.Name='Subtitle'L.FontFace=Font.new(
+an.interFont,Enum.FontWeight.Medium,Enum.FontStyle.Normal)L.RichText=true L.Text
+=au.Subtitle L.RichText=true L.TextColor3=Color3.fromRGB(255,255,255)L.TextSize=
+12 L.TextTransparency=0.7 L.TextTruncate=Enum.TextTruncate.SplitWord L.
+TextXAlignment=Enum.TextXAlignment.Left L.TextYAlignment=Enum.TextYAlignment.Top
+L.AutomaticSize=Enum.AutomaticSize.Y L.BackgroundColor3=Color3.fromRGB(255,255,
+255)L.BackgroundTransparency=1 L.BorderColor3=Color3.fromRGB(0,0,0)L.
+BorderSizePixel=0 L.LayoutOrder=1 L.Size=UDim2.new(1,-20,0,0)L.Parent=J local M=
+Instance.new'UIListLayout'M.Name='TitleFrameUIListLayout'M.Padding=UDim.new(0,3)
+M.SortOrder=Enum.SortOrder.LayoutOrder M.VerticalAlignment=Enum.
+VerticalAlignment.Center M.Parent=J J.Parent=F F.Parent=D D.Parent=l local N=
+Instance.new'Frame'N.Name='SidebarGroup'N.BackgroundColor3=Color3.fromRGB(255,
+255,255)N.BackgroundTransparency=1 N.BorderColor3=Color3.fromRGB(0,0,0)N.
+BorderSizePixel=0 N.Position=UDim2.fromOffset(0,91)N.Size=UDim2.new(1,0,1,-91)
+local O=Instance.new'Frame'O.Name='UserInfo'O.AnchorPoint=Vector2.new(0,1)O.
+BackgroundColor3=Color3.fromRGB(255,255,255)O.BackgroundTransparency=1 O.
+BorderColor3=Color3.fromRGB(0,0,0)O.BorderSizePixel=0 O.Position=UDim2.
+fromScale(0,1)O.Size=UDim2.new(1,0,0,107)local P=Instance.new'Frame'P.Name=
+'InformationGroup'P.BackgroundColor3=Color3.fromRGB(255,255,255)P.
+BackgroundTransparency=1 P.BorderColor3=Color3.fromRGB(0,0,0)P.BorderSizePixel=0
+P.Size=UDim2.fromScale(1,1)local Q=Instance.new'UIPadding'Q.Name=
+'InformationGroupUIPadding'Q.PaddingBottom=UDim.new(0,17)Q.PaddingLeft=UDim.new(
+0,25)Q.Parent=P local R=Instance.new'UIListLayout'R.Name=
+'InformationGroupUIListLayout'R.FillDirection=Enum.FillDirection.Horizontal R.
+SortOrder=Enum.SortOrder.LayoutOrder R.VerticalAlignment=Enum.VerticalAlignment.
+Center R.Parent=P local S,T,U=aj.UserId,Enum.ThumbnailType.AvatarBust,Enum.
+ThumbnailSize.Size48x48 local V,W=ah:GetUserThumbnailAsync(S,T,U)local X=
+Instance.new'ImageLabel'X.Name='Headshot'X.BackgroundColor3=Color3.fromRGB(255,
+255,255)X.BackgroundTransparency=1 X.BorderColor3=Color3.fromRGB(0,0,0)X.
+BorderSizePixel=0 X.Size=UDim2.fromOffset(32,32)X.Image=(W and V)or
+'rbxassetid://0'local Y=Instance.new'UICorner'Y.Name='UICorner'Y.CornerRadius=
+UDim.new(1,0)Y.Parent=X local Z=Instance.new'UIStroke'Z.Name='BaseUIStroke'Z.
+ApplyStrokeMode=Enum.ApplyStrokeMode.Border Z.Color=Color3.fromRGB(255,255,255)Z
+.Transparency=0.9 Z.Parent=X X.Parent=P local _=Instance.new'Frame'_.Name=
+'UserAndDisplayFrame'_.BackgroundColor3=Color3.fromRGB(255,255,255)_.
+BackgroundTransparency=1 _.BorderColor3=Color3.fromRGB(0,0,0)_.BorderSizePixel=0
+_.LayoutOrder=1 _.Size=UDim2.new(1,-42,0,32)local av=Instance.new'TextLabel'av.
+Name='DisplayName'av.FontFace=Font.new(an.interFont,Enum.FontWeight.SemiBold,
+Enum.FontStyle.Normal)av.Text=aj.DisplayName av.TextColor3=Color3.fromRGB(255,
+255,255)av.TextSize=13 av.TextTransparency=0.1 av.TextTruncate=Enum.TextTruncate
+.SplitWord av.TextXAlignment=Enum.TextXAlignment.Left av.TextYAlignment=Enum.
+TextYAlignment.Top av.AutomaticSize=Enum.AutomaticSize.XY av.BackgroundColor3=
+Color3.fromRGB(255,255,255)av.BackgroundTransparency=1 av.BorderColor3=Color3.
+fromRGB(0,0,0)av.BorderSizePixel=0 av.Parent=_ av.Size=UDim2.fromScale(1,0)local
+aw=Instance.new'UIPadding'aw.Name='UserAndDisplayFrameUIPadding'aw.PaddingLeft=
+UDim.new(0,8)aw.PaddingTop=UDim.new(0,3)aw.Parent=_ local ax=Instance.new
+'UIListLayout'ax.Name='UserAndDisplayFrameUIListLayout'ax.Padding=UDim.new(0,1)
+ax.SortOrder=Enum.SortOrder.LayoutOrder ax.Parent=_ local ay=Instance.new
+'TextLabel'ay.Name='Username'ay.FontFace=Font.new(an.interFont,Enum.FontWeight.
+SemiBold,Enum.FontStyle.Normal)ay.Text='@'..aj.Name ay.TextColor3=Color3.
+fromRGB(255,255,255)ay.TextSize=12 ay.TextTransparency=0.7 ay.TextTruncate=Enum.
+TextTruncate.SplitWord ay.TextXAlignment=Enum.TextXAlignment.Left ay.
+TextYAlignment=Enum.TextYAlignment.Top ay.AutomaticSize=Enum.AutomaticSize.XY ay
+.BackgroundColor3=Color3.fromRGB(255,255,255)ay.BackgroundTransparency=1 ay.
+BorderColor3=Color3.fromRGB(0,0,0)ay.BorderSizePixel=0 ay.LayoutOrder=1 ay.
+Parent=_ ay.Size=UDim2.fromScale(1,0)_.Parent=P P.Parent=O local az=Instance.new
+'UIPadding'az.Name='UserInfoUIPadding'az.PaddingLeft=UDim.new(0,10)az.
+PaddingRight=UDim.new(0,10)az.Parent=O O.Parent=N local aA=Instance.new
+'UIPadding'aA.Name='SidebarGroupUIPadding'aA.PaddingLeft=UDim.new(0,10)aA.
+PaddingRight=UDim.new(0,10)aA.PaddingTop=UDim.new(0,31)aA.Parent=N local aB=
+Instance.new'Frame'aB.Name='TabSwitchers'aB.BackgroundColor3=Color3.fromRGB(255,
+255,255)aB.BackgroundTransparency=1 aB.BorderColor3=Color3.fromRGB(0,0,0)aB.
+BorderSizePixel=0 aB.Size=UDim2.new(1,0,1,-107)local aC=Instance.new
+'ScrollingFrame'aC.Name='TabSwitchersScrollingFrame'aC.AutomaticCanvasSize=Enum.
+AutomaticSize.Y aC.BottomImage=''aC.CanvasSize=UDim2.new()aC.
+ScrollBarImageTransparency=0.8 aC.ScrollBarThickness=1 aC.TopImage=''aC.
+BackgroundColor3=Color3.fromRGB(255,255,255)aC.BackgroundTransparency=1 aC.
+BorderColor3=Color3.fromRGB(0,0,0)aC.BorderSizePixel=0 aC.Size=UDim2.fromScale(1
+,1)local aD=Instance.new'UIListLayout'aD.Name=
+'TabSwitchersScrollingFrameUIListLayout'aD.Padding=UDim.new(0,17)aD.SortOrder=
+Enum.SortOrder.LayoutOrder aD.Parent=aC local aE=Instance.new'UIPadding'aE.Name=
+'TabSwitchersScrollingFrameUIPadding'aE.PaddingTop=UDim.new(0,2)aE.Parent=aC aC.
+Parent=aB aB.Parent=N N.Parent=l l.Parent=g local aF=Instance.new'Frame'aF.Name=
+'Content'aF.AnchorPoint=Vector2.new(1,0)aF.BackgroundColor3=Color3.fromRGB(255,
+255,255)aF.BackgroundTransparency=1 aF.BorderColor3=Color3.fromRGB(0,0,0)aF.
+BorderSizePixel=0 aF.Position=UDim2.fromScale(1,4.69e-8)aF.Size=UDim2.new(0,(g.
+AbsoluteSize.X-l.AbsoluteSize.X),1,0)local aG,aH,aI,aJ,aK,aL=false,l.
+AbsoluteSize.X,20,107 local aM,aN=g.AbsoluteSize.X-aJ,{DefaultTransparency=0.9,
+HoverTransparency=0.85,EasingStyle=Enum.EasingStyle.Sine}local aO=function(aO)
+at(m,TweenInfo.new(0.2,aN.EasingStyle),{BackgroundTransparency=aO=='Idle'and aN.
+DefaultTransparency or aN.HoverTransparency}):Play()end n.MouseEnter:Connect(
+function()aO'Hover'end)n.MouseLeave:Connect(function()aO'Idle'end)n.
+MouseButton1Down:Connect(function()aG=true aK=af:GetMouseLocation().X aL=l.
+AbsoluteSize.X end)af.InputEnded:Connect(function(aP)if aP.UserInputType==Enum.
+UserInputType.MouseButton1 then aG=false end end)af.InputChanged:Connect(
+function(aP)if aG and aP.UserInputType==Enum.UserInputType.MouseMovement then
+local aQ=af:GetMouseLocation().X-aK local aR=aL+aQ if math.abs(aR-aH)<aI then aR
+=aH else aR=math.clamp(aR,aJ,aM)end l.Size=UDim2.new(0,aR,1,0)aF.Size=UDim2.new(
+0,g.AbsoluteSize.X-aR,1,0)end end)local aP=Instance.new'Frame'aP.Name='Topbar'aP
+.BackgroundColor3=Color3.fromRGB(255,255,255)aP.BackgroundTransparency=1 aP.
+BorderColor3=Color3.fromRGB(0,0,0)aP.BorderSizePixel=0 aP.Size=UDim2.new(1,0,0,
+63)local aQ=Instance.new'Frame'aQ.Name='Divider'aQ.AnchorPoint=Vector2.new(0,1)
+aQ.BackgroundColor3=Color3.fromRGB(255,255,255)aQ.BackgroundTransparency=0.9 aQ.
+BorderColor3=Color3.fromRGB(0,0,0)aQ.BorderSizePixel=0 aQ.Position=UDim2.
+fromScale(0,1)aQ.Size=UDim2.new(1,0,0,1)aQ.Parent=aP local aR=Instance.new
+'Frame'aR.Name='Elements'aR.BackgroundColor3=Color3.fromRGB(255,255,255)aR.
+BackgroundTransparency=1 aR.BorderColor3=Color3.fromRGB(0,0,0)aR.BorderSizePixel
+=0 aR.Size=UDim2.fromScale(1,1)local aS=Instance.new'UIPadding'aS.Name=
+'UIPadding'aS.PaddingLeft=UDim.new(0,20)aS.PaddingRight=UDim.new(0,20)aS.Parent=
+aR local aT=Instance.new'ImageButton'aT.Name='MoveIcon'aT.Image=an.transform aT.
+ImageTransparency=0.7 aT.AnchorPoint=Vector2.new(1,0.5)aT.BackgroundColor3=
+Color3.fromRGB(255,255,255)aT.BackgroundTransparency=1 aT.BorderColor3=Color3.
+fromRGB(0,0,0)aT.BorderSizePixel=0 aT.Position=UDim2.fromScale(1,0.5)aT.Size=
+UDim2.fromOffset(15,15)aT.Parent=aR aT.Visible=not au.DragStyle or au.DragStyle
+==1 local aU=Instance.new'TextButton'aU.Name='Interact'aU.FontFace=Font.new
+'rbxasset://fonts/families/SourceSansPro.json'aU.Text=''aU.TextColor3=Color3.
+fromRGB(0,0,0)aU.TextSize=14 aU.AnchorPoint=Vector2.new(0.5,0.5)aU.
+BackgroundColor3=Color3.fromRGB(255,255,255)aU.BackgroundTransparency=1 aU.
+BorderColor3=Color3.fromRGB(0,0,0)aU.BorderSizePixel=0 aU.Position=UDim2.
 fromScale(0.5,0.5)aU.Size=UDim2.fromOffset(40,40)aU.Parent=aT local aV=function(
 aV)if aV=='Default'then at(aT,TweenInfo.new(0.2,Enum.EasingStyle.Sine),{
 ImageTransparency=0.7}):Play()elseif aV=='Hover'then at(aT,TweenInfo.new(0.2,
 Enum.EasingStyle.Sine),{ImageTransparency=0.4}):Play()end end aU.MouseEnter:
 Connect(function()aV'Hover'end)aU.MouseLeave:Connect(function()aV'Default'end)
-local aW,aX,aY,aZ=false local a_,a0,a1=function(a_)local a0=a_.Position-aY h.
+local aW,aX,aY,aZ=false local a_,a0,a1=function(a_)local a0=a_.Position-aY g.
 Position=UDim2.new(aZ.X.Scale,aZ.X.Offset+a0.X,aZ.Y.Scale,aZ.Y.Offset+a0.Y)end,
 function(a_)if a_.UserInputType==Enum.UserInputType.MouseButton1 or a_.
-UserInputType==Enum.UserInputType.Touch then aW=true aY=a_.Position aZ=h.
+UserInputType==Enum.UserInputType.Touch then aW=true aY=a_.Position aZ=g.
 Position a_.Changed:Connect(function()if a_.UserInputState==Enum.UserInputState.
 End then aW=false end end)end end,function(a_)if aW and(a_.UserInputType==Enum.
 UserInputType.MouseMovement or a_.UserInputType==Enum.UserInputType.Touch)then
-aX=a_ end end if not b.DragStyle or b.DragStyle==1 then aU.InputBegan:Connect(
+aX=a_ end end if not au.DragStyle or au.DragStyle==1 then aU.InputBegan:Connect(
 function(a2)if a2.UserInputType==Enum.UserInputType.MouseButton1 or a2.
 UserInputType==Enum.UserInputType.Touch then a0(a2)end end)aU.InputChanged:
 Connect(a1)af.InputChanged:Connect(function(a2)if a2==aX and aW then a_(a2)end
 end)aU.InputEnded:Connect(function(a2)if a2.UserInputType==Enum.UserInputType.
 MouseButton1 or a2.UserInputType==Enum.UserInputType.Touch then aW=false end end
-)elseif b.DragStyle==2 then h.InputBegan:Connect(function(a2)if a2.UserInputType
-==Enum.UserInputType.MouseButton1 or a2.UserInputType==Enum.UserInputType.Touch
-then a0(a2)end end)h.InputChanged:Connect(a1)af.InputChanged:Connect(function(a2
-)if a2==aX and aW then a_(a2)end end)h.InputEnded:Connect(function(a2)if a2.
+)elseif au.DragStyle==2 then g.InputBegan:Connect(function(a2)if a2.
 UserInputType==Enum.UserInputType.MouseButton1 or a2.UserInputType==Enum.
-UserInputType.Touch then aW=false end end)end local a2=Instance.new'TextLabel'a2
-.Name='CurrentTab'a2.FontFace=Font.new(an.interFont)a2.RichText=true a2.Text=''
-a2.RichText=true a2.TextColor3=Color3.fromRGB(255,255,255)a2.TextSize=15 a2.
-TextTransparency=0.5 a2.TextTruncate=Enum.TextTruncate.SplitWord a2.
-TextXAlignment=Enum.TextXAlignment.Left a2.TextYAlignment=Enum.TextYAlignment.
-Top a2.AnchorPoint=Vector2.new(0,0.5)a2.AutomaticSize=Enum.AutomaticSize.Y a2.
-BackgroundColor3=Color3.fromRGB(255,255,255)a2.BackgroundTransparency=1 a2.
-BorderColor3=Color3.fromRGB(0,0,0)a2.BorderSizePixel=0 a2.Position=UDim2.
-fromScale(0,0.5)a2.Size=UDim2.fromScale(0.9,0)a2.Parent=aR aR.Parent=aP aP.
-Parent=aF aF.Parent=h local a3=Instance.new'Frame'a3.Name='GlobalSettings'a3.
-AutomaticSize=Enum.AutomaticSize.XY a3.BackgroundColor3=Color3.fromRGB(15,15,15)
-a3.BorderColor3=Color3.fromRGB(0,0,0)a3.BorderSizePixel=0 a3.Position=UDim2.
-fromScale(0.298,0.104)local a4=Instance.new'UIStroke'a4.Name=
-'GlobalSettingsUIStroke'a4.ApplyStrokeMode=Enum.ApplyStrokeMode.Border a4.Color=
-Color3.fromRGB(255,255,255)a4.Transparency=0.9 a4.Parent=a3 local a5=Instance.
+UserInputType.Touch then a0(a2)end end)g.InputChanged:Connect(a1)af.InputChanged
+:Connect(function(a2)if a2==aX and aW then a_(a2)end end)g.InputEnded:Connect(
+function(a2)if a2.UserInputType==Enum.UserInputType.MouseButton1 or a2.
+UserInputType==Enum.UserInputType.Touch then aW=false end end)end local a2=
+Instance.new'TextLabel'a2.Name='CurrentTab'a2.FontFace=Font.new(an.interFont)a2.
+RichText=true a2.Text=''a2.RichText=true a2.TextColor3=Color3.fromRGB(255,255,
+255)a2.TextSize=15 a2.TextTransparency=0.5 a2.TextTruncate=Enum.TextTruncate.
+SplitWord a2.TextXAlignment=Enum.TextXAlignment.Left a2.TextYAlignment=Enum.
+TextYAlignment.Top a2.AnchorPoint=Vector2.new(0,0.5)a2.AutomaticSize=Enum.
+AutomaticSize.Y a2.BackgroundColor3=Color3.fromRGB(255,255,255)a2.
+BackgroundTransparency=1 a2.BorderColor3=Color3.fromRGB(0,0,0)a2.BorderSizePixel
+=0 a2.Position=UDim2.fromScale(0,0.5)a2.Size=UDim2.fromScale(0.9,0)a2.Parent=aR
+aR.Parent=aP aP.Parent=aF aF.Parent=g local a3=Instance.new'Frame'a3.Name=
+'GlobalSettings'a3.AutomaticSize=Enum.AutomaticSize.XY a3.BackgroundColor3=
+Color3.fromRGB(15,15,15)a3.BorderColor3=Color3.fromRGB(0,0,0)a3.BorderSizePixel=
+0 a3.Position=UDim2.fromScale(0.298,0.104)local a4=Instance.new'UIStroke'a4.Name
+='GlobalSettingsUIStroke'a4.ApplyStrokeMode=Enum.ApplyStrokeMode.Border a4.Color
+=Color3.fromRGB(255,255,255)a4.Transparency=0.9 a4.Parent=a3 local a5=Instance.
 new'UICorner'a5.Name='GlobalSettingsUICorner'a5.CornerRadius=UDim.new(0,10)a5.
 Parent=a3 local a6=Instance.new'UIPadding'a6.Name='GlobalSettingsUIPadding'a6.
 PaddingBottom=UDim.new(0,10)a6.PaddingTop=UDim.new(0,10)a6.Parent=a3 local a7=
 Instance.new'UIListLayout'a7.Name='GlobalSettingsUIListLayout'a7.Padding=UDim.
 new(0,5)a7.SortOrder=Enum.SortOrder.LayoutOrder a7.Parent=a3 local a8=Instance.
 new'UIScale'a8.Name='GlobalSettingsUIScale'a8.Scale=1e-7 a8.Parent=a3 a3.Parent=
-h h.Parent=d function c:UpdateTitle(a9)L.Text=a9 end function c:UpdateSubtitle(
-a9)M.Text=a9 end local a9,ba=a8.Scale==1 and true or false local bb=function()if
+g g.Parent=c function b:UpdateTitle(a9)K.Text=a9 end function b:UpdateSubtitle(
+a9)L.Text=a9 end local a9,ba=a8.Scale==1 and true or false local bb=function()if
 not a9 then local bb=at(a8,TweenInfo.new(0.2,Enum.EasingStyle.Exponential,Enum.
 EasingDirection.Out),{Scale=1})bb:Play()bb.Completed:Wait()a9=true elseif a9
 then local bb=at(a8,TweenInfo.new(0.2,Enum.EasingStyle.Exponential,Enum.
-EasingDirection.Out),{Scale=0})bb:Play()bb.Completed:Wait()a9=false end end I.
+EasingDirection.Out),{Scale=0})bb:Play()bb.Completed:Wait()a9=false end end H.
 MouseButton1Click:Connect(function()if not aq then return end bb()end)a3.
 MouseEnter:Connect(function()ba=true end)a3.MouseLeave:Connect(function()ba=
 false end)af.InputEnded:Connect(function(bc)if bc.UserInputType==Enum.
 UserInputType.MouseButton1 and a9 and not ba then bb()end end)local bc,bd,be,bf,
-bg=h,ad,workspace.CurrentCamera,'Glass',{}local bh,bi=(bd:GenerateGUID(true))for
+bg=g,ad,workspace.CurrentCamera,'Glass',{}local bh,bi=(bd:GenerateGUID(true))for
 bj,bk in pairs(ag:GetChildren())do if not bk:IsA'DepthOfFieldEffect'and bk:
 HasTag'.'then bi=Instance.new'DepthOfFieldEffect'bi.FarIntensity=0 bi.
 FocusDistance=51.6 bi.InFocusRadius=50 bi.NearIntensity=1 bi.Name=bd:
@@ -1260,7 +1150,7 @@ ScreenPointToRay(br.x,br.y,bq).Origin,be:ScreenPointToRay(bt.x,bt.y,bq).Origin,
 be:ScreenPointToRay(bu.x,bu.y,bq).Origin,be:ScreenPointToRay(bs.x,bs.y,bq).
 Origin,bl)if bo then for bv,bw in pairs(bl)do bw.Parent=be end for bv,bw in
 pairs(bp)do for bx,by in pairs(bl)do by[bv]=bw end end end end bo(true)ac.
-RenderStepped:Connect(bo)function c:GlobalSetting(bp)aq=true local bq,br={},
+RenderStepped:Connect(bo)function b:GlobalSetting(bp)aq=true local bq,br={},
 Instance.new'TextButton'br.Name='GlobalSetting'br.FontFace=Font.new
 'rbxasset://fonts/families/SourceSansPro.json'br.Text=''br.TextColor3=Color3.
 fromRGB(0,0,0)br.TextSize=14 br.BackgroundColor3=Color3.fromRGB(255,255,255)br.
@@ -1302,7 +1192,7 @@ GetPropertyChangedSignal'AbsoluteSize':Connect(function()if bv.AbsoluteSize.X>0
 then bv.TextTransparency=0 end end)end end,bp.Default by(bz)br.MouseButton1Click
 :Connect(function()bz=not bz by(bz)task.spawn(function()if bp.Callback then bp.
 Callback(bz)end end)end)function bq:UpdateName(bA)bt.Text=bA end function bq:
-UpdateState(bA)by(bA)bz=bA end return bq end function c:TabGroup()local bp,bq={}
+UpdateState(bA)by(bA)bz=bA end return bq end function b:TabGroup()local bp,bq={}
 ,Instance.new'Frame'bq.Name='Section'bq.AutomaticSize=Enum.AutomaticSize.Y bq.
 BackgroundColor3=Color3.fromRGB(255,255,255)bq.BackgroundTransparency=1 bq.
 BorderColor3=Color3.fromRGB(0,0,0)bq.BorderSizePixel=0 bq.Size=UDim2.fromScale(1
@@ -1516,7 +1406,7 @@ Settings.onInputComplete(ca)end end)af.InputChanged:Connect(function(cc)if b7
 and(cc.UserInputType==Enum.UserInputType.MouseMovement or cc.UserInputType==Enum
 .UserInputType.Touch)then cb(cc)end end)local cc=function()local cc,cd,ce,cf=b3.
 Padding.Offset,b_.AbsoluteSize.X,bY.AbsoluteSize.X,bZ.AbsoluteSize.X local cg=(
-cf-(cc+cd+ce+20))/i.Scale b4.Size=UDim2.new(b4.Size.X.Scale,cg,b4.Size.Y.Scale,
+cf-(cc+cd+ce+20))/h.Scale b4.Size=UDim2.new(b4.Size.X.Scale,cg,b4.Size.Y.Scale,
 b4.Size.Y.Offset)end cc()bY:GetPropertyChangedSignal'AbsoluteSize':Connect(cc)bP
 :GetPropertyChangedSignal'AbsoluteSize':Connect(cc)function bW:UpdateName(cd)bY=
 cd end function bW:SetVisibility(cd)bX.Visible=cd end function bW:UpdateValue(cd
@@ -1556,7 +1446,7 @@ end,AlphaNumeric=function(b8)return b7(b8:gsub('[^a-zA-Z0-9]',''))end}if type(bW
 .Settings.AcceptedCharacters)=='function'then b9=bW.Settings.AcceptedCharacters
 else b9=b8[bW.Settings.AcceptedCharacters]or b8.All end b4.AutomaticSize=Enum.
 AutomaticSize.X local ca=function()local ca,cb=b5.AbsoluteSize.X,b3.AbsoluteSize
-.X local cc=(cb-ca-20)/i.Scale b6.MaxSize=Vector2.new(cc,9e9)end ca()b5:
+.X local cc=(cb-ca-20)/h.Scale b6.MaxSize=Vector2.new(cc,9e9)end ca()b5:
 GetPropertyChangedSignal'AbsoluteSize':Connect(ca)b4.FocusLost:Connect(function(
 )local cb=b4.Text local cc=b9(cb)b4.Text=cc task.spawn(function()if bW.Settings.
 Callback then bW.Settings.Callback(cc)end end)end)b4.Text=bW.Settings.Default or
@@ -2060,7 +1950,7 @@ local dt=Instance.new'UIPadding'dt.Name='UIPadding'dt.PaddingBottom=UDim.new(0,
 15)dt.Parent=dq local du=Instance.new'Frame'du.Name='Line'du.BackgroundColor3=
 Color3.fromRGB(255,255,255)du.BackgroundTransparency=0.9 du.BorderColor3=Color3.
 fromRGB(0,0,0)du.BorderSizePixel=0 du.LayoutOrder=1 du.Size=UDim2.new(1,0,0,1)du
-.Parent=dq dq.Parent=b6 b6.Parent=b4 b4.Parent=h local dv,dw,dx,dy,dz,dA,dB,dC,
+.Parent=dq dq.Parent=b6 b6.Parent=b4 b4.Parent=g local dv,dw,dx,dy,dz,dA,dB,dC,
 dD,dE,dF,dG,dH,dI,dJ,dK,dL,dM,dN=Color3.fromHSV,Color3.fromRGB,Vector2.new,UDim2
 .new,cm,co,cc,c9,{Hex=cX.InputBox,Red=cr.InputBox,Green=cz.InputBox,Blue=cH.
 InputBox,Alpha=cP.InputBox},aj:GetMouse(),false,false,0,0,1,function(dv)return
@@ -2116,12 +2006,12 @@ dX(dD.Green)end)dD.Blue.Focused:Connect(function()dX(dD.Blue)end)dD.Alpha.
 Focused:Connect(function()dX(dD.Alpha)end)local dY=function()local dY=Instance.
 new'CanvasGroup'dY.Name='ColorPickerCanvas'dY.BackgroundTransparency=1 dY.
 BorderSizePixel=0 dY.Size=UDim2.fromScale(1,1)dY.ZIndex=5 dY.GroupTransparency=1
-dY.Parent=h dY.Visible=false return dY end local dZ=function(dZ)local d_,d0,d1,
+dY.Parent=g dY.Visible=false return dY end local dZ=function(dZ)local d_,d0,d1,
 d2,d3=dY(),dZ and 0 or 1,dZ and 1 or 0.95,dZ and 1 or 0,TweenInfo.new(0.1,Enum.
 EasingStyle.Sine)local d4,d5=at(d_,d3,{GroupTransparency=d0}),at(b7,d3,{Scale=d1
 })b4.Visible=true b4.Parent=d_ d_.Visible=true d_.GroupTransparency=d2 d4:Play()
 d5:Play()d4.Completed:Wait()if not dZ then b4.Visible=false d_.Visible=false end
-b4.Parent=h d_:Destroy()end local d_,d0=function()dZ(true)end,function()dZ(false
+b4.Parent=g d_:Destroy()end local d_,d0=function()dZ(true)end,function()dZ(false
 )end b2.MouseButton1Click:Connect(d_)dk.MouseButton1Click:Connect(d0)dh.
 MouseButton1Click:Connect(function()d0()local d1=dv(dH,dI,dJ)bW.Color=Color3.
 fromRGB(d1.r*255,d1.g*255,d1.b*255)bW.Alpha=bX and dO(dD.Alpha.Text,0,1)dd.
@@ -2230,32 +2120,32 @@ Text='Config system unavailable. (Environment isStudio)'}return
 Placeholder='Name',AcceptedCharacters='All',Callback=function(bS)bQ=bS end}local
 bS=bP:Dropdown{Name='Select Config',Multi=false,Required=false,Options=aa:
 RefreshConfigList(),Callback=function(bS)bR=bS end}bP:Button{Name=
-'Create Config',Callback=function()if not bQ or string.gsub(bQ,' ','')==''then c
+'Create Config',Callback=function()if not bQ or string.gsub(bQ,' ','')==''then b
 :Notify{Title='Interface',Description='Config name cannot be empty.'}return end
-local bT,bU=aa:SaveConfig(bQ)if not bT then c:Notify{Title='Interface',
-Description='Unable to save config, return error: '..bU}end c:Notify{Title=
+local bT,bU=aa:SaveConfig(bQ)if not bT then b:Notify{Title='Interface',
+Description='Unable to save config, return error: '..bU}end b:Notify{Title=
 'Interface',Description=string.format('Created config %q',bQ)}bS:ClearOptions()
 bS:InsertOptions(aa:RefreshConfigList())end}bP:Button{Name='Load Config',
-Callback=function()local bT,bU=aa:LoadConfig(bS.Value)if not bT then c:Notify{
+Callback=function()local bT,bU=aa:LoadConfig(bS.Value)if not bT then b:Notify{
 Title='Interface',Description='Unable to load config, return error: '..bU}return
-end c:Notify{Title='Interface',Description=string.format('Loaded config %q',bS.
+end b:Notify{Title='Interface',Description=string.format('Loaded config %q',bS.
 Value)}end}bP:Button{Name='Overwrite Config',Callback=function()local bT,bU=aa:
-SaveConfig(bS.Value)if not bT then c:Notify{Title='Interface',Description=
-'Unable to overwrite config, return error: '..bU}return end c:Notify{Title=
+SaveConfig(bS.Value)if not bT then b:Notify{Title='Interface',Description=
+'Unable to overwrite config, return error: '..bU}return end b:Notify{Title=
 'Interface',Description=string.format('Overwrote config %q',bS.Value)}end}bP:
 Button{Name='Refresh Config List',Callback=function()bS:ClearOptions()bS:
 InsertOptions(aa:RefreshConfigList())end}local bT bP:Button{Name=
 'Set as autoload',Callback=function()local bU=bS.Value writefile(aa.Folder..
-'/settings/autoload.txt',bU)bT:UpdateName('Autoload config: '..bU)c:Notify{Title
+'/settings/autoload.txt',bU)bT:UpdateName('Autoload config: '..bU)b:Notify{Title
 ='Interface',Description=string.format('Set %q as autoload',bU)}end}bT=bP:Label{
 Text='Autoload config: None'}if isfile(aa.Folder..'/settings/autoload.txt')then
 local bU=readfile(aa.Folder..'/settings/autoload.txt')bT:UpdateName(
 'Autoload config: '..bU)end end ak[bx]={tabContent=bE,tabStroke=bz,switcherImage
-=bB,switcherName=bC}return bw end return bp end function c:Notify(bp)local bq,br
+=bB,switcherName=bC}return bw end return bp end function b:Notify(bp)local bq,br
 ={},Instance.new'Frame'br.Name='Notification'br.AnchorPoint=Vector2.new(0.5,0.5)
 br.AutomaticSize=Enum.AutomaticSize.Y br.BackgroundColor3=Color3.fromRGB(15,15,
 15)br.BorderColor3=Color3.fromRGB(0,0,0)br.BorderSizePixel=0 br.Position=UDim2.
-fromScale(0.5,0.5)br.Size=UDim2.fromOffset(bp.SizeX or 250,0)br.Parent=e local
+fromScale(0.5,0.5)br.Size=UDim2.fromOffset(bp.SizeX or 250,0)br.Parent=d local
 bs=Instance.new'UIStroke'bs.Name='NotificationUIStroke'bs.ApplyStrokeMode=Enum.
 ApplyStrokeMode.Border bs.Color=Color3.fromRGB(255,255,255)bs.Transparency=0.9
 bs.Parent=br local bt=Instance.new'UICorner'bt.Name='NotificationUICorner'bt.
@@ -2308,11 +2198,11 @@ end local bH=task.spawn(function()bE.In:Play()bp.Lifetime=bp.Lifetime or 3 if bp
 Wait()br:Destroy()end end)function bq:UpdateTitle(bI)bw.Text=bI end function bq:
 UpdateDescription(bI)by.Text=bI end function bq:Resize(bI)local bJ=bI or 250 br.
 Size=UDim2.fromOffset(bJ,0)end function bq:Cancel()task.cancel(bH)local bI=bE.
-Out bI:Play()bI.Completed:Wait()br:Destroy()end return bq end function c:Dialog(
+Out bI:Play()bI.Completed:Wait()br:Destroy()end return bq end function b:Dialog(
 bp)local bq,br={},Instance.new'CanvasGroup'br.Name='DialogCanvas'br.
 BackgroundColor3=Color3.fromRGB(255,255,255)br.BackgroundTransparency=1 br.
 BorderColor3=Color3.fromRGB(0,0,0)br.BorderSizePixel=0 br.Size=UDim2.fromScale(1
-,1)br.GroupTransparency=1 br.Parent=h local bs=Instance.new'Frame'bs.Name=
+,1)br.GroupTransparency=1 br.Parent=g local bs=Instance.new'Frame'bs.Name=
 'Dialog'bs.BackgroundColor3=Color3.fromRGB(0,0,0)bs.BackgroundTransparency=0.5
 bs.BorderColor3=Color3.fromRGB(0,0,0)bs.BorderSizePixel=0 bs.Size=UDim2.
 fromScale(1,1)local bt=Instance.new'UICorner'bt.Name='BaseUICorner'bt.
@@ -2357,7 +2247,7 @@ at(br,TweenInfo.new(0.1,Enum.EasingStyle.Sine),{GroupTransparency=0}),at(br,
 TweenInfo.new(0.1,Enum.EasingStyle.Sine),{GroupTransparency=1}),at(bv,TweenInfo.
 new(0.1,Enum.EasingStyle.Sine),{Scale=1}),at(bv,TweenInfo.new(0.1,Enum.
 EasingStyle.Sine),{Scale=0.95})local bL,bM=function()bH:Play()bJ:Play()bH.
-Completed:Wait()bs.Parent=h end,function()if not bs.Parent then return end bs.
+Completed:Wait()bs.Parent=g end,function()if not bs.Parent then return end bs.
 Parent=br bI:Play()bK:Play()bI.Completed:Wait()br:Destroy()end for bN,bO in
 pairs(bp.Buttons)do local bP=Instance.new'TextButton'bP.Name='Button'bP.FontFace
 =Font.new(an.interFont)bP.Text=bO.Name bP.TextColor3=Color3.fromRGB(255,255,255)
@@ -2380,29 +2270,29 @@ then bO.Callback()end end)bM()if not bU then warn(
 '[Dialog] Button callback error: '..tostring(bV))end end)bP.MouseEnter:Connect(
 function()bT'Hover'end)bP.MouseLeave:Connect(function()bT'Idle'end)end bL()
 function bq:UpdateTitle(bN)bA.Text=bN end function bq:UpdateDescription(bN)bC.
-Text=bN end function bq:Cancel()bM()end return bq end function c:
-SetNotificationsState(bp)e.Visible=bp end function c:GetNotificationsState(bp)
-return e.Visible end function c:SetState(bp)ao=bp h.Visible=bp end function c:
-GetState()return ao end local bp function c:Unload()if bp then bp()end d:
-Destroy()am=true end function c.onUnloaded(bq)bp=bq end local bq=b.Keybind or
-Enum.KeyCode.RightControl local br=function()local br=not c:GetState()c:
-SetState(br)c:Notify{Title=b.Title,Description=(br and'Maximized 'or'Minimized '
-)..'the menu. Use '..tostring(bq.Name)..' to toggle it.',Lifetime=5}end af.
-InputEnded:Connect(function(bs,bt)if bt then return end if bs.KeyCode==bq then
-br()end end)x.MouseButton1Click:Connect(br)v.MouseButton1Click:Connect(function(
-)c:Dialog{Title=b.Title,Description=
+Text=bN end function bq:Cancel()bM()end return bq end function b:
+SetNotificationsState(bp)d.Visible=bp end function b:GetNotificationsState(bp)
+return d.Visible end function b:SetState(bp)ao=bp g.Visible=bp end function b:
+GetState()return ao end local bp function b:Unload()if bp then bp()end c:
+Destroy()am=true end function b.onUnloaded(bq)bp=bq end local bq=au.Keybind or
+Enum.KeyCode.RightControl local br=function()local br=not b:GetState()b:
+SetState(br)b:Notify{Title=au.Title,Description=(br and'Maximized 'or
+'Minimized ')..'the menu. Use '..tostring(bq.Name)..' to toggle it.',Lifetime=5}
+end af.InputEnded:Connect(function(bs,bt)if bt then return end if bs.KeyCode==bq
+then br()end end)w.MouseButton1Click:Connect(br)u.MouseButton1Click:Connect(
+function()b:Dialog{Title=au.Title,Description=
 [[Are you sure you want to exit the menu? You will lose any unsaved configurations.]]
-,Buttons={{Name='Confirm',Callback=function()c:Unload()end},{Name='Cancel'}}}end
-)function c:SetKeybind(bs)bq=bs end function c:SetAcrylicBlurState(bs)ap=bs h.
-BackgroundTransparency=bs and 0.05 or 0 end function c:GetAcrylicBlurState()
-return ap end local bs,bt=function(bs)if bs then Y.Image=(X and W)or
-'rbxassetid://0'ay.Text='@'..aj.Name av.Text=aj.DisplayName else Y.Image=an.
+,Buttons={{Name='Confirm',Callback=function()b:Unload()end},{Name='Cancel'}}}end
+)function b:SetKeybind(bs)bq=bs end function b:SetAcrylicBlurState(bs)ap=bs g.
+BackgroundTransparency=bs and 0.05 or 0 end function b:GetAcrylicBlurState()
+return ap end local bs,bt=function(bs)if bs then X.Image=(W and V)or
+'rbxassetid://0'ay.Text='@'..aj.Name av.Text=aj.DisplayName else X.Image=an.
 userInfoBlurred local bt,bu=#aj.Name,#aj.DisplayName ay.Text='@'..string.rep('.'
-,bt)av.Text=string.rep('.',bu)end end if b.ShowUserInfo~=nil then bt=b.
-ShowUserInfo else bt=true end bs(bt)function c:SetUserInfoState(bu)bs(bu)end
-function c:GetUserInfoState(bu)return bt end function c:SetSize(bu)h.Size=bu end
-function c:GetSize(bu)return h.Size end function c:SetScale(bu)i.Scale=bu end
-function c:GetScale()return i.Scale end local bu,bv={Toggle={Save=function(bu,bv
+,bt)av.Text=string.rep('.',bu)end end if au.ShowUserInfo~=nil then bt=au.
+ShowUserInfo else bt=true end bs(bt)function b:SetUserInfoState(bu)bs(bu)end
+function b:GetUserInfoState(bu)return bt end function b:SetSize(bu)g.Size=bu end
+function b:GetSize(bu)return g.Size end function b:SetScale(bu)h.Scale=bu end
+function b:GetScale()return h.Scale end local bu,bv={Toggle={Save=function(bu,bv
 )return{type='Toggle',flag=bu,state=bv.State or false}end,Load=function(bu,bv)if
 aa.Options[bu]and bv.state~=nil then aa.Options[bu]:UpdateState(bv.state)end end
 },Slider={Save=function(bu,bv)return{type='Slider',flag=bu,value=(bv.Value and
@@ -2428,8 +2318,8 @@ Folder..'/settings'}for bv=1,#bu do local bw=bu[bv]if not isfolder(bw)then
 makefolder(bw)end end end function aa:LoadAutoLoadConfig()if ai or not(isfile
 and readfile)then return'Config system unavailable.'end if isfile(aa.Folder..
 '/settings/autoload.txt')then local bw=readfile(aa.Folder..
-'/settings/autoload.txt')local bx,by=aa:LoadConfig(bw)if not bx then c:Notify{
-Title='Interface',Description='Error loading autoload config: '..by}end c:Notify
+'/settings/autoload.txt')local bx,by=aa:LoadConfig(bw)if not bx then b:Notify{
+Title='Interface',Description='Error loading autoload config: '..by}end b:Notify
 {Title='Interface',Description=string.format('Autoloaded config: %q',bw)}end end
 function aa:SetFolder(bw)if ai then return'Config system unavailable.'end aa.
 Folder=bw bv()end function aa:SaveConfig(bw)if ai or not writefile then return
@@ -2454,8 +2344,8 @@ Folder..'/settings')or{},{}for by=1,#bw do local bz=bw[by]if bz:sub(-5)=='.json'
 then local bA=bz:find('.json',1,true)local bB,bC=bA,bz:sub(bA,bA)while bC~='/'
 and bC~='\\'and bC~=''do bA=bA-1 bC=bz:sub(bA,bA)end if bC=='/'or bC=='\\'then
 local bD=bz:sub(bA+1,bB-1)if bD~='options'then table.insert(bx,bD)end end end
-end return bx end d.Enabled=false local bw={}for bx,by in pairs(an)do table.
-insert(bw,by)end ae:PreloadAsync(bw)d.Enabled=true ao=true return c end function
+end return bx end c.Enabled=false local bw={}for bx,by in pairs(an)do table.
+insert(bw,by)end ae:PreloadAsync(bw)c.Enabled=true ao=true return b end function
 aa:Demo()local au=aa:Window{Title='Maclib Demo',Subtitle='This is a subtitle.',
 Size=UDim2.fromOffset(868,650),DragStyle=1,DisabledWindowControls={},
 ShowUserInfo=true,Keybind=Enum.KeyCode.RightControl,AcrylicBlur=true}local av,aw
@@ -2515,11 +2405,11 @@ SubLabel{Text=
 [[Sub-Label. Lorem ipsum odor amet, consectetuer adipiscing elit.]]}aa:SetFolder
 'Maclib'ax.Settings:InsertConfigSection'Left'au.onUnloaded(function()print
 'Unloaded!'end)ax.Main:Select()aa:LoadAutoLoadConfig()end return aa end function
-a.u()local aa,ab={}function aa:SetWindow(ac)ab=ac end function aa.Notify(ac,ad,
+a.r()local aa,ab={}function aa:SetWindow(ac)ab=ac end function aa.Notify(ac,ad,
 ae)ae=ae or 3 if ab then local af=pcall(function()ab:Notify{Title=ac,Description
 =ad,Lifetime=ae}end)if af then return end end pcall(function()game:GetService
 'StarterGui':SetCore('SendNotification',{Title=ac,Text=ad,Duration=ae})end)end
-return aa end function a.v()local aa,ab,ac,ad,ae,af=a.load't',a.load'u',{},false
+return aa end function a.s()local aa,ab,ac,ad,ae,af=a.load'q',a.load'r',{},false
 ,false function ac.Suspend()ae=true ad=false end function ac.Resume()ae=false
 end function ac.IsSuspended()return ae or(aa.LoadingConfig==true)end function ac
 .SetActive(ag)af=(typeof(ag)=='string'and#ag>0)and ag or nil end function ac.
@@ -2537,14 +2427,16 @@ function ac.Save()if ac.IsSuspended()then return end if not ag()then return end
 if ad then return end ad=true task.delay(0.5,function()ad=false if not ac.
 IsSuspended()and ac.GetActive()then ac.SaveNow()end end)end function ac.Wrap(ah)
 if type(ah)~='function'then return ah end return function(...)ah(...)ac.Save()
-end end return ac end function a.w()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load't',a
-.load'v',a.load'c',{},{Mob={Min=15,Max=35},Boss1={Min=25,Max=50},Boss2={Min=25,
-Max=50},Boss3={Min=25,Max=50}},{Normal='Mob',['Boss 1']='Boss1',['Boss 2']=
-'Boss2',['Boss 3']='Boss3'},{Mob='Normal',Boss1='Boss 1',Boss2='Boss 2',Boss3=
-'Boss 3'},{},{}function ad.GetTargetDisplay(aj)return ag[aj]or'Normal'end
-function ad.GetTargetKey(aj)return af[aj]or'Mob'end function ad.GetTargetOptions
-()return{'Normal','Boss 1','Boss 2','Boss 3'}end function ad.GetSaveData()return
-ah end function ad.LoadData(aj)if type(aj)=='table'then ah=aj else ah={}end aa.
+end end return ac end function a.t()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'q',a
+.load's',a.load'c',{},{Mob={Min=15,Max=35,BossArea=false,BossAreaRadius=80},
+Boss1={Min=25,Max=50,BossArea=false,BossAreaRadius=80},Boss2={Min=25,Max=50,
+BossArea=false,BossAreaRadius=80},Boss3={Min=25,Max=50,BossArea=false,
+BossAreaRadius=80}},{Normal='Mob',['Boss 1']='Boss1',['Boss 2']='Boss2',[
+'Boss 3']='Boss3'},{Mob='Normal',Boss1='Boss 1',Boss2='Boss 2',Boss3='Boss 3'},{
+},{}function ad.GetTargetDisplay(aj)return ag[aj]or'Normal'end function ad.
+GetTargetKey(aj)return af[aj]or'Mob'end function ad.GetTargetOptions()return{
+'Normal','Boss 1','Boss 2','Boss 3'}end function ad.GetSaveData()return ah end
+function ad.LoadData(aj)if type(aj)=='table'then ah=aj else ah={}end aa.
 contextData=ah for ak,al in ipairs(ai)do pcall(al)end end function ad.
 OnDataChanged(aj)if type(aj)~='function'then return function()end end table.
 insert(ai,aj)return function()for ak,al in ipairs(ai)do if al==aj then table.
@@ -2562,6 +2454,30 @@ elseif ak.Model then local ao=string.lower(ak.Model.Name)if string.find(ao,
 lower(ap.Name),'boss')then an=true end end end if an then local ao=ac.
 GetCurrentBossIndex and ac.GetCurrentBossIndex()or 1 am='Boss'..tostring(math.
 clamp(ao,1,3))end end return ad.GetCombatDistances(al,am)end function ad.
+GetBossArea(ak,al)local am=al or'Mob'if am=='Mob'then return false,80 end local
+an=ae[am]or ae.Boss1 if type(ak)=='string'and#ak>0 and ah[ak]and ah[ak][am]then
+local ao=ah[ak][am]local ap,aq=ao.BossArea==true,(type(ao.BossAreaRadius)==
+'number'and ao.BossAreaRadius>0)and ao.BossAreaRadius or(an.BossAreaRadius or 80
+)return ap,aq end return an.BossArea or false,an.BossAreaRadius or 80 end
+function ad.SetBossAreaEnabled(ak,al,am)if not(type(ak)=='string'and#ak>0)then
+return end local an=al or'Mob'if an=='Mob'then return end ah[ak]=ah[ak]or{}ah[ak
+][an]=ah[ak][an]or{}ah[ak][an].BossArea=am and true or false aj()end function ad
+.SetBossAreaRadius(ak,al,am)if not(type(ak)=='string'and#ak>0)then return end
+local an=al or'Mob'if an=='Mob'then return end if type(am)~='number'or am<=0
+then return end ah[ak]=ah[ak]or{}ah[ak][an]=ah[ak][an]or{}ah[ak][an].
+BossAreaRadius=am aj()end function ad.GetActiveBossArea(ak)local al,am,an=ac.
+GetCurrentDungeonName(),'Mob',false if ac.IsBossActive and ac.IsBossActive()then
+an=true am=ac.GetCombatTargetKey()elseif ak then if ak.Room and type(ak.Room.
+Name)=='string'and string.find(string.lower(ak.Room.Name),'boss')then an=true
+elseif ak.Model then local ao=string.lower(ak.Model.Name)if string.find(ao,
+'boss')then an=true else local ap=ak.Model.Parent if ap and string.find(string.
+lower(ap.Name),'boss')then an=true end end end if an then local ao=ac.
+GetCurrentBossIndex and ac.GetCurrentBossIndex()or 1 am='Boss'..tostring(math.
+clamp(ao,1,3))end end if not an or am=='Mob'then return false,0,nil end local ao
+,ap=ad.GetBossArea(al,am)if not ao then return false,ap,nil end local aq=ac.
+GetBossSpawnPosition and ac.GetBossSpawnPosition()if not aq and ak and ak.Root
+then aq=ak.Root.Position if ac.SetBossSpawnPosition then ac.
+SetBossSpawnPosition(aq)end end return ao,ap,aq end function ad.
 SetMinCombatDistance(ak,al,am)if not(type(ak)=='string'and#ak>0)then return end
 local an=al or'Mob'if type(am)~='number'or am<=0 then return end ah[ak]=ah[ak]or
 {}ah[ak][an]=ah[ak][an]or{}local ao=ah[ak][an].Max or(ae[an]or ae.Mob).Max ah[ak
@@ -2573,213 +2489,438 @@ local an=al or'Mob'if type(am)~='number'or am<=0 then return end ah[ak]=ah[ak]or
 ad.ResetTarget(ak,al)if not(type(ak)=='string'and#ak>0)then return end local am=
 al or'Mob'if ah[ak]then ah[ak][am]=nil if next(ah[ak])==nil then ah[ak]=nil end
 aj()end end function ad.ResetDungeon(ak)if not(type(ak)=='string'and#ak>0)then
-return end if ah[ak]then ah[ak]=nil aj()end end return ad end end local aa,ab,ac
-,ad,ae,af,ag,ah,ai,aj,ak=a.load'a',a.load'c',a.load'b',a.load'd',a.load'e',a.
-load'f',a.load'g',a.load'h',a.load'r',a.load's',a.load'w'local al,am,an,ao,ap,aq
-,ar,as,at,au,av,aw,ax,ay,az,aA,aB,aC=aa.RunService,aa.player,{NO_TARGET=
-'NO_TARGET',ACQUIRING_TARGET='ACQUIRING_TARGET',TRACKING_TARGET=
-'TRACKING_TARGET',CHASE='CHASE',HOLD='HOLD',KITE='KITE',BLOCKED='BLOCKED',
-REPATHING='REPATHING'},{},false,false,1.5,15,35,25,50,true,6,true,true,true,true
-,true local aD,aE,aF,aG,aH,aI,aJ,aK,aL,aM,aN,aO,aP,aQ,aR,aS,aT,aU,aV,aW,aX,aY,aZ
-,a_,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9=an.NO_TARGET,'None',0,0,false,false,0,0,false,
-10,false,{},function()local aD=am and am.Character local aE=aD and aD:
-FindFirstChild'HumanoidRootPart'if aE and aE.Parent then return aE end return
-nil end,function(aD)if not aD or not aD.Parent then return nil end local aE,aF=
-pcall(function()return aD.Position end)if not aE or not aF then return nil end
-return aF end,function(aD)if ab.IsBossActive and ab.IsBossActive()then return
-true end if aD then if aD.Room and type(aD.Room.Name)=='string'and string.find(
-string.lower(aD.Room.Name),'boss')then return true end if aD.Model then local aE
-=string.lower(aD.Model.Name)if string.find(aE,'boss')then return true end local
-aF=aD.Model.Parent if aF and string.find(string.lower(aF.Name),'boss')then
-return true end end end return false end,function(aD)return ak.
-GetActiveCombatDistances(aD)end,function(aD,aE)if aD==aE then return true end if
-aD and aE and aD.Model and aE.Model and aD.Model==aE.Model then return true end
-return false end local b=function(b,ba)local bb=ag.GetTarget()if aT(bb,b)then
-return end ag.SetTarget(b,nil,nil,ba)aU=nil aE='None'aV=nil aW=nil aJ=0 if b
-then aD=an.CHASE else aD=an.NO_TARGET end end a9=function()if aH or not ap or
-not aq then return end aG+=1 local ba=aG aH=true local bb=aP()local bc=bb and
-aQ(bb)if not bc then aH=false return end local bd=ae.Scan()if#bd==0 then if ba==
-aG and ap and aq then b(nil,nil)end aH=false return end local be,bf,bg,bh=af.
-SelectBestTarget(bc,bd,function()return ba~=aG or not ap or not aq end)if ba==aG
-and ap and aq then b(be,bh)end aH=false end local ba,bb,bc,bd=function(ba)if ab.
-IsInLobby()or not aI then return end local bb,bc=aP(),ab.GetHumanoid()if not bb
-or not bc or bc.Health<=0 then return end local bd=aQ(bb)if not bd then return
-end if ai.IsCurrentlyDodging and ai.IsCurrentlyDodging()then return end if aN
-then return end local be=os.clock()if be-aF>=ar then aF=be if aD~=an.HOLD and aD
-~=an.KITE then a9()end end local bg=ag.GetTarget()if bg then if not ag.
-IsTargetValid()then ag.ClearTarget()aD=an.NO_TARGET aU=nil aE='None'aW=nil
-pcall(function()bc:MoveTo(bd)bc.AutoRotate=true end)a9()return end end if not bg
-or aD==an.NO_TARGET then aU=nil aE='None'aW=nil pcall(function()bc:MoveTo(bd)bc.
-AutoRotate=true end)if not aH and be-aF>=0.5 then aF=be a9()end return end local
-bh=bg.Root and aQ(bg.Root)if not bh then ag.ClearTarget()aD=an.NO_TARGET aW=nil
-pcall(function()bc:MoveTo(bd)bc.AutoRotate=true end)return end local bi,bj=aS(bg
-)local bk=Vector3.new(bh.X-bd.X,0,bh.Z-bd.Z)local bl=bk.Magnitude if aw and bl<=
-(bj+25)then pcall(function()bc.AutoRotate=false local bm=Vector3.new(bh.X,bb.
-Position.Y,bh.Z)if(bm-bb.Position).Magnitude>0.5 then bb.CFrame=CFrame.lookAt(bb
-.Position,bm)end end)else pcall(function()bc.AutoRotate=true end)end aj.Step(ba,
-bg,bl)if bl<bi then local bm=Vector3.new(bd.X-bh.X,0,bd.Z-bh.Z)local bn,bo=bm.
-Magnitude>0.1 and bm.Unit or Vector3.new(0,0,1),math.clamp(bi-bl+6,4,15)local bp
-,bq,br=bd+bn*bo,true,ab.IsInvulnerable and ab.IsInvulnerable()if not br and ai
-and ai.IsPointSafe then bq=ai.IsPointSafe(bp,0.5)end if not bq then aD=an.HOLD
-aE='Hold (Danger Behind)'aU=nil aJ=0 pcall(function()bc:MoveTo(bd)end)else aD=an
-.KITE aE='Kite'aJ=0 aU=bp bc:MoveTo(bp)end elseif bl<=bj then aD=an.HOLD aU=nil
-aE='Hold'aJ=0 pcall(function()bc:MoveTo(bd)end)else local bm,bn,bo=bk.Magnitude>
-0.1 and bk.Unit or Vector3.new(0,0,1),false,ab.IsInvulnerable and ab.
-IsInvulnerable()if not bo and ai and ai.IsPointSafe then for bp,bq in ipairs{3,6
-,10}do if bq<bl then local br=bd+bm*bq if not ai.IsPointSafe(br,0.5)then bn=true
-break end end end end if bn then aD=an.HOLD aE='Hold (Danger Ahead)'aU=nil aJ=0
-pcall(function()bc:MoveTo(bd)end)else aD=an.CHASE aE='Chase'local bp=Vector3.
-new(bh.X,bd.Y,bh.Z)aU=bp bc:MoveTo(bp)local bq=bh.Y-bd.Y if bq>1.8 and bl<=8
-then bc.Jump=true end local br=bb.AssemblyLinearVelocity or bb.Velocity local bs
-,bt=br and Vector3.new(br.X,0,br.Z).Magnitude or 0,(type(ba)=='number'and ba>0)
-and ba or 0.016 if bs<aM then aJ+=bt if aL and(be-aK)>=0.4 then bc.Jump=true
-pcall(function()bc:ChangeState(Enum.HumanoidStateType.Jumping)end)aK=be end else
+return end if ah[ak]then ah[ak]=nil aj()end end return ad end function a.u()
+local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'a',a.load'c',a.load'b',a.load'i',a.load
+'k',a.load'n',a.load'o',a.load'p',a.load't'local aj,ak,al,am,an,ao,ap,aq,ar,as,
+at,au,av,aw,ax,ay,az,aA=aa.RunService or game:GetService'RunService',game:
+GetService'Players',aa.player,{},true,true,true,2,0,false,{},{},0 local aB,aC,aD
+=function()local aB=al or ak.LocalPlayer if not aB then return nil end local aC=
+aB.Character if not aC or not aC.Parent then return nil end local aD=aC:
+FindFirstChildOfClass'Humanoid'if aD and aD.Health<=0 then return nil end return
+aC:FindFirstChild'HumanoidRootPart'or aC.PrimaryPart end,function(aB)local aC=al
+or ak.LocalPlayer if not aC then return nil end local aD=aC.Character if not aD
+or not aD.Parent then return nil end local aE=aD:FindFirstChildOfClass'Humanoid'
+if aE and aE.Health>0 then local aF=aE.MoveDirection if aF and aF.Magnitude>0.1
+then return Vector3.new(aF.X,0,aF.Z).Unit end end if aB and aB.Parent then local
+aF=Vector3.zero pcall(function()aF=aB.AssemblyLinearVelocity or aB.Velocity or
+Vector3.zero end)local aG=Vector3.new(aF.X,0,aF.Z)if aG.Magnitude>=2 then return
+aG.Unit end end return nil end,function(aB)if not aB then return 0 end return aB
+.Position.Y-2.5 end function am.IsPointSafe(aE,aF)if not aE then return false
+end local aG,aH,aI,aJ=Vector3.new(aE.X,0,aE.Z),ai.GetActiveBossArea()if aH and
+aJ and aI and aI>0 then local aK=Vector3.new(aJ.X,0,aJ.Z)if(aG-aK).Magnitude>aI
+then return false end end local aK=(af.GetRadius and af.GetRadius()or 1.8)+(aF
+or 0)if ad.IsPointInAnyHazard and ad.IsPointInAnyHazard(aG,nil,aK)then return
+false end if ae.IsPointInAnyTrajectory and ae.IsPointInAnyTrajectory(aG,aK)then
+return false end return true end function am.FindNearestSafeSpot(aE)local aF=aB(
+)if not aE then if not aF then return nil,false,0,Vector3.zero end aE=aF.
+Position end local aG,aH=Vector3.new(aE.X,0,aE.Z),aC(aF)table.clear(au)local aI,
+aJ,aK=ai.GetActiveBossArea()local aL,aM,aN=(aI and aK and aJ and aJ>0)and
+Vector3.new(aK.X,0,aK.Z)or nil,ad.GetNearbyHazards and ad.GetNearbyHazards(aG,65
+)or nil,ae.GetNearbyTrajectories and ae.GetNearbyTrajectories(aG,65)or nil local
+aO=function(aO,aP)if not aO then return false end local aQ=Vector3.new(aO.X,0,aO
+.Z)if aL and aJ then local aR=(aQ-aL).Magnitude if aR>aJ then return false end
+end local aR=(af.GetRadius and af.GetRadius()or 1.8)+(aP or 0)if ad.
+IsPointInAnyHazard and ad.IsPointInAnyHazard(aQ,nil,aR,aM)then return false end
+if ae.IsPointInAnyTrajectory and ae.IsPointInAnyTrajectory(aQ,aR,aN)then return
+false end return true end if(aM and#aM==0 and aN and#aN==0 and not aL)or aO(aG,0
+)then table.insert(au,{pos=aG,isSafe=true,isChosen=true})return aG,true,0,
+Vector3.zero end local aP,aQ=aH,af.GetRadius and af.GetRadius()or 1.8 local aR,
+aS,aT,aU=ae.IsPointInAnyTrajectory(aG,aQ,aN)if aR and aT and aU then local aV,aW
+,aX=Vector3.new(-aT.Z,0,aT.X),Vector3.new(aT.Z,0,-aT.X),aG-aU local aY=aX.X*aV.X
++aX.Z*aV.Z local aZ=aY>=0 and aV or aW if aH and aH.Magnitude>0.1 then local a_,
+a0=aH.X*aV.X+aH.Z*aV.Z,aH.X*aW.X+aH.Z*aW.Z if a_>a0+0.3 then aZ=aV elseif a0>a_+
+0.3 then aZ=aW end end local a_=0.45 if aH and aH.Magnitude>0.1 then local a0,a1
+=-(aH.X*aT.X+aH.Z*aT.Z),math.abs(aH.X*aZ.X+aH.Z*aZ.Z)if a1>0.05 then local a2=a0
+/a1 a_=math.clamp(a2,0.18,1)elseif a0>0 then a_=1 else a_=0.18 end end local a0=
+(aZ-a_*aT).Unit aP=a0 elseif aL and(aG-aL).Magnitude>aJ then aP=(aL-aG).Unit end
+local aV,aW,aX,aY=ag.SamplePass(aG,ag.COARSE_DIRECTIONS,ag.COARSE_RADII,aq,true,
+aO,au,aP)if not aW then aV,aW,aX,aY=ag.SamplePass(aG,ag.FINE_DIRECTIONS,ag.
+FINE_RADII,aq,true,aO,au,aP)end if not aW then aV,aW,aX,aY=ag.SamplePass(aG,ag.
+FINE_DIRECTIONS,ag.FINE_RADII,0,false,aO,au,aP)end if aW and aV then for aZ,a_
+in ipairs(au)do if(a_.pos-aV).Magnitude<0.25 then a_.isChosen=true break end end
+return aV,true,aX,aY end return aG,false,math.huge,Vector3.zero end local aE=
+function()if not an then ah.Hide()return end local aE=aB()if not aE or not aE.
+Parent then ah.Hide()return end local aF,aG,aH=false if af.IsPlayerInDanger then
+aF,aG,aH=af.IsPlayerInDanger()end local aI=aF or(aw~=nil)or as if not aI then
+local aJ=os.clock()if aJ-av<0.05 then return end av=aJ end local aJ,aK=aD(aE),
+Vector3.new(aE.Position.X,0,aE.Position.Z)if aF then local aL,aM,aN=aw and(aw-aK
+).Magnitude or 0,aw and am.IsPointSafe(aw),(aG==ax and aH==ay)if not aM or not
+aN or not aw then local aO,aP,aQ,aR=am.FindNearestSafeSpot(aE.Position)if aP and
+aO then aw=aO ax=aG ay=aH ar=aQ as=true ah.Update(aE,aO,aJ,au,ao,ap)for aS,aT in
+ipairs(at)do pcall(aT,true,aO,aQ)end else ah.Hide()end else ar=aL ah.Update(aE,
+aw,aJ,au,ao,ap)for aO,aP in ipairs(at)do pcall(aP,true,aw,aL)end end else local
+aL,aM=aw and(aw-aK).Magnitude or 0,aw and am.IsPointSafe(aw)if aM and aL>0.8
+then ar=aL ah.Update(aE,aw,aJ,au,ao,ap)for aN,aO in ipairs(at)do pcall(aO,true,
+aw,aL)end else if as or aw then as=false aw=nil ax=nil ay=nil ar=0 ah.Hide()for
+aN,aO in ipairs(at)do pcall(aO,false,nil,0)end end end end end local aF=function
+()if not az then az=aj.Heartbeat:Connect(aE)end if not aA and af.
+OnDangerStatusChanged then aA=af.OnDangerStatusChanged(function(aF)if aF and an
+then aE()end end)end end function am.Clear()if as or aw then as=false aw=nil ax=
+nil ay=nil ar=0 table.clear(au)ah.Hide()for aG,aH in ipairs(at)do pcall(aH,false
+,nil,0)end end end function am.Cleanup()if az then az:Disconnect()az=nil end ah.
+Cleanup()table.clear(au)aw=nil ax=nil ay=nil ar=0 as=false av=0 end function am.
+GetLastSafeSpot()return aw,ar,as end function am.OnSafeSpotChanged(aG)if type(aG
+)=='function'then table.insert(at,aG)end end function am.SetVisualEnabled(aG)ao=
+aG and true or false if not ao then ah.Hide()end end function am.IsVisualEnabled
+()return ao end function am.SetShowCandidates(aG)ap=aG and true or false if not
+ap then ah.HideCandidates()end end function am.IsShowCandidates()return ap end
+function am.SetEnabled(aG)an=aG and true or false if not an then ah.Hide()end
+end function am.IsEnabled()return an end function am.SetSafetyBuffer(aG)if type(
+aG)=='number'and aG>=0 then aq=aG end end function am.GetSafetyBuffer()return aq
+end local aG=function()local aG=al or ak.LocalPlayer if not aG then return end
+aG.CharacterAdded:Connect(function()am.Clear()end)end aG()if ab.
+OnRoomIndexChanged then ab.OnRoomIndexChanged(function()am.Clear()end)end if ab.
+OnEnemyChanged then ab.OnEnemyChanged(function()if ab.GetEnemyCount and ab.
+GetEnemyCount()==0 then am.Clear()end end)end if ab.OnLobbyChanged then ab.
+OnLobbyChanged(function()am.Clear()end)end if ab.OnBossActiveChanged then ab.
+OnBossActiveChanged(function()am.Clear()end)end aF()ac.Register(function()am.
+Cleanup()end)return am end function a.v()local aa,ab,ac,ad,ae=a.load'a',a.load
+'c',a.load'b',a.load'n',a.load'u'local af,ag,ah,ai,aj,ak,al,am,an,ao=aa.
+RunService or game:GetService'RunService',game:GetService'Players',aa.player,{},
+false,2,false,{}local ap,aq=function()local ap=ah or ag.LocalPlayer if not ap
+then return nil,nil,nil end local aq=ap.Character if not aq or not aq.Parent
+then return nil,nil,nil end local ar=aq:FindFirstChildOfClass'Humanoid'if ar and
+ar.Health<=0 then return nil,nil,nil end local as=aq:FindFirstChild
+'HumanoidRootPart'or aq.PrimaryPart if not as then return nil,nil,nil end return
+aq,ar,as end,function(ap,aq)if ap and aq and aq.Parent then pcall(function()ap:
+MoveTo(aq.Position)end)end end local ar=function()if not aj then if al or an
+then an=nil al=false local ar,as,at=ap()aq(as,at)for au,av in ipairs(am)do
+pcall(av,false,nil,0)end end return end local ar,as,at=ap()if not ar or not as
+or not at then if al or an then an=nil al=false for au,av in ipairs(am)do pcall(
+av,false,nil,0)end end return end if ab.IsInvulnerable and ab.IsInvulnerable()
+then if al or an then an=nil al=false local au,av,aw=ap()aq(av,aw)for ax,ay in
+ipairs(am)do pcall(ay,false,nil,0)end end return end local au,av,aw,ax=ad.
+IsPlayerInDanger and ad.IsPlayerInDanger(),ae.GetLastSafeSpot()if av then an=av
+end local ay=an and ae.IsPointSafe and ae.IsPointSafe(an)if an and ay then local
+az=at.Position local aA=Vector3.new(an.X-az.X,0,an.Z-az.Z)local aB=aA.Magnitude
+if aB<=ak then local aC,aD=at.CFrame,Vector3.new(an.X,az.Y,an.Z)local aE=CFrame.
+new(aD)*(aC-aC.Position)ar:PivotTo(aE)aq(as,at)local aF=an an=nil if al then al=
+false for aG,aH in ipairs(am)do pcall(aH,false,aF,aB)end end else local aC=
+Vector3.new(an.X,az.Y,an.Z)as:MoveTo(aC)if not al then al=true for aD,aE in
+ipairs(am)do pcall(aE,true,an,aB)end end end else if al or an then an=nil al=
+false aq(as,at)for az,aA in ipairs(am)do pcall(aA,false,nil,0)end end end end
+local as=function()if not ao then ao=af.Heartbeat:Connect(ar)end end function ai
+.Clear()if al or an then an=nil al=false local at,au,av=ap()aq(au,av)for aw,ax
+in ipairs(am)do pcall(ax,false,nil,0)end end end function ai.Cleanup()if ao then
+ao:Disconnect()ao=nil end ai.Clear()end function ai.SetEnabled(at)aj=at and true
+or false if not aj then local au,av,aw=ap()aq(av,aw)an=nil al=false end end
+function ai.IsEnabled()return aj end function ai.SetSnapDistance(at)if type(at)
+=='number'and at>=0.5 then ak=at end end function ai.GetSnapDistance()return ak
+end function ai.IsDodging()return al end function ai.OnDodgeStateChanged(at)if
+type(at)=='function'then table.insert(am,at)end end if ab.OnRoomIndexChanged
+then ab.OnRoomIndexChanged(function()ai.Clear()end)end if ab.OnEnemyChanged then
+ab.OnEnemyChanged(function()if ab.GetEnemyCount and ab.GetEnemyCount()==0 then
+ai.Clear()end end)end if ab.OnLobbyChanged then ab.OnLobbyChanged(function()ai.
+Clear()end)end if ab.OnBossActiveChanged then ab.OnBossActiveChanged(function()
+ai.Clear()end)end as()ac.Register(function()ai.Cleanup()end)return ai end
+function a.w()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj=a.load'b',a.load'm',a.load'i',
+a.load'j',a.load'k',a.load'n',a.load'u',a.load'v',a.load'l',{}ac.BindDetection(
+ab)ad.BindDetection(ab)ae.BindDetection(ab)ai.BindDetection(ab)aj.
+IsPointInAnyHazard=ac.IsPointInAnyHazard aj.GetHazardPadding=ac.GetHazardPadding
+aj.SetHazardPadding=ac.SetHazardPadding aj.GetHitboxPadding=ac.GetHazardPadding
+aj.SetHitboxPadding=ac.SetHazardPadding aj.GetTrajectoryMargin=ac.
+GetTrajectoryMargin aj.SetTrajectoryMargin=ac.SetTrajectoryMargin aj.
+GetHazardZones=ac.GetHazardZones aj.GetNearbyHazards=ac.GetNearbyHazards aj.
+AddForceCircleName=ac.AddForceCircleName aj.GetForceCircleNames=ac.
+GetForceCircleNames aj.IsForceCircle=ac.IsForceCircle aj.IsPlayerInDanger=af.
+IsPlayerInDanger aj.GetPlayerThreat=af.GetCurrentThreat aj.OnPlayerDangerChanged
+=af.OnDangerStatusChanged aj.SetPlayerVisualEnabled=af.SetVisualEnabled aj.
+IsPlayerVisualEnabled=af.IsVisualEnabled aj.SetPlayerHitboxRadius=af.SetRadius
+aj.GetPlayerHitboxRadius=af.GetRadius aj.FindNearestSafeSpot=ag.
+FindNearestSafeSpot aj.IsPointSafe=ag.IsPointSafe aj.GetLastSafeSpot=ag.
+GetLastSafeSpot aj.OnSafeSpotChanged=ag.OnSafeSpotChanged aj.
+SetSafeSpotVisualEnabled=ag.SetVisualEnabled aj.IsSafeSpotVisualEnabled=ag.
+IsVisualEnabled aj.SetSafeSpotEnabled=ag.SetEnabled aj.IsSafeSpotEnabled=ag.
+IsEnabled aj.SetSafeSpotBuffer=ag.SetSafetyBuffer aj.GetSafeSpotBuffer=ag.
+GetSafetyBuffer aj.SetShowCandidates=ag.SetShowCandidates aj.IsShowCandidates=ag
+.IsShowCandidates aj.ClearSafeSpot=ag.Clear aj.SetAutoDodgeEnabled=ah.SetEnabled
+aj.IsAutoDodgeEnabled=ah.IsEnabled aj.SetDodgeSnapDistance=ah.SetSnapDistance aj
+.GetDodgeSnapDistance=ah.GetSnapDistance aj.IsCurrentlyDodging=ah.IsDodging aj.
+OnDodgeStateChanged=ah.OnDodgeStateChanged aj.ClearDodge=ah.Clear aj.
+SetVisualizerEnabled=ad.SetEnabled aj.IsVisualizerEnabled=ad.IsEnabled aj.
+RefreshVisuals=ad.RefreshAll aj.SetTrajectoryEnabled=ae.SetEnabled aj.
+IsTrajectoryEnabled=ae.IsEnabled aj.SetTrajectoryLength=ae.SetPredictionLength
+aj.GetTrajectoryLength=ae.GetPredictionLength aj.RefreshTrajectory=ae.RefreshAll
+aj.IsPointInAnyTrajectory=ae.IsPointInAnyTrajectory aj.GetNearbyTrajectories=ae.
+GetNearbyTrajectories aj.SetSelectionBoxesEnabled=ab.SetSelectionBoxesEnabled aj
+.IsSelectionBoxesEnabled=ab.IsSelectionBoxesEnabled aj.SetTimerVisualEnabled=ai.
+SetEnabled aj.IsTimerVisualEnabled=ai.IsEnabled aj.RefreshTimerVisuals=ai.
+RefreshAll aj.StartDetection=ab.StartScan aj.StopDetection=ab.StopScan aj.
+IsDetectionEnabled=ab.IsEnabled aj.SetDetectionEnabled=ab.SetEnabled aj.
+SetLogHazards=ab.SetLogHazards aj.IsLogHazardsEnabled=ab.IsLogHazardsEnabled aj.
+SetLogThreats=aj.SetLogHazards aj.IsLogThreatsEnabled=aj.IsLogHazardsEnabled aj.
+SetLogFailed=ab.SetLogFailed aj.IsLogFailedEnabled=ab.IsLogFailedEnabled aj.
+SetInspectTarget=ab.SetInspectTarget aj.GetInspectTarget=ab.GetInspectTarget aj.
+SetInspectEnabled=ab.SetInspectEnabled aj.IsInspectEnabled=ab.IsInspectEnabled
+aj.GetHazardCount=ab.GetHazardCount aj.GetActiveHazards=ab.GetActiveHazards aj.
+GetLastHazardInfo=ab.GetLastHazardInfo aj.OnHazardChanged=ab.OnHazardChanged
+function aj.StartScan()ab.StartScan()end function aj.StopScan()ab.StopScan()end
+function aj.Toggle(ak)if ak then aj.StartScan()else aj.StopScan()end end
+function aj.IsEnabled()return ab.IsEnabled()end aa.Register(function()ab.
+StopScan()end)return aj end function a.x()local aa,ab,ac,ad=a.load'a',a.load'c',
+a.load'b',a.load'g'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap=aa.RunService or
+game:GetService'RunService',aa.VirtualInputManager or game:GetService
+'VirtualInputManager',aa.player,{},false,35,0.15,0,0,false,false function ah.
+IsEnabled()return ai end local aq,ar function ah.SetEnabled(as)local at=as==true
+if at==ai then return end ai=at if ai then aq()else ar()end end ah.
+IsSkillQEnabled=ah.IsEnabled ah.SetSkillQEnabled=ah.SetEnabled ah.
+IsSkillEEnabled=ah.IsEnabled ah.SetSkillEEnabled=ah.SetEnabled function ah.
+GetSkillERange()return aj end function ah.SetSkillERange(as)if type(as)==
+'number'and as>=2 then aj=as end end function ah.GetSpamInterval()return ak end
+function ah.SetSpamInterval(as)if type(as)=='number'and as>=0.05 then ak=as end
+end function ah.IsBuffActive()local as,at=pcall(function()return workspace:
+FindFirstChild'groundAura'end)return as and at~=nil end local as=function()local
+as=ag or game:GetService'Players'.LocalPlayer local at=as and as.Character local
+au=at and(at:FindFirstChild'HumanoidRootPart'or at.PrimaryPart)if au and au.
+Parent then return au end return nil end local at=function()local at=as()if not
+at then return nil,math.huge,false end local au,av=at.Position,ad.GetTarget and
+ad.GetTarget()if av and av.Root and av.Root.Parent then local aw=av.Humanoid or(
+av.Model and av.Model:FindFirstChildOfClass'Humanoid')if aw and aw.Health>0 then
+local ax=av.Root.Position local ay=Vector3.new(ax.X-au.X,0,ax.Z-au.Z).Magnitude
+return av,ay,true end end local aw,ax,ay,az=ab.GetTrackedEnemyData and ab.
+GetTrackedEnemyData(),math.huge,false if aw and#aw>0 then for aA,aB in ipairs(aw
+)do if aB and aB.Root and aB.Root.Parent then local aC=aB.Humanoid or(aB.Model
+and aB.Model:FindFirstChildOfClass'Humanoid')if aC and aC.Health>0 then ay=true
+local aD=aB.Root.Position local aE,aF=aD.X-au.X,aD.Z-au.Z local aG=aE*aE+aF*aF
+if aG<ax then ax=aG az=aB end end end end end local aA=ax<math.huge and math.
+sqrt(ax)or math.huge return az,aA,ay end function ah.CastSkillQ()if an then
+return end an=true task.spawn(function()local au=(ab.GetKeyHoldTime and ab.
+GetKeyHoldTime())or 0.05 pcall(function()af:SendKeyEvent(true,Enum.KeyCode.Q,
+false,game)end)task.wait(au)pcall(function()af:SendKeyEvent(false,Enum.KeyCode.Q
+,false,game)end)an=false end)end function ah.CastSkillE()if ao then return end
+ao=true task.spawn(function()local au=(ab.GetKeyHoldTime and ab.GetKeyHoldTime()
+)or 0.05 pcall(function()af:SendKeyEvent(true,Enum.KeyCode.E,false,game)end)task
+.wait(au)pcall(function()af:SendKeyEvent(false,Enum.KeyCode.E,false,game)end)ao=
+false end)end local au=function()if not ai or ab.IsInLobby()then return end
+local au=as()if not au then return end local av=au.Parent local aw=av and av:
+FindFirstChildOfClass'Humanoid'if aw and aw.Health<=0 then return end local ax,
+ay,az=at()local aA=os.clock()if(aA-al>=ak)and not an then if az then al=aA ah.
+CastSkillQ()end end if(aA-am>=ak)and not ao then if ax and ay<=aj then local aB=
+ah.IsBuffActive()if aB then am=aA ah.CastSkillE()end end end end aq=function()if
+not ap then ap=ae.Heartbeat:Connect(au)end end ar=function()if ap then ap:
+Disconnect()ap=nil end an=false ao=false end function ah.Step(av,aw,ax)end ac.
+Register(function()ah.SetEnabled(false)end)return ah end end local aa,ab,ac,ad,
+ae,af,ag,ah,ai,aj,ak=a.load'a',a.load'c',a.load'b',a.load'd',a.load'e',a.load'f'
+,a.load'g',a.load'h',a.load'w',a.load'x',a.load't'local al,am,an,ao,ap,aq,ar,as,
+at,au,av,aw,ax,ay,az,aA,aB,aC=aa.RunService,aa.player,{NO_TARGET='NO_TARGET',
+ACQUIRING_TARGET='ACQUIRING_TARGET',TRACKING_TARGET='TRACKING_TARGET',CHASE=
+'CHASE',HOLD='HOLD',KITE='KITE',BLOCKED='BLOCKED',REPATHING='REPATHING'},{},
+false,false,1.5,15,35,25,50,true,6,true,true,true,true,true local aD,aE,aF,aG,aH
+,aI,aJ,aK,aL,aM,aN,aO,aP,aQ,aR,aS,aT,aU,aV,aW,aX,aY,aZ,a_,a0,a1,a2,a3,a4,a5,a6,
+a7,a8,a9,b=an.NO_TARGET,'None',0,0,false,false,0,0,false,10,false,{},function()
+local aD=am and am.Character local aE=aD and aD:FindFirstChild'HumanoidRootPart'
+if aE and aE.Parent then return aE end return nil end,function(aD)if not aD or
+not aD.Parent then return nil end local aE,aF=pcall(function()return aD.Position
+end)if not aE or not aF then return nil end return aF end,function(aD)if ab.
+IsBossActive and ab.IsBossActive()then return true end if aD then if aD.Room and
+type(aD.Room.Name)=='string'and string.find(string.lower(aD.Room.Name),'boss')
+then return true end if aD.Model then local aE=string.lower(aD.Model.Name)if
+string.find(aE,'boss')then return true end local aF=aD.Model.Parent if aF and
+string.find(string.lower(aF.Name),'boss')then return true end end end return
+false end,function(aD)return ak.GetActiveCombatDistances(aD)end,function(aD,aE)
+if aD==aE then return true end if aD and aE and aD.Model and aE.Model and aD.
+Model==aE.Model then return true end return false end local ba=function(ba,bb)
+local bc=ag.GetTarget()if aT(bc,ba)then return end ag.SetTarget(ba,nil,nil,bb)aU
+=nil aE='None'aV=nil aW=nil aJ=0 if ba then aD=an.CHASE else aD=an.NO_TARGET end
+end b=function()if aH or not ap or not aq then return end aG+=1 local bb=aG aH=
+true local bc=aP()local bd=bc and aQ(bc)if not bd then aH=false return end local
+be=ae.Scan()if#be==0 then if bb==aG and ap and aq then ba(nil,nil)end aH=false
+return end local bf,bg,bh,bi=af.SelectBestTarget(bd,be,function()return bb~=aG
+or not ap or not aq end)if bb==aG and ap and aq then ba(bf,bi)end aH=false end
+local bb,bc,bd,be=function(bb)if ab.IsInLobby()or not aI then return end local
+bc,bd=aP(),ab.GetHumanoid()if not bc or not bd or bd.Health<=0 then return end
+local be=aQ(bc)if not be then return end if ai.IsCurrentlyDodging and ai.
+IsCurrentlyDodging()then return end if aN then return end local bf=os.clock()if
+bf-aF>=ar then aF=bf if aD~=an.HOLD and aD~=an.KITE then b()end end local bh=ag.
+GetTarget()if bh then if not ag.IsTargetValid()then ag.ClearTarget()aD=an.
+NO_TARGET aU=nil aE='None'aW=nil pcall(function()bd:MoveTo(be)bd.AutoRotate=true
+end)b()return end end if not bh or aD==an.NO_TARGET then aU=nil aE='None'aW=nil
+pcall(function()bd:MoveTo(be)bd.AutoRotate=true end)if not aH and bf-aF>=0.5
+then aF=bf b()end return end local bi=bh.Root and aQ(bh.Root)if not bi then ag.
+ClearTarget()aD=an.NO_TARGET aW=nil pcall(function()bd:MoveTo(be)bd.AutoRotate=
+true end)return end local bj,bk=aS(bh)local bl=Vector3.new(bi.X-be.X,0,bi.Z-be.Z
+)local bm,bn,bo,bp=bl.Magnitude,ak.GetActiveBossArea(bh)local bq,br=false if bn
+and bp and bo and bo>0 then br=Vector3.new(bp.X,0,bp.Z)local bs=(Vector3.new(be.
+X,0,be.Z)-br).Magnitude if bs>bo then bq=true end end if bq and br and bp then
+local bs=Vector3.new(bp.X,be.Y,bp.Z)aD=an.CHASE aE='Enter Boss Area'aU=bs aJ=0
+bd:MoveTo(bs)return end if aw and bm<=(bk+25)then pcall(function()bd.AutoRotate=
+false local bs=Vector3.new(bi.X,bc.Position.Y,bi.Z)if(bs-bc.Position).Magnitude>
+0.5 then bc.CFrame=CFrame.lookAt(bc.Position,bs)end end)else pcall(function()bd.
+AutoRotate=true end)end aj.Step(bb,bh,bm)if bm<bj then local bs=Vector3.new(be.X
+-bi.X,0,be.Z-bi.Z)local bt,bu=bs.Magnitude>0.1 and bs.Unit or Vector3.new(0,0,1)
+,math.clamp(bj-bm+6,4,15)local bv=be+bt*bu if br and bo then local bw=Vector3.
+new(bv.X,0,bv.Z)if(bw-br).Magnitude>bo then local bx=br+(bw-br).Unit*math.max(1,
+bo-2)bv=Vector3.new(bx.X,be.Y,bx.Z)if(bv-be).Magnitude<2 then aD=an.HOLD aE=
+'Hold (Boss Area Edge)'aU=nil aJ=0 pcall(function()bd:MoveTo(be)end)return end
+end end local bw,bx=true,ab.IsInvulnerable and ab.IsInvulnerable()if not bx and
+ai and ai.IsPointSafe then bw=ai.IsPointSafe(bv,0.5)end if not bw then aD=an.
+HOLD aE='Hold (Danger Behind)'aU=nil aJ=0 pcall(function()bd:MoveTo(be)end)else
+aD=an.KITE aE='Kite'aJ=0 aU=bv bd:MoveTo(bv)end elseif bm<=bk then aD=an.HOLD aU
+=nil aE='Hold'aJ=0 pcall(function()bd:MoveTo(be)end)else local bs,bt,bu=bl.
+Magnitude>0.1 and bl.Unit or Vector3.new(0,0,1),false,ab.IsInvulnerable and ab.
+IsInvulnerable()if not bu and ai and ai.IsPointSafe then for bv,bw in ipairs{3,6
+,10}do if bw<bm then local bx=be+bs*bw if not ai.IsPointSafe(bx,0.5)then bt=true
+break end end end end if bt then aD=an.HOLD aE='Hold (Danger Ahead)'aU=nil aJ=0
+pcall(function()bd:MoveTo(be)end)else aD=an.CHASE aE='Chase'local bv=Vector3.
+new(bi.X,be.Y,bi.Z)aU=bv bd:MoveTo(bv)local bw=bi.Y-be.Y if bw>1.8 and bm<=8
+then bd.Jump=true end local bx=bc.AssemblyLinearVelocity or bc.Velocity local by
+,bz=bx and Vector3.new(bx.X,0,bx.Z).Magnitude or 0,(type(bb)=='number'and bb>0)
+and bb or 0.016 if by<aM then aJ+=bz if aL and(bf-aK)>=0.4 then bd.Jump=true
+pcall(function()bd:ChangeState(Enum.HumanoidStateType.Jumping)end)aK=bf end else
 aJ=0 end end end end,function()if a_ and a_.Parent then return a_ end if a_ then
 pcall(function()a_:Destroy()end)a_=nil end a_=Instance.new'Highlight'a_.Name=
 'TM_EnemyHighlight_Debug'a_.FillColor=Color3.fromRGB(255,200,0)a_.
 FillTransparency=0.5 a_.OutlineColor=Color3.fromRGB(255,0,0)a_.
 OutlineTransparency=0 a_.Parent=aa.CoreGui or game:GetService'CoreGui'return a_
-end,function()return workspace.Terrain end,function()for ba,bb in ipairs(aO)do
-pcall(function()bb:Destroy()end)end table.clear(aO)a8=nil end local be,bg=
-function()if ab.IsInLobby()then return end local be,bg=ag.GetTarget(),aP()local
-bh,bi=bg and aQ(bg),bc()if not aA or not be or not be.Root then if a_ and a_.
-Parent then a_.Enabled=false end else local bj=bb()if be.Model and be.Model.
-Parent then bj.Adornee=be.Model bj.Enabled=true else bj.Enabled=false end end
-local bj,bk=ag.GetWaypoints(),ag.GetPathInstance()if not ay or not bj or#bj==0
-or not bi then bd()else local bl=tostring(bk)..'_'..tostring(#bj)if a8~=bl then
-bd()for bm=2,#bj do local bn,bo=bj[bm-1].Position,bj[bm].Position local bp=(bo-
-bn).Magnitude if bp>0.01 then local bq=Instance.new'LineHandleAdornment'bq.Name=
-'TM_PathLine_Debug'bq.Adornee=bi bq.AlwaysOnTop=true bq.Length=bp bq.Thickness=2
-bq.Transparency=0.3 bq.Color3=Color3.fromRGB(0,255,120)bq.ZIndex=0 bq.CFrame=
-CFrame.lookAt(bn,bo)bq.Parent=aa.CoreGui or game:GetService'CoreGui'aO[#aO+1]=bq
-end end a8=bl end end if not az or not aU or not bh or not bi then if a0 then a0
-.Visible=false end if a1 then a1.Visible=false end else local bl,bm=bh+Vector3.
-new(0,0.5,0),aU+Vector3.new(0,0.5,0)local bn=(bm-bl).Magnitude if bn>=0.3 then
+end,function()return workspace.Terrain end,function()for bb,bc in ipairs(aO)do
+pcall(function()bc:Destroy()end)end table.clear(aO)a9=nil end local bf,bh=
+function()if ab.IsInLobby()then return end local bf,bh=ag.GetTarget(),aP()local
+bi,bj=bh and aQ(bh),bd()if not aA or not bf or not bf.Root then if a_ and a_.
+Parent then a_.Enabled=false end else local bk=bc()if bf.Model and bf.Model.
+Parent then bk.Adornee=bf.Model bk.Enabled=true else bk.Enabled=false end end
+local bk,bl=ag.GetWaypoints(),ag.GetPathInstance()if not ay or not bk or#bk==0
+or not bj then be()else local bm=tostring(bl)..'_'..tostring(#bk)if a9~=bm then
+be()for bn=2,#bk do local bo,bp=bk[bn-1].Position,bk[bn].Position local bq=(bp-
+bo).Magnitude if bq>0.01 then local br=Instance.new'LineHandleAdornment'br.Name=
+'TM_PathLine_Debug'br.Adornee=bj br.AlwaysOnTop=true br.Length=bq br.Thickness=2
+br.Transparency=0.3 br.Color3=Color3.fromRGB(0,255,120)br.ZIndex=0 br.CFrame=
+CFrame.lookAt(bo,bp)br.Parent=aa.CoreGui or game:GetService'CoreGui'aO[#aO+1]=br
+end end a9=bm end end if not az or not aU or not bi or not bj then if a0 then a0
+.Visible=false end if a1 then a1.Visible=false end else local bm,bn=bi+Vector3.
+new(0,0.5,0),aU+Vector3.new(0,0.5,0)local bo=(bn-bm).Magnitude if bo>=0.3 then
 if not a0 or not a0.Parent then a0=Instance.new'LineHandleAdornment'a0.Name=
-'TM_ActualPath_Debug'a0.Adornee=bi a0.AlwaysOnTop=true a0.Thickness=3.5 a0.
+'TM_ActualPath_Debug'a0.Adornee=bj a0.AlwaysOnTop=true a0.Thickness=3.5 a0.
 Transparency=0.15 a0.Color3=Color3.fromRGB(0,230,255)a0.ZIndex=2 a0.Parent=aa.
-CoreGui or game:GetService'CoreGui'end a0.Length=bn a0.CFrame=CFrame.lookAt(bl,
-bm)a0.Visible=true if not a1 or not a1.Parent then a1=Instance.new
-'SphereHandleAdornment'a1.Name='TM_ActualMarker_Debug'a1.Adornee=bi a1.
+CoreGui or game:GetService'CoreGui'end a0.Length=bo a0.CFrame=CFrame.lookAt(bm,
+bn)a0.Visible=true if not a1 or not a1.Parent then a1=Instance.new
+'SphereHandleAdornment'a1.Name='TM_ActualMarker_Debug'a1.Adornee=bj a1.
 AlwaysOnTop=true a1.Radius=0.65 a1.Transparency=0.2 a1.Color3=Color3.fromRGB(0,
 230,255)a1.ZIndex=3 a1.Parent=aa.CoreGui or game:GetService'CoreGui'end a1.
-CFrame=CFrame.new(bm)a1.Visible=true else if a0 then a0.Visible=false end if a1
-then a1.Visible=false end end end if not aB or not aW or not bh or not be or not
-bi then if a2 then a2.Visible=false end if a3 then a3.Visible=false end else
-local bl,bm,bn=aW.origin or(bh+Vector3.new(0,1.5,0)),aW.directHitPos or aW.
-targetPos,aW.directBlocked if bm then local bo=(bm-bl).Magnitude if bo>=0.2 then
+CFrame=CFrame.new(bn)a1.Visible=true else if a0 then a0.Visible=false end if a1
+then a1.Visible=false end end end if not aB or not aW or not bi or not bf or not
+bj then if a2 then a2.Visible=false end if a3 then a3.Visible=false end else
+local bm,bn,bo=aW.origin or(bi+Vector3.new(0,1.5,0)),aW.directHitPos or aW.
+targetPos,aW.directBlocked if bn then local bp=(bn-bm).Magnitude if bp>=0.2 then
 if not a2 or not a2.Parent then a2=Instance.new'LineHandleAdornment'a2.Name=
-'TM_BlockerRay_Debug'a2.Adornee=bi a2.AlwaysOnTop=true a2.Thickness=3 a2.
+'TM_BlockerRay_Debug'a2.Adornee=bj a2.AlwaysOnTop=true a2.Thickness=3 a2.
 Transparency=0.2 a2.ZIndex=3 a2.Parent=aa.CoreGui or game:GetService'CoreGui'end
-a2.Length=bo a2.Color3=bn and Color3.fromRGB(255,30,30)or Color3.fromRGB(50,255,
-50)a2.CFrame=CFrame.lookAt(bl,bm)a2.Visible=true if bn and aW.directHitPos then
+a2.Length=bp a2.Color3=bo and Color3.fromRGB(255,30,30)or Color3.fromRGB(50,255,
+50)a2.CFrame=CFrame.lookAt(bm,bn)a2.Visible=true if bo and aW.directHitPos then
 if not a3 or not a3.Parent then a3=Instance.new'SphereHandleAdornment'a3.Name=
-'TM_BlockerHitMarker_Debug'a3.Adornee=bi a3.AlwaysOnTop=true a3.Radius=0.5 a3.
+'TM_BlockerHitMarker_Debug'a3.Adornee=bj a3.AlwaysOnTop=true a3.Radius=0.5 a3.
 Transparency=0.2 a3.Color3=Color3.fromRGB(255,30,30)a3.ZIndex=4 a3.Parent=aa.
 CoreGui or game:GetService'CoreGui'end a3.CFrame=CFrame.new(aW.directHitPos)a3.
 Visible=true else if a3 then a3.Visible=false end end else if a2 then a2.Visible
-=false end if a3 then a3.Visible=false end end end end local bl=be and be.Root
-if not aC or not bl or not bl.Parent then if a4 then a4.Visible=false end if a5
+=false end if a3 then a3.Visible=false end end end end local bm=bf and bf.Root
+if not aC or not bm or not bm.Parent then if a4 then a4.Visible=false end if a5
 then a5.Visible=false end if a6 then a6.Visible=false end if a7 then a7.Visible=
-false end else local bm=aQ(bl)or bl.Position local bn=bh and(bh.Y-2.5)or(bm.Y-
-2.5)local bo=Vector3.new(bm.X,bn,bm.Z)local bp=CFrame.new(bo)*CFrame.Angles(math
-.rad(90),0,0)local bq,br,bs=bl.CFrame:ToObjectSpace(bp),aS(be)local bt=math.max(
-1,br)local bu,bv=math.max(bt+0.5,bs),0.35 if not a4 or not a4.Parent then a4=
+false end else local bn=aQ(bm)or bm.Position local bo=bi and(bi.Y-2.5)or(bn.Y-
+2.5)local bp=Vector3.new(bn.X,bo,bn.Z)local bq=CFrame.new(bp)*CFrame.Angles(math
+.rad(90),0,0)local br,bs,bt=bm.CFrame:ToObjectSpace(bq),aS(bf)local bu=math.max(
+1,bs)local bv,bw=math.max(bu+0.5,bt),0.35 if not a4 or not a4.Parent then a4=
 Instance.new'CylinderHandleAdornment'a4.Name='TM_MinDistanceFill_Debug'a4.
 AlwaysOnTop=true a4.ZIndex=4 a4.Parent=aa.CoreGui or game:GetService'CoreGui'end
-a4.Adornee=bl a4.Height=0.02 a4.InnerRadius=0 a4.Radius=bt a4.Color3=Color3.
-fromRGB(255,200,0)a4.Transparency=0.82 a4.CFrame=bq a4.Visible=true if not a5 or
+a4.Adornee=bm a4.Height=0.02 a4.InnerRadius=0 a4.Radius=bu a4.Color3=Color3.
+fromRGB(255,200,0)a4.Transparency=0.82 a4.CFrame=br a4.Visible=true if not a5 or
 not a5.Parent then a5=Instance.new'CylinderHandleAdornment'a5.Name=
 'TM_MinDistanceRing_Debug'a5.AlwaysOnTop=true a5.ZIndex=5 a5.Parent=aa.CoreGui
-or game:GetService'CoreGui'end a5.Adornee=bl a5.Height=0.05 a5.InnerRadius=math.
-max(0.1,bt-bv)a5.Radius=bt a5.Color3=Color3.fromRGB(255,215,20)a5.Transparency=
-0.25 a5.CFrame=bq a5.Visible=true if not a6 or not a6.Parent then a6=Instance.
+or game:GetService'CoreGui'end a5.Adornee=bm a5.Height=0.05 a5.InnerRadius=math.
+max(0.1,bu-bw)a5.Radius=bu a5.Color3=Color3.fromRGB(255,215,20)a5.Transparency=
+0.25 a5.CFrame=br a5.Visible=true if not a6 or not a6.Parent then a6=Instance.
 new'CylinderHandleAdornment'a6.Name='TM_MaxDistanceFill_Debug'a6.AlwaysOnTop=
 true a6.ZIndex=4 a6.Parent=aa.CoreGui or game:GetService'CoreGui'end a6.Adornee=
-bl a6.Height=0.02 a6.InnerRadius=bt a6.Radius=bu a6.Color3=Color3.fromRGB(0,255,
-120)a6.Transparency=0.82 a6.CFrame=bq a6.Visible=true if not a7 or not a7.Parent
+bm a6.Height=0.02 a6.InnerRadius=bu a6.Radius=bv a6.Color3=Color3.fromRGB(0,255,
+120)a6.Transparency=0.82 a6.CFrame=br a6.Visible=true if not a7 or not a7.Parent
 then a7=Instance.new'CylinderHandleAdornment'a7.Name='TM_MaxDistanceRing_Debug'
 a7.AlwaysOnTop=true a7.ZIndex=5 a7.Parent=aa.CoreGui or game:GetService'CoreGui'
-end a7.Adornee=bl a7.Height=0.05 a7.InnerRadius=math.max(0.1,bu-bv)a7.Radius=bu
-a7.Color3=Color3.fromRGB(0,255,120)a7.Transparency=0.25 a7.CFrame=bq a7.Visible=
-true end end,function()if a_ then pcall(function()a_:Destroy()end)a_=nil end if
-a0 then pcall(function()a0:Destroy()end)a0=nil end if a1 then pcall(function()a1
-:Destroy()end)a1=nil end if a2 then pcall(function()a2:Destroy()end)a2=nil end
-if a3 then pcall(function()a3:Destroy()end)a3=nil end if a4 then pcall(function(
-)a4:Destroy()end)a4=nil end if a5 then pcall(function()a5:Destroy()end)a5=nil
-end if a6 then pcall(function()a6:Destroy()end)a6=nil end if a7 then pcall(
-function()a7:Destroy()end)a7=nil end bd()end function ao.IsEnabled()return ap
-end function ao.IsRunning()return aq end function ao.GetState()return aD end
-function ao.GetScanInterval()return ar end function ao.SetScanInterval(bh)if
-type(bh)=='number'and bh>0.1 then ar=bh end end function ao.
-GetMobMinCombatDistance()return as end function ao.SetMobMinCombatDistance(bh)if
-type(bh)=='number'and bh>=1 then as=bh if as>at then at=as+5 end end end
+end a7.Adornee=bm a7.Height=0.05 a7.InnerRadius=math.max(0.1,bv-bw)a7.Radius=bv
+a7.Color3=Color3.fromRGB(0,255,120)a7.Transparency=0.25 a7.CFrame=br a7.Visible=
+true local bx,by,bz=ak.GetActiveBossArea(bf)if bx and bz and by and by>0 then
+local bA=Vector3.new(bz.X,bo,bz.Z)local bB=CFrame.new(bA)*CFrame.Angles(math.
+rad(90),0,0)local bC=bm.CFrame:ToObjectSpace(bB)if not a8 or not a8.Parent then
+a8=Instance.new'CylinderHandleAdornment'a8.Name='TM_BossAreaRing_Debug'a8.
+AlwaysOnTop=true a8.ZIndex=5 a8.Parent=aa.CoreGui or game:GetService'CoreGui'end
+a8.Adornee=bm a8.Height=0.05 a8.InnerRadius=math.max(0.1,by-0.45)a8.Radius=by a8
+.Color3=Color3.fromRGB(0,200,255)a8.Transparency=0.3 a8.CFrame=bC a8.Visible=
+true else if a8 then a8.Visible=false end end end end,function()if a_ then
+pcall(function()a_:Destroy()end)a_=nil end if a0 then pcall(function()a0:
+Destroy()end)a0=nil end if a1 then pcall(function()a1:Destroy()end)a1=nil end if
+a2 then pcall(function()a2:Destroy()end)a2=nil end if a3 then pcall(function()a3
+:Destroy()end)a3=nil end if a4 then pcall(function()a4:Destroy()end)a4=nil end
+if a5 then pcall(function()a5:Destroy()end)a5=nil end if a6 then pcall(function(
+)a6:Destroy()end)a6=nil end if a7 then pcall(function()a7:Destroy()end)a7=nil
+end if a8 then pcall(function()a8:Destroy()end)a8=nil end be()end function ao.
+IsEnabled()return ap end function ao.IsRunning()return aq end function ao.
+GetState()return aD end function ao.GetScanInterval()return ar end function ao.
+SetScanInterval(bi)if type(bi)=='number'and bi>0.1 then ar=bi end end function
+ao.GetMobMinCombatDistance()return as end function ao.SetMobMinCombatDistance(bi
+)if type(bi)=='number'and bi>=1 then as=bi if as>at then at=as+5 end end end
 function ao.GetMobMaxCombatDistance()return at end function ao.
-SetMobMaxCombatDistance(bh)if type(bh)=='number'and bh>=2 then at=bh if as>at
+SetMobMaxCombatDistance(bi)if type(bi)=='number'and bi>=2 then at=bi if as>at
 then as=math.max(1,at-5)end end end function ao.GetBossMinCombatDistance()return
-au end function ao.SetBossMinCombatDistance(bh)if type(bh)=='number'and bh>=1
-then au=bh if au>av then av=au+5 end end end function ao.
-GetBossMaxCombatDistance()return av end function ao.SetBossMaxCombatDistance(bh)
-if type(bh)=='number'and bh>=2 then av=bh if au>av then au=math.max(1,av-5)end
+au end function ao.SetBossMinCombatDistance(bi)if type(bi)=='number'and bi>=1
+then au=bi if au>av then av=au+5 end end end function ao.
+GetBossMaxCombatDistance()return av end function ao.SetBossMaxCombatDistance(bi)
+if type(bi)=='number'and bi>=2 then av=bi if au>av then au=math.max(1,av-5)end
 end end function ao.GetMinCombatDistance()return as end function ao.
-SetMinCombatDistance(bh)ao.SetMobMinCombatDistance(bh)end function ao.
-GetMaxCombatDistance()return at end function ao.SetMaxCombatDistance(bh)ao.
-SetMobMaxCombatDistance(bh)end ao.IsTargetBoss=aR function ao.
-IsAutoFaceTargetEnabled()return aw end function ao.SetAutoFaceTarget(bh)aw=bh
-and true or false if not aw then local bi=ab.GetHumanoid()if bi and bi.Parent
-then pcall(function()bi.AutoRotate=true end)end end end function ao.
-GetReachDistance()return maxCombatDistance end function ao.SetReachDistance(bh)
-if type(bh)=='number'and bh>=2 then ao.SetMaxCombatDistance(bh)end end function
-ao.GetRepathDistance()return ax end function ao.SetRepathDistance(bh)if type(bh)
-=='number'and bh>=1 then ax=bh ag.SetRepathThreshold(bh)end end function ao.
-SetAutoJumpOnStuck(bh)aL=bh==true end function ao.IsAutoJumpOnStuckEnabled()
-return aL end function ao.SetStuckVelocityThreshold(bh)if type(bh)=='number'and
-bh>0 then aM=bh end end function ao.GetStuckVelocityThreshold()return aM end
-function ao.SetPaused(bh)local bi=bh and true or false if bi==aN then return end
-aN=bi if aN then local bj,bk=ab.GetHumanoid(),aP()if bj and bj.Parent and bk
-then pcall(function()bj:MoveTo(bk.Position)bj.AutoRotate=true end)end end end
+SetMinCombatDistance(bi)ao.SetMobMinCombatDistance(bi)end function ao.
+GetMaxCombatDistance()return at end function ao.SetMaxCombatDistance(bi)ao.
+SetMobMaxCombatDistance(bi)end ao.IsTargetBoss=aR function ao.
+IsAutoFaceTargetEnabled()return aw end function ao.SetAutoFaceTarget(bi)aw=bi
+and true or false if not aw then local bj=ab.GetHumanoid()if bj and bj.Parent
+then pcall(function()bj.AutoRotate=true end)end end end function ao.
+GetReachDistance()return maxCombatDistance end function ao.SetReachDistance(bi)
+if type(bi)=='number'and bi>=2 then ao.SetMaxCombatDistance(bi)end end function
+ao.GetRepathDistance()return ax end function ao.SetRepathDistance(bi)if type(bi)
+=='number'and bi>=1 then ax=bi ag.SetRepathThreshold(bi)end end function ao.
+SetAutoJumpOnStuck(bi)aL=bi==true end function ao.IsAutoJumpOnStuckEnabled()
+return aL end function ao.SetStuckVelocityThreshold(bi)if type(bi)=='number'and
+bi>0 then aM=bi end end function ao.GetStuckVelocityThreshold()return aM end
+function ao.SetPaused(bi)local bj=bi and true or false if bj==aN then return end
+aN=bj if aN then local bk,bl=ab.GetHumanoid(),aP()if bk and bk.Parent and bl
+then pcall(function()bk:MoveTo(bl.Position)bk.AutoRotate=true end)end end end
 function ao.IsPaused()return aN end function ao.IsAutoSkillEnabled()return aj.
-IsEnabled()end function ao.SetAutoSkillEnabled(bh)aj.SetEnabled(bh)end ao.
+IsEnabled()end function ao.SetAutoSkillEnabled(bi)aj.SetEnabled(bi)end ao.
 IsAutoSkillQEnabled=aj.IsSkillQEnabled ao.SetAutoSkillQEnabled=aj.
 SetSkillQEnabled ao.IsAutoSkillEEnabled=aj.IsSkillEEnabled ao.
 SetAutoSkillEEnabled=aj.SetSkillEEnabled ao.GetSkillERange=aj.GetSkillERange ao.
 SetSkillERange=aj.SetSkillERange ao.GetSkillSpamInterval=aj.GetSpamInterval ao.
 SetSkillSpamInterval=aj.SetSkillSpamInterval ao.IsBuffActive=aj.IsBuffActive ao.
 CastSkillQ=aj.CastSkillQ ao.CastSkillE=aj.CastSkillE function ao.
-IsPlannedPathVisualEnabled()return ay end function ao.SetPlannedPathVisual(bh)ay
-=bh==true if not ay then bd()end end function ao.IsActualPathVisualEnabled()
-return az end function ao.SetActualPathVisual(bh)az=bh==true if not az then if
+IsPlannedPathVisualEnabled()return ay end function ao.SetPlannedPathVisual(bi)ay
+=bi==true if not ay then be()end end function ao.IsActualPathVisualEnabled()
+return az end function ao.SetActualPathVisual(bi)az=bi==true if not az then if
 a0 then a0.Visible=false end if a1 then a1.Visible=false end end end function ao
-.IsBlockerRayVisualEnabled()return aB end function ao.SetBlockerRayVisual(bh)aB=
-bh==true if not aB then if a2 then a2.Visible=false end if a3 then a3.Visible=
+.IsBlockerRayVisualEnabled()return aB end function ao.SetBlockerRayVisual(bi)aB=
+bi==true if not aB then if a2 then a2.Visible=false end if a3 then a3.Visible=
 false end end end function ao.IsTargetVisualEnabled()return aA end function ao.
-SetTargetVisual(bh)aA=bh==true if not aA then if a_ and a_.Parent then a_.
+SetTargetVisual(bi)aA=bi==true if not aA then if a_ and a_.Parent then a_.
 Enabled=false end end end function ao.IsCombatRangeVisualEnabled()return aC end
-function ao.SetCombatRangeVisual(bh)aC=bh==true if not aC then if a4 then a4.
+function ao.SetCombatRangeVisual(bi)aC=bi==true if not aC then if a4 then a4.
 Visible=false end if a5 then a5.Visible=false end if a6 then a6.Visible=false
-end if a7 then a7.Visible=false end end end function ao.GetDebugInfo()local bh=
-aP()local bi,bj,bk,bl,bm,bn=bh and aQ(bh),ag.GetTarget(),'-',0,0,ag.
-GetWaypoints()if bj and bj.Model then bk=bj.Model.Name or'-'local bo=aQ(bj.Root)
-if bo and bi then bl=(bo-bi).Magnitude bm=Vector3.new(bo.X-bi.X,0,bo.Z-bi.Z).
-Magnitude end end local bo={directBlocked=false,blockerName='None',blockerDist=0
-}if aW then bo.directBlocked=aW.directBlocked==true if aW.directHitPart then bo.
-blockerName=aW.directHitPart.Name or'Part'end if aW.directHitPos and bi then bo.
-blockerDist=(aW.directHitPos-bi).Magnitude end end local bp,bq=0,0 if bh then
-local br=bh.AssemblyLinearVelocity or bh.Velocity if br then bp=Vector3.new(br.X
-,0,br.Z).Magnitude bq=br.Y end end return{state=aD,enemyName=bk,enemyDist=bl,
-enemyFlat=bm,hasTarget=bj~=nil,destMode=aE,nodeIndex=aV,waypointCount=bn and#bn
-or 0,hasDestination=aU~=nil,blocker=bo,velocity=bp,verticalVelocity=bq,
-stuckTimer=aJ}end function ao.Toggle(bh,bi)if bh==ap then return end ap=bh if ap
-then if not bi then ad.EnableExclusive'AutoFarm'end if aX then aX:Disconnect()aX
+end if a7 then a7.Visible=false end end end function ao.GetDebugInfo()local bi=
+aP()local bj,bk,bl,bm,bn,bo=bi and aQ(bi),ag.GetTarget(),'-',0,0,ag.
+GetWaypoints()if bk and bk.Model then bl=bk.Model.Name or'-'local bp=aQ(bk.Root)
+if bp and bj then bm=(bp-bj).Magnitude bn=Vector3.new(bp.X-bj.X,0,bp.Z-bj.Z).
+Magnitude end end local bp={directBlocked=false,blockerName='None',blockerDist=0
+}if aW then bp.directBlocked=aW.directBlocked==true if aW.directHitPart then bp.
+blockerName=aW.directHitPart.Name or'Part'end if aW.directHitPos and bj then bp.
+blockerDist=(aW.directHitPos-bj).Magnitude end end local bq,br=0,0 if bi then
+local bs=bi.AssemblyLinearVelocity or bi.Velocity if bs then bq=Vector3.new(bs.X
+,0,bs.Z).Magnitude br=bs.Y end end return{state=aD,enemyName=bl,enemyDist=bm,
+enemyFlat=bn,hasTarget=bk~=nil,destMode=aE,nodeIndex=aV,waypointCount=bo and#bo
+or 0,hasDestination=aU~=nil,blocker=bp,velocity=bq,verticalVelocity=br,
+stuckTimer=aJ}end function ao.Toggle(bi,bj)if bi==ap then return end ap=bi if ap
+then if not bj then ad.EnableExclusive'AutoFarm'end if aX then aX:Disconnect()aX
 =nil end aq=true aG=0 aH=false aF=0 ag.SetRepathThreshold(ax)if not aY then aY=
-ab.OnEnemyChanged(function()if ap and aq and aD~=an.HOLD then a9()end end)end if
-not aZ then aZ=ab.OnRespawn(function()ag.ClearTarget()aD=an.NO_TARGET aW=nil a9(
-)end)end if not aI then task.spawn(function()if ab.ReadyDungeon()then aI=true
-end end)end task.defer(a9)aX=al.Heartbeat:Connect(function(bj)local bk,bl=pcall(
-ba,bj)if not bk then warn(('[AutoFarm] Error in stepMovementLoop: %s'):format(
-tostring(bl)))end be()end)else if aX then aX:Disconnect()aX=nil end aq=false if
-aY then aY()aY=nil end if aZ then aZ()aZ=nil end local bj,bk=ab.GetHumanoid(),
-aP()if bj and bj.Parent and bk then pcall(function()bj:MoveTo(bk.Position)bj.
+ab.OnEnemyChanged(function()if ap and aq and aD~=an.HOLD then b()end end)end if
+not aZ then aZ=ab.OnRespawn(function()ag.ClearTarget()aD=an.NO_TARGET aW=nil b()
+end)end if not aI then task.spawn(function()if ab.ReadyDungeon()then aI=true end
+end)end task.defer(b)aX=al.Heartbeat:Connect(function(bk)local bl,bm=pcall(bb,bk
+)if not bl then warn(('[AutoFarm] Error in stepMovementLoop: %s'):format(
+tostring(bm)))end bf()end)else if aX then aX:Disconnect()aX=nil end aq=false if
+aY then aY()aY=nil end if aZ then aZ()aZ=nil end local bk,bl=ab.GetHumanoid(),
+aP()if bk and bk.Parent and bl then pcall(function()bk:MoveTo(bl.Position)bk.
 AutoRotate=true end)end ag.ClearTarget()aD=an.NO_TARGET aU=nil aE='None'aW=nil
-aJ=0 aG+=1 aH=false bg()end end ad.Register('AutoFarm',ao.Toggle,ao.IsEnabled)ac
-.Register(function()ao.Toggle(false)bg()end)return ao
+aJ=0 aG+=1 aH=false bh()end end ad.Register('AutoFarm',ao.Toggle,ao.IsEnabled)ac
+.Register(function()ao.Toggle(false)bh()end)return ao
