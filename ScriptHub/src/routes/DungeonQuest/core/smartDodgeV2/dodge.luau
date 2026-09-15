@@ -13,7 +13,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local danger = require("@routes/DungeonQuest/core/smartDodgeV2/danger")
 local safeSpot = require("@routes/DungeonQuest/core/smartDodgeV2/safeSpot")
-local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
+local targetFacing = require("@routes/DungeonQuest/core/smartDodgeV2/targetFacing")
 local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
 
 local player = services.player
@@ -66,8 +66,8 @@ local function getCharacterParts(): (Model?, BasePart?, Humanoid?)
 end
 
 --// Tính khoảng cách phẳng 2D trên mặt sàn (bỏ qua trục Y)
-local function flatDistance(a: Vector3?, b: Vector3?): number
-	if not a or not b then return math.huge end
+local function flatDistance(a: any, b: any): number
+	if not a or not b or typeof(a) ~= "Vector3" or typeof(b) ~= "Vector3" then return math.huge end
 	local dx = a.X - b.X
 	local dz = a.Z - b.Z
 	return math.sqrt(dx * dx + dz * dz)
@@ -190,7 +190,7 @@ end
 --================================================================--
 function dodge.Perform(safePos: Vector3?, escapeDist: number?, hazardName: string?)
 	if not enabled then return end
-	if not safePos then return end
+	if not safePos or typeof(safePos) ~= "Vector3" then return end
 
 	-- Bỏ qua né đòn nếu đang tử trận hoặc đang trong thời gian bảo vệ sau hồi sinh
 	if shared.IsDead and shared.IsDead() then return end

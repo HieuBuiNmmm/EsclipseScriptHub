@@ -18,6 +18,7 @@ local enabled = true
 local targetScope = "All"            -- "All" | "Boss" | "Mobs"
 local dodgeBossEnabled = true        -- Bật/tắt né chiêu của Boss
 local dodgeEnemyEnabled = true       -- Bật/tắt né chiêu của Quái thường
+local dodgeBoss2OrbEnabled = false   -- Bật/tắt né Quả Cầu & Trụ Pha Lê Boss 2 (Mặc định tắt để tối ưu Dame và thời gian)
 local playerHitboxPadding = 0.35      -- Bù trừ bán kính cơ thể nhân vật (studs)
 local hitboxDownwardOffset = 2.85    -- Khoảng cách hạ thấp từ HumanoidRootPart xuống sát chân (studs)
 local respawnBypassEnabled = true     -- Bật/tắt bỏ qua né đòn sau khi hồi sinh
@@ -117,7 +118,7 @@ function danger.IsPointInPartOBB(point: Vector3, part: BasePart, padding: number
 	-- Broadphase Pruning: Bỏ qua nhanh nếu quá xa
 	local dX = point.X - partPos.X
 	local dZ = point.Z - partPos.Z
-	local maxDim = math.max(pSize.X, pSize.Z)
+	local maxDim = math.max(pSize.X, pSize.Y, pSize.Z)
 	local maxRadius = (maxDim * 0.7072) + pad + 3.0
 	if (dX * dX + dZ * dZ) > (maxRadius * maxRadius) then
 		return false
@@ -155,7 +156,7 @@ function danger.IsPointInSphere(point: Vector3, part: BasePart, padding: number?
 
 	local dX = point.X - partPos.X
 	local dZ = point.Z - partPos.Z
-	local radius = (math.max(pSize.X, pSize.Z) / 2) + pad
+	local radius = (math.max(pSize.X, pSize.Y, pSize.Z) / 2) + pad
 	return (dX * dX + dZ * dZ) <= (radius * radius)
 end
 
@@ -335,6 +336,14 @@ function danger.IsBoss2OrbHazard(hazard: types.ActiveHazard): boolean
 		or name:find("greenorb") ~= nil
 end
 
+--// Kiểm tra xem một hiểm họa có phải là Trụ Pha Lê của Boss 2 hay không
+function danger.IsBoss2CrystalHazard(hazard: types.ActiveHazard): boolean
+	if not hazard then return false end
+	local name = (hazard.cleanName or hazard.name or ""):lower():gsub("%s+", "")
+	return (name:find("secondboss") ~= nil and name:find("crystal") ~= nil)
+		or name:find("crystalpillar") ~= nil
+end
+
 --// 5. Kiểm tra xem một điểm P có nằm trong vùng nguy hiểm của một Hazard cụ thể không
 function danger.IsPointInHazard(point: Vector3, hazard: types.ActiveHazard, padding: number?): boolean
 	if not hazard or not hazard.instance or not hazard.instance.Parent then return false end
@@ -477,8 +486,18 @@ end
 --// Kiểm tra xem một hiểm họa có bị bỏ qua né dựa theo cài đặt Boss/Enemy không
 function danger.IsHazardIgnored(hazard: types.ActiveHazard): boolean
 	if not hazard then return true end
+
+	-- Bỏ qua Quả Cầu & Trụ Pha Lê Boss 2 nếu tắt né Orb & Crystal
+	if not dodgeBoss2OrbEnabled and (danger.IsBoss2OrbHazard(hazard) or danger.IsBoss2CrystalHazard(hazard)) then
+		return true
+	end
+
 	local isBoss = danger.IsBossHazard(hazard)
 	if targetScope == "Boss" and not isBoss then
+		-- Khi Boss đang xuất hiện, không bỏ qua các chiêu thức sinh ra trong phòng Boss (dù tên không chứa 'boss')
+		if shared.IsBossActive and shared.IsBossActive() then
+			return not dodgeBossEnabled
+		end
 		return true
 	elseif targetScope == "Mobs" and isBoss then
 		return true
@@ -562,7 +581,7 @@ function danger.IsPathSafe(fromPos: Vector3, toPos: Vector3, ignoredInstance: In
 	return true
 end
 
---// 7. Kiểm tra trạng thái của Nhân vật Player hiện tại
+--// 7. Kiểm tra trạng thái của Nhân vật Player hiện tại (Multi-Point Capsule Body Sampling)
 function danger.IsPlayerInDanger(): (boolean, types.ActiveHazard?)
 	local localPlayer = Players.LocalPlayer
 	local character = localPlayer and localPlayer.Character
@@ -582,15 +601,70 @@ function danger.IsPlayerInDanger(): (boolean, types.ActiveHazard?)
 	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
 	if not rootPart or not rootPart:IsA("BasePart") then return false, nil end
 
-	-- 1. Kiểm tra vị trí ngang thắt lưng (RootPart)
-	local inDanger, hazard = danger.IsPointInAnyHazard(rootPart.Position, nil, playerHitboxPadding)
+	local pPos = rootPart.Position
+	local pad = playerHitboxPadding
+	local footPos = pPos - Vector3.new(0, hitboxDownwardOffset, 0)
+
+	-- 1. Kiểm tra tâm cơ thể (Thắt lưng & Bàn chân)
+	local inDanger, hazard = danger.IsPointInAnyHazard(pPos, nil, pad)
 	if inDanger then
 		return true, hazard
 	end
 
-	-- 2. Kiểm tra vị trí ngang bàn chân (chạm sàn nhà, tránh bỏ sót đòn bệt mặt đất)
-	local footPos = rootPart.Position - Vector3.new(0, hitboxDownwardOffset, 0)
-	return danger.IsPointInAnyHazard(footPos, nil, playerHitboxPadding)
+	inDanger, hazard = danger.IsPointInAnyHazard(footPos, nil, pad)
+	if inDanger then
+		return true, hazard
+	end
+
+	-- 2. Quét Đa Điểm trên cơ thể (Multi-Point Capsule Body Sampling)
+	-- Quét 8 điểm biên theo chu vi hình hộp cơ thể (dựa theo góc quay CFrame của nhân vật)
+	local cf = rootPart.CFrame
+	local fwd = cf.LookVector
+	local rgt = cf.RightVector
+
+	-- Bán kính thân người Roblox (Ngang vai/hông ~ 1.4 studs, Trước/sau ngực ~ 1.0 studs)
+	local halfW = 1.4
+	local halfD = 1.0
+	local diagW = halfW * 0.7071
+	local diagD = halfD * 0.7071
+
+	local fwdVec = fwd * halfD
+	local rgtVec = rgt * halfW
+	local diagFR = (fwd * diagD) + (rgt * diagW)
+	local diagFL = (fwd * diagD) - (rgt * diagW)
+	local diagBR = (-fwd * diagD) + (rgt * diagW)
+	local diagBL = (-fwd * diagD) - (rgt * diagW)
+
+	local perimeterOffsets = {
+		fwdVec,
+		-fwdVec,
+		rgtVec,
+		-rgtVec,
+		diagFR,
+		diagFL,
+		diagBR,
+		diagBL,
+	}
+
+	-- Quét chu vi ngang bàn chân (chạm các vòng AoE/disc bệt dưới sàn)
+	for i = 1, 8 do
+		local footSample = footPos + perimeterOffsets[i]
+		inDanger, hazard = danger.IsPointInAnyHazard(footSample, nil, pad)
+		if inDanger then
+			return true, hazard
+		end
+	end
+
+	-- Quét chu vi ngang thắt lưng / vai (chạm các tia Beam, Spike, đạn bay sạt người)
+	for i = 1, 8 do
+		local midSample = pPos + perimeterOffsets[i]
+		inDanger, hazard = danger.IsPointInAnyHazard(midSample, nil, pad)
+		if inDanger then
+			return true, hazard
+		end
+	end
+
+	return false, nil
 end
 
 --// Respawn Dodge Bypass Getters & Setters
@@ -690,6 +764,14 @@ end
 
 function danger.IsDodgeBossEnabled(): boolean
 	return dodgeBossEnabled
+end
+
+function danger.SetDodgeBoss2OrbEnabled(state: boolean)
+	dodgeBoss2OrbEnabled = (state == true)
+end
+
+function danger.IsDodgeBoss2OrbEnabled(): boolean
+	return dodgeBoss2OrbEnabled
 end
 
 function danger.SetDodgeEnemyEnabled(state: boolean)

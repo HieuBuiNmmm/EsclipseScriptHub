@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-14T10:36:46.539501200+00:00",
+    genDate = "2026-09-15T02:32:16.623881500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6323,7 +6323,7 @@ local function isInternalDebugOrVisual(inst: Instance): boolean
 
 	-- 4. Các visual spheres và markers của Hub
 	if lower:find("radiussphere", 1, true) or lower:find("skillsphere", 1, true) then return true end
-	if lower:find("safemarker", 1, true) or lower:find("repositionmarker", 1, true) then return true end
+	if lower:find("safemarker", 1, true) then return true end
 	if lower:find("beaconpillar", 1, true) or lower:find("hitboxcircle", 1, true) then return true end
 	if lower:find("areavisual", 1, true) or lower:find("crystalguidebox", 1, true) then return true end
 	if lower:find("movingtrajectory", 1, true) or lower:find("telegraphcorridor", 1, true) then return true end
@@ -6339,7 +6339,7 @@ local function isInternalDebugOrVisual(inst: Instance): boolean
 		local pLower = pName:lower()
 		if pLower:find("debug", 1, true) or pName:sub(1, 3) == "TM_" then return true end
 		if pLower:find("smartdodge", 1, true) or pLower:find("smartautoplay", 1, true) then return true end
-		if pLower:find("safemarker", 1, true) or pLower:find("repositionmarker", 1, true) then return true end
+		if pLower:find("safemarker", 1, true) then return true end
 		if pLower:find("radiusvisual", 1, true) then return true end
 	end
 
@@ -7606,7 +7606,8 @@ function visuals.UpdatePlayerHitboxVisual(playerPos: Vector3?, inDanger: boolean
 
 	local part = getOrCreateHitboxPart()
 	local pad = padding or 0.35
-	local diameter = math.max(0.4, pad * 2)
+	local bodyRadius = 1.4
+	local diameter = math.max(1.0, (bodyRadius + pad) * 2)
 
 	part.Size = Vector3.new(0.12, diameter, diameter)
 	part.Color = (inDanger == true) and COLOR_HITBOX_DANGER or COLOR_HITBOX_SAFE
@@ -8486,79 +8487,29 @@ function shared.IsBossActive(): boolean
 end
 
 function shared.IsBossEnemy(model: Instance?, name: string?): boolean
-	if not model and not name then return false end
-	local eName = name or (model and model.Name) or ""
-	local lowerName = tostring(eName):lower()
+	if not model then return false end
 
-	-- 1. Nếu tên chứa rõ chữ "boss"
-	if lowerName:find("boss") ~= nil then
-		return true
+	-- DẤU HIỆU CHUẨN XÁC DUY NHẤT: Thanh máu bossHealth trong PlayerGui có Enabled == true
+	-- Tuyệt đối không dùng bất kỳ thứ gì khác để đoán mò khi thanh máu chưa hiện
+	if not bossActive then
+		return false
 	end
 
-	-- 2. Kiểm tra room của quái: nếu nằm trong phòng có tên chứa "boss" (ví dụ bossRoom, boss1, boss2...)
-	if model then
-		local room = nil
-		local data = trackedEnemies[model]
-		if data and data.Room then
-			room = data.Room
-		else
-			local p = model.Parent
-			while p and p ~= workspace do
-				if p.Parent == dungeon and (p:IsA("Folder") or p:IsA("Model")) then
-					room = p
-					break
-				end
-				p = p.Parent
-			end
-		end
-
-		if room and tostring(room.Name):lower():find("boss") ~= nil then
-			-- Trong boss room, con có MaxHealth cao nhất chính là Boss (tránh nhầm minion do boss triệu hồi)
-			local maxHpInRoom = 0
-			local bossInRoom = nil
-			for m, d in pairs(trackedEnemies) do
-				if m and m.Parent and d.Room == room then
-					local hum = d.Humanoid or m:FindFirstChildOfClass("Humanoid")
-					if hum and hum.Health > 0 and hum.MaxHealth > maxHpInRoom then
-						maxHpInRoom = hum.MaxHealth
-						bossInRoom = m
-					end
-				end
-			end
-			if bossInRoom and model == bossInRoom then
-				return true
-			end
-			-- Nếu chỉ có 1 quái duy nhất trong boss room
-			if not bossInRoom then
-				return true
+	-- Khi bossActive == true (bossHealth.Enabled == true):
+	-- Con quái có MaxHealth lớn nhất trong số tất cả quái đang sống chính là Boss!
+	local maxHp = 0
+	local bossCandidate = nil
+	for m, data in pairs(trackedEnemies) do
+		if m and m.Parent then
+			local hum = data.Humanoid or m:FindFirstChildOfClass("Humanoid")
+			if hum and hum.Health > 0 and hum.MaxHealth > maxHp then
+				maxHp = hum.MaxHealth
+				bossCandidate = m
 			end
 		end
 	end
 
-	-- 3. Nếu đang có GUI thanh máu Boss active trên màn hình (bossActive == true)
-	if bossActive then
-		local maxHp = 0
-		local bossCandidate = nil
-		for m, data in pairs(trackedEnemies) do
-			if m and m.Parent then
-				-- Ưu tiên con có tên chứa chữ "boss"
-				if tostring(m.Name):lower():find("boss") ~= nil then
-					return model == m
-				end
-				local hum = data.Humanoid or m:FindFirstChildOfClass("Humanoid")
-				if hum and hum.Health > 0 and hum.MaxHealth > maxHp then
-					maxHp = hum.MaxHealth
-					bossCandidate = m
-				end
-			end
-		end
-
-		if bossCandidate and model == bossCandidate then
-			return true
-		end
-	end
-
-	return false
+	return (bossCandidate ~= nil and model == bossCandidate)
 end
 
 function shared.IsEnemyMatchingScope(model: Instance?, name: string?, scope: any): boolean
@@ -8671,52 +8622,43 @@ local function setBossActive(active)
 	end
 end
 
-local function isGuiActuallyVisible(gui: Instance?): boolean
-	if not gui then return false end
-	if gui:IsA("ScreenGui") then
-		return gui.Enabled
+local function checkBossHealthEnabled(): boolean
+	if not player then return false end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return false end
+
+	-- Dấu hiệu chuẩn xác duy nhất: game:GetService("Players").LocalPlayer.PlayerGui.bossHealth.Enabled == true
+	local bh = playerGui:FindFirstChild("bossHealth")
+	if not bh then
+		bh = playerGui:FindFirstChild("bossHealth", true)
 	end
-	if gui:IsA("GuiObject") then
-		if not gui.Visible then return false end
-		local ancestor = gui:FindFirstAncestorOfClass("ScreenGui")
-		if ancestor and not ancestor.Enabled then
-			return false
+
+	if bh then
+		if bh ~= bossHealthRef then
+			bossHealthRef = bh
+			if bh:IsA("ScreenGui") then
+				trackCleanupConnection(bh:GetPropertyChangedSignal("Enabled"):Connect(function()
+					setBossActive(bh.Enabled == true)
+				end))
+			elseif bh:IsA("GuiObject") then
+				trackCleanupConnection(bh:GetPropertyChangedSignal("Visible"):Connect(function()
+					setBossActive(bh.Visible == true)
+				end))
+			end
 		end
-		local cur = gui.Parent
-		while cur and cur:IsA("GuiObject") do
-			if not cur.Visible then return false end
-			cur = cur.Parent
+
+		if bh:IsA("ScreenGui") then
+			return bh.Enabled == true
+		elseif bh:IsA("GuiObject") then
+			return bh.Visible == true
 		end
-		return true
 	end
+
 	return false
 end
 
 local function scanBossGui()
-	if not player then return end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then
-		bossHealthRef = nil
-		setBossActive(false)
-		return
-	end
-	local found = playerGui:FindFirstChild("bossHealth", true)
-		or playerGui:FindFirstChild("bonusBossHealth", true)
-		or playerGui:FindFirstChild("bossHealthBar", true)
-	if found then
-		if found ~= bossHealthRef then
-			bossHealthRef = found
-			if bossHealthRef:IsA("ScreenGui") then
-				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui))
-			elseif bossHealthRef:IsA("GuiObject") then
-				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Visible"):Connect(scanBossGui))
-			end
-		end
-		setBossActive(isGuiActuallyVisible(found))
-	else
-		bossHealthRef = nil
-		setBossActive(false)
-	end
+	setBossActive(checkBossHealthEnabled())
 end
 
 task.spawn(function()
@@ -8724,12 +8666,20 @@ task.spawn(function()
 	local playerGui = player:WaitForChild("PlayerGui", 30)
 	if not playerGui then return end
 
-	trackCleanupConnection(playerGui.DescendantAdded:Connect(scanBossGui))
-	trackCleanupConnection(playerGui.DescendantRemoving:Connect(scanBossGui))
+	trackCleanupConnection(playerGui.DescendantAdded:Connect(function(desc)
+		if desc.Name == "bossHealth" then
+			scanBossGui()
+		end
+	end))
+	trackCleanupConnection(playerGui.DescendantRemoving:Connect(function(desc)
+		if desc.Name == "bossHealth" then
+			scanBossGui()
+		end
+	end))
 	scanBossGui()
 
-	--// Poll an toàn phòng trường hợp DescendantRemoving bỏ sót khi GUI bị xóa cục bộ
-	while lifecycle.IsActive() and task.wait(0.5) do
+	--// Poll an toàn dự phòng với chu kỳ ngắn (0.15s)
+	while lifecycle.IsActive() and task.wait(0.15) do
 		scanBossGui()
 	end
 end)
@@ -9701,8 +9651,8 @@ local function registerHazard(instance: Instance)
 				hazard.launchTime = os.clock()
 			end
 		end
-		-- Pha tan biến sớm: Khi đã từng rõ nét (<= 0.35), chỉ cần độ mờ tăng thêm >= 0.15 hoặc >= 0.40 là xóa ngay
-		local hasDecayedAfterFlash = (partHasFlashed[p] == true) and (curTrans >= (minT + 0.15) or curTrans >= 0.40)
+		-- Pha tan biến: Khi đã từng rõ nét, chỉ coi là tan biến khi độ mờ đã tăng cao (curTrans >= 0.75 và curTrans >= minT + 0.35)
+		local hasDecayedAfterFlash = (partHasFlashed[p] == true) and (curTrans >= 0.75 and curTrans >= (minT + 0.35))
 
 		if not hazard.isCustomHazard then
 			-- Chiêu thông thường: yêu cầu còn Neon, chưa mờ và chưa tan biến
@@ -10146,6 +10096,7 @@ local enabled = true
 local targetScope = "All"            -- "All" | "Boss" | "Mobs"
 local dodgeBossEnabled = true        -- Bật/tắt né chiêu của Boss
 local dodgeEnemyEnabled = true       -- Bật/tắt né chiêu của Quái thường
+local dodgeBoss2OrbEnabled = false   -- Bật/tắt né Quả Cầu & Trụ Pha Lê Boss 2 (Mặc định tắt để tối ưu Dame và thời gian)
 local playerHitboxPadding = 0.35      -- Bù trừ bán kính cơ thể nhân vật (studs)
 local hitboxDownwardOffset = 2.85    -- Khoảng cách hạ thấp từ HumanoidRootPart xuống sát chân (studs)
 local respawnBypassEnabled = true     -- Bật/tắt bỏ qua né đòn sau khi hồi sinh
@@ -10245,7 +10196,7 @@ function danger.IsPointInPartOBB(point: Vector3, part: BasePart, padding: number
 	-- Broadphase Pruning: Bỏ qua nhanh nếu quá xa
 	local dX = point.X - partPos.X
 	local dZ = point.Z - partPos.Z
-	local maxDim = math.max(pSize.X, pSize.Z)
+	local maxDim = math.max(pSize.X, pSize.Y, pSize.Z)
 	local maxRadius = (maxDim * 0.7072) + pad + 3.0
 	if (dX * dX + dZ * dZ) > (maxRadius * maxRadius) then
 		return false
@@ -10283,7 +10234,7 @@ function danger.IsPointInSphere(point: Vector3, part: BasePart, padding: number?
 
 	local dX = point.X - partPos.X
 	local dZ = point.Z - partPos.Z
-	local radius = (math.max(pSize.X, pSize.Z) / 2) + pad
+	local radius = (math.max(pSize.X, pSize.Y, pSize.Z) / 2) + pad
 	return (dX * dX + dZ * dZ) <= (radius * radius)
 end
 
@@ -10463,6 +10414,14 @@ function danger.IsBoss2OrbHazard(hazard: ActiveHazard__DARKLUA_TYPE_a): boolean
 		or name:find("greenorb") ~= nil
 end
 
+--// Kiểm tra xem một hiểm họa có phải là Trụ Pha Lê của Boss 2 hay không
+function danger.IsBoss2CrystalHazard(hazard: ActiveHazard__DARKLUA_TYPE_a): boolean
+	if not hazard then return false end
+	local name = (hazard.cleanName or hazard.name or ""):lower():gsub("%s+", "")
+	return (name:find("secondboss") ~= nil and name:find("crystal") ~= nil)
+		or name:find("crystalpillar") ~= nil
+end
+
 --// 5. Kiểm tra xem một điểm P có nằm trong vùng nguy hiểm của một Hazard cụ thể không
 function danger.IsPointInHazard(point: Vector3, hazard: ActiveHazard__DARKLUA_TYPE_a, padding: number?): boolean
 	if not hazard or not hazard.instance or not hazard.instance.Parent then return false end
@@ -10605,8 +10564,18 @@ end
 --// Kiểm tra xem một hiểm họa có bị bỏ qua né dựa theo cài đặt Boss/Enemy không
 function danger.IsHazardIgnored(hazard: ActiveHazard__DARKLUA_TYPE_a): boolean
 	if not hazard then return true end
+
+	-- Bỏ qua Quả Cầu & Trụ Pha Lê Boss 2 nếu tắt né Orb & Crystal
+	if not dodgeBoss2OrbEnabled and (danger.IsBoss2OrbHazard(hazard) or danger.IsBoss2CrystalHazard(hazard)) then
+		return true
+	end
+
 	local isBoss = danger.IsBossHazard(hazard)
 	if targetScope == "Boss" and not isBoss then
+		-- Khi Boss đang xuất hiện, không bỏ qua các chiêu thức sinh ra trong phòng Boss (dù tên không chứa 'boss')
+		if shared.IsBossActive and shared.IsBossActive() then
+			return not dodgeBossEnabled
+		end
 		return true
 	elseif targetScope == "Mobs" and isBoss then
 		return true
@@ -10690,7 +10659,7 @@ function danger.IsPathSafe(fromPos: Vector3, toPos: Vector3, ignoredInstance: In
 	return true
 end
 
---// 7. Kiểm tra trạng thái của Nhân vật Player hiện tại
+--// 7. Kiểm tra trạng thái của Nhân vật Player hiện tại (Multi-Point Capsule Body Sampling)
 function danger.IsPlayerInDanger(): (boolean, ActiveHazard__DARKLUA_TYPE_a?)
 	local localPlayer = Players.LocalPlayer
 	local character = localPlayer and localPlayer.Character
@@ -10710,15 +10679,70 @@ function danger.IsPlayerInDanger(): (boolean, ActiveHazard__DARKLUA_TYPE_a?)
 	local rootPart = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("Torso")
 	if not rootPart or not rootPart:IsA("BasePart") then return false, nil end
 
-	-- 1. Kiểm tra vị trí ngang thắt lưng (RootPart)
-	local inDanger, hazard = danger.IsPointInAnyHazard(rootPart.Position, nil, playerHitboxPadding)
+	local pPos = rootPart.Position
+	local pad = playerHitboxPadding
+	local footPos = pPos - Vector3.new(0, hitboxDownwardOffset, 0)
+
+	-- 1. Kiểm tra tâm cơ thể (Thắt lưng & Bàn chân)
+	local inDanger, hazard = danger.IsPointInAnyHazard(pPos, nil, pad)
 	if inDanger then
 		return true, hazard
 	end
 
-	-- 2. Kiểm tra vị trí ngang bàn chân (chạm sàn nhà, tránh bỏ sót đòn bệt mặt đất)
-	local footPos = rootPart.Position - Vector3.new(0, hitboxDownwardOffset, 0)
-	return danger.IsPointInAnyHazard(footPos, nil, playerHitboxPadding)
+	inDanger, hazard = danger.IsPointInAnyHazard(footPos, nil, pad)
+	if inDanger then
+		return true, hazard
+	end
+
+	-- 2. Quét Đa Điểm trên cơ thể (Multi-Point Capsule Body Sampling)
+	-- Quét 8 điểm biên theo chu vi hình hộp cơ thể (dựa theo góc quay CFrame của nhân vật)
+	local cf = rootPart.CFrame
+	local fwd = cf.LookVector
+	local rgt = cf.RightVector
+
+	-- Bán kính thân người Roblox (Ngang vai/hông ~ 1.4 studs, Trước/sau ngực ~ 1.0 studs)
+	local halfW = 1.4
+	local halfD = 1.0
+	local diagW = halfW * 0.7071
+	local diagD = halfD * 0.7071
+
+	local fwdVec = fwd * halfD
+	local rgtVec = rgt * halfW
+	local diagFR = (fwd * diagD) + (rgt * diagW)
+	local diagFL = (fwd * diagD) - (rgt * diagW)
+	local diagBR = (-fwd * diagD) + (rgt * diagW)
+	local diagBL = (-fwd * diagD) - (rgt * diagW)
+
+	local perimeterOffsets = {
+		fwdVec,
+		-fwdVec,
+		rgtVec,
+		-rgtVec,
+		diagFR,
+		diagFL,
+		diagBR,
+		diagBL,
+	}
+
+	-- Quét chu vi ngang bàn chân (chạm các vòng AoE/disc bệt dưới sàn)
+	for i = 1, 8 do
+		local footSample = footPos + perimeterOffsets[i]
+		inDanger, hazard = danger.IsPointInAnyHazard(footSample, nil, pad)
+		if inDanger then
+			return true, hazard
+		end
+	end
+
+	-- Quét chu vi ngang thắt lưng / vai (chạm các tia Beam, Spike, đạn bay sạt người)
+	for i = 1, 8 do
+		local midSample = pPos + perimeterOffsets[i]
+		inDanger, hazard = danger.IsPointInAnyHazard(midSample, nil, pad)
+		if inDanger then
+			return true, hazard
+		end
+	end
+
+	return false, nil
 end
 
 --// Respawn Dodge Bypass Getters & Setters
@@ -10818,6 +10842,14 @@ end
 
 function danger.IsDodgeBossEnabled(): boolean
 	return dodgeBossEnabled
+end
+
+function danger.SetDodgeBoss2OrbEnabled(state: boolean)
+	dodgeBoss2OrbEnabled = (state == true)
+end
+
+function danger.IsDodgeBoss2OrbEnabled(): boolean
+	return dodgeBoss2OrbEnabled
 end
 
 function danger.SetDodgeEnemyEnabled(state: boolean)
@@ -11236,8 +11268,14 @@ local BOUNDARY_SAFETY_PADDING = 1.0 -- Khoảng cách đệm an toàn lùi vào 
 local COLOR_ARENA = Color3.fromRGB(0, 220, 255)       -- Hologram Cyan
 local COLOR_ARENA_OUTLINE = Color3.fromRGB(0, 245, 255) -- Radiant Cyan Neon
 
+--// Cấu hình Boss 1 Center Deadzone (Tránh né vào trung tâm)
+local boss1AvoidCenter = true
+local boss1CenterRadius = 16.0
+local COLOR_DEADZONE = Color3.fromRGB(255, 60, 40)
+local COLOR_DEADZONE_OUTLINE = Color3.fromRGB(255, 120, 50)
+
 --// State chung
-local showVisual = true            -- Hiển thị đĩa Hologram & đường viền ranh giới
+local showVisual = false           -- Hiển thị đĩa Hologram & đường viền ranh giới
 local anchorCenter: Vector3? = nil
 local anchorFloorY: number? = nil
 local currentLockedBossIndex: number? = nil
@@ -11247,6 +11285,8 @@ local statusCallbacks: { (boolean, Vector3?, number, number?) -> () } = {}
 --// Visuals
 local visualFolder: Folder? = nil
 local visualDisk: Part? = nil
+local visualDeadzoneDisk: Part? = nil
+local visualDeadzoneHighlight: Highlight? = nil
 local visualHighlight: Highlight? = nil
 local visualBillboard: BillboardGui? = nil
 local visualStatusLabel: TextLabel? = nil
@@ -11377,6 +11417,25 @@ local function findCurrentBossRoot(): BasePart?
 				end
 			end
 		end
+
+		-- 4. Fallback sâu: Tìm model có MaxHealth lớn nhất trong dungeon (khi shared.trackedEnemies chưa kịp đồng bộ)
+		local highestHp = 0
+		local bestRoot: BasePart? = nil
+		for _, desc in ipairs(dungeon:GetDescendants()) do
+			if desc:IsA("Model") then
+				local hum = desc:FindFirstChildOfClass("Humanoid")
+				if hum and hum.Health > 0 and hum.MaxHealth > highestHp then
+					local root = desc:FindFirstChild("HumanoidRootPart") or desc.PrimaryPart or desc:FindFirstChildWhichIsA("BasePart")
+					if root then
+						highestHp = hum.MaxHealth
+						bestRoot = root
+					end
+				end
+			end
+		end
+		if bestRoot then
+			return bestRoot
+		end
 	end
 
 	return nil
@@ -11390,7 +11449,7 @@ local function getOrCreateVisualFolder(): Folder
 	if visualFolder and visualFolder.Parent then
 		return visualFolder
 	end
-	local container = Workspace.CurrentCamera or Workspace
+	local container = Workspace
 	local f = container:FindFirstChild("SmartDodgeV2_BossAreaVisual")
 	if not f then
 		f = Instance.new("Folder")
@@ -11406,6 +11465,11 @@ local function destroyVisual()
 		pcall(function() visualDisk:Destroy() end)
 		visualDisk = nil
 	end
+	if visualDeadzoneDisk then
+		pcall(function() visualDeadzoneDisk:Destroy() end)
+		visualDeadzoneDisk = nil
+	end
+	visualDeadzoneHighlight = nil
 	visualHighlight = nil
 	visualBillboard = nil
 	visualStatusLabel = nil
@@ -11417,11 +11481,12 @@ end
 
 local function updateVisual()
 	local cfg, curIdx = getActiveConfig()
-	local isEnabled = cfg and cfg.enabled
 
-	if not isEnabled or not showVisual or not anchorCenter then
+	if not showVisual or not anchorCenter then
 		if visualDisk then visualDisk.Transparency = 1 end
+		if visualDeadzoneDisk then visualDeadzoneDisk.Transparency = 1 end
 		if visualHighlight then visualHighlight.Enabled = false end
+		if visualDeadzoneHighlight then visualDeadzoneHighlight.Enabled = false end
 		if visualBillboard then visualBillboard.Enabled = false end
 		return
 	end
@@ -11430,7 +11495,7 @@ local function updateVisual()
 	local diameter = radius * 2
 	local folder = getOrCreateVisualFolder()
 	local floorY = anchorFloorY or (anchorCenter and anchorCenter.Y) or 0
-	local targetCF = CFrame.new(anchorCenter.X, floorY + 0.05, anchorCenter.Z) * CFrame.Angles(0, 0, math.rad(90))
+	local targetCF = CFrame.new(anchorCenter.X, floorY + 0.15, anchorCenter.Z) * CFrame.Angles(0, 0, math.rad(90))
 
 	if not visualDisk or not visualDisk.Parent then
 		local disk = Instance.new("Part")
@@ -11510,8 +11575,57 @@ local function updateVisual()
 	if visualBillboard then
 		visualBillboard.Enabled = true
 	end
+
+	-- Visual cho Vùng Cấm Trung Tâm Boss 1 (Center Deadzone)
+	local isBoss1 = (curIdx == 1)
+	local showDeadzone = isBoss1 and boss1AvoidCenter and (boss1CenterRadius > 0)
+	if showDeadzone then
+		local dzDiameter = boss1CenterRadius * 2
+		local dzCF = CFrame.new(anchorCenter.X, floorY + 0.18, anchorCenter.Z) * CFrame.Angles(0, 0, math.rad(90))
+
+		if not visualDeadzoneDisk or not visualDeadzoneDisk.Parent then
+			local dzDisk = Instance.new("Part")
+			dzDisk.Name = "SDV2_Boss1DeadzoneDisk"
+			dzDisk.Shape = Enum.PartType.Cylinder
+			dzDisk.Size = Vector3.new(0.14, dzDiameter, dzDiameter)
+			dzDisk.Material = Enum.Material.Neon
+			dzDisk.Color = COLOR_DEADZONE
+			dzDisk.Transparency = 0.80
+			dzDisk.Anchored = true
+			dzDisk.CanCollide = false
+			dzDisk.CanTouch = false
+			dzDisk.CanQuery = false
+			dzDisk.CastShadow = false
+			dzDisk.Massless = true
+			dzDisk.CFrame = dzCF
+			dzDisk.Parent = folder
+			visualDeadzoneDisk = dzDisk
+
+			local dzHl = Instance.new("Highlight")
+			dzHl.Name = "DeadzoneOutline"
+			dzHl.Adornee = dzDisk
+			dzHl.FillColor = COLOR_DEADZONE
+			dzHl.FillTransparency = 0.90
+			dzHl.OutlineColor = COLOR_DEADZONE_OUTLINE
+			dzHl.OutlineTransparency = 0.1
+			dzHl.Parent = dzDisk
+			visualDeadzoneHighlight = dzHl
+		else
+			visualDeadzoneDisk.Transparency = 0.80
+			visualDeadzoneDisk.Size = Vector3.new(0.14, dzDiameter, dzDiameter)
+			visualDeadzoneDisk.CFrame = dzCF
+			if visualDeadzoneHighlight then
+				visualDeadzoneHighlight.Enabled = true
+			end
+		end
+	else
+		if visualDeadzoneDisk then visualDeadzoneDisk.Transparency = 1 end
+		if visualDeadzoneHighlight then visualDeadzoneHighlight.Enabled = false end
+	end
+
 	if visualStatusLabel then
-		visualStatusLabel.Text = string.format("<b>🛡️ BOSS %d ARENA</b> <font color='rgb(255,255,255)'>(R: %.0fm)</font>", curIdx, radius)
+		local dzInfo = (curIdx == 1 and boss1AvoidCenter) and string.format(" | <font color='rgb(255,100,50)'>Deadzone: %.0fm</font>", boss1CenterRadius) or ""
+		visualStatusLabel.Text = string.format("<b>🛡️ BOSS %d ARENA</b> <font color='rgb(255,255,255)'>(R: %.0fm)</font>%s", curIdx, radius, dzInfo)
 	end
 end
 
@@ -11618,13 +11732,10 @@ local function tryStartCapture()
 	end
 
 	local curIdx = shared.GetCurrentBossIndex()
-	if curIdx <= 0 then
-		clearAnchor()
-		return
-	end
+	if curIdx <= 0 then curIdx = 1 end
 
 	local cfg = bossConfigs[curIdx] or (curIdx > 3 and bossConfigs[3])
-	if not cfg or not cfg.enabled then
+	if (not cfg or not cfg.enabled) and not showVisual then
 		clearAnchor()
 		return
 	end
@@ -11640,10 +11751,10 @@ local function tryStartCapture()
 		clearAnchor()
 	end
 
-	-- Bắt đầu polling tìm vị trí Boss lúc spawn
+	-- Bắt đầu polling tìm vị trí Boss lúc spawn (tăng timeout lên 15s phòng cutscene / animation trễ)
 	if captureThread then task.cancel(captureThread) end
 	captureThread = task.spawn(function()
-		local timeout = os.clock() + 8.0
+		local timeout = os.clock() + 15.0
 		while os.clock() < timeout and not anchorCenter do
 			if not shared.IsBossActive() or shared.GetCurrentBossIndex() ~= curIdx then
 				break
@@ -11659,17 +11770,29 @@ local function tryStartCapture()
 	end)
 end
 
--- Auto-leveling: Nếu ban đầu chụp trúng lúc chưa có vị trí sàn thấp nhất,
--- khi người chơi đứng trên mặt sàn thấp hơn tảng đá -> tự động kéo đĩa visual và anchor xuống đúng sàn
+-- Vòng lặp giám sát liên tục:
+-- 1. Phục hồi tìm Boss nếu đợt spawn đầu bị trễ (cutscene, lag, delay) -> đảm bảo 100% bắt được Anchor
+-- 2. Auto-leveling: Tự động kéo đĩa visual và anchor xuống đúng sàn khi Player đứng thấp hơn tảng đá
 task.spawn(function()
 	while lifecycle.IsActive() do
-		task.wait(1.0)
-		if anchorCenter and anchorFloorY and shared.IsBossActive() then
-			local pFloor = getPlayerFloorY()
-			if pFloor and pFloor < (anchorFloorY - 1.5) then
-				anchorFloorY = pFloor
-				anchorCenter = Vector3.new(anchorCenter.X, pFloor, anchorCenter.Z)
-				updateVisual()
+		task.wait(0.5)
+		if shared.IsBossActive() then
+			local curIdx = shared.GetCurrentBossIndex()
+			if curIdx <= 0 then curIdx = 1 end
+			local cfg = bossConfigs[curIdx] or (curIdx > 3 and bossConfigs[3])
+
+			if not anchorCenter and ((cfg and cfg.enabled) or showVisual) then
+				local root = findCurrentBossRoot()
+				if root and root.Parent then
+					captureAnchor(root.Position, curIdx)
+				end
+			elseif anchorCenter and anchorFloorY then
+				local pFloor = getPlayerFloorY()
+				if pFloor and pFloor < (anchorFloorY - 1.5) then
+					anchorFloorY = pFloor
+					anchorCenter = Vector3.new(anchorCenter.X, pFloor, anchorCenter.Z)
+					updateVisual()
+				end
 			end
 		end
 	end
@@ -11778,6 +11901,44 @@ function bossArea.IsPointInArena(point: Vector3, margin: number?): boolean
 	return (dx * dx + dz * dz) <= (maxR * maxR)
 end
 
+--- Kiểm tra xem 1 điểm Vector3 có nằm trong vùng cấm trung tâm của Boss 1 hay không
+--- (Giúp người chơi không bao giờ né đâm vào giữa phòng Boss 1, nơi dính trùm các skill nan hoa / radial star burst)
+function bossArea.IsPointInBoss1Center(point: Vector3, margin: number?): boolean
+	if not boss1AvoidCenter then return false end
+	if not shared.IsBossActive() then return false end
+	local curIdx = currentLockedBossIndex or shared.GetCurrentBossIndex()
+	if curIdx ~= 1 then return false end
+	if not anchorCenter then return false end
+
+	local pad = margin or 0
+	local maxR = math.max(1.0, boss1CenterRadius + pad)
+	local dx = point.X - anchorCenter.X
+	local dz = point.Z - anchorCenter.Z
+	return (dx * dx + dz * dz) <= (maxR * maxR)
+end
+
+function bossArea.SetBoss1AvoidCenter(state: boolean)
+	boss1AvoidCenter = (state == true)
+	updateVisual()
+	fireStatusChanged()
+end
+
+function bossArea.IsBoss1AvoidCenter(): boolean
+	return boss1AvoidCenter
+end
+
+function bossArea.SetBoss1CenterRadius(val: number)
+	if type(val) == "number" and val >= 3 then
+		boss1CenterRadius = val
+		updateVisual()
+		fireStatusChanged()
+	end
+end
+
+function bossArea.GetBoss1CenterRadius(): number
+	return boss1CenterRadius
+end
+
 --// ------------------------------------------------------------------ //
 -- Public API & Getters / Setters (Hỗ trợ từng Boss)
 --// ------------------------------------------------------------------ //
@@ -11791,7 +11952,7 @@ function bossArea.SetBossEnabled(bossIndex: number, state: boolean)
 	end
 
 	if shared.IsBossActive() and shared.GetCurrentBossIndex() == bossIndex then
-		if bossConfigs[bossIndex].enabled then
+		if bossConfigs[bossIndex].enabled or showVisual then
 			tryStartCapture()
 		else
 			clearAnchor()
@@ -11848,7 +12009,11 @@ end
 
 function bossArea.SetShowVisual(state: boolean)
 	showVisual = state and true or false
-	updateVisual()
+	if showVisual and not anchorCenter and shared.IsBossActive() then
+		tryStartCapture()
+	else
+		updateVisual()
+	end
 end
 
 function bossArea.IsShowVisual(): boolean
@@ -12043,6 +12208,9 @@ end
 
 local function isPointSafe(p: Vector3, pad: number): boolean
 	if not bossArea.IsPointInArena(p, 0) then
+		return false
+	end
+	if bossArea.IsPointInBoss1Center and bossArea.IsPointInBoss1Center(p) then
 		return false
 	end
 	return not danger.IsPointInAnyHazard(p, nil, pad)
@@ -12263,6 +12431,12 @@ local function resolveExitDistance(
 	end
 	if wallDist and wallDist < maxRadius then
 		return nil, wallDist, "wall"
+	end
+
+	-- Kiểm tra nếu điểm cuối của tia bị chặn trong vùng cấm trung tâm Boss 1:
+	local endP = Vector3.new(origin.X + dir.X * maxSearch, origin.Y, origin.Z + dir.Z * maxSearch)
+	if bossArea.IsPointInBoss1Center and bossArea.IsPointInBoss1Center(endP) then
+		return nil, maxSearch, "boss1_center"
 	end
 
 	return nil, maxRadius, "hazard_max"
@@ -12725,7 +12899,7 @@ local function updateVisuals()
 					bWidth = 0.04
 					bHeight = 0.04
 					bTrans = 0.65
-					tSize = (entry.blockedReason == "wall" or entry.blockedReason == "skill" or entry.blockedReason == "boss1_arena") and 0.40 or 0.25
+					tSize = (entry.blockedReason == "wall" or entry.blockedReason == "skill" or entry.blockedReason == "boss1_arena" or entry.blockedReason == "boss1_center") and 0.40 or 0.25
 					tTrans = 0.50
 				end
 
@@ -12852,6 +13026,32 @@ local function scanRays(
 			if moveDir then
 				tieScore += math.max(0, dir:Dot(moveDir)) * FORWARD_BONUS
 			end
+
+			-- LUẬT BOSS 1: THƯỞNG ĐIỂM HƯỚNG RA MÉP NGOÀI, PHẠT NẶNG HƯỚNG VÀO TRUNG TÂM
+			if bossArea.IsBoss1AvoidCenter and bossArea.IsBoss1AvoidCenter() and shared.IsBossActive() then
+				local curBossIdx = shared.GetCurrentBossIndex()
+				if curBossIdx == 1 or (bossArea.GetLockedBossIndex and bossArea.GetLockedBossIndex() == 1) then
+					local anchor = bossArea.GetAnchorCenter()
+					if anchor then
+						local toCenter = Vector3.new(anchor.X - origin.X, 0, anchor.Z - origin.Z)
+						local distToCenter = toCenter.Magnitude
+						if distToCenter > 0.5 then
+							local dirToCenter = toCenter.Unit
+							local dirAwayFromCenter = -dirToCenter
+							local dotAway = dir:Dot(dirAwayFromCenter)
+							local dotTo = dir:Dot(dirToCenter)
+
+							if dotAway > 0 then
+								tieScore += dotAway * 4.0
+							end
+							if dotTo > 0.2 then
+								tieScore -= dotTo * 8.0
+							end
+						end
+					end
+				end
+			end
+
 			if i <= seedLen then
 				table.insert(state.candidates, { dir = dir, found = foundDist, tie = tieScore })
 			end
@@ -12956,6 +13156,22 @@ local function scanSafeSpot(): boolean
 			local m = math.sqrt(dx * dx + dz * dz)
 			if m > 0.5 then
 				awayVector = Vector3.new(dx / m, 0, dz / m)
+			end
+		end
+	end
+
+	-- Ưu tiên hướng ra mép ngoài sàn đấu nếu đang đánh Boss 1 và bật tránh tâm
+	if not isLateral and bossArea.IsBoss1AvoidCenter and bossArea.IsBoss1AvoidCenter() and shared.IsBossActive() then
+		local curBossIdx = shared.GetCurrentBossIndex()
+		if curBossIdx == 1 or (bossArea.GetLockedBossIndex and bossArea.GetLockedBossIndex() == 1) then
+			local anchor = bossArea.GetAnchorCenter()
+			if anchor then
+				local dx = playerPos.X - anchor.X
+				local dz = playerPos.Z - anchor.Z
+				local m = math.sqrt(dx * dx + dz * dz)
+				if m > 0.5 then
+					awayVector = Vector3.new(dx / m, 0, dz / m)
+				end
 			end
 		end
 	end
@@ -13260,7 +13476,7 @@ lifecycle.Register(function()
 	markerLabel = nil
 end)
 
-return safeSpot end function __DIST.r()-- Smart Dodge – Module phụ: Target Facing Manager (DungeonQuest)
+return safeSpot end function __DIST.r()-- Smart Dodge V2: Target Facing Manager (DungeonQuest)
 -- Chuyên trách: Tự động định vị mục tiêu hiện tại (Target của Auto Farm hoặc quái gần nhất)
 -- và điều khiển nhân vật luôn quay mặt về phía mục tiêu (sử dụng Humanoid.AutoRotate = false).
 
@@ -13536,8 +13752,8 @@ local function getCharacterParts(): (Model?, BasePart?, Humanoid?)
 end
 
 --// Tính khoảng cách phẳng 2D trên mặt sàn (bỏ qua trục Y)
-local function flatDistance(a: Vector3?, b: Vector3?): number
-	if not a or not b then return math.huge end
+local function flatDistance(a: any, b: any): number
+	if not a or not b or typeof(a) ~= "Vector3" or typeof(b) ~= "Vector3" then return math.huge end
 	local dx = a.X - b.X
 	local dz = a.Z - b.Z
 	return math.sqrt(dx * dx + dz * dz)
@@ -13660,7 +13876,7 @@ end
 --================================================================--
 function dodge.Perform(safePos: Vector3?, escapeDist: number?, hazardName: string?)
 	if not enabled then return end
-	if not safePos then return end
+	if not safePos or typeof(safePos) ~= "Vector3" then return end
 
 	-- Bỏ qua né đòn nếu đang tử trận hoặc đang trong thời gian bảo vệ sau hồi sinh
 	if shared.IsDead and shared.IsDead() then return end
@@ -13988,6 +14204,7 @@ local danger = __DIST.load('l')
 local safeSpot = __DIST.load('q')
 local dodge = __DIST.load('s')
 local bossArea = __DIST.load('p')
+local targetFacing = __DIST.load('r')
 
 local smartDodgeV2 = {
 	types = types,
@@ -13999,6 +14216,7 @@ local smartDodgeV2 = {
 	safeSpot = safeSpot,
 	dodge = dodge,
 	bossArea = bossArea,
+	targetFacing = targetFacing,
 
 	-- Orange Corridor Length Controls (Vùng màu Cam)
 	SetSkillCorridorLength = detection.SetSkillCorridorLength,
@@ -14012,6 +14230,10 @@ local smartDodgeV2 = {
 	-- Target Scope Control (All / Boss / Mobs)
 	SetTargetScope = danger.SetTargetScope,
 	GetTargetScope = danger.GetTargetScope,
+
+	-- Boss 2 Orb & Crystal Dodge Control
+	SetDodgeBoss2OrbEnabled = danger.SetDodgeBoss2OrbEnabled,
+	IsDodgeBoss2OrbEnabled = danger.IsDodgeBoss2OrbEnabled,
 }
 
 return smartDodgeV2
@@ -14228,17 +14450,31 @@ function movement.ResolveDestination(playerPos, targetPos, waypoints, startWaypo
 		end
 	end
 
-	-- 3. All destinations blocked / No valid previous node exists
+	-- 3. Fallback: If all shortcuts hit obstacles (doorframes/corners), follow the current path waypoint!
+	if waypoints and #waypoints > 0 and waypoints[minIndex] then
+		local curWpPos = waypoints[minIndex].Position
+		blockerData.chosenDest = curWpPos
+		blockerData.mode = "Waypoint"
+		blockerData.nodeIdx = minIndex
+		return curWpPos, "Waypoint", minIndex, blockerData
+	end
+
+	-- 4. All destinations blocked / No valid previous node exists
 	blockerData.mode = "Blocked"
 	return nil, "Blocked", nil, blockerData
 end
 
 --// Movement Controller (Section 9)
--- Executes Freewalk / direct MoveTo toward the clear destination
+-- Executes Freewalk / direct directional Move toward the clear destination
 function movement.ExecuteMove(humanoid, playerPos, destination, waypoints, currentWaypointIndex)
 	if not humanoid or not destination then return end
 
-	humanoid:MoveTo(destination)
+	local flatDir = Vector3.new(destination.X - playerPos.X, 0, destination.Z - playerPos.Z)
+	if flatDir.Magnitude > 0.4 then
+		humanoid:Move(flatDir.Unit, false)
+	else
+		humanoid:Move(Vector3.zero, false)
+	end
 
 	-- 1. Check elevation jump to destination
 	local elevDiff = destination.Y - playerPos.Y
@@ -14327,11 +14563,6 @@ local enemyChangedConnection = nil
 local respawnConnection = nil
 local dunReady = false
 
---// Velocity Stuck Detection State
-local stuckTimer = 0
-local lastJumpTime = 0
-local autoJumpOnStuck = false -- Toggle tự động nhảy khi vận tốc thấp
-local stuckVelocityThreshold = 10.0 -- Ngưỡng vận tốc (studs/s)
 local isPaused = false -- Tạm dừng di chuyển mà không hủy path
 
 
@@ -14397,7 +14628,6 @@ local function applyTargetSwitch(newTarget, newPath, newWaypoints, newPos)
 	currentDestMode = "None"
 	currentDestNodeIndex = nil
 	lastBlockerData = nil
-	stuckTimer = 0
 
 
 	if newTarget then
@@ -14499,7 +14729,7 @@ local function stepMovementLoop(deltaTime)
 			currentDestMode = "None"
 			lastBlockerData = nil
 			evaluateTarget()
-			pcall(function() humanoid:MoveTo(playerPos) end)
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 			return
 		end
 	end
@@ -14530,8 +14760,7 @@ local function stepMovementLoop(deltaTime)
 		currentState = State.HOLD
 		currentDestination = nil
 		currentDestMode = "Hold"
-		stuckTimer = 0
-		pcall(function() humanoid:MoveTo(playerPos) end)
+		pcall(function() humanoid:Move(Vector3.zero, false) end)
 		-- State HOLD: Currently holds position (idle)
 		return
 	else
@@ -14557,7 +14786,7 @@ local function stepMovementLoop(deltaTime)
 			currentState = State.BLOCKED
 			currentDestination = nil
 			currentDestMode = "Blocked"
-			pcall(function() humanoid:MoveTo(playerPos) end)
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 			return
 		end
 	end
@@ -14581,7 +14810,7 @@ local function stepMovementLoop(deltaTime)
 		currentState = State.BLOCKED
 		currentDestination = nil
 		currentDestMode = "Blocked"
-		pcall(function() humanoid:MoveTo(playerPos) end)
+		pcall(function() humanoid:Move(Vector3.zero, false) end)
 		return
 	end
 
@@ -14593,31 +14822,6 @@ local function stepMovementLoop(deltaTime)
 
 	movement.ExecuteMove(humanoid, playerPos, chosenDest, waypoints, waypointIdx)
 
-	-- Velocity-Based Stuck Detection & Auto-Jump
-	local distToDest = (chosenDest - playerPos).Magnitude
-	if distToDest >= 1.5 then
-		local rootVel = playerRoot.AssemblyLinearVelocity or playerRoot.Velocity
-		local horizontalSpeed = rootVel and Vector3.new(rootVel.X, 0, rootVel.Z).Magnitude or 0
-		local dt = (type(deltaTime) == "number" and deltaTime > 0) and deltaTime or 0.016
-
-		if horizontalSpeed < stuckVelocityThreshold then
-			stuckTimer += dt
-			if autoJumpOnStuck and (now - lastJumpTime) >= 0.4 then
-				humanoid.Jump = true
-				pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
-				lastJumpTime = now
-			end
-			-- If stuck for >= 1.5s despite jumping -> Repath!
-			if stuckTimer >= 1.5 then
-				currentState = State.REPATHING
-				stuckTimer = 0
-			end
-		else
-			stuckTimer = 0
-		end
-	else
-		stuckTimer = 0
-	end
 end
 
 
@@ -14915,23 +15119,10 @@ function autoFarm.SetRepathDistance(val)
 	end
 end
 
-function autoFarm.SetAutoJumpOnStuck(state)
-	autoJumpOnStuck = state and true or false
-end
-
-function autoFarm.IsAutoJumpOnStuckEnabled()
-	return autoJumpOnStuck
-end
-
-function autoFarm.SetStuckVelocityThreshold(val)
-	if type(val) == "number" and val >= 1 then
-		stuckVelocityThreshold = val
-	end
-end
-
-function autoFarm.GetStuckVelocityThreshold()
-	return stuckVelocityThreshold
-end
+function autoFarm.SetAutoJumpOnStuck(_state) end
+function autoFarm.IsAutoJumpOnStuckEnabled() return false end
+function autoFarm.SetStuckVelocityThreshold(_val) end
+function autoFarm.GetStuckVelocityThreshold() return 0 end
 
 function autoFarm.SetPaused(state)
 	local want = state and true or false
@@ -14939,12 +15130,8 @@ function autoFarm.SetPaused(state)
 	isPaused = want
 	if isPaused then
 		local h = shared.GetHumanoid()
-		local r = getPlayerRoot()
-		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+		if h and h.Parent then
+			pcall(function() h:Move(Vector3.zero, false) end)
 		end
 	end
 end
@@ -15063,7 +15250,7 @@ function autoFarm.GetDebugInfo()
 		blocker = blockerInfo,
 		velocity = horizontalSpeed,
 		verticalVelocity = verticalSpeed,
-		stuckTimer = stuckTimer,
+		stuckTimer = 0,
 	}
 end
 
@@ -15120,7 +15307,7 @@ function autoFarm.Toggle(state, bypassCoordinator)
 
 		task.defer(evaluateTarget)
 
-		moveConnection = RunService.Heartbeat:Connect(function(deltaTime)
+		moveConnection = RunService.RenderStepped:Connect(function(deltaTime)
 			local ok, err = pcall(stepMovementLoop, deltaTime)
 			if not ok then
 				warn(("[AutoFarm] Error in stepMovementLoop: %s"):format(tostring(err)))
@@ -15134,12 +15321,8 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		if respawnConnection then respawnConnection(); respawnConnection = nil end
 
 		local h = shared.GetHumanoid()
-		local r = getPlayerRoot()
-		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+		if h and h.Parent then
+			pcall(function() h:Move(Vector3.zero, false) end)
 		end
 
 		tracker.ClearTarget()
@@ -15147,7 +15330,6 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		currentDestination = nil
 		currentDestMode = "None"
 		lastBlockerData = nil
-		stuckTimer = 0
 		selectToken += 1
 		selectRunning = false
 		cleanupDebugVisuals()
@@ -15167,7531 +15349,7 @@ lifecycle.Register(function()
 end)
 
 return autoFarm
-end function __DIST.x()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
--- Map thường: fetch động qua remote getDungeonStats (có cache).
--- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
-
---// Data
-
-local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
-
-local DUNGEONS = {
-	"Desert Temple",
-	"Winter Outpost",
-	"Pirate Island",
-	"King's Castle",
-	"The Underworld",
-	"Samurai Palace",
-	"The Canals",
-	"Ghastly Harbor",
-	"Steampunk Sewers",
-	"Orbital Outpost",
-	"Volcanic Chambers",
-	"Aquatic Temple",
-	"Enchanted Forest",
-	"Egg Island",
-	"Krampus",
-	"Tutorial Dungeon",
-}
-
-local SPECIAL_DUNGEONS = {
-	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
-	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
-	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
-}
-
---// Table
-local dungeonCatalog = {}
-
---// Cache
-local statsCache = {}
-local dynamicDungeons = nil
-
---// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
-local HttpService = game:GetService("HttpService")
-local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
-
-local function persistMapList(list)
-	if not (isfile and writefile and makefolder and isfolder) then return end
-	pcall(function()
-		if not isfolder("Maclib") then makefolder("Maclib") end
-	end)
-	pcall(function()
-		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
-	end)
-end
-
-local function loadPersistedMapList()
-	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
-	local ok, data = pcall(function()
-		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
-	end)
-	if not ok or typeof(data) ~= "table" then return nil end
-
-	local list = {}
-	for _, name in ipairs(data) do
-		if type(name) == "string" and #name > 0 then
-			table.insert(list, name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
-local function mergeDungeonLists(primary)
-	local seen = {}
-	local merged = {}
-	for _, name in ipairs(primary or {}) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	for _, name in ipairs(DUNGEONS) do
-		if not seen[name] then
-			seen[name] = true
-			table.insert(merged, name)
-		end
-	end
-	return merged
-end
-
---// Helpers
-local function findScrollingFrame()
-	local player = game:GetService("Players").LocalPlayer
-	if not player then return nil end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then return nil end
-	local queueGui = playerGui:FindFirstChild("queueGui")
-	if not queueGui then return nil end
-	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
-	if not chooseDungeon then return nil end
-	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
-	if not backgroundFillLeft then return nil end
-	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
-end
-
-local function collectDungeonsFromUi()
-	local scrollingFrame = findScrollingFrame()
-	if not scrollingFrame then return nil end
-
-	local list = {}
-	for _, child in ipairs(scrollingFrame:GetChildren()) do
-		if child:IsA("ImageLabel") and #child.Name > 0 then
-			table.insert(list, child.Name)
-		end
-	end
-	return (#list > 0) and list or nil
-end
-
---// Methods
-function dungeonCatalog.GetDungeons()
-	if dynamicDungeons then return dynamicDungeons end
-
-	local uiList = collectDungeonsFromUi()
-	if uiList then
-		local merged = mergeDungeonLists(uiList)
-		dynamicDungeons = merged
-		persistMapList(merged)
-		return merged
-	end
-
-	local persisted = loadPersistedMapList()
-	if persisted then
-		local merged = mergeDungeonLists(persisted)
-		dynamicDungeons = merged
-		return merged
-	end
-
-	return DUNGEONS
-end
-
-function dungeonCatalog.RefreshDungeons()
-	dynamicDungeons = nil
-	return dungeonCatalog.GetDungeons()
-end
-
-function dungeonCatalog.GetDungeonStats(name)
-	if type(name) ~= "string" or #name == 0 then return nil end
-	if statsCache[name] ~= nil then return statsCache[name] end
-
-	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
-	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
-	if not getStats then return nil end
-
-	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
-	if ok and typeof(result) == "table" then
-		statsCache[name] = result
-		return result
-	end
-	return nil
-end
-
-function dungeonCatalog.GetAllowedDifficulties(name)
-	if type(name) ~= "string" then return DIFFICULTIES end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.Difficulties end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	local allowed = {}
-	if stats then
-		for _, difficulty in ipairs(DIFFICULTIES) do
-			if stats[difficulty] then table.insert(allowed, difficulty) end
-		end
-	end
-	if #allowed > 0 then return allowed end
-	return DIFFICULTIES
-end
-
-function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
-	if type(difficulty) ~= "string" then return false end
-	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
-		if option == difficulty then return true end
-	end
-	return false
-end
-
-function dungeonCatalog.GetLevelReq(name, difficulty)
-	if type(name) ~= "string" then return 0 end
-
-	local special = SPECIAL_DUNGEONS[name]
-	if special then return special.LevelReq or 0 end
-
-	local stats = dungeonCatalog.GetDungeonStats(name)
-	if stats and type(difficulty) == "string" and stats[difficulty] then
-		return tonumber(stats[difficulty].levelReq) or 0
-	end
-	return 0
-end
-
---// Table
-dungeonCatalog.DUNGEONS = DUNGEONS
-dungeonCatalog.DIFFICULTIES = DIFFICULTIES
-
-return dungeonCatalog end function __DIST.y()--==============================================================--
--- Smart Dodge – Skill Timing Manager
--- Quản lý dữ liệu thời gian tồn tại (lifetime) và điểm nổ (hit delay) của chiêu thức.
--- Hỗ trợ 2 chế độ riêng biệt:
---   1. "Default Preset": Dùng bảng số liệu cứng chuẩn đã đo đạc (Zero I/O, cực kỳ ổn định)
---   2. "Trained Preset": Dùng dữ liệu JSON được huấn luyện riêng theo từng Map (Zero I/O khi né, nạp 1 lần vào RAM)
--- Chế độ Huấn luyện (Recording):
---   - Người chơi tự chơi chay trong map để thu thập nhịp chiêu thức
---   - Toàn bộ dữ liệu ghi nhận lưu tạm trong RAM, chỉ ghi ra file khi người chơi chủ động bấm Save
---==============================================================--
-
-
-local services = __DIST.load('i')
-local shared = __DIST.load('j')
-local dungeonCatalog = __DIST.load('x')
-local notifier = __DIST.load('c')
-local macLib = __DIST.load('a')
-
-local HttpService = game:GetService("HttpService")
-
-local skillTimingManager = {}
-
---// Bảng Preset mặc định chuẩn (Hardcoded Presets)
-local DEFAULT_PRESETS = {
-	["mediumIceSpikes"] = { hitDelay = 1.1, totalLifetime = 1.5, isProjectile = false, skillType = "AoE" },
-	["largeIceSpikes"] = { hitDelay = 1.4, totalLifetime = 1.8, isProjectile = false, skillType = "AoE" },
-	["thirdBossMultiRings"] = { hitDelay = 2.0, totalLifetime = 2.8, isProjectile = false, skillType = "AoE" },
-	["firstBossCrissCross"] = { hitDelay = 0.0, totalLifetime = 2.2, isProjectile = true, skillType = "Projectile" },
-	["firstBossSeekingSpikes"] = { hitDelay = 0.0, totalLifetime = 2.5, isProjectile = true, skillType = "Projectile" },
-	["firstBossBigSpike"] = { hitDelay = 0.0, totalLifetime = 2.0, isProjectile = true, skillType = "Projectile" },
-	["firstBossBeamPart"] = { hitDelay = 0.0, totalLifetime = 2.0, isProjectile = true, skillType = "Projectile" },
-	["secondBossMovingBeam"] = { hitDelay = 0.0, totalLifetime = 3.5, isProjectile = true, skillType = "Projectile" },
-	["secondbossyelloworb"] = { hitDelay = 0.0, totalLifetime = 4.0, isProjectile = true, skillType = "Projectile" },
-	["secondbossredorb"] = { hitDelay = 0.0, totalLifetime = 4.0, isProjectile = true, skillType = "Projectile" },
-	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0, isProjectile = true, skillType = "Projectile" },
-	["thirdBossMissile"] = { hitDelay = 0.0, totalLifetime = 3.5, isProjectile = true, skillType = "Projectile" },
-}
-
---// Thư mục lưu dữ liệu theo Map
-local SKILLS_FOLDER = macLib.Folder .. "/skills_data"
-
-local function ensureFolder()
-	if makefolder and isfolder then
-		pcall(function()
-			if not isfolder(macLib.Folder) then makefolder(macLib.Folder) end
-			if not isfolder(SKILLS_FOLDER) then makefolder(SKILLS_FOLDER) end
-		end)
-	end
-end
-
---// Trạng thái vận hành
-local currentMode = "Default Preset" -- "Default Preset" | "Trained Preset"
-local selectedMap = nil
-
--- RAM Data cho Mode 2 (Trained Preset)
-local loadedTrainedData = {}
-local loadedSkillCount = 0
-
--- RAM Data cho Huấn luyện Chơi chay (Recording Session)
-local isRecording = false
-local recordedSessionData = {}
-local recordedSkillCount = 0
-local totalSamplesCount = 0
-
-local changeListeners = {}
-
-local function fireChange()
-	for _, cb in ipairs(changeListeners) do
-		pcall(cb, {
-			mode = currentMode,
-			selectedMap = selectedMap,
-			loadedCount = loadedSkillCount,
-			isRecording = isRecording,
-			recordedCount = recordedSkillCount,
-			totalSamples = totalSamplesCount,
-		})
-	end
-end
-
--- Chuẩn hóa tên file an toàn cho hệ thống tệp
-local function sanitizeFileName(name)
-	if not name or #name == 0 then return "Unknown" end
-	return (name:gsub("[\\/:*?\"<>|]", "_"))
-end
-
-local function getFilePathForMap(mapName)
-	ensureFolder()
-	return SKILLS_FOLDER .. "/" .. sanitizeFileName(mapName) .. ".json"
-end
-
---// ĐỌC DỮ LIỆU MAP VÀO RAM (Chỉ đọc 1 lần khi chọn map hoặc vào phòng)
-function skillTimingManager.LoadMapData(mapName)
-	mapName = mapName or selectedMap or shared.GetCurrentDungeonName() or "Unknown"
-	local filePath = getFilePathForMap(mapName)
-
-	table.clear(loadedTrainedData)
-	loadedSkillCount = 0
-
-	if isfile and isfile(filePath) then
-		local ok, content = pcall(readfile, filePath)
-		if ok and content and #content > 0 then
-			local parseOk, parsed = pcall(function() return HttpService:JSONDecode(content) end)
-			if parseOk and type(parsed) == "table" then
-				for skillName, data in pairs(parsed) do
-					if type(data) == "table" and type(data.avgLifetime) == "number" then
-						loadedTrainedData[skillName] = {
-							totalLifetime = tonumber(data.avgLifetime) or 2.0,
-							hitDelay = tonumber(data.avgHitDelay) or (tonumber(data.avgLifetime) * 0.75),
-							count = tonumber(data.count) or 1,
-							minLifetime = tonumber(data.minLifetime),
-							maxLifetime = tonumber(data.maxLifetime),
-							isProjectile = data.isProjectile == true,
-							skillType = data.skillType or (data.isProjectile and "Projectile" or "AoE"),
-						}
-						loadedSkillCount = loadedSkillCount + 1
-					end
-				end
-			end
-		end
-	end
-
-	fireChange()
-	return loadedSkillCount
-end
-
---// LẤY DỮ LIỆU TIMING (Được Smart Dodge / 3D Countdown gọi mỗi frame - 100% TRÊN RAM)
-function skillTimingManager.GetSkillTiming(skillName)
-	if currentMode == "Trained Preset" then
-		local trained = loadedTrainedData[skillName]
-		if trained and trained.totalLifetime then
-			local hitDelay = trained.hitDelay
-			if trained.isProjectile or hitDelay == 0 then
-				hitDelay = 0.0
-			end
-			return trained.totalLifetime, (hitDelay or (trained.totalLifetime * 0.75))
-		end
-	end
-
-	-- Mode 1 hoặc fallback: Bảng cứng Preset
-	local preset = DEFAULT_PRESETS[skillName]
-	if preset then
-		return preset.totalLifetime or 2.0, preset.hitDelay or 1.5
-	end
-
-	return 2.5, 1.8
-end
-
---// CHẾ ĐỘ HUẤN LUYỆN CHƠI CHAY (MANUAL TRAINING)
-function skillTimingManager.SetRecordingEnabled(state)
-	isRecording = state and true or false
-	if isRecording then
-		notifier.Notify("Skill Training", "Bắt đầu thu thập dữ liệu skill (Chơi chay)! Hãy tự né và đánh Boss.", 4)
-	else
-		notifier.Notify("Skill Training", ("Đã dừng ghi nhận. Thu thập được %d chiêu thức."):format(recordedSkillCount), 3)
-	end
-	fireChange()
-end
-
-function skillTimingManager.IsRecording()
-	return isRecording
-end
-
--- Ghi nhận 1 skill vào RAM buffer (hoàn toàn không đụng file I/O)
-function skillTimingManager.RecordSkill(skillName, duration, hitDelay, isProjectile)
-	if not isRecording then return end
-	if not skillName or not duration or duration < 0.2 or duration > 30.0 then return end
-
-	totalSamplesCount = totalSamplesCount + 1
-
-	if isProjectile then
-		hitDelay = 0.0
-	end
-
-	local rec = recordedSessionData[skillName]
-	if not rec then
-		local isProj = isProjectile and true or false
-		recordedSessionData[skillName] = {
-			count = 1,
-			avgLifetime = duration,
-			avgHitDelay = hitDelay or 0.0,
-			minLifetime = duration,
-			maxLifetime = duration,
-			isProjectile = isProj,
-			skillType = isProj and "Projectile" or "AoE",
-		}
-		recordedSkillCount = recordedSkillCount + 1
-	else
-		rec.count = rec.count + 1
-		rec.isProjectile = rec.isProjectile or (isProjectile and true or false)
-		rec.skillType = rec.isProjectile and "Projectile" or "AoE"
-
-		if rec.isProjectile then
-			-- Với Projectile: Sát thương gây ra liên tục suốt hành trình bay
-			rec.avgHitDelay = 0.0
-
-			-- Xử lý va chạm nổ sớm (Loại 1) vs Đạn xuyên thấu (Loại 2):
-			-- Nếu duration quá ngắn so với thời gian bay tối đa từng đo (< 60% maxLifetime),
-			-- đây là trường hợp đạn va chạm người chơi/tường nổ sớm -> Không kéo tụt avgLifetime!
-			if duration >= (rec.maxLifetime * 0.60) then
-				local weight = math.min(rec.count, 8)
-				rec.avgLifetime = rec.avgLifetime + (duration - rec.avgLifetime) / weight
-			end
-			rec.maxLifetime = math.max(rec.maxLifetime, duration)
-			rec.minLifetime = math.min(rec.minLifetime, duration)
-		else
-			-- Với AoE / Telegraph nổ mặt đất:
-			local weight = math.min(rec.count, 8)
-			rec.avgLifetime = rec.avgLifetime + (duration - rec.avgLifetime) / weight
-			if hitDelay then
-				rec.avgHitDelay = (rec.avgHitDelay or hitDelay) + (hitDelay - (rec.avgHitDelay or hitDelay)) / weight
-			end
-			rec.minLifetime = math.min(rec.minLifetime, duration)
-			rec.maxLifetime = math.max(rec.maxLifetime, duration)
-		end
-	end
-
-	local tag = rec.isProjectile and "🚀 Projectile" or "💥 AoE"
-	print(("[SkillTimingManager] ✅ Recorded '%s' [%s] (hits: %d, avgLife: %.2fs, hitDelay: %.2fs) | RAM: %d unique, %d total hits")
-		:format(skillName, tag, rec.count, rec.avgLifetime, rec.avgHitDelay or 0, recordedSkillCount, totalSamplesCount))
-
-	fireChange()
-end
-
--- Đóng gói dữ liệu Map thành định dạng JSON chuẩn có thụt dòng đẹp, dễ đọc, ưu tiên trường isProjectile và skillType
-local function serializeSkillData(data)
-	local lines = { "{\n" }
-	local sortedKeys = {}
-	for k in pairs(data) do
-		table.insert(sortedKeys, k)
-	end
-	table.sort(sortedKeys)
-
-	for i, skillName in ipairs(sortedKeys) do
-		local info = data[skillName]
-		local isProj = (info.isProjectile == true)
-		local skillType = info.skillType or (isProj and "Projectile" or "AoE")
-		local avgLife = tonumber(info.avgLifetime) or 2.0
-		local hitDelay = tonumber(info.avgHitDelay) or (isProj and 0.0 or 1.5)
-		local count = tonumber(info.count) or 1
-		local minLife = tonumber(info.minLifetime) or avgLife
-		local maxLife = tonumber(info.maxLifetime) or avgLife
-
-		local comma = (i < #sortedKeys) and "," or ""
-		table.insert(lines, string.format('  %q: {\n', skillName))
-		table.insert(lines, string.format('    "skillType": %q,\n', skillType))
-		table.insert(lines, string.format('    "isProjectile": %s,\n', isProj and "true" or "false"))
-		table.insert(lines, string.format('    "avgLifetime": %.2f,\n', avgLife))
-		table.insert(lines, string.format('    "avgHitDelay": %.2f,\n', hitDelay))
-		table.insert(lines, string.format('    "count": %d,\n', count))
-		table.insert(lines, string.format('    "minLifetime": %.2f,\n', minLife))
-		table.insert(lines, string.format('    "maxLifetime": %.2f\n', maxLife))
-		table.insert(lines, "  }" .. comma .. "\n")
-	end
-	table.insert(lines, "}")
-	return table.concat(lines)
-end
-
--- Lưu RAM buffer ra file của Map (Chỉ chạy 1 lần khi người chơi bấm nút Save)
-function skillTimingManager.SaveRecordedData(targetMapName)
-	targetMapName = targetMapName or selectedMap or shared.GetCurrentDungeonName() or "Unknown"
-	if not (writefile and isfile) then
-		notifier.Notify("Training Error", "Executor không hỗ trợ writefile!", 3)
-		return false, 0
-	end
-
-	if recordedSkillCount == 0 then
-		notifier.Notify("Skill Training", "Chưa có dữ liệu skill nào được ghi trong phiên chơi!", 3)
-		return false, 0
-	end
-
-	local filePath = getFilePathForMap(targetMapName)
-	local existingData = {}
-
-	if isfile(filePath) then
-		pcall(function()
-			local raw = readfile(filePath)
-			if raw and #raw > 0 then
-				local parsed = HttpService:JSONDecode(raw)
-				if type(parsed) == "table" then
-					existingData = parsed
-				end
-			end
-		end)
-	end
-
-	-- Merge session data vào existing data
-	local mergedCount = 0
-	for sName, sData in pairs(recordedSessionData) do
-		local old = existingData[sName]
-		if not old then
-			sData.isProjectile = sData.isProjectile and true or false
-			sData.skillType = sData.isProjectile and "Projectile" or "AoE"
-			existingData[sName] = sData
-		else
-			old.count = (old.count or 1) + (sData.count or 1)
-			if sData.isProjectile or old.isProjectile then
-				old.isProjectile = true
-				old.skillType = "Projectile"
-				old.avgHitDelay = 0.0
-				old.maxLifetime = math.max(old.maxLifetime or sData.maxLifetime, sData.maxLifetime)
-				old.minLifetime = math.min(old.minLifetime or sData.minLifetime, sData.minLifetime)
-				old.avgLifetime = math.max(old.avgLifetime or 0, sData.avgLifetime or 0)
-			else
-				old.isProjectile = false
-				old.skillType = "AoE"
-				old.avgLifetime = (old.avgLifetime + sData.avgLifetime) / 2
-				old.avgHitDelay = ((old.avgHitDelay or old.avgLifetime * 0.75) + (sData.avgHitDelay or sData.avgLifetime * 0.75)) / 2
-				old.minLifetime = math.min(old.minLifetime or sData.minLifetime, sData.minLifetime)
-				old.maxLifetime = math.max(old.maxLifetime or sData.maxLifetime, sData.maxLifetime)
-			end
-		end
-		mergedCount = mergedCount + 1
-	end
-
-	local saveOk = pcall(function()
-		ensureFolder()
-		local jsonText
-		local encodeOk, encoded = pcall(serializeSkillData, existingData)
-		if encodeOk and encoded and #encoded > 0 then
-			jsonText = encoded
-		else
-			jsonText = HttpService:JSONEncode(existingData)
-		end
-		writefile(filePath, jsonText)
-	end)
-
-	if saveOk then
-		-- Tự động nạp luôn vào bộ nhớ cho Mode 2
-		skillTimingManager.LoadMapData(targetMapName)
-		notifier.Notify("Skill Training", ("Đã lưu thành công %d chiêu thức vào map [%s]!"):format(mergedCount, targetMapName), 4)
-		table.clear(recordedSessionData)
-		recordedSkillCount = 0
-		totalSamplesCount = 0
-		fireChange()
-		return true, mergedCount
-	else
-		notifier.Notify("Training Error", "Lỗi trong quá trình ghi file!", 3)
-		return false, 0
-	end
-end
-
-function skillTimingManager.ClearRecordedSession()
-	table.clear(recordedSessionData)
-	recordedSkillCount = 0
-	totalSamplesCount = 0
-	fireChange()
-	notifier.Notify("Skill Training", "Đã xóa bộ nhớ đệm phiên huấn luyện.", 2)
-end
-
--- In dữ liệu phiên huấn luyện (Buffer trong RAM) ra console F9
-function skillTimingManager.PrintRecordedData()
-	print("================ [SkillTiming] Recorded Session Buffer ================")
-	local count = 0
-	for name, data in pairs(recordedSessionData) do
-		count = count + 1
-		local tag = data.isProjectile and "🚀 Projectile" or "💥 AoE"
-		print(string.format("[%d] '%s' [%s] | avgLife: %.2fs | hitDelay: %.2fs | hits: %d (min: %.2fs, max: %.2fs)",
-			count, name, tag, data.avgLifetime or 0, data.avgHitDelay or 0, data.count or 1, data.minLifetime or 0, data.maxLifetime or 0))
-	end
-	if count == 0 then
-		print("No skills recorded in current session buffer.")
-	end
-	print("=======================================================================")
-	return count
-end
-
--- In dữ liệu Map đã nạp vào RAM ra console F9
-function skillTimingManager.PrintLoadedMapData()
-	local mapName = selectedMap or shared.GetCurrentDungeonName() or "Unknown"
-	print(string.format("================ [SkillTiming] Loaded RAM Data for [%s] ================", mapName))
-	local count = 0
-	for name, data in pairs(loadedTrainedData) do
-		count = count + 1
-		local tag = data.isProjectile and "🚀 Projectile" or "💥 AoE"
-		print(string.format("[%d] '%s' [%s] | avgLife: %.2fs | hitDelay: %.2fs | hits: %d",
-			count, name, tag, data.totalLifetime or 0, data.hitDelay or 0, data.count or 1))
-	end
-	if count == 0 then
-		print("No trained skills loaded for this map.")
-	end
-	print("=======================================================================")
-	return count
-end
-
---// GETTERS & SETTERS
-function skillTimingManager.SetMode(mode)
-	if mode == "Default Preset" or mode == "Trained Preset" then
-		currentMode = mode
-		if currentMode == "Trained Preset" then
-			skillTimingManager.LoadMapData(selectedMap)
-		end
-		fireChange()
-	end
-end
-
-function skillTimingManager.GetMode()
-	return currentMode
-end
-
-function skillTimingManager.SetSelectedMap(mapName)
-	if mapName and #mapName > 0 then
-		selectedMap = mapName
-		if currentMode == "Trained Preset" then
-			skillTimingManager.LoadMapData(selectedMap)
-		end
-		fireChange()
-	end
-end
-
-function skillTimingManager.GetSelectedMap()
-	if not selectedMap then
-		selectedMap = shared.GetCurrentDungeonName()
-		if not selectedMap or #selectedMap == 0 then
-			local dList = dungeonCatalog.GetDungeons()
-			selectedMap = (dList and dList[1]) or "Desert Temple"
-		end
-	end
-	return selectedMap
-end
-
-function skillTimingManager.GetLoadedSkillCount()
-	return loadedSkillCount
-end
-
-function skillTimingManager.GetRecordedSkillCount()
-	return recordedSkillCount
-end
-
-function skillTimingManager.GetTotalSamplesCount()
-	return totalSamplesCount
-end
-
-function skillTimingManager.GetDefaultPresets()
-	return DEFAULT_PRESETS
-end
-
-function skillTimingManager.OnChanged(callback)
-	if type(callback) == "function" then
-		table.insert(changeListeners, callback)
-	end
-end
-
--- Tự động nhận diện map khi vào Dungeon mới
-task.spawn(function()
-	while true do
-		local curDungeon = shared.GetCurrentDungeonName()
-		if curDungeon and curDungeon ~= selectedMap and currentMode == "Trained Preset" then
-			selectedMap = curDungeon
-			skillTimingManager.LoadMapData(curDungeon)
-		end
-		task.wait(2.0)
-	end
-end)
-
-return skillTimingManager
-end function __DIST.z()-- Smart Dodge – Module 2: Geometry & Hazard Hit-testing (DungeonQuest).
--- Các "thuật toán chấm điểm": isPointInPart (OBB), ring bán nguyệt phân cực, hành lang
--- projectile, isPointInAnyHazard, getFloorPosition. Data hiểm họa được Engine bơm vào qua
--- BindDetection (đứt vòng phụ thuộc detection -> geometry), nên module thuần số học + logic.
-
---// References
-
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-
---// State
-local playerHitboxPadding = 1.8     -- Bù trừ bán kính cơ thể nhân vật (studs) để phát hiện khi chạm mép
-local RAYCAST_DOWN_DIST = 150       -- Khoảng cách bắn raycast xuống mặt đất (studs) - đủ sâu để bắt sàn từ độ cao của Boss
-local MAX_HEIGHT_TOLERANCE = 150.0  -- Chiêu trong Dungeon Quest gây sát thương toàn bộ cột không gian X-Z bất kể độ cao
-
---// Data source hiểm họa do Engine bơm vào (tránh require trực tiếp detection — đứt vòng phụ thuộc).
-local data = nil
-
-local geometry = {}
-
-function geometry.BindDetection(dataSource)
-	data = dataSource or nil
-end
-
-local function det()
-	return data
-end
-
-function geometry.GetHitboxPadding()
-	return playerHitboxPadding
-end
-
-function geometry.SetHitboxPadding(value)
-	if type(value) == "number" and value >= 0 then
-		playerHitboxPadding = value
-	end
-end
-
---// Raycast Parameters dùng chung
-local raycastParams = RaycastParams.new()
-raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-raycastParams.IgnoreWater = true
-
-local cachedIgnoreList = {}
-local lastFilterRebuildTime = 0
-
-local function updateRaycastFilter(force)
-	local now = os.clock()
-	if not force and (now - lastFilterRebuildTime < 0.25) then
-		return
-	end
-	lastFilterRebuildTime = now
-
-	table.clear(cachedIgnoreList)
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p.Character then table.insert(cachedIgnoreList, p.Character) end
-	end
-	if Workspace:FindFirstChild("RaycastIgnore") then
-		table.insert(cachedIgnoreList, Workspace.RaycastIgnore)
-	end
-	for inst in pairs(det().GetActiveHazardsMap()) do
-		table.insert(cachedIgnoreList, inst)
-	end
-	raycastParams.FilterDescendantsInstances = cachedIgnoreList
-end
-
-local player = Players.LocalPlayer
-
---// Bắn raycast kiểm tra sàn nhà và snap tọa độ xuống mặt đất
-function geometry.GetFloorPosition(pos)
-	updateRaycastFilter(false)
-
-	local rayOrigin = Vector3.new(pos.X, pos.Y + 10, pos.Z)
-	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
-	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
-
-	if result and result.Position then
-		return Vector3.new(pos.X, result.Position.Y + 3, pos.Z), true
-	end
-	return pos, false
-end
-
---// Bắn raycast kiểm tra sàn nhà và trả về cao độ Y thực tế của mặt sàn (không cộng offset +3)
-function geometry.GetRawFloorY(pos)
-	updateRaycastFilter(false)
-
-	local rayOrigin = Vector3.new(pos.X, pos.Y + 12, pos.Z)
-	local rayDir = Vector3.new(0, -RAYCAST_DOWN_DIST, 0)
-	local result = Workspace:Raycast(rayOrigin, rayDir, raycastParams)
-
-	if result and result.Position then
-		return result.Position.Y, true, result.Normal
-	end
-
-	-- Fallback kiểm tra dưới chân Player
-	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	if rootPart then
-		local pOrigin = Vector3.new(pos.X, rootPart.Position.Y + 8, pos.Z)
-		local pResult = Workspace:Raycast(pOrigin, rayDir, raycastParams)
-		if pResult and pResult.Position then
-			return pResult.Position.Y, true, pResult.Normal
-		end
-		return rootPart.Position.Y - 2.8, false, Vector3.new(0, 1, 0)
-	end
-
-	return pos.Y, false, Vector3.new(0, 1, 0)
-end
-
---// Kiểm tra xem điểm P có nằm trong hành lang quỹ đạo của một Projectile Part không
-function geometry.IsPointInTrajectory(point, part)
-	local det = det()
-	local data = det.GetLockedProjectiles()[part]
-	if not data then
-		data = det.LockTrajectoryForPart and det.LockTrajectoryForPart(part)
-	end
-	if not data then return false end
-
-	local origin = part.Position
-	local forward = data.forward2D
-	local maxDist = data.maxLookahead
-	local radius = data.dangerRadius
-
-	local toPoint = point - origin
-	local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
-	local dotForward = toPoint2D:Dot(forward)
-
-	if data.config and data.config.isDynamicMoving then
-		-- Với Dynamic Moving Beam (vùng màu cam di động quét sàn thời gian thực):
-		-- Giới hạn chiều sâu từ phía sau beam -4 studs đến trước beam +maxDist
-		if dotForward < -4 or dotForward > (maxDist + 2) then
-			return false
-		end
-
-		local projOnAxis = forward * dotForward
-		local perpVec = toPoint2D - projOnAxis
-		local perpDist = perpVec.Magnitude
-
-		local checkY = data.lockedVisualY or (data.rawFloorY and (data.rawFloorY + 2.8)) or origin.Y
-		local heightDiff = math.abs(point.Y - checkY)
-		if heightDiff > MAX_HEIGHT_TOLERANCE then
-			return false
-		end
-
-		if perpDist <= (radius + playerHitboxPadding) then
-			return true, perpDist, radius, forward, origin, maxDist
-		end
-		return false
-	end
-
-	-- Xử lý mở rộng hình nón (Expanding Cone Corridor) cho kỹ năng chuỗi vòng tròn mở rộng (secondBossCricleHitbox - Boss 2)
-	local effectiveRadius = radius
-	local isExpandingCone = (data.config and data.config.isExpandingCone)
-	if isExpandingCone then
-		local expansionRate = (data.config and data.config.expansionRate) or 0.25
-		-- Càng lan xa theo chiều forward, bán kính vòng tròn nguy hiểm càng phình to
-		effectiveRadius = radius + math.max(0, dotForward * expansionRate)
-	end
-
-	-- Điểm P phải nằm trong khoảng từ ngay sau đạn (-effectiveRadius) tới hết tầm maxDist
-	if dotForward < -effectiveRadius or dotForward > maxDist then
-		return false
-	end
-
-	local projOnAxis = forward * dotForward
-	local perpVec = toPoint2D - projOnAxis
-	local perpDist = perpVec.Magnitude
-
-	-- Kiểm tra độ cao Y theo độ cao sàn đã khóa (Raw Floor Y) của chiêu
-	local checkY = data.rawFloorY and (data.rawFloorY + 2.8) or origin.Y
-	local heightDiff = math.abs(point.Y - checkY)
-	if heightDiff > MAX_HEIGHT_TOLERANCE then
-		return false
-	end
-
-	if perpDist <= (effectiveRadius + playerHitboxPadding) then
-		return true, perpDist, effectiveRadius, forward, origin, maxDist
-	end
-
-	return false
-end
-
---// Kiểm tra xem một điểm P có nằm trong phạm vi sát thương của một BasePart không
-function geometry.IsPointInPart(point, part)
-	if not part or not part:IsA("BasePart") or not part.Parent or det().IsIgnoredPart(part) then
-		return false
-	end
-
-	-- Broadphase distance pruning: Loại bỏ siêu tốc 95% điểm ở xa chỉ bằng phép tính số học X-Z
-	-- (Tuyệt đối không gọi CFrame:PointToObjectSpace tốn kém nếu điểm nằm ngoài bán kính bao)
-	local partPos = part.Position
-	local dX = point.X - partPos.X
-	local dZ = point.Z - partPos.Z
-	local pSize = part.Size
-	local maxDim = (pSize.X > pSize.Z and pSize.X or pSize.Z)
-	local maxRadius = (maxDim * 0.7072) + playerHitboxPadding + 2.0
-	if (dX * dX + dZ * dZ) > (maxRadius * maxRadius) then
-		return false
-	end
-
-	-- Kiểm tra độ cao Y sơ bộ
-	local heightDiff = math.abs(point.Y - partPos.Y)
-	if heightDiff > MAX_HEIGHT_TOLERANCE then
-		return false
-	end
-
-	-- 1. Dạng hình cầu / hình trụ (Circle / Ball / Cylinder AoE)
-	if part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder) then
-		local radius = math.max(pSize.X, pSize.Z) / 2 + playerHitboxPadding
-		local distSq = dX * dX + dZ * dZ
-		return distSq <= radius * radius
-	end
-
-	-- 2. Dạng Moving Beam (secondBossMovingBeam) xoay lộn quanh trục X:
-	local isMovingBeam = part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
-	if isMovingBeam then
-		local localPos = part.CFrame:PointToObjectSpace(point)
-		-- Chiều dài thanh beam dọc theo trục X (vùng sải ngang quét qua phòng):
-		local halfLength = math.max(pSize.X, pSize.Z) / 2 + playerHitboxPadding
-		-- Bán kính tiết diện xoay quanh trục X (đường kính thanh beam):
-		local beamRadius = math.max(pSize.Y, math.min(pSize.X, pSize.Z)) / 2 + playerHitboxPadding
-		if beamRadius < 3.5 then beamRadius = 3.5 end
-
-		-- Khoảng cách vuông góc với trục beam trong mặt phẳng Y-Z (miễn nhiễm với góc xoay lộn quanh trục X):
-		local radialDistSq = localPos.Y * localPos.Y + localPos.Z * localPos.Z
-
-		return (math.abs(localPos.X) <= halfLength)
-			and (radialDistSq <= (beamRadius + 1.5) * (beamRadius + 1.5))
-	end
-
-	-- 3. Dạng hình chữ nhật / hộp có hướng (Oriented Bounding Box - OBB)
-	local localPos = part.CFrame:PointToObjectSpace(point)
-	local halfX = pSize.X / 2 + playerHitboxPadding
-	local halfZ = pSize.Z / 2 + playerHitboxPadding
-	local halfY = math.max(MAX_HEIGHT_TOLERANCE, pSize.Y / 2 + 5)
-
-	return math.abs(localPos.X) <= halfX
-		and math.abs(localPos.Z) <= halfZ
-		and math.abs(localPos.Y) <= halfY
-end
-
---// Kiểm tra xem một điểm P có nằm trong vành khuyên / bán nguyệt của một UnionOperation 'ring' không
-function geometry.IsPointInRingPart(point, ringPart)
-	if not ringPart or not ringPart:IsA("BasePart") or not ringPart.Parent or det().IsIgnoredPart(ringPart) then
-		return false
-	end
-
-	-- 1. Xác định tâm thực của cả Model (Center Part)
-	local centerPart = ringPart.Parent:FindFirstChild("center")
-		or ringPart.Parent:FindFirstChild("Center")
-	local centerPos = centerPart and centerPart.Position or ringPart.Position
-
-	-- 2. Kiểm tra độ cao Y
-	local heightDiff = math.abs(point.Y - centerPos.Y)
-	if heightDiff > MAX_HEIGHT_TOLERANCE then
-		return false
-	end
-
-	-- 3. Đưa tọa độ điểm P và vị trí Ring về mặt phẳng 2D (X-Z)
-	local diffX = point.X - centerPos.X
-	local diffZ = point.Z - centerPos.Z
-	local r = math.sqrt(diffX * diffX + diffZ * diffZ)
-
-	-- 4. Bán kính ngoài thực tế của Ring từ kích thước Size.Z (Size = Diameter x Height x Radius)
-	local radiusOuter = ringPart.Size.Z
-	if radiusOuter < 1 then
-		radiusOuter = math.max(ringPart.Size.X, ringPart.Size.Z) / 2
-	end
-
-	-- Bề dày dải Cyan: 12.5 studs cho các ring 1-6 (Size.X: 50, 75, 100, 125, 150, 175) và 17.5 studs cho ring 7 (Size.X: 210)
-	local bandThickness = (radiusOuter > 90) and 18.0 or 13.0
-	local radiusInner = math.max(0, radiusOuter - bandThickness)
-
-	-- 5. Kiểm tra khoảng rỗng ở giữa: Nếu r nằm trong lỗ trống -> AN TOÀN!
-	if r < radiusInner - playerHitboxPadding then
-		return false
-	end
-
-	-- 6. Nếu r vượt quá bán kính ngoài -> Nằm ngoài Ring này
-	if r > radiusOuter + playerHitboxPadding then
-		return false
-	end
-
-	-- 7. Kiểm tra hướng bán nguyệt bằng Tích Vô Hướng (Vector Dot Product):
-	local offX = ringPart.Position.X - centerPos.X
-	local offZ = ringPart.Position.Z - centerPos.Z
-	local offMag = math.sqrt(offX * offX + offZ * offZ)
-
-	if offMag > 0.5 then
-		local dirUnitX = offX / offMag
-		local dirUnitZ = offZ / offMag
-		local dot = (diffX * dirUnitX) + (diffZ * dirUnitZ)
-
-		-- Nếu dot < -playerHitboxPadding -> Nằm ở nửa đối diện (Khoảng đất trống an toàn 100%)
-		if dot < -playerHitboxPadding then
-			return false
-		end
-	end
-
-	return true, r, radiusInner, radiusOuter, centerPos, ringPart.CFrame
-end
-
---// Kiểm tra xem điểm P có bị dính bất kỳ vòng nào trong Model thirdBossMultiRings không
-function geometry.IsPointInThirdBossMultiRings(point, hazardInfo)
-	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then
-		return false, nil
-	end
-
-	local fadeThreshold = det().GetFadeThreshold()
-
-	if hazardInfo.ActiveParts then
-		for part in pairs(hazardInfo.ActiveParts) do
-			if part and part.Parent and part:IsA("BasePart") and part.Transparency < fadeThreshold then
-				local inRing = geometry.IsPointInRingPart(point, part)
-				if inRing then
-					return true, part
-				end
-			end
-		end
-	end
-
-	return false, nil
-end
-
---// Kiểm tra xem điểm P có nằm trong vùng nguy hiểm của Model secondBossMovingBeam không
-function geometry.IsPointInSecondBossMovingBeam(point, hazardInfo)
-	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then
-		return false, nil, nil
-	end
-
-	local inst = hazardInfo.Instance
-	local det = det()
-	local trajData = det.GetLockedProjectiles()[inst]
-	if not trajData and det.LockSecondBossMovingBeam then
-		trajData = det.LockSecondBossMovingBeam(inst)
-	end
-	if not trajData and det.LockBossOrb then
-		trajData = det.LockBossOrb(inst)
-	end
-	if not trajData then
-		return false, nil, nil
-	end
-
-	local primary = inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart") or (inst:IsA("BasePart") and inst)
-	local curPos = (primary and primary.Position) or (inst:IsA("Model") and select(1, inst:GetBoundingBox()).Position) or inst.Position
-
-	if trajData.isBossOrb then
-		-- Boss 2 Orb là quả cầu bám đuổi (chỉ gây nổ tử thần khi va chạm trong cự ly gần <= radius + padding).
-		-- TUYỆT ĐỐI KHÔNG coi toàn bộ hành lang 50-80 studs nối từ quả cầu tới Player là vùng nguy hiểm hình học!
-		-- (Vì nếu coi cả dải nối là hazard thì Player luôn bị dính hazard, và khi né chiêu khác tia này sẽ quét qua
-		-- làm biến mất điểm an toàn luân phiên -> gây giật giật giậm chân tại chỗ).
-		local toPoint = point - curPos
-		local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
-		local distToOrb = toPoint2D.Magnitude
-		local orbDangerRadius = (trajData.dangerRadius or 5.0) + playerHitboxPadding
-		if distToOrb <= orbDangerRadius then
-			local checkY = trajData.lockedVisualY or curPos.Y
-			local heightDiff = math.abs(point.Y - checkY)
-			if heightDiff <= MAX_HEIGHT_TOLERANCE then
-				local hitPart = primary or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart")) or inst
-				local foundTraj = {
-					isTrajectory = true,
-					isDynamicMoving = true,
-					isBossOrb = true,
-					perpDist = distToOrb,
-					dangerRadius = trajData.dangerRadius or 5.0,
-					forward2D = trajData.forward2D or Vector3.new(0, 0, -1),
-					originPos = curPos,
-					maxLookahead = orbDangerRadius,
-				}
-				return true, hitPart, foundTraj
-			end
-		end
-		return false, nil, nil
-	end
-
-	local forward = trajData.forward2D or Vector3.new(0, 0, -1)
-	local radius = trajData.dangerRadius or 25.0
-	local maxDist = trajData.maxLookahead or 50.0
-
-	local toPoint = point - curPos
-	local toPoint2D = Vector3.new(toPoint.X, 0, toPoint.Z)
-	local dotForward = toPoint2D:Dot(forward)
-
-	-- Chiều sâu tịnh tiến: từ sau hazard (-4 studs) đến trước hazard +maxDist
-	if dotForward < -4 or dotForward > (maxDist + 2) then
-		return false, nil, nil
-	end
-
-	local projOnAxis = forward * dotForward
-	local perpVec = toPoint2D - projOnAxis
-	local perpDist = perpVec.Magnitude
-
-	local checkY = trajData.lockedVisualY or curPos.Y
-	local heightDiff = math.abs(point.Y - checkY)
-	if heightDiff > MAX_HEIGHT_TOLERANCE then
-		return false, nil, nil
-	end
-
-	if perpDist <= (radius + playerHitboxPadding) then
-		local hitPart = primary or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart")) or inst
-		local foundTraj = {
-			isTrajectory = true,
-			isDynamicMoving = true,
-			perpDist = perpDist,
-			dangerRadius = radius,
-			forward2D = forward,
-			originPos = curPos,
-			maxLookahead = maxDist,
-		}
-		return true, hitPart, foundTraj
-	end
-
-	return false, nil, nil
-end
-
---// Kiểm tra xem một điểm P có đang bị dính bất kỳ mối nguy hiểm nào không
-function geometry.IsPointInAnyHazard(point, ignoredInstance)
-	local det = det()
-	local bestDistSq = math.huge
-	local foundInfo, foundPart = nil, nil
-	local foundTraj = nil
-
-	for _, info in pairs(det.GetActiveHazardsMap()) do
-		if ignoredInstance then
-			if info.Instance == ignoredInstance
-				or (info.Instance and info.Instance.Name == ignoredInstance.Name)
-				or (info.Name and info.Name == ignoredInstance.Name) then
-				continue
-			end
-		end
-
-		local isMultiRings = info.Name and info.Name:lower():find("multiring") ~= nil
-		local isMovingBeam = info.Instance and info.Instance:IsA("Model") and (
-			(info.Name and info.Name:lower():find("movingbeam") ~= nil)
-			or (info.Instance.Name and info.Instance.Name:lower():find("movingbeam") ~= nil)
-		)
-		local isMovingHazard = isMovingBeam or (info.Instance and det.GetLockedProjectiles()[info.Instance] ~= nil)
-
-		if isMultiRings then
-			-- ÁP DỤNG THỬ NGHIỆM 2: Giải Tích Tọa Độ Cực (Polar Annulus) RIÊNG CHO thirdBossMultiRings
-			local inRing, hitPart = geometry.IsPointInThirdBossMultiRings(point, info)
-			if inRing then
-				local distSq = (point - hitPart.Position).Magnitude
-				if distSq < bestDistSq then
-					bestDistSq = distSq
-					foundInfo = info
-					foundPart = hitPart
-					foundTraj = nil
-				end
-			end
-		elseif isMovingHazard then
-			-- ÁP DỤNG XỬ LÝ CẤP MODEL CHO secondBossMovingBeam & Boss Orbs
-			local inBeam, hitPart, trajData = geometry.IsPointInSecondBossMovingBeam(point, info)
-			if inBeam then
-				local distSq = (point - (hitPart and hitPart.Position or info.Instance.Position)).Magnitude
-				if distSq < bestDistSq then
-					bestDistSq = distSq
-					foundInfo = info
-					foundPart = hitPart or info.Instance
-					foundTraj = trajData
-				end
-			end
-		elseif info.ActiveParts then
-			for part in pairs(info.ActiveParts) do
-				if ignoredInstance and (part == ignoredInstance or part.Name == ignoredInstance.Name) then
-					continue
-				end
-				local trajConfig = det.GetTrajectoryConfigForPart(part)
-				if trajConfig then
-					local inTraj, perpDist, radius, forward, origin, maxDist = geometry.IsPointInTrajectory(point, part)
-					if inTraj then
-						local distSq = (point - part.Position).Magnitude
-						if distSq < bestDistSq then
-							bestDistSq = distSq
-							foundInfo = info
-							foundPart = part
-							foundTraj = {
-								isTrajectory = true,
-								perpDist = perpDist,
-								dangerRadius = radius,
-								forward2D = forward,
-								originPos = origin,
-								maxLookahead = maxDist,
-								isExpandingCone = (trajConfig and trajConfig.isExpandingCone) or false,
-								expansionRate = (trajConfig and trajConfig.expansionRate) or 0.25,
-							}
-						end
-					end
-				else
-					-- Các skill khác dùng OBB / Radius thông thường
-					if geometry.IsPointInPart(point, part) then
-						local distSq = (point - part.Position).Magnitude
-						if distSq < bestDistSq then
-							bestDistSq = distSq
-							foundInfo = info
-							foundPart = part
-							foundTraj = nil
-						end
-					end
-				end
-			end
-		end
-	end
-
-	if foundPart then
-		return true, foundInfo, foundPart, foundTraj
-	end
-	return false, nil, nil, nil
-end
-
---// Kiểm tra xem một đĩa tròn quanh điểm P có hoàn toàn an toàn (không chạm bất kỳ hazard nào) không
---// Cấu hình Cân Bằng (Balanced): Kiểm tra tâm (fast reject) + 4 hướng chính ở bán kính safeRadius
-local CHECK_OFFSETS_4 = {
-	Vector3.new(1, 0, 0),
-	Vector3.new(-1, 0, 0),
-	Vector3.new(0, 0, 1),
-	Vector3.new(0, 0, -1),
-}
-
-function geometry.IsSpotFullySafe(centerPoint, safeRadius, ignoredInstance)
-	if not centerPoint then return false end
-	safeRadius = safeRadius or 0.5
-
-	-- 1. Kiểm tra chính tâm điểm P (Loại bỏ ngay 90% điểm không hợp lệ mà không tốn thêm CPU)
-	if geometry.IsPointInAnyHazard(centerPoint, ignoredInstance) then
-		return false
-	end
-
-	-- 2. Kiểm tra chu vi an toàn:
-	-- Lưu ý: geometry.IsPointInPart đã luôn cộng sẵn playerHitboxPadding = 1.0 stud đệm an toàn.
-	-- Do đó khi safeRadius <= 0.6 stud, kiểm tra tâm điểm đã hoàn toàn bảo đảm an toàn tuyệt đối.
-	-- Chỉ kiểm tra 4 hướng khi caller yêu cầu safeRadius lớn (> 0.6 stud, ví dụ vùng đệm 4.5 studs).
-	if safeRadius > 0.6 then
-		for _, off in ipairs(CHECK_OFFSETS_4) do
-			local sample = centerPoint + (off * safeRadius)
-			if geometry.IsPointInAnyHazard(sample, ignoredInstance) then
-				return false
-			end
-		end
-	end
-
-	return true
-end
-
---// Lấy danh sách tất cả các Hazard Instance đang bao phủ điểm P (hỗ trợ nhiều chiêu đè nhau)
-function geometry.GetAllHazardsAtPoint(point)
-	local det = det()
-	local hazardsSet = {}
-	local count = 0
-
-	for _, info in pairs(det.GetActiveHazardsMap()) do
-		local isMultiRings = info.Name and info.Name:lower():find("multiring") ~= nil
-		if isMultiRings then
-			local inRing, hitPart = geometry.IsPointInThirdBossMultiRings(point, info)
-			if inRing then
-				hazardsSet[hitPart] = true
-				if info.Instance then hazardsSet[info.Instance] = true end
-				count = count + 1
-			end
-		elseif info.Instance and info.Instance:IsA("Model") and (
-			(info.Name and info.Name:lower():find("movingbeam") ~= nil)
-			or (info.Instance.Name and info.Instance.Name:lower():find("movingbeam") ~= nil)
-		) then
-			local inBeam, hitPart = geometry.IsPointInSecondBossMovingBeam(point, info)
-			if inBeam then
-				hazardsSet[hitPart or info.Instance] = true
-				if info.Instance then hazardsSet[info.Instance] = true end
-				count = count + 1
-			end
-		elseif info.ActiveParts then
-			for part in pairs(info.ActiveParts) do
-				local trajConfig = det.GetTrajectoryConfigForPart(part)
-				if trajConfig then
-					local inTraj = geometry.IsPointInTrajectory(point, part)
-					if inTraj then
-						hazardsSet[part] = true
-						if info.Instance then hazardsSet[info.Instance] = true end
-						if part.Parent and part.Parent ~= Workspace then hazardsSet[part.Parent] = true end
-						count = count + 1
-					end
-				else
-					if geometry.IsPointInPart(point, part) then
-						hazardsSet[part] = true
-						if info.Instance then hazardsSet[info.Instance] = true end
-						if part.Parent and part.Parent ~= Workspace then hazardsSet[part.Parent] = true end
-						count = count + 1
-					end
-				end
-			end
-		end
-	end
-
-	return hazardsSet, count
-end
-
---// Kiểm tra xem đoạn đường di chuyển từ fromPos -> toPos có an toàn không (Path Clearance)
---// currentHazardsSet: tập hợp các Hazard mà người chơi ĐANG ĐỨNG TRONG (được phép băng qua để thoát ra)
-function geometry.IsPathSafe(fromPos, toPos, currentHazardsSet, fallbackCurrentDangerPart, ignoredInstance)
-	local dist = (toPos - fromPos).Magnitude
-	if dist <= 1.2 then
-		return true -- Chỉ bỏ qua bước cực ngắn <= 1.2 studs
-	end
-
-	-- Bước chia mẫu 2.8 studs (nhỏ hơn đường kính va chạm người chơi ~4.5 studs, tối đa 14 bước để tối ưu CPU tối đa)
-	local steps = math.clamp(math.ceil(dist / 2.8), 2, 14)
-	for i = 1, steps - 1 do
-		local t = i / steps
-		local samplePos = fromPos:Lerp(toPos, t)
-		local inDanger, hitInfo, hitPart, hitTraj = geometry.IsPointInAnyHazard(samplePos, ignoredInstance)
-		if inDanger then
-			local hitInst = (hitInfo and hitInfo.Instance)
-			local hitParent = hitPart and hitPart.Parent
-
-			local isKnown = false
-			if currentHazardsSet and next(currentHazardsSet) ~= nil then
-				isKnown = (hitPart and currentHazardsSet[hitPart])
-					or (hitInst and currentHazardsSet[hitInst])
-					or (hitParent and currentHazardsSet[hitParent])
-			elseif fallbackCurrentDangerPart then
-				local currentInst = fallbackCurrentDangerPart:IsA("Model") and fallbackCurrentDangerPart or fallbackCurrentDangerPart.Parent
-				isKnown = (hitPart and hitPart == fallbackCurrentDangerPart)
-					or (currentInst and hitInst and currentInst == hitInst)
-					or (currentInst and hitParent and currentInst == hitParent)
-			end
-
-			-- 1. Nếu trúng đạn bắn (Projectile Trajectory) MỚI mà người chơi KHÔNG đứng trong đó -> Tuyệt đối không băng qua
-			--    Nếu là chính Trajectory mà người chơi đang đứng trong đó -> Cho phép bước ra khỏi mép!
-			if hitTraj and hitTraj.isTrajectory and not isKnown then
-				return false
-			end
-
-			-- 2. Nếu trúng một Hazard MỚI mà người chơi KHÔNG đứng trong đó -> Bị cản đường, từ chối ngay
-			if not isKnown then
-				return false
-			end
-		end
-	end
-	return true
-end
-
-return geometry end function __DIST.A()-- Smart Dodge – Module 1: Threat Detection Engine (DungeonQuest).
--- Chuyên trách: quét Workspace Depth 1, nhận diện hiểm họa (Neon / ngoại lệ), khóa quỹ đạo
--- projectile, SelectionBox ESP, hành lang quỹ đạo cảnh báo, registry tên skill player.
--- State riêng: activeHazards, lockedProjectiles, activeTrajectoryVisuals, các flag debug.
-
---// Imports
-
-local services = __DIST.load('i')
-local shared = __DIST.load('j')
-local macLib = __DIST.load('a')
-local lifecycle = __DIST.load('b')
-local skillTimingManager = __DIST.load('y')
-
---// Lazy require Module Geometry (tránh vòng phụ thuộc: geometry đọc data detection qua lazy quay lại)
-local geometryRef
-local function getGeometry()
-	if not geometryRef then
-		geometryRef = __DIST.load('z')
-	end
-	return geometryRef
-end
-
---// References
-local Players = game:GetService("Players")
-local Workspace = game:GetService("Workspace")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-local player = services.player
-
---// Table
-local detection = {}
-
---// State
-local threatDetectorEnabled = false
-local logHazards = false
-local visualEspEnabled = false
-local showSkillTimers = false
-local autoLearnSkillLifetimes = true
-local activeHazards = {} -- [Instance] = { Name, Class, Position, Distance, NeonCount, Connections, ActiveParts, Highlight, Caster, CasterHumanoid, TimerBillboard, TimerLabel, TimerStroke }
-local hazardCount = 0
-local hazardChangedCallbacks = {}
-local lastHazardInfo = nil
-local connections = {}
-local sharedCleanups = {}
-
---// Bảng cơ sở dữ liệu thời gian sống học được từ các kỹ năng (Skill Lifetime Profiler)
-local skillProfiles = {} -- [string skillName] = { count = number, avgLifetime = number, minLifetime = number, maxLifetime = number }
-
---// Các mốc thời gian sống chuẩn mặc định của kỹ năng Boss trong Dungeon Quest (giây): { hitDelay, totalLifetime }
-local KNOWN_SKILL_LIFETIMES = {
-	["smallIceSpikes"] = { hitDelay = 0.8, totalLifetime = 1.2 },
-	["mediumIceSpikes"] = { hitDelay = 1.1, totalLifetime = 1.5 },
-	["largeIceSpikes"] = { hitDelay = 1.4, totalLifetime = 1.8 },
-	["thirdBossMultiRings"] = { hitDelay = 2.0, totalLifetime = 2.8 },
-	["firstBossCrissCross"] = { hitDelay = 1.6, totalLifetime = 2.2 },
-	["firstBossSeekingSpikes"] = { hitDelay = 1.8, totalLifetime = 2.5 },
-	["firstBossBigSpike"] = { hitDelay = 1.5, totalLifetime = 2.0 },
-	["firstBossBeamPart"] = { hitDelay = 1.5, totalLifetime = 2.0 },
-	["secondBossMovingBeam"] = { hitDelay = 0.0, totalLifetime = 3.5 },
-	["secondbossyelloworb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
-	["secondbossredorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
-	["secondbossgreenorb"] = { hitDelay = 0.0, totalLifetime = 4.0 },
-	["secondbosscriclehitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
-	["secondbosscirclehitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
-	["secondBossCricleHitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
-	["secondBossCircleHitbox"] = { hitDelay = 0.4, totalLifetime = 2.5 },
-}
-
-local ignoredSkillNames = {
-	["DodgeNode_ESP"] = true,
-	["Enhanced Aura Ring"] = true,
-	["EnhancedAuraRing"] = true,
-	["Enhanced Aura"] = true,
-	["EnhancedAura"] = true,
-	["Aura Ring"] = true,
-	["AuraRing"] = true,
-	["AuraRingMesh"] = true,
-	["groundAura"] = true,
-	["GroundAura"] = true,
-	["Ground Aura"] = true,
-	["ground aura"] = true,
-}
-
---// Danh sách các skill ngoại lệ (không dùng Material Neon, ví dụ có child precast bằng Plastic)
-local CUSTOM_HAZARD_EXCEPTIONS = {
-	["largeIceSpikes"] = true,
-	["mediumIceSpikes"] = true,
-	["smallIceSpikes"] = true,
-	["thirdBossMultiRings"] = true,
-	["thirdBossMissile"] = true,
-	["thirdBossBeamPart"] = true,
-	["firstBossCrissCross"] = true,
-	["firstBossSeekingSpikes"] = true,
-	["firstBossBigSpike"] = true,
-	["firstBossBeamPart"] = true,
-	["secondBossMovingBeam"] = true,
-	["secondbossyelloworb"] = true,
-	["secondbossredorb"] = true,
-	["secondbossgreenorb"] = true,
-	["secondBossCricleHitbox"] = true,
-	["secondbosscriclehitbox"] = true,
-	["secondBossCircleHitbox"] = true,
-	["secondbosscirclehitbox"] = true,
-}
-
---// Ngưỡng coi như chiêu đã mờ hoàn toàn/kết thúc
-local FADE_TRANSPARENCY_THRESHOLD = 0.85
-
---// Danh sách các đối tượng Workspace cấp 1 cần bỏ qua
-local IGNORED_NAMES = {
-	["dungeon"] = true,
-	["Dungeon"] = true,
-	["Terrain"] = true,
-	["Camera"] = true,
-	["CurrentCamera"] = true,
-	["RaycastIgnore"] = true,
-	["Drops"] = true,
-	["Loot"] = true,
-	["DodgeNode_ESP"] = true,
-	["SmartDodge_SafeMarker"] = true,
-	["SmartDodge_SelectionBox"] = true,
-	["SmartDodge_TrajectoryBox"] = true,
-	["SmartDodge_CrystalGuideBox"] = true,
-	["secondBossCrystals"] = true,
-	["secondbosscrystals"] = true,
-	["Enhanced Aura Ring"] = true,
-	["EnhancedAuraRing"] = true,
-	["Enhanced Aura"] = true,
-	["EnhancedAura"] = true,
-	["Aura Ring"] = true,
-	["AuraRing"] = true,
-	["groundAura"] = true,
-	["GroundAura"] = true,
-	["Ground Aura"] = true,
-	["ground aura"] = true,
-}
-
---// Cấu hình nhận diện Boss 2 Orbs (Northern Lands / Winter Outpost)
-local BOSS_ORB_CONFIGS = {
-	["secondbossyelloworb"] = {
-		colorName = "yellow",
-		color = Color3.fromRGB(255, 230, 0),
-		surfaceColor = Color3.fromRGB(255, 215, 0),
-	},
-	["secondbossredorb"] = {
-		colorName = "red",
-		color = Color3.fromRGB(255, 45, 45),
-		surfaceColor = Color3.fromRGB(255, 30, 30),
-	},
-	["secondbossgreenorb"] = {
-		colorName = "green",
-		color = Color3.fromRGB(50, 255, 50),
-		surfaceColor = Color3.fromRGB(40, 220, 40),
-	},
-}
-
---// Cấu hình các kỹ năng Projectile dạng quỹ đạo bắn thẳng (Trajectory / Corridor Telegraph)
---// Lưu ý: dangerRadius ở đây chỉ là sàn an toàn tối thiểu (fallback floor). Hệ thống sẽ tự động
---// bóc tách kích thước thật (Beam.Width0, Mesh.Scale, Part.Size) qua Auto Dimension Detection.
-local TRAJECTORY_PROJECTILE_CONFIGS = {
-	["firstbosscrisscross"] = {
-		name = "firstBossCrissCross",
-		dangerRadius = 4.0,       -- Sàn an toàn tối thiểu (sẽ tự động mở rộng theo kích thước thật)
-		maxLookahead = nil,       -- Tự động đo độ dài hoặc dùng trajectoryLookahead động
-		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho quỹ đạo
-	},
-	["firstbossseekingspikes"] = {
-		name = "firstBossSeekingSpikes",
-		dangerRadius = 4.0,       -- Sàn an toàn tối thiểu
-		maxLookahead = nil,       -- Chiều dài hành lang dự đoán
-		visualColor = Color3.fromRGB(255, 110, 0), -- Màu cam đậm cho Seeking Spikes
-	},
-	["firstbossbigspike"] = {
-		name = "firstBossBigSpike",
-		dangerRadius = 20.0,      -- Beam.Width0 = 40 studs -> bán kính 20 studs (tổng bề rộng 40 studs)
-		maxLookahead = 140.0,     -- Chiều dài hành lang dự đoán xuyên phòng
-		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho Big Spike
-	},
-	["firstbossbeampart"] = {
-		name = "firstBossBeamPart",
-		dangerRadius = 20.0,      -- Beam.Width0 = 40 studs -> bán kính 20 studs (tổng bề rộng 40 studs)
-		maxLookahead = 140.0,     -- Chiều dài hành lang dự đoán
-		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho Beam Telegraph
-	},
-	["secondbossmovingbeam"] = {
-		name = "secondBossMovingBeam",
-		dangerRadius = 25.0,      -- Sàn an toàn nửa độ rộng sải ngang beam (tự động đọc sải ngang thật ~50 studs)
-		maxLookahead = nil,       -- Dùng chung setting Tra lookahead length động (từ slider UI)
-		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cho Moving Beam
-		isDynamicMoving = true,   -- Đánh dấu là Dynamic Moving Hazard (Tiếp cận 2)
-	},
-	["secondbossyelloworb"] = {
-		name = "secondBossYellowOrb",
-		dangerRadius = 5.0,       -- Bán kính vùng nguy hiểm cơ bản của Orb
-		maxLookahead = 22.0,      -- Chiều dài hành lang dự đoán phía trước hướng di chuyển
-		visualColor = Color3.fromRGB(255, 130, 0), -- Vùng màu cam cảnh báo quỹ đạo
-		isDynamicMoving = true,
-		isBossOrb = true,
-		orbColorName = "yellow",
-	},
-	["secondbossredorb"] = {
-		name = "secondBossRedOrb",
-		dangerRadius = 5.0,
-		maxLookahead = 22.0,
-		visualColor = Color3.fromRGB(255, 130, 0),
-		isDynamicMoving = true,
-		isBossOrb = true,
-		orbColorName = "red",
-	},
-	["secondbossgreenorb"] = {
-		name = "secondBossGreenOrb",
-		dangerRadius = 5.0,
-		maxLookahead = 22.0,
-		visualColor = Color3.fromRGB(255, 130, 0),
-		isDynamicMoving = true,
-		isBossOrb = true,
-		orbColorName = "green",
-	},
-	["thirdbossmissile"] = {
-		name = "thirdBossMissile",
-		dangerRadius = 6.0,       -- Bán kính vùng nguy hiểm cơ bản (tự động đọc Beam/Part size)
-		maxLookahead = 140.0,     -- Chiều dài hành lang dự đoán xuyên phòng
-		visualColor = Color3.fromRGB(255, 130, 0), -- Màu cam cảnh báo quỹ đạo
-	},
-	["thirdbossbeampart"] = {
-		name = "thirdBossBeamPart",
-		dangerRadius = 6.0,
-		maxLookahead = 140.0,
-		visualColor = Color3.fromRGB(255, 130, 0),
-	},
-	["secondbosscriclehitbox"] = {
-		name = "secondBossCricleHitbox",
-		dangerRadius = 8.0,
-		maxLookahead = 95.0,
-		visualColor = Color3.fromRGB(255, 90, 0),
-		isExpandingCone = true,
-		expansionRate = 0.25,
-	},
-	["secondbosscirclehitbox"] = {
-		name = "secondBossCircleHitbox",
-		dangerRadius = 8.0,
-		maxLookahead = 95.0,
-		visualColor = Color3.fromRGB(255, 90, 0),
-		isExpandingCone = true,
-		expansionRate = 0.25,
-	},
-}
-
---// Cấu hình động cho hành lang quỹ đạo đạn (Trajectory Tuning)
-local trajectoryLookahead = 50.0          -- Chiều dài hành lang dự đoán (mặc định 50 studs thay vì 300 để tránh tắc map)
-local trajectoryWidthPadding = 2.5        -- Khoảng đệm nới rộng 2 bên sườn dựa trên kích thước thật của chiêu (studs)
-
---// Bảng lưu trữ trạng thái khóa hướng quỹ đạo (Direction Locking & State Tracking)
-local lockedProjectiles = {} -- [BasePart] = { originPos, forward2D, dangerRadius, maxLookahead, locked, config }
-local activeTrajectoryVisuals = {} -- [BasePart] = Part
-
---// Getters/Setters cho cấu hình Trajectory
-detection.SetTrajectoryLookahead = function(val)
-	if type(val) == "number" and val >= 10 then
-		trajectoryLookahead = val
-	end
-end
-
-detection.GetTrajectoryLookahead = function()
-	return trajectoryLookahead
-end
-
-detection.SetTrajectoryWidthPadding = function(val)
-	if type(val) == "number" and val >= 0 then
-		trajectoryWidthPadding = val
-	end
-end
-
-detection.GetTrajectoryWidthPadding = function()
-	return trajectoryWidthPadding
-end
-
---// Getters nội bộ cho geometry (tránh vòng phụ thuộc detection -> geometry: geometry đọc qua lazy require).
-detection.GetActiveHazardsMap = function()
-	return activeHazards
-end
-
-detection.GetLockedProjectiles = function()
-	return lockedProjectiles
-end
-
-detection.GetFadeThreshold = function()
-	return FADE_TRANSPARENCY_THRESHOLD
-end
-
-detection.IsEnabled = function()
-	return threatDetectorEnabled
-end
-
-detection.SetEnabled = function(state)
-	threatDetectorEnabled = state and true or false
-end
-
---// Xóa toàn bộ visual quỹ đạo + lock data (dùng khi stop loop / shutdown)
-detection.ClearTrajectoryVisuals = function()
-	for part, vPart in pairs(activeTrajectoryVisuals) do
-		pcall(function() vPart:Destroy() end)
-	end
-	table.clear(activeTrajectoryVisuals)
-	table.clear(lockedProjectiles)
-end
-
---// Thêm một Skill vào danh sách ngoại lệ
-function detection.AddCustomHazard(skillName)
-	if type(skillName) == "string" and #skillName > 0 then
-		CUSTOM_HAZARD_EXCEPTIONS[skillName] = true
-	end
-end
-
---// Thêm một Skill vào danh sách Trajectory Projectile
-function detection.AddTrajectoryProjectile(skillName, dangerRadius, maxLookahead)
-	if type(skillName) == "string" and #skillName > 0 then
-		local clean = skillName:lower():gsub("%s+", "")
-		TRAJECTORY_PROJECTILE_CONFIGS[clean] = {
-			name = skillName,
-			dangerRadius = dangerRadius or 4.0,
-			maxLookahead = maxLookahead,
-			visualColor = Color3.fromRGB(255, 130, 0),
-		}
-		if logHazards then
-			print(("[SmartDodge] 🚀 Registered Trajectory Projectile: %s"):format(skillName))
-		end
-	end
-end
-
---// Kiểm tra xem part có thuộc cấu hình kỹ năng Trajectory hay không
-local function getTrajectoryConfigForPart(part)
-	if not part then return nil end
-	local nameLower = part.Name:lower():gsub("%s+", "")
-	if TRAJECTORY_PROJECTILE_CONFIGS[nameLower] then
-		return TRAJECTORY_PROJECTILE_CONFIGS[nameLower]
-	end
-	if part.Parent and part.Parent:IsA("Model") then
-		local parentLower = part.Parent.Name:lower():gsub("%s+", "")
-		if TRAJECTORY_PROJECTILE_CONFIGS[parentLower] then
-			return TRAJECTORY_PROJECTILE_CONFIGS[parentLower]
-		end
-	end
-	if nameLower:find("cricle") or nameLower:find("circle") then
-		return TRAJECTORY_PROJECTILE_CONFIGS["secondbosscriclehitbox"]
-	end
-	if part.Parent and part.Parent:IsA("Model") then
-		local parentLower = part.Parent.Name:lower():gsub("%s+", "")
-		if parentLower:find("cricle") or parentLower:find("circle") then
-			return TRAJECTORY_PROJECTILE_CONFIGS["secondbosscriclehitbox"]
-		end
-	end
-	return nil
-end
-
-detection.GetTrajectoryConfigForPart = function(part)
-	return getTrajectoryConfigForPart(part)
-end
-
---// Tự động phát hiện kích thước thực tế của chiêu thức (Auto Dimension Detection)
---// Quét linh hoạt theo thứ tự ưu tiên: Beam Width -> SpecialMesh Scale -> BasePart Cross-Section
-local function getPartAutoDimensions(part)
-	if not part or not part:IsA("BasePart") then
-		return 6.0, nil
-	end
-
-	local detectedWidth = nil
-	local detectedLength = nil
-
-	-- 1. ƯU TIÊN 1: Tia Beam / Laser (như firstBossBeamPart, movingBeam...)
-	local beam = part:FindFirstChildOfClass("Beam") or (part.Parent and part.Parent:FindFirstChildOfClass("Beam"))
-	if beam then
-		local w0 = beam.Width0 or 0
-		local w1 = beam.Width1 or 0
-		local maxW = math.max(w0, w1)
-		if maxW > 0.5 then
-			detectedWidth = maxW
-		end
-	end
-
-	-- Đo chiều dài và hướng từ Attachment2 nếu có (vết đích của tia beam)
-	local att2 = part:FindFirstChild("Attachment2") or (part.Parent and part.Parent:FindFirstChild("Attachment2"))
-	if att2 and att2:IsA("Attachment") then
-		local delta = att2.WorldPosition - part.Position
-		if delta.Magnitude > 5 then
-			detectedLength = delta.Magnitude
-		end
-	end
-
-	-- 2. ƯU TIÊN 2: SpecialMesh với Scale nhân trực tiếp lên Size của Part
-	local mesh = part:FindFirstChildOfClass("SpecialMesh")
-	local scaleX = (mesh and mesh.Scale.X) or 1
-	local scaleY = (mesh and mesh.Scale.Y) or 1
-	local scaleZ = (mesh and mesh.Scale.Z) or 1
-	local effectiveSize = Vector3.new(
-		part.Size.X * math.abs(scaleX),
-		part.Size.Y * math.abs(scaleY),
-		part.Size.Z * math.abs(scaleZ)
-	)
-
-	if not detectedWidth then
-		local isMovingBeam = part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
-		local isBigSpike = part.Name:lower():find("bigspike") or (part.Parent and part.Parent.Name:lower():find("bigspike"))
-		if isMovingBeam then
-			-- Với Moving Beam quét ngang sân, bề ngang của hiểm họa chính là chiều dài sải ngang của thanh beam
-			detectedWidth = math.max(effectiveSize.X, effectiveSize.Z)
-		elseif isBigSpike then
-			-- Với firstBossBigSpike, tia beam thật đi kèm (firstBossBeamPart) có Width0 = Width1 = 40 studs
-			detectedWidth = 40.0
-			if not detectedLength then
-				detectedLength = 140.0
-			end
-		else
-			-- Đo tiết diện ngang vuông góc (loại trừ trục dài nhất của đạn)
-			local minDim = math.min(effectiveSize.X, effectiveSize.Z)
-			local maxDim = math.max(effectiveSize.X, effectiveSize.Z)
-
-			-- Nếu một trục quá nhỏ (ví dụ tấm phẳng mỏng < 1.2 studs), lấy trục lớn hơn
-			if minDim < 1.2 and maxDim >= 1.2 then
-				detectedWidth = maxDim
-			else
-				detectedWidth = minDim
-			end
-		end
-	end
-
-	-- 3. Giới hạn khoảng an toàn hợp lý (tối thiểu 3.0 studs, tối đa 60.0 studs)
-	local finalWidth = math.clamp(detectedWidth or 6.0, 3.0, 60.0)
-
-	return finalWidth, detectedLength
-end
-
---// Khóa hướng bay ngay tại Frame 0 trước khi đạn bị xoay quanh trục Y bởi game
-local function lockTrajectoryForPart(part)
-	if not part or not part:IsA("BasePart") then return nil end
-	if lockedProjectiles[part] then
-		return lockedProjectiles[part]
-	end
-
-	local config = getTrajectoryConfigForPart(part)
-	if not config then return nil end
-
-	-- Với Moving Beam (chứa 2 quả cầu 2 đầu và thanh beam ở giữa), chỉ khóa thanh beam dài nhất
-	if config.isDynamicMoving then
-		local isMovingBeam = part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
-		if isMovingBeam then
-			local maxDim = math.max(part.Size.X, part.Size.Z)
-			if maxDim < 8 then
-				return nil -- Bỏ qua quả cầu 2 đầu, chỉ tạo 1 hộp cam cho thanh beam chính
-			end
-		end
-	end
-
-	-- Bắt hướng bay từ Velocity (nếu đang bay) hoặc CFrame.LookVector tại thời điểm spawn
-	local forward2D = Vector3.new(0, 0, -1)
-	local autoLength = nil
-	local vel = (part.AssemblyLinearVelocity or (part:IsA("BasePart") and part.Velocity))
-	if vel and Vector3.new(vel.X, 0, vel.Z).Magnitude > 2 then
-		forward2D = Vector3.new(vel.X, 0, vel.Z).Unit
-	elseif config.isDynamicMoving then
-		-- Trục RightVector (X) là phương nằm ngang của thanh beam.
-		-- Hướng tịnh tiến quét sàn là phương vuông góc với thanh beam trên mặt sàn X-Z.
-		local rv = part.CFrame.RightVector
-		local right2D = Vector3.new(rv.X, 0, rv.Z)
-		if right2D.Magnitude > 0.01 then
-			right2D = right2D.Unit
-		else
-			right2D = Vector3.new(1, 0, 0)
-		end
-		local perp = Vector3.new(-right2D.Z, 0, right2D.X)
-		local look2D = Vector3.new(part.CFrame.LookVector.X, 0, part.CFrame.LookVector.Z)
-		if look2D.Magnitude > 0.01 and perp:Dot(look2D.Unit) < 0 then
-			perp = -perp
-		end
-		forward2D = perp
-	elseif config.isExpandingCone then
-		-- Với kỹ năng chuỗi vòng tròn mở rộng hình nón (secondBossCricleHitbox - Boss 2):
-		-- Hướng lan tỏa xuất phát từ vị trí spawn của vòng tròn hướng thẳng về phía Player
-		local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-		local playerPos = rootPart and rootPart.Position
-		if playerPos then
-			local diff = Vector3.new(playerPos.X - part.Position.X, 0, playerPos.Z - part.Position.Z)
-			local dist = diff.Magnitude
-			if dist > 0.3 then
-				forward2D = diff.Unit
-				-- Chiều dài hành lang dự đoán bao trùm qua Player tối thiểu 35 studs
-				autoLength = math.clamp(dist + 35.0, 85.0, 160.0)
-			end
-		end
-	else
-		-- Nếu part có Attachment2 (đường điều hướng như firstBossBeamPart)
-		local att2 = part:FindFirstChild("Attachment2") or (part.Parent and part.Parent:FindFirstChild("Attachment2"))
-		if att2 and att2:IsA("Attachment") then
-			local delta = att2.WorldPosition - part.Position
-			local delta2D = Vector3.new(delta.X, 0, delta.Z)
-			if delta2D.Magnitude > 0.1 then
-				forward2D = delta2D.Unit
-			end
-		else
-			local look = part.CFrame.LookVector
-			local look2D = Vector3.new(look.X, 0, look.Z)
-			if look2D.Magnitude > 0.001 then
-				forward2D = look2D.Unit
-			end
-		end
-
-		-- Nếu là missile, kiểm tra companion thirdBossBeamPart để lấy hướng và độ dài chuẩn từ Attachment2
-		if part.Name:lower():find("missile") then
-			for otherPart, otherData in pairs(lockedProjectiles) do
-				if otherPart and otherPart.Parent and otherPart.Name:lower():find("beampart") and otherData and otherData.forward2D then
-					if (otherPart.Position - part.Position).Magnitude < 10 then
-						forward2D = otherData.forward2D
-						if otherData.maxLookahead then
-							autoLength = otherData.maxLookahead
-						end
-						break
-					end
-				end
-			end
-		end
-	end
-
-	-- TỰ ĐỘNG BÓC TÁCH KÍCH THƯỚC THẬT (Auto Dimension Detection):
-	local autoWidth, detectedLength = getPartAutoDimensions(part)
-	local baseRadius = autoWidth / 2
-	autoLength = autoLength or detectedLength
-
-	-- Nếu config có dangerRadius sàn cao hơn (safety floor), tôn trọng giá trị an toàn
-	if config.dangerRadius and config.dangerRadius > baseRadius then
-		baseRadius = config.dangerRadius
-	end
-
-	local finalDangerRadius = baseRadius + trajectoryWidthPadding
-	local finalMaxLookahead = autoLength or config.maxLookahead or trajectoryLookahead
-
-	-- KHÓA TRỤC Y NGAY TẠI THỜI ĐIỂM SPAWN:
-	-- Lấy cao độ sàn mặt đất (Raw Floor Y) để vùng màu cam và hitbox luôn dán chặt vào mặt đất,
-	-- không bị trôi nổi trên không trung hay nhấp nhô theo trục Y của viên đạn.
-	local rawFloorY, hasFloor = getGeometry().GetRawFloorY(part.Position)
-	local boxThickness = 0.8 -- Chiều cao của vùng màu cam trên mặt đất (studs)
-	local lockedVisualY = rawFloorY + (boxThickness / 2) + 0.05 -- Đặt đáy hộp nằm sát trên sàn để không chìm vào mesh sàn
-
-	local data = {
-		part = part,
-		originPos = part.Position,
-		forward2D = forward2D,
-		dangerRadius = finalDangerRadius,
-		maxLookahead = finalMaxLookahead,
-		config = config,
-		spawnTime = os.clock(),
-		locked = true,
-		rawFloorY = rawFloorY,
-		lockedVisualY = lockedVisualY,
-		boxThickness = boxThickness,
-	}
-
-	lockedProjectiles[part] = data
-	if logHazards then
-		print(("[SmartDodge] 🚀 Locked Trajectory for %s | Dir: (%.2f, %.2f) | Lookahead: %.0fm | Auto Width: %.1fm (Radius: %.1fm) | Locked Floor Y: %.2f"):format(
-			part.Name, forward2D.X, forward2D.Z, data.maxLookahead, autoWidth, data.dangerRadius, rawFloorY
-		))
-	end
-
-	return data
-end
-
-detection.LockTrajectoryForPart = function(part)
-	return lockTrajectoryForPart(part)
-end
-
---// Khóa quỹ đạo trực tiếp cho Model Second Boss Moving Beam (tính toán độc lập với Visual ESP)
-local function lockSecondBossMovingBeam(inst)
-	if not inst or not inst.Parent then return nil end
-	if lockedProjectiles[inst] then return lockedProjectiles[inst] end
-
-	local modelCFrame, modelSize = inst:GetBoundingBox()
-	local primary = inst:FindFirstChildWhichIsA("BasePart")
-	local curPos = (primary and primary.Position) or modelCFrame.Position
-
-	local rv = (primary and primary.CFrame.RightVector) or modelCFrame.RightVector
-	local right2D = Vector3.new(rv.X, 0, rv.Z)
-	if right2D.Magnitude > 0.01 then
-		right2D = right2D.Unit
-	else
-		right2D = Vector3.new(1, 0, 0)
-	end
-	local forward2D = Vector3.new(-right2D.Z, 0, right2D.X)
-	local look = (primary and primary.CFrame.LookVector) or modelCFrame.LookVector
-	local look2D = Vector3.new(look.X, 0, look.Z)
-	if look2D.Magnitude > 0.01 and forward2D:Dot(look2D.Unit) < 0 then
-		forward2D = -forward2D
-	end
-
-	local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
-	if beamSpan < 12 then beamSpan = 50.0 end
-	local dangerWidth = beamSpan + trajectoryWidthPadding * 2
-	local dangerDepth = trajectoryLookahead
-
-	local curFloorY = getGeometry().GetRawFloorY(curPos)
-	local thickness = 0.8
-	local lockedY = curFloorY + (thickness / 2) + 0.05
-
-	local trajData = {
-		instance = inst,
-		lastPos = curPos,
-		curPos = curPos,
-		forward2D = forward2D,
-		dangerRadius = dangerWidth / 2,
-		dangerWidth = dangerWidth,
-		maxLookahead = dangerDepth,
-		dangerDepth = dangerDepth,
-		lockedVisualY = lockedY,
-		boxThickness = thickness,
-		isDynamicMoving = true,
-		config = TRAJECTORY_PROJECTILE_CONFIGS["secondbossmovingbeam"],
-	}
-	lockedProjectiles[inst] = trajData
-	return trajData
-end
-
-detection.LockSecondBossMovingBeam = lockSecondBossMovingBeam
-
---// Khởi tạo theo dõi quỹ đạo động cho Boss 2 Orbs (Yellow / Red / Green Orb luôn hướng về Player)
-local function lockBossOrb(inst, config)
-	if not inst or not inst.Parent then return nil end
-	if lockedProjectiles[inst] then return lockedProjectiles[inst] end
-
-	local primary = inst:IsA("BasePart") and inst or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart"))
-	local modelCFrame, modelSize
-	if inst:IsA("Model") then
-		modelCFrame, modelSize = inst:GetBoundingBox()
-	end
-	local curPos = (primary and primary.Position) or (modelCFrame and modelCFrame.Position) or inst.Position
-
-	-- Xác định hướng và chiều dài ban đầu: Hướng thẳng từ Quả Cầu tới Player
-	local forward2D = Vector3.new(0, 0, -1)
-	local dangerDepth = 22.0
-	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	local playerPos = rootPart and rootPart.Position
-
-	if playerPos then
-		local diff = Vector3.new(playerPos.X - curPos.X, 0, playerPos.Z - curPos.Z)
-		local dist = diff.Magnitude
-		if dist > 0.3 then
-			forward2D = diff.Unit
-			dangerDepth = math.clamp(dist + 4.0, 10.0, 80.0)
-		end
-	end
-
-	local partSize = (primary and primary.Size) or modelSize or Vector3.new(6, 6, 6)
-	local baseRadius = math.max(partSize.X, partSize.Z) / 2
-	if baseRadius < 4.0 then baseRadius = 4.0 end
-	local dangerRadius = baseRadius + trajectoryWidthPadding
-	local dangerWidth = dangerRadius * 2
-
-	local curFloorY = getGeometry().GetRawFloorY(curPos)
-	local thickness = 0.8
-	local lockedY = curFloorY + (thickness / 2) + 0.05
-
-	local trajData = {
-		instance = inst,
-		lastPos = curPos,
-		curPos = curPos,
-		forward2D = forward2D,
-		dangerRadius = dangerRadius,
-		dangerWidth = dangerWidth,
-		maxLookahead = dangerDepth,
-		dangerDepth = dangerDepth,
-		lockedVisualY = lockedY,
-		boxThickness = thickness,
-		isDynamicMoving = true,
-		isBossOrb = true,
-		config = config or TRAJECTORY_PROJECTILE_CONFIGS[inst.Name:lower():gsub("%s+", "")],
-	}
-	lockedProjectiles[inst] = trajData
-	return trajData
-end
-
-local initBossOrb = lockBossOrb
-detection.LockBossOrb = lockBossOrb
-detection.InitBossOrb = lockBossOrb
-
---// Đăng ký tên kỹ năng của Player để loại trừ
-function detection.RegisterPlayerSkill(skillName)
-	if type(skillName) == "string" and #skillName > 0 then
-		local cleanName = skillName:gsub("^%s+", ""):gsub("%s+$", "")
-		if not ignoredSkillNames[cleanName] then
-			ignoredSkillNames[cleanName] = true
-			local normalized = cleanName:lower():gsub("%s+", "")
-			ignoredSkillNames[normalized] = true
-			if logHazards then
-				print(("[SmartDodge] 🛡️ Registered Player Skill (Ignored): %s"):format(cleanName))
-			end
-		end
-	end
-end
-
---// Tự động quét và lắng nghe kỹ năng trong Backpack / Character của Player và đồng đội
-local function initPlayerSkillWatcher()
-	local function scanPlayer(p)
-		if not p then return end
-
-		local function scanContainer(container)
-			if not container then return end
-			for _, child in ipairs(container:GetChildren()) do
-				detection.RegisterPlayerSkill(child.Name)
-			end
-		end
-
-		local function watchBackpack(bp)
-			if not bp then return end
-			scanContainer(bp)
-			bp.ChildAdded:Connect(function(child)
-				detection.RegisterPlayerSkill(child.Name)
-			end)
-		end
-
-		local function watchCharacter(char)
-			if not char then return end
-			scanContainer(char)
-			char.ChildAdded:Connect(function(child)
-				if child:IsA("Tool") then
-					detection.RegisterPlayerSkill(child.Name)
-				end
-			end)
-		end
-
-		if p:FindFirstChild("Backpack") then
-			watchBackpack(p.Backpack)
-		end
-		p.ChildAdded:Connect(function(child)
-			if child.Name == "Backpack" or child:IsA("Backpack") then
-				watchBackpack(child)
-			end
-		end)
-
-		if p.Character then
-			watchCharacter(p.Character)
-		end
-		p.CharacterAdded:Connect(watchCharacter)
-	end
-
-	for _, p in ipairs(Players:GetPlayers()) do
-		scanPlayer(p)
-	end
-	Players.PlayerAdded:Connect(scanPlayer)
-
-	-- Quét định kỳ mỗi 1 giây trong trường hợp đồ trong Backpack được game nạp trễ
-	task.spawn(function()
-		while threatDetectorEnabled or #Players:GetPlayers() > 0 do
-			for _, p in ipairs(Players:GetPlayers()) do
-				if p:FindFirstChild("Backpack") then
-					for _, item in ipairs(p.Backpack:GetChildren()) do
-						detection.RegisterPlayerSkill(item.Name)
-					end
-				end
-				if p.Character then
-					for _, item in ipairs(p.Character:GetChildren()) do
-						if item:IsA("Tool") then
-							detection.RegisterPlayerSkill(item.Name)
-						end
-					end
-				end
-			end
-			task.wait(1)
-		end
-	end)
-end
-
---// Tự động quét và nạp danh sách toàn bộ kỹ năng của game từ ReplicatedStorage.abilities
-local function scanAbilityInstance(ability)
-	if not ability then return end
-	detection.RegisterPlayerSkill(ability.Name)
-
-	local nameVal = ability:FindFirstChild("name")
-	if nameVal and nameVal:IsA("ValueBase") and tostring(nameVal.Value) ~= "" then
-		detection.RegisterPlayerSkill(tostring(nameVal.Value))
-	end
-
-	local attrName = ability:GetAttribute("name") or ability:GetAttribute("Name")
-	if type(attrName) == "string" and attrName ~= "" then
-		detection.RegisterPlayerSkill(attrName)
-	end
-
-	-- Quét các BasePart/MeshPart/Projectiles bên trong ability (nếu có)
-	for _, desc in ipairs(ability:GetDescendants()) do
-		if desc:IsA("BasePart") and desc.Name ~= "Handle" and desc.Name ~= "Part" and desc.Name ~= "Union" then
-			detection.RegisterPlayerSkill(desc.Name)
-		end
-	end
-end
-
-local function initReplicatedAbilitiesWatcher()
-	local function hookFolder(folder)
-		for _, child in ipairs(folder:GetChildren()) do
-			scanAbilityInstance(child)
-		end
-		folder.ChildAdded:Connect(function(child)
-			scanAbilityInstance(child)
-		end)
-		if logHazards then
-			print(("[SmartDodge] 📚 Loaded %d player abilities from ReplicatedStorage.abilities"):format(#folder:GetChildren()))
-		end
-	end
-
-	local abilitiesFolder = ReplicatedStorage:FindFirstChild("abilities")
-	if abilitiesFolder then
-		hookFolder(abilitiesFolder)
-	else
-		task.spawn(function()
-			local folder = ReplicatedStorage:WaitForChild("abilities", 10)
-			if folder then
-				hookFolder(folder)
-			end
-		end)
-	end
-end
-
---// Tự động quét và nạp toàn bộ danh mục EFFECT / đạn / vòng sáng từ ReplicatedStorage.projectiles
-local function scanProjectileInstance(proj)
-	if not proj then return end
-	detection.RegisterPlayerSkill(proj.Name)
-
-	-- Quét toàn bộ part/mesh/model con bên trong
-	for _, desc in ipairs(proj:GetDescendants()) do
-		if desc:IsA("BasePart") and desc.Name ~= "Handle" and desc.Name ~= "Part" and desc.Name ~= "Union" then
-			detection.RegisterPlayerSkill(desc.Name)
-		end
-	end
-end
-
-local function initReplicatedProjectilesWatcher()
-	local function hookFolder(folder)
-		for _, child in ipairs(folder:GetChildren()) do
-			scanProjectileInstance(child)
-		end
-		folder.ChildAdded:Connect(function(child)
-			scanProjectileInstance(child)
-		end)
-		if logHazards then
-			print(("[SmartDodge] 🎆 Loaded %d player projectiles/effects from ReplicatedStorage.projectiles"):format(#folder:GetChildren()))
-		end
-	end
-
-	local projFolder = ReplicatedStorage:FindFirstChild("projectiles")
-	if projFolder then
-		hookFolder(projFolder)
-	else
-		task.spawn(function()
-			local folder = ReplicatedStorage:WaitForChild("projectiles", 10)
-			if folder then
-				hookFolder(folder)
-			end
-		end)
-	end
-end
-
-initPlayerSkillWatcher()
-initReplicatedAbilitiesWatcher()
-initReplicatedProjectilesWatcher()
-
---// Kiểm tra xem đối tượng có phải là của Player (hoặc skill của Player) không
-local function isPlayerAsset(instance)
-	if not instance then return true end
-
-	local instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
-	local instNameLower = instNameClean:lower():gsub("%s+", "")
-
-	-- 0. Ngoại lệ chiêu của Boss / Enemy -> Tuyệt đối không phải của Player
-	local repEnemyProj = ReplicatedStorage:FindFirstChild("enemyProjectiles")
-	if repEnemyProj and (repEnemyProj:FindFirstChild(instance.Name, true) or repEnemyProj:FindFirstChild(instNameClean, true)) then
-		return false
-	end
-
-	if CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
-		or instNameLower:find("boss")
-		or instNameLower:find("enemy")
-		or instNameLower:find("mob")
-		or instNameLower:find("multiring")
-		or instNameLower:find("crisscross")
-		or instNameLower:find("seekingspike")
-		or instNameLower:find("bigspike")
-		or instNameLower:find("beampart")
-		or instNameLower:find("movingbeam")
-		or instNameLower:find("thirdboss") then
-		return false
-	end
-
-	-- 1. Kiểm tra trực thuộc Character của bất kỳ người chơi nào
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p.Character and (instance == p.Character or instance:IsDescendantOf(p.Character)) then
-			return true
-		end
-	end
-
-	-- 2. Kiểm tra trực tiếp trong Backpack & Character của mọi người chơi (Khớp chính xác tên, không fuzzy substring)
-	instNameClean = instance.Name:gsub("^%s+", ""):gsub("%s+$", "")
-	instNameLower = instNameClean:lower():gsub("%s+", "")
-
-	for _, p in ipairs(Players:GetPlayers()) do
-		local bp = p:FindFirstChild("Backpack")
-		if bp then
-			if bp:FindFirstChild(instance.Name) or bp:FindFirstChild(instNameClean) then
-				detection.RegisterPlayerSkill(instance.Name)
-				return true
-			end
-			for _, item in ipairs(bp:GetChildren()) do
-				local itemLower = item.Name:lower():gsub("%s+", "")
-				if item.Name == instance.Name or itemLower == instNameLower then
-					detection.RegisterPlayerSkill(item.Name)
-					return true
-				end
-			end
-		end
-
-		if p.Character then
-			if p.Character:FindFirstChild(instance.Name) or p.Character:FindFirstChild(instNameClean) then
-				detection.RegisterPlayerSkill(instance.Name)
-				return true
-			end
-			for _, item in ipairs(p.Character:GetChildren()) do
-				if item:IsA("Tool") then
-					local itemLower = item.Name:lower():gsub("%s+", "")
-					if item.Name == instance.Name or itemLower == instNameLower then
-						detection.RegisterPlayerSkill(item.Name)
-						return true
-					end
-				end
-			end
-		end
-	end
-
-	-- 3. Kiểm tra các Tag/Attribute/ObjectValue sở hữu (creator, owner, player, caster)
-	local creatorVal = instance:FindFirstChild("creator") or instance:FindFirstChild("Creator")
-		or instance:FindFirstChild("owner") or instance:FindFirstChild("Owner")
-		or instance:FindFirstChild("player") or instance:FindFirstChild("Player")
-		or instance:FindFirstChild("caster") or instance:FindFirstChild("Caster")
-	if creatorVal then
-		if creatorVal:IsA("ObjectValue") and creatorVal.Value and creatorVal.Value:IsA("Player") then
-			return true
-		elseif creatorVal:IsA("StringValue") and Players:FindFirstChild(creatorVal.Value) then
-			return true
-		end
-	end
-
-	local ownerAttr = instance:GetAttribute("Owner") or instance:GetAttribute("Player")
-		or instance:GetAttribute("creator") or instance:GetAttribute("Creator")
-	if ownerAttr then
-		if type(ownerAttr) == "string" and Players:FindFirstChild(ownerAttr) then
-			return true
-		end
-	end
-
-	-- 4. Kiểm tra tên Instance có chứa tên hoặc UserId của Player không
-	for _, p in ipairs(Players:GetPlayers()) do
-		local pNameLower = p.Name:lower()
-		if instNameLower:find(pNameLower, 1, true) or instance.Name:find(tostring(p.UserId), 1, true) then
-			return true
-		end
-	end
-
-	-- 5. So khớp với danh sách tên kỹ năng đã đăng ký (Chính xác tên, không fuzzy substring tránh trùng tên chiêu Boss)
-	if ignoredSkillNames[instance.Name] or ignoredSkillNames[instNameClean] or ignoredSkillNames[instNameLower] then
-		return true
-	end
-
-	-- 6. Kiểm tra trực tiếp thư mục ReplicatedStorage.abilities & projectiles (phòng trường hợp chiêu/effect mới chưa kịp nạp)
-	local repAbilities = ReplicatedStorage:FindFirstChild("abilities")
-	if repAbilities and (repAbilities:FindFirstChild(instance.Name) or repAbilities:FindFirstChild(instNameClean)) then
-		detection.RegisterPlayerSkill(instance.Name)
-		return true
-	end
-
-	local repProjectiles = ReplicatedStorage:FindFirstChild("projectiles")
-	if repProjectiles and (repProjectiles:FindFirstChild(instance.Name) or repProjectiles:FindFirstChild(instNameClean)) then
-		detection.RegisterPlayerSkill(instance.Name)
-		return true
-	end
-
-	-- Riêng các hiệu ứng Aura thông dụng của player
-	if instNameLower:find("enhancedaura", 1, true) or instNameLower:find("auraring", 1, true) or instNameLower:find("groundaura", 1, true) then
-		return true
-	end
-
-	return false
-end
-
---// Danh sách tên các Part bổ trợ / không gây sát thương cần lọc bỏ
-local HELPER_PART_NAMES = {
-	["primarypart"] = true,
-	["center"] = true,
-	["root"] = true,
-	["main"] = true,
-	["handle"] = true,
-	["humanoidrootpart"] = true,
-}
-
---// Kiểm tra xem một Part/MeshPart cụ thể có thuộc danh sách bỏ qua hay không
-local function isIgnoredPart(part)
-	if not part then return true end
-	--// Marker "SmartDodge_SafeMarker" đã bị chặn sẵn bằng tên chứa "SmartDodge" (CanQuery=false),
-	--// nên không cần so sánh instance marker riêng nữa (refactor ra nhiều module).
-	if part.Name:find("SmartDodge") then return true end
-	local nameClean = part.Name:gsub("^%s+", ""):gsub("%s+$", "")
-	local nameLower = nameClean:lower():gsub("%s+", "")
-
-	if CUSTOM_HAZARD_EXCEPTIONS[part.Name] or (part.Parent and CUSTOM_HAZARD_EXCEPTIONS[part.Parent.Name])
-		or part.Name:lower():find("multiring") or (part.Parent and part.Parent.Name:lower():find("multiring"))
-		or part.Name:lower():find("crisscross") or (part.Parent and part.Parent.Name:lower():find("crisscross"))
-		or part.Name:lower():find("seekingspike") or (part.Parent and part.Parent.Name:lower():find("seekingspike"))
-		or part.Name:lower():find("bigspike") or (part.Parent and part.Parent.Name:lower():find("bigspike"))
-		or part.Name:lower():find("beampart") or (part.Parent and part.Parent.Name:lower():find("beampart"))
-		or part.Name:lower():find("movingbeam") or (part.Parent and part.Parent.Name:lower():find("movingbeam"))
-		or part.Name:lower():find("cricle") or (part.Parent and part.Parent.Name:lower():find("cricle"))
-		or part.Name:lower():find("circle") or (part.Parent and part.Parent.Name:lower():find("circle"))
-		or part.Name:lower():find("thirdboss") or (part.Parent and part.Parent.Name:lower():find("thirdboss"))
-		or part.Name:lower():find("missile") or (part.Parent and part.Parent.Name:lower():find("missile")) then
-		return false
-	end
-
-	if ignoredSkillNames[part.Name] or ignoredSkillNames[nameClean] or ignoredSkillNames[nameLower] or IGNORED_NAMES[part.Name] then
-		return true
-	end
-
-	if nameLower:find("enhancedaura", 1, true) or nameLower:find("auraring", 1, true) or nameLower:find("groundaura", 1, true) then
-		return true
-	end
-	return false
-end
-
-detection.IsIgnoredPart = function(part)
-	return isIgnoredPart(part)
-end
-
---// Tìm các Part nguy hiểm bên trong instance (Depth 1 BasePart hoặc Model)
-local function extractHazardParts(instance)
-	local parts = {}
-	if not instance or instance.Name:find("SmartDodge") or isIgnoredPart(instance) then
-		return parts, false
-	end
-	local isException = CUSTOM_HAZARD_EXCEPTIONS[instance.Name]
-		or instance.Name:lower():find("multiring")
-		or instance.Name:lower():find("crisscross")
-		or instance.Name:lower():find("seekingspike")
-		or instance.Name:lower():find("bigspike")
-		or instance.Name:lower():find("beampart")
-		or instance.Name:lower():find("movingbeam")
-		or instance.Name:lower():find("cricle")
-		or instance.Name:lower():find("circle")
-		or instance.Name:lower():find("thirdboss")
-		or instance.Name:lower():find("missile")
-
-	local function isValidHazardPart(part)
-		if not part or not part:IsA("BasePart") or isIgnoredPart(part) then return false end
-		local nameLower = part.Name:lower():gsub("%s+", "")
-		if HELPER_PART_NAMES[nameLower] then return false end
-
-		-- Với chiêu multi rings, chỉ nhận các part tên 'ring'
-		if instance.Name:lower():find("multiring") and not nameLower:find("ring") then
-			return false
-		end
-
-		-- Chiêu Trajectory Projectile / Beam Telegraph (firstBossBigSpike, firstBossBeamPart...)
-		-- có thể là Part vô hình (Transparency = 1) ở pha precast telegraph
-		if getTrajectoryConfigForPart(part) then
-			return true
-		end
-
-		return part.Transparency < FADE_TRANSPARENCY_THRESHOLD
-	end
-
-	if isException then
-		-- Ngoại lệ đặc biệt: tìm các part 'precast', 'ring', 'cricle', 'circle', 'hitbox' hoặc Part Neon có trong model
-		if instance:IsA("BasePart") then
-			if isValidHazardPart(instance) then
-				table.insert(parts, instance)
-			end
-		elseif instance:IsA("Model") then
-			local precasts = {}
-			for _, desc in ipairs(instance:GetDescendants()) do
-				if isValidHazardPart(desc) and (
-					desc.Name:lower():find("precast")
-					or desc.Name:lower():find("ring")
-					or desc.Name:lower():find("cricle")
-					or desc.Name:lower():find("circle")
-					or desc.Name:lower():find("hitbox")
-				) then
-					table.insert(precasts, desc)
-				end
-			end
-			if #precasts > 0 then
-				parts = precasts
-			else
-				-- Nếu không có part precast/ring cụ thể, CHỈ lấy các part Neon thực sự (tuyệt đối không lấy part hộp/PrimaryPart)
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if isValidHazardPart(desc) and desc.Material == Enum.Material.Neon then
-						table.insert(parts, desc)
-					end
-				end
-				-- Fallback ngoại lệ: nếu không có part Neon nào nhưng có BasePart hợp lệ
-				if #parts == 0 then
-					for _, desc in ipairs(instance:GetDescendants()) do
-						if isValidHazardPart(desc) then
-							table.insert(parts, desc)
-						end
-					end
-				end
-			end
-		end
-	else
-		-- Tiêu chuẩn chung: CHỈ nhận Material == Neon
-		if instance:IsA("BasePart") then
-			if isValidHazardPart(instance) and instance.Material == Enum.Material.Neon then
-				table.insert(parts, instance)
-			end
-		elseif instance:IsA("Model") then
-			for _, desc in ipairs(instance:GetDescendants()) do
-				if isValidHazardPart(desc) and desc.Material == Enum.Material.Neon then
-					table.insert(parts, desc)
-				end
-			end
-		end
-	end
-
-	return parts, isException
-end
-
---// Lấy vị trí trung tâm của instance (Ưu tiên tuyệt đối hazardParts thực tế, KHÔNG dùng PrimaryPart)
-local function getInstancePosition(instance, hazardParts)
-	if hazardParts and #hazardParts > 0 then
-		return hazardParts[1].Position
-	end
-
-	if instance:IsA("BasePart") then
-		return instance.Position
-	elseif instance:IsA("Model") then
-		local pivot = instance:GetPivot()
-		if pivot and pivot.Position ~= Vector3.zero then
-			return pivot.Position
-		end
-	end
-
-	return Vector3.zero
-end
-
-local function fireHazardChanged()
-	for _, cb in ipairs(hazardChangedCallbacks) do
-		pcall(cb, hazardCount, lastHazardInfo)
-	end
-end
-
---// Forward declaration
-local unregisterHazard
-
---// Tạo và gắn SelectionBox 3D lên từng Part của chiêu thức
-local function attachSelectionBoxes(hazardParts)
-	local boxes = {}
-	for _, part in ipairs(hazardParts) do
-		if part and part:IsA("BasePart") and part.Parent then
-			-- SelectionBox CHỈ bọc các Part phát sáng Neon thực sự hoặc các part precast/ring/trajectory/orb
-			-- Tuyệt đối KHÔNG bọc các part hộp/mesh to đùng không phải Neon
-			local isNeon = (part.Material == Enum.Material.Neon)
-			local orbConf = BOSS_ORB_CONFIGS[part.Name:lower()]
-				or (part.Parent and BOSS_ORB_CONFIGS[part.Parent.Name:lower()])
-			local isPrecast = part.Name:lower():find("precast") ~= nil
-			local isRing = part.Name:lower():find("ring") ~= nil
-			local isTraj = getTrajectoryConfigForPart(part) ~= nil
-
-			if isNeon or orbConf or isPrecast or isRing or isTraj then
-				local box = Instance.new("SelectionBox")
-				box.Name = "SmartDodge_SelectionBox"
-
-				if orbConf then
-					box.Color3 = orbConf.color
-					box.SurfaceColor3 = orbConf.surfaceColor
-					box.SurfaceTransparency = 0.5
-					box.LineThickness = 0.08
-				else
-					box.Color3 = Color3.fromRGB(255, 45, 45)
-					box.SurfaceColor3 = Color3.fromRGB(255, 30, 30)
-					box.SurfaceTransparency = 0.6
-					box.LineThickness = 0.05
-				end
-
-				box.Adornee = part
-				box.Parent = part
-				table.insert(boxes, box)
-			end
-		end
-	end
-	return boxes
-end
-
---// Ước tính tổng thời gian tồn tại và thời điểm kích nổ sát thương (Total Lifetime & Hit Delay)
-local function getEstimatedSkillLifetime(skillName)
-	if skillTimingManager then
-		return skillTimingManager.GetSkillTiming(skillName)
-	end
-	local known = KNOWN_SKILL_LIFETIMES[skillName]
-	if known then
-		if type(known) == "table" then
-			return known.totalLifetime or 2.0, known.hitDelay or 1.5
-		else
-			return known, known * 0.70
-		end
-	end
-	return 2.5, 1.8
-end
-
---// Gắn BillboardGui 3D đếm ngược thời gian tồn tại của hazard
-local function attachHazardTimerBillboard(instance, hazardParts, skillName)
-	if not showSkillTimers then return nil, nil end
-	local targetPart = hazardParts and hazardParts[1]
-	if not targetPart or not targetPart:IsA("BasePart") then
-		if instance:IsA("BasePart") then
-			targetPart = instance
-		elseif instance:IsA("Model") then
-			targetPart = instance:FindFirstChildWhichIsA("BasePart")
-		else
-			return nil, nil
-		end
-	end
-
-	local billboard = Instance.new("BillboardGui")
-	billboard.Name = "SmartDodge_TimerBillboard"
-	billboard.Adornee = targetPart
-	billboard.Size = UDim2.new(0, 160, 0, 40)
-	billboard.StudsOffset = Vector3.new(0, 4.0, 0)
-	billboard.AlwaysOnTop = true
-	billboard.ResetOnSpawn = false
-
-	local label = Instance.new("TextLabel")
-	label.Name = "TimerLabel"
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
-	label.TextColor3 = Color3.fromRGB(255, 220, 80)
-	label.Text = skillName .. "\n⏳ calculating..."
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 1.5
-	stroke.Parent = label
-
-	label.Parent = billboard
-	billboard.Parent = targetPart
-
-	return billboard, label
-end
-
---// Tìm đối tượng tung chiêu (Caster) để theo dõi vòng đời sống/chết (Tầng 2)
-local function findCasterForHazard(instance, pos)
-	if not instance then return nil, nil end
-
-	-- 1. Kiểm tra các thuộc tính/ObjectValue sở hữu nếu game có đính kèm
-	local creatorVal = instance:FindFirstChild("creator") or instance:FindFirstChild("Creator")
-		or instance:FindFirstChild("owner") or instance:FindFirstChild("Owner")
-		or instance:FindFirstChild("caster") or instance:FindFirstChild("Caster")
-	if creatorVal and creatorVal:IsA("ObjectValue") and creatorVal.Value and creatorVal.Value:IsA("Model") then
-		local hum = creatorVal.Value:FindFirstChildOfClass("Humanoid")
-		if hum and hum.Health > 0 then
-			return creatorVal.Value, hum
-		end
-	end
-
-	local tracked = shared.GetTrackedEnemyData()
-	if not tracked or #tracked == 0 then
-		return nil, nil
-	end
-
-	-- 2. Nếu đang trong Boss Room hoặc chỉ còn đúng 1 quái trong phòng -> Caster chính là con quái/boss đó
-	if #tracked == 1 or shared.IsBossActive() then
-		local data = tracked[1]
-		if data and data.Model and data.Humanoid and data.Humanoid.Health > 0 then
-			return data.Model, data.Humanoid
-		end
-	end
-
-	-- 3. Nếu có nhiều quái: Tìm quái sống gần vị trí spawn của chiêu nhất (bán kính <= 35 studs)
-	if pos then
-		local nearestModel, nearestHum = nil, nil
-		local nearestDistSq = 35 * 35
-		for _, data in ipairs(tracked) do
-			if data and data.Root and data.Root.Parent then
-				local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
-				if hum and hum.Health > 0 then
-					local distSq = (data.Root.Position - pos).Magnitude ^ 2
-					if distSq < nearestDistSq then
-						nearestDistSq = distSq
-						nearestModel = data.Model
-						nearestHum = hum
-					end
-				end
-			end
-		end
-		if nearestModel and nearestHum then
-			return nearestModel, nearestHum
-		end
-	end
-
-	return nil, nil
-end
-
---// Đăng ký một Instance (Depth 1) là hiểm họa và gắn listeners theo dõi độ mờ
-local function registerHazard(instance)
-	if not threatDetectorEnabled or not instance or activeHazards[instance] then return end
-	if instance:IsA("Folder") then return end
-	if instance:FindFirstChildOfClass("Humanoid") then return end
-	if instance.Name:find("SmartDodge") then return end
-	if IGNORED_NAMES[instance.Name] or ignoredSkillNames[instance.Name] then return end
-
-	-- FAST REJECTION (Tầng 1): Nếu phòng đã dọn sạch quái và không ở Boss room -> Bỏ qua
-	-- Ngoại lệ: khi đang bật Huấn luyện (Recording) thì không bỏ qua để đảm bảo bắt trọn mọi chiêu thức
-	if not (skillTimingManager and skillTimingManager.IsRecording()) then
-		if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then return end
-	end
-
-	-- FAST REJECTION: Trích xuất part hiểm họa trước.
-	-- Nếu không có part Neon và không thuộc ngoại lệ -> Bỏ qua ngay lập tức trong 0.0001ms mà KHÔNG chạy isPlayerAsset
-	local hazardParts, isException = extractHazardParts(instance)
-	if #hazardParts == 0 then
-		-- Nếu là Model mới tạo, các part con có thể chưa kịp replicate hoặc parent vào Model
-		if instance:IsA("Model") then
-			local c
-			c = instance.DescendantAdded:Connect(function(desc)
-				if desc:IsA("BasePart") and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD then
-					if isException or desc.Material == Enum.Material.Neon then
-						if c then c:Disconnect(); c = nil end
-						registerHazard(instance)
-					end
-				end
-			end)
-			task.delay(1.5, function()
-				if c then c:Disconnect(); c = nil end
-			end)
-		elseif instance:IsA("BasePart") and instance.Transparency < FADE_TRANSPARENCY_THRESHOLD then
-			local c
-			c = instance:GetPropertyChangedSignal("Material"):Connect(function()
-				if instance.Material == Enum.Material.Neon then
-					if c then c:Disconnect(); c = nil end
-					registerHazard(instance)
-				end
-			end)
-			task.delay(1.5, function()
-				if c then c:Disconnect(); c = nil end
-			end)
-		end
-		return
-	end
-
-	-- Chỉ khi chắc chắn có Part nguy hiểm thực sự mới kiểm tra xem có phải skill của Player/Đồng đội không
-	if isPlayerAsset(instance) then return end
-
-	local pos = getInstancePosition(instance, hazardParts)
-
-	-- Tầng 2: Tìm Caster của chiêu thức
-	local casterModel, casterHumanoid = findCasterForHazard(instance, pos)
-	if casterHumanoid and casterHumanoid.Health <= 0 then
-		-- Quái tung chiêu này đã chết -> Bỏ qua ngay lập tức!
-		return
-	end
-
-	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	local dist = rootPart and math.floor((pos - rootPart.Position).Magnitude) or 0
-
-	local activePartsSet = {}
-	local partConnections = {}
-
-	-- Bộ theo dõi chu kỳ chớp sáng (Flash Peak & Decay Tracker) cho từng Part
-	local partMinTrans = {}      -- [Part] = number (độ mờ thấp nhất / sáng nhất từng ghi nhận)
-	local partHasFlashed = {}    -- [Part] = boolean (đã từng đạt trạng thái chớp sáng kích nổ chưa)
-
-	for _, part in ipairs(hazardParts) do
-		activePartsSet[part] = true
-		local initT = part.Transparency
-		partMinTrans[part] = initT
-		partHasFlashed[part] = (initT <= 0.28)
-	end
-
-	local visualBoxes = visualEspEnabled and attachSelectionBoxes(hazardParts) or {}
-	local timerBillboard, timerLabel = nil, nil
-	if showSkillTimers then
-		timerBillboard, timerLabel = attachHazardTimerBillboard(instance, hazardParts, instance.Name)
-	end
-
-	local info = {
-		Instance = instance,
-		Name = instance.Name,
-		Class = instance.ClassName,
-		Position = pos,
-		SpawnPosition = pos,
-		Distance = dist,
-		NeonCount = #hazardParts,
-		SpawnTime = os.clock(),
-		HitTime = nil, -- Ghi nhận thời điểm nháy kích nổ sát thương
-		Connections = partConnections,
-		ActiveParts = activePartsSet,
-		VisualBoxes = visualBoxes,
-		TimerBillboard = timerBillboard,
-		TimerLabel = timerLabel,
-		IsException = isException,
-		Caster = casterModel,
-		CasterHumanoid = casterHumanoid,
-	}
-
-	activeHazards[instance] = info
-	hazardCount = hazardCount + 1
-	lastHazardInfo = info
-
-	-- Lắng nghe sự kiện Caster chết để hủy sớm toàn bộ hitbox chiêu này (Tầng 2)
-	if casterModel and casterHumanoid then
-		table.insert(partConnections, casterHumanoid.Died:Connect(function()
-			unregisterHazard(instance, "Caster Dead")
-		end))
-		table.insert(partConnections, casterModel.AncestryChanged:Connect(function(_, parent)
-			if not parent then
-				unregisterHazard(instance, "Caster Removed")
-			end
-		end))
-	end
-
-	-- Lắng nghe âm thanh nổ hoặc particles bung ra để bắt trọn thời điểm nháy damage
-	for _, desc in ipairs(instance:GetDescendants()) do
-		if desc:IsA("Sound") then
-			table.insert(partConnections, desc.Played:Connect(function()
-				if not info.HitTime then
-					info.HitTime = os.clock()
-				end
-			end))
-		end
-	end
-
-	if instance:IsA("Model") then
-		table.insert(partConnections, instance.DescendantAdded:Connect(function(desc)
-			if not info.HitTime and (desc:IsA("ParticleEmitter") or desc:IsA("Sound") or (desc:IsA("BasePart") and desc.Name ~= "precast")) then
-				info.HitTime = os.clock()
-			end
-		end))
-	end
-
-	-- Khóa hướng bay ngay tại Frame 0 cho các chiêu đạn bay / Projectile
-	local instNameLower = (instance.Name or ""):lower():gsub("%s+", "")
-	if instance:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (instance.Name and instance.Name:lower():find("movingbeam") ~= nil)) then
-		lockSecondBossMovingBeam(instance)
-	end
-	if BOSS_ORB_CONFIGS[instNameLower] or (instance.Name and BOSS_ORB_CONFIGS[instance.Name:lower():gsub("%s+", "")]) then
-		lockBossOrb(instance, TRAJECTORY_PROJECTILE_CONFIGS[instNameLower])
-	end
-
-	for _, part in ipairs(hazardParts) do
-		if getTrajectoryConfigForPart(part) then
-			lockTrajectoryForPart(part)
-		end
-	end
-
-	-- Gắn sự kiện lắng nghe Transparency và Material thay đổi trên từng Part
-	local function checkPartStatus(part)
-		if not activeHazards[instance] or not activePartsSet[part] then return end
-
-		-- Kiểm tra xem Caster có vừa chết hay biến mất không (Tầng 2)
-		if info.CasterHumanoid and (info.CasterHumanoid.Health <= 0 or not info.Caster or not info.Caster.Parent) then
-			unregisterHazard(instance, "Caster Dead")
-			return
-		end
-
-		local curTrans = part.Transparency
-		local minT = partMinTrans[part] or curTrans
-		if curTrans < minT then
-			minT = curTrans
-			partMinTrans[part] = minT
-		end
-
-		-- Pha Kích nổ / Sát thương: Khi part đạt độ sáng chói (Transparency tụt xuống <= 0.28)
-		if minT <= 0.28 then
-			partHasFlashed[part] = true
-			if not info.HitTime then
-				info.HitTime = os.clock()
-			end
-		end
-
-		-- Pha Tan biến sau khi chớp sáng (Early Hitbox Clearance):
-		-- Một khi đã từng chớp sáng, chỉ cần Transparency bắt đầu tăng lên (curTrans >= minT + 0.18 hoặc curTrans >= 0.40)
-		-- -> Sát thương đã nổ xong 100%, loại bỏ hitbox ngay lập tức không cần đợi tới 0.85/0.95!
-		local hasDecayedAfterFlash = partHasFlashed[part] and (curTrans >= (minT + 0.18) or curTrans >= 0.40)
-
-		local isTraj = getTrajectoryConfigForPart(part) ~= nil
-		local isExpired = false
-
-		if not part.Parent then
-			isExpired = true
-		elseif isTraj then
-			-- Với Trajectory Projectile (như firstBossBigSpike, firstBossBeamPart):
-			-- Khi mới spawn ở pha precast telegraph, Transparency có thể = 1.
-			-- Khi đạn bắn ra, Transparency tụt xuống < FADE_TRANSPARENCY_THRESHOLD -> đánh dấu đã bước vào pha bay
-			if curTrans < FADE_TRANSPARENCY_THRESHOLD then
-				partHasFlashed[part] = true
-			end
-
-			-- Chỉ coi là hết hạn nếu: ĐÃ TỪNG BẮN (partHasFlashed) và giờ mờ đi lại (curTrans >= FADE_TRANSPARENCY_THRESHOLD),
-			-- hoặc part đã nổ/tan biến sau chớp sáng.
-			if partHasFlashed[part] and (curTrans >= FADE_TRANSPARENCY_THRESHOLD or hasDecayedAfterFlash) then
-				isExpired = true
-			end
-		else
-			isExpired = hasDecayedAfterFlash
-				or (curTrans >= FADE_TRANSPARENCY_THRESHOLD)
-				or (not isException and part.Material ~= Enum.Material.Neon)
-		end
-
-		if isExpired then
-			activePartsSet[part] = nil
-			partMinTrans[part] = nil
-			partHasFlashed[part] = nil
-
-			if activeTrajectoryVisuals[part] then
-				pcall(function() activeTrajectoryVisuals[part]:Destroy() end)
-				activeTrajectoryVisuals[part] = nil
-			end
-			if lockedProjectiles[part] then
-				lockedProjectiles[part] = nil
-			end
-
-			-- Kiểm tra xem còn Part nào đang hoạt động không
-			local remaining = 0
-			for _ in pairs(activePartsSet) do
-				remaining = remaining + 1
-			end
-
-			if remaining == 0 then
-				local reason = hasDecayedAfterFlash and "Post-flash Decay (Early Hitbox Clearance)" or "Faded / Finished"
-				unregisterHazard(instance, reason)
-			else
-				info.NeonCount = remaining
-			end
-		end
-	end
-
-	for _, part in ipairs(hazardParts) do
-		table.insert(partConnections, part:GetPropertyChangedSignal("Transparency"):Connect(function()
-			checkPartStatus(part)
-		end))
-		if not isException then
-			table.insert(partConnections, part:GetPropertyChangedSignal("Material"):Connect(function()
-				checkPartStatus(part)
-			end))
-		end
-		table.insert(partConnections, part.AncestryChanged:Connect(function()
-			checkPartStatus(part)
-		end))
-	end
-
-	-- Lắng nghe các Part con được nạp trễ vào Model (Ví dụ các Ring được gán vào sau)
-	if instance:IsA("Model") then
-		table.insert(partConnections, instance.DescendantAdded:Connect(function(desc)
-			if not activeHazards[instance] then return end
-			local isValid = desc:IsA("BasePart") and not isIgnoredPart(desc) and desc.Transparency < FADE_TRANSPARENCY_THRESHOLD
-			if isValid then
-				local nameLower = desc.Name:lower():gsub("%s+", "")
-				if not HELPER_PART_NAMES[nameLower] then
-					if isException or desc.Material == Enum.Material.Neon then
-						if not activePartsSet[desc] then
-							activePartsSet[desc] = true
-							info.NeonCount = info.NeonCount + 1
-
-							local initT = desc.Transparency
-							partMinTrans[desc] = initT
-							partHasFlashed[desc] = (initT <= 0.28)
-
-							if getTrajectoryConfigForPart(desc) then
-								lockTrajectoryForPart(desc)
-							end
-
-							if visualEspEnabled then
-								local boxes = attachSelectionBoxes({ desc })
-								if boxes and #boxes > 0 then
-									for _, b in ipairs(boxes) do table.insert(info.VisualBoxes, b) end
-								end
-							end
-
-							table.insert(partConnections, desc:GetPropertyChangedSignal("Transparency"):Connect(function()
-								checkPartStatus(desc)
-							end))
-							table.insert(partConnections, desc.AncestryChanged:Connect(function()
-								checkPartStatus(desc)
-							end))
-						end
-					end
-				end
-			end
-		end))
-	end
-
-	-- Tự động in cấu trúc chi tiết của thirdBossMultiRings để phân tích thông số hình học
-	if instance.Name:lower():find("multiring") then
-		task.delay(0.3, function()
-			if not instance or not instance.Parent then return end
-			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or (hazardParts and hazardParts[1])
-			local centerPos = centerPart and centerPart.Position or Vector3.zero
-			print("================ [MULTIRINGS INSPECTOR DUMP] ================")
-			print(("[MultiRings] Model: %s | Center: (%.1f, %.1f, %.1f)"):format(instance.Name, centerPos.X, centerPos.Y, centerPos.Z))
-
-			local idx = 0
-			for _, child in ipairs(instance:GetDescendants()) do
-				if child:IsA("BasePart") then
-					idx = idx + 1
-					local off = child.Position - centerPos
-					local _, rotY = child.CFrame:ToOrientation()
-					print(("[%d] Name: '%s' | Class: %s | Size: (%.1f, %.1f, %.1f) | Offset: (%.1f, %.1f, %.1f) | RotY: %.1f deg"):format(
-						idx, child.Name, child.ClassName, child.Size.X, child.Size.Y, child.Size.Z, off.X, off.Y, off.Z, math.deg(rotY)
-					))
-				end
-			end
-			print("=============================================================")
-		end)
-	end
-
-	if logHazards then
-		print(("[SmartDodge][Hazard] 🚨 Hazard Detected: %s | Class: %s | Parts: %d | Dist: %d studs%s")
-			:format(info.Name, info.Class, info.NeonCount, info.Distance, isException and " (Exception)" or ""))
-	end
-
-	fireHazardChanged()
-end
-
---// Hủy đăng ký hiểm họa (khi mờ, đổi material, hoặc bị xóa khỏi Workspace)
-function unregisterHazard(instance, reason)
-	if not activeHazards[instance] then return end
-	local info = activeHazards[instance]
-
-	-- Dọn dẹp SelectionBoxes
-	if info.VisualBoxes then
-		for _, box in ipairs(info.VisualBoxes) do
-			pcall(function() box:Destroy() end)
-		end
-		table.clear(info.VisualBoxes)
-	end
-
-	-- Dọn dẹp connection của từng part
-	if info.Connections then
-		for _, c in ipairs(info.Connections) do
-			pcall(function() c:Disconnect() end)
-		end
-		table.clear(info.Connections)
-	end
-
-	-- Dọn dẹp Trajectory visuals và locked data
-	if info.ActiveParts then
-		for p in pairs(info.ActiveParts) do
-			if activeTrajectoryVisuals[p] then
-				pcall(function() activeTrajectoryVisuals[p]:Destroy() end)
-				activeTrajectoryVisuals[p] = nil
-			end
-			if lockedProjectiles[p] then
-				lockedProjectiles[p] = nil
-			end
-		end
-	end
-
-	-- Dọn dẹp Timer Billboard
-	if info.TimerBillboard then
-		pcall(function() info.TimerBillboard:Destroy() end)
-		info.TimerBillboard = nil
-		info.TimerLabel = nil
-	end
-
-	-- Nếu đang bật chế độ Huấn luyện chơi chay (Manual Training): Ghi nhận nhịp chiêu vào RAM buffer
-	if skillTimingManager and skillTimingManager.IsRecording() and info.SpawnTime then
-		local duration = os.clock() - info.SpawnTime
-		local hitDelay = info.HitTime and (info.HitTime - info.SpawnTime) or nil
-
-		-- Nhận diện xem chiêu thức có phải là Projectile / Đạn bay di chuyển hay không
-		local currentPos = getInstancePosition(instance, nil)
-		local travelDist = (currentPos - (info.SpawnPosition or info.Position or Vector3.zero)).Magnitude
-		local nameClean = (info.Name or ""):lower():gsub("%s+", "")
-		local isProjectile = (TRAJECTORY_PROJECTILE_CONFIGS[nameClean] ~= nil)
-			or (nameClean:find("projectile") ~= nil)
-			or (nameClean:find("missile") ~= nil)
-			or (nameClean:find("orb") ~= nil)
-			or (nameClean:find("bullet") ~= nil)
-			or (nameClean:find("ball") ~= nil)
-			or (nameClean:find("movingbeam") ~= nil)
-			or (nameClean:find("crisscross") ~= nil)
-			or (nameClean:find("seekingspike") ~= nil)
-			or (travelDist >= 6.0)
-
-		if isProjectile then
-			-- Chiêu projectile gây sát thương xuyên suốt toàn bộ vòng đời bay (HitDelay = 0.0s)
-			hitDelay = 0.0
-		elseif not hitDelay or hitDelay < 0.1 or hitDelay > duration then
-			local _, defaultHit = getEstimatedSkillLifetime(info.Name)
-			hitDelay = math.min(defaultHit, duration * 0.75)
-		end
-
-		if duration >= 0.2 and duration <= 25.0 then
-			skillTimingManager.RecordSkill(info.Name, duration, hitDelay, isProjectile)
-			local typeTag = isProjectile and "🚀 Projectile" or "💥 AoE"
-			print(("[SkillTiming] 📝 Recorded: '%s' [%s] | Lifetime: %.2fs | HitDelay: %.2fs (%s)")
-				:format(info.Name, typeTag, duration, hitDelay, reason or "Despawned"))
-		else
-			print(("[SkillTiming] ⚠️ Skipped '%s': duration %.2fs out of range [0.2, 25.0]")
-				:format(info.Name, duration))
-		end
-	end
-
-	activeHazards[instance] = nil
-	hazardCount = math.max(0, hazardCount - 1)
-
-	if logHazards and info then
-		local reasonStr = reason and (" (" .. reason .. ")") or ""
-		print(("[SmartDodge][Hazard] 🟢 Hazard Expired: %s%s")
-			:format(info.Name, reasonStr))
-	end
-
-	fireHazardChanged()
-end
-
---// Nội bộ cho engine: đăng ký/hủy hazard 1 instance (Workspace ChildAdded/ChildRemoved)
-detection.RegisterHazard = registerHazard
-detection.UnregisterHazard = unregisterHazard
-
---// Cập nhật tọa độ và logic quỹ đạo đạn bay / moving beam theo thời gian thực (độc lập 100% với Visual ESP)
-function detection.UpdateTrajectories()
-	if not threatDetectorEnabled then
-		table.clear(lockedProjectiles)
-		return
-	end
-
-	local currentActiveKeys = {}
-
-	for _, info in pairs(activeHazards) do
-		local inst = info.Instance
-		if inst and inst.Parent then
-			local instNameLower = (inst.Name or ""):lower():gsub("%s+", "")
-			local isMovingBeam = inst:IsA("Model") and (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
-
-			local orbConfig = BOSS_ORB_CONFIGS[instNameLower] or (info.Name and BOSS_ORB_CONFIGS[info.Name:lower():gsub("%s+", "")])
-			local isBossOrb = (orbConfig ~= nil) or (TRAJECTORY_PROJECTILE_CONFIGS[instNameLower] and TRAJECTORY_PROJECTILE_CONFIGS[instNameLower].isBossOrb)
-
-			if isMovingBeam then
-				-- Cập nhật động cho Model secondBossMovingBeam
-				currentActiveKeys[inst] = true
-
-				local modelCFrame, modelSize = inst:GetBoundingBox()
-				local primary = inst:FindFirstChildWhichIsA("BasePart")
-				local curPos = (primary and primary.Position) or modelCFrame.Position
-
-				local trajData = lockedProjectiles[inst]
-				if not trajData then
-					trajData = lockSecondBossMovingBeam(inst)
-				end
-
-				if trajData then
-					-- Cập nhật hướng tịnh tiến thực tế từ frame này sang frame khác
-					local moveDelta = curPos - trajData.lastPos
-					local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
-					if moveDelta2D.Magnitude > 0.08 then
-						trajData.forward2D = moveDelta2D.Unit
-					end
-					trajData.lastPos = curPos
-					trajData.curPos = curPos
-
-					-- Bề ngang beam bao quát cả Model (lấy trục dài nhất của BoundingBox)
-					local beamSpan = math.max(modelSize.X, modelSize.Y, modelSize.Z)
-					if beamSpan < 12 then beamSpan = 50.0 end
-					local dangerWidth = beamSpan + trajectoryWidthPadding * 2
-					local maxLookahead = (trajData.config and trajData.config.maxLookahead) or trajectoryLookahead
-					local dangerDepth = maxLookahead
-
-					trajData.dangerRadius = dangerWidth / 2
-					trajData.dangerWidth = dangerWidth
-					trajData.maxLookahead = dangerDepth
-					trajData.dangerDepth = dangerDepth
-
-					-- Cao độ dán chặt mặt sàn
-					local curFloorY = getGeometry().GetRawFloorY(curPos)
-					local thickness = 0.8
-					local lockedY = curFloorY + (thickness / 2) + 0.05
-					trajData.lockedVisualY = lockedY
-					trajData.boxThickness = thickness
-				end
-			elseif isBossOrb then
-				-- Cập nhật động cho Boss 2 Orbs (Yellow / Red / Green Orb bám đuổi)
-				currentActiveKeys[inst] = true
-
-				local primary = inst:IsA("BasePart") and inst or (inst:IsA("Model") and inst:FindFirstChildWhichIsA("BasePart"))
-				local modelCFrame, modelSize
-				if inst:IsA("Model") then
-					modelCFrame, modelSize = inst:GetBoundingBox()
-				end
-				local curPos = (primary and primary.Position) or (modelCFrame and modelCFrame.Position) or inst.Position
-
-				local trajData = lockedProjectiles[inst]
-				if not trajData then
-					trajData = lockBossOrb(inst, TRAJECTORY_PROJECTILE_CONFIGS[instNameLower])
-				end
-
-				if trajData then
-					-- CẬP NHẬT ĐỘNG THEO THỜI GIAN THỰC TÙY VÀO VỊ TRÍ CỦA QUẢ CẦU VÀ VỊ TRÍ NGƯỜI CHƠI
-					local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-					local playerPos = rootPart and rootPart.Position
-
-					local dangerDepth = 22.0
-					if playerPos then
-						local diff = Vector3.new(playerPos.X - curPos.X, 0, playerPos.Z - curPos.Z)
-						local distToPlayer = diff.Magnitude
-						if distToPlayer > 0.3 then
-							trajData.forward2D = diff.Unit
-							-- Chiều dài hành lang cam bao trùm từ quả cầu đến tận chân người chơi (+ 4 studs buffer phía sau người chơi)
-							dangerDepth = math.clamp(distToPlayer + 4.0, 10.0, 80.0)
-						end
-					else
-						-- Fallback khi người chơi chưa spawn / đã chết: theo delta di chuyển hoặc vận tốc
-						local vel = primary and (primary.AssemblyLinearVelocity or (primary:IsA("BasePart") and primary.Velocity))
-						local vel2D = vel and Vector3.new(vel.X, 0, vel.Z)
-						if vel2D and vel2D.Magnitude > 1.5 then
-							trajData.forward2D = vel2D.Unit
-						else
-							local moveDelta = curPos - trajData.lastPos
-							local moveDelta2D = Vector3.new(moveDelta.X, 0, moveDelta.Z)
-							if moveDelta2D.Magnitude > 0.05 then
-								trajData.forward2D = moveDelta2D.Unit
-							end
-						end
-					end
-
-					trajData.lastPos = curPos
-					trajData.curPos = curPos
-
-					local partSize = (primary and primary.Size) or modelSize or Vector3.new(6, 6, 6)
-					local baseRadius = math.max(partSize.X, partSize.Z) / 2
-					if baseRadius < 4.0 then baseRadius = 4.0 end
-					local dangerRadius = baseRadius + trajectoryWidthPadding
-					local dangerWidth = dangerRadius * 2
-
-					trajData.dangerRadius = dangerRadius
-					trajData.dangerWidth = dangerWidth
-					trajData.maxLookahead = dangerDepth
-					trajData.dangerDepth = dangerDepth
-
-					local curFloorY = getGeometry().GetRawFloorY(curPos)
-					local thickness = 0.8
-					local lockedY = curFloorY + (thickness / 2) + 0.05
-					trajData.lockedVisualY = lockedY
-					trajData.boxThickness = thickness
-				end
-			else
-				-- Cập nhật cho các Part Projectile khác (Spike, Telegraph Beam, v.v.)
-				if info.ActiveParts then
-					for part in pairs(info.ActiveParts) do
-						if part and part.Parent and part:IsA("BasePart") then
-							local trajConfig = getTrajectoryConfigForPart(part)
-							if trajConfig then
-								currentActiveKeys[part] = true
-								local trajData = lockedProjectiles[part] or lockTrajectoryForPart(part)
-								if trajData and trajData.forward2D then
-									local autoWidth, autoLength = getPartAutoDimensions(part)
-									local baseMinRadius = autoWidth / 2
-									if trajData.config and trajData.config.dangerRadius and trajData.config.dangerRadius > baseMinRadius then
-										baseMinRadius = trajData.config.dangerRadius
-									end
-									local dangerRadius = baseMinRadius + trajectoryWidthPadding
-									local maxLookahead = autoLength or (trajData.config and trajData.config.maxLookahead) or trajData.maxLookahead or trajectoryLookahead
-
-									trajData.dangerRadius = dangerRadius
-									trajData.maxLookahead = maxLookahead
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-
-	-- Dọn dẹp những projectile không còn hoạt động trong activeHazards
-	for key in pairs(lockedProjectiles) do
-		if not currentActiveKeys[key] then
-			lockedProjectiles[key] = nil
-		end
-	end
-end
-
---// Cập nhật Visual ESP cho các hành lang quỹ đạo (Trajectory Boxes)
-function detection.UpdateTrajectoryVisuals()
-	if not visualEspEnabled or not threatDetectorEnabled then
-		for part, vPart in pairs(activeTrajectoryVisuals) do
-			pcall(function() vPart:Destroy() end)
-		end
-		table.clear(activeTrajectoryVisuals)
-		return
-	end
-
-	local currentActiveVisuals = {}
-
-	for _, info in pairs(activeHazards) do
-		local inst = info.Instance
-		if inst and inst.Parent then
-			local instNameLower = (inst.Name or ""):lower():gsub("%s+", "")
-			local isMovingBeam = (instNameLower:find("movingbeam") ~= nil or (info.Name and info.Name:lower():find("movingbeam") ~= nil))
-			local orbConfig = BOSS_ORB_CONFIGS[instNameLower] or (info.Name and BOSS_ORB_CONFIGS[info.Name:lower():gsub("%s+", "")])
-			local isBossOrb = (orbConfig ~= nil) or (TRAJECTORY_PROJECTILE_CONFIGS[instNameLower] and TRAJECTORY_PROJECTILE_CONFIGS[instNameLower].isBossOrb)
-
-			if isMovingBeam then
-				-- =========================================================================
-				-- XỬ LÝ VISUAL CẤP MODEL CHO SECOND BOSS MOVING BEAM
-				-- =========================================================================
-				local trajData = lockedProjectiles[inst]
-				if not trajData and lockSecondBossMovingBeam then
-					trajData = lockSecondBossMovingBeam(inst)
-				end
-				if trajData then
-					currentActiveVisuals[inst] = true
-
-					local curPos = trajData.curPos or (inst:IsA("Model") and select(1, inst:GetBoundingBox()).Position) or inst.Position
-					local forward2D = trajData.forward2D or Vector3.new(0, 0, -1)
-					local dangerWidth = trajData.dangerWidth or (trajData.dangerRadius * 2)
-					local dangerDepth = trajData.dangerDepth or trajData.maxLookahead or 50.0
-					local lockedY = trajData.lockedVisualY or (getGeometry().GetRawFloorY(curPos) + 0.45)
-					local thickness = trajData.boxThickness or 0.8
-
-					local vPart = activeTrajectoryVisuals[inst]
-					if not vPart or not vPart.Parent then
-						vPart = Instance.new("Part")
-						vPart.Name = "SmartDodge_TrajectoryBox"
-						vPart.Material = Enum.Material.Neon
-						vPart.Color = Color3.fromRGB(255, 130, 0)
-						vPart.Transparency = 0.82
-						vPart.Anchored = true
-						vPart.CanCollide = false
-						vPart.CanQuery = false
-						vPart.CanTouch = false
-
-						local box = Instance.new("SelectionBox")
-						box.Name = "TrajectoryBorder"
-						box.Color3 = Color3.fromRGB(255, 150, 30)
-						box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
-						box.SurfaceTransparency = 0.8
-						box.LineThickness = 0.04
-						box.Adornee = vPart
-						box.Parent = vPart
-
-						local bb = Instance.new("BillboardGui")
-						bb.Name = "TrajGui"
-						bb.Size = UDim2.fromOffset(220, 26)
-						bb.StudsOffset = Vector3.new(0, 2.5, 0)
-						bb.AlwaysOnTop = true
-						bb.Adornee = vPart
-						bb.Parent = vPart
-
-						local label = Instance.new("TextLabel")
-						label.Name = "Label"
-						label.Size = UDim2.fromScale(1, 1)
-						label.BackgroundTransparency = 1
-						label.TextColor3 = Color3.fromRGB(255, 170, 40)
-						label.TextStrokeTransparency = 0
-						label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-						label.Font = Enum.Font.GothamBold
-						label.TextSize = 12
-						label.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
-						label.Parent = bb
-
-						activeTrajectoryVisuals[inst] = vPart
-					else
-						local tg = vPart:FindFirstChild("TrajGui")
-						local lbl = tg and tg:FindFirstChild("Label")
-						if lbl and lbl:IsA("TextLabel") then
-							lbl.Text = ("🚀 MOVING BEAM: %s (%.0fm | W:%.1fm)"):format(inst.Name, dangerDepth, dangerWidth)
-						end
-					end
-
-					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
-					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 1.5)
-					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-					vPart.Parent = Workspace.Terrain
-				end
-			elseif isBossOrb then
-				-- =========================================================================
-				-- XỬ LÝ VISUAL CHO BOSS 2 ORBS (Yellow / Red / Green Orb)
-				-- =========================================================================
-				local trajData = lockedProjectiles[inst]
-				if trajData then
-					currentActiveVisuals[inst] = true
-
-					local curPos = trajData.curPos or inst.Position
-					local forward2D = trajData.forward2D or Vector3.new(0, 0, -1)
-					local dangerWidth = trajData.dangerWidth or (trajData.dangerRadius * 2)
-					local dangerDepth = trajData.dangerDepth or trajData.maxLookahead or 22.0
-					local lockedY = trajData.lockedVisualY or (getGeometry().GetRawFloorY(curPos) + 0.45)
-					local thickness = trajData.boxThickness or 0.8
-					local orbColorName = (trajData.config and trajData.config.orbColorName) or (orbConfig and orbConfig.colorName) or "orb"
-
-					local vPart = activeTrajectoryVisuals[inst]
-					if not vPart or not vPart.Parent then
-						vPart = Instance.new("Part")
-						vPart.Name = "SmartDodge_TrajectoryBox"
-						vPart.Material = Enum.Material.Neon
-						vPart.Color = Color3.fromRGB(255, 130, 0)
-						vPart.Transparency = 0.82
-						vPart.Anchored = true
-						vPart.CanCollide = false
-						vPart.CanQuery = false
-						vPart.CanTouch = false
-
-						local box = Instance.new("SelectionBox")
-						box.Name = "TrajectoryBorder"
-						box.Color3 = Color3.fromRGB(255, 150, 30)
-						box.SurfaceColor3 = Color3.fromRGB(255, 130, 0)
-						box.SurfaceTransparency = 0.8
-						box.LineThickness = 0.04
-						box.Adornee = vPart
-						box.Parent = vPart
-
-						local bb = Instance.new("BillboardGui")
-						bb.Name = "TrajGui"
-						bb.Size = UDim2.fromOffset(220, 26)
-						bb.StudsOffset = Vector3.new(0, 2.5, 0)
-						bb.AlwaysOnTop = true
-						bb.Adornee = vPart
-						bb.Parent = vPart
-
-						local label = Instance.new("TextLabel")
-						label.Name = "Label"
-						label.Size = UDim2.fromScale(1, 1)
-						label.BackgroundTransparency = 1
-						label.TextColor3 = Color3.fromRGB(255, 170, 40)
-						label.TextStrokeTransparency = 0
-						label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-						label.Font = Enum.Font.GothamBold
-						label.TextSize = 12
-						label.Text = ("🚀 %s ORB: %s (%.0fm | W:%.1fm)"):format(orbColorName:upper(), inst.Name, dangerDepth, dangerWidth)
-						label.Parent = bb
-
-						activeTrajectoryVisuals[inst] = vPart
-					else
-						local tg = vPart:FindFirstChild("TrajGui")
-						local lbl = tg and tg:FindFirstChild("Label")
-						if lbl and lbl:IsA("TextLabel") then
-							lbl.Text = ("🚀 %s ORB: %s (%.0fm | W:%.1fm)"):format(orbColorName:upper(), inst.Name, dangerDepth, dangerWidth)
-						end
-					end
-
-					vPart.Size = Vector3.new(dangerWidth, thickness, dangerDepth)
-					local visualCenter = Vector3.new(curPos.X, lockedY, curPos.Z) + forward2D * ((dangerDepth / 2) - 2.0)
-					vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-					vPart.Parent = Workspace.Terrain
-				end
-			else
-				-- =========================================================================
-				-- XỬ LÝ CHO CÁC PART PROJECTILE KHÁC (Spike, Telegraph Beam, v.v.)
-				-- =========================================================================
-				if info.ActiveParts then
-					for part in pairs(info.ActiveParts) do
-						if part and part.Parent and part:IsA("BasePart") then
-							local trajConfig = getTrajectoryConfigForPart(part)
-							if trajConfig then
-								local isBeam = part.Name:lower():find("beampart") ~= nil
-								local isMissile = part.Name:lower():find("missile") ~= nil
-								local hasDuplicate = false
-								if isBeam or isMissile then
-									for otherPart in pairs(currentActiveVisuals) do
-										if otherPart ~= part and otherPart:IsA("BasePart") and (otherPart.Position - part.Position).Magnitude < 6 then
-											hasDuplicate = true
-											break
-										end
-									end
-								end
-
-								if not hasDuplicate then
-									local trajData = lockedProjectiles[part]
-									if trajData and trajData.forward2D then
-										currentActiveVisuals[part] = true
-
-										local maxLookahead = trajData.maxLookahead or trajectoryLookahead
-										local dangerRadius = trajData.dangerRadius or 4.0
-										local forward2D = trajData.forward2D
-										local originPos = part.Position
-										local centerPos = originPos + forward2D * (maxLookahead / 2)
-
-										local lockedY = trajData.lockedVisualY or (trajData.rawFloorY and (trajData.rawFloorY + 0.45)) or (getGeometry().GetRawFloorY(originPos) + 0.45)
-										local thickness = trajData.boxThickness or 0.8
-
-										local depth = maxLookahead
-										local isExpandingCone = (trajData.config and trajData.config.isExpandingCone)
-										local boxWidth = dangerRadius * 2
-										if isExpandingCone then
-											local expRate = (trajData.config and trajData.config.expansionRate) or 0.25
-											boxWidth = math.floor((dangerRadius + (maxLookahead * expRate / 2)) * 2)
-										end
-										local labelText = isExpandingCone
-											and ("⚡ CONE CORRIDOR: %s (%.0fm | W:%.1fm)"):format(part.Name, maxLookahead, boxWidth)
-											or ("🚀 TRAJECTORY: %s (%.0fm | W:%.1fm)"):format(part.Name, maxLookahead, boxWidth)
-
-										local vPart = activeTrajectoryVisuals[part]
-										if not vPart or not vPart.Parent then
-											vPart = Instance.new("Part")
-											vPart.Name = "SmartDodge_TrajectoryBox"
-											vPart.Material = Enum.Material.Neon
-											vPart.Color = trajConfig.visualColor or Color3.fromRGB(255, 130, 0)
-											vPart.Transparency = 0.82
-											vPart.Anchored = true
-											vPart.CanCollide = false
-											vPart.CanQuery = false
-											vPart.CanTouch = false
-
-											local box = Instance.new("SelectionBox")
-											box.Name = "TrajectoryBorder"
-											box.Color3 = Color3.fromRGB(255, 150, 30)
-											box.SurfaceColor3 = trajConfig.visualColor or Color3.fromRGB(255, 130, 0)
-											box.SurfaceTransparency = 0.8
-											box.LineThickness = 0.04
-											box.Adornee = vPart
-											box.Parent = vPart
-
-											local bb = Instance.new("BillboardGui")
-											bb.Name = "TrajGui"
-											bb.Size = UDim2.fromOffset(200, 26)
-											bb.StudsOffset = Vector3.new(0, 2.5, 0)
-											bb.AlwaysOnTop = true
-											bb.Adornee = vPart
-											bb.Parent = vPart
-
-											local label = Instance.new("TextLabel")
-											label.Name = "Label"
-											label.Size = UDim2.fromScale(1, 1)
-											label.BackgroundTransparency = 1
-											label.TextColor3 = Color3.fromRGB(255, 170, 40)
-											label.TextStrokeTransparency = 0
-											label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-											label.Font = Enum.Font.GothamBold
-											label.TextSize = 12
-											label.Text = labelText
-											label.Parent = bb
-
-											activeTrajectoryVisuals[part] = vPart
-										else
-											local tg = vPart:FindFirstChild("TrajGui")
-											local lbl = tg and tg:FindFirstChild("Label")
-											if lbl and lbl:IsA("TextLabel") then
-												lbl.Text = labelText
-											end
-										end
-
-										vPart.Size = Vector3.new(boxWidth, thickness, depth)
-										local visualCenter = Vector3.new(centerPos.X, lockedY, centerPos.Z)
-										vPart.CFrame = CFrame.lookAt(visualCenter, visualCenter + forward2D)
-										vPart.Parent = Workspace.Terrain
-									end
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-
-	-- Dọn dẹp những visual đã hết hạn
-	for part, vPart in pairs(activeTrajectoryVisuals) do
-		if not currentActiveVisuals[part] then
-			pcall(function() vPart:Destroy() end)
-			activeTrajectoryVisuals[part] = nil
-		end
-	end
-end
-
---// Dọn sạch toàn bộ visual của các hành lang đạn bay (không xóa lockedProjectiles)
-function detection.ClearTrajectoryVisuals()
-	for part, vPart in pairs(activeTrajectoryVisuals) do
-		pcall(function() vPart:Destroy() end)
-	end
-	table.clear(activeTrajectoryVisuals)
-end
-
---// Xóa sạch toàn bộ hiểm họa hiện tại (khi Boss chết, phòng dọn sạch hoặc engine dừng) (Tầng 1)
-function detection.ClearAllHazards(reason)
-	local toRemove = {}
-	for inst in pairs(activeHazards) do
-		table.insert(toRemove, inst)
-	end
-	for _, inst in ipairs(toRemove) do
-		unregisterHazard(inst, reason or "Purged")
-	end
-	table.clear(activeHazards)
-	table.clear(lockedProjectiles)
-	hazardCount = 0
-	detection.ClearTrajectoryVisuals()
-	fireHazardChanged()
-	if logHazards and reason then
-		print(("[SmartDodge][Hazard] 🧹 All hazards cleared: %s"):format(reason))
-	end
-end
-
---// Bắt đầu quét & lắng nghe sự kiện Workspace cấp 1 (được engine gọi khi StartEngine)
-function detection.StartScan()
-	-- Dọn dẹp connection cũ nếu có
-	for _, c in ipairs(connections) do c:Disconnect() end
-	table.clear(connections)
-
-	for _, cleanup in ipairs(sharedCleanups) do pcall(cleanup) end
-	table.clear(sharedCleanups)
-
-	-- Dọn dẹp hazards cũ
-	detection.ClearAllHazards("StartScan Reset")
-
-	-- 1. Quét tức thời các child Depth 1 hiện tại trong Workspace
-	for _, child in ipairs(Workspace:GetChildren()) do
-		registerHazard(child)
-	end
-
-	-- 2. Lắng nghe vật thể mới sinh ra ở Workspace (Depth 1)
-	table.insert(connections, Workspace.ChildAdded:Connect(function(child)
-		registerHazard(child)
-	end))
-
-	-- 3. Lắng nghe vật thể bị xóa khỏi Workspace (Depth 1)
-	table.insert(connections, Workspace.ChildRemoved:Connect(function(child)
-		unregisterHazard(child, "Destroyed")
-	end))
-
-	-- 4. Lắng nghe Boss bị tiêu diệt hoặc kết thúc Boss Room (Tầng 1)
-	local unsubBoss = shared.OnBossActiveChanged(function(active)
-		if not active then
-			detection.ClearAllHazards("Boss Defeated")
-		end
-	end)
-	table.insert(sharedCleanups, unsubBoss)
-
-	-- 5. Lắng nghe kẻ địch chết hoặc phòng được dọn sạch (Tầng 1 & 2)
-	local unsubEnemy = shared.OnEnemyChanged(function()
-		local count = shared.GetEnemyCount()
-		if count == 0 and not shared.IsBossActive() then
-			detection.ClearAllHazards("Room Cleared")
-		else
-			-- Quét nhanh hủy các chiêu có Caster vừa tử trận
-			for inst, info in pairs(activeHazards) do
-				if info.CasterHumanoid and (info.CasterHumanoid.Health <= 0 or not info.Caster or not info.Caster.Parent) then
-					task.spawn(function()
-						unregisterHazard(inst, "Caster Dead")
-					end)
-				end
-			end
-		end
-	end)
-	table.insert(sharedCleanups, unsubEnemy)
-
-	if logHazards then
-		print("[SmartDodge] 📡 Threat Detector & Safe Spot Engine started!")
-	end
-end
-
---// Dừng quét, dọn hazards và connection (được engine gọi khi StopEngine/Shutdown)
-function detection.StopScan()
-	for _, c in ipairs(connections) do c:Disconnect() end
-	table.clear(connections)
-
-	for _, cleanup in ipairs(sharedCleanups) do pcall(cleanup) end
-	table.clear(sharedCleanups)
-
-	detection.ClearAllHazards("StopScan")
-
-	if logHazards then
-		print("[SmartDodge] 🛑 Threat Detector stopped.")
-	end
-end
-
---// Public accessors (facade chỉ proxy)
-function detection.SetLogHazards(state)
-	logHazards = state and true or false
-end
-
-function detection.IsLogHazardsEnabled()
-	return logHazards
-end
-
-function detection.SetVisualEsp(state)
-	visualEspEnabled = state and true or false
-	detection.UpdateTrajectoryVisuals()
-	if visualEspEnabled then
-		for _, info in pairs(activeHazards) do
-			if (not info.VisualBoxes or #info.VisualBoxes == 0) and info.ActiveParts then
-				local partsList = {}
-				for p in pairs(info.ActiveParts) do
-					table.insert(partsList, p)
-				end
-				info.VisualBoxes = attachSelectionBoxes(partsList)
-			end
-		end
-	else
-		for _, info in pairs(activeHazards) do
-			if info.VisualBoxes then
-				for _, box in ipairs(info.VisualBoxes) do
-					pcall(function() box:Destroy() end)
-				end
-				table.clear(info.VisualBoxes)
-			end
-		end
-	end
-end
-
-function detection.IsVisualEspEnabled()
-	return visualEspEnabled
-end
-
-function detection.GetHazardCount()
-	return hazardCount
-end
-
-function detection.GetActiveHazards()
-	local list = {}
-	for _, data in pairs(activeHazards) do
-		if data.Instance and data.Instance.Parent == Workspace then
-			table.insert(list, data)
-		end
-	end
-	return list
-end
-
-function detection.GetLastHazardInfo()
-	return lastHazardInfo
-end
-
-function detection.OnHazardChanged(callback)
-	if type(callback) ~= "function" then return end
-	table.insert(hazardChangedCallbacks, callback)
-end
-
---// Trả về Boss 2 Orb đang kích hoạt (nếu có): part, colorName ("yellow"|"red"|"green"), instance, config
-function detection.GetActiveBossOrb()
-	for inst, info in pairs(activeHazards) do
-		if inst and inst.Parent then
-			local cleanName = (inst.Name or ""):lower():gsub("%s+", "")
-			local orbConf = BOSS_ORB_CONFIGS[cleanName]
-			if not orbConf then
-				if cleanName:find("yelloworb") then
-					orbConf = BOSS_ORB_CONFIGS["secondbossyelloworb"]
-				elseif cleanName:find("redorb") then
-					orbConf = BOSS_ORB_CONFIGS["secondbossredorb"]
-				elseif cleanName:find("greenorb") then
-					orbConf = BOSS_ORB_CONFIGS["secondbossgreenorb"]
-				end
-			end
-
-			if orbConf then
-				local part = inst:IsA("BasePart") and inst or nil
-				if not part and info.ActiveParts then
-					for p in pairs(info.ActiveParts) do
-						if p and p.Parent and p:IsA("BasePart") then
-							part = p
-							break
-						end
-					end
-				end
-				if not part then
-					part = inst:FindFirstChildWhichIsA("BasePart")
-				end
-				if part and part.Parent then
-					return part, orbConf.colorName, inst, orbConf
-				end
-			end
-		end
-	end
-	return nil, nil, nil, nil
-end
-
---// Trả về thời gian còn lại (giây) của một hazard trước khi tự biến mất và trước khi giáng damage
-function detection.GetHazardTimeRemaining(instance)
-	local info = activeHazards[instance]
-	if not info or not info.SpawnTime then return nil, nil, 0, nil, nil end
-	local elapsed = os.clock() - info.SpawnTime
-	local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
-	local remainingTotal = math.max(0, estTotal - elapsed)
-	local remainingToHit = math.max(0, estHit - elapsed)
-	return remainingTotal, estTotal, elapsed, remainingToHit, estHit
-end
-
---// Lấy thông tin thống kê thời gian sống của một kỹ năng
-function detection.GetSkillProfile(skillName)
-	return skillProfiles[skillName]
-end
-
---// Lấy toàn bộ hồ sơ thời gian sống của các chiêu thức đã học
-function detection.GetAllSkillProfiles()
-	return skillProfiles
-end
-
---// Cập nhật nhãn đếm ngược 3D trên đầu các hazard đang hoạt động
-function detection.UpdateHazardTimers()
-	if not showSkillTimers then return end
-	local now = os.clock()
-	for _, info in pairs(activeHazards) do
-		if info.TimerLabel and info.SpawnTime then
-			local elapsed = now - info.SpawnTime
-			local estTotal, estHit = getEstimatedSkillLifetime(info.Name)
-			local remainingTotal = math.max(0, estTotal - elapsed)
-			local remainingToHit = math.max(0, estHit - elapsed)
-
-			local color
-			local text
-			if remainingToHit > 0 then
-				-- Đang trong giai đoạn telegraph / chuẩn bị giáng damage
-				if remainingToHit <= 0.4 then
-					color = Color3.fromRGB(255, 60, 60) -- Đỏ rực: sát thương sắp giáng xuống!
-				elseif remainingToHit <= 1.0 then
-					color = Color3.fromRGB(255, 160, 0) -- Cam: sắp nổ
-				else
-					color = Color3.fromRGB(255, 230, 80) -- Vàng: đang precast
-				end
-				text = string.format("%s\n💥 HIT IN: %.1fs (⏳ %.1fs)", info.Name, remainingToHit, remainingTotal)
-			else
-				-- Đã kích nổ damage xong! Đang trong giai đoạn tàn dư animation/fading
-				color = Color3.fromRGB(80, 255, 120) -- Xanh neon: Đã nổ xong (an toàn để bước vào nếu tàn dư vô hại)
-				text = string.format("%s\n✅ DETONATED! (⏳ %.1fs)", info.Name, remainingTotal)
-			end
-
-			info.TimerLabel.TextColor3 = color
-			info.TimerLabel.Text = text
-		end
-	end
-end
-
---// Bật/tắt hiển thị đếm ngược 3D Countdown trên đầu chiêu thức
-function detection.SetShowSkillTimers(state)
-	showSkillTimers = state and true or false
-	if not showSkillTimers then
-		for _, info in pairs(activeHazards) do
-			if info.TimerBillboard then
-				pcall(function() info.TimerBillboard:Destroy() end)
-				info.TimerBillboard = nil
-				info.TimerLabel = nil
-			end
-		end
-	else
-		for inst, info in pairs(activeHazards) do
-			if not info.TimerBillboard and info.ActiveParts then
-				local partsList = {}
-				for p in pairs(info.ActiveParts) do
-					table.insert(partsList, p)
-				end
-				info.TimerBillboard, info.TimerLabel = attachHazardTimerBillboard(inst, partsList, info.Name)
-			end
-		end
-	end
-end
-
-function detection.IsShowSkillTimersEnabled()
-	return showSkillTimers
-end
-
---// Bật/tắt chế độ tự động học thời gian tồn tại & điểm kích nổ sát thương của kỹ năng
-function detection.SetAutoLearnSkillLifetimes(state)
-	autoLearnSkillLifetimes = state and true or false
-end
-
-function detection.IsAutoLearnSkillLifetimesEnabled()
-	return autoLearnSkillLifetimes
-end
-
-detection.SaveSkillProfiles = skillTimingManager.SaveRecordedData
-detection.LoadSkillProfiles = skillTimingManager.LoadMapData
-detection.skillTimingManager = skillTimingManager
-
-return detection end function __DIST.B()-- Smart Dodge – Module 3+4: Safe Spot Calculation & Player Visuals (DungeonQuest).
--- Chuyên trách: Tính toán điểm thoát nạn (CalculateSafeSpot + latching lock + 3 chiến lược thoát)
--- và visual quanh người: Safe Marker xanh, Hitbox Padding cyan.
-
---// Imports
-
-local services = __DIST.load('i')
-local shared = __DIST.load('j')
-local geometry = __DIST.load('z')
-local detection = __DIST.load('A')
-local targetFacing = __DIST.load('r')
-
---// References
-local Workspace = game:GetService("Workspace")
-local player = services.player
-
---// State
-local showSafeMarker = false
-local showPlayerRadar = false
-local lockedSafeSpot = nil
-local lockedHazardCount = 0
-local safeSpotMarkerPart = nil
-local hitboxVisualPart = nil
-local showHitboxVisual = false
-local ESCAPE_MARGIN = 2.6           -- Khoảng cách đệm an toàn sau khi ra khỏi mép (studs) - đảm bảo vượt qua playerHitboxPadding 1.8m
-local BOSS1_DEFAULT_RADIUS = 50.0   -- Bán kính mặc định sàn đấu Boss 1 nếu không tìm thấy FirstPart
-local boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
-local boss1ArenaCenter = nil
-local boss1ArenaVisualPart = nil
-local lockedArenaFloorY = nil
-local RADIAL_DISTANCES = { 2.5, 4.5, 7.0, 10.5, 15.0, 20.0, 26.0, 33.0, 42.0, 52.0 }
-local ANGLE_OFFSETS_12 = { 0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180 }
-
---// Trạng thái visual gần nhất (để replay khi bật/tắt toggle từ UI — engine cập nhật mỗi nhịp)
-local lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = nil, false, 0
-local lastHitboxPlayerPos = nil
-local lastRadarPlayerPos, lastRadarInDanger = nil, false
-local playerRadarPool = {}
-local radarLatchedOrigin = nil
-local isDodgeRadarActive = false
-local currentRadarDodgeKey = nil
-local lastDangerPart = nil
-local lastCurrentHazardsSet = nil
-
-local safeSpot = {}
-
---// Public: accessor show/marker/hitbox
-
-function safeSpot.IsShowSafeMarkerEnabled()
-	return showSafeMarker
-end
-
-function safeSpot.SetShowSafeMarker(state)
-	showSafeMarker = state and true or false
-	safeSpot.UpdateMarker(lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist)
-end
-
-function safeSpot.IsShowPlayerRadarEnabled()
-	return showPlayerRadar
-end
-
-function safeSpot.SetShowPlayerRadar(state)
-	showPlayerRadar = state and true or false
-	if not showPlayerRadar then
-		safeSpot.ClearPlayerRadar()
-	else
-		safeSpot.UpdatePlayerRadar(lastRadarPlayerPos, lastRadarInDanger)
-	end
-end
-
-
-function safeSpot.IsShowHitboxVisualEnabled()
-	return showHitboxVisual
-end
-
-function safeSpot.SetShowHitboxVisual(state)
-	showHitboxVisual = state and true or false
-	safeSpot.UpdateHitbox(lastHitboxPlayerPos)
-end
-
---// Set Hitbox Padding: cập nhật số học (module geometry) + resize visual nếu đang hiển thị
-function safeSpot.SetHitboxPadding(value)
-	geometry.SetHitboxPadding(value)
-	if hitboxVisualPart and hitboxVisualPart.Parent then
-		local diameter = math.max(0.4, geometry.GetHitboxPadding() * 2)
-		hitboxVisualPart.Size = Vector3.new(0.15, diameter, diameter)
-	end
-end
-
-function safeSpot.GetBoss1ArenaCenter()
-	return boss1ArenaCenter
-end
-
-function safeSpot.GetBoss1ArenaRadius()
-	return boss1ArenaRadius or BOSS1_DEFAULT_RADIUS
-end
-
-local targetScope = "All"
-
-function safeSpot.SetTargetScope(scope)
-	if scope == "Boss" or scope == "Mobs" or scope == "All" then
-		targetScope = scope
-	end
-end
-
-function safeSpot.GetTargetScope()
-	return targetScope
-end
-
---// Quản lý Highlight cột pha lê Boss 2 (secondBossCrystals)
-local targetCrystalHighlight = nil
-local lastHighlightedCrystal = nil
-
-local function clearCrystalHighlight()
-	if targetCrystalHighlight then
-		pcall(function() targetCrystalHighlight:Destroy() end)
-		targetCrystalHighlight = nil
-	end
-	lastHighlightedCrystal = nil
-end
-
-local function updateCrystalHighlight(crystalPart, colorName)
-	if not crystalPart or not crystalPart.Parent then
-		clearCrystalHighlight()
-		return
-	end
-	if lastHighlightedCrystal == crystalPart and targetCrystalHighlight and targetCrystalHighlight.Parent then
-		return
-	end
-
-	clearCrystalHighlight()
-	lastHighlightedCrystal = crystalPart
-
-	pcall(function()
-		local box = Instance.new("SelectionBox")
-		box.Name = "SmartDodge_CrystalGuideBox"
-		local c = (colorName == "green" and Color3.fromRGB(50, 255, 50))
-			or (colorName == "yellow" and Color3.fromRGB(255, 230, 0))
-			or Color3.fromRGB(255, 45, 45)
-		box.Color3 = c
-		box.SurfaceColor3 = c
-		box.SurfaceTransparency = 0.5
-		box.LineThickness = 0.08
-		box.Adornee = crystalPart
-		box.Parent = crystalPart
-		targetCrystalHighlight = box
-	end)
-end
-
-local cachedSecondBossCrystals = nil
-
-local function getBossCrystal(colorName)
-	local crystalsModel = cachedSecondBossCrystals
-	if not crystalsModel or not crystalsModel.Parent then
-		crystalsModel = Workspace:FindFirstChild("secondBossCrystals")
-		if not crystalsModel then
-			local dungeon = Workspace:FindFirstChild("dungeon")
-			if dungeon then
-				crystalsModel = dungeon:FindFirstChild("secondBossCrystals", true)
-			end
-		end
-		if not crystalsModel then
-			crystalsModel = Workspace:FindFirstChild("secondBossCrystals", true)
-		end
-		if crystalsModel then
-			cachedSecondBossCrystals = crystalsModel
-		end
-	end
-	if not crystalsModel then return nil, {} end
-
-	local targetCrystal = nil
-	local wrongCrystals = {}
-	local targetColorLower = colorName and colorName:lower() or ""
-
-	for _, child in ipairs(crystalsModel:GetChildren()) do
-		local cNameLower = child.Name:lower()
-		local p = child:IsA("BasePart") and child or child:FindFirstChildWhichIsA("BasePart")
-		if p then
-			if #targetColorLower > 0 and (cNameLower == targetColorLower or cNameLower:find(targetColorLower)) then
-				targetCrystal = p
-			else
-				table.insert(wrongCrystals, p)
-			end
-		end
-	end
-
-	return targetCrystal, wrongCrystals
-end
-
-local cachedFirstBossPart = nil
-local lastFirstPartSearchTime = 0
-
---// Tìm kiếm Part giới hạn sàn đấu Boss 1 của game (workspace.FirstPart)
---// Tối ưu hóa: Throttled 5.0s để tránh quét đệ quy Workspace liên tục 20 lần/giây gây lag
-local function getFirstBossArenaPart()
-	if cachedFirstBossPart and cachedFirstBossPart.Parent then
-		return cachedFirstBossPart
-	end
-
-	local now = os.clock()
-	if now - lastFirstPartSearchTime < 5.0 then
-		return nil
-	end
-	lastFirstPartSearchTime = now
-
-	-- 1. Tìm trực tiếp tại root Workspace (0.001ms)
-	local p = Workspace:FindFirstChild("FirstPart")
-	-- 2. Quét trong folder dungeon nếu có
-	if not p then
-		local dungeon = Workspace:FindFirstChild("dungeon")
-		if dungeon then
-			p = dungeon:FindFirstChild("FirstPart", true)
-		end
-	end
-	-- 3. Fallback quét toàn bộ Workspace 1 lần duy nhất (được throttle 5s)
-	if not p then
-		p = Workspace:FindFirstChild("FirstPart", true)
-	end
-
-	if p and p:IsA("BasePart") then
-		cachedFirstBossPart = p
-		return p
-	end
-	return nil
-end
-
---// Quản lý Visual và giới hạn Sàn Đấu Boss 1 (Boss 1 Arena Visual & Boundary)
-local function clearBoss1ArenaVisual()
-	if boss1ArenaVisualPart then
-		pcall(function() boss1ArenaVisualPart:Destroy() end)
-		boss1ArenaVisualPart = nil
-	end
-	cachedFirstBossPart = nil
-	lockedArenaFloorY = nil
-end
-
--- Khóa cố định cao độ trục Y của sàn đấu ngay từ nhịp đầu tiên
-local function getOrLockFloorY(centerPos, playerPos, firstPart)
-	if lockedArenaFloorY then
-		return lockedArenaFloorY
-	end
-
-	local floorY = nil
-	if playerPos then
-		local rawFloorY, hasFloor = geometry.GetRawFloorY(playerPos)
-		if hasFloor and rawFloorY then
-			floorY = rawFloorY + 0.1
-		end
-	end
-
-	if not floorY and firstPart then
-		-- Khóa theo điểm tiếp giáp sàn của FirstPart
-		floorY = firstPart.Position.Y - (firstPart.Size.Y / 2) + 0.1
-	end
-
-	if not floorY and centerPos then
-		local rawFloorY, hasFloor = geometry.GetRawFloorY(centerPos)
-		if hasFloor and rawFloorY then
-			floorY = rawFloorY + 0.1
-		end
-	end
-
-	if floorY then
-		lockedArenaFloorY = floorY
-	end
-
-	return lockedArenaFloorY or (playerPos and (playerPos.Y - 2.8)) or (centerPos and (centerPos.Y - 2.8)) or 0
-end
-
-local function updateBoss1ArenaVisual(centerPos, playerPos, firstPart)
-	if not centerPos then
-		clearBoss1ArenaVisual()
-		return
-	end
-
-	-- Khóa trục Y cố định theo mặt sàn đấu
-	local arenaFloorY = getOrLockFloorY(centerPos, playerPos, firstPart)
-
-	local radius = boss1ArenaRadius or BOSS1_DEFAULT_RADIUS
-	local diameter = (firstPart and firstPart.Size.X) or (radius * 2)
-	local targetCF = CFrame.new(centerPos.X, arenaFloorY, centerPos.Z) * CFrame.Angles(0, 0, math.rad(90))
-
-	if boss1ArenaVisualPart and boss1ArenaVisualPart.Parent then
-		if math.abs(boss1ArenaVisualPart.Size.Y - diameter) > 0.5 then
-			boss1ArenaVisualPart.Size = Vector3.new(0.2, diameter, diameter)
-		end
-		return
-	end
-
-	pcall(function()
-		local part = Instance.new("Part")
-		part.Name = "SmartDodge_Boss1ArenaVisual"
-		part.Shape = Enum.PartType.Cylinder
-		part.Size = Vector3.new(0.2, diameter, diameter)
-		part.Color = Color3.fromRGB(0, 220, 255)
-		part.Material = Enum.Material.Neon
-		part.Transparency = 0.88
-		part.Anchored = true
-		part.CanCollide = false
-		part.CanTouch = false
-		part.CanQuery = false
-
-		local highlight = Instance.new("Highlight")
-		highlight.Name = "ArenaOutline"
-		highlight.FillColor = Color3.fromRGB(0, 180, 255)
-		highlight.FillTransparency = 0.92
-		highlight.OutlineColor = Color3.fromRGB(0, 240, 255)
-		highlight.OutlineTransparency = 0.1
-		highlight.Adornee = part
-		highlight.Parent = part
-
-		local bb = Instance.new("BillboardGui")
-		bb.Name = "ArenaLabel"
-		bb.Size = UDim2.fromOffset(180, 26)
-		bb.StudsOffset = Vector3.new(0, 3, 0)
-		bb.AlwaysOnTop = true
-		bb.Adornee = part
-		bb.Parent = part
-
-		local label = Instance.new("TextLabel")
-		label.Name = "Label"
-		label.Size = UDim2.fromScale(1, 1)
-		label.BackgroundTransparency = 1
-		label.TextColor3 = Color3.fromRGB(0, 230, 255)
-		label.TextStrokeTransparency = 0.2
-		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 13
-		label.Text = "BOSS 1 ARENA (Safe Zone)"
-		label.Parent = bb
-
-		part.CFrame = targetCF
-		part.Parent = Workspace.Terrain
-		boss1ArenaVisualPart = part
-	end)
-end
-
-local function isInsideBoss1Arena(pos, playerPos)
-	if not boss1ArenaCenter then return true end
-	local cand2D = Vector3.new(pos.X, 0, pos.Z)
-	local center2D = Vector3.new(boss1ArenaCenter.X, 0, boss1ArenaCenter.Z)
-	local candDist = (cand2D - center2D).Magnitude
-
-	local maxRadius = boss1ArenaRadius or BOSS1_DEFAULT_RADIUS
-	local playerDist = maxRadius
-	if playerPos then
-		local p2D = Vector3.new(playerPos.X, 0, playerPos.Z)
-		playerDist = (p2D - center2D).Magnitude
-	end
-
-	local maxAllowed = math.max(maxRadius, playerDist - 0.5)
-	return candDist <= maxAllowed
-end
-
-local function getBoss1ArenaScoreAdjustment(pos, playerPos)
-	if not boss1ArenaCenter or not playerPos then return 0 end
-	local center2D = Vector3.new(boss1ArenaCenter.X, 0, boss1ArenaCenter.Z)
-	local pDist = (Vector3.new(playerPos.X, 0, playerPos.Z) - center2D).Magnitude
-	local cDist = (Vector3.new(pos.X, 0, pos.Z) - center2D).Magnitude
-
-	local maxRadius = boss1ArenaRadius or BOSS1_DEFAULT_RADIUS
-	local pullThreshold = maxRadius * 0.70
-
-	-- Nếu player đang bị dạt sát mép ngoài sàn đấu:
-	if pDist > pullThreshold then
-		if cDist < pDist - 0.5 then
-			return -2.0 -- Thưởng nhẹ hướng về tâm sàn khi tương đồng khoảng cách
-		elseif cDist > pDist + 0.5 then
-			return 3.0  -- Phạt nhẹ dạt tiếp ra ngoài mép
-		end
-	end
-	return 0
-end
-
--- Tự động dọn visual và mở khóa Arena Center khi Boss 1 bị hạ gục hoặc chuyển màn
-shared.OnBossActiveChanged(function(active)
-	if not active then
-		boss1ArenaCenter = nil
-		boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
-		cachedFirstBossPart = nil
-		cachedSecondBossCrystals = nil
-		clearBoss1ArenaVisual()
-	end
-end)
-
-shared.OnBossIndexChanged(function(index)
-	cachedFirstBossPart = nil
-	cachedSecondBossCrystals = nil
-	if index ~= 1 then
-		boss1ArenaCenter = nil
-		boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
-		clearBoss1ArenaVisual()
-	end
-end)
-
---// Dọn visual marker/hitbox/radar: unparent (giữ object để tái sử dụng) — engine stop loop gọi
-function safeSpot.HideVisuals()
-	if safeSpotMarkerPart and safeSpotMarkerPart.Parent then
-		safeSpotMarkerPart.Parent = nil
-	end
-	if hitboxVisualPart and hitboxVisualPart.Parent then
-		hitboxVisualPart.Parent = nil
-	end
-	safeSpot.ClearPlayerRadar()
-	clearBoss1ArenaVisual()
-	clearCrystalHighlight()
-	lastMarkerPos = nil
-	lastMarkerInDanger = false
-	lastMarkerEscapeDist = 0
-	lastHitboxPlayerPos = nil
-end
-
---// Hủy hoàn toàn visual khi shutdown (lifecycle)
-function safeSpot.DestroyVisuals()
-	if safeSpotMarkerPart then
-		pcall(function() safeSpotMarkerPart:Destroy() end)
-		safeSpotMarkerPart = nil
-	end
-	if hitboxVisualPart then
-		pcall(function() hitboxVisualPart:Destroy() end)
-		hitboxVisualPart = nil
-	end
-	safeSpot.ClearPlayerRadar()
-	for _, item in ipairs(playerRadarPool) do
-		if item.shaft then pcall(function() item.shaft:Destroy() end) end
-		if item.head then pcall(function() item.head:Destroy() end) end
-	end
-	table.clear(playerRadarPool)
-	clearBoss1ArenaVisual()
-	clearCrystalHighlight()
-end
-
---// Reset lock an toàn (engine gọi khi dừng loop — tương đương lockedSafeSpot = nil)
-function safeSpot.ResetLock()
-	lockedSafeSpot = nil
-	lockedHazardCount = 0
-	clearCrystalHighlight()
-end
-
---// Tạo / Lấy Part hiển thị Hitbox Padding của Player quanh người
-local function getOrCreateHitboxVisual()
-	if hitboxVisualPart and hitboxVisualPart.Parent then
-		return hitboxVisualPart
-	end
-
-	local part = Instance.new("Part")
-	part.Name = "SmartDodge_HitboxVisual"
-	part.Shape = Enum.PartType.Cylinder
-	local diameter = math.max(0.4, geometry.GetHitboxPadding() * 2)
-	part.Size = Vector3.new(0.15, diameter, diameter)
-	part.Color = Color3.fromRGB(0, 220, 255)
-	part.Material = Enum.Material.Neon
-	part.Transparency = 0.75
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-
-	local selectionBox = Instance.new("SelectionBox")
-	selectionBox.Name = "HitboxBorder"
-	selectionBox.Color3 = Color3.fromRGB(120, 240, 255)
-	selectionBox.SurfaceColor3 = Color3.fromRGB(0, 220, 255)
-	selectionBox.SurfaceTransparency = 0.8
-	selectionBox.LineThickness = 0.04
-	selectionBox.Adornee = part
-	selectionBox.Parent = part
-
-	hitboxVisualPart = part
-	return part
-end
-
---// Cập nhật vị trí và kích thước vòng tròn Hitbox của Player
-function safeSpot.UpdateHitbox(playerPos)
-	lastHitboxPlayerPos = playerPos
-	if not showHitboxVisual or not detection.IsEnabled() or not playerPos then
-		if hitboxVisualPart then
-			hitboxVisualPart.Parent = nil
-		end
-		return
-	end
-
-	local part = getOrCreateHitboxVisual()
-	local diameter = math.max(0.4, geometry.GetHitboxPadding() * 2)
-	part.Size = Vector3.new(0.15, diameter, diameter)
-
-	local floorPos, hasFloor = geometry.GetFloorPosition(playerPos)
-	local yPos = hasFloor and (floorPos.Y - 2.8) or (playerPos.Y - 2.8)
-	local visualPos = Vector3.new(playerPos.X, yPos, playerPos.Z)
-
-	part.CFrame = CFrame.new(visualPos) * CFrame.Angles(0, 0, math.rad(90))
-	part.Parent = Workspace.Terrain
-end
-
---// CẤU HÌNH VÀNH ĐAI VECTOR ĐA TẦNG (TWO-TIER ADAPTIVE SPIDERWEB RADAR)
---// Tầng 1 (Inner Belt): 2.5m -> 15.0m (Chuyên Micro-Dodge sát mép, giữ cự ly tấn công tối đa)
---// Tầng 2 (Outer Belt): 20.0m -> 52.0m (Chuyên Macro-Dodge khi Boss tung đại chiêu diện rộng)
-local PLAYER_RADAR_RAY_COUNT = 24
-local PLAYER_RADAR_INNER_OFFSET = 0.8
-local INNER_BELT_MAX_DIST = 15.0
-local MARCH_STEPS = { 2.5, 4.5, 7.0, 10.5, 15.0, 20.0, 26.0, 33.0, 42.0, 52.0 }
-local MAX_MARCH_DIST = 52.0
-
-local COLOR_PLAYER_RADAR_SAFE = Color3.fromRGB(0, 255, 120)     -- Xanh lá neon khi thoát ra vùng an toàn gần (Tier 1)
-local COLOR_PLAYER_RADAR_OUTER = Color3.fromRGB(0, 220, 255)    -- Xanh ngọc Cyan neon khi vươn ra vành đai xa (Tier 2)
-local COLOR_PLAYER_RADAR_DANGER = Color3.fromRGB(255, 200, 50)  -- Vàng neon khi xuyên qua vùng chiêu thức nguy hiểm
-
-local function getOrCreatePlayerRadarArrow(index)
-	local item = playerRadarPool[index]
-	if item then
-		return item
-	end
-
-	local shaft = Instance.new("Part")
-	shaft.Name = "SmartDodge_PlayerShaft_" .. index
-	shaft.Material = Enum.Material.Neon
-	shaft.Anchored = true
-	shaft.CanCollide = false
-	shaft.CanQuery = false
-	shaft.CanTouch = false
-	shaft.CastShadow = false
-	shaft.Transparency = 0.15
-
-	local head = Instance.new("Part")
-	head.Name = "SmartDodge_PlayerHead_" .. index
-	head.Material = Enum.Material.Neon
-	head.Anchored = true
-	head.CanCollide = false
-	head.CanQuery = false
-	head.CanTouch = false
-	head.CastShadow = false
-	head.Transparency = 0.15
-	head.Size = Vector3.new(0.32, 0.04, 0.32)
-
-	item = { shaft = shaft, head = head }
-	playerRadarPool[index] = item
-	return item
-end
-
-function safeSpot.ClearPlayerRadar()
-	for _, item in ipairs(playerRadarPool) do
-		if item.shaft and item.shaft.Parent then
-			item.shaft.Parent = nil
-		end
-		if item.head and item.head.Parent then
-			item.head.Parent = nil
-		end
-	end
-	radarLatchedOrigin = nil
-	isDodgeRadarActive = false
-	currentRadarDodgeKey = nil
-end
-
---// Cập nhật Mạng Nhện Dò Biên An Toàn (Adaptive Contour Spiderweb):
---// Bắn 24 tia vector từ điểm bắt đầu né chiêu. Giữ nguyên trên sàn trong suốt lần né và sau khi né xong!
---// Chỉ xóa và cập nhật mới khi bắt đầu một lần dodge mới!
---// Triệt tiêu các tia đâm sâu vào lòng skill (không cho bắn xuyên qua skill).
-function safeSpot.UpdatePlayerRadar(playerPos, inDanger)
-	lastRadarPlayerPos, lastRadarInDanger = playerPos, inDanger or false
-
-	if not showPlayerRadar or not detection.IsEnabled() or not playerPos then
-		safeSpot.ClearPlayerRadar()
-		return
-	end
-
-	-- Nếu đang an toàn (không dính chiêu):
-	if not inDanger then
-		-- Đánh dấu phiên né chiêu đã kết thúc để sẵn sàng cho lần dodge mới tiếp theo
-		isDodgeRadarActive = false
-		currentRadarDodgeKey = nil
-		-- GIỮ NGUYÊN các tia vector của lần dodge trước đó trên sàn! Không xóa!
-		return
-	end
-
-	-- KHI ĐANG DÍNH CHIÊU (inDanger == true):
-	-- Kiểm tra xem có phải là lần dodge MỚI không (vừa dính chiêu hoặc đổi chiêu mới):
-	local isNewDodge = not isDodgeRadarActive or (lastDangerPart and lastDangerPart ~= currentRadarDodgeKey)
-
-	if not isNewDodge then
-		-- Đợt dodge hiện tại đang diễn ra -> CỐ ĐỊNH 100% các tia tại vị trí gốc đã lưu, không rung giật, không dời vị trí!
-		return
-	end
-
-	-- BẮT ĐẦU ĐỢT DODGE MỚI:
-	isDodgeRadarActive = true
-	currentRadarDodgeKey = lastDangerPart
-	radarLatchedOrigin = playerPos
-
-	-- Thu hồi các tia của lần dodge trước đó
-	for _, item in ipairs(playerRadarPool) do
-		if item.shaft and item.shaft.Parent then item.shaft.Parent = nil end
-		if item.head and item.head.Parent then item.head.Parent = nil end
-	end
-
-	local floorY = radarLatchedOrigin.Y - 2.8
-	local arrowY = floorY + 0.12 -- Nằm sát mặt sàn
-	local stepDeg = 360 / PLAYER_RADAR_RAY_COUNT
-
-	for i = 1, PLAYER_RADAR_RAY_COUNT do
-		local angleDeg = (i - 1) * stepDeg
-		local rad = math.rad(angleDeg)
-		local dirX = math.cos(rad)
-		local dirZ = math.sin(rad)
-		local dir = Vector3.new(dirX, 0, dirZ)
-
-		-- Dò từng nấc khoảng cách dọc theo tia để tìm điểm đầu tiên bước ra khỏi chiêu thức (0 Raycast, cực nhẹ)
-		local foundSafeDist = nil
-		for _, dist in ipairs(MARCH_STEPS) do
-			local testWorld = Vector3.new(radarLatchedOrigin.X + dirX * dist, radarLatchedOrigin.Y, radarLatchedOrigin.Z + dirZ * dist)
-			if not geometry.IsPointInAnyHazard(testWorld) then
-				if not (boss1ArenaCenter and not isInsideBoss1Arena(testWorld, radarLatchedOrigin)) then
-					foundSafeDist = dist
-					break
-				end
-			end
-		end
-
-		local arrow = getOrCreatePlayerRadarArrow(i)
-
-		-- NGUYÊN TẮC: TUYỆT ĐỐI KHÔNG BẮN TIA XUYÊN QUA SKILL!
-		-- Nếu hướng này không tìm thấy lối thoát an toàn (đâm sâu vào lòng chiêu thức hoặc bị chặn):
-		-- -> Ẩn tia này đi, không vẽ đâm bừa vào trong lòng skill!
-		if not foundSafeDist then
-			if arrow.shaft.Parent then arrow.shaft.Parent = nil end
-			if arrow.head.Parent then arrow.head.Parent = nil end
-			continue
-		end
-
-		local rayDist = foundSafeDist
-		local isOuterBelt = (foundSafeDist > INNER_BELT_MAX_DIST)
-		local shaftLen = math.max(0.4, rayDist - PLAYER_RADAR_INNER_OFFSET)
-		local shaftCenterDist = PLAYER_RADAR_INNER_OFFSET + (shaftLen / 2)
-		local headCenterDist = PLAYER_RADAR_INNER_OFFSET + shaftLen + 0.16
-
-		-- Màu sắc & Kích thước phân biệt 2 vành đai:
-		-- Tier 1 (Inner Belt <= 15m): Đầu Xanh Lá Neon (0, 255, 120), kích thước tiêu chuẩn
-		-- Tier 2 (Outer Belt > 15m): Đầu Xanh Ngọc Cyan Neon (0, 220, 255), kích thước nổi bật
-		local headColor = isOuterBelt and COLOR_PLAYER_RADAR_OUTER or COLOR_PLAYER_RADAR_SAFE
-		local shaftColor = (foundSafeDist <= 3.5) and COLOR_PLAYER_RADAR_SAFE or COLOR_PLAYER_RADAR_DANGER
-		local headSize = isOuterBelt and Vector3.new(0.42, 0.05, 0.42) or Vector3.new(0.32, 0.04, 0.32)
-
-		-- Cập nhật Thân tia (Shaft)
-		arrow.shaft.Size = Vector3.new(isOuterBelt and 0.15 or 0.12, 0.04, shaftLen)
-		local shaftCenter = Vector3.new(radarLatchedOrigin.X + dirX * shaftCenterDist, arrowY, radarLatchedOrigin.Z + dirZ * shaftCenterDist)
-		arrow.shaft.CFrame = CFrame.lookAt(shaftCenter, shaftCenter + dir)
-		arrow.shaft.Color = shaftColor
-		arrow.shaft.Parent = Workspace.Terrain
-
-		-- Cập nhật Đầu mũi tên (Diamond Head) chốt chặn ở ranh giới an toàn
-		arrow.head.Size = headSize
-		local headCenter = Vector3.new(radarLatchedOrigin.X + dirX * headCenterDist, arrowY, radarLatchedOrigin.Z + dirZ * headCenterDist)
-		arrow.head.CFrame = CFrame.lookAt(headCenter, headCenter + dir) * CFrame.Angles(0, math.rad(45), 0)
-		arrow.head.Color = headColor
-		arrow.head.Parent = Workspace.Terrain
-	end
-end
-
---// Tạo / Lấy Visual Marker phát sáng màu Xanh Lá (Hình Cầu Nhỏ Sát Đất)
-local function getOrCreateSafeMarker()
-	if safeSpotMarkerPart and safeSpotMarkerPart.Parent then
-		return safeSpotMarkerPart
-	end
-
-	local part = Instance.new("Part")
-	part.Name = "SmartDodge_SafeMarker"
-	part.Shape = Enum.PartType.Ball
-	part.Size = Vector3.new(1.5, 1.5, 1.5)
-	part.Color = Color3.fromRGB(0, 255, 120)
-	part.Material = Enum.Material.Neon
-	part.Transparency = 0.2
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-
-	local bb = Instance.new("BillboardGui")
-	bb.Name = "MarkerGui"
-	bb.Size = UDim2.fromOffset(130, 24)
-	bb.StudsOffset = Vector3.new(0, 1.5, 0)
-	bb.AlwaysOnTop = true
-	bb.Adornee = part
-	bb.Parent = part
-
-	local label = Instance.new("TextLabel")
-	label.Name = "Label"
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.TextColor3 = Color3.fromRGB(80, 255, 160)
-	label.TextStrokeTransparency = 0
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 12
-	label.Text = "🟢 SAFE SPOT"
-	label.Parent = bb
-
-	safeSpotMarkerPart = part
-	return part
-end
-
-local lastRenderedMarkerPos = nil
-local lastRenderedEscapeDist = -1
-
---// Cập nhật vị trí hiển thị của Safe Marker (đặt đáy hình cầu sát mặt đất nhất có thể)
-function safeSpot.UpdateMarker(pos, inDanger, escapeDist)
-	lastMarkerPos, lastMarkerInDanger, lastMarkerEscapeDist = pos, inDanger or false, escapeDist or 0
-	if not showSafeMarker or not inDanger or not pos then
-		if safeSpotMarkerPart then
-			safeSpotMarkerPart.Parent = nil
-		end
-		lastRenderedMarkerPos = nil
-		lastRenderedEscapeDist = -1
-		return
-	end
-
-	local marker = getOrCreateSafeMarker()
-	-- pos.Y được tính là Floor_Y + 3. Quả cầu bán kính 0.75 nên đặt tâm ở (Floor_Y + 0.8) = (pos.Y - 2.2) để sát đất
-	local floorBallY = pos.Y - 2.2
-	local newPos = Vector3.new(pos.X, floorBallY, pos.Z)
-
-	if not lastRenderedMarkerPos or (newPos - lastRenderedMarkerPos).Magnitude > 0.1 then
-		lastRenderedMarkerPos = newPos
-		marker.CFrame = CFrame.new(newPos)
-	end
-	if not marker.Parent then
-		marker.Parent = Workspace.Terrain
-	end
-
-	local curDist = escapeDist or 0
-	if math.abs(curDist - lastRenderedEscapeDist) >= 0.2 then
-		lastRenderedEscapeDist = curDist
-		local bb = marker:FindFirstChild("MarkerGui")
-		local label = bb and bb:FindFirstChild("Label")
-		if label then
-			label.Text = ("🟢 SAFE SPOT (%.1fm)"):format(curDist)
-		end
-	end
-end
-
-local HYSTERESIS_THRESHOLD = 3.0     -- Ngưỡng chênh lệch cự ly (studs) để chuyển khóa sang điểm an toàn mới gần hơn
-
---// Tính vector lực đẩy tổng hợp (Multi-Hazard Repulsion Force) từ tâm chiêu thức đang đè/gần Player ra ngoài
-local function computeRepulsionVector(playerPos, dangerPart)
-	-- Ưu tiên số 1: Lực đẩy trực tiếp từ tâm chiêu thức đang dính ra vị trí Player
-	if dangerPart and dangerPart.Parent and dangerPart:IsA("BasePart") then
-		local diffX = playerPos.X - dangerPart.Position.X
-		local diffZ = playerPos.Z - dangerPart.Position.Z
-		local distSq = diffX * diffX + diffZ * diffZ
-		if distSq > 0.04 then
-			local dist = math.sqrt(distSq)
-			return Vector3.new(diffX / dist, 0, diffZ / dist)
-		end
-	end
-
-	local netX, netZ = 0, 0
-	local activeHazards = detection.GetActiveHazardsMap and detection.GetActiveHazardsMap()
-	if activeHazards then
-		local count = 0
-		for _, info in pairs(activeHazards) do
-			-- Lấy vị trí trung tâm đại diện của từng Skill theo thời gian thực (ưu tiên ActiveParts / info.Position, KHÔNG dùng PrimaryPart)
-			local centerPos = nil
-			if info.ActiveParts then
-				for part in pairs(info.ActiveParts) do
-					if part and part.Parent and part:IsA("BasePart") then
-						centerPos = part.Position
-						break
-					end
-				end
-			end
-			if not centerPos and info.Instance and info.Instance.Parent then
-				if info.Instance:IsA("BasePart") then
-					centerPos = info.Instance.Position
-				end
-			end
-			centerPos = centerPos or info.Position
-
-			if centerPos then
-				local diffX = playerPos.X - centerPos.X
-				local diffZ = playerPos.Z - centerPos.Z
-				local distSq = diffX * diffX + diffZ * diffZ
-				if distSq < 1600 and distSq > 0.01 then
-					local dist = math.sqrt(distSq)
-					local weight = 1 / math.max(1, dist)
-					netX = netX + (diffX / dist) * weight
-					netZ = netZ + (diffZ / dist) * weight
-					count = count + 1
-				end
-			end
-		end
-
-		local netMagSq = netX * netX + netZ * netZ
-		if count > 0 and netMagSq > 0.001 then
-			local netMag = math.sqrt(netMagSq)
-			return Vector3.new(netX / netMag, 0, netZ / netMag)
-		end
-	end
-
-	-- Fallback cuối cùng: Nếu không xác định được tâm chiêu, mới lùi ra xa mục tiêu
-	if targetFacing then
-		local tPos = targetFacing.GetTargetPosition()
-		if tPos then
-			local diffX = playerPos.X - tPos.X
-			local diffZ = playerPos.Z - tPos.Z
-			local distSq = diffX * diffX + diffZ * diffZ
-			if distSq > 0.01 then
-				local dist = math.sqrt(distSq)
-				return Vector3.new(diffX / dist, 0, diffZ / dist)
-			end
-		end
-	end
-
-	return nil
-end
-
---// Trả về danh sách 12 góc quét được sắp xếp ưu tiên theo hướng di chuyển của Player hoặc lực đẩy thoát hiểm
-local function getSearchAngles(repVector, moveDir)
-	local baseAngleDeg = 0
-	if moveDir then
-		baseAngleDeg = math.deg(math.atan2(moveDir.Z, moveDir.X))
-	elseif repVector then
-		baseAngleDeg = math.deg(math.atan2(repVector.Z, repVector.X))
-	end
-
-	local angles = table.create(12)
-	for i, off in ipairs(ANGLE_OFFSETS_12) do
-		angles[i] = (baseAngleDeg + off) % 360
-	end
-	return angles
-end
-
---// Đánh giá vùng đệm an toàn xung quanh điểm candidate (4 hướng chính ở bán kính 2.5m, cực nhẹ)
-local CLEARANCE_OFFSETS_4 = {
-	Vector3.new(2.5, 0, 0),
-	Vector3.new(-2.5, 0, 0),
-	Vector3.new(0, 0, 2.5),
-	Vector3.new(0, 0, -2.5),
-}
-
-local function getClearanceBonus(point)
-	local safeCount = 0
-	for _, off in ipairs(CLEARANCE_OFFSETS_4) do
-		if not geometry.IsPointInAnyHazard(point + off) then
-			safeCount = safeCount + 1
-		end
-	end
-	return safeCount * 0.75
-end
-
---// Tính điểm ưu tiên cho một ứng viên vị trí an toàn (Score càng THẤP càng ƯU TIÊN):
---// Tận dụng Hệ quy chiếu Face-to-Target: Ưu tiên Lách Ngang (Strafe), Phạt Lùi Xéo Sâu, Phạt Cự Ly
-local function scoreCandidate(playerPos, candPos, repVector, moveDir)
-	-- Hard check cho Boss 1 Arena: Không chọn điểm ra ngoài phạm vi sàn đấu
-	if boss1ArenaCenter and not isInsideBoss1Arena(candPos, playerPos) then
-		return math.huge
-	end
-
-	-- Tránh né thẳng vào Boss Orb (nếu có quả cầu Boss 2 đang hoạt động):
-	local activeOrb = detection.GetActiveBossOrb and detection.GetActiveBossOrb()
-	if activeOrb and activeOrb.Position then
-		local dOrb = (Vector3.new(candPos.X - activeOrb.Position.X, 0, candPos.Z - activeOrb.Position.Z)).Magnitude
-		if dOrb < 12.0 then
-			return math.huge -- Tuyệt đối không chọn điểm né nằm gần quả cầu!
-		end
-	end
-
-	local moveDist = (candPos - playerPos).Magnitude
-	local clearance = getClearanceBonus(candPos)
-	-- Cự ly là tiêu chí sống còn: mỗi stud chạy thêm làm tăng nguy cơ deal dame
-	local score = (moveDist * 2.0) - (clearance * 0.35)
-	if moveDist > 12.0 then
-		-- Phạt lũy tiến nặng nề cho các điểm cách xa (> 12 studs):
-		-- Triệt tiêu hoàn toàn lỗi chọn điểm góc 30-40 studs khi chỉ cần bước 2-3 studs là an toàn
-		score = score + ((moveDist - 12.0) * 3.5)
-	end
-
-	-- TẬN DỤNG HỆ QUY CHIẾU CHIẾN ĐẤU FACE-TO-TARGET (Nhìn Boss)
-	local targetPos = targetFacing and targetFacing.GetTargetPosition and targetFacing.GetTargetPosition()
-	if targetPos and moveDist > 0.3 then
-		local toTarget2D = Vector3.new(targetPos.X - playerPos.X, 0, targetPos.Z - playerPos.Z)
-		if toTarget2D.Magnitude > 1.0 then
-			local fwd = toTarget2D.Unit
-			local right = Vector3.new(-fwd.Z, 0, fwd.X)
-			local toCand2D = Vector3.new(candPos.X - playerPos.X, 0, candPos.Z - playerPos.Z)
-
-			local depthOffset = toCand2D:Dot(fwd)                  -- > 0: Tiến | < 0: Lùi
-			local strafeRatio = math.abs(toCand2D.Unit:Dot(right)) -- 1.0: Lách ngang sườn thuần túy
-
-			-- 1. Thưởng lớn cho bước LÁCH NGANG (Strafe giữ cự ly với Boss - Điểm 1)
-			if strafeRatio >= 0.82 and math.abs(depthOffset) <= 2.2 then
-				score = score - 6.0
-			end
-
-			-- 2. Phạt điểm nếu LÙI XÉO RA SAU LƯNG (như Điểm 2: mất tầm đánh, chạy lâu trong vùng đỏ)
-			if depthOffset < -2.0 then
-				score = score + (math.abs(depthOffset) * 1.8)
-			end
-
-			-- 3. Phạt nếu TIẾN THẲNG VÀO MẶT BOSS khi đang né chiêu
-			if depthOffset > 2.5 then
-				score = score + (depthOffset * 1.2)
-			end
-		end
-	end
-
-	if moveDist > 0.5 then
-		local dir = (candPos - playerPos).Unit
-		if moveDir then
-			local dotMove = dir:Dot(moveDir)
-			if dotMove > 0 then
-				-- Cùng phía / thuận hướng Player đang chủ động di chuyển: thưởng tới 3.5 studs
-				score = score - (dotMove * 3.5)
-			else
-				-- Ngược hướng Player đang di chuyển: phạt nhẹ (+2.0 studs)
-				score = score + (math.abs(dotMove) * 2.0)
-			end
-		elseif repVector and not targetPos then
-			local dot = dir:Dot(repVector)
-			score = score - (dot * 2.0)
-		end
-	end
-
-	-- Ưu tiên kéo về tâm sàn đấu Boss 1 nếu đang dạt ra xa
-	if boss1ArenaCenter then
-		score = score + getBoss1ArenaScoreAdjustment(candPos, playerPos)
-	end
-
-	return score
-end
-
---// Thuật toán Quét Tỏa Tròn Đa Hướng (Fine-Grained Radial Sweep): tìm khoảng hở an toàn gần nhất kết hợp Path Check & Clearance
---// TỐI ƯU HÓA ĐỈNH CAO: Không bắn bất kỳ tia Raycast nào trong vòng lặp quét! Chỉ snap sàn 1 lần duy nhất cho điểm chốt cuối cùng.
-local function searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart, moveDir)
-	local angles = getSearchAngles(repVector, moveDir)
-	local bestPos = nil
-	local bestScore = math.huge
-	local fallbackPos = nil
-	local fallbackScore = math.huge
-
-	for _, dist in ipairs(RADIAL_DISTANCES) do
-		local foundAtRadius = nil
-		local bestScoreAtRadius = math.huge
-
-		for _, angleDeg in ipairs(angles) do
-			local rad = math.rad(angleDeg)
-			local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
-			local testWorld = playerPos + offset
-
-			-- TỐI ƯU HIỆU SUẤT CPU: Kiểm tra hình học thuần túy (0 Raycast)
-			if geometry.IsSpotFullySafe(testWorld, 0.5) then
-				local score = scoreCandidate(playerPos, testWorld, repVector, moveDir)
-
-				-- Fallback lưu điểm an toàn tại đích (phòng khi không có đường đi thẳng an toàn)
-				if score < fallbackScore then
-					fallbackScore = score
-					fallbackPos = testWorld
-				end
-
-				-- Ưu tiên số 1: Đoạn đường di chuyển từ playerPos -> testWorld an toàn (cho phép băng qua các chiêu đang đè)
-				if geometry.IsPathSafe(playerPos, testWorld, currentHazardsSet, dangerPart) then
-					if score < bestScoreAtRadius then
-						bestScoreAtRadius = score
-						foundAtRadius = testWorld
-					end
-				end
-			end
-		end
-
-		-- Ngay khi ở vòng bán kính gần nhất này tìm được khe an toàn -> CHỌN NGAY LẬP TỨC và dừng tìm kiếm
-		if foundAtRadius then
-			bestPos = foundAtRadius
-			bestScore = bestScoreAtRadius
-			break
-		end
-	end
-
-	local chosenPos = bestPos or fallbackPos
-	local chosenScore = bestPos and bestScore or fallbackScore
-
-	-- CHỈ BẮN DUY NHẤT 1 TIA RAYCAST cho ứng viên tốt nhất đã chọn để snap chính xác xuống mặt đất
-	if chosenPos then
-		local snapped, hasFloor = geometry.GetFloorPosition(chosenPos)
-		local finalPos = hasFloor and snapped or chosenPos
-		return finalPos, chosenScore
-	end
-
-	return nil, math.huge
-end
-
---// Thuật toán cốt lõi: Tính toán vị trí an toàn (Safe Spot Calculation)
-function safeSpot.CalculateSafeSpot(customPlayerPos)
-	local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	local humanoid = player and player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-	local playerPos = customPlayerPos or (rootPart and rootPart.Position)
-	if not playerPos then
-		lockedSafeSpot = nil
-		lockedHazardCount = 0
-		clearCrystalHighlight()
-		return false, nil, nil, 0
-	end
-
-	-- Quản lý Arena Center & Visual cho Boss 1:
-	local isBoss1 = shared.IsBossActive() and shared.GetCurrentBossIndex() == 1
-	if not isBoss1 then
-		if boss1ArenaCenter then
-			boss1ArenaCenter = nil
-			boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
-			clearBoss1ArenaVisual()
-		end
-	elseif not boss1ArenaCenter or not (boss1ArenaVisualPart and boss1ArenaVisualPart.Parent) then
-		local firstPart = getFirstBossArenaPart()
-		if firstPart then
-			local fpPos = firstPart.Position
-			local floorY = getOrLockFloorY(fpPos, playerPos, firstPart)
-			boss1ArenaCenter = Vector3.new(fpPos.X, floorY, fpPos.Z)
-			local fpRadius = math.max(firstPart.Size.X, firstPart.Size.Z) / 2
-			boss1ArenaRadius = math.max(20, fpRadius - 2.5)
-			updateBoss1ArenaVisual(boss1ArenaCenter, playerPos, firstPart)
-		elseif not boss1ArenaCenter then
-			local bPos = targetFacing.GetTargetPosition()
-			if not bPos then
-				local tracked = shared.GetTrackedEnemyData()
-				if tracked and #tracked > 0 and tracked[1].Root and tracked[1].Root.Parent then
-					bPos = tracked[1].Root.Position
-				end
-			end
-			if bPos then
-				local floorY = getOrLockFloorY(bPos, playerPos, nil)
-				boss1ArenaCenter = Vector3.new(bPos.X, floorY, bPos.Z)
-				boss1ArenaRadius = BOSS1_DEFAULT_RADIUS
-				updateBoss1ArenaVisual(boss1ArenaCenter, playerPos, nil)
-			end
-		end
-	end
-
-	-- TỐI ƯU HIỆU SUẤT ĐỈNH CAO: Zero Hazard Short-Circuit
-	-- Nếu detection xác nhận có 0 hiểm họa trong thế giới -> Thoát ngay lập tức trong 0ms!
-	local totalHazards = detection.GetHazardCount and detection.GetHazardCount() or 0
-	if totalHazards == 0 then
-		if lockedSafeSpot then
-			lockedSafeSpot = nil
-			lockedHazardCount = 0
-		end
-		clearCrystalHighlight()
-		return false, nil, nil, 0
-	end
-
-	-- Tầng 1 & 3: Nếu không còn kẻ địch nào trong phòng và không ở boss room -> Hoàn toàn an toàn
-	if shared.GetEnemyCount() == 0 and not shared.IsBossActive() then
-		lockedSafeSpot = nil
-		lockedHazardCount = 0
-		clearCrystalHighlight()
-		return false, nil, nil, 0
-	end
-
-	-- Lọc theo Target Scope (Boss / Mobs / All)
-	if targetScope == "Boss" and not shared.IsBossActive() then
-		lockedSafeSpot = nil
-		lockedHazardCount = 0
-		clearCrystalHighlight()
-		return false, nil, nil, 0
-	elseif targetScope == "Mobs" and shared.IsBossActive() then
-		lockedSafeSpot = nil
-		lockedHazardCount = 0
-		clearCrystalHighlight()
-		return false, nil, nil, 0
-	end
-
-	-- Tầng 3: Zero Nearby Enemies Filter (ngoài Boss Room)
-	-- Nếu không có bất kỳ con quái sống nào trong bán kính 85 studs -> Bỏ qua các chiêu rác/phantom
-	if not shared.IsBossActive() then
-		local tracked = shared.GetTrackedEnemyData()
-		local hasNearbyEnemy = false
-		if tracked and #tracked > 0 then
-			for _, data in ipairs(tracked) do
-				if data and data.Root and data.Root.Parent then
-					local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
-					if hum and hum.Health > 0 then
-						if (data.Root.Position - playerPos).Magnitude <= 85 then
-							hasNearbyEnemy = true
-							break
-						end
-					end
-				end
-			end
-		end
-		if not hasNearbyEnemy then
-			lockedSafeSpot = nil
-			lockedHazardCount = 0
-			clearCrystalHighlight()
-			return false, nil, nil, 0
-		end
-	end
-
-	-- Lấy Boss 2 Orb đang kích hoạt (nếu có) để highlight cột pha lê và xử lý ưu tiên né khẩn cấp
-	local activeOrbPart, orbColorName = detection.GetActiveBossOrb()
-	if activeOrbPart and orbColorName then
-		local targetCrystal = getBossCrystal(orbColorName)
-		if targetCrystal then
-			updateCrystalHighlight(targetCrystal, orbColorName)
-		end
-	else
-		clearCrystalHighlight()
-	end
-
-	local distToOrb = math.huge
-	local isOrbTooClose = false
-	if activeOrbPart and activeOrbPart.Position then
-		distToOrb = (Vector3.new(activeOrbPart.Position.X - playerPos.X, 0, activeOrbPart.Position.Z - playerPos.Z)).Magnitude
-		-- Cự ly an toàn với Quả Cầu: Luôn duy trì khoảng cách an toàn >= 16.0 studs!
-		-- Nếu quả cầu tiến vào cự ly < 16.0 studs -> Kích hoạt né/kite khẩn cấp, tuyệt đối không đứng yên!
-		if distToOrb < 16.0 then
-			isOrbTooClose = true
-		end
-	end
-
-	-- 1. ƯU TIÊN SỐ 1: NÉ TRƯỚC (DODGE HAZARDS FIRST)
-	-- Kiểm tra xem Player có đang đứng trong bất kỳ vùng nguy hiểm nào không.
-	-- - Nếu quả cầu ở cự ly an toàn (>= 16.0 studs): Tạm bỏ qua quả cầu để né các chiêu khác hoặc dẫn cầu về cột.
-	-- - Nếu quả cầu áp sát nguy hiểm (< 16.0 studs): TUYỆT ĐỐI KHÔNG BỎ QUA! Kích hoạt né khẩn cấp quả cầu.
-	local ignoredOrb = (not isOrbTooClose) and activeOrbPart or nil
-	local inDanger, dangerInfo, dangerPart, dangerTraj = geometry.IsPointInAnyHazard(playerPos, ignoredOrb)
-
-	-- Can thiệp khẩn cấp: Nếu không dính chiêu sàn nào khác nhưng quả cầu đã áp sát < 16.0 studs:
-	if not inDanger and isOrbTooClose then
-		inDanger = true
-		dangerPart = activeOrbPart
-		dangerInfo = { Name = ("%s Orb (Maintain Safe Distance)"):format(orbColorName and orbColorName:upper() or "BOSS") }
-		local fwd = (playerPos - activeOrbPart.Position)
-		local fwd2D = (fwd.Magnitude > 0.1) and Vector3.new(fwd.X, 0, fwd.Z).Unit or Vector3.new(0, 0, 1)
-		dangerTraj = {
-			isTrajectory = true,
-			isDynamicMoving = true,
-			isBossOrb = true,
-			perpDist = 0,
-			dangerRadius = 6.0,
-			forward2D = fwd2D,
-			originPos = activeOrbPart.Position,
-			maxLookahead = 25.0,
-		}
-	end
-	if not inDanger or not dangerPart then
-		-- 2. ƯU TIÊN SỐ 2: DẪN ORB VỀ CỘT KHI ĐANG AN TOÀN
-		if activeOrbPart and orbColorName then
-			local targetCrystal, wrongCrystals = getBossCrystal(orbColorName)
-			if targetCrystal then
-				-- KIỂM TRA SÀN SẠCH & VÙNG ĐỆM AN TOÀN:
-				-- Nếu người chơi vừa né ra mép một chiêu thức sát thương (ví dụ hình chữ nhật hay MovingBeam)
-				-- mà chiêu đó vẫn đang tồn tại sát chân:
-				-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 28 studs): TUYỆT ĐỐI KHÔNG ĐỨNG YÊN CHỜ AOE NỔ!
-				-- Phải tiếp tục lùi/kite dọc theo hành lang an toàn ra xa quả cầu!
-				local hasActiveFloorHazard = false
-				local allHazards = detection.GetActiveHazards and detection.GetActiveHazards()
-				if allHazards and #allHazards > 0 then
-					local hasOtherHazard = false
-					for _, hData in ipairs(allHazards) do
-						local hInst = hData.Instance
-						if hInst and hInst ~= activeOrbPart and hInst ~= (activeOrbPart and activeOrbPart.Parent) then
-							hasOtherHazard = true
-							break
-						end
-					end
-					if hasOtherHazard and not geometry.IsSpotFullySafe(playerPos, 4.5, activeOrbPart) then
-						hasActiveFloorHazard = true
-					end
-				end
-
-				if hasActiveFloorHazard then
-					if distToOrb < 28.0 and activeOrbPart and activeOrbPart.Position then
-						local fwdOrb = (playerPos - activeOrbPart.Position)
-						local fwdOrb2D = (fwdOrb.Magnitude > 0.1) and Vector3.new(fwdOrb.X, 0, fwdOrb.Z).Unit or Vector3.new(0, 0, 1)
-						local perpOrb = Vector3.new(-fwdOrb2D.Z, 0, fwdOrb2D.X)
-
-						local corridorSteps = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
-						local corridorPerp = { 0, 2.0, -2.0, 4.0, -4.0 }
-						local bestKite = nil
-						local bestKiteDist = -math.huge
-
-						for _, stepDist in ipairs(corridorSteps) do
-							for _, pOff in ipairs(corridorPerp) do
-								local cand = playerPos + fwdOrb2D * stepDist + perpOrb * pOff
-								if geometry.IsSpotFullySafe(cand, 0.5, activeOrbPart) then
-									if geometry.IsPathSafe(playerPos, cand, nil, nil, activeOrbPart) then
-										local dToOrb = (Vector3.new(cand.X - activeOrbPart.Position.X, 0, cand.Z - activeOrbPart.Position.Z)).Magnitude
-										if dToOrb > bestKiteDist then
-											bestKiteDist = dToOrb
-											bestKite = cand
-										end
-									end
-								end
-							end
-						end
-
-						if bestKite then
-							local sFloor, hasF = geometry.GetFloorPosition(bestKite)
-							local finalKite = hasF and sFloor or bestKite
-							lockedSafeSpot = finalKite
-							lockedHazardCount = 1
-							return true, finalKite, ("Kiting along corridor away from %s"):format(orbColorName:upper()), (finalKite - playerPos).Magnitude
-						end
-					end
-
-					-- Chỉ đứng yên khi quả cầu ở cự ly an toàn rất xa (>= 28 studs):
-					if distToOrb >= 28.0 then
-						lockedSafeSpot = playerPos
-						lockedHazardCount = 1
-						return true, playerPos, ("Waiting for nearby AoE to explode before leading %s"):format(orbColorName:upper()), 0
-					end
-				end
-
-				local orbPos = activeOrbPart.Position
-				local crystalPos = targetCrystal.Position
-
-				-- Vector hướng từ quả cầu tới cột pha lê (Orb -> Crystal)
-				local dirFromOrb = Vector3.new(crystalPos.X - orbPos.X, 0, crystalPos.Z - orbPos.Z)
-				if dirFromOrb.Magnitude > 0.5 then
-					dirFromOrb = dirFromOrb.Unit
-				else
-					dirFromOrb = Vector3.new(0, 0, 1)
-				end
-
-				-- Vị trí đứng chuẩn: Đứng ngay phía sau cột pha lê (cột nằm giữa quả cầu và player)
-				local behindCrystal = crystalPos + dirFromOrb * 3.8
-
-				-- Kiểm tra xem quả cầu có đang chắn ngay trên đường chạy thẳng từ player tới cột không
-				local vecToCrystal = Vector3.new(crystalPos.X - playerPos.X, 0, crystalPos.Z - playerPos.Z)
-				local distToCrystal = vecToCrystal.Magnitude
-				local vecToOrb = Vector3.new(orbPos.X - playerPos.X, 0, orbPos.Z - playerPos.Z)
-				local distToOrb = vecToOrb.Magnitude
-
-				local chosenTarget = behindCrystal
-
-				-- Nếu player đang ở xa (> 8 studs) và quả cầu đang chặn giữa player và cột -> Bước chếch sang bên hông (flank)
-				if distToCrystal > 8 and distToOrb < distToCrystal and distToOrb < 25 then
-					local dirPC = vecToCrystal.Unit
-					local dirPO = vecToOrb.Unit
-					local dot = dirPC:Dot(dirPO)
-					if dot > 0.75 then
-						local perp = Vector3.new(-dirPC.Z, 0, dirPC.X)
-						local cand1 = playerPos + (dirPC * 0.6 + perp * 0.8).Unit * 12
-						local cand2 = playerPos + (dirPC * 0.6 - perp * 0.8).Unit * 12
-						if (cand1 - orbPos).Magnitude > (cand2 - orbPos).Magnitude then
-							chosenTarget = cand1
-						else
-							chosenTarget = cand2
-						end
-					end
-				end
-
-				-- Tránh xa 2 cột khác màu (wrong crystals)
-				for _, wrongCr in ipairs(wrongCrystals) do
-					local wPos = wrongCr.Position
-					local diffW = Vector3.new(chosenTarget.X - wPos.X, 0, chosenTarget.Z - wPos.Z)
-					if diffW.Magnitude < 10 and diffW.Magnitude > 0.1 then
-						chosenTarget = chosenTarget + diffW.Unit * (10 - diffW.Magnitude)
-					end
-				end
-
-				-- Snap xuống mặt sàn
-				local snapped, hasFloor = geometry.GetFloorPosition(chosenTarget)
-				local finalGuidePos = hasFloor and snapped or chosenTarget
-
-				-- NẾU ĐÍCH ĐẾN TẠI CỘT BỊ DÍNH SKILL CỦA BOSS (Ví dụ gai nhọn cắm ngay sau cột)
-				-- Xoay nhẹ góc đứng quanh cột (±30°, ±45°, ±60°, ±90°) để chọn điểm an toàn nhất vẫn giữ cột chặn bóng
-				if not geometry.IsSpotFullySafe(finalGuidePos, 0.5, activeOrbPart) then
-					local testAngles = { 30, -30, 45, -45, 60, -60, 90, -90, 120, -120 }
-					for _, angleDeg in ipairs(testAngles) do
-						local rad = math.rad(angleDeg)
-						local cosA = math.cos(rad)
-						local sinA = math.sin(rad)
-						local rotDir = Vector3.new(dirFromOrb.X * cosA - dirFromOrb.Z * sinA, 0, dirFromOrb.X * sinA + dirFromOrb.Z * cosA)
-						local altPos = crystalPos + rotDir * 4.0
-
-						if geometry.IsSpotFullySafe(altPos, 0.5, activeOrbPart) then
-							local sFloor, hasF = geometry.GetFloorPosition(altPos)
-							finalGuidePos = hasF and sFloor or altPos
-							break
-						end
-					end
-				end
-
-				-- KIỂM TRA ĐOẠN ĐƯỜNG CHẠY TỚI CỘT: CÓ BỊ SKILL KHÁC CHẶN ĐƯỜNG KHÔNG?
-				local isDirectPathSafe = geometry.IsPathSafe(playerPos, finalGuidePos, nil, nil, activeOrbPart)
-				if not isDirectPathSafe then
-					local forward = Vector3.new(finalGuidePos.X - playerPos.X, 0, finalGuidePos.Z - playerPos.Z)
-					local distToTarget = forward.Magnitude
-					local fUnit = distToTarget > 1 and forward.Unit or Vector3.new(0, 0, 1)
-					local perp = Vector3.new(-fUnit.Z, 0, fUnit.X)
-
-					local detourCandidates = {}
-					local testSteps = { 6, 10, 15, 20 }
-					local testLateral = { 8, -8, 12, -12, 16, -16, 20, -20 }
-					for _, s in ipairs(testSteps) do
-						if s < distToTarget then
-							for _, lat in ipairs(testLateral) do
-								local cand = playerPos + fUnit * s + perp * lat
-								table.insert(detourCandidates, cand)
-							end
-						end
-					end
-
-					local bestDetour = nil
-					local bestScore = math.huge
-					-- Đánh giá detour thuần toán học (0 Raycast trong loop)
-					for _, cand in ipairs(detourCandidates) do
-						if geometry.IsSpotFullySafe(cand, 0.5, activeOrbPart) then
-							if geometry.IsPathSafe(playerPos, cand, nil, nil, activeOrbPart) then
-								local safeFromWrong = true
-								for _, wCr in ipairs(wrongCrystals) do
-									if (cand - wCr.Position).Magnitude < 10 then
-										safeFromWrong = false
-										break
-									end
-								end
-								if safeFromWrong then
-									local score = (cand - finalGuidePos).Magnitude
-									if score < bestScore then
-										bestScore = score
-										bestDetour = cand
-									end
-								end
-							end
-						end
-					end
-
-					if bestDetour then
-						local snappedFloor, hasF = geometry.GetFloorPosition(bestDetour)
-						local finalDetour = hasF and snappedFloor or bestDetour
-						lockedSafeSpot = finalDetour
-						lockedHazardCount = 1
-						return true, finalDetour, ("Detour around skill -> %s Crystal"):format(orbColorName:upper()), (finalDetour - playerPos).Magnitude
-					else
-						-- Đường đi tới cột bị chặn hoàn toàn bởi chiêu thức nguy hiểm (ví dụ hình chữ nhật đỏ):
-						-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 28 studs): TUYỆT ĐỐI KHÔNG ĐỨNG YÊN CHỜ NỔ!
-						-- Lùi/Kite dọc theo hành lang an toàn (hướng ra xa quả cầu) để giữ cự ly sinh tồn:
-						if activeOrbPart and activeOrbPart.Position and distToOrb < 28.0 then
-							local fwdOrb = (playerPos - activeOrbPart.Position)
-							local fwdOrb2D = (fwdOrb.Magnitude > 0.1) and Vector3.new(fwdOrb.X, 0, fwdOrb.Z).Unit or Vector3.new(0, 0, 1)
-							local perpOrb = Vector3.new(-fwdOrb2D.Z, 0, fwdOrb2D.X)
-
-							local corridorSteps = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
-							local corridorPerp = { 0, 2.0, -2.0, 4.0, -4.0 }
-							local bestKite = nil
-							local bestKiteDist = -math.huge
-
-							for _, stepDist in ipairs(corridorSteps) do
-								for _, pOff in ipairs(corridorPerp) do
-									local cand = playerPos + fwdOrb2D * stepDist + perpOrb * pOff
-									if geometry.IsSpotFullySafe(cand, 0.5, activeOrbPart) then
-										if geometry.IsPathSafe(playerPos, cand, nil, nil, activeOrbPart) then
-											local dToOrb = (Vector3.new(cand.X - activeOrbPart.Position.X, 0, cand.Z - activeOrbPart.Position.Z)).Magnitude
-											if dToOrb > bestKiteDist then
-												bestKiteDist = dToOrb
-												bestKite = cand
-											end
-										end
-									end
-								end
-							end
-
-							if bestKite then
-								local sFloor, hasF = geometry.GetFloorPosition(bestKite)
-								local finalKite = hasF and sFloor or bestKite
-								lockedSafeSpot = finalKite
-								lockedHazardCount = 1
-								return true, finalKite, ("Kiting along corridor away from %s"):format(orbColorName:upper()), (finalKite - playerPos).Magnitude
-							end
-						end
-
-						-- Chỉ khi không có quả cầu đe dọa mới đứng yên tại vị trí an toàn hiện tại đợi chiêu tan biến:
-						lockedSafeSpot = playerPos
-						lockedHazardCount = 1
-						return true, playerPos, ("Waiting for path to clear -> %s Crystal"):format(orbColorName:upper()), 0
-					end
-				end
-
-				local escapeDist = (finalGuidePos - playerPos).Magnitude
-				lockedSafeSpot = finalGuidePos
-				lockedHazardCount = 1
-
-				return true, finalGuidePos, ("Lead %s -> %s Crystal"):format(activeOrbPart.Name, orbColorName:upper()), escapeDist
-			end
-		end
-
-		lockedSafeSpot = nil
-		lockedHazardCount = 0
-		clearCrystalHighlight()
-		return false, nil, nil, 0
-	end
-
-	-- KHI TỚI ĐÂY: inDanger == true (Player đang dính chiêu nguy hiểm của Boss)
-	-- -> THỰC THI NÉ TRƯỚC (DODGE HAZARDS FIRST) THEO THUẬT TOÁN TIÊU CHUẨN!
-	local hazardName = dangerInfo.Name or "Unknown"
-
-	-- Xác định hướng di chuyển chủ động hiện tại của Player (độ ưu tiên: Humanoid.MoveDirection -> RootPart.AssemblyLinearVelocity)
-	local moveDir = nil
-	if humanoid and humanoid.MoveDirection.Magnitude > 0.1 then
-		moveDir = Vector3.new(humanoid.MoveDirection.X, 0, humanoid.MoveDirection.Z).Unit
-	elseif rootPart then
-		local vel = rootPart.AssemblyLinearVelocity
-		local vel2D = Vector3.new(vel.X, 0, vel.Z)
-		if vel2D.Magnitude > 1.5 then
-			moveDir = vel2D.Unit
-		end
-	end
-
-	-- Lấy toàn bộ các hazard đang bao phủ vị trí Player (hỗ trợ nhiều chiêu đè nhau)
-	local currentHazardsSet, currentHazardCount = geometry.GetAllHazardsAtPoint(playerPos)
-	lastDangerPart = dangerPart
-	lastCurrentHazardsSet = currentHazardsSet
-
-	-- 2. CƠ CHẾ STRICT LATCHING KẾT HỢP OPPORTUNISTIC RETARGETING:
-	-- Kiểm tra tính hợp lệ của điểm khóa an toàn hiện tại (nếu có):
-	local isOldPointStillSafe = false
-	local lockedDist = math.huge
-	if lockedSafeSpot and geometry.IsSpotFullySafe(lockedSafeSpot, 0.5) then
-		local inArena = not (boss1ArenaCenter and not isInsideBoss1Arena(lockedSafeSpot, playerPos))
-		if inArena then
-			lockedDist = (lockedSafeSpot - playerPos).Magnitude
-			if lockedDist <= 45 and geometry.IsPathSafe(playerPos, lockedSafeSpot, currentHazardsSet, dangerPart) then
-				isOldPointStillSafe = true
-
-				-- NẾU CÓ QUẢ CẦU ĐANG Ở GẦN (< 24 studs):
-				-- Tuyệt đối KHÔNG giữ điểm khóa nếu điểm đó quá gần quả cầu (< 18 studs)
-				-- hoặc nếu nhân vật đã tới nơi (lockedDist <= 1.5) nhưng quả cầu vẫn đang dí -> Buộc tính điểm lùi tiếp theo!
-				if activeOrbPart and activeOrbPart.Position then
-					local distOrbToLocked = (Vector3.new(lockedSafeSpot.X - activeOrbPart.Position.X, 0, lockedSafeSpot.Z - activeOrbPart.Position.Z)).Magnitude
-					if distOrbToLocked < 18.0 and distToOrb < 24.0 then
-						isOldPointStillSafe = false
-					elseif lockedDist <= 1.5 and distToOrb < 24.0 then
-						isOldPointStillSafe = false
-					end
-				end
-
-				-- NẾU ĐÃ CÓ ĐIỂM KHÓA HỢP LỆ VÀ ĐANG TRÊN ĐƯỜNG CHẠY TỚI (lockedDist <= 6.5 studs):
-				-- Giữ nguyên 100% điểm này, triệt tiêu hoàn toàn hiện tượng nhảy điểm giậm chân tại chỗ!
-				if isOldPointStillSafe and lockedDist <= 6.5 then
-					local finalDist = math.floor(lockedDist * 10) / 10
-					return true, lockedSafeSpot, hazardName, finalDist
-				end
-			end
-		end
-	end
-
-	-- Điểm khóa cũ bị skill mới đè hoặc không còn an toàn -> Xóa khóa
-	if not isOldPointStillSafe then
-		lockedSafeSpot = nil
-		lockedHazardCount = currentHazardCount
-	end
-
-	local candidatePos = nil
-	local isMultiRings = hazardName:lower():find("multiring") ~= nil
-		or (dangerInfo.Instance and dangerInfo.Instance.Name:lower():find("multiring") ~= nil)
-
-	-- 3. Tính Vector Lực Đẩy Thoát Nạn Tổng Hợp (Multi-Hazard Repulsion)
-	local repVector = computeRepulsionVector(playerPos, dangerPart)
-
-	if isMultiRings then
-		-- Tính điểm thoát nhanh cho thirdBossMultiRings:
-		local inRing, r, rIn, rOut, centerPos, ringCF = geometry.IsPointInRingPart(playerPos, dangerPart)
-		local candidates = {}
-
-		if inRing and centerPos and r and r > 0.1 then
-			local diffX = playerPos.X - centerPos.X
-			local diffZ = playerPos.Z - centerPos.Z
-			local unitX = diffX / r
-			local unitZ = diffZ / r
-
-			-- Thử bước vào lỗ trong (nhích nhẹ 3 studs)
-			if rIn and rIn > 2.0 then
-				local stepIn = Vector3.new(centerPos.X + unitX * (rIn - 2.5), playerPos.Y, centerPos.Z + unitZ * (rIn - 2.5))
-				table.insert(candidates, stepIn)
-			end
-
-			-- Thử bước vào khoảng hở ngoài (nhích nhẹ 3 studs)
-			if rOut then
-				local stepOut = Vector3.new(centerPos.X + unitX * (rOut + 2.5), playerPos.Y, centerPos.Z + unitZ * (rOut + 2.5))
-				table.insert(candidates, stepOut)
-			end
-
-			-- Thử bước sang nửa đối diện nếu là bán nguyệt
-			local stepFlip = Vector3.new(centerPos.X - diffX, playerPos.Y, centerPos.Z - diffZ)
-			table.insert(candidates, stepFlip)
-		end
-
-		-- Quét tỏa tròn 8 hướng bổ trợ (Cân bằng hiệu suất CPU tối ưu)
-		local multiRingsRadii = { 3.5, 7.0, 12.0, 18.0, 26.0, 35.0 }
-		local multiRingsAngles = { 0, 45, 90, 135, 180, 225, 270, 315 }
-
-		for _, dist in ipairs(multiRingsRadii) do
-			for _, angleDeg in ipairs(multiRingsAngles) do
-				local rad = math.rad(angleDeg)
-				local offset = Vector3.new(math.cos(rad) * dist, 0, math.sin(rad) * dist)
-				table.insert(candidates, playerPos + offset)
-			end
-		end
-
-		local bestPos = nil
-		local bestScore = math.huge
-		local fallbackPos = nil
-		local fallbackScore = math.huge
-
-		-- TỐI ƯU HIỆU SUẤT CPU: Đánh giá thuần túy bằng toán hình học (0 Raycast trong loop)
-		for _, candWorld in ipairs(candidates) do
-			if boss1ArenaCenter and not isInsideBoss1Arena(candWorld, playerPos) then
-				continue
-			end
-			-- Tránh né thẳng vào Boss Orb (nếu có quả cầu Boss 2 đang hoạt động):
-			if activeOrbPart and activeOrbPart.Position then
-				local dOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
-				if dOrb < 12.0 then
-					continue
-				end
-			end
-			if geometry.IsSpotFullySafe(candWorld, 0.5) then
-				local moveDist = (candWorld - playerPos).Magnitude
-				local score = moveDist - getClearanceBonus(candWorld)
-				if score < fallbackScore then
-					fallbackScore = score
-					fallbackPos = candWorld
-				end
-				if geometry.IsPathSafe(playerPos, candWorld, currentHazardsSet, dangerPart) then
-					if score < bestScore then
-						bestScore = score
-						bestPos = candWorld
-					end
-				end
-			end
-		end
-
-		-- Chỉ bắn DUY NHẤT 1 TIA RAYCAST cho điểm ứng viên tốt nhất đã chọn
-		local chosenMultiRing = bestPos or fallbackPos
-		if chosenMultiRing then
-			local snapped, hasFloor = geometry.GetFloorPosition(chosenMultiRing)
-			if hasFloor and geometry.IsSpotFullySafe(snapped, 0.5) then
-				if not (boss1ArenaCenter and not isInsideBoss1Arena(snapped, playerPos)) then
-					candidatePos = snapped
-				else
-					candidatePos = chosenMultiRing
-				end
-			else
-				candidatePos = chosenMultiRing
-			end
-		end
-	elseif dangerTraj and dangerTraj.isTrajectory then
-		-- 4. CHIẾN LƯỢC CHO PROJECTILE / MOVING BEAM:
-		-- NGUYÊN TẮC VÀNG: TUYỆT ĐỐI KHÔNG NÉ VỀ PHÍA TRƯỚC THEO HƯỚNG BAY CỦA CHIÊU!
-		-- (Vì né về phía trước theo hướng bay sẽ làm Green Spot xuất hiện trên đường đi của chiêu -> Player bị đẩy dần)
-		-- Chỉ né theo 2 hướng an toàn:
-		-- 1) Thoát ngang vuông góc sang 2 bên sườn (Perpendicular Left / Right)
-		-- 2) Thoát lùi về phía sau (Behind / Backwards) sau khi thanh beam / đạn vừa quét qua!
-
-		local forward2D = dangerTraj.forward2D
-		local perpDist = dangerTraj.perpDist
-		local dangerRadius = dangerTraj.dangerRadius
-		local stepNeeded = math.max(3.5, (dangerRadius - perpDist) + ESCAPE_MARGIN)
-
-		-- Vector vuông góc sang phải và sang trái (90 deg trên mặt phẳng X-Z)
-		local perpRight = Vector3.new(forward2D.Z, 0, -forward2D.X)
-		local perpLeft = Vector3.new(-forward2D.Z, 0, forward2D.X)
-
-		local isMovingBeam = hazardName:lower():find("movingbeam") ~= nil
-			or (dangerPart and dangerPart.Name:lower():find("movingbeam") ~= nil)
-		local isBossOrb = (dangerTraj and dangerTraj.isBossOrb)
-			or (hazardName:lower():find("orb") ~= nil)
-			or (dangerPart and dangerPart.Name:lower():find("orb") ~= nil)
-		local isExpandingCone = (dangerTraj and dangerTraj.isExpandingCone)
-			or hazardName:lower():find("cricle") ~= nil
-			or hazardName:lower():find("circle") ~= nil
-			or (dangerPart and (dangerPart.Name:lower():find("cricle") ~= nil or dangerPart.Name:lower():find("circle") ~= nil))
-
-		local trajCandidates = {}
-
-		if isBossOrb then
-			-- CHIẾN LƯỢC CHO BOSS 2 ORB (Yellow/Red/Green Orb):
-			-- Quả cầu dí theo Player. Thoát hiểm và DUY TRÌ KHOẢNG CÁCH AN TOÀN (>= 18 studs):
-			-- forward2D ở đây là vector hướng từ Quả Cầu ra vị trí Player!
-			-- Do đó, playerPos + forward2D * kDist là chạy THẲNG RA XA Quả Cầu (tăng cự ly an toàn)!
-			-- Kết hợp lách sườn perpRight * pOff để khiến quả cầu bay chệch hướng (Flank & Kite)
-			local kiteDists = { 6.0, 10.0, 15.0, 20.0, 26.0, 32.0 }
-			local perpOffsets = { 0, 2.0, -2.0, 4.5, -4.5, 7.0, -7.0 }
-			for _, kDist in ipairs(kiteDists) do
-				for _, pOff in ipairs(perpOffsets) do
-					local kitePos = playerPos + forward2D * kDist + perpRight * pOff
-					table.insert(trajCandidates, kitePos)
-				end
-			end
-		elseif isMovingBeam then
-			-- CHIẾN LƯỢC MOVING BEAM (Boss 2): Cho phép lùi sau đuôi beam đã quét qua
-			local fOffsets = { 0, -3, -6, -10 }
-			for _, fOff in ipairs(fOffsets) do
-				local fVec = forward2D * fOff
-				table.insert(trajCandidates, playerPos + perpRight * stepNeeded + fVec)
-				table.insert(trajCandidates, playerPos + perpLeft * stepNeeded + fVec)
-				table.insert(trajCandidates, playerPos + perpRight * (stepNeeded + 2.5) + fVec)
-				table.insert(trajCandidates, playerPos + perpLeft * (stepNeeded + 2.5) + fVec)
-			end
-
-			if dangerPart and dangerPart.Parent then
-				local bPos = Vector3.new(dangerPart.Position.X, playerPos.Y, dangerPart.Position.Z)
-				table.insert(trajCandidates, bPos - forward2D * 7.0)
-				table.insert(trajCandidates, bPos - forward2D * 11.0)
-				table.insert(trajCandidates, bPos - forward2D * 7.0 + perpRight * 5.0)
-				table.insert(trajCandidates, bPos - forward2D * 7.0 + perpLeft * 5.0)
-			end
-			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 4.0))
-			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 8.0))
-			table.insert(trajCandidates, playerPos - forward2D * (ESCAPE_MARGIN + 12.0))
-		elseif isExpandingCone then
-			-- CHIẾN LƯỢC CHO KỸ NĂNG VÒNG TRÒN NỐI TIẾP MỞ RỘNG (secondBossCricleHitbox - Boss 2):
-			-- Đặc điểm: Vòng tròn spawn nối tiếp từ Boss về phía Player, càng ra xa bán kính càng mở rộng lớn.
-			-- NGUYÊN TẮC VÀNG:
-			-- 1) Lách sườn ngang vuông góc 90° (Perpendicular Left / Right) để nhanh chóng bước ra ngoài rìa nón
-			local coneSteps = { stepNeeded, stepNeeded + 3.0, stepNeeded + 6.0, stepNeeded + 10.0 }
-			for _, sDist in ipairs(coneSteps) do
-				table.insert(trajCandidates, playerPos + perpRight * sDist)
-				table.insert(trajCandidates, playerPos + perpLeft * sDist)
-			end
-
-			-- 2) Lách chéo chếch về phía trước (-forward2D, hướng về phía Boss):
-			-- Vì càng gần Boss thì bán kính nón càng hẹp, việc tiến chéo sườn giúp thoát vùng đỏ nhanh hơn gấp nhiều lần
-			local forwardOffsets = { 4.0, 8.0, 12.0 }
-			for _, fOff in ipairs(forwardOffsets) do
-				local forwardVec = -forward2D * fOff
-				for _, sDist in ipairs({ stepNeeded, stepNeeded + 3.0, stepNeeded + 6.0 }) do
-					table.insert(trajCandidates, playerPos + perpRight * sDist + forwardVec)
-					table.insert(trajCandidates, playerPos + perpLeft * sDist + forwardVec)
-				end
-			end
-		else
-			-- CHIẾN LƯỢC PROJECTILE / BEAM CỦA BOSS 1 (firstBossBigSpike, seekingSpikes):
-			-- ƯU TIÊN TUYỆT ĐỐI: Lách ngang vuông góc thuần túy 90° (Điểm 1) - Thoát hiểm nhanh nhất
-			local latSteps = { stepNeeded, stepNeeded + 2.0, stepNeeded + 4.0 }
-			for _, sDist in ipairs(latSteps) do
-				table.insert(trajCandidates, playerPos + perpRight * sDist)
-				table.insert(trajCandidates, playerPos + perpLeft * sDist)
-			end
-
-			-- Dự phòng lệch nhẹ chỉ khi cả 2 hướng ngang thuần túy đều bị chướng ngại vật cản:
-			local backupFOffsets = { -1.5, 1.5, -3.0 }
-			for _, fOff in ipairs(backupFOffsets) do
-				local fVec = forward2D * fOff
-				table.insert(trajCandidates, playerPos + perpRight * stepNeeded + fVec)
-				table.insert(trajCandidates, playerPos + perpLeft * stepNeeded + fVec)
-			end
-		end
-
-		local bestPos = nil
-		local bestScore = math.huge
-		local fallbackPos = nil
-		local fallbackScore = math.huge
-
-		-- TỐI ƯU HIỆU SUẤT CPU: Đánh giá thuần túy bằng toán hình học (0 Raycast trong loop)
-		for _, candWorld in ipairs(trajCandidates) do
-			-- Hard gate Arena Boss 1: Không chọn điểm ra khỏi sàn đấu
-			if boss1ArenaCenter and not isInsideBoss1Arena(candWorld, playerPos) then
-				continue
-			end
-
-			-- Tránh né thẳng vào Boss Orb (nếu đang né chiêu khác mà có quả cầu ở gần):
-			if not isBossOrb and activeOrbPart and activeOrbPart.Position then
-				local dOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
-				if dOrb < 12.0 then
-					continue
-				end
-			end
-
-			-- LỌC CHẶN TRIỆT ĐỂ:
-			local toCand = candWorld - playerPos
-			if toCand.Magnitude > 0.5 then
-				local dotForward = toCand.Unit:Dot(forward2D)
-				if isBossOrb then
-					-- Với Quả Cầu (forward2D hướng từ Quả Cầu tới Player):
-					-- Tuyệt đối không chọn điểm chạy đâm đầu ngược lại vào Quả Cầu (dotForward < -0.25)
-					if dotForward < -0.25 then
-						continue
-					end
-				elseif isExpandingCone then
-					-- Với kỹ năng hình nón mở rộng (forward2D hướng từ Boss ra Player):
-					-- TUYỆT ĐỐI KHÔNG NÉ LÙI RA XA THEO HƯỚNG LAN TỎA (dotForward > 0.15)
-					-- Vì càng lùi ra xa thì vòng tròn càng phình to, né lùi chắc chắn dính sát thương
-					if dotForward > 0.15 then
-						continue
-					end
-				else
-					-- Với Tia bắn thẳng / Moving Beam (forward2D hướng theo chiều đạn bay):
-					-- Tuyệt đối không chọn điểm nằm về phía trước theo hướng bay của chiêu (dotForward > 0.25)
-					if dotForward > 0.25 then
-						continue
-					end
-				end
-			end
-
-			if geometry.IsSpotFullySafe(candWorld, 0.5) then
-				-- Chấm điểm ưu tiên: Cự ly ngắn nhất = thời gian ở trong vùng đỏ ít nhất
-				local moveDist = toCand.Magnitude
-				local clearance = getClearanceBonus(candWorld)
-				local score = (moveDist * 1.6) - (clearance * 0.3)
-
-				local dotFwd = toCand.Magnitude > 0.5 and toCand.Unit:Dot(forward2D) or 0
-				if isBossOrb then
-					-- Thưởng lớn cho việc gia tăng khoảng cách an toàn với Quả Cầu (Kiting Safe Distance):
-					if activeOrbPart and activeOrbPart.Position then
-						local newDistOrb = (Vector3.new(candWorld.X - activeOrbPart.Position.X, 0, candWorld.Z - activeOrbPart.Position.Z)).Magnitude
-						if newDistOrb < 15.0 then
-							score = score + (15.0 - newDistOrb) * 10.0 -- Phạt nặng nếu điểm ứng viên vẫn quá gần quả cầu
-						else
-							score = score - math.min(25.0, (newDistOrb - 15.0) * 2.0) -- Thưởng điểm cực lớn khi mở rộng cự ly an toàn
-						end
-					end
-					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
-					if dotPerp >= 0.65 then
-						score = score - 8.0 -- Thưởng lách sườn
-					end
-				elseif isExpandingCone then
-					-- Thưởng tối đa cho lách ngang sườn vuông góc thuần túy 90° (Thoát khỏi mép nón nhanh nhất)
-					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
-					if dotPerp >= 0.85 then
-						score = score - 15.0 -- Thưởng cực lớn khi lách ngang sườn
-					elseif dotPerp < 0.65 then
-						score = score + 6.0
-					end
-
-					-- Thưởng thêm nếu lách chếch về phía trước (-forward2D, vùng nón hẹp hơn):
-					if dotFwd < -0.2 then
-						score = score - 8.0 -- Thưởng tiến chéo về phía trước nón
-					elseif dotFwd > 0 then
-						score = score + 20.0 -- Phạt nặng bất kỳ chuyển động lùi nào
-					end
-				elseif isMovingBeam and dotFwd < -0.2 then
-					-- Chỉ thưởng lùi ra sau cho Moving Beam của Boss 2!
-					score = score - 15.0
-				elseif not isMovingBeam then
-					-- Thưởng áp đảo cho bước né thuần ngang vuông góc (Perpendicular - Điểm 1)
-					local dotPerp = toCand.Magnitude > 0.5 and math.abs(toCand.Unit:Dot(perpRight)) or 0
-					if dotPerp >= 0.90 then
-						score = score - 12.0 -- Điểm 1: Lách ngang sườn ngắn nhất, không bị deal dame
-					elseif dotPerp < 0.80 then
-						score = score + 4.0  -- Điểm 2: Đi chéo/lùi xéo bị phạt điểm nặng
-					end
-				end
-
-				-- Ưu tiên kéo về tâm sàn đấu Boss 1 nếu đang dạt ra xa
-				if boss1ArenaCenter then
-					score = score + getBoss1ArenaScoreAdjustment(candWorld, playerPos)
-				end
-
-				-- Ưu tiên hướng Player đang chủ động di chuyển (Chống giật đổi hướng 180 độ):
-				if moveDir and moveDist > 0.5 then
-					local dotMove = toCand.Unit:Dot(moveDir)
-					if dotMove > 0.15 then
-						score = score - (dotMove * 5.0) -- Thưởng lớn cho hướng đang chạy
-					elseif dotMove < -0.15 then
-						score = score + (math.abs(dotMove) * 6.0) -- Phạt nặng việc quay xe giật lùi ngược hướng
-					end
-				end
-
-				-- Anti-Flicker Hysteresis: Ưu tiên duy trì điểm Safe Spot đã khóa trước đó
-				if lockedSafeSpot then
-					local distToLocked = (candWorld - lockedSafeSpot).Magnitude
-					if distToLocked < 3.0 then
-						score = score - 8.0
-					end
-				end
-
-				if score < fallbackScore then
-					fallbackScore = score
-					fallbackPos = candWorld
-				end
-				if geometry.IsPathSafe(playerPos, candWorld, currentHazardsSet, dangerPart) then
-					if score < bestScore then
-						bestScore = score
-						bestPos = candWorld
-					end
-				end
-			end
-		end
-
-		if not bestPos then
-			-- Fallback: Quét tỏa các góc LÙI VÀ NGANG thuần toán học (0 Raycast)
-			local fwdAngleDeg = math.deg(math.atan2(forward2D.Z, forward2D.X))
-			local testAngles = isMovingBeam and { 90, -90, 120, -120, 150, -150, 180 }
-				or isBossOrb and { 0, 15, -15, 30, -30, 45, -45, 60, -60 }
-				or isExpandingCone and { 90, -90, 105, -105, 120, -120, 135, -135 }
-				or { 90, -90, 75, -75, 105, -105, 60, -60, 120, -120 }
-			local backRadii = { 4.0, 7.0, 11.0, 16.0, 22.0 }
-
-			for _, dist in ipairs(backRadii) do
-				for _, offDeg in ipairs(testAngles) do
-					local testRad = math.rad(fwdAngleDeg + offDeg)
-					local testWorld = playerPos + Vector3.new(math.cos(testRad) * dist, 0, math.sin(testRad) * dist)
-					if boss1ArenaCenter and not isInsideBoss1Arena(testWorld, playerPos) then
-						continue
-					end
-					if geometry.IsSpotFullySafe(testWorld, 0.5) then
-						if geometry.IsPathSafe(playerPos, testWorld, currentHazardsSet, dangerPart) then
-							bestPos = testWorld
-							break
-						end
-					end
-				end
-				if bestPos then break end
-			end
-		end
-
-		-- Chỉ bắn DUY NHẤT 1 TIA RAYCAST cho điểm ứng viên tốt nhất đã chọn
-		local chosenTraj = bestPos or fallbackPos
-		if chosenTraj then
-			local snapped, hasFloor = geometry.GetFloorPosition(chosenTraj)
-			if hasFloor and geometry.IsSpotFullySafe(snapped, 0.5) then
-				if not (boss1ArenaCenter and not isInsideBoss1Arena(snapped, playerPos)) then
-					candidatePos = snapped
-				else
-					candidatePos = chosenTraj
-				end
-			else
-				candidatePos = chosenTraj
-			end
-		end
-	else
-		-- 5. CHIẾN LƯỢC CHO KỸ NĂNG THÔNG THƯỜNG / ĐÈ NHAU (MULTI-HAZARD SOLVER)
-		-- ƯU TIÊN SỐ 1: THOÁT MÉP HÌNH HỌC TRỰC TIẾP NGẮN NHẤT (SHORTEST GEOMETRIC EXIT)
-		-- Đo chính xác khoảng cách từ Player ra mép chiêu gần nhất -> Nhích đúng 1.5 studs qua vạch đỏ là an toàn ngay!
-		local bestPos = nil
-		local bestScore = math.huge
-		local fallbackPos = nil
-		local fallbackScore = math.huge
-
-		if dangerPart and dangerPart.Parent and dangerPart:IsA("BasePart") then
-			local directCandidates = {}
-
-			if dangerPart:IsA("Part") and (dangerPart.Shape == Enum.PartType.Ball or dangerPart.Shape == Enum.PartType.Cylinder) then
-				-- A1. Chiêu hình tròn / hình trụ: Thoát theo hướng xuyên tâm + 6 góc rẻ quạt
-				local radius = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
-				local escapeRadius = radius + ESCAPE_MARGIN
-				local diff = Vector3.new(playerPos.X - dangerPart.Position.X, 0, playerPos.Z - dangerPart.Position.Z)
-				local distFromCenter = diff.Magnitude
-				local outDir = distFromCenter > 0.1 and (diff / distFromCenter) or (moveDir or (repVector or Vector3.new(0, 0, 1)))
-				local baseAngle = math.atan2(outDir.Z, outDir.X)
-
-				-- Điểm thoát ngắn nhất tuyệt đối: Chiếu thẳng từ tâm qua chân người chơi ra ngoài mép
-				table.insert(directCandidates, dangerPart.Position + outDir * escapeRadius)
-
-				-- 6 góc rẻ quạt dự phòng (±20°, ±40°, ±65°)
-				local fanAngles = { math.rad(20), -math.rad(20), math.rad(40), -math.rad(40), math.rad(65), -math.rad(65) }
-				for _, angOff in ipairs(fanAngles) do
-					local a = baseAngle + angOff
-					table.insert(directCandidates, dangerPart.Position + Vector3.new(math.cos(a) * escapeRadius, 0, math.sin(a) * escapeRadius))
-				end
-			elseif dangerPart.Name:lower():find("movingbeam") or (dangerPart.Parent and dangerPart.Parent.Name:lower():find("movingbeam")) then
-				-- A2. Moving Beam
-				local rightVec = dangerPart.CFrame.RightVector
-				local right2D = Vector3.new(rightVec.X, 0, rightVec.Z)
-				if right2D.Magnitude > 0.001 then right2D = right2D.Unit else right2D = Vector3.new(1, 0, 0) end
-				local forward2D = Vector3.new(-right2D.Z, 0, right2D.X)
-				local halfLength = math.max(dangerPart.Size.X, dangerPart.Size.Z) / 2
-				local beamRadius = math.max(dangerPart.Size.Y, math.min(dangerPart.Size.X, dangerPart.Size.Z)) / 2
-				if beamRadius < 3.5 then beamRadius = 3.5 end
-
-				table.insert(directCandidates, dangerPart.Position + right2D * (halfLength + ESCAPE_MARGIN + 1.0))
-				table.insert(directCandidates, dangerPart.Position - right2D * (halfLength + ESCAPE_MARGIN + 1.0))
-				table.insert(directCandidates, dangerPart.Position + forward2D * (beamRadius + ESCAPE_MARGIN + 1.5))
-				table.insert(directCandidates, dangerPart.Position - forward2D * (beamRadius + ESCAPE_MARGIN + 1.5))
-			else
-				-- A3. Chiêu hình chữ nhật / OBB: Tự động phát hiện trục Dài/Rộng
-				local localPos = dangerPart.CFrame:PointToObjectSpace(playerPos)
-				local halfX = dangerPart.Size.X / 2
-				local halfZ = dangerPart.Size.Z / 2
-
-				-- Tự động nhận diện trục dài (Length) và trục hẹp (Width) của hành lang:
-				if halfZ >= halfX * 1.4 then
-					-- Trục Z là hành lang dài, trục X là bề sườn hẹp:
-					-- ƯU TIÊN TUYỆT ĐỐI: Thoát vuông góc sang 2 bên sườn trục X tại đúng vị trí Z của người chơi!
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, localPos.Y, localPos.Z)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), localPos.Y, localPos.Z)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN + 2.0, localPos.Y, localPos.Z)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN + 2.0), localPos.Y, localPos.Z)))
-				elseif halfX >= halfZ * 1.4 then
-					-- Trục X là hành lang dài, trục Z là bề sườn hẹp:
-					-- ƯU TIÊN TUYỆT ĐỐI: Thoát vuông góc sang 2 bên sườn trục Z tại đúng vị trí X của người chơi!
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN))))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN + 2.0)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN + 2.0))))
-				else
-					-- Chiêu hình vuông hoặc chữ nhật đều: Thoát 4 cạnh gần nhất (TUYỆT ĐỐI KHÔNG sinh 4 góc chéo xa)
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(halfX + ESCAPE_MARGIN, localPos.Y, localPos.Z)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(-(halfX + ESCAPE_MARGIN), localPos.Y, localPos.Z)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, halfZ + ESCAPE_MARGIN)))
-					table.insert(directCandidates, dangerPart.CFrame:PointToWorldSpace(Vector3.new(localPos.X, localPos.Y, -(halfZ + ESCAPE_MARGIN))))
-				end
-			end
-
-			-- Đánh giá các điểm thoát trực tiếp (0 Raycast)
-			for _, candWorld in ipairs(directCandidates) do
-				if boss1ArenaCenter and not isInsideBoss1Arena(candWorld, playerPos) then
-					continue
-				end
-				if geometry.IsSpotFullySafe(candWorld, 0.5) then
-					local score = scoreCandidate(playerPos, candWorld, repVector, moveDir)
-					if score < fallbackScore then
-						fallbackScore = score
-						fallbackPos = candWorld
-					end
-					if geometry.IsPathSafe(playerPos, candWorld, currentHazardsSet, dangerPart) then
-						if score < bestScore then
-							bestScore = score
-							bestPos = candWorld
-						end
-					end
-				end
-			end
-		end
-
-		-- ƯU TIÊN SỐ 2: NẾU THOÁT TRỰC TIẾP BỊ VƯỚNG -> QUÉT TỎA TRÒN MỊN (RADIAL SWEEP)
-		if not bestPos then
-			local radPos, radScore = searchRadialSafeSpot(playerPos, repVector, currentHazardsSet, dangerPart, moveDir)
-			if radPos and radScore < bestScore then
-				bestPos = radPos
-				bestScore = radScore
-			end
-		end
-
-		-- Chọn điểm tốt nhất và snap sàn bằng duy nhất 1 Raycast
-		local chosenFinal = bestPos or fallbackPos
-		if chosenFinal then
-			local snapped, hasFloor = geometry.GetFloorPosition(chosenFinal)
-			if hasFloor and geometry.IsSpotFullySafe(snapped, 0.5) then
-				if not (boss1ArenaCenter and not isInsideBoss1Arena(snapped, playerPos)) then
-					candidatePos = snapped
-				else
-					candidatePos = chosenFinal
-				end
-			else
-				candidatePos = chosenFinal
-			end
-		end
-
-		-- Fallback khẩn cấp nếu mọi hướng đều bị kẹt hoặc chiêu quá lớn:
-		-- Đẩy Player chạy dạt ra xa theo hướng lực đẩy thoát hiểm (Repulsion Vector) thay vì đứng yên chịu trận
-		if not candidatePos then
-			local escapeDir = (repVector and repVector.Magnitude > 0.01) and repVector.Unit
-				or (moveDir and moveDir.Magnitude > 0.01 and moveDir.Unit)
-				or Vector3.new(0, 0, 1)
-			local emergencyPos = playerPos + (escapeDir * 18.0)
-			if boss1ArenaCenter and not isInsideBoss1Arena(emergencyPos, playerPos) then
-				emergencyPos = playerPos + (boss1ArenaCenter - playerPos).Unit * 15.0
-			end
-			local snappedEmerg, hasFloorEmerg = geometry.GetFloorPosition(emergencyPos)
-			candidatePos = hasFloorEmerg and snappedEmerg or emergencyPos
-		end
-	end
-
-	-- 6. KHÓA CHẶT ĐIỂM AN TOÀN VỪA TÌM ĐƯỢC KẾT HỢP OPPORTUNISTIC RETARGETING:
-	if candidatePos then
-		-- Nếu điểm cũ vẫn an toàn nhưng điểm mới gần hơn vượt trội (>= HYSTERESIS_THRESHOLD studs):
-		-- -> Bẻ lái sang điểm mới gần hơn ngay lập tức (ví dụ: né dải xanh vừa biến mất chỉ cách 2-3 studs thay vì chạy 15 studs ra mép)!
-		-- Ngược lại, nếu điểm mới không gần hơn đủ nhiều -> Tiếp tục giữ điểm cũ để tránh rung giật
-		if isOldPointStillSafe then
-			local newDist = (candidatePos - playerPos).Magnitude
-			if (lockedDist - newDist) >= HYSTERESIS_THRESHOLD then
-				lockedSafeSpot = candidatePos
-				lockedHazardCount = currentHazardCount
-				local finalDist = math.floor(newDist * 10) / 10
-				return true, candidatePos, hazardName, finalDist
-			else
-				local finalDist = math.floor(lockedDist * 10) / 10
-				return true, lockedSafeSpot, hazardName, finalDist
-			end
-		end
-
-		lockedSafeSpot = candidatePos
-		lockedHazardCount = currentHazardCount
-		local finalDist = math.floor((candidatePos - playerPos).Magnitude * 10) / 10
-		return true, candidatePos, hazardName, finalDist
-	elseif isOldPointStillSafe then
-		-- Không tìm thấy candidatePos mới tốt hơn -> Tiếp tục giữ điểm cũ
-		local finalDist = math.floor(lockedDist * 10) / 10
-		return true, lockedSafeSpot, hazardName, finalDist
-	end
-
-	lockedSafeSpot = nil
-	lockedHazardCount = 0
-	return true, nil, hazardName, 0
-end
-
-return safeSpot end function __DIST.C()--==============================================================--
--- Smart Dodge – Module 5: Dodge Execution
--- MoveTo Hybrid + Snap + Time Budget
--- DungeonQuest
---
--- HYBRID:
---   (1) Safe Spot <= Max Snap Distance
---       -> SNAP immediately.
---
---   (2) Safe Spot farther away
---       -> Humanoid:MoveTo() toward target.
---       -> Walk for at most Max Dodge Time.
---       -> When distance <= Max Snap Distance -> SNAP.
---       -> When Time Budget expires -> SNAP remainder.
---
---   (3) Real-time Target Tracking
---       -> currentTargetPos can be updated by Perform().
---       -> MoveTo() is refreshed only when target moves enough.
---
---   (4) Flat Floor Movement
---       -> MoveTo target uses X/Z from Safe Spot.
---       -> Y is kept at the player's current/starting movement height.
---
---   (5) Maintain Snap Height
---       -> Snap keeps the player's original Y when enabled.
---
--- IMPORTANT:
---   WALK no longer directly manipulates CFrame or velocity.
---   Humanoid:MoveTo() is responsible for normal character movement.
---
---==============================================================--
-
---// Imports
-
-local services = __DIST.load('i')
-local shared = __DIST.load('j')
-local targetFacing = __DIST.load('r')
-local RunService = services.RunService
-
---// References
-local player = services.player
-
---// State
-local autoDodgeEnabled = false
-local dodgeMode = "HumanoidMove" -- "HumanoidMove" | "Blink" | "MoveTo"
-
-local maxSnapDistance = 1.0
-local blinkStep = 1.0 -- Cự ly mỗi nhịp chớp Blink (studs)
-
-local FINAL_ADJUST_DIST = 0.5
-
-local maintainSnapHeight = true
-
-local isDodging = false
-local dodgeThread = nil
-local activeMoveConn = nil
-
-local currentTargetPos = nil
-
---// Panic Sprint (Phương án B: Tăng tốc khi tình huống nguy cấp)
-local panicSprintEnabled = true
-local panicSpeed = 24
-local panicDuration = 1.5
-local panicCooldown = 5.0
-local lastPanicTime = 0
-
-local dodgeStatusCallbacks = {}
-
---// MoveTo tuning
---
--- Don't re-issue MoveTo every frame.
--- This prevents constantly resetting the Humanoid's movement target.
-local MOVE_TARGET_UPDATE_DISTANCE = 1.5
-
--- Minimum distance before considering movement finished.
-local MOVE_FINISH_DISTANCE = 1.0
-
--- How often we check the target / danger state.
-local MOVE_CHECK_INTERVAL = 0.03
-
---// Provider trả về vị trí cần quay mặt khi né
---// Ví dụ enemy — do AutoFarm Mode 2 đăng ký.
---// nil = giữ hành vi cũ.
-local faceTargetProvider = nil
-
---// Raycast Parameters cho Blink kiểm tra tường và sàn (Anti-Cheat Protection)
-local blinkRayParams = RaycastParams.new()
-blinkRayParams.FilterType = Enum.RaycastFilterType.Exclude
-blinkRayParams.IgnoreWater = true
-
-local function updateBlinkRayFilter()
-	local ignoreList = {}
-	for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
-		if p.Character then table.insert(ignoreList, p.Character) end
-	end
-	if workspace:FindFirstChild("RaycastIgnore") then
-		table.insert(ignoreList, workspace.RaycastIgnore)
-	end
-	blinkRayParams.FilterDescendantsInstances = ignoreList
-end
-
---// Runtime do engine bơm:
---// { getInDanger = fn, getLogInDanger = fn }
-local runtime = nil
-
-local dodge = {}
-
---==============================================================--
--- Runtime
---==============================================================--
-
-function dodge.SetRuntime(ctx)
-	runtime = ctx or nil
-end
-
-local function getInDanger()
-	return runtime
-		and runtime.getInDanger
-		and runtime.getInDanger()
-		or false
-end
-
-local function getLogInDanger()
-	return runtime
-		and runtime.getLogInDanger
-		and runtime.getLogInDanger()
-		or false
-end
-
-local function getActiveBossOrb()
-	return runtime
-		and runtime.getActiveBossOrb
-		and runtime.getActiveBossOrb()
-end
-
---==============================================================--
--- Status callbacks
---==============================================================--
-
-local function fireDodgeStatus(status)
-	for _, cb in ipairs(dodgeStatusCallbacks) do
-		pcall(cb, status)
-	end
-end
-
-dodge.FireStatus = fireDodgeStatus
-
---==============================================================--
--- Face target
---==============================================================--
-
-local function getFaceTarget()
-	if faceTargetProvider then
-		local ok, pos = pcall(faceTargetProvider)
-		if ok and type(pos) == "table" and pos.X and pos.Z then
-			return pos
-		end
-	end
-
-	-- Luôn luôn lấy vị trí mục tiêu nếu có (Bất kể toggle UI bật hay tắt)
-	-- Đảm bảo yêu cầu cốt lõi: "Dù đang né thì vẫn phải nhìn vào mục tiêu."
-	if targetFacing then
-		local tPos = targetFacing.GetTargetPosition()
-		if tPos then
-			return tPos
-		end
-	end
-
-	return nil
-end
-
---==============================================================--
--- Helpers
---==============================================================--
-
-local function getCharacterParts()
-	local char = player and player.Character
-
-	if not char then
-		return nil, nil, nil
-	end
-
-	local rootPart = char:FindFirstChild("HumanoidRootPart")
-	local humanoid = char:FindFirstChild("Humanoid")
-
-	if not rootPart or not humanoid then
-		return char, nil, nil
-	end
-
-	return char, rootPart, humanoid
-end
-
--- Flat X/Z distance.
-local function flatDistance(a, b)
-	if not a or not b then
-		return math.huge
-	end
-
-	local dx = a.X - b.X
-	local dz = a.Z - b.Z
-
-	return math.sqrt(dx * dx + dz * dz)
-end
-
--- Convert arbitrary target into a flat MoveTo position.
---
--- We intentionally do not ask Humanoid to walk toward
--- the Safe Spot's raw Y value.
---
--- This keeps movement primarily horizontal.
-local function makeMoveTarget(rootPart, pos)
-	if not rootPart or not pos then
-		return nil
-	end
-
-	return Vector3.new(
-		pos.X,
-		rootPart.Position.Y,
-		pos.Z
-	)
-end
-
---==============================================================--
--- Snap
---==============================================================--
---
--- Teleport dứt điểm:
---   - X/Z = Safe Spot
---   - Y = starting player height if maintainSnapHeight
---   - otherwise calculate floor-relative height
---   - face enemy if provider exists
---
-local function snapFace(rootPart, humanoid, pos, startHeight)
-	if not rootPart or not pos then
-		return
-	end
-
-	local targetY = startHeight or pos.Y
-
-	if not maintainSnapHeight and humanoid and humanoid.HipHeight and rootPart then
-		local rootOffset = humanoid.HipHeight + (rootPart.Size.Y / 2)
-		local rayOrigin = Vector3.new(pos.X, (startHeight or rootPart.Position.Y) + 6, pos.Z)
-		local rayDir = Vector3.new(0, -20, 0)
-		local floorResult = workspace:Raycast(rayOrigin, rayDir, blinkRayParams)
-		if floorResult and floorResult.Position then
-			targetY = floorResult.Position.Y + rootOffset
-		else
-			local floorY = pos.Y - 3
-			targetY = floorY + rootOffset
-		end
-	end
-
-	local actualPos = Vector3.new(
-		pos.X,
-		targetY,
-		pos.Z
-	)
-
-	local targetPos = getFaceTarget()
-
-	if targetPos then
-		rootPart.CFrame = CFrame.lookAt(
-			actualPos,
-			Vector3.new(
-				targetPos.X,
-				targetY,
-				targetPos.Z
-			)
-		)
-	else
-		-- Preserve current facing direction.
-		local look = rootPart.CFrame.LookVector
-
-		local flatLook = Vector3.new(
-			look.X,
-			0,
-			look.Z
-		)
-
-		if flatLook.Magnitude > 0.001 then
-			flatLook = flatLook.Unit
-
-			rootPart.CFrame = CFrame.lookAt(
-				actualPos,
-				actualPos + flatLook
-			)
-		else
-			rootPart.CFrame = CFrame.new(actualPos)
-		end
-	end
-
-	-- Only zero residual velocity AFTER snap.
-	--
-	-- During WALK we deliberately do NOT do this because
-	-- Humanoid movement needs the normal character controller.
-	rootPart.AssemblyLinearVelocity = Vector3.zero
-	rootPart.AssemblyAngularVelocity = Vector3.zero
-end
-
---==============================================================--
--- Face while walking
---==============================================================--
---
--- We do NOT set CFrame here.
---
--- AutoRotate is used so Humanoid movement remains responsible
--- for the character's orientation.
---
--- If an external faceTargetProvider exists, we temporarily
--- disable AutoRotate and rotate using Humanoid:MoveTo() only
--- is not enough to guarantee facing an arbitrary enemy.
---
--- Therefore:
---   - normal mode -> AutoRotate = true
---   - face-target mode -> AutoRotate = false
---     and use a lightweight orientation adjustment.
---
--- IMPORTANT:
--- This is intentionally not done every frame.
---
-local function updateWalkFacing(rootPart, humanoid)
-	local faceTarget = getFaceTarget()
-
-	if not faceTarget then
-		humanoid.AutoRotate = true
-		return
-	end
-
-	humanoid.AutoRotate = false
-
-	local current = rootPart.Position
-
-	local target = Vector3.new(
-		faceTarget.X,
-		current.Y,
-		faceTarget.Z
-	)
-
-	local diff = target - current
-
-	if diff.Magnitude > 0.05 then
-		local look = diff.Unit
-
-		-- Rotate only.
-		--
-		-- This does not change position.
-		rootPart.CFrame = CFrame.lookAt(
-			current,
-			current + look
-		)
-	end
-end
-
-local function tryTriggerPanicSprint(safePos, escapeDist, hazardName, rootPart, humanoid)
-	if not panicSprintEnabled then return end
-	if dodgeMode ~= "HumanoidMove" and dodgeMode ~= "MoveTo" then return end
-	if not rootPart or not rootPart.Parent then return end
-
-	-- TỐI ƯU HÓA: Kiểm tra nếu Player đã có sẵn tốc độ hoặc Velocity >= 24 (do chiêu buff tốc chính thức của game)
-	-- -> Bỏ qua kích hoạt Panic để tiết kiệm cooldown 5s và tránh can thiệp vào buff của game
-	local curWalkSpeed = humanoid and humanoid.WalkSpeed or 0
-	local vel = rootPart.AssemblyLinearVelocity
-	local horizVelocity = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
-
-	if curWalkSpeed >= (panicSpeed - 0.5) or horizVelocity >= (panicSpeed - 1.0) then
-		return
-	end
-
-	local now = os.clock()
-	if (now - lastPanicTime) < panicCooldown then return end
-
-	local isEmergency = false
-	local panicReason = nil
-
-	-- 1. Cự ly né xa (escapeDist >= 10.0 studs)
-	local currentDist = escapeDist or (safePos and (Vector3.new(safePos.X - rootPart.Position.X, 0, safePos.Z - rootPart.Position.Z).Magnitude)) or 0
-	if currentDist >= 10.0 then
-		isEmergency = true
-		panicReason = ("Long escape distance (%.1f studs)"):format(currentDist)
-	end
-
-	-- 2. Chiêu khẩn cấp / Bị bao vây / Kiting / Lối đi bị chặn
-	if not isEmergency and hazardName then
-		local hLow = hazardName:lower()
-		if hLow:find("emergency") or hLow:find("kiting") or hLow:find("waiting for path") or hLow:find("lead") then
-			isEmergency = true
-			panicReason = ("Hazard threat (%s)"):format(hazardName)
-		end
-	end
-
-	-- 3. Quả Cầu (Boss Orb) hoặc Projectile nguy hiểm đang áp sát (< 15.0 studs)
-	if not isEmergency then
-		local activeOrb = getActiveBossOrb()
-		local orbPart = activeOrb and (activeOrb.Position and activeOrb or activeOrb.Instance)
-		local orbPos = orbPart and orbPart.Position
-		if orbPos then
-			local dOrb = (Vector3.new(orbPos.X - rootPart.Position.X, 0, orbPos.Z - rootPart.Position.Z)).Magnitude
-			if dOrb < 15.0 then
-				isEmergency = true
-				panicReason = ("Boss Orb closing in (%.1f studs)"):format(dOrb)
-			end
-		end
-	end
-
-	if isEmergency then
-		lastPanicTime = now
-		if shared.TriggerPanicSpeed then
-			shared.TriggerPanicSpeed(panicSpeed, panicDuration)
-		end
-		if getLogInDanger() then
-			print(("[SmartDodge][Panic] 💨 PANIC SPRINT ACTIVATED! WalkSpeed boosted to %d for %.1fs (Reason: %s)")
-				:format(panicSpeed, panicDuration, panicReason or "Emergency"))
-		end
-	end
-end
-
---==============================================================--
--- Perform Dodge
---==============================================================--
-
-function dodge.Perform(safePos, escapeDist, hazardName)
-	local char, rootPart, humanoid = getCharacterParts()
-
-	if not rootPart
-		or not humanoid
-		or humanoid.Health <= 0
-	then
-		return
-	end
-
-	if not safePos then
-		return
-	end
-
-	-- Always update latest target.
-	currentTargetPos = safePos
-
-	-- Đánh giá kích hoạt Panic Sprint (Phương án B: Tình huống nguy cấp)
-	tryTriggerPanicSprint(safePos, escapeDist, hazardName, rootPart, humanoid)
-
-	-- If already dodging, do NOT spawn another thread.
-	--
-	-- The active thread will pick up currentTargetPos.
-	if isDodging then
-		return
-	end
-
-	dodgeThread = task.spawn(function()
-		isDodging = true
-		targetFacing.SetDodging(true)
-
-		fireDodgeStatus("Dodging")
-
-
-		--======================================================--
-		-- Initial state
-		--======================================================--
-
-		local startHeight = rootPart.Position.Y
-		local activeGyro = nil
-
-		local function cleanGyro()
-			if activeGyro and activeGyro.Parent then
-				pcall(function() activeGyro:Destroy() end)
-				activeGyro = nil
-			end
-			if humanoid and humanoid.Parent then
-				local hasEnemy = targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() and targetFacing.IsTargetActive and targetFacing.IsTargetActive()
-				if hasEnemy then
-					humanoid.AutoRotate = false
-				else
-					humanoid.AutoRotate = true
-				end
-			end
-		end
-
-		local function finish()
-			cleanGyro()
-
-			if activeMoveConn then
-				pcall(function() activeMoveConn:Disconnect() end)
-				activeMoveConn = nil
-			end
-
-			if rootPart and rootPart.Parent then
-				rootPart.AssemblyLinearVelocity = Vector3.zero
-				rootPart.AssemblyAngularVelocity = Vector3.zero
-			end
-
-			if humanoid and humanoid.Parent and dodgeMode == "HumanoidMove" then
-				pcall(function()
-					humanoid:Move(Vector3.zero, false)
-					local root = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-					if root then humanoid:MoveTo(root.Position) end
-				end)
-			end
-
-			-- Hủy Panic Speed ngay khi đã thoát hiểm xong về đích
-			if shared.CancelPanicSpeed then
-				shared.CancelPanicSpeed()
-			end
-
-			isDodging = false
-			targetFacing.SetDodging(false)
-			currentTargetPos = nil
-
-			fireDodgeStatus("Safe")
-		end
-
-		local ok, err = pcall(function()
-			--======================================================--
-			-- Initial target
-			--======================================================--
-
-			local targetPos = currentTargetPos or safePos
-			local currentPos = rootPart.Position
-
-			local totalDist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(currentPos.X, 0, currentPos.Z)).Magnitude
-
-			-- 1. Nếu cự ly tới Safe Spot <= snapDistance -> Snap dứt điểm ngay lập tức (1 bước duy nhất)
-			-- Trong chế độ Blink: Không bao giờ snap 1 bước lớn hơn blinkStep để chống giật anticheat sync
-			local effectiveSnapDist = (dodgeMode == "Blink") and math.min(maxSnapDistance, blinkStep) or maxSnapDistance
-			if totalDist <= effectiveSnapDist then
-				snapFace(
-					rootPart,
-					humanoid,
-					targetPos,
-					startHeight
-				)
-
-				if getLogInDanger() then
-					print(
-						("[SmartDodge][Dodge] ⚡ Instant Snap (%.1f studs) to Safe Spot!")
-							:format(totalDist)
-					)
-				end
-
-				return
-			end
-
-			if dodgeMode == "HumanoidMove" then
-				-- PURE PHYSICAL INPUT WALK (ZERO CFRAME OVERWRITE / ZERO HEIGHT JITTER)
-				if getLogInDanger() then
-					print(("[SmartDodge][Dodge] 🏃 Humanoid:Move (Pure Physics Walk) (%.1f studs)..."):format(totalDist))
-				end
-
-				local startTime = os.clock()
-				local MAX_WALK_TIMEOUT = 4.0
-
-				local targetEnemy = getFaceTarget()
-				if targetEnemy then
-					humanoid.AutoRotate = false
-				else
-					humanoid.AutoRotate = true
-				end
-
-				local moveTarget = Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z)
-				humanoid:MoveTo(moveTarget)
-
-				if activeMoveConn then
-					pcall(function() activeMoveConn:Disconnect() end)
-					activeMoveConn = nil
-				end
-
-				activeMoveConn = RunService.RenderStepped:Connect(function()
-					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
-						if activeMoveConn then activeMoveConn:Disconnect(); activeMoveConn = nil end
-						return
-					end
-
-					local curTarget = currentTargetPos or safePos
-					if not curTarget then return end
-
-					local curDiff = Vector3.new(curTarget.X - rootPart.Position.X, 0, curTarget.Z - rootPart.Position.Z)
-					if curDiff.Magnitude > 0.6 then
-						humanoid:Move(curDiff.Unit, false)
-					else
-						humanoid:Move(Vector3.zero, false)
-					end
-
-					-- STRAFE FACING: Vừa rảo bước né đòn vừa giữ nguyên góc nhìn dán chặt vào mục tiêu
-					if targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() then
-						local curEnemy = getFaceTarget()
-						if curEnemy then
-							if humanoid.AutoRotate ~= false then
-								humanoid.AutoRotate = false
-							end
-							local pPos = rootPart.Position
-							local diff = Vector3.new(curEnemy.X - pPos.X, 0, curEnemy.Z - pPos.Z)
-							if diff.Magnitude > 0.5 then
-								local curLook = rootPart.CFrame.LookVector
-								local wantLook = diff.Unit
-								if curLook:Dot(wantLook) < 0.999 then
-									rootPart.CFrame = CFrame.lookAt(pPos, Vector3.new(curEnemy.X, pPos.Y, curEnemy.Z))
-								end
-							end
-						else
-							if humanoid.AutoRotate ~= true then
-								humanoid.AutoRotate = true
-							end
-						end
-					end
-				end)
-
-				while autoDodgeEnabled and (os.clock() - startTime < MAX_WALK_TIMEOUT) do
-					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
-						break
-					end
-
-					-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước
-					if not getInDanger() then
-						break
-					end
-
-					targetPos = currentTargetPos or safePos
-					if not targetPos then break end
-
-					currentPos = rootPart.Position
-					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
-					local dist = diff.Magnitude
-
-					-- SNAP DỨT ĐIỂM Ở BƯỚC CUỐI (FINAL STEP SNAP):
-					-- Khi chạy gần tới Safe Spot (cự ly <= maxSnapDistance) -> Snap dứt điểm ngay vào đích!
-					if dist <= maxSnapDistance then
-						snapFace(rootPart, humanoid, targetPos, startHeight)
-						if getLogInDanger() then
-							print(("[SmartDodge][Dodge] ⚡ HumanoidMove Final Snap (%.1f studs) to Safe Spot!"):format(dist))
-						end
-						break
-					end
-
-					-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước (hoặc snap nốt nếu trong cự ly)
-					if not getInDanger() then
-						if dist <= maxSnapDistance then
-							snapFace(rootPart, humanoid, targetPos, startHeight)
-						end
-						break
-					end
-
-					humanoid:MoveTo(Vector3.new(targetPos.X, currentPos.Y, targetPos.Z))
-
-					-- Tự động nhảy nếu gặp gờ bậc thang / chướng ngại vật thấp
-					local waistOrigin = currentPos + Vector3.new(0, 0.5, 0)
-					local waistDir = diff.Unit * 2.0
-					local obstacleHit = workspace:Raycast(waistOrigin, waistDir, blinkRayParams)
-					if obstacleHit and obstacleHit.Instance and obstacleHit.Instance.CanCollide and obstacleHit.Normal.Y < 0.7 then
-						humanoid.Jump = true
-					end
-
-					task.wait(0.03)
-				end
-
-				-- Final check sau khi thoát loop HumanoidMove: Nếu còn trong cự ly snap, snap dứt điểm
-				if rootPart.Parent and humanoid.Parent and humanoid.Health > 0 then
-					targetPos = currentTargetPos or safePos
-					if targetPos then
-						local remainingDiff = Vector3.new(targetPos.X - rootPart.Position.X, 0, targetPos.Z - rootPart.Position.Z)
-						if remainingDiff.Magnitude <= maxSnapDistance then
-							snapFace(rootPart, humanoid, targetPos, startHeight)
-						end
-					end
-				end
-
-				finish()
-				return
-			end
-
-			if dodgeMode == "Blink" then
-				-- RAPID CONTINUOUS BLINK (ANTI-CHEAT HARDENED):
-				-- 1. blinkStep studs mỗi 0.025s (vận tốc ~112 studs/s chuẩn Dash skill)
-				-- 2. Quét raycast vật cản ngang thắt lưng (Anti No-Clip): không blink xuyên tường/cột
-				-- 3. Bám sàn động (Dynamic Floor Snapping): tự nâng/hạ chân theo dốc/bậc thang
-				-- 4. Triệt tiêu gia tốc vật lý (AssemblyLinearVelocity = 0): chống desync
-				local currentStep = blinkStep or 1.0
-				local blinkStart = os.clock()
-				local MAX_BLINK_TIMEOUT = 2.5 -- Giới hạn an toàn chống kẹt
-
-				updateBlinkRayFilter()
-
-				while autoDodgeEnabled and (os.clock() - blinkStart < MAX_BLINK_TIMEOUT) do
-					if not rootPart.Parent or not humanoid.Parent or humanoid.Health <= 0 then
-						return
-					end
-
-					targetPos = currentTargetPos or safePos
-					if not targetPos then break end
-
-					currentPos = rootPart.Position
-					local diff = Vector3.new(targetPos.X - currentPos.X, 0, targetPos.Z - currentPos.Z)
-					local dist = diff.Magnitude
-
-					-- Nếu đã tới cự ly snap hoặc khoảng cách quá ngắn -> Snap dứt điểm (không vượt quá currentStep)
-					local snapThreshold = math.min(maxSnapDistance, currentStep)
-					if dist <= snapThreshold then
-						snapFace(rootPart, humanoid, targetPos, startHeight)
-						if getLogInDanger() then
-							print(("[SmartDodge][Dodge] ⚡ Rapid Blink reached Safe Spot (%.1f studs) -> SNAP!"):format(dist))
-						end
-						return
-					end
-
-					-- Nếu đã thoát hiểm hoàn toàn (không còn dính hazard) và cự ly còn lại nhỏ (<= currentStep) -> Snap và dừng
-					if not getInDanger() and dist <= currentStep then
-						snapFace(rootPart, humanoid, targetPos, startHeight)
-						return
-					end
-
-					local stepDist = math.min(currentStep, dist)
-					local stepDir = diff.Unit
-
-					-- KIỂM TRA RAYCAST VẬT CẢN (ANTI NO-CLIP RUBBERBAND):
-					-- Quét tia ngang ở tầm thắt lưng (Y + 1.5) để phát hiện tường / cột cản
-					local waistOrigin = currentPos + Vector3.new(0, 1.5, 0)
-					local waistDir = stepDir * (stepDist + 0.4)
-					local wallHit = workspace:Raycast(waistOrigin, waistDir, blinkRayParams)
-
-					if wallHit and wallHit.Instance and wallHit.Instance.CanCollide and wallHit.Normal.Y <= 0.65 then
-						local hitDist = (wallHit.Position - waistOrigin).Magnitude
-						if hitDist <= 0.7 then
-							-- Đã sát tường cản, không thể tiến thêm về hướng này
-							break
-						else
-							stepDist = math.max(0, hitDist - 0.4)
-						end
-					end
-
-					local stepPos = currentPos + stepDir * stepDist
-					snapFace(rootPart, humanoid, stepPos, startHeight)
-
-					task.wait(0.025)
-				end
-
-				-- Final check sau khi thoát loop Blink: Chỉ snap nếu cự ly còn lại <= currentStep
-				if rootPart.Parent and humanoid.Parent and humanoid.Health > 0 then
-					targetPos = currentTargetPos or safePos
-					if targetPos then
-						local remainingDiff = Vector3.new(targetPos.X - rootPart.Position.X, 0, targetPos.Z - rootPart.Position.Z)
-						if remainingDiff.Magnitude <= math.min(maxSnapDistance, currentStep) then
-							snapFace(rootPart, humanoid, targetPos, startHeight)
-						end
-					end
-				end
-				return
-			end
-
-			-- MoveTo Walk Mode (chỉ dùng khi mode == "MoveTo")
-			if getLogInDanger() then
-				print(
-					("[SmartDodge][Dodge] 🚶 MoveTo Walk (%.1f studs)...")
-						:format(totalDist)
-				)
-			end
-
-			-- DÙNG BODYGYRO ĐỂ XOAY MẶT VỀ BOSS MÀ KHÔNG LÀM ĐỨNG YÊN NHÂN VẬT
-			local targetEnemy = getFaceTarget()
-			if targetEnemy then
-				humanoid.AutoRotate = false
-				pcall(function()
-					local g = Instance.new("BodyGyro")
-					g.Name = "SmartDodge_FacingGyro"
-					g.MaxTorque = Vector3.new(0, 400000, 0)
-					g.P = 25000
-					g.D = 500
-					local pPos = rootPart.Position
-					g.CFrame = CFrame.lookAt(pPos, Vector3.new(targetEnemy.X, pPos.Y, targetEnemy.Z))
-					g.Parent = rootPart
-					activeGyro = g
-				end)
-			else
-				humanoid.AutoRotate = true
-			end
-
-			local startTime = os.clock()
-			local MAX_SAFETY_TIMEOUT = 10.0 -- Giới hạn an toàn chống kẹt vĩnh viễn nếu bị tường cản
-
-			--======================================================--
-			-- WALK LOOP: Humanoid:MoveTo di chuyển tự nhiên đến khi an toàn hoặc tới Safe Spot
-			--======================================================--
-
-			while autoDodgeEnabled and (os.clock() - startTime < MAX_SAFETY_TIMEOUT) do
-				if not rootPart.Parent
-					or not humanoid.Parent
-					or humanoid.Health <= 0
-				then
-					break
-				end
-
-				-- Nếu đã an toàn (không còn hiểm họa đè) -> dừng bước
-				if not getInDanger() then
-					break
-				end
-
-				targetPos = currentTargetPos or safePos
-				if not targetPos then
-					break
-				end
-
-				currentPos = rootPart.Position
-
-				local distRemaining = flatDistance(
-					currentPos,
-					targetPos
-				)
-
-				if distRemaining <= maxSnapDistance then
-					snapFace(
-						rootPart,
-						humanoid,
-						targetPos,
-						startHeight
-					)
-
-					if getLogInDanger() then
-						print(
-							("[SmartDodge][Dodge] 🎯 Reached snap range (%.2f studs) -> SNAP")
-								:format(distRemaining)
-						)
-					end
-
-					break
-				end
-
-				-- Cập nhật góc quay của Gyro nếu Boss dịch chuyển
-				if activeGyro and activeGyro.Parent then
-					local enemyPos = getFaceTarget()
-					if enemyPos then
-						activeGyro.CFrame = CFrame.lookAt(currentPos, Vector3.new(enemyPos.X, currentPos.Y, enemyPos.Z))
-					end
-				end
-
-				local moveTarget = makeMoveTarget(
-					rootPart,
-					targetPos
-				)
-
-				-- Phát MoveTo để Humanoid tự động bước đi
-				humanoid:MoveTo(moveTarget)
-
-				task.wait(0.05)
-			end
-
-			cleanGyro()
-
-			--======================================================--
-			-- (3) Final decision after WALK
-			--======================================================--
-
-			if not rootPart.Parent
-				or not humanoid.Parent
-				or humanoid.Health <= 0
-			then
-				return
-			end
-
-			targetPos = currentTargetPos or safePos
-			if not targetPos then return end
-
-			local remainingDist = flatDistance(
-				rootPart.Position,
-				targetPos
-			)
-
-			if remainingDist <= maxSnapDistance then
-				snapFace(
-					rootPart,
-					humanoid,
-					targetPos,
-					startHeight
-				)
-
-				if getLogInDanger() then
-					print(
-						("[SmartDodge][Dodge] ⚡ Final snap from %.2f studs.")
-							:format(remainingDist)
-					)
-				end
-			end
-		end)
-
-		if not ok then
-			warn("[SmartDodge][Dodge] Error during dodge execution: " .. tostring(err))
-		end
-
-		finish()
-	end)
-end
-
---==============================================================--
--- Cancel
---==============================================================--
-
-function dodge.Cancel()
-	if dodgeThread then
-		task.cancel(dodgeThread)
-		dodgeThread = nil
-	end
-
-	local char, rootPart, humanoid = getCharacterParts()
-
-	if humanoid then
-		pcall(function()
-			humanoid:Move(Vector3.zero, false)
-		end)
-		local hasEnemy = targetFacing and targetFacing.IsEnabled and targetFacing.IsEnabled() and targetFacing.IsTargetActive and targetFacing.IsTargetActive()
-		if hasEnemy then
-			humanoid.AutoRotate = false
-		else
-			humanoid.AutoRotate = true
-		end
-	end
-
-	if rootPart and rootPart.Parent and dodgeMode ~= "HumanoidMove" then
-		rootPart.AssemblyLinearVelocity = Vector3.zero
-		rootPart.AssemblyAngularVelocity = Vector3.zero
-	end
-
-	isDodging = false
-	targetFacing.SetDodging(false)
-	currentTargetPos = nil
-end
-
---==============================================================--
--- Status
---==============================================================--
-
-function dodge.FireStatus(status)
-	fireDodgeStatus(status)
-end
-
---==============================================================--
--- Auto Dodge
---==============================================================--
-
-function dodge.SetAutoDodge(state)
-	autoDodgeEnabled = state and true or false
-end
-
-function dodge.IsAutoDodgeEnabled()
-	return autoDodgeEnabled
-end
-
---==============================================================--
--- Dodge Movement Mode ("MoveTo" | "Blink")
---==============================================================--
-
-function dodge.SetDodgeMode(mode)
-	if mode == "MoveTo" or mode == "Blink" or mode == "HumanoidMove" then
-		dodgeMode = mode
-	end
-end
-
-function dodge.GetDodgeMode()
-	return dodgeMode
-end
-
---==============================================================--
--- Max Snap Distance
---==============================================================--
-
-function dodge.SetMaxSnapDistance(value)
-	if type(value) == "number"
-		and value > 0
-	then
-		maxSnapDistance = value
-	end
-end
-
-function dodge.GetMaxSnapDistance()
-	return maxSnapDistance
-end
-
---==============================================================--
--- Backward compatibility
---==============================================================--
-
-dodge.SetMaxTeleportStep = dodge.SetMaxSnapDistance
-dodge.GetMaxTeleportStep = dodge.GetMaxSnapDistance
-
---==============================================================--
--- Blink Step Distance
---==============================================================--
-
-function dodge.SetBlinkStep(value)
-	if type(value) == "number" and value > 0 then
-		blinkStep = value
-	end
-end
-
-function dodge.GetBlinkStep()
-	return blinkStep
-end
-
---==============================================================--
--- Maintain Snap Height
---==============================================================--
-
-function dodge.SetMaintainSnapHeight(state)
-	maintainSnapHeight = state and true or false
-end
-
-function dodge.IsMaintainSnapHeightEnabled()
-	return maintainSnapHeight
-end
-
---==============================================================--
--- State
---==============================================================--
-
-function dodge.IsDodging()
-	return isDodging
-end
-
---==============================================================--
--- Face Target Provider
---==============================================================--
-
-function dodge.SetFaceTargetProvider(func)
-	faceTargetProvider =
-		type(func) == "function"
-		and func
-		or nil
-end
-
---==============================================================--
--- Status Getter
---==============================================================--
-
-function dodge.GetStatus()
-	if isDodging then
-		return "Dodging"
-	elseif shared.IsInvulnerable and shared.IsInvulnerable() and getInDanger() then
-		return "🛡️ Paused (Invulnerable)"
-	elseif getInDanger() then
-		return "Safe (Standing in Spot)"
-	else
-		return "Idle"
-	end
-end
-
---==============================================================--
--- Status Callback
---==============================================================--
-
-function dodge.OnDodgeStatusChanged(callback)
-	if type(callback) ~= "function" then
-		return
-	end
-
-	table.insert(
-		dodgeStatusCallbacks,
-		callback
-	)
-end
-
---==============================================================--
--- Dodge Cancellation
---==============================================================--
-
-function dodge.Cancel()
-	if dodgeThread then
-		task.cancel(dodgeThread)
-		dodgeThread = nil
-	end
-	if activeMoveConn then
-		pcall(function() activeMoveConn:Disconnect() end)
-		activeMoveConn = nil
-	end
-	local _, rootPart, humanoid = getCharacterParts()
-	if humanoid and humanoid.Parent and dodgeMode == "HumanoidMove" then
-		pcall(function()
-			humanoid:Move(Vector3.zero, false)
-		end)
-	end
-	if shared.CancelPanicSpeed then
-		shared.CancelPanicSpeed()
-	end
-	isDodging = false
-	targetFacing.SetDodging(false)
-	currentTargetPos = nil
-	fireDodgeStatus("Idle")
-end
-
---==============================================================--
--- Panic Sprint Accessors
---==============================================================--
-
-function dodge.SetPanicSprintEnabled(state)
-	panicSprintEnabled = state and true or false
-end
-
-function dodge.IsPanicSprintEnabled()
-	return panicSprintEnabled
-end
-
-function dodge.SetPanicSpeed(value)
-	if type(value) == "number" and value > 0 then
-		panicSpeed = value
-	end
-end
-
-function dodge.GetPanicSpeed()
-	return panicSpeed
-end
-
-function dodge.SetPanicDuration(value)
-	if type(value) == "number" and value > 0 then
-		panicDuration = value
-	end
-end
-
-function dodge.GetPanicDuration()
-	return panicDuration
-end
-
-function dodge.SetPanicCooldown(value)
-	if type(value) == "number" and value > 0 then
-		panicCooldown = value
-	end
-end
-
-function dodge.GetPanicCooldown()
-	return panicCooldown
-end
-
-function dodge.IsPanicActive()
-	return shared.IsPanicSpeedActive and shared.IsPanicSpeedActive() or false
-end
-
---==============================================================--
--- Return
---==============================================================--
-
-return dodge end function __DIST.D()-- Smart Dodge – Module 6: Engine Orchestrator (DungeonQuest).
--- Chuyên trách: kết nối Detection + SafeSpot + Dodge. Vòng lặp đánh giá nguy hiểm theo thời
--- gian thực (safe spot loop), quản lý vòng đời engine (Start/Stop/Toggle), trạng thái danger
--- hiện tại, fire callbacks SafeSpotChanged, coordinator.Register + dodge runtime bơm cho Module 5.
-
---// Imports
-
-local services = __DIST.load('i')
-local shared = __DIST.load('j')
-local coordinator = __DIST.load('u')
-local detection = __DIST.load('A')
-local geometry = __DIST.load('z')
-local safeSpot = __DIST.load('B')
-local dodge = __DIST.load('C')
-
---// Bơm data hiểm họa cho module Geometry (đứt vòng phụ thuộc — geometry không require detection).
-geometry.BindDetection({
-	GetActiveHazardsMap = detection.GetActiveHazardsMap,
-	GetLockedProjectiles = detection.GetLockedProjectiles,
-	GetTrajectoryConfigForPart = detection.GetTrajectoryConfigForPart,
-	LockTrajectoryForPart = detection.LockTrajectoryForPart,
-	IsIgnoredPart = detection.IsIgnoredPart,
-	GetFadeThreshold = detection.GetFadeThreshold,
-})
-
---// References
-local player = services.player
-
---// State
-local isEngineActive = false
-local isPlayerInDanger = false
-local currentSafeSpot = nil
-local currentDangerHazardName = nil
-local currentEscapeDist = 0
-local safeSpotCallbacks = {}
-local safeSpotLoopThread = nil
-local logInDanger = true
-local ignoreDodgeWhenInvulnerable = false
-
---// Bơm runtime cho module Dodge: đọc trạng thái danger & log trực tiếp từ engine (tránh vòng require)
-dodge.SetRuntime({
-	getInDanger = function()
-		return isPlayerInDanger
-	end,
-	getLogInDanger = function()
-		return logInDanger
-	end,
-	getActiveBossOrb = detection.GetActiveBossOrb,
-})
-
-local engine = {}
-
-local lastDeadState = false
-local lastInvulnState = false
-local lastUIUpdateTime = 0
-
-local function fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
-	for _, cb in ipairs(safeSpotCallbacks) do
-		pcall(cb, inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
-	end
-end
-
---// Vòng lặp đánh giá nguy hiểm và cập nhật Safe Spot theo thời gian thực
-local function startSafeSpotLoop()
-	if safeSpotLoopThread then return end
-	safeSpotLoopThread = task.spawn(function()
-		local lastLogTime = 0
-		while isEngineActive do
-			-- Tầng 1: Nếu không ở Boss Room và toàn bộ quái trong phòng đã chết -> Dọn sạch toàn bộ hazard tồn đọng
-			if not shared.IsBossActive() and shared.GetEnemyCount() == 0 and detection.GetHazardCount() > 0 then
-				detection.ClearAllHazards("Room Cleared")
-			end
-
-			-- 0. Luôn cập nhật quỹ đạo đạn bay & moving beam toán học TRƯỚC KHI tính Safe Spot (độc lập 100% với Visual ESP)
-			detection.UpdateTrajectories()
-
-			local isDead = shared.IsDead and shared.IsDead() or false
-			local inDanger, safePos, hazardName, escapeDist
-			if isDead then
-				inDanger = false
-				safePos = nil
-				hazardName = "Dead"
-				escapeDist = 0
-			else
-				inDanger, safePos, hazardName, escapeDist = safeSpot.CalculateSafeSpot()
-			end
-
-			local isInvulnerable, invulnReason = shared.IsInvulnerable()
-
-			local wasInDanger = isPlayerInDanger
-			local wasSafeSpot = currentSafeSpot
-
-			isPlayerInDanger = inDanger
-			currentSafeSpot = safePos
-			currentDangerHazardName = hazardName
-			currentEscapeDist = escapeDist or 0
-
-			safeSpot.UpdateMarker(safePos, inDanger, escapeDist)
-
-			local rootPart = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-			local pPos = rootPart and rootPart.Position
-			safeSpot.UpdateHitbox(pPos)
-			safeSpot.UpdatePlayerRadar(pPos, inDanger)
-			detection.UpdateTrajectoryVisuals()
-			detection.UpdateHazardTimers()
-
-			-- Kích hoạt Thực thi Né Chiêu (Bài toán 3)
-			if inDanger and safePos and dodge.IsAutoDodgeEnabled() then
-				dodge.Perform(safePos, escapeDist, hazardName)
-			end
-
-			local now = os.clock()
-			local invulnTimeTick = isInvulnerable and (now - lastUIUpdateTime >= 0.25)
-			local stateChanged = (inDanger ~= wasInDanger)
-				or (safePos ~= wasSafeSpot)
-				or (isDead ~= lastDeadState)
-				or (isInvulnerable ~= lastInvulnState)
-				or invulnTimeTick
-
-			if stateChanged then
-				lastUIUpdateTime = now
-				lastDeadState = isDead
-				lastInvulnState = isInvulnerable
-
-				fireSafeSpotChanged(inDanger, safePos, hazardName, escapeDist, isInvulnerable, invulnReason, isDead)
-
-				if logInDanger and inDanger and safePos and (os.clock() - lastLogTime > 0.5) then
-					lastLogTime = os.clock()
-					if isInvulnerable and ignoreDodgeWhenInvulnerable then
-						print(("[SmartDodge][Invulnerable] 🛡️ IN DANGER (%s) but INVULNERABLE (%s) -> Dodge Paused")
-							:format(hazardName, invulnReason or "Protection"))
-					else
-						print(("[SmartDodge][InDanger] ⚠️ IN DANGER: %s | Escape Dist: %.1f studs -> SafePos: (%.1f, %.1f, %.1f)")
-							:format(hazardName, escapeDist, safePos.X, safePos.Y, safePos.Z))
-					end
-				end
-			end
-
-			-- Tối ưu hóa Adaptive Polling:
-			-- Khi an toàn và không có hiểm họa: giãn nhịp 0.1s (10 FPS) để tiết kiệm 50% CPU
-			-- Khi có hiểm họa hoặc đang dính chiêu: tăng tốc lên 0.04s (25 FPS) để né phản xạ siêu nhạy
-			local hasThreats = inDanger or (detection.GetHazardCount and detection.GetHazardCount() > 0)
-			local pollInterval = hasThreats and 0.04 or 0.1
-			task.wait(pollInterval)
-		end
-	end)
-end
-
-local function stopSafeSpotLoop()
-	if safeSpotLoopThread then
-		task.cancel(safeSpotLoopThread)
-		safeSpotLoopThread = nil
-	end
-	dodge.Cancel()
-	safeSpot.HideVisuals()
-	detection.ClearTrajectoryVisuals()
-	safeSpot.ResetLock()
-	isPlayerInDanger = false
-	currentSafeSpot = nil
-	currentDangerHazardName = nil
-	fireSafeSpotChanged(false, nil, nil, 0)
-	dodge.FireStatus("Idle")
-end
-
-local function startTracking()
-	detection.StartScan()
-	startSafeSpotLoop()
-end
-
-local function stopTracking()
-	detection.StopScan()
-	stopSafeSpotLoop()
-end
-
---// Bật/thay đổi engine KHÔNG liên quan tới độc quyền coordinator: Auto Farm có thể điều khiển
---// Smart Dodge làm chủ di chuyển (Mode 2) mà không đụng chạy tới các hệ thống khác.
-function engine.StartEngine()
-	if isEngineActive then return end
-	isEngineActive = true
-	detection.SetEnabled(true)
-	startTracking()
-end
-
-function engine.StopEngine()
-	if not isEngineActive then return end
-	isEngineActive = false
-	stopSafeSpotLoop()
-
-	-- Chỉ dừng bộ quét detection nếu tính năng Record cũng không đang chạy
-	local skillTimingManager = detection.skillTimingManager
-	if not (skillTimingManager and skillTimingManager.IsRecording()) then
-		detection.SetEnabled(false)
-		detection.StopScan()
-	end
-end
-
---// Toggle độc lập (UI): bật engine + tự tuyên bố độc quyền (tắt các hệ thống điều khiển nhân vật khác).
-function engine.Toggle(state)
-	if state then
-		engine.StartEngine()
-		coordinator.EnableExclusive("SmartDodge")
-	else
-		engine.StopEngine()
-	end
-end
-
-function engine.IsEnabled()
-	return isEngineActive
-end
-
---// Dọn dẹp toàn diện khi shutdown (lifecycle): dừng tracking + hủy visual hoàn toàn
-function engine.Shutdown()
-	isEngineActive = false
-	stopTracking()
-	safeSpot.DestroyVisuals()
-	detection.ClearTrajectoryVisuals()
-	dodge.Cancel()
-end
-
---// Accessors
-
-function engine.SetLogInDanger(state)
-	logInDanger = state and true or false
-end
-
-function engine.IsLogInDangerEnabled()
-	return logInDanger
-end
-
-function engine.SetIgnoreDodgeWhenInvulnerable(state)
-	ignoreDodgeWhenInvulnerable = state and true or false
-end
-
-function engine.IsIgnoreDodgeWhenInvulnerableEnabled()
-	return ignoreDodgeWhenInvulnerable
-end
-
-function engine.IsDead()
-	return shared.IsDead and shared.IsDead() or false
-end
-
-function engine.IsInDanger()
-	return isPlayerInDanger
-end
-
-function engine.GetCurrentSafeSpot()
-	return currentSafeSpot, isPlayerInDanger, currentDangerHazardName, currentEscapeDist
-end
-
-function engine.OnSafeSpotChanged(callback)
-	if type(callback) ~= "function" then return end
-	table.insert(safeSpotCallbacks, callback)
-end
-
-function engine.SetTargetScope(scope)
-	safeSpot.SetTargetScope(scope)
-end
-
-function engine.GetTargetScope()
-	return safeSpot.GetTargetScope()
-end
-
-return engine end function __DIST.E()--==============================================================--
--- Smart Dodge – Speed Debug HUD
--- Hiển thị trực quan tốc độ hiện tại (WalkSpeed) của Player
--- trực tiếp trên màn hình game (Screen HUD) kèm đổi màu theo trạng thái:
---   - Màu TRẮNG: Tốc độ thường (Normal)
---   - Màu ĐỎ:    Đang ép WalkSpeed = Panic (Panic Sprint)
---   - Màu XANH LÁ: Đang hưởng tốc độ từ Skill chính thức của game
---==============================================================--
-
-
-local services = __DIST.load('i')
-local shared = __DIST.load('j')
-local lifecycle = __DIST.load('b')
-
-local RunService = services.RunService
-local UserInputService = services.UserInputService
-local player = services.player
-
-local speedDebugHud = {}
-
-local enabled = false
-local screenGui = nil
-local mainFrame = nil
-local speedLabel = nil
-local uiStroke = nil
-local updateConn = nil
-
-local COLOR_WHITE = Color3.fromRGB(255, 255, 255)
-local COLOR_RED = Color3.fromRGB(255, 65, 65)
-local COLOR_GREEN = Color3.fromRGB(50, 255, 120)
-
-local STROKE_NORMAL = Color3.fromRGB(60, 60, 70)
-local STROKE_RED = Color3.fromRGB(220, 50, 50)
-local STROKE_GREEN = Color3.fromRGB(40, 200, 90)
-
--- Lấy parent an toàn nhất cho Gui
-local function getGuiParent()
-	local success, result = pcall(function()
-		if typeof(gethui) == "function" then
-			local h = gethui()
-			if h then return h end
-		end
-		local coreGui = game:GetService("CoreGui")
-		if coreGui then return coreGui end
-		return nil
-	end)
-	if success and result then return result end
-
-	local p = player or services.player
-	return p and p:FindFirstChild("PlayerGui")
-end
-
--- Tạo giao diện HUD kéo thả được
-local function createHud()
-	if screenGui and screenGui.Parent then return end
-
-	local parent = getGuiParent()
-	if not parent then return end
-
-	-- Dọn dẹp bản cũ nếu có
-	local old = parent:FindFirstChild("DQ_SpeedDebugHud")
-	if old then
-		pcall(function() old:Destroy() end)
-	end
-
-	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "DQ_SpeedDebugHud"
-	screenGui.ResetOnSpawn = false
-	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-	-- Frame chính (Kéo thả được)
-	mainFrame = Instance.new("Frame")
-	mainFrame.Name = "SpeedBadge"
-	mainFrame.Size = UDim2.new(0, 168, 0, 34)
-	mainFrame.Position = UDim2.new(0.5, -84, 0, 50)
-	mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 22)
-	mainFrame.BackgroundTransparency = 0.25
-	mainFrame.BorderSizePixel = 0
-	mainFrame.Active = true
-	mainFrame.Parent = screenGui
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = mainFrame
-
-	uiStroke = Instance.new("UIStroke")
-	uiStroke.Thickness = 1.4
-	uiStroke.Color = STROKE_NORMAL
-	uiStroke.Transparency = 0.2
-	uiStroke.Parent = mainFrame
-
-	speedLabel = Instance.new("TextLabel")
-	speedLabel.Name = "SpeedText"
-	speedLabel.Size = UDim2.new(1, -10, 1, 0)
-	speedLabel.Position = UDim2.new(0, 5, 0, 0)
-	speedLabel.BackgroundTransparency = 1
-	speedLabel.Font = Enum.Font.GothamBold
-	speedLabel.TextSize = 13
-	speedLabel.TextColor3 = COLOR_WHITE
-	speedLabel.Text = "SPEED: 16.0"
-	speedLabel.TextXAlignment = Enum.TextXAlignment.Center
-	speedLabel.TextYAlignment = Enum.TextYAlignment.Center
-	speedLabel.Parent = mainFrame
-
-	-- Cơ chế kéo thả linh hoạt (Draggable)
-	local dragging = false
-	local dragStart = nil
-	local startPos = nil
-
-	mainFrame.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = mainFrame.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					dragging = false
-				end
-			end)
-		end
-	end)
-
-	mainFrame.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			if dragging and dragStart and startPos then
-				local delta = input.Position - dragStart
-				mainFrame.Position = UDim2.new(
-					startPos.X.Scale,
-					startPos.X.Offset + delta.X,
-					startPos.Y.Scale,
-					startPos.Y.Offset + delta.Y
-				)
-			end
-		end
-	end)
-
-	screenGui.Parent = parent
-end
-
-local function destroyHud()
-	if updateConn then
-		updateConn:Disconnect()
-		updateConn = nil
-	end
-	if screenGui and screenGui.Parent then
-		pcall(function() screenGui:Destroy() end)
-		screenGui = nil
-		mainFrame = nil
-		speedLabel = nil
-		uiStroke = nil
-	end
-end
-
--- Vòng lặp cập nhật thông số và màu sắc theo thời gian thực
-local function startUpdating()
-	if updateConn then return end
-
-	local lastUpdate = 0
-	updateConn = RunService.RenderStepped:Connect(function()
-		local now = os.clock()
-		if (now - lastUpdate) < 0.04 then return end
-		lastUpdate = now
-
-		if not screenGui or not screenGui.Parent or not speedLabel or not speedLabel.Parent then
-			createHud()
-			return
-		end
-
-		local char = player and player.Character
-		local humanoid = char and char:FindFirstChild("Humanoid")
-		local rootPart = char and char:FindFirstChild("HumanoidRootPart")
-
-		if not humanoid or humanoid.Health <= 0 then
-			speedLabel.Text = "SPEED: 💀 DEAD"
-			speedLabel.TextColor3 = Color3.fromRGB(160, 160, 160)
-			if uiStroke then uiStroke.Color = STROKE_NORMAL end
-			return
-		end
-
-		local curWalkSpeed = humanoid.WalkSpeed or 0
-		local vel = rootPart and rootPart.AssemblyLinearVelocity
-		local horizVel = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
-
-		local isPanic = shared.IsPanicSpeedActive and shared.IsPanicSpeedActive()
-		local isSkillBuff = (not isPanic) and (curWalkSpeed >= 23.5 or horizVel >= 23.0)
-
-		if isPanic then
-			-- 1. Đang ép WalkSpeed = Panic (MÀU ĐỎ)
-			speedLabel.TextColor3 = COLOR_RED
-			speedLabel.Text = ("SPD: %.1f [PANIC 💨]"):format(curWalkSpeed)
-			if uiStroke then uiStroke.Color = STROKE_RED end
-		elseif isSkillBuff then
-			-- 2. Đang là speed từ chiêu thức của game (MÀU XANH LÁ)
-			speedLabel.TextColor3 = COLOR_GREEN
-			speedLabel.Text = ("SPD: %.1f [SKILL ⚡]"):format(curWalkSpeed)
-			if uiStroke then uiStroke.Color = STROKE_GREEN end
-		else
-			-- 3. Speed thường (MÀU TRẮNG)
-			speedLabel.TextColor3 = COLOR_WHITE
-			speedLabel.Text = ("SPD: %.1f"):format(curWalkSpeed)
-			if uiStroke then uiStroke.Color = STROKE_NORMAL end
-		end
-	end)
-end
-
-function speedDebugHud.SetEnabled(state)
-	enabled = state and true or false
-	if enabled then
-		createHud()
-		startUpdating()
-	else
-		destroyHud()
-	end
-end
-
-function speedDebugHud.IsEnabled()
-	return enabled
-end
-
--- Tự động dọn dẹp khi Hub tắt
-lifecycle.Register(function()
-	speedDebugHud.SetEnabled(false)
-end)
-
--- Khởi động mặc định
-speedDebugHud.SetEnabled(true)
-
-return speedDebugHud
-end function __DIST.F()-- Smart Dodge (DungeonQuest) – Facade: tổng hợp 6 module nhỏ thành API pública đầy đủ.
--- Các module thành phần: detection (quét hiểm họa) / geometry (hit-test) / safeSpot
--- (tính điểm an toàn + visual) / dodge (Walk+Snap) / engine (orchestrator).
--- Đường dẫn require "@routes/DungeonQuest/core/smartDodge" vẫn giữ nguyên (init.luau).
-
---// Imports
-
-local lifecycle = __DIST.load('b')
-local coordinator = __DIST.load('u')
-local detection = __DIST.load('A')
-local geometry = __DIST.load('z')
-local safeSpot = __DIST.load('B')
-local dodge = __DIST.load('C')
-local engine = __DIST.load('D')
-local targetFacing = __DIST.load('r')
-local speedDebugHud = __DIST.load('E')
-local skillTimingManager = __DIST.load('y')
-local shared = __DIST.load('j')
-
---// Table
-local smartDodge = {}
-
---// Skill Timing & Training
-smartDodge.skillTiming = skillTimingManager
-smartDodge.SetSkillTimingMode = skillTimingManager.SetMode
-smartDodge.GetSkillTimingMode = skillTimingManager.GetMode
-smartDodge.SetSelectedSkillMap = skillTimingManager.SetSelectedMap
-smartDodge.GetSelectedSkillMap = skillTimingManager.GetSelectedMap
-smartDodge.LoadSkillMapData = skillTimingManager.LoadMapData
-smartDodge.SetSkillRecordingEnabled = skillTimingManager.SetRecordingEnabled
-smartDodge.IsSkillRecordingEnabled = skillTimingManager.IsRecording
-smartDodge.SaveRecordedSkillData = skillTimingManager.SaveRecordedData
-smartDodge.ClearRecordedSkillSession = skillTimingManager.ClearRecordedSession
-smartDodge.GetLoadedSkillCount = skillTimingManager.GetLoadedSkillCount
-smartDodge.GetRecordedSkillCount = skillTimingManager.GetRecordedSkillCount
-smartDodge.GetTotalSamplesCount = skillTimingManager.GetTotalSamplesCount
-smartDodge.OnSkillTimingChanged = skillTimingManager.OnChanged
-
---// Threat Detection (Module 1)
-smartDodge.StartDetection = detection.StartScan
-smartDodge.StopDetection = detection.StopScan
-smartDodge.IsDetectionEnabled = detection.IsEnabled
-smartDodge.SetDetectionEnabled = detection.SetEnabled
-smartDodge.AddCustomHazard = detection.AddCustomHazard
-smartDodge.AddTrajectoryProjectile = detection.AddTrajectoryProjectile
-smartDodge.SetTrajectoryLookahead = detection.SetTrajectoryLookahead
-smartDodge.GetTrajectoryLookahead = detection.GetTrajectoryLookahead
-smartDodge.SetTrajectoryWidthPadding = detection.SetTrajectoryWidthPadding
-smartDodge.GetTrajectoryWidthPadding = detection.GetTrajectoryWidthPadding
-smartDodge.RegisterPlayerSkill = detection.RegisterPlayerSkill
-smartDodge.GetActiveBossOrb = detection.GetActiveBossOrb
-
-smartDodge.SetLogHazards = detection.SetLogHazards
-smartDodge.IsLogHazardsEnabled = detection.IsLogHazardsEnabled
--- Backward compatibility aliases
-smartDodge.SetLogThreats = smartDodge.SetLogHazards
-smartDodge.IsLogThreatsEnabled = smartDodge.IsLogHazardsEnabled
-
-smartDodge.SetVisualEsp = detection.SetVisualEsp
-smartDodge.IsVisualEspEnabled = detection.IsVisualEspEnabled
-smartDodge.SetShowSkillTimers = detection.SetShowSkillTimers
-smartDodge.IsShowSkillTimersEnabled = detection.IsShowSkillTimersEnabled
-smartDodge.GetHazardTimeRemaining = detection.GetHazardTimeRemaining
-
-smartDodge.GetHazardCount = detection.GetHazardCount
-smartDodge.GetActiveHazards = detection.GetActiveHazards
-smartDodge.GetLastHazardInfo = detection.GetLastHazardInfo
-smartDodge.OnHazardChanged = detection.OnHazardChanged
-
---// Safe Spot (Module 3+4)
-smartDodge.CalculateSafeSpot = safeSpot.CalculateSafeSpot
-smartDodge.SetShowSafeMarker = safeSpot.SetShowSafeMarker
-smartDodge.IsShowSafeMarkerEnabled = safeSpot.IsShowSafeMarkerEnabled
-smartDodge.SetShowPlayerRadar = safeSpot.SetShowPlayerRadar
-smartDodge.IsShowPlayerRadarEnabled = safeSpot.IsShowPlayerRadarEnabled
-smartDodge.UpdatePlayerRadar = safeSpot.UpdatePlayerRadar
-smartDodge.ClearPlayerRadar = safeSpot.ClearPlayerRadar
-smartDodge.SetShowHitboxVisual = safeSpot.SetShowHitboxVisual
-smartDodge.IsShowHitboxVisualEnabled = safeSpot.IsShowHitboxVisualEnabled
-smartDodge.SetHitboxPadding = safeSpot.SetHitboxPadding
-smartDodge.GetHitboxPadding = geometry.GetHitboxPadding
-smartDodge.GetBoss1ArenaCenter = safeSpot.GetBoss1ArenaCenter
-smartDodge.GetBoss1ArenaRadius = safeSpot.GetBoss1ArenaRadius
-
---// Dodge (Module 5)
-smartDodge.SetAutoDodge = dodge.SetAutoDodge
-smartDodge.IsAutoDodgeEnabled = dodge.IsAutoDodgeEnabled
-smartDodge.SetDodgeMode = dodge.SetDodgeMode
-smartDodge.GetDodgeMode = dodge.GetDodgeMode
-smartDodge.SetBlinkStep = dodge.SetBlinkStep
-smartDodge.GetBlinkStep = dodge.GetBlinkStep
-smartDodge.SetMaxSnapDistance = dodge.SetMaxSnapDistance
-smartDodge.GetMaxSnapDistance = dodge.GetMaxSnapDistance
-smartDodge.SetMaxTeleportStep = dodge.SetMaxTeleportStep
-smartDodge.GetMaxTeleportStep = dodge.GetMaxTeleportStep
-smartDodge.SetMaintainSnapHeight = dodge.SetMaintainSnapHeight
-smartDodge.IsMaintainSnapHeightEnabled = dodge.IsMaintainSnapHeightEnabled
-smartDodge.IsDodging = dodge.IsDodging
-smartDodge.SetFaceTargetProvider = dodge.SetFaceTargetProvider
-smartDodge.GetDodgeStatus = dodge.GetStatus
-smartDodge.OnDodgeStatusChanged = dodge.OnDodgeStatusChanged
-smartDodge.Cancel = dodge.Cancel
-smartDodge.Perform = dodge.Perform
-
---// Panic Sprint (Kích tốc né nguy cấp)
-smartDodge.SetPanicSprintEnabled = dodge.SetPanicSprintEnabled
-smartDodge.IsPanicSprintEnabled = dodge.IsPanicSprintEnabled
-smartDodge.SetPanicSpeed = dodge.SetPanicSpeed
-smartDodge.GetPanicSpeed = dodge.GetPanicSpeed
-smartDodge.SetPanicDuration = dodge.SetPanicDuration
-smartDodge.GetPanicDuration = dodge.GetPanicDuration
-smartDodge.SetPanicCooldown = dodge.SetPanicCooldown
-smartDodge.GetPanicCooldown = dodge.GetPanicCooldown
-smartDodge.IsPanicActive = dodge.IsPanicActive
-
---// Speed Debug HUD (Màn hình chơi)
-smartDodge.SetSpeedDebugHudEnabled = speedDebugHud.SetEnabled
-smartDodge.IsSpeedDebugHudEnabled = speedDebugHud.IsEnabled
-
---// Target Facing
-smartDodge.SetAutoFaceTarget = targetFacing.SetEnabled
-smartDodge.IsAutoFaceTargetEnabled = targetFacing.IsEnabled
-smartDodge.GetTargetPosition = targetFacing.GetTargetPosition
--- Backward compatibility aliases
-smartDodge.SetAutoFaceBoss = smartDodge.SetAutoFaceTarget
-smartDodge.IsAutoFaceBossEnabled = smartDodge.IsAutoFaceTargetEnabled
-smartDodge.GetBossPosition = smartDodge.GetTargetPosition
-smartDodge.IsTargetActive = targetFacing.IsTargetActive
-smartDodge.IsBossActive = targetFacing.IsTargetActive
-
---// Engine (Module 6)
-smartDodge.StartEngine = engine.StartEngine
-smartDodge.StopEngine = engine.StopEngine
-smartDodge.Toggle = engine.Toggle
-smartDodge.IsEnabled = engine.IsEnabled
-smartDodge.SetLogInDanger = engine.SetLogInDanger
-smartDodge.IsLogInDangerEnabled = engine.IsLogInDangerEnabled
-smartDodge.IsInDanger = engine.IsInDanger
-smartDodge.GetCurrentSafeSpot = engine.GetCurrentSafeSpot
-smartDodge.OnSafeSpotChanged = engine.OnSafeSpotChanged
-smartDodge.SetTargetScope = engine.SetTargetScope
-smartDodge.GetTargetScope = engine.GetTargetScope
-
---// Invulnerability & Respawn Protection
-smartDodge.SetIgnoreDodgeWhenInvulnerable = engine.SetIgnoreDodgeWhenInvulnerable
-smartDodge.IsIgnoreDodgeWhenInvulnerableEnabled = engine.IsIgnoreDodgeWhenInvulnerableEnabled
-smartDodge.SetRespawnProtectionDuration = shared.SetRespawnProtectionDuration
-smartDodge.GetRespawnProtectionDuration = shared.GetRespawnProtectionDuration
-smartDodge.GetRespawnProtectionRemaining = shared.GetRespawnProtectionRemaining
-smartDodge.IsInvulnerable = shared.IsInvulnerable
-smartDodge.IsDead = shared.IsDead
-
---// Đăng ký với coordinator: khi hệ thống khác (Auto Farm) chiếm độc quyền thì engine Smart Dodge
---// bị tắt qua StopEngine; IsEnabled dùng để coordinator biết engine đang chạy.
-coordinator.Register("SmartDodge", smartDodge.StopEngine, smartDodge.IsEnabled)
-
---// Dọn dẹp toàn diện khi shutdown
-lifecycle.Register(function()
-	engine.Shutdown()
-end)
-
-return smartDodge end function __DIST.G()--==============================================================--
+end function __DIST.x()--==============================================================--
 -- Smart Auto Play – Submodule: Auto Skill (DungeonQuest)
 -- Tự động xả kỹ năng thông minh theo 2 lối chơi:
 --   1. FULL DAMAGE: Cả 2 skill gây dame -> xả skill liên tục như bình thường.
@@ -22705,6 +15363,7 @@ local services = __DIST.load('i')
 local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 local tracker = __DIST.load('o')
+local bossArea = __DIST.load('p')
 
 local UserInputService = services.UserInputService
 local VirtualInputManager = services.VirtualInputManager
@@ -22765,6 +15424,8 @@ local buffSkill = nil
 local damageSkill = nil
 local lastBuffCastTime = 0
 local lastDamageCastTime = 0
+local lastQCastTime = 0
+local lastECastTime = 0
 local lastAnyCastTime = 0
 local lastScanTime = 0
 
@@ -22823,49 +15484,128 @@ local function findAbilityTool(slotKey)
 	return nil
 end
 
+local busySince = 0
 -- Kiểm tra nhân vật có đang bận cast chiêu không (busyCasting)
--- Kèm cơ chế tự động bypass nếu busy kéo dài quá 0.6s (tránh lỗi kẹt animation hoặc đòn đánh thường)
-local function isCharacterBusyCasting()
+-- Kèm cơ chế tự động bypass nếu busy liên tục quá 2.5s (tránh lỗi kẹt animation vĩnh viễn)
+local function isCharacterBusyCasting(): boolean
 	local char = player and player.Character
 	if char then
 		local busy = char:FindFirstChild("busyCasting")
 		if busy and busy:IsA("BoolValue") and busy.Value == true then
-			if os.clock() - lastAnyCastTime < 0.6 then
+			if busySince == 0 then
+				busySince = os.clock()
+			end
+			if (os.clock() - busySince) < 2.5 then
 				return true
 			end
+		else
+			busySince = 0
 		end
+	else
+		busySince = 0
 	end
 	return false
 end
 
 local function isBuffActive(): boolean
-	if lastBuffCastTime == 0 then return false end
-	return (os.clock() - lastBuffCastTime) < buffDuration
+	-- Nhận biết buff thuần túy dựa vào sự hiện diện của "groundAura" trong Workspace (con cấp 1)
+	-- Miễn là trong workspace còn tồn tại groundAura thì nghĩa là đang trong thời gian được buff.
+	if workspace:FindFirstChild("groundAura") or workspace:FindFirstChild("GroundAura") then
+		return true
+	end
+	for _, child in ipairs(workspace:GetChildren()) do
+		if child.Name:lower() == "groundaura" then
+			return true
+		end
+	end
+	return false
 end
 
 local function getBuffRemaining(): number
-	if lastBuffCastTime == 0 then return 0 end
-	return math.max(0, buffDuration - (os.clock() - lastBuffCastTime))
+	return isBuffActive() and 1 or 0
+end
+
+-- Đọc trực tiếp trạng thái Cooldown từ GUI của game (PlayerGui.abilities.Frame)
+-- Đây là nguồn dữ liệu chuẩn xác 100% tương ứng với giao diện người chơi nhìn thấy
+local function getSlotCooldownFromGui(slotKey: string): (boolean?, number?)
+	local p = player or services.player
+	local playerGui = p and p:FindFirstChild("PlayerGui")
+	local abilities = playerGui and playerGui:FindFirstChild("abilities")
+	local frame = abilities and abilities:FindFirstChild("Frame")
+	if not frame then return nil, nil end
+
+	local parentName = (tostring(slotKey):lower() == "q") and "LeftAbility" or "RightAbility"
+	local abilityFrame = frame:FindFirstChild(parentName)
+	local slot = abilityFrame and abilityFrame:FindFirstChild("slot")
+	local cdNum = slot and slot:FindFirstChild("cooldownNumber")
+	if cdNum and cdNum:IsA("GuiObject") then
+		local isVisible = cdNum.Visible
+		local numText = (cdNum:IsA("TextLabel") and cdNum.Text) or ""
+		local remNum = tonumber(numText) or 0
+		return isVisible, remNum
+	end
+	return nil, nil
+end
+
+local function isSkillReady(slotKey: string, lastCastTime: number, defaultCd: number): boolean
+	local now = os.clock()
+	-- Debounce chống spam phím trong khoảng thời gian siêu ngắn (< 0.15s)
+	if lastCastTime > 0 and (now - lastCastTime) < 0.15 then
+		return false
+	end
+
+	-- Tool phải tồn tại trong Backpack hoặc Character
+	local tool = findAbilityTool(slotKey)
+	if not tool then
+		return false
+	end
+
+	-- Nếu có comboCooldownOverride cho buff
+	if buffSkill and slotKey == buffSkill.slotKey and comboCooldownOverride > 0 then
+		return (lastCastTime == 0 or (now - lastCastTime) >= comboCooldownOverride)
+	end
+
+	-- 1. ƯU TIÊN SỐ 1: Kiểm tra trực tiếp hiển thị UI của game (PlayerGui.abilities)
+	local isGuiOnCooldown, guiRemTime = getSlotCooldownFromGui(slotKey)
+	if isGuiOnCooldown ~= nil then
+		if not isGuiOnCooldown then
+			return true -- UI game hiển thị đã hết cooldown -> Sẵn sàng xả chiêu ngay!
+		else
+			if guiRemTime and guiRemTime <= 0.05 then
+				return true
+			end
+			return false -- UI game đang đếm ngược cooldown
+		end
+	end
+
+	-- 2. ƯU TIÊN SỐ 2: Kiểm tra giá trị NumberValue "cooldown" thời gian thực của Tool từ Game
+	local tool = findAbilityTool(slotKey)
+	if tool and tool.Parent then
+		local cdVal = tool:FindFirstChild("cooldown")
+		if cdVal and cdVal:IsA("ValueBase") then
+			local num = tonumber(cdVal.Value) or 0
+			return num <= 0.05
+		end
+
+		local cdLen = tool:FindFirstChild("cooldownLength")
+		if cdLen and cdLen:IsA("ValueBase") and tonumber(cdLen.Value) and tonumber(cdLen.Value) > 0 then
+			return lastCastTime == 0 or (now - lastCastTime) >= tonumber(cdLen.Value)
+		end
+	end
+
+	-- 3. Fallback: Tính theo đồng hồ
+	local cd = defaultCd or 3.0
+	return lastCastTime == 0 or (now - lastCastTime) >= cd
 end
 
 local function isBuffSkillReady(): boolean
 	if not buffSkill then return false end
-	local buffTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
-	if comboCooldownOverride > 0 then
-		local elapsed = os.clock() - lastBuffCastTime
-		return (lastBuffCastTime == 0 or elapsed >= comboCooldownOverride)
-	elseif buffTool and buffTool.Parent then
-		local cdVal = buffTool:FindFirstChild("cooldown")
-		if cdVal and cdVal:IsA("ValueBase") then
-			return (tonumber(cdVal.Value) or 0) <= 0.05
-		else
-			local elapsed = os.clock() - lastBuffCastTime
-			return (lastBuffCastTime == 0 or elapsed >= (buffSkill.cooldown or 15.0))
-		end
-	else
-		local elapsed = os.clock() - lastBuffCastTime
-		return (lastBuffCastTime == 0 or elapsed >= (buffSkill.cooldown or 15.0))
-	end
+	return isSkillReady(buffSkill.slotKey, lastBuffCastTime, buffSkill.cooldown or 15.0)
+end
+
+local function isDamageSkillReady(): boolean
+	if not damageSkill then return false end
+	return isSkillReady(damageSkill.slotKey, lastDamageCastTime, damageSkill.cooldown or 3.0)
 end
 
 local function getComboCooldownRemaining()
@@ -22878,7 +15618,17 @@ local function getComboCooldownRemaining()
 		return math.max(0, comboCooldownOverride - elapsed)
 	end
 
-	-- Lấy Cooldown thời gian thực trực tiếp từ Tool trong Backpack / Character
+	-- 1. Ưu tiên lấy từ UI game
+	local isGuiCd, guiRem = getSlotCooldownFromGui(buffSkill.slotKey)
+	if isGuiCd ~= nil then
+		if isGuiCd and guiRem and guiRem > 0 then
+			return guiRem
+		elseif not isGuiCd then
+			return 0
+		end
+	end
+
+	-- 2. Lấy từ Tool
 	local tool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
 	if tool and tool.Parent then
 		local cdVal = tool:FindFirstChild("cooldown")
@@ -22887,7 +15637,7 @@ local function getComboCooldownRemaining()
 		end
 	end
 
-	-- Fallback tính theo đồng hồ
+	-- 3. Fallback tính theo đồng hồ
 	if lastBuffCastTime > 0 then
 		local cd = buffSkill.cooldown or 15.0
 		local elapsed = os.clock() - lastBuffCastTime
@@ -22923,25 +15673,17 @@ local function fireStatusChange()
 end
 
 -- Kích hoạt kỹ năng (ưu tiên gọi localEvent của Tool, đồng thời nhấn phím)
-local function castAbility(tool, key)
+local function castAbility(tool, key, slotKey)
 	-- Quay mặt ngay tức thì về hướng mục tiêu (ưu tiên Centroid Override khi gom quái AoE)
 	local char = player and player.Character
 	local root = char and char:FindFirstChild("HumanoidRootPart")
 	local aimOverride = nil
 	pcall(function()
 		local sdv2 = __DIST.load('t')
-		if sdv2 and sdv2.facing and sdv2.facing.GetTargetOverride then
-			aimOverride = sdv2.facing.GetTargetOverride()
+		if sdv2 and sdv2.targetFacing and sdv2.targetFacing.GetTargetOverride then
+			aimOverride = sdv2.targetFacing.GetTargetOverride()
 		end
 	end)
-	if not aimOverride then
-		pcall(function()
-			local tf = __DIST.load('r')
-			if tf and tf.GetTargetOverride then
-				aimOverride = tf.GetTargetOverride()
-			end
-		end)
-	end
 	local tPos = aimOverride or (nearestTargetInfo and nearestTargetInfo.pos)
 	if root and tPos then
 		local pPos = root.Position
@@ -22955,8 +15697,9 @@ local function castAbility(tool, key)
 
 	lastAnyCastTime = os.clock()
 
-	if tool and tool.Parent then
-		local localEvent = tool:FindFirstChild("localEvent")
+	local actTool = (tool and tool.Parent and tool) or (slotKey and findAbilityTool(slotKey))
+	if actTool and actTool.Parent then
+		local localEvent = actTool:FindFirstChild("localEvent")
 		if localEvent and localEvent:IsA("BindableEvent") then
 			pcall(function()
 				localEvent:Fire()
@@ -22965,11 +15708,14 @@ local function castAbility(tool, key)
 	end
 
 	if key then
-		local holdTime = shared.GetKeyHoldTime() or keyHoldDuration
+		local holdTime = shared.GetKeyHoldTime() or keyHoldDuration or 0.05
 		pcall(function()
 			VirtualInputManager:SendKeyEvent(true, key, false, game)
-			task.wait(holdTime)
-			VirtualInputManager:SendKeyEvent(false, key, false, game)
+			task.delay(math.min(holdTime, 0.05), function()
+				pcall(function()
+					VirtualInputManager:SendKeyEvent(false, key, false, game)
+				end)
+			end)
 		end)
 	end
 end
@@ -22979,14 +15725,26 @@ function autoSkill.ScanEquippedSkills()
 	local toolQ = findAbilityTool("q")
 	local toolE = findAbilityTool("e")
 
-	local function parseTool(tool, defaultName, key, slotKey)
+	local function parseTool(tool, defaultName, key, slotKey, prevSkill)
 		if not tool then
+			-- Nếu tool tạm thời chưa load trong Backpack/Character (ví dụ vừa hồi sinh),
+			-- giữ lại thông tin kỹ năng đã nhận diện trước đó (tên, isBuff, cooldown) thay vì xóa trắng về FullDamage!
+			if prevSkill and prevSkill.name ~= "Scanning..." and prevSkill.name ~= defaultName then
+				return {
+					name = prevSkill.name,
+					key = key,
+					slotKey = slotKey,
+					isBuff = prevSkill.isBuff,
+					cooldown = prevSkill.cooldown,
+					tool = nil,
+				}
+			end
 			return {
 				name = defaultName,
 				key = key,
 				slotKey = slotKey,
 				isBuff = false,
-				cooldown = 15.0,
+				cooldown = 3.0,
 				tool = nil,
 			}
 		end
@@ -22996,7 +15754,8 @@ function autoSkill.ScanEquippedSkills()
 		-- Kỹ năng chỉ cần chứa từ "inner" trong tên thì được xem là BUFF
 		local isBuff = nameLower:find("inner") ~= nil
 
-		local maxCd = 15.0
+		local defaultCd = isBuff and 15.0 or 3.0
+		local maxCd = defaultCd
 		local cdLen = tool:FindFirstChild("cooldownLength")
 		if cdLen and cdLen:IsA("ValueBase") and tonumber(cdLen.Value) and tonumber(cdLen.Value) > 0 then
 			maxCd = tonumber(cdLen.Value)
@@ -23012,8 +15771,8 @@ function autoSkill.ScanEquippedSkills()
 		}
 	end
 
-	skillQ = parseTool(toolQ, "Skill Q", Enum.KeyCode.Q, "q")
-	skillE = parseTool(toolE, "Skill E", Enum.KeyCode.E, "e")
+	skillQ = parseTool(toolQ, "Skill Q", Enum.KeyCode.Q, "q", skillQ)
+	skillE = parseTool(toolE, "Skill E", Enum.KeyCode.E, "e", skillE)
 
 	-- Phân loại lối chơi tự động
 	if skillQ.isBuff and not skillE.isBuff then
@@ -23039,30 +15798,58 @@ local function hookBackpackEvents()
 	local bp = player and player:FindFirstChild("Backpack")
 	if bp then
 		bp.ChildAdded:Connect(function()
-			task.delay(0.15, autoSkill.ScanEquippedSkills)
+			task.delay(0.1, autoSkill.ScanEquippedSkills)
 		end)
 		bp.ChildRemoved:Connect(function()
-			task.delay(0.15, autoSkill.ScanEquippedSkills)
+			task.delay(0.1, autoSkill.ScanEquippedSkills)
 		end)
 	end
 end
 
 hookBackpackEvents()
 
+-- Hàm xử lý reset sạch khi nhân vật hồi sinh
+local function handleRespawnOrCharacterAdded()
+	-- 1. Reset sạch toàn bộ mốc thời gian cast chiêu về 0 cho kiếp sống mới (đảm bảo buff sẵn sàng ngay lập tức)
+	lastBuffCastTime = 0
+	lastDamageCastTime = 0
+	lastQCastTime = 0
+	lastECastTime = 0
+	lastAnyCastTime = 0
+	busySince = 0
+	isCasting = false
+
+	-- 2. Đăng ký lại Backpack và quét skill ngay lập tức
+	hookBackpackEvents()
+	autoSkill.ScanEquippedSkills()
+
+	-- 3. Quét bổ sung trong 1 giây đầu (100ms, 250ms, 500ms) để đón các Tool tải chậm
+	task.delay(0.1, autoSkill.ScanEquippedSkills)
+	task.delay(0.25, autoSkill.ScanEquippedSkills)
+	task.delay(0.5, autoSkill.ScanEquippedSkills)
+end
+
 if player then
-	player.CharacterAdded:Connect(function()
-		task.delay(0.5, function()
-			hookBackpackEvents()
-			autoSkill.ScanEquippedSkills()
-		end)
+	player.CharacterAdded:Connect(function(char)
+		handleRespawnOrCharacterAdded()
+
+		local hum = char and char:WaitForChild("Humanoid", 5)
+		if hum then
+			hum.Died:Connect(function()
+				isCasting = false
+				lastBuffCastTime = 0
+				lastDamageCastTime = 0
+				lastQCastTime = 0
+				lastECastTime = 0
+				lastAnyCastTime = 0
+				busySince = 0
+			end)
+		end
 	end)
 end
 
 shared.OnRespawn(function()
-	task.delay(0.5, function()
-		hookBackpackEvents()
-		autoSkill.ScanEquippedSkills()
-	end)
+	handleRespawnOrCharacterAdded()
 end)
 
 task.spawn(function()
@@ -23073,6 +15860,73 @@ end)
 -- Kiểm tra xem kẻ địch có khớp với phạm vi targetScope ("All" | "Boss" | "Mobs") không
 local function isEnemyMatchingScope(model: Instance?, name: string?): boolean
 	return shared.IsEnemyMatchingScope(model, name, targetScope)
+end
+
+-- Kiểm tra xem có Boss đang hiện diện trong trận chiến hay không
+local function isBossPresent(): boolean
+	if shared.IsBossActive and shared.IsBossActive() then
+		return true
+	end
+	if bossArea and bossArea.IsLocked and bossArea.IsLocked() then
+		return true
+	end
+	local tracked = shared.GetTrackedEnemyData and shared.GetTrackedEnemyData()
+	if tracked then
+		for _, data in ipairs(tracked) do
+			if data and data.Model and data.Model.Parent then
+				local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
+				if hum and hum.Health > 0 then
+					if shared.IsBossEnemy(data.Model, data.Model.Name) then
+						return true
+					end
+					local mName = data.Model.Name:lower()
+					if mName:find("boss") ~= nil then
+						return true
+					end
+				end
+			end
+		end
+	end
+	return false
+end
+
+-- Kiểm tra xem trên thế giới (dungeon/map) có tồn tại kẻ địch / Boss nào còn sống hay không
+local function hasAliveEnemyOnWorld(): boolean
+	if targetScope == "Boss" then
+		return isBossPresent()
+	end
+
+	local tracked = shared.GetTrackedEnemyData and shared.GetTrackedEnemyData()
+	if tracked then
+		for _, data in ipairs(tracked) do
+			if data and data.Model and data.Model.Parent then
+				local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
+				if hum and hum.Health > 0 then
+					local eName = (data.Model and data.Model.Name) or "Enemy"
+					if isEnemyMatchingScope(data.Model, eName) then
+						return true
+					end
+				end
+			end
+		end
+	end
+
+	if isBossPresent() then
+		return true
+	end
+
+	local afTarget = tracker.GetTarget and tracker.GetTarget()
+	if afTarget and afTarget.Model and afTarget.Model.Parent then
+		local hum = afTarget.Humanoid or (afTarget.Model and afTarget.Model:FindFirstChildOfClass("Humanoid"))
+		if hum and hum.Health > 0 then
+			local tName = (afTarget.Model and afTarget.Model.Name) or "Target"
+			if isEnemyMatchingScope(afTarget.Model, tName) then
+				return true
+			end
+		end
+	end
+
+	return false
 end
 
 -- Tia Raycast kiểm tra đường đạn thông thoáng (Line of Sight / Wall Check)
@@ -23100,25 +15954,14 @@ local function isLineOfSightClear(fromPos: Vector3, toPos: Vector3, enemyModel: 
 	return true
 end
 
--- Kiểm tra xem hệ thống SmartDodge V2 có đang né đòn khẩn cấp không
+-- Hệ thống Auto Skill hoạt động độc lập, không chịu ảnh hưởng bởi trạng thái né
 local function isDodgingNow(): boolean
-	local dodging = false
-	pcall(function()
-		local sdv2 = __DIST.load('t')
-		if sdv2 and sdv2.dodge and sdv2.dodge.IsDodging and sdv2.dodge.IsDodging() then
-			dodging = true
-		elseif sdv2 and sdv2.danger and sdv2.danger.IsPlayerInDanger and sdv2.danger.IsPlayerInDanger() then
-			dodging = true
-		end
-	end)
-	return dodging
+	return false
 end
 
--- Thực hiện đòn đánh thường (Weapon Attack / M1)
+-- Thực hiện đòn đánh thường (Weapon Attack / M1) - Non-blocking
 local function performWeaponAttack(targetPos: Vector3?)
 	if not useAttack then return end
-	if isCharacterBusyCasting() then return end
-	if pauseCastWhileDodging and isDodgingNow() then return end
 	if (os.clock() - lastAttackTime) < 0.25 then return end
 
 	local char = player and player.Character
@@ -23149,8 +15992,11 @@ local function performWeaponAttack(targetPos: Vector3?)
 	pcall(function()
 		VirtualUser:CaptureController()
 		VirtualUser:Button1Down(Vector2.new(0, 0))
-		task.wait(0.03)
-		VirtualUser:Button1Up(Vector2.new(0, 0))
+		task.delay(0.03, function()
+			pcall(function()
+				VirtualUser:Button1Up(Vector2.new(0, 0))
+			end)
+		end)
 	end)
 end
 
@@ -23164,19 +16010,15 @@ local function getEnemiesInRadius(r)
 	local inRange = {}
 	local seenModels = {}
 
-	-- Cho phép chênh lệch cao độ tương xứng với bán kính r (tránh lọc oan quái trên cầu thang/dốc)
-	local maxAllowedDy = math.max(25.0, r * 0.75)
-
 	local tracked = shared.GetTrackedEnemyData()
 	for _, data in ipairs(tracked) do
 		if data and data.Root and data.Root.Parent then
 			local hum = data.Humanoid or (data.Model and data.Model:FindFirstChildOfClass("Humanoid"))
 			if hum and hum.Health > 0 then
 				local dx = data.Root.Position.X - pPos.X
-				local dy = data.Root.Position.Y - pPos.Y
 				local dz = data.Root.Position.Z - pPos.Z
 				local flatDist = math.sqrt(dx * dx + dz * dz)
-				if flatDist <= r and math.abs(dy) <= maxAllowedDy then
+				if flatDist <= r then
 					local eName = (data.Model and data.Model.Name) or "Enemy"
 					if isEnemyMatchingScope(data.Model, eName) then
 						if isLineOfSightClear(pPos, data.Root.Position, data.Model) then
@@ -23201,10 +16043,9 @@ local function getEnemiesInRadius(r)
 		local hum = afTarget.Humanoid or (afTarget.Model and afTarget.Model:FindFirstChildOfClass("Humanoid"))
 		if hum and hum.Health > 0 then
 			local dx = afTarget.Root.Position.X - pPos.X
-			local dy = afTarget.Root.Position.Y - pPos.Y
 			local dz = afTarget.Root.Position.Z - pPos.Z
 			local flatDist = math.sqrt(dx * dx + dz * dz)
-			if flatDist <= r and math.abs(dy) <= maxAllowedDy then
+			if flatDist <= r then
 				local tName = (afTarget.Model and afTarget.Model.Name) or "Target"
 				if isEnemyMatchingScope(afTarget.Model, tName) then
 					if isLineOfSightClear(pPos, afTarget.Root.Position, afTarget.Model) then
@@ -23225,130 +16066,13 @@ local function getEnemiesInRadius(r)
 	return inRange
 end
 
--- Kích hoạt đòn đánh / phím kỹ năng (Đảm bảo phát hiện địch trong RADIUS r trước khi cast dame)
-local function executeCombat(r)
-	local activeStyle = getEffectivePlaystyle()
+-- Mốc thời gian spam theo interval (độc lập, không phụ thuộc cooldown)
+local lastBuffAttemptTime = 0
+local lastDamageAttemptTime = 0
+local lastSkillQAttemptTime = 0
+local lastSkillEAttemptTime = 0
 
-	-- Đảm bảo Tool reference luôn hợp lệ
-	if not skillQ.tool or not skillQ.tool.Parent then
-		skillQ.tool = findAbilityTool("q")
-	end
-	if not skillE.tool or not skillE.tool.Parent then
-		skillE.tool = findAbilityTool("e")
-	end
-
-	-- Kiểm tra Dodge-Priority: Nếu đang né đòn khẩn cấp -> Hoãn xả skill gây sát thương
-	local dodging = pauseCastWhileDodging and isDodgingNow()
-
-	if activeStyle == "BuffAndDamage" and buffSkill and damageSkill then
-		-- LỐI CHƠI 2: BUFF + DAMAGE
-		local buffTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
-		local damageTool = damageSkill.tool or findAbilityTool(damageSkill.slotKey)
-
-		local isBuffReady = isBuffSkillReady()
-
-		if isBuffReady and not isCharacterBusyCasting() then
-			isCasting = true
-
-			-- Bước 1: Kích hoạt BUFF (Buff có thể kích hoạt cả khi né để tăng tốc)
-			castAbility(buffTool, buffSkill.key)
-			lastBuffCastTime = os.clock()
-
-			-- Bước 2: Chờ nhận hiệu lực buff (buffDelay)
-			task.wait(buffDelay)
-
-			-- Bước 3: KIỂM TRA LẠI: PHÁT HIỆN ĐỊCH TRONG RADIUS RỒI MỚI CAST DAME!
-			if not (pauseCastWhileDodging and isDodgingNow()) then
-				local freshEnemies = getEnemiesInRadius(r)
-				if #freshEnemies > 0 and not isCharacterBusyCasting() then
-					nearestTargetInfo = freshEnemies[1]
-					castAbility(damageTool, damageSkill.key)
-					lastDamageCastTime = os.clock()
-				end
-			end
-
-			isCasting = false
-		elseif isBuffActive() and not isCharacterBusyCasting() then
-			-- Buff vẫn ĐANG TRONG THỜI GIAN HIỆU LỰC:
-			if not dodging then
-				local freshEnemies = getEnemiesInRadius(r)
-				if #freshEnemies > 0 then
-					nearestTargetInfo = freshEnemies[1]
-					local dCdVal = damageTool and damageTool:FindFirstChild("cooldown")
-					local dReady = not dCdVal or ((tonumber(dCdVal.Value) or 0) <= 0.05)
-					if dReady then
-						local elapsedSinceLastDamage = os.clock() - lastDamageCastTime
-						local dCd = damageSkill.cooldown or 2.5
-						if lastDamageCastTime == 0 or elapsedSinceLastDamage >= dCd then
-							isCasting = true
-							castAbility(damageTool, damageSkill.key)
-							lastDamageCastTime = os.clock()
-							isCasting = false
-						else
-							performWeaponAttack(freshEnemies[1].pos)
-						end
-					else
-						performWeaponAttack(freshEnemies[1].pos)
-					end
-				end
-			end
-		else
-			-- Buff HẾT THỜI GIAN HIỆU LỰC và đang hồi chiêu:
-			-- Chờ Buff hồi chiêu để cast cùng Buff. Trong lúc chờ có thể chém thường.
-			if not dodging then
-				local freshEnemies = getEnemiesInRadius(r)
-				if #freshEnemies > 0 then
-					performWeaponAttack(freshEnemies[1].pos)
-				end
-			end
-		end
-	else
-		-- LỐI CHƠI 1: FULL DAMAGE (Spam Q & E, chỉ cast khi phát hiện địch trong RADIUS)
-		if not dodging then
-			local freshEnemies = getEnemiesInRadius(r)
-			if #freshEnemies > 0 then
-				isCasting = true
-				local castedQ = false
-				if useSkillQ then
-					local qTool = skillQ.tool or findAbilityTool("q")
-					local qCdVal = qTool and qTool:FindFirstChild("cooldown")
-					local qReady = not qCdVal or ((tonumber(qCdVal.Value) or 0) <= 0.05)
-					if qReady and not isCharacterBusyCasting() then
-						nearestTargetInfo = freshEnemies[1]
-						castAbility(qTool, Enum.KeyCode.Q)
-						castedQ = true
-					end
-				end
-
-				if castedQ then
-					task.wait(0.08)
-				end
-
-				local freshEnemiesE = getEnemiesInRadius(r)
-				local castedE = false
-				if #freshEnemiesE > 0 and useSkillE then
-					local eTool = skillE.tool or findAbilityTool("e")
-					local eCdVal = eTool and eTool:FindFirstChild("cooldown")
-					local eReady = not eCdVal or ((tonumber(eCdVal.Value) or 0) <= 0.05)
-					if eReady and not isCharacterBusyCasting() then
-						nearestTargetInfo = freshEnemiesE[1]
-						castAbility(eTool, Enum.KeyCode.E)
-						castedE = true
-					end
-				end
-
-				-- Nếu cả Q lẫn E đều đang cooldown, tự động đánh thường (Weapon Attack)
-				if not castedQ and not castedE then
-					performWeaponAttack(freshEnemies[1].pos)
-				end
-
-				isCasting = false
-			end
-		end
-	end
-end
-
--- Vòng lặp quét quái trong tầm và xả chiêu
+-- Vòng lặp quét quái trong tầm và xả chiêu (HOÀN TOÀN NON-BLOCKING)
 local function startLoop()
 	if loopThread then return end
 
@@ -23359,50 +16083,129 @@ local function startLoop()
 		while enabled do
 			pcall(function()
 				-- Không thao tác khi nhân vật đã chết hoặc đang mở khung gõ chữ (chat box)
-				if not shared.IsDead() and not UserInputService:GetFocusedTextBox() then
-					local r = getCurrentSkillRadius()
-					local enemies = getEnemiesInRadius(r)
-					currentEnemyCount = #enemies
-
-					local activeStyle = getEffectivePlaystyle()
-
-					if #enemies > 0 then
-						nearestTargetInfo = enemies[1]
-
-						-- Thực thi tấn công theo lối chơi tương ứng (chỉ cast skill dame khi có địch trong r)
-						executeCombat(r)
-					else
-						nearestTargetInfo = nil
-						isCasting = false
-
-						-- Tự động Buff ngoài giao tranh (chạy map / di chuyển) để tối ưu tốc độ người chơi
-						if autoBuffForSpeed and activeStyle == "BuffAndDamage" and buffSkill then
-							if isBuffSkillReady() and not isCharacterBusyCasting() then
-								local buffTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
-								isCasting = true
-								castAbility(buffTool, buffSkill.key)
-								lastBuffCastTime = os.clock()
-								isCasting = false
-							end
-						end
-					end
-
-					fireStatusChange()
-				else
+				if shared.IsDead() or UserInputService:GetFocusedTextBox() then
 					isCasting = false
 					currentEnemyCount = 0
 					nearestTargetInfo = nil
 					fireStatusChange()
+					return
 				end
+
+				-- 1. ĐIỀU KIỆN TIÊN QUYẾT: TRÊN THẾ GIỚI PHẢI TỒN TẠI ENEMY / BOSS
+				local hasEnemyWorld = hasAliveEnemyOnWorld()
+				if not hasEnemyWorld then
+					isCasting = false
+					currentEnemyCount = 0
+					nearestTargetInfo = nil
+					fireStatusChange()
+					return
+				end
+
+				-- Quét mục tiêu trong bán kính Magenta (Skill Cast Range)
+				local r = getCurrentSkillRadius()
+				local enemiesInMagenta = getEnemiesInRadius(r)
+				currentEnemyCount = #enemiesInMagenta
+				if #enemiesInMagenta > 0 then
+					nearestTargetInfo = enemiesInMagenta[1]
+				else
+					nearestTargetInfo = nil
+				end
+
+				local now = os.clock()
+				local curInterval = castInterval or 0.25
+				local activeStyle = getEffectivePlaystyle()
+
+				-- Đảm bảo Tool reference luôn hợp lệ
+				if not skillQ.tool or not skillQ.tool.Parent then
+					skillQ.tool = findAbilityTool("q")
+				end
+				if not skillE.tool or not skillE.tool.Parent then
+					skillE.tool = findAbilityTool("e")
+				end
+
+				local hasBuff = isBuffActive()
+
+				-- A. NẾU LÀ LỐI CHƠI BUFF + DAMAGE (Có 1 skill Buff và 1 skill Dame)
+				if activeStyle == "BuffAndDamage" and buffSkill and damageSkill then
+					local bTool = buffSkill.tool or findAbilityTool(buffSkill.slotKey)
+					local dTool = damageSkill.tool or findAbilityTool(damageSkill.slotKey)
+
+					-- 1. SKILL BUFF:
+					-- Điều kiện: Trên thế giới phải tồn tại enemy/boss (hasEnemyWorld == true)
+					-- Spam theo interval, hoàn toàn NON-BLOCKING, không phụ thuộc cooldown
+					if (now - lastBuffAttemptTime) >= curInterval then
+						lastBuffAttemptTime = now
+						isCasting = true
+						castAbility(bTool, buffSkill.key, buffSkill.slotKey)
+						if buffSkill.slotKey == "q" then
+							lastQCastTime = now
+						else
+							lastECastTime = now
+						end
+						lastBuffCastTime = now
+						isCasting = false
+					end
+
+					-- 2. SKILL DAME:
+					-- Điều kiện:
+					--   - Trên thế giới phải tồn tại enemy/boss (hasEnemyWorld == true)
+					--   - Phải trong tầm Magenta (#enemiesInMagenta > 0)
+					--   - Phải trong thời gian được buff (hasBuff == true, tức groundAura tồn tại trong Workspace con cấp 1)
+					-- Spam theo interval, hoàn toàn NON-BLOCKING, không phụ thuộc cooldown
+					if hasBuff and #enemiesInMagenta > 0 then
+						if (now - lastDamageAttemptTime) >= curInterval then
+							lastDamageAttemptTime = now
+							isCasting = true
+							castAbility(dTool, damageSkill.key, damageSkill.slotKey)
+							if damageSkill.slotKey == "q" then
+								lastQCastTime = now
+							else
+								lastECastTime = now
+							end
+							lastDamageCastTime = now
+							isCasting = false
+						end
+					end
+
+					-- 3. Tự động đánh thường (M1) nếu bật useAttack và có quái trong tầm Magenta
+					if useAttack and #enemiesInMagenta > 0 then
+						performWeaponAttack(enemiesInMagenta[1].pos)
+					end
+
+				else
+					-- B. NẾU LÀ LỐI CHƠI FULL DAMAGE (Cả 2 skill Dame, hoặc không có Buff skill)
+					-- Cả 2 skill đều là Dame: xả khi có enemy trong tầm Magenta theo interval
+					if #enemiesInMagenta > 0 then
+						-- Skill Q
+						if useSkillQ and (now - lastSkillQAttemptTime) >= curInterval then
+							lastSkillQAttemptTime = now
+							local toolQ = skillQ.tool or findAbilityTool("q")
+							isCasting = true
+							castAbility(toolQ, skillQ.key, "q")
+							lastQCastTime = now
+							isCasting = false
+						end
+
+						-- Skill E
+						if useSkillE and (now - lastSkillEAttemptTime) >= curInterval then
+							lastSkillEAttemptTime = now
+							local toolE = skillE.tool or findAbilityTool("e")
+							isCasting = true
+							castAbility(toolE, skillE.key, "e")
+							lastECastTime = now
+							isCasting = false
+						end
+
+						if useAttack then
+							performWeaponAttack(enemiesInMagenta[1].pos)
+						end
+					end
+				end
+
+				fireStatusChange()
 			end)
 
-			local activeStyle = getEffectivePlaystyle()
-			if activeStyle == "BuffAndDamage" then
-				-- Trong chế độ Buff+Dame, loop tick nhanh (0.08s) để chớp thời cơ xả ngay khi hồi chiêu
-				task.wait(0.08)
-			else
-				task.wait(castInterval)
-			end
+			task.wait(0.03)
 		end
 
 		isCasting = false
@@ -23464,14 +16267,8 @@ function autoSkill.SetAutoFace(state)
 	if not autoFace and not enabled then
 		pcall(function()
 			local sdv2 = __DIST.load('t')
-			if sdv2 and sdv2.facing and sdv2.facing.SetEnabled then
-				sdv2.facing.SetEnabled(false)
-			end
-		end)
-		pcall(function()
-			local tf = __DIST.load('r')
-			if tf and tf.SetEnabled then
-				tf.SetEnabled(false)
+			if sdv2 and sdv2.targetFacing and sdv2.targetFacing.SetEnabled then
+				sdv2.targetFacing.SetEnabled(false)
 			end
 		end)
 	end
@@ -23656,13 +16453,23 @@ function autoSkill.OnStatusChanged(callback)
 	end
 end
 
+-- Lắng nghe Boss xuất hiện để prime cooldowns và ưu tiên Buff trước
+shared.OnBossActiveChanged(function(active)
+	if active then
+		lastBuffCastTime = 0
+		lastDamageCastTime = 0
+		lastQCastTime = 0
+		lastECastTime = 0
+	end
+end)
+
 -- Lifecycle Cleanup
 lifecycle.Register(function()
 	autoSkill.SetEnabled(false)
 end)
 
 return autoSkill
-end function __DIST.H()--==============================================================--
+end function __DIST.y()--==============================================================--
 -- Smart Auto Play – Submodule: Auto Approach (DungeonQuest)
 -- Quản lý tiếp cận mục tiêu bằng Pathfinding (AutoFarm) dựa trên Combat Radius R:
 --   - Khi KHÔNG CÓ quái nào trong vòng tròn R: Bật AutoFarm dẫn đường tiếp cận mục tiêu.
@@ -23893,25 +16700,26 @@ lifecycle.Register(function()
 end)
 
 return autoApproach
-end function __DIST.I()--==============================================================--
--- Smart Auto Play – Open Space Repositioning (DungeonQuest)
+end function __DIST.z()--==============================================================--
+-- Smart Auto Play – Open Space Repositioning (DungeonQuest V1 Mode)
 -- Sau khi né chiêu (Post-Dodge):
 --   1. Bắn các vector toả tròn với bán kính lớn hơn (1.5x Combat Radius R)
 --   2. Tìm điểm có "Không gian đủ rộng" (High Wall Clearance, Safe Floor, No Hazard)
---   3. Hiển thị Visual Marker màu XANH DƯƠNG (Blue Spot) tại điểm đích
+--   3. Hiển thị Visual Marker màu XANH DƯƠNG (🔵 Blue Spot) tại điểm đích
 --   4. Nhân vật chủ động di chuyển đến bãi đất trống để chuẩn bị né các đòn tiếp theo
 --   5. Nếu xuất hiện nguy hiểm mới hoặc đường đi bị chặn -> Lập tức hủy và né tiếp!
 --==============================================================--
 
 
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
 local services = __DIST.load('i')
 local shared = __DIST.load('j')
-local geometry = __DIST.load('z')
-local smartDodge = __DIST.load('F')
+local sdv2 = __DIST.load('t')
+local bossArea = __DIST.load('p')
 
-local Workspace = workspace
 local player = services.player
-
 local openSpace = {}
 
 --// Cấu hình
@@ -23932,16 +16740,28 @@ local wallRayParams = RaycastParams.new()
 wallRayParams.FilterType = Enum.RaycastFilterType.Exclude
 wallRayParams.IgnoreWater = true
 
-local function updateWallRayFilter()
+local floorRayParams = RaycastParams.new()
+floorRayParams.FilterType = Enum.RaycastFilterType.Exclude
+floorRayParams.IgnoreWater = true
+
+local function updateRayFilters()
 	local ignore = {}
 	if player and player.Character then
 		table.insert(ignore, player.Character)
 	end
-	local rayIgnore = Workspace:FindFirstChild("RaycastIgnore")
-	if rayIgnore then
-		table.insert(ignore, rayIgnore)
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player and p.Character then
+			table.insert(ignore, p.Character)
+		end
 	end
-	local tracked = shared.GetTrackedEnemyData()
+	local rayIgnore = Workspace:FindFirstChild("RaycastIgnore")
+	if rayIgnore then table.insert(ignore, rayIgnore) end
+	local vFolder = Workspace:FindFirstChild("SmartDodgeV2_Visuals")
+	if vFolder then table.insert(ignore, vFolder) end
+	local aFolder = Workspace:FindFirstChild("SmartDodgeV2_BossAreaVisual")
+	if aFolder then table.insert(ignore, aFolder) end
+
+	local tracked = shared.GetTrackedEnemyData and shared.GetTrackedEnemyData()
 	if tracked then
 		for _, data in ipairs(tracked) do
 			if data and data.Model and data.Model.Parent then
@@ -23949,117 +16769,105 @@ local function updateWallRayFilter()
 			end
 		end
 	end
+
 	wallRayParams.FilterDescendantsInstances = ignore
+	floorRayParams.FilterDescendantsInstances = ignore
 end
 
---// Đo độ thoáng tường (Wall Clearance) xung quanh một điểm P
--- Trả về: minWallDist, avgWallDist
-local function measureWallClearance(pPos)
+-- Raycast tìm cao độ sàn vật lý thật
+local function getSolidFloor(pos: Vector3, fallbackY: number): (number?, boolean, Vector3?)
+	updateRayFilters()
+	local rayOrigin = Vector3.new(pos.X, pos.Y + 6.0, pos.Z)
+	local curOrigin = rayOrigin
+	local curDir = Vector3.new(0, -50.0, 0)
+
+	for _ = 1, 5 do
+		local hit = Workspace:Raycast(curOrigin, curDir, floorRayParams)
+		if not hit then break end
+		local inst = hit.Instance
+		if inst and (inst:IsA("Terrain") or inst.CanCollide) then
+			local instName = inst.Name:lower()
+			local isSpellPart = instName:find("indicator") ~= nil
+				or instName:find("hitbox") ~= nil
+				or instName:find("circle") ~= nil
+				or instName:find("ring") ~= nil
+				or instName:find("beam") ~= nil
+				or instName:find("spike") ~= nil
+				or instName:find("aoe") ~= nil
+				or instName:find("hazard") ~= nil
+
+			if not isSpellPart and not inst:FindFirstAncestorOfClass("Humanoid") then
+				return hit.Position.Y, true, hit.Normal
+			end
+		end
+		curOrigin = Vector3.new(hit.Position.X, hit.Position.Y - 0.05, hit.Position.Z)
+		curDir = Vector3.new(0, (rayOrigin.Y - 50.0) - curOrigin.Y, 0)
+		if curDir.Y >= 0 then break end
+	end
+	return fallbackY, false, nil
+end
+
+-- Đo độ rộng không gian xung quanh một điểm (Wall Clearance)
+local function measureWallClearance(originPos: Vector3): (number, number)
+	updateRayFilters()
+	local rayHeight = originPos.Y + 1.2
+	local minWallDist = MAX_CLEARANCE_CHECK_DIST
 	local totalDist = 0
-	local minDist = MAX_CLEARANCE_CHECK_DIST
-	local rayOrigin = Vector3.new(pPos.X, pPos.Y + 1.2, pPos.Z)
 
-	for i = 1, CLEARANCE_DIRECTIONS do
-		local angle = (i - 1) * (2 * math.pi / CLEARANCE_DIRECTIONS)
+	for i = 0, CLEARANCE_DIRECTIONS - 1 do
+		local angle = (i / CLEARANCE_DIRECTIONS) * (math.pi * 2)
 		local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
-		local hit = Workspace:Raycast(rayOrigin, dir * MAX_CLEARANCE_CHECK_DIST, wallRayParams)
-		local d = hit and hit.Distance or MAX_CLEARANCE_CHECK_DIST
-		if d < minDist then
-			minDist = d
+		local rayStart = Vector3.new(originPos.X, rayHeight, originPos.Z)
+		local rayVector = dir * MAX_CLEARANCE_CHECK_DIST
+
+		local hit = Workspace:Raycast(rayStart, rayVector, wallRayParams)
+		local dist = hit and hit.Distance or MAX_CLEARANCE_CHECK_DIST
+
+		if dist < minWallDist then
+			minWallDist = dist
 		end
-		totalDist = totalDist + d
+		totalDist = totalDist + dist
 	end
 
-	return minDist, totalDist / CLEARANCE_DIRECTIONS
+	local avgWallDist = totalDist / CLEARANCE_DIRECTIONS
+	return minWallDist, avgWallDist
 end
 
---// Kiểm tra đường chạy từ fromPos đến toPos có bị hazard chặn không
-local function isPathSafeFromHazards(fromPos, toPos)
-	local diff = toPos - fromPos
-	local flatDiff = Vector3.new(diff.X, 0, diff.Z)
-	local dist = flatDiff.Magnitude
-	if dist < 0.5 then return true end
+--// Tìm điểm Reposition tốt nhất (Open Space)
+function openSpace.FindBestRepositionSpot(playerPos: Vector3, enemyPos: Vector3?, baseRadius: number?, isBoss1: boolean?, isInsideArenaFunc: ((Vector3) -> boolean)?, isBossActive: boolean?): Vector3?
+	if not playerPos then return nil end
 
-	local dir = flatDiff.Unit
-	local step = 2.5
-	-- Bắt đầu từ 3.0 studs để tránh false positive ngay tại mép hazard người chơi vừa thoát ra
-	local cur = 3.0
-	while cur <= dist do
-		local pt = fromPos + dir * cur
-		if geometry.IsPointInAnyHazard(pt) then
-			return false
-		end
-		cur = cur + step
-	end
+	updateRayFilters()
+	local baseR = baseRadius or 15.0
+	local maxSearchDist = math.clamp(baseR * radiusMultiplier, 8.0, 32.0)
+	local minSearchDist = 5.0
 
-	return true
-end
+	local playerFloorY = playerPos.Y - 2.8
 
---// Tìm điểm Open Space Reposition tốt nhất
--- playerPos: Vector3
--- enemyPos: Vector3 | nil
--- combatRadius: number
--- isBoss1: boolean
--- isInsideArenaFunc: ((Vector3) -> boolean) | nil
--- isBoss: boolean | nil
-function openSpace.FindBestRepositionSpot(playerPos, enemyPos, combatRadius, isBoss1, isInsideArenaFunc, isBoss)
-	if not enabled or not playerPos then return nil end
-
-	updateWallRayFilter()
-
-	local isBossTarget = (isBoss == true) or (shared.IsBossActive and shared.IsBossActive() == true)
-	local baseR = combatRadius or 15.0
-	local maxSearchDist = baseR * radiusMultiplier
-	local minSearchDist = math.max(5.5, baseR * 0.4)
-
-	-- Phân tích hướng và cự ly đối với quái/boss
 	local curEnemyDist = nil
-	local enemyFlatDir = nil
 	if enemyPos then
 		local ex = enemyPos.X - playerPos.X
 		local ez = enemyPos.Z - playerPos.Z
 		curEnemyDist = math.sqrt(ex * ex + ez * ez)
-		if curEnemyDist > 0.1 then
-			enemyFlatDir = Vector3.new(ex / curEnemyDist, 0, ez / curEnemyDist)
-		end
 	end
 
-	local bestSpot = nil
+	local bestSpot: Vector3? = nil
 	local bestScore = -math.huge
 
-	-- Thử các cự ly toả tròn từ minSearchDist đến maxSearchDist (4 bước cự ly)
+	-- 3 bước cự ly tìm kiếm: Gần (0.35 max), Trung bình (0.70 max), Xa (1.0 max)
 	local distanceSteps = {
-		minSearchDist,
 		minSearchDist + (maxSearchDist - minSearchDist) * 0.35,
 		minSearchDist + (maxSearchDist - minSearchDist) * 0.70,
-		maxSearchDist
+		maxSearchDist,
 	}
 
-	local rayOrigin = Vector3.new(playerPos.X, playerPos.Y + 1.2, playerPos.Z)
-
-	-- Lấy cao độ mặt sàn thực tế nơi người chơi đang đứng để so sánh chênh lệch độ cao
-	local playerFloorY = playerPos.Y - 2.8
-	local pRawFloorY, pHasFloor = geometry.GetRawFloorY(playerPos)
-	if pHasFloor and pRawFloorY then
-		playerFloorY = pRawFloorY
-	end
-
-	for i = 1, NUM_DIRECTIONS do
-		local angle = (i - 1) * (2 * math.pi / NUM_DIRECTIONS)
+	for i = 0, NUM_DIRECTIONS - 1 do
+		local angle = (i / NUM_DIRECTIONS) * (math.pi * 2)
 		local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
 
-		-- QUY TẮC AN TOÀN BẮT BUỘC: TUYỆT ĐỐI KHÔNG CHỌN HƯỚNG LAO VỀ PHÍA QUÁI / BOSS
-		if enemyFlatDir then
-			local forwardDot = dir.X * enemyFlatDir.X + dir.Z * enemyFlatDir.Z
-			-- Nếu vector này hướng về phía quái (forwardDot > 0.15) -> LOẠI BỎ HOÀN TOÀN!
-			-- Chỉ chấp nhận di chuyển tạt ngang (Strafe/Flank: |forwardDot| <= 0.35) hoặc lùi/chéo ra xa (forwardDot < -0.1)
-			if forwardDot > 0.15 then
-				continue
-			end
-		end
-
-		-- Bắn 1 raycast ngang theo hướng này để xem có bị tường chặn ở khoảng cách nào
-		local wallHit = Workspace:Raycast(rayOrigin, dir * maxSearchDist, wallRayParams)
+		-- Bắn Raycast kiểm tra tường thẳng theo hướng này
+		local rayOrigin = Vector3.new(playerPos.X, playerPos.Y + 1.2, playerPos.Z)
+		local wallHit = Workspace:Raycast(rayOrigin, dir * (maxSearchDist + 2.0), wallRayParams)
 		local maxAllowedDist = maxSearchDist
 		if wallHit and wallHit.Instance and wallHit.Instance.CanCollide and wallHit.Normal.Y <= 0.65 then
 			maxAllowedDist = math.max(0, wallHit.Distance - 2.5)
@@ -24076,114 +16884,80 @@ function openSpace.FindBestRepositionSpot(playerPos, enemyPos, combatRadius, isB
 						local cdz = candPos.Z - enemyPos.Z
 						local candEnemyDist = math.sqrt(cdx * cdx + cdz * cdz)
 
-						-- 1. An toàn tối thiểu: Không chọn điểm áp sát quái dưới 10.0 studs
-						local minSafeDist = math.max(10.0, math.min(curEnemyDist, baseR - 2.5))
+						-- Không chọn điểm áp sát quái dưới 8.0 studs
+						local minSafeDist = math.max(8.0, math.min(curEnemyDist, baseR - 2.5))
 						if candEnemyDist < minSafeDist then
 							continue
 						end
 
-						-- 2. ĐẶC BIỆT DÀNH RIÊNG CHO QUÁI THƯỜNG (MOBS ONLY):
-						-- Bắt buộc phải giữ quái nằm bên trong bán kính chiến đấu (candEnemyDist <= baseR)
-						if not isBossTarget then
-							if curEnemyDist <= (baseR + 1.0) then
-								-- Nếu đang ở trong tầm R -> Bắt buộc điểm đến cũng phải nằm trọn vẹn trong R
-								if candEnemyDist > baseR then
-									continue
-								end
-							else
-								-- Nếu né chiêu khiến người chơi vô tình văng ra ngoài R -> Không được chọn điểm xa hơn cự ly hiện tại
-								if candEnemyDist > curEnemyDist then
-									continue
-								end
+						-- Đối với quái thường: không chọn điểm quá xa quái khiến mất tầm chiến đấu
+						if not isBossActive then
+							if candEnemyDist > math.max(32.0, baseR + 14.0) then
+								continue
 							end
 						end
 					end
 
-					-- 1. Kiểm tra Boss 1 Arena (nếu có)
-					local arenaOk = true
-					local b1Center = smartDodge.GetBoss1ArenaCenter and smartDodge.GetBoss1ArenaCenter()
-					local b1Radius = smartDodge.GetBoss1ArenaRadius and smartDodge.GetBoss1ArenaRadius()
-					if b1Center and b1Radius and b1Radius > 0 then
-						local c2D = Vector3.new(candPos.X, 0, candPos.Z)
-						local o2D = Vector3.new(b1Center.X, 0, b1Center.Z)
-						arenaOk = (c2D - o2D).Magnitude <= (b1Radius - 3.5)
-					elseif isBoss1 and isInsideArenaFunc then
-						arenaOk = isInsideArenaFunc(candPos)
+					-- 1. Kiểm tra Boss Arena & Center Deadzone
+					if bossArea and bossArea.IsPointInArena and not bossArea.IsPointInArena(candPos, 0) then
+						continue
+					end
+					if bossArea and bossArea.IsPointInBoss1Center and bossArea.IsPointInBoss1Center(candPos) then
+						continue
 					end
 
-					if arenaOk then
-						-- 2. Kiểm tra mặt sàn (Floor & Cliff Check)
-						local rawFloorY, hasFloor, floorNormal = geometry.GetRawFloorY(candPos)
-						if hasFloor and rawFloorY then
-							local deltaY = math.abs(rawFloorY - playerFloorY)
-							-- Kiểm tra độ dốc sàn: góc nghiêng <= 28 độ (Normal.Y >= 0.88) để loại bỏ vách đá/mép dốc
-							local slopeOk = not floorNormal or (floorNormal.Y >= 0.88)
+					-- 2. Kiểm tra mặt sàn
+					local rawFloorY, hasFloor, floorNormal = getSolidFloor(candPos, playerFloorY)
+					if hasFloor and rawFloorY then
+						local deltaY = math.abs(rawFloorY - playerFloorY)
+						local slopeOk = not floorNormal or (floorNormal.Y >= 0.85)
 
-							-- Hard Filter: Cao độ không chênh lệch quá 1.8 studs so với mặt đất người chơi đang đứng
-							if deltaY <= 1.8 and slopeOk then
-								local floorPos = Vector3.new(candPos.X, rawFloorY + 2.8, candPos.Z)
+						if deltaY <= 1.8 and slopeOk then
+							local floorPos = Vector3.new(candPos.X, rawFloorY + 2.8, candPos.Z)
 
-								-- 3. Kiểm tra Hazard tại điểm đích (kèm padding 2 studs)
-								local inHazard = geometry.IsPointInAnyHazard(floorPos)
-								if not inHazard then
-									-- Kiểm tra thêm 4 hướng xung quanh điểm đích xem có sát mép hazard không
-									local safeEdge = not geometry.IsPointInAnyHazard(floorPos + Vector3.new(2, 0, 0))
-										and not geometry.IsPointInAnyHazard(floorPos + Vector3.new(-2, 0, 0))
-										and not geometry.IsPointInAnyHazard(floorPos + Vector3.new(0, 0, 2))
-										and not geometry.IsPointInAnyHazard(floorPos + Vector3.new(0, 0, -2))
+							-- 3. Kiểm tra Hazard tại điểm đích
+							local inHazard = sdv2 and sdv2.danger and sdv2.danger.IsPointInAnyHazard(floorPos, nil, 1.5)
+							if not inHazard then
+								-- 4. Kiểm tra đường chạy từ playerPos đến floorPos không bị hazard chặn
+								local pathSafe = not (sdv2 and sdv2.danger and not sdv2.danger.IsPathSafe(playerPos, floorPos))
+								if pathSafe then
+									-- 5. CHẤM ĐIỂM "KHÔNG GIAN ĐỦ RỘNG" (Clearance Score)
+									local minWallDist, avgWallDist = measureWallClearance(floorPos)
 
-									if safeEdge then
-										-- 4. Kiểm tra đường chạy từ playerPos đến floorPos không bị hazard chặn
-										if isPathSafeFromHazards(playerPos, floorPos) then
-											-- 5. CHẤM ĐIỂM "KHÔNG GIAN ĐỦ RỘNG" (Clearance Score)
-											local minWallDist, avgWallDist = measureWallClearance(floorPos)
+									local score = (minWallDist * 4.0) + (avgWallDist * 2.0)
 
-											-- Điểm càng thoáng tường càng cao
-											local score = (minWallDist * 4.0) + (avgWallDist * 2.0)
+									if deltaY <= 0.4 then
+										score = score + 25.0
+									else
+										score = score - (deltaY * 20.0)
+									end
 
-											-- ƯU TIÊN ĐỘ CAO SÀN GẦN VỚI PLAYER (ELEVATION SCORE):
-											if deltaY <= 0.4 then
-												score = score + 25.0 -- Bonus sàn phẳng cùng mặt phẳng
-											else
-												score = score - (deltaY * 20.0) -- Phạt mạnh nếu chênh lệch độ cao Y
+									if minWallDist < 4.5 then
+										score = score - 30.0
+									end
+
+									if enemyPos and curEnemyDist then
+										local cdx = floorPos.X - enemyPos.X
+										local cdz = floorPos.Z - enemyPos.Z
+										local candDist = math.sqrt(cdx * cdx + cdz * cdz)
+										if not isBossActive then
+											if candDist >= 10.0 and candDist <= baseR then
+												score = score + 40.0
 											end
-
-											-- Phạt nặng nếu minWallDist quá nhỏ (sát góc tường)
-											if minWallDist < 4.5 then
-												score = score - 30.0
-											end
-
-											-- Chấm điểm theo cự ly an toàn tới quái / boss
-											if enemyPos and curEnemyDist then
-												local cdx = floorPos.X - enemyPos.X
-												local cdz = floorPos.Z - enemyPos.Z
-												local candDist = math.sqrt(cdx * cdx + cdz * cdz)
-
-												if not isBossTarget then
-													-- ĐỐI VỚI QUÁI THƯỜNG: Thưởng cực lớn khi giữ quái trong R (11.0 ~ baseR)
-													if candDist >= 11.0 and candDist <= baseR then
-														score = score + 45.0 -- Điểm tuyệt đối: giữ mob trong R + an toàn
-													end
-												else
-													-- ĐỐI VỚI BOSS: Càng thoáng càng tốt
-													if candDist >= (baseR - 1.0) and candDist <= (baseR + 5.0) then
-														score = score + 35.0
-													elseif candDist > (baseR + 5.0) then
-														score = score + 20.0
-													end
-												end
-											end
-
-											-- Thưởng cho việc di chuyển đủ xa khỏi vị trí vừa né (ít nhất 6-7 studs)
-											if testDist >= 6.5 then
-												score = score + 15.0
-											end
-
-											if score > bestScore then
-												bestScore = score
-												bestSpot = floorPos
+										else
+											if candDist >= (baseR - 1.0) and candDist <= (baseR + 4.0) then
+												score = score + 35.0
 											end
 										end
+									end
+
+									if testDist >= 6.5 then
+										score = score + 15.0
+									end
+
+									if score > bestScore then
+										bestScore = score
+										bestSpot = floorPos
 									end
 								end
 							end
@@ -24198,7 +16972,7 @@ function openSpace.FindBestRepositionSpot(playerPos, enemyPos, combatRadius, isB
 end
 
 --// Visual Marker màu Xanh Dương (Blue Spot)
-local function getOrCreateBlueMarker()
+local function getOrCreateBlueMarker(): Part
 	if blueMarkerPart and blueMarkerPart.Parent then
 		return blueMarkerPart
 	end
@@ -24213,11 +16987,33 @@ local function getOrCreateBlueMarker()
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanQuery = false
+	part.CanTouch = false
+
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "MarkerGui"
+	bb.Size = UDim2.fromOffset(150, 26)
+	bb.StudsOffset = Vector3.new(0, 2.0, 0)
+	bb.AlwaysOnTop = true
+	bb.Adornee = part
+	bb.Parent = part
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.TextColor3 = BLUE_LABEL_COLOR
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 12
+	label.Text = "🔵 REPOSITION SPOT"
+	label.Parent = bb
+
 	blueMarkerPart = part
 	return part
 end
 
-function openSpace.UpdateVisualMarker(spotPos, visible, distance)
+function openSpace.UpdateVisualMarker(spotPos: Vector3?, visible: boolean, distance: number?)
 	if not visible or not spotPos then
 		if blueMarkerPart then
 			blueMarkerPart.Parent = nil
@@ -24227,13 +17023,22 @@ function openSpace.UpdateVisualMarker(spotPos, visible, distance)
 	end
 
 	local marker = getOrCreateBlueMarker()
-	-- Hạ tâm quả cầu xuống sát đất một chút cho đẹp
 	local floorBallY = spotPos.Y - 1.6
 	local newPos = Vector3.new(spotPos.X, floorBallY, spotPos.Z)
 
 	marker.CFrame = CFrame.new(newPos)
 	if not marker.Parent then
-		marker.Parent = Workspace.Terrain
+		marker.Parent = Workspace
+	end
+
+	local curDist = distance or 0
+	if math.abs(curDist - lastRenderedDist) >= 0.2 then
+		lastRenderedDist = curDist
+		local bb = marker:FindFirstChild("MarkerGui")
+		local label = bb and bb:FindFirstChild("Label")
+		if label then
+			label.Text = string.format("🔵 REPOSITION (%.1fm)", curDist)
+		end
 	end
 end
 
@@ -24245,30 +17050,29 @@ function openSpace.ClearVisualMarker()
 	lastRenderedDist = -1
 end
 
---// Getter / Setter
-function openSpace.SetEnabled(val)
+function openSpace.SetEnabled(val: boolean)
 	enabled = val and true or false
 	if not enabled then
 		openSpace.ClearVisualMarker()
 	end
 end
 
-function openSpace.IsEnabled()
+function openSpace.IsEnabled(): boolean
 	return enabled
 end
 
-function openSpace.SetRadiusMultiplier(val)
+function openSpace.SetRadiusMultiplier(val: number)
 	if type(val) == "number" and val >= 1.0 and val <= 3.0 then
 		radiusMultiplier = val
 	end
 end
 
-function openSpace.GetRadiusMultiplier()
+function openSpace.GetRadiusMultiplier(): number
 	return radiusMultiplier
 end
 
 return openSpace
-end function __DIST.J()--==============================================================--
+end function __DIST.A()--==============================================================--
 -- Smart Auto Play Core (DungeonQuest)
 -- Master Orchestrator: Tích hợp thành 1 toggle duy nhất Smart Auto Play
 --   1. Visual Combat Radius R: Hiển thị vòng tròn hạt neon cyan quanh người chơi.
@@ -24289,13 +17093,12 @@ local coordinator = __DIST.load('u')
 
 local autoFarm = __DIST.load('w')
 local tracker = __DIST.load('o')
-local smartDodge = __DIST.load('F')
-local geometry = __DIST.load('z')
+local sdv2 = __DIST.load('t')
 local targetFacing = __DIST.load('r')
-local autoSkill = __DIST.load('G')
-local autoApproach = __DIST.load('H')
-local openSpace = __DIST.load('I')
+local autoSkill = __DIST.load('x')
+local autoApproach = __DIST.load('y')
 local bossArea = __DIST.load('p')
+local openSpace = __DIST.load('z')
 
 local RunService = services.RunService
 local player = services.player
@@ -24305,21 +17108,24 @@ local smartAutoPlay = {}
 --// Settings & State
 local masterEnabled = false
 local masterLoopThread = nil
-local masterState = "Disabled" -- "Disabled" | "Dodging" | "Repositioning" | "InCombat" | "HoldingRadius" | "Orbiting" | "Approaching" | "WaitingHazard" | "EnteringArena" | "RoomCleared" | "Dead"
+local masterState = "Disabled" -- "Disabled" | "Dodging" | "InCombat" | "HoldingRadius" | "Orbiting" | "Repositioning" | "Approaching" | "WaitingHazard" | "EnteringArena" | "RoomCleared" | "Dead"
 local currentHazardName = nil
 local currentEscapeDist = 0
 local currentTargetName = nil
 local currentTargetDist = nil
+local currentTargetPos = nil
 local masterStatusListeners = {}
 local lastDodgeTimestamp = 0
 local orbitDirection = 1 -- 1: cùng chiều kim đồng hồ, -1: ngược chiều kim đồng hồ (Orbit Mob Grouping)
 local waitingHazardStartTime = 0
 
---// Post-Dodge Open Space Repositioning State
+--// Combat Movement Mode: "Orbit" (V2) | "OpenSpace" (V1)
+local combatMovementMode = "Orbit"
 local wasInDanger = false
 local repositionTarget = nil
 local repositionStartTime = 0
 local MAX_REPOSITION_TIME = 3.5
+local repositionMoveConn = nil
 
 --// Combat Micro-Strafing State (Chủ động nhấp nhả lướt nhẹ né trước khi quái kịp tung chiêu)
 local combatMicroStrafingEnabled = true
@@ -24338,7 +17144,7 @@ local radiusMobs = 14.0 -- Kiting Radius cho Quái thường (studs)
 local radiusBoss1 = 16.0 -- Kiting Radius cho Boss 1 (tính từ tâm sàn đấu)
 local radiusBoss2 = 24.0 -- Kiting Radius cho Boss 2
 local radiusBoss3 = 32.0 -- Kiting Radius cho Boss 3+
-local SPHERE_COUNT = 36 -- 36 spheres = 1 sphere every 10 degrees
+local SPHERE_COUNT = 48 -- 48 hạt neon tạo vòng radar tròn mượt mà
 local sphereSize = 0.35 -- Diameter of each sphere in studs
 local SPHERE_COLOR = Color3.fromRGB(0, 225, 255) -- Vibrant Neon Cyan
 local HYSTERESIS_BUFFER = 2.0 -- Đệm chống rung giật mép vòng tròn (studs)
@@ -24347,7 +17153,7 @@ local HYSTERESIS_BUFFER = 2.0 -- Đệm chống rung giật mép vòng tròn (st
 local function getCurrentTargetRadius(targetName)
 	local isBossActive = shared.IsBossActive and shared.IsBossActive()
 	local isBossName = targetName and (string.find(string.lower(targetName), "boss") ~= nil)
-	if isBossActive or isBossName then
+	if targetScope == "Boss" or isBossActive or isBossName then
 		local idx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
 		if idx <= 1 then
 			return radiusBoss1
@@ -24360,8 +17166,8 @@ local function getCurrentTargetRadius(targetName)
 	return radiusMobs
 end
 
-local showRadiusCircle = false
-local showSkillCircle = true -- Mặc định bật Visual đường tròn Skill Range
+local showRadiusCircle = true -- Mặc định BẬT vòng tròn hạt Neon Cyan Combat Radius quanh người chơi
+local showSkillCircle = false -- Tắt vòng tím skill để người chơi tập trung vào vòng Cyan radar
 local skillRange = 25.0 -- Skill Cast Range in studs
 local SKILL_SPHERE_COUNT = 48 -- 48 hạt neon tạo đường tròn mềm mại, sắc nét
 local skillSphereSize = 0.28 -- Đường kính hạt vòng skill
@@ -24380,9 +17186,8 @@ autoSkill.BindRadiusGetter(getEffectiveSkillRange)
 
 smartAutoPlay.autoSkill = autoSkill
 smartAutoPlay.autoApproach = autoApproach
-smartAutoPlay.smartDodge = smartDodge
+smartAutoPlay.sdv2 = sdv2
 smartAutoPlay.autoFarm = autoFarm
-smartAutoPlay.openSpace = openSpace
 
 --// Status Dispatcher
 local function fireMasterStatus()
@@ -24404,6 +17209,137 @@ local function fireMasterStatus()
 	for _, cb in ipairs(masterStatusListeners) do
 		pcall(cb, info)
 	end
+end
+
+--// Điều khiển di chuyển Reposition (OpenSpace - V1) sử dụng Humanoid:Move trên nhịp RenderStepped
+-- (Đồng bộ cơ chế vật lý 60 FPS mượt mà tương tự AutoFarm freewalk và SmartDodgeV2)
+local function stopRepositionMovement()
+	if repositionMoveConn then
+		pcall(function() repositionMoveConn:Disconnect() end)
+		repositionMoveConn = nil
+	end
+	repositionTarget = nil
+	repositionStartTime = 0
+	openSpace.UpdateVisualMarker(nil, false)
+
+	if targetFacing and targetFacing.SetDodging then
+		targetFacing.SetDodging(false)
+	end
+
+	local char = player and player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		pcall(function()
+			hum:Move(Vector3.zero, false)
+			hum.AutoRotate = true
+		end)
+	end
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root then
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end)
+	end
+end
+
+local function startRepositionMovement(targetSpot)
+	if not targetSpot then return end
+	if repositionMoveConn then
+		pcall(function() repositionMoveConn:Disconnect() end)
+		repositionMoveConn = nil
+	end
+
+	repositionTarget = targetSpot
+	repositionStartTime = os.clock()
+	openSpace.UpdateVisualMarker(targetSpot, true)
+
+	if not autoFarm.IsPaused() then
+		autoFarm.SetPaused(true)
+	end
+
+	if targetFacing and targetFacing.SetDodging then
+		targetFacing.SetDodging(true)
+	end
+
+	repositionMoveConn = RunService.RenderStepped:Connect(function()
+		if not masterEnabled or combatMovementMode ~= "OpenSpace" or not repositionTarget then
+			stopRepositionMovement()
+			return
+		end
+
+		local elapsed = os.clock() - repositionStartTime
+		if elapsed >= MAX_REPOSITION_TIME then
+			stopRepositionMovement()
+			return
+		end
+
+		local char = player and player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not root or not hum or hum.Health <= 0 then
+			stopRepositionMovement()
+			return
+		end
+
+		local curTarget = repositionTarget
+		local pPos = root.Position
+		local flatDiff = Vector3.new(curTarget.X - pPos.X, 0, curTarget.Z - pPos.Z)
+		local flatDist = flatDiff.Magnitude
+
+		-- 1. SNAP ĐÍCH & DỪNG: Khi cự ly tới điểm Reposition <= 1.8 studs (tương tự smartDodgeV2)
+		if flatDist <= 1.8 then
+			pcall(function()
+				hum:Move(Vector3.zero, false)
+				local targetY = root.Position.Y
+				local snapPos = Vector3.new(curTarget.X, targetY, curTarget.Z)
+				local faceEnemy = currentTargetPos
+				if faceEnemy then
+					root.CFrame = CFrame.lookAt(snapPos, Vector3.new(faceEnemy.X, targetY, faceEnemy.Z))
+				else
+					local look = root.CFrame.LookVector
+					local flatLook = Vector3.new(look.X, 0, look.Z)
+					if flatLook.Magnitude > 0.001 then
+						root.CFrame = CFrame.lookAt(snapPos, snapPos + flatLook.Unit)
+					else
+						root.CFrame = CFrame.new(snapPos)
+					end
+				end
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+				hum.AutoRotate = true
+			end)
+			stopRepositionMovement()
+			return
+		end
+
+		-- 2. DI CHUYỂN VẬT LÝ MƯỢT MÀ BẰNG HUMANOID:MOVE MỖI FRAME (tương tự autoFarm & smartDodgeV2)
+		if flatDist > 0.4 then
+			hum:Move(flatDiff.Unit, false)
+		else
+			hum:Move(Vector3.zero, false)
+		end
+
+		-- 3. LOGIC NHẢY KHI CÓ CHÊNH LỆCH CAO ĐỘ (tương tự autoFarm/movement.luau)
+		local elevDiff = curTarget.Y - pPos.Y
+		if elevDiff > 1.8 and flatDist <= 7.0 then
+			hum.Jump = true
+		end
+
+		-- 4. STRAFE FACING: Luôn xoay mặt ngắm quái/boss mục tiêu trong khi lướt tới điểm Reposition
+		local faceEnemy = currentTargetPos
+		if faceEnemy then
+			hum.AutoRotate = false
+			local diff = Vector3.new(faceEnemy.X - pPos.X, 0, faceEnemy.Z - pPos.Z)
+			if diff.Magnitude > 0.5 then
+				root.CFrame = CFrame.lookAt(pPos, Vector3.new(faceEnemy.X, pPos.Y, faceEnemy.Z))
+			end
+		else
+			hum.AutoRotate = true
+		end
+
+		openSpace.UpdateVisualMarker(curTarget, true, flatDist)
+	end)
 end
 
 --// Floor Raycast Parameters cho Visual Circle
@@ -24701,14 +17637,13 @@ local function evaluateEnemies(checkRadius)
 						nearestPos = ePos
 					end
 
-					-- Chỉ tính quái trong tầm bán kính nếu độ cao chênh lệch Y không quá lớn (|dy| <= 8.0)
-					-- Giúp phân biệt quái ở tầng dưới/vực sâu khi người chơi đang đứng trên mỏm đá hoặc lối vào
-					if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
+					-- Chỉ tính quái trong tầm bán kính (xét 2D phẳng X và Z)
+					if flatDist <= checkRadius then
 						hasEnemyInRadius = true
 					end
 
-					-- Tính toán trọng tâm cụm quái xung quanh người chơi
-					if flatDist <= clusterMaxDist and math.abs(dy) <= 8.0 then
+					-- Tính toán trọng tâm cụm quái xung quanh người chơi (xét 2D phẳng X và Z)
+					if flatDist <= clusterMaxDist then
 						clusterSumX += ePos.X
 						clusterSumY += ePos.Y
 						clusterSumZ += ePos.Z
@@ -24731,7 +17666,7 @@ local function evaluateEnemies(checkRadius)
 				local dy = ePos.Y - pPos.Y
 				local dz = ePos.Z - pPos.Z
 				local flatDist = math.sqrt(dx * dx + dz * dz)
-				if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
+				if flatDist <= checkRadius then
 					hasEnemyInRadius = true
 				end
 				if flatDist < nearestDist then
@@ -24758,7 +17693,7 @@ end
 --// Kiểm tra xem đường đi từ người chơi đến mục tiêu có bị chiêu/hazard nào của quái cản đường không
 local function isApproachPathBlockedByHazard(pPos, targetPos, maxCheckDist, startDist)
 	if not targetPos then return false end
-	if smartDodge.GetHazardCount and smartDodge.GetHazardCount() == 0 then
+	if sdv2 and sdv2.danger and not sdv2.danger.IsEnabled() then
 		return false
 	end
 
@@ -24782,9 +17717,9 @@ local function isApproachPathBlockedByHazard(pPos, targetPos, maxCheckDist, star
 	-- Lấy mẫu các điểm cách nhau 2.0 studs trên đường chạy
 	for d = fromD, checkLimit, 2.0 do
 		local samplePt = pPos + dir * d
-		local inDanger, hazardInfo = geometry.IsPointInAnyHazard(samplePt)
+		local inDanger, hazardInfo = sdv2.danger.IsPointInAnyHazard(samplePt)
 		if inDanger then
-			local hName = (hazardInfo and hazardInfo.Name) or "Active Hazard"
+			local hName = (hazardInfo and (hazardInfo.name or hazardInfo.Name)) or "Active Hazard"
 			return true, hName, samplePt
 		end
 	end
@@ -24824,17 +17759,11 @@ local function getFirstBossArenaPart()
 	return nil
 end
 
-local function getBoss1ArenaInfo()
+local function getBossArenaInfo()
 	local v2Center = bossArea.GetAnchorCenter and bossArea.GetAnchorCenter()
 	local v2Radius = bossArea.GetRadius and bossArea.GetRadius()
 	if v2Center and v2Radius and v2Radius > 0 then
 		return v2Center, v2Radius
-	end
-
-	local center = smartDodge.GetBoss1ArenaCenter and smartDodge.GetBoss1ArenaCenter()
-	local radius = smartDodge.GetBoss1ArenaRadius and smartDodge.GetBoss1ArenaRadius()
-	if center and radius and radius > 0 then
-		return center, radius
 	end
 
 	local fp = getFirstBossArenaPart()
@@ -24844,21 +17773,26 @@ local function getBoss1ArenaInfo()
 	end
 
 	if cachedBoss1SpawnCenter then
-		return cachedBoss1SpawnCenter, 40.0
+		return cachedBoss1SpawnCenter, 42.0
 	end
 
 	return nil, nil
 end
+local getBoss1ArenaInfo = getBossArenaInfo
 
-local function isPlayerInsideBoss1Arena(pPos)
-	if not pPos then return true end
-	local center, arenaRadius = getBoss1ArenaInfo()
+local function isPlayerInsideBossArea(pPos)
+	if not pPos then return false end
+	local center, arenaRadius = getBossArenaInfo()
 	if center and arenaRadius and arenaRadius > 0 then
 		local diff = (Vector3.new(pPos.X - center.X, 0, pPos.Z - center.Z)).Magnitude
-		return diff <= (arenaRadius - 1.0)
+		return diff <= (arenaRadius - 1.5)
+	end
+	if currentTargetDist and currentTargetDist > 12.0 then
+		return false
 	end
 	return true
 end
+local isPlayerInsideBoss1Arena = isPlayerInsideBossArea
 
 --// Master Orchestrator Loop
 local function startMasterLoop()
@@ -24882,68 +17816,22 @@ local function startMasterLoop()
 				continue
 			end
 
-			-- 1. Ưu tiên 1: NGUY HIỂM (DODGE MODE)
-			local v2Danger = false
-			local v2SafePos, v2HazardName, v2EscapeDist = nil, nil, 0
-			pcall(function()
-				local sdv2 = __DIST.load('t')
-				if sdv2 and sdv2.dodge and sdv2.dodge.IsEnabled() then
-					if sdv2.danger.IsPlayerInDanger() or sdv2.dodge.IsDodging() or (sdv2.detection.GetActiveBossOrb and sdv2.detection.GetActiveBossOrb() ~= nil) then
-						v2Danger = true
-						local hasSpot, spot, rsn, dist = sdv2.safeSpot.GetSafeSpot()
-						if hasSpot and spot then
-							v2SafePos = spot
-							v2HazardName = rsn
-							v2EscapeDist = dist or 0
-						end
-					end
-				end
-			end)
-
-			local v1Danger = (smartDodge.IsInDanger and smartDodge.IsInDanger())
-				or (smartDodge.IsDodging and smartDodge.IsDodging())
+			-- Khi MASTER TARGET = BOSS nhưng thanh máu bossHealth chưa Enabled -> CHẾ ĐỘ CHỜ (Standby)
 			if targetScope == "Boss" and not shared.IsBossActive() then
-				v1Danger = false
-			elseif targetScope == "Mobs" and shared.IsBossActive() then
-				v1Danger = false
-			end
-
-			local inDanger = v2Danger or v1Danger
-
-			if inDanger then
-				lastDodgeTimestamp = os.clock()
-				wasInDanger = true
+				if autoFarm.IsEnabled() then
+					autoFarm.Toggle(false)
+				end
+				autoFarm.SetPaused(true)
+				targetFacing.SetTargetOverride(nil)
+				targetFacing.SetEnabled(false)
+				masterState = "WaitingBoss"
+				currentTargetName = "Waiting for Boss (bossHealth)..."
+				currentTargetDist = nil
+				currentHazardName = nil
+				currentEscapeDist = 0
 				currentStrafeTarget = nil
-				-- Khi nguy hiểm mới xuất hiện -> Ngắt repositioning ngay lập tức!
-				if repositionTarget then
-					repositionTarget = nil
-					openSpace.UpdateVisualMarker(nil, false)
-				end
-
-				-- Tạm dừng AutoFarm để nhường toàn quyền di chuyển cho Smart Dodge!
-				if not autoFarm.IsPaused() then
-					autoFarm.SetPaused(true)
-				end
-
-				local safePos, _, hazardName, escapeDist = smartDodge.GetCurrentSafeSpot()
-				if v2Danger and v2SafePos then
-					safePos = v2SafePos
-					hazardName = v2HazardName
-					escapeDist = v2EscapeDist
-				end
-				masterState = "Dodging"
-				currentHazardName = hazardName or "Hazard"
-				currentEscapeDist = escapeDist or 0
-
-				-- Đảm bảo SmartDodge luôn lập tức thực thi di chuyển tới Safe Spot (chống đứng yên khi vừa hồi sinh)
-				if not v2Danger and safePos and not smartDodge.IsDodging() and smartDodge.IsAutoDodgeEnabled and smartDodge.IsAutoDodgeEnabled() then
-					if smartDodge.Perform then
-						smartDodge.Perform(safePos, escapeDist, hazardName)
-					end
-				end
-
 				fireMasterStatus()
-				task.wait(0.04)
+				task.wait(0.1)
 				continue
 			end
 
@@ -24951,14 +17839,73 @@ local function startMasterLoop()
 			local root = char and char:FindFirstChild("HumanoidRootPart")
 			local pPos = root and root.Position
 
+			-- 1. Ưu tiên 1: NGUY HIỂM (SMART DODGE V2)
+			local inDanger = false
+			local safePos, hazardName, escapeDist = nil, nil, 0
+			if sdv2 and sdv2.dodge and sdv2.dodge.IsEnabled() then
+				local playerInDanger, curHazard = sdv2.danger.IsPlayerInDanger()
+				local isDodging = sdv2.dodge.IsDodging()
+				local hasBossOrb = false
+				if sdv2.danger and sdv2.danger.IsDodgeBoss2OrbEnabled and sdv2.danger.IsDodgeBoss2OrbEnabled() then
+					local orbPart = sdv2.detection.GetActiveBossOrb and sdv2.detection.GetActiveBossOrb()
+					if orbPart and pPos then
+						local dOrb = (Vector3.new(orbPart.Position.X - pPos.X, 0, orbPart.Position.Z - pPos.Z)).Magnitude
+						if dOrb <= 30.0 then
+							hasBossOrb = true
+						end
+					elseif orbPart then
+						hasBossOrb = true
+					end
+				end
+
+				if playerInDanger or isDodging or hasBossOrb then
+					inDanger = true
+					local spot, dist = sdv2.safeSpot.GetSafeSpot()
+					if spot and typeof(spot) == "Vector3" then
+						safePos = spot
+						hazardName = (sdv2.safeSpot.GetCurrentHazardName and sdv2.safeSpot.GetCurrentHazardName()) or (curHazard and curHazard.name) or "Hazard"
+						escapeDist = dist or 0
+					end
+				end
+			end
+
+			if inDanger then
+				lastDodgeTimestamp = os.clock()
+				wasInDanger = true
+				currentStrafeTarget = nil
+
+				if repositionTarget or repositionMoveConn then
+					stopRepositionMovement()
+				end
+
+				-- Tạm dừng AutoFarm để nhường toàn quyền di chuyển cho Smart Dodge V2!
+				if not autoFarm.IsPaused() then
+					autoFarm.SetPaused(true)
+				end
+
+				masterState = "Dodging"
+				currentHazardName = hazardName or "Hazard"
+				currentEscapeDist = escapeDist or 0
+
+				-- Đảm bảo Smart Dodge V2 luôn lập tức thực thi di chuyển tới Safe Spot
+				if safePos and not sdv2.dodge.IsDodging() then
+					sdv2.dodge.Perform(safePos, escapeDist, hazardName)
+				end
+
+				fireMasterStatus()
+				task.wait(0.04)
+				continue
+			end
+
 			-- 2. Đánh giá quái xung quanh theo Combat Radius R (động theo mục tiêu hiện tại)
 			local r = getCurrentTargetRadius(currentTargetName)
 			-- Khi đang ở InCombat, HoldingRadius, Orbiting hoặc Strafing, mở rộng thêm HYSTERESIS_BUFFER để tránh rung bật/tắt ở mép
-			local checkR = (masterState == "InCombat" or masterState == "HoldingRadius" or masterState == "Orbiting" or masterState == "Strafing") and (r + HYSTERESIS_BUFFER) or r
+			local checkR = (masterState == "InCombat" or masterState == "HoldingRadius" or masterState == "Orbiting" or masterState == "Repositioning" or masterState == "Strafing") and (r + HYSTERESIS_BUFFER) or r
 			local hasEnemyInRadius, totalAlive, nName, nDist, nPos, clusterCentroid, clusterCount = evaluateEnemies(checkR)
 
 			currentTargetName = nName
 			currentTargetDist = nDist
+			currentTargetPos = (not isBossTarget and clusterCentroid) or nPos
 			currentHazardName = nil
 			currentEscapeDist = 0
 
@@ -24969,63 +17916,61 @@ local function startMasterLoop()
 			local bossIdx = shared.GetCurrentBossIndex()
 			local isBoss1 = isBossActive and (bossIdx <= 1)
 			local isBossTarget = isBossActive or (nName and nName:lower():find("boss") ~= nil)
-			local arenaCenter, arenaRadius = getBoss1ArenaInfo()
-			if isBoss1 and not cachedBoss1SpawnCenter and nPos then
+			if isBossTarget and not cachedBoss1SpawnCenter and nPos then
 				cachedBoss1SpawnCenter = nPos
 			end
+			local arenaCenter, arenaRadius = getBossArenaInfo()
 
-			local inBoss1Arena = isPlayerInsideBoss1Arena(pPos)
-			-- Khi đang đấu Boss 1 trong sàn Arena: Luôn coi như InCombat để giữ cự ly với tâm sàn và không để AutoFarm kéo ra mép sàn!
-			if isBoss1 and inBoss1Arena and arenaCenter and arenaRadius and arenaRadius > 0 and totalAlive > 0 then
-				hasEnemyInRadius = true
+			local inBossArena = isPlayerInsideBossArea(pPos)
+			local inBoss1Arena = inBossArena
+
+			-- [ĐIỀU KIỆN BẮT BUỘC VÀO SÀN ĐẤU BOSS (KỂ CẢ KHI BOSS TRONG TẦM CYAN R)]:
+			-- Nếu mục tiêu là Boss nhưng Player chưa bước hẳn vào bên trong Sàn Đấu Boss (vừa hồi sinh,
+			-- đang chạy ngoài hành lang, hoặc đứng ngoài mép cửa vào):
+			-- DÙ BOSS ĐÃ NHẢY XUỐNG VÀ NẰM TRONG TẦM CYAN (nDist <= r):
+			-- TUYỆT ĐỐI KHÔNG ĐƯỢC COI LÀ hasEnemyInRadius (không được dừng bước, không được kiting ngoài cửa)!
+			-- BẮT BUỘC phải đặt hasEnemyInRadius = false để kích hoạt luồng di chuyển bước hẳn vào bên trong Sàn Đấu!
+			if isBossTarget and not inBossArena then
+				hasEnemyInRadius = false
+				if repositionTarget or repositionMoveConn then
+					stopRepositionMovement()
+				end
 			end
 
-			-- 3. Post-Dodge Trigger: Vừa né xong chiêu (thoát khỏi inDanger) -> Quét tìm Vùng Thoáng (Open Space)
+			-- [CHẾ ĐỘ V1 - OPEN SPACE POST-DODGE TRIGGER]:
+			-- Vừa né xong chiêu (thoát khỏi inDanger) -> Quét tìm bãi trống rộng rãi nhất phòng để Reposition
 			if wasInDanger then
 				wasInDanger = false
-				if openSpace.IsEnabled() and pPos and totalAlive > 0 then
-					local bestSpot = openSpace.FindBestRepositionSpot(pPos, nPos, radius, isBoss1, isPlayerInsideBoss1Arena, isBossActive)
+				if combatMovementMode == "OpenSpace" and pPos and totalAlive > 0 and (not isBossTarget or inBossArena) then
+					local bestSpot = openSpace.FindBestRepositionSpot(pPos, nPos, r, isBoss1, isPlayerInsideBossArea, isBossActive)
 					if bestSpot then
-						repositionTarget = bestSpot
-						repositionStartTime = os.clock()
+						startRepositionMovement(bestSpot)
 					end
 				end
 			end
 
-			-- 4. Thực thi di chuyển tới Open Space Reposition Spot (nếu đang active)
+			-- [CHẾ ĐỘ V1 - OPEN SPACE REPOSITIONING EXECUTION]:
 			if repositionTarget and pPos and totalAlive > 0 then
-				-- Kiểm tra nếu điểm tới bị hazard hoặc đường đi bị hazard mới chặn (bắt đầu kiểm tra từ 3.5 studs phía trước để tránh false positive từ vị trí vừa thoát)
-				local targetBlocked, blockName = isApproachPathBlockedByHazard(pPos, repositionTarget, 40.0, 3.5)
-				local inTargetHazard = geometry.IsPointInAnyHazard(repositionTarget)
+				local targetBlocked = isApproachPathBlockedByHazard(pPos, repositionTarget, 40.0, 3.5)
+				local inTargetHazard = sdv2 and sdv2.danger and sdv2.danger.IsPointInAnyHazard(repositionTarget, nil, 1.0)
 				local timeElapsed = os.clock() - repositionStartTime
 
 				if targetBlocked or inTargetHazard or timeElapsed >= MAX_REPOSITION_TIME then
-					-- Bị hazard chặn hoặc quá thời gian tối đa -> Hủy reposition an toàn!
-					repositionTarget = nil
-					openSpace.UpdateVisualMarker(nil, false)
+					stopRepositionMovement()
 				else
-					local distToSpot = (Vector3.new(repositionTarget.X - pPos.X, 0, repositionTarget.Z - pPos.Z)).Magnitude
-					if distToSpot <= 2.2 then
-						-- Đã tới vùng đất rộng thoáng thành công!
-						repositionTarget = nil
-						openSpace.UpdateVisualMarker(nil, false)
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if hum then
-							pcall(function() hum:MoveTo(pPos) end)
-						end
+					local toTarget = Vector3.new(repositionTarget.X - pPos.X, 0, repositionTarget.Z - pPos.Z)
+					local distToSpot = toTarget.Magnitude
+
+					if distToSpot <= 1.8 then
+						stopRepositionMovement()
 					else
-						-- Đang di chuyển lướt tới điểm Blue Spot!
+						if not repositionMoveConn then
+							startRepositionMovement(repositionTarget)
+						end
+
 						if not autoFarm.IsPaused() then
 							autoFarm.SetPaused(true)
 						end
-						targetFacing.SetEnabled(true) -- Vẫn khóa mặt vào quái trong lúc đảo vị trí
-
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if hum then
-							hum:MoveTo(repositionTarget)
-						end
-
-						openSpace.UpdateVisualMarker(repositionTarget, true, distToSpot)
 
 						masterState = "Repositioning"
 						currentHazardName = nil
@@ -25038,9 +17983,9 @@ local function startMasterLoop()
 			end
 
 			if totalAlive == 0 then
-				if repositionTarget then
-					repositionTarget = nil
-					openSpace.UpdateVisualMarker(nil, false)
+				currentTargetPos = nil
+				if repositionTarget or repositionMoveConn then
+					stopRepositionMovement()
 				end
 				-- Ưu tiên 4: Toàn bộ quái đã chết (Đã dọn phòng)
 				if not autoFarm.IsPaused() then
@@ -25048,12 +17993,20 @@ local function startMasterLoop()
 				end
 				targetFacing.SetTargetOverride(nil)
 				targetFacing.SetEnabled(false)
-				masterState = "RoomCleared"
+				if targetScope == "Boss" and not shared.IsBossActive() then
+					masterState = "WaitingBoss"
+				else
+					masterState = "RoomCleared"
+				end
 			elseif hasEnemyInRadius then
 				-- Ưu tiên 2: CÓ QUÁI TRONG TẦM BÁN KÍNH R -> IN COMBAT!
 				-- Tạm dừng bước chân AutoFarm để giữ cự ly chiến đấu (chỉ pause khi chưa pause)
 				if not autoFarm.IsPaused() then
 					autoFarm.SetPaused(true)
+				end
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if hum then
+					pcall(function() hum:Move(Vector3.zero, false) end)
 				end
 
 				-- Luôn duy trì reachDistance chuẩn bằng Combat Radius R cho AutoFarm
@@ -25068,25 +18021,25 @@ local function startMasterLoop()
 
 				-- Hàm kiểm tra độ an toàn của điểm di chuyển (mặt sàn, hazard, lộ trình di chuyển, tường, ràng buộc biên sàn đấu)
 				local function isSafeSpot(pos)
-					-- 1. Ràng buộc cứng sàn đấu Boss 1 (nếu có Arena): Điểm đến bắt buộc phải nằm bên trong sàn đấu
-					if isBoss1 and arenaCenter and arenaRadius and arenaRadius > 0 then
+					-- 1. Ràng buộc cứng sàn đấu Boss (nếu có Arena): Điểm đến bắt buộc phải nằm bên trong sàn đấu
+					if isBossTarget and arenaCenter and arenaRadius and arenaRadius > 0 then
 						local dCenter = (Vector3.new(pos.X - arenaCenter.X, 0, pos.Z - arenaCenter.Z)).Magnitude
 						if dCenter > (arenaRadius - 3.5) then
 							return false, nil
 						end
 					end
 
-					local rawFloorY, hasFloor = geometry.GetRawFloorY(pos)
+					local rawFloorY, hasFloor = sdv2.danger.GetRawFloorY(pos)
 					if not hasFloor or not rawFloorY or math.abs(rawFloorY - (pPos.Y - 2.5)) > 3.5 then
 						return false, nil
 					end
 					local floorPos = Vector3.new(pos.X, rawFloorY + 2.8, pos.Z)
 					-- 2. Điểm đến phải an toàn và có khoảng đệm tối thiểu 1.5 studs với mép mọi chiêu thức
-					if not geometry.IsSpotFullySafe(floorPos, 1.5) then
+					if sdv2.danger.IsPointInAnyHazard(floorPos, nil, 1.5) then
 						return false, nil
 					end
 					-- 3. Toàn bộ lộ trình di chuyển từ pPos tới floorPos phải hoàn toàn sạch bóng chiêu (Path Clearance)
-					if not geometry.IsPathSafe(pPos, floorPos) then
+					if not sdv2.danger.IsPathSafe(pPos, floorPos) then
 						return false, nil
 					end
 					-- Raycast kiểm tra tường từ hông nhân vật tới điểm đích
@@ -25105,8 +18058,11 @@ local function startMasterLoop()
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if not hum then return fallbackState end
 
-					if not combatMicroStrafingEnabled then
-						pcall(function() hum:MoveTo(pPos) end)
+					if not combatMicroStrafingEnabled or combatMovementMode == "OpenSpace" then
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
 						return fallbackState
 					end
 
@@ -25202,14 +18158,17 @@ local function startMasterLoop()
 				-- Đứng vững chân tại điểm Safe Spot vừa né tới (InCombat) để xả combo skill vào quái/boss,
 				-- TUYỆT ĐỐI không vội di chuyển lăng xăng ngay tránh giẫm ngược lại mép chiêu cũ gây giật giật!
 				local isPostDodgeSettling = (os.clock() - lastDodgeTimestamp < 0.45)
-					and (smartDodge.GetHazardCount and smartDodge.GetHazardCount() > 0)
+					and (sdv2 and sdv2.danger and sdv2.danger.IsPlayerInDanger())
 
 				if isPostDodgeSettling then
 					currentStrafeTarget = nil
 					lastMicroStrafeTime = os.clock()
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if hum then
-						pcall(function() hum:MoveTo(pPos) end)
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
 					end
 					masterState = "InCombat"
 					fireMasterStatus()
@@ -25296,123 +18255,60 @@ local function startMasterLoop()
 					end
 				end
 
-				if not isMaintainDistanceActive then
+				if combatMovementMode == "OpenSpace" then
+					-- ==============================================================
+					-- [CHẾ ĐỘ V1 - BÃI TRỐNG (OPEN SPACE)]:
+					-- ĐỨNG YÊN HOÀN TOÀN TẠI BÃI TRỐNG XẢ SKILL (STAND GROUND)!
+					-- Áp dụng cho CẢ BOSS VÀ MOB THƯỜNG.
+					-- Tuyệt đối KHÔNG tự ý di chuyển lăng xăng trong lúc combat.
+					-- KHÔNG Orbit, KHÔNG Kiting, KHÔNG Micro-Strafe, KHÔNG lùi vòng cung.
+					-- Nhân vật đứng trụ vững vàng tại vị trí hiện tại (bãi trống) và tập trung xả combo skill.
+					-- Việc di chuyển chỉ diễn ra khi:
+					--   1. Né chiêu đỏ (Smart Dodge V2)
+					--   2. Thoát chiêu đỏ -> Lướt vào bãi trống mới rộng rãi (Post-Dodge Repositioning)
+					--   3. Quái ở xa ngoài tầm R -> AutoFarm bước tới mép R
+					-- ==============================================================
+					local targetCenter = (not isBossTarget and (clusterCentroid or nPos)) or nPos
+					if not isBossTarget and targetCenter then
+						targetFacing.SetTargetOverride(targetCenter)
+					else
+						targetFacing.SetTargetOverride(nil)
+					end
+
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum then
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
+					end
+					masterState = "InCombat"
+				elseif not isMaintainDistanceActive then
 					-- [TÍNH NĂNG GIỮ KHOẢNG CÁCH TẮT HOẶC NGOÀI SCOPE]: Đứng vững chân xả chiêu tại cự ly R, không lùi/kiting
 					targetFacing.SetTargetOverride(clusterCentroid or nPos)
-					masterState = performCombatMicroStrafe(clusterCentroid or nPos or pPos, r, "InCombat")
-				elseif isBoss1 and inBoss1Arena and arenaCenter and arenaRadius and arenaRadius > 0 then
-					targetFacing.SetTargetOverride(nil)
-					-- ==============================================================
-					-- [BOSS 1]: GIỮ KHOẢNG CÁCH VỚI CHÍNH TRUNG TÂM SÀN ĐẤU (ARENA CENTER ANCHORING)
-					-- Tuyệt đối không giữ khoảng cách đối với Boss 1 (tránh bị kéo/lùa ra mép sàn khi Boss nhảy).
-					-- Giữ khoảng cách chuẩn R (hoặc giới hạn an toàn trong sàn) so với arenaCenter.
-					-- Ưu tiên chọn vị trí đứng ở phía đối diện của Boss 1 qua tâm sàn đấu.
-					-- ==============================================================
-					local holdCenterDist = math.clamp(r, 6.0, math.max(6.0, arenaRadius - 6.0))
-					local pDistToCenter = (Vector3.new(pPos.X - arenaCenter.X, 0, pPos.Z - arenaCenter.Z)).Magnitude
-
-					local bVecFromCenter = nPos and Vector3.new(nPos.X - arenaCenter.X, 0, nPos.Z - arenaCenter.Z) or Vector3.new(0, 0, 0)
-					local idealAngle
-					if bVecFromCenter.Magnitude >= 2.0 then
-						idealAngle = math.atan2(-bVecFromCenter.Z, -bVecFromCenter.X)
-					else
-						local pVecFromCenter = Vector3.new(pPos.X - arenaCenter.X, 0, pPos.Z - arenaCenter.Z)
-						idealAngle = (pVecFromCenter.Magnitude > 0.5) and math.atan2(pVecFromCenter.Z, pVecFromCenter.X) or 0
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum then
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
 					end
-
-					local distError = math.abs(pDistToCenter - holdCenterDist)
-					local isSafeHere = isSafeSpot(pPos)
-					local bossTooClose = (nDist and nPos) and (nDist < 8.0)
-
-					if distError <= 2.5 and isSafeHere and not bossTooClose then
-						masterState = performCombatMicroStrafe(arenaCenter, holdCenterDist, "HoldingRadius")
-					else
-						local candidateAngles = {
-							idealAngle,
-							idealAngle + math.rad(20),
-							idealAngle - math.rad(20),
-							idealAngle + math.rad(40),
-							idealAngle - math.rad(40),
-							idealAngle + math.rad(65),
-							idealAngle - math.rad(65),
-							idealAngle + math.rad(90),
-							idealAngle - math.rad(90),
-							idealAngle + math.rad(120),
-							idealAngle - math.rad(120),
-							idealAngle + math.pi,
-						}
-
-						local curPlayerAngle = math.atan2(pPos.Z - arenaCenter.Z, pPos.X - arenaCenter.X)
-						table.insert(candidateAngles, curPlayerAngle)
-						table.insert(candidateAngles, curPlayerAngle + math.rad(25))
-						table.insert(candidateAngles, curPlayerAngle - math.rad(25))
-
-						local bestSafePos = nil
-						local bestScore = -math.huge
-
-						for _, angle in ipairs(candidateAngles) do
-							local testPos = arenaCenter + Vector3.new(math.cos(angle), 0, math.sin(angle)) * holdCenterDist
-							local safe, safePos = isSafeSpot(testPos)
-							if safe and safePos then
-								local distToPlayer = (Vector3.new(safePos.X - pPos.X, 0, safePos.Z - pPos.Z)).Magnitude
-								local angleDiff = math.abs(math.atan2(math.sin(angle - idealAngle), math.cos(angle - idealAngle)))
-								local distToBoss = nPos and (Vector3.new(safePos.X - nPos.X, 0, safePos.Z - nPos.Z)).Magnitude or 25.0
-								local candDistToCenter = (Vector3.new(safePos.X - arenaCenter.X, 0, safePos.Z - arenaCenter.Z)).Magnitude
-
-								local score = - (math.abs(candDistToCenter - holdCenterDist) * 3.0)
-								score = score - (angleDiff * 8.0)
-								score = score - (distToPlayer * 1.0)
-								if distToBoss < 8.5 then
-									score = score - (8.5 - distToBoss) * 20.0
-								else
-									score = score + math.min(distToBoss, 30.0) * 0.5
-								end
-
-								if score > bestScore then
-									bestScore = score
-									bestSafePos = safePos
-								end
-							end
-						end
-
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if bestSafePos and hum then
-							hum:MoveTo(bestSafePos)
-							masterState = "HoldingRadius"
-						elseif hum then
-							local safeCenter, safeCenterPos = isSafeSpot(arenaCenter)
-							if safeCenter and safeCenterPos then
-								hum:MoveTo(safeCenterPos)
-							else
-								pcall(function() hum:MoveTo(pPos) end)
-							end
-							masterState = "HoldingRadius"
-						end
-					end
+					masterState = "InCombat"
 				elseif isBossTarget then
 					targetFacing.SetTargetOverride(nil)
 					-- ==============================================================
-					-- [BOSS KHÁC]: GIỮ BÁN KÍNH CHIẾN ĐẤU R + WALL-AWARE KITING THOÁT GÓC TƯỜNG
-					-- Khi Boss áp sát, hệ thống lùi thông minh (Wall-Aware) tránh kẹt góc tường,
-					-- ưu tiên hướng tâm sàn đấu để giữ cự ly R mà TUYỆT ĐỐI không bị ép ra rìa map!
+					-- [BOSS COMBAT RADAR - ORBIT MODE V2]: GIỮ BÁN KÍNH CHIẾN ĐẤU R
+					-- Luôn giữ Boss nằm trọn trong vòng radar bán kính Cyan R.
+					-- Nếu Boss tiến quá sát (< R - 2.5), lùi thông minh (Wall-Aware Kiting)
+					-- để đẩy Boss về mép vòng tròn Cyan R.
 					-- ==============================================================
 					local holdDist = r - 1.0
 					local isTooClose = nDist and nPos and pPos and (nDist < (r - 2.5))
 
-					local isNearArenaEdge = false
-					if isBoss1 and arenaCenter and arenaRadius and arenaRadius > 0 and pPos then
-						local pDistToCenter = (Vector3.new(pPos.X - arenaCenter.X, 0, pPos.Z - arenaCenter.Z)).Magnitude
-						if pDistToCenter > (arenaRadius - 4.5) then
-							isNearArenaEdge = true
-						end
-					end
-
-					if isTooClose or isNearArenaEdge then
+					if isTooClose then
 						local awayVec = Vector3.new(pPos.X - nPos.X, 0, pPos.Z - nPos.Z)
 						local awayDir = (awayVec.Magnitude > 0.1) and awayVec.Unit or Vector3.new(0, 0, 1)
-						local preferCenter = (isBoss1 and arenaCenter) or nil
-
-						local bestSafePos = findBestKitingSpot(nPos, holdDist, awayDir, preferCenter)
+						local bestSafePos = findBestKitingSpot(nPos, holdDist, awayDir, arenaCenter)
 
 						if bestSafePos then
 							local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -25428,7 +18324,7 @@ local function startMasterLoop()
 					end
 				else
 					-- ==============================================================
-					-- [MOBS THƯỜNG]: CHĂN BẦY / GOM QUÁI (HERDING & GROUPING) + WALL-AWARE KITING
+					-- [MOBS THƯỜNG - CHẾ ĐỘ V2 ORBIT]: CHĂN BẦY / GOM QUÁI (HERDING & GROUPING) + WALL-AWARE KITING
 					-- 1. Neo góc nhìn và điểm nhắm vào TRỌNG TÂM CỤM QUÁI (Cluster Centroid)
 					-- 2. Di chuyển theo quỹ đạo xoay tròn (Orbit) quanh Cluster Centroid ở cự ly r
 					--    để ép tất cả quái phải quay đầu hội tụ vào tâm vòng tròn (Funnel Effect).
@@ -25501,14 +18397,10 @@ local function startMasterLoop()
 					-- Chỉ kiểm tra hazard ngay trước mũi chân (tối đa 8.0 studs) thay vì 35.0 studs
 					isPathBlocked, blockingHazardName = isApproachPathBlockedByHazard(pPos, nPos, 8.0, 2.0)
 					local v2HazCount = 0
-					pcall(function()
-						local sdv2 = __DIST.load('t')
-						if sdv2 and sdv2.detection then
-							v2HazCount = sdv2.detection.GetHazardCount()
-						end
-					end)
-					local v1HazCount = (smartDodge.GetHazardCount and smartDodge.GetHazardCount()) or 0
-					isJustDodged = (os.clock() - lastDodgeTimestamp < 1.2) and (v2HazCount > 0 or v1HazCount > 0)
+					if sdv2 and sdv2.detection and sdv2.detection.GetHazardCount then
+						v2HazCount = sdv2.detection.GetHazardCount()
+					end
+					isJustDodged = (os.clock() - lastDodgeTimestamp < 1.2) and (v2HazCount > 0)
 				end
 
 				-- Chống kẹt vĩnh viễn ở trạng thái WaitingHazard: nếu đã đợi quá 1.5s thì cho phép di chuyển tiếp
@@ -25539,7 +18431,7 @@ local function startMasterLoop()
 					end
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if hum then
-						pcall(function() hum:MoveTo(pPos) end)
+						pcall(function() hum:Move(Vector3.zero, false) end)
 					end
 					targetFacing.SetTargetOverride(clusterCentroid or nPos)
 					targetFacing.SetEnabled(true)
@@ -25552,7 +18444,7 @@ local function startMasterLoop()
 					end
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if hum then
-						pcall(function() hum:MoveTo(pPos) end)
+						pcall(function() hum:Move(Vector3.zero, false) end)
 					end
 					targetFacing.SetEnabled(true)
 					masterState = "WaitingHazard"
@@ -25560,14 +18452,24 @@ local function startMasterLoop()
 				else
 					-- Đường đi an toàn -> Mở đường cho AutoFarm tiếp cận mục tiêu
 					targetFacing.SetTargetOverride(nil)
-					if targetFacing and targetFacing.GetTargetScope and targetFacing.GetTargetScope() == "Boss" then
-						targetFacing.SetEnabled(true)
+					targetFacing.SetEnabled(false)
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum and hum.AutoRotate ~= true then
+						hum.AutoRotate = true
 					end
 
-					-- Luôn duy trì reachDistance chuẩn bằng radius R (15.0 studs), TUYỆT ĐỐI không ép về 2.5 studs!
+					-- [ƯU TIÊN VÀO SÀN BOSS ĐỒNG THỜI GIỮ KHOẢNG CÁCH]:
+					-- Khi đang ở ngoài sàn Boss (kể cả sau hồi sinh):
+					-- Không được dừng lại ở cự ly reachDistance chuẩn R bên ngoài cửa.
+					-- Đặt reachDistance nhỏ (2.0 studs) để AutoFarm tiếp tục dẫn người chơi bước qua cửa vào hẳn trong sàn!
+					local effectiveReach = r
+					if isBossTarget and not inBossArena then
+						effectiveReach = 2.0
+					end
+
 					if autoFarm.GetReachDistance and autoFarm.SetReachDistance then
-						if math.abs(autoFarm.GetReachDistance() - r) > 0.5 then
-							autoFarm.SetReachDistance(r)
+						if math.abs(autoFarm.GetReachDistance() - effectiveReach) > 0.5 then
+							autoFarm.SetReachDistance(effectiveReach)
 						end
 					end
 
@@ -25578,7 +18480,24 @@ local function startMasterLoop()
 						autoFarm.SetPaused(false)
 					end
 
-					masterState = "Approaching"
+					if isBossTarget and not inBossArena then
+						masterState = "EnteringBossArea"
+
+						-- [CƠ CHẾ BẮT BUỘC BƯỚC VÀO SÀN ĐẤU - FORCE-ENTRY ASSIST]:
+						-- Nếu AutoFarm bị khựng hoặc Pathfinding bị nghẽn ở ngưỡng cửa phòng Boss:
+						-- Trực tiếp điều khiển Humanoid bước thẳng hướng vào bên trong Sàn Đấu / Boss!
+						local enterTarget = arenaCenter or nPos
+						if hum and enterTarget and pPos then
+							local enterVec = Vector3.new(enterTarget.X - pPos.X, 0, enterTarget.Z - pPos.Z)
+							if enterVec.Magnitude > 0.5 then
+								pcall(function()
+									hum:Move(enterVec.Unit, false)
+								end)
+							end
+						end
+					else
+						masterState = "Approaching"
+					end
 				end
 			end
 
@@ -25597,13 +18516,14 @@ local function stopMasterLoop()
 		masterLoopThread = nil
 	end
 
-	wasInDanger = false
 	waitingHazardStartTime = 0
-	if repositionTarget then
-		repositionTarget = nil
+	orbitDirection = 1
+	wasInDanger = false
+	currentTargetPos = nil
+	if repositionTarget or repositionMoveConn then
+		stopRepositionMovement()
 	end
 	openSpace.ClearVisualMarker()
-	orbitDirection = 1
 
 	-- Dừng các hệ thống con
 	autoFarm.SetPaused(false)
@@ -25615,9 +18535,8 @@ local function stopMasterLoop()
 	end
 	targetFacing.SetTargetOverride(nil)
 	targetFacing.SetEnabled(false)
-	smartDodge.StopEngine()
-	if smartDodge.ClearPlayerRadar then
-		smartDodge.ClearPlayerRadar()
+	if sdv2 and sdv2.dodge then
+		sdv2.dodge.Cancel()
 	end
 
 	masterState = "Disabled"
@@ -25638,32 +18557,14 @@ function smartAutoPlay.SetMasterEnabled(state)
 		-- Tuyên bố độc quyền trong coordinator để tắt AutoFarm thủ công cũ nếu có
 		coordinator.EnableExclusive("SmartAutoPlay")
 
-		-- Kích hoạt Smart Dodge ngầm (sẵn sàng né frame-0)
-		smartDodge.StartEngine()
-		smartDodge.SetAutoDodge(true)
-		if smartDodge.SetTargetScope then
-			smartDodge.SetTargetScope(targetScope)
-		end
-		pcall(function()
-			local sdv2 = __DIST.load('t')
-			if sdv2 and sdv2.SetTargetScope then
+		-- Kích hoạt Smart Dodge V2
+		if sdv2 then
+			if sdv2.SetTargetScope then
 				sdv2.SetTargetScope(targetScope)
 			end
-		end)
-		if smartDodge.SetShowPlayerRadar then
-			smartDodge.SetShowPlayerRadar(false)
-		end
-		if smartDodge.ClearPlayerRadar then
-			smartDodge.ClearPlayerRadar()
-		end
-		if smartDodge.SetShowSkillTimers then
-			smartDodge.SetShowSkillTimers(false)
-		end
-		if smartDodge.SetVisualEsp then
-			smartDodge.SetVisualEsp(false)
-		end
-		if smartDodge.SetShowSafeMarker then
-			smartDodge.SetShowSafeMarker(false)
+			if sdv2.dodge then
+				sdv2.dodge.SetEnabled(true)
+			end
 		end
 
 		-- Kích hoạt Auto Skill (nếu được bật)
@@ -25683,8 +18584,13 @@ function smartAutoPlay.SetMasterEnabled(state)
 		if autoFarm.GetReachDistance and autoFarm.SetReachDistance then
 			autoFarm.SetReachDistance(radius)
 		end
-		autoFarm.SetPaused(false)
-		autoFarm.Toggle(true, true)
+		if targetScope == "Boss" and not shared.IsBossActive() then
+			autoFarm.Toggle(false)
+			autoFarm.SetPaused(true)
+		else
+			autoFarm.SetPaused(false)
+			autoFarm.Toggle(true, true)
+		end
 
 		startMasterLoop()
 	else
@@ -25709,35 +18615,11 @@ function smartAutoPlay.IsAutoSkillEnabled()
 	return smartAutoSkillEnabled
 end
 
---// Open Space Reposition API
-function smartAutoPlay.SetOpenSpaceEnabled(state)
-	openSpace.SetEnabled(state)
-	if not state and repositionTarget then
-		repositionTarget = nil
-		openSpace.ClearVisualMarker()
-	end
-	fireMasterStatus()
-end
-
-function smartAutoPlay.IsOpenSpaceEnabled()
-	return openSpace.IsEnabled()
-end
-
-function smartAutoPlay.SetRepositionRadiusMultiplier(val)
-	openSpace.SetRadiusMultiplier(val)
-end
-
-function smartAutoPlay.GetRepositionRadiusMultiplier()
-	return openSpace.GetRadiusMultiplier()
-end
-
 function smartAutoPlay.GetMasterStatus()
 	return {
 		enabled = masterEnabled,
 		state = masterState,
 		autoSkillEnabled = smartAutoSkillEnabled,
-		openSpaceEnabled = openSpace.IsEnabled(),
-		repositionDist = repositionTarget and currentEscapeDist or nil,
 		hazardName = currentHazardName,
 		escapeDist = currentEscapeDist,
 		targetName = currentTargetName,
@@ -25753,7 +18635,28 @@ function smartAutoPlay.GetMasterStatus()
 		combatTargetScope = targetScope,
 		maintainDistanceScope = maintainDistanceScope,
 		approachScope = approachScope,
+		combatMovementMode = combatMovementMode,
+		repositionDist = repositionTarget and currentEscapeDist or nil,
 	}
+end
+
+function smartAutoPlay.SetCombatMovementMode(mode: string)
+	local normalized = (tostring(mode or "Orbit")):lower()
+	if normalized:find("open") or normalized:find("v1") or normalized:find("trống") or normalized:find("trong") then
+		combatMovementMode = "OpenSpace"
+		currentStrafeTarget = nil
+	else
+		combatMovementMode = "Orbit"
+	end
+
+	if combatMovementMode ~= "OpenSpace" and (repositionTarget or repositionMoveConn) then
+		stopRepositionMovement()
+	end
+	fireMasterStatus()
+end
+
+function smartAutoPlay.GetCombatMovementMode(): string
+	return combatMovementMode
 end
 
 function smartAutoPlay.OnMasterStatusChanged(callback)
@@ -25824,6 +18727,19 @@ end
 
 function smartAutoPlay.GetBoss2Radius()
 	return radiusBoss2
+end
+
+function smartAutoPlay.SetDodgeBoss2Orb(state: boolean)
+	if sdv2 and sdv2.danger and sdv2.danger.SetDodgeBoss2OrbEnabled then
+		sdv2.danger.SetDodgeBoss2OrbEnabled(state)
+	end
+end
+
+function smartAutoPlay.IsDodgeBoss2OrbEnabled(): boolean
+	if sdv2 and sdv2.danger and sdv2.danger.IsDodgeBoss2OrbEnabled then
+		return sdv2.danger.IsDodgeBoss2OrbEnabled()
+	end
+	return false
 end
 
 function smartAutoPlay.SetBoss3Radius(val)
@@ -25927,21 +18843,25 @@ function smartAutoPlay.SetTargetScope(scope)
 	if autoFarm and autoFarm.SetTargetScope then
 		autoFarm.SetTargetScope(normalizedScope)
 	end
-	if smartDodge and smartDodge.SetTargetScope then
-		smartDodge.SetTargetScope(normalizedScope)
-	end
-	pcall(function()
-		local sdv2 = __DIST.load('t')
-		if sdv2 and sdv2.SetTargetScope then
+	if sdv2 then
+		if sdv2.SetTargetScope then
 			sdv2.SetTargetScope(normalizedScope)
 		end
-		if sdv2 and sdv2.dodge and sdv2.dodge.SetStrafeFacingMode then
+		if sdv2.dodge and sdv2.dodge.SetStrafeFacingMode then
 			sdv2.dodge.SetStrafeFacingMode(normalizedScope)
 		end
-	end)
+	end
 	if targetFacing and targetFacing.SetTargetScope then
 		targetFacing.SetTargetScope(normalizedScope)
 	end
+
+	if normalizedScope == "Boss" and not shared.IsBossActive() then
+		if autoFarm.IsEnabled() then
+			autoFarm.Toggle(false)
+		end
+		autoFarm.SetPaused(true)
+	end
+
 	fireMasterStatus()
 end
 smartAutoPlay.SetCombatTargetScope = smartAutoPlay.SetTargetScope
@@ -25961,34 +18881,16 @@ coordinator.Register("SmartAutoPlay", smartAutoPlay.SetMasterEnabled, smartAutoP
 --// Tự động tiếp tục hoạt động khi respawn hoặc chuyển map
 shared.OnRespawn(function()
 	if masterEnabled then
-		task.delay(0.5, function()
+		task.delay(0.2, function()
 			if not masterEnabled then return end
-			smartDodge.StartEngine()
-			smartDodge.SetAutoDodge(true)
-			if smartDodge.SetShowPlayerRadar then
-				smartDodge.SetShowPlayerRadar(false)
-			end
-			if smartDodge.ClearPlayerRadar then
-				smartDodge.ClearPlayerRadar()
-			end
-			if smartDodge.SetShowSkillTimers then
-				smartDodge.SetShowSkillTimers(false)
-			end
-			if smartDodge.SetVisualEsp then
-				smartDodge.SetVisualEsp(false)
-			end
-			if smartDodge.SetShowSafeMarker then
-				smartDodge.SetShowSafeMarker(false)
-			end
-			if smartDodge.SetTargetScope then
-				smartDodge.SetTargetScope(targetScope)
-			end
-			pcall(function()
-				local sdv2 = __DIST.load('t')
-				if sdv2 and sdv2.SetTargetScope then
+			if sdv2 then
+				if sdv2.SetTargetScope then
 					sdv2.SetTargetScope(targetScope)
 				end
-			end)
+				if sdv2.dodge then
+					sdv2.dodge.SetEnabled(true)
+				end
+			end
 			if autoSkill and autoSkill.SetTargetScope then
 				autoSkill.SetTargetScope(targetScope)
 			end
@@ -26001,9 +18903,14 @@ shared.OnRespawn(function()
 			if autoFarm.GetReachDistance and autoFarm.SetReachDistance then
 				autoFarm.SetReachDistance(radius)
 			end
-			autoFarm.SetPaused(false)
-			if not autoFarm.IsEnabled() then
-				autoFarm.Toggle(true, true)
+			if targetScope == "Boss" and not shared.IsBossActive() then
+				autoFarm.Toggle(false)
+				autoFarm.SetPaused(true)
+			else
+				autoFarm.SetPaused(false)
+				if not autoFarm.IsEnabled() then
+					autoFarm.Toggle(true, true)
+				end
 			end
 		end)
 	end
@@ -26031,14 +18938,14 @@ end)
 checkVisualLoop()
 
 return smartAutoPlay
-end function __DIST.K()-- Tab Threat Detection V2: Section Detection
+end function __DIST.B()-- Tab Threat Detection V2: Section Detection
 -- Điều khiển Threat Detection Engine V2, Visuals ESP, và Live Threat Monitor
 
 
 local ui = __DIST.load('e')
 local autoSave = __DIST.load('d')
 local smartDodgeV2 = __DIST.load('t')
-local smartAutoPlay = __DIST.load('J')
+local smartAutoPlay = __DIST.load('A')
 local detection = smartDodgeV2.detection
 local visuals = smartDodgeV2.visuals
 local danger = smartDodgeV2.danger
@@ -26526,6 +19433,27 @@ return function(window, tab)
 		end),
 	}, "Slider_SDV2_BossArea_B1_Radius"))
 
+	radarSection:Toggle({
+		Name = "Boss 1: Avoid Arena Center (Tránh né vào tâm)",
+		Default = bossArea.IsBoss1AvoidCenter(),
+		Callback = autoSave.Wrap(function(state)
+			bossArea.SetBoss1AvoidCenter(state)
+		end),
+	}, "Toggle_SDV2_Boss1_AvoidCenter")
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Boss 1: Center Deadzone (Vùng cấm tâm)",
+		Suffix = " std",
+		Default = bossArea.GetBoss1CenterRadius(),
+		Minimum = 5,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			bossArea.SetBoss1CenterRadius(val)
+		end),
+	}, "Slider_SDV2_Boss1_CenterRadius"))
+
 	-- Boss 2
 	radarSection:Toggle({
 		Name = "Enable Arena Limiter: Boss 2",
@@ -26547,6 +19475,16 @@ return function(window, tab)
 			bossArea.SetBossRadius(2, val)
 		end),
 	}, "Slider_SDV2_BossArea_B2_Radius"))
+
+	radarSection:Toggle({
+		Name = "Boss 2: Dodge Orbs & Crystals",
+		Default = smartDodgeV2.IsDodgeBoss2OrbEnabled and smartDodgeV2.IsDodgeBoss2OrbEnabled() or false,
+		Callback = autoSave.Wrap(function(state)
+			if smartDodgeV2.SetDodgeBoss2OrbEnabled then
+				smartDodgeV2.SetDodgeBoss2OrbEnabled(state)
+			end
+		end),
+	}, "Toggle_SDV2_DodgeBoss2Orb")
 
 	-- Boss 3+
 	radarSection:Toggle({
@@ -26623,6 +19561,103 @@ return function(window, tab)
 			end
 		end),
 	}, "Dropdown_SDV2_MasterTargetScope"))
+
+	local COMBAT_MOVEMENT_OPTIONS = { "ORBIT (V2 - Gom Quái)", "OPEN SPACE (V1 - Bãi Trống)" }
+	local curMovementIdx = 1
+	local curMode = smartAutoPlay.GetCombatMovementMode and smartAutoPlay.GetCombatMovementMode()
+	if curMode == "OpenSpace" then
+		curMovementIdx = 2
+	end
+
+	ui.PatchDropdownRestore(autoPlaySection:Dropdown({
+		Name = "Combat Movement Mode",
+		Options = COMBAT_MOVEMENT_OPTIONS,
+		Default = curMovementIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			local str = tostring(selected or ""):upper()
+			if str:find("OPEN SPACE") or str:find("BÃI TRỐNG") or str:find("BAI TRONG") or str:find("V1") then
+				smartAutoPlay.SetCombatMovementMode("OpenSpace")
+			else
+				smartAutoPlay.SetCombatMovementMode("Orbit")
+			end
+		end),
+	}, "Dropdown_SDV2_CombatMovementMode"))
+
+	autoPlaySection:Header({ Name = "Combat Radar (Cyan Circle) & Distance" })
+
+	autoPlaySection:Toggle({
+		Name = "Show Combat Radar (Cyan Circle)",
+		Default = smartAutoPlay.IsShowRadiusCircleEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetShowRadiusCircle(state)
+		end),
+	}, "Toggle_SDV2_ShowRadiusCircle")
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Boss 1 Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetBoss1Radius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetBoss1Radius(val)
+		end),
+	}, "Slider_SDV2_Radius_Boss1"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Boss 2 Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetBoss2Radius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetBoss2Radius(val)
+		end),
+	}, "Slider_SDV2_Radius_Boss2"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Boss 3 Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetBoss3Radius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetBoss3Radius(val)
+		end),
+	}, "Slider_SDV2_Radius_Boss3"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Mobs Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetMobsRadius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetMobsRadius(val)
+		end),
+	}, "Slider_SDV2_Radius_Mobs"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Cyan Sphere Particle Size",
+		Suffix = " std",
+		Default = smartAutoPlay.GetCyanSphereSize(),
+		Minimum = 0.05,
+		Maximum = 2.0,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetCyanSphereSize(val)
+		end),
+	}, "Slider_SDV2_CyanSphereSize"))
 
 	autoPlaySection:Header({ Name = "Auto Skill & Combat Options" })
 
@@ -26710,16 +19745,52 @@ return function(window, tab)
 		end),
 	}, "Toggle_SDV2_SAP_AutoBuffForSpeed")
 
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Buff Cast Delay",
+		Suffix = " s",
+		Default = autoSkill.GetBuffDelay(),
+		Minimum = 0.05,
+		Maximum = 1.0,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			autoSkill.SetBuffDelay(val)
+		end),
+	}, "Slider_SDV2_SAP_BuffDelay"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Buff Duration",
+		Suffix = " s",
+		Default = autoSkill.GetBuffDuration(),
+		Minimum = 1.0,
+		Maximum = 30.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoSkill.SetBuffDuration(val)
+		end),
+	}, "Slider_SDV2_SAP_BuffDuration"))
+
 	smartAutoPlay.OnMasterStatusChanged(function(info)
 		pcall(function()
 			if not info.enabled then
 				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(160, 160, 160)'>Disabled</font>")
 			elseif info.state == "Dodging" then
 				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(255, 65, 65)'>🛡️ DODGING! %s (%.1f std)</font>", info.hazardName or "Hazard", info.escapeDist or 0))
+			elseif info.state == "Orbiting" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>🌀 ORBITING: Grouping %s</font>", info.targetName or "Mobs"))
+			elseif info.state == "Repositioning" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(50, 150, 255)'>🔵 REPOSITIONING (Open Space: %.1f std)</font>", info.escapeDist or 0))
 			elseif info.state == "InCombat" or info.state == "Strafing" then
 				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 255, 120)'>⚔️ IN COMBAT (%s)</font>", info.targetName or "Target"))
+			elseif info.state == "HoldingRadius" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 240, 200)'>🛡️ HOLDING RADIUS (%s)</font>", info.targetName or "Target"))
 			elseif info.state == "Approaching" then
 				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 200, 255)'>🏃 APPROACHING (%s)</font>", info.targetName or "Target"))
+			elseif info.state == "EnteringBossArea" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>🏃 ENTERING BOSS AREA (%s)</font>", info.targetName or "Boss"))
+			elseif info.state == "WaitingBoss" then
+				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 50)'>⏳ WAITING FOR BOSS</font>")
 			elseif info.state == "RoomCleared" then
 				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 50)'>✨ ROOM CLEARED</font>")
 			else
@@ -26810,21 +19881,222 @@ return function(window, tab)
 
 	updateRadarMonitor(false, nil, nil, 0, nil)
 end
-end function __DIST.L()-- Tab Smart Dodge V2 (DungeonQuest): Khởi tạo giao diện Threat Detection
+end function __DIST.C()-- Tab Smart Dodge V2 (DungeonQuest): Khởi tạo giao diện Threat Detection
 -- Giữ lại Detection Engine
 
 
 return function(window, tab)
-__DIST.load('K')(window, tab)
+__DIST.load('B')(window, tab)
 end
-end function __DIST.M()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.D()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+-- Map thường: fetch động qua remote getDungeonStats (có cache).
+-- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
+
+--// Data
+
+local DIFFICULTIES = { "Easy", "Medium", "Hard", "Insane", "Nightmare" }
+
+local DUNGEONS = {
+	"Desert Temple",
+	"Winter Outpost",
+	"Pirate Island",
+	"King's Castle",
+	"The Underworld",
+	"Samurai Palace",
+	"The Canals",
+	"Ghastly Harbor",
+	"Steampunk Sewers",
+	"Orbital Outpost",
+	"Volcanic Chambers",
+	"Aquatic Temple",
+	"Enchanted Forest",
+	"Egg Island",
+	"Krampus",
+	"Tutorial Dungeon",
+}
+
+local SPECIAL_DUNGEONS = {
+	["Egg Island"] = { Difficulties = { "Easy", "Nightmare" }, LevelReq = 0 },
+	["Krampus"] = { Difficulties = { "Nightmare" }, LevelReq = 195 },
+	["Tutorial Dungeon"] = { Difficulties = { "Easy" }, LevelReq = 0 },
+}
+
+--// Table
+local dungeonCatalog = {}
+
+--// Cache
+local statsCache = {}
+local dynamicDungeons = nil
+
+--// Persisted map list (lưu list đã lấy từ lobby UI để dùng tiếp khi ở trong map)
+local HttpService = game:GetService("HttpService")
+local MAP_LIST_CACHE_FILE = "Maclib/DungeonQuest_MapList.json"
+
+local function persistMapList(list)
+	if not (isfile and writefile and makefolder and isfolder) then return end
+	pcall(function()
+		if not isfolder("Maclib") then makefolder("Maclib") end
+	end)
+	pcall(function()
+		writefile(MAP_LIST_CACHE_FILE, HttpService:JSONEncode(list))
+	end)
+end
+
+local function loadPersistedMapList()
+	if not (isfile and readfile) or not isfile(MAP_LIST_CACHE_FILE) then return nil end
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(readfile(MAP_LIST_CACHE_FILE))
+	end)
+	if not ok or typeof(data) ~= "table" then return nil end
+
+	local list = {}
+	for _, name in ipairs(data) do
+		if type(name) == "string" and #name > 0 then
+			table.insert(list, name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+local function mergeDungeonLists(primary)
+	local seen = {}
+	local merged = {}
+	for _, name in ipairs(primary or {}) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	for _, name in ipairs(DUNGEONS) do
+		if not seen[name] then
+			seen[name] = true
+			table.insert(merged, name)
+		end
+	end
+	return merged
+end
+
+--// Helpers
+local function findScrollingFrame()
+	local player = game:GetService("Players").LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local queueGui = playerGui:FindFirstChild("queueGui")
+	if not queueGui then return nil end
+	local chooseDungeon = queueGui:FindFirstChild("chooseDungeon")
+	if not chooseDungeon then return nil end
+	local backgroundFillLeft = chooseDungeon:FindFirstChild("backgroundFillLeft")
+	if not backgroundFillLeft then return nil end
+	return backgroundFillLeft:FindFirstChild("ScrollingFrame")
+end
+
+local function collectDungeonsFromUi()
+	local scrollingFrame = findScrollingFrame()
+	if not scrollingFrame then return nil end
+
+	local list = {}
+	for _, child in ipairs(scrollingFrame:GetChildren()) do
+		if child:IsA("ImageLabel") and #child.Name > 0 then
+			table.insert(list, child.Name)
+		end
+	end
+	return (#list > 0) and list or nil
+end
+
+--// Methods
+function dungeonCatalog.GetDungeons()
+	if dynamicDungeons then return dynamicDungeons end
+
+	local uiList = collectDungeonsFromUi()
+	if uiList then
+		local merged = mergeDungeonLists(uiList)
+		dynamicDungeons = merged
+		persistMapList(merged)
+		return merged
+	end
+
+	local persisted = loadPersistedMapList()
+	if persisted then
+		local merged = mergeDungeonLists(persisted)
+		dynamicDungeons = merged
+		return merged
+	end
+
+	return DUNGEONS
+end
+
+function dungeonCatalog.RefreshDungeons()
+	dynamicDungeons = nil
+	return dungeonCatalog.GetDungeons()
+end
+
+function dungeonCatalog.GetDungeonStats(name)
+	if type(name) ~= "string" or #name == 0 then return nil end
+	if statsCache[name] ~= nil then return statsCache[name] end
+
+	local remotes = game:GetService("ReplicatedStorage"):FindFirstChild("remotes")
+	local getStats = remotes and remotes:FindFirstChild("getDungeonStats")
+	if not getStats then return nil end
+
+	local ok, result = pcall(function() return getStats:InvokeServer(name) end)
+	if ok and typeof(result) == "table" then
+		statsCache[name] = result
+		return result
+	end
+	return nil
+end
+
+function dungeonCatalog.GetAllowedDifficulties(name)
+	if type(name) ~= "string" then return DIFFICULTIES end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.Difficulties end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	local allowed = {}
+	if stats then
+		for _, difficulty in ipairs(DIFFICULTIES) do
+			if stats[difficulty] then table.insert(allowed, difficulty) end
+		end
+	end
+	if #allowed > 0 then return allowed end
+	return DIFFICULTIES
+end
+
+function dungeonCatalog.IsDifficultyAllowed(name, difficulty)
+	if type(difficulty) ~= "string" then return false end
+	for _, option in ipairs(dungeonCatalog.GetAllowedDifficulties(name)) do
+		if option == difficulty then return true end
+	end
+	return false
+end
+
+function dungeonCatalog.GetLevelReq(name, difficulty)
+	if type(name) ~= "string" then return 0 end
+
+	local special = SPECIAL_DUNGEONS[name]
+	if special then return special.LevelReq or 0 end
+
+	local stats = dungeonCatalog.GetDungeonStats(name)
+	if stats and type(difficulty) == "string" and stats[difficulty] then
+		return tonumber(stats[difficulty].levelReq) or 0
+	end
+	return 0
+end
+
+--// Table
+dungeonCatalog.DUNGEONS = DUNGEONS
+dungeonCatalog.DIFFICULTIES = DIFFICULTIES
+
+return dungeonCatalog end function __DIST.E()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('i')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('x')
+local dungeonCatalog = __DIST.load('D')
 local shared = __DIST.load('j')
 local lifecycle = __DIST.load('b')
 
@@ -27004,7 +20276,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.N()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.F()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -27124,7 +20396,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.O()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.G()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -27231,7 +20503,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.P()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.H()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -27448,18 +20720,18 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.Q()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.I()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('e')
-local autoJoin = __DIST.load('M')
-local autoStart = __DIST.load('N')
-local autoStartLobby = __DIST.load('O')
-local autoRetry = __DIST.load('P')
+local autoJoin = __DIST.load('E')
+local autoStart = __DIST.load('F')
+local autoStartLobby = __DIST.load('G')
+local autoRetry = __DIST.load('H')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('x')
+local dungeonCatalog = __DIST.load('D')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -27662,7 +20934,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.R()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.J()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -28130,14 +21402,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.S()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.K()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('R')
+local autoSell = __DIST.load('J')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -28401,7 +21673,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.T()-- ESP hitbox cho DungeonQuest.
+end function __DIST.L()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -28751,7 +22023,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.U()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.M()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -28892,7 +22164,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.V()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.N()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -29346,14 +22618,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.W()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.O()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('T')
-	local enemyEsp = __DIST.load('U')
-	local mapOptimizer = __DIST.load('V')
+	local esp = __DIST.load('L')
+	local enemyEsp = __DIST.load('M')
+	local mapOptimizer = __DIST.load('N')
 	local ui = __DIST.load('e')
 
 --// Hitbox mode options
@@ -29490,7 +22762,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.X()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.P()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -30088,12 +23360,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.Y()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.Q()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('X')
+local webhook = __DIST.load('P')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -30160,7 +23432,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.Z()
+end function __DIST.R()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -30229,12 +23501,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST._()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.S()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('Z')
+local binder = __DIST.load('R')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -30326,13 +23598,13 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.aa()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.T()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('e')
-local antiAfk = __DIST.load('_')
+local antiAfk = __DIST.load('S')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -30362,15 +23634,15 @@ return function(window, tab)
 		end),
 	}, "Slider_AntiAFKInterval"))
 end
-end function __DIST.ab()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.U()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('W')(window, tab)
-__DIST.load('Y')(window, tab)
-__DIST.load('aa')(window, tab)
-end end function __DIST.ac()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('O')(window, tab)
+__DIST.load('Q')(window, tab)
+__DIST.load('T')(window, tab)
+end end function __DIST.V()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -30445,7 +23717,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.ad()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.W()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -30453,7 +23725,7 @@ end function __DIST.ad()-- Module Config trong tab Configs (DungeonQuest): tự 
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('ac')
+local autoHide = __DIST.load('V')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -30618,12 +23890,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.ae()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.X()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('j')
-local autoRetry = __DIST.load('P')
+local autoRetry = __DIST.load('H')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -30768,14 +24040,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.af()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.Y()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('ad')(window, tab)
-__DIST.load('ae')(window, tab)
-end end function __DIST.ag()-- Phím tắt: chuột phải kích hoạt combo Q+E (toggle enabled qua tab Auto Farm).
+__DIST.load('W')(window, tab)
+__DIST.load('X')(window, tab)
+end end function __DIST.Z()-- Phím tắt: chuột phải kích hoạt combo Q+E (toggle enabled qua tab Auto Farm).
 
 --// Imports
 
@@ -30837,7 +24109,7 @@ lifecycle.Register(function()
 end)
 
 return shortcuts
-end function __DIST.ah()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
+end function __DIST._()-- Core Contextual cho DungeonQuest: quản lý thiết lập Auto Farm (Target Reach Distance...)
 -- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
 -- Dữ liệu lưu trong file config JSON qua macLib.contextData.
 
@@ -30846,7 +24118,7 @@ end function __DIST.ah()-- Core Contextual cho DungeonQuest: quản lý thiết 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
 local shared = __DIST.load('j')
-local dungeonCatalog = __DIST.load('x')
+local dungeonCatalog = __DIST.load('D')
 local notifier = __DIST.load('c')
 local lifecycle = __DIST.load('b')
 local autoFarm = __DIST.load('w')
@@ -31079,7 +24351,7 @@ function contextual.Init()
 end
 
 return contextual
-end function __DIST.ai()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.aa()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -31149,11 +24421,11 @@ return function(self)
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	-- local combatTab = require("@routes/DungeonQuest/tabs/Combat/main") -- [TẠM PHONG ẤN]
-	local smartDodgeV2Tab = __DIST.load('L')
-	local dungeonTab = __DIST.load('Q')
-	local inventoryTab = __DIST.load('S')
-	local utilitiesTab = __DIST.load('ab')
-	local configsTab = __DIST.load('af')
+	local smartDodgeV2Tab = __DIST.load('C')
+	local dungeonTab = __DIST.load('I')
+	local inventoryTab = __DIST.load('K')
+	local utilitiesTab = __DIST.load('U')
+	local configsTab = __DIST.load('Y')
 
 	-- if tabs.Combat then combatTab(window, tabs.Combat) end -- [TẠM PHONG ẤN]
 	smartDodgeV2Tab(window, tabs.SmartDodgeV2)
@@ -31163,23 +24435,23 @@ return function(self)
 	configsTab(window, tabs.Configs)
 
 	--// Phím tắt
-	local shortcuts = __DIST.load('ag')
+	local shortcuts = __DIST.load('Z')
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('X')
+	local webhook = __DIST.load('P')
 	webhook.Init()
-__DIST.load('U')
+__DIST.load('M')
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	
 
-local autoHide = __DIST.load('ac')
+local autoHide = __DIST.load('V')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
 	--// Contextual (tự động áp dụng setting theo Dungeon x Target)
-	local contextual = __DIST.load('ah')
+	local contextual = __DIST.load('_')
 	contextual.Init()
 
 	--// Khởi chạy
@@ -31189,14 +24461,7 @@ local autoHide = __DIST.load('ac')
 		tabs.SmartDodgeV2:Select()
 	end
 
-	-- Dọn dẹp triệt để các hộp cam và visual cũ còn sót lại từ V1 trong Terrain & Workspace
-	pcall(function()
-		local oldSD = __DIST.load('F')
-		if oldSD and oldSD.StopEngine then oldSD.StopEngine() end
-		if oldSD and oldSD.ClearTrajectoryVisuals then oldSD.ClearTrajectoryVisuals() end
-		if oldSD and oldSD.SetShowPlayerRadar then oldSD.SetShowPlayerRadar(false) end
-		if oldSD and oldSD.ClearPlayerRadar then oldSD.ClearPlayerRadar() end
-	end)
+
 	pcall(function()
 		local terrain = workspace:FindFirstChildOfClass("Terrain") or workspace.Terrain
 		if terrain then
@@ -31222,7 +24487,7 @@ local autoHide = __DIST.load('ac')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.aj()
+end function __DIST.ab()
 local flags = {}
 
 function flags:Export()
@@ -31265,12 +24530,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.ak()
+return flags end function __DIST.ac()
 --// Imports
 
 
 
-local binder = __DIST.load('Z')
+local binder = __DIST.load('R')
 
 --// Variables
 local interface = {}
@@ -31290,9 +24555,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_e): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.al()--// Imports
+end function __DIST.ad()--// Imports
 
-local binder = __DIST.load('Z')
+local binder = __DIST.load('R')
 
 --// Variables
 local esp = {}
@@ -31303,11 +24568,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.am()--// Imports
+end function __DIST.ae()--// Imports
 
-local flags = __DIST.load('aj')
-local interface = __DIST.load('ak')
-local esp = __DIST.load('al')
+local flags = __DIST.load('ab')
+local interface = __DIST.load('ac')
+local esp = __DIST.load('ad')
 
 --// Initialize
 local window = interface:Window({
@@ -31346,7 +24611,7 @@ return {
 		end,
 	},
 }
-end function __DIST.an()--// Variables
+end function __DIST.af()--// Variables
 
 local utility = {}
 
@@ -31378,7 +24643,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.ao()--// Functions
+end function __DIST.ag()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -31388,14 +24653,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.ap()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.ah()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('am')
-	local utility = __DIST.load('an')
-	local services = __DIST.load('ao')
+	local base = __DIST.load('ae')
+	local utility = __DIST.load('af')
+	local services = __DIST.load('ag')
 
 	--// References
 	local flags = base.Flags
@@ -31461,7 +24726,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('ai'),
+		Load = __DIST.load('aa'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -31472,7 +24737,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('ap'),
+		Load = __DIST.load('ah'),
 		Places = {
 			123456789,
 			987654321,

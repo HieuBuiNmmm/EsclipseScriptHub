@@ -167,17 +167,31 @@ function movement.ResolveDestination(playerPos, targetPos, waypoints, startWaypo
 		end
 	end
 
-	-- 3. All destinations blocked / No valid previous node exists
+	-- 3. Fallback: If all shortcuts hit obstacles (doorframes/corners), follow the current path waypoint!
+	if waypoints and #waypoints > 0 and waypoints[minIndex] then
+		local curWpPos = waypoints[minIndex].Position
+		blockerData.chosenDest = curWpPos
+		blockerData.mode = "Waypoint"
+		blockerData.nodeIdx = minIndex
+		return curWpPos, "Waypoint", minIndex, blockerData
+	end
+
+	-- 4. All destinations blocked / No valid previous node exists
 	blockerData.mode = "Blocked"
 	return nil, "Blocked", nil, blockerData
 end
 
 --// Movement Controller (Section 9)
--- Executes Freewalk / direct MoveTo toward the clear destination
+-- Executes Freewalk / direct directional Move toward the clear destination
 function movement.ExecuteMove(humanoid, playerPos, destination, waypoints, currentWaypointIndex)
 	if not humanoid or not destination then return end
 
-	humanoid:MoveTo(destination)
+	local flatDir = Vector3.new(destination.X - playerPos.X, 0, destination.Z - playerPos.Z)
+	if flatDir.Magnitude > 0.4 then
+		humanoid:Move(flatDir.Unit, false)
+	else
+		humanoid:Move(Vector3.zero, false)
+	end
 
 	-- 1. Check elevation jump to destination
 	local elevDiff = destination.Y - playerPos.Y

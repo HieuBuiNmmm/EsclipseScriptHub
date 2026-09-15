@@ -1596,21 +1596,23 @@ local function registerHazard(instance)
 			if not instance or not instance.Parent then return end
 			local centerPart = instance:FindFirstChild("center") or instance:FindFirstChild("Center") or (hazardParts and hazardParts[1])
 			local centerPos = centerPart and centerPart.Position or Vector3.zero
-			print("================ [MULTIRINGS INSPECTOR DUMP] ================")
-			print(("[MultiRings] Model: %s | Center: (%.1f, %.1f, %.1f)"):format(instance.Name, centerPos.X, centerPos.Y, centerPos.Z))
+			if logHazards then
+				print("================ [MULTIRINGS INSPECTOR DUMP] ================")
+				print(("[MultiRings] Model: %s | Center: (%.1f, %.1f, %.1f)"):format(instance.Name, centerPos.X, centerPos.Y, centerPos.Z))
 
-			local idx = 0
-			for _, child in ipairs(instance:GetDescendants()) do
-				if child:IsA("BasePart") then
-					idx = idx + 1
-					local off = child.Position - centerPos
-					local _, rotY = child.CFrame:ToOrientation()
-					print(("[%d] Name: '%s' | Class: %s | Size: (%.1f, %.1f, %.1f) | Offset: (%.1f, %.1f, %.1f) | RotY: %.1f deg"):format(
-						idx, child.Name, child.ClassName, child.Size.X, child.Size.Y, child.Size.Z, off.X, off.Y, off.Z, math.deg(rotY)
-					))
+				local idx = 0
+				for _, child in ipairs(instance:GetDescendants()) do
+					if child:IsA("BasePart") then
+						idx = idx + 1
+						local off = child.Position - centerPos
+						local _, rotY = child.CFrame:ToOrientation()
+						print(("[%d] Name: '%s' | Class: %s | Size: (%.1f, %.1f, %.1f) | Offset: (%.1f, %.1f, %.1f) | RotY: %.1f deg"):format(
+							idx, child.Name, child.ClassName, child.Size.X, child.Size.Y, child.Size.Z, off.X, off.Y, off.Z, math.deg(rotY)
+						))
+					end
 				end
+				print("=============================================================")
 			end
-			print("=============================================================")
 		end)
 	end
 

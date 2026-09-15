@@ -33,7 +33,7 @@ local currentDangerHazardName = nil
 local currentEscapeDist = 0
 local safeSpotCallbacks = {}
 local safeSpotLoopThread = nil
-local logInDanger = true
+local logInDanger = false
 local ignoreDodgeWhenInvulnerable = false
 
 --// Bơm runtime cho module Dodge: đọc trạng thái danger & log trực tiếp từ engine (tránh vòng require)

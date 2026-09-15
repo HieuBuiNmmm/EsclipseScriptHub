@@ -267,71 +267,8 @@ local function getOrLockFloorY(centerPos, playerPos, firstPart)
 end
 
 local function updateBoss1ArenaVisual(centerPos, playerPos, firstPart)
-	if not centerPos then
-		clearBoss1ArenaVisual()
-		return
-	end
-
-	-- Khóa trục Y cố định theo mặt sàn đấu
-	local arenaFloorY = getOrLockFloorY(centerPos, playerPos, firstPart)
-
-	local radius = boss1ArenaRadius or BOSS1_DEFAULT_RADIUS
-	local diameter = (firstPart and firstPart.Size.X) or (radius * 2)
-	local targetCF = CFrame.new(centerPos.X, arenaFloorY, centerPos.Z) * CFrame.Angles(0, 0, math.rad(90))
-
-	if boss1ArenaVisualPart and boss1ArenaVisualPart.Parent then
-		if math.abs(boss1ArenaVisualPart.Size.Y - diameter) > 0.5 then
-			boss1ArenaVisualPart.Size = Vector3.new(0.2, diameter, diameter)
-		end
-		return
-	end
-
-	pcall(function()
-		local part = Instance.new("Part")
-		part.Name = "SmartDodge_Boss1ArenaVisual"
-		part.Shape = Enum.PartType.Cylinder
-		part.Size = Vector3.new(0.2, diameter, diameter)
-		part.Color = Color3.fromRGB(0, 220, 255)
-		part.Material = Enum.Material.Neon
-		part.Transparency = 0.88
-		part.Anchored = true
-		part.CanCollide = false
-		part.CanTouch = false
-		part.CanQuery = false
-
-		local highlight = Instance.new("Highlight")
-		highlight.Name = "ArenaOutline"
-		highlight.FillColor = Color3.fromRGB(0, 180, 255)
-		highlight.FillTransparency = 0.92
-		highlight.OutlineColor = Color3.fromRGB(0, 240, 255)
-		highlight.OutlineTransparency = 0.1
-		highlight.Adornee = part
-		highlight.Parent = part
-
-		local bb = Instance.new("BillboardGui")
-		bb.Name = "ArenaLabel"
-		bb.Size = UDim2.fromOffset(180, 26)
-		bb.StudsOffset = Vector3.new(0, 3, 0)
-		bb.AlwaysOnTop = true
-		bb.Adornee = part
-		bb.Parent = part
-
-		local label = Instance.new("TextLabel")
-		label.Name = "Label"
-		label.Size = UDim2.fromScale(1, 1)
-		label.BackgroundTransparency = 1
-		label.TextColor3 = Color3.fromRGB(0, 230, 255)
-		label.TextStrokeTransparency = 0.2
-		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 13
-		label.Text = "BOSS 1 ARENA (Safe Zone)"
-		label.Parent = bb
-
-		part.CFrame = targetCF
-		part.Parent = Workspace.Terrain
-		boss1ArenaVisualPart = part
-	end)
+	clearBoss1ArenaVisual()
+	return
 end
 
 local function isInsideBoss1Arena(pos, playerPos)

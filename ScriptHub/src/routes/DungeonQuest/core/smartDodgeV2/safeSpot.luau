@@ -154,6 +154,9 @@ local function isPointSafe(p: Vector3, pad: number): boolean
 	if not bossArea.IsPointInArena(p, 0) then
 		return false
 	end
+	if bossArea.IsPointInBoss1Center and bossArea.IsPointInBoss1Center(p) then
+		return false
+	end
 	return not danger.IsPointInAnyHazard(p, nil, pad)
 end
 
@@ -372,6 +375,12 @@ local function resolveExitDistance(
 	end
 	if wallDist and wallDist < maxRadius then
 		return nil, wallDist, "wall"
+	end
+
+	-- Kiểm tra nếu điểm cuối của tia bị chặn trong vùng cấm trung tâm Boss 1:
+	local endP = Vector3.new(origin.X + dir.X * maxSearch, origin.Y, origin.Z + dir.Z * maxSearch)
+	if bossArea.IsPointInBoss1Center and bossArea.IsPointInBoss1Center(endP) then
+		return nil, maxSearch, "boss1_center"
 	end
 
 	return nil, maxRadius, "hazard_max"
@@ -834,7 +843,7 @@ local function updateVisuals()
 					bWidth = 0.04
 					bHeight = 0.04
 					bTrans = 0.65
-					tSize = (entry.blockedReason == "wall" or entry.blockedReason == "skill" or entry.blockedReason == "boss1_arena") and 0.40 or 0.25
+					tSize = (entry.blockedReason == "wall" or entry.blockedReason == "skill" or entry.blockedReason == "boss1_arena" or entry.blockedReason == "boss1_center") and 0.40 or 0.25
 					tTrans = 0.50
 				end
 
@@ -961,6 +970,32 @@ local function scanRays(
 			if moveDir then
 				tieScore += math.max(0, dir:Dot(moveDir)) * FORWARD_BONUS
 			end
+
+			-- LUẬT BOSS 1: THƯỞNG ĐIỂM HƯỚNG RA MÉP NGOÀI, PHẠT NẶNG HƯỚNG VÀO TRUNG TÂM
+			if bossArea.IsBoss1AvoidCenter and bossArea.IsBoss1AvoidCenter() and shared.IsBossActive() then
+				local curBossIdx = shared.GetCurrentBossIndex()
+				if curBossIdx == 1 or (bossArea.GetLockedBossIndex and bossArea.GetLockedBossIndex() == 1) then
+					local anchor = bossArea.GetAnchorCenter()
+					if anchor then
+						local toCenter = Vector3.new(anchor.X - origin.X, 0, anchor.Z - origin.Z)
+						local distToCenter = toCenter.Magnitude
+						if distToCenter > 0.5 then
+							local dirToCenter = toCenter.Unit
+							local dirAwayFromCenter = -dirToCenter
+							local dotAway = dir:Dot(dirAwayFromCenter)
+							local dotTo = dir:Dot(dirToCenter)
+
+							if dotAway > 0 then
+								tieScore += dotAway * 4.0
+							end
+							if dotTo > 0.2 then
+								tieScore -= dotTo * 8.0
+							end
+						end
+					end
+				end
+			end
+
 			if i <= seedLen then
 				table.insert(state.candidates, { dir = dir, found = foundDist, tie = tieScore })
 			end
@@ -1065,6 +1100,22 @@ local function scanSafeSpot(): boolean
 			local m = math.sqrt(dx * dx + dz * dz)
 			if m > 0.5 then
 				awayVector = Vector3.new(dx / m, 0, dz / m)
+			end
+		end
+	end
+
+	-- Ưu tiên hướng ra mép ngoài sàn đấu nếu đang đánh Boss 1 và bật tránh tâm
+	if not isLateral and bossArea.IsBoss1AvoidCenter and bossArea.IsBoss1AvoidCenter() and shared.IsBossActive() then
+		local curBossIdx = shared.GetCurrentBossIndex()
+		if curBossIdx == 1 or (bossArea.GetLockedBossIndex and bossArea.GetLockedBossIndex() == 1) then
+			local anchor = bossArea.GetAnchorCenter()
+			if anchor then
+				local dx = playerPos.X - anchor.X
+				local dz = playerPos.Z - anchor.Z
+				local m = math.sqrt(dx * dx + dz * dz)
+				if m > 0.5 then
+					awayVector = Vector3.new(dx / m, 0, dz / m)
+				end
 			end
 		end
 	end

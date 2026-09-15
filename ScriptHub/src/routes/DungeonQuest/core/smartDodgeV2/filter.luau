@@ -85,7 +85,7 @@ local function isInternalDebugOrVisual(inst: Instance): boolean
 
 	-- 4. Các visual spheres và markers của Hub
 	if lower:find("radiussphere", 1, true) or lower:find("skillsphere", 1, true) then return true end
-	if lower:find("safemarker", 1, true) or lower:find("repositionmarker", 1, true) then return true end
+	if lower:find("safemarker", 1, true) then return true end
 	if lower:find("beaconpillar", 1, true) or lower:find("hitboxcircle", 1, true) then return true end
 	if lower:find("areavisual", 1, true) or lower:find("crystalguidebox", 1, true) then return true end
 	if lower:find("movingtrajectory", 1, true) or lower:find("telegraphcorridor", 1, true) then return true end
@@ -101,7 +101,7 @@ local function isInternalDebugOrVisual(inst: Instance): boolean
 		local pLower = pName:lower()
 		if pLower:find("debug", 1, true) or pName:sub(1, 3) == "TM_" then return true end
 		if pLower:find("smartdodge", 1, true) or pLower:find("smartautoplay", 1, true) then return true end
-		if pLower:find("safemarker", 1, true) or pLower:find("repositionmarker", 1, true) then return true end
+		if pLower:find("safemarker", 1, true) then return true end
 		if pLower:find("radiusvisual", 1, true) then return true end
 	end
 

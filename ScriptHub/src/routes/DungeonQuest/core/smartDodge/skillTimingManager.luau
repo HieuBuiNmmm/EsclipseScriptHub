@@ -37,6 +37,7 @@ local DEFAULT_PRESETS = {
 
 --// Thư mục lưu dữ liệu theo Map
 local SKILLS_FOLDER = macLib.Folder .. "/skills_data"
+local logTiming = false
 
 local function ensureFolder()
 	if makefolder and isfolder then
@@ -214,8 +215,10 @@ function skillTimingManager.RecordSkill(skillName, duration, hitDelay, isProject
 	end
 
 	local tag = rec.isProjectile and "🚀 Projectile" or "💥 AoE"
-	print(("[SkillTimingManager] ✅ Recorded '%s' [%s] (hits: %d, avgLife: %.2fs, hitDelay: %.2fs) | RAM: %d unique, %d total hits")
-		:format(skillName, tag, rec.count, rec.avgLifetime, rec.avgHitDelay or 0, recordedSkillCount, totalSamplesCount))
+	if logTiming then
+		print(("[SkillTimingManager] ✅ Recorded '%s' [%s] (hits: %d, avgLife: %.2fs, hitDelay: %.2fs) | RAM: %d unique, %d total hits")
+			:format(skillName, tag, rec.count, rec.avgLifetime, rec.avgHitDelay or 0, recordedSkillCount, totalSamplesCount))
+	end
 
 	fireChange()
 end

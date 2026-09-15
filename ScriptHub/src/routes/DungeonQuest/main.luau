@@ -107,14 +107,7 @@ return function(self)
 		tabs.SmartDodgeV2:Select()
 	end
 
-	-- Dọn dẹp triệt để các hộp cam và visual cũ còn sót lại từ V1 trong Terrain & Workspace
-	pcall(function()
-		local oldSD = require("@routes/DungeonQuest/core/smartDodge")
-		if oldSD and oldSD.StopEngine then oldSD.StopEngine() end
-		if oldSD and oldSD.ClearTrajectoryVisuals then oldSD.ClearTrajectoryVisuals() end
-		if oldSD and oldSD.SetShowPlayerRadar then oldSD.SetShowPlayerRadar(false) end
-		if oldSD and oldSD.ClearPlayerRadar then oldSD.ClearPlayerRadar() end
-	end)
+
 	pcall(function()
 		local terrain = workspace:FindFirstChildOfClass("Terrain") or workspace.Terrain
 		if terrain then

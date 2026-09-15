@@ -838,79 +838,29 @@ function shared.IsBossActive(): boolean
 end
 
 function shared.IsBossEnemy(model: Instance?, name: string?): boolean
-	if not model and not name then return false end
-	local eName = name or (model and model.Name) or ""
-	local lowerName = tostring(eName):lower()
+	if not model then return false end
 
-	-- 1. Nếu tên chứa rõ chữ "boss"
-	if lowerName:find("boss") ~= nil then
-		return true
+	-- DẤU HIỆU CHUẨN XÁC DUY NHẤT: Thanh máu bossHealth trong PlayerGui có Enabled == true
+	-- Tuyệt đối không dùng bất kỳ thứ gì khác để đoán mò khi thanh máu chưa hiện
+	if not bossActive then
+		return false
 	end
 
-	-- 2. Kiểm tra room của quái: nếu nằm trong phòng có tên chứa "boss" (ví dụ bossRoom, boss1, boss2...)
-	if model then
-		local room = nil
-		local data = trackedEnemies[model]
-		if data and data.Room then
-			room = data.Room
-		else
-			local p = model.Parent
-			while p and p ~= workspace do
-				if p.Parent == dungeon and (p:IsA("Folder") or p:IsA("Model")) then
-					room = p
-					break
-				end
-				p = p.Parent
-			end
-		end
-
-		if room and tostring(room.Name):lower():find("boss") ~= nil then
-			-- Trong boss room, con có MaxHealth cao nhất chính là Boss (tránh nhầm minion do boss triệu hồi)
-			local maxHpInRoom = 0
-			local bossInRoom = nil
-			for m, d in pairs(trackedEnemies) do
-				if m and m.Parent and d.Room == room then
-					local hum = d.Humanoid or m:FindFirstChildOfClass("Humanoid")
-					if hum and hum.Health > 0 and hum.MaxHealth > maxHpInRoom then
-						maxHpInRoom = hum.MaxHealth
-						bossInRoom = m
-					end
-				end
-			end
-			if bossInRoom and model == bossInRoom then
-				return true
-			end
-			-- Nếu chỉ có 1 quái duy nhất trong boss room
-			if not bossInRoom then
-				return true
+	-- Khi bossActive == true (bossHealth.Enabled == true):
+	-- Con quái có MaxHealth lớn nhất trong số tất cả quái đang sống chính là Boss!
+	local maxHp = 0
+	local bossCandidate = nil
+	for m, data in pairs(trackedEnemies) do
+		if m and m.Parent then
+			local hum = data.Humanoid or m:FindFirstChildOfClass("Humanoid")
+			if hum and hum.Health > 0 and hum.MaxHealth > maxHp then
+				maxHp = hum.MaxHealth
+				bossCandidate = m
 			end
 		end
 	end
 
-	-- 3. Nếu đang có GUI thanh máu Boss active trên màn hình (bossActive == true)
-	if bossActive then
-		local maxHp = 0
-		local bossCandidate = nil
-		for m, data in pairs(trackedEnemies) do
-			if m and m.Parent then
-				-- Ưu tiên con có tên chứa chữ "boss"
-				if tostring(m.Name):lower():find("boss") ~= nil then
-					return model == m
-				end
-				local hum = data.Humanoid or m:FindFirstChildOfClass("Humanoid")
-				if hum and hum.Health > 0 and hum.MaxHealth > maxHp then
-					maxHp = hum.MaxHealth
-					bossCandidate = m
-				end
-			end
-		end
-
-		if bossCandidate and model == bossCandidate then
-			return true
-		end
-	end
-
-	return false
+	return (bossCandidate ~= nil and model == bossCandidate)
 end
 
 function shared.IsEnemyMatchingScope(model: Instance?, name: string?, scope: any): boolean
@@ -1023,52 +973,43 @@ local function setBossActive(active)
 	end
 end
 
-local function isGuiActuallyVisible(gui: Instance?): boolean
-	if not gui then return false end
-	if gui:IsA("ScreenGui") then
-		return gui.Enabled
+local function checkBossHealthEnabled(): boolean
+	if not player then return false end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return false end
+
+	-- Dấu hiệu chuẩn xác duy nhất: game:GetService("Players").LocalPlayer.PlayerGui.bossHealth.Enabled == true
+	local bh = playerGui:FindFirstChild("bossHealth")
+	if not bh then
+		bh = playerGui:FindFirstChild("bossHealth", true)
 	end
-	if gui:IsA("GuiObject") then
-		if not gui.Visible then return false end
-		local ancestor = gui:FindFirstAncestorOfClass("ScreenGui")
-		if ancestor and not ancestor.Enabled then
-			return false
+
+	if bh then
+		if bh ~= bossHealthRef then
+			bossHealthRef = bh
+			if bh:IsA("ScreenGui") then
+				trackCleanupConnection(bh:GetPropertyChangedSignal("Enabled"):Connect(function()
+					setBossActive(bh.Enabled == true)
+				end))
+			elseif bh:IsA("GuiObject") then
+				trackCleanupConnection(bh:GetPropertyChangedSignal("Visible"):Connect(function()
+					setBossActive(bh.Visible == true)
+				end))
+			end
 		end
-		local cur = gui.Parent
-		while cur and cur:IsA("GuiObject") do
-			if not cur.Visible then return false end
-			cur = cur.Parent
+
+		if bh:IsA("ScreenGui") then
+			return bh.Enabled == true
+		elseif bh:IsA("GuiObject") then
+			return bh.Visible == true
 		end
-		return true
 	end
+
 	return false
 end
 
 local function scanBossGui()
-	if not player then return end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then
-		bossHealthRef = nil
-		setBossActive(false)
-		return
-	end
-	local found = playerGui:FindFirstChild("bossHealth", true)
-		or playerGui:FindFirstChild("bonusBossHealth", true)
-		or playerGui:FindFirstChild("bossHealthBar", true)
-	if found then
-		if found ~= bossHealthRef then
-			bossHealthRef = found
-			if bossHealthRef:IsA("ScreenGui") then
-				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui))
-			elseif bossHealthRef:IsA("GuiObject") then
-				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Visible"):Connect(scanBossGui))
-			end
-		end
-		setBossActive(isGuiActuallyVisible(found))
-	else
-		bossHealthRef = nil
-		setBossActive(false)
-	end
+	setBossActive(checkBossHealthEnabled())
 end
 
 task.spawn(function()
@@ -1076,12 +1017,20 @@ task.spawn(function()
 	local playerGui = player:WaitForChild("PlayerGui", 30)
 	if not playerGui then return end
 
-	trackCleanupConnection(playerGui.DescendantAdded:Connect(scanBossGui))
-	trackCleanupConnection(playerGui.DescendantRemoving:Connect(scanBossGui))
+	trackCleanupConnection(playerGui.DescendantAdded:Connect(function(desc)
+		if desc.Name == "bossHealth" then
+			scanBossGui()
+		end
+	end))
+	trackCleanupConnection(playerGui.DescendantRemoving:Connect(function(desc)
+		if desc.Name == "bossHealth" then
+			scanBossGui()
+		end
+	end))
 	scanBossGui()
 
-	--// Poll an toàn phòng trường hợp DescendantRemoving bỏ sót khi GUI bị xóa cục bộ
-	while lifecycle.IsActive() and task.wait(0.5) do
+	--// Poll an toàn dự phòng với chu kỳ ngắn (0.15s)
+	while lifecycle.IsActive() and task.wait(0.15) do
 		scanBossGui()
 	end
 end)

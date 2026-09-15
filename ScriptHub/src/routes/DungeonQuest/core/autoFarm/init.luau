@@ -56,11 +56,6 @@ local enemyChangedConnection = nil
 local respawnConnection = nil
 local dunReady = false
 
---// Velocity Stuck Detection State
-local stuckTimer = 0
-local lastJumpTime = 0
-local autoJumpOnStuck = false -- Toggle tự động nhảy khi vận tốc thấp
-local stuckVelocityThreshold = 10.0 -- Ngưỡng vận tốc (studs/s)
 local isPaused = false -- Tạm dừng di chuyển mà không hủy path
 
 
@@ -126,7 +121,6 @@ local function applyTargetSwitch(newTarget, newPath, newWaypoints, newPos)
 	currentDestMode = "None"
 	currentDestNodeIndex = nil
 	lastBlockerData = nil
-	stuckTimer = 0
 
 
 	if newTarget then
@@ -228,7 +222,7 @@ local function stepMovementLoop(deltaTime)
 			currentDestMode = "None"
 			lastBlockerData = nil
 			evaluateTarget()
-			pcall(function() humanoid:MoveTo(playerPos) end)
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 			return
 		end
 	end
@@ -259,8 +253,7 @@ local function stepMovementLoop(deltaTime)
 		currentState = State.HOLD
 		currentDestination = nil
 		currentDestMode = "Hold"
-		stuckTimer = 0
-		pcall(function() humanoid:MoveTo(playerPos) end)
+		pcall(function() humanoid:Move(Vector3.zero, false) end)
 		-- State HOLD: Currently holds position (idle)
 		return
 	else
@@ -286,7 +279,7 @@ local function stepMovementLoop(deltaTime)
 			currentState = State.BLOCKED
 			currentDestination = nil
 			currentDestMode = "Blocked"
-			pcall(function() humanoid:MoveTo(playerPos) end)
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 			return
 		end
 	end
@@ -310,7 +303,7 @@ local function stepMovementLoop(deltaTime)
 		currentState = State.BLOCKED
 		currentDestination = nil
 		currentDestMode = "Blocked"
-		pcall(function() humanoid:MoveTo(playerPos) end)
+		pcall(function() humanoid:Move(Vector3.zero, false) end)
 		return
 	end
 
@@ -322,31 +315,6 @@ local function stepMovementLoop(deltaTime)
 
 	movement.ExecuteMove(humanoid, playerPos, chosenDest, waypoints, waypointIdx)
 
-	-- Velocity-Based Stuck Detection & Auto-Jump
-	local distToDest = (chosenDest - playerPos).Magnitude
-	if distToDest >= 1.5 then
-		local rootVel = playerRoot.AssemblyLinearVelocity or playerRoot.Velocity
-		local horizontalSpeed = rootVel and Vector3.new(rootVel.X, 0, rootVel.Z).Magnitude or 0
-		local dt = (type(deltaTime) == "number" and deltaTime > 0) and deltaTime or 0.016
-
-		if horizontalSpeed < stuckVelocityThreshold then
-			stuckTimer += dt
-			if autoJumpOnStuck and (now - lastJumpTime) >= 0.4 then
-				humanoid.Jump = true
-				pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Jumping) end)
-				lastJumpTime = now
-			end
-			-- If stuck for >= 1.5s despite jumping -> Repath!
-			if stuckTimer >= 1.5 then
-				currentState = State.REPATHING
-				stuckTimer = 0
-			end
-		else
-			stuckTimer = 0
-		end
-	else
-		stuckTimer = 0
-	end
 end
 
 
@@ -644,23 +612,10 @@ function autoFarm.SetRepathDistance(val)
 	end
 end
 
-function autoFarm.SetAutoJumpOnStuck(state)
-	autoJumpOnStuck = state and true or false
-end
-
-function autoFarm.IsAutoJumpOnStuckEnabled()
-	return autoJumpOnStuck
-end
-
-function autoFarm.SetStuckVelocityThreshold(val)
-	if type(val) == "number" and val >= 1 then
-		stuckVelocityThreshold = val
-	end
-end
-
-function autoFarm.GetStuckVelocityThreshold()
-	return stuckVelocityThreshold
-end
+function autoFarm.SetAutoJumpOnStuck(_state) end
+function autoFarm.IsAutoJumpOnStuckEnabled() return false end
+function autoFarm.SetStuckVelocityThreshold(_val) end
+function autoFarm.GetStuckVelocityThreshold() return 0 end
 
 function autoFarm.SetPaused(state)
 	local want = state and true or false
@@ -668,12 +623,8 @@ function autoFarm.SetPaused(state)
 	isPaused = want
 	if isPaused then
 		local h = shared.GetHumanoid()
-		local r = getPlayerRoot()
-		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+		if h and h.Parent then
+			pcall(function() h:Move(Vector3.zero, false) end)
 		end
 	end
 end
@@ -792,7 +743,7 @@ function autoFarm.GetDebugInfo()
 		blocker = blockerInfo,
 		velocity = horizontalSpeed,
 		verticalVelocity = verticalSpeed,
-		stuckTimer = stuckTimer,
+		stuckTimer = 0,
 	}
 end
 
@@ -849,7 +800,7 @@ function autoFarm.Toggle(state, bypassCoordinator)
 
 		task.defer(evaluateTarget)
 
-		moveConnection = RunService.Heartbeat:Connect(function(deltaTime)
+		moveConnection = RunService.RenderStepped:Connect(function(deltaTime)
 			local ok, err = pcall(stepMovementLoop, deltaTime)
 			if not ok then
 				warn(("[AutoFarm] Error in stepMovementLoop: %s"):format(tostring(err)))
@@ -863,12 +814,8 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		if respawnConnection then respawnConnection(); respawnConnection = nil end
 
 		local h = shared.GetHumanoid()
-		local r = getPlayerRoot()
-		if h and h.Parent and r then
-			local p = getSafePosition(r)
-			if p then
-				pcall(function() h:MoveTo(p) end)
-			end
+		if h and h.Parent then
+			pcall(function() h:Move(Vector3.zero, false) end)
 		end
 
 		tracker.ClearTarget()
@@ -876,7 +823,6 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		currentDestination = nil
 		currentDestMode = "None"
 		lastBlockerData = nil
-		stuckTimer = 0
 		selectToken += 1
 		selectRunning = false
 		cleanupDebugVisuals()

@@ -492,6 +492,27 @@ return function(window, tab)
 		end),
 	}, "Slider_SDV2_BossArea_B1_Radius"))
 
+	radarSection:Toggle({
+		Name = "Boss 1: Avoid Arena Center (Tránh né vào tâm)",
+		Default = bossArea.IsBoss1AvoidCenter(),
+		Callback = autoSave.Wrap(function(state)
+			bossArea.SetBoss1AvoidCenter(state)
+		end),
+	}, "Toggle_SDV2_Boss1_AvoidCenter")
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Boss 1: Center Deadzone (Vùng cấm tâm)",
+		Suffix = " std",
+		Default = bossArea.GetBoss1CenterRadius(),
+		Minimum = 5,
+		Maximum = 100,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			bossArea.SetBoss1CenterRadius(val)
+		end),
+	}, "Slider_SDV2_Boss1_CenterRadius"))
+
 	-- Boss 2
 	radarSection:Toggle({
 		Name = "Enable Arena Limiter: Boss 2",
@@ -513,6 +534,16 @@ return function(window, tab)
 			bossArea.SetBossRadius(2, val)
 		end),
 	}, "Slider_SDV2_BossArea_B2_Radius"))
+
+	radarSection:Toggle({
+		Name = "Boss 2: Dodge Orbs & Crystals",
+		Default = smartDodgeV2.IsDodgeBoss2OrbEnabled and smartDodgeV2.IsDodgeBoss2OrbEnabled() or false,
+		Callback = autoSave.Wrap(function(state)
+			if smartDodgeV2.SetDodgeBoss2OrbEnabled then
+				smartDodgeV2.SetDodgeBoss2OrbEnabled(state)
+			end
+		end),
+	}, "Toggle_SDV2_DodgeBoss2Orb")
 
 	-- Boss 3+
 	radarSection:Toggle({
@@ -589,6 +620,103 @@ return function(window, tab)
 			end
 		end),
 	}, "Dropdown_SDV2_MasterTargetScope"))
+
+	local COMBAT_MOVEMENT_OPTIONS = { "ORBIT (V2 - Gom Quái)", "OPEN SPACE (V1 - Bãi Trống)" }
+	local curMovementIdx = 1
+	local curMode = smartAutoPlay.GetCombatMovementMode and smartAutoPlay.GetCombatMovementMode()
+	if curMode == "OpenSpace" then
+		curMovementIdx = 2
+	end
+
+	ui.PatchDropdownRestore(autoPlaySection:Dropdown({
+		Name = "Combat Movement Mode",
+		Options = COMBAT_MOVEMENT_OPTIONS,
+		Default = curMovementIdx,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			local str = tostring(selected or ""):upper()
+			if str:find("OPEN SPACE") or str:find("BÃI TRỐNG") or str:find("BAI TRONG") or str:find("V1") then
+				smartAutoPlay.SetCombatMovementMode("OpenSpace")
+			else
+				smartAutoPlay.SetCombatMovementMode("Orbit")
+			end
+		end),
+	}, "Dropdown_SDV2_CombatMovementMode"))
+
+	autoPlaySection:Header({ Name = "Combat Radar (Cyan Circle) & Distance" })
+
+	autoPlaySection:Toggle({
+		Name = "Show Combat Radar (Cyan Circle)",
+		Default = smartAutoPlay.IsShowRadiusCircleEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetShowRadiusCircle(state)
+		end),
+	}, "Toggle_SDV2_ShowRadiusCircle")
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Boss 1 Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetBoss1Radius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetBoss1Radius(val)
+		end),
+	}, "Slider_SDV2_Radius_Boss1"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Boss 2 Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetBoss2Radius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetBoss2Radius(val)
+		end),
+	}, "Slider_SDV2_Radius_Boss2"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Boss 3 Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetBoss3Radius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetBoss3Radius(val)
+		end),
+	}, "Slider_SDV2_Radius_Boss3"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Mobs Combat Radius (Cyan Radar)",
+		Suffix = " std",
+		Default = smartAutoPlay.GetMobsRadius(),
+		Minimum = 4,
+		Maximum = 70,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetMobsRadius(val)
+		end),
+	}, "Slider_SDV2_Radius_Mobs"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Cyan Sphere Particle Size",
+		Suffix = " std",
+		Default = smartAutoPlay.GetCyanSphereSize(),
+		Minimum = 0.05,
+		Maximum = 2.0,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			smartAutoPlay.SetCyanSphereSize(val)
+		end),
+	}, "Slider_SDV2_CyanSphereSize"))
 
 	autoPlaySection:Header({ Name = "Auto Skill & Combat Options" })
 
@@ -676,16 +804,52 @@ return function(window, tab)
 		end),
 	}, "Toggle_SDV2_SAP_AutoBuffForSpeed")
 
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Buff Cast Delay",
+		Suffix = " s",
+		Default = autoSkill.GetBuffDelay(),
+		Minimum = 0.05,
+		Maximum = 1.0,
+		DisplayMethod = "Round",
+		Precision = 2,
+		Callback = autoSave.Wrap(function(val)
+			autoSkill.SetBuffDelay(val)
+		end),
+	}, "Slider_SDV2_SAP_BuffDelay"))
+
+	ui.PatchSliderLoadCallback(autoPlaySection:Slider({
+		Name = "Buff Duration",
+		Suffix = " s",
+		Default = autoSkill.GetBuffDuration(),
+		Minimum = 1.0,
+		Maximum = 30.0,
+		DisplayMethod = "Round",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoSkill.SetBuffDuration(val)
+		end),
+	}, "Slider_SDV2_SAP_BuffDuration"))
+
 	smartAutoPlay.OnMasterStatusChanged(function(info)
 		pcall(function()
 			if not info.enabled then
 				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(160, 160, 160)'>Disabled</font>")
 			elseif info.state == "Dodging" then
 				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(255, 65, 65)'>🛡️ DODGING! %s (%.1f std)</font>", info.hazardName or "Hazard", info.escapeDist or 0))
+			elseif info.state == "Orbiting" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>🌀 ORBITING: Grouping %s</font>", info.targetName or "Mobs"))
+			elseif info.state == "Repositioning" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(50, 150, 255)'>🔵 REPOSITIONING (Open Space: %.1f std)</font>", info.escapeDist or 0))
 			elseif info.state == "InCombat" or info.state == "Strafing" then
 				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 255, 120)'>⚔️ IN COMBAT (%s)</font>", info.targetName or "Target"))
+			elseif info.state == "HoldingRadius" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 240, 200)'>🛡️ HOLDING RADIUS (%s)</font>", info.targetName or "Target"))
 			elseif info.state == "Approaching" then
 				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 200, 255)'>🏃 APPROACHING (%s)</font>", info.targetName or "Target"))
+			elseif info.state == "EnteringBossArea" then
+				autoPlayStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>🏃 ENTERING BOSS AREA (%s)</font>", info.targetName or "Boss"))
+			elseif info.state == "WaitingBoss" then
+				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 50)'>⏳ WAITING FOR BOSS</font>")
 			elseif info.state == "RoomCleared" then
 				autoPlayStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 50)'>✨ ROOM CLEARED</font>")
 			else

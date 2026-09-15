@@ -953,8 +953,8 @@ local function registerHazard(instance: Instance)
 				hazard.launchTime = os.clock()
 			end
 		end
-		-- Pha tan biến sớm: Khi đã từng rõ nét (<= 0.35), chỉ cần độ mờ tăng thêm >= 0.15 hoặc >= 0.40 là xóa ngay
-		local hasDecayedAfterFlash = (partHasFlashed[p] == true) and (curTrans >= (minT + 0.15) or curTrans >= 0.40)
+		-- Pha tan biến: Khi đã từng rõ nét, chỉ coi là tan biến khi độ mờ đã tăng cao (curTrans >= 0.75 và curTrans >= minT + 0.35)
+		local hasDecayedAfterFlash = (partHasFlashed[p] == true) and (curTrans >= 0.75 and curTrans >= (minT + 0.35))
 
 		if not hazard.isCustomHazard then
 			-- Chiêu thông thường: yêu cầu còn Neon, chưa mờ và chưa tan biến

@@ -9,6 +9,7 @@ local danger = require("@routes/DungeonQuest/core/smartDodgeV2/danger")
 local safeSpot = require("@routes/DungeonQuest/core/smartDodgeV2/safeSpot")
 local dodge = require("@routes/DungeonQuest/core/smartDodgeV2/dodge")
 local bossArea = require("@routes/DungeonQuest/core/smartDodgeV2/bossArea")
+local targetFacing = require("@routes/DungeonQuest/core/smartDodgeV2/targetFacing")
 
 local smartDodgeV2 = {
 	types = types,
@@ -20,6 +21,7 @@ local smartDodgeV2 = {
 	safeSpot = safeSpot,
 	dodge = dodge,
 	bossArea = bossArea,
+	targetFacing = targetFacing,
 
 	-- Orange Corridor Length Controls (Vùng màu Cam)
 	SetSkillCorridorLength = detection.SetSkillCorridorLength,
@@ -33,6 +35,10 @@ local smartDodgeV2 = {
 	-- Target Scope Control (All / Boss / Mobs)
 	SetTargetScope = danger.SetTargetScope,
 	GetTargetScope = danger.GetTargetScope,
+
+	-- Boss 2 Orb & Crystal Dodge Control
+	SetDodgeBoss2OrbEnabled = danger.SetDodgeBoss2OrbEnabled,
+	IsDodgeBoss2OrbEnabled = danger.IsDodgeBoss2OrbEnabled,
 }
 
 return smartDodgeV2

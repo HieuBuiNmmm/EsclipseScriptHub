@@ -18,13 +18,12 @@ local coordinator = require("@routes/DungeonQuest/core/coordinator")
 
 local autoFarm = require("@routes/DungeonQuest/core/autoFarm")
 local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
-local smartDodge = require("@routes/DungeonQuest/core/smartDodge")
-local geometry = require("@routes/DungeonQuest/core/smartDodge/geometry")
-local targetFacing = require("@routes/DungeonQuest/core/smartDodge/targetFacing")
+local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
+local targetFacing = require("@routes/DungeonQuest/core/smartDodgeV2/targetFacing")
 local autoSkill = require("@routes/DungeonQuest/core/smartAutoPlay/autoSkill")
 local autoApproach = require("@routes/DungeonQuest/core/smartAutoPlay/autoApproach")
-local openSpace = require("@routes/DungeonQuest/core/smartAutoPlay/openSpace")
 local bossArea = require("@routes/DungeonQuest/core/smartDodgeV2/bossArea")
+local openSpace = require("@routes/DungeonQuest/core/smartAutoPlay/openSpace")
 
 local RunService = services.RunService
 local player = services.player
@@ -34,21 +33,24 @@ local smartAutoPlay = {}
 --// Settings & State
 local masterEnabled = false
 local masterLoopThread = nil
-local masterState = "Disabled" -- "Disabled" | "Dodging" | "Repositioning" | "InCombat" | "HoldingRadius" | "Orbiting" | "Approaching" | "WaitingHazard" | "EnteringArena" | "RoomCleared" | "Dead"
+local masterState = "Disabled" -- "Disabled" | "Dodging" | "InCombat" | "HoldingRadius" | "Orbiting" | "Repositioning" | "Approaching" | "WaitingHazard" | "EnteringArena" | "RoomCleared" | "Dead"
 local currentHazardName = nil
 local currentEscapeDist = 0
 local currentTargetName = nil
 local currentTargetDist = nil
+local currentTargetPos = nil
 local masterStatusListeners = {}
 local lastDodgeTimestamp = 0
 local orbitDirection = 1 -- 1: cùng chiều kim đồng hồ, -1: ngược chiều kim đồng hồ (Orbit Mob Grouping)
 local waitingHazardStartTime = 0
 
---// Post-Dodge Open Space Repositioning State
+--// Combat Movement Mode: "Orbit" (V2) | "OpenSpace" (V1)
+local combatMovementMode = "Orbit"
 local wasInDanger = false
 local repositionTarget = nil
 local repositionStartTime = 0
 local MAX_REPOSITION_TIME = 3.5
+local repositionMoveConn = nil
 
 --// Combat Micro-Strafing State (Chủ động nhấp nhả lướt nhẹ né trước khi quái kịp tung chiêu)
 local combatMicroStrafingEnabled = true
@@ -67,7 +69,7 @@ local radiusMobs = 14.0 -- Kiting Radius cho Quái thường (studs)
 local radiusBoss1 = 16.0 -- Kiting Radius cho Boss 1 (tính từ tâm sàn đấu)
 local radiusBoss2 = 24.0 -- Kiting Radius cho Boss 2
 local radiusBoss3 = 32.0 -- Kiting Radius cho Boss 3+
-local SPHERE_COUNT = 36 -- 36 spheres = 1 sphere every 10 degrees
+local SPHERE_COUNT = 48 -- 48 hạt neon tạo vòng radar tròn mượt mà
 local sphereSize = 0.35 -- Diameter of each sphere in studs
 local SPHERE_COLOR = Color3.fromRGB(0, 225, 255) -- Vibrant Neon Cyan
 local HYSTERESIS_BUFFER = 2.0 -- Đệm chống rung giật mép vòng tròn (studs)
@@ -76,7 +78,7 @@ local HYSTERESIS_BUFFER = 2.0 -- Đệm chống rung giật mép vòng tròn (st
 local function getCurrentTargetRadius(targetName)
 	local isBossActive = shared.IsBossActive and shared.IsBossActive()
 	local isBossName = targetName and (string.find(string.lower(targetName), "boss") ~= nil)
-	if isBossActive or isBossName then
+	if targetScope == "Boss" or isBossActive or isBossName then
 		local idx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
 		if idx <= 1 then
 			return radiusBoss1
@@ -89,8 +91,8 @@ local function getCurrentTargetRadius(targetName)
 	return radiusMobs
 end
 
-local showRadiusCircle = false
-local showSkillCircle = true -- Mặc định bật Visual đường tròn Skill Range
+local showRadiusCircle = true -- Mặc định BẬT vòng tròn hạt Neon Cyan Combat Radius quanh người chơi
+local showSkillCircle = false -- Tắt vòng tím skill để người chơi tập trung vào vòng Cyan radar
 local skillRange = 25.0 -- Skill Cast Range in studs
 local SKILL_SPHERE_COUNT = 48 -- 48 hạt neon tạo đường tròn mềm mại, sắc nét
 local skillSphereSize = 0.28 -- Đường kính hạt vòng skill
@@ -109,9 +111,8 @@ autoSkill.BindRadiusGetter(getEffectiveSkillRange)
 
 smartAutoPlay.autoSkill = autoSkill
 smartAutoPlay.autoApproach = autoApproach
-smartAutoPlay.smartDodge = smartDodge
+smartAutoPlay.sdv2 = sdv2
 smartAutoPlay.autoFarm = autoFarm
-smartAutoPlay.openSpace = openSpace
 
 --// Status Dispatcher
 local function fireMasterStatus()
@@ -133,6 +134,137 @@ local function fireMasterStatus()
 	for _, cb in ipairs(masterStatusListeners) do
 		pcall(cb, info)
 	end
+end
+
+--// Điều khiển di chuyển Reposition (OpenSpace - V1) sử dụng Humanoid:Move trên nhịp RenderStepped
+-- (Đồng bộ cơ chế vật lý 60 FPS mượt mà tương tự AutoFarm freewalk và SmartDodgeV2)
+local function stopRepositionMovement()
+	if repositionMoveConn then
+		pcall(function() repositionMoveConn:Disconnect() end)
+		repositionMoveConn = nil
+	end
+	repositionTarget = nil
+	repositionStartTime = 0
+	openSpace.UpdateVisualMarker(nil, false)
+
+	if targetFacing and targetFacing.SetDodging then
+		targetFacing.SetDodging(false)
+	end
+
+	local char = player and player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		pcall(function()
+			hum:Move(Vector3.zero, false)
+			hum.AutoRotate = true
+		end)
+	end
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root then
+		pcall(function()
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end)
+	end
+end
+
+local function startRepositionMovement(targetSpot)
+	if not targetSpot then return end
+	if repositionMoveConn then
+		pcall(function() repositionMoveConn:Disconnect() end)
+		repositionMoveConn = nil
+	end
+
+	repositionTarget = targetSpot
+	repositionStartTime = os.clock()
+	openSpace.UpdateVisualMarker(targetSpot, true)
+
+	if not autoFarm.IsPaused() then
+		autoFarm.SetPaused(true)
+	end
+
+	if targetFacing and targetFacing.SetDodging then
+		targetFacing.SetDodging(true)
+	end
+
+	repositionMoveConn = RunService.RenderStepped:Connect(function()
+		if not masterEnabled or combatMovementMode ~= "OpenSpace" or not repositionTarget then
+			stopRepositionMovement()
+			return
+		end
+
+		local elapsed = os.clock() - repositionStartTime
+		if elapsed >= MAX_REPOSITION_TIME then
+			stopRepositionMovement()
+			return
+		end
+
+		local char = player and player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not root or not hum or hum.Health <= 0 then
+			stopRepositionMovement()
+			return
+		end
+
+		local curTarget = repositionTarget
+		local pPos = root.Position
+		local flatDiff = Vector3.new(curTarget.X - pPos.X, 0, curTarget.Z - pPos.Z)
+		local flatDist = flatDiff.Magnitude
+
+		-- 1. SNAP ĐÍCH & DỪNG: Khi cự ly tới điểm Reposition <= 1.8 studs (tương tự smartDodgeV2)
+		if flatDist <= 1.8 then
+			pcall(function()
+				hum:Move(Vector3.zero, false)
+				local targetY = root.Position.Y
+				local snapPos = Vector3.new(curTarget.X, targetY, curTarget.Z)
+				local faceEnemy = currentTargetPos
+				if faceEnemy then
+					root.CFrame = CFrame.lookAt(snapPos, Vector3.new(faceEnemy.X, targetY, faceEnemy.Z))
+				else
+					local look = root.CFrame.LookVector
+					local flatLook = Vector3.new(look.X, 0, look.Z)
+					if flatLook.Magnitude > 0.001 then
+						root.CFrame = CFrame.lookAt(snapPos, snapPos + flatLook.Unit)
+					else
+						root.CFrame = CFrame.new(snapPos)
+					end
+				end
+				root.AssemblyLinearVelocity = Vector3.zero
+				root.AssemblyAngularVelocity = Vector3.zero
+				hum.AutoRotate = true
+			end)
+			stopRepositionMovement()
+			return
+		end
+
+		-- 2. DI CHUYỂN VẬT LÝ MƯỢT MÀ BẰNG HUMANOID:MOVE MỖI FRAME (tương tự autoFarm & smartDodgeV2)
+		if flatDist > 0.4 then
+			hum:Move(flatDiff.Unit, false)
+		else
+			hum:Move(Vector3.zero, false)
+		end
+
+		-- 3. LOGIC NHẢY KHI CÓ CHÊNH LỆCH CAO ĐỘ (tương tự autoFarm/movement.luau)
+		local elevDiff = curTarget.Y - pPos.Y
+		if elevDiff > 1.8 and flatDist <= 7.0 then
+			hum.Jump = true
+		end
+
+		-- 4. STRAFE FACING: Luôn xoay mặt ngắm quái/boss mục tiêu trong khi lướt tới điểm Reposition
+		local faceEnemy = currentTargetPos
+		if faceEnemy then
+			hum.AutoRotate = false
+			local diff = Vector3.new(faceEnemy.X - pPos.X, 0, faceEnemy.Z - pPos.Z)
+			if diff.Magnitude > 0.5 then
+				root.CFrame = CFrame.lookAt(pPos, Vector3.new(faceEnemy.X, pPos.Y, faceEnemy.Z))
+			end
+		else
+			hum.AutoRotate = true
+		end
+
+		openSpace.UpdateVisualMarker(curTarget, true, flatDist)
+	end)
 end
 
 --// Floor Raycast Parameters cho Visual Circle
@@ -430,14 +562,13 @@ local function evaluateEnemies(checkRadius)
 						nearestPos = ePos
 					end
 
-					-- Chỉ tính quái trong tầm bán kính nếu độ cao chênh lệch Y không quá lớn (|dy| <= 8.0)
-					-- Giúp phân biệt quái ở tầng dưới/vực sâu khi người chơi đang đứng trên mỏm đá hoặc lối vào
-					if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
+					-- Chỉ tính quái trong tầm bán kính (xét 2D phẳng X và Z)
+					if flatDist <= checkRadius then
 						hasEnemyInRadius = true
 					end
 
-					-- Tính toán trọng tâm cụm quái xung quanh người chơi
-					if flatDist <= clusterMaxDist and math.abs(dy) <= 8.0 then
+					-- Tính toán trọng tâm cụm quái xung quanh người chơi (xét 2D phẳng X và Z)
+					if flatDist <= clusterMaxDist then
 						clusterSumX += ePos.X
 						clusterSumY += ePos.Y
 						clusterSumZ += ePos.Z
@@ -460,7 +591,7 @@ local function evaluateEnemies(checkRadius)
 				local dy = ePos.Y - pPos.Y
 				local dz = ePos.Z - pPos.Z
 				local flatDist = math.sqrt(dx * dx + dz * dz)
-				if flatDist <= checkRadius and math.abs(dy) <= 8.0 then
+				if flatDist <= checkRadius then
 					hasEnemyInRadius = true
 				end
 				if flatDist < nearestDist then
@@ -487,7 +618,7 @@ end
 --// Kiểm tra xem đường đi từ người chơi đến mục tiêu có bị chiêu/hazard nào của quái cản đường không
 local function isApproachPathBlockedByHazard(pPos, targetPos, maxCheckDist, startDist)
 	if not targetPos then return false end
-	if smartDodge.GetHazardCount and smartDodge.GetHazardCount() == 0 then
+	if sdv2 and sdv2.danger and not sdv2.danger.IsEnabled() then
 		return false
 	end
 
@@ -511,9 +642,9 @@ local function isApproachPathBlockedByHazard(pPos, targetPos, maxCheckDist, star
 	-- Lấy mẫu các điểm cách nhau 2.0 studs trên đường chạy
 	for d = fromD, checkLimit, 2.0 do
 		local samplePt = pPos + dir * d
-		local inDanger, hazardInfo = geometry.IsPointInAnyHazard(samplePt)
+		local inDanger, hazardInfo = sdv2.danger.IsPointInAnyHazard(samplePt)
 		if inDanger then
-			local hName = (hazardInfo and hazardInfo.Name) or "Active Hazard"
+			local hName = (hazardInfo and (hazardInfo.name or hazardInfo.Name)) or "Active Hazard"
 			return true, hName, samplePt
 		end
 	end
@@ -553,17 +684,11 @@ local function getFirstBossArenaPart()
 	return nil
 end
 
-local function getBoss1ArenaInfo()
+local function getBossArenaInfo()
 	local v2Center = bossArea.GetAnchorCenter and bossArea.GetAnchorCenter()
 	local v2Radius = bossArea.GetRadius and bossArea.GetRadius()
 	if v2Center and v2Radius and v2Radius > 0 then
 		return v2Center, v2Radius
-	end
-
-	local center = smartDodge.GetBoss1ArenaCenter and smartDodge.GetBoss1ArenaCenter()
-	local radius = smartDodge.GetBoss1ArenaRadius and smartDodge.GetBoss1ArenaRadius()
-	if center and radius and radius > 0 then
-		return center, radius
 	end
 
 	local fp = getFirstBossArenaPart()
@@ -573,21 +698,26 @@ local function getBoss1ArenaInfo()
 	end
 
 	if cachedBoss1SpawnCenter then
-		return cachedBoss1SpawnCenter, 40.0
+		return cachedBoss1SpawnCenter, 42.0
 	end
 
 	return nil, nil
 end
+local getBoss1ArenaInfo = getBossArenaInfo
 
-local function isPlayerInsideBoss1Arena(pPos)
-	if not pPos then return true end
-	local center, arenaRadius = getBoss1ArenaInfo()
+local function isPlayerInsideBossArea(pPos)
+	if not pPos then return false end
+	local center, arenaRadius = getBossArenaInfo()
 	if center and arenaRadius and arenaRadius > 0 then
 		local diff = (Vector3.new(pPos.X - center.X, 0, pPos.Z - center.Z)).Magnitude
-		return diff <= (arenaRadius - 1.0)
+		return diff <= (arenaRadius - 1.5)
+	end
+	if currentTargetDist and currentTargetDist > 12.0 then
+		return false
 	end
 	return true
 end
+local isPlayerInsideBoss1Arena = isPlayerInsideBossArea
 
 --// Master Orchestrator Loop
 local function startMasterLoop()
@@ -611,68 +741,22 @@ local function startMasterLoop()
 				continue
 			end
 
-			-- 1. Ưu tiên 1: NGUY HIỂM (DODGE MODE)
-			local v2Danger = false
-			local v2SafePos, v2HazardName, v2EscapeDist = nil, nil, 0
-			pcall(function()
-				local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
-				if sdv2 and sdv2.dodge and sdv2.dodge.IsEnabled() then
-					if sdv2.danger.IsPlayerInDanger() or sdv2.dodge.IsDodging() or (sdv2.detection.GetActiveBossOrb and sdv2.detection.GetActiveBossOrb() ~= nil) then
-						v2Danger = true
-						local hasSpot, spot, rsn, dist = sdv2.safeSpot.GetSafeSpot()
-						if hasSpot and spot then
-							v2SafePos = spot
-							v2HazardName = rsn
-							v2EscapeDist = dist or 0
-						end
-					end
-				end
-			end)
-
-			local v1Danger = (smartDodge.IsInDanger and smartDodge.IsInDanger())
-				or (smartDodge.IsDodging and smartDodge.IsDodging())
+			-- Khi MASTER TARGET = BOSS nhưng thanh máu bossHealth chưa Enabled -> CHẾ ĐỘ CHỜ (Standby)
 			if targetScope == "Boss" and not shared.IsBossActive() then
-				v1Danger = false
-			elseif targetScope == "Mobs" and shared.IsBossActive() then
-				v1Danger = false
-			end
-
-			local inDanger = v2Danger or v1Danger
-
-			if inDanger then
-				lastDodgeTimestamp = os.clock()
-				wasInDanger = true
+				if autoFarm.IsEnabled() then
+					autoFarm.Toggle(false)
+				end
+				autoFarm.SetPaused(true)
+				targetFacing.SetTargetOverride(nil)
+				targetFacing.SetEnabled(false)
+				masterState = "WaitingBoss"
+				currentTargetName = "Waiting for Boss (bossHealth)..."
+				currentTargetDist = nil
+				currentHazardName = nil
+				currentEscapeDist = 0
 				currentStrafeTarget = nil
-				-- Khi nguy hiểm mới xuất hiện -> Ngắt repositioning ngay lập tức!
-				if repositionTarget then
-					repositionTarget = nil
-					openSpace.UpdateVisualMarker(nil, false)
-				end
-
-				-- Tạm dừng AutoFarm để nhường toàn quyền di chuyển cho Smart Dodge!
-				if not autoFarm.IsPaused() then
-					autoFarm.SetPaused(true)
-				end
-
-				local safePos, _, hazardName, escapeDist = smartDodge.GetCurrentSafeSpot()
-				if v2Danger and v2SafePos then
-					safePos = v2SafePos
-					hazardName = v2HazardName
-					escapeDist = v2EscapeDist
-				end
-				masterState = "Dodging"
-				currentHazardName = hazardName or "Hazard"
-				currentEscapeDist = escapeDist or 0
-
-				-- Đảm bảo SmartDodge luôn lập tức thực thi di chuyển tới Safe Spot (chống đứng yên khi vừa hồi sinh)
-				if not v2Danger and safePos and not smartDodge.IsDodging() and smartDodge.IsAutoDodgeEnabled and smartDodge.IsAutoDodgeEnabled() then
-					if smartDodge.Perform then
-						smartDodge.Perform(safePos, escapeDist, hazardName)
-					end
-				end
-
 				fireMasterStatus()
-				task.wait(0.04)
+				task.wait(0.1)
 				continue
 			end
 
@@ -680,14 +764,73 @@ local function startMasterLoop()
 			local root = char and char:FindFirstChild("HumanoidRootPart")
 			local pPos = root and root.Position
 
+			-- 1. Ưu tiên 1: NGUY HIỂM (SMART DODGE V2)
+			local inDanger = false
+			local safePos, hazardName, escapeDist = nil, nil, 0
+			if sdv2 and sdv2.dodge and sdv2.dodge.IsEnabled() then
+				local playerInDanger, curHazard = sdv2.danger.IsPlayerInDanger()
+				local isDodging = sdv2.dodge.IsDodging()
+				local hasBossOrb = false
+				if sdv2.danger and sdv2.danger.IsDodgeBoss2OrbEnabled and sdv2.danger.IsDodgeBoss2OrbEnabled() then
+					local orbPart = sdv2.detection.GetActiveBossOrb and sdv2.detection.GetActiveBossOrb()
+					if orbPart and pPos then
+						local dOrb = (Vector3.new(orbPart.Position.X - pPos.X, 0, orbPart.Position.Z - pPos.Z)).Magnitude
+						if dOrb <= 30.0 then
+							hasBossOrb = true
+						end
+					elseif orbPart then
+						hasBossOrb = true
+					end
+				end
+
+				if playerInDanger or isDodging or hasBossOrb then
+					inDanger = true
+					local spot, dist = sdv2.safeSpot.GetSafeSpot()
+					if spot and typeof(spot) == "Vector3" then
+						safePos = spot
+						hazardName = (sdv2.safeSpot.GetCurrentHazardName and sdv2.safeSpot.GetCurrentHazardName()) or (curHazard and curHazard.name) or "Hazard"
+						escapeDist = dist or 0
+					end
+				end
+			end
+
+			if inDanger then
+				lastDodgeTimestamp = os.clock()
+				wasInDanger = true
+				currentStrafeTarget = nil
+
+				if repositionTarget or repositionMoveConn then
+					stopRepositionMovement()
+				end
+
+				-- Tạm dừng AutoFarm để nhường toàn quyền di chuyển cho Smart Dodge V2!
+				if not autoFarm.IsPaused() then
+					autoFarm.SetPaused(true)
+				end
+
+				masterState = "Dodging"
+				currentHazardName = hazardName or "Hazard"
+				currentEscapeDist = escapeDist or 0
+
+				-- Đảm bảo Smart Dodge V2 luôn lập tức thực thi di chuyển tới Safe Spot
+				if safePos and not sdv2.dodge.IsDodging() then
+					sdv2.dodge.Perform(safePos, escapeDist, hazardName)
+				end
+
+				fireMasterStatus()
+				task.wait(0.04)
+				continue
+			end
+
 			-- 2. Đánh giá quái xung quanh theo Combat Radius R (động theo mục tiêu hiện tại)
 			local r = getCurrentTargetRadius(currentTargetName)
 			-- Khi đang ở InCombat, HoldingRadius, Orbiting hoặc Strafing, mở rộng thêm HYSTERESIS_BUFFER để tránh rung bật/tắt ở mép
-			local checkR = (masterState == "InCombat" or masterState == "HoldingRadius" or masterState == "Orbiting" or masterState == "Strafing") and (r + HYSTERESIS_BUFFER) or r
+			local checkR = (masterState == "InCombat" or masterState == "HoldingRadius" or masterState == "Orbiting" or masterState == "Repositioning" or masterState == "Strafing") and (r + HYSTERESIS_BUFFER) or r
 			local hasEnemyInRadius, totalAlive, nName, nDist, nPos, clusterCentroid, clusterCount = evaluateEnemies(checkR)
 
 			currentTargetName = nName
 			currentTargetDist = nDist
+			currentTargetPos = (not isBossTarget and clusterCentroid) or nPos
 			currentHazardName = nil
 			currentEscapeDist = 0
 
@@ -698,63 +841,61 @@ local function startMasterLoop()
 			local bossIdx = shared.GetCurrentBossIndex()
 			local isBoss1 = isBossActive and (bossIdx <= 1)
 			local isBossTarget = isBossActive or (nName and nName:lower():find("boss") ~= nil)
-			local arenaCenter, arenaRadius = getBoss1ArenaInfo()
-			if isBoss1 and not cachedBoss1SpawnCenter and nPos then
+			if isBossTarget and not cachedBoss1SpawnCenter and nPos then
 				cachedBoss1SpawnCenter = nPos
 			end
+			local arenaCenter, arenaRadius = getBossArenaInfo()
 
-			local inBoss1Arena = isPlayerInsideBoss1Arena(pPos)
-			-- Khi đang đấu Boss 1 trong sàn Arena: Luôn coi như InCombat để giữ cự ly với tâm sàn và không để AutoFarm kéo ra mép sàn!
-			if isBoss1 and inBoss1Arena and arenaCenter and arenaRadius and arenaRadius > 0 and totalAlive > 0 then
-				hasEnemyInRadius = true
+			local inBossArena = isPlayerInsideBossArea(pPos)
+			local inBoss1Arena = inBossArena
+
+			-- [ĐIỀU KIỆN BẮT BUỘC VÀO SÀN ĐẤU BOSS (KỂ CẢ KHI BOSS TRONG TẦM CYAN R)]:
+			-- Nếu mục tiêu là Boss nhưng Player chưa bước hẳn vào bên trong Sàn Đấu Boss (vừa hồi sinh,
+			-- đang chạy ngoài hành lang, hoặc đứng ngoài mép cửa vào):
+			-- DÙ BOSS ĐÃ NHẢY XUỐNG VÀ NẰM TRONG TẦM CYAN (nDist <= r):
+			-- TUYỆT ĐỐI KHÔNG ĐƯỢC COI LÀ hasEnemyInRadius (không được dừng bước, không được kiting ngoài cửa)!
+			-- BẮT BUỘC phải đặt hasEnemyInRadius = false để kích hoạt luồng di chuyển bước hẳn vào bên trong Sàn Đấu!
+			if isBossTarget and not inBossArena then
+				hasEnemyInRadius = false
+				if repositionTarget or repositionMoveConn then
+					stopRepositionMovement()
+				end
 			end
 
-			-- 3. Post-Dodge Trigger: Vừa né xong chiêu (thoát khỏi inDanger) -> Quét tìm Vùng Thoáng (Open Space)
+			-- [CHẾ ĐỘ V1 - OPEN SPACE POST-DODGE TRIGGER]:
+			-- Vừa né xong chiêu (thoát khỏi inDanger) -> Quét tìm bãi trống rộng rãi nhất phòng để Reposition
 			if wasInDanger then
 				wasInDanger = false
-				if openSpace.IsEnabled() and pPos and totalAlive > 0 then
-					local bestSpot = openSpace.FindBestRepositionSpot(pPos, nPos, radius, isBoss1, isPlayerInsideBoss1Arena, isBossActive)
+				if combatMovementMode == "OpenSpace" and pPos and totalAlive > 0 and (not isBossTarget or inBossArena) then
+					local bestSpot = openSpace.FindBestRepositionSpot(pPos, nPos, r, isBoss1, isPlayerInsideBossArea, isBossActive)
 					if bestSpot then
-						repositionTarget = bestSpot
-						repositionStartTime = os.clock()
+						startRepositionMovement(bestSpot)
 					end
 				end
 			end
 
-			-- 4. Thực thi di chuyển tới Open Space Reposition Spot (nếu đang active)
+			-- [CHẾ ĐỘ V1 - OPEN SPACE REPOSITIONING EXECUTION]:
 			if repositionTarget and pPos and totalAlive > 0 then
-				-- Kiểm tra nếu điểm tới bị hazard hoặc đường đi bị hazard mới chặn (bắt đầu kiểm tra từ 3.5 studs phía trước để tránh false positive từ vị trí vừa thoát)
-				local targetBlocked, blockName = isApproachPathBlockedByHazard(pPos, repositionTarget, 40.0, 3.5)
-				local inTargetHazard = geometry.IsPointInAnyHazard(repositionTarget)
+				local targetBlocked = isApproachPathBlockedByHazard(pPos, repositionTarget, 40.0, 3.5)
+				local inTargetHazard = sdv2 and sdv2.danger and sdv2.danger.IsPointInAnyHazard(repositionTarget, nil, 1.0)
 				local timeElapsed = os.clock() - repositionStartTime
 
 				if targetBlocked or inTargetHazard or timeElapsed >= MAX_REPOSITION_TIME then
-					-- Bị hazard chặn hoặc quá thời gian tối đa -> Hủy reposition an toàn!
-					repositionTarget = nil
-					openSpace.UpdateVisualMarker(nil, false)
+					stopRepositionMovement()
 				else
-					local distToSpot = (Vector3.new(repositionTarget.X - pPos.X, 0, repositionTarget.Z - pPos.Z)).Magnitude
-					if distToSpot <= 2.2 then
-						-- Đã tới vùng đất rộng thoáng thành công!
-						repositionTarget = nil
-						openSpace.UpdateVisualMarker(nil, false)
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if hum then
-							pcall(function() hum:MoveTo(pPos) end)
-						end
+					local toTarget = Vector3.new(repositionTarget.X - pPos.X, 0, repositionTarget.Z - pPos.Z)
+					local distToSpot = toTarget.Magnitude
+
+					if distToSpot <= 1.8 then
+						stopRepositionMovement()
 					else
-						-- Đang di chuyển lướt tới điểm Blue Spot!
+						if not repositionMoveConn then
+							startRepositionMovement(repositionTarget)
+						end
+
 						if not autoFarm.IsPaused() then
 							autoFarm.SetPaused(true)
 						end
-						targetFacing.SetEnabled(true) -- Vẫn khóa mặt vào quái trong lúc đảo vị trí
-
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if hum then
-							hum:MoveTo(repositionTarget)
-						end
-
-						openSpace.UpdateVisualMarker(repositionTarget, true, distToSpot)
 
 						masterState = "Repositioning"
 						currentHazardName = nil
@@ -767,9 +908,9 @@ local function startMasterLoop()
 			end
 
 			if totalAlive == 0 then
-				if repositionTarget then
-					repositionTarget = nil
-					openSpace.UpdateVisualMarker(nil, false)
+				currentTargetPos = nil
+				if repositionTarget or repositionMoveConn then
+					stopRepositionMovement()
 				end
 				-- Ưu tiên 4: Toàn bộ quái đã chết (Đã dọn phòng)
 				if not autoFarm.IsPaused() then
@@ -777,12 +918,20 @@ local function startMasterLoop()
 				end
 				targetFacing.SetTargetOverride(nil)
 				targetFacing.SetEnabled(false)
-				masterState = "RoomCleared"
+				if targetScope == "Boss" and not shared.IsBossActive() then
+					masterState = "WaitingBoss"
+				else
+					masterState = "RoomCleared"
+				end
 			elseif hasEnemyInRadius then
 				-- Ưu tiên 2: CÓ QUÁI TRONG TẦM BÁN KÍNH R -> IN COMBAT!
 				-- Tạm dừng bước chân AutoFarm để giữ cự ly chiến đấu (chỉ pause khi chưa pause)
 				if not autoFarm.IsPaused() then
 					autoFarm.SetPaused(true)
+				end
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if hum then
+					pcall(function() hum:Move(Vector3.zero, false) end)
 				end
 
 				-- Luôn duy trì reachDistance chuẩn bằng Combat Radius R cho AutoFarm
@@ -797,25 +946,25 @@ local function startMasterLoop()
 
 				-- Hàm kiểm tra độ an toàn của điểm di chuyển (mặt sàn, hazard, lộ trình di chuyển, tường, ràng buộc biên sàn đấu)
 				local function isSafeSpot(pos)
-					-- 1. Ràng buộc cứng sàn đấu Boss 1 (nếu có Arena): Điểm đến bắt buộc phải nằm bên trong sàn đấu
-					if isBoss1 and arenaCenter and arenaRadius and arenaRadius > 0 then
+					-- 1. Ràng buộc cứng sàn đấu Boss (nếu có Arena): Điểm đến bắt buộc phải nằm bên trong sàn đấu
+					if isBossTarget and arenaCenter and arenaRadius and arenaRadius > 0 then
 						local dCenter = (Vector3.new(pos.X - arenaCenter.X, 0, pos.Z - arenaCenter.Z)).Magnitude
 						if dCenter > (arenaRadius - 3.5) then
 							return false, nil
 						end
 					end
 
-					local rawFloorY, hasFloor = geometry.GetRawFloorY(pos)
+					local rawFloorY, hasFloor = sdv2.danger.GetRawFloorY(pos)
 					if not hasFloor or not rawFloorY or math.abs(rawFloorY - (pPos.Y - 2.5)) > 3.5 then
 						return false, nil
 					end
 					local floorPos = Vector3.new(pos.X, rawFloorY + 2.8, pos.Z)
 					-- 2. Điểm đến phải an toàn và có khoảng đệm tối thiểu 1.5 studs với mép mọi chiêu thức
-					if not geometry.IsSpotFullySafe(floorPos, 1.5) then
+					if sdv2.danger.IsPointInAnyHazard(floorPos, nil, 1.5) then
 						return false, nil
 					end
 					-- 3. Toàn bộ lộ trình di chuyển từ pPos tới floorPos phải hoàn toàn sạch bóng chiêu (Path Clearance)
-					if not geometry.IsPathSafe(pPos, floorPos) then
+					if not sdv2.danger.IsPathSafe(pPos, floorPos) then
 						return false, nil
 					end
 					-- Raycast kiểm tra tường từ hông nhân vật tới điểm đích
@@ -834,8 +983,11 @@ local function startMasterLoop()
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if not hum then return fallbackState end
 
-					if not combatMicroStrafingEnabled then
-						pcall(function() hum:MoveTo(pPos) end)
+					if not combatMicroStrafingEnabled or combatMovementMode == "OpenSpace" then
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
 						return fallbackState
 					end
 
@@ -931,14 +1083,17 @@ local function startMasterLoop()
 				-- Đứng vững chân tại điểm Safe Spot vừa né tới (InCombat) để xả combo skill vào quái/boss,
 				-- TUYỆT ĐỐI không vội di chuyển lăng xăng ngay tránh giẫm ngược lại mép chiêu cũ gây giật giật!
 				local isPostDodgeSettling = (os.clock() - lastDodgeTimestamp < 0.45)
-					and (smartDodge.GetHazardCount and smartDodge.GetHazardCount() > 0)
+					and (sdv2 and sdv2.danger and sdv2.danger.IsPlayerInDanger())
 
 				if isPostDodgeSettling then
 					currentStrafeTarget = nil
 					lastMicroStrafeTime = os.clock()
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if hum then
-						pcall(function() hum:MoveTo(pPos) end)
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
 					end
 					masterState = "InCombat"
 					fireMasterStatus()
@@ -1025,123 +1180,60 @@ local function startMasterLoop()
 					end
 				end
 
-				if not isMaintainDistanceActive then
+				if combatMovementMode == "OpenSpace" then
+					-- ==============================================================
+					-- [CHẾ ĐỘ V1 - BÃI TRỐNG (OPEN SPACE)]:
+					-- ĐỨNG YÊN HOÀN TOÀN TẠI BÃI TRỐNG XẢ SKILL (STAND GROUND)!
+					-- Áp dụng cho CẢ BOSS VÀ MOB THƯỜNG.
+					-- Tuyệt đối KHÔNG tự ý di chuyển lăng xăng trong lúc combat.
+					-- KHÔNG Orbit, KHÔNG Kiting, KHÔNG Micro-Strafe, KHÔNG lùi vòng cung.
+					-- Nhân vật đứng trụ vững vàng tại vị trí hiện tại (bãi trống) và tập trung xả combo skill.
+					-- Việc di chuyển chỉ diễn ra khi:
+					--   1. Né chiêu đỏ (Smart Dodge V2)
+					--   2. Thoát chiêu đỏ -> Lướt vào bãi trống mới rộng rãi (Post-Dodge Repositioning)
+					--   3. Quái ở xa ngoài tầm R -> AutoFarm bước tới mép R
+					-- ==============================================================
+					local targetCenter = (not isBossTarget and (clusterCentroid or nPos)) or nPos
+					if not isBossTarget and targetCenter then
+						targetFacing.SetTargetOverride(targetCenter)
+					else
+						targetFacing.SetTargetOverride(nil)
+					end
+
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum then
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
+					end
+					masterState = "InCombat"
+				elseif not isMaintainDistanceActive then
 					-- [TÍNH NĂNG GIỮ KHOẢNG CÁCH TẮT HOẶC NGOÀI SCOPE]: Đứng vững chân xả chiêu tại cự ly R, không lùi/kiting
 					targetFacing.SetTargetOverride(clusterCentroid or nPos)
-					masterState = performCombatMicroStrafe(clusterCentroid or nPos or pPos, r, "InCombat")
-				elseif isBoss1 and inBoss1Arena and arenaCenter and arenaRadius and arenaRadius > 0 then
-					targetFacing.SetTargetOverride(nil)
-					-- ==============================================================
-					-- [BOSS 1]: GIỮ KHOẢNG CÁCH VỚI CHÍNH TRUNG TÂM SÀN ĐẤU (ARENA CENTER ANCHORING)
-					-- Tuyệt đối không giữ khoảng cách đối với Boss 1 (tránh bị kéo/lùa ra mép sàn khi Boss nhảy).
-					-- Giữ khoảng cách chuẩn R (hoặc giới hạn an toàn trong sàn) so với arenaCenter.
-					-- Ưu tiên chọn vị trí đứng ở phía đối diện của Boss 1 qua tâm sàn đấu.
-					-- ==============================================================
-					local holdCenterDist = math.clamp(r, 6.0, math.max(6.0, arenaRadius - 6.0))
-					local pDistToCenter = (Vector3.new(pPos.X - arenaCenter.X, 0, pPos.Z - arenaCenter.Z)).Magnitude
-
-					local bVecFromCenter = nPos and Vector3.new(nPos.X - arenaCenter.X, 0, nPos.Z - arenaCenter.Z) or Vector3.new(0, 0, 0)
-					local idealAngle
-					if bVecFromCenter.Magnitude >= 2.0 then
-						idealAngle = math.atan2(-bVecFromCenter.Z, -bVecFromCenter.X)
-					else
-						local pVecFromCenter = Vector3.new(pPos.X - arenaCenter.X, 0, pPos.Z - arenaCenter.Z)
-						idealAngle = (pVecFromCenter.Magnitude > 0.5) and math.atan2(pVecFromCenter.Z, pVecFromCenter.X) or 0
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum then
+						pcall(function()
+							hum:Move(Vector3.zero, false)
+							hum:MoveTo(pPos)
+						end)
 					end
-
-					local distError = math.abs(pDistToCenter - holdCenterDist)
-					local isSafeHere = isSafeSpot(pPos)
-					local bossTooClose = (nDist and nPos) and (nDist < 8.0)
-
-					if distError <= 2.5 and isSafeHere and not bossTooClose then
-						masterState = performCombatMicroStrafe(arenaCenter, holdCenterDist, "HoldingRadius")
-					else
-						local candidateAngles = {
-							idealAngle,
-							idealAngle + math.rad(20),
-							idealAngle - math.rad(20),
-							idealAngle + math.rad(40),
-							idealAngle - math.rad(40),
-							idealAngle + math.rad(65),
-							idealAngle - math.rad(65),
-							idealAngle + math.rad(90),
-							idealAngle - math.rad(90),
-							idealAngle + math.rad(120),
-							idealAngle - math.rad(120),
-							idealAngle + math.pi,
-						}
-
-						local curPlayerAngle = math.atan2(pPos.Z - arenaCenter.Z, pPos.X - arenaCenter.X)
-						table.insert(candidateAngles, curPlayerAngle)
-						table.insert(candidateAngles, curPlayerAngle + math.rad(25))
-						table.insert(candidateAngles, curPlayerAngle - math.rad(25))
-
-						local bestSafePos = nil
-						local bestScore = -math.huge
-
-						for _, angle in ipairs(candidateAngles) do
-							local testPos = arenaCenter + Vector3.new(math.cos(angle), 0, math.sin(angle)) * holdCenterDist
-							local safe, safePos = isSafeSpot(testPos)
-							if safe and safePos then
-								local distToPlayer = (Vector3.new(safePos.X - pPos.X, 0, safePos.Z - pPos.Z)).Magnitude
-								local angleDiff = math.abs(math.atan2(math.sin(angle - idealAngle), math.cos(angle - idealAngle)))
-								local distToBoss = nPos and (Vector3.new(safePos.X - nPos.X, 0, safePos.Z - nPos.Z)).Magnitude or 25.0
-								local candDistToCenter = (Vector3.new(safePos.X - arenaCenter.X, 0, safePos.Z - arenaCenter.Z)).Magnitude
-
-								local score = - (math.abs(candDistToCenter - holdCenterDist) * 3.0)
-								score = score - (angleDiff * 8.0)
-								score = score - (distToPlayer * 1.0)
-								if distToBoss < 8.5 then
-									score = score - (8.5 - distToBoss) * 20.0
-								else
-									score = score + math.min(distToBoss, 30.0) * 0.5
-								end
-
-								if score > bestScore then
-									bestScore = score
-									bestSafePos = safePos
-								end
-							end
-						end
-
-						local hum = char and char:FindFirstChildOfClass("Humanoid")
-						if bestSafePos and hum then
-							hum:MoveTo(bestSafePos)
-							masterState = "HoldingRadius"
-						elseif hum then
-							local safeCenter, safeCenterPos = isSafeSpot(arenaCenter)
-							if safeCenter and safeCenterPos then
-								hum:MoveTo(safeCenterPos)
-							else
-								pcall(function() hum:MoveTo(pPos) end)
-							end
-							masterState = "HoldingRadius"
-						end
-					end
+					masterState = "InCombat"
 				elseif isBossTarget then
 					targetFacing.SetTargetOverride(nil)
 					-- ==============================================================
-					-- [BOSS KHÁC]: GIỮ BÁN KÍNH CHIẾN ĐẤU R + WALL-AWARE KITING THOÁT GÓC TƯỜNG
-					-- Khi Boss áp sát, hệ thống lùi thông minh (Wall-Aware) tránh kẹt góc tường,
-					-- ưu tiên hướng tâm sàn đấu để giữ cự ly R mà TUYỆT ĐỐI không bị ép ra rìa map!
+					-- [BOSS COMBAT RADAR - ORBIT MODE V2]: GIỮ BÁN KÍNH CHIẾN ĐẤU R
+					-- Luôn giữ Boss nằm trọn trong vòng radar bán kính Cyan R.
+					-- Nếu Boss tiến quá sát (< R - 2.5), lùi thông minh (Wall-Aware Kiting)
+					-- để đẩy Boss về mép vòng tròn Cyan R.
 					-- ==============================================================
 					local holdDist = r - 1.0
 					local isTooClose = nDist and nPos and pPos and (nDist < (r - 2.5))
 
-					local isNearArenaEdge = false
-					if isBoss1 and arenaCenter and arenaRadius and arenaRadius > 0 and pPos then
-						local pDistToCenter = (Vector3.new(pPos.X - arenaCenter.X, 0, pPos.Z - arenaCenter.Z)).Magnitude
-						if pDistToCenter > (arenaRadius - 4.5) then
-							isNearArenaEdge = true
-						end
-					end
-
-					if isTooClose or isNearArenaEdge then
+					if isTooClose then
 						local awayVec = Vector3.new(pPos.X - nPos.X, 0, pPos.Z - nPos.Z)
 						local awayDir = (awayVec.Magnitude > 0.1) and awayVec.Unit or Vector3.new(0, 0, 1)
-						local preferCenter = (isBoss1 and arenaCenter) or nil
-
-						local bestSafePos = findBestKitingSpot(nPos, holdDist, awayDir, preferCenter)
+						local bestSafePos = findBestKitingSpot(nPos, holdDist, awayDir, arenaCenter)
 
 						if bestSafePos then
 							local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -1157,7 +1249,7 @@ local function startMasterLoop()
 					end
 				else
 					-- ==============================================================
-					-- [MOBS THƯỜNG]: CHĂN BẦY / GOM QUÁI (HERDING & GROUPING) + WALL-AWARE KITING
+					-- [MOBS THƯỜNG - CHẾ ĐỘ V2 ORBIT]: CHĂN BẦY / GOM QUÁI (HERDING & GROUPING) + WALL-AWARE KITING
 					-- 1. Neo góc nhìn và điểm nhắm vào TRỌNG TÂM CỤM QUÁI (Cluster Centroid)
 					-- 2. Di chuyển theo quỹ đạo xoay tròn (Orbit) quanh Cluster Centroid ở cự ly r
 					--    để ép tất cả quái phải quay đầu hội tụ vào tâm vòng tròn (Funnel Effect).
@@ -1230,14 +1322,10 @@ local function startMasterLoop()
 					-- Chỉ kiểm tra hazard ngay trước mũi chân (tối đa 8.0 studs) thay vì 35.0 studs
 					isPathBlocked, blockingHazardName = isApproachPathBlockedByHazard(pPos, nPos, 8.0, 2.0)
 					local v2HazCount = 0
-					pcall(function()
-						local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
-						if sdv2 and sdv2.detection then
-							v2HazCount = sdv2.detection.GetHazardCount()
-						end
-					end)
-					local v1HazCount = (smartDodge.GetHazardCount and smartDodge.GetHazardCount()) or 0
-					isJustDodged = (os.clock() - lastDodgeTimestamp < 1.2) and (v2HazCount > 0 or v1HazCount > 0)
+					if sdv2 and sdv2.detection and sdv2.detection.GetHazardCount then
+						v2HazCount = sdv2.detection.GetHazardCount()
+					end
+					isJustDodged = (os.clock() - lastDodgeTimestamp < 1.2) and (v2HazCount > 0)
 				end
 
 				-- Chống kẹt vĩnh viễn ở trạng thái WaitingHazard: nếu đã đợi quá 1.5s thì cho phép di chuyển tiếp
@@ -1268,7 +1356,7 @@ local function startMasterLoop()
 					end
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if hum then
-						pcall(function() hum:MoveTo(pPos) end)
+						pcall(function() hum:Move(Vector3.zero, false) end)
 					end
 					targetFacing.SetTargetOverride(clusterCentroid or nPos)
 					targetFacing.SetEnabled(true)
@@ -1281,7 +1369,7 @@ local function startMasterLoop()
 					end
 					local hum = char and char:FindFirstChildOfClass("Humanoid")
 					if hum then
-						pcall(function() hum:MoveTo(pPos) end)
+						pcall(function() hum:Move(Vector3.zero, false) end)
 					end
 					targetFacing.SetEnabled(true)
 					masterState = "WaitingHazard"
@@ -1289,14 +1377,24 @@ local function startMasterLoop()
 				else
 					-- Đường đi an toàn -> Mở đường cho AutoFarm tiếp cận mục tiêu
 					targetFacing.SetTargetOverride(nil)
-					if targetFacing and targetFacing.GetTargetScope and targetFacing.GetTargetScope() == "Boss" then
-						targetFacing.SetEnabled(true)
+					targetFacing.SetEnabled(false)
+					local hum = char and char:FindFirstChildOfClass("Humanoid")
+					if hum and hum.AutoRotate ~= true then
+						hum.AutoRotate = true
 					end
 
-					-- Luôn duy trì reachDistance chuẩn bằng radius R (15.0 studs), TUYỆT ĐỐI không ép về 2.5 studs!
+					-- [ƯU TIÊN VÀO SÀN BOSS ĐỒNG THỜI GIỮ KHOẢNG CÁCH]:
+					-- Khi đang ở ngoài sàn Boss (kể cả sau hồi sinh):
+					-- Không được dừng lại ở cự ly reachDistance chuẩn R bên ngoài cửa.
+					-- Đặt reachDistance nhỏ (2.0 studs) để AutoFarm tiếp tục dẫn người chơi bước qua cửa vào hẳn trong sàn!
+					local effectiveReach = r
+					if isBossTarget and not inBossArena then
+						effectiveReach = 2.0
+					end
+
 					if autoFarm.GetReachDistance and autoFarm.SetReachDistance then
-						if math.abs(autoFarm.GetReachDistance() - r) > 0.5 then
-							autoFarm.SetReachDistance(r)
+						if math.abs(autoFarm.GetReachDistance() - effectiveReach) > 0.5 then
+							autoFarm.SetReachDistance(effectiveReach)
 						end
 					end
 
@@ -1307,7 +1405,24 @@ local function startMasterLoop()
 						autoFarm.SetPaused(false)
 					end
 
-					masterState = "Approaching"
+					if isBossTarget and not inBossArena then
+						masterState = "EnteringBossArea"
+
+						-- [CƠ CHẾ BẮT BUỘC BƯỚC VÀO SÀN ĐẤU - FORCE-ENTRY ASSIST]:
+						-- Nếu AutoFarm bị khựng hoặc Pathfinding bị nghẽn ở ngưỡng cửa phòng Boss:
+						-- Trực tiếp điều khiển Humanoid bước thẳng hướng vào bên trong Sàn Đấu / Boss!
+						local enterTarget = arenaCenter or nPos
+						if hum and enterTarget and pPos then
+							local enterVec = Vector3.new(enterTarget.X - pPos.X, 0, enterTarget.Z - pPos.Z)
+							if enterVec.Magnitude > 0.5 then
+								pcall(function()
+									hum:Move(enterVec.Unit, false)
+								end)
+							end
+						end
+					else
+						masterState = "Approaching"
+					end
 				end
 			end
 
@@ -1326,13 +1441,14 @@ local function stopMasterLoop()
 		masterLoopThread = nil
 	end
 
-	wasInDanger = false
 	waitingHazardStartTime = 0
-	if repositionTarget then
-		repositionTarget = nil
+	orbitDirection = 1
+	wasInDanger = false
+	currentTargetPos = nil
+	if repositionTarget or repositionMoveConn then
+		stopRepositionMovement()
 	end
 	openSpace.ClearVisualMarker()
-	orbitDirection = 1
 
 	-- Dừng các hệ thống con
 	autoFarm.SetPaused(false)
@@ -1344,9 +1460,8 @@ local function stopMasterLoop()
 	end
 	targetFacing.SetTargetOverride(nil)
 	targetFacing.SetEnabled(false)
-	smartDodge.StopEngine()
-	if smartDodge.ClearPlayerRadar then
-		smartDodge.ClearPlayerRadar()
+	if sdv2 and sdv2.dodge then
+		sdv2.dodge.Cancel()
 	end
 
 	masterState = "Disabled"
@@ -1367,32 +1482,14 @@ function smartAutoPlay.SetMasterEnabled(state)
 		-- Tuyên bố độc quyền trong coordinator để tắt AutoFarm thủ công cũ nếu có
 		coordinator.EnableExclusive("SmartAutoPlay")
 
-		-- Kích hoạt Smart Dodge ngầm (sẵn sàng né frame-0)
-		smartDodge.StartEngine()
-		smartDodge.SetAutoDodge(true)
-		if smartDodge.SetTargetScope then
-			smartDodge.SetTargetScope(targetScope)
-		end
-		pcall(function()
-			local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
-			if sdv2 and sdv2.SetTargetScope then
+		-- Kích hoạt Smart Dodge V2
+		if sdv2 then
+			if sdv2.SetTargetScope then
 				sdv2.SetTargetScope(targetScope)
 			end
-		end)
-		if smartDodge.SetShowPlayerRadar then
-			smartDodge.SetShowPlayerRadar(false)
-		end
-		if smartDodge.ClearPlayerRadar then
-			smartDodge.ClearPlayerRadar()
-		end
-		if smartDodge.SetShowSkillTimers then
-			smartDodge.SetShowSkillTimers(false)
-		end
-		if smartDodge.SetVisualEsp then
-			smartDodge.SetVisualEsp(false)
-		end
-		if smartDodge.SetShowSafeMarker then
-			smartDodge.SetShowSafeMarker(false)
+			if sdv2.dodge then
+				sdv2.dodge.SetEnabled(true)
+			end
 		end
 
 		-- Kích hoạt Auto Skill (nếu được bật)
@@ -1412,8 +1509,13 @@ function smartAutoPlay.SetMasterEnabled(state)
 		if autoFarm.GetReachDistance and autoFarm.SetReachDistance then
 			autoFarm.SetReachDistance(radius)
 		end
-		autoFarm.SetPaused(false)
-		autoFarm.Toggle(true, true)
+		if targetScope == "Boss" and not shared.IsBossActive() then
+			autoFarm.Toggle(false)
+			autoFarm.SetPaused(true)
+		else
+			autoFarm.SetPaused(false)
+			autoFarm.Toggle(true, true)
+		end
 
 		startMasterLoop()
 	else
@@ -1438,35 +1540,11 @@ function smartAutoPlay.IsAutoSkillEnabled()
 	return smartAutoSkillEnabled
 end
 
---// Open Space Reposition API
-function smartAutoPlay.SetOpenSpaceEnabled(state)
-	openSpace.SetEnabled(state)
-	if not state and repositionTarget then
-		repositionTarget = nil
-		openSpace.ClearVisualMarker()
-	end
-	fireMasterStatus()
-end
-
-function smartAutoPlay.IsOpenSpaceEnabled()
-	return openSpace.IsEnabled()
-end
-
-function smartAutoPlay.SetRepositionRadiusMultiplier(val)
-	openSpace.SetRadiusMultiplier(val)
-end
-
-function smartAutoPlay.GetRepositionRadiusMultiplier()
-	return openSpace.GetRadiusMultiplier()
-end
-
 function smartAutoPlay.GetMasterStatus()
 	return {
 		enabled = masterEnabled,
 		state = masterState,
 		autoSkillEnabled = smartAutoSkillEnabled,
-		openSpaceEnabled = openSpace.IsEnabled(),
-		repositionDist = repositionTarget and currentEscapeDist or nil,
 		hazardName = currentHazardName,
 		escapeDist = currentEscapeDist,
 		targetName = currentTargetName,
@@ -1482,7 +1560,28 @@ function smartAutoPlay.GetMasterStatus()
 		combatTargetScope = targetScope,
 		maintainDistanceScope = maintainDistanceScope,
 		approachScope = approachScope,
+		combatMovementMode = combatMovementMode,
+		repositionDist = repositionTarget and currentEscapeDist or nil,
 	}
+end
+
+function smartAutoPlay.SetCombatMovementMode(mode: string)
+	local normalized = (tostring(mode or "Orbit")):lower()
+	if normalized:find("open") or normalized:find("v1") or normalized:find("trống") or normalized:find("trong") then
+		combatMovementMode = "OpenSpace"
+		currentStrafeTarget = nil
+	else
+		combatMovementMode = "Orbit"
+	end
+
+	if combatMovementMode ~= "OpenSpace" and (repositionTarget or repositionMoveConn) then
+		stopRepositionMovement()
+	end
+	fireMasterStatus()
+end
+
+function smartAutoPlay.GetCombatMovementMode(): string
+	return combatMovementMode
 end
 
 function smartAutoPlay.OnMasterStatusChanged(callback)
@@ -1553,6 +1652,19 @@ end
 
 function smartAutoPlay.GetBoss2Radius()
 	return radiusBoss2
+end
+
+function smartAutoPlay.SetDodgeBoss2Orb(state: boolean)
+	if sdv2 and sdv2.danger and sdv2.danger.SetDodgeBoss2OrbEnabled then
+		sdv2.danger.SetDodgeBoss2OrbEnabled(state)
+	end
+end
+
+function smartAutoPlay.IsDodgeBoss2OrbEnabled(): boolean
+	if sdv2 and sdv2.danger and sdv2.danger.IsDodgeBoss2OrbEnabled then
+		return sdv2.danger.IsDodgeBoss2OrbEnabled()
+	end
+	return false
 end
 
 function smartAutoPlay.SetBoss3Radius(val)
@@ -1656,21 +1768,25 @@ function smartAutoPlay.SetTargetScope(scope)
 	if autoFarm and autoFarm.SetTargetScope then
 		autoFarm.SetTargetScope(normalizedScope)
 	end
-	if smartDodge and smartDodge.SetTargetScope then
-		smartDodge.SetTargetScope(normalizedScope)
-	end
-	pcall(function()
-		local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
-		if sdv2 and sdv2.SetTargetScope then
+	if sdv2 then
+		if sdv2.SetTargetScope then
 			sdv2.SetTargetScope(normalizedScope)
 		end
-		if sdv2 and sdv2.dodge and sdv2.dodge.SetStrafeFacingMode then
+		if sdv2.dodge and sdv2.dodge.SetStrafeFacingMode then
 			sdv2.dodge.SetStrafeFacingMode(normalizedScope)
 		end
-	end)
+	end
 	if targetFacing and targetFacing.SetTargetScope then
 		targetFacing.SetTargetScope(normalizedScope)
 	end
+
+	if normalizedScope == "Boss" and not shared.IsBossActive() then
+		if autoFarm.IsEnabled() then
+			autoFarm.Toggle(false)
+		end
+		autoFarm.SetPaused(true)
+	end
+
 	fireMasterStatus()
 end
 smartAutoPlay.SetCombatTargetScope = smartAutoPlay.SetTargetScope
@@ -1690,34 +1806,16 @@ coordinator.Register("SmartAutoPlay", smartAutoPlay.SetMasterEnabled, smartAutoP
 --// Tự động tiếp tục hoạt động khi respawn hoặc chuyển map
 shared.OnRespawn(function()
 	if masterEnabled then
-		task.delay(0.5, function()
+		task.delay(0.2, function()
 			if not masterEnabled then return end
-			smartDodge.StartEngine()
-			smartDodge.SetAutoDodge(true)
-			if smartDodge.SetShowPlayerRadar then
-				smartDodge.SetShowPlayerRadar(false)
-			end
-			if smartDodge.ClearPlayerRadar then
-				smartDodge.ClearPlayerRadar()
-			end
-			if smartDodge.SetShowSkillTimers then
-				smartDodge.SetShowSkillTimers(false)
-			end
-			if smartDodge.SetVisualEsp then
-				smartDodge.SetVisualEsp(false)
-			end
-			if smartDodge.SetShowSafeMarker then
-				smartDodge.SetShowSafeMarker(false)
-			end
-			if smartDodge.SetTargetScope then
-				smartDodge.SetTargetScope(targetScope)
-			end
-			pcall(function()
-				local sdv2 = require("@routes/DungeonQuest/core/smartDodgeV2")
-				if sdv2 and sdv2.SetTargetScope then
+			if sdv2 then
+				if sdv2.SetTargetScope then
 					sdv2.SetTargetScope(targetScope)
 				end
-			end)
+				if sdv2.dodge then
+					sdv2.dodge.SetEnabled(true)
+				end
+			end
 			if autoSkill and autoSkill.SetTargetScope then
 				autoSkill.SetTargetScope(targetScope)
 			end
@@ -1730,9 +1828,14 @@ shared.OnRespawn(function()
 			if autoFarm.GetReachDistance and autoFarm.SetReachDistance then
 				autoFarm.SetReachDistance(radius)
 			end
-			autoFarm.SetPaused(false)
-			if not autoFarm.IsEnabled() then
-				autoFarm.Toggle(true, true)
+			if targetScope == "Boss" and not shared.IsBossActive() then
+				autoFarm.Toggle(false)
+				autoFarm.SetPaused(true)
+			else
+				autoFarm.SetPaused(false)
+				if not autoFarm.IsEnabled() then
+					autoFarm.Toggle(true, true)
+				end
 			end
 		end)
 	end

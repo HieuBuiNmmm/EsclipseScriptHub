@@ -38,8 +38,14 @@ local BOUNDARY_SAFETY_PADDING = 1.0 -- Khoảng cách đệm an toàn lùi vào 
 local COLOR_ARENA = Color3.fromRGB(0, 220, 255)       -- Hologram Cyan
 local COLOR_ARENA_OUTLINE = Color3.fromRGB(0, 245, 255) -- Radiant Cyan Neon
 
+--// Cấu hình Boss 1 Center Deadzone (Tránh né vào trung tâm)
+local boss1AvoidCenter = true
+local boss1CenterRadius = 16.0
+local COLOR_DEADZONE = Color3.fromRGB(255, 60, 40)
+local COLOR_DEADZONE_OUTLINE = Color3.fromRGB(255, 120, 50)
+
 --// State chung
-local showVisual = true            -- Hiển thị đĩa Hologram & đường viền ranh giới
+local showVisual = false           -- Hiển thị đĩa Hologram & đường viền ranh giới
 local anchorCenter: Vector3? = nil
 local anchorFloorY: number? = nil
 local currentLockedBossIndex: number? = nil
@@ -49,6 +55,8 @@ local statusCallbacks: { (boolean, Vector3?, number, number?) -> () } = {}
 --// Visuals
 local visualFolder: Folder? = nil
 local visualDisk: Part? = nil
+local visualDeadzoneDisk: Part? = nil
+local visualDeadzoneHighlight: Highlight? = nil
 local visualHighlight: Highlight? = nil
 local visualBillboard: BillboardGui? = nil
 local visualStatusLabel: TextLabel? = nil
@@ -179,6 +187,25 @@ local function findCurrentBossRoot(): BasePart?
 				end
 			end
 		end
+
+		-- 4. Fallback sâu: Tìm model có MaxHealth lớn nhất trong dungeon (khi shared.trackedEnemies chưa kịp đồng bộ)
+		local highestHp = 0
+		local bestRoot: BasePart? = nil
+		for _, desc in ipairs(dungeon:GetDescendants()) do
+			if desc:IsA("Model") then
+				local hum = desc:FindFirstChildOfClass("Humanoid")
+				if hum and hum.Health > 0 and hum.MaxHealth > highestHp then
+					local root = desc:FindFirstChild("HumanoidRootPart") or desc.PrimaryPart or desc:FindFirstChildWhichIsA("BasePart")
+					if root then
+						highestHp = hum.MaxHealth
+						bestRoot = root
+					end
+				end
+			end
+		end
+		if bestRoot then
+			return bestRoot
+		end
 	end
 
 	return nil
@@ -192,7 +219,7 @@ local function getOrCreateVisualFolder(): Folder
 	if visualFolder and visualFolder.Parent then
 		return visualFolder
 	end
-	local container = Workspace.CurrentCamera or Workspace
+	local container = Workspace
 	local f = container:FindFirstChild("SmartDodgeV2_BossAreaVisual")
 	if not f then
 		f = Instance.new("Folder")
@@ -208,6 +235,11 @@ local function destroyVisual()
 		pcall(function() visualDisk:Destroy() end)
 		visualDisk = nil
 	end
+	if visualDeadzoneDisk then
+		pcall(function() visualDeadzoneDisk:Destroy() end)
+		visualDeadzoneDisk = nil
+	end
+	visualDeadzoneHighlight = nil
 	visualHighlight = nil
 	visualBillboard = nil
 	visualStatusLabel = nil
@@ -219,11 +251,12 @@ end
 
 local function updateVisual()
 	local cfg, curIdx = getActiveConfig()
-	local isEnabled = cfg and cfg.enabled
 
-	if not isEnabled or not showVisual or not anchorCenter then
+	if not showVisual or not anchorCenter then
 		if visualDisk then visualDisk.Transparency = 1 end
+		if visualDeadzoneDisk then visualDeadzoneDisk.Transparency = 1 end
 		if visualHighlight then visualHighlight.Enabled = false end
+		if visualDeadzoneHighlight then visualDeadzoneHighlight.Enabled = false end
 		if visualBillboard then visualBillboard.Enabled = false end
 		return
 	end
@@ -232,7 +265,7 @@ local function updateVisual()
 	local diameter = radius * 2
 	local folder = getOrCreateVisualFolder()
 	local floorY = anchorFloorY or (anchorCenter and anchorCenter.Y) or 0
-	local targetCF = CFrame.new(anchorCenter.X, floorY + 0.05, anchorCenter.Z) * CFrame.Angles(0, 0, math.rad(90))
+	local targetCF = CFrame.new(anchorCenter.X, floorY + 0.15, anchorCenter.Z) * CFrame.Angles(0, 0, math.rad(90))
 
 	if not visualDisk or not visualDisk.Parent then
 		local disk = Instance.new("Part")
@@ -312,8 +345,57 @@ local function updateVisual()
 	if visualBillboard then
 		visualBillboard.Enabled = true
 	end
+
+	-- Visual cho Vùng Cấm Trung Tâm Boss 1 (Center Deadzone)
+	local isBoss1 = (curIdx == 1)
+	local showDeadzone = isBoss1 and boss1AvoidCenter and (boss1CenterRadius > 0)
+	if showDeadzone then
+		local dzDiameter = boss1CenterRadius * 2
+		local dzCF = CFrame.new(anchorCenter.X, floorY + 0.18, anchorCenter.Z) * CFrame.Angles(0, 0, math.rad(90))
+
+		if not visualDeadzoneDisk or not visualDeadzoneDisk.Parent then
+			local dzDisk = Instance.new("Part")
+			dzDisk.Name = "SDV2_Boss1DeadzoneDisk"
+			dzDisk.Shape = Enum.PartType.Cylinder
+			dzDisk.Size = Vector3.new(0.14, dzDiameter, dzDiameter)
+			dzDisk.Material = Enum.Material.Neon
+			dzDisk.Color = COLOR_DEADZONE
+			dzDisk.Transparency = 0.80
+			dzDisk.Anchored = true
+			dzDisk.CanCollide = false
+			dzDisk.CanTouch = false
+			dzDisk.CanQuery = false
+			dzDisk.CastShadow = false
+			dzDisk.Massless = true
+			dzDisk.CFrame = dzCF
+			dzDisk.Parent = folder
+			visualDeadzoneDisk = dzDisk
+
+			local dzHl = Instance.new("Highlight")
+			dzHl.Name = "DeadzoneOutline"
+			dzHl.Adornee = dzDisk
+			dzHl.FillColor = COLOR_DEADZONE
+			dzHl.FillTransparency = 0.90
+			dzHl.OutlineColor = COLOR_DEADZONE_OUTLINE
+			dzHl.OutlineTransparency = 0.1
+			dzHl.Parent = dzDisk
+			visualDeadzoneHighlight = dzHl
+		else
+			visualDeadzoneDisk.Transparency = 0.80
+			visualDeadzoneDisk.Size = Vector3.new(0.14, dzDiameter, dzDiameter)
+			visualDeadzoneDisk.CFrame = dzCF
+			if visualDeadzoneHighlight then
+				visualDeadzoneHighlight.Enabled = true
+			end
+		end
+	else
+		if visualDeadzoneDisk then visualDeadzoneDisk.Transparency = 1 end
+		if visualDeadzoneHighlight then visualDeadzoneHighlight.Enabled = false end
+	end
+
 	if visualStatusLabel then
-		visualStatusLabel.Text = string.format("<b>🛡️ BOSS %d ARENA</b> <font color='rgb(255,255,255)'>(R: %.0fm)</font>", curIdx, radius)
+		local dzInfo = (curIdx == 1 and boss1AvoidCenter) and string.format(" | <font color='rgb(255,100,50)'>Deadzone: %.0fm</font>", boss1CenterRadius) or ""
+		visualStatusLabel.Text = string.format("<b>🛡️ BOSS %d ARENA</b> <font color='rgb(255,255,255)'>(R: %.0fm)</font>%s", curIdx, radius, dzInfo)
 	end
 end
 
@@ -420,13 +502,10 @@ local function tryStartCapture()
 	end
 
 	local curIdx = shared.GetCurrentBossIndex()
-	if curIdx <= 0 then
-		clearAnchor()
-		return
-	end
+	if curIdx <= 0 then curIdx = 1 end
 
 	local cfg = bossConfigs[curIdx] or (curIdx > 3 and bossConfigs[3])
-	if not cfg or not cfg.enabled then
+	if (not cfg or not cfg.enabled) and not showVisual then
 		clearAnchor()
 		return
 	end
@@ -442,10 +521,10 @@ local function tryStartCapture()
 		clearAnchor()
 	end
 
-	-- Bắt đầu polling tìm vị trí Boss lúc spawn
+	-- Bắt đầu polling tìm vị trí Boss lúc spawn (tăng timeout lên 15s phòng cutscene / animation trễ)
 	if captureThread then task.cancel(captureThread) end
 	captureThread = task.spawn(function()
-		local timeout = os.clock() + 8.0
+		local timeout = os.clock() + 15.0
 		while os.clock() < timeout and not anchorCenter do
 			if not shared.IsBossActive() or shared.GetCurrentBossIndex() ~= curIdx then
 				break
@@ -461,17 +540,29 @@ local function tryStartCapture()
 	end)
 end
 
--- Auto-leveling: Nếu ban đầu chụp trúng lúc chưa có vị trí sàn thấp nhất,
--- khi người chơi đứng trên mặt sàn thấp hơn tảng đá -> tự động kéo đĩa visual và anchor xuống đúng sàn
+-- Vòng lặp giám sát liên tục:
+-- 1. Phục hồi tìm Boss nếu đợt spawn đầu bị trễ (cutscene, lag, delay) -> đảm bảo 100% bắt được Anchor
+-- 2. Auto-leveling: Tự động kéo đĩa visual và anchor xuống đúng sàn khi Player đứng thấp hơn tảng đá
 task.spawn(function()
 	while lifecycle.IsActive() do
-		task.wait(1.0)
-		if anchorCenter and anchorFloorY and shared.IsBossActive() then
-			local pFloor = getPlayerFloorY()
-			if pFloor and pFloor < (anchorFloorY - 1.5) then
-				anchorFloorY = pFloor
-				anchorCenter = Vector3.new(anchorCenter.X, pFloor, anchorCenter.Z)
-				updateVisual()
+		task.wait(0.5)
+		if shared.IsBossActive() then
+			local curIdx = shared.GetCurrentBossIndex()
+			if curIdx <= 0 then curIdx = 1 end
+			local cfg = bossConfigs[curIdx] or (curIdx > 3 and bossConfigs[3])
+
+			if not anchorCenter and ((cfg and cfg.enabled) or showVisual) then
+				local root = findCurrentBossRoot()
+				if root and root.Parent then
+					captureAnchor(root.Position, curIdx)
+				end
+			elseif anchorCenter and anchorFloorY then
+				local pFloor = getPlayerFloorY()
+				if pFloor and pFloor < (anchorFloorY - 1.5) then
+					anchorFloorY = pFloor
+					anchorCenter = Vector3.new(anchorCenter.X, pFloor, anchorCenter.Z)
+					updateVisual()
+				end
 			end
 		end
 	end
@@ -580,6 +671,44 @@ function bossArea.IsPointInArena(point: Vector3, margin: number?): boolean
 	return (dx * dx + dz * dz) <= (maxR * maxR)
 end
 
+--- Kiểm tra xem 1 điểm Vector3 có nằm trong vùng cấm trung tâm của Boss 1 hay không
+--- (Giúp người chơi không bao giờ né đâm vào giữa phòng Boss 1, nơi dính trùm các skill nan hoa / radial star burst)
+function bossArea.IsPointInBoss1Center(point: Vector3, margin: number?): boolean
+	if not boss1AvoidCenter then return false end
+	if not shared.IsBossActive() then return false end
+	local curIdx = currentLockedBossIndex or shared.GetCurrentBossIndex()
+	if curIdx ~= 1 then return false end
+	if not anchorCenter then return false end
+
+	local pad = margin or 0
+	local maxR = math.max(1.0, boss1CenterRadius + pad)
+	local dx = point.X - anchorCenter.X
+	local dz = point.Z - anchorCenter.Z
+	return (dx * dx + dz * dz) <= (maxR * maxR)
+end
+
+function bossArea.SetBoss1AvoidCenter(state: boolean)
+	boss1AvoidCenter = (state == true)
+	updateVisual()
+	fireStatusChanged()
+end
+
+function bossArea.IsBoss1AvoidCenter(): boolean
+	return boss1AvoidCenter
+end
+
+function bossArea.SetBoss1CenterRadius(val: number)
+	if type(val) == "number" and val >= 3 then
+		boss1CenterRadius = val
+		updateVisual()
+		fireStatusChanged()
+	end
+end
+
+function bossArea.GetBoss1CenterRadius(): number
+	return boss1CenterRadius
+end
+
 --// ------------------------------------------------------------------ //
 -- Public API & Getters / Setters (Hỗ trợ từng Boss)
 --// ------------------------------------------------------------------ //
@@ -593,7 +722,7 @@ function bossArea.SetBossEnabled(bossIndex: number, state: boolean)
 	end
 
 	if shared.IsBossActive() and shared.GetCurrentBossIndex() == bossIndex then
-		if bossConfigs[bossIndex].enabled then
+		if bossConfigs[bossIndex].enabled or showVisual then
 			tryStartCapture()
 		else
 			clearAnchor()
@@ -650,7 +779,11 @@ end
 
 function bossArea.SetShowVisual(state: boolean)
 	showVisual = state and true or false
-	updateVisual()
+	if showVisual and not anchorCenter and shared.IsBossActive() then
+		tryStartCapture()
+	else
+		updateVisual()
+	end
 end
 
 function bossArea.IsShowVisual(): boolean

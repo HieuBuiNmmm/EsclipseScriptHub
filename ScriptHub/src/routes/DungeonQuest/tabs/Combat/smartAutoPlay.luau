@@ -23,7 +23,7 @@ return function(window, tab)
 	})
 
 	-- 2. Combat Radii & Visuals
-	leftSection:Header({ Name = "Combat Radii & Visuals" })
+	leftSection:Header({ Name = "Combat Radar & Radius Settings" })
 
 	leftSection:Toggle({
 		Name = "Enable Maintain Distance (Kiting)",
@@ -59,7 +59,7 @@ return function(window, tab)
 	}, "Dropdown_SAP_MasterTargetScope")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Mobs Kiting Radius (Cyan)",
+		Name = "Mobs Combat Radius (Cyan Radar)",
 		Suffix = " std",
 		Default = smartAutoPlay.GetMobsRadius(),
 		Minimum = 4,
@@ -72,7 +72,7 @@ return function(window, tab)
 	}, "Slider_SAP_Radius_Mobs"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Boss 1 Kiting Radius (Cyan)",
+		Name = "Boss 1 Combat Radius (Cyan Radar)",
 		Suffix = " std",
 		Default = smartAutoPlay.GetBoss1Radius(),
 		Minimum = 4,
@@ -85,7 +85,7 @@ return function(window, tab)
 	}, "Slider_SAP_Radius_Boss1"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Boss 2 Kiting Radius (Cyan)",
+		Name = "Boss 2 Combat Radius (Cyan Radar)",
 		Suffix = " std",
 		Default = smartAutoPlay.GetBoss2Radius(),
 		Minimum = 4,
@@ -97,8 +97,16 @@ return function(window, tab)
 		end),
 	}, "Slider_SAP_Radius_Boss2"))
 
+	leftSection:Toggle({
+		Name = "Boss 2: Dodge Orbs & Crystals",
+		Default = smartAutoPlay.IsDodgeBoss2OrbEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			smartAutoPlay.SetDodgeBoss2Orb(state)
+		end),
+	}, "Toggle_SAP_DodgeBoss2Orb")
+
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Boss 3 Kiting Radius (Cyan)",
+		Name = "Boss 3 Combat Radius (Cyan Radar)",
 		Suffix = " std",
 		Default = smartAutoPlay.GetBoss3Radius(),
 		Minimum = 4,
@@ -124,7 +132,7 @@ return function(window, tab)
 	}, "Slider_SAP_SkillRange"))
 
 	leftSection:Toggle({
-		Name = "Show Kiting Circle (Cyan)",
+		Name = "Show Combat Radar (Cyan Spheres)",
 		Default = smartAutoPlay.IsShowRadiusCircleEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			smartAutoPlay.SetShowRadiusCircle(state)
@@ -140,7 +148,7 @@ return function(window, tab)
 	}, "Toggle_SAP_SkillCircle")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
-		Name = "Cyan Sphere Size (Kiting Radius)",
+		Name = "Cyan Sphere Size (Kích thước hạt)",
 		Suffix = " std",
 		Default = smartAutoPlay.GetCyanSphereSize(),
 		Minimum = 0.05,
@@ -241,21 +249,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_SAP_CastDamageWhileWaitingBuff")
 
-	rightSection:Toggle({
-		Name = "Auto Jump When Stuck",
-		Default = smartAutoPlay.autoFarm.IsAutoJumpOnStuckEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			smartAutoPlay.autoFarm.SetAutoJumpOnStuck(state)
-		end),
-	}, "Toggle_SAP_AutoJumpOnStuck")
 
-	rightSection:Toggle({
-		Name = "Enable Post-Dodge Reposition (Open Space)",
-		Default = smartAutoPlay.IsOpenSpaceEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			smartAutoPlay.SetOpenSpaceEnabled(state)
-		end),
-	}, "Toggle_SAP_OpenSpace")
 
 	rightSection:Toggle({
 		Name = "Enable Combat Micro-Strafing",
@@ -264,19 +258,6 @@ return function(window, tab)
 			smartAutoPlay.SetMicroStrafing(state)
 		end),
 	}, "Toggle_SAP_MicroStrafing")
-
-	ui.PatchSliderLoadCallback(rightSection:Slider({
-		Name = "Reposition Radius Mult",
-		Suffix = "x",
-		Default = smartAutoPlay.GetRepositionRadiusMultiplier(),
-		Minimum = 1.0,
-		Maximum = 2.5,
-		DisplayMethod = "Round",
-		Precision = 1,
-		Callback = autoSave.Wrap(function(val)
-			smartAutoPlay.SetRepositionRadiusMultiplier(val)
-		end),
-	}, "Slider_SAP_RepositionRadiusMult"))
 
 
 	ui.PatchSliderLoadCallback(rightSection:Slider({
@@ -366,12 +347,6 @@ return function(window, tab)
 				masterStatusLabel:UpdateName(text)
 				stateMonitorLabel:UpdateName("State: <font color='rgb(255, 65, 65)'>🛡️ DODGING (Safe Spot Escape)</font>")
 				targetMonitorLabel:UpdateName(info.targetName and string.format("Target: %s (%.1f std)", info.targetName, info.targetDist or 0) or "Target: In Range")
-			elseif info.state == "Repositioning" then
-				local targetText = info.targetName and string.format("%s (%.1f std)", info.targetName, info.targetDist or 0) or "In Range"
-				masterStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 150, 255)'>🔵 REPOSITIONING: Moving to Open Space (%.1fm)</font>", info.escapeDist or 0))
-				stateMonitorLabel:UpdateName(string.format("State: <font color='rgb(0, 150, 255)'>🔵 Repositioning to Open Space (%.1fm)</font>", info.escapeDist or 0))
-				targetMonitorLabel:UpdateName("Target: " .. targetText)
-				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
 			elseif info.state == "HoldingRadius" then
 				local targetText = info.targetName and string.format("%s (%.1f std)", info.targetName, info.targetDist or 0) or "In Range"
 				masterStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>🎯 HOLDING RADIUS: Maintaining %.1f std on %s</font>", info.radius or 15.0, targetText))
@@ -417,12 +392,23 @@ return function(window, tab)
 				stateMonitorLabel:UpdateName("State: <font color='rgb(0, 210, 255)'>🏃 APPROACHING (AutoFarm Pathfind)</font>")
 				targetMonitorLabel:UpdateName("Target: " .. targetText)
 				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
+			elseif info.state == "EnteringBossArea" then
+				local targetText = info.targetName and string.format("%s (%.1f std)", info.targetName, info.targetDist or 0) or "Boss"
+				masterStatusLabel:UpdateName(string.format("Status: <font color='rgb(0, 225, 255)'>🏃 ENTERING BOSS AREA: Moving into Arena (%s)</font>", targetText))
+				stateMonitorLabel:UpdateName("State: <font color='rgb(0, 225, 255)'>🏃 Entering Boss Area</font>")
+				targetMonitorLabel:UpdateName("Target: " .. targetText)
+				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
 			elseif info.state == "HoldingPosition" then
 				local targetText = info.targetName and string.format("%s (%.1f std)", info.targetName, info.targetDist or 0) or "Target"
 				masterStatusLabel:UpdateName(string.format("Status: <font color='rgb(220, 200, 100)'>🛑 HOLDING POSITION: Outside Approach Scope (%s)</font>", targetText))
 				stateMonitorLabel:UpdateName("State: <font color='rgb(220, 200, 100)'>🛑 Holding Position</font>")
 				targetMonitorLabel:UpdateName("Target: " .. targetText)
 				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby (Ready Frame-0)</font>")
+			elseif info.state == "WaitingBoss" then
+				masterStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 50)'>⏳ WAITING: Waiting for Boss (bossHealth)...</font>")
+				stateMonitorLabel:UpdateName("State: <font color='rgb(255, 200, 50)'>⏳ Standby (Waiting Boss)</font>")
+				targetMonitorLabel:UpdateName("Target: None (Boss Not Spawned)")
+				dodgeMonitorLabel:UpdateName("Smart Dodge: <font color='rgb(0, 255, 120)'>Standby</font>")
 			elseif info.state == "RoomCleared" then
 				masterStatusLabel:UpdateName("Status: <font color='rgb(255, 200, 0)'>🏆 ROOM CLEARED: Waiting for enemies</font>")
 				stateMonitorLabel:UpdateName("State: <font color='rgb(255, 200, 0)'>🏆 Room Cleared</font>")
