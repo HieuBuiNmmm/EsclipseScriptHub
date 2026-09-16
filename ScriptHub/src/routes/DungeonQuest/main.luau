@@ -91,6 +91,12 @@ return function(self)
 	--// ESP Enemy (highlight mob trong dungeon)
 	require("@routes/DungeonQuest/core/enemyEsp")
 
+	--// Tooltip Helper: CaculationPot (tính toán tiềm năng max potion trên tooltip - passive)
+    require("@routes/DungeonQuest/core/caculationPot")
+
+	--// Inventory Sorter: Sắp xếp kho đồ game theo tiêu chí (physic, spell, health, rarity)
+    require("@routes/DungeonQuest/core/inventorySort")
+
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	local autoHide = require("@routes/DungeonQuest/core/autoHide")
 	autoHide.SetWindow(window)

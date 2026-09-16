@@ -506,11 +506,7 @@ registerHazard = function(instance)
 		return false
 	end
 
-	local fadeConnections = {}
-	local boxes = {}
-	if selectionBoxesEnabled then
-		boxes = attachSelectionBoxes(parts, fadeConnections)
-	end
+	local isIceSpikes = geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(instance.Name)
 	local distance = computeDistance(instance)
 
 	local info = {
@@ -518,10 +514,19 @@ registerHazard = function(instance)
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Distance = distance,
-		Boxes = boxes,
-		Connections = fadeConnections,
+		Boxes = {},
+		Connections = {},
 		SpawnClock = os.clock(),
 	}
+
+	local fadeConnections = {}
+	local boxes = {}
+	if selectionBoxesEnabled and not isIceSpikes then
+		boxes = attachSelectionBoxes(parts, fadeConnections)
+	end
+	info.Boxes = boxes
+	info.Connections = fadeConnections
+
 	activeHazards[instance] = info
 	lastHazardInfo = {
 		Name = instance.Name,

@@ -21,56 +21,78 @@ GetActiveHazardsMap())do j.HazardZones=nil end end end function b.
 OnPaddingChanged(i)if type(i)=='function'then table.insert(f,i)end end function
 b.SetHazardPadding(i)if type(i)=='number'and i>=0 and i~=d then d=i b.
 InvalidateCache()for j,k in ipairs(f)do pcall(k,d)end end end b.SetHitboxPadding
-=b.SetHazardPadding local i={'firstBossCrissCross','firstBossBigSpike',
-'firstBossSeekingSpikes','secondBossCircleHitbox','secondBossCircleHit'}local j=
-function(j)if not j or type(j)~='string'then return false end local k=j:lower():
-gsub('%s+','')if#k==0 then return false end for l,m in ipairs(i)do local n=m:
-lower():gsub('%s+','')if#n>0 and string.find(k,n,1,true)then return true end end
-return false end function b.IsForceCircle(k)return j(k)end function b.
-AddForceCircleName(k)if type(k)=='string'and#k>0 then table.insert(i,k)b.
-InvalidateCache()end end function b.GetForceCircleNames()return i end local k,l,
-m=function(k)return k and k.Parent and k.Transparency<=c end,function(k,l,m)
-local n,o=k.Size,m and e or d if l or(k:IsA'Part'and(k.Shape==Enum.PartType.Ball
-or k.Shape==Enum.PartType.Cylinder))then return{radius=math.max(n.X,n.Y,n.Z)/2}
-end local p=Vector3.new(math.max(n.X,0)/2+o,0,math.max(n.Z,0)/2+o)return{half=p,
-cframe=k.CFrame}end,function(k,l,m,n)if not l then return false end local o,p=k.
-X,k.Z m=m or 0 local q=(n or l.isTrajectory)and e or d if l.radius then local r=
-(l.part and l.part.Parent)and l.part.Position local s,t=r and r.X or l.cx or 0,r
-and r.Z or l.cz or 0 local u,v,w=o-s,p-t,l.radius+q+m return(u*u+v*v)<=(w*w)end
-local r=(l.part and l.part.Parent)and l.part.CFrame or l.cframe if r then local
-s,t,u=r:PointToObjectSpace(k),l.half.X,l.half.Z if m<=0 then return math.abs(s.X
-)<=t and math.abs(s.Z)<=u else local v,w=math.max(0,math.abs(s.X)-t),math.max(0,
-math.abs(s.Z)-u)return(v*v+w*w)<=(m*m)end end return false end local n=function(
-n)if not n or not n.Instance or not n.Instance.Parent then return nil end local
-o=n.Instance local p=n.Name or(o and o.Name)or''local q,r=j(p),n.IsTrajectory==
-true local s,t=r and e or d if o:IsA'BasePart'then if not k(o)then return nil
-end t={o}else t={}for u,v in ipairs(o:GetDescendants())do if#t>=g then break end
-if v:IsA'BasePart'and k(v)and v.Parent then t[#t+1]=v end end if#t==0 then
-return nil end end local u,v,w,x,y={},math.huge,-math.huge,math.huge,-math.huge
-for z,A in ipairs(t)do local B,C=A.Position,A.Size local D=math.max(C.X,C.Y,C.Z)
-/2+s v=math.min(v,B.X-D)w=math.max(w,B.X+D)x=math.min(x,B.Z-D)y=math.max(y,B.Z+D
-)local E=l(A,q,r)if E then if E.radius then E.cx,E.cz=B.X,B.Z end E.part=A E.
-isTrajectory=r u[#u+1]=E end end if#u==0 then return nil end local z,A,B,C=(v+w)
-/2,(x+y)/2,(w-v)/2,(y-x)/2 return{zones=u,center=Vector3.new(z,0,A),
-boundingRadius=math.sqrt(B*B+C*C)}end local o=function(o)local p=o and o.
-HazardZones if not p then p=n(o)if p and o then o.HazardZones=p end end return p
-end function b.GetHazardZones(p)return o(p)end function b.GetNearbyHazards(p,q)
-local r=h if not r then return{}end q=q or 65 local s,t,u={},p.X,p.Z for v,w in
-pairs(r.GetActiveHazardsMap())do local x,y=w.Instance,o(w)if y then local z,A=y.
-center.X,y.center.Z if x and x.Parent then local B=x:IsA'BasePart'and x or x.
-PrimaryPart or x:FindFirstChildWhichIsA'BasePart'if B then z=B.Position.X A=B.
-Position.Z end end local B,C=t-z,u-A local D,E=B*B+C*C,q+y.boundingRadius if D<=
-E*E then table.insert(s,w)end end end return s end function b.IsPointInAnyHazard
-(p,q,r,s)local t=h if not t then return false,nil,nil end r=r or 0 local u,v,w,x
-=math.huge,s or t.GetActiveHazardsMap()for y,z in pairs(v)do local A=z.Instance
-or(typeof(y)=='Instance'and y)if q and(q==A or(A and q.Name==A.Name))then
-continue end local B=o(z)if not B then continue end local C,D=B.center.X,B.
-center.Z if A and A.Parent then local E=A:IsA'BasePart'and A or A.PrimaryPart or
-A:FindFirstChildWhichIsA'BasePart'if E then C=E.Position.X D=E.Position.Z end
-end local E,F=p.X-C,p.Z-D local G,H=E*E+F*F,B.boundingRadius+r if G>H*H then
-continue end local I=z.IsTrajectory==true for J=1,#B.zones do local K=B.zones[J]
-if k(K.part)and m(p,K,r,I or K.isTrajectory)then local L=(p-K.part.Position).
-Magnitude if L<u then u=L w=z x=K.part end break end end end return x~=nil,w,x
+=b.SetHazardPadding local i,j,k,l=game:GetService'ReplicatedStorage',{
+'firstBossCrissCross','firstBossBigSpike','firstBossSeekingSpikes'},{
+'smallicespikes','mediumicespikes','largeicespikes'}local m=function(m)if not m
+or type(m)~='string'then return false end local n=m:lower():gsub('%s+','')if#n==
+0 then return false end for o,p in ipairs(k)do if string.find(n,p,1,true)then
+return true end end return false end function b.IsIceSpikesChain(n)return m(n)
+end local n=function()if l and l>0 then return l end local n,o=45,i:
+FindFirstChild'enemyProjectiles'if not o then return n end local p=o:
+FindFirstChild'largeIceSpikes'if not p then for q,r in ipairs(o:GetChildren())do
+local s=(r.Name or''):lower():gsub('%s+','')if s=='largeicespikes'then p=r break
+end end end if not p then return n end local q,r=0,Vector3.zero if p:IsA'Model'
+and p.PrimaryPart then r=p.PrimaryPart.Position elseif p:IsA'BasePart'then r=p.
+Position end local s={}if p:IsA'BasePart'then table.insert(s,p)else for t,u in
+ipairs(p:GetDescendants())do if u:IsA'BasePart'then table.insert(s,u)end end end
+if#s==0 then return n end for t,u in ipairs(s)do local v=u.Size local w,x=math.
+max(v.X,v.Z)/2,(Vector3.new(u.Position.X,0,u.Position.Z)-Vector3.new(r.X,0,r.Z))
+.Magnitude local y=x+w if y>q then q=y end end if q>=5 then l=q return l end
+return n end function b.GetLargeIceSpikesMaxRadius()return n()end local o=
+function(o)if not o or type(o)~='string'then return false end local p=o:lower():
+gsub('%s+','')if#p==0 then return false end for q,r in ipairs(j)do local s=r:
+lower():gsub('%s+','')if#s>0 and string.find(p,s,1,true)then return true end end
+return false end function b.IsForceCircle(p)return o(p)end function b.
+AddForceCircleName(p)if type(p)=='string'and#p>0 then table.insert(j,p)b.
+InvalidateCache()end end function b.GetForceCircleNames()return j end local p,q,
+r=function(p)return p and p.Parent and p.Transparency<=c end,function(p,q,r)
+local s,t=p.Size,r and e or d if q or(p:IsA'Part'and(p.Shape==Enum.PartType.Ball
+or p.Shape==Enum.PartType.Cylinder))then return{radius=math.max(s.X,s.Y,s.Z)/2}
+end local u=Vector3.new(math.max(s.X,0)/2+t,0,math.max(s.Z,0)/2+t)return{half=u,
+cframe=p.CFrame}end,function(p,q,r,s)if not q then return false end local t,u=p.
+X,p.Z r=r or 0 local v=(s or q.isTrajectory)and e or d if q.radius then local w=
+(q.part and q.part.Parent)and q.part.Position local x,y=w and w.X or q.cx or 0,w
+and w.Z or q.cz or 0 local z,A,B=t-x,u-y,q.radius+v+r return(z*z+A*A)<=(B*B)end
+local w=(q.part and q.part.Parent)and q.part.CFrame or q.cframe if w then local
+x,y,z=w:PointToObjectSpace(p),q.half.X,q.half.Z if r<=0 then return math.abs(x.X
+)<=y and math.abs(x.Z)<=z else local A,B=math.max(0,math.abs(x.X)-y),math.max(0,
+math.abs(x.Z)-z)return(A*A+B*B)<=(r*r)end end return false end local s=function(
+s)if not s or not s.Instance or not s.Instance.Parent then return nil end local
+t=s.Instance local u=s.Name or(t and t.Name)or''local v,w=o(u),s.IsTrajectory==
+true local x,y=w and e or d if m(u)then local z,A=(n())if t:IsA'BasePart'then A=
+p(t)and t or nil elseif t:IsA'Model'then if t.PrimaryPart and p(t.PrimaryPart)
+then A=t.PrimaryPart else for B,C in ipairs(t:GetDescendants())do if C:IsA
+'BasePart'and p(C)and C.Parent then A=C break end end end end if not A then
+return nil end local B=A.Position local C={radius=z,cx=B.X,cz=B.Z,part=A,
+isTrajectory=false,isIceSpikes=true}return{zones={C},center=Vector3.new(B.X,0,B.
+Z),boundingRadius=z+x}end if t:IsA'BasePart'then if not p(t)then return nil end
+y={t}else y={}for z,A in ipairs(t:GetDescendants())do if#y>=g then break end if
+A:IsA'BasePart'and p(A)and A.Parent then y[#y+1]=A end end if#y==0 then return
+nil end end local z,A,B,C,D={},math.huge,-math.huge,math.huge,-math.huge for E,F
+in ipairs(y)do local G,H=F.Position,F.Size local I=math.max(H.X,H.Y,H.Z)/2+x A=
+math.min(A,G.X-I)B=math.max(B,G.X+I)C=math.min(C,G.Z-I)D=math.max(D,G.Z+I)local
+J=q(F,v,w)if J then if J.radius then J.cx,J.cz=G.X,G.Z end J.part=F J.
+isTrajectory=w z[#z+1]=J end end if#z==0 then return nil end local E,F,G,H=(A+B)
+/2,(C+D)/2,(B-A)/2,(D-C)/2 return{zones=z,center=Vector3.new(E,0,F),
+boundingRadius=math.sqrt(G*G+H*H)}end local t=function(t)local u=t and t.
+HazardZones if not u then u=s(t)if u and t then t.HazardZones=u end end return u
+end function b.GetHazardZones(u)return t(u)end function b.GetNearbyHazards(u,v)
+local w=h if not w then return{}end v=v or 65 local x,y,z={},u.X,u.Z for A,B in
+pairs(w.GetActiveHazardsMap())do local C,D=B.Instance,t(B)if D then local E,F=D.
+center.X,D.center.Z if C and C.Parent then local G=C:IsA'BasePart'and C or C.
+PrimaryPart or C:FindFirstChildWhichIsA'BasePart'if G then E=G.Position.X F=G.
+Position.Z end end local G,H=y-E,z-F local I,J=G*G+H*H,v+D.boundingRadius if I<=
+J*J then table.insert(x,B)end end end return x end function b.IsPointInAnyHazard
+(u,v,w,x)local y=h if not y then return false,nil,nil end w=w or 0 local z,A,B,C
+=math.huge,x or y.GetActiveHazardsMap()for D,E in pairs(A)do local F=E.Instance
+or(typeof(D)=='Instance'and D)if v and(v==F or(F and v.Name==F.Name))then
+continue end local G=t(E)if not G then continue end local H,I=G.center.X,G.
+center.Z if F and F.Parent then local J=F:IsA'BasePart'and F or F.PrimaryPart or
+F:FindFirstChildWhichIsA'BasePart'if J then H=J.Position.X I=J.Position.Z end
+end local J,K=u.X-H,u.Z-I local L,M=J*J+K*K,G.boundingRadius+w if L>M*M then
+continue end local N=E.IsTrajectory==true for O=1,#G.zones do local P=G.zones[O]
+if p(P.part)and r(u,P,w,N or P.isTrajectory)then local Q=(u-P.part.Position).
+Magnitude if Q<z then z=Q B=E C=P.part end break end end end return C~=nil,B,C
 end return b end end local b,c,d=a.load'a',a.load'b',a.load'c'local e,f,g,h,i,j,
 k,l,m,n,o,p=b.RunService or game:GetService'RunService',b.player,{},false,{},
 0.85,Color3.fromRGB(255,45,45),Color3.fromRGB(0,160,255),0.55,0.25 local q=

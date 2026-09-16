@@ -1,10 +1,41 @@
--- Tab Combat (DungeonQuest): gộp Player (Speed) + Hazard Scanner (vùng nguy hiểm) + AutoFarm.
--- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
+-- Tab Combat (DungeonQuest): gộp Master Combat Switch + Player (Speed) + Hazard Scanner + AutoFarm.
+
+local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
+local renderPlayer = require("@routes/DungeonQuest/tabs/Combat/player")
+local renderHazardScanner = require("@routes/DungeonQuest/tabs/Combat/hazardScanner")
+local renderAutoFarm = require("@routes/DungeonQuest/tabs/Combat/autoFarm")
 
 return function(window, tab)
-	require("@routes/DungeonQuest/tabs/Combat/player")(window, tab)
-	require("@routes/DungeonQuest/tabs/Combat/hazardScanner")(window, tab)
-	require("@routes/DungeonQuest/tabs/Combat/autoFarm")(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Combat Master (Cầu Dao Tổng)" })
+
+	local masterToggle = leftSection:Toggle({
+		Name = "Enable Combat Master",
+		Default = combatMaster.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			combatMaster.Toggle(state)
+		end),
+	}, "Toggle_CombatMaster")
+
+	leftSection:Toggle({
+		Name = "Auto Boss Combat (Skip Boss Macro)",
+		Default = combatMaster.IsAutoBossCombatEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			combatMaster.SetAutoBossCombat(state)
+		end),
+	}, "Toggle_AutoBossCombat")
+
+	combatMaster.OnStateChanged(function(state)
+		pcall(function()
+			masterToggle:UpdateState(state)
+		end)
+	end)
+
+	renderPlayer(window, tab)
+	renderHazardScanner(window, tab)
+	renderAutoFarm(window, tab)
 end
+
 
 

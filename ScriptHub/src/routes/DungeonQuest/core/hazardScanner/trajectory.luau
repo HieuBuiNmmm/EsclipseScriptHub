@@ -8,6 +8,7 @@
 local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
+local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
 
 local RunService = services.RunService or game:GetService("RunService")
 local player = services.player
@@ -231,7 +232,16 @@ local function onHeartbeat()
 		else
 			hasAny = true
 			local mainPart = record.mainPart
-			if mainPart and mainPart.Parent then
+			local hazardName = info.Name or (inst and inst.Name)
+			local isChasing = timerVisual and timerVisual.IsChasingProjectile and timerVisual.IsChasingProjectile(hazardName)
+
+			if isChasing then
+				if record.ad and record.ad.Visible then
+					record.ad.Visible = false
+				end
+				record.isMoving = false
+				info.IsTrajectory = false
+			elseif mainPart and mainPart.Parent then
 				local currentPos = mainPart.Position
 				local dt = now - (record.lastClock or now)
 
@@ -325,6 +335,13 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 
 	local inst = hazardInfo.Instance
 	if not inst or not inst.Parent then return end
+
+	local hazardName = hazardInfo.Name or (inst and inst.Name)
+	if timerVisual and timerVisual.IsChasingProjectile and timerVisual.IsChasingProjectile(hazardName) then
+		-- Chasing Projectile: tuyệt đối không sinh ra hành lang Trajectory cam
+		hazardInfo.IsTrajectory = false
+		return
+	end
 
 	local mainPart = nil
 	if inst:IsA("BasePart") then

@@ -4,6 +4,7 @@
 
 --// Imports
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
+local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
 local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
@@ -123,7 +124,7 @@ return function(window, tab)
 	end)
 
 	--// Left Section Controls
-	leftSection:Toggle({
+	local hsToggle = leftSection:Toggle({
 		Name = "Enable Hazard Scanner",
 		Default = hazardScanner.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
@@ -212,13 +213,19 @@ return function(window, tab)
 		end),
 	}, "Slider_HazardSafeSpotBuffer"))
 
-	leftSection:Toggle({
+	local dodgeToggle = leftSection:Toggle({
 		Name = "Enable Auto Dodge (Move + Snap)",
 		Default = hazardScanner.IsAutoDodgeEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetAutoDodgeEnabled(state)
 		end),
 	}, "Toggle_HazardAutoDodgeEnabled")
+
+	combatMaster.OnStateChanged(function(enabled)
+		pcall(function() hsToggle:UpdateState(enabled) end)
+		pcall(function() dodgeToggle:UpdateState(enabled) end)
+		updateMonitor()
+	end)
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Dodge Snap Distance (studs)",

@@ -30,6 +30,7 @@ local FADE_TRANSPARENCY_THRESHOLD = 0.85
 local COLOR_RED = Color3.fromRGB(255, 60, 60)
 local COLOR_BLUE = Color3.fromRGB(0, 180, 255)
 local COLOR_ORANGE = Color3.fromRGB(255, 140, 0)
+local COLOR_PURPLE = Color3.fromRGB(220, 90, 255)
 
 --// Folder chứa danh sách enemy projectiles mẫu trong ReplicatedStorage
 local PROJECTILE_FOLDER = "enemyProjectiles"
@@ -38,8 +39,15 @@ local enemyProjectileNames = {} -- [cleanName] = true
 
 --// Blacklist: Các đối tượng nằm trong enemyProjectiles nhưng thực tế không phải là Projectile
 local PROJECTILE_BLACKLIST = {
-	["secondbosscirclehitbox"] = true,
-	["secondbosscirclehit"] = true,
+	-- Thêm tên đối tượng vào đây nếu cần loại khỏi (P)
+}
+
+--// Danh sách Chasing Projectiles (Đạn truy đuổi / tự đổi hướng theo player)
+--// Thêm hoặc xóa tên trực tiếp tại đây:
+local CHASING_PROJECTILE_NAMES = {
+	["secondbossgreenorb"] = true,
+	["secondbossredorb"] = true,
+	["secondbossyelloworb"] = true,
 }
 
 local function loadEnemyProjectiles()
@@ -60,6 +68,20 @@ local function loadEnemyProjectiles()
 			end
 		end)
 	end
+end
+
+--// Kiểm tra xem tên hazard có phải là Chasing Projectile (đạn truy đuổi) không
+function timerVisual.IsChasingProjectile(name)
+	if not name or type(name) ~= "string" then return false end
+	local clean = name:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	if CHASING_PROJECTILE_NAMES[clean] == true then return true end
+	for n in pairs(CHASING_PROJECTILE_NAMES) do
+		if string.find(clean, n, 1, true) then
+			return true
+		end
+	end
+	return false
 end
 
 --// Kiểm tra xem tên hazard có phải là Projectile mẫu từ ReplicatedStorage/enemyProjectiles không
@@ -137,14 +159,20 @@ local function getMainPart(instance)
 end
 
 --// Phân loại nhãn và màu sắc cho 1 hazard
---// Trả về: tag ("P" | "N"), strokeColor (Color3), tagRgb (string), hasTimer (boolean)
+--// Trả về: tag ("C" | "P" | "N"), strokeColor (Color3), tagRgb (string), hasTimer (boolean)
 local function getHazardClassification(hazardInfo)
 	local isTraj = hazardInfo and hazardInfo.IsTrajectory == true
 	local name = hazardInfo and hazardInfo.Name or "Hazard"
+	local isChasing = timerVisual.IsChasingProjectile(name)
 	local isProj = timerVisual.IsEnemyProjectile(name)
-	local hasTimer = not isTraj -- Chỉ có Dangerzone Đỏ (không phải Trajectory) là có đếm thời gian tồn tại
+	local hasTimer = not isTraj or isChasing
 
-	if isProj then
+	if isChasing then
+		-- (C) Chasing Projectile (đạn truy đuổi dí theo player, không có trajectory, có đếm thời gian)
+		local strokeColor = COLOR_PURPLE
+		local tagRgb = "220,100,255"
+		return "C", strokeColor, tagRgb, true
+	elseif isProj then
 		-- (P) Projectile (có tên trong ReplicatedStorage/enemyProjectiles)
 		local strokeColor = isTraj and COLOR_ORANGE or COLOR_BLUE
 		local tagRgb = isTraj and "255,160,50" or "0,210,255"
@@ -302,6 +330,11 @@ end
 function timerVisual.AttachTimerVisual(hazardInfo)
 	if not enabled or not hazardInfo then return end
 
+	local name = hazardInfo.Name or (hazardInfo.Instance and hazardInfo.Instance.Name) or ""
+	if geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(name) then
+		return
+	end
+
 	if activeTimers[hazardInfo] then
 		timerVisual.DetachTimerVisual(hazardInfo)
 	end
@@ -343,20 +376,46 @@ function timerVisual.AttachTimerVisual(hazardInfo)
 		table.insert(connections, connParent)
 	end
 
+	local targetPart = nil
 	if zones and #zones > 0 then
-		for _, zone in ipairs(zones) do
-			local part = zone.part
-			if isZonePartAlive(part) then
-				local bb, label, stroke = createHazardBillboard(part, initialStrokeColor)
-				hookPart(part, bb, label, stroke, zone)
+		if inst:IsA("Model") then
+			if inst.PrimaryPart and isZonePartAlive(inst.PrimaryPart) then
+				targetPart = inst.PrimaryPart
+			elseif inst:FindFirstChild("HumanoidRootPart") and isZonePartAlive(inst:FindFirstChild("HumanoidRootPart")) then
+				targetPart = inst:FindFirstChild("HumanoidRootPart")
 			end
 		end
-	else
-		local part = getMainPart(inst)
-		if isZonePartAlive(part) then
-			local bb, label, stroke = createHazardBillboard(part, initialStrokeColor)
-			hookPart(part, bb, label, stroke, nil)
+
+		if not targetPart then
+			local center = hazardZones.center
+			local bestDistSq = math.huge
+			for _, zone in ipairs(zones) do
+				local p = zone.part
+				if isZonePartAlive(p) then
+					if center then
+						local dx = p.Position.X - center.X
+						local dz = p.Position.Z - center.Z
+						local d2 = dx * dx + dz * dz
+						if d2 < bestDistSq then
+							bestDistSq = d2
+							targetPart = p
+						end
+					else
+						targetPart = p
+						break
+					end
+				end
+			end
 		end
+	end
+
+	if not targetPart then
+		targetPart = getMainPart(inst)
+	end
+
+	if targetPart and isZonePartAlive(targetPart) then
+		local bb, label, stroke = createHazardBillboard(targetPart, initialStrokeColor)
+		hookPart(targetPart, bb, label, stroke, nil)
 	end
 
 	if #items > 0 then

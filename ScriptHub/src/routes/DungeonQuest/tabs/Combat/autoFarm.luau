@@ -5,6 +5,7 @@
 --// Imports
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local autoFarm = require("@routes/DungeonQuest/core/autoFarm")
+local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
 local contextual = require("@routes/DungeonQuest/core/contextual")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 local shared = require("@routes/DungeonQuest/core/shared")
@@ -20,7 +21,7 @@ return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
 	leftSection:Header({ Name = "Auto Farm" })
 
-	leftSection:Toggle({
+	local afToggle = leftSection:Toggle({
 		Name = "Enable Auto Farm",
 		Default = autoFarm.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
@@ -81,13 +82,18 @@ return function(window, tab)
 
 	leftSection:Header({ Name = "Auto Skill (Smart Buff & Damage)" })
 
-	leftSection:Toggle({
+	local asToggle = leftSection:Toggle({
 		Name = "Enable Auto Skill (Smart Q + E)",
 		Default = autoFarm.IsAutoSkillEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			autoFarm.SetAutoSkillEnabled(state)
 		end),
 	}, "Toggle_AF_AutoSkill")
+
+	combatMaster.OnStateChanged(function(enabled)
+		pcall(function() afToggle:UpdateState(enabled) end)
+		pcall(function() asToggle:UpdateState(enabled) end)
+	end)
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Skill E Cast Range (studs)",

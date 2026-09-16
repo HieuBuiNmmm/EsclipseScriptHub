@@ -12,6 +12,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local coordinator = require("@routes/DungeonQuest/core/coordinator")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
 
 local storage = require("@routes/DungeonQuest/core/pathRecord/storage")
 local recorder = require("@routes/DungeonQuest/core/pathRecord/recorder")
@@ -425,34 +426,63 @@ end
 
 --// ---------- Autonomous behavior ----------
 
---// Vào boss room:
+--// Vào / ra boss room:
 --//   - Mode FULL: đang phát -> giữ/giành độc quyền (đi path đã record qua boss);
 --//     đang chờ resume hoặc autoPlayWanted -> gọi phát lại luôn vào boss room có segment.
---//   - Mode NORMAL: chỉ báo + đứng yên (dùng Hazard Scanner); nếu bật Hazard Scanner
---//     nó chiếm độc quyền -> pathRecord nhường và auto-resume khi sang room thường.
+--//   - Mode NORMAL (Skip Boss):
+--//     * Khi vào boss: tạm dừng path playback + BẬT Master Combat (Auto Farm + Dodge + Skill).
+--//     * Khi diệt boss xong: TẮT Master Combat + tự động resume macro nếu còn waypoint.
 bossConnection = shared.OnBossActiveChanged(function(active)
-	if not active then return end
+	local map = mover.GetActiveMap() or shared.GetCurrentDungeonName()
+	local isFullMode = map and storage.GetMapMode(map) == "full"
 
-	if mover.ResumeWanted() or autoPlayWanted then
-		local map = mover.GetActiveMap() or shared.GetCurrentDungeonName()
-		if map and storage.GetMapMode(map) == "full" then
-			local room = shared.GetCurrentRoomIndex()
-			if room > 0 and storage.HasSegmentOrMacro(map, room) then
+	if active then
+		if isFullMode then
+			if mover.ResumeWanted() or autoPlayWanted then
+				local room = shared.GetCurrentRoomIndex()
+				if room > 0 and storage.HasSegmentOrMacro(map, room) then
+					coordinator.EnableExclusive("PathRecord")
+					mover.Start()
+					fireStatus("boss")
+				end
+			elseif mover.IsPlaying() then
 				coordinator.EnableExclusive("PathRecord")
-				mover.Start()
-				fireStatus("boss")
 			end
+			return
 		end
-		return
-	end
 
-	if mover.IsPlaying() then
-		local map = mover.GetActiveMap() or shared.GetCurrentDungeonName()
-		if map and storage.GetMapMode(map) == "full" then
-			coordinator.EnableExclusive("PathRecord")
-		else
-			notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Hazard Scanner", 3)
+		-- Mode NORMAL (Skip Boss)
+		if mover.IsPlaying() or mover.ResumeWanted() or autoPlayWanted then
+			mover.PauseForExclusive()
+			if combatMaster.IsAutoBossCombatEnabled() then
+				combatMaster.Toggle(true, true)
+				notifier.Notify("Path Record", "Boss Room: Bật Combat Master (Auto Farm + Dodge + Skill)", 3)
+			else
+				notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Hazard Scanner", 3)
+			end
 			fireStatus("boss")
+		end
+	else
+		-- Boss đã bị hạ gục (active == false)
+		if not isFullMode then
+			if combatMaster.IsAutoTriggeredByBoss() then
+				combatMaster.Toggle(false)
+				notifier.Notify("Path Record", "Hạ gục Boss: Tắt Combat Master", 3)
+			end
+
+			if autoPlayWanted or mover.ResumeWanted() then
+				task.delay(0.5, function()
+					if not autoPlayWanted and not mover.ResumeWanted() then return end
+					if mover.IsPlaying() or recorder.IsRecording() then return end
+					local curMap = shared.GetCurrentDungeonName()
+					local curRoom = shared.GetCurrentRoomIndex()
+					if curMap and curRoom > 0 and storage.HasSegmentOrMacro(curMap, curRoom) then
+						coordinator.EnableExclusive("PathRecord")
+						mover.Start()
+						fireStatus("resumed")
+					end
+				end)
+			end
 		end
 	end
 end)
@@ -474,6 +504,11 @@ roomUnsub = shared.OnRoomIndexChanged(function()
 	if not map or #map == 0 then return end
 	if mover.GetActiveMap() and mover.GetActiveMap() ~= map then return end
 	if shared.IsBossActive() and storage.GetMapMode(map) ~= "full" then return end
+
+	if combatMaster.IsAutoTriggeredByBoss() and not shared.IsBossActive() then
+		combatMaster.Toggle(false)
+	end
+
 	if not storage.HasSegmentOrMacro(map, room) then return end
 
 	if not mover.IsPlaying() then
@@ -486,6 +521,9 @@ end)
 --// Đổi map giữa chừng: commit nốt record đang dở + dọn trạng thái playback map cũ.
 --// Khi vào map mới và autoPlayWanted bật: nếu room 1 đã có macro -> tự động khởi chạy.
 mapUnsub = shared.OnDungeonNameChanged(function(name)
+	if combatMaster.IsAutoTriggeredByBoss() then
+		combatMaster.Toggle(false)
+	end
 	if recorder.IsRecording() then
 		recorder.Stop("đổi map")
 	end

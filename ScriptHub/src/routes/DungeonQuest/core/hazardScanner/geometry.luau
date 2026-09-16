@@ -69,15 +69,111 @@ function geometry.SetHazardPadding(value)
 end
 geometry.SetHitboxPadding = geometry.SetHazardPadding
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 --// Danh sách ngoại lệ: các đối tượng (theo tên hoặc từ khóa) bị xem là Box/Mesh
 --// nhưng thực tế nên được vẽ và tính toán thành VÙNG TRÒN (Circle Danger Zone).
 local FORCE_CIRCLE_NAMES = {
 	"firstBossCrissCross",
 	"firstBossBigSpike",
 	"firstBossSeekingSpikes",
-	"secondBossCircleHitbox",
-	"secondBossCircleHit",
 }
+
+local ICE_SPIKES_KEYWORDS = {
+	"smallicespikes",
+	"mediumicespikes",
+	"largeicespikes",
+}
+
+local cachedLargeRadius = nil
+
+local function isIceSpikesChain(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	for _, kw in ipairs(ICE_SPIKES_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsIceSpikesChain(hazardName)
+	return isIceSpikesChain(hazardName)
+end
+
+--// Tính toán hoặc đọc bán kính tối đa từ template largeIceSpikes trong ReplicatedStorage
+local function getLargeIceSpikesMaxRadius()
+	if cachedLargeRadius and cachedLargeRadius > 0 then
+		return cachedLargeRadius
+	end
+
+	local fallbackRadius = 45.0
+	local enemyProjectiles = ReplicatedStorage:FindFirstChild("enemyProjectiles")
+	if not enemyProjectiles then
+		return fallbackRadius
+	end
+
+	local template = enemyProjectiles:FindFirstChild("largeIceSpikes")
+	if not template then
+		for _, child in ipairs(enemyProjectiles:GetChildren()) do
+			local clean = (child.Name or ""):lower():gsub("%s+", "")
+			if clean == "largeicespikes" then
+				template = child
+				break
+			end
+		end
+	end
+
+	if not template then
+		return fallbackRadius
+	end
+
+	local maxRadiusFound = 0
+	local centerPos = Vector3.zero
+	if template:IsA("Model") and template.PrimaryPart then
+		centerPos = template.PrimaryPart.Position
+	elseif template:IsA("BasePart") then
+		centerPos = template.Position
+	end
+
+	local parts = {}
+	if template:IsA("BasePart") then
+		table.insert(parts, template)
+	else
+		for _, desc in ipairs(template:GetDescendants()) do
+			if desc:IsA("BasePart") then
+				table.insert(parts, desc)
+			end
+		end
+	end
+
+	if #parts == 0 then
+		return fallbackRadius
+	end
+
+	for _, p in ipairs(parts) do
+		local pSize = p.Size
+		local halfExtent = math.max(pSize.X, pSize.Z) / 2
+		local dist = (Vector3.new(p.Position.X, 0, p.Position.Z) - Vector3.new(centerPos.X, 0, centerPos.Z)).Magnitude
+		local reach = dist + halfExtent
+		if reach > maxRadiusFound then
+			maxRadiusFound = reach
+		end
+	end
+
+	if maxRadiusFound >= 5.0 then
+		cachedLargeRadius = maxRadiusFound
+		return cachedLargeRadius
+	end
+
+	return fallbackRadius
+end
+
+function geometry.GetLargeIceSpikesMaxRadius()
+	return getLargeIceSpikesMaxRadius()
+end
 
 local function isForceCircle(hazardName)
 	if not hazardName or type(hazardName) ~= "string" then return false end
@@ -172,6 +268,43 @@ local function buildHazardZones(hazardInfo)
 	local isTrajectory = hazardInfo.IsTrajectory == true
 	local pad = isTrajectory and trajectoryMargin or hazardPadding
 	local parts
+
+	if isIceSpikesChain(hazardName) then
+		local maxRadius = getLargeIceSpikesMaxRadius()
+		local mainPart = nil
+		if instance:IsA("BasePart") then
+			mainPart = isPartAlive(instance) and instance or nil
+		elseif instance:IsA("Model") then
+			if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
+				mainPart = instance.PrimaryPart
+			else
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+						mainPart = desc
+						break
+					end
+				end
+			end
+		end
+
+		if not mainPart then return nil end
+
+		local pos = mainPart.Position
+		local singleZone = {
+			radius = maxRadius,
+			cx = pos.X,
+			cz = pos.Z,
+			part = mainPart,
+			isTrajectory = false,
+			isIceSpikes = true,
+		}
+
+		return {
+			zones = { singleZone },
+			center = Vector3.new(pos.X, 0, pos.Z),
+			boundingRadius = maxRadius + pad,
+		}
+	end
 
 	if instance:IsA("BasePart") then
 		if not isPartAlive(instance) then return nil end
