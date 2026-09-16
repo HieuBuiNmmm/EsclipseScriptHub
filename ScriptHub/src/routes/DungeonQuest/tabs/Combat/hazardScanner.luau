@@ -221,6 +221,24 @@ return function(window, tab)
 		end),
 	}, "Toggle_HazardAutoDodgeEnabled")
 
+	leftSection:Header({ Name = "Sampling Pass Tiers" })
+
+	leftSection:Toggle({
+		Name = "Enable Fine Pass (Tier 2 - Max 45s)",
+		Default = hazardScanner.IsFinePassEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetFinePassEnabled(state)
+		end),
+	}, "Toggle_HazardFinePassEnabled")
+
+	leftSection:Toggle({
+		Name = "Enable Emergency Fallback (Tier 3 - Max 55s)",
+		Default = hazardScanner.IsFallbackPassEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetFallbackPassEnabled(state)
+		end),
+	}, "Toggle_HazardFallbackPassEnabled")
+
 	combatMaster.OnStateChanged(function(enabled)
 		pcall(function() hsToggle:UpdateState(enabled) end)
 		pcall(function() dodgeToggle:UpdateState(enabled) end)

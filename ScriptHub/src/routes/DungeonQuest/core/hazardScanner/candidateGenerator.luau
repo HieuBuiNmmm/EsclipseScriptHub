@@ -23,14 +23,16 @@ for i = 1, NUM_FINE do
 	FINE_DIRECTIONS[i] = Vector3.new(math.cos(angle), 0, math.sin(angle))
 end
 
--- Bán kính lấy mẫu thô (Coarse Radii) và đầy đủ (Fine Radii)
+-- Bán kính lấy mẫu thô (Coarse Radii), chi tiết (Fine Radii) và dự phòng khẩn cấp (Fallback Radii)
 local COARSE_RADII = { 1.5, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0 }
-local FINE_RADII = { 1.5, 3.0, 4.5, 6.0, 8.0, 10.5, 13.5, 17.0, 21.0, 26.0, 32.0, 40.0 }
+local FINE_RADII = { 1.5, 3.0, 4.5, 6.0, 8.0, 10.5, 13.5, 17.0, 21.0, 26.0, 32.0, 38.0, 45.0 }
+local FALLBACK_RADII = { 1.5, 3.0, 4.5, 6.0, 8.0, 10.5, 13.5, 17.0, 21.0, 26.0, 32.0, 38.0, 45.0, 50.0, 55.0 }
 
 candidateGenerator.COARSE_DIRECTIONS = COARSE_DIRECTIONS
 candidateGenerator.FINE_DIRECTIONS = FINE_DIRECTIONS
 candidateGenerator.COARSE_RADII = COARSE_RADII
 candidateGenerator.FINE_RADII = FINE_RADII
+candidateGenerator.FALLBACK_RADII = FALLBACK_RADII
 
 --// Chạy 1 pass quét lấy mẫu xung quanh origin2D
 function candidateGenerator.SamplePass(origin2D, directions, radii, safetyBuffer, requireBuffer, isPointSafeFn, evaluatedList, momentumDir)

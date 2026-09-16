@@ -581,9 +581,7 @@ local function walkThrough(segment, room, allowBoss)
 	local faceLockUntil = 0
 	local lastSkillFacing = nil
 
-	--// Tính khoảng cách Pre-Aim đón đầu (Adaptive Pre-Aim Distance) theo tốc độ di chuyển
-	local currentSpeed = (segment.speed and segment.speed > 5) and segment.speed or (humanoid.WalkSpeed or 20)
-	local preAimDist = math.clamp(currentSpeed * preAimLeadTime, PRE_AIM_DIST_MIN, PRE_AIM_DIST_MAX)
+
 
 	--// Gửi lệnh di chuyển: nhạy bén, đáp ứng ngay lập tức kể cả đoạn ngắn.
 	local lastTargetPos = nil
@@ -632,33 +630,6 @@ local function walkThrough(segment, room, allowBoss)
 			prevPos = pos
 		end
 
-		--// Pre-Aim Skill & Dwell: Xoay mặt đón đầu trước khi chạm điểm dừng hoặc xả chiêu (Adaptive Pre-Aim).
-		local nextSkill = walkSkills[skillIdx]
-		local nextDwell = dwells[dwellIdx]
-		local isPreAiming = false
-		local targetAimFacing = nil
-
-		local dwellDist = nextDwell and (nextDwell.arc - progress) or math.huge
-		local skillDist = nextSkill and (nextSkill.arc - progress) or math.huge
-
-		if dwellDist < skillDist and dwellDist > 0 and dwellDist <= preAimDist then
-			if replayFacing then
-				local dFace = (nextDwell.skills and #nextDwell.skills > 0 and nextDwell.skills[1].facing) or nextDwell.facing
-				if dFace then
-					targetAimFacing = dFace
-				end
-			end
-		elseif skillDist <= dwellDist and skillDist > 0 and skillDist <= preAimDist then
-			if replayFacing and nextSkill.facing then
-				targetAimFacing = nextSkill.facing
-			end
-		end
-
-		if targetAimFacing then
-			isPreAiming = true
-			smoothFacing(root, targetAimFacing, 0.35)
-		end
-
 		--// Bắn skill lúc di chuyển: nhân vật cắt qua đúng vị trí đã bấm chuột phải.
 		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast.
 		while skillIdx <= #walkSkills and walkSkills[skillIdx].arc <= progress do
@@ -684,6 +655,58 @@ local function walkThrough(segment, room, allowBoss)
 			lastMoved = os.clock()
 		end
 
+		--// Early Facing: Tìm hướng quay đón đầu của node sự kiện tiếp theo (Skill / Dwell).
+		local nextEventFacing = nil
+		if replayFacing then
+			local bestArc = math.huge
+			local dIdx = dwellIdx
+			while dIdx <= #dwells do
+				local dw = dwells[dIdx]
+				local dFace = (dw.skills and #dw.skills > 0 and dw.skills[1].facing) or dw.facing
+				if dFace then
+					if dw.arc < bestArc then
+						bestArc = dw.arc
+						nextEventFacing = dFace
+					end
+					break
+				end
+				dIdx += 1
+			end
+
+			local sIdx = skillIdx
+			while sIdx <= #walkSkills do
+				local sk = walkSkills[sIdx]
+				if sk.facing then
+					if sk.arc < bestArc then
+						bestArc = sk.arc
+						nextEventFacing = sk.facing
+					end
+					break
+				end
+				sIdx += 1
+			end
+		end
+
+		--// Điều phối hướng quay khi di chuyển:
+		--// 1. Đang trong cửa sổ giữ hướng sau xả chiêu (faceLockUntil) -> giữ chặt hướng chiêu vừa bắn.
+		--// 2. Có sự kiện kế tiếp -> chủ động quay trước (Early Facing) theo hướng của node đó.
+		--// 3. Không còn sự kiện nào trong phòng -> trả lại AutoRotate tự nhiên theo hướng bước đi.
+		if replayFacing then
+			if os.clock() < faceLockUntil then
+				if lastSkillFacing then
+					smoothFacing(root, lastSkillFacing, 0.45)
+				end
+				if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
+			elseif nextEventFacing then
+				smoothFacing(root, nextEventFacing, 0.35)
+				if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
+			else
+				if humanoid.AutoRotate ~= true then humanoid.AutoRotate = true end
+			end
+		else
+			if humanoid.AutoRotate ~= true then humanoid.AutoRotate = true end
+		end
+
 		--// Gần cuối -> đi thẳng nốt tới điểm cuối rồi kết thúc lượt.
 		if progress >= total - ARRIVE_DIST then
 			-- Xả nốt toàn bộ Dwell & Skill còn sót lại ở cuối phòng
@@ -697,6 +720,7 @@ local function walkThrough(segment, room, allowBoss)
 				local sk = walkSkills[skillIdx]
 				if replayFacing and sk.facing then
 					setFacing(root, sk.facing)
+					lastSkillFacing = sk.facing
 					faceLockUntil = os.clock() + skillFaceHold
 				end
 				if replaySkills then
@@ -705,7 +729,6 @@ local function walkThrough(segment, room, allowBoss)
 				skillIdx += 1
 			end
 
-			restoreAutoRotate()
 			pcall(function() humanoid:MoveTo(path[n]) end)
 			local deadline = os.clock() + 5
 			while isPlaying do
@@ -714,7 +737,10 @@ local function walkThrough(segment, room, allowBoss)
 				if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
 				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then restoreAutoRotate(); return false, "dead" end
 				if os.clock() >= deadline then break end
-				if os.clock() >= faceLockUntil and humanoid.AutoRotate ~= true then
+				if os.clock() < faceLockUntil then
+					if lastSkillFacing then smoothFacing(root, lastSkillFacing, 0.45) end
+					if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
+				elseif humanoid.AutoRotate ~= true then
 					humanoid.AutoRotate = true
 				end
 				task.wait(0.08)
@@ -726,12 +752,6 @@ local function walkThrough(segment, room, allowBoss)
 		end
 
 		--// Đích luôn ở phía trước -> humanoid đi liền mạch (Adaptive Lookahead).
-		if os.clock() < faceLockUntil or isPreAiming then
-			--// Đang trong cửa sổ giữ facing hoặc Pre-Aim: khoá AutoRotate để nhân vật giữ góc quay lúc cast chiêu.
-			if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
-		elseif humanoid.AutoRotate ~= true then
-			humanoid.AutoRotate = true
-		end
 		local currentLookahead = getAdaptiveLookahead(progress)
 		local target = pointAt(math.min(progress + currentLookahead, total - 0.01))
 		sendMove(target)

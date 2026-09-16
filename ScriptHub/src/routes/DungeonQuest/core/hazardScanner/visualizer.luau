@@ -48,39 +48,63 @@ end
 
 --// Cập nhật vị trí và góc xoay của một Adornment ghim thẳng đứng xuống mặt đất mỗi frame
 local function updateVisualCFrame(item, targetY)
-	local part = item.part
 	local ad = item.ad
-	if not part or not part.Parent or not ad or not ad.Parent then return end
+	local zone = item.zone
+	local part = item.part
+	local anchorPart = item.anchorPart or part
+	if not ad or not ad.Parent or not anchorPart or not anchorPart.Parent then return end
 
-	local worldPos = part.Position
+	local worldPos = (zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz) or (part and part.Position)
+	if not worldPos then return end
 	local worldTargetPos = Vector3.new(worldPos.X, targetY or worldPos.Y, worldPos.Z)
 
 	if item.isCircle then
 		-- Đĩa tròn: Cố định nằm ngang hoàn toàn trên mặt phẳng World X-Z
 		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
-		ad.CFrame = part.CFrame:ToObjectSpace(desiredWorldCFrame)
+		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	else
 		-- Hộp OBB: Giữ hướng quay Yaw trên sàn, triệt tiêu Pitch/Roll
-		local _, yaw, _ = part.CFrame:ToOrientation()
+		local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
+		local _, yaw, _ = baseCF:ToOrientation()
 		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
-		ad.CFrame = part.CFrame:ToObjectSpace(desiredWorldCFrame)
+		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	end
 end
 
 --// Vòng lặp Heartbeat: Ghim toàn bộ visual thẳng đứng xuống mặt đất liên tục mỗi frame
+--// Hỗ trợ Wave Expiration (Cắt đuôi dạng sóng): Tự động gỡ các vòng tròn đã quá hạn expireTime
 local function onHeartbeat()
 	if not enabled then return end
 	local hasAny = false
 	local targetY = getPlayerGroundY()
+	local now = os.clock()
 
 	for info, record in pairs(activeVisuals) do
-		if not info.Instance or not info.Instance.Parent then
+		local isChain = info.IsSyntheticChain or (info.MaxExpireTime and now < info.MaxExpireTime)
+		local isInstanceAlive = info.Instance and info.Instance.Parent
+
+		if not isInstanceAlive and not isChain then
 			visualizer.DetachZoneVisuals(info)
 		else
-			hasAny = true
 			if record.items then
+				local aliveItems = {}
 				for _, item in ipairs(record.items) do
-					updateVisualCFrame(item, targetY)
+					local zone = item.zone
+					if zone and zone.expireTime and now > zone.expireTime then
+						-- Vòng tròn này đã hết hạn -> hủy adornment để cắt đuôi
+						if item.ad and item.ad.Parent then
+							pcall(function() item.ad:Destroy() end)
+						end
+					elseif item.ad and item.ad.Parent then
+						table.insert(aliveItems, item)
+						updateVisualCFrame(item, targetY)
+					end
+				end
+				record.items = aliveItems
+				if #aliveItems > 0 then
+					hasAny = true
+				else
+					visualizer.DetachZoneVisuals(info)
 				end
 			end
 		end
@@ -170,9 +194,14 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local adornments = {}
 	local connections = {}
 
+	local terrain = workspace.Terrain
+
 	for _, zone in ipairs(hazardZones.zones) do
 		local part = zone.part
-		if part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+		local isChain = zone.isSecondBossChain == true
+		local anchorPart = (isChain and terrain) or part
+
+		if isChain or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
 			local ad = nil
 			local isCircle = false
 
@@ -180,25 +209,25 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				isCircle = true
 				local cyl = Instance.new("CylinderHandleAdornment")
 				cyl.Name = "HazardGroundCircle"
-				cyl.Adornee = part
+				cyl.Adornee = anchorPart
 				cyl.Radius = zone.radius + pad
 				cyl.Height = GROUND_THICKNESS
 				cyl.Color3 = color
 				cyl.Transparency = ZONE_TRANSPARENCY
 				cyl.ZIndex = 2
 				cyl.AlwaysOnTop = true
-				cyl.Parent = part
+				cyl.Parent = anchorPart
 				ad = cyl
 			elseif zone.half and zone.cframe then
 				local box = Instance.new("BoxHandleAdornment")
 				box.Name = "HazardGroundBox"
-				box.Adornee = part
+				box.Adornee = anchorPart
 				box.Size = Vector3.new(zone.half.X * 2, GROUND_THICKNESS, zone.half.Z * 2)
 				box.Color3 = color
 				box.Transparency = ZONE_TRANSPARENCY
 				box.ZIndex = 2
 				box.AlwaysOnTop = true
-				box.Parent = part
+				box.Parent = anchorPart
 				ad = box
 			end
 
@@ -206,6 +235,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				local item = {
 					ad = ad,
 					part = part,
+					anchorPart = anchorPart,
 					isCircle = isCircle,
 					zone = zone,
 				}
@@ -213,13 +243,15 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
-				-- Tự động destroy visual khi part mờ dần
-				local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
-					if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then
-						pcall(function() ad:Destroy() end)
-					end
-				end)
-				table.insert(connections, conn)
+				if not isChain and part then
+					-- Tự động destroy visual khi part mờ dần (chỉ part thông thường)
+					local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
+						if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then
+							pcall(function() ad:Destroy() end)
+						end
+					end)
+					table.insert(connections, conn)
+				end
 			end
 		end
 	end

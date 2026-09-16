@@ -1,0 +1,26 @@
+### 1. Bản chất & Thách thức của chiêu thức này:
+
+  • Boss 2 tung ra một chuỗi cố định 10 vòng tròn sát thương liên hoàn, xuất phát từ chân Boss và spawn lan dần về phía người chơi.
+  • Càng ra xa càng phình to:
+      • Vòng #1 (gần Boss): Đường kính 22 studs (bán kính 11 studs).
+      • Mỗi vòng tiếp theo cách nhau 22 studs và tăng thêm 6 studs đường kính (+3 studs bán kính).
+      • Vòng #10 (cuối cùng): Phình to cực đại với đường kính lên tới 76 studs (bán kính 38 studs), tầm quét tổng cộng lên tới 236 studs.
+  • Nguyên nhân chết nếu né thông thường: Người chơi hoặc bot nếu chạy lùi ra xa sẽ bị "nuốt chửng" vì vòng tròn càng xa càng to khủng khiếp, tốc độ chạy của nhân vật không thể thoát kịp. Còn nếu đợi từng
+  vòng tròn spawn ra mới né thì sẽ bị loạn nhịp do 10 vòng spawn liên tục.
+  ──────
+  ### 2. Cách ta đã giải quyết để né hoàn hảo:
+
+  #### A. Thuật toán "Tiên tri hình nón" ngay từ Vòng #1 (Expanding Cone Corridor)
+
+  • Bắt ngay Vòng #1 làm gốc (isRootCircle): Ngay khoảnh khắc vòng tròn đầu tiên xuất hiện ở t = 0, hệ thống khóa cố định vector hướng forward2D từ Boss về phía Player.
+  • Dựng trước toàn bộ hành lang hình nón: Thay vì đợi từng vòng spawn, ta dựng sẵn một vùng nguy hiểm hình nón toán học dài 236 studs với độ nở expansionRate = 3.0 / 22.0 bao trùm trước vị trí của toàn bộ
+  10 vòng tròn.
+  • Bỏ qua các vòng con #2 → #10: Khi các vòng con xuất hiện, hệ thống đánh dấu bỏ qua để tránh sinh thêm 10 hitbox trùng lặp làm loạn radar và lag game.
+
+  #### B. Chiến lược di chuyển né (Safe Spot):
+
+  • Tuyệt đối không chạy lùi: Cấm thuật toán dẫn nhân vật chạy dọc theo hướng chiêu (+forward2D).
+  • Lách ngang sườn vuông góc 90° (perpRight / perpLeft): Bước vuông góc ra 2 bên mép nón để thoát ra khỏi vùng đỏ với quãng đường ngắn nhất.
+  • Lách chéo tiến về phía trước (-forward2D hướng về Boss): Vì càng gần Boss thì bán kính vòng tròn càng hẹp (chỉ 11 studs thay vì 38 studs), việc lách chéo hướng lên trên giúp rút ngắn cự ly thoát hiểm hơn
+  70% và nhanh chóng quay lại áp sát Boss giữ nhịp đánh.
+  

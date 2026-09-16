@@ -103,6 +103,27 @@ function geometry.IsIceSpikesChain(hazardName)
 	return isIceSpikesChain(hazardName)
 end
 
+local SECOND_BOSS_CHAIN_KEYWORDS = {
+	"secondbosscriclehitbox",
+	"secondbosscirclehitbox",
+}
+
+local function isSecondBossCircleChain(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	for _, kw in ipairs(SECOND_BOSS_CHAIN_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsSecondBossCircleChain(hazardName)
+	return isSecondBossCircleChain(hazardName)
+end
+
 --// Tính toán hoặc đọc bán kính tối đa từ template largeIceSpikes trong ReplicatedStorage
 local function getLargeIceSpikesMaxRadius()
 	if cachedLargeRadius and cachedLargeRadius > 0 then
@@ -225,14 +246,18 @@ end
 --// Kiem tra diem P (X-Z) hoac vong tron ban kinh extraRadius co giao thoa voi 1 zone con khong
 local function isPointInZone(point, zone, extraRadius, isTrajectory)
 	if not zone then return false end
+	if zone.expireTime and os.clock() > zone.expireTime then
+		return false
+	end
+
 	local px, pz = point.X, point.Z
 	extraRadius = extraRadius or 0
 	local pad = (isTrajectory or zone.isTrajectory) and trajectoryMargin or hazardPadding
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
-		local cx = pos and pos.X or zone.cx or 0
-		local cz = pos and pos.Z or zone.cz or 0
+		local cx = zone.cx or (pos and pos.X) or 0
+		local cz = zone.cz or (pos and pos.Z) or 0
 		local dx = px - cx
 		local dz = pz - cz
 		local r = zone.radius + pad + extraRadius
@@ -256,6 +281,31 @@ local function isPointInZone(point, zone, extraRadius, isTrajectory)
 	end
 
 	return false
+end
+
+--// Lấy vector hướng tiến 2D của chiêu thức
+local function getForwardVector2D(instance, mainPart)
+	local cf = (mainPart and mainPart.CFrame) or (instance:IsA("Model") and instance:GetPivot())
+	if cf then
+		local lv = cf.LookVector
+		-- Đảo 180 độ (-LookVector) do model gốc trong game quay ngược trục trước/sau
+		local f2D = Vector3.new(-lv.X, 0, -lv.Z)
+		if f2D.Magnitude > 0.05 then
+			return f2D.Unit
+		end
+	end
+
+	local lp = services.player or game:GetService("Players").LocalPlayer
+	local char = lp and lp.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	if root and mainPart then
+		local toPlayer = Vector3.new(root.Position.X - mainPart.Position.X, 0, root.Position.Z - mainPart.Position.Z)
+		if toPlayer.Magnitude > 0.1 then
+			return toPlayer.Unit
+		end
+	end
+
+	return Vector3.new(0, 0, -1)
 end
 
 --// Chuan bi danh sach zone + bounding radius cua 1 hazard (cache vao info.HazardZones)
@@ -303,6 +353,80 @@ local function buildHazardZones(hazardInfo)
 			zones = { singleZone },
 			center = Vector3.new(pos.X, 0, pos.Z),
 			boundingRadius = maxRadius + pad,
+		}
+	end
+
+	if isSecondBossCircleChain(hazardName) then
+		local mainPart = nil
+		if instance:IsA("BasePart") then
+			mainPart = isPartAlive(instance) and instance or nil
+		elseif instance:IsA("Model") then
+			if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
+				mainPart = instance.PrimaryPart
+			else
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+						mainPart = desc
+						break
+					end
+				end
+			end
+		end
+
+		if not mainPart then return nil end
+
+		local pos = mainPart.Position
+		local forward2D = getForwardVector2D(instance, mainPart)
+		local spawnClock = hazardInfo.SpawnClock or os.clock()
+		local zones = {}
+
+		-- Chuỗi 10 vòng tròn liên hoàn của Boss 2 (secondBossCricleHitbox):
+		-- Vòng 1 (gốc): R = 11 studs, khoảng cách = 0
+		-- Mỗi vòng tiếp theo cách nhau 22 studs, bán kính tăng thêm 3 studs (11, 14, 17, 20, 23, 26, 29, 32, 35, 38)
+		-- Mỗi vòng có expireTime riêng để cắt đuôi dạng sóng (Wave Expiration):
+		-- Vòng 1 tan ở spawnClock + 2.2s, mỗi vòng sau tan chậm hơn 0.4s
+		local NUM_CIRCLES = 10
+		local BASE_RADIUS = 11.0
+		local RADIUS_STEP = 3.0
+		local DIST_STEP = 22.0
+		local BASE_DURATION = 2.2
+		local WAVE_STEP_DURATION = 0.4
+
+		local totalLength = (NUM_CIRCLES - 1) * DIST_STEP
+
+		for i = 1, NUM_CIRCLES do
+			local offsetDist = (i - 1) * DIST_STEP
+			local circleCenter = Vector3.new(pos.X, 0, pos.Z) + forward2D * offsetDist
+			local circleRadius = BASE_RADIUS + (i - 1) * RADIUS_STEP
+			local expireTime = spawnClock + BASE_DURATION + (i - 1) * WAVE_STEP_DURATION
+
+			table.insert(zones, {
+				radius = circleRadius,
+				cx = circleCenter.X,
+				cz = circleCenter.Z,
+				part = mainPart,
+				expireTime = expireTime,
+				isTrajectory = false,
+				isSecondBossChain = true,
+				circleIndex = i,
+			})
+		end
+
+		local centerPos = Vector3.new(pos.X, 0, pos.Z) + forward2D * (totalLength / 2)
+		local maxCircleRadius = BASE_RADIUS + (NUM_CIRCLES - 1) * RADIUS_STEP
+		local boundingRadius = (totalLength / 2) + maxCircleRadius + pad
+		local maxExpireTime = spawnClock + BASE_DURATION + (NUM_CIRCLES - 1) * WAVE_STEP_DURATION
+
+		if hazardInfo then
+			hazardInfo.MaxExpireTime = maxExpireTime
+			hazardInfo.IsSyntheticChain = true
+		end
+
+		return {
+			zones = zones,
+			center = centerPos,
+			boundingRadius = boundingRadius,
+			maxExpireTime = maxExpireTime,
 		}
 	end
 

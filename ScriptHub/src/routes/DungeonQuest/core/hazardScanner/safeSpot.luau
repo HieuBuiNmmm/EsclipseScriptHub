@@ -24,6 +24,8 @@ local safeSpot = {}
 local enabled = true
 local visualEnabled = true
 local showCandidatesVisual = true
+local finePassEnabled = true
+local fallbackPassEnabled = false -- Mặc định tắt (block) theo ý người dùng, có toggle để bật khi cần
 local safetyBuffer = 2.0 -- studs (khoảng cách đẩy xa thêm ra khỏi mép danger zone để đứng an toàn)
 local currentTargetSafeSpot = nil
 local currentThreatInstance = nil
@@ -132,9 +134,9 @@ function safeSpot.FindNearestSafeSpot(origin)
 		and Vector3.new(bossAreaCenter.X, 0, bossAreaCenter.Z)
 		or nil
 
-	-- 1. Broad-Phase Spatial Culling: Lọc nhanh các hazard & trajectory trong phạm vi ảnh hưởng (65 studs)
-	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 65) or nil
-	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 65) or nil
+	-- 1. Broad-Phase Spatial Culling: Lọc nhanh các hazard & trajectory trong phạm vi ảnh hưởng (75 studs)
+	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 75) or nil
+	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 75) or nil
 
 	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc
 	local function isPointSafeScoped(candPoint, extraMargin)
@@ -225,8 +227,8 @@ function safeSpot.FindNearestSafeSpot(origin)
 		preferredDir
 	)
 
-	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết, yêu cầu buffer an toàn, ưu tiên theo hướng né tối ưu)
-	if not found then
+	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết lên tới 45 studs, yêu cầu buffer an toàn)
+	if not found and finePassEnabled then
 		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
 			origin2D,
 			candidateGenerator.FINE_DIRECTIONS,
@@ -239,12 +241,12 @@ function safeSpot.FindNearestSafeSpot(origin)
 		)
 	end
 
-	-- Tier 3: Emergency Fallback Pass (16 hướng, bán kính chi tiết, không bắt buộc buffer, ưu tiên theo hướng né tối ưu)
-	if not found then
+	-- Tier 3: Emergency Fallback Pass (16 hướng, bán kính mở rộng lên tới 55 studs, không bắt buộc buffer)
+	if not found and fallbackPassEnabled then
 		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
 			origin2D,
 			candidateGenerator.FINE_DIRECTIONS,
-			candidateGenerator.FINE_RADII,
+			candidateGenerator.FALLBACK_RADII or candidateGenerator.FINE_RADII,
 			0,
 			false,
 			isPointSafeScoped,
@@ -466,6 +468,22 @@ end
 
 function safeSpot.GetSafetyBuffer()
 	return safetyBuffer
+end
+
+function safeSpot.SetFinePassEnabled(state)
+	finePassEnabled = state and true or false
+end
+
+function safeSpot.IsFinePassEnabled()
+	return finePassEnabled
+end
+
+function safeSpot.SetFallbackPassEnabled(state)
+	fallbackPassEnabled = state and true or false
+end
+
+function safeSpot.IsFallbackPassEnabled()
+	return fallbackPassEnabled
 end
 
 -- Lắng nghe hồi sinh nhân vật để dọn visual cũ

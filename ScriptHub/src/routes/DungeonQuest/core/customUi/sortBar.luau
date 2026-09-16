@@ -1,295 +1,115 @@
 -- Custom In-Game UI: sortBarFrame (DungeonQuest)
 -- Khởi tạo thanh Sort Bar đính kèm vào GUI kho đồ trong game.
-
 local function createSortBarFrame(parent)
-	local sortBarFrame_1 = Instance.new("Frame")
-	sortBarFrame_1.Name = "sortBarFrame"
-	sortBarFrame_1.Size = UDim2.new(0, 40, 0, 275)
-	sortBarFrame_1.AutomaticSize = Enum.AutomaticSize.Y
-	sortBarFrame_1.Position = UDim2.new(1.0289711952209473, 0, 0.3432777225971222, 0)
-	sortBarFrame_1.AnchorPoint = Vector2.new(0, 0)
-	sortBarFrame_1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	sortBarFrame_1.BackgroundTransparency = 1
-	sortBarFrame_1.BorderSizePixel = 0
-	sortBarFrame_1.LayoutOrder = 0
-	sortBarFrame_1.ZIndex = 1
-	sortBarFrame_1.Visible = true
-	sortBarFrame_1.Parent = parent
+	local sortBarFrame = Instance.new("Frame")
+	sortBarFrame.Name = "sortBarFrame"
+	sortBarFrame.Size = UDim2.new(0, 50, 0, 280)
+	sortBarFrame.AutomaticSize = Enum.AutomaticSize.Y
+	sortBarFrame.Position = UDim2.new(1.0289711952209473, 0, 0.3432777225971222, 0)
+	sortBarFrame.AnchorPoint = Vector2.new(0, 0)
+	sortBarFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+	sortBarFrame.BackgroundTransparency = 0.15
+	sortBarFrame.BorderSizePixel = 0
+	sortBarFrame.LayoutOrder = 0
+	sortBarFrame.ZIndex = 1
+	sortBarFrame.Visible = true
+	sortBarFrame.Parent = parent
 
-	local IBmainFilter_2 = Instance.new("ImageButton")
-	IBmainFilter_2.Name = "IBmainFilter"
-	IBmainFilter_2.Size = UDim2.new(0, 40, 0, 40)
-	IBmainFilter_2.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBmainFilter_2.AnchorPoint = Vector2.new(0, 0)
-	IBmainFilter_2.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBmainFilter_2.BackgroundTransparency = 1
-	IBmainFilter_2.BorderSizePixel = 0
-	IBmainFilter_2.LayoutOrder = 1
-	IBmainFilter_2.ZIndex = 1
-	IBmainFilter_2.Visible = true
-	IBmainFilter_2.Image = ""
-	IBmainFilter_2.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBmainFilter_2.ImageTransparency = 0
-	IBmainFilter_2.ScaleType = Enum.ScaleType.Stretch
-	IBmainFilter_2.AutoButtonColor = false
-	IBmainFilter_2.Parent = sortBarFrame_1
+	local UICorner_SortBar = Instance.new("UICorner")
+	UICorner_SortBar.CornerRadius = UDim.new(0, 8)
+	UICorner_SortBar.Parent = sortBarFrame
 
-	local UIListLayout_3 = Instance.new("UIListLayout")
-	UIListLayout_3.Name = "UIListLayout"
-	UIListLayout_3.Padding = UDim.new(0, 0)
-	UIListLayout_3.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_3.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_3.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_3.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_3.Parent = IBmainFilter_2
+	local UIStroke_SortBar = Instance.new("UIStroke")
+	UIStroke_SortBar.Name = "DockStroke"
+	UIStroke_SortBar.Thickness = 1.2
+	UIStroke_SortBar.Color = Color3.fromRGB(65, 72, 90)
+	UIStroke_SortBar.Transparency = 0.3
+	UIStroke_SortBar.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	UIStroke_SortBar.Parent = sortBarFrame
 
-	local imageSort_4 = Instance.new("ImageLabel")
-	imageSort_4.Name = "imageSort"
-	imageSort_4.Size = UDim2.new(0, 38, 0, 38)
-	imageSort_4.Position = UDim2.new(0, 0, 0, 0)
-	imageSort_4.AnchorPoint = Vector2.new(0, 0)
-	imageSort_4.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageSort_4.BackgroundTransparency = 1
-	imageSort_4.BorderSizePixel = 0
-	imageSort_4.LayoutOrder = 0
-	imageSort_4.ZIndex = 1
-	imageSort_4.Visible = true
-	imageSort_4.Image = "rbxassetid://73746166761985"
-	imageSort_4.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageSort_4.ImageTransparency = 0
-	imageSort_4.ScaleType = Enum.ScaleType.Stretch
-	imageSort_4.Parent = IBmainFilter_2
+	local UIPadding_SortBar = Instance.new("UIPadding")
+	UIPadding_SortBar.PaddingTop = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingBottom = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingLeft = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingRight = UDim.new(0, 5)
+	UIPadding_SortBar.Parent = sortBarFrame
 
-	local IBphysic_5 = Instance.new("ImageButton")
-	IBphysic_5.Name = "IBphysic"
-	IBphysic_5.Size = UDim2.new(0, 40, 0, 40)
-	IBphysic_5.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBphysic_5.AnchorPoint = Vector2.new(0, 0)
-	IBphysic_5.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBphysic_5.BackgroundTransparency = 1
-	IBphysic_5.BorderSizePixel = 0
-	IBphysic_5.LayoutOrder = 3
-	IBphysic_5.ZIndex = 1
-	IBphysic_5.Visible = true
-	IBphysic_5.Image = ""
-	IBphysic_5.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBphysic_5.ImageTransparency = 0
-	IBphysic_5.ScaleType = Enum.ScaleType.Stretch
-	IBphysic_5.AutoButtonColor = false
-	IBphysic_5.Parent = sortBarFrame_1
+	local UIScale_SortBar = Instance.new("UIScale")
+	UIScale_SortBar.Name = "SortBarUIScale"
+	UIScale_SortBar.Scale = 1.25
+	UIScale_SortBar.Parent = sortBarFrame
 
-	local UIListLayout_6 = Instance.new("UIListLayout")
-	UIListLayout_6.Name = "UIListLayout"
-	UIListLayout_6.Padding = UDim.new(0, 0)
-	UIListLayout_6.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_6.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_6.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_6.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_6.Parent = IBphysic_5
+	local UIListLayout_SortBar = Instance.new("UIListLayout")
+	UIListLayout_SortBar.Name = "UIListLayout"
+	UIListLayout_SortBar.Padding = UDim.new(0, 6)
+	UIListLayout_SortBar.FillDirection = Enum.FillDirection.Vertical
+	UIListLayout_SortBar.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	UIListLayout_SortBar.VerticalAlignment = Enum.VerticalAlignment.Top
+	UIListLayout_SortBar.SortOrder = Enum.SortOrder.LayoutOrder
+	UIListLayout_SortBar.Parent = sortBarFrame
 
-	local imagePhysic_7 = Instance.new("ImageLabel")
-	imagePhysic_7.Name = "imagePhysic"
-	imagePhysic_7.Size = UDim2.new(0, 38, 0, 38)
-	imagePhysic_7.Position = UDim2.new(0, 0, 0, 0)
-	imagePhysic_7.AnchorPoint = Vector2.new(0, 0)
-	imagePhysic_7.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imagePhysic_7.BackgroundTransparency = 1
-	imagePhysic_7.BorderSizePixel = 0
-	imagePhysic_7.LayoutOrder = 0
-	imagePhysic_7.ZIndex = 1
-	imagePhysic_7.Visible = true
-	imagePhysic_7.Image = "rbxassetid://121406454377051"
-	imagePhysic_7.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imagePhysic_7.ImageTransparency = 0
-	imagePhysic_7.ScaleType = Enum.ScaleType.Stretch
-	imagePhysic_7.Parent = IBphysic_5
+	local function createButton(name: string, layoutOrder: number, iconName: string, iconAsset: string)
+		local btn = Instance.new("ImageButton")
+		btn.Name = name
+		btn.Size = UDim2.new(0, 40, 0, 40)
+		btn.Position = UDim2.new(0, 0, 0, 0)
+		btn.AnchorPoint = Vector2.new(0, 0)
+		btn.BackgroundColor3 = Color3.fromRGB(25, 28, 36)
+		btn.BackgroundTransparency = 0.65
+		btn.BorderSizePixel = 0
+		btn.LayoutOrder = layoutOrder
+		btn.ZIndex = 1
+		btn.Visible = true
+		btn.Image = ""
+		btn.AutoButtonColor = false
+		btn.Parent = sortBarFrame
 
-	local IBhealth_8 = Instance.new("ImageButton")
-	IBhealth_8.Name = "IBhealth"
-	IBhealth_8.Size = UDim2.new(0, 40, 0, 40)
-	IBhealth_8.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBhealth_8.AnchorPoint = Vector2.new(0, 0)
-	IBhealth_8.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBhealth_8.BackgroundTransparency = 1
-	IBhealth_8.BorderSizePixel = 0
-	IBhealth_8.LayoutOrder = 5
-	IBhealth_8.ZIndex = 1
-	IBhealth_8.Visible = true
-	IBhealth_8.Image = ""
-	IBhealth_8.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBhealth_8.ImageTransparency = 0
-	IBhealth_8.ScaleType = Enum.ScaleType.Stretch
-	IBhealth_8.AutoButtonColor = false
-	IBhealth_8.Parent = sortBarFrame_1
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = btn
 
-	local UIListLayout_9 = Instance.new("UIListLayout")
-	UIListLayout_9.Name = "UIListLayout"
-	UIListLayout_9.Padding = UDim.new(0, 0)
-	UIListLayout_9.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_9.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_9.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_9.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_9.Parent = IBhealth_8
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.2
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Transparency = 0.85
+		stroke.Color = Color3.fromRGB(60, 66, 82)
+		stroke.Parent = btn
 
-	local imageHealth_10 = Instance.new("ImageLabel")
-	imageHealth_10.Name = "imageHealth"
-	imageHealth_10.Size = UDim2.new(0, 38, 0, 38)
-	imageHealth_10.Position = UDim2.new(0, 0, 0, 0)
-	imageHealth_10.AnchorPoint = Vector2.new(0, 0)
-	imageHealth_10.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageHealth_10.BackgroundTransparency = 1
-	imageHealth_10.BorderSizePixel = 0
-	imageHealth_10.LayoutOrder = 0
-	imageHealth_10.ZIndex = 1
-	imageHealth_10.Visible = true
-	imageHealth_10.Image = "rbxassetid://88525382655929"
-	imageHealth_10.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageHealth_10.ImageTransparency = 0
-	imageHealth_10.ScaleType = Enum.ScaleType.Stretch
-	imageHealth_10.Parent = IBhealth_8
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 7)
+		pad.PaddingBottom = UDim.new(0, 7)
+		pad.PaddingLeft = UDim.new(0, 7)
+		pad.PaddingRight = UDim.new(0, 7)
+		pad.Parent = btn
 
-	local IBspell_11 = Instance.new("ImageButton")
-	IBspell_11.Name = "IBspell"
-	IBspell_11.Size = UDim2.new(0, 40, 0, 40)
-	IBspell_11.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBspell_11.AnchorPoint = Vector2.new(0, 0)
-	IBspell_11.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBspell_11.BackgroundTransparency = 1
-	IBspell_11.BorderSizePixel = 0
-	IBspell_11.LayoutOrder = 4
-	IBspell_11.ZIndex = 1
-	IBspell_11.Visible = true
-	IBspell_11.Image = ""
-	IBspell_11.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBspell_11.ImageTransparency = 0
-	IBspell_11.ScaleType = Enum.ScaleType.Stretch
-	IBspell_11.AutoButtonColor = false
-	IBspell_11.Parent = sortBarFrame_1
+		local icon = Instance.new("ImageLabel")
+		icon.Name = iconName
+		icon.Size = UDim2.new(1, 0, 1, 0)
+		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		icon.BackgroundTransparency = 1
+		icon.BorderSizePixel = 0
+		icon.LayoutOrder = 0
+		icon.ZIndex = 1
+		icon.Visible = true
+		icon.Image = iconAsset
+		icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		icon.ImageTransparency = 0.35
+		icon.ScaleType = Enum.ScaleType.Fit
+		icon.Parent = btn
 
-	local UIListLayout_12 = Instance.new("UIListLayout")
-	UIListLayout_12.Name = "UIListLayout"
-	UIListLayout_12.Padding = UDim.new(0, 0)
-	UIListLayout_12.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_12.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_12.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_12.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_12.Parent = IBspell_11
+		return btn
+	end
 
-	local imageSpell_13 = Instance.new("ImageLabel")
-	imageSpell_13.Name = "imageSpell"
-	imageSpell_13.Size = UDim2.new(0, 38, 0, 38)
-	imageSpell_13.Position = UDim2.new(0, 0, 0, 0)
-	imageSpell_13.AnchorPoint = Vector2.new(0, 0)
-	imageSpell_13.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageSpell_13.BackgroundTransparency = 1
-	imageSpell_13.BorderSizePixel = 0
-	imageSpell_13.LayoutOrder = 0
-	imageSpell_13.ZIndex = 1
-	imageSpell_13.Visible = true
-	imageSpell_13.Image = "rbxassetid://125012650497883"
-	imageSpell_13.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageSpell_13.ImageTransparency = 0
-	imageSpell_13.ScaleType = Enum.ScaleType.Stretch
-	imageSpell_13.Parent = IBspell_11
+	createButton("IBmainFilter", 1, "imageSort", "rbxassetid://73746166761985")
+	createButton("IBrarity", 2, "imageRarity", "rbxassetid://105634041692696")
+	createButton("IBphysic", 3, "imagePhysic", "rbxassetid://121406454377051")
+	createButton("IBspell", 4, "imageSpell", "rbxassetid://125012650497883")
+	createButton("IBhealth", 5, "imageHealth", "rbxassetid://88525382655929")
+	createButton("IBability", 6, "imageAbility", "rbxassetid://109718589733073")
 
-	local IBrarity_14 = Instance.new("ImageButton")
-	IBrarity_14.Name = "IBrarity"
-	IBrarity_14.Size = UDim2.new(0, 40, 0, 40)
-	IBrarity_14.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBrarity_14.AnchorPoint = Vector2.new(0, 0)
-	IBrarity_14.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBrarity_14.BackgroundTransparency = 1
-	IBrarity_14.BorderSizePixel = 0
-	IBrarity_14.LayoutOrder = 2
-	IBrarity_14.ZIndex = 1
-	IBrarity_14.Visible = true
-	IBrarity_14.Image = ""
-	IBrarity_14.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBrarity_14.ImageTransparency = 0
-	IBrarity_14.ScaleType = Enum.ScaleType.Stretch
-	IBrarity_14.AutoButtonColor = false
-	IBrarity_14.Parent = sortBarFrame_1
-
-	local UIListLayout_15 = Instance.new("UIListLayout")
-	UIListLayout_15.Name = "UIListLayout"
-	UIListLayout_15.Padding = UDim.new(0, 0)
-	UIListLayout_15.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_15.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_15.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_15.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_15.Parent = IBrarity_14
-
-	local imageRarity_16 = Instance.new("ImageLabel")
-	imageRarity_16.Name = "imageRarity"
-	imageRarity_16.Size = UDim2.new(0, 38, 0, 38)
-	imageRarity_16.Position = UDim2.new(0, 0, 0, 0)
-	imageRarity_16.AnchorPoint = Vector2.new(0, 0)
-	imageRarity_16.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageRarity_16.BackgroundTransparency = 1
-	imageRarity_16.BorderSizePixel = 0
-	imageRarity_16.LayoutOrder = 0
-	imageRarity_16.ZIndex = 1
-	imageRarity_16.Visible = true
-	imageRarity_16.Image = "rbxassetid://105634041692696"
-	imageRarity_16.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageRarity_16.ImageTransparency = 0
-	imageRarity_16.ScaleType = Enum.ScaleType.Stretch
-	imageRarity_16.Parent = IBrarity_14
-
-	local IBability_17 = Instance.new("ImageButton")
-	IBability_17.Name = "IBability"
-	IBability_17.Size = UDim2.new(0, 40, 0, 40)
-	IBability_17.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBability_17.AnchorPoint = Vector2.new(0, 0)
-	IBability_17.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBability_17.BackgroundTransparency = 1
-	IBability_17.BorderSizePixel = 0
-	IBability_17.LayoutOrder = 6
-	IBability_17.ZIndex = 1
-	IBability_17.Visible = true
-	IBability_17.Image = ""
-	IBability_17.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBability_17.ImageTransparency = 0
-	IBability_17.ScaleType = Enum.ScaleType.Stretch
-	IBability_17.AutoButtonColor = false
-	IBability_17.Parent = sortBarFrame_1
-
-	local UIListLayout_18 = Instance.new("UIListLayout")
-	UIListLayout_18.Name = "UIListLayout"
-	UIListLayout_18.Padding = UDim.new(0, 0)
-	UIListLayout_18.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_18.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_18.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_18.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_18.Parent = IBability_17
-
-	local imageAbility_19 = Instance.new("ImageLabel")
-	imageAbility_19.Name = "imageAbility"
-	imageAbility_19.Size = UDim2.new(0, 38, 0, 38)
-	imageAbility_19.Position = UDim2.new(0, 0, 0, 0)
-	imageAbility_19.AnchorPoint = Vector2.new(0, 0)
-	imageAbility_19.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageAbility_19.BackgroundTransparency = 1
-	imageAbility_19.BorderSizePixel = 0
-	imageAbility_19.LayoutOrder = 0
-	imageAbility_19.ZIndex = 1
-	imageAbility_19.Visible = true
-	imageAbility_19.Image = "rbxassetid://109718589733073"
-	imageAbility_19.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageAbility_19.ImageTransparency = 0
-	imageAbility_19.ScaleType = Enum.ScaleType.Stretch
-	imageAbility_19.Parent = IBability_17
-
-	local UIListLayout_20 = Instance.new("UIListLayout")
-	UIListLayout_20.Name = "UIListLayout"
-	UIListLayout_20.Padding = UDim.new(0, 6)
-	UIListLayout_20.FillDirection = Enum.FillDirection.Vertical
-	UIListLayout_20.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_20.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_20.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_20.Parent = sortBarFrame_1
-
-	return sortBarFrame_1
+	return sortBarFrame
 end
 
 return createSortBarFrame

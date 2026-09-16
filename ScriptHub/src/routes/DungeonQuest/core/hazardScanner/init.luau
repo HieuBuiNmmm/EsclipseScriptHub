@@ -37,6 +37,7 @@ hazardScanner.GetNearbyHazards = geometry.GetNearbyHazards
 hazardScanner.AddForceCircleName = geometry.AddForceCircleName
 hazardScanner.GetForceCircleNames = geometry.GetForceCircleNames
 hazardScanner.IsForceCircle = geometry.IsForceCircle
+hazardScanner.IsSecondBossCircleChain = geometry.IsSecondBossCircleChain
 
 --// Player 2D Visualizer & Danger Detection
 hazardScanner.IsPlayerInDanger = playerVisual.IsPlayerInDanger
@@ -60,6 +61,10 @@ hazardScanner.SetSafeSpotBuffer = safeSpot.SetSafetyBuffer
 hazardScanner.GetSafeSpotBuffer = safeSpot.GetSafetyBuffer
 hazardScanner.SetShowCandidates = safeSpot.SetShowCandidates
 hazardScanner.IsShowCandidates = safeSpot.IsShowCandidates
+hazardScanner.SetFinePassEnabled = safeSpot.SetFinePassEnabled
+hazardScanner.IsFinePassEnabled = safeSpot.IsFinePassEnabled
+hazardScanner.SetFallbackPassEnabled = safeSpot.SetFallbackPassEnabled
+hazardScanner.IsFallbackPassEnabled = safeSpot.IsFallbackPassEnabled
 hazardScanner.ClearSafeSpot = safeSpot.Clear
 
 --// Auto Dodge Controller (MoveTo + Final Snap)

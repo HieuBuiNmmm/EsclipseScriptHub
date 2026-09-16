@@ -145,7 +145,7 @@ function shared.IsDead()
 end
 
 --// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
---// Hỗ trợ: ForceField của Roblox, Tag/Attribute chuẩn của game, và Bộ đếm bảo vệ sau khi hồi sinh
+--// Chỉ tính dựa trên Bộ đếm thời gian bảo vệ sau khi hồi sinh (Respawn Protection Duration)
 function shared.IsInvulnerable()
 	local char = player and player.Character
 	if not char or not char.Parent then return false, nil end
@@ -154,31 +154,7 @@ function shared.IsInvulnerable()
 		return false, nil -- Khi đã chết thì không tính là bất tử
 	end
 
-	-- 1. Kiểm tra ForceField nguyên bản của Roblox
-	local ff = char:FindFirstChildOfClass("ForceField")
-	if ff and ff.Visible ~= false then
-		return true, "ForceField"
-	end
-
-	-- 2. Kiểm tra Attribute hoặc Tag của game (chỉ nhận khi có giá trị true chính xác)
-	local attrInvuln = char:GetAttribute("Invulnerable")
-	local attrImmune = char:GetAttribute("Immune")
-	local attrRespawn = char:GetAttribute("Respawning")
-	if attrInvuln == true or attrImmune == true or attrRespawn == true then
-		return true, "Attribute"
-	end
-
-	-- 3. Kiểm tra BoolValue của game (chỉ nhận khi đúng là BoolValue và Value == true)
-	local valInvuln = char:FindFirstChild("Invulnerable")
-	local valImmune = char:FindFirstChild("Immune")
-	local valRespawn = char:FindFirstChild("Respawning")
-	if (valInvuln and valInvuln:IsA("BoolValue") and valInvuln.Value == true)
-		or (valImmune and valImmune:IsA("BoolValue") and valImmune.Value == true)
-		or (valRespawn and valRespawn:IsA("BoolValue") and valRespawn.Value == true) then
-		return true, "Value"
-	end
-
-	-- 4. Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
+	-- Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
 	local remaining = shared.GetRespawnProtectionRemaining()
 	if remaining > 0 then
 		return true, ("Respawn Shield (%.1fs)"):format(remaining)

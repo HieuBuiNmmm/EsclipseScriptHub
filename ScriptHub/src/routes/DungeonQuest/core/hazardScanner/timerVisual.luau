@@ -331,7 +331,8 @@ function timerVisual.AttachTimerVisual(hazardInfo)
 	if not enabled or not hazardInfo then return end
 
 	local name = hazardInfo.Name or (hazardInfo.Instance and hazardInfo.Instance.Name) or ""
-	if geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(name) then
+	if (geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(name))
+		or (geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(name)) then
 		return
 	end
 

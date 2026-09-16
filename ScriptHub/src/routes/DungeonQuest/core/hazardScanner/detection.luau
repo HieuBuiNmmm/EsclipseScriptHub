@@ -36,6 +36,7 @@ local hazardChangedCallbacks = {}
 local lastHazardInfo = nil
 local connections = {}
 local roomCleanup = nil
+local lastIceSpikesChainTime = 0
 
 --// Danh sách folder template trong ReplicatedStorage: các đối tượng clone từ đây
 --// xuất hiện trong Workspace sẽ KHÔNG được vẽ box.
@@ -507,6 +508,16 @@ registerHazard = function(instance)
 	end
 
 	local isIceSpikes = geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(instance.Name)
+	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
+	if isSecondBossChain then
+		local now = os.clock()
+		if now - lastIceSpikesChainTime < 6.0 then
+			logReject(instance, "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)")
+			return false
+		end
+		lastIceSpikesChainTime = now
+	end
+
 	local distance = computeDistance(instance)
 
 	local info = {
@@ -521,7 +532,7 @@ registerHazard = function(instance)
 
 	local fadeConnections = {}
 	local boxes = {}
-	if selectionBoxesEnabled and not isIceSpikes then
+	if selectionBoxesEnabled and not isIceSpikes and not isSecondBossChain then
 		boxes = attachSelectionBoxes(parts, fadeConnections)
 	end
 	info.Boxes = boxes
@@ -564,6 +575,17 @@ local function unregisterHazard(instance, reason)
 		return
 	end
 
+	-- Nếu là Synthetic Chain (như secondBossCricleHitbox), không hủy ngay khi Vòng 1 biến mất khỏi Workspace,
+	-- mà duy trì cho đến khi toàn bộ 10 vòng hoàn tất chu kỳ sóng (MaxExpireTime)
+	if info.MaxExpireTime and os.clock() < info.MaxExpireTime and reason == "Destroyed" then
+		task.delay(info.MaxExpireTime - os.clock() + 0.1, function()
+			if activeHazards[instance] == info and os.clock() >= info.MaxExpireTime then
+				unregisterHazard(instance, "Wave Completed")
+			end
+		end)
+		return
+	end
+
 	printDeepInspect(instance, "DESPAWN", reason, info)
 
 	visualizer.DetachZoneVisuals(info)
@@ -596,6 +618,7 @@ end
 
 --// Xoa toan bo hazard hien tai
 function detection.ClearAllHazards(reason)
+	lastIceSpikesChainTime = 0
 	visualizer.ClearAll()
 	trajectory.ClearAll()
 	timerVisual.ClearAll()

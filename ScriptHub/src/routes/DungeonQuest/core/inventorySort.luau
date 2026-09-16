@@ -26,6 +26,7 @@ local rarityEnabled: boolean = false
 local selectedStatFilter: StatFilterType? = nil
 local abilityEnabled: boolean = false
 local autoSortEnabled: boolean = true
+local SORT_BAR_SCALE: number = 1.25
 
 --// Persistence (Lưu/Tải trạng thái filter của người chơi vào file json)
 local saveDebounceThread: thread? = nil
@@ -95,6 +96,8 @@ local function loadSettings()
 	if abilityEnabled then
 		rarityEnabled = false
 		selectedStatFilter = nil
+	elseif selectedStatFilter ~= nil then
+		rarityEnabled = false
 	end
 end
 
@@ -121,6 +124,18 @@ local function saveSettings()
 			writefile(filePath, HttpService:JSONEncode(payload))
 		end)
 	end)
+end
+
+--// Áp dụng UIScale lên sortBarFrame (cố định tỉ lệ 1.25x to hơn 25%)
+local function applySortBarScale(sortBar: GuiObject?)
+	if not sortBar then return end
+	local uiScale = sortBar:FindFirstChildOfClass("UIScale")
+	if not uiScale then
+		uiScale = Instance.new("UIScale")
+		uiScale.Name = "SortBarUIScale"
+		uiScale.Parent = sortBar
+	end
+	uiScale.Scale = SORT_BAR_SCALE
 end
 
 --// Cache dữ liệu inventory
@@ -156,50 +171,90 @@ local MAIN_FILTER_ICONS: { [MainFilterMode]: string } = {
 	Ascending = "rbxassetid://140381370510884", -- Từ thấp đến cao
 }
 
---// Thiết lập giao diện tương tác (Classic Dim -> Bold Hover & Active)
+--// Thiết lập giao diện tương tác (Sắc nét, viền rõ ràng, màu sắc Thematic sống động)
 local STYLE = {
 	TweenDuration = 0.16,
 	EasingStyle = Enum.EasingStyle.Quad,
 	EasingDirection = Enum.EasingDirection.Out,
 
-	-- State ban đầu (chưa được chọn): Tất cả button child đều mờ mờ
+	-- State ban đầu (chưa được chọn): Nút có nền khối rõ ràng, viền định hình, icon sáng 100%
 	Inactive = {
-		BackgroundTransparency = 0.7,
-		BackgroundColor3 = Color3.fromRGB(24, 26, 32),
-		ElementTransparency = 0.55,
-		ElementColor3 = Color3.fromRGB(180, 185, 195),
-		StrokeTransparency = 0.85,
-		StrokeColor3 = Color3.fromRGB(60, 65, 75),
-	},
-
-	-- Khi hover: Tăng độ đậm của background và color font/icon cho rõ
-	Hovered = {
 		BackgroundTransparency = 0.2,
-		BackgroundColor3 = Color3.fromRGB(42, 48, 62),
+		BackgroundColor3 = Color3.fromRGB(28, 31, 40),
 		ElementTransparency = 0.0,
-		ElementColor3 = Color3.fromRGB(255, 255, 255),
-		StrokeTransparency = 0.35,
-		StrokeColor3 = Color3.fromRGB(150, 160, 180),
+		ElementColor3 = Color3.fromRGB(235, 240, 252),
+		StrokeTransparency = 0.4,
+		StrokeColor3 = Color3.fromRGB(65, 72, 90),
 	},
 
-	-- Active: Tiêu chí đang được chọn áp dụng
-	Active = {
+	-- Khi hover: Tăng sáng nền và viền bắt mắt
+	Hovered = {
 		BackgroundTransparency = 0.1,
-		BackgroundColor3 = Color3.fromRGB(35, 60, 95),
+		BackgroundColor3 = Color3.fromRGB(45, 52, 68),
 		ElementTransparency = 0.0,
 		ElementColor3 = Color3.fromRGB(255, 255, 255),
 		StrokeTransparency = 0.15,
-		StrokeColor3 = Color3.fromRGB(100, 160, 240),
+		StrokeColor3 = Color3.fromRGB(150, 165, 195),
 	},
 
-	-- Active + Hovered: Đang chọn và đang rê chuột vào
-	ActiveHovered = {
-		BackgroundTransparency = 0.0,
-		BackgroundColor3 = Color3.fromRGB(45, 75, 120),
+	-- Active mặc định (fallback nếu không có theme riêng)
+	Active = {
+		BackgroundTransparency = 0.1,
+		BackgroundColor3 = Color3.fromRGB(30, 55, 85),
 		ElementTransparency = 0.0,
 		ElementColor3 = Color3.fromRGB(255, 255, 255),
 		StrokeTransparency = 0.0,
-		StrokeColor3 = Color3.fromRGB(130, 190, 255),
+		StrokeColor3 = Color3.fromRGB(80, 180, 255),
+	},
+
+	-- Active + Hovered mặc định
+	ActiveHovered = {
+		BackgroundTransparency = 0.05,
+		BackgroundColor3 = Color3.fromRGB(40, 75, 115),
+		ElementTransparency = 0.0,
+		ElementColor3 = Color3.fromRGB(255, 255, 255),
+		StrokeTransparency = 0.0,
+		StrokeColor3 = Color3.fromRGB(120, 210, 255),
+	},
+}
+
+--// Bảng màu Thematic riêng biệt cho từng nút khi Active (Phong cách Thematic Accent)
+local THEMATIC_COLORS = {
+	IBmainFilter = {
+		ActiveBg = Color3.fromRGB(28, 55, 90),
+		ActiveStroke = Color3.fromRGB(80, 180, 255),
+		ActiveHoverBg = Color3.fromRGB(38, 75, 120),
+		ActiveHoverStroke = Color3.fromRGB(120, 210, 255),
+	},
+	IBphysic = {
+		ActiveBg = Color3.fromRGB(75, 30, 22),
+		ActiveStroke = Color3.fromRGB(245, 95, 55),
+		ActiveHoverBg = Color3.fromRGB(105, 42, 30),
+		ActiveHoverStroke = Color3.fromRGB(255, 130, 85),
+	},
+	IBspell = {
+		ActiveBg = Color3.fromRGB(25, 45, 95),
+		ActiveStroke = Color3.fromRGB(65, 150, 255),
+		ActiveHoverBg = Color3.fromRGB(38, 65, 130),
+		ActiveHoverStroke = Color3.fromRGB(105, 180, 255),
+	},
+	IBhealth = {
+		ActiveBg = Color3.fromRGB(20, 60, 32),
+		ActiveStroke = Color3.fromRGB(55, 210, 115),
+		ActiveHoverBg = Color3.fromRGB(28, 85, 45),
+		ActiveHoverStroke = Color3.fromRGB(90, 235, 145),
+	},
+	IBrarity = {
+		ActiveBg = Color3.fromRGB(75, 58, 16),
+		ActiveStroke = Color3.fromRGB(255, 205, 50),
+		ActiveHoverBg = Color3.fromRGB(105, 82, 22),
+		ActiveHoverStroke = Color3.fromRGB(255, 225, 95),
+	},
+	IBability = {
+		ActiveBg = Color3.fromRGB(60, 25, 85),
+		ActiveStroke = Color3.fromRGB(195, 90, 255),
+		ActiveHoverBg = Color3.fromRGB(85, 35, 120),
+		ActiveHoverStroke = Color3.fromRGB(215, 125, 255),
 	},
 }
 
@@ -425,6 +480,19 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 			return tierA < tierB
 		end
 
+		-- Ưu tiên ẩn: Level Req cho trang bị phía sau Ability
+		if a.levelReq ~= b.levelReq then
+			if isDesc then
+				return a.levelReq > b.levelReq
+			else
+				return a.levelReq < b.levelReq
+			end
+		end
+
+		if a.name ~= b.name then
+			return a.name < b.name
+		end
+
 		return a.originalOrder < b.originalOrder
 	end
 
@@ -463,9 +531,8 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 		return a.originalOrder < b.originalOrder
 	end
 
-	-- 5. Cùng nhóm Weapon hoặc cùng nhóm Armor: Sắp xếp theo bộ lọc đã chọn
-	-- A. Nếu chọn 1 Stat cụ thể (Physic / Spell / Health):
-	-- ƯU TIÊN CHỈ SỐ ĐÓ LÊN HÀNG ĐẦU (món có chỉ số cao hơn luôn đứng trước)
+	-- 5. Cùng nhóm Weapon hoặc cùng nhóm Armor: Sắp xếp theo chế độ độc lập được chọn
+	-- CHẾ ĐỘ 1: Chọn 1 Stat cụ thể (Physic / Spell / Health):
 	if selectedStatFilter ~= nil then
 		local statA = 0
 		local statB = 0
@@ -487,9 +554,11 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 				return statA < statB
 			end
 		end
+	end
 
-		-- Khi bằng chỉ số Stat: Nếu bật Rarity thì Rarity làm tiêu chí phân định cao cấp
-		if rarityEnabled and a.rarityScore ~= b.rarityScore then
+	-- CHẾ ĐỘ 2: Chọn Độ hiếm (Rarity):
+	if rarityEnabled then
+		if a.rarityScore ~= b.rarityScore then
 			if isDesc then
 				return a.rarityScore > b.rarityScore
 			else
@@ -498,18 +567,8 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 		end
 	end
 
-	-- B. Nếu KHÔNG chọn stat cụ thể (chỉ chọn MainFilter hoặc MainFilter + Rarity):
-	if selectedStatFilter == nil then
-		-- Nếu bật Rarity: Phân tầng theo Độ hiếm trước (Mythic -> Legendary -> Epic...)
-		if rarityEnabled and a.rarityScore ~= b.rarityScore then
-			if isDesc then
-				return a.rarityScore > b.rarityScore
-			else
-				return a.rarityScore < b.rarityScore
-			end
-		end
-
-		-- Trong cùng độ hiếm (hoặc khi không bật Rarity): Sắp xếp theo Power
+	-- CHẾ ĐỘ 3: Không chọn Stat và không chọn Rarity -> Sắp xếp thuần túy theo Power:
+	if selectedStatFilter == nil and not rarityEnabled then
 		local powerA = math.max(a.physical, a.spell, a.health)
 		local powerB = math.max(b.physical, b.spell, b.health)
 		if powerA ~= powerB then
@@ -521,18 +580,41 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 		end
 	end
 
-	-- 6. Tie-breakers giải quyết hòa điểm:
-	-- Tên (A-Z) -> Rarity phụ -> Chest trước Helmet -> LevelReq -> Max Stat -> OriginalOrder
-	if a.name ~= b.name then
-		return a.name < b.name
+	-- 6. ƯU TIÊN ẨN TOÀN DIỆN CHO TẤT CẢ TRANG BỊ: Level Req (Cấp độ yêu cầu của đồ)
+	if a.levelReq ~= b.levelReq then
+		if isDesc then
+			return a.levelReq > b.levelReq
+		else
+			return a.levelReq < b.levelReq
+		end
 	end
 
-	if not rarityEnabled and a.rarityScore ~= b.rarityScore then
-		if isDesc then
-			return a.rarityScore > b.rarityScore
-		else
-			return a.rarityScore < b.rarityScore
+	-- 7. Tie-breakers phụ sau Level Req:
+	-- Trong chế độ Rarity: xét tiếp Power khi cùng Level Req
+	if rarityEnabled then
+		local powerA = math.max(a.physical, a.spell, a.health)
+		local powerB = math.max(b.physical, b.spell, b.health)
+		if powerA ~= powerB then
+			if isDesc then
+				return powerA > powerB
+			else
+				return powerA < powerB
+			end
 		end
+	end
+
+	-- Trong chế độ Stat: xét tiếp Max Stat tổng quát khi cùng Level Req
+	if selectedStatFilter ~= nil then
+		local maxStatA = math.max(a.physical, a.spell, a.health)
+		local maxStatB = math.max(b.physical, b.spell, b.health)
+		if maxStatA ~= maxStatB then
+			return maxStatA > maxStatB
+		end
+	end
+
+	-- Tên A-Z (Gom các món trùng tên nằm cạnh nhau)
+	if a.name ~= b.name then
+		return a.name < b.name
 	end
 
 	-- Nếu cùng nhóm Armor: ưu tiên chest trước helmet
@@ -542,16 +624,6 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 		if isChestA ~= isChestB then
 			return isChestA
 		end
-	end
-
-	if a.levelReq ~= b.levelReq then
-		return a.levelReq > b.levelReq
-	end
-
-	local maxStatA = math.max(a.physical, a.spell, a.health)
-	local maxStatB = math.max(b.physical, b.spell, b.health)
-	if maxStatA ~= maxStatB then
-		return maxStatA > maxStatB
 	end
 
 	return a.originalOrder < b.originalOrder
@@ -647,17 +719,38 @@ end
 --// Hiệu ứng tương tác giao diện (Visual Styling Controller)
 local function applyButtonVisual(button: GuiObject, stateName: string, animate: boolean)
 	local style = STYLE[stateName] or STYLE.Inactive
+	local theme = THEMATIC_COLORS[button.Name]
+
+	local bgTransparency = style.BackgroundTransparency
+	local bgColor = style.BackgroundColor3
+	local elemTransparency = style.ElementTransparency
+	local elemColor = style.ElementColor3
+	local strokeTransparency = style.StrokeTransparency
+	local strokeColor = style.StrokeColor3
+
+	if stateName == "Active" and theme then
+		bgTransparency = 0.12
+		bgColor = theme.ActiveBg
+		strokeTransparency = 0.0
+		strokeColor = theme.ActiveStroke
+	elseif stateName == "ActiveHovered" and theme then
+		bgTransparency = 0.05
+		bgColor = theme.ActiveHoverBg
+		strokeTransparency = 0.0
+		strokeColor = theme.ActiveHoverStroke
+	end
+
 	local tweenInfo = TweenInfo.new(STYLE.TweenDuration, STYLE.EasingStyle, STYLE.EasingDirection)
 
 	pcall(function()
 		if animate then
 			TweenService:Create(button, tweenInfo, {
-				BackgroundTransparency = style.BackgroundTransparency,
-				BackgroundColor3 = style.BackgroundColor3,
+				BackgroundTransparency = bgTransparency,
+				BackgroundColor3 = bgColor,
 			}):Play()
 		else
-			button.BackgroundTransparency = style.BackgroundTransparency
-			button.BackgroundColor3 = style.BackgroundColor3
+			button.BackgroundTransparency = bgTransparency
+			button.BackgroundColor3 = bgColor
 		end
 	end)
 
@@ -666,32 +759,32 @@ local function applyButtonVisual(button: GuiObject, stateName: string, animate: 
 			if child:IsA("ImageLabel") or child:IsA("ImageButton") then
 				if animate then
 					TweenService:Create(child, tweenInfo, {
-						ImageTransparency = style.ElementTransparency,
-						ImageColor3 = style.ElementColor3,
+						ImageTransparency = elemTransparency,
+						ImageColor3 = elemColor,
 					}):Play()
 				else
-					child.ImageTransparency = style.ElementTransparency
-					child.ImageColor3 = style.ElementColor3
+					child.ImageTransparency = elemTransparency
+					child.ImageColor3 = elemColor
 				end
 			elseif child:IsA("TextLabel") or child:IsA("TextButton") then
 				if animate then
 					TweenService:Create(child, tweenInfo, {
-						TextTransparency = style.ElementTransparency,
-						TextColor3 = style.ElementColor3,
+						TextTransparency = elemTransparency,
+						TextColor3 = elemColor,
 					}):Play()
 				else
-					child.TextTransparency = style.ElementTransparency
-					child.TextColor3 = style.ElementColor3
+					child.TextTransparency = elemTransparency
+					child.TextColor3 = elemColor
 				end
 			elseif child:IsA("UIStroke") then
 				if animate then
 					TweenService:Create(child, tweenInfo, {
-						Transparency = style.StrokeTransparency,
-						Color = style.StrokeColor3,
+						Transparency = strokeTransparency,
+						Color = strokeColor,
 					}):Play()
 				else
-					child.Transparency = style.StrokeTransparency
-					child.Color = style.StrokeColor3
+					child.Transparency = strokeTransparency
+					child.Color = strokeColor
 				end
 			end
 		end)
@@ -804,6 +897,38 @@ local function hookSortBarButton(button: GuiObject)
 		corner.Parent = button
 	end
 
+	-- Viền nổi bật cho nút nếu chưa có
+	if not button:FindFirstChildOfClass("UIStroke") then
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.2
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Transparency = STYLE.Inactive.StrokeTransparency
+		stroke.Color = STYLE.Inactive.StrokeColor3
+		stroke.Parent = button
+	end
+
+	-- Padding bên trong nút để icon không bị tràn sát viền
+	if not button:FindFirstChildOfClass("UIPadding") then
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 7)
+		pad.PaddingBottom = UDim.new(0, 7)
+		pad.PaddingLeft = UDim.new(0, 7)
+		pad.PaddingRight = UDim.new(0, 7)
+		pad.Parent = button
+	end
+
+	-- Căn chỉnh lại icon con bên trong nếu có
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("ImageLabel") then
+			child.AnchorPoint = Vector2.new(0.5, 0.5)
+			child.Position = UDim2.new(0.5, 0, 0.5, 0)
+			child.Size = UDim2.new(1, 0, 1, 0)
+			child.ScaleType = Enum.ScaleType.Fit
+		elseif child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+
 	buttonHoverState[button] = false
 
 	-- Hover vào: Tăng độ đậm background và font/icon rõ ràng
@@ -842,12 +967,16 @@ local function hookSortBarButton(button: GuiObject)
 
 			elseif button.Name == "IBrarity" then
 				rarityEnabled = not rarityEnabled
-				if abilityEnabled then abilityEnabled = false end
-				if rarityEnabled and mainFilterMode == "None" then
-					mainFilterMode = "Descending"
+				if rarityEnabled then
+					selectedStatFilter = nil
+					abilityEnabled = false
+					if mainFilterMode == "None" then
+						mainFilterMode = "Descending"
+					end
+					notifier.Notify("Filter", "Chế độ: Độ hiếm (Rarity)", 1.5)
+				else
+					notifier.Notify("Filter", "Tắt lọc Độ hiếm", 1.5)
 				end
-				local status = rarityEnabled and "Bật lọc Độ hiếm (Rarity)" or "Tắt lọc Độ hiếm"
-				notifier.Notify("Filter", status, 1.5)
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
 				if autoSortEnabled then inventorySort.RequestSort(0.05) end
@@ -858,13 +987,13 @@ local function hookSortBarButton(button: GuiObject)
 					or (button.Name == "IBspell" and "Spell Power")
 					or "Health"
 
-				if abilityEnabled then abilityEnabled = false end
-
 				if selectedStatFilter == statName then
 					selectedStatFilter = nil
 					notifier.Notify("Filter", "Bỏ chọn " .. statName, 1.5)
 				else
 					selectedStatFilter = statName
+					rarityEnabled = false
+					abilityEnabled = false
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
@@ -905,6 +1034,39 @@ function hookSortBar(sortBar: GuiObject)
 	if hookedSortBars[sortBar] then return end
 	hookedSortBars[sortBar] = true
 
+	-- Thiết lập khung Dock Panel chuyên nghiệp cho sortBarFrame
+	pcall(function()
+		sortBar.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+		sortBar.BackgroundTransparency = 0.15
+		sortBar.BorderSizePixel = 0
+
+		if not sortBar:FindFirstChildOfClass("UICorner") then
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 8)
+			corner.Parent = sortBar
+		end
+
+		local dockStroke = sortBar:FindFirstChild("DockStroke") or sortBar:FindFirstChildOfClass("UIStroke")
+		if not dockStroke then
+			dockStroke = Instance.new("UIStroke")
+			dockStroke.Name = "DockStroke"
+			dockStroke.Thickness = 1.2
+			dockStroke.Color = Color3.fromRGB(65, 72, 90)
+			dockStroke.Transparency = 0.3
+			dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			dockStroke.Parent = sortBar
+		end
+
+		if not sortBar:FindFirstChildOfClass("UIPadding") then
+			local pad = Instance.new("UIPadding")
+			pad.PaddingTop = UDim.new(0, 5)
+			pad.PaddingBottom = UDim.new(0, 5)
+			pad.PaddingLeft = UDim.new(0, 5)
+			pad.PaddingRight = UDim.new(0, 5)
+			pad.Parent = sortBar
+		end
+	end)
+
 	-- Đảm bảo padding cách đều giữa các nút bấm
 	local listLayout = sortBar:FindFirstChildOfClass("UIListLayout")
 	if listLayout then
@@ -933,6 +1095,7 @@ function hookSortBar(sortBar: GuiObject)
 	end)
 	table.insert(activeConnections, childConn)
 
+	applySortBarScale(sortBar)
 	refreshAllSortBarButtons(false)
 end
 
@@ -977,6 +1140,11 @@ local function getSortBarFrame(): GuiObject?
 	return ensureSortBar()
 end
 
+--// Public APIs điều khiển Scale
+function inventorySort.GetScale(): number
+	return SORT_BAR_SCALE
+end
+
 --// Public APIs điều khiển trạng thái
 function inventorySort.GetMainFilterMode(): MainFilterMode
 	return mainFilterMode
@@ -999,7 +1167,11 @@ function inventorySort.SetRarityEnabled(state: boolean)
 	local newState = state and true or false
 	if rarityEnabled == newState then return end
 	rarityEnabled = newState
-	if rarityEnabled and abilityEnabled then abilityEnabled = false end
+	if rarityEnabled then
+		selectedStatFilter = nil
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	end
 	refreshAllSortBarButtons(true)
 	notifyStateChanged()
 	if autoSortEnabled then inventorySort.RequestSort(0.05) end
@@ -1013,7 +1185,11 @@ end
 function inventorySort.SetStatFilter(stat: StatFilterType?)
 	if selectedStatFilter == stat then return end
 	selectedStatFilter = stat
-	if selectedStatFilter and abilityEnabled then abilityEnabled = false end
+	if selectedStatFilter then
+		rarityEnabled = false
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	end
 	refreshAllSortBarButtons(true)
 	notifyStateChanged()
 	if autoSortEnabled then inventorySort.RequestSort(0.05) end
@@ -1031,6 +1207,7 @@ function inventorySort.SetAbilityEnabled(state: boolean)
 	if abilityEnabled then
 		rarityEnabled = false
 		selectedStatFilter = nil
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
 	end
 	refreshAllSortBarButtons(true)
 	notifyStateChanged()
@@ -1056,6 +1233,7 @@ function inventorySort.SetSortCriteria(criteria: string?)
 			return
 		end
 		rarityEnabled = true
+		selectedStatFilter = nil
 		abilityEnabled = false
 		if mainFilterMode == "None" then mainFilterMode = "Descending" end
 	elseif criteria == "Ability" then
@@ -1067,6 +1245,7 @@ function inventorySort.SetSortCriteria(criteria: string?)
 	elseif criteria == "Physical Damage" or criteria == "Spell Power" or criteria == "Health" then
 		if selectedStatFilter == criteria and not abilityEnabled and not rarityEnabled then return end
 		selectedStatFilter = criteria :: StatFilterType
+		rarityEnabled = false
 		abilityEnabled = false
 		if mainFilterMode == "None" then mainFilterMode = "Descending" end
 	elseif criteria == "Power" then
@@ -1078,7 +1257,7 @@ function inventorySort.SetSortCriteria(criteria: string?)
 		selectedStatFilter = nil
 		abilityEnabled = false
 	else
-		-- Tiêu chí lạ hoặc chuỗi kết hợp (vd: "Rarity + Physical Damage") -> không xử lý từ dropdown đơn
+		-- Tiêu chí lạ hoặc chuỗi kết hợp -> không xử lý từ dropdown đơn
 		return
 	end
 
@@ -1096,15 +1275,11 @@ function inventorySort.GetSortCriteria(): string
 	if abilityEnabled then
 		return "Ability"
 	end
-	local parts = {}
 	if rarityEnabled then
-		table.insert(parts, "Rarity")
+		return "Rarity"
 	end
 	if selectedStatFilter then
-		table.insert(parts, selectedStatFilter)
-	end
-	if #parts > 0 then
-		return table.concat(parts, " + ")
+		return selectedStatFilter
 	end
 	if mainFilterMode ~= "None" then
 		return "Power"

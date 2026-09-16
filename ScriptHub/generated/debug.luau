@@ -1,4 +1,4 @@
-﻿--!nocheck
+--!nocheck
 --!nolint
 
 --[[
@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-16T05:24:33.213615400+00:00",
+    genDate = "2026-09-16T08:55:33.713425900+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6297,7 +6297,7 @@ function shared.IsDead()
 end
 
 --// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
---// Hỗ trợ: ForceField của Roblox, Tag/Attribute chuẩn của game, và Bộ đếm bảo vệ sau khi hồi sinh
+--// Chỉ tính dựa trên Bộ đếm thời gian bảo vệ sau khi hồi sinh (Respawn Protection Duration)
 function shared.IsInvulnerable()
 	local char = player and player.Character
 	if not char or not char.Parent then return false, nil end
@@ -6306,31 +6306,7 @@ function shared.IsInvulnerable()
 		return false, nil -- Khi đã chết thì không tính là bất tử
 	end
 
-	-- 1. Kiểm tra ForceField nguyên bản của Roblox
-	local ff = char:FindFirstChildOfClass("ForceField")
-	if ff and ff.Visible ~= false then
-		return true, "ForceField"
-	end
-
-	-- 2. Kiểm tra Attribute hoặc Tag của game (chỉ nhận khi có giá trị true chính xác)
-	local attrInvuln = char:GetAttribute("Invulnerable")
-	local attrImmune = char:GetAttribute("Immune")
-	local attrRespawn = char:GetAttribute("Respawning")
-	if attrInvuln == true or attrImmune == true or attrRespawn == true then
-		return true, "Attribute"
-	end
-
-	-- 3. Kiểm tra BoolValue của game (chỉ nhận khi đúng là BoolValue và Value == true)
-	local valInvuln = char:FindFirstChild("Invulnerable")
-	local valImmune = char:FindFirstChild("Immune")
-	local valRespawn = char:FindFirstChild("Respawning")
-	if (valInvuln and valInvuln:IsA("BoolValue") and valInvuln.Value == true)
-		or (valImmune and valImmune:IsA("BoolValue") and valImmune.Value == true)
-		or (valRespawn and valRespawn:IsA("BoolValue") and valRespawn.Value == true) then
-		return true, "Value"
-	end
-
-	-- 4. Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
+	-- Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
 	local remaining = shared.GetRespawnProtectionRemaining()
 	if remaining > 0 then
 		return true, ("Respawn Shield (%.1fs)"):format(remaining)
@@ -7720,6 +7696,27 @@ function geometry.IsIceSpikesChain(hazardName)
 	return isIceSpikesChain(hazardName)
 end
 
+local SECOND_BOSS_CHAIN_KEYWORDS = {
+	"secondbosscriclehitbox",
+	"secondbosscirclehitbox",
+}
+
+local function isSecondBossCircleChain(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	for _, kw in ipairs(SECOND_BOSS_CHAIN_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsSecondBossCircleChain(hazardName)
+	return isSecondBossCircleChain(hazardName)
+end
+
 --// Tính toán hoặc đọc bán kính tối đa từ template largeIceSpikes trong ReplicatedStorage
 local function getLargeIceSpikesMaxRadius()
 	if cachedLargeRadius and cachedLargeRadius > 0 then
@@ -7842,14 +7839,18 @@ end
 --// Kiem tra diem P (X-Z) hoac vong tron ban kinh extraRadius co giao thoa voi 1 zone con khong
 local function isPointInZone(point, zone, extraRadius, isTrajectory)
 	if not zone then return false end
+	if zone.expireTime and os.clock() > zone.expireTime then
+		return false
+	end
+
 	local px, pz = point.X, point.Z
 	extraRadius = extraRadius or 0
 	local pad = (isTrajectory or zone.isTrajectory) and trajectoryMargin or hazardPadding
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
-		local cx = pos and pos.X or zone.cx or 0
-		local cz = pos and pos.Z or zone.cz or 0
+		local cx = zone.cx or (pos and pos.X) or 0
+		local cz = zone.cz or (pos and pos.Z) or 0
 		local dx = px - cx
 		local dz = pz - cz
 		local r = zone.radius + pad + extraRadius
@@ -7873,6 +7874,31 @@ local function isPointInZone(point, zone, extraRadius, isTrajectory)
 	end
 
 	return false
+end
+
+--// Lấy vector hướng tiến 2D của chiêu thức
+local function getForwardVector2D(instance, mainPart)
+	local cf = (mainPart and mainPart.CFrame) or (instance:IsA("Model") and instance:GetPivot())
+	if cf then
+		local lv = cf.LookVector
+		-- Đảo 180 độ (-LookVector) do model gốc trong game quay ngược trục trước/sau
+		local f2D = Vector3.new(-lv.X, 0, -lv.Z)
+		if f2D.Magnitude > 0.05 then
+			return f2D.Unit
+		end
+	end
+
+	local lp = services.player or game:GetService("Players").LocalPlayer
+	local char = lp and lp.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	if root and mainPart then
+		local toPlayer = Vector3.new(root.Position.X - mainPart.Position.X, 0, root.Position.Z - mainPart.Position.Z)
+		if toPlayer.Magnitude > 0.1 then
+			return toPlayer.Unit
+		end
+	end
+
+	return Vector3.new(0, 0, -1)
 end
 
 --// Chuan bi danh sach zone + bounding radius cua 1 hazard (cache vao info.HazardZones)
@@ -7920,6 +7946,80 @@ local function buildHazardZones(hazardInfo)
 			zones = { singleZone },
 			center = Vector3.new(pos.X, 0, pos.Z),
 			boundingRadius = maxRadius + pad,
+		}
+	end
+
+	if isSecondBossCircleChain(hazardName) then
+		local mainPart = nil
+		if instance:IsA("BasePart") then
+			mainPart = isPartAlive(instance) and instance or nil
+		elseif instance:IsA("Model") then
+			if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
+				mainPart = instance.PrimaryPart
+			else
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+						mainPart = desc
+						break
+					end
+				end
+			end
+		end
+
+		if not mainPart then return nil end
+
+		local pos = mainPart.Position
+		local forward2D = getForwardVector2D(instance, mainPart)
+		local spawnClock = hazardInfo.SpawnClock or os.clock()
+		local zones = {}
+
+		-- Chuỗi 10 vòng tròn liên hoàn của Boss 2 (secondBossCricleHitbox):
+		-- Vòng 1 (gốc): R = 11 studs, khoảng cách = 0
+		-- Mỗi vòng tiếp theo cách nhau 22 studs, bán kính tăng thêm 3 studs (11, 14, 17, 20, 23, 26, 29, 32, 35, 38)
+		-- Mỗi vòng có expireTime riêng để cắt đuôi dạng sóng (Wave Expiration):
+		-- Vòng 1 tan ở spawnClock + 2.2s, mỗi vòng sau tan chậm hơn 0.4s
+		local NUM_CIRCLES = 10
+		local BASE_RADIUS = 11.0
+		local RADIUS_STEP = 3.0
+		local DIST_STEP = 22.0
+		local BASE_DURATION = 2.2
+		local WAVE_STEP_DURATION = 0.4
+
+		local totalLength = (NUM_CIRCLES - 1) * DIST_STEP
+
+		for i = 1, NUM_CIRCLES do
+			local offsetDist = (i - 1) * DIST_STEP
+			local circleCenter = Vector3.new(pos.X, 0, pos.Z) + forward2D * offsetDist
+			local circleRadius = BASE_RADIUS + (i - 1) * RADIUS_STEP
+			local expireTime = spawnClock + BASE_DURATION + (i - 1) * WAVE_STEP_DURATION
+
+			table.insert(zones, {
+				radius = circleRadius,
+				cx = circleCenter.X,
+				cz = circleCenter.Z,
+				part = mainPart,
+				expireTime = expireTime,
+				isTrajectory = false,
+				isSecondBossChain = true,
+				circleIndex = i,
+			})
+		end
+
+		local centerPos = Vector3.new(pos.X, 0, pos.Z) + forward2D * (totalLength / 2)
+		local maxCircleRadius = BASE_RADIUS + (NUM_CIRCLES - 1) * RADIUS_STEP
+		local boundingRadius = (totalLength / 2) + maxCircleRadius + pad
+		local maxExpireTime = spawnClock + BASE_DURATION + (NUM_CIRCLES - 1) * WAVE_STEP_DURATION
+
+		if hazardInfo then
+			hazardInfo.MaxExpireTime = maxExpireTime
+			hazardInfo.IsSyntheticChain = true
+		end
+
+		return {
+			zones = zones,
+			center = centerPos,
+			boundingRadius = boundingRadius,
+			maxExpireTime = maxExpireTime,
 		}
 	end
 
@@ -8134,39 +8234,63 @@ end
 
 --// Cập nhật vị trí và góc xoay của một Adornment ghim thẳng đứng xuống mặt đất mỗi frame
 local function updateVisualCFrame(item, targetY)
-	local part = item.part
 	local ad = item.ad
-	if not part or not part.Parent or not ad or not ad.Parent then return end
+	local zone = item.zone
+	local part = item.part
+	local anchorPart = item.anchorPart or part
+	if not ad or not ad.Parent or not anchorPart or not anchorPart.Parent then return end
 
-	local worldPos = part.Position
+	local worldPos = (zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz) or (part and part.Position)
+	if not worldPos then return end
 	local worldTargetPos = Vector3.new(worldPos.X, targetY or worldPos.Y, worldPos.Z)
 
 	if item.isCircle then
 		-- Đĩa tròn: Cố định nằm ngang hoàn toàn trên mặt phẳng World X-Z
 		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(math.rad(90), 0, 0)
-		ad.CFrame = part.CFrame:ToObjectSpace(desiredWorldCFrame)
+		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	else
 		-- Hộp OBB: Giữ hướng quay Yaw trên sàn, triệt tiêu Pitch/Roll
-		local _, yaw, _ = part.CFrame:ToOrientation()
+		local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
+		local _, yaw, _ = baseCF:ToOrientation()
 		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
-		ad.CFrame = part.CFrame:ToObjectSpace(desiredWorldCFrame)
+		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	end
 end
 
 --// Vòng lặp Heartbeat: Ghim toàn bộ visual thẳng đứng xuống mặt đất liên tục mỗi frame
+--// Hỗ trợ Wave Expiration (Cắt đuôi dạng sóng): Tự động gỡ các vòng tròn đã quá hạn expireTime
 local function onHeartbeat()
 	if not enabled then return end
 	local hasAny = false
 	local targetY = getPlayerGroundY()
+	local now = os.clock()
 
 	for info, record in pairs(activeVisuals) do
-		if not info.Instance or not info.Instance.Parent then
+		local isChain = info.IsSyntheticChain or (info.MaxExpireTime and now < info.MaxExpireTime)
+		local isInstanceAlive = info.Instance and info.Instance.Parent
+
+		if not isInstanceAlive and not isChain then
 			visualizer.DetachZoneVisuals(info)
 		else
-			hasAny = true
 			if record.items then
+				local aliveItems = {}
 				for _, item in ipairs(record.items) do
-					updateVisualCFrame(item, targetY)
+					local zone = item.zone
+					if zone and zone.expireTime and now > zone.expireTime then
+						-- Vòng tròn này đã hết hạn -> hủy adornment để cắt đuôi
+						if item.ad and item.ad.Parent then
+							pcall(function() item.ad:Destroy() end)
+						end
+					elseif item.ad and item.ad.Parent then
+						table.insert(aliveItems, item)
+						updateVisualCFrame(item, targetY)
+					end
+				end
+				record.items = aliveItems
+				if #aliveItems > 0 then
+					hasAny = true
+				else
+					visualizer.DetachZoneVisuals(info)
 				end
 			end
 		end
@@ -8256,9 +8380,14 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local adornments = {}
 	local connections = {}
 
+	local terrain = workspace.Terrain
+
 	for _, zone in ipairs(hazardZones.zones) do
 		local part = zone.part
-		if part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+		local isChain = zone.isSecondBossChain == true
+		local anchorPart = (isChain and terrain) or part
+
+		if isChain or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
 			local ad = nil
 			local isCircle = false
 
@@ -8266,25 +8395,25 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				isCircle = true
 				local cyl = Instance.new("CylinderHandleAdornment")
 				cyl.Name = "HazardGroundCircle"
-				cyl.Adornee = part
+				cyl.Adornee = anchorPart
 				cyl.Radius = zone.radius + pad
 				cyl.Height = GROUND_THICKNESS
 				cyl.Color3 = color
 				cyl.Transparency = ZONE_TRANSPARENCY
 				cyl.ZIndex = 2
 				cyl.AlwaysOnTop = true
-				cyl.Parent = part
+				cyl.Parent = anchorPart
 				ad = cyl
 			elseif zone.half and zone.cframe then
 				local box = Instance.new("BoxHandleAdornment")
 				box.Name = "HazardGroundBox"
-				box.Adornee = part
+				box.Adornee = anchorPart
 				box.Size = Vector3.new(zone.half.X * 2, GROUND_THICKNESS, zone.half.Z * 2)
 				box.Color3 = color
 				box.Transparency = ZONE_TRANSPARENCY
 				box.ZIndex = 2
 				box.AlwaysOnTop = true
-				box.Parent = part
+				box.Parent = anchorPart
 				ad = box
 			end
 
@@ -8292,6 +8421,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				local item = {
 					ad = ad,
 					part = part,
+					anchorPart = anchorPart,
 					isCircle = isCircle,
 					zone = zone,
 				}
@@ -8299,13 +8429,15 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
-				-- Tự động destroy visual khi part mờ dần
-				local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
-					if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then
-						pcall(function() ad:Destroy() end)
-					end
-				end)
-				table.insert(connections, conn)
+				if not isChain and part then
+					-- Tự động destroy visual khi part mờ dần (chỉ part thông thường)
+					local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
+						if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then
+							pcall(function() ad:Destroy() end)
+						end
+					end)
+					table.insert(connections, conn)
+				end
 			end
 		end
 	end
@@ -8699,7 +8831,8 @@ function timerVisual.AttachTimerVisual(hazardInfo)
 	if not enabled or not hazardInfo then return end
 
 	local name = hazardInfo.Name or (hazardInfo.Instance and hazardInfo.Instance.Name) or ""
-	if geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(name) then
+	if (geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(name))
+		or (geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(name)) then
 		return
 	end
 
@@ -9490,6 +9623,7 @@ local hazardChangedCallbacks = {}
 local lastHazardInfo = nil
 local connections = {}
 local roomCleanup = nil
+local lastIceSpikesChainTime = 0
 
 --// Danh sách folder template trong ReplicatedStorage: các đối tượng clone từ đây
 --// xuất hiện trong Workspace sẽ KHÔNG được vẽ box.
@@ -9961,6 +10095,16 @@ registerHazard = function(instance)
 	end
 
 	local isIceSpikes = geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(instance.Name)
+	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
+	if isSecondBossChain then
+		local now = os.clock()
+		if now - lastIceSpikesChainTime < 6.0 then
+			logReject(instance, "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)")
+			return false
+		end
+		lastIceSpikesChainTime = now
+	end
+
 	local distance = computeDistance(instance)
 
 	local info = {
@@ -9975,7 +10119,7 @@ registerHazard = function(instance)
 
 	local fadeConnections = {}
 	local boxes = {}
-	if selectionBoxesEnabled and not isIceSpikes then
+	if selectionBoxesEnabled and not isIceSpikes and not isSecondBossChain then
 		boxes = attachSelectionBoxes(parts, fadeConnections)
 	end
 	info.Boxes = boxes
@@ -10018,6 +10162,17 @@ local function unregisterHazard(instance, reason)
 		return
 	end
 
+	-- Nếu là Synthetic Chain (như secondBossCricleHitbox), không hủy ngay khi Vòng 1 biến mất khỏi Workspace,
+	-- mà duy trì cho đến khi toàn bộ 10 vòng hoàn tất chu kỳ sóng (MaxExpireTime)
+	if info.MaxExpireTime and os.clock() < info.MaxExpireTime and reason == "Destroyed" then
+		task.delay(info.MaxExpireTime - os.clock() + 0.1, function()
+			if activeHazards[instance] == info and os.clock() >= info.MaxExpireTime then
+				unregisterHazard(instance, "Wave Completed")
+			end
+		end)
+		return
+	end
+
 	printDeepInspect(instance, "DESPAWN", reason, info)
 
 	visualizer.DetachZoneVisuals(info)
@@ -10050,6 +10205,7 @@ end
 
 --// Xoa toan bo hazard hien tai
 function detection.ClearAllHazards(reason)
+	lastIceSpikesChainTime = 0
 	visualizer.ClearAll()
 	trajectory.ClearAll()
 	timerVisual.ClearAll()
@@ -10523,14 +10679,16 @@ for i = 1, NUM_FINE do
 	FINE_DIRECTIONS[i] = Vector3.new(math.cos(angle), 0, math.sin(angle))
 end
 
--- Bán kính lấy mẫu thô (Coarse Radii) và đầy đủ (Fine Radii)
+-- Bán kính lấy mẫu thô (Coarse Radii), chi tiết (Fine Radii) và dự phòng khẩn cấp (Fallback Radii)
 local COARSE_RADII = { 1.5, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0 }
-local FINE_RADII = { 1.5, 3.0, 4.5, 6.0, 8.0, 10.5, 13.5, 17.0, 21.0, 26.0, 32.0, 40.0 }
+local FINE_RADII = { 1.5, 3.0, 4.5, 6.0, 8.0, 10.5, 13.5, 17.0, 21.0, 26.0, 32.0, 38.0, 45.0 }
+local FALLBACK_RADII = { 1.5, 3.0, 4.5, 6.0, 8.0, 10.5, 13.5, 17.0, 21.0, 26.0, 32.0, 38.0, 45.0, 50.0, 55.0 }
 
 candidateGenerator.COARSE_DIRECTIONS = COARSE_DIRECTIONS
 candidateGenerator.FINE_DIRECTIONS = FINE_DIRECTIONS
 candidateGenerator.COARSE_RADII = COARSE_RADII
 candidateGenerator.FINE_RADII = FINE_RADII
+candidateGenerator.FALLBACK_RADII = FALLBACK_RADII
 
 --// Chạy 1 pass quét lấy mẫu xung quanh origin2D
 function candidateGenerator.SamplePass(origin2D, directions, radii, safetyBuffer, requireBuffer, isPointSafeFn, evaluatedList, momentumDir)
@@ -11160,6 +11318,8 @@ local safeSpot = {}
 local enabled = true
 local visualEnabled = true
 local showCandidatesVisual = true
+local finePassEnabled = true
+local fallbackPassEnabled = false -- Mặc định tắt (block) theo ý người dùng, có toggle để bật khi cần
 local safetyBuffer = 2.0 -- studs (khoảng cách đẩy xa thêm ra khỏi mép danger zone để đứng an toàn)
 local currentTargetSafeSpot = nil
 local currentThreatInstance = nil
@@ -11268,9 +11428,9 @@ function safeSpot.FindNearestSafeSpot(origin)
 		and Vector3.new(bossAreaCenter.X, 0, bossAreaCenter.Z)
 		or nil
 
-	-- 1. Broad-Phase Spatial Culling: Lọc nhanh các hazard & trajectory trong phạm vi ảnh hưởng (65 studs)
-	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 65) or nil
-	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 65) or nil
+	-- 1. Broad-Phase Spatial Culling: Lọc nhanh các hazard & trajectory trong phạm vi ảnh hưởng (75 studs)
+	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 75) or nil
+	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 75) or nil
 
 	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc
 	local function isPointSafeScoped(candPoint, extraMargin)
@@ -11361,8 +11521,8 @@ function safeSpot.FindNearestSafeSpot(origin)
 		preferredDir
 	)
 
-	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết, yêu cầu buffer an toàn, ưu tiên theo hướng né tối ưu)
-	if not found then
+	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết lên tới 45 studs, yêu cầu buffer an toàn)
+	if not found and finePassEnabled then
 		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
 			origin2D,
 			candidateGenerator.FINE_DIRECTIONS,
@@ -11375,12 +11535,12 @@ function safeSpot.FindNearestSafeSpot(origin)
 		)
 	end
 
-	-- Tier 3: Emergency Fallback Pass (16 hướng, bán kính chi tiết, không bắt buộc buffer, ưu tiên theo hướng né tối ưu)
-	if not found then
+	-- Tier 3: Emergency Fallback Pass (16 hướng, bán kính mở rộng lên tới 55 studs, không bắt buộc buffer)
+	if not found and fallbackPassEnabled then
 		bestPoint, found, bestDist, bestDir = candidateGenerator.SamplePass(
 			origin2D,
 			candidateGenerator.FINE_DIRECTIONS,
-			candidateGenerator.FINE_RADII,
+			candidateGenerator.FALLBACK_RADII or candidateGenerator.FINE_RADII,
 			0,
 			false,
 			isPointSafeScoped,
@@ -11602,6 +11762,22 @@ end
 
 function safeSpot.GetSafetyBuffer()
 	return safetyBuffer
+end
+
+function safeSpot.SetFinePassEnabled(state)
+	finePassEnabled = state and true or false
+end
+
+function safeSpot.IsFinePassEnabled()
+	return finePassEnabled
+end
+
+function safeSpot.SetFallbackPassEnabled(state)
+	fallbackPassEnabled = state and true or false
+end
+
+function safeSpot.IsFallbackPassEnabled()
+	return fallbackPassEnabled
 end
 
 -- Lắng nghe hồi sinh nhân vật để dọn visual cũ
@@ -11940,6 +12116,7 @@ hazardScanner.GetNearbyHazards = geometry.GetNearbyHazards
 hazardScanner.AddForceCircleName = geometry.AddForceCircleName
 hazardScanner.GetForceCircleNames = geometry.GetForceCircleNames
 hazardScanner.IsForceCircle = geometry.IsForceCircle
+hazardScanner.IsSecondBossCircleChain = geometry.IsSecondBossCircleChain
 
 --// Player 2D Visualizer & Danger Detection
 hazardScanner.IsPlayerInDanger = playerVisual.IsPlayerInDanger
@@ -11963,6 +12140,10 @@ hazardScanner.SetSafeSpotBuffer = safeSpot.SetSafetyBuffer
 hazardScanner.GetSafeSpotBuffer = safeSpot.GetSafetyBuffer
 hazardScanner.SetShowCandidates = safeSpot.SetShowCandidates
 hazardScanner.IsShowCandidates = safeSpot.IsShowCandidates
+hazardScanner.SetFinePassEnabled = safeSpot.SetFinePassEnabled
+hazardScanner.IsFinePassEnabled = safeSpot.IsFinePassEnabled
+hazardScanner.SetFallbackPassEnabled = safeSpot.SetFallbackPassEnabled
+hazardScanner.IsFallbackPassEnabled = safeSpot.IsFallbackPassEnabled
 hazardScanner.ClearSafeSpot = safeSpot.Clear
 
 --// Auto Dodge Controller (MoveTo + Final Snap)
@@ -13718,8 +13899,7 @@ return function(window, tab)
 			shortcuts.SetMouseComboEnabled(state)
 		end),
 	}, "Toggle_MouseCombo")
-end
-end function __DIST.D()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
+endend function __DIST.D()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
 -- trong Workspace sau sự kiện start dungeon và vẽ SelectionBox đơn giản cho từng đối tượng.
 -- Không còn trajectory / whitelist / ngoại lệ / hitbox padding / tên 3D.
 
@@ -13942,6 +14122,24 @@ return function(window, tab)
 			hazardScanner.SetAutoDodgeEnabled(state)
 		end),
 	}, "Toggle_HazardAutoDodgeEnabled")
+
+	leftSection:Header({ Name = "Sampling Pass Tiers" })
+
+	leftSection:Toggle({
+		Name = "Enable Fine Pass (Tier 2 - Max 45s)",
+		Default = hazardScanner.IsFinePassEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetFinePassEnabled(state)
+		end),
+	}, "Toggle_HazardFinePassEnabled")
+
+	leftSection:Toggle({
+		Name = "Enable Emergency Fallback (Tier 3 - Max 55s)",
+		Default = hazardScanner.IsFallbackPassEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScanner.SetFallbackPassEnabled(state)
+		end),
+	}, "Toggle_HazardFallbackPassEnabled")
 
 	combatMaster.OnStateChanged(function(enabled)
 		pcall(function() hsToggle:UpdateState(enabled) end)
@@ -14740,8 +14938,7 @@ return function(window, tab)
 end
 
 
-
-end function __DIST.H()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.H()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
@@ -20685,9 +20882,7 @@ local function walkThrough(segment, room, allowBoss)
 	local faceLockUntil = 0
 	local lastSkillFacing = nil
 
-	--// Tính khoảng cách Pre-Aim đón đầu (Adaptive Pre-Aim Distance) theo tốc độ di chuyển
-	local currentSpeed = (segment.speed and segment.speed > 5) and segment.speed or (humanoid.WalkSpeed or 20)
-	local preAimDist = math.clamp(currentSpeed * preAimLeadTime, PRE_AIM_DIST_MIN, PRE_AIM_DIST_MAX)
+
 
 	--// Gửi lệnh di chuyển: nhạy bén, đáp ứng ngay lập tức kể cả đoạn ngắn.
 	local lastTargetPos = nil
@@ -20736,33 +20931,6 @@ local function walkThrough(segment, room, allowBoss)
 			prevPos = pos
 		end
 
-		--// Pre-Aim Skill & Dwell: Xoay mặt đón đầu trước khi chạm điểm dừng hoặc xả chiêu (Adaptive Pre-Aim).
-		local nextSkill = walkSkills[skillIdx]
-		local nextDwell = dwells[dwellIdx]
-		local isPreAiming = false
-		local targetAimFacing = nil
-
-		local dwellDist = nextDwell and (nextDwell.arc - progress) or math.huge
-		local skillDist = nextSkill and (nextSkill.arc - progress) or math.huge
-
-		if dwellDist < skillDist and dwellDist > 0 and dwellDist <= preAimDist then
-			if replayFacing then
-				local dFace = (nextDwell.skills and #nextDwell.skills > 0 and nextDwell.skills[1].facing) or nextDwell.facing
-				if dFace then
-					targetAimFacing = dFace
-				end
-			end
-		elseif skillDist <= dwellDist and skillDist > 0 and skillDist <= preAimDist then
-			if replayFacing and nextSkill.facing then
-				targetAimFacing = nextSkill.facing
-			end
-		end
-
-		if targetAimFacing then
-			isPreAiming = true
-			smoothFacing(root, targetAimFacing, 0.35)
-		end
-
 		--// Bắn skill lúc di chuyển: nhân vật cắt qua đúng vị trí đã bấm chuột phải.
 		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast.
 		while skillIdx <= #walkSkills and walkSkills[skillIdx].arc <= progress do
@@ -20788,6 +20956,58 @@ local function walkThrough(segment, room, allowBoss)
 			lastMoved = os.clock()
 		end
 
+		--// Early Facing: Tìm hướng quay đón đầu của node sự kiện tiếp theo (Skill / Dwell).
+		local nextEventFacing = nil
+		if replayFacing then
+			local bestArc = math.huge
+			local dIdx = dwellIdx
+			while dIdx <= #dwells do
+				local dw = dwells[dIdx]
+				local dFace = (dw.skills and #dw.skills > 0 and dw.skills[1].facing) or dw.facing
+				if dFace then
+					if dw.arc < bestArc then
+						bestArc = dw.arc
+						nextEventFacing = dFace
+					end
+					break
+				end
+				dIdx += 1
+			end
+
+			local sIdx = skillIdx
+			while sIdx <= #walkSkills do
+				local sk = walkSkills[sIdx]
+				if sk.facing then
+					if sk.arc < bestArc then
+						bestArc = sk.arc
+						nextEventFacing = sk.facing
+					end
+					break
+				end
+				sIdx += 1
+			end
+		end
+
+		--// Điều phối hướng quay khi di chuyển:
+		--// 1. Đang trong cửa sổ giữ hướng sau xả chiêu (faceLockUntil) -> giữ chặt hướng chiêu vừa bắn.
+		--// 2. Có sự kiện kế tiếp -> chủ động quay trước (Early Facing) theo hướng của node đó.
+		--// 3. Không còn sự kiện nào trong phòng -> trả lại AutoRotate tự nhiên theo hướng bước đi.
+		if replayFacing then
+			if os.clock() < faceLockUntil then
+				if lastSkillFacing then
+					smoothFacing(root, lastSkillFacing, 0.45)
+				end
+				if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
+			elseif nextEventFacing then
+				smoothFacing(root, nextEventFacing, 0.35)
+				if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
+			else
+				if humanoid.AutoRotate ~= true then humanoid.AutoRotate = true end
+			end
+		else
+			if humanoid.AutoRotate ~= true then humanoid.AutoRotate = true end
+		end
+
 		--// Gần cuối -> đi thẳng nốt tới điểm cuối rồi kết thúc lượt.
 		if progress >= total - ARRIVE_DIST then
 			-- Xả nốt toàn bộ Dwell & Skill còn sót lại ở cuối phòng
@@ -20801,6 +21021,7 @@ local function walkThrough(segment, room, allowBoss)
 				local sk = walkSkills[skillIdx]
 				if replayFacing and sk.facing then
 					setFacing(root, sk.facing)
+					lastSkillFacing = sk.facing
 					faceLockUntil = os.clock() + skillFaceHold
 				end
 				if replaySkills then
@@ -20809,7 +21030,6 @@ local function walkThrough(segment, room, allowBoss)
 				skillIdx += 1
 			end
 
-			restoreAutoRotate()
 			pcall(function() humanoid:MoveTo(path[n]) end)
 			local deadline = os.clock() + 5
 			while isPlaying do
@@ -20818,7 +21038,10 @@ local function walkThrough(segment, room, allowBoss)
 				if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
 				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then restoreAutoRotate(); return false, "dead" end
 				if os.clock() >= deadline then break end
-				if os.clock() >= faceLockUntil and humanoid.AutoRotate ~= true then
+				if os.clock() < faceLockUntil then
+					if lastSkillFacing then smoothFacing(root, lastSkillFacing, 0.45) end
+					if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
+				elseif humanoid.AutoRotate ~= true then
 					humanoid.AutoRotate = true
 				end
 				task.wait(0.08)
@@ -20830,12 +21053,6 @@ local function walkThrough(segment, room, allowBoss)
 		end
 
 		--// Đích luôn ở phía trước -> humanoid đi liền mạch (Adaptive Lookahead).
-		if os.clock() < faceLockUntil or isPreAiming then
-			--// Đang trong cửa sổ giữ facing hoặc Pre-Aim: khoá AutoRotate để nhân vật giữ góc quay lúc cast chiêu.
-			if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
-		elseif humanoid.AutoRotate ~= true then
-			humanoid.AutoRotate = true
-		end
 		local currentLookahead = getAdaptiveLookahead(progress)
 		local target = pointAt(math.min(progress + currentLookahead, total - 0.01))
 		sendMove(target)
@@ -24180,300 +24397,119 @@ return caculationPot
 end function __DIST.aj()-- Custom In-Game UI: sortBarFrame (DungeonQuest)
 -- Khởi tạo thanh Sort Bar đính kèm vào GUI kho đồ trong game.
 
-
 local function createSortBarFrame(parent)
-	local sortBarFrame_1 = Instance.new("Frame")
-	sortBarFrame_1.Name = "sortBarFrame"
-	sortBarFrame_1.Size = UDim2.new(0, 40, 0, 275)
-	sortBarFrame_1.AutomaticSize = Enum.AutomaticSize.Y
-	sortBarFrame_1.Position = UDim2.new(1.0289711952209473, 0, 0.3432777225971222, 0)
-	sortBarFrame_1.AnchorPoint = Vector2.new(0, 0)
-	sortBarFrame_1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	sortBarFrame_1.BackgroundTransparency = 1
-	sortBarFrame_1.BorderSizePixel = 0
-	sortBarFrame_1.LayoutOrder = 0
-	sortBarFrame_1.ZIndex = 1
-	sortBarFrame_1.Visible = true
-	sortBarFrame_1.Parent = parent
+	local sortBarFrame = Instance.new("Frame")
+	sortBarFrame.Name = "sortBarFrame"
+	sortBarFrame.Size = UDim2.new(0, 50, 0, 280)
+	sortBarFrame.AutomaticSize = Enum.AutomaticSize.Y
+	sortBarFrame.Position = UDim2.new(1.0289711952209473, 0, 0.3432777225971222, 0)
+	sortBarFrame.AnchorPoint = Vector2.new(0, 0)
+	sortBarFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+	sortBarFrame.BackgroundTransparency = 0.15
+	sortBarFrame.BorderSizePixel = 0
+	sortBarFrame.LayoutOrder = 0
+	sortBarFrame.ZIndex = 1
+	sortBarFrame.Visible = true
+	sortBarFrame.Parent = parent
 
-	local IBmainFilter_2 = Instance.new("ImageButton")
-	IBmainFilter_2.Name = "IBmainFilter"
-	IBmainFilter_2.Size = UDim2.new(0, 40, 0, 40)
-	IBmainFilter_2.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBmainFilter_2.AnchorPoint = Vector2.new(0, 0)
-	IBmainFilter_2.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBmainFilter_2.BackgroundTransparency = 1
-	IBmainFilter_2.BorderSizePixel = 0
-	IBmainFilter_2.LayoutOrder = 1
-	IBmainFilter_2.ZIndex = 1
-	IBmainFilter_2.Visible = true
-	IBmainFilter_2.Image = ""
-	IBmainFilter_2.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBmainFilter_2.ImageTransparency = 0
-	IBmainFilter_2.ScaleType = Enum.ScaleType.Stretch
-	IBmainFilter_2.AutoButtonColor = false
-	IBmainFilter_2.Parent = sortBarFrame_1
+	local UICorner_SortBar = Instance.new("UICorner")
+	UICorner_SortBar.CornerRadius = UDim.new(0, 8)
+	UICorner_SortBar.Parent = sortBarFrame
 
-	local UIListLayout_3 = Instance.new("UIListLayout")
-	UIListLayout_3.Name = "UIListLayout"
-	UIListLayout_3.Padding = UDim.new(0, 0)
-	UIListLayout_3.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_3.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_3.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_3.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_3.Parent = IBmainFilter_2
+	local UIStroke_SortBar = Instance.new("UIStroke")
+	UIStroke_SortBar.Name = "DockStroke"
+	UIStroke_SortBar.Thickness = 1.2
+	UIStroke_SortBar.Color = Color3.fromRGB(65, 72, 90)
+	UIStroke_SortBar.Transparency = 0.3
+	UIStroke_SortBar.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	UIStroke_SortBar.Parent = sortBarFrame
 
-	local imageSort_4 = Instance.new("ImageLabel")
-	imageSort_4.Name = "imageSort"
-	imageSort_4.Size = UDim2.new(0, 38, 0, 38)
-	imageSort_4.Position = UDim2.new(0, 0, 0, 0)
-	imageSort_4.AnchorPoint = Vector2.new(0, 0)
-	imageSort_4.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageSort_4.BackgroundTransparency = 1
-	imageSort_4.BorderSizePixel = 0
-	imageSort_4.LayoutOrder = 0
-	imageSort_4.ZIndex = 1
-	imageSort_4.Visible = true
-	imageSort_4.Image = "rbxassetid://73746166761985"
-	imageSort_4.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageSort_4.ImageTransparency = 0
-	imageSort_4.ScaleType = Enum.ScaleType.Stretch
-	imageSort_4.Parent = IBmainFilter_2
+	local UIPadding_SortBar = Instance.new("UIPadding")
+	UIPadding_SortBar.PaddingTop = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingBottom = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingLeft = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingRight = UDim.new(0, 5)
+	UIPadding_SortBar.Parent = sortBarFrame
 
-	local IBphysic_5 = Instance.new("ImageButton")
-	IBphysic_5.Name = "IBphysic"
-	IBphysic_5.Size = UDim2.new(0, 40, 0, 40)
-	IBphysic_5.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBphysic_5.AnchorPoint = Vector2.new(0, 0)
-	IBphysic_5.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBphysic_5.BackgroundTransparency = 1
-	IBphysic_5.BorderSizePixel = 0
-	IBphysic_5.LayoutOrder = 3
-	IBphysic_5.ZIndex = 1
-	IBphysic_5.Visible = true
-	IBphysic_5.Image = ""
-	IBphysic_5.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBphysic_5.ImageTransparency = 0
-	IBphysic_5.ScaleType = Enum.ScaleType.Stretch
-	IBphysic_5.AutoButtonColor = false
-	IBphysic_5.Parent = sortBarFrame_1
+	local UIScale_SortBar = Instance.new("UIScale")
+	UIScale_SortBar.Name = "SortBarUIScale"
+	UIScale_SortBar.Scale = 1.25
+	UIScale_SortBar.Parent = sortBarFrame
 
-	local UIListLayout_6 = Instance.new("UIListLayout")
-	UIListLayout_6.Name = "UIListLayout"
-	UIListLayout_6.Padding = UDim.new(0, 0)
-	UIListLayout_6.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_6.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_6.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_6.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_6.Parent = IBphysic_5
+	local UIListLayout_SortBar = Instance.new("UIListLayout")
+	UIListLayout_SortBar.Name = "UIListLayout"
+	UIListLayout_SortBar.Padding = UDim.new(0, 6)
+	UIListLayout_SortBar.FillDirection = Enum.FillDirection.Vertical
+	UIListLayout_SortBar.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	UIListLayout_SortBar.VerticalAlignment = Enum.VerticalAlignment.Top
+	UIListLayout_SortBar.SortOrder = Enum.SortOrder.LayoutOrder
+	UIListLayout_SortBar.Parent = sortBarFrame
 
-	local imagePhysic_7 = Instance.new("ImageLabel")
-	imagePhysic_7.Name = "imagePhysic"
-	imagePhysic_7.Size = UDim2.new(0, 38, 0, 38)
-	imagePhysic_7.Position = UDim2.new(0, 0, 0, 0)
-	imagePhysic_7.AnchorPoint = Vector2.new(0, 0)
-	imagePhysic_7.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imagePhysic_7.BackgroundTransparency = 1
-	imagePhysic_7.BorderSizePixel = 0
-	imagePhysic_7.LayoutOrder = 0
-	imagePhysic_7.ZIndex = 1
-	imagePhysic_7.Visible = true
-	imagePhysic_7.Image = "rbxassetid://121406454377051"
-	imagePhysic_7.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imagePhysic_7.ImageTransparency = 0
-	imagePhysic_7.ScaleType = Enum.ScaleType.Stretch
-	imagePhysic_7.Parent = IBphysic_5
+	local function createButton(name: string, layoutOrder: number, iconName: string, iconAsset: string)
+		local btn = Instance.new("ImageButton")
+		btn.Name = name
+		btn.Size = UDim2.new(0, 40, 0, 40)
+		btn.Position = UDim2.new(0, 0, 0, 0)
+		btn.AnchorPoint = Vector2.new(0, 0)
+		btn.BackgroundColor3 = Color3.fromRGB(25, 28, 36)
+		btn.BackgroundTransparency = 0.65
+		btn.BorderSizePixel = 0
+		btn.LayoutOrder = layoutOrder
+		btn.ZIndex = 1
+		btn.Visible = true
+		btn.Image = ""
+		btn.AutoButtonColor = false
+		btn.Parent = sortBarFrame
 
-	local IBhealth_8 = Instance.new("ImageButton")
-	IBhealth_8.Name = "IBhealth"
-	IBhealth_8.Size = UDim2.new(0, 40, 0, 40)
-	IBhealth_8.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBhealth_8.AnchorPoint = Vector2.new(0, 0)
-	IBhealth_8.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBhealth_8.BackgroundTransparency = 1
-	IBhealth_8.BorderSizePixel = 0
-	IBhealth_8.LayoutOrder = 5
-	IBhealth_8.ZIndex = 1
-	IBhealth_8.Visible = true
-	IBhealth_8.Image = ""
-	IBhealth_8.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBhealth_8.ImageTransparency = 0
-	IBhealth_8.ScaleType = Enum.ScaleType.Stretch
-	IBhealth_8.AutoButtonColor = false
-	IBhealth_8.Parent = sortBarFrame_1
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = btn
 
-	local UIListLayout_9 = Instance.new("UIListLayout")
-	UIListLayout_9.Name = "UIListLayout"
-	UIListLayout_9.Padding = UDim.new(0, 0)
-	UIListLayout_9.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_9.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_9.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_9.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_9.Parent = IBhealth_8
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.2
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Transparency = 0.85
+		stroke.Color = Color3.fromRGB(60, 66, 82)
+		stroke.Parent = btn
 
-	local imageHealth_10 = Instance.new("ImageLabel")
-	imageHealth_10.Name = "imageHealth"
-	imageHealth_10.Size = UDim2.new(0, 38, 0, 38)
-	imageHealth_10.Position = UDim2.new(0, 0, 0, 0)
-	imageHealth_10.AnchorPoint = Vector2.new(0, 0)
-	imageHealth_10.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageHealth_10.BackgroundTransparency = 1
-	imageHealth_10.BorderSizePixel = 0
-	imageHealth_10.LayoutOrder = 0
-	imageHealth_10.ZIndex = 1
-	imageHealth_10.Visible = true
-	imageHealth_10.Image = "rbxassetid://88525382655929"
-	imageHealth_10.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageHealth_10.ImageTransparency = 0
-	imageHealth_10.ScaleType = Enum.ScaleType.Stretch
-	imageHealth_10.Parent = IBhealth_8
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 7)
+		pad.PaddingBottom = UDim.new(0, 7)
+		pad.PaddingLeft = UDim.new(0, 7)
+		pad.PaddingRight = UDim.new(0, 7)
+		pad.Parent = btn
 
-	local IBspell_11 = Instance.new("ImageButton")
-	IBspell_11.Name = "IBspell"
-	IBspell_11.Size = UDim2.new(0, 40, 0, 40)
-	IBspell_11.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBspell_11.AnchorPoint = Vector2.new(0, 0)
-	IBspell_11.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBspell_11.BackgroundTransparency = 1
-	IBspell_11.BorderSizePixel = 0
-	IBspell_11.LayoutOrder = 4
-	IBspell_11.ZIndex = 1
-	IBspell_11.Visible = true
-	IBspell_11.Image = ""
-	IBspell_11.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBspell_11.ImageTransparency = 0
-	IBspell_11.ScaleType = Enum.ScaleType.Stretch
-	IBspell_11.AutoButtonColor = false
-	IBspell_11.Parent = sortBarFrame_1
+		local icon = Instance.new("ImageLabel")
+		icon.Name = iconName
+		icon.Size = UDim2.new(1, 0, 1, 0)
+		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		icon.BackgroundTransparency = 1
+		icon.BorderSizePixel = 0
+		icon.LayoutOrder = 0
+		icon.ZIndex = 1
+		icon.Visible = true
+		icon.Image = iconAsset
+		icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		icon.ImageTransparency = 0.35
+		icon.ScaleType = Enum.ScaleType.Fit
+		icon.Parent = btn
 
-	local UIListLayout_12 = Instance.new("UIListLayout")
-	UIListLayout_12.Name = "UIListLayout"
-	UIListLayout_12.Padding = UDim.new(0, 0)
-	UIListLayout_12.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_12.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_12.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_12.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_12.Parent = IBspell_11
+		return btn
+	end
 
-	local imageSpell_13 = Instance.new("ImageLabel")
-	imageSpell_13.Name = "imageSpell"
-	imageSpell_13.Size = UDim2.new(0, 38, 0, 38)
-	imageSpell_13.Position = UDim2.new(0, 0, 0, 0)
-	imageSpell_13.AnchorPoint = Vector2.new(0, 0)
-	imageSpell_13.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageSpell_13.BackgroundTransparency = 1
-	imageSpell_13.BorderSizePixel = 0
-	imageSpell_13.LayoutOrder = 0
-	imageSpell_13.ZIndex = 1
-	imageSpell_13.Visible = true
-	imageSpell_13.Image = "rbxassetid://125012650497883"
-	imageSpell_13.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageSpell_13.ImageTransparency = 0
-	imageSpell_13.ScaleType = Enum.ScaleType.Stretch
-	imageSpell_13.Parent = IBspell_11
+	createButton("IBmainFilter", 1, "imageSort", "rbxassetid://73746166761985")
+	createButton("IBrarity", 2, "imageRarity", "rbxassetid://105634041692696")
+	createButton("IBphysic", 3, "imagePhysic", "rbxassetid://121406454377051")
+	createButton("IBspell", 4, "imageSpell", "rbxassetid://125012650497883")
+	createButton("IBhealth", 5, "imageHealth", "rbxassetid://88525382655929")
+	createButton("IBability", 6, "imageAbility", "rbxassetid://109718589733073")
 
-	local IBrarity_14 = Instance.new("ImageButton")
-	IBrarity_14.Name = "IBrarity"
-	IBrarity_14.Size = UDim2.new(0, 40, 0, 40)
-	IBrarity_14.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBrarity_14.AnchorPoint = Vector2.new(0, 0)
-	IBrarity_14.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBrarity_14.BackgroundTransparency = 1
-	IBrarity_14.BorderSizePixel = 0
-	IBrarity_14.LayoutOrder = 2
-	IBrarity_14.ZIndex = 1
-	IBrarity_14.Visible = true
-	IBrarity_14.Image = ""
-	IBrarity_14.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBrarity_14.ImageTransparency = 0
-	IBrarity_14.ScaleType = Enum.ScaleType.Stretch
-	IBrarity_14.AutoButtonColor = false
-	IBrarity_14.Parent = sortBarFrame_1
-
-	local UIListLayout_15 = Instance.new("UIListLayout")
-	UIListLayout_15.Name = "UIListLayout"
-	UIListLayout_15.Padding = UDim.new(0, 0)
-	UIListLayout_15.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_15.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_15.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_15.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_15.Parent = IBrarity_14
-
-	local imageRarity_16 = Instance.new("ImageLabel")
-	imageRarity_16.Name = "imageRarity"
-	imageRarity_16.Size = UDim2.new(0, 38, 0, 38)
-	imageRarity_16.Position = UDim2.new(0, 0, 0, 0)
-	imageRarity_16.AnchorPoint = Vector2.new(0, 0)
-	imageRarity_16.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageRarity_16.BackgroundTransparency = 1
-	imageRarity_16.BorderSizePixel = 0
-	imageRarity_16.LayoutOrder = 0
-	imageRarity_16.ZIndex = 1
-	imageRarity_16.Visible = true
-	imageRarity_16.Image = "rbxassetid://105634041692696"
-	imageRarity_16.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageRarity_16.ImageTransparency = 0
-	imageRarity_16.ScaleType = Enum.ScaleType.Stretch
-	imageRarity_16.Parent = IBrarity_14
-
-	local IBability_17 = Instance.new("ImageButton")
-	IBability_17.Name = "IBability"
-	IBability_17.Size = UDim2.new(0, 40, 0, 40)
-	IBability_17.Position = UDim2.new(-0.012500000186264515, 0, 0, 0)
-	IBability_17.AnchorPoint = Vector2.new(0, 0)
-	IBability_17.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
-	IBability_17.BackgroundTransparency = 1
-	IBability_17.BorderSizePixel = 0
-	IBability_17.LayoutOrder = 6
-	IBability_17.ZIndex = 1
-	IBability_17.Visible = true
-	IBability_17.Image = ""
-	IBability_17.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	IBability_17.ImageTransparency = 0
-	IBability_17.ScaleType = Enum.ScaleType.Stretch
-	IBability_17.AutoButtonColor = false
-	IBability_17.Parent = sortBarFrame_1
-
-	local UIListLayout_18 = Instance.new("UIListLayout")
-	UIListLayout_18.Name = "UIListLayout"
-	UIListLayout_18.Padding = UDim.new(0, 0)
-	UIListLayout_18.FillDirection = Enum.FillDirection.Horizontal
-	UIListLayout_18.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_18.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_18.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_18.Parent = IBability_17
-
-	local imageAbility_19 = Instance.new("ImageLabel")
-	imageAbility_19.Name = "imageAbility"
-	imageAbility_19.Size = UDim2.new(0, 38, 0, 38)
-	imageAbility_19.Position = UDim2.new(0, 0, 0, 0)
-	imageAbility_19.AnchorPoint = Vector2.new(0, 0)
-	imageAbility_19.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	imageAbility_19.BackgroundTransparency = 1
-	imageAbility_19.BorderSizePixel = 0
-	imageAbility_19.LayoutOrder = 0
-	imageAbility_19.ZIndex = 1
-	imageAbility_19.Visible = true
-	imageAbility_19.Image = "rbxassetid://109718589733073"
-	imageAbility_19.ImageColor3 = Color3.fromRGB(255, 255, 255)
-	imageAbility_19.ImageTransparency = 0
-	imageAbility_19.ScaleType = Enum.ScaleType.Stretch
-	imageAbility_19.Parent = IBability_17
-
-	local UIListLayout_20 = Instance.new("UIListLayout")
-	UIListLayout_20.Name = "UIListLayout"
-	UIListLayout_20.Padding = UDim.new(0, 6)
-	UIListLayout_20.FillDirection = Enum.FillDirection.Vertical
-	UIListLayout_20.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	UIListLayout_20.VerticalAlignment = Enum.VerticalAlignment.Top
-	UIListLayout_20.SortOrder = Enum.SortOrder.LayoutOrder
-	UIListLayout_20.Parent = sortBarFrame_1
-
-	return sortBarFrame_1
+	return sortBarFrame
 end
 
-return createSortBarFrame
-end function __DIST.ak()-- Inventory Sort Module (DungeonQuest)
+return createSortBarFrame end function __DIST.ak()-- Inventory Sort Module (DungeonQuest)
 -- Sắp xếp kho đồ game tức thì bằng cách thay đổi LayoutOrder trên UIGridLayout của ScrollingFrame
 -- Hỗ trợ cơ chế kết hợp:
 --   - Main filter (Tri-state): None (bỏ chọn) -> Descending (Power giảm dần) -> Ascending (Power tăng dần) -> None
@@ -24502,6 +24538,7 @@ local rarityEnabled: boolean = false
 local selectedStatFilter: StatFilterType__DARKLUA_TYPE_d? = nil
 local abilityEnabled: boolean = false
 local autoSortEnabled: boolean = true
+local SORT_BAR_SCALE: number = 1.25
 
 --// Persistence (Lưu/Tải trạng thái filter của người chơi vào file json)
 local saveDebounceThread: thread? = nil
@@ -24571,6 +24608,8 @@ local function loadSettings()
 	if abilityEnabled then
 		rarityEnabled = false
 		selectedStatFilter = nil
+	elseif selectedStatFilter ~= nil then
+		rarityEnabled = false
 	end
 end
 
@@ -24597,6 +24636,18 @@ local function saveSettings()
 			writefile(filePath, HttpService:JSONEncode(payload))
 		end)
 	end)
+end
+
+--// Áp dụng UIScale lên sortBarFrame (cố định tỉ lệ 1.25x to hơn 25%)
+local function applySortBarScale(sortBar: GuiObject?)
+	if not sortBar then return end
+	local uiScale = sortBar:FindFirstChildOfClass("UIScale")
+	if not uiScale then
+		uiScale = Instance.new("UIScale")
+		uiScale.Name = "SortBarUIScale"
+		uiScale.Parent = sortBar
+	end
+	uiScale.Scale = SORT_BAR_SCALE
 end
 
 --// Cache dữ liệu inventory
@@ -24632,50 +24683,90 @@ local MAIN_FILTER_ICONS: { [MainFilterMode__DARKLUA_TYPE_c]: string } = {
 	Ascending = "rbxassetid://140381370510884", -- Từ thấp đến cao
 }
 
---// Thiết lập giao diện tương tác (Classic Dim -> Bold Hover & Active)
+--// Thiết lập giao diện tương tác (Sắc nét, viền rõ ràng, màu sắc Thematic sống động)
 local STYLE = {
 	TweenDuration = 0.16,
 	EasingStyle = Enum.EasingStyle.Quad,
 	EasingDirection = Enum.EasingDirection.Out,
 
-	-- State ban đầu (chưa được chọn): Tất cả button child đều mờ mờ
+	-- State ban đầu (chưa được chọn): Nút có nền khối rõ ràng, viền định hình, icon sáng 100%
 	Inactive = {
-		BackgroundTransparency = 0.7,
-		BackgroundColor3 = Color3.fromRGB(24, 26, 32),
-		ElementTransparency = 0.55,
-		ElementColor3 = Color3.fromRGB(180, 185, 195),
-		StrokeTransparency = 0.85,
-		StrokeColor3 = Color3.fromRGB(60, 65, 75),
-	},
-
-	-- Khi hover: Tăng độ đậm của background và color font/icon cho rõ
-	Hovered = {
 		BackgroundTransparency = 0.2,
-		BackgroundColor3 = Color3.fromRGB(42, 48, 62),
+		BackgroundColor3 = Color3.fromRGB(28, 31, 40),
 		ElementTransparency = 0.0,
-		ElementColor3 = Color3.fromRGB(255, 255, 255),
-		StrokeTransparency = 0.35,
-		StrokeColor3 = Color3.fromRGB(150, 160, 180),
+		ElementColor3 = Color3.fromRGB(235, 240, 252),
+		StrokeTransparency = 0.4,
+		StrokeColor3 = Color3.fromRGB(65, 72, 90),
 	},
 
-	-- Active: Tiêu chí đang được chọn áp dụng
-	Active = {
+	-- Khi hover: Tăng sáng nền và viền bắt mắt
+	Hovered = {
 		BackgroundTransparency = 0.1,
-		BackgroundColor3 = Color3.fromRGB(35, 60, 95),
+		BackgroundColor3 = Color3.fromRGB(45, 52, 68),
 		ElementTransparency = 0.0,
 		ElementColor3 = Color3.fromRGB(255, 255, 255),
 		StrokeTransparency = 0.15,
-		StrokeColor3 = Color3.fromRGB(100, 160, 240),
+		StrokeColor3 = Color3.fromRGB(150, 165, 195),
 	},
 
-	-- Active + Hovered: Đang chọn và đang rê chuột vào
-	ActiveHovered = {
-		BackgroundTransparency = 0.0,
-		BackgroundColor3 = Color3.fromRGB(45, 75, 120),
+	-- Active mặc định (fallback nếu không có theme riêng)
+	Active = {
+		BackgroundTransparency = 0.1,
+		BackgroundColor3 = Color3.fromRGB(30, 55, 85),
 		ElementTransparency = 0.0,
 		ElementColor3 = Color3.fromRGB(255, 255, 255),
 		StrokeTransparency = 0.0,
-		StrokeColor3 = Color3.fromRGB(130, 190, 255),
+		StrokeColor3 = Color3.fromRGB(80, 180, 255),
+	},
+
+	-- Active + Hovered mặc định
+	ActiveHovered = {
+		BackgroundTransparency = 0.05,
+		BackgroundColor3 = Color3.fromRGB(40, 75, 115),
+		ElementTransparency = 0.0,
+		ElementColor3 = Color3.fromRGB(255, 255, 255),
+		StrokeTransparency = 0.0,
+		StrokeColor3 = Color3.fromRGB(120, 210, 255),
+	},
+}
+
+--// Bảng màu Thematic riêng biệt cho từng nút khi Active (Phong cách Thematic Accent)
+local THEMATIC_COLORS = {
+	IBmainFilter = {
+		ActiveBg = Color3.fromRGB(28, 55, 90),
+		ActiveStroke = Color3.fromRGB(80, 180, 255),
+		ActiveHoverBg = Color3.fromRGB(38, 75, 120),
+		ActiveHoverStroke = Color3.fromRGB(120, 210, 255),
+	},
+	IBphysic = {
+		ActiveBg = Color3.fromRGB(75, 30, 22),
+		ActiveStroke = Color3.fromRGB(245, 95, 55),
+		ActiveHoverBg = Color3.fromRGB(105, 42, 30),
+		ActiveHoverStroke = Color3.fromRGB(255, 130, 85),
+	},
+	IBspell = {
+		ActiveBg = Color3.fromRGB(25, 45, 95),
+		ActiveStroke = Color3.fromRGB(65, 150, 255),
+		ActiveHoverBg = Color3.fromRGB(38, 65, 130),
+		ActiveHoverStroke = Color3.fromRGB(105, 180, 255),
+	},
+	IBhealth = {
+		ActiveBg = Color3.fromRGB(20, 60, 32),
+		ActiveStroke = Color3.fromRGB(55, 210, 115),
+		ActiveHoverBg = Color3.fromRGB(28, 85, 45),
+		ActiveHoverStroke = Color3.fromRGB(90, 235, 145),
+	},
+	IBrarity = {
+		ActiveBg = Color3.fromRGB(75, 58, 16),
+		ActiveStroke = Color3.fromRGB(255, 205, 50),
+		ActiveHoverBg = Color3.fromRGB(105, 82, 22),
+		ActiveHoverStroke = Color3.fromRGB(255, 225, 95),
+	},
+	IBability = {
+		ActiveBg = Color3.fromRGB(60, 25, 85),
+		ActiveStroke = Color3.fromRGB(195, 90, 255),
+		ActiveHoverBg = Color3.fromRGB(85, 35, 120),
+		ActiveHoverStroke = Color3.fromRGB(215, 125, 255),
 	},
 }
 
@@ -24901,6 +24992,19 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_e, b: ParsedItemSlot
 			return tierA < tierB
 		end
 
+		-- Ưu tiên ẩn: Level Req cho trang bị phía sau Ability
+		if a.levelReq ~= b.levelReq then
+			if isDesc then
+				return a.levelReq > b.levelReq
+			else
+				return a.levelReq < b.levelReq
+			end
+		end
+
+		if a.name ~= b.name then
+			return a.name < b.name
+		end
+
 		return a.originalOrder < b.originalOrder
 	end
 
@@ -24939,9 +25043,8 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_e, b: ParsedItemSlot
 		return a.originalOrder < b.originalOrder
 	end
 
-	-- 5. Cùng nhóm Weapon hoặc cùng nhóm Armor: Sắp xếp theo bộ lọc đã chọn
-	-- A. Nếu chọn 1 Stat cụ thể (Physic / Spell / Health):
-	-- ƯU TIÊN CHỈ SỐ ĐÓ LÊN HÀNG ĐẦU (món có chỉ số cao hơn luôn đứng trước)
+	-- 5. Cùng nhóm Weapon hoặc cùng nhóm Armor: Sắp xếp theo chế độ độc lập được chọn
+	-- CHẾ ĐỘ 1: Chọn 1 Stat cụ thể (Physic / Spell / Health):
 	if selectedStatFilter ~= nil then
 		local statA = 0
 		local statB = 0
@@ -24963,9 +25066,11 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_e, b: ParsedItemSlot
 				return statA < statB
 			end
 		end
+	end
 
-		-- Khi bằng chỉ số Stat: Nếu bật Rarity thì Rarity làm tiêu chí phân định cao cấp
-		if rarityEnabled and a.rarityScore ~= b.rarityScore then
+	-- CHẾ ĐỘ 2: Chọn Độ hiếm (Rarity):
+	if rarityEnabled then
+		if a.rarityScore ~= b.rarityScore then
 			if isDesc then
 				return a.rarityScore > b.rarityScore
 			else
@@ -24974,18 +25079,8 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_e, b: ParsedItemSlot
 		end
 	end
 
-	-- B. Nếu KHÔNG chọn stat cụ thể (chỉ chọn MainFilter hoặc MainFilter + Rarity):
-	if selectedStatFilter == nil then
-		-- Nếu bật Rarity: Phân tầng theo Độ hiếm trước (Mythic -> Legendary -> Epic...)
-		if rarityEnabled and a.rarityScore ~= b.rarityScore then
-			if isDesc then
-				return a.rarityScore > b.rarityScore
-			else
-				return a.rarityScore < b.rarityScore
-			end
-		end
-
-		-- Trong cùng độ hiếm (hoặc khi không bật Rarity): Sắp xếp theo Power
+	-- CHẾ ĐỘ 3: Không chọn Stat và không chọn Rarity -> Sắp xếp thuần túy theo Power:
+	if selectedStatFilter == nil and not rarityEnabled then
 		local powerA = math.max(a.physical, a.spell, a.health)
 		local powerB = math.max(b.physical, b.spell, b.health)
 		if powerA ~= powerB then
@@ -24997,18 +25092,41 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_e, b: ParsedItemSlot
 		end
 	end
 
-	-- 6. Tie-breakers giải quyết hòa điểm:
-	-- Tên (A-Z) -> Rarity phụ -> Chest trước Helmet -> LevelReq -> Max Stat -> OriginalOrder
-	if a.name ~= b.name then
-		return a.name < b.name
+	-- 6. ƯU TIÊN ẨN TOÀN DIỆN CHO TẤT CẢ TRANG BỊ: Level Req (Cấp độ yêu cầu của đồ)
+	if a.levelReq ~= b.levelReq then
+		if isDesc then
+			return a.levelReq > b.levelReq
+		else
+			return a.levelReq < b.levelReq
+		end
 	end
 
-	if not rarityEnabled and a.rarityScore ~= b.rarityScore then
-		if isDesc then
-			return a.rarityScore > b.rarityScore
-		else
-			return a.rarityScore < b.rarityScore
+	-- 7. Tie-breakers phụ sau Level Req:
+	-- Trong chế độ Rarity: xét tiếp Power khi cùng Level Req
+	if rarityEnabled then
+		local powerA = math.max(a.physical, a.spell, a.health)
+		local powerB = math.max(b.physical, b.spell, b.health)
+		if powerA ~= powerB then
+			if isDesc then
+				return powerA > powerB
+			else
+				return powerA < powerB
+			end
 		end
+	end
+
+	-- Trong chế độ Stat: xét tiếp Max Stat tổng quát khi cùng Level Req
+	if selectedStatFilter ~= nil then
+		local maxStatA = math.max(a.physical, a.spell, a.health)
+		local maxStatB = math.max(b.physical, b.spell, b.health)
+		if maxStatA ~= maxStatB then
+			return maxStatA > maxStatB
+		end
+	end
+
+	-- Tên A-Z (Gom các món trùng tên nằm cạnh nhau)
+	if a.name ~= b.name then
+		return a.name < b.name
 	end
 
 	-- Nếu cùng nhóm Armor: ưu tiên chest trước helmet
@@ -25018,16 +25136,6 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_e, b: ParsedItemSlot
 		if isChestA ~= isChestB then
 			return isChestA
 		end
-	end
-
-	if a.levelReq ~= b.levelReq then
-		return a.levelReq > b.levelReq
-	end
-
-	local maxStatA = math.max(a.physical, a.spell, a.health)
-	local maxStatB = math.max(b.physical, b.spell, b.health)
-	if maxStatA ~= maxStatB then
-		return maxStatA > maxStatB
 	end
 
 	return a.originalOrder < b.originalOrder
@@ -25123,17 +25231,38 @@ end
 --// Hiệu ứng tương tác giao diện (Visual Styling Controller)
 local function applyButtonVisual(button: GuiObject, stateName: string, animate: boolean)
 	local style = STYLE[stateName] or STYLE.Inactive
+	local theme = THEMATIC_COLORS[button.Name]
+
+	local bgTransparency = style.BackgroundTransparency
+	local bgColor = style.BackgroundColor3
+	local elemTransparency = style.ElementTransparency
+	local elemColor = style.ElementColor3
+	local strokeTransparency = style.StrokeTransparency
+	local strokeColor = style.StrokeColor3
+
+	if stateName == "Active" and theme then
+		bgTransparency = 0.12
+		bgColor = theme.ActiveBg
+		strokeTransparency = 0.0
+		strokeColor = theme.ActiveStroke
+	elseif stateName == "ActiveHovered" and theme then
+		bgTransparency = 0.05
+		bgColor = theme.ActiveHoverBg
+		strokeTransparency = 0.0
+		strokeColor = theme.ActiveHoverStroke
+	end
+
 	local tweenInfo = TweenInfo.new(STYLE.TweenDuration, STYLE.EasingStyle, STYLE.EasingDirection)
 
 	pcall(function()
 		if animate then
 			TweenService:Create(button, tweenInfo, {
-				BackgroundTransparency = style.BackgroundTransparency,
-				BackgroundColor3 = style.BackgroundColor3,
+				BackgroundTransparency = bgTransparency,
+				BackgroundColor3 = bgColor,
 			}):Play()
 		else
-			button.BackgroundTransparency = style.BackgroundTransparency
-			button.BackgroundColor3 = style.BackgroundColor3
+			button.BackgroundTransparency = bgTransparency
+			button.BackgroundColor3 = bgColor
 		end
 	end)
 
@@ -25142,32 +25271,32 @@ local function applyButtonVisual(button: GuiObject, stateName: string, animate: 
 			if child:IsA("ImageLabel") or child:IsA("ImageButton") then
 				if animate then
 					TweenService:Create(child, tweenInfo, {
-						ImageTransparency = style.ElementTransparency,
-						ImageColor3 = style.ElementColor3,
+						ImageTransparency = elemTransparency,
+						ImageColor3 = elemColor,
 					}):Play()
 				else
-					child.ImageTransparency = style.ElementTransparency
-					child.ImageColor3 = style.ElementColor3
+					child.ImageTransparency = elemTransparency
+					child.ImageColor3 = elemColor
 				end
 			elseif child:IsA("TextLabel") or child:IsA("TextButton") then
 				if animate then
 					TweenService:Create(child, tweenInfo, {
-						TextTransparency = style.ElementTransparency,
-						TextColor3 = style.ElementColor3,
+						TextTransparency = elemTransparency,
+						TextColor3 = elemColor,
 					}):Play()
 				else
-					child.TextTransparency = style.ElementTransparency
-					child.TextColor3 = style.ElementColor3
+					child.TextTransparency = elemTransparency
+					child.TextColor3 = elemColor
 				end
 			elseif child:IsA("UIStroke") then
 				if animate then
 					TweenService:Create(child, tweenInfo, {
-						Transparency = style.StrokeTransparency,
-						Color = style.StrokeColor3,
+						Transparency = strokeTransparency,
+						Color = strokeColor,
 					}):Play()
 				else
-					child.Transparency = style.StrokeTransparency
-					child.Color = style.StrokeColor3
+					child.Transparency = strokeTransparency
+					child.Color = strokeColor
 				end
 			end
 		end)
@@ -25280,6 +25409,38 @@ local function hookSortBarButton(button: GuiObject)
 		corner.Parent = button
 	end
 
+	-- Viền nổi bật cho nút nếu chưa có
+	if not button:FindFirstChildOfClass("UIStroke") then
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.2
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Transparency = STYLE.Inactive.StrokeTransparency
+		stroke.Color = STYLE.Inactive.StrokeColor3
+		stroke.Parent = button
+	end
+
+	-- Padding bên trong nút để icon không bị tràn sát viền
+	if not button:FindFirstChildOfClass("UIPadding") then
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 7)
+		pad.PaddingBottom = UDim.new(0, 7)
+		pad.PaddingLeft = UDim.new(0, 7)
+		pad.PaddingRight = UDim.new(0, 7)
+		pad.Parent = button
+	end
+
+	-- Căn chỉnh lại icon con bên trong nếu có
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("ImageLabel") then
+			child.AnchorPoint = Vector2.new(0.5, 0.5)
+			child.Position = UDim2.new(0.5, 0, 0.5, 0)
+			child.Size = UDim2.new(1, 0, 1, 0)
+			child.ScaleType = Enum.ScaleType.Fit
+		elseif child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+
 	buttonHoverState[button] = false
 
 	-- Hover vào: Tăng độ đậm background và font/icon rõ ràng
@@ -25318,12 +25479,16 @@ local function hookSortBarButton(button: GuiObject)
 
 			elseif button.Name == "IBrarity" then
 				rarityEnabled = not rarityEnabled
-				if abilityEnabled then abilityEnabled = false end
-				if rarityEnabled and mainFilterMode == "None" then
-					mainFilterMode = "Descending"
+				if rarityEnabled then
+					selectedStatFilter = nil
+					abilityEnabled = false
+					if mainFilterMode == "None" then
+						mainFilterMode = "Descending"
+					end
+					notifier.Notify("Filter", "Chế độ: Độ hiếm (Rarity)", 1.5)
+				else
+					notifier.Notify("Filter", "Tắt lọc Độ hiếm", 1.5)
 				end
-				local status = rarityEnabled and "Bật lọc Độ hiếm (Rarity)" or "Tắt lọc Độ hiếm"
-				notifier.Notify("Filter", status, 1.5)
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
 				if autoSortEnabled then inventorySort.RequestSort(0.05) end
@@ -25334,13 +25499,13 @@ local function hookSortBarButton(button: GuiObject)
 					or (button.Name == "IBspell" and "Spell Power")
 					or "Health"
 
-				if abilityEnabled then abilityEnabled = false end
-
 				if selectedStatFilter == statName then
 					selectedStatFilter = nil
 					notifier.Notify("Filter", "Bỏ chọn " .. statName, 1.5)
 				else
 					selectedStatFilter = statName
+					rarityEnabled = false
+					abilityEnabled = false
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
@@ -25381,6 +25546,39 @@ function hookSortBar(sortBar: GuiObject)
 	if hookedSortBars[sortBar] then return end
 	hookedSortBars[sortBar] = true
 
+	-- Thiết lập khung Dock Panel chuyên nghiệp cho sortBarFrame
+	pcall(function()
+		sortBar.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+		sortBar.BackgroundTransparency = 0.15
+		sortBar.BorderSizePixel = 0
+
+		if not sortBar:FindFirstChildOfClass("UICorner") then
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 8)
+			corner.Parent = sortBar
+		end
+
+		local dockStroke = sortBar:FindFirstChild("DockStroke") or sortBar:FindFirstChildOfClass("UIStroke")
+		if not dockStroke then
+			dockStroke = Instance.new("UIStroke")
+			dockStroke.Name = "DockStroke"
+			dockStroke.Thickness = 1.2
+			dockStroke.Color = Color3.fromRGB(65, 72, 90)
+			dockStroke.Transparency = 0.3
+			dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			dockStroke.Parent = sortBar
+		end
+
+		if not sortBar:FindFirstChildOfClass("UIPadding") then
+			local pad = Instance.new("UIPadding")
+			pad.PaddingTop = UDim.new(0, 5)
+			pad.PaddingBottom = UDim.new(0, 5)
+			pad.PaddingLeft = UDim.new(0, 5)
+			pad.PaddingRight = UDim.new(0, 5)
+			pad.Parent = sortBar
+		end
+	end)
+
 	-- Đảm bảo padding cách đều giữa các nút bấm
 	local listLayout = sortBar:FindFirstChildOfClass("UIListLayout")
 	if listLayout then
@@ -25409,6 +25607,7 @@ function hookSortBar(sortBar: GuiObject)
 	end)
 	table.insert(activeConnections, childConn)
 
+	applySortBarScale(sortBar)
 	refreshAllSortBarButtons(false)
 end
 
@@ -25453,6 +25652,11 @@ local function getSortBarFrame(): GuiObject?
 	return ensureSortBar()
 end
 
+--// Public APIs điều khiển Scale
+function inventorySort.GetScale(): number
+	return SORT_BAR_SCALE
+end
+
 --// Public APIs điều khiển trạng thái
 function inventorySort.GetMainFilterMode(): MainFilterMode__DARKLUA_TYPE_c
 	return mainFilterMode
@@ -25475,7 +25679,11 @@ function inventorySort.SetRarityEnabled(state: boolean)
 	local newState = state and true or false
 	if rarityEnabled == newState then return end
 	rarityEnabled = newState
-	if rarityEnabled and abilityEnabled then abilityEnabled = false end
+	if rarityEnabled then
+		selectedStatFilter = nil
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	end
 	refreshAllSortBarButtons(true)
 	notifyStateChanged()
 	if autoSortEnabled then inventorySort.RequestSort(0.05) end
@@ -25489,7 +25697,11 @@ end
 function inventorySort.SetStatFilter(stat: StatFilterType__DARKLUA_TYPE_d?)
 	if selectedStatFilter == stat then return end
 	selectedStatFilter = stat
-	if selectedStatFilter and abilityEnabled then abilityEnabled = false end
+	if selectedStatFilter then
+		rarityEnabled = false
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	end
 	refreshAllSortBarButtons(true)
 	notifyStateChanged()
 	if autoSortEnabled then inventorySort.RequestSort(0.05) end
@@ -25507,6 +25719,7 @@ function inventorySort.SetAbilityEnabled(state: boolean)
 	if abilityEnabled then
 		rarityEnabled = false
 		selectedStatFilter = nil
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
 	end
 	refreshAllSortBarButtons(true)
 	notifyStateChanged()
@@ -25532,6 +25745,7 @@ function inventorySort.SetSortCriteria(criteria: string?)
 			return
 		end
 		rarityEnabled = true
+		selectedStatFilter = nil
 		abilityEnabled = false
 		if mainFilterMode == "None" then mainFilterMode = "Descending" end
 	elseif criteria == "Ability" then
@@ -25543,6 +25757,7 @@ function inventorySort.SetSortCriteria(criteria: string?)
 	elseif criteria == "Physical Damage" or criteria == "Spell Power" or criteria == "Health" then
 		if selectedStatFilter == criteria and not abilityEnabled and not rarityEnabled then return end
 		selectedStatFilter = criteria :: StatFilterType__DARKLUA_TYPE_d
+		rarityEnabled = false
 		abilityEnabled = false
 		if mainFilterMode == "None" then mainFilterMode = "Descending" end
 	elseif criteria == "Power" then
@@ -25554,7 +25769,7 @@ function inventorySort.SetSortCriteria(criteria: string?)
 		selectedStatFilter = nil
 		abilityEnabled = false
 	else
-		-- Tiêu chí lạ hoặc chuỗi kết hợp (vd: "Rarity + Physical Damage") -> không xử lý từ dropdown đơn
+		-- Tiêu chí lạ hoặc chuỗi kết hợp -> không xử lý từ dropdown đơn
 		return
 	end
 
@@ -25572,15 +25787,11 @@ function inventorySort.GetSortCriteria(): string
 	if abilityEnabled then
 		return "Ability"
 	end
-	local parts = {}
 	if rarityEnabled then
-		table.insert(parts, "Rarity")
+		return "Rarity"
 	end
 	if selectedStatFilter then
-		table.insert(parts, selectedStatFilter)
-	end
-	if #parts > 0 then
-		return table.concat(parts, " + ")
+		return selectedStatFilter
 	end
 	if mainFilterMode ~= "None" then
 		return "Power"
