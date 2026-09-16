@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-16T14:44:40.900513+00:00",
+    genDate = "2026-09-16T22:39:29.860576700+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -11739,16 +11739,12 @@ local function onHeartbeat()
 
 	if inDanger then
 		-- Kiểm tra xem Safe Spot đã chọn trước đó còn hợp lệ không:
-		-- 1. Điểm đó vẫn phải Safe (không bị đè bởi vùng đỏ hoặc vùng cam mới).
-		-- 2. Mối đe dọa (threat) của Player không bị đổi sang chiêu/loại khác.
-		-- 3. Người chơi không di chuyển ra quá xa Safe Spot cũ (không chạy ngược lại điểm cũ phía sau nếu đã tiến lên).
+		-- Điểm đó vẫn phải Safe (không bị đè bởi bất kỳ vùng đỏ hoặc vùng cam nào).
 		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
-		local isSameThreat = (threatInfo == currentThreatInstance and threatType == currentThreatType)
-		local isSpotTooFar = currentTargetSafeSpot and (distToTarget > (lastDistance + 4) or distToTarget > 12)
 
-		-- Nếu Safe Spot cũ bị đè HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot HOẶC điểm cũ quá xa:
-		if not isTargetStillSafe or not isSameThreat or not currentTargetSafeSpot or isSpotTooFar then
+		-- Chỉ tính lại khi chưa có Safe Spot HOẶC điểm Safe Spot hiện tại không còn an toàn:
+		if not currentTargetSafeSpot or not isTargetStillSafe then
 			local spot, found, dist, dir = safeSpot.FindNearestSafeSpot(root.Position)
 
 			if found and spot then
