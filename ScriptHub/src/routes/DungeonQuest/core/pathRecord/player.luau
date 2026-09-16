@@ -19,6 +19,7 @@ local notifier = require("@routes/DungeonQuest/core/notifier")
 local player = services.player
 local VirtualInputManager = services.VirtualInputManager
 local UserInputService = services.UserInputService
+local RunService = services.RunService or game:GetService("RunService")
 
 --// Constants
 local SIMPLIFY_TOL = 0.4 -- Studs: làm mịn quỹ đạo khi load (độ chính xác cao, bám sát từng centimet)
@@ -241,13 +242,90 @@ local function flatDistance(a, b)
 	return math.sqrt(dx * dx + dz * dz)
 end
 
+--// ControlModule management (ngăn Roblox ControlModule ghi đè Move(0,0,0) mỗi frame)
+local controlsModule = nil
+local function getPlayerControls()
+	if controlsModule then return controlsModule end
+	pcall(function()
+		local pScripts = player:FindFirstChild("PlayerScripts")
+		local pMod = pScripts and pScripts:FindFirstChild("PlayerModule")
+		if pMod then
+			controlsModule = require(pMod):GetControls()
+		end
+	end)
+	return controlsModule
+end
+
+local function disableControls()
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Disable) == "function" then
+		pcall(function() ctrl:Disable() end)
+	end
+end
+
+local function enableControls()
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Enable) == "function" then
+		pcall(function() ctrl:Enable() end)
+	end
+end
+
+--// Per-frame Move Driver (cấp vector di chuyển liên tục trước bước tính toán vật lý)
+local activeMoveVector = Vector3.zero
+local moveDriverConnection = nil
+
+local function startMoveDriver()
+	if moveDriverConnection then return end
+	local stepSignal = RunService.PreSimulation or RunService.Heartbeat or RunService.RenderStepped
+	moveDriverConnection = stepSignal:Connect(function()
+		if not isPlaying then return end
+		local hum = shared.GetHumanoid()
+		if hum then
+			hum:Move(activeMoveVector, false)
+		end
+	end)
+end
+
+local function stopMoveDriver()
+	if moveDriverConnection then
+		moveDriverConnection:Disconnect()
+		moveDriverConnection = nil
+	end
+	activeMoveVector = Vector3.zero
+	local hum = shared.GetHumanoid()
+	if hum then
+		pcall(function() hum:Move(Vector3.zero, false) end)
+	end
+end
+
+local function setMoveTarget(targetPos)
+	local root = getPlayerRoot()
+	if not root or not targetPos then
+		activeMoveVector = Vector3.zero
+		return
+	end
+	local p = root.Position
+	local offset = Vector3.new(targetPos.X - p.X, 0, targetPos.Z - p.Z)
+	if offset.Magnitude > 0.05 then
+		activeMoveVector = offset.Unit
+	else
+		activeMoveVector = Vector3.zero
+	end
+end
+
+local function setMoveZero()
+	activeMoveVector = Vector3.zero
+	local hum = shared.GetHumanoid()
+	if hum then
+		pcall(function() hum:Move(Vector3.zero, false) end)
+	end
+end
+
 --// Dừng hẳn nhân vật (khi tắt phát / nhường quyền).
 local function cancelMove(humanoid)
-	if humanoid then
-		pcall(function()
-			humanoid:Move(Vector3.zero, false)
-		end)
-	end
+	setMoveZero()
+	stopMoveDriver()
+	enableControls()
 end
 
 --// Mô phỏng kích hoạt skill theo đúng nút đã record:
@@ -503,7 +581,7 @@ local function walkThrough(segment, room, allowBoss)
 	local function runDwell(dwell)
 		if not isPlaying or (dwell.dur or 0) <= 0 then return true end
 		if replayPauses then
-			pcall(function() humanoid:Move(Vector3.zero, false) end)
+			setMoveZero()
 
 			if replayFacing and dwell.facing then
 				setFacing(root, dwell.facing)
@@ -519,8 +597,8 @@ local function walkThrough(segment, room, allowBoss)
 				if shared.GetCurrentRoomIndex() ~= room then return false, "room_changed" end
 				if shared.IsBossActive() and not allowBoss then return false, "boss" end
 
-				-- Dừng di chuyển trong lúc dwell
-				pcall(function() humanoid:Move(Vector3.zero, false) end)
+				-- Ngăn di chuyển trong lúc dwell
+				setMoveZero()
 
 				-- Kích hoạt mọi skill khi đến mốc tOff
 				local elapsed = os.clock() - startT
@@ -556,7 +634,7 @@ local function walkThrough(segment, room, allowBoss)
 
 			-- Giữ facing sau skill cuối trong dwell
 			while isPlaying and os.clock() < dwellFaceHoldUntil do
-				pcall(function() humanoid:Move(Vector3.zero, false) end)
+				setMoveZero()
 				task.wait(0.03)
 			end
 
@@ -579,16 +657,10 @@ local function walkThrough(segment, room, allowBoss)
 				if curDist <= 1.8 then break end
 				if shared.IsDead() or shared.GetCurrentRoomIndex() ~= room then break end
 
-				local offset = Vector3.new(startNode.X - p.X, 0, startNode.Z - p.Z)
-				if offset.Magnitude > 0.1 then
-					pcall(function() humanoid:Move(offset.Unit, false) end)
-				else
-					pcall(function() humanoid:Move(Vector3.zero, false) end)
-				end
-
+				setMoveTarget(startNode)
 				task.wait(0.03)
 			end
-			pcall(function() humanoid:Move(Vector3.zero, false) end)
+			setMoveZero()
 		end
 
 		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.0 studs)
@@ -612,24 +684,8 @@ local function walkThrough(segment, room, allowBoss)
 	local faceLockUntil = 0
 	local lastSkillFacing = nil
 
-	--// Gửi lệnh di chuyển theo Vector hướng (Move): phản hồi tức thì, giữ nguyên vận tốc, không hãm tốc ngầm.
-	local function sendMove(target)
-		local p = getSafePosition(root)
-		if not p or not humanoid then return end
-
-		local offset = Vector3.new(target.X - p.X, 0, target.Z - p.Z)
-		if offset.Magnitude > 0.05 then
-			pcall(function() humanoid:Move(offset.Unit, false) end)
-		else
-			pcall(function() humanoid:Move(Vector3.zero, false) end)
-		end
-	end
-
-	local function stopMove()
-		if humanoid then
-			pcall(function() humanoid:Move(Vector3.zero, false) end)
-		end
-	end
+	-- Đảm bảo Move Driver đang chạy liên tục ở mỗi frame
+	startMoveDriver()
 
 	while isPlaying do
 		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
@@ -684,7 +740,7 @@ local function walkThrough(segment, room, allowBoss)
 		while dwellIdx <= #dwells and progress >= dwells[dwellIdx].arc do
 			local currentDw = dwells[dwellIdx]
 			local dOk, dErr = runDwell(currentDw)
-			if not dOk then restoreAutoRotate(); return false, dErr end
+			if not dOk then setMoveZero(); restoreAutoRotate(); return false, dErr end
 			dwellIdx += 1
 			prevPos = getSafePosition(root)
 			lastMoved = os.clock()
@@ -757,7 +813,7 @@ local function walkThrough(segment, room, allowBoss)
 			while dwellIdx <= #dwells do
 				local currentDw = dwells[dwellIdx]
 				local dOk, dErr = runDwell(currentDw)
-				if not dOk then stopMove(); restoreAutoRotate(); return false, dErr end
+				if not dOk then setMoveZero(); restoreAutoRotate(); return false, dErr end
 				dwellIdx += 1
 			end
 			while skillIdx <= #walkSkills do
@@ -779,16 +835,11 @@ local function walkThrough(segment, room, allowBoss)
 				if not p2 then break end
 				local curDist = flatDistance(p2, path[n])
 				if curDist <= ARRIVE_DIST then break end
-				if shared.GetCurrentRoomIndex() ~= room then stopMove(); restoreAutoRotate(); return false, "room_changed" end
-				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then stopMove(); restoreAutoRotate(); return false, "dead" end
+				if shared.GetCurrentRoomIndex() ~= room then setMoveZero(); restoreAutoRotate(); return false, "room_changed" end
+				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then setMoveZero(); restoreAutoRotate(); return false, "dead" end
 				if os.clock() >= deadline then break end
 
-				local offset = Vector3.new(path[n].X - p2.X, 0, path[n].Z - p2.Z)
-				if offset.Magnitude > 0.05 then
-					pcall(function() humanoid:Move(offset.Unit, false) end)
-				else
-					stopMove()
-				end
+				setMoveTarget(path[n])
 
 				if os.clock() < faceLockUntil then
 					if lastSkillFacing then smoothFacing(root, lastSkillFacing, 0.45) end
@@ -798,7 +849,7 @@ local function walkThrough(segment, room, allowBoss)
 				end
 				task.wait(0.03)
 			end
-			stopMove()
+			setMoveZero()
 			restoreAutoRotate()
 			currentProgress = total
 			progressPercent = 100
@@ -808,10 +859,10 @@ local function walkThrough(segment, room, allowBoss)
 		--// Đích luôn ở phía trước -> humanoid đi liền mạch (Adaptive Lookahead).
 		local currentLookahead = getAdaptiveLookahead(progress)
 		local target = pointAt(math.min(progress + currentLookahead, total - 0.01))
-		sendMove(target)
+		setMoveTarget(target)
 		task.wait(0.03)
 	end
-	stopMove()
+	setMoveZero()
 	restoreAutoRotate()
 	return false, "stopped"
 end
@@ -913,6 +964,8 @@ local function playbackLoop()
 			end
 		end
 	end
+	stopMoveDriver()
+	enableControls()
 	restorePlaybackSpeed()
 	restoreAutoRotate()
 	playThread = nil
@@ -993,6 +1046,8 @@ function mover.Start()
 	totalProgress = 0
 	progressPercent = 0
 	isPlaying = true
+	disableControls()
+	startMoveDriver()
 	playThread = task.spawn(playbackLoop)
 	fireStatus("started")
 	return true
