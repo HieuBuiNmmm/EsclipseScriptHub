@@ -1,9 +1,11 @@
--- HazardScanner – Timer Visualizer (DungeonQuest):
--- Hiển thị 3D visual đếm thời gian tồn tại (Lifespan Duration Timer) tăng dần (0.0s, 0.1s, 0.2s...)
--- CHỈ DÀNH CHO RED ZONE (vùng nguy hiểm tĩnh trên sàn đấu).
--- Tuyệt đối không đếm cho Blue Zone (Đạn bay / Trajectory) hay Yellow (Hành lang quỹ đạo / Candidate).
--- Mỗi Red Danger Zone (đĩa tròn đỏ, hộp OBB đỏ) có 1 BillboardGui gắn trực tiếp vào Part của vùng đó
--- và tự hủy lập tức ngay khi Red Zone mờ đi (Transparency > 0.85) hoặc biến mất.
+-- HazardScanner – Timer & 3D Tag Visualizer (DungeonQuest):
+-- Hiển thị 3D visual gắn trên đầu mọi Danger Zone trong không gian trận đấu.
+-- Phân loại nhãn 3D:
+--   - (T) Trajectory: Chiêu thức đang di chuyển / có quỹ đạo bay (Blue/Orange Zone) -> KHÔNG đếm thời gian.
+--   - (P) Projectile: Đối tượng có tên trong ReplicatedStorage/enemyProjectiles nhưng đang tĩnh trên sàn -> CÓ đếm thời gian.
+--   - (N) Non-projectile: Chiêu thức tĩnh trên mặt sàn (Red Danger Zone) -> CÓ đếm thời gian.
+-- Mỗi Danger Zone có 1 BillboardGui gắn trực tiếp vào Part của vùng đó
+-- và tự hủy lập tức ngay khi Zone mờ đi (Transparency > 0.85) hoặc biến mất khỏi Workspace.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -11,6 +13,7 @@ local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 
 local RunService = services.RunService or game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = services.player
 
 --// Table
@@ -25,7 +28,49 @@ local heartbeatConnection = nil
 --// Constants
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
 local COLOR_RED = Color3.fromRGB(255, 60, 60)
-local RGB_TEXT_RED = "255,130,130"
+local COLOR_BLUE = Color3.fromRGB(0, 180, 255)
+local COLOR_ORANGE = Color3.fromRGB(255, 140, 0)
+
+--// Folder chứa danh sách enemy projectiles mẫu trong ReplicatedStorage
+local PROJECTILE_FOLDER = "enemyProjectiles"
+local enemyProjectilesLoaded = false
+local enemyProjectileNames = {} -- [cleanName] = true
+
+--// Blacklist: Các đối tượng nằm trong enemyProjectiles nhưng thực tế không phải là Projectile
+local PROJECTILE_BLACKLIST = {
+	["secondbosscirclehitbox"] = true,
+	["secondbosscirclehit"] = true,
+}
+
+local function loadEnemyProjectiles()
+	if enemyProjectilesLoaded then return end
+	enemyProjectilesLoaded = true
+	local folder = ReplicatedStorage:FindFirstChild(PROJECTILE_FOLDER)
+	if folder then
+		for _, obj in ipairs(folder:GetChildren()) do
+			local clean = (obj.Name or ""):lower():gsub("%s+", "")
+			if #clean > 0 then
+				enemyProjectileNames[clean] = true
+			end
+		end
+		folder.ChildAdded:Connect(function(child)
+			local clean = (child.Name or ""):lower():gsub("%s+", "")
+			if #clean > 0 then
+				enemyProjectileNames[clean] = true
+			end
+		end)
+	end
+end
+
+--// Kiểm tra xem tên hazard có phải là Projectile mẫu từ ReplicatedStorage/enemyProjectiles không
+function timerVisual.IsEnemyProjectile(name)
+	loadEnemyProjectiles()
+	if not name or type(name) ~= "string" then return false end
+	local clean = name:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	if PROJECTILE_BLACKLIST[clean] == true then return false end
+	return enemyProjectileNames[clean] == true
+end
 
 --// Gán data source từ detection (tránh circular dependency)
 function timerVisual.BindDetection(dataSource)
@@ -91,38 +136,73 @@ local function getMainPart(instance)
 	return nil
 end
 
---// Cập nhật text thời gian cho toàn bộ Red Danger Zone của 1 hazard
+--// Phân loại nhãn và màu sắc cho 1 hazard
+--// Trả về: tag ("P" | "N"), strokeColor (Color3), tagRgb (string), hasTimer (boolean)
+local function getHazardClassification(hazardInfo)
+	local isTraj = hazardInfo and hazardInfo.IsTrajectory == true
+	local name = hazardInfo and hazardInfo.Name or "Hazard"
+	local isProj = timerVisual.IsEnemyProjectile(name)
+	local hasTimer = not isTraj -- Chỉ có Dangerzone Đỏ (không phải Trajectory) là có đếm thời gian tồn tại
+
+	if isProj then
+		-- (P) Projectile (có tên trong ReplicatedStorage/enemyProjectiles)
+		local strokeColor = isTraj and COLOR_ORANGE or COLOR_BLUE
+		local tagRgb = isTraj and "255,160,50" or "0,210,255"
+		return "P", strokeColor, tagRgb, hasTimer
+	else
+		-- (N) Non-projectile (không thuộc enemyProjectiles)
+		local strokeColor = isTraj and COLOR_ORANGE or COLOR_RED
+		local tagRgb = isTraj and "255,160,50" or "255,80,80"
+		return "N", strokeColor, tagRgb, hasTimer
+	end
+end
+
+--// Cập nhật text hiển thị và màu sắc cho BillboardGui của 1 hazard
 local function updateTimerText(record, hazardInfo)
 	if not record or not record.items or not hazardInfo then return end
-	local spawnClock = hazardInfo.SpawnClock or os.clock()
-	local elapsed = math.max(0, os.clock() - spawnClock)
-	local name = hazardInfo.Name or "Red Zone"
-	local text = ("<font color='rgb(%s)'>%s</font> <font color='rgb(255,255,255)'><b>%.1fs</b></font>"):format(
-		RGB_TEXT_RED,
-		name,
-		elapsed
-	)
+	local tag, strokeColor, tagRgb, hasTimer = getHazardClassification(hazardInfo)
+	local name = hazardInfo.Name or "Hazard"
+	local text = ""
+
+	if hasTimer then
+		local spawnClock = hazardInfo.SpawnClock or os.clock()
+		local elapsed = math.max(0, os.clock() - spawnClock)
+		text = ("<font color='rgb(%s)'><b>(%s)</b></font> <font color='rgb(255,220,220)'>%s</font> <font color='rgb(255,255,255)'><b>%.1fs</b></font>"):format(
+			tagRgb,
+			tag,
+			name,
+			elapsed
+		)
+	else
+		text = ("<font color='rgb(%s)'><b>(%s)</b></font> <font color='rgb(220,235,255)'>%s</font>"):format(
+			tagRgb,
+			tag,
+			name
+		)
+	end
 
 	for _, item in ipairs(record.items) do
 		if item.label and item.label.Parent then
 			item.label.Text = text
 		end
+		if item.stroke and item.stroke.Parent and item.stroke.Color ~= strokeColor then
+			item.stroke.Color = strokeColor
+		end
 	end
 end
 
---// Vòng lặp Heartbeat: Cập nhật bộ đếm thời gian và dọn dẹp NGAY LẬP TỨC khi Red Zone biến mất
+--// Vòng lặp Heartbeat: Cập nhật bộ đếm/nhãn và dọn dẹp NGAY LẬP TỨC khi Danger Zone biến mất
 local function onHeartbeat()
 	if not enabled then return end
 	local hasAny = false
 
 	for hazardInfo, record in pairs(activeTimers) do
 		local inst = hazardInfo.Instance
-		-- Nếu hazard bị chuyển sang Trajectory (Blue Zone) hoặc instance không còn -> gỡ ngay
-		if hazardInfo.IsTrajectory == true or not inst or not inst.Parent then
+		if not inst or not inst.Parent then
 			timerVisual.DetachTimerVisual(hazardInfo)
 		else
 			if record.items then
-				-- Duyệt ngược mảng items để xóa các Red Zone đã biến mất/mờ
+				-- Duyệt ngược mảng items để xóa các Zone đã biến mất/mờ
 				for i = #record.items, 1, -1 do
 					local item = record.items[i]
 					local part = item.part
@@ -132,7 +212,7 @@ local function onHeartbeat()
 						end
 						table.remove(record.items, i)
 					else
-						-- Red Zone còn sống -> cập nhật vị trí offset
+						-- Zone còn sống -> cập nhật vị trí offset
 						if item.billboard and item.billboard.Parent then
 							item.billboard.StudsOffset = Vector3.new(0, computeYOffset(part), 0)
 						end
@@ -163,8 +243,8 @@ local function ensureHeartbeat()
 	end
 end
 
---// Tạo 1 BillboardGui cho 1 Red Danger Zone (part)
-local function createRedZoneBillboard(part)
+--// Tạo 1 BillboardGui cho 1 Danger Zone (part)
+local function createHazardBillboard(part, initialStrokeColor)
 	local yOffset = computeYOffset(part)
 
 	local bb = Instance.new("BillboardGui")
@@ -175,7 +255,7 @@ local function createRedZoneBillboard(part)
 	bb.LightInfluence = 0
 	bb.ResetOnSpawn = false
 	bb.Active = false
-	bb.Size = UDim2.new(0, 130, 0, 24)
+	bb.Size = UDim2.new(0, 150, 0, 24)
 	bb.StudsOffset = Vector3.new(0, yOffset, 0)
 	bb.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 
@@ -194,7 +274,7 @@ local function createRedZoneBillboard(part)
 	local stroke = Instance.new("UIStroke")
 	stroke.Name = "Stroke"
 	stroke.Thickness = 1.3
-	stroke.Color = COLOR_RED
+	stroke.Color = initialStrokeColor or COLOR_RED
 	stroke.Transparency = 0.15
 	stroke.Parent = frame
 
@@ -218,17 +298,9 @@ local function createRedZoneBillboard(part)
 	return bb, label, stroke
 end
 
---// Gắn 3D Timer Visual cho TỪNG RED DANGER ZONE của Hazard (CHỈ Red Zone, bỏ qua Blue Zone)
+--// Gắn 3D Tag/Timer Visual cho toàn bộ các vùng của 1 Hazard
 function timerVisual.AttachTimerVisual(hazardInfo)
 	if not enabled or not hazardInfo then return end
-
-	-- CHỈ đếm cho Red Zone, không đếm cho Blue Zone (Trajectory)
-	if hazardInfo.IsTrajectory == true then
-		if activeTimers[hazardInfo] then
-			timerVisual.DetachTimerVisual(hazardInfo)
-		end
-		return
-	end
 
 	if activeTimers[hazardInfo] then
 		timerVisual.DetachTimerVisual(hazardInfo)
@@ -237,6 +309,7 @@ function timerVisual.AttachTimerVisual(hazardInfo)
 	local inst = hazardInfo.Instance
 	if not inst or not inst.Parent then return end
 
+	local _, initialStrokeColor = getHazardClassification(hazardInfo)
 	local hazardZones = geometry.GetHazardZones(hazardInfo)
 	local zones = hazardZones and hazardZones.zones
 
@@ -253,7 +326,7 @@ function timerVisual.AttachTimerVisual(hazardInfo)
 		}
 		table.insert(items, item)
 
-		-- Tự động hủy timer LẬP TỨC khi part mờ dần (hết chiêu thức)
+		-- Tự động hủy tag LẬP TỨC khi part mờ dần (hết chiêu thức)
 		local connTrans = part:GetPropertyChangedSignal("Transparency"):Connect(function()
 			if not isZonePartAlive(part) then
 				pcall(function() bb:Destroy() end)
@@ -261,7 +334,7 @@ function timerVisual.AttachTimerVisual(hazardInfo)
 		end)
 		table.insert(connections, connTrans)
 
-		-- Tự động hủy timer LẬP TỨC khi part bị xóa khỏi Workspace
+		-- Tự động hủy tag LẬP TỨC khi part bị xóa khỏi Workspace
 		local connParent = part.AncestryChanged:Connect(function(_, newParent)
 			if not newParent then
 				pcall(function() bb:Destroy() end)
@@ -274,14 +347,14 @@ function timerVisual.AttachTimerVisual(hazardInfo)
 		for _, zone in ipairs(zones) do
 			local part = zone.part
 			if isZonePartAlive(part) then
-				local bb, label, stroke = createRedZoneBillboard(part)
+				local bb, label, stroke = createHazardBillboard(part, initialStrokeColor)
 				hookPart(part, bb, label, stroke, zone)
 			end
 		end
 	else
 		local part = getMainPart(inst)
 		if isZonePartAlive(part) then
-			local bb, label, stroke = createRedZoneBillboard(part)
+			local bb, label, stroke = createHazardBillboard(part, initialStrokeColor)
 			hookPart(part, bb, label, stroke, nil)
 		end
 	end
@@ -322,18 +395,14 @@ function timerVisual.DetachTimerVisual(hazardInfo)
 	activeTimers[hazardInfo] = nil
 end
 
---// Cập nhật khi hazard chuyển đổi trạng thái Trajectory (Nếu thành Blue Zone -> gỡ timer ngay)
+--// Cập nhật khi hazard chuyển đổi trạng thái Trajectory
 function timerVisual.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 	if not hazardInfo then return end
-	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
-	if isTraj then
-		-- Chuyển thành Blue Zone -> Gỡ bỏ timer hoàn toàn
-		timerVisual.DetachTimerVisual(hazardInfo)
+	local record = activeTimers[hazardInfo]
+	if record then
+		updateTimerText(record, hazardInfo)
 	else
-		-- Là Red Zone -> Đảm bảo có timer
-		if not activeTimers[hazardInfo] then
-			timerVisual.AttachTimerVisual(hazardInfo)
-		end
+		timerVisual.AttachTimerVisual(hazardInfo)
 	end
 end
 
@@ -349,13 +418,13 @@ function timerVisual.ClearAll()
 	table.clear(activeTimers)
 end
 
---// Làm mới toàn bộ Timer Visuals (CHỈ gắn cho Red Zones)
+--// Làm mới toàn bộ Visuals cho tất cả các hazard hiện có
 function timerVisual.RefreshAll()
 	timerVisual.ClearAll()
 	if not enabled or not data then return end
 
 	for _, info in pairs(data.GetActiveHazardsMap()) do
-		if info and info.IsTrajectory ~= true then
+		if info then
 			timerVisual.AttachTimerVisual(info)
 		end
 	end

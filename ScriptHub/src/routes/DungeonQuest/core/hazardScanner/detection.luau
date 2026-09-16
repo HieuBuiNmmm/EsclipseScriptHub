@@ -43,6 +43,11 @@ local IGNORE_FOLDERS = { "abilities", "projectiles" }
 local ignoreNamesLoaded = false
 local ignoreNames = {} -- [cleanName] = true
 
+--// Blacklist: Danh sách tên đối tượng trong Workspace KHÔNG BAO GIỜ coi là Danger Zone
+local HAZARD_BLACKLIST = {
+	-- Thêm tên các đối tượng / hiệu ứng rác vào đây nếu cần bỏ qua
+}
+
 local function loadIgnoreNames()
 	if ignoreNamesLoaded then return end
 	ignoreNamesLoaded = true
@@ -92,6 +97,14 @@ local function isIgnoredName(instance)
 		-- 3. Bỏ qua các template trong ReplicatedStorage
 		local clean = lower:gsub("%s+", "")
 		if #clean > 0 and ignoreNames[clean] == true then return true end
+
+		-- 4. Bỏ qua các đối tượng nằm trong danh sách Blacklist thủ công
+		if HAZARD_BLACKLIST[clean] == true or HAZARD_BLACKLIST[name] == true then return true end
+		for blName, _ in pairs(HAZARD_BLACKLIST) do
+			if string.find(clean, blName, 1, true) then
+				return true
+			end
+		end
 	end
 	return false
 end

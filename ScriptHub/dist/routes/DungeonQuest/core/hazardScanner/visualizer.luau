@@ -22,36 +22,37 @@ OnPaddingChanged(i)if type(i)=='function'then table.insert(f,i)end end function
 b.SetHazardPadding(i)if type(i)=='number'and i>=0 and i~=d then d=i b.
 InvalidateCache()for j,k in ipairs(f)do pcall(k,d)end end end b.SetHitboxPadding
 =b.SetHazardPadding local i={'firstBossCrissCross','firstBossBigSpike',
-'firstBossSeekingSpikes'}local j=function(j)if not j or type(j)~='string'then
-return false end local k=j:lower():gsub('%s+','')if#k==0 then return false end
-for l,m in ipairs(i)do local n=m:lower():gsub('%s+','')if#n>0 and string.find(k,
-n,1,true)then return true end end return false end function b.IsForceCircle(k)
-return j(k)end function b.AddForceCircleName(k)if type(k)=='string'and#k>0 then
-table.insert(i,k)b.InvalidateCache()end end function b.GetForceCircleNames()
-return i end local k,l,m=function(k)return k and k.Parent and k.Transparency<=c
-end,function(k,l,m)local n,o=k.Size,m and e or d if l or(k:IsA'Part'and(k.Shape
-==Enum.PartType.Ball or k.Shape==Enum.PartType.Cylinder))then return{radius=math
-.max(n.X,n.Y,n.Z)/2}end local p=Vector3.new(math.max(n.X,0)/2+o,0,math.max(n.Z,0
-)/2+o)return{half=p,cframe=k.CFrame}end,function(k,l,m,n)if not l then return
-false end local o,p=k.X,k.Z m=m or 0 local q=(n or l.isTrajectory)and e or d if
-l.radius then local r=(l.part and l.part.Parent)and l.part.Position local s,t=r
-and r.X or l.cx or 0,r and r.Z or l.cz or 0 local u,v,w=o-s,p-t,l.radius+q+m
-return(u*u+v*v)<=(w*w)end local r=(l.part and l.part.Parent)and l.part.CFrame or
-l.cframe if r then local s,t,u=r:PointToObjectSpace(k),l.half.X,l.half.Z if m<=0
-then return math.abs(s.X)<=t and math.abs(s.Z)<=u else local v,w=math.max(0,math
-.abs(s.X)-t),math.max(0,math.abs(s.Z)-u)return(v*v+w*w)<=(m*m)end end return
-false end local n=function(n)if not n or not n.Instance or not n.Instance.Parent
-then return nil end local o=n.Instance local p=n.Name or(o and o.Name)or''local
-q,r=j(p),n.IsTrajectory==true local s,t=r and e or d if o:IsA'BasePart'then if
-not k(o)then return nil end t={o}else t={}for u,v in ipairs(o:GetDescendants())
-do if#t>=g then break end if v:IsA'BasePart'and k(v)and v.Parent then t[#t+1]=v
-end end if#t==0 then return nil end end local u,v,w,x,y={},math.huge,-math.huge,
-math.huge,-math.huge for z,A in ipairs(t)do local B,C=A.Position,A.Size local D=
-math.max(C.X,C.Y,C.Z)/2+s v=math.min(v,B.X-D)w=math.max(w,B.X+D)x=math.min(x,B.Z
--D)y=math.max(y,B.Z+D)local E=l(A,q,r)if E then if E.radius then E.cx,E.cz=B.X,B
-.Z end E.part=A E.isTrajectory=r u[#u+1]=E end end if#u==0 then return nil end
-local z,A,B,C=(v+w)/2,(x+y)/2,(w-v)/2,(y-x)/2 return{zones=u,center=Vector3.new(
-z,0,A),boundingRadius=math.sqrt(B*B+C*C)}end local o=function(o)local p=o and o.
+'firstBossSeekingSpikes','secondBossCircleHitbox','secondBossCircleHit'}local j=
+function(j)if not j or type(j)~='string'then return false end local k=j:lower():
+gsub('%s+','')if#k==0 then return false end for l,m in ipairs(i)do local n=m:
+lower():gsub('%s+','')if#n>0 and string.find(k,n,1,true)then return true end end
+return false end function b.IsForceCircle(k)return j(k)end function b.
+AddForceCircleName(k)if type(k)=='string'and#k>0 then table.insert(i,k)b.
+InvalidateCache()end end function b.GetForceCircleNames()return i end local k,l,
+m=function(k)return k and k.Parent and k.Transparency<=c end,function(k,l,m)
+local n,o=k.Size,m and e or d if l or(k:IsA'Part'and(k.Shape==Enum.PartType.Ball
+or k.Shape==Enum.PartType.Cylinder))then return{radius=math.max(n.X,n.Y,n.Z)/2}
+end local p=Vector3.new(math.max(n.X,0)/2+o,0,math.max(n.Z,0)/2+o)return{half=p,
+cframe=k.CFrame}end,function(k,l,m,n)if not l then return false end local o,p=k.
+X,k.Z m=m or 0 local q=(n or l.isTrajectory)and e or d if l.radius then local r=
+(l.part and l.part.Parent)and l.part.Position local s,t=r and r.X or l.cx or 0,r
+and r.Z or l.cz or 0 local u,v,w=o-s,p-t,l.radius+q+m return(u*u+v*v)<=(w*w)end
+local r=(l.part and l.part.Parent)and l.part.CFrame or l.cframe if r then local
+s,t,u=r:PointToObjectSpace(k),l.half.X,l.half.Z if m<=0 then return math.abs(s.X
+)<=t and math.abs(s.Z)<=u else local v,w=math.max(0,math.abs(s.X)-t),math.max(0,
+math.abs(s.Z)-u)return(v*v+w*w)<=(m*m)end end return false end local n=function(
+n)if not n or not n.Instance or not n.Instance.Parent then return nil end local
+o=n.Instance local p=n.Name or(o and o.Name)or''local q,r=j(p),n.IsTrajectory==
+true local s,t=r and e or d if o:IsA'BasePart'then if not k(o)then return nil
+end t={o}else t={}for u,v in ipairs(o:GetDescendants())do if#t>=g then break end
+if v:IsA'BasePart'and k(v)and v.Parent then t[#t+1]=v end end if#t==0 then
+return nil end end local u,v,w,x,y={},math.huge,-math.huge,math.huge,-math.huge
+for z,A in ipairs(t)do local B,C=A.Position,A.Size local D=math.max(C.X,C.Y,C.Z)
+/2+s v=math.min(v,B.X-D)w=math.max(w,B.X+D)x=math.min(x,B.Z-D)y=math.max(y,B.Z+D
+)local E=l(A,q,r)if E then if E.radius then E.cx,E.cz=B.X,B.Z end E.part=A E.
+isTrajectory=r u[#u+1]=E end end if#u==0 then return nil end local z,A,B,C=(v+w)
+/2,(x+y)/2,(w-v)/2,(y-x)/2 return{zones=u,center=Vector3.new(z,0,A),
+boundingRadius=math.sqrt(B*B+C*C)}end local o=function(o)local p=o and o.
 HazardZones if not p then p=n(o)if p and o then o.HazardZones=p end end return p
 end function b.GetHazardZones(p)return o(p)end function b.GetNearbyHazards(p,q)
 local r=h if not r then return{}end q=q or 65 local s,t,u={},p.X,p.Z for v,w in
@@ -60,33 +61,21 @@ center.X,y.center.Z if x and x.Parent then local B=x:IsA'BasePart'and x or x.
 PrimaryPart or x:FindFirstChildWhichIsA'BasePart'if B then z=B.Position.X A=B.
 Position.Z end end local B,C=t-z,u-A local D,E=B*B+C*C,q+y.boundingRadius if D<=
 E*E then table.insert(s,w)end end end return s end function b.IsPointInAnyHazard
-(p,q,r,s,t)local u=h if not u then return false,nil,nil end r=r or 0 local v,w,x
-,y=math.huge,s or u.GetActiveHazardsMap()for z,A in pairs(w)do if t and A.
-IsTrajectory==true then continue end local B=A.Instance or(typeof(z)=='Instance'
-and z)if q and(q==B or(B and q.Name==B.Name))then continue end local C=o(A)if
-not C then continue end local D,E=C.center.X,C.center.Z if B and B.Parent then
-local F=B:IsA'BasePart'and B or B.PrimaryPart or B:FindFirstChildWhichIsA
-'BasePart'if F then D=F.Position.X E=F.Position.Z end end local F,G=p.X-D,p.Z-E
-local H,I=F*F+G*G,C.boundingRadius+r if H>I*I then continue end local J=A.
-IsTrajectory==true for K=1,#C.zones do local L=C.zones[K]if k(L.part)and m(p,L,r
-,J or L.isTrajectory)then local M=(p-L.part.Position).Magnitude if M<v then v=M
-x=A y=L.part end break end end end return y~=nil,x,y end function b.
-IsPointInAnyRedHazard(p,q,r,s)return b.IsPointInAnyHazard(p,q,r,s,true)end
-function b.GetHazardsAtPoint(p,q,r,s)local t=h if not t then return{}end q=q or
-0 local u,v={},r or t.GetActiveHazardsMap()for w,x in pairs(v)do if s and x.
-IsTrajectory==true then continue end local y,z=x.Instance or(typeof(w)==
-'Instance'and w),o(x)if not z then continue end local A,B=z.center.X,z.center.Z
-if y and y.Parent then local C=y:IsA'BasePart'and y or y.PrimaryPart or y:
-FindFirstChildWhichIsA'BasePart'if C then A=C.Position.X B=C.Position.Z end end
-local C,D=p.X-A,p.Z-B local E,F=C*C+D*D,z.boundingRadius+q if E>F*F then
-continue end local G=x.IsTrajectory==true for H=1,#z.zones do local I=z.zones[H]
-if k(I.part)and m(p,I,q,G or I.isTrajectory)then u[x]=true break end end end
-return u end function b.GetRedHazardsAtPoint(p,q,r)return b.GetHazardsAtPoint(p,
-q,r,true)end return b end end local b,c,d=a.load'a',a.load'b',a.load'c'local e,f
-,g,h,i,j,k,l,m,n,o,p=b.RunService or game:GetService'RunService',b.player,{},
-false,{},0.85,Color3.fromRGB(255,45,45),Color3.fromRGB(0,160,255),0.55,0.25
-local q=function()local q=f and f.Character if not q then return nil end local r
-=q:FindFirstChild'HumanoidRootPart'or q.PrimaryPart if not r then return nil end
+(p,q,r,s)local t=h if not t then return false,nil,nil end r=r or 0 local u,v,w,x
+=math.huge,s or t.GetActiveHazardsMap()for y,z in pairs(v)do local A=z.Instance
+or(typeof(y)=='Instance'and y)if q and(q==A or(A and q.Name==A.Name))then
+continue end local B=o(z)if not B then continue end local C,D=B.center.X,B.
+center.Z if A and A.Parent then local E=A:IsA'BasePart'and A or A.PrimaryPart or
+A:FindFirstChildWhichIsA'BasePart'if E then C=E.Position.X D=E.Position.Z end
+end local E,F=p.X-C,p.Z-D local G,H=E*E+F*F,B.boundingRadius+r if G>H*H then
+continue end local I=z.IsTrajectory==true for J=1,#B.zones do local K=B.zones[J]
+if k(K.part)and m(p,K,r,I or K.isTrajectory)then local L=(p-K.part.Position).
+Magnitude if L<u then u=L w=z x=K.part end break end end end return x~=nil,w,x
+end return b end end local b,c,d=a.load'a',a.load'b',a.load'c'local e,f,g,h,i,j,
+k,l,m,n,o,p=b.RunService or game:GetService'RunService',b.player,{},false,{},
+0.85,Color3.fromRGB(255,45,45),Color3.fromRGB(0,160,255),0.55,0.25 local q=
+function()local q=f and f.Character if not q then return nil end local r=q:
+FindFirstChild'HumanoidRootPart'or q.PrimaryPart if not r then return nil end
 return r.Position.Y-2.5 end function g.BindDetection(r)o=r or nil end function g
 .IsEnabled()return h end local r=function(r,s)local t,u=r.part,r.ad if not t or
 not t.Parent or not u or not u.Parent then return end local v=t.Position local w

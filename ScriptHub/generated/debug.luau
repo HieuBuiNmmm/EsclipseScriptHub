@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-15T23:45:58.962984600+00:00",
+    genDate = "2026-09-16T01:20:47.385484300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7342,6 +7342,8 @@ local FORCE_CIRCLE_NAMES = {
 	"firstBossCrissCross",
 	"firstBossBigSpike",
 	"firstBossSeekingSpikes",
+	"secondBossCircleHitbox",
+	"secondBossCircleHit",
 }
 
 local function isForceCircle(hazardName)
@@ -7541,9 +7543,8 @@ function geometry.GetNearbyHazards(origin, maxRadius)
 end
 
 --// Query: kiem tra diem P (hoac vong tron player ban kinh extraRadius) co dính hazard nao khong
---// redOnly: neu true, chi kiem tra cac Red Danger Zone tinh (bo qua trajectory / blue zones)
 --// Tra ve: hit (bool), hazardInfo (gan nhat), hitPart
-function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazardList, redOnly)
+function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazardList)
 	local det = data
 	if not det then return false, nil, nil end
 	extraRadius = extraRadius or 0
@@ -7553,9 +7554,6 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 	local list = hazardList or det.GetActiveHazardsMap()
 
 	for key, info in pairs(list) do
-		if redOnly and info.IsTrajectory == true then
-			continue
-		end
 		local inst = info.Instance or (typeof(key) == "Instance" and key)
 		if ignoredInstance and (ignoredInstance == inst or (inst and ignoredInstance.Name == inst.Name)) then
 			continue
@@ -7600,64 +7598,6 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 	end
 
 	return foundPart ~= nil, foundInfo, foundPart
-end
-
---// Query rieng chi kiem tra Red Danger Zone (Ground Static Danger Zones)
-function geometry.IsPointInAnyRedHazard(point, ignoredInstance, extraRadius, hazardList)
-	return geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazardList, true)
-end
-
---// Lay danh sach map {[hazardInfo] = true} cua tat ca cac hazard chua diem P (hoac cham vong tron extraRadius)
-function geometry.GetHazardsAtPoint(point, extraRadius, hazardList, redOnly)
-	local det = data
-	if not det then return {} end
-	extraRadius = extraRadius or 0
-
-	local result = {}
-	local list = hazardList or det.GetActiveHazardsMap()
-
-	for key, info in pairs(list) do
-		if redOnly and info.IsTrajectory == true then
-			continue
-		end
-		local inst = info.Instance or (typeof(key) == "Instance" and key)
-		local hazardZones = getHazardZones(info)
-		if not hazardZones then continue end
-
-		local cx = hazardZones.center.X
-		local cz = hazardZones.center.Z
-		if inst and inst.Parent then
-			local livePart = inst:IsA("BasePart") and inst or inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
-			if livePart then
-				cx = livePart.Position.X
-				cz = livePart.Position.Z
-			end
-		end
-
-		local dx = point.X - cx
-		local dz = point.Z - cz
-		local distSq = dx * dx + dz * dz
-		local totalBounding = hazardZones.boundingRadius + extraRadius
-		if distSq > totalBounding * totalBounding then
-			continue
-		end
-
-		local isTraj = info.IsTrajectory == true
-		for i = 1, #hazardZones.zones do
-			local zone = hazardZones.zones[i]
-			if isPartAlive(zone.part) and isPointInZone(point, zone, extraRadius, isTraj or zone.isTrajectory) then
-				result[info] = true
-				break
-			end
-		end
-	end
-
-	return result
-end
-
---// Lay danh sach cac Red Danger Zone chua diem P
-function geometry.GetRedHazardsAtPoint(point, extraRadius, hazardList)
-	return geometry.GetHazardsAtPoint(point, extraRadius, hazardList, true)
 end
 
 return geometry end function __DIST.k()-- HazardScanner – Visualizer: Vẽ trực quan vùng toán học (Ground Visualizer)
@@ -7942,7 +7882,456 @@ lifecycle.Register(function()
 end)
 
 return visualizer
-end function __DIST.l()-- HazardScanner – Trajectory Visualizer (DungeonQuest):
+end function __DIST.l()-- HazardScanner – Timer & 3D Tag Visualizer (DungeonQuest):
+-- Hiển thị 3D visual gắn trên đầu mọi Danger Zone trong không gian trận đấu.
+-- Phân loại nhãn 3D:
+--   - (T) Trajectory: Chiêu thức đang di chuyển / có quỹ đạo bay (Blue/Orange Zone) -> KHÔNG đếm thời gian.
+--   - (P) Projectile: Đối tượng có tên trong ReplicatedStorage/enemyProjectiles nhưng đang tĩnh trên sàn -> CÓ đếm thời gian.
+--   - (N) Non-projectile: Chiêu thức tĩnh trên mặt sàn (Red Danger Zone) -> CÓ đếm thời gian.
+-- Mỗi Danger Zone có 1 BillboardGui gắn trực tiếp vào Part của vùng đó
+-- và tự hủy lập tức ngay khi Zone mờ đi (Transparency > 0.85) hoặc biến mất khỏi Workspace.
+
+--// Imports
+
+local services = __DIST.load('e')
+local lifecycle = __DIST.load('b')
+local geometry = __DIST.load('j')
+
+local RunService = services.RunService or game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = services.player
+
+--// Table
+local timerVisual = {}
+
+--// State
+local enabled = true
+local data = nil
+local activeTimers = {} -- [hazardInfo] = { items = {}, connections = {} }
+local heartbeatConnection = nil
+
+--// Constants
+local FADE_TRANSPARENCY_THRESHOLD = 0.85
+local COLOR_RED = Color3.fromRGB(255, 60, 60)
+local COLOR_BLUE = Color3.fromRGB(0, 180, 255)
+local COLOR_ORANGE = Color3.fromRGB(255, 140, 0)
+
+--// Folder chứa danh sách enemy projectiles mẫu trong ReplicatedStorage
+local PROJECTILE_FOLDER = "enemyProjectiles"
+local enemyProjectilesLoaded = false
+local enemyProjectileNames = {} -- [cleanName] = true
+
+--// Blacklist: Các đối tượng nằm trong enemyProjectiles nhưng thực tế không phải là Projectile
+local PROJECTILE_BLACKLIST = {
+	["secondbosscirclehitbox"] = true,
+	["secondbosscirclehit"] = true,
+}
+
+local function loadEnemyProjectiles()
+	if enemyProjectilesLoaded then return end
+	enemyProjectilesLoaded = true
+	local folder = ReplicatedStorage:FindFirstChild(PROJECTILE_FOLDER)
+	if folder then
+		for _, obj in ipairs(folder:GetChildren()) do
+			local clean = (obj.Name or ""):lower():gsub("%s+", "")
+			if #clean > 0 then
+				enemyProjectileNames[clean] = true
+			end
+		end
+		folder.ChildAdded:Connect(function(child)
+			local clean = (child.Name or ""):lower():gsub("%s+", "")
+			if #clean > 0 then
+				enemyProjectileNames[clean] = true
+			end
+		end)
+	end
+end
+
+--// Kiểm tra xem tên hazard có phải là Projectile mẫu từ ReplicatedStorage/enemyProjectiles không
+function timerVisual.IsEnemyProjectile(name)
+	loadEnemyProjectiles()
+	if not name or type(name) ~= "string" then return false end
+	local clean = name:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	if PROJECTILE_BLACKLIST[clean] == true then return false end
+	return enemyProjectileNames[clean] == true
+end
+
+--// Gán data source từ detection (tránh circular dependency)
+function timerVisual.BindDetection(dataSource)
+	data = dataSource or nil
+end
+
+function timerVisual.IsEnabled()
+	return enabled
+end
+
+--// Lấy độ cao mặt sàn của người chơi
+local function getPlayerGroundY()
+	local char = player and player.Character
+	if not char then return nil end
+	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+	if not root then return nil end
+	return root.Position.Y - 2.5
+end
+
+--// Tính toán Y Offset phù hợp để BillboardGui luôn lơ lửng ở tầm mắt phía trên sàn đấu
+local function computeYOffset(part)
+	if not part or not part.Parent then return 2.5 end
+	local groundY = getPlayerGroundY()
+	if groundY then
+		local desiredY = groundY + 2.5
+		local diff = desiredY - part.Position.Y
+		local minAbovePart = part.Size.Y / 2 + 1.2
+		return math.clamp(math.max(diff, minAbovePart), 1.5, 30.0)
+	end
+	return math.clamp(part.Size.Y / 2 + 1.8, 2.0, 10.0)
+end
+
+--// Kiểm tra Part của Danger Zone còn sống không
+local function isZonePartAlive(part)
+	return part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD
+end
+
+--// Tìm BasePart đại diện fallback
+local function getMainPart(instance)
+	if not instance or not instance.Parent then return nil end
+	if instance:IsA("BasePart") then
+		if isZonePartAlive(instance) then return instance end
+	elseif instance:IsA("Model") then
+		if instance.PrimaryPart and isZonePartAlive(instance.PrimaryPart) then
+			return instance.PrimaryPart
+		end
+		local hrp = instance:FindFirstChild("HumanoidRootPart")
+		if hrp and isZonePartAlive(hrp) then
+			return hrp
+		end
+		for _, desc in ipairs(instance:GetDescendants()) do
+			if desc:IsA("BasePart") and isZonePartAlive(desc) then
+				return desc
+			end
+		end
+	else
+		for _, desc in ipairs(instance:GetDescendants()) do
+			if desc:IsA("BasePart") and isZonePartAlive(desc) then
+				return desc
+			end
+		end
+	end
+	return nil
+end
+
+--// Phân loại nhãn và màu sắc cho 1 hazard
+--// Trả về: tag ("P" | "N"), strokeColor (Color3), tagRgb (string), hasTimer (boolean)
+local function getHazardClassification(hazardInfo)
+	local isTraj = hazardInfo and hazardInfo.IsTrajectory == true
+	local name = hazardInfo and hazardInfo.Name or "Hazard"
+	local isProj = timerVisual.IsEnemyProjectile(name)
+	local hasTimer = not isTraj -- Chỉ có Dangerzone Đỏ (không phải Trajectory) là có đếm thời gian tồn tại
+
+	if isProj then
+		-- (P) Projectile (có tên trong ReplicatedStorage/enemyProjectiles)
+		local strokeColor = isTraj and COLOR_ORANGE or COLOR_BLUE
+		local tagRgb = isTraj and "255,160,50" or "0,210,255"
+		return "P", strokeColor, tagRgb, hasTimer
+	else
+		-- (N) Non-projectile (không thuộc enemyProjectiles)
+		local strokeColor = isTraj and COLOR_ORANGE or COLOR_RED
+		local tagRgb = isTraj and "255,160,50" or "255,80,80"
+		return "N", strokeColor, tagRgb, hasTimer
+	end
+end
+
+--// Cập nhật text hiển thị và màu sắc cho BillboardGui của 1 hazard
+local function updateTimerText(record, hazardInfo)
+	if not record or not record.items or not hazardInfo then return end
+	local tag, strokeColor, tagRgb, hasTimer = getHazardClassification(hazardInfo)
+	local name = hazardInfo.Name or "Hazard"
+	local text = ""
+
+	if hasTimer then
+		local spawnClock = hazardInfo.SpawnClock or os.clock()
+		local elapsed = math.max(0, os.clock() - spawnClock)
+		text = ("<font color='rgb(%s)'><b>(%s)</b></font> <font color='rgb(255,220,220)'>%s</font> <font color='rgb(255,255,255)'><b>%.1fs</b></font>"):format(
+			tagRgb,
+			tag,
+			name,
+			elapsed
+		)
+	else
+		text = ("<font color='rgb(%s)'><b>(%s)</b></font> <font color='rgb(220,235,255)'>%s</font>"):format(
+			tagRgb,
+			tag,
+			name
+		)
+	end
+
+	for _, item in ipairs(record.items) do
+		if item.label and item.label.Parent then
+			item.label.Text = text
+		end
+		if item.stroke and item.stroke.Parent and item.stroke.Color ~= strokeColor then
+			item.stroke.Color = strokeColor
+		end
+	end
+end
+
+--// Vòng lặp Heartbeat: Cập nhật bộ đếm/nhãn và dọn dẹp NGAY LẬP TỨC khi Danger Zone biến mất
+local function onHeartbeat()
+	if not enabled then return end
+	local hasAny = false
+
+	for hazardInfo, record in pairs(activeTimers) do
+		local inst = hazardInfo.Instance
+		if not inst or not inst.Parent then
+			timerVisual.DetachTimerVisual(hazardInfo)
+		else
+			if record.items then
+				-- Duyệt ngược mảng items để xóa các Zone đã biến mất/mờ
+				for i = #record.items, 1, -1 do
+					local item = record.items[i]
+					local part = item.part
+					if not isZonePartAlive(part) then
+						if item.billboard and item.billboard.Parent then
+							pcall(function() item.billboard:Destroy() end)
+						end
+						table.remove(record.items, i)
+					else
+						-- Zone còn sống -> cập nhật vị trí offset
+						if item.billboard and item.billboard.Parent then
+							item.billboard.StudsOffset = Vector3.new(0, computeYOffset(part), 0)
+						end
+					end
+				end
+
+				if #record.items == 0 then
+					timerVisual.DetachTimerVisual(hazardInfo)
+				else
+					hasAny = true
+					updateTimerText(record, hazardInfo)
+				end
+			else
+				timerVisual.DetachTimerVisual(hazardInfo)
+			end
+		end
+	end
+
+	if not hasAny and heartbeatConnection then
+		heartbeatConnection:Disconnect()
+		heartbeatConnection = nil
+	end
+end
+
+local function ensureHeartbeat()
+	if not heartbeatConnection and enabled then
+		heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
+	end
+end
+
+--// Tạo 1 BillboardGui cho 1 Danger Zone (part)
+local function createHazardBillboard(part, initialStrokeColor)
+	local yOffset = computeYOffset(part)
+
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "HazardLifespanTimer"
+	bb.Adornee = part
+	bb.AlwaysOnTop = true
+	bb.MaxDistance = 500
+	bb.LightInfluence = 0
+	bb.ResetOnSpawn = false
+	bb.Active = false
+	bb.Size = UDim2.new(0, 150, 0, 24)
+	bb.StudsOffset = Vector3.new(0, yOffset, 0)
+	bb.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+	local frame = Instance.new("Frame")
+	frame.Name = "TimerFrame"
+	frame.Size = UDim2.new(1, 0, 1, 0)
+	frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+	frame.BackgroundTransparency = 0.25
+	frame.BorderSizePixel = 0
+	frame.Parent = bb
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = frame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "Stroke"
+	stroke.Thickness = 1.3
+	stroke.Color = initialStrokeColor or COLOR_RED
+	stroke.Transparency = 0.15
+	stroke.Parent = frame
+
+	local label = Instance.new("TextLabel")
+	label.Name = "TimerLabel"
+	label.Size = UDim2.new(1, -6, 1, 0)
+	label.Position = UDim2.new(0, 3, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 11
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextStrokeTransparency = 0
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.RichText = true
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Text = ""
+	label.Parent = frame
+
+	bb.Parent = part
+	return bb, label, stroke
+end
+
+--// Gắn 3D Tag/Timer Visual cho toàn bộ các vùng của 1 Hazard
+function timerVisual.AttachTimerVisual(hazardInfo)
+	if not enabled or not hazardInfo then return end
+
+	if activeTimers[hazardInfo] then
+		timerVisual.DetachTimerVisual(hazardInfo)
+	end
+
+	local inst = hazardInfo.Instance
+	if not inst or not inst.Parent then return end
+
+	local _, initialStrokeColor = getHazardClassification(hazardInfo)
+	local hazardZones = geometry.GetHazardZones(hazardInfo)
+	local zones = hazardZones and hazardZones.zones
+
+	local items = {}
+	local connections = {}
+
+	local function hookPart(part, bb, label, stroke, zone)
+		local item = {
+			billboard = bb,
+			label = label,
+			stroke = stroke,
+			part = part,
+			zone = zone,
+		}
+		table.insert(items, item)
+
+		-- Tự động hủy tag LẬP TỨC khi part mờ dần (hết chiêu thức)
+		local connTrans = part:GetPropertyChangedSignal("Transparency"):Connect(function()
+			if not isZonePartAlive(part) then
+				pcall(function() bb:Destroy() end)
+			end
+		end)
+		table.insert(connections, connTrans)
+
+		-- Tự động hủy tag LẬP TỨC khi part bị xóa khỏi Workspace
+		local connParent = part.AncestryChanged:Connect(function(_, newParent)
+			if not newParent then
+				pcall(function() bb:Destroy() end)
+			end
+		end)
+		table.insert(connections, connParent)
+	end
+
+	if zones and #zones > 0 then
+		for _, zone in ipairs(zones) do
+			local part = zone.part
+			if isZonePartAlive(part) then
+				local bb, label, stroke = createHazardBillboard(part, initialStrokeColor)
+				hookPart(part, bb, label, stroke, zone)
+			end
+		end
+	else
+		local part = getMainPart(inst)
+		if isZonePartAlive(part) then
+			local bb, label, stroke = createHazardBillboard(part, initialStrokeColor)
+			hookPart(part, bb, label, stroke, nil)
+		end
+	end
+
+	if #items > 0 then
+		local record = {
+			items = items,
+			connections = connections,
+		}
+		activeTimers[hazardInfo] = record
+		updateTimerText(record, hazardInfo)
+		ensureHeartbeat()
+	end
+end
+
+--// Gỡ bỏ Timer Visual của 1 hazard
+function timerVisual.DetachTimerVisual(hazardInfo)
+	if not hazardInfo then return end
+	local record = activeTimers[hazardInfo]
+	if not record then return end
+
+	if record.connections then
+		for _, c in ipairs(record.connections) do
+			pcall(function() c:Disconnect() end)
+		end
+		table.clear(record.connections)
+	end
+
+	if record.items then
+		for _, item in ipairs(record.items) do
+			if item.billboard and item.billboard.Parent then
+				pcall(function() item.billboard:Destroy() end)
+			end
+		end
+		table.clear(record.items)
+	end
+
+	activeTimers[hazardInfo] = nil
+end
+
+--// Cập nhật khi hazard chuyển đổi trạng thái Trajectory
+function timerVisual.UpdateHazardVisualColor(hazardInfo, isTrajectory)
+	if not hazardInfo then return end
+	local record = activeTimers[hazardInfo]
+	if record then
+		updateTimerText(record, hazardInfo)
+	else
+		timerVisual.AttachTimerVisual(hazardInfo)
+	end
+end
+
+--// Xóa sạch toàn bộ Timer Visuals
+function timerVisual.ClearAll()
+	if heartbeatConnection then
+		heartbeatConnection:Disconnect()
+		heartbeatConnection = nil
+	end
+	for info in pairs(activeTimers) do
+		timerVisual.DetachTimerVisual(info)
+	end
+	table.clear(activeTimers)
+end
+
+--// Làm mới toàn bộ Visuals cho tất cả các hazard hiện có
+function timerVisual.RefreshAll()
+	timerVisual.ClearAll()
+	if not enabled or not data then return end
+
+	for _, info in pairs(data.GetActiveHazardsMap()) do
+		if info then
+			timerVisual.AttachTimerVisual(info)
+		end
+	end
+end
+
+--// Bật / tắt 3D Timer Visualizer
+function timerVisual.SetEnabled(state)
+	enabled = state and true or false
+	if enabled then
+		timerVisual.RefreshAll()
+	else
+		timerVisual.ClearAll()
+	end
+end
+
+--// Dọn dẹp khi script shutdown
+lifecycle.Register(function()
+	timerVisual.ClearAll()
+end)
+
+return timerVisual
+end function __DIST.m()-- HazardScanner – Trajectory Visualizer (DungeonQuest):
 -- Dự báo và vẽ đường quỹ đạo nguy hiểm (Orange Trajectory Corridor) tĩnh cho các chiêu thức đang di chuyển.
 -- Chiều dài dải cam được cố định theo cấu hình slider (predictionLength).
 -- Vùng màu cam được đối xử như một Danger Zone thực thụ: bất kỳ điểm nào nằm trong hành lang cam đều là Nguy Hiểm,
@@ -7973,6 +8362,64 @@ local TRAJECTORY_COLOR = Color3.fromRGB(255, 140, 0) -- Màu cam nổi bật
 local TRAJECTORY_TRANSPARENCY = 0.65
 local GROUND_THICKNESS = 0.20
 local MOVING_SPEED_THRESHOLD = 3.5 -- studs/s (ngưỡng tốc độ để coi là đang di chuyển)
+
+--// Danh sách các Projectile đặc biệt tự động xác định Trajectory ngay lập tức khi xuất hiện (Frame 0)
+--// Modes:
+--//   "target_player" (hoặc true): Hướng thẳng từ vị trí projectile tới người chơi tại thời điểm spawn
+--//   "look_vector": Hướng theo LookVector của CFrame projectile lúc spawn
+local INSTANT_PROJECTILES = {
+	["firstbossseekingspikes"] = "target_player",
+	["firstbossbigspike"] = "target_player",
+}
+
+--// Lấy vị trí người chơi
+local function getPlayerPosition()
+	local char = player and player.Character
+	if not char then return nil end
+	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+	if not root then return nil end
+	return root.Position
+end
+
+--// Tính hướng bay ngay lập tức tại Frame 0 nếu hazard nằm trong danh sách INSTANT_PROJECTILES
+local function getInstantDirection(hazardName, mainPart)
+	if not hazardName or not mainPart then return nil, nil end
+	local clean = hazardName:lower():gsub("%s+", "")
+	local mode = INSTANT_PROJECTILES[clean]
+	if not mode then
+		for name, m in pairs(INSTANT_PROJECTILES) do
+			if string.find(clean, name, 1, true) then
+				mode = m
+				break
+			end
+		end
+	end
+	if not mode then return nil, nil end
+
+	if mode == "look_vector" then
+		local lv = mainPart.CFrame.LookVector
+		local hDir = Vector3.new(lv.X, 0, lv.Z)
+		if hDir.Magnitude > 0.01 then
+			return hDir.Unit, mode
+		end
+	else
+		-- "target_player" / true: Hướng thẳng từ projectile tới player
+		local pPos = getPlayerPosition()
+		if pPos then
+			local diff = pPos - mainPart.Position
+			local hDiff = Vector3.new(diff.X, 0, diff.Z)
+			if hDiff.Magnitude > 0.1 then
+				return hDiff.Unit, mode
+			end
+		end
+		local lv = mainPart.CFrame.LookVector
+		local hDir = Vector3.new(lv.X, 0, lv.Z)
+		if hDir.Magnitude > 0.01 then
+			return hDir.Unit, mode
+		end
+	end
+	return nil, nil
+end
 
 --// Lấy độ cao mặt sàn theo chân người chơi
 local function getPlayerGroundY()
@@ -8134,7 +8581,7 @@ local function onHeartbeat()
 						record.isMoving = true
 						record.dir = hDelta.Unit
 					else
-						if dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
+						if not record.isInstant and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
 							record.isMoving = false
 						end
 					end
@@ -8155,7 +8602,7 @@ local function onHeartbeat()
 					record.lastClock = now
 				end
 
-				-- Nếu đang di chuyển, cập nhật visual quỹ đạo tĩnh theo predictionLength
+				-- Nếu đang di chuyển hoặc là Instant Projectile có hướng, cập nhật visual quỹ đạo tĩnh theo predictionLength
 				if record.isMoving and record.dir and record.ad then
 					local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 					if centroid then
@@ -8238,7 +8685,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	box.Transparency = TRAJECTORY_TRANSPARENCY
 	box.ZIndex = 1 -- Nằm dưới đĩa đỏ (ZIndex = 2)
 	box.AlwaysOnTop = true
-	box.Visible = false -- Tạm ẩn cho đến khi đo được hướng di chuyển thực tế
+	box.Visible = false -- Tạm ẩn cho đến khi có hướng
 	box.Parent = mainPart
 
 	local connections = {}
@@ -8249,6 +8696,10 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	end)
 	table.insert(connections, conn)
 
+	-- Kiểm tra xem đối tượng có thuộc danh sách Instant Projectiles (tự lock-on hướng tại Frame 0) không
+	local instantDir, instantMode = getInstantDirection(hazardInfo.Name or (inst and inst.Name), mainPart)
+	local isInstant = instantDir ~= nil
+
 	activeRecords[hazardInfo] = {
 		ad = box,
 		connections = connections,
@@ -8256,9 +8707,33 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		lastPos = mainPart.Position,
 		lastClock = os.clock(),
 		velocity = Vector3.zero,
-		dir = nil,
-		isMoving = false,
+		dir = instantDir,
+		isMoving = isInstant,
+		isInstant = isInstant,
+		instantMode = instantMode,
 	}
+
+	-- Nếu là Instant Projectile: Kích hoạt ngay lập tức tại Frame 0 không cần chờ đo vận tốc
+	if isInstant and instantDir then
+		hazardInfo.IsTrajectory = true
+		hazardInfo.HazardZones = nil
+		local targetY = getPlayerGroundY()
+		local centroid, spanWidth = getHazardCentroidAndSpan(hazardInfo, instantDir)
+		if centroid then
+			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, predictionLength, spanWidth)
+		end
+		if data and data.UpdateHazardVisualColor then
+			pcall(data.UpdateHazardVisualColor, hazardInfo, true)
+		end
+		local visualizer = __DIST.load('k')
+		if visualizer and visualizer.UpdateHazardVisualColor then
+			pcall(visualizer.UpdateHazardVisualColor, hazardInfo, true)
+		end
+		local timerVisual = __DIST.load('l')
+		if timerVisual and timerVisual.UpdateHazardVisualColor then
+			pcall(timerVisual.UpdateHazardVisualColor, hazardInfo, true)
+		end
+	end
 
 	ensureHeartbeat()
 end
@@ -8417,386 +8892,6 @@ lifecycle.Register(function()
 end)
 
 return trajectory
-end function __DIST.m()-- HazardScanner – Timer Visualizer (DungeonQuest):
--- Hiển thị 3D visual đếm thời gian tồn tại (Lifespan Duration Timer) tăng dần (0.0s, 0.1s, 0.2s...)
--- CHỈ DÀNH CHO RED ZONE (vùng nguy hiểm tĩnh trên sàn đấu).
--- Tuyệt đối không đếm cho Blue Zone (Đạn bay / Trajectory) hay Yellow (Hành lang quỹ đạo / Candidate).
--- Mỗi Red Danger Zone (đĩa tròn đỏ, hộp OBB đỏ) có 1 BillboardGui gắn trực tiếp vào Part của vùng đó
--- và tự hủy lập tức ngay khi Red Zone mờ đi (Transparency > 0.85) hoặc biến mất.
-
---// Imports
-
-local services = __DIST.load('e')
-local lifecycle = __DIST.load('b')
-local geometry = __DIST.load('j')
-
-local RunService = services.RunService or game:GetService("RunService")
-local player = services.player
-
---// Table
-local timerVisual = {}
-
---// State
-local enabled = true
-local data = nil
-local activeTimers = {} -- [hazardInfo] = { items = {}, connections = {} }
-local heartbeatConnection = nil
-
---// Constants
-local FADE_TRANSPARENCY_THRESHOLD = 0.85
-local COLOR_RED = Color3.fromRGB(255, 60, 60)
-local RGB_TEXT_RED = "255,130,130"
-
---// Gán data source từ detection (tránh circular dependency)
-function timerVisual.BindDetection(dataSource)
-	data = dataSource or nil
-end
-
-function timerVisual.IsEnabled()
-	return enabled
-end
-
---// Lấy độ cao mặt sàn của người chơi
-local function getPlayerGroundY()
-	local char = player and player.Character
-	if not char then return nil end
-	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
-	if not root then return nil end
-	return root.Position.Y - 2.5
-end
-
---// Tính toán Y Offset phù hợp để BillboardGui luôn lơ lửng ở tầm mắt phía trên sàn đấu
-local function computeYOffset(part)
-	if not part or not part.Parent then return 2.5 end
-	local groundY = getPlayerGroundY()
-	if groundY then
-		local desiredY = groundY + 2.5
-		local diff = desiredY - part.Position.Y
-		local minAbovePart = part.Size.Y / 2 + 1.2
-		return math.clamp(math.max(diff, minAbovePart), 1.5, 30.0)
-	end
-	return math.clamp(part.Size.Y / 2 + 1.8, 2.0, 10.0)
-end
-
---// Kiểm tra Part của Danger Zone còn sống không
-local function isZonePartAlive(part)
-	return part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD
-end
-
---// Tìm BasePart đại diện fallback
-local function getMainPart(instance)
-	if not instance or not instance.Parent then return nil end
-	if instance:IsA("BasePart") then
-		if isZonePartAlive(instance) then return instance end
-	elseif instance:IsA("Model") then
-		if instance.PrimaryPart and isZonePartAlive(instance.PrimaryPart) then
-			return instance.PrimaryPart
-		end
-		local hrp = instance:FindFirstChild("HumanoidRootPart")
-		if hrp and isZonePartAlive(hrp) then
-			return hrp
-		end
-		for _, desc in ipairs(instance:GetDescendants()) do
-			if desc:IsA("BasePart") and isZonePartAlive(desc) then
-				return desc
-			end
-		end
-	else
-		for _, desc in ipairs(instance:GetDescendants()) do
-			if desc:IsA("BasePart") and isZonePartAlive(desc) then
-				return desc
-			end
-		end
-	end
-	return nil
-end
-
---// Cập nhật text thời gian cho toàn bộ Red Danger Zone của 1 hazard
-local function updateTimerText(record, hazardInfo)
-	if not record or not record.items or not hazardInfo then return end
-	local spawnClock = hazardInfo.SpawnClock or os.clock()
-	local elapsed = math.max(0, os.clock() - spawnClock)
-	local name = hazardInfo.Name or "Red Zone"
-	local text = ("<font color='rgb(%s)'>%s</font> <font color='rgb(255,255,255)'><b>%.1fs</b></font>"):format(
-		RGB_TEXT_RED,
-		name,
-		elapsed
-	)
-
-	for _, item in ipairs(record.items) do
-		if item.label and item.label.Parent then
-			item.label.Text = text
-		end
-	end
-end
-
---// Vòng lặp Heartbeat: Cập nhật bộ đếm thời gian và dọn dẹp NGAY LẬP TỨC khi Red Zone biến mất
-local function onHeartbeat()
-	if not enabled then return end
-	local hasAny = false
-
-	for hazardInfo, record in pairs(activeTimers) do
-		local inst = hazardInfo.Instance
-		-- Nếu hazard bị chuyển sang Trajectory (Blue Zone) hoặc instance không còn -> gỡ ngay
-		if hazardInfo.IsTrajectory == true or not inst or not inst.Parent then
-			timerVisual.DetachTimerVisual(hazardInfo)
-		else
-			if record.items then
-				-- Duyệt ngược mảng items để xóa các Red Zone đã biến mất/mờ
-				for i = #record.items, 1, -1 do
-					local item = record.items[i]
-					local part = item.part
-					if not isZonePartAlive(part) then
-						if item.billboard and item.billboard.Parent then
-							pcall(function() item.billboard:Destroy() end)
-						end
-						table.remove(record.items, i)
-					else
-						-- Red Zone còn sống -> cập nhật vị trí offset
-						if item.billboard and item.billboard.Parent then
-							item.billboard.StudsOffset = Vector3.new(0, computeYOffset(part), 0)
-						end
-					end
-				end
-
-				if #record.items == 0 then
-					timerVisual.DetachTimerVisual(hazardInfo)
-				else
-					hasAny = true
-					updateTimerText(record, hazardInfo)
-				end
-			else
-				timerVisual.DetachTimerVisual(hazardInfo)
-			end
-		end
-	end
-
-	if not hasAny and heartbeatConnection then
-		heartbeatConnection:Disconnect()
-		heartbeatConnection = nil
-	end
-end
-
-local function ensureHeartbeat()
-	if not heartbeatConnection and enabled then
-		heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
-	end
-end
-
---// Tạo 1 BillboardGui cho 1 Red Danger Zone (part)
-local function createRedZoneBillboard(part)
-	local yOffset = computeYOffset(part)
-
-	local bb = Instance.new("BillboardGui")
-	bb.Name = "HazardLifespanTimer"
-	bb.Adornee = part
-	bb.AlwaysOnTop = true
-	bb.MaxDistance = 500
-	bb.LightInfluence = 0
-	bb.ResetOnSpawn = false
-	bb.Active = false
-	bb.Size = UDim2.new(0, 130, 0, 24)
-	bb.StudsOffset = Vector3.new(0, yOffset, 0)
-	bb.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-
-	local frame = Instance.new("Frame")
-	frame.Name = "TimerFrame"
-	frame.Size = UDim2.new(1, 0, 1, 0)
-	frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-	frame.BackgroundTransparency = 0.25
-	frame.BorderSizePixel = 0
-	frame.Parent = bb
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 6)
-	corner.Parent = frame
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Name = "Stroke"
-	stroke.Thickness = 1.3
-	stroke.Color = COLOR_RED
-	stroke.Transparency = 0.15
-	stroke.Parent = frame
-
-	local label = Instance.new("TextLabel")
-	label.Name = "TimerLabel"
-	label.Size = UDim2.new(1, -6, 1, 0)
-	label.Position = UDim2.new(0, 3, 0, 0)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 11
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.TextStrokeTransparency = 0
-	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-	label.RichText = true
-	label.TextXAlignment = Enum.TextXAlignment.Center
-	label.TextYAlignment = Enum.TextYAlignment.Center
-	label.Text = ""
-	label.Parent = frame
-
-	bb.Parent = part
-	return bb, label, stroke
-end
-
---// Gắn 3D Timer Visual cho TỪNG RED DANGER ZONE của Hazard (CHỈ Red Zone, bỏ qua Blue Zone)
-function timerVisual.AttachTimerVisual(hazardInfo)
-	if not enabled or not hazardInfo then return end
-
-	-- CHỈ đếm cho Red Zone, không đếm cho Blue Zone (Trajectory)
-	if hazardInfo.IsTrajectory == true then
-		if activeTimers[hazardInfo] then
-			timerVisual.DetachTimerVisual(hazardInfo)
-		end
-		return
-	end
-
-	if activeTimers[hazardInfo] then
-		timerVisual.DetachTimerVisual(hazardInfo)
-	end
-
-	local inst = hazardInfo.Instance
-	if not inst or not inst.Parent then return end
-
-	local hazardZones = geometry.GetHazardZones(hazardInfo)
-	local zones = hazardZones and hazardZones.zones
-
-	local items = {}
-	local connections = {}
-
-	local function hookPart(part, bb, label, stroke, zone)
-		local item = {
-			billboard = bb,
-			label = label,
-			stroke = stroke,
-			part = part,
-			zone = zone,
-		}
-		table.insert(items, item)
-
-		-- Tự động hủy timer LẬP TỨC khi part mờ dần (hết chiêu thức)
-		local connTrans = part:GetPropertyChangedSignal("Transparency"):Connect(function()
-			if not isZonePartAlive(part) then
-				pcall(function() bb:Destroy() end)
-			end
-		end)
-		table.insert(connections, connTrans)
-
-		-- Tự động hủy timer LẬP TỨC khi part bị xóa khỏi Workspace
-		local connParent = part.AncestryChanged:Connect(function(_, newParent)
-			if not newParent then
-				pcall(function() bb:Destroy() end)
-			end
-		end)
-		table.insert(connections, connParent)
-	end
-
-	if zones and #zones > 0 then
-		for _, zone in ipairs(zones) do
-			local part = zone.part
-			if isZonePartAlive(part) then
-				local bb, label, stroke = createRedZoneBillboard(part)
-				hookPart(part, bb, label, stroke, zone)
-			end
-		end
-	else
-		local part = getMainPart(inst)
-		if isZonePartAlive(part) then
-			local bb, label, stroke = createRedZoneBillboard(part)
-			hookPart(part, bb, label, stroke, nil)
-		end
-	end
-
-	if #items > 0 then
-		local record = {
-			items = items,
-			connections = connections,
-		}
-		activeTimers[hazardInfo] = record
-		updateTimerText(record, hazardInfo)
-		ensureHeartbeat()
-	end
-end
-
---// Gỡ bỏ Timer Visual của 1 hazard
-function timerVisual.DetachTimerVisual(hazardInfo)
-	if not hazardInfo then return end
-	local record = activeTimers[hazardInfo]
-	if not record then return end
-
-	if record.connections then
-		for _, c in ipairs(record.connections) do
-			pcall(function() c:Disconnect() end)
-		end
-		table.clear(record.connections)
-	end
-
-	if record.items then
-		for _, item in ipairs(record.items) do
-			if item.billboard and item.billboard.Parent then
-				pcall(function() item.billboard:Destroy() end)
-			end
-		end
-		table.clear(record.items)
-	end
-
-	activeTimers[hazardInfo] = nil
-end
-
---// Cập nhật khi hazard chuyển đổi trạng thái Trajectory (Nếu thành Blue Zone -> gỡ timer ngay)
-function timerVisual.UpdateHazardVisualColor(hazardInfo, isTrajectory)
-	if not hazardInfo then return end
-	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
-	if isTraj then
-		-- Chuyển thành Blue Zone -> Gỡ bỏ timer hoàn toàn
-		timerVisual.DetachTimerVisual(hazardInfo)
-	else
-		-- Là Red Zone -> Đảm bảo có timer
-		if not activeTimers[hazardInfo] then
-			timerVisual.AttachTimerVisual(hazardInfo)
-		end
-	end
-end
-
---// Xóa sạch toàn bộ Timer Visuals
-function timerVisual.ClearAll()
-	if heartbeatConnection then
-		heartbeatConnection:Disconnect()
-		heartbeatConnection = nil
-	end
-	for info in pairs(activeTimers) do
-		timerVisual.DetachTimerVisual(info)
-	end
-	table.clear(activeTimers)
-end
-
---// Làm mới toàn bộ Timer Visuals (CHỈ gắn cho Red Zones)
-function timerVisual.RefreshAll()
-	timerVisual.ClearAll()
-	if not enabled or not data then return end
-
-	for _, info in pairs(data.GetActiveHazardsMap()) do
-		if info and info.IsTrajectory ~= true then
-			timerVisual.AttachTimerVisual(info)
-		end
-	end
-end
-
---// Bật / tắt 3D Timer Visualizer
-function timerVisual.SetEnabled(state)
-	enabled = state and true or false
-	if enabled then
-		timerVisual.RefreshAll()
-	else
-		timerVisual.ClearAll()
-	end
-end
-
---// Dọn dẹp khi script shutdown
-lifecycle.Register(function()
-	timerVisual.ClearAll()
-end)
-
-return timerVisual
 end function __DIST.n()-- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
 -- Đơn giản hóa hoàn toàn: chỉ phát hiện đối tượng skill xuất hiện trong Workspace
 -- qua ChildAdded/ChildRemoved, CHỈ chạy sau sự kiện start dungeon (không còn ở lobby),
@@ -8810,8 +8905,8 @@ local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local geometry = __DIST.load('j')
 local visualizer = __DIST.load('k')
-local trajectory = __DIST.load('l')
-local timerVisual = __DIST.load('m')
+local trajectory = __DIST.load('m')
+local timerVisual = __DIST.load('l')
 
 --// References
 local Players = game:GetService("Players")
@@ -8842,6 +8937,11 @@ local roomCleanup = nil
 local IGNORE_FOLDERS = { "abilities", "projectiles" }
 local ignoreNamesLoaded = false
 local ignoreNames = {} -- [cleanName] = true
+
+--// Blacklist: Danh sách tên đối tượng trong Workspace KHÔNG BAO GIỜ coi là Danger Zone
+local HAZARD_BLACKLIST = {
+	-- Thêm tên các đối tượng / hiệu ứng rác vào đây nếu cần bỏ qua
+}
 
 local function loadIgnoreNames()
 	if ignoreNamesLoaded then return end
@@ -8892,6 +8992,14 @@ local function isIgnoredName(instance)
 		-- 3. Bỏ qua các template trong ReplicatedStorage
 		local clean = lower:gsub("%s+", "")
 		if #clean > 0 and ignoreNames[clean] == true then return true end
+
+		-- 4. Bỏ qua các đối tượng nằm trong danh sách Blacklist thủ công
+		if HAZARD_BLACKLIST[clean] == true or HAZARD_BLACKLIST[name] == true then return true end
+		for blName, _ in pairs(HAZARD_BLACKLIST) do
+			if string.find(clean, blName, 1, true) then
+				return true
+			end
+		end
 	end
 	return false
 end
@@ -9566,7 +9674,7 @@ return detection end function __DIST.o()-- HazardScanner – Player Visualizer &
 local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
 local geometry = __DIST.load('j')
-local trajectory = __DIST.load('l')
+local trajectory = __DIST.load('m')
 
 local RunService = services.RunService or game:GetService("RunService")
 local player = services.player
@@ -9860,52 +9968,8 @@ candidateGenerator.FINE_DIRECTIONS = FINE_DIRECTIONS
 candidateGenerator.COARSE_RADII = COARSE_RADII
 candidateGenerator.FINE_RADII = FINE_RADII
 
---// Kiểm tra đường đi thẳng từ origin2D tới targetPoint có bị cắt ngang bởi Red Danger Zone NGOẠI TRỪ chiêu nhân vật đang đứng trong không
---// initialRedHazardsMap: map {[hazardInfo] = true} của các hazard đỏ chứa origin2D
---// queryRedHazardFn: function(pt, extraMargin) -> hit (bool), hitInfo (table/instance), hitPart
-function candidateGenerator.IsPathClear(origin2D, targetPoint, queryRedHazardFn, initialRedHazardsMap, stepSize)
-	if not queryRedHazardFn then return true end
-	stepSize = stepSize or 2.0
-	local diff = targetPoint - origin2D
-	local dist = diff.Magnitude
-	if dist <= stepSize then
-		return true
-	end
-
-	local dir = diff / dist
-	local numSteps = math.floor(dist / stepSize)
-	local exitedInitialHazards = {}
-
-	for i = 1, numSteps do
-		local samplePoint = origin2D + dir * (i * stepSize)
-		local hit, hitInfo = queryRedHazardFn(samplePoint, 0)
-
-		if hit and hitInfo then
-			local isInitial = initialRedHazardsMap and (initialRedHazardsMap[hitInfo] == true or (hitInfo.Instance and initialRedHazardsMap[hitInfo.Instance]))
-			if not isInitial then
-				-- Đụng trúng một Red Danger Zone HOÀN TOÀN MỚI (không phải chiêu player đang đứng trong) -> Bị cắt ngang!
-				return false
-			else
-				-- Nếu là chiêu ban đầu nhưng tia đã từng đi ra khỏi nó rồi mà giờ lại đụng lại (re-enter) -> Bị cắt ngang!
-				if exitedInitialHazards[hitInfo] then
-					return false
-				end
-			end
-		else
-			-- Điểm này không chạm hazard nào -> Tất cả các hazard ban đầu chạm trước đó giờ đã thoát ra ngoài
-			if initialRedHazardsMap then
-				for hInfo, _ in pairs(initialRedHazardsMap) do
-					exitedInitialHazards[hInfo] = true
-				end
-			end
-		end
-	end
-
-	return true
-end
-
 --// Chạy 1 pass quét lấy mẫu xung quanh origin2D
-function candidateGenerator.SamplePass(origin2D, directions, radii, safetyBuffer, requireBuffer, isPointSafeFn, evaluatedList, momentumDir, queryRedHazardFn, initialRedHazardsMap)
+function candidateGenerator.SamplePass(origin2D, directions, radii, safetyBuffer, requireBuffer, isPointSafeFn, evaluatedList, momentumDir)
 	local bestPoint = nil
 	local bestDist = math.huge
 	local bestDir = Vector3.zero
@@ -9930,6 +9994,14 @@ function candidateGenerator.SamplePass(origin2D, directions, radii, safetyBuffer
 			local candidate = origin2D + dir * radius
 			local isSafe = isPointSafeFn(candidate)
 
+			if evaluatedList then
+				table.insert(evaluatedList, {
+					pos = candidate,
+					isSafe = isSafe,
+					isChosen = false,
+				})
+			end
+
 			if isSafe then
 				local targetPoint = candidate
 				if requireBuffer and safetyBuffer > 0 then
@@ -9939,27 +10011,13 @@ function candidateGenerator.SamplePass(origin2D, directions, radii, safetyBuffer
 					end
 				end
 
-				-- Kiểm tra đường đi thẳng tới targetPoint có bị vùng đỏ (Red Zone) mới cắt ngang không
-				local pathSafe = candidateGenerator.IsPathClear(origin2D, targetPoint, queryRedHazardFn, initialRedHazardsMap, 2.0)
-				if not pathSafe then
-					isSafe = false
-				else
-					local dist = (targetPoint - origin2D).Magnitude
-					if dist < bestDist then
-						bestDist = dist
-						bestPoint = targetPoint
-						bestDir = dir
-						foundAtThisRadius = true
-					end
+				local dist = (targetPoint - origin2D).Magnitude
+				if dist < bestDist then
+					bestDist = dist
+					bestPoint = targetPoint
+					bestDir = dir
+					foundAtThisRadius = true
 				end
-			end
-
-			if evaluatedList then
-				table.insert(evaluatedList, {
-					pos = candidate,
-					isSafe = isSafe,
-					isChosen = false,
-				})
 			end
 		end
 
@@ -10521,7 +10579,7 @@ local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local geometry = __DIST.load('j')
-local trajectory = __DIST.load('l')
+local trajectory = __DIST.load('m')
 local playerVisual = __DIST.load('o')
 local candidateGenerator = __DIST.load('p')
 local safeSpotVisual = __DIST.load('q')
@@ -10627,51 +10685,6 @@ function safeSpot.IsPointSafe(point, extraMargin)
 	return true
 end
 
---// Kiểm tra xem đường đi thẳng từ origin tới target có bị cắt ngang bởi Red Danger Zone không
---// (Tự động bỏ qua chiêu người chơi đang nằm trong tại origin, chỉ bắt các chiêu cắt ngang mới)
-function safeSpot.IsPathSafe(origin, target, extraMargin)
-	if not origin or not target then return false end
-	local p1 = Vector3.new(origin.X, 0, origin.Z)
-	local p2 = Vector3.new(target.X, 0, target.Z)
-	local diff = p2 - p1
-	local dist = diff.Magnitude
-	if dist <= 2.0 then
-		return true
-	end
-
-	local dir = diff / dist
-	local stepSize = 2.0
-	local numSteps = math.floor(dist / stepSize)
-	local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
-
-	local initialRedHazards = geometry.GetRedHazardsAtPoint and geometry.GetRedHazardsAtPoint(p1, playerRad) or {}
-	local exitedInitialHazards = {}
-
-	for i = 1, numSteps do
-		local samplePoint = p1 + dir * (i * stepSize)
-		local hit, hitInfo = geometry.IsPointInAnyRedHazard(samplePoint, nil, playerRad)
-
-		if hit and hitInfo then
-			local isInitial = initialRedHazards[hitInfo] == true or (hitInfo.Instance and initialRedHazards[hitInfo.Instance])
-			if not isInitial then
-				-- Đụng trúng một Red Danger Zone MỚI cắt ngang đường đi
-				return false
-			else
-				-- Nếu đã thoát ra khỏi chiêu ban đầu nhưng lại cắt ngang vào lại
-				if exitedInitialHazards[hitInfo] then
-					return false
-				end
-			end
-		else
-			for hInfo, _ in pairs(initialRedHazards) do
-				exitedInitialHazards[hInfo] = true
-			end
-		end
-	end
-
-	return true
-end
-
 --// Thuật toán Progressive Radial Escape Sampling: Tìm điểm an toàn gần nhất từ tọa độ origin
 --// Tích hợp Broad-Phase Spatial Culling và Momentum Alignment (ưu tiên theo đà chạy của nhân vật)
 function safeSpot.FindNearestSafeSpot(origin)
@@ -10695,11 +10708,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 65) or nil
 	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 65) or nil
 
-	-- Lấy danh sách các Red Hazard mà player đang đứng trong tại origin2D
-	local initialPlayerRad = playerVisual.GetRadius and playerVisual.GetRadius() or 1.8
-	local initialRedHazards = geometry.GetRedHazardsAtPoint and geometry.GetRedHazardsAtPoint(origin2D, initialPlayerRad, relevantHazards) or {}
-
-	-- Hàm kiểm tra an toàn toàn diện (dùng cho Candidate destination): Đích đến PHẢI an toàn khỏi mọi hiểm họa (Red + Blue + Boss Area)
+	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc
 	local function isPointSafeScoped(candPoint, extraMargin)
 		if not candPoint then return false end
 		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
@@ -10723,18 +10732,6 @@ function safeSpot.FindNearestSafeSpot(origin)
 		end
 
 		return true
-	end
-
-	-- Hàm query Red Zone trả về chi tiết hazard (dùng riêng cho kiểm tra đường đi cắt ngang)
-	local function queryRedHazardScoped(candPoint, extraMargin)
-		if not candPoint then return false, nil, nil end
-		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
-		local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
-		if geometry.IsPointInAnyHazard then
-			local hit, hitInfo, hitPart = geometry.IsPointInAnyHazard(p2D, nil, playerRad, relevantHazards, true)
-			return hit, hitInfo, hitPart
-		end
-		return false, nil, nil
 	end
 
 	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi hoặc vị trí hiện tại đã an toàn -> Xong ngay lập tức
@@ -10797,9 +10794,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 		true,
 		isPointSafeScoped,
 		lastEvaluatedCandidates,
-		preferredDir,
-		queryRedHazardScoped,
-		initialRedHazards
+		preferredDir
 	)
 
 	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết, yêu cầu buffer an toàn, ưu tiên theo hướng né tối ưu)
@@ -10812,9 +10807,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 			true,
 			isPointSafeScoped,
 			lastEvaluatedCandidates,
-			preferredDir,
-			queryRedHazardScoped,
-			initialRedHazards
+			preferredDir
 		)
 	end
 
@@ -10828,9 +10821,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 			false,
 			isPointSafeScoped,
 			lastEvaluatedCandidates,
-			preferredDir,
-			queryRedHazardScoped,
-			initialRedHazards
+			preferredDir
 		)
 	end
 
@@ -10885,14 +10876,12 @@ local function onHeartbeat()
 		-- Kiểm tra xem Safe Spot đã chọn trước đó còn hợp lệ không:
 		-- 1. Điểm đó vẫn phải Safe (không bị đè bởi vùng đỏ hoặc vùng cam mới).
 		-- 2. Mối đe dọa (threat) của Player không bị đổi sang chiêu/loại khác.
-		-- 3. Đường đi từ người chơi tới điểm đó vẫn phải thông suốt (không bị chiêu mới cắt ngang).
 		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
-		local isPathStillSafe = currentTargetSafeSpot and safeSpot.IsPathSafe(playerPos2D, currentTargetSafeSpot)
 		local isSameThreat = (threatInfo == currentThreatInstance and threatType == currentThreatType)
 
-		-- Nếu Safe Spot cũ bị đè HOẶC Đường đi bị cắt ngang HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot:
-		if not isTargetStillSafe or not isPathStillSafe or not isSameThreat or not currentTargetSafeSpot then
+		-- Nếu Safe Spot cũ bị đè HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot:
+		if not isTargetStillSafe or not isSameThreat or not currentTargetSafeSpot then
 			local spot, found, dist, dir = safeSpot.FindNearestSafeSpot(root.Position)
 
 			if found and spot then
@@ -10911,7 +10900,7 @@ local function onHeartbeat()
 				safeSpotVisual.Hide()
 			end
 		else
-			-- Safe Spot cũ vẫn an toàn và đường đi thông suốt -> GIỮ NGUYÊN để chuyển động né mượt mà không rung lắc
+			-- Safe Spot cũ vẫn an toàn và cùng mối nguy -> GIỮ NGUYÊN để chuyển động né mượt mà không rung lắc
 			lastDistance = distToTarget
 			safeSpotVisual.Update(root, currentTargetSafeSpot, targetY, lastEvaluatedCandidates, visualEnabled, showCandidatesVisual)
 
@@ -10924,9 +10913,8 @@ local function onHeartbeat()
 		-- Nếu vẫn còn targetSafeSpot và người chơi chưa chạm tới đích (distToTarget > 0.8 studs), tiếp tục duy trì để Auto-Dodge snap hoàn tất
 		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
-		local isPathStillSafe = currentTargetSafeSpot and safeSpot.IsPathSafe(playerPos2D, currentTargetSafeSpot)
 
-		if isTargetStillSafe and isPathStillSafe and distToTarget > 0.8 then
+		if isTargetStillSafe and distToTarget > 0.8 then
 			lastDistance = distToTarget
 			safeSpotVisual.Update(root, currentTargetSafeSpot, targetY, lastEvaluatedCandidates, visualEnabled, showCandidatesVisual)
 			for _, cb in ipairs(safeSpotChangedCallbacks) do
@@ -11360,11 +11348,11 @@ local lifecycle = __DIST.load('b')
 local detection = __DIST.load('n')
 local geometry = __DIST.load('j')
 local visualizer = __DIST.load('k')
-local trajectory = __DIST.load('l')
+local trajectory = __DIST.load('m')
 local playerVisual = __DIST.load('o')
 local safeSpot = __DIST.load('s')
 local dodgeController = __DIST.load('t')
-local timerVisual = __DIST.load('m')
+local timerVisual = __DIST.load('l')
 
 --// Table
 local hazardScanner = {}

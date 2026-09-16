@@ -113,51 +113,6 @@ function safeSpot.IsPointSafe(point, extraMargin)
 	return true
 end
 
---// Kiểm tra xem đường đi thẳng từ origin tới target có bị cắt ngang bởi Red Danger Zone không
---// (Tự động bỏ qua chiêu người chơi đang nằm trong tại origin, chỉ bắt các chiêu cắt ngang mới)
-function safeSpot.IsPathSafe(origin, target, extraMargin)
-	if not origin or not target then return false end
-	local p1 = Vector3.new(origin.X, 0, origin.Z)
-	local p2 = Vector3.new(target.X, 0, target.Z)
-	local diff = p2 - p1
-	local dist = diff.Magnitude
-	if dist <= 2.0 then
-		return true
-	end
-
-	local dir = diff / dist
-	local stepSize = 2.0
-	local numSteps = math.floor(dist / stepSize)
-	local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
-
-	local initialRedHazards = geometry.GetRedHazardsAtPoint and geometry.GetRedHazardsAtPoint(p1, playerRad) or {}
-	local exitedInitialHazards = {}
-
-	for i = 1, numSteps do
-		local samplePoint = p1 + dir * (i * stepSize)
-		local hit, hitInfo = geometry.IsPointInAnyRedHazard(samplePoint, nil, playerRad)
-
-		if hit and hitInfo then
-			local isInitial = initialRedHazards[hitInfo] == true or (hitInfo.Instance and initialRedHazards[hitInfo.Instance])
-			if not isInitial then
-				-- Đụng trúng một Red Danger Zone MỚI cắt ngang đường đi
-				return false
-			else
-				-- Nếu đã thoát ra khỏi chiêu ban đầu nhưng lại cắt ngang vào lại
-				if exitedInitialHazards[hitInfo] then
-					return false
-				end
-			end
-		else
-			for hInfo, _ in pairs(initialRedHazards) do
-				exitedInitialHazards[hInfo] = true
-			end
-		end
-	end
-
-	return true
-end
-
 --// Thuật toán Progressive Radial Escape Sampling: Tìm điểm an toàn gần nhất từ tọa độ origin
 --// Tích hợp Broad-Phase Spatial Culling và Momentum Alignment (ưu tiên theo đà chạy của nhân vật)
 function safeSpot.FindNearestSafeSpot(origin)
@@ -181,11 +136,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 65) or nil
 	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 65) or nil
 
-	-- Lấy danh sách các Red Hazard mà player đang đứng trong tại origin2D
-	local initialPlayerRad = playerVisual.GetRadius and playerVisual.GetRadius() or 1.8
-	local initialRedHazards = geometry.GetRedHazardsAtPoint and geometry.GetRedHazardsAtPoint(origin2D, initialPlayerRad, relevantHazards) or {}
-
-	-- Hàm kiểm tra an toàn toàn diện (dùng cho Candidate destination): Đích đến PHẢI an toàn khỏi mọi hiểm họa (Red + Blue + Boss Area)
+	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc
 	local function isPointSafeScoped(candPoint, extraMargin)
 		if not candPoint then return false end
 		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
@@ -209,18 +160,6 @@ function safeSpot.FindNearestSafeSpot(origin)
 		end
 
 		return true
-	end
-
-	-- Hàm query Red Zone trả về chi tiết hazard (dùng riêng cho kiểm tra đường đi cắt ngang)
-	local function queryRedHazardScoped(candPoint, extraMargin)
-		if not candPoint then return false, nil, nil end
-		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
-		local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
-		if geometry.IsPointInAnyHazard then
-			local hit, hitInfo, hitPart = geometry.IsPointInAnyHazard(p2D, nil, playerRad, relevantHazards, true)
-			return hit, hitInfo, hitPart
-		end
-		return false, nil, nil
 	end
 
 	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi hoặc vị trí hiện tại đã an toàn -> Xong ngay lập tức
@@ -283,9 +222,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 		true,
 		isPointSafeScoped,
 		lastEvaluatedCandidates,
-		preferredDir,
-		queryRedHazardScoped,
-		initialRedHazards
+		preferredDir
 	)
 
 	-- Tier 2: Fine Pass (16 hướng, bán kính chi tiết, yêu cầu buffer an toàn, ưu tiên theo hướng né tối ưu)
@@ -298,9 +235,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 			true,
 			isPointSafeScoped,
 			lastEvaluatedCandidates,
-			preferredDir,
-			queryRedHazardScoped,
-			initialRedHazards
+			preferredDir
 		)
 	end
 
@@ -314,9 +249,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 			false,
 			isPointSafeScoped,
 			lastEvaluatedCandidates,
-			preferredDir,
-			queryRedHazardScoped,
-			initialRedHazards
+			preferredDir
 		)
 	end
 
@@ -371,14 +304,12 @@ local function onHeartbeat()
 		-- Kiểm tra xem Safe Spot đã chọn trước đó còn hợp lệ không:
 		-- 1. Điểm đó vẫn phải Safe (không bị đè bởi vùng đỏ hoặc vùng cam mới).
 		-- 2. Mối đe dọa (threat) của Player không bị đổi sang chiêu/loại khác.
-		-- 3. Đường đi từ người chơi tới điểm đó vẫn phải thông suốt (không bị chiêu mới cắt ngang).
 		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
-		local isPathStillSafe = currentTargetSafeSpot and safeSpot.IsPathSafe(playerPos2D, currentTargetSafeSpot)
 		local isSameThreat = (threatInfo == currentThreatInstance and threatType == currentThreatType)
 
-		-- Nếu Safe Spot cũ bị đè HOẶC Đường đi bị cắt ngang HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot:
-		if not isTargetStillSafe or not isPathStillSafe or not isSameThreat or not currentTargetSafeSpot then
+		-- Nếu Safe Spot cũ bị đè HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot:
+		if not isTargetStillSafe or not isSameThreat or not currentTargetSafeSpot then
 			local spot, found, dist, dir = safeSpot.FindNearestSafeSpot(root.Position)
 
 			if found and spot then
@@ -397,7 +328,7 @@ local function onHeartbeat()
 				safeSpotVisual.Hide()
 			end
 		else
-			-- Safe Spot cũ vẫn an toàn và đường đi thông suốt -> GIỮ NGUYÊN để chuyển động né mượt mà không rung lắc
+			-- Safe Spot cũ vẫn an toàn và cùng mối nguy -> GIỮ NGUYÊN để chuyển động né mượt mà không rung lắc
 			lastDistance = distToTarget
 			safeSpotVisual.Update(root, currentTargetSafeSpot, targetY, lastEvaluatedCandidates, visualEnabled, showCandidatesVisual)
 
@@ -410,9 +341,8 @@ local function onHeartbeat()
 		-- Nếu vẫn còn targetSafeSpot và người chơi chưa chạm tới đích (distToTarget > 0.8 studs), tiếp tục duy trì để Auto-Dodge snap hoàn tất
 		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
-		local isPathStillSafe = currentTargetSafeSpot and safeSpot.IsPathSafe(playerPos2D, currentTargetSafeSpot)
 
-		if isTargetStillSafe and isPathStillSafe and distToTarget > 0.8 then
+		if isTargetStillSafe and distToTarget > 0.8 then
 			lastDistance = distToTarget
 			safeSpotVisual.Update(root, currentTargetSafeSpot, targetY, lastEvaluatedCandidates, visualEnabled, showCandidatesVisual)
 			for _, cb in ipairs(safeSpotChangedCallbacks) do

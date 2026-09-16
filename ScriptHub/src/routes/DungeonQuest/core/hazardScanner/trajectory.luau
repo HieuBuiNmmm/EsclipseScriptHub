@@ -29,6 +29,64 @@ local TRAJECTORY_TRANSPARENCY = 0.65
 local GROUND_THICKNESS = 0.20
 local MOVING_SPEED_THRESHOLD = 3.5 -- studs/s (ngưỡng tốc độ để coi là đang di chuyển)
 
+--// Danh sách các Projectile đặc biệt tự động xác định Trajectory ngay lập tức khi xuất hiện (Frame 0)
+--// Modes:
+--//   "target_player" (hoặc true): Hướng thẳng từ vị trí projectile tới người chơi tại thời điểm spawn
+--//   "look_vector": Hướng theo LookVector của CFrame projectile lúc spawn
+local INSTANT_PROJECTILES = {
+	["firstbossseekingspikes"] = "target_player",
+	["firstbossbigspike"] = "target_player",
+}
+
+--// Lấy vị trí người chơi
+local function getPlayerPosition()
+	local char = player and player.Character
+	if not char then return nil end
+	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+	if not root then return nil end
+	return root.Position
+end
+
+--// Tính hướng bay ngay lập tức tại Frame 0 nếu hazard nằm trong danh sách INSTANT_PROJECTILES
+local function getInstantDirection(hazardName, mainPart)
+	if not hazardName or not mainPart then return nil, nil end
+	local clean = hazardName:lower():gsub("%s+", "")
+	local mode = INSTANT_PROJECTILES[clean]
+	if not mode then
+		for name, m in pairs(INSTANT_PROJECTILES) do
+			if string.find(clean, name, 1, true) then
+				mode = m
+				break
+			end
+		end
+	end
+	if not mode then return nil, nil end
+
+	if mode == "look_vector" then
+		local lv = mainPart.CFrame.LookVector
+		local hDir = Vector3.new(lv.X, 0, lv.Z)
+		if hDir.Magnitude > 0.01 then
+			return hDir.Unit, mode
+		end
+	else
+		-- "target_player" / true: Hướng thẳng từ projectile tới player
+		local pPos = getPlayerPosition()
+		if pPos then
+			local diff = pPos - mainPart.Position
+			local hDiff = Vector3.new(diff.X, 0, diff.Z)
+			if hDiff.Magnitude > 0.1 then
+				return hDiff.Unit, mode
+			end
+		end
+		local lv = mainPart.CFrame.LookVector
+		local hDir = Vector3.new(lv.X, 0, lv.Z)
+		if hDir.Magnitude > 0.01 then
+			return hDir.Unit, mode
+		end
+	end
+	return nil, nil
+end
+
 --// Lấy độ cao mặt sàn theo chân người chơi
 local function getPlayerGroundY()
 	local char = player and player.Character
@@ -189,7 +247,7 @@ local function onHeartbeat()
 						record.isMoving = true
 						record.dir = hDelta.Unit
 					else
-						if dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
+						if not record.isInstant and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
 							record.isMoving = false
 						end
 					end
@@ -210,7 +268,7 @@ local function onHeartbeat()
 					record.lastClock = now
 				end
 
-				-- Nếu đang di chuyển, cập nhật visual quỹ đạo tĩnh theo predictionLength
+				-- Nếu đang di chuyển hoặc là Instant Projectile có hướng, cập nhật visual quỹ đạo tĩnh theo predictionLength
 				if record.isMoving and record.dir and record.ad then
 					local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 					if centroid then
@@ -293,7 +351,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	box.Transparency = TRAJECTORY_TRANSPARENCY
 	box.ZIndex = 1 -- Nằm dưới đĩa đỏ (ZIndex = 2)
 	box.AlwaysOnTop = true
-	box.Visible = false -- Tạm ẩn cho đến khi đo được hướng di chuyển thực tế
+	box.Visible = false -- Tạm ẩn cho đến khi có hướng
 	box.Parent = mainPart
 
 	local connections = {}
@@ -304,6 +362,10 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	end)
 	table.insert(connections, conn)
 
+	-- Kiểm tra xem đối tượng có thuộc danh sách Instant Projectiles (tự lock-on hướng tại Frame 0) không
+	local instantDir, instantMode = getInstantDirection(hazardInfo.Name or (inst and inst.Name), mainPart)
+	local isInstant = instantDir ~= nil
+
 	activeRecords[hazardInfo] = {
 		ad = box,
 		connections = connections,
@@ -311,9 +373,33 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		lastPos = mainPart.Position,
 		lastClock = os.clock(),
 		velocity = Vector3.zero,
-		dir = nil,
-		isMoving = false,
+		dir = instantDir,
+		isMoving = isInstant,
+		isInstant = isInstant,
+		instantMode = instantMode,
 	}
+
+	-- Nếu là Instant Projectile: Kích hoạt ngay lập tức tại Frame 0 không cần chờ đo vận tốc
+	if isInstant and instantDir then
+		hazardInfo.IsTrajectory = true
+		hazardInfo.HazardZones = nil
+		local targetY = getPlayerGroundY()
+		local centroid, spanWidth = getHazardCentroidAndSpan(hazardInfo, instantDir)
+		if centroid then
+			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, predictionLength, spanWidth)
+		end
+		if data and data.UpdateHazardVisualColor then
+			pcall(data.UpdateHazardVisualColor, hazardInfo, true)
+		end
+		local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
+		if visualizer and visualizer.UpdateHazardVisualColor then
+			pcall(visualizer.UpdateHazardVisualColor, hazardInfo, true)
+		end
+		local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
+		if timerVisual and timerVisual.UpdateHazardVisualColor then
+			pcall(timerVisual.UpdateHazardVisualColor, hazardInfo, true)
+		end
+	end
 
 	ensureHeartbeat()
 end
