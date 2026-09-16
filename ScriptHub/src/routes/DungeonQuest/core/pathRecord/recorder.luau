@@ -21,7 +21,7 @@ local MIN_SPACING = 0.1 -- Studs tối thiểu giữa 2 điểm khi ghi (bắt s
 local MAX_POINTS = 8000 -- Giới hạn điểm 1 segment
 local SIMPLIFY_TOL = 0.4 -- Studs: dung sai làm mịn Douglas-Peucker khi lưu (độ chính xác cao)
 local DWELL_MIN = 0.1 -- Giây đứng yên tối thiểu mới ghi event "dừng" (bắt siêu nhạy cả nhấp nhả 100ms)
-local MOVING_EPS = 0.15 -- Studs/frame: coi là đang di chuyển nếu vượt ngưỡng này
+local MOVING_SPEED_THRESHOLD = 1.5 -- Studs/giây: tốc độ di chuyển tối thiểu (tính theo giây, chống phụ thuộc FPS)
 local ROLLOVER_DELAY = 1.0 -- Giây trễ khi phát hiện đổi room: ghi nốt đoạn đi qua cửa rồi mới rollover
 local RUN_END_TIMEOUT = 6.0 -- Giây chờ room mới sau khi boss chết / teleport; hết mà chưa có room -> hết map, dừng record
 
@@ -395,16 +395,18 @@ function recorder.Start()
 		local now = os.clock()
 		local moved = prevFramePos and (pos - prevFramePos).Magnitude or 0
 		prevFramePos = pos
-		local dt = lastFrameT and math.max(0, now - lastFrameT) or 0
+		local dt = lastFrameT and math.max(0.0001, now - lastFrameT) or 0.016
 		lastFrameT = now
-		if moved >= MOVING_EPS then
+		local currentSpeed = dt > 0 and (moved / dt) or 0
+
+		if currentSpeed >= MOVING_SPEED_THRESHOLD then
 			movedDist += moved
 			movingTime += dt
-		end
-
-		--// Dwell detection: đứng yên liên tục -> gộp thành event "dừng" (vị trí+thời gian+facing).
-		if captureDwells then
-			if moved < MOVING_EPS then
+			stationarySince = nil
+			currentDwell = nil
+		else
+			--// Dwell detection: đứng yên liên tục -> gộp thành event "dừng" (vị trí+thời gian+facing).
+			if captureDwells then
 				if not stationarySince then
 					stationarySince = now
 					standingAnchor = pos
@@ -422,10 +424,17 @@ function recorder.Start()
 						index = #dwells + 1,
 					}
 					table.insert(dwells, currentDwell)
+
+					-- Tự động liên kết các skill được cast trong lúc bắt đầu dừng (từ stationarySince đến giờ)
+					for _, sk in ipairs(skills) do
+						if sk.dw == 0 and sk._castAt and sk._castAt >= stationarySince then
+							sk.dw = currentDwell.index
+							sk.dwT = math.max(0, (sk._castAt - recStartT) - currentDwellStartRel)
+							sk.pos = currentDwell.pos
+							currentDwell.facing = sk.facing or currentDwell.facing
+						end
+					end
 				end
-			else
-				stationarySince = nil
-				currentDwell = nil
 			end
 		end
 
@@ -460,45 +469,26 @@ function recorder.Start()
 			local target = getPlayerRoot()
 			if not target then return end
 
-			--// Xác định chính xác nhân vật đang đứng yên hay đang di chuyển:
-			--// - Đang di chuyển (speed >= 1.0 studs/s): Lưu thuần túy làm walkSkill (dw = 0), tuyệt đối không tạo dwell.
-			--// - Đang đứng yên (speed < 1.0 hoặc stationarySince ~= nil): Gắn chặt vào Dwell.
-			local vel = target.AssemblyLinearVelocity or target.Velocity
-			local speed = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
-			local isStationary = (stationarySince ~= nil) or (speed < 1.0)
-
-			if captureDwells and isStationary then
-				if not stationarySince then
-					local now = os.clock()
-					stationarySince = now
-					standingAnchor = target.Position
-					standingFacing = getFacing()
-				end
-				if not currentDwell then
-					currentDwellStartRel = stationarySince - recStartT
-					currentDwell = {
-						pos = standingAnchor or target.Position,
-						dur = math.max(0.1, os.clock() - stationarySince),
-						facing = standingFacing or getFacing(),
-						index = #dwells + 1,
-					}
-					table.insert(dwells, currentDwell)
-				end
-			end
+			--// Chỉ liên kết với Dwell khi đã được Heartbeat xác nhận đứng yên hợp lệ (currentDwell ~= nil).
+			--// Tuyệt đối không tự ép tạo Dwell 0.1s khi người chơi đang di chuyển hoặc micro-pause.
+			local isDwellActive = captureDwells and (currentDwell ~= nil)
 
 			local ev = {
-				pos = (currentDwell and isStationary and currentDwell.pos) or target.Position,
+				pos = isDwellActive and currentDwell.pos or target.Position,
 				facing = getFacing(),
 				key = skillKey,
 				dw = 0,
 				dwT = 0,
+				_castAt = os.clock(),
 			}
-			if currentDwell and isStationary then
+
+			if isDwellActive then
 				ev.dw = currentDwell.index
 				ev.dwT = math.max(0, (os.clock() - recStartT) - currentDwellStartRel)
 				-- Cập nhật facing của dwell theo hướng vừa bắn skill
 				currentDwell.facing = ev.facing or currentDwell.facing
 			end
+
 			table.insert(skills, ev)
 		end)
 	end

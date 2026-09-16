@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-16T12:03:46.653970400+00:00",
+    genDate = "2026-09-16T14:28:01.972721400+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -20685,7 +20685,7 @@ local MIN_SPACING = 0.1 -- Studs tối thiểu giữa 2 điểm khi ghi (bắt s
 local MAX_POINTS = 8000 -- Giới hạn điểm 1 segment
 local SIMPLIFY_TOL = 0.4 -- Studs: dung sai làm mịn Douglas-Peucker khi lưu (độ chính xác cao)
 local DWELL_MIN = 0.1 -- Giây đứng yên tối thiểu mới ghi event "dừng" (bắt siêu nhạy cả nhấp nhả 100ms)
-local MOVING_EPS = 0.15 -- Studs/frame: coi là đang di chuyển nếu vượt ngưỡng này
+local MOVING_SPEED_THRESHOLD = 1.5 -- Studs/giây: tốc độ di chuyển tối thiểu (tính theo giây, chống phụ thuộc FPS)
 local ROLLOVER_DELAY = 1.0 -- Giây trễ khi phát hiện đổi room: ghi nốt đoạn đi qua cửa rồi mới rollover
 local RUN_END_TIMEOUT = 6.0 -- Giây chờ room mới sau khi boss chết / teleport; hết mà chưa có room -> hết map, dừng record
 
@@ -21059,16 +21059,18 @@ function recorder.Start()
 		local now = os.clock()
 		local moved = prevFramePos and (pos - prevFramePos).Magnitude or 0
 		prevFramePos = pos
-		local dt = lastFrameT and math.max(0, now - lastFrameT) or 0
+		local dt = lastFrameT and math.max(0.0001, now - lastFrameT) or 0.016
 		lastFrameT = now
-		if moved >= MOVING_EPS then
+		local currentSpeed = dt > 0 and (moved / dt) or 0
+
+		if currentSpeed >= MOVING_SPEED_THRESHOLD then
 			movedDist += moved
 			movingTime += dt
-		end
-
-		--// Dwell detection: đứng yên liên tục -> gộp thành event "dừng" (vị trí+thời gian+facing).
-		if captureDwells then
-			if moved < MOVING_EPS then
+			stationarySince = nil
+			currentDwell = nil
+		else
+			--// Dwell detection: đứng yên liên tục -> gộp thành event "dừng" (vị trí+thời gian+facing).
+			if captureDwells then
 				if not stationarySince then
 					stationarySince = now
 					standingAnchor = pos
@@ -21086,10 +21088,17 @@ function recorder.Start()
 						index = #dwells + 1,
 					}
 					table.insert(dwells, currentDwell)
+
+					-- Tự động liên kết các skill được cast trong lúc bắt đầu dừng (từ stationarySince đến giờ)
+					for _, sk in ipairs(skills) do
+						if sk.dw == 0 and sk._castAt and sk._castAt >= stationarySince then
+							sk.dw = currentDwell.index
+							sk.dwT = math.max(0, (sk._castAt - recStartT) - currentDwellStartRel)
+							sk.pos = currentDwell.pos
+							currentDwell.facing = sk.facing or currentDwell.facing
+						end
+					end
 				end
-			else
-				stationarySince = nil
-				currentDwell = nil
 			end
 		end
 
@@ -21124,45 +21133,26 @@ function recorder.Start()
 			local target = getPlayerRoot()
 			if not target then return end
 
-			--// Xác định chính xác nhân vật đang đứng yên hay đang di chuyển:
-			--// - Đang di chuyển (speed >= 1.0 studs/s): Lưu thuần túy làm walkSkill (dw = 0), tuyệt đối không tạo dwell.
-			--// - Đang đứng yên (speed < 1.0 hoặc stationarySince ~= nil): Gắn chặt vào Dwell.
-			local vel = target.AssemblyLinearVelocity or target.Velocity
-			local speed = vel and Vector3.new(vel.X, 0, vel.Z).Magnitude or 0
-			local isStationary = (stationarySince ~= nil) or (speed < 1.0)
-
-			if captureDwells and isStationary then
-				if not stationarySince then
-					local now = os.clock()
-					stationarySince = now
-					standingAnchor = target.Position
-					standingFacing = getFacing()
-				end
-				if not currentDwell then
-					currentDwellStartRel = stationarySince - recStartT
-					currentDwell = {
-						pos = standingAnchor or target.Position,
-						dur = math.max(0.1, os.clock() - stationarySince),
-						facing = standingFacing or getFacing(),
-						index = #dwells + 1,
-					}
-					table.insert(dwells, currentDwell)
-				end
-			end
+			--// Chỉ liên kết với Dwell khi đã được Heartbeat xác nhận đứng yên hợp lệ (currentDwell ~= nil).
+			--// Tuyệt đối không tự ép tạo Dwell 0.1s khi người chơi đang di chuyển hoặc micro-pause.
+			local isDwellActive = captureDwells and (currentDwell ~= nil)
 
 			local ev = {
-				pos = (currentDwell and isStationary and currentDwell.pos) or target.Position,
+				pos = isDwellActive and currentDwell.pos or target.Position,
 				facing = getFacing(),
 				key = skillKey,
 				dw = 0,
 				dwT = 0,
+				_castAt = os.clock(),
 			}
-			if currentDwell and isStationary then
+
+			if isDwellActive then
 				ev.dw = currentDwell.index
 				ev.dwT = math.max(0, (os.clock() - recStartT) - currentDwellStartRel)
 				-- Cập nhật facing của dwell theo hướng vừa bắn skill
 				currentDwell.facing = ev.facing or currentDwell.facing
 			end
+
 			table.insert(skills, ev)
 		end)
 	end
@@ -21561,10 +21551,10 @@ end
 
 --// Dừng hẳn nhân vật (khi tắt phát / nhường quyền).
 local function cancelMove(humanoid)
-	local root = getPlayerRoot()
-	if root and humanoid then
-		local pos = getSafePosition(root)
-		if pos then pcall(function() humanoid:MoveTo(pos) end) end
+	if humanoid then
+		pcall(function()
+			humanoid:Move(Vector3.zero, false)
+		end)
 	end
 end
 
@@ -21821,10 +21811,7 @@ local function walkThrough(segment, room, allowBoss)
 	local function runDwell(dwell)
 		if not isPlaying or (dwell.dur or 0) <= 0 then return true end
 		if replayPauses then
-			local dwellTargetPos = dwell.pos or getSafePosition(root)
-			if dwellTargetPos then
-				pcall(function() humanoid:MoveTo(dwellTargetPos) end)
-			end
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 
 			if replayFacing and dwell.facing then
 				setFacing(root, dwell.facing)
@@ -21840,10 +21827,8 @@ local function walkThrough(segment, room, allowBoss)
 				if shared.GetCurrentRoomIndex() ~= room then return false, "room_changed" end
 				if shared.IsBossActive() and not allowBoss then return false, "boss" end
 
-				-- Ghim chặt chân tại điểm dừng
-				if dwellTargetPos then
-					pcall(function() humanoid:MoveTo(dwellTargetPos) end)
-				end
+				-- Dừng di chuyển trong lúc dwell
+				pcall(function() humanoid:Move(Vector3.zero, false) end)
 
 				-- Kích hoạt mọi skill khi đến mốc tOff
 				local elapsed = os.clock() - startT
@@ -21860,7 +21845,7 @@ local function walkThrough(segment, room, allowBoss)
 					end
 				end
 
-				task.wait(0.04)
+				task.wait(0.03)
 			end
 
 			-- Đảm bảo xả nốt skill nào chưa kịp xả do dwell duration kết thúc sớm
@@ -21879,8 +21864,8 @@ local function walkThrough(segment, room, allowBoss)
 
 			-- Giữ facing sau skill cuối trong dwell
 			while isPlaying and os.clock() < dwellFaceHoldUntil do
-				if dwellTargetPos then pcall(function() humanoid:MoveTo(dwellTargetPos) end) end
-				task.wait(0.04)
+				pcall(function() humanoid:Move(Vector3.zero, false) end)
+				task.wait(0.03)
 			end
 
 			if replayFacing then restoreAutoRotate() end
@@ -21895,7 +21880,6 @@ local function walkThrough(segment, room, allowBoss)
 		local dist = flatDistance(curPos, startNode)
 		if dist > 1.8 then
 			local repositionDeadline = os.clock() + START_REPOSITION_TIMEOUT
-			local lastSendAt = 0
 			while isPlaying and os.clock() < repositionDeadline do
 				local p = getSafePosition(root)
 				if not p then break end
@@ -21903,15 +21887,16 @@ local function walkThrough(segment, room, allowBoss)
 				if curDist <= 1.8 then break end
 				if shared.IsDead() or shared.GetCurrentRoomIndex() ~= room then break end
 
-				-- Giữ nhịp MoveTo liên tục (mỗi 0.08s) để không bị ngắt quãng, nhấp nhả hoặc giảm tốc giữa đường
-				local now = os.clock()
-				if now - lastSendAt >= 0.08 then
-					lastSendAt = now
-					pcall(function() humanoid:MoveTo(startNode) end)
+				local offset = Vector3.new(startNode.X - p.X, 0, startNode.Z - p.Z)
+				if offset.Magnitude > 0.1 then
+					pcall(function() humanoid:Move(offset.Unit, false) end)
+				else
+					pcall(function() humanoid:Move(Vector3.zero, false) end)
 				end
 
 				task.wait(0.03)
 			end
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 		end
 
 		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.0 studs)
@@ -21935,18 +21920,22 @@ local function walkThrough(segment, room, allowBoss)
 	local faceLockUntil = 0
 	local lastSkillFacing = nil
 
-
-
-	--// Gửi lệnh di chuyển: nhạy bén, đáp ứng ngay lập tức kể cả đoạn ngắn.
-	local lastTargetPos = nil
-	local lastMoveToAt = 0
+	--// Gửi lệnh di chuyển theo Vector hướng (Move): phản hồi tức thì, giữ nguyên vận tốc, không hãm tốc ngầm.
 	local function sendMove(target)
-		local now = os.clock()
-		local movedBy = lastTargetPos and flatDistance(lastTargetPos, target) or math.huge
-		if movedBy > 0.15 or now - lastMoveToAt >= 0.08 then
-			lastTargetPos = target
-			lastMoveToAt = now
-			pcall(function() humanoid:MoveTo(target) end)
+		local p = getSafePosition(root)
+		if not p or not humanoid then return end
+
+		local offset = Vector3.new(target.X - p.X, 0, target.Z - p.Z)
+		if offset.Magnitude > 0.05 then
+			pcall(function() humanoid:Move(offset.Unit, false) end)
+		else
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
+		end
+	end
+
+	local function stopMove()
+		if humanoid then
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 		end
 	end
 
@@ -22076,7 +22065,7 @@ local function walkThrough(segment, room, allowBoss)
 			while dwellIdx <= #dwells do
 				local currentDw = dwells[dwellIdx]
 				local dOk, dErr = runDwell(currentDw)
-				if not dOk then restoreAutoRotate(); return false, dErr end
+				if not dOk then stopMove(); restoreAutoRotate(); return false, dErr end
 				dwellIdx += 1
 			end
 			while skillIdx <= #walkSkills do
@@ -22092,22 +22081,32 @@ local function walkThrough(segment, room, allowBoss)
 				skillIdx += 1
 			end
 
-			pcall(function() humanoid:MoveTo(path[n]) end)
 			local deadline = os.clock() + 5
 			while isPlaying do
 				local p2 = getSafePosition(root)
-				if p2 and flatDistance(p2, path[n]) <= ARRIVE_DIST then break end
-				if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
-				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then restoreAutoRotate(); return false, "dead" end
+				if not p2 then break end
+				local curDist = flatDistance(p2, path[n])
+				if curDist <= ARRIVE_DIST then break end
+				if shared.GetCurrentRoomIndex() ~= room then stopMove(); restoreAutoRotate(); return false, "room_changed" end
+				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then stopMove(); restoreAutoRotate(); return false, "dead" end
 				if os.clock() >= deadline then break end
+
+				local offset = Vector3.new(path[n].X - p2.X, 0, path[n].Z - p2.Z)
+				if offset.Magnitude > 0.05 then
+					pcall(function() humanoid:Move(offset.Unit, false) end)
+				else
+					stopMove()
+				end
+
 				if os.clock() < faceLockUntil then
 					if lastSkillFacing then smoothFacing(root, lastSkillFacing, 0.45) end
 					if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
 				elseif humanoid.AutoRotate ~= true then
 					humanoid.AutoRotate = true
 				end
-				task.wait(0.08)
+				task.wait(0.03)
 			end
+			stopMove()
 			restoreAutoRotate()
 			currentProgress = total
 			progressPercent = 100
@@ -22118,8 +22117,9 @@ local function walkThrough(segment, room, allowBoss)
 		local currentLookahead = getAdaptiveLookahead(progress)
 		local target = pointAt(math.min(progress + currentLookahead, total - 0.01))
 		sendMove(target)
-		task.wait(0.05)
+		task.wait(0.03)
 	end
+	stopMove()
 	restoreAutoRotate()
 	return false, "stopped"
 end

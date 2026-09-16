@@ -243,10 +243,10 @@ end
 
 --// Dừng hẳn nhân vật (khi tắt phát / nhường quyền).
 local function cancelMove(humanoid)
-	local root = getPlayerRoot()
-	if root and humanoid then
-		local pos = getSafePosition(root)
-		if pos then pcall(function() humanoid:MoveTo(pos) end) end
+	if humanoid then
+		pcall(function()
+			humanoid:Move(Vector3.zero, false)
+		end)
 	end
 end
 
@@ -503,10 +503,7 @@ local function walkThrough(segment, room, allowBoss)
 	local function runDwell(dwell)
 		if not isPlaying or (dwell.dur or 0) <= 0 then return true end
 		if replayPauses then
-			local dwellTargetPos = dwell.pos or getSafePosition(root)
-			if dwellTargetPos then
-				pcall(function() humanoid:MoveTo(dwellTargetPos) end)
-			end
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 
 			if replayFacing and dwell.facing then
 				setFacing(root, dwell.facing)
@@ -522,10 +519,8 @@ local function walkThrough(segment, room, allowBoss)
 				if shared.GetCurrentRoomIndex() ~= room then return false, "room_changed" end
 				if shared.IsBossActive() and not allowBoss then return false, "boss" end
 
-				-- Ghim chặt chân tại điểm dừng
-				if dwellTargetPos then
-					pcall(function() humanoid:MoveTo(dwellTargetPos) end)
-				end
+				-- Dừng di chuyển trong lúc dwell
+				pcall(function() humanoid:Move(Vector3.zero, false) end)
 
 				-- Kích hoạt mọi skill khi đến mốc tOff
 				local elapsed = os.clock() - startT
@@ -542,7 +537,7 @@ local function walkThrough(segment, room, allowBoss)
 					end
 				end
 
-				task.wait(0.04)
+				task.wait(0.03)
 			end
 
 			-- Đảm bảo xả nốt skill nào chưa kịp xả do dwell duration kết thúc sớm
@@ -561,8 +556,8 @@ local function walkThrough(segment, room, allowBoss)
 
 			-- Giữ facing sau skill cuối trong dwell
 			while isPlaying and os.clock() < dwellFaceHoldUntil do
-				if dwellTargetPos then pcall(function() humanoid:MoveTo(dwellTargetPos) end) end
-				task.wait(0.04)
+				pcall(function() humanoid:Move(Vector3.zero, false) end)
+				task.wait(0.03)
 			end
 
 			if replayFacing then restoreAutoRotate() end
@@ -577,7 +572,6 @@ local function walkThrough(segment, room, allowBoss)
 		local dist = flatDistance(curPos, startNode)
 		if dist > 1.8 then
 			local repositionDeadline = os.clock() + START_REPOSITION_TIMEOUT
-			local lastSendAt = 0
 			while isPlaying and os.clock() < repositionDeadline do
 				local p = getSafePosition(root)
 				if not p then break end
@@ -585,15 +579,16 @@ local function walkThrough(segment, room, allowBoss)
 				if curDist <= 1.8 then break end
 				if shared.IsDead() or shared.GetCurrentRoomIndex() ~= room then break end
 
-				-- Giữ nhịp MoveTo liên tục (mỗi 0.08s) để không bị ngắt quãng, nhấp nhả hoặc giảm tốc giữa đường
-				local now = os.clock()
-				if now - lastSendAt >= 0.08 then
-					lastSendAt = now
-					pcall(function() humanoid:MoveTo(startNode) end)
+				local offset = Vector3.new(startNode.X - p.X, 0, startNode.Z - p.Z)
+				if offset.Magnitude > 0.1 then
+					pcall(function() humanoid:Move(offset.Unit, false) end)
+				else
+					pcall(function() humanoid:Move(Vector3.zero, false) end)
 				end
 
 				task.wait(0.03)
 			end
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 		end
 
 		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.0 studs)
@@ -617,18 +612,22 @@ local function walkThrough(segment, room, allowBoss)
 	local faceLockUntil = 0
 	local lastSkillFacing = nil
 
-
-
-	--// Gửi lệnh di chuyển: nhạy bén, đáp ứng ngay lập tức kể cả đoạn ngắn.
-	local lastTargetPos = nil
-	local lastMoveToAt = 0
+	--// Gửi lệnh di chuyển theo Vector hướng (Move): phản hồi tức thì, giữ nguyên vận tốc, không hãm tốc ngầm.
 	local function sendMove(target)
-		local now = os.clock()
-		local movedBy = lastTargetPos and flatDistance(lastTargetPos, target) or math.huge
-		if movedBy > 0.15 or now - lastMoveToAt >= 0.08 then
-			lastTargetPos = target
-			lastMoveToAt = now
-			pcall(function() humanoid:MoveTo(target) end)
+		local p = getSafePosition(root)
+		if not p or not humanoid then return end
+
+		local offset = Vector3.new(target.X - p.X, 0, target.Z - p.Z)
+		if offset.Magnitude > 0.05 then
+			pcall(function() humanoid:Move(offset.Unit, false) end)
+		else
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
+		end
+	end
+
+	local function stopMove()
+		if humanoid then
+			pcall(function() humanoid:Move(Vector3.zero, false) end)
 		end
 	end
 
@@ -758,7 +757,7 @@ local function walkThrough(segment, room, allowBoss)
 			while dwellIdx <= #dwells do
 				local currentDw = dwells[dwellIdx]
 				local dOk, dErr = runDwell(currentDw)
-				if not dOk then restoreAutoRotate(); return false, dErr end
+				if not dOk then stopMove(); restoreAutoRotate(); return false, dErr end
 				dwellIdx += 1
 			end
 			while skillIdx <= #walkSkills do
@@ -774,22 +773,32 @@ local function walkThrough(segment, room, allowBoss)
 				skillIdx += 1
 			end
 
-			pcall(function() humanoid:MoveTo(path[n]) end)
 			local deadline = os.clock() + 5
 			while isPlaying do
 				local p2 = getSafePosition(root)
-				if p2 and flatDistance(p2, path[n]) <= ARRIVE_DIST then break end
-				if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
-				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then restoreAutoRotate(); return false, "dead" end
+				if not p2 then break end
+				local curDist = flatDistance(p2, path[n])
+				if curDist <= ARRIVE_DIST then break end
+				if shared.GetCurrentRoomIndex() ~= room then stopMove(); restoreAutoRotate(); return false, "room_changed" end
+				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then stopMove(); restoreAutoRotate(); return false, "dead" end
 				if os.clock() >= deadline then break end
+
+				local offset = Vector3.new(path[n].X - p2.X, 0, path[n].Z - p2.Z)
+				if offset.Magnitude > 0.05 then
+					pcall(function() humanoid:Move(offset.Unit, false) end)
+				else
+					stopMove()
+				end
+
 				if os.clock() < faceLockUntil then
 					if lastSkillFacing then smoothFacing(root, lastSkillFacing, 0.45) end
 					if humanoid.AutoRotate ~= false then humanoid.AutoRotate = false end
 				elseif humanoid.AutoRotate ~= true then
 					humanoid.AutoRotate = true
 				end
-				task.wait(0.08)
+				task.wait(0.03)
 			end
+			stopMove()
 			restoreAutoRotate()
 			currentProgress = total
 			progressPercent = 100
@@ -800,8 +809,9 @@ local function walkThrough(segment, room, allowBoss)
 		local currentLookahead = getAdaptiveLookahead(progress)
 		local target = pointAt(math.min(progress + currentLookahead, total - 0.01))
 		sendMove(target)
-		task.wait(0.05)
+		task.wait(0.03)
 	end
+	stopMove()
 	restoreAutoRotate()
 	return false, "stopped"
 end
