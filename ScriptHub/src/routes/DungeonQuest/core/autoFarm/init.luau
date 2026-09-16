@@ -330,6 +330,12 @@ local function stepMovementLoop(deltaTime)
 	-- Auto Skill: Quản lý smart skill Q (Buff khi có hazard) và E (Damage khi có buff & trong tầm range)
 	autoSkill.Step(deltaTime, target, flatDist)
 
+	-- Xác định xem có cần né / kiểm tra nguy hiểm không (bỏ qua nếu bất tử, tắt dodge toàn cục hoặc tắt dodge riêng theo boss)
+	local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
+	local isDodgeDisabled = contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled(target)
+	local isAutoDodgeEnabled = hazardScanner.IsAutoDodgeEnabled and hazardScanner.IsAutoDodgeEnabled()
+	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
+
 	if flatDist < minCombatDistance then
 		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly
 		local awayDelta = Vector3.new(playerPos.X - enemyPos.X, 0, playerPos.Z - enemyPos.Z)
@@ -354,10 +360,9 @@ local function stepMovementLoop(deltaTime)
 			end
 		end
 
-		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh)
+		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh hoặc tắt Dodge)
 		local isBackSafe = true
-		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
-		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
+		if shouldCheckDanger then
 			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
 		end
 
@@ -387,8 +392,7 @@ local function stepMovementLoop(deltaTime)
 
 		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
 		local dangerAhead = false
-		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
-		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
+		if shouldCheckDanger then
 			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
 			for _, stepDist in ipairs({ 3, 6, 10 }) do
 				if stepDist < flatDist then

@@ -96,12 +96,18 @@ return function(self)
 
 	--// Inventory Sorter: Sắp xếp kho đồ game theo tiêu chí (physic, spell, health, rarity)
     require("@routes/DungeonQuest/core/inventorySort")
+	
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	local autoHide = require("@routes/DungeonQuest/core/autoHide")
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
+	--// Streaming Mode (ẩn danh tính player trên GUI / nametag)
+    local streamingMode = require("@routes/DungeonQuest/core/streamingMode")
+    streamingMode.SetWindow(window)
+    streamingMode.Init()
+	
 	--// Khởi chạy
 	tabs.Combat:Select()
 

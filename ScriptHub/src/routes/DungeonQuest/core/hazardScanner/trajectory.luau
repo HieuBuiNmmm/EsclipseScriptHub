@@ -20,6 +20,9 @@ local trajectory = {}
 local enabled = false
 local data = nil
 local predictionLength = 45 -- studs (chiều dài dải visual hiển thị quỹ đạo đạn)
+local customLengths = {
+	["secondbossmovingbeam"] = 80,
+}
 local activeRecords = {} -- [hazardInfo] = { ad = BoxHandleAdornment, mainPart = BasePart, connections = {}, lastPos = Vector3, lastClock = number, velocity = Vector3, dir = Vector3, isMoving = boolean }
 local heartbeatConnection = nil
 
@@ -38,6 +41,27 @@ local INSTANT_PROJECTILES = {
 	["firstbossseekingspikes"] = "target_player",
 	["firstbossbigspike"] = "target_player",
 }
+
+--// Lấy độ dài trajectory (mặc định hoặc custom theo đối tượng)
+local function getHazardPredictionLength(hazardInfoOrName)
+	if not hazardInfoOrName then return predictionLength end
+	local name = ""
+	if type(hazardInfoOrName) == "string" then
+		name = hazardInfoOrName
+	elseif type(hazardInfoOrName) == "table" then
+		name = hazardInfoOrName.Name or (hazardInfoOrName.Instance and hazardInfoOrName.Instance.Name) or ""
+	end
+	local clean = name:lower():gsub("%s+", "")
+	if customLengths[clean] then
+		return customLengths[clean]
+	end
+	for k, v in pairs(customLengths) do
+		if string.find(clean, k, 1, true) then
+			return v
+		end
+	end
+	return predictionLength
+end
 
 --// Lấy vị trí người chơi
 local function getPlayerPosition()
@@ -115,6 +139,35 @@ function trajectory.SetPredictionLength(val)
 		predictionLength = math.clamp(val, 10, 200)
 		trajectory.RefreshAll()
 	end
+end
+
+function trajectory.GetHazardPredictionLength(hazardNameOrInfo)
+	return getHazardPredictionLength(hazardNameOrInfo)
+end
+
+function trajectory.GetCustomLength(key)
+	if not key then return nil end
+	local clean = key:lower():gsub("%s+", "")
+	return customLengths[clean]
+end
+
+function trajectory.SetCustomLength(key, val)
+	if not key then return end
+	local clean = key:lower():gsub("%s+", "")
+	if type(val) == "number" and val > 0 then
+		customLengths[clean] = math.clamp(val, 10, 300)
+	else
+		customLengths[clean] = nil
+	end
+	trajectory.RefreshAll()
+end
+
+function trajectory.GetSecondBossBeamLength()
+	return customLengths["secondbossmovingbeam"] or 80
+end
+
+function trajectory.SetSecondBossBeamLength(val)
+	trajectory.SetCustomLength("secondbossmovingbeam", val)
 end
 
 function trajectory.IsHazardMoving(hazardInfo)
@@ -278,11 +331,12 @@ local function onHeartbeat()
 					record.lastClock = now
 				end
 
-				-- Nếu đang di chuyển hoặc là Instant Projectile có hướng, cập nhật visual quỹ đạo tĩnh theo predictionLength
+				-- Nếu đang di chuyển hoặc là Instant Projectile có hướng, cập nhật visual quỹ đạo tĩnh theo predictionLength / custom length
 				if record.isMoving and record.dir and record.ad then
 					local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 					if centroid then
-						updateTrajectoryCFrame(record.ad, mainPart, centroid, record.dir, targetY, predictionLength, spanWidth)
+						local hLength = getHazardPredictionLength(info)
+						updateTrajectoryCFrame(record.ad, mainPart, centroid, record.dir, targetY, hLength, spanWidth)
 					end
 				else
 					if record.ad and record.ad.Visible then
@@ -360,10 +414,11 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 
 	if not mainPart or not mainPart.Parent then return end
 
+	local hLength = getHazardPredictionLength(hazardInfo)
 	local box = Instance.new("BoxHandleAdornment")
 	box.Name = "HazardTrajectoryCorridor"
 	box.Adornee = mainPart
-	box.Size = Vector3.new(4, GROUND_THICKNESS, predictionLength)
+	box.Size = Vector3.new(4, GROUND_THICKNESS, hLength)
 	box.Color3 = TRAJECTORY_COLOR
 	box.Transparency = TRAJECTORY_TRANSPARENCY
 	box.ZIndex = 1 -- Nằm dưới đĩa đỏ (ZIndex = 2)
@@ -403,7 +458,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		local targetY = getPlayerGroundY()
 		local centroid, spanWidth = getHazardCentroidAndSpan(hazardInfo, instantDir)
 		if centroid then
-			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, predictionLength, spanWidth)
+			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, hLength, spanWidth)
 		end
 		if data and data.UpdateHazardVisualColor then
 			pcall(data.UpdateHazardVisualColor, hazardInfo, true)
@@ -454,12 +509,13 @@ function trajectory.GetNearbyTrajectories(origin, maxRadius)
 		if record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
 			local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 			if centroid and spanWidth then
+				local hLength = getHazardPredictionLength(info)
 				local cx = centroid.X
 				local cz = centroid.Z
 				local dx = ox - cx
 				local dz = oz - cz
 				local distSq = dx * dx + dz * dz
-				local totalReach = maxRadius + predictionLength + (spanWidth / 2)
+				local totalReach = maxRadius + hLength + (spanWidth / 2)
 				if distSq <= totalReach * totalReach then
 					table.insert(nearby, { info = info, record = record })
 				end
@@ -483,6 +539,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 			if record and record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
 				local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 				if centroid and spanWidth then
+					local hLength = getHazardPredictionLength(info)
 					local dir = record.dir
 					local normal = Vector3.new(-dir.Z, 0, dir.X)
 					local vx = px - centroid.X
@@ -493,15 +550,15 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 					local halfWidth = spanWidth / 2
 
 					if extraRadius <= 0 then
-						if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
+						if projU >= 0 and projU <= hLength and math.abs(projN) <= halfWidth then
 							return true, info, dir, centroid, spanWidth
 						end
 					else
 						local dU = 0
 						if projU < 0 then
 							dU = -projU
-						elseif projU > predictionLength then
-							dU = projU - predictionLength
+						elseif projU > hLength then
+							dU = projU - hLength
 						end
 						local dN = math.max(0, math.abs(projN) - halfWidth)
 						if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
@@ -518,6 +575,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 		if record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
 			local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 			if centroid and spanWidth then
+				local hLength = getHazardPredictionLength(info)
 				local dir = record.dir
 				local normal = Vector3.new(-dir.Z, 0, dir.X)
 				local vx = px - centroid.X
@@ -530,15 +588,15 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 
 				-- Kiểm tra giao thoa hình học trực tiếp với dải hình hộp màu cam cố định
 				if extraRadius <= 0 then
-					if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
+					if projU >= 0 and projU <= hLength and math.abs(projN) <= halfWidth then
 						return true, info, dir, centroid, spanWidth
 					end
 				else
 					local dU = 0
 					if projU < 0 then
 						dU = -projU
-					elseif projU > predictionLength then
-						dU = projU - predictionLength
+					elseif projU > hLength then
+						dU = projU - hLength
 					end
 					local dN = math.max(0, math.abs(projN) - halfWidth)
 					if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then

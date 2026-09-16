@@ -12,10 +12,10 @@ local contextual = {}
 
 --// Default Values per Target Type
 local DEFAULT_DISTANCES = {
-	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0 },
-	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0 },
-	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0 },
-	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0 },
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
 }
 
 local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
@@ -223,6 +223,65 @@ function contextual.GetActiveBossArea(target)
 	end
 
 	return enabled, radius, center
+end
+
+--// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể
+function contextual.GetDisableDodge(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.DisableDodge ~= nil then
+			return entry.DisableDodge == true
+		end
+	end
+
+	return def.DisableDodge or false
+end
+
+--// Cập nhật trạng thái Disable Dodge
+function contextual.SetDisableDodge(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].DisableDodge = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
+function contextual.IsActiveDodgeDisabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetDisableDodge(dungeon, targetKey)
 end
 
 --// Cập nhật Min Combat Distance

@@ -270,6 +270,7 @@ return function(window, tab)
 	local isSyncingUI = false
 	local minSlider = nil
 	local maxSlider = nil
+	local disableDodgeToggle = nil
 	local bossAreaToggle = nil
 	local bossAreaRadiusSlider = nil
 	local editInfoLabel = nil
@@ -289,6 +290,11 @@ return function(window, tab)
 			extraText = " | " .. baText
 		end
 
+		local curDisableDodge = contextual.GetDisableDodge(curDungeon, curTargetKey)
+		if curDisableDodge then
+			extraText = extraText .. " | <font color='rgb(255,100,100)'>No Dodge</font>"
+		end
+
 		pcall(function()
 			activeStatusLabel:UpdateName(("Active: %s | Target: %s (%s%s)"):format(dText, tText, rText, extraText))
 		end)
@@ -302,6 +308,12 @@ return function(window, tab)
 		end
 		if maxSlider then
 			pcall(function() maxSlider:UpdateValue(curMax) end)
+		end
+
+		if disableDodgeToggle then
+			pcall(function()
+				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey))
+			end)
 		end
 
 		if selectedTargetKey == "Mob" then
@@ -388,6 +400,18 @@ return function(window, tab)
 			updateActiveStatus()
 		end,
 	}))
+
+	local initDisableDodge = contextual.GetDisableDodge(selectedDungeon, selectedTargetKey)
+
+	disableDodgeToggle = ctxSection:Toggle({
+		Name = "Disable Dodge on Target (Không né đòn, chỉ xả skill)",
+		Default = initDisableDodge,
+		Callback = function(state)
+			if isSyncingUI then return end
+			contextual.SetDisableDodge(selectedDungeon, selectedTargetKey, state)
+			updateActiveStatus()
+		end,
+	})
 
 	ctxSection:Header({ Name = "Boss Area Constraint (Boss Only)" })
 

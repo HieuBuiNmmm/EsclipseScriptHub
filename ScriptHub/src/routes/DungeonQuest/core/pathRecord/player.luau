@@ -50,6 +50,34 @@ local doubleClickDelay = 0.005 -- Giây khoảng nghỉ giữa 2 lần click (m�
 local preAimLeadTime = 0.45 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng
 local startPauseTime = 0.2 -- Giây dừng chờ tại node xuất phát (Start Node), thay thế thời gian dwell gốc
 
+local aimSkillQ = false -- Aim/xoay mặt khi cast skill Q (mặc định tắt vì Q thường là Buff)
+local aimSkillE = true -- Aim/xoay mặt khi cast skill E (mặc định bật vì E thường là Attack)
+
+function mover.SetAimSkillQ(state)
+	aimSkillQ = state and true or false
+end
+
+function mover.IsAimSkillQEnabled()
+	return aimSkillQ
+end
+
+function mover.SetAimSkillE(state)
+	aimSkillE = state and true or false
+end
+
+function mover.IsAimSkillEEnabled()
+	return aimSkillE
+end
+
+local function shouldAimSkill(key: string?): boolean
+	if key == "Q" then
+		return aimSkillQ
+	elseif key == "E" then
+		return aimSkillE
+	end
+	return aimSkillQ or aimSkillE
+end
+
 function mover.SetStartPauseTime(seconds)
 	if type(seconds) == "number" then
 		startPauseTime = math.clamp(seconds, 0, 5.0)
@@ -504,7 +532,7 @@ local function walkThrough(segment, room, allowBoss)
 				for sIdx, sk in ipairs(dwell.skills or {}) do
 					if not firedSkills[sIdx] and elapsed >= (sk.tOff or 0) then
 						firedSkills[sIdx] = true
-						if replayFacing and sk.facing then
+						if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 							setFacing(root, sk.facing)
 							dwellFaceHoldUntil = os.clock() + skillFaceHold
 						end
@@ -521,7 +549,7 @@ local function walkThrough(segment, room, allowBoss)
 			for sIdx, sk in ipairs(dwell.skills or {}) do
 				if not firedSkills[sIdx] then
 					firedSkills[sIdx] = true
-					if replayFacing and sk.facing then
+					if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 						setFacing(root, sk.facing)
 						dwellFaceHoldUntil = os.clock() + skillFaceHold
 					end
@@ -542,32 +570,40 @@ local function walkThrough(segment, room, allowBoss)
 		return true
 	end
 
-	--// Tiếp cận node đầu tiên: di chuyển tới gần trong phạm vi < 3 studs rồi snap vào vị trí xuất phát.
+	--// Tiếp cận node đầu tiên: di chuyển mượt mà tới gần rồi snap vào vị trí xuất phát.
 	local startNode = segment.startPos or path[1]
 	local curPos = getSafePosition(root)
 	if curPos and startNode then
 		local dist = flatDistance(curPos, startNode)
-		if dist >= 3.0 then
-			pcall(function() humanoid:MoveTo(startNode) end)
-			local repositionDeadline = os.clock() + 5.0
+		if dist > 1.8 then
+			local repositionDeadline = os.clock() + START_REPOSITION_TIMEOUT
+			local lastSendAt = 0
 			while isPlaying and os.clock() < repositionDeadline do
 				local p = getSafePosition(root)
 				if not p then break end
-				if flatDistance(p, startNode) < 3.0 then break end
+				local curDist = flatDistance(p, startNode)
+				if curDist <= 1.8 then break end
 				if shared.IsDead() or shared.GetCurrentRoomIndex() ~= room then break end
+
+				-- Giữ nhịp MoveTo liên tục (mỗi 0.08s) để không bị ngắt quãng, nhấp nhả hoặc giảm tốc giữa đường
+				local now = os.clock()
+				if now - lastSendAt >= 0.08 then
+					lastSendAt = now
+					pcall(function() humanoid:MoveTo(startNode) end)
+				end
+
 				task.wait(0.03)
 			end
 		end
 
-		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.5 studs)
+		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.0 studs)
 		local finalP = getSafePosition(root)
-		if finalP and flatDistance(finalP, startNode) <= 3.5 then
+		if finalP and flatDistance(finalP, startNode) <= 3.0 then
 			pcall(function()
 				local currentRot = root.CFrame.Rotation
 				root.CFrame = CFrame.new(startNode.X, root.Position.Y, startNode.Z) * currentRot
 				root.AssemblyLinearVelocity = Vector3.zero
 				root.AssemblyAngularVelocity = Vector3.zero
-				humanoid:MoveTo(root.Position)
 			end)
 		end
 	end
@@ -634,7 +670,7 @@ local function walkThrough(segment, room, allowBoss)
 		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast.
 		while skillIdx <= #walkSkills and walkSkills[skillIdx].arc <= progress do
 			local sk = walkSkills[skillIdx]
-			if replayFacing and sk.facing then
+			if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 				setFacing(root, sk.facing)
 				lastSkillFacing = sk.facing
 				faceLockUntil = os.clock() + skillFaceHold
@@ -662,7 +698,16 @@ local function walkThrough(segment, room, allowBoss)
 			local dIdx = dwellIdx
 			while dIdx <= #dwells do
 				local dw = dwells[dIdx]
-				local dFace = (dw.skills and #dw.skills > 0 and dw.skills[1].facing) or dw.facing
+				local dFace = nil
+				if dw.skills and #dw.skills > 0 then
+					for _, sk in ipairs(dw.skills) do
+						if sk.facing and shouldAimSkill(sk.key) then
+							dFace = sk.facing
+							break
+						end
+					end
+				end
+				dFace = dFace or dw.facing
 				if dFace then
 					if dw.arc < bestArc then
 						bestArc = dw.arc
@@ -676,7 +721,7 @@ local function walkThrough(segment, room, allowBoss)
 			local sIdx = skillIdx
 			while sIdx <= #walkSkills do
 				local sk = walkSkills[sIdx]
-				if sk.facing then
+				if sk.facing and shouldAimSkill(sk.key) then
 					if sk.arc < bestArc then
 						bestArc = sk.arc
 						nextEventFacing = sk.facing
@@ -718,7 +763,7 @@ local function walkThrough(segment, room, allowBoss)
 			end
 			while skillIdx <= #walkSkills do
 				local sk = walkSkills[skillIdx]
-				if replayFacing and sk.facing then
+				if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 					setFacing(root, sk.facing)
 					lastSkillFacing = sk.facing
 					faceLockUntil = os.clock() + skillFaceHold

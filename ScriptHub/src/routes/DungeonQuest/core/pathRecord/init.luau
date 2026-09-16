@@ -107,6 +107,26 @@ function pathRecord.SetStartPauseTime(seconds)
 	fireStatus("startpause")
 end
 
+--// Aim/hướng cho chiêu Q (mặc định tắt vì Q là Buff)
+function pathRecord.IsAimSkillQEnabled()
+	return mover.IsAimSkillQEnabled()
+end
+
+function pathRecord.SetAimSkillQ(state)
+	mover.SetAimSkillQ(state and true or false)
+	fireStatus("aimskillq")
+end
+
+--// Aim/hướng cho chiêu E (mặc định bật vì E là Attack)
+function pathRecord.IsAimSkillEEnabled()
+	return mover.IsAimSkillEEnabled()
+end
+
+function pathRecord.SetAimSkillE(state)
+	mover.SetAimSkillE(state and true or false)
+	fireStatus("aimskille")
+end
+
 --// State
 local statusListeners = {}
 local bossConnection = nil

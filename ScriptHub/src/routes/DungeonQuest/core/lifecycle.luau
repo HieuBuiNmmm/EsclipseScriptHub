@@ -35,4 +35,6 @@ function lifecycle.IsActive()
 	return not lifecycle.cleaned
 end
 
+lifecycle.OnCleanup = lifecycle.Register
+
 return lifecycle

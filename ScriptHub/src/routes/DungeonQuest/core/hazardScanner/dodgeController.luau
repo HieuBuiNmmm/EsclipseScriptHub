@@ -9,6 +9,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
 local safeSpot = require("@routes/DungeonQuest/core/hazardScanner/safeSpot")
+local contextual = require("@routes/DungeonQuest/core/contextual")
 
 local RunService = services.RunService or game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -82,6 +83,26 @@ local function onHeartbeat()
 			for _, cb in ipairs(dodgeStateCallbacks) do
 				pcall(cb, false, nil, 0)
 			end
+		end
+		if safeSpot and safeSpot.Clear then
+			safeSpot.Clear()
+		end
+		return
+	end
+
+	-- Kiểm tra nếu mục tiêu hiện tại (Boss) được cấu hình tắt né đòn trong Contextual
+	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+		if isDodging or activeTargetSpot then
+			activeTargetSpot = nil
+			isDodging = false
+			local _, hum, root = getPlayerComponents()
+			stopMove(hum, root)
+			for _, cb in ipairs(dodgeStateCallbacks) do
+				pcall(cb, false, nil, 0)
+			end
+		end
+		if safeSpot and safeSpot.Clear then
+			safeSpot.Clear()
 		end
 		return
 	end

@@ -119,6 +119,22 @@ return function(window, tab)
 		end),
 	})
 
+	--// Right Section - Custom Trajectory Lengths
+	local customTrajSection = tab:Section({ Side = "Right" })
+	customTrajSection:Header({ Name = "Custom Trajectory Length" })
+
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "Second Boss Moving Beam (studs)",
+		Default = hazardScanner.GetSecondBossBeamLength(),
+		Minimum = 10,
+		Maximum = 250,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetSecondBossBeamLength(val)
+		end),
+	}, "Slider_HazardSecondBossBeamLength"))
+
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
 	end)

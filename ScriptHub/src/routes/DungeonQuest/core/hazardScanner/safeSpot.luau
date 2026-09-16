@@ -118,6 +118,11 @@ end
 --// Thuật toán Progressive Radial Escape Sampling: Tìm điểm an toàn gần nhất từ tọa độ origin
 --// Tích hợp Broad-Phase Spatial Culling và Momentum Alignment (ưu tiên theo đà chạy của nhân vật)
 function safeSpot.FindNearestSafeSpot(origin)
+	-- Nếu đang bất tử (Invulnerable) sau hồi sinh -> không tính toán Safe Spot
+	if shared.IsInvulnerable and shared.IsInvulnerable() then
+		return nil, false, 0, Vector3.zero
+	end
+
 	local root = getPlayerRoot()
 	if not origin then
 		if not root then return nil, false, 0, Vector3.zero end
@@ -283,6 +288,18 @@ local function onHeartbeat()
 		return
 	end
 
+	-- Nếu đang bất tử (Invulnerable) sau hồi sinh -> clear SafeSpot và dừng hoàn toàn việc tính toán
+	if shared.IsInvulnerable and shared.IsInvulnerable() then
+		safeSpot.Clear()
+		return
+	end
+
+	-- Nếu mục tiêu hiện tại (Boss) bị tắt né đòn trong Contextual -> clear SafeSpot và không tìm điểm né
+	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+		safeSpot.Clear()
+		return
+	end
+
 	-- Kiểm tra xem Player có đang trong vùng nguy hiểm không
 	local inDanger, threatInfo, threatType = false, nil, nil
 	if playerVisual.IsPlayerInDanger then
@@ -306,12 +323,14 @@ local function onHeartbeat()
 		-- Kiểm tra xem Safe Spot đã chọn trước đó còn hợp lệ không:
 		-- 1. Điểm đó vẫn phải Safe (không bị đè bởi vùng đỏ hoặc vùng cam mới).
 		-- 2. Mối đe dọa (threat) của Player không bị đổi sang chiêu/loại khác.
+		-- 3. Người chơi không di chuyển ra quá xa Safe Spot cũ (không chạy ngược lại điểm cũ phía sau nếu đã tiến lên).
 		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
 		local isSameThreat = (threatInfo == currentThreatInstance and threatType == currentThreatType)
+		local isSpotTooFar = currentTargetSafeSpot and (distToTarget > (lastDistance + 4) or distToTarget > 12)
 
-		-- Nếu Safe Spot cũ bị đè HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot:
-		if not isTargetStillSafe or not isSameThreat or not currentTargetSafeSpot then
+		-- Nếu Safe Spot cũ bị đè HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot HOẶC điểm cũ quá xa:
+		if not isTargetStillSafe or not isSameThreat or not currentTargetSafeSpot or isSpotTooFar then
 			local spot, found, dist, dir = safeSpot.FindNearestSafeSpot(root.Position)
 
 			if found and spot then

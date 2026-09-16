@@ -5,6 +5,7 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local shortcuts = require("@routes/DungeonQuest/core/shortcuts")
+local autoReset = require("@routes/DungeonQuest/core/autoReset")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -47,4 +48,45 @@ return function(window, tab)
 			shortcuts.SetMouseComboEnabled(state)
 		end),
 	}, "Toggle_MouseCombo")
+
+	section:Header({ Name = "Auto Reset / Suicide (Tự sát)" })
+
+	section:Toggle({
+		Name = "Auto Reset on Room (1 Lần/Run)",
+		Default = autoReset.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoReset.Toggle(state)
+		end),
+	}, "Toggle_AutoResetRoom")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Target Room (Phòng tự sát)",
+		Default = autoReset.GetTargetRoom(),
+		Minimum = 1,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			autoReset.SetTargetRoom(math.floor(value + 0.5))
+		end),
+	}, "Slider_AutoResetTargetRoom"))
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Reset Delay (s)",
+		Default = autoReset.GetDelay(),
+		Minimum = 0,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			autoReset.SetDelay(value)
+		end),
+	}, "Slider_AutoResetDelay"))
+
+	section:Button({
+		Name = "Reset Character Now",
+		Callback = function()
+			autoReset.ResetNow()
+		end,
+	})
 end

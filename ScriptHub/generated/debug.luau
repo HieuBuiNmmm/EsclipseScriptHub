@@ -9,12 +9,17 @@
 --]]
 
 _P = {
-    genDate = "2026-09-16T08:55:33.713425900+00:00",
+    genDate = "2026-09-16T12:03:46.653970400+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
 
-type InspectorEntry__DARKLUA_TYPE_a = {
+
+--// Types
+type TrackedRecord__DARKLUA_TYPE_a = {
+	original: string,
+	conns: { RBXScriptConnection }}
+type InspectorEntry__DARKLUA_TYPE_b = {
 	name: string,
 	value: string,
 	kind: string,
@@ -28,15 +33,15 @@ type InspectorEntry__DARKLUA_TYPE_a = {
 }
 
 -- Lưu trữ trạng thái gốc của TextLabel để phục hồi khi hover ra ngoài
-type OriginalLabelState__DARKLUA_TYPE_b = {
+type OriginalLabelState__DARKLUA_TYPE_c = {
 	text: string}
 
-type MainFilterMode__DARKLUA_TYPE_c = "None" | "Descending" | "Ascending"
+type MainFilterMode__DARKLUA_TYPE_d = "None" | "Descending" | "Ascending"
 
-type StatFilterType__DARKLUA_TYPE_d = "Physical Damage" | "Spell Power" | "Health"
+type StatFilterType__DARKLUA_TYPE_e = "Physical Damage" | "Spell Power" | "Health"
 
 --// Trích xuất chỉ số phục vụ sắp xếp
-type ParsedItemSlot__DARKLUA_TYPE_e = {
+type ParsedItemSlot__DARKLUA_TYPE_f = {
 	slot: GuiObject,
 	originalOrder: number,
 	category: string,
@@ -47,7 +52,7 @@ type ParsedItemSlot__DARKLUA_TYPE_e = {
 	levelReq: number,
 	name: string}
 --// Types
-type Window__DARKLUA_TYPE_f = { Visible: boolean? }
+type Window__DARKLUA_TYPE_g = { Visible: boolean? }
 local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()
 local MacLib = { 
 	Options = {}, 
@@ -5981,6 +5986,8 @@ function lifecycle.IsActive()
 	return not lifecycle.cleaned
 end
 
+lifecycle.OnCleanup = lifecycle.Register
+
 return lifecycle
 end function __DIST.c()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
 -- Nhận Window tham chiếu qua SetWindow (vì Window được tạo sau khi require module).
@@ -9029,6 +9036,9 @@ local trajectory = {}
 local enabled = false
 local data = nil
 local predictionLength = 45 -- studs (chiều dài dải visual hiển thị quỹ đạo đạn)
+local customLengths = {
+	["secondbossmovingbeam"] = 80,
+}
 local activeRecords = {} -- [hazardInfo] = { ad = BoxHandleAdornment, mainPart = BasePart, connections = {}, lastPos = Vector3, lastClock = number, velocity = Vector3, dir = Vector3, isMoving = boolean }
 local heartbeatConnection = nil
 
@@ -9047,6 +9057,27 @@ local INSTANT_PROJECTILES = {
 	["firstbossseekingspikes"] = "target_player",
 	["firstbossbigspike"] = "target_player",
 }
+
+--// Lấy độ dài trajectory (mặc định hoặc custom theo đối tượng)
+local function getHazardPredictionLength(hazardInfoOrName)
+	if not hazardInfoOrName then return predictionLength end
+	local name = ""
+	if type(hazardInfoOrName) == "string" then
+		name = hazardInfoOrName
+	elseif type(hazardInfoOrName) == "table" then
+		name = hazardInfoOrName.Name or (hazardInfoOrName.Instance and hazardInfoOrName.Instance.Name) or ""
+	end
+	local clean = name:lower():gsub("%s+", "")
+	if customLengths[clean] then
+		return customLengths[clean]
+	end
+	for k, v in pairs(customLengths) do
+		if string.find(clean, k, 1, true) then
+			return v
+		end
+	end
+	return predictionLength
+end
 
 --// Lấy vị trí người chơi
 local function getPlayerPosition()
@@ -9124,6 +9155,35 @@ function trajectory.SetPredictionLength(val)
 		predictionLength = math.clamp(val, 10, 200)
 		trajectory.RefreshAll()
 	end
+end
+
+function trajectory.GetHazardPredictionLength(hazardNameOrInfo)
+	return getHazardPredictionLength(hazardNameOrInfo)
+end
+
+function trajectory.GetCustomLength(key)
+	if not key then return nil end
+	local clean = key:lower():gsub("%s+", "")
+	return customLengths[clean]
+end
+
+function trajectory.SetCustomLength(key, val)
+	if not key then return end
+	local clean = key:lower():gsub("%s+", "")
+	if type(val) == "number" and val > 0 then
+		customLengths[clean] = math.clamp(val, 10, 300)
+	else
+		customLengths[clean] = nil
+	end
+	trajectory.RefreshAll()
+end
+
+function trajectory.GetSecondBossBeamLength()
+	return customLengths["secondbossmovingbeam"] or 80
+end
+
+function trajectory.SetSecondBossBeamLength(val)
+	trajectory.SetCustomLength("secondbossmovingbeam", val)
 end
 
 function trajectory.IsHazardMoving(hazardInfo)
@@ -9287,11 +9347,12 @@ local function onHeartbeat()
 					record.lastClock = now
 				end
 
-				-- Nếu đang di chuyển hoặc là Instant Projectile có hướng, cập nhật visual quỹ đạo tĩnh theo predictionLength
+				-- Nếu đang di chuyển hoặc là Instant Projectile có hướng, cập nhật visual quỹ đạo tĩnh theo predictionLength / custom length
 				if record.isMoving and record.dir and record.ad then
 					local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 					if centroid then
-						updateTrajectoryCFrame(record.ad, mainPart, centroid, record.dir, targetY, predictionLength, spanWidth)
+						local hLength = getHazardPredictionLength(info)
+						updateTrajectoryCFrame(record.ad, mainPart, centroid, record.dir, targetY, hLength, spanWidth)
 					end
 				else
 					if record.ad and record.ad.Visible then
@@ -9369,10 +9430,11 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 
 	if not mainPart or not mainPart.Parent then return end
 
+	local hLength = getHazardPredictionLength(hazardInfo)
 	local box = Instance.new("BoxHandleAdornment")
 	box.Name = "HazardTrajectoryCorridor"
 	box.Adornee = mainPart
-	box.Size = Vector3.new(4, GROUND_THICKNESS, predictionLength)
+	box.Size = Vector3.new(4, GROUND_THICKNESS, hLength)
 	box.Color3 = TRAJECTORY_COLOR
 	box.Transparency = TRAJECTORY_TRANSPARENCY
 	box.ZIndex = 1 -- Nằm dưới đĩa đỏ (ZIndex = 2)
@@ -9412,7 +9474,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		local targetY = getPlayerGroundY()
 		local centroid, spanWidth = getHazardCentroidAndSpan(hazardInfo, instantDir)
 		if centroid then
-			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, predictionLength, spanWidth)
+			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, hLength, spanWidth)
 		end
 		if data and data.UpdateHazardVisualColor then
 			pcall(data.UpdateHazardVisualColor, hazardInfo, true)
@@ -9463,12 +9525,13 @@ function trajectory.GetNearbyTrajectories(origin, maxRadius)
 		if record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
 			local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 			if centroid and spanWidth then
+				local hLength = getHazardPredictionLength(info)
 				local cx = centroid.X
 				local cz = centroid.Z
 				local dx = ox - cx
 				local dz = oz - cz
 				local distSq = dx * dx + dz * dz
-				local totalReach = maxRadius + predictionLength + (spanWidth / 2)
+				local totalReach = maxRadius + hLength + (spanWidth / 2)
 				if distSq <= totalReach * totalReach then
 					table.insert(nearby, { info = info, record = record })
 				end
@@ -9492,6 +9555,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 			if record and record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
 				local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 				if centroid and spanWidth then
+					local hLength = getHazardPredictionLength(info)
 					local dir = record.dir
 					local normal = Vector3.new(-dir.Z, 0, dir.X)
 					local vx = px - centroid.X
@@ -9502,15 +9566,15 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 					local halfWidth = spanWidth / 2
 
 					if extraRadius <= 0 then
-						if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
+						if projU >= 0 and projU <= hLength and math.abs(projN) <= halfWidth then
 							return true, info, dir, centroid, spanWidth
 						end
 					else
 						local dU = 0
 						if projU < 0 then
 							dU = -projU
-						elseif projU > predictionLength then
-							dU = projU - predictionLength
+						elseif projU > hLength then
+							dU = projU - hLength
 						end
 						local dN = math.max(0, math.abs(projN) - halfWidth)
 						if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
@@ -9527,6 +9591,7 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 		if record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
 			local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
 			if centroid and spanWidth then
+				local hLength = getHazardPredictionLength(info)
 				local dir = record.dir
 				local normal = Vector3.new(-dir.Z, 0, dir.X)
 				local vx = px - centroid.X
@@ -9539,15 +9604,15 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 
 				-- Kiểm tra giao thoa hình học trực tiếp với dải hình hộp màu cam cố định
 				if extraRadius <= 0 then
-					if projU >= 0 and projU <= predictionLength and math.abs(projN) <= halfWidth then
+					if projU >= 0 and projU <= hLength and math.abs(projN) <= halfWidth then
 						return true, info, dir, centroid, spanWidth
 					end
 				else
 					local dU = 0
 					if projU < 0 then
 						dU = -projU
-					elseif projU > predictionLength then
-						dU = projU - predictionLength
+					elseif projU > hLength then
+						dU = projU - hLength
 					end
 					local dN = math.max(0, math.abs(projN) - halfWidth)
 					if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
@@ -11017,10 +11082,10 @@ local contextual = {}
 
 --// Default Values per Target Type
 local DEFAULT_DISTANCES = {
-	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0 },
-	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0 },
-	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0 },
-	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0 },
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
 }
 
 local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
@@ -11230,6 +11295,65 @@ function contextual.GetActiveBossArea(target)
 	return enabled, radius, center
 end
 
+--// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể
+function contextual.GetDisableDodge(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.DisableDodge ~= nil then
+			return entry.DisableDodge == true
+		end
+	end
+
+	return def.DisableDodge or false
+end
+
+--// Cập nhật trạng thái Disable Dodge
+function contextual.SetDisableDodge(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].DisableDodge = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
+function contextual.IsActiveDodgeDisabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetDisableDodge(dungeon, targetKey)
+end
+
 --// Cập nhật Min Combat Distance
 function contextual.SetMinCombatDistance(dungeonName, targetKey, minVal)
 	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
@@ -11412,6 +11536,11 @@ end
 --// Thuật toán Progressive Radial Escape Sampling: Tìm điểm an toàn gần nhất từ tọa độ origin
 --// Tích hợp Broad-Phase Spatial Culling và Momentum Alignment (ưu tiên theo đà chạy của nhân vật)
 function safeSpot.FindNearestSafeSpot(origin)
+	-- Nếu đang bất tử (Invulnerable) sau hồi sinh -> không tính toán Safe Spot
+	if shared.IsInvulnerable and shared.IsInvulnerable() then
+		return nil, false, 0, Vector3.zero
+	end
+
 	local root = getPlayerRoot()
 	if not origin then
 		if not root then return nil, false, 0, Vector3.zero end
@@ -11577,6 +11706,18 @@ local function onHeartbeat()
 		return
 	end
 
+	-- Nếu đang bất tử (Invulnerable) sau hồi sinh -> clear SafeSpot và dừng hoàn toàn việc tính toán
+	if shared.IsInvulnerable and shared.IsInvulnerable() then
+		safeSpot.Clear()
+		return
+	end
+
+	-- Nếu mục tiêu hiện tại (Boss) bị tắt né đòn trong Contextual -> clear SafeSpot và không tìm điểm né
+	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+		safeSpot.Clear()
+		return
+	end
+
 	-- Kiểm tra xem Player có đang trong vùng nguy hiểm không
 	local inDanger, threatInfo, threatType = false, nil, nil
 	if playerVisual.IsPlayerInDanger then
@@ -11600,12 +11741,14 @@ local function onHeartbeat()
 		-- Kiểm tra xem Safe Spot đã chọn trước đó còn hợp lệ không:
 		-- 1. Điểm đó vẫn phải Safe (không bị đè bởi vùng đỏ hoặc vùng cam mới).
 		-- 2. Mối đe dọa (threat) của Player không bị đổi sang chiêu/loại khác.
+		-- 3. Người chơi không di chuyển ra quá xa Safe Spot cũ (không chạy ngược lại điểm cũ phía sau nếu đã tiến lên).
 		local distToTarget = currentTargetSafeSpot and (currentTargetSafeSpot - playerPos2D).Magnitude or 0
 		local isTargetStillSafe = currentTargetSafeSpot and safeSpot.IsPointSafe(currentTargetSafeSpot)
 		local isSameThreat = (threatInfo == currentThreatInstance and threatType == currentThreatType)
+		local isSpotTooFar = currentTargetSafeSpot and (distToTarget > (lastDistance + 4) or distToTarget > 12)
 
-		-- Nếu Safe Spot cũ bị đè HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot:
-		if not isTargetStillSafe or not isSameThreat or not currentTargetSafeSpot then
+		-- Nếu Safe Spot cũ bị đè HOẶC Player bị dính thêm/đổi Threat mới HOẶC chưa có Safe Spot HOẶC điểm cũ quá xa:
+		if not isTargetStillSafe or not isSameThreat or not currentTargetSafeSpot or isSpotTooFar then
 			local spot, found, dist, dir = safeSpot.FindNearestSafeSpot(root.Position)
 
 			if found and spot then
@@ -11838,6 +11981,7 @@ local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local playerVisual = __DIST.load('q')
 local safeSpot = __DIST.load('u')
+local contextual = __DIST.load('t')
 
 local RunService = services.RunService or game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -11911,6 +12055,26 @@ local function onHeartbeat()
 			for _, cb in ipairs(dodgeStateCallbacks) do
 				pcall(cb, false, nil, 0)
 			end
+		end
+		if safeSpot and safeSpot.Clear then
+			safeSpot.Clear()
+		end
+		return
+	end
+
+	-- Kiểm tra nếu mục tiêu hiện tại (Boss) được cấu hình tắt né đòn trong Contextual
+	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+		if isDodging or activeTargetSpot then
+			activeTargetSpot = nil
+			isDodging = false
+			local _, hum, root = getPlayerComponents()
+			stopMove(hum, root)
+			for _, cb in ipairs(dodgeStateCallbacks) do
+				pcall(cb, false, nil, 0)
+			end
+		end
+		if safeSpot and safeSpot.Clear then
+			safeSpot.Clear()
 		end
 		return
 	end
@@ -12165,6 +12329,11 @@ hazardScanner.SetTrajectoryEnabled = trajectory.SetEnabled
 hazardScanner.IsTrajectoryEnabled = trajectory.IsEnabled
 hazardScanner.SetTrajectoryLength = trajectory.SetPredictionLength
 hazardScanner.GetTrajectoryLength = trajectory.GetPredictionLength
+hazardScanner.GetHazardTrajectoryLength = trajectory.GetHazardPredictionLength
+hazardScanner.GetCustomTrajectoryLength = trajectory.GetCustomLength
+hazardScanner.SetCustomTrajectoryLength = trajectory.SetCustomLength
+hazardScanner.GetSecondBossBeamLength = trajectory.GetSecondBossBeamLength
+hazardScanner.SetSecondBossBeamLength = trajectory.SetSecondBossBeamLength
 hazardScanner.RefreshTrajectory = trajectory.RefreshAll
 hazardScanner.IsPointInAnyTrajectory = trajectory.IsPointInAnyTrajectory
 hazardScanner.GetNearbyTrajectories = trajectory.GetNearbyTrajectories
@@ -12799,6 +12968,12 @@ local function stepMovementLoop(deltaTime)
 	-- Auto Skill: Quản lý smart skill Q (Buff khi có hazard) và E (Damage khi có buff & trong tầm range)
 	autoSkill.Step(deltaTime, target, flatDist)
 
+	-- Xác định xem có cần né / kiểm tra nguy hiểm không (bỏ qua nếu bất tử, tắt dodge toàn cục hoặc tắt dodge riêng theo boss)
+	local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
+	local isDodgeDisabled = contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled(target)
+	local isAutoDodgeEnabled = hazardScanner.IsAutoDodgeEnabled and hazardScanner.IsAutoDodgeEnabled()
+	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
+
 	if flatDist < minCombatDistance then
 		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly
 		local awayDelta = Vector3.new(playerPos.X - enemyPos.X, 0, playerPos.Z - enemyPos.Z)
@@ -12823,10 +12998,9 @@ local function stepMovementLoop(deltaTime)
 			end
 		end
 
-		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh)
+		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh hoặc tắt Dodge)
 		local isBackSafe = true
-		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
-		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
+		if shouldCheckDanger then
 			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
 		end
 
@@ -12856,8 +13030,7 @@ local function stepMovementLoop(deltaTime)
 
 		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
 		local dangerAhead = false
-		local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
-		if not isInvulnerable and hazardScanner and hazardScanner.IsPointSafe then
+		if shouldCheckDanger then
 			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
 			for _, stepDist in ipairs({ 3, 6, 10 }) do
 				if stepDist < flatDist then
@@ -13849,7 +14022,161 @@ lifecycle.Register(function()
 end)
 
 return shortcuts
-end function __DIST.C()-- Module Player trong tab Combat (DungeonQuest).
+end function __DIST.C()-- Auto Reset / Suicide (DungeonQuest): Chủ động tự sát 1 LẦN DUY NHẤT khi bước vào room X chỉ định.
+-- Dùng để trigger điểm checkpoint hồi sinh hoặc kích hoạt phase macro tiếp theo.
+
+--// Imports
+
+local services = __DIST.load('e')
+local shared = __DIST.load('f')
+local notifier = __DIST.load('c')
+local lifecycle = __DIST.load('b')
+
+local player = services.player
+
+--// State
+local autoReset = {}
+local enabled = false
+local targetRoom = 2
+local delaySeconds = 0.0
+local hasTriggeredThisRun = false
+
+local roomConn = nil
+local lobbyConn = nil
+local dungeonConn = nil
+
+--// Thực hiện tự sát / reset nhân vật an toàn
+local function executeReset()
+	local hum = shared.GetHumanoid()
+	local char = player and player.Character
+
+	if hum and hum.Health > 0 then
+		pcall(function()
+			hum.Health = 0
+		end)
+		pcall(function()
+			hum:ChangeState(Enum.HumanoidStateType.Dead)
+		end)
+	end
+
+	if char and char.Parent then
+		pcall(function()
+			char:BreakJoints()
+		end)
+	end
+end
+
+--// Kiểm tra và xử lý tự sát khi vào phòng
+local function checkRoomTrigger(currentRoom: number)
+	if not enabled or hasTriggeredThisRun then return end
+	if shared.IsInLobby() or shared.IsDead() then return end
+	if currentRoom <= 0 or currentRoom ~= targetRoom then return end
+
+	-- Đánh dấu đã kích hoạt 1 lần duy nhất trong run này
+	hasTriggeredThisRun = true
+
+	task.spawn(function()
+		if delaySeconds > 0 then
+			task.wait(delaySeconds)
+		end
+
+		if not enabled or shared.IsInLobby() or shared.IsDead() then return end
+		if shared.GetCurrentRoomIndex() ~= targetRoom then return end
+
+		notifier.Notify("Auto Reset", ("Đã tự sát tại Room %d (1 lần duy nhất trong run)"):format(targetRoom), 3)
+		executeReset()
+	end)
+end
+
+--// Khởi động lắng nghe sự kiện
+local function startListening()
+	if roomConn then return end
+
+	roomConn = shared.OnRoomIndexChanged(function(currentRoom)
+		if currentRoom <= 1 then
+			-- Khi bắt đầu lại từ room đầu / room 0 -> reset cờ cho run mới
+			hasTriggeredThisRun = false
+		end
+		checkRoomTrigger(currentRoom)
+	end)
+
+	lobbyConn = shared.OnLobbyChanged(function(inLobby)
+		if inLobby then
+			hasTriggeredThisRun = false
+		end
+	end)
+
+	dungeonConn = shared.OnDungeonNameChanged(function()
+		hasTriggeredThisRun = false
+	end)
+end
+
+local function stopListening()
+	if roomConn then
+		roomConn()
+		roomConn = nil
+	end
+	if lobbyConn then
+		lobbyConn()
+		lobbyConn = nil
+	end
+	if dungeonConn then
+		dungeonConn()
+		dungeonConn = nil
+	end
+end
+
+--// Public APIs
+function autoReset.Toggle(state: boolean)
+	enabled = state and true or false
+	if enabled then
+		hasTriggeredThisRun = false
+		startListening()
+		-- Kiểm tra ngay nếu đang ở đúng room chỉ định
+		checkRoomTrigger(shared.GetCurrentRoomIndex())
+	else
+		stopListening()
+	end
+end
+
+function autoReset.IsEnabled(): boolean
+	return enabled
+end
+
+function autoReset.SetTargetRoom(room: number)
+	if type(room) == "number" then
+		targetRoom = math.clamp(math.floor(room), 1, 20)
+	end
+end
+
+function autoReset.GetTargetRoom(): number
+	return targetRoom
+end
+
+function autoReset.SetDelay(seconds: number)
+	if type(seconds) == "number" then
+		delaySeconds = math.clamp(seconds, 0, 15)
+	end
+end
+
+function autoReset.GetDelay(): number
+	return delaySeconds
+end
+
+function autoReset.ResetNow()
+	notifier.Notify("Auto Reset", "Đã thực hiện tự sát thủ công", 2)
+	executeReset()
+end
+
+-- Tự động đăng ký dọn dẹp khi script unload
+lifecycle.Register(function()
+	stopListening()
+	enabled = false
+	hasTriggeredThisRun = false
+end)
+
+return autoReset
+end function __DIST.D()-- Module Player trong tab Combat (DungeonQuest).
 
 --// Imports
 
@@ -13857,6 +14184,7 @@ local shared = __DIST.load('f')
 local ui = __DIST.load('A')
 local autoSave = __DIST.load('d')
 local shortcuts = __DIST.load('B')
+local autoReset = __DIST.load('C')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -13899,7 +14227,48 @@ return function(window, tab)
 			shortcuts.SetMouseComboEnabled(state)
 		end),
 	}, "Toggle_MouseCombo")
-endend function __DIST.D()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
+
+	section:Header({ Name = "Auto Reset / Suicide (Tự sát)" })
+
+	section:Toggle({
+		Name = "Auto Reset on Room (1 Lần/Run)",
+		Default = autoReset.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoReset.Toggle(state)
+		end),
+	}, "Toggle_AutoResetRoom")
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Target Room (Phòng tự sát)",
+		Default = autoReset.GetTargetRoom(),
+		Minimum = 1,
+		Maximum = 15,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(value)
+			autoReset.SetTargetRoom(math.floor(value + 0.5))
+		end),
+	}, "Slider_AutoResetTargetRoom"))
+
+	ui.PatchSliderLoadCallback(section:Slider({
+		Name = "Reset Delay (s)",
+		Default = autoReset.GetDelay(),
+		Minimum = 0,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(value)
+			autoReset.SetDelay(value)
+		end),
+	}, "Slider_AutoResetDelay"))
+
+	section:Button({
+		Name = "Reset Character Now",
+		Callback = function()
+			autoReset.ResetNow()
+		end,
+	})
+endend function __DIST.E()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
 -- trong Workspace sau sự kiện start dungeon và vẽ SelectionBox đơn giản cho từng đối tượng.
 -- Không còn trajectory / whitelist / ngoại lệ / hitbox padding / tên 3D.
 
@@ -14020,6 +14389,22 @@ return function(window, tab)
 			hazardScanner.SetInspectTarget(text)
 		end),
 	})
+
+	--// Right Section - Custom Trajectory Lengths
+	local customTrajSection = tab:Section({ Side = "Right" })
+	customTrajSection:Header({ Name = "Custom Trajectory Length" })
+
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "Second Boss Moving Beam (studs)",
+		Default = hazardScanner.GetSecondBossBeamLength(),
+		Minimum = 10,
+		Maximum = 250,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetSecondBossBeamLength(val)
+		end),
+	}, "Slider_HazardSecondBossBeamLength"))
 
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
@@ -14222,7 +14607,7 @@ return function(window, tab)
 
 	-- Khởi tạo monitor
 	updateMonitor()
-end end function __DIST.E()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+end end function __DIST.F()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -14423,7 +14808,7 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.F()-- Module Auto Farm trong tab Combat (DungeonQuest)
+return dungeonCatalog end function __DIST.G()-- Module Auto Farm trong tab Combat (DungeonQuest)
 -- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
 -- và Contextual Combat Distance (tùy chỉnh Min/Max Combat Distance theo từng Dungeon x Loại Mục Tiêu).
 
@@ -14433,7 +14818,7 @@ local autoSave = __DIST.load('d')
 local autoFarm = __DIST.load('y')
 local combatMaster = __DIST.load('z')
 local contextual = __DIST.load('t')
-local dungeonCatalog = __DIST.load('E')
+local dungeonCatalog = __DIST.load('F')
 local shared = __DIST.load('f')
 local services = __DIST.load('e')
 local ui = __DIST.load('A')
@@ -14696,6 +15081,7 @@ return function(window, tab)
 	local isSyncingUI = false
 	local minSlider = nil
 	local maxSlider = nil
+	local disableDodgeToggle = nil
 	local bossAreaToggle = nil
 	local bossAreaRadiusSlider = nil
 	local editInfoLabel = nil
@@ -14715,6 +15101,11 @@ return function(window, tab)
 			extraText = " | " .. baText
 		end
 
+		local curDisableDodge = contextual.GetDisableDodge(curDungeon, curTargetKey)
+		if curDisableDodge then
+			extraText = extraText .. " | <font color='rgb(255,100,100)'>No Dodge</font>"
+		end
+
 		pcall(function()
 			activeStatusLabel:UpdateName(("Active: %s | Target: %s (%s%s)"):format(dText, tText, rText, extraText))
 		end)
@@ -14728,6 +15119,12 @@ return function(window, tab)
 		end
 		if maxSlider then
 			pcall(function() maxSlider:UpdateValue(curMax) end)
+		end
+
+		if disableDodgeToggle then
+			pcall(function()
+				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey))
+			end)
 		end
 
 		if selectedTargetKey == "Mob" then
@@ -14815,6 +15212,18 @@ return function(window, tab)
 		end,
 	}))
 
+	local initDisableDodge = contextual.GetDisableDodge(selectedDungeon, selectedTargetKey)
+
+	disableDodgeToggle = ctxSection:Toggle({
+		Name = "Disable Dodge on Target (Không né đòn, chỉ xả skill)",
+		Default = initDisableDodge,
+		Callback = function(state)
+			if isSyncingUI then return end
+			contextual.SetDisableDodge(selectedDungeon, selectedTargetKey, state)
+			updateActiveStatus()
+		end,
+	})
+
 	ctxSection:Header({ Name = "Boss Area Constraint (Boss Only)" })
 
 	local initBossAreaEnabled, initBossAreaRadius = contextual.GetBossArea(selectedDungeon, selectedTargetKey)
@@ -14897,14 +15306,14 @@ return function(window, tab)
 	-- Initial UI setup
 	refreshEditorValues()
 end
-end function __DIST.G()-- Tab Combat (DungeonQuest): gộp Master Combat Switch + Player (Speed) + Hazard Scanner + AutoFarm.
+end function __DIST.H()-- Tab Combat (DungeonQuest): gộp Master Combat Switch + Player (Speed) + Hazard Scanner + AutoFarm.
 
 
 local autoSave = __DIST.load('d')
 local combatMaster = __DIST.load('z')
-local renderPlayer = __DIST.load('C')
-local renderHazardScanner = __DIST.load('D')
-local renderAutoFarm = __DIST.load('F')
+local renderPlayer = __DIST.load('D')
+local renderHazardScanner = __DIST.load('E')
+local renderAutoFarm = __DIST.load('G')
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -14938,14 +15347,14 @@ return function(window, tab)
 end
 
 
-end function __DIST.H()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.I()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('E')
+local dungeonCatalog = __DIST.load('F')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 
@@ -15125,7 +15534,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.I()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.J()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -15245,7 +15654,7 @@ end
 --// KHÔNG dùng OnDungeonNameChanged để reset vì trong lúc load tên dungeon có thể dao
 --// động giữa placeholder/tên thật -> reset sai thời điểm gây fire trùng "Game started!".
 
-return autoStart end function __DIST.J()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.K()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -15352,7 +15761,7 @@ function autoStartLobby.Toggle(state)
 	end
 end
 
-return autoStartLobby end function __DIST.K()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.L()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -15569,18 +15978,18 @@ function autoRetry.RetryNow()
 end
 
 return autoRetry
-end function __DIST.L()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.M()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('A')
-local autoJoin = __DIST.load('H')
-local autoStart = __DIST.load('I')
-local autoStartLobby = __DIST.load('J')
-local autoRetry = __DIST.load('K')
+local autoJoin = __DIST.load('I')
+local autoStart = __DIST.load('J')
+local autoStartLobby = __DIST.load('K')
+local autoRetry = __DIST.load('L')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('E')
+local dungeonCatalog = __DIST.load('F')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -15780,7 +16189,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.M()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.N()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -16248,14 +16657,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.N()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.O()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('M')
+local autoSell = __DIST.load('N')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -16519,7 +16928,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.O()-- ESP hitbox cho DungeonQuest.
+end function __DIST.P()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -16869,7 +17278,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.P()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST.Q()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -17010,7 +17419,7 @@ function enemyEsp.SetSelectedColor(name)
 end
 
 return enemyEsp
-end function __DIST.Q()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.R()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -17464,14 +17873,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.R()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.S()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('O')
-	local enemyEsp = __DIST.load('P')
-	local mapOptimizer = __DIST.load('Q')
+	local esp = __DIST.load('P')
+	local enemyEsp = __DIST.load('Q')
+	local mapOptimizer = __DIST.load('R')
 	local ui = __DIST.load('A')
 
 --// Hitbox mode options
@@ -17608,7 +18017,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.S()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.T()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -18206,12 +18615,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.T()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.U()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('S')
+local webhook = __DIST.load('T')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -18278,7 +18687,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.U()
+end function __DIST.V()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -18347,12 +18756,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.V()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.W()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('U')
+local binder = __DIST.load('V')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -18444,13 +18853,586 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.W()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.X()--// Streaming Mode: Ẩn danh tính Player (Name & DisplayName) trên toàn bộ GUI & Nametag.
+--// Thay thế tất cả sự xuất hiện của tên người chơi thành "EclipseHub" (hoặc chuỗi tùy chọn)
+--// để hỗ trợ quay video, livestream mà không làm lộ tên tài khoản Roblox.
+--// Hỗ trợ tự khôi phục lại tên gốc khi tắt, an toàn với RichText tags và chống đệ quy.
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local lifecycle = __DIST.load('b')
+local binder = __DIST.load('V')
+
+--// Services
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+
+--// Constants
+
+
+
+
+
+
+local DEFAULT_REPLACEMENT = "EclipseHub"
+local function getFolder(): string
+	return (macLib and macLib.Folder) or "EsclipseHub"
+end
+local function getSettingsFile(): string
+	return getFolder() .. "/settings/streaming_mode.json"
+end
+
+--// Table
+local streamingMode = {}
+
+--// State
+local enabled = false
+local isRunning = false
+local replacementText = DEFAULT_REPLACEMENT
+local isMasking = false
+local currentWindow = nil
+local inited = false
+
+local tracked: { [Instance]: TrackedRecord__DARKLUA_TYPE_a } = {}
+local containerConns: { RBXScriptConnection } = {}
+local sweepTask: thread? = nil
+
+--// Helper: Lấy LocalPlayer an toàn
+local function getPlayer(): Player?
+	return Players.LocalPlayer
+end
+
+--// Persistence: Tạo thư mục nếu chưa tồn tại
+local function ensureFolder()
+	if not (isfolder and makefolder) then return end
+	pcall(function()
+		local folder = getFolder()
+		if not isfolder(folder) then
+			makefolder(folder)
+		end
+		local settingsFolder = folder .. "/settings"
+		if not isfolder(settingsFolder) then
+			makefolder(settingsFolder)
+		end
+	end)
+end
+
+--// Persistence: Đọc cấu hình từ file json
+local function loadSettings()
+	local filePath = getSettingsFile()
+	if not (isfile and isfile(filePath)) then return end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(readfile(filePath))
+	end)
+	if ok and type(decoded) == "table" then
+		if decoded.enabled ~= nil then
+			enabled = decoded.enabled == true
+		end
+		if type(decoded.replacement) == "string" and #decoded.replacement > 0 then
+			replacementText = decoded.replacement
+		end
+	end
+end
+
+--// Persistence: Lưu cấu hình ra file json
+local function saveSettings()
+	if not (writefile and isfile) then return end
+	ensureFolder()
+	pcall(function()
+		writefile(getSettingsFile(), HttpService:JSONEncode({
+			enabled = enabled,
+			replacement = replacementText,
+		}))
+	end)
+end
+
+--// Danh sách các chuỗi mục tiêu cần ẩn (Name, DisplayName), sắp xếp từ dài đến ngắn
+local function getTargets(): { string }
+	local targets = {}
+	local p = getPlayer()
+	if not p then return targets end
+
+	local pName = p.Name
+	local pDisplay = p.DisplayName
+	local repLower = string.lower(replacementText)
+
+	if pName and #pName >= 2 and string.lower(pName) ~= repLower then
+		table.insert(targets, pName)
+	end
+	if pDisplay and #pDisplay >= 2 and string.lower(pDisplay) ~= repLower and string.lower(pDisplay) ~= string.lower(pName) then
+		table.insert(targets, pDisplay)
+	end
+
+	-- Sắp xếp chuỗi dài hơn lên trước để tránh thay thế một phần (ví dụ DisplayName chứa Name)
+	table.sort(targets, function(a, b)
+		return #a > #b
+	end)
+
+	return targets
+end
+
+--// Thay thế chuỗi không phân biệt hoa thường theo thứ tự không đè nhau (non-overlapping)
+local function replaceTargetsInText(text: string, targets: { string }, replacement: string): string
+	if #text == 0 or #targets == 0 then return text end
+
+	local lowerText = string.lower(text)
+	local parts = {}
+	local lastIndex = 1
+
+	while lastIndex <= #text do
+		local bestStart = nil
+		local bestEnd = nil
+		local bestTarget = nil
+
+		for _, target in ipairs(targets) do
+			local sStart, sEnd = string.find(lowerText, string.lower(target), lastIndex, true)
+			if sStart then
+				if bestStart == nil or sStart < bestStart or (sStart == bestStart and #target > #bestTarget) then
+					bestStart = sStart
+					bestEnd = sEnd
+					bestTarget = target
+				end
+			end
+		end
+
+		if not bestStart then
+			table.insert(parts, string.sub(text, lastIndex))
+			break
+		end
+
+		if bestStart > lastIndex then
+			table.insert(parts, string.sub(text, lastIndex, bestStart - 1))
+		end
+
+		table.insert(parts, replacement)
+		lastIndex = bestEnd + 1
+	end
+
+	return table.concat(parts)
+end
+
+--// Thay thế text nhưng bảo vệ toàn vẹn các thẻ RichText XML (như <font color="...">, <b>, ...)
+local function maskStringRich(text: string, targets: { string }, replacement: string): string
+	if #text == 0 or #targets == 0 then return text end
+
+	-- Nếu không có dấu thẻ XML thì thay thế trực tiếp
+	if not string.find(text, "<") or not string.find(text, ">") then
+		return replaceTargetsInText(text, targets, replacement)
+	end
+
+	local parts = {}
+	local lastIndex = 1
+	while lastIndex <= #text do
+		local tagStart, tagEnd = string.find(text, "<[^>]->", lastIndex)
+		if not tagStart then
+			local segment = string.sub(text, lastIndex)
+			table.insert(parts, replaceTargetsInText(segment, targets, replacement))
+			break
+		end
+
+		if tagStart > lastIndex then
+			local segment = string.sub(text, lastIndex, tagStart - 1)
+			table.insert(parts, replaceTargetsInText(segment, targets, replacement))
+		end
+
+		table.insert(parts, string.sub(text, tagStart, tagEnd))
+		lastIndex = tagEnd + 1
+	end
+
+	return table.concat(parts)
+end
+
+--// Kiểm tra xem Instance có phải là đối tượng Text hiển thị trên UI không
+local function isTextInstance(inst: Instance): boolean
+	return inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox")
+end
+
+--// Danh sách container CoreGui an toàn nếu executor hỗ trợ
+local function getCoreContainers(): { Instance }
+	local containers = {}
+	pcall(function()
+		if typeof(gethui) == "function" then
+			local hui = gethui()
+			if hui and hui ~= game:GetService("CoreGui") then
+				table.insert(containers, hui)
+			end
+		end
+	end)
+	pcall(function()
+		local coreGui = game:GetService("CoreGui")
+		if coreGui then
+			table.insert(containers, coreGui)
+		end
+	end)
+	return containers
+end
+
+--// Xử lý và che dấu tên trên 1 đối tượng Text
+local function processInstance(inst: Instance)
+	if not isTextInstance(inst) then return end
+
+	-- Bỏ qua TextBox khi người chơi đang gõ để tránh gián đoạn con trỏ chuột
+	if inst:IsA("TextBox") and inst:IsFocused() then return end
+
+	local targets = getTargets()
+	if #targets == 0 then return end
+
+	local record = tracked[inst]
+	if record then
+		local currentText = inst.Text
+		local masked = maskStringRich(currentText, targets, replacementText)
+		if masked ~= currentText then
+			record.original = currentText
+			isMasking = true
+			inst.Text = masked
+			isMasking = false
+		end
+		return
+	end
+
+	-- Đối tượng mới
+	local currentText = inst.Text
+	local masked = maskStringRich(currentText, targets, replacementText)
+
+	local newRecord: TrackedRecord__DARKLUA_TYPE_a = {
+		original = currentText,
+		conns = {},
+	}
+
+	if masked ~= currentText then
+		isMasking = true
+		inst.Text = masked
+		isMasking = false
+	end
+
+	-- Lắng nghe Text thay đổi từ game / UI
+	local textConn = inst:GetPropertyChangedSignal("Text"):Connect(function()
+		if isMasking then return end
+		if not isRunning then return end
+
+		local newText = inst.Text
+		local newTargets = getTargets()
+		local newMasked = maskStringRich(newText, newTargets, replacementText)
+		if newMasked ~= newText then
+			newRecord.original = newText
+			isMasking = true
+			inst.Text = newMasked
+			isMasking = false
+		else
+			newRecord.original = newText
+		end
+	end)
+	table.insert(newRecord.conns, textConn)
+
+	-- Nếu là TextBox, cập nhật lại sau khi FocusLost
+	if inst:IsA("TextBox") then
+		local focusConn = inst.FocusLost:Connect(function()
+			if not isRunning then return end
+			local newText = inst.Text
+			local newTargets = getTargets()
+			local newMasked = maskStringRich(newText, newTargets, replacementText)
+			if newMasked ~= newText then
+				newRecord.original = newText
+				isMasking = true
+				inst.Text = newMasked
+				isMasking = false
+			end
+		end)
+		table.insert(newRecord.conns, focusConn)
+	end
+
+	-- Tự giải phóng khi đối tượng bị xoá khỏi cây phân cấp
+	local destroyConn
+	destroyConn = inst.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			for _, c in ipairs(newRecord.conns) do
+				pcall(function() c:Disconnect() end)
+			end
+			tracked[inst] = nil
+		end
+	end)
+	table.insert(newRecord.conns, destroyConn)
+
+	tracked[inst] = newRecord
+end
+
+--// Quét toàn bộ phần tử con của 1 container
+local function sweepContainer(container: Instance)
+	if not container then return end
+	pcall(function()
+		for _, desc in ipairs(container:GetDescendants()) do
+			if isTextInstance(desc) then
+				processInstance(desc)
+			end
+		end
+	end)
+end
+
+--// Lắng nghe DescendantAdded trên 1 container
+local function hookContainer(container: Instance)
+	if not container then return end
+	local ok, conn = pcall(function()
+		return container.DescendantAdded:Connect(function(desc)
+			if not isRunning then return end
+			task.spawn(processInstance, desc)
+		end)
+	end)
+	if ok and conn then
+		table.insert(containerConns, conn)
+	end
+end
+
+--// Khôi phục tất cả Text về nguyên bản khi tắt chế độ
+local function unmaskAll()
+	local targets = getTargets()
+	for inst, record in pairs(tracked) do
+		for _, conn in ipairs(record.conns) do
+			pcall(function() conn:Disconnect() end)
+		end
+		pcall(function()
+			if inst and inst.Parent and record.original then
+				local current = inst.Text
+				local expected = maskStringRich(record.original, targets, replacementText)
+				if current == expected then
+					isMasking = true
+					inst.Text = record.original
+					isMasking = false
+				end
+			end
+		end)
+	end
+	table.clear(tracked)
+end
+
+--// Áp dụng trạng thái UserInfo trên Window của Maclib
+local function updateMaclibWindowUserInfo()
+	if currentWindow and typeof(currentWindow.SetUserInfoState) == "function" then
+		pcall(function()
+			-- Khi enabled = true thì ẩn/che thông tin (State = false)
+			currentWindow:SetUserInfoState(not enabled)
+		end)
+	end
+end
+
+--// Bắt đầu che giấu
+function streamingMode.Start()
+	enabled = true
+	saveSettings()
+	if isRunning then return end
+	isRunning = true
+
+	local p = getPlayer()
+
+	-- Quét PlayerGui
+	if p then
+		local pg = p:FindFirstChild("PlayerGui")
+		if pg then
+			sweepContainer(pg)
+			hookContainer(pg)
+		else
+			local pgConn
+			pgConn = p.ChildAdded:Connect(function(child)
+				if child.Name == "PlayerGui" then
+					if pgConn then pgConn:Disconnect() end
+					if isRunning then
+						sweepContainer(child)
+						hookContainer(child)
+					end
+				end
+			end)
+			table.insert(containerConns, pgConn)
+		end
+
+		-- Quét Character hiện tại và lắng nghe CharacterAdded
+		if p.Character then
+			sweepContainer(p.Character)
+			hookContainer(p.Character)
+		end
+		local charConn = p.CharacterAdded:Connect(function(newChar)
+			if not isRunning then return end
+			task.wait(0.2)
+			if not isRunning then return end
+			sweepContainer(newChar)
+			hookContainer(newChar)
+		end)
+		table.insert(containerConns, charConn)
+	end
+
+	-- Lắng nghe BillboardGui / SurfaceGui trong workspace (nametag tùy biến)
+	pcall(function()
+		local wsConn = workspace.DescendantAdded:Connect(function(desc)
+			if not isRunning then return end
+			if desc:IsA("BillboardGui") or desc:IsA("SurfaceGui") then
+				for _, child in ipairs(desc:GetDescendants()) do
+					processInstance(child)
+				end
+				local childConn = desc.DescendantAdded:Connect(function(child)
+					if not isRunning then return end
+					processInstance(child)
+				end)
+				table.insert(containerConns, childConn)
+			end
+		end)
+		table.insert(containerConns, wsConn)
+	end)
+
+	-- Quét CoreGui / gethui (leaderboard, Roblox chat, Maclib UI)
+	for _, core in ipairs(getCoreContainers()) do
+		sweepContainer(core)
+		hookContainer(core)
+	end
+
+	-- Cập nhật Maclib window user info
+	updateMaclibWindowUserInfo()
+
+	-- Quét bổ sung theo các mốc thời gian đầu khi game/UI đang load dở
+	task.spawn(function()
+		for _, delaySec in ipairs({ 0.3, 0.8, 1.5, 3.0 }) do
+			task.wait(delaySec)
+			if not isRunning then break end
+			local currentPlayer = getPlayer()
+			if currentPlayer then
+				local pg = currentPlayer:FindFirstChild("PlayerGui")
+				if pg then sweepContainer(pg) end
+				if currentPlayer.Character then sweepContainer(currentPlayer.Character) end
+			end
+			for _, core in ipairs(getCoreContainers()) do
+				sweepContainer(core)
+			end
+		end
+	end)
+
+	-- Vòng lặp định kỳ (0.5s) để đảm bảo không lọt bất kỳ text nào tạo động
+	if sweepTask then
+		pcall(task.cancel, sweepTask)
+	end
+	sweepTask = task.spawn(function()
+		while isRunning do
+			task.wait(0.5)
+			if not isRunning then break end
+			local currentPlayer = getPlayer()
+			if currentPlayer then
+				local pg = currentPlayer:FindFirstChild("PlayerGui")
+				if pg then sweepContainer(pg) end
+				if currentPlayer.Character then sweepContainer(currentPlayer.Character) end
+			end
+			for _, core in ipairs(getCoreContainers()) do
+				sweepContainer(core)
+			end
+		end
+	end)
+end
+
+--// Dừng che giấu và khôi phục text gốc
+function streamingMode.Stop()
+	enabled = false
+	saveSettings()
+	if not isRunning then return end
+	isRunning = false
+
+	if sweepTask then
+		pcall(task.cancel, sweepTask)
+		sweepTask = nil
+	end
+
+	for _, conn in ipairs(containerConns) do
+		pcall(function() conn:Disconnect() end)
+	end
+	table.clear(containerConns)
+
+	unmaskAll()
+	updateMaclibWindowUserInfo()
+end
+
+function streamingMode.IsEnabled(): boolean
+	return enabled
+end
+
+function streamingMode.IsRunning(): boolean
+	return isRunning
+end
+
+function streamingMode.SetReplacement(newText: string)
+	if typeof(newText) ~= "string" or #newText == 0 then
+		newText = DEFAULT_REPLACEMENT
+	end
+	if replacementText == newText then return end
+
+	local wasRunning = isRunning
+	if wasRunning then
+		streamingMode.Stop()
+	end
+	replacementText = newText
+	saveSettings()
+	if wasRunning then
+		streamingMode.Start()
+	end
+end
+
+function streamingMode.GetReplacement(): string
+	return replacementText
+end
+
+function streamingMode.SetWindow(window)
+	currentWindow = window
+	if isRunning or enabled then
+		updateMaclibWindowUserInfo()
+	end
+end
+
+--// Khởi tạo (tự động bật nếu config lưu trước đó là true)
+function streamingMode.Init()
+	if inited then return end
+	inited = true
+
+	if enabled and not isRunning then
+		-- Tự kích hoạt lại nếu đã lưu là bật
+		streamingMode.Start()
+	end
+end
+
+--// Nạp settings lúc require module
+loadSettings()
+
+--// Đăng ký dọn dẹp khi Hub unload hoặc script được execute lại
+lifecycle.Register(function()
+	if isRunning then
+		streamingMode.Stop()
+	end
+	inited = false
+end)
+
+return binder.Wrap(streamingMode, {
+	Enabled = function(value: boolean)
+		if value then
+			streamingMode.Start()
+		else
+			streamingMode.Stop()
+		end
+	end,
+	Replacement = function(value: string)
+		streamingMode.SetReplacement(value)
+	end,
+}) :: {
+	Start: () -> (),
+	Stop: () -> (),
+	IsEnabled: () -> boolean,
+	SetReplacement: (string) -> (),
+	GetReplacement: () -> string,
+	SetWindow: (any) -> (),
+	Init: () -> (),
+	Enabled: boolean,
+	Replacement: string
+}
+end function __DIST.Y()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('A')
-local antiAfk = __DIST.load('V')
+local antiAfk = __DIST.load('W')
+local streamingMode = __DIST.load('X')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -18473,22 +19455,49 @@ return function(window, tab)
 		Default = antiAfk.GetInterval(),
 		Minimum = 5,
 		Maximum = 300,
-		DisplayMethod = "Value",
-		Precision = 1,
+		DisplayMethod = "Round",
+		Precision = 0,
 		Callback = autoSave.Wrap(function(value)
 			antiAfk.SetInterval(value)
 		end),
 	}, "Slider_AntiAFKInterval"))
+
+	--// Streaming Mode (Ẩn danh tính Player khi quay video / stream)
+	local streamSection = tab:Section({ Side = "Right" })
+	streamSection:Header({ Name = "Streaming Mode" })
+
+	streamSection:Toggle({
+		Name = "Streaming Mode (Ẩn danh tính)",
+		Default = streamingMode.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			if state then
+				streamingMode.Start()
+			else
+				streamingMode.Stop()
+			end
+		end),
+	}, "Toggle_StreamingMode")
+
+	streamSection:Input({
+		Name = "Tên hiển thị thay thế",
+		Placeholder = "EclipseHub",
+		AcceptedCharacters = "All",
+		Default = streamingMode.GetReplacement(),
+		Callback = autoSave.Wrap(function(input)
+			streamingMode.SetReplacement(input)
+		end),
+	}, "Input_StreamingReplacement")
 end
-end function __DIST.X()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+
+end function __DIST.Z()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('R')(window, tab)
-__DIST.load('T')(window, tab)
-__DIST.load('W')(window, tab)
-end end function __DIST.Y()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('S')(window, tab)
+__DIST.load('U')(window, tab)
+__DIST.load('Y')(window, tab)
+end end function __DIST._()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -18563,7 +19572,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.Z()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.aa()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -18571,7 +19580,7 @@ end function __DIST.Z()-- Module Config trong tab Configs (DungeonQuest): tự b
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('Y')
+local autoHide = __DIST.load('_')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -18730,12 +19739,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST._()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.ab()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('f')
-local autoRetry = __DIST.load('K')
+local autoRetry = __DIST.load('L')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -18902,14 +19911,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.aa()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.ac()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('Z')(window, tab)
-__DIST.load('_')(window, tab)
-end end function __DIST.ab()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
+__DIST.load('aa')(window, tab)
+__DIST.load('ab')(window, tab)
+end end function __DIST.ad()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
 --   - Macro = 1 bản ghi cho cả map, chứa toàn bộ segment của các room đã record.
 --   - Mỗi segment = 1 room (auto-split khi record liên tục xuyên các room); segment
 --     phòng bosss được đánh dấu `boss: true`.
@@ -19652,7 +20661,7 @@ function storage.ReloadFromConfig()
 	storage.ReloadFromDisk()
 end
 
-return storage end function __DIST.ac()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
+return storage end function __DIST.ae()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
 --   - Bấm Record 1 lần ở map = ghi NHIỀU room: khi CHUYỂN ROOM tự "rollover"
 --     (lưu segment room cũ + mở slice mới cho room mới tại vị trí cạnh cửa).
 --   - TỰ TẮT + lưu khi về LOBBY (hết map), vào BOSS (mode NORMAL), hoặc giới hạn điểm.
@@ -19664,7 +20673,7 @@ return storage end function __DIST.ac()-- Path Record System – Recorder: ghi 1
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('ab')
+local storage = __DIST.load('ad')
 local notifier = __DIST.load('c')
 
 local RunService = services.RunService
@@ -20027,6 +21036,10 @@ function recorder.Start()
 		--// khi kết thúc run), rồi cmt lại từ vị trí mới, không nối thẳng sang vị trí mới.
 		local lastPt = points[#points]
 		if lastPt and (pos - lastPt).Magnitude > 35 then
+			if not allowBoss then
+				recorder.Stop("dịch chuyển lớn")
+				return
+			end
 			finalizeSlice("dịch chuyển lớn", true)
 			local r = shared.GetCurrentRoomIndex()
 			if r == startRoom then r = 0 end -- deactivate nếu room cũ chưa untrack (không ghi đè)
@@ -20172,7 +21185,11 @@ function recorder.Start()
 				task.delay(ROLLOVER_DELAY, function()
 					roomChangePending = false
 					if isRecording then
-						recorder.Rollover()
+						if allowBoss then
+							recorder.Rollover()
+						else
+							recorder.Stop("hoàn thành room")
+						end
 					end
 				end)
 			end
@@ -20298,7 +21315,7 @@ function recorder.Cancel()
 	fireStatus()
 end
 
-return recorder end function __DIST.ad()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
+return recorder end function __DIST.af()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
 --   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
 --     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
 --   - BOSS room:
@@ -20314,7 +21331,7 @@ return recorder end function __DIST.ad()-- Path Record System – Player: chạy
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('ab')
+local storage = __DIST.load('ad')
 local notifier = __DIST.load('c')
 
 local player = services.player
@@ -20350,6 +21367,34 @@ local skillFaceHold = 0.6 -- Giây giữ facing sau khi xả skill khi đang đi
 local doubleClickDelay = 0.005 -- Giây khoảng nghỉ giữa 2 lần click (mặc định 0.005s)
 local preAimLeadTime = 0.45 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng
 local startPauseTime = 0.2 -- Giây dừng chờ tại node xuất phát (Start Node), thay thế thời gian dwell gốc
+
+local aimSkillQ = false -- Aim/xoay mặt khi cast skill Q (mặc định tắt vì Q thường là Buff)
+local aimSkillE = true -- Aim/xoay mặt khi cast skill E (mặc định bật vì E thường là Attack)
+
+function mover.SetAimSkillQ(state)
+	aimSkillQ = state and true or false
+end
+
+function mover.IsAimSkillQEnabled()
+	return aimSkillQ
+end
+
+function mover.SetAimSkillE(state)
+	aimSkillE = state and true or false
+end
+
+function mover.IsAimSkillEEnabled()
+	return aimSkillE
+end
+
+local function shouldAimSkill(key: string?): boolean
+	if key == "Q" then
+		return aimSkillQ
+	elseif key == "E" then
+		return aimSkillE
+	end
+	return aimSkillQ or aimSkillE
+end
 
 function mover.SetStartPauseTime(seconds)
 	if type(seconds) == "number" then
@@ -20805,7 +21850,7 @@ local function walkThrough(segment, room, allowBoss)
 				for sIdx, sk in ipairs(dwell.skills or {}) do
 					if not firedSkills[sIdx] and elapsed >= (sk.tOff or 0) then
 						firedSkills[sIdx] = true
-						if replayFacing and sk.facing then
+						if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 							setFacing(root, sk.facing)
 							dwellFaceHoldUntil = os.clock() + skillFaceHold
 						end
@@ -20822,7 +21867,7 @@ local function walkThrough(segment, room, allowBoss)
 			for sIdx, sk in ipairs(dwell.skills or {}) do
 				if not firedSkills[sIdx] then
 					firedSkills[sIdx] = true
-					if replayFacing and sk.facing then
+					if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 						setFacing(root, sk.facing)
 						dwellFaceHoldUntil = os.clock() + skillFaceHold
 					end
@@ -20843,32 +21888,40 @@ local function walkThrough(segment, room, allowBoss)
 		return true
 	end
 
-	--// Tiếp cận node đầu tiên: di chuyển tới gần trong phạm vi < 3 studs rồi snap vào vị trí xuất phát.
+	--// Tiếp cận node đầu tiên: di chuyển mượt mà tới gần rồi snap vào vị trí xuất phát.
 	local startNode = segment.startPos or path[1]
 	local curPos = getSafePosition(root)
 	if curPos and startNode then
 		local dist = flatDistance(curPos, startNode)
-		if dist >= 3.0 then
-			pcall(function() humanoid:MoveTo(startNode) end)
-			local repositionDeadline = os.clock() + 5.0
+		if dist > 1.8 then
+			local repositionDeadline = os.clock() + START_REPOSITION_TIMEOUT
+			local lastSendAt = 0
 			while isPlaying and os.clock() < repositionDeadline do
 				local p = getSafePosition(root)
 				if not p then break end
-				if flatDistance(p, startNode) < 3.0 then break end
+				local curDist = flatDistance(p, startNode)
+				if curDist <= 1.8 then break end
 				if shared.IsDead() or shared.GetCurrentRoomIndex() ~= room then break end
+
+				-- Giữ nhịp MoveTo liên tục (mỗi 0.08s) để không bị ngắt quãng, nhấp nhả hoặc giảm tốc giữa đường
+				local now = os.clock()
+				if now - lastSendAt >= 0.08 then
+					lastSendAt = now
+					pcall(function() humanoid:MoveTo(startNode) end)
+				end
+
 				task.wait(0.03)
 			end
 		end
 
-		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.5 studs)
+		-- Snap trực tiếp vào vị trí xuất phát khi đã tới gần (< 3.0 studs)
 		local finalP = getSafePosition(root)
-		if finalP and flatDistance(finalP, startNode) <= 3.5 then
+		if finalP and flatDistance(finalP, startNode) <= 3.0 then
 			pcall(function()
 				local currentRot = root.CFrame.Rotation
 				root.CFrame = CFrame.new(startNode.X, root.Position.Y, startNode.Z) * currentRot
 				root.AssemblyLinearVelocity = Vector3.zero
 				root.AssemblyAngularVelocity = Vector3.zero
-				humanoid:MoveTo(root.Position)
 			end)
 		end
 	end
@@ -20935,7 +21988,7 @@ local function walkThrough(segment, room, allowBoss)
 		--// Khoá facing SKILL_FACE_HOLD sau khi xả để game kịp ghi nhận hướng cast.
 		while skillIdx <= #walkSkills and walkSkills[skillIdx].arc <= progress do
 			local sk = walkSkills[skillIdx]
-			if replayFacing and sk.facing then
+			if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 				setFacing(root, sk.facing)
 				lastSkillFacing = sk.facing
 				faceLockUntil = os.clock() + skillFaceHold
@@ -20963,7 +22016,16 @@ local function walkThrough(segment, room, allowBoss)
 			local dIdx = dwellIdx
 			while dIdx <= #dwells do
 				local dw = dwells[dIdx]
-				local dFace = (dw.skills and #dw.skills > 0 and dw.skills[1].facing) or dw.facing
+				local dFace = nil
+				if dw.skills and #dw.skills > 0 then
+					for _, sk in ipairs(dw.skills) do
+						if sk.facing and shouldAimSkill(sk.key) then
+							dFace = sk.facing
+							break
+						end
+					end
+				end
+				dFace = dFace or dw.facing
 				if dFace then
 					if dw.arc < bestArc then
 						bestArc = dw.arc
@@ -20977,7 +22039,7 @@ local function walkThrough(segment, room, allowBoss)
 			local sIdx = skillIdx
 			while sIdx <= #walkSkills do
 				local sk = walkSkills[sIdx]
-				if sk.facing then
+				if sk.facing and shouldAimSkill(sk.key) then
 					if sk.arc < bestArc then
 						bestArc = sk.arc
 						nextEventFacing = sk.facing
@@ -21019,7 +22081,7 @@ local function walkThrough(segment, room, allowBoss)
 			end
 			while skillIdx <= #walkSkills do
 				local sk = walkSkills[skillIdx]
-				if replayFacing and sk.facing then
+				if replayFacing and sk.facing and shouldAimSkill(sk.key) then
 					setFacing(root, sk.facing)
 					lastSkillFacing = sk.facing
 					faceLockUntil = os.clock() + skillFaceHold
@@ -21286,7 +22348,7 @@ function mover.PauseForExclusive()
 	fireStatus("paused")
 end
 
-return mover end function __DIST.ae()-- Path Record System – Visual: 3D Visualizer cho Path Macro & Real-time Record.
+return mover end function __DIST.ag()-- Path Record System – Visual: 3D Visualizer cho Path Macro & Real-time Record.
 --   - Hiển thị từng Node của đường đi dưới dạng hình cầu 3D (SphereHandleAdornment).
 --   - Lúc Record: Sphere màu ĐỎ (real-time thêm node khi nhân vật di chuyển).
 --   - Lúc thường (xem room / playback / idle): Sphere màu XANH LÁ (đọc từ macro segment đã lưu của room).
@@ -21300,9 +22362,9 @@ return mover end function __DIST.ae()-- Path Record System – Visual: 3D Visual
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('ab')
-local recorder = __DIST.load('ac')
-local mover = __DIST.load('ad')
+local storage = __DIST.load('ad')
+local recorder = __DIST.load('ae')
+local mover = __DIST.load('af')
 local lifecycle = __DIST.load('b')
 
 local Workspace = game:GetService("Workspace")
@@ -22041,7 +23103,7 @@ lifecycle.Register(function()
 	visual.Destroy()
 end)
 
-return visual end function __DIST.af()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
+return visual end function __DIST.ah()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
 -- giúp người chơi ước lượng phạm vi/tầm đánh của Skill (AOE) để căn điểm record.
 -- Đồng thời tự động HIGHLIGHT kẻ địch khi chúng bước vào trong tầm (in-range).
 
@@ -22446,7 +23508,7 @@ lifecycle.Register(function()
 end)
 
 return rangeVisual
-end function __DIST.ag()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
+end function __DIST.ai()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
 --   - Macro = 1 bản ghi cho cả MAP, record liên tục nhiều room trong 1 session
 --     (tự auto-split theo room; segment phòng boss đánh dấu `boss`).
 --   - Mode của map do người dùng chọn (lưu trong file macro):
@@ -22463,11 +23525,11 @@ local coordinator = __DIST.load('g')
 local notifier = __DIST.load('c')
 local combatMaster = __DIST.load('z')
 
-local storage = __DIST.load('ab')
-local recorder = __DIST.load('ac')
-local mover = __DIST.load('ad')
-local visual = __DIST.load('ae')
-local rangeVisual = __DIST.load('af')
+local storage = __DIST.load('ad')
+local recorder = __DIST.load('ae')
+local mover = __DIST.load('af')
+local visual = __DIST.load('ag')
+local rangeVisual = __DIST.load('ah')
 
 --// Table
 local pathRecord = {}
@@ -22554,6 +23616,26 @@ end
 function pathRecord.SetStartPauseTime(seconds)
 	mover.SetStartPauseTime(seconds)
 	fireStatus("startpause")
+end
+
+--// Aim/hướng cho chiêu Q (mặc định tắt vì Q là Buff)
+function pathRecord.IsAimSkillQEnabled()
+	return mover.IsAimSkillQEnabled()
+end
+
+function pathRecord.SetAimSkillQ(state)
+	mover.SetAimSkillQ(state and true or false)
+	fireStatus("aimskillq")
+end
+
+--// Aim/hướng cho chiêu E (mặc định bật vì E là Attack)
+function pathRecord.IsAimSkillEEnabled()
+	return mover.IsAimSkillEEnabled()
+end
+
+function pathRecord.SetAimSkillE(state)
+	mover.SetAimSkillE(state and true or false)
+	fireStatus("aimskille")
 end
 
 --// State
@@ -23033,7 +24115,7 @@ lifecycle.Register(function()
 	if storageUnsub then storageUnsub(); storageUnsub = nil end
 end)
 
-return pathRecord end function __DIST.ah()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
+return pathRecord end function __DIST.aj()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
 --   - MACRO = 1 bản ghi cho cả map: bấm Record 1 lần, tự ghi liên tục qua các room
 --     (auto-split segment theo room), tự lưu khi về lobby. Record lại room nào thì ghi đè room đó.
 --   - Mode theo map: NORMAL (mặc định) skip boss, dùng Hazard Scanner; FULL record & phát luôn cả boss room.
@@ -23044,7 +24126,7 @@ return pathRecord end function __DIST.ah()-- Tab Path Record (DungeonQuest): th�
 
 local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
-local pathRecord = __DIST.load('ag')
+local pathRecord = __DIST.load('ai')
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('A')
 local notifier = __DIST.load('c')
@@ -23295,6 +24377,23 @@ return function(window, tab)
 			notifier.Notify("Path Record", ("Saved Start / Finish Pause Time = %ss"):format(tostring(v)), 2)
 		end,
 	}, "Slider_PR_StartPauseTime"))
+
+	--// Toggles điều khiển Aim / Hướng cho từng chiêu đơn lẻ Q và E
+	combatSection:Toggle({
+		Name = "Aim Skill Q (Buff)",
+		Default = pathRecord.IsAimSkillQEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetAimSkillQ(state)
+		end),
+	}, "Toggle_PR_AimSkillQ")
+
+	combatSection:Toggle({
+		Name = "Aim Skill E (Attack)",
+		Default = pathRecord.IsAimSkillEEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetAimSkillE(state)
+		end),
+	}, "Toggle_PR_AimSkillE")
 
 	--// ============================================================
 	--// LEFT COLUMN: Section 3 - Quản lý Macro
@@ -23748,7 +24847,7 @@ return function(window, tab)
 
 	updateStatus(pathRecord.GetStatus())
 	syncToggles(pathRecord.GetStatus())
-end end function __DIST.ai()-- CaculationPot Extension Module (DungeonQuest)
+end end function __DIST.ak()-- CaculationPot Extension Module (DungeonQuest)
 -- Quản lý trạng thái và logic cho extension CaculationPot trong tab Utilities
 -- Cơ chế "Làm chay + Truy xuất ngược": Hook trực tiếp sự kiện GUI và can thiệp TextLabel tooltip in-game
 
@@ -23836,7 +24935,7 @@ end
 local enabled = true
 local inspectorThread: thread? = nil
 local activeFrame: string? = nil
-local activeEntries: { InspectorEntry__DARKLUA_TYPE_a } = {}
+local activeEntries: { InspectorEntry__DARKLUA_TYPE_b } = {}
 local activeClass: string? = nil
 local activeSignature: string = ""
 
@@ -23847,7 +24946,7 @@ local isUpdating = false
 
 
 
-local originalStates: { [TextLabel]: OriginalLabelState__DARKLUA_TYPE_b } = {}
+local originalStates: { [TextLabel]: OriginalLabelState__DARKLUA_TYPE_c } = {}
 
 -- Danh sách RBXScriptConnection để dọn dẹp lifecycle
 local activeConnections: { RBXScriptConnection } = {}
@@ -23855,7 +24954,7 @@ local hookedFrames: { [GuiObject]: boolean } = {}
 local hookedLabels: { [TextLabel]: boolean } = {}
 
 local stateCallbacks: { (boolean) -> () } = {}
-local inspectorCallbacks: { (string?, { InspectorEntry__DARKLUA_TYPE_a }, string?) -> () } = {}
+local inspectorCallbacks: { (string?, { InspectorEntry__DARKLUA_TYPE_b }, string?) -> () } = {}
 
 --// Phục hồi lại TextLabel về trạng thái ban đầu của game
 local function restoreLabel(label: TextLabel)
@@ -23946,7 +25045,7 @@ local function processFrame(frame: GuiObject)
 	if isUpdating then return end
 
 	local frameName = frame.Name
-	local entries: { InspectorEntry__DARKLUA_TYPE_a } = {}
+	local entries: { InspectorEntry__DARKLUA_TYPE_b } = {}
 	local hashParts: { string } = { frameName }
 
 	-- Thu thập tất cả các TextLabel và ValueBase trong frame để phục vụ Inspector và phân loại
@@ -24317,7 +25416,7 @@ function caculationPot.IsEnabled(): boolean
 	return enabled
 end
 
-function caculationPot.GetActiveInspector(): (string?, { InspectorEntry__DARKLUA_TYPE_a }, string?)
+function caculationPot.GetActiveInspector(): (string?, { InspectorEntry__DARKLUA_TYPE_b }, string?)
 	return activeFrame, activeEntries, activeClass
 end
 
@@ -24343,7 +25442,7 @@ function caculationPot.OnChanged(callback: (boolean) -> ())
 	end
 end
 
-function caculationPot.OnInspectorChanged(callback: (string?, { InspectorEntry__DARKLUA_TYPE_a }, string?) -> ())
+function caculationPot.OnInspectorChanged(callback: (string?, { InspectorEntry__DARKLUA_TYPE_b }, string?) -> ())
 	if type(callback) == "function" then
 		table.insert(inspectorCallbacks, callback)
 	end
@@ -24394,7 +25493,7 @@ end)
 startInspectorLoop()
 
 return caculationPot
-end function __DIST.aj()-- Custom In-Game UI: sortBarFrame (DungeonQuest)
+end function __DIST.al()-- Custom In-Game UI: sortBarFrame (DungeonQuest)
 -- Khởi tạo thanh Sort Bar đính kèm vào GUI kho đồ trong game.
 
 local function createSortBarFrame(parent)
@@ -24509,7 +25608,7 @@ local function createSortBarFrame(parent)
 	return sortBarFrame
 end
 
-return createSortBarFrame end function __DIST.ak()-- Inventory Sort Module (DungeonQuest)
+return createSortBarFrame end function __DIST.am()-- Inventory Sort Module (DungeonQuest)
 -- Sắp xếp kho đồ game tức thì bằng cách thay đổi LayoutOrder trên UIGridLayout của ScrollingFrame
 -- Hỗ trợ cơ chế kết hợp:
 --   - Main filter (Tri-state): None (bỏ chọn) -> Descending (Power giảm dần) -> Ascending (Power tăng dần) -> None
@@ -24521,7 +25620,7 @@ return createSortBarFrame end function __DIST.ak()-- Inventory Sort Module (Dung
 local lifecycle = __DIST.load('b')
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local createSortBarFrame = __DIST.load('aj')
+local createSortBarFrame = __DIST.load('al')
 local macLib = __DIST.load('a')
 
 local TweenService = services.TweenService or game:GetService("TweenService")
@@ -24533,9 +25632,9 @@ local inventorySort = {}
 
 
 
-local mainFilterMode: MainFilterMode__DARKLUA_TYPE_c = "None"
+local mainFilterMode: MainFilterMode__DARKLUA_TYPE_d = "None"
 local rarityEnabled: boolean = false
-local selectedStatFilter: StatFilterType__DARKLUA_TYPE_d? = nil
+local selectedStatFilter: StatFilterType__DARKLUA_TYPE_e? = nil
 local abilityEnabled: boolean = false
 local autoSortEnabled: boolean = true
 local SORT_BAR_SCALE: number = 1.25
@@ -24677,7 +25776,7 @@ local CATEGORY_PLURAL: { [string]: string } = {
 }
 
 --// Icon tương ứng cho từng trạng thái Main Filter (Tri-state)
-local MAIN_FILTER_ICONS: { [MainFilterMode__DARKLUA_TYPE_c]: string } = {
+local MAIN_FILTER_ICONS: { [MainFilterMode__DARKLUA_TYPE_d]: string } = {
 	None = "rbxassetid://73746166761985",
 	Descending = "rbxassetid://130494621181478", -- Từ cao đến thấp
 	Ascending = "rbxassetid://140381370510884", -- Từ thấp đến cao
@@ -24882,7 +25981,7 @@ end
 
 
 
-local function parseSlot(slot: GuiObject, invyData: any, defaultIndex: number): ParsedItemSlot__DARKLUA_TYPE_e?
+local function parseSlot(slot: GuiObject, invyData: any, defaultIndex: number): ParsedItemSlot__DARKLUA_TYPE_f?
 	if not slot:IsA("GuiObject") then return nil end
 
 	local itemTypeVal = slot:FindFirstChild("itemType")
@@ -24942,7 +26041,7 @@ local function getCategoryTier(category: string): number
 end
 
 --// So sánh 2 item theo tiêu chí kết hợp
-local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_e, b: ParsedItemSlot__DARKLUA_TYPE_e): boolean
+local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_f, b: ParsedItemSlot__DARKLUA_TYPE_f): boolean
 	-- 1. Nếu MainFilter là "None" và không bật Ability: giữ nguyên thứ tự mặc định của game
 	if mainFilterMode == "None" and not abilityEnabled then
 		return a.originalOrder < b.originalOrder
@@ -25195,7 +26294,7 @@ function inventorySort.ApplySort()
 		end
 
 		local invyData = fetchInventoryData()
-		local parsedList: { ParsedItemSlot__DARKLUA_TYPE_e } = {}
+		local parsedList: { ParsedItemSlot__DARKLUA_TYPE_f } = {}
 		local counter = 0
 
 		for _, child in ipairs(scrollingFrame:GetChildren()) do
@@ -25495,7 +26594,7 @@ local function hookSortBarButton(button: GuiObject)
 				saveSettings()
 
 			elseif button.Name == "IBphysic" or button.Name == "IBspell" or button.Name == "IBhealth" then
-				local statName: StatFilterType__DARKLUA_TYPE_d = (button.Name == "IBphysic" and "Physical Damage")
+				local statName: StatFilterType__DARKLUA_TYPE_e = (button.Name == "IBphysic" and "Physical Damage")
 					or (button.Name == "IBspell" and "Spell Power")
 					or "Health"
 
@@ -25658,11 +26757,11 @@ function inventorySort.GetScale(): number
 end
 
 --// Public APIs điều khiển trạng thái
-function inventorySort.GetMainFilterMode(): MainFilterMode__DARKLUA_TYPE_c
+function inventorySort.GetMainFilterMode(): MainFilterMode__DARKLUA_TYPE_d
 	return mainFilterMode
 end
 
-function inventorySort.SetMainFilterMode(mode: MainFilterMode__DARKLUA_TYPE_c)
+function inventorySort.SetMainFilterMode(mode: MainFilterMode__DARKLUA_TYPE_d)
 	if mainFilterMode == mode then return end
 	mainFilterMode = mode
 	refreshAllSortBarButtons(true)
@@ -25690,11 +26789,11 @@ function inventorySort.SetRarityEnabled(state: boolean)
 	saveSettings()
 end
 
-function inventorySort.GetStatFilter(): StatFilterType__DARKLUA_TYPE_d?
+function inventorySort.GetStatFilter(): StatFilterType__DARKLUA_TYPE_e?
 	return selectedStatFilter
 end
 
-function inventorySort.SetStatFilter(stat: StatFilterType__DARKLUA_TYPE_d?)
+function inventorySort.SetStatFilter(stat: StatFilterType__DARKLUA_TYPE_e?)
 	if selectedStatFilter == stat then return end
 	selectedStatFilter = stat
 	if selectedStatFilter then
@@ -25756,7 +26855,7 @@ function inventorySort.SetSortCriteria(criteria: string?)
 		if mainFilterMode == "None" then mainFilterMode = "Descending" end
 	elseif criteria == "Physical Damage" or criteria == "Spell Power" or criteria == "Health" then
 		if selectedStatFilter == criteria and not abilityEnabled and not rarityEnabled then return end
-		selectedStatFilter = criteria :: StatFilterType__DARKLUA_TYPE_d
+		selectedStatFilter = criteria :: StatFilterType__DARKLUA_TYPE_e
 		rarityEnabled = false
 		abilityEnabled = false
 		if mainFilterMode == "None" then mainFilterMode = "Descending" end
@@ -25801,7 +26900,7 @@ end
 
 function inventorySort.SetSortDirection(direction: string?)
 	if not direction or type(direction) ~= "string" then return end
-	local newMode: MainFilterMode__DARKLUA_TYPE_c = "None"
+	local newMode: MainFilterMode__DARKLUA_TYPE_d = "None"
 	if direction == "Ascending" or string.find(direction, "Ascending") then
 		newMode = "Ascending"
 	elseif direction == "Descending" or string.find(direction, "Descending") then
@@ -25997,7 +27096,7 @@ end)
 inventorySort.Init()
 
 return inventorySort
-end function __DIST.al()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.an()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -26066,12 +27165,12 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('G')
-	local dungeonTab = __DIST.load('L')
-	local inventoryTab = __DIST.load('N')
-	local utilitiesTab = __DIST.load('X')
-	local configsTab = __DIST.load('aa')
-	local pathRecordTab = __DIST.load('ah')
+	local combatTab = __DIST.load('H')
+	local dungeonTab = __DIST.load('M')
+	local inventoryTab = __DIST.load('O')
+	local utilitiesTab = __DIST.load('Z')
+	local configsTab = __DIST.load('ac')
+	local pathRecordTab = __DIST.load('aj')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -26085,11 +27184,12 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('S')
+	local webhook = __DIST.load('T')
 	webhook.Init()
-__DIST.load('P')
-__DIST.load('ai')
+__DIST.load('Q')
 __DIST.load('ak')
+__DIST.load('am')
+	
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
 	
@@ -26098,10 +27198,15 @@ __DIST.load('ak')
 
 
 
-local autoHide = __DIST.load('Y')
+local autoHide = __DIST.load('_')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
+	--// Streaming Mode (ẩn danh tính player trên GUI / nametag)
+    local streamingMode = __DIST.load('X')
+    streamingMode.SetWindow(window)
+    streamingMode.Init()
+	
 	--// Khởi chạy
 	tabs.Combat:Select()
 
@@ -26135,7 +27240,7 @@ local autoHide = __DIST.load('Y')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.am()
+end function __DIST.ao()
 local flags = {}
 
 function flags:Export()
@@ -26178,18 +27283,18 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.an()
+return flags end function __DIST.ap()
 --// Imports
 
 
 
-local binder = __DIST.load('U')
+local binder = __DIST.load('V')
 
 --// Variables
 local interface = {}
 
 --// Initialize
-function interface:Window(properties: Window__DARKLUA_TYPE_f): Window__DARKLUA_TYPE_f
+function interface:Window(properties: Window__DARKLUA_TYPE_g): Window__DARKLUA_TYPE_g
 	properties = properties or {}
 	print("Made a window")
 
@@ -26203,9 +27308,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_f): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.ao()--// Imports
+end function __DIST.aq()--// Imports
 
-local binder = __DIST.load('U')
+local binder = __DIST.load('V')
 
 --// Variables
 local esp = {}
@@ -26216,11 +27321,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.ap()--// Imports
+end function __DIST.ar()--// Imports
 
-local flags = __DIST.load('am')
-local interface = __DIST.load('an')
-local esp = __DIST.load('ao')
+local flags = __DIST.load('ao')
+local interface = __DIST.load('ap')
+local esp = __DIST.load('aq')
 
 --// Initialize
 local window = interface:Window({
@@ -26259,7 +27364,7 @@ return {
 		end,
 	},
 }
-end function __DIST.aq()--// Variables
+end function __DIST.as()--// Variables
 
 local utility = {}
 
@@ -26291,7 +27396,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.ar()--// Functions
+end function __DIST.at()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -26301,14 +27406,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.as()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.au()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('ap')
-	local utility = __DIST.load('aq')
-	local services = __DIST.load('ar')
+	local base = __DIST.load('ar')
+	local utility = __DIST.load('as')
+	local services = __DIST.load('at')
 
 	--// References
 	local flags = base.Flags
@@ -26374,7 +27479,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('al'),
+		Load = __DIST.load('an'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -26385,7 +27490,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('as'),
+		Load = __DIST.load('au'),
 		Places = {
 			123456789,
 			987654321,

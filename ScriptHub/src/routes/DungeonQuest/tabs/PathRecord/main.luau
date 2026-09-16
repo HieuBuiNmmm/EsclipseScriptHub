@@ -260,6 +260,23 @@ return function(window, tab)
 		end,
 	}, "Slider_PR_StartPauseTime"))
 
+	--// Toggles điều khiển Aim / Hướng cho từng chiêu đơn lẻ Q và E
+	combatSection:Toggle({
+		Name = "Aim Skill Q (Buff)",
+		Default = pathRecord.IsAimSkillQEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetAimSkillQ(state)
+		end),
+	}, "Toggle_PR_AimSkillQ")
+
+	combatSection:Toggle({
+		Name = "Aim Skill E (Attack)",
+		Default = pathRecord.IsAimSkillEEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetAimSkillE(state)
+		end),
+	}, "Toggle_PR_AimSkillE")
+
 	--// ============================================================
 	--// LEFT COLUMN: Section 3 - Quản lý Macro
 	--// ============================================================

@@ -372,6 +372,10 @@ function recorder.Start()
 		--// khi kết thúc run), rồi cmt lại từ vị trí mới, không nối thẳng sang vị trí mới.
 		local lastPt = points[#points]
 		if lastPt and (pos - lastPt).Magnitude > 35 then
+			if not allowBoss then
+				recorder.Stop("dịch chuyển lớn")
+				return
+			end
 			finalizeSlice("dịch chuyển lớn", true)
 			local r = shared.GetCurrentRoomIndex()
 			if r == startRoom then r = 0 end -- deactivate nếu room cũ chưa untrack (không ghi đè)
@@ -517,7 +521,11 @@ function recorder.Start()
 				task.delay(ROLLOVER_DELAY, function()
 					roomChangePending = false
 					if isRecording then
-						recorder.Rollover()
+						if allowBoss then
+							recorder.Rollover()
+						else
+							recorder.Stop("hoàn thành room")
+						end
 					end
 				end)
 			end
