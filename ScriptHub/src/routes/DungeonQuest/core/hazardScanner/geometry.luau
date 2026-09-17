@@ -75,7 +75,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 --// nhưng thực tế nên được vẽ và tính toán thành VÙNG TRÒN (Circle Danger Zone).
 local FORCE_CIRCLE_NAMES = {
 	"firstBossCrissCross",
-	"firstBossBigSpike",
 	"firstBossSeekingSpikes",
 }
 
@@ -122,6 +121,58 @@ end
 
 function geometry.IsSecondBossCircleChain(hazardName)
 	return isSecondBossCircleChain(hazardName)
+end
+
+local MOVING_BEAM_KEYWORDS = {
+	"movingbeam",
+}
+
+local function isMovingBeam(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	for _, kw in ipairs(MOVING_BEAM_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsMovingBeam(hazardName)
+	return isMovingBeam(hazardName)
+end
+
+local BIG_SPIKE_KEYWORDS = {
+	"firstbossbigspike",
+	"firstbossbeampart",
+	"bigspike",
+}
+
+local function isBeamTelegraph(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
+end
+
+function geometry.IsBeamTelegraph(hazardName)
+	return isBeamTelegraph(hazardName)
+end
+
+local function isBigSpike(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 or string.find(clean, "seekingspike", 1, true) then return false end
+	for _, kw in ipairs(BIG_SPIKE_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsBigSpike(hazardName)
+	return isBigSpike(hazardName)
 end
 
 --// Tính toán hoặc đọc bán kính tối đa từ template largeIceSpikes trong ReplicatedStorage
@@ -235,6 +286,29 @@ end
 local function computePartZone(part, forceCircle, isTrajectory)
 	local size = part.Size
 	local pad = isTrajectory and trajectoryMargin or hazardPadding
+	local partName = (part and part.Name) or ""
+	local parentName = (part and part.Parent and part.Parent.Name) or ""
+	if isMovingBeam(partName) or isMovingBeam(parentName) then
+		local halfX = math.max(size.X, size.Z) / 2 + pad
+		local halfZ = math.max(2.0, math.min(size.X, size.Z) / 2 + pad)
+		return { half = Vector3.new(halfX, 0, halfZ), cframe = part.CFrame, isMovingBeam = true }
+	end
+
+	if isBigSpike(partName) or isBigSpike(parentName) then
+		local s = size
+		local mesh = part:FindFirstChildWhichIsA("SpecialMesh", true)
+		if mesh then
+			s = Vector3.new(s.X * math.abs(mesh.Scale.X), s.Y * math.abs(mesh.Scale.Y), s.Z * math.abs(mesh.Scale.Z))
+		end
+		local dims = { s.X, s.Y, s.Z }
+		table.sort(dims)
+		local width = math.clamp(dims[2], 6.0, 60.0)
+		local length = math.clamp(dims[3], 8.0, 80.0)
+		local halfW = width / 2 + pad
+		local halfL = length / 2 + pad
+		return { half = Vector3.new(halfW, 0, halfL), cframe = part.CFrame, isBigSpike = true }
+	end
+
 	if forceCircle or (part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder)) then
 		return { radius = math.max(size.X, size.Y, size.Z) / 2 }
 	end
@@ -430,6 +504,101 @@ local function buildHazardZones(hazardInfo)
 		}
 	end
 
+	if isMovingBeam(hazardName) then
+		local mainPart = nil
+		if instance:IsA("BasePart") then
+			mainPart = isPartAlive(instance) and instance or nil
+		elseif instance:IsA("Model") then
+			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
+			if not mainPart or not isPartAlive(mainPart) then
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+						mainPart = desc
+						break
+					end
+				end
+			end
+		end
+
+		if not mainPart then return nil end
+
+		local pos = mainPart.Position
+		local size = mainPart.Size
+		local spanX = math.max(size.X, size.Z)
+		local thickZ = math.max(3.5, math.min(size.X, size.Z))
+		local halfX = spanX / 2 + pad
+		local halfZ = thickZ / 2 + pad
+
+		local singleZone = {
+			half = Vector3.new(halfX, 0, halfZ),
+			cframe = mainPart.CFrame,
+			part = mainPart,
+			cx = pos.X,
+			cz = pos.Z,
+			isTrajectory = isTrajectory,
+			isMovingBeam = true,
+		}
+
+		return {
+			zones = { singleZone },
+			center = Vector3.new(pos.X, 0, pos.Z),
+			boundingRadius = math.sqrt(halfX * halfX + halfZ * halfZ),
+		}
+	end
+
+	if isBeamTelegraph(hazardName) then
+		-- firstBossBeamPart chỉ hiển thị hành lang cam Trajectory, không tạo ground zone con
+		return nil
+	end
+
+	if isBigSpike(hazardName) then
+		local mainPart = nil
+		if instance:IsA("BasePart") then
+			mainPart = isPartAlive(instance) and instance or nil
+		elseif instance:IsA("Model") then
+			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
+			if not mainPart or not isPartAlive(mainPart) then
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+						mainPart = desc
+						break
+					end
+				end
+			end
+		end
+
+		if not mainPart then return nil end
+
+		local pos = mainPart.Position
+		local size = mainPart.Size
+		local mesh = mainPart:FindFirstChildWhichIsA("SpecialMesh", true)
+		if mesh then
+			size = Vector3.new(size.X * math.abs(mesh.Scale.X), size.Y * math.abs(mesh.Scale.Y), size.Z * math.abs(mesh.Scale.Z))
+		end
+		local dims = { size.X, size.Y, size.Z }
+		table.sort(dims)
+		local spikeWidth = math.clamp(dims[2], 6.0, 60.0)
+		local spikeLength = math.clamp(dims[3], 8.0, 80.0)
+		local halfW = spikeWidth / 2 + pad
+		local halfL = spikeLength / 2 + pad
+
+		local singleZone = {
+			half = Vector3.new(halfW, 0, halfL),
+			cframe = mainPart.CFrame,
+			part = mainPart,
+			cx = pos.X,
+			cz = pos.Z,
+			isTrajectory = isTrajectory,
+			isBigSpike = true,
+		}
+
+		return {
+			zones = { singleZone },
+			center = Vector3.new(pos.X, 0, pos.Z),
+			boundingRadius = math.sqrt(halfW * halfW + halfL * halfL),
+		}
+	end
+
 	if instance:IsA("BasePart") then
 		if not isPartAlive(instance) then return nil end
 		parts = { instance }
@@ -546,6 +715,13 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 	for key, info in pairs(list) do
 		local inst = info.Instance or (typeof(key) == "Instance" and key)
 		if ignoredInstance and (ignoredInstance == inst or (inst and ignoredInstance.Name == inst.Name)) then
+			continue
+		end
+
+		local hazardName = info.Name or (inst and inst.Name) or ""
+		if isMovingBeam(hazardName) or isBigSpike(hazardName) then
+			-- Moving Beam và BigSpike được quản lý và kiểm tra va chạm 100% bằng Trajectory (hành lang Cam chính xác).
+			-- Bỏ qua tại đây để tuyệt đối không có bán kính (Radius) ngầm nào can thiệp gây né sớm!
 			continue
 		end
 

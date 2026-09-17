@@ -46,7 +46,7 @@ local ignoreNames = {} -- [cleanName] = true
 
 --// Blacklist: Danh sách tên đối tượng trong Workspace KHÔNG BAO GIỜ coi là Danger Zone
 local HAZARD_BLACKLIST = {
-	-- Thêm tên các đối tượng / hiệu ứng rác vào đây nếu cần bỏ qua
+	["firstbossbeamparticles"] = true,
 }
 
 local function loadIgnoreNames()
@@ -161,13 +161,19 @@ local function stopAllRetries()
 	table.clear(retryStates)
 end
 
+local function isBeamTelegraph(name)
+	if not name or type(name) ~= "string" then return false end
+	local clean = name:lower():gsub("%s+", "")
+	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
+end
+
 --// Lay danh sach BasePart cua instance (BasePart -> chinh no; Model / Folder -> cac BasePart descendant)
---// Chỉ lấy part còn rõ (Transparency <= 0.85)
+--// Chỉ lấy part còn rõ (Transparency <= 0.85) hoặc là tia định hướng telegraph của Boss
 local function getBaseParts(instance)
 	if not instance then return {} end
 	local parts = {}
 	local function addPart(part)
-		if part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+		if part and part.Parent and (part.Transparency <= FADE_TRANSPARENCY_THRESHOLD or isBeamTelegraph(part.Name) or isBeamTelegraph(instance.Name)) then
 			parts[#parts + 1] = part
 		end
 	end
@@ -223,7 +229,7 @@ local function attachSelectionBoxes(parts, fadeConnections, isTrajectory)
 	local surfColor = isTrajectory and BOX_SURFACE_BLUE or BOX_SURFACE_RED
 
 	for _, part in ipairs(parts) do
-		if part and part.Parent then
+		if part and part.Parent and not isBeamTelegraph(part.Name) and not isBeamTelegraph(part.Parent and part.Parent.Name) then
 			local box = Instance.new("SelectionBox")
 			box.Name = "HazardSelectionBox"
 			box.Color3 = boxColor

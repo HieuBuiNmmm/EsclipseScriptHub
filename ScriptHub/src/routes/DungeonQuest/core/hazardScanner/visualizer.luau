@@ -42,6 +42,11 @@ function visualizer.BindDetection(dataSource)
 	data = dataSource or nil
 end
 
+local trajectorySource = nil
+function visualizer.BindTrajectory(source)
+	trajectorySource = source or nil
+end
+
 function visualizer.IsEnabled()
 	return enabled
 end
@@ -64,9 +69,21 @@ local function updateVisualCFrame(item, targetY)
 		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	else
 		-- Hộp OBB: Giữ hướng quay Yaw trên sàn, triệt tiêu Pitch/Roll
-		local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
-		local _, yaw, _ = baseCF:ToOrientation()
-		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
+		local desiredWorldCFrame
+		if zone and (zone.isMovingBeam or zone.isBigSpike) then
+			local trajDir = trajectorySource and trajectorySource.GetHazardDirection and trajectorySource.GetHazardDirection(item.hazardInfo)
+			if trajDir and trajDir.Magnitude > 0.01 then
+				desiredWorldCFrame = CFrame.lookAt(worldTargetPos, worldTargetPos + trajDir)
+			else
+				local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
+				local _, yaw, _ = baseCF:ToOrientation()
+				desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
+			end
+		else
+			local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
+			local _, yaw, _ = baseCF:ToOrientation()
+			desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
+		end
 		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	end
 end
@@ -168,8 +185,8 @@ function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 			if item.isCircle and zone.radius then
 				ad.Radius = zone.radius + pad
 			elseif zone.half then
-				local halfX = math.max(part.Size.X, 0) / 2 + pad
-				local halfZ = math.max(part.Size.Z, 0) / 2 + pad
+				local halfX = zone.half.X
+				local halfZ = zone.half.Z
 				ad.Size = Vector3.new(halfX * 2, GROUND_THICKNESS, halfZ * 2)
 			end
 		end
@@ -199,9 +216,11 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	for _, zone in ipairs(hazardZones.zones) do
 		local part = zone.part
 		local isChain = zone.isSecondBossChain == true
-		local anchorPart = (isChain and terrain) or part
+		local isMovingBeam = zone.isMovingBeam == true
+		local isBigSpike = zone.isBigSpike == true
+		local anchorPart = (isChain or isMovingBeam or isBigSpike) and terrain or part
 
-		if isChain or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
+		if isChain or isMovingBeam or isBigSpike or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
 			local ad = nil
 			local isCircle = false
 
@@ -238,12 +257,13 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 					anchorPart = anchorPart,
 					isCircle = isCircle,
 					zone = zone,
+					hazardInfo = hazardInfo,
 				}
 				updateVisualCFrame(item, targetY)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
-				if not isChain and part then
+				if (not isChain and not isMovingBeam) and part then
 					-- Tự động destroy visual khi part mờ dần (chỉ part thông thường)
 					local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
 						if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then

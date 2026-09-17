@@ -7,7 +7,7 @@
 -- 1. Skill Q (Buff Damage & Speed): Tự động kích hoạt/spam khi có Enemy tồn tại còn sống trên map.
 -- 2. Skill E (Damage Skill): Chỉ kích hoạt khi:
 --    - Khoảng cách 2D tới mục tiêu <= Skill E Cast Range (Slider độc lập).
---    - Chiêu Q đang có hiệu lực buff (nhận biết qua effect 'groundAura' tồn tại trong workspace).
+--    - Chiêu Q đang có hiệu lực buff (trong khoảng thời gian Buff Duration sau khi kích hoạt chiêu Q).
 
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
@@ -24,12 +24,16 @@ local autoSkill = {}
 local enabled = false
 local skillERange = 35.0 -- studs (Khoảng cách cast chiêu E độc lập)
 local spamInterval = 0.15 -- giây giữa các lần bấm phím
+local buffDuration = 4.0 -- giây (thời gian hiệu lực của buff sau khi kích hoạt chiêu Q)
 
 local lastCastQ = 0
 local lastCastE = 0
 local isCastingQ = false
 local isCastingE = false
 local heartbeatConnection = nil
+local remoteConnection = nil
+local lastBuffTime = -math.huge
+local prevQCooldown = 0
 
 function autoSkill.IsEnabled()
 	return enabled
@@ -75,12 +79,117 @@ function autoSkill.SetSpamInterval(val)
 	end
 end
 
---// Kiểm tra xem chiêu Q (Buff) có đang có hiệu lực hay không dựa vào effect 'groundAura' trong workspace
+function autoSkill.GetBuffDuration()
+	return buffDuration
+end
+
+function autoSkill.SetBuffDuration(val)
+	if type(val) == "number" and val >= 0.5 then
+		buffDuration = val
+	end
+end
+
+--// Kiểm tra xem chiêu Q (Buff) có đang có hiệu lực hay không dựa vào thời gian buffDuration
 function autoSkill.IsBuffActive()
-	local ok, aura = pcall(function()
-		return workspace:FindFirstChild("groundAura")
+	return (os.clock() - lastBuffTime) < buffDuration
+end
+
+--// Kích hoạt hoặc làm mới thời điểm buff thủ công/bên ngoài
+function autoSkill.TriggerBuff()
+	lastBuffTime = os.clock()
+end
+
+function autoSkill.GetLastBuffTime()
+	return lastBuffTime
+end
+
+function autoSkill.GetRemainingBuffTime()
+	local rem = buffDuration - (os.clock() - lastBuffTime)
+	return rem > 0 and rem or 0
+end
+
+--// Lấy Tool ở slot Q (Backpack hoặc Character)
+local function getSlotQTool()
+	local lp = player or game:GetService("Players").LocalPlayer
+	if not lp then return nil end
+
+	local backpack = lp:FindFirstChild("Backpack")
+	if backpack then
+		for _, child in ipairs(backpack:GetChildren()) do
+			local slot = child:FindFirstChild("abilitySlot")
+			if slot and string.lower(tostring(slot.Value)) == "q" then
+				return child
+			end
+		end
+	end
+
+	local char = lp.Character
+	if char then
+		for _, child in ipairs(char:GetChildren()) do
+			if child:IsA("Tool") then
+				local slot = child:FindFirstChild("abilitySlot")
+				if slot and string.lower(tostring(slot.Value)) == "q" then
+					return child
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
+--// Lấy cooldown hiện tại của chiêu Q (trả về số giây còn lại, hoặc nil nếu không tìm thấy)
+local function getSlotQCooldown()
+	local tool = getSlotQTool()
+	if tool then
+		local cd = tool:FindFirstChild("cooldown")
+		if cd and typeof(cd.Value) == "number" then
+			return cd.Value
+		end
+	end
+	return nil
+end
+
+--// Kiểm tra và cập nhật thời điểm buff dựa vào cooldown của Tool Q
+local function checkCooldownActivation(now)
+	local cd = getSlotQCooldown()
+	if cd ~= nil then
+		-- Cooldown tăng vọt từ <= 0.2 lên > 0.5: chiêu Q vừa được kích hoạt thành công
+		if cd > (prevQCooldown + 0.5) or (prevQCooldown <= 0.2 and cd > 0.5) then
+			lastBuffTime = now
+		end
+		prevQCooldown = cd
+	end
+end
+
+--// Lắng nghe RemoteEvent abilityCast từ game khi người chơi cast chiêu
+local function setupRemoteListener()
+	if remoteConnection then return end
+	pcall(function()
+		local rs = services.ReplicatedStorage or game:GetService("ReplicatedStorage")
+		local remotes = rs and rs:FindFirstChild("remotes")
+		local abilityCast = remotes and remotes:FindFirstChild("abilityCast")
+		if abilityCast and abilityCast:IsA("RemoteEvent") then
+			remoteConnection = abilityCast.OnClientEvent:Connect(function(caster, abilityName)
+				local lp = player or game:GetService("Players").LocalPlayer
+				if caster == lp then
+					local tool = getSlotQTool()
+					if (tool and tool.Name == abilityName) or (not tool) then
+						lastBuffTime = os.clock()
+					end
+				end
+			end)
+		end
 	end)
-	return ok and aura ~= nil
+end
+
+local function cleanupRemoteListener()
+	if remoteConnection then
+		pcall(function()
+			remoteConnection:Disconnect()
+		end)
+		remoteConnection = nil
+	end
 end
 
 --// Lấy HumanoidRootPart của người chơi
@@ -186,15 +295,27 @@ local function onHeartbeat()
 	local target, flatDist, hasEnemy = getBestEnemyAndDistance()
 	local now = os.clock()
 
+	-- Cập nhật kích hoạt buff nếu phát hiện cooldown Q bắt đầu
+	checkCooldownActivation(now)
+
 	-- 1. Xử lý Skill Q (Buff): Kích hoạt song song khi có Enemy tồn tại trên map
 	if (now - lastCastQ >= spamInterval) and not isCastingQ then
 		if hasEnemy then
-			lastCastQ = now
-			autoSkill.CastSkillQ()
+			local qCd = getSlotQCooldown()
+			-- Nếu biết rõ Q đang cooldown (> 0.2s) thì không cần spam phím vô ích
+			local isQReady = (qCd == nil) or (qCd <= 0.2)
+			if isQReady then
+				lastCastQ = now
+				autoSkill.CastSkillQ()
+				-- Fallback: Nếu không đọc được tool cooldown và buff hiện tại đã hết
+				if qCd == nil and not autoSkill.IsBuffActive() then
+					lastBuffTime = now
+				end
+			end
 		end
 	end
 
-	-- 2. Xử lý Skill E (Damage): Kích hoạt song song khi có Target, nằm trong tầm range độc lập VÀ chiêu Q đang buff (groundAura)
+	-- 2. Xử lý Skill E (Damage): Kích hoạt song song khi có Target, nằm trong tầm range độc lập VÀ chiêu Q đang buff
 	if (now - lastCastE >= spamInterval) and not isCastingE then
 		if target and flatDist <= skillERange then
 			local buffActive = autoSkill.IsBuffActive()
@@ -210,6 +331,7 @@ startHeartbeat = function()
 	if not heartbeatConnection then
 		heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
 	end
+	setupRemoteListener()
 end
 
 stopHeartbeat = function()
@@ -217,8 +339,11 @@ stopHeartbeat = function()
 		heartbeatConnection:Disconnect()
 		heartbeatConnection = nil
 	end
+	cleanupRemoteListener()
 	isCastingQ = false
 	isCastingE = false
+	prevQCooldown = 0
+	lastBuffTime = -math.huge
 end
 
 -- Hook trực tiếp Step từ bên ngoài nếu cần

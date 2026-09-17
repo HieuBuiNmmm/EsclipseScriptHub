@@ -119,9 +119,9 @@ return function(window, tab)
 		end),
 	})
 
-	--// Right Section - Custom Trajectory Lengths
+	--// Right Section - Custom Trajectory Dimensions
 	local customTrajSection = tab:Section({ Side = "Right" })
-	customTrajSection:Header({ Name = "Custom Trajectory Length" })
+	customTrajSection:Header({ Name = "Custom Trajectory Dimensions" })
 
 	ui.PatchSliderLoadCallback(customTrajSection:Slider({
 		Name = "Second Boss Moving Beam (studs)",
@@ -134,6 +134,18 @@ return function(window, tab)
 			hazardScanner.SetSecondBossBeamLength(val)
 		end),
 	}, "Slider_HazardSecondBossBeamLength"))
+
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "First Boss Big Spike Width (studs)",
+		Default = hazardScanner.GetFirstBossBigSpikeWidth(),
+		Minimum = 10,
+		Maximum = 60,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetFirstBossBigSpikeWidth(val)
+		end),
+	}, "Slider_HazardFirstBossBigSpikeWidth"))
 
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)

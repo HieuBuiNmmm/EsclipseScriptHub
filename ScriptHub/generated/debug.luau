@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-16T22:39:29.860576700+00:00",
+    genDate = "2026-09-17T03:58:48.306267600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7675,7 +7675,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 --// nhưng thực tế nên được vẽ và tính toán thành VÙNG TRÒN (Circle Danger Zone).
 local FORCE_CIRCLE_NAMES = {
 	"firstBossCrissCross",
-	"firstBossBigSpike",
 	"firstBossSeekingSpikes",
 }
 
@@ -7722,6 +7721,58 @@ end
 
 function geometry.IsSecondBossCircleChain(hazardName)
 	return isSecondBossCircleChain(hazardName)
+end
+
+local MOVING_BEAM_KEYWORDS = {
+	"movingbeam",
+}
+
+local function isMovingBeam(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	for _, kw in ipairs(MOVING_BEAM_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsMovingBeam(hazardName)
+	return isMovingBeam(hazardName)
+end
+
+local BIG_SPIKE_KEYWORDS = {
+	"firstbossbigspike",
+	"firstbossbeampart",
+	"bigspike",
+}
+
+local function isBeamTelegraph(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
+end
+
+function geometry.IsBeamTelegraph(hazardName)
+	return isBeamTelegraph(hazardName)
+end
+
+local function isBigSpike(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 or string.find(clean, "seekingspike", 1, true) then return false end
+	for _, kw in ipairs(BIG_SPIKE_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+function geometry.IsBigSpike(hazardName)
+	return isBigSpike(hazardName)
 end
 
 --// Tính toán hoặc đọc bán kính tối đa từ template largeIceSpikes trong ReplicatedStorage
@@ -7835,6 +7886,29 @@ end
 local function computePartZone(part, forceCircle, isTrajectory)
 	local size = part.Size
 	local pad = isTrajectory and trajectoryMargin or hazardPadding
+	local partName = (part and part.Name) or ""
+	local parentName = (part and part.Parent and part.Parent.Name) or ""
+	if isMovingBeam(partName) or isMovingBeam(parentName) then
+		local halfX = math.max(size.X, size.Z) / 2 + pad
+		local halfZ = math.max(2.0, math.min(size.X, size.Z) / 2 + pad)
+		return { half = Vector3.new(halfX, 0, halfZ), cframe = part.CFrame, isMovingBeam = true }
+	end
+
+	if isBigSpike(partName) or isBigSpike(parentName) then
+		local s = size
+		local mesh = part:FindFirstChildWhichIsA("SpecialMesh", true)
+		if mesh then
+			s = Vector3.new(s.X * math.abs(mesh.Scale.X), s.Y * math.abs(mesh.Scale.Y), s.Z * math.abs(mesh.Scale.Z))
+		end
+		local dims = { s.X, s.Y, s.Z }
+		table.sort(dims)
+		local width = math.clamp(dims[2], 6.0, 60.0)
+		local length = math.clamp(dims[3], 8.0, 80.0)
+		local halfW = width / 2 + pad
+		local halfL = length / 2 + pad
+		return { half = Vector3.new(halfW, 0, halfL), cframe = part.CFrame, isBigSpike = true }
+	end
+
 	if forceCircle or (part:IsA("Part") and (part.Shape == Enum.PartType.Ball or part.Shape == Enum.PartType.Cylinder)) then
 		return { radius = math.max(size.X, size.Y, size.Z) / 2 }
 	end
@@ -8030,6 +8104,101 @@ local function buildHazardZones(hazardInfo)
 		}
 	end
 
+	if isMovingBeam(hazardName) then
+		local mainPart = nil
+		if instance:IsA("BasePart") then
+			mainPart = isPartAlive(instance) and instance or nil
+		elseif instance:IsA("Model") then
+			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
+			if not mainPart or not isPartAlive(mainPart) then
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+						mainPart = desc
+						break
+					end
+				end
+			end
+		end
+
+		if not mainPart then return nil end
+
+		local pos = mainPart.Position
+		local size = mainPart.Size
+		local spanX = math.max(size.X, size.Z)
+		local thickZ = math.max(3.5, math.min(size.X, size.Z))
+		local halfX = spanX / 2 + pad
+		local halfZ = thickZ / 2 + pad
+
+		local singleZone = {
+			half = Vector3.new(halfX, 0, halfZ),
+			cframe = mainPart.CFrame,
+			part = mainPart,
+			cx = pos.X,
+			cz = pos.Z,
+			isTrajectory = isTrajectory,
+			isMovingBeam = true,
+		}
+
+		return {
+			zones = { singleZone },
+			center = Vector3.new(pos.X, 0, pos.Z),
+			boundingRadius = math.sqrt(halfX * halfX + halfZ * halfZ),
+		}
+	end
+
+	if isBeamTelegraph(hazardName) then
+		-- firstBossBeamPart chỉ hiển thị hành lang cam Trajectory, không tạo ground zone con
+		return nil
+	end
+
+	if isBigSpike(hazardName) then
+		local mainPart = nil
+		if instance:IsA("BasePart") then
+			mainPart = isPartAlive(instance) and instance or nil
+		elseif instance:IsA("Model") then
+			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
+			if not mainPart or not isPartAlive(mainPart) then
+				for _, desc in ipairs(instance:GetDescendants()) do
+					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+						mainPart = desc
+						break
+					end
+				end
+			end
+		end
+
+		if not mainPart then return nil end
+
+		local pos = mainPart.Position
+		local size = mainPart.Size
+		local mesh = mainPart:FindFirstChildWhichIsA("SpecialMesh", true)
+		if mesh then
+			size = Vector3.new(size.X * math.abs(mesh.Scale.X), size.Y * math.abs(mesh.Scale.Y), size.Z * math.abs(mesh.Scale.Z))
+		end
+		local dims = { size.X, size.Y, size.Z }
+		table.sort(dims)
+		local spikeWidth = math.clamp(dims[2], 6.0, 60.0)
+		local spikeLength = math.clamp(dims[3], 8.0, 80.0)
+		local halfW = spikeWidth / 2 + pad
+		local halfL = spikeLength / 2 + pad
+
+		local singleZone = {
+			half = Vector3.new(halfW, 0, halfL),
+			cframe = mainPart.CFrame,
+			part = mainPart,
+			cx = pos.X,
+			cz = pos.Z,
+			isTrajectory = isTrajectory,
+			isBigSpike = true,
+		}
+
+		return {
+			zones = { singleZone },
+			center = Vector3.new(pos.X, 0, pos.Z),
+			boundingRadius = math.sqrt(halfW * halfW + halfL * halfL),
+		}
+	end
+
 	if instance:IsA("BasePart") then
 		if not isPartAlive(instance) then return nil end
 		parts = { instance }
@@ -8149,6 +8318,13 @@ function geometry.IsPointInAnyHazard(point, ignoredInstance, extraRadius, hazard
 			continue
 		end
 
+		local hazardName = info.Name or (inst and inst.Name) or ""
+		if isMovingBeam(hazardName) or isBigSpike(hazardName) then
+			-- Moving Beam và BigSpike được quản lý và kiểm tra va chạm 100% bằng Trajectory (hành lang Cam chính xác).
+			-- Bỏ qua tại đây để tuyệt đối không có bán kính (Radius) ngầm nào can thiệp gây né sớm!
+			continue
+		end
+
 		local hazardZones = getHazardZones(info)
 		if not hazardZones then continue end
 
@@ -8235,6 +8411,11 @@ function visualizer.BindDetection(dataSource)
 	data = dataSource or nil
 end
 
+local trajectorySource = nil
+function visualizer.BindTrajectory(source)
+	trajectorySource = source or nil
+end
+
 function visualizer.IsEnabled()
 	return enabled
 end
@@ -8257,9 +8438,21 @@ local function updateVisualCFrame(item, targetY)
 		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	else
 		-- Hộp OBB: Giữ hướng quay Yaw trên sàn, triệt tiêu Pitch/Roll
-		local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
-		local _, yaw, _ = baseCF:ToOrientation()
-		local desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
+		local desiredWorldCFrame
+		if zone and (zone.isMovingBeam or zone.isBigSpike) then
+			local trajDir = trajectorySource and trajectorySource.GetHazardDirection and trajectorySource.GetHazardDirection(item.hazardInfo)
+			if trajDir and trajDir.Magnitude > 0.01 then
+				desiredWorldCFrame = CFrame.lookAt(worldTargetPos, worldTargetPos + trajDir)
+			else
+				local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
+				local _, yaw, _ = baseCF:ToOrientation()
+				desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
+			end
+		else
+			local baseCF = (part and part.Parent) and part.CFrame or CFrame.identity
+			local _, yaw, _ = baseCF:ToOrientation()
+			desiredWorldCFrame = CFrame.new(worldTargetPos) * CFrame.Angles(0, yaw, 0)
+		end
 		ad.CFrame = (anchorPart == workspace.Terrain) and desiredWorldCFrame or anchorPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	end
 end
@@ -8361,8 +8554,8 @@ function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 			if item.isCircle and zone.radius then
 				ad.Radius = zone.radius + pad
 			elseif zone.half then
-				local halfX = math.max(part.Size.X, 0) / 2 + pad
-				local halfZ = math.max(part.Size.Z, 0) / 2 + pad
+				local halfX = zone.half.X
+				local halfZ = zone.half.Z
 				ad.Size = Vector3.new(halfX * 2, GROUND_THICKNESS, halfZ * 2)
 			end
 		end
@@ -8392,9 +8585,11 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	for _, zone in ipairs(hazardZones.zones) do
 		local part = zone.part
 		local isChain = zone.isSecondBossChain == true
-		local anchorPart = (isChain and terrain) or part
+		local isMovingBeam = zone.isMovingBeam == true
+		local isBigSpike = zone.isBigSpike == true
+		local anchorPart = (isChain or isMovingBeam or isBigSpike) and terrain or part
 
-		if isChain or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
+		if isChain or isMovingBeam or isBigSpike or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
 			local ad = nil
 			local isCircle = false
 
@@ -8431,12 +8626,13 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 					anchorPart = anchorPart,
 					isCircle = isCircle,
 					zone = zone,
+					hazardInfo = hazardInfo,
 				}
 				updateVisualCFrame(item, targetY)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
-				if not isChain and part then
+				if (not isChain and not isMovingBeam) and part then
 					-- Tự động destroy visual khi part mờ dần (chỉ part thông thường)
 					local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
 						if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then
@@ -9039,6 +9235,9 @@ local predictionLength = 45 -- studs (chiều dài dải visual hiển thị qu�
 local customLengths = {
 	["secondbossmovingbeam"] = 80,
 }
+local customWidths = {
+	["firstbossbigspike"] = 28,
+}
 local activeRecords = {} -- [hazardInfo] = { ad = BoxHandleAdornment, mainPart = BasePart, connections = {}, lastPos = Vector3, lastClock = number, velocity = Vector3, dir = Vector3, isMoving = boolean }
 local heartbeatConnection = nil
 
@@ -9055,18 +9254,201 @@ local MOVING_SPEED_THRESHOLD = 3.5 -- studs/s (ngưỡng tốc độ để coi l
 --//   "look_vector": Hướng theo LookVector của CFrame projectile lúc spawn
 local INSTANT_PROJECTILES = {
 	["firstbossseekingspikes"] = "target_player",
-	["firstbossbigspike"] = "target_player",
+	["firstbossbigspike"] = "look_vector",
+	["firstbossbeampart"] = "look_vector",
+	["secondbossmovingbeam"] = "look_vector",
 }
 
---// Lấy độ dài trajectory (mặc định hoặc custom theo đối tượng)
+--// Helper nhận diện tia định hướng telegraph (firstBossBeamPart)
+local function isBeamTelegraph(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
+end
+
+--// Helper nhận diện skill BigSpike (Boss 1 - gồm cả tia telegraph và đạn)
+local function isBigSpike(hazardName)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 or string.find(clean, "seekingspike", 1, true) then return false end
+	return string.find(clean, "firstbossbigspike", 1, true) ~= nil
+		or string.find(clean, "firstbossbeampart", 1, true) ~= nil
+		or string.find(clean, "bigspike", 1, true) ~= nil
+end
+
+--// Đọc chính xác dữ liệu từ tia định hướng do Game tạo (firstBossBeamPart)
+--// Trích xuất: độ dài beam (khoảng cách tới Attachment2), hướng bay LookVector, điểm xuất phát và điểm đích
+local function getTelegraphBeamData(inst)
+	if not inst or not inst.Parent then return nil, nil, nil, nil end
+
+	local beamPart = nil
+	local instName = (inst.Name or ""):lower()
+	if isBeamTelegraph(instName) then
+		beamPart = inst:IsA("BasePart") and inst or inst:FindFirstChildWhichIsA("BasePart")
+	end
+
+	-- Nếu inst là spike hoặc chưa có beamPart: tìm beamPart lân cận trong workspace
+	if not beamPart then
+		local spikePos = inst:IsA("BasePart") and inst.Position or (inst:IsA("Model") and inst:GetPivot().Position)
+		if spikePos then
+			local bestDist = 35.0
+			for _, child in ipairs(workspace:GetChildren()) do
+				local cName = child.Name:lower()
+				if isBeamTelegraph(cName) or (string.find(cName, "beampart", 1, true) and not string.find(cName, "thirdboss", 1, true)) then
+					local bPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
+					if bPos then
+						local dist = (bPos - spikePos).Magnitude
+						if dist < bestDist then
+							bestDist = dist
+							beamPart = child
+						end
+					end
+				end
+			end
+		end
+	end
+
+	if not beamPart then return nil, nil, nil, nil end
+
+	local att2 = beamPart:FindFirstChild("Attachment2", true)
+	if not att2 or not att2:IsA("Attachment") then
+		for _, desc in ipairs(beamPart:GetDescendants()) do
+			if desc:IsA("Attachment") and desc.Name ~= "Attachment0" and desc.Name ~= "Attachment1" then
+				att2 = desc
+				break
+			end
+		end
+	end
+
+	local bPos = beamPart.Position
+	local targetWorldPos = att2 and att2.WorldPosition
+
+	if targetWorldPos and bPos then
+		local delta = targetWorldPos - bPos
+		local hDelta = Vector3.new(delta.X, 0, delta.Z)
+		local length = hDelta.Magnitude
+		if length > 5 then
+			local dir = hDelta.Unit
+			return length, dir, bPos, targetWorldPos
+		end
+	end
+
+	return nil, nil, nil, nil
+end
+local findBigSpikeBeamTelegraph = getTelegraphBeamData
+
+--// Đo đạc kích thước bao quát thực tế của Spike (tính cả toàn bộ Descendant Parts và SpecialMesh Scale)
+local function measureSpikeDimensions(inst)
+	if not inst then return nil end
+	local maxDimX, maxDimY, maxDimZ = 0, 0, 0
+	local parts = {}
+	if inst:IsA("BasePart") then
+		table.insert(parts, inst)
+	else
+		for _, desc in ipairs(inst:GetDescendants()) do
+			if desc:IsA("BasePart") then
+				table.insert(parts, desc)
+			end
+		end
+	end
+
+	for _, p in ipairs(parts) do
+		local sz = p.Size
+		local mesh = p:FindFirstChildWhichIsA("SpecialMesh", true)
+		if mesh then
+			sz = Vector3.new(sz.X * math.abs(mesh.Scale.X), sz.Y * math.abs(mesh.Scale.Y), sz.Z * math.abs(mesh.Scale.Z))
+		end
+		maxDimX = math.max(maxDimX, sz.X)
+		maxDimY = math.max(maxDimY, sz.Y)
+		maxDimZ = math.max(maxDimZ, sz.Z)
+	end
+
+	if maxDimX <= 0 and maxDimY <= 0 and maxDimZ <= 0 then
+		return nil
+	end
+
+	local dims = { maxDimX, maxDimY, maxDimZ }
+	table.sort(dims)
+	local w = dims[2]
+	if w < 4.0 then
+		w = math.max(dims[1], dims[2])
+	end
+	return w
+end
+
+--// Tính bề rộng thực tế của chính BasePart firstBossBigSpike
+local cachedBigSpikeWidth = nil
+local function getBigSpikeWidth(mainPart)
+	-- 1. Ưu tiên cấu hình custom width từ slider / user
+	if customWidths["firstbossbigspike"] then
+		return customWidths["firstbossbigspike"]
+	end
+
+	-- 2. Nếu đã cache kích thước trước đó
+	if cachedBigSpikeWidth then
+		return cachedBigSpikeWidth
+	end
+
+	-- 3. Đo đạc từ instance thực tế trong workspace
+	if mainPart and not isBeamTelegraph(mainPart.Name) then
+		local w = measureSpikeDimensions(mainPart)
+		if w and w >= 4.0 then
+			cachedBigSpikeWidth = math.clamp(w, 8.0, 60.0)
+			return cachedBigSpikeWidth
+		end
+	end
+
+	-- Hoặc tìm live spike trong workspace
+	for _, child in ipairs(workspace:GetChildren()) do
+		local cName = child.Name:lower()
+		if string.find(cName, "firstbossbigspike", 1, true) or (string.find(cName, "bigspike", 1, true) and not string.find(cName, "seekingspike", 1, true) and not isBeamTelegraph(cName)) then
+			local w = measureSpikeDimensions(child)
+			if w and w >= 4.0 then
+				cachedBigSpikeWidth = math.clamp(w, 8.0, 60.0)
+				return cachedBigSpikeWidth
+			end
+		end
+	end
+
+	-- 4. Đọc từ ReplicatedStorage.enemyProjectiles.firstBossBigSpike
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local ep = ReplicatedStorage:FindFirstChild("enemyProjectiles")
+	local tmpl = ep and ep:FindFirstChild("firstBossBigSpike")
+	if tmpl then
+		local w = measureSpikeDimensions(tmpl)
+		if w and w >= 4.0 then
+			cachedBigSpikeWidth = math.clamp(w, 8.0, 60.0)
+			return cachedBigSpikeWidth
+		end
+	end
+
+	return 28.0
+end
+
+--// Lấy độ dài trajectory (mặc định hoặc custom theo đối tượng / theo tia định hướng của game)
 local function getHazardPredictionLength(hazardInfoOrName)
 	if not hazardInfoOrName then return predictionLength end
 	local name = ""
+	local record = nil
 	if type(hazardInfoOrName) == "string" then
 		name = hazardInfoOrName
 	elseif type(hazardInfoOrName) == "table" then
 		name = hazardInfoOrName.Name or (hazardInfoOrName.Instance and hazardInfoOrName.Instance.Name) or ""
+		record = activeRecords[hazardInfoOrName]
 	end
+
+	-- Nếu là BigSpike: ưu tiên số 1 là độ dài thực tế từ tia định hướng của game
+	if isBigSpike(name) then
+		if record and record.beamLength then
+			return record.beamLength
+		end
+		return customLengths["firstbossbigspike"] or 140.0
+	end
+
+	if record and record.beamLength then
+		return record.beamLength
+	end
+
 	local clean = name:lower():gsub("%s+", "")
 	if customLengths[clean] then
 		return customLengths[clean]
@@ -9186,10 +9568,46 @@ function trajectory.SetSecondBossBeamLength(val)
 	trajectory.SetCustomLength("secondbossmovingbeam", val)
 end
 
+function trajectory.GetFirstBossBigSpikeWidth()
+	return customWidths["firstbossbigspike"] or 28
+end
+
+function trajectory.SetFirstBossBigSpikeWidth(val)
+	if type(val) == "number" and val > 0 then
+		customWidths["firstbossbigspike"] = math.clamp(val, 6, 60)
+	else
+		customWidths["firstbossbigspike"] = nil
+	end
+	trajectory.RefreshAll()
+end
+
+function trajectory.GetCustomWidth(key)
+	if not key then return nil end
+	local clean = key:lower():gsub("%s+", "")
+	return customWidths[clean]
+end
+
+function trajectory.SetCustomWidth(key, val)
+	if not key then return end
+	local clean = key:lower():gsub("%s+", "")
+	if type(val) == "number" and val > 0 then
+		customWidths[clean] = math.clamp(val, 4, 100)
+	else
+		customWidths[clean] = nil
+	end
+	trajectory.RefreshAll()
+end
+
 function trajectory.IsHazardMoving(hazardInfo)
 	if not hazardInfo then return false end
 	local record = activeRecords[hazardInfo]
 	return record and record.isMoving == true
+end
+
+function trajectory.GetHazardDirection(hazardInfo)
+	if not hazardInfo then return nil end
+	local record = activeRecords[hazardInfo]
+	return record and record.dir or nil
 end
 
 --// Tính trọng tâm (Centroid) và Độ rộng bao quát thực tế (Span Width) vuông góc với hướng di chuyển
@@ -9199,8 +9617,18 @@ local function getHazardCentroidAndSpan(hazardInfo, dir)
 	if not inst or not inst.Parent then return nil, 4 end
 
 	local margin = geometry.GetTrajectoryMargin and geometry.GetTrajectoryMargin() or 2.0
-	local parts = {}
 	local hazardName = hazardInfo.Name or (inst and inst.Name) or ""
+
+	if isBigSpike(hazardName) then
+		local record = activeRecords[hazardInfo]
+		local mainPart = (record and record.mainPart) or (inst:IsA("BasePart") and inst or inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart"))
+		local startPos = (record and record.beamStartPos) or (mainPart and mainPart.Position) or inst.Position
+		local spikeWidth = getBigSpikeWidth(mainPart)
+		local spanWidth = math.max(1, spikeWidth + margin * 2)
+		return Vector3.new(startPos.X, 0, startPos.Z), spanWidth
+	end
+
+	local parts = {}
 	local forceCircle = geometry.IsForceCircle and geometry.IsForceCircle(hazardName)
 
 	if inst:IsA("BasePart") then
@@ -9280,9 +9708,8 @@ local function updateTrajectoryCFrame(ad, mainPart, centroid, dir, targetY, leng
 	-- LookAt theo hướng di chuyển dir
 	local targetLook = centerPos + Vector3.new(dir.X, 0, dir.Z)
 	local desiredWorldCFrame = CFrame.lookAt(centerPos, targetLook)
-	local localCFrame = mainPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 
-	ad.CFrame = localCFrame
+	ad.CFrame = (ad.Adornee == workspace.Terrain) and desiredWorldCFrame or mainPart.CFrame:ToObjectSpace(desiredWorldCFrame)
 	ad.Size = Vector3.new(width, GROUND_THICKNESS, length)
 	if not ad.Visible then ad.Visible = true end
 end
@@ -9314,6 +9741,24 @@ local function onHeartbeat()
 				local currentPos = mainPart.Position
 				local dt = now - (record.lastClock or now)
 
+				if record.isBigSpike then
+					if not record.beamFound then
+						local bLen, bDir, bStart, bTarget = findBigSpikeBeamTelegraph(mainPart)
+						if bLen and bDir then
+							record.beamFound = true
+							record.beamLength = bLen
+							record.beamDir = bDir
+							record.beamStartPos = bStart
+							record.beamTargetPos = bTarget
+							record.dir = bDir
+						end
+					end
+					if record.beamDir then
+						record.dir = record.beamDir
+					end
+					record.isMoving = true
+				end
+
 				-- Cập nhật hướng di chuyển định kỳ (mỗi ~0.035s)
 				if dt >= 0.035 then
 					local delta = currentPos - (record.lastPos or currentPos)
@@ -9324,9 +9769,11 @@ local function onHeartbeat()
 
 					if hSpeed >= MOVING_SPEED_THRESHOLD then
 						record.isMoving = true
-						record.dir = hDelta.Unit
+						if not record.isBigSpike then
+							record.dir = hDelta.Unit
+						end
 					else
-						if not record.isInstant and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
+						if not record.isInstant and not record.isBigSpike and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
 							record.isMoving = false
 						end
 					end
@@ -9433,26 +9880,59 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	local hLength = getHazardPredictionLength(hazardInfo)
 	local box = Instance.new("BoxHandleAdornment")
 	box.Name = "HazardTrajectoryCorridor"
-	box.Adornee = mainPart
+	box.Adornee = workspace.Terrain
 	box.Size = Vector3.new(4, GROUND_THICKNESS, hLength)
 	box.Color3 = TRAJECTORY_COLOR
 	box.Transparency = TRAJECTORY_TRANSPARENCY
 	box.ZIndex = 1 -- Nằm dưới đĩa đỏ (ZIndex = 2)
 	box.AlwaysOnTop = true
 	box.Visible = false -- Tạm ẩn cho đến khi có hướng
-	box.Parent = mainPart
+	box.Parent = workspace.Terrain
+
+	local hazardName = hazardInfo.Name or (inst and inst.Name)
+	local isBigSpikeHazard = isBigSpike(hazardName)
+	local isBeam = isBeamTelegraph(hazardName)
+
+	-- Tránh tạo 2 hành lang cam trùng lặp: Nếu firstBossBeamPart đã tạo hành lang,
+	-- firstBossBigSpike không cần tạo thêm hành lang cam thứ 2
+	if isBigSpikeHazard and not isBeam then
+		for otherInfo, otherRecord in pairs(activeRecords) do
+			if otherRecord and otherRecord.isBigSpike and otherRecord.isBeam then
+				hazardInfo.IsTrajectory = false
+				return
+			end
+		end
+	end
 
 	local connections = {}
-	local conn = mainPart:GetPropertyChangedSignal("Transparency"):Connect(function()
-		if mainPart.Parent and mainPart.Transparency > FADE_TRANSPARENCY_THRESHOLD then
+	if not isBeam then
+		local conn = mainPart:GetPropertyChangedSignal("Transparency"):Connect(function()
+			if mainPart.Parent and mainPart.Transparency > FADE_TRANSPARENCY_THRESHOLD then
+				pcall(function() box:Destroy() end)
+			end
+		end)
+		table.insert(connections, conn)
+	end
+
+	local conn2 = mainPart.AncestryChanged:Connect(function(_, parent)
+		if not parent then
 			pcall(function() box:Destroy() end)
 		end
 	end)
-	table.insert(connections, conn)
+	table.insert(connections, conn2)
 
 	-- Kiểm tra xem đối tượng có thuộc danh sách Instant Projectiles (tự lock-on hướng tại Frame 0) không
-	local instantDir, instantMode = getInstantDirection(hazardInfo.Name or (inst and inst.Name), mainPart)
+	local instantDir, instantMode = getInstantDirection(hazardName, mainPart)
 	local isInstant = instantDir ~= nil
+
+	local beamLength, beamDir, beamStartPos, beamTargetPos = nil, nil, nil, nil
+	if isBigSpikeHazard then
+		beamLength, beamDir, beamStartPos, beamTargetPos = getTelegraphBeamData(inst)
+		if beamDir then
+			instantDir = beamDir
+			isInstant = true
+		end
+	end
 
 	activeRecords[hazardInfo] = {
 		ad = box,
@@ -9465,6 +9945,13 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		isMoving = isInstant,
 		isInstant = isInstant,
 		instantMode = instantMode,
+		isBigSpike = isBigSpikeHazard,
+		isBeam = isBeam,
+		beamFound = beamLength ~= nil,
+		beamLength = beamLength,
+		beamDir = beamDir,
+		beamStartPos = beamStartPos or mainPart.Position,
+		beamTargetPos = beamTargetPos,
 	}
 
 	-- Nếu là Instant Projectile: Kích hoạt ngay lập tức tại Frame 0 không cần chờ đo vận tốc
@@ -9473,8 +9960,9 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		hazardInfo.HazardZones = nil
 		local targetY = getPlayerGroundY()
 		local centroid, spanWidth = getHazardCentroidAndSpan(hazardInfo, instantDir)
+		local currentHLength = getHazardPredictionLength(hazardInfo)
 		if centroid then
-			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, hLength, spanWidth)
+			updateTrajectoryCFrame(box, mainPart, centroid, instantDir, targetY, currentHLength, spanWidth)
 		end
 		if data and data.UpdateHazardVisualColor then
 			pcall(data.UpdateHazardVisualColor, hazardInfo, true)
@@ -9548,6 +10036,9 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 	local px, pz = point.X, point.Z
 	extraRadius = extraRadius or 0
 
+	-- Bề dày phủ lùi về phía sau centroid để ôm trọn cả thân thanh Beam (Cyan)
+	local BACK_DEPTH = 3.0
+
 	if trajectoryList then
 		for _, item in ipairs(trajectoryList) do
 			local info = item.info
@@ -9565,16 +10056,19 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 					local projN = vx * normal.X + vz * normal.Z
 					local halfWidth = spanWidth / 2
 
+					local minU = -BACK_DEPTH
+					local maxU = hLength
+
 					if extraRadius <= 0 then
-						if projU >= 0 and projU <= hLength and math.abs(projN) <= halfWidth then
+						if projU >= minU and projU <= maxU and math.abs(projN) <= halfWidth then
 							return true, info, dir, centroid, spanWidth
 						end
 					else
 						local dU = 0
-						if projU < 0 then
-							dU = -projU
-						elseif projU > hLength then
-							dU = projU - hLength
+						if projU < minU then
+							dU = minU - projU
+						elseif projU > maxU then
+							dU = projU - maxU
 						end
 						local dN = math.max(0, math.abs(projN) - halfWidth)
 						if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
@@ -9602,17 +10096,20 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 				local projN = vx * normal.X + vz * normal.Z
 				local halfWidth = spanWidth / 2
 
-				-- Kiểm tra giao thoa hình học trực tiếp với dải hình hộp màu cam cố định
+				local minU = -BACK_DEPTH
+				local maxU = hLength
+
+				-- Kiểm tra giao thoa hình học trực tiếp với dải hình hộp nguy hiểm (gồm cả thân thanh Cyan và dải Cam)
 				if extraRadius <= 0 then
-					if projU >= 0 and projU <= hLength and math.abs(projN) <= halfWidth then
+					if projU >= minU and projU <= maxU and math.abs(projN) <= halfWidth then
 						return true, info, dir, centroid, spanWidth
 					end
 				else
 					local dU = 0
-					if projU < 0 then
-						dU = -projU
-					elseif projU > hLength then
-						dU = projU - hLength
+					if projU < minU then
+						dU = minU - projU
+					elseif projU > maxU then
+						dU = projU - maxU
 					end
 					local dN = math.max(0, math.abs(projN) - halfWidth)
 					if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
@@ -9698,7 +10195,7 @@ local ignoreNames = {} -- [cleanName] = true
 
 --// Blacklist: Danh sách tên đối tượng trong Workspace KHÔNG BAO GIỜ coi là Danger Zone
 local HAZARD_BLACKLIST = {
-	-- Thêm tên các đối tượng / hiệu ứng rác vào đây nếu cần bỏ qua
+	["firstbossbeamparticles"] = true,
 }
 
 local function loadIgnoreNames()
@@ -9813,13 +10310,19 @@ local function stopAllRetries()
 	table.clear(retryStates)
 end
 
+local function isBeamTelegraph(name)
+	if not name or type(name) ~= "string" then return false end
+	local clean = name:lower():gsub("%s+", "")
+	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
+end
+
 --// Lay danh sach BasePart cua instance (BasePart -> chinh no; Model / Folder -> cac BasePart descendant)
---// Chỉ lấy part còn rõ (Transparency <= 0.85)
+--// Chỉ lấy part còn rõ (Transparency <= 0.85) hoặc là tia định hướng telegraph của Boss
 local function getBaseParts(instance)
 	if not instance then return {} end
 	local parts = {}
 	local function addPart(part)
-		if part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+		if part and part.Parent and (part.Transparency <= FADE_TRANSPARENCY_THRESHOLD or isBeamTelegraph(part.Name) or isBeamTelegraph(instance.Name)) then
 			parts[#parts + 1] = part
 		end
 	end
@@ -9875,7 +10378,7 @@ local function attachSelectionBoxes(parts, fadeConnections, isTrajectory)
 	local surfColor = isTrajectory and BOX_SURFACE_BLUE or BOX_SURFACE_RED
 
 	for _, part in ipairs(parts) do
-		if part and part.Parent then
+		if part and part.Parent and not isBeamTelegraph(part.Name) and not isBeamTelegraph(part.Parent and part.Parent.Name) then
 			local box = Instance.new("SelectionBox")
 			box.Name = "HazardSelectionBox"
 			box.Color3 = boxColor
@@ -12260,6 +12763,7 @@ local hazardScanner = {}
 --// Bind data sources (tranh vong phu thuoc)
 geometry.BindDetection(detection)
 visualizer.BindDetection(detection)
+visualizer.BindTrajectory(trajectory)
 trajectory.BindDetection(detection)
 timerVisual.BindDetection(detection)
 
@@ -12330,6 +12834,10 @@ hazardScanner.GetCustomTrajectoryLength = trajectory.GetCustomLength
 hazardScanner.SetCustomTrajectoryLength = trajectory.SetCustomLength
 hazardScanner.GetSecondBossBeamLength = trajectory.GetSecondBossBeamLength
 hazardScanner.SetSecondBossBeamLength = trajectory.SetSecondBossBeamLength
+hazardScanner.GetFirstBossBigSpikeWidth = trajectory.GetFirstBossBigSpikeWidth
+hazardScanner.SetFirstBossBigSpikeWidth = trajectory.SetFirstBossBigSpikeWidth
+hazardScanner.GetCustomTrajectoryWidth = trajectory.GetCustomWidth
+hazardScanner.SetCustomTrajectoryWidth = trajectory.SetCustomWidth
 hazardScanner.RefreshTrajectory = trajectory.RefreshAll
 hazardScanner.IsPointInAnyTrajectory = trajectory.IsPointInAnyTrajectory
 hazardScanner.GetNearbyTrajectories = trajectory.GetNearbyTrajectories
@@ -12406,7 +12914,7 @@ return hazardScanner end function __DIST.x()-- Auto Farm System – Smart Auto S
 -- 1. Skill Q (Buff Damage & Speed): Tự động kích hoạt/spam khi có Enemy tồn tại còn sống trên map.
 -- 2. Skill E (Damage Skill): Chỉ kích hoạt khi:
 --    - Khoảng cách 2D tới mục tiêu <= Skill E Cast Range (Slider độc lập).
---    - Chiêu Q đang có hiệu lực buff (nhận biết qua effect 'groundAura' tồn tại trong workspace).
+--    - Chiêu Q đang có hiệu lực buff (trong khoảng thời gian Buff Duration sau khi kích hoạt chiêu Q).
 
 
 local services = __DIST.load('e')
@@ -12424,12 +12932,16 @@ local autoSkill = {}
 local enabled = false
 local skillERange = 35.0 -- studs (Khoảng cách cast chiêu E độc lập)
 local spamInterval = 0.15 -- giây giữa các lần bấm phím
+local buffDuration = 4.0 -- giây (thời gian hiệu lực của buff sau khi kích hoạt chiêu Q)
 
 local lastCastQ = 0
 local lastCastE = 0
 local isCastingQ = false
 local isCastingE = false
 local heartbeatConnection = nil
+local remoteConnection = nil
+local lastBuffTime = -math.huge
+local prevQCooldown = 0
 
 function autoSkill.IsEnabled()
 	return enabled
@@ -12475,12 +12987,117 @@ function autoSkill.SetSpamInterval(val)
 	end
 end
 
---// Kiểm tra xem chiêu Q (Buff) có đang có hiệu lực hay không dựa vào effect 'groundAura' trong workspace
+function autoSkill.GetBuffDuration()
+	return buffDuration
+end
+
+function autoSkill.SetBuffDuration(val)
+	if type(val) == "number" and val >= 0.5 then
+		buffDuration = val
+	end
+end
+
+--// Kiểm tra xem chiêu Q (Buff) có đang có hiệu lực hay không dựa vào thời gian buffDuration
 function autoSkill.IsBuffActive()
-	local ok, aura = pcall(function()
-		return workspace:FindFirstChild("groundAura")
+	return (os.clock() - lastBuffTime) < buffDuration
+end
+
+--// Kích hoạt hoặc làm mới thời điểm buff thủ công/bên ngoài
+function autoSkill.TriggerBuff()
+	lastBuffTime = os.clock()
+end
+
+function autoSkill.GetLastBuffTime()
+	return lastBuffTime
+end
+
+function autoSkill.GetRemainingBuffTime()
+	local rem = buffDuration - (os.clock() - lastBuffTime)
+	return rem > 0 and rem or 0
+end
+
+--// Lấy Tool ở slot Q (Backpack hoặc Character)
+local function getSlotQTool()
+	local lp = player or game:GetService("Players").LocalPlayer
+	if not lp then return nil end
+
+	local backpack = lp:FindFirstChild("Backpack")
+	if backpack then
+		for _, child in ipairs(backpack:GetChildren()) do
+			local slot = child:FindFirstChild("abilitySlot")
+			if slot and string.lower(tostring(slot.Value)) == "q" then
+				return child
+			end
+		end
+	end
+
+	local char = lp.Character
+	if char then
+		for _, child in ipairs(char:GetChildren()) do
+			if child:IsA("Tool") then
+				local slot = child:FindFirstChild("abilitySlot")
+				if slot and string.lower(tostring(slot.Value)) == "q" then
+					return child
+				end
+			end
+		end
+	end
+
+	return nil
+end
+
+--// Lấy cooldown hiện tại của chiêu Q (trả về số giây còn lại, hoặc nil nếu không tìm thấy)
+local function getSlotQCooldown()
+	local tool = getSlotQTool()
+	if tool then
+		local cd = tool:FindFirstChild("cooldown")
+		if cd and typeof(cd.Value) == "number" then
+			return cd.Value
+		end
+	end
+	return nil
+end
+
+--// Kiểm tra và cập nhật thời điểm buff dựa vào cooldown của Tool Q
+local function checkCooldownActivation(now)
+	local cd = getSlotQCooldown()
+	if cd ~= nil then
+		-- Cooldown tăng vọt từ <= 0.2 lên > 0.5: chiêu Q vừa được kích hoạt thành công
+		if cd > (prevQCooldown + 0.5) or (prevQCooldown <= 0.2 and cd > 0.5) then
+			lastBuffTime = now
+		end
+		prevQCooldown = cd
+	end
+end
+
+--// Lắng nghe RemoteEvent abilityCast từ game khi người chơi cast chiêu
+local function setupRemoteListener()
+	if remoteConnection then return end
+	pcall(function()
+		local rs = services.ReplicatedStorage or game:GetService("ReplicatedStorage")
+		local remotes = rs and rs:FindFirstChild("remotes")
+		local abilityCast = remotes and remotes:FindFirstChild("abilityCast")
+		if abilityCast and abilityCast:IsA("RemoteEvent") then
+			remoteConnection = abilityCast.OnClientEvent:Connect(function(caster, abilityName)
+				local lp = player or game:GetService("Players").LocalPlayer
+				if caster == lp then
+					local tool = getSlotQTool()
+					if (tool and tool.Name == abilityName) or (not tool) then
+						lastBuffTime = os.clock()
+					end
+				end
+			end)
+		end
 	end)
-	return ok and aura ~= nil
+end
+
+local function cleanupRemoteListener()
+	if remoteConnection then
+		pcall(function()
+			remoteConnection:Disconnect()
+		end)
+		remoteConnection = nil
+	end
 end
 
 --// Lấy HumanoidRootPart của người chơi
@@ -12586,15 +13203,27 @@ local function onHeartbeat()
 	local target, flatDist, hasEnemy = getBestEnemyAndDistance()
 	local now = os.clock()
 
+	-- Cập nhật kích hoạt buff nếu phát hiện cooldown Q bắt đầu
+	checkCooldownActivation(now)
+
 	-- 1. Xử lý Skill Q (Buff): Kích hoạt song song khi có Enemy tồn tại trên map
 	if (now - lastCastQ >= spamInterval) and not isCastingQ then
 		if hasEnemy then
-			lastCastQ = now
-			autoSkill.CastSkillQ()
+			local qCd = getSlotQCooldown()
+			-- Nếu biết rõ Q đang cooldown (> 0.2s) thì không cần spam phím vô ích
+			local isQReady = (qCd == nil) or (qCd <= 0.2)
+			if isQReady then
+				lastCastQ = now
+				autoSkill.CastSkillQ()
+				-- Fallback: Nếu không đọc được tool cooldown và buff hiện tại đã hết
+				if qCd == nil and not autoSkill.IsBuffActive() then
+					lastBuffTime = now
+				end
+			end
 		end
 	end
 
-	-- 2. Xử lý Skill E (Damage): Kích hoạt song song khi có Target, nằm trong tầm range độc lập VÀ chiêu Q đang buff (groundAura)
+	-- 2. Xử lý Skill E (Damage): Kích hoạt song song khi có Target, nằm trong tầm range độc lập VÀ chiêu Q đang buff
 	if (now - lastCastE >= spamInterval) and not isCastingE then
 		if target and flatDist <= skillERange then
 			local buffActive = autoSkill.IsBuffActive()
@@ -12610,6 +13239,7 @@ startHeartbeat = function()
 	if not heartbeatConnection then
 		heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
 	end
+	setupRemoteListener()
 end
 
 stopHeartbeat = function()
@@ -12617,8 +13247,11 @@ stopHeartbeat = function()
 		heartbeatConnection:Disconnect()
 		heartbeatConnection = nil
 	end
+	cleanupRemoteListener()
 	isCastingQ = false
 	isCastingE = false
+	prevQCooldown = 0
+	lastBuffTime = -math.huge
 end
 
 -- Hook trực tiếp Step từ bên ngoài nếu cần
@@ -13588,6 +14221,8 @@ autoFarm.GetSkillERange = autoSkill.GetSkillERange
 autoFarm.SetSkillERange = autoSkill.SetSkillERange
 autoFarm.GetSkillSpamInterval = autoSkill.GetSpamInterval
 autoFarm.SetSkillSpamInterval = autoSkill.SetSkillSpamInterval
+autoFarm.GetBuffDuration = autoSkill.GetBuffDuration
+autoFarm.SetBuffDuration = autoSkill.SetBuffDuration
 autoFarm.IsBuffActive = autoSkill.IsBuffActive
 autoFarm.CastSkillQ = autoSkill.CastSkillQ
 autoFarm.CastSkillE = autoSkill.CastSkillE
@@ -14386,9 +15021,9 @@ return function(window, tab)
 		end),
 	})
 
-	--// Right Section - Custom Trajectory Lengths
+	--// Right Section - Custom Trajectory Dimensions
 	local customTrajSection = tab:Section({ Side = "Right" })
-	customTrajSection:Header({ Name = "Custom Trajectory Length" })
+	customTrajSection:Header({ Name = "Custom Trajectory Dimensions" })
 
 	ui.PatchSliderLoadCallback(customTrajSection:Slider({
 		Name = "Second Boss Moving Beam (studs)",
@@ -14401,6 +15036,18 @@ return function(window, tab)
 			hazardScanner.SetSecondBossBeamLength(val)
 		end),
 	}, "Slider_HazardSecondBossBeamLength"))
+
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "First Boss Big Spike Width (studs)",
+		Default = hazardScanner.GetFirstBossBigSpikeWidth(),
+		Minimum = 10,
+		Maximum = 60,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetFirstBossBigSpikeWidth(val)
+		end),
+	}, "Slider_HazardFirstBossBigSpikeWidth"))
 
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
@@ -14913,6 +15560,18 @@ return function(window, tab)
 			autoFarm.SetSkillERange(val)
 		end),
 	}, "Slider_AF_SkillERange"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill Q Buff Duration (s)",
+		Default = autoFarm.GetBuffDuration(),
+		Minimum = 1,
+		Maximum = 20,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetBuffDuration(val)
+		end),
+	}, "Slider_AF_BuffDuration"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Skill Spam Interval (s)",

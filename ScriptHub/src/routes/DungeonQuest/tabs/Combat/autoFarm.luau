@@ -108,6 +108,18 @@ return function(window, tab)
 	}, "Slider_AF_SkillERange"))
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
+		Name = "Skill Q Buff Duration (s)",
+		Default = autoFarm.GetBuffDuration(),
+		Minimum = 1,
+		Maximum = 20,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			autoFarm.SetBuffDuration(val)
+		end),
+	}, "Slider_AF_BuffDuration"))
+
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Skill Spam Interval (s)",
 		Default = autoFarm.GetSkillSpamInterval(),
 		Minimum = 0.05,

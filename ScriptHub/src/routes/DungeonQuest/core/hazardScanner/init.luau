@@ -21,6 +21,7 @@ local hazardScanner = {}
 --// Bind data sources (tranh vong phu thuoc)
 geometry.BindDetection(detection)
 visualizer.BindDetection(detection)
+visualizer.BindTrajectory(trajectory)
 trajectory.BindDetection(detection)
 timerVisual.BindDetection(detection)
 
@@ -91,6 +92,10 @@ hazardScanner.GetCustomTrajectoryLength = trajectory.GetCustomLength
 hazardScanner.SetCustomTrajectoryLength = trajectory.SetCustomLength
 hazardScanner.GetSecondBossBeamLength = trajectory.GetSecondBossBeamLength
 hazardScanner.SetSecondBossBeamLength = trajectory.SetSecondBossBeamLength
+hazardScanner.GetFirstBossBigSpikeWidth = trajectory.GetFirstBossBigSpikeWidth
+hazardScanner.SetFirstBossBigSpikeWidth = trajectory.SetFirstBossBigSpikeWidth
+hazardScanner.GetCustomTrajectoryWidth = trajectory.GetCustomWidth
+hazardScanner.SetCustomTrajectoryWidth = trajectory.SetCustomWidth
 hazardScanner.RefreshTrajectory = trajectory.RefreshAll
 hazardScanner.IsPointInAnyTrajectory = trajectory.IsPointInAnyTrajectory
 hazardScanner.GetNearbyTrajectories = trajectory.GetNearbyTrajectories
