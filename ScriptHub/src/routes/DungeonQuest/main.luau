@@ -114,7 +114,9 @@ return function(self)
 	local coordinator = require("@routes/DungeonQuest/core/coordinator")
 
 	coordinator.SetLocked(true)
-	macLib:LoadAutoLoadConfig()
+	pcall(function()
+		macLib:LoadAutoLoadConfig()
+	end)
 
 	--// Đồng bộ config autoload vào autoSave: nếu không gọi SetActive thì
 	--// autoSave.Save() sẽ KHÔNG lưu bất kỳ slider/toggle nào khi thay đổi.

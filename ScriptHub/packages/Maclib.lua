@@ -4776,213 +4776,248 @@ function MacLib:Window(Settings)
 		return SectionFunctions
 	end
 
+	local function elevateThreadIdentity()
+		if setthreadidentity then
+			pcall(setthreadidentity, 7)
+		elseif set_thread_identity then
+			pcall(set_thread_identity, 7)
+		elseif setidentity then
+			pcall(setidentity, 7)
+		elseif syn and syn.set_thread_identity then
+			pcall(syn.set_thread_identity, 7)
+		end
+	end
+
 	function WindowFunctions:Notify(Settings)
+		elevateThreadIdentity()
+
 		local NotificationFunctions = {}
+		local buildSuccess, buildErr = pcall(function()
+			local notification = Instance.new("Frame")
+			notification.Name = "Notification"
+			notification.AnchorPoint = Vector2.new(0.5, 0.5)
+			notification.AutomaticSize = Enum.AutomaticSize.Y
+			notification.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+			notification.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notification.BorderSizePixel = 0
+			notification.Position = UDim2.fromScale(0.5, 0.5)
+			notification.Size = UDim2.fromOffset(Settings.SizeX or 250, 0)
 
-		local notification = Instance.new("Frame")
-		notification.Name = "Notification"
-		notification.AnchorPoint = Vector2.new(0.5, 0.5)
-		notification.AutomaticSize = Enum.AutomaticSize.Y
-		notification.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-		notification.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notification.BorderSizePixel = 0
-		notification.Position = UDim2.fromScale(0.5, 0.5)
-		notification.Size = UDim2.fromOffset(Settings.SizeX or 250, 0)
+			notification.Parent = notifications
 
-		notification.Parent = notifications
+			local notificationUIStroke = Instance.new("UIStroke")
+			notificationUIStroke.Name = "NotificationUIStroke"
+			notificationUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			notificationUIStroke.Color = Color3.fromRGB(255, 255, 255)
+			notificationUIStroke.Transparency = 0.9
+			notificationUIStroke.Parent = notification
 
-		local notificationUIStroke = Instance.new("UIStroke")
-		notificationUIStroke.Name = "NotificationUIStroke"
-		notificationUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		notificationUIStroke.Color = Color3.fromRGB(255, 255, 255)
-		notificationUIStroke.Transparency = 0.9
-		notificationUIStroke.Parent = notification
+			local notificationUICorner = Instance.new("UICorner")
+			notificationUICorner.Name = "NotificationUICorner"
+			notificationUICorner.CornerRadius = UDim.new(0, 10)
+			notificationUICorner.Parent = notification
 
-		local notificationUICorner = Instance.new("UICorner")
-		notificationUICorner.Name = "NotificationUICorner"
-		notificationUICorner.CornerRadius = UDim.new(0, 10)
-		notificationUICorner.Parent = notification
+			local notificationUIScale = Instance.new("UIScale")
+			notificationUIScale.Name = "NotificationUIScale"
+			notificationUIScale.Parent = notification
+			notificationUIScale.Scale = 0
 
-		local notificationUIScale = Instance.new("UIScale")
-		notificationUIScale.Name = "NotificationUIScale"
-		notificationUIScale.Parent = notification
-		notificationUIScale.Scale = 0
+			local notificationInformation = Instance.new("Frame")
+			notificationInformation.Name = "NotificationInformation"
+			notificationInformation.AutomaticSize = Enum.AutomaticSize.Y
+			notificationInformation.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationInformation.BackgroundTransparency = 1
+			notificationInformation.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationInformation.BorderSizePixel = 0
+			notificationInformation.Size = UDim2.fromScale(1, 1)
 
-		local notificationInformation = Instance.new("Frame")
-		notificationInformation.Name = "NotificationInformation"
-		notificationInformation.AutomaticSize = Enum.AutomaticSize.Y
-		notificationInformation.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationInformation.BackgroundTransparency = 1
-		notificationInformation.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationInformation.BorderSizePixel = 0
-		notificationInformation.Size = UDim2.fromScale(1, 1)
+			local notificationTitle = Instance.new("TextLabel")
+			notificationTitle.Name = "NotificationTitle"
+			notificationTitle.FontFace = Font.new(
+				assets.interFont,
+				Enum.FontWeight.SemiBold,
+				Enum.FontStyle.Normal
+			)
+			notificationTitle.RichText = true
+			notificationTitle.Text = Settings.Title
+			notificationTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+			notificationTitle.TextSize = 13
+			notificationTitle.TextTransparency = 0.2
+			notificationTitle.TextTruncate = Enum.TextTruncate.SplitWord
+			notificationTitle.TextXAlignment = Enum.TextXAlignment.Left
+			notificationTitle.TextYAlignment = Enum.TextYAlignment.Top
+			notificationTitle.AutomaticSize = Enum.AutomaticSize.XY
+			notificationTitle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationTitle.BackgroundTransparency = 1
+			notificationTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationTitle.BorderSizePixel = 0
+			notificationTitle.Size = UDim2.new(1, -12, 0, 0)
 
-		local notificationTitle = Instance.new("TextLabel")
-		notificationTitle.Name = "NotificationTitle"
-		notificationTitle.FontFace = Font.new(
-			assets.interFont,
-			Enum.FontWeight.SemiBold,
-			Enum.FontStyle.Normal
-		)
-		notificationTitle.RichText = true
-		notificationTitle.Text = Settings.Title
-		notificationTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-		notificationTitle.TextSize = 13
-		notificationTitle.TextTransparency = 0.2
-		notificationTitle.TextTruncate = Enum.TextTruncate.SplitWord
-		notificationTitle.TextXAlignment = Enum.TextXAlignment.Left
-		notificationTitle.TextYAlignment = Enum.TextYAlignment.Top
-		notificationTitle.AutomaticSize = Enum.AutomaticSize.XY
-		notificationTitle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationTitle.BackgroundTransparency = 1
-		notificationTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationTitle.BorderSizePixel = 0
-		notificationTitle.Size = UDim2.new(1, -12, 0, 0)
+			local notificationTitleUIPadding = Instance.new("UIPadding")
+			notificationTitleUIPadding.Name = "NotificationTitleUIPadding"
+			notificationTitleUIPadding.PaddingRight = UDim.new(0, 25)
+			notificationTitleUIPadding.Parent = notificationTitle
 
-		local notificationTitleUIPadding = Instance.new("UIPadding")
-		notificationTitleUIPadding.Name = "NotificationTitleUIPadding"
-		notificationTitleUIPadding.PaddingRight = UDim.new(0, 25)
-		notificationTitleUIPadding.Parent = notificationTitle
+			notificationTitle.Parent = notificationInformation
 
-		notificationTitle.Parent = notificationInformation
+			local notificationDescription = Instance.new("TextLabel")
+			notificationDescription.Name = "NotificationDescription"
+			notificationDescription.FontFace = Font.new(
+				assets.interFont,
+				Enum.FontWeight.Medium,
+				Enum.FontStyle.Normal
+			)
+			notificationDescription.Text = Settings.Description
+			notificationDescription.TextColor3 = Color3.fromRGB(255, 255, 255)
+			notificationDescription.TextSize = 11
+			notificationDescription.TextTransparency = 0.5
+			notificationDescription.TextWrapped = true
+			notificationDescription.RichText = true
+			notificationDescription.TextXAlignment = Enum.TextXAlignment.Left
+			notificationDescription.TextYAlignment = Enum.TextYAlignment.Top
+			notificationDescription.AutomaticSize = Enum.AutomaticSize.XY
+			notificationDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationDescription.BackgroundTransparency = 1
+			notificationDescription.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationDescription.BorderSizePixel = 0
+			notificationDescription.Size = UDim2.new(1, -12, 0, 0)
 
-		local notificationDescription = Instance.new("TextLabel")
-		notificationDescription.Name = "NotificationDescription"
-		notificationDescription.FontFace = Font.new(
-			assets.interFont,
-			Enum.FontWeight.Medium,
-			Enum.FontStyle.Normal
-		)
-		notificationDescription.Text = Settings.Description
-		notificationDescription.TextColor3 = Color3.fromRGB(255, 255, 255)
-		notificationDescription.TextSize = 11
-		notificationDescription.TextTransparency = 0.5
-		notificationDescription.TextWrapped = true
-		notificationDescription.RichText = true
-		notificationDescription.TextXAlignment = Enum.TextXAlignment.Left
-		notificationDescription.TextYAlignment = Enum.TextYAlignment.Top
-		notificationDescription.AutomaticSize = Enum.AutomaticSize.XY
-		notificationDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationDescription.BackgroundTransparency = 1
-		notificationDescription.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationDescription.BorderSizePixel = 0
-		notificationDescription.Size = UDim2.new(1, -12, 0, 0)
+			local notificationDescriptionUIPadding = Instance.new("UIPadding")
+			notificationDescriptionUIPadding.Name = "NotificationDescriptionUIPadding"
+			notificationDescriptionUIPadding.PaddingRight = UDim.new(0, 25)
+			notificationDescriptionUIPadding.PaddingTop = UDim.new(0, 17)
+			notificationDescriptionUIPadding.Parent = notificationDescription
 
-		local notificationDescriptionUIPadding = Instance.new("UIPadding")
-		notificationDescriptionUIPadding.Name = "NotificationDescriptionUIPadding"
-		notificationDescriptionUIPadding.PaddingRight = UDim.new(0, 25)
-		notificationDescriptionUIPadding.PaddingTop = UDim.new(0, 17)
-		notificationDescriptionUIPadding.Parent = notificationDescription
+			notificationDescription.Parent = notificationInformation
 
-		notificationDescription.Parent = notificationInformation
+			local notificationUIPadding = Instance.new("UIPadding")
+			notificationUIPadding.Name = "NotificationUIPadding"
+			notificationUIPadding.PaddingBottom = UDim.new(0, 12)
+			notificationUIPadding.PaddingLeft = UDim.new(0, 10)
+			notificationUIPadding.PaddingRight = UDim.new(0, 10)
+			notificationUIPadding.PaddingTop = UDim.new(0, 10)
+			notificationUIPadding.Parent = notificationInformation
 
-		local notificationUIPadding = Instance.new("UIPadding")
-		notificationUIPadding.Name = "NotificationUIPadding"
-		notificationUIPadding.PaddingBottom = UDim.new(0, 12)
-		notificationUIPadding.PaddingLeft = UDim.new(0, 10)
-		notificationUIPadding.PaddingRight = UDim.new(0, 10)
-		notificationUIPadding.PaddingTop = UDim.new(0, 10)
-		notificationUIPadding.Parent = notificationInformation
+			notificationInformation.Parent = notification
 
-		notificationInformation.Parent = notification
+			local notificationControls = Instance.new("Frame")
+			notificationControls.Name = "NotificationControls"
+			notificationControls.AutomaticSize = Enum.AutomaticSize.Y
+			notificationControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationControls.BackgroundTransparency = 1
+			notificationControls.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationControls.BorderSizePixel = 0
+			notificationControls.Size = UDim2.fromScale(1, 1)
 
-		local notificationControls = Instance.new("Frame")
-		notificationControls.Name = "NotificationControls"
-		notificationControls.AutomaticSize = Enum.AutomaticSize.Y
-		notificationControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationControls.BackgroundTransparency = 1
-		notificationControls.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationControls.BorderSizePixel = 0
-		notificationControls.Size = UDim2.fromScale(1, 1)
+			local interactable = Instance.new("TextButton")
+			interactable.Name = "Interactable"
+			interactable.FontFace = Font.new(assets.interFont)
+			interactable.Text = "✓"
+			interactable.TextColor3 = Color3.fromRGB(255, 255, 255)
+			interactable.TextSize = 17
+			interactable.TextTransparency = 0.2
+			interactable.AnchorPoint = Vector2.new(1, 0.5)
+			interactable.AutomaticSize = Enum.AutomaticSize.XY
+			interactable.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			interactable.BackgroundTransparency = 1
+			interactable.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			interactable.BorderSizePixel = 0
+			interactable.LayoutOrder = 1
+			interactable.Position = UDim2.fromScale(1, 0.5)
+			interactable.Parent = notificationControls
 
-		local interactable = Instance.new("TextButton")
-		interactable.Name = "Interactable"
-		interactable.FontFace = Font.new(assets.interFont)
-		interactable.Text = "✓"
-		interactable.TextColor3 = Color3.fromRGB(255, 255, 255)
-		interactable.TextSize = 17
-		interactable.TextTransparency = 0.2
-		interactable.AnchorPoint = Vector2.new(1, 0.5)
-		interactable.AutomaticSize = Enum.AutomaticSize.XY
-		interactable.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		interactable.BackgroundTransparency = 1
-		interactable.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		interactable.BorderSizePixel = 0
-		interactable.LayoutOrder = 1
-		interactable.Position = UDim2.fromScale(1, 0.5)
-		interactable.Parent = notificationControls
+			local uIPadding = Instance.new("UIPadding")
+			uIPadding.Name = "UIPadding"
+			uIPadding.PaddingBottom = UDim.new(0, 6)
+			uIPadding.PaddingRight = UDim.new(0, 13)
+			uIPadding.PaddingTop = UDim.new(0, 6)
+			uIPadding.Parent = notificationControls
 
-		local uIPadding = Instance.new("UIPadding")
-		uIPadding.Name = "UIPadding"
-		uIPadding.PaddingBottom = UDim.new(0, 6)
-		uIPadding.PaddingRight = UDim.new(0, 13)
-		uIPadding.PaddingTop = UDim.new(0, 6)
-		uIPadding.Parent = notificationControls
+			notificationControls.Parent = notification
 
-		notificationControls.Parent = notification
+			local tweens = {
+				In = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+					Scale = Settings.Scale or 1
+				}),
+				Out = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+					Scale = 0
+				}),
+			}
 
-		local tweens = {
-			In = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
-				Scale = Settings.Scale or 1
-			}),
-			Out = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
-				Scale = 0
-			}),
-		}
+			local styles = {
+				None = function() interactable:Destroy() end,
+				Confirm = function() interactable.Text = "✓" end,
+				Cancel = function() interactable.Text = "✗" end
+			}
 
-		local styles = {
-			None = function() interactable:Destroy() end,
-			Confirm = function() interactable.Text = "✓" end,
-			Cancel = function() interactable.Text = "✗" end
-		}
+			local style = styles[Settings.Style] or function() interactable:Destroy() end
+			style()
 
-		local style = styles[Settings.Style] or function() interactable:Destroy() end
-		style()
+			if interactable then
+				interactable.MouseButton1Click:Connect(function()
+					NotificationFunctions:Cancel()
+					if Settings.Callback then
+						task.spawn(Settings.Callback)
+					end
+				end)
+			end
 
-		if interactable then
-			interactable.MouseButton1Click:Connect(function()
-				NotificationFunctions:Cancel()
-				if Settings.Callback then
-					task.spawn(Settings.Callback)
+			local AnimateNotification = task.spawn(function()
+				elevateThreadIdentity()
+				tweens.In:Play()
+
+				Settings.Lifetime = Settings.Lifetime or 3
+
+				if Settings.Lifetime ~= 0 then
+					task.wait(Settings.Lifetime)
+
+					local out = tweens.Out
+					out:Play()
+					out.Completed:Wait()
+					elevateThreadIdentity()
+					pcall(function() notification:Destroy() end)
 				end
 			end)
-		end
 
-		local AnimateNotification = task.spawn(function()
-			tweens.In:Play()
+			function NotificationFunctions:UpdateTitle(New)
+				notificationTitle.Text = New
+			end
 
-			Settings.Lifetime = Settings.Lifetime or 3
+			function NotificationFunctions:UpdateDescription(New)
+				notificationDescription.Text = New
+			end
 
-			if Settings.Lifetime ~= 0 then
-				task.wait(Settings.Lifetime)
+			function NotificationFunctions:Resize(X)
+				local targ = X or 250
+				notification.Size = UDim2.fromOffset(targ, 0)
+			end
+
+			function NotificationFunctions:Cancel()
+				elevateThreadIdentity()
+				task.cancel(AnimateNotification)
 
 				local out = tweens.Out
 				out:Play()
 				out.Completed:Wait()
-				notification:Destroy()
+				pcall(function() notification:Destroy() end)
 			end
 		end)
 
-		function NotificationFunctions:UpdateTitle(New)
-			notificationTitle.Text = New
-		end
-
-		function NotificationFunctions:UpdateDescription(New)
-			notificationDescription.Text = New
-		end
-
-		function NotificationFunctions:Resize(X)
-			local targ = X or 250
-			notification.Size = UDim2.fromOffset(targ, 0)
-		end
-
-		function NotificationFunctions:Cancel()
-			task.cancel(AnimateNotification)
-
-			local out = tweens.Out
-			out:Play()
-			out.Completed:Wait()
-			notification:Destroy()
+		if not buildSuccess then
+			pcall(function()
+				local StarterGui = MacLib.GetService("StarterGui") or game:GetService("StarterGui")
+				StarterGui:SetCore("SendNotification", {
+					Title = Settings.Title or "Interface",
+					Text = Settings.Description or "",
+					Duration = Settings.Lifetime or 3,
+				})
+			end)
+			return {
+				UpdateTitle = function() end,
+				UpdateDescription = function() end,
+				Resize = function() end,
+				Cancel = function() end,
+			}
 		end
 
 		return NotificationFunctions
@@ -5504,16 +5539,21 @@ function MacLib:Window(Settings)
 
 			local suc, err = MacLib:LoadConfig(name)
 			if not suc then
-				WindowFunctions:Notify({
-					Title = "Interface",
-					Description = "Error loading autoload config: " .. err
-				})
+				pcall(function()
+					WindowFunctions:Notify({
+						Title = "Interface",
+						Description = "Error loading autoload config: " .. tostring(err)
+					})
+				end)
+				return
 			end
 
-			WindowFunctions:Notify({
-				Title = "Interface",
-				Description = string.format("Autoloaded config: %q", name),
-			})
+			pcall(function()
+				WindowFunctions:Notify({
+					Title = "Interface",
+					Description = string.format("Autoloaded config: %q", name),
+				})
+			end)
 		end
 	end
 

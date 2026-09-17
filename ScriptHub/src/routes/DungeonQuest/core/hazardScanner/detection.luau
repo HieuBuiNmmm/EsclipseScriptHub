@@ -172,8 +172,9 @@ end
 local function getBaseParts(instance)
 	if not instance then return {} end
 	local parts = {}
+	local isBeam = isBeamTelegraph(instance.Name)
 	local function addPart(part)
-		if part and part.Parent and (part.Transparency <= FADE_TRANSPARENCY_THRESHOLD or isBeamTelegraph(part.Name) or isBeamTelegraph(instance.Name)) then
+		if part and part.Parent and (part.Transparency <= FADE_TRANSPARENCY_THRESHOLD or isBeam) then
 			parts[#parts + 1] = part
 		end
 	end

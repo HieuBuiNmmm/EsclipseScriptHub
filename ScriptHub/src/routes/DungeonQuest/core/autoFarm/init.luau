@@ -391,13 +391,22 @@ local function stepMovementLoop(deltaTime)
 		local approachDir = flatDelta.Magnitude > 0.1 and flatDelta.Unit or Vector3.new(0, 0, 1)
 
 		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
+		-- Quét 3 tia song song: Tia trung tâm + 2 tia 2 bên (trái & phải) cách 1.2 studs mô phỏng toàn bộ bề rộng thân nhân vật
 		local dangerAhead = false
 		if shouldCheckDanger then
+			local sideOffset = Vector3.new(-approachDir.Z, 0, approachDir.X) * 1.2
+
 			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
 			for _, stepDist in ipairs({ 3, 6, 10 }) do
 				if stepDist < flatDist then
-					local checkPoint = playerPos + approachDir * stepDist
-					if not hazardScanner.IsPointSafe(checkPoint, 0.5) then
+					local checkPointCenter = playerPos + approachDir * stepDist
+					local checkPointLeft = checkPointCenter + sideOffset
+					local checkPointRight = checkPointCenter - sideOffset
+
+					if not hazardScanner.IsPointSafe(checkPointCenter, 0.5)
+						or not hazardScanner.IsPointSafe(checkPointLeft, 0.5)
+						or not hazardScanner.IsPointSafe(checkPointRight, 0.5)
+					then
 						dangerAhead = true
 						break
 					end

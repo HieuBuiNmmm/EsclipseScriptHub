@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-17T04:26:04.284547900+00:00",
+    genDate = "2026-09-17T05:40:28.029523+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -4832,213 +4832,248 @@ function MacLib:Window(Settings)
 		return SectionFunctions
 	end
 
+	local function elevateThreadIdentity()
+		if setthreadidentity then
+			pcall(setthreadidentity, 7)
+		elseif set_thread_identity then
+			pcall(set_thread_identity, 7)
+		elseif setidentity then
+			pcall(setidentity, 7)
+		elseif syn and syn.set_thread_identity then
+			pcall(syn.set_thread_identity, 7)
+		end
+	end
+
 	function WindowFunctions:Notify(Settings)
+		elevateThreadIdentity()
+
 		local NotificationFunctions = {}
+		local buildSuccess, buildErr = pcall(function()
+			local notification = Instance.new("Frame")
+			notification.Name = "Notification"
+			notification.AnchorPoint = Vector2.new(0.5, 0.5)
+			notification.AutomaticSize = Enum.AutomaticSize.Y
+			notification.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+			notification.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notification.BorderSizePixel = 0
+			notification.Position = UDim2.fromScale(0.5, 0.5)
+			notification.Size = UDim2.fromOffset(Settings.SizeX or 250, 0)
 
-		local notification = Instance.new("Frame")
-		notification.Name = "Notification"
-		notification.AnchorPoint = Vector2.new(0.5, 0.5)
-		notification.AutomaticSize = Enum.AutomaticSize.Y
-		notification.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-		notification.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notification.BorderSizePixel = 0
-		notification.Position = UDim2.fromScale(0.5, 0.5)
-		notification.Size = UDim2.fromOffset(Settings.SizeX or 250, 0)
+			notification.Parent = notifications
 
-		notification.Parent = notifications
+			local notificationUIStroke = Instance.new("UIStroke")
+			notificationUIStroke.Name = "NotificationUIStroke"
+			notificationUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			notificationUIStroke.Color = Color3.fromRGB(255, 255, 255)
+			notificationUIStroke.Transparency = 0.9
+			notificationUIStroke.Parent = notification
 
-		local notificationUIStroke = Instance.new("UIStroke")
-		notificationUIStroke.Name = "NotificationUIStroke"
-		notificationUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		notificationUIStroke.Color = Color3.fromRGB(255, 255, 255)
-		notificationUIStroke.Transparency = 0.9
-		notificationUIStroke.Parent = notification
+			local notificationUICorner = Instance.new("UICorner")
+			notificationUICorner.Name = "NotificationUICorner"
+			notificationUICorner.CornerRadius = UDim.new(0, 10)
+			notificationUICorner.Parent = notification
 
-		local notificationUICorner = Instance.new("UICorner")
-		notificationUICorner.Name = "NotificationUICorner"
-		notificationUICorner.CornerRadius = UDim.new(0, 10)
-		notificationUICorner.Parent = notification
+			local notificationUIScale = Instance.new("UIScale")
+			notificationUIScale.Name = "NotificationUIScale"
+			notificationUIScale.Parent = notification
+			notificationUIScale.Scale = 0
 
-		local notificationUIScale = Instance.new("UIScale")
-		notificationUIScale.Name = "NotificationUIScale"
-		notificationUIScale.Parent = notification
-		notificationUIScale.Scale = 0
+			local notificationInformation = Instance.new("Frame")
+			notificationInformation.Name = "NotificationInformation"
+			notificationInformation.AutomaticSize = Enum.AutomaticSize.Y
+			notificationInformation.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationInformation.BackgroundTransparency = 1
+			notificationInformation.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationInformation.BorderSizePixel = 0
+			notificationInformation.Size = UDim2.fromScale(1, 1)
 
-		local notificationInformation = Instance.new("Frame")
-		notificationInformation.Name = "NotificationInformation"
-		notificationInformation.AutomaticSize = Enum.AutomaticSize.Y
-		notificationInformation.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationInformation.BackgroundTransparency = 1
-		notificationInformation.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationInformation.BorderSizePixel = 0
-		notificationInformation.Size = UDim2.fromScale(1, 1)
+			local notificationTitle = Instance.new("TextLabel")
+			notificationTitle.Name = "NotificationTitle"
+			notificationTitle.FontFace = Font.new(
+				assets.interFont,
+				Enum.FontWeight.SemiBold,
+				Enum.FontStyle.Normal
+			)
+			notificationTitle.RichText = true
+			notificationTitle.Text = Settings.Title
+			notificationTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+			notificationTitle.TextSize = 13
+			notificationTitle.TextTransparency = 0.2
+			notificationTitle.TextTruncate = Enum.TextTruncate.SplitWord
+			notificationTitle.TextXAlignment = Enum.TextXAlignment.Left
+			notificationTitle.TextYAlignment = Enum.TextYAlignment.Top
+			notificationTitle.AutomaticSize = Enum.AutomaticSize.XY
+			notificationTitle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationTitle.BackgroundTransparency = 1
+			notificationTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationTitle.BorderSizePixel = 0
+			notificationTitle.Size = UDim2.new(1, -12, 0, 0)
 
-		local notificationTitle = Instance.new("TextLabel")
-		notificationTitle.Name = "NotificationTitle"
-		notificationTitle.FontFace = Font.new(
-			assets.interFont,
-			Enum.FontWeight.SemiBold,
-			Enum.FontStyle.Normal
-		)
-		notificationTitle.RichText = true
-		notificationTitle.Text = Settings.Title
-		notificationTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-		notificationTitle.TextSize = 13
-		notificationTitle.TextTransparency = 0.2
-		notificationTitle.TextTruncate = Enum.TextTruncate.SplitWord
-		notificationTitle.TextXAlignment = Enum.TextXAlignment.Left
-		notificationTitle.TextYAlignment = Enum.TextYAlignment.Top
-		notificationTitle.AutomaticSize = Enum.AutomaticSize.XY
-		notificationTitle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationTitle.BackgroundTransparency = 1
-		notificationTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationTitle.BorderSizePixel = 0
-		notificationTitle.Size = UDim2.new(1, -12, 0, 0)
+			local notificationTitleUIPadding = Instance.new("UIPadding")
+			notificationTitleUIPadding.Name = "NotificationTitleUIPadding"
+			notificationTitleUIPadding.PaddingRight = UDim.new(0, 25)
+			notificationTitleUIPadding.Parent = notificationTitle
 
-		local notificationTitleUIPadding = Instance.new("UIPadding")
-		notificationTitleUIPadding.Name = "NotificationTitleUIPadding"
-		notificationTitleUIPadding.PaddingRight = UDim.new(0, 25)
-		notificationTitleUIPadding.Parent = notificationTitle
+			notificationTitle.Parent = notificationInformation
 
-		notificationTitle.Parent = notificationInformation
+			local notificationDescription = Instance.new("TextLabel")
+			notificationDescription.Name = "NotificationDescription"
+			notificationDescription.FontFace = Font.new(
+				assets.interFont,
+				Enum.FontWeight.Medium,
+				Enum.FontStyle.Normal
+			)
+			notificationDescription.Text = Settings.Description
+			notificationDescription.TextColor3 = Color3.fromRGB(255, 255, 255)
+			notificationDescription.TextSize = 11
+			notificationDescription.TextTransparency = 0.5
+			notificationDescription.TextWrapped = true
+			notificationDescription.RichText = true
+			notificationDescription.TextXAlignment = Enum.TextXAlignment.Left
+			notificationDescription.TextYAlignment = Enum.TextYAlignment.Top
+			notificationDescription.AutomaticSize = Enum.AutomaticSize.XY
+			notificationDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationDescription.BackgroundTransparency = 1
+			notificationDescription.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationDescription.BorderSizePixel = 0
+			notificationDescription.Size = UDim2.new(1, -12, 0, 0)
 
-		local notificationDescription = Instance.new("TextLabel")
-		notificationDescription.Name = "NotificationDescription"
-		notificationDescription.FontFace = Font.new(
-			assets.interFont,
-			Enum.FontWeight.Medium,
-			Enum.FontStyle.Normal
-		)
-		notificationDescription.Text = Settings.Description
-		notificationDescription.TextColor3 = Color3.fromRGB(255, 255, 255)
-		notificationDescription.TextSize = 11
-		notificationDescription.TextTransparency = 0.5
-		notificationDescription.TextWrapped = true
-		notificationDescription.RichText = true
-		notificationDescription.TextXAlignment = Enum.TextXAlignment.Left
-		notificationDescription.TextYAlignment = Enum.TextYAlignment.Top
-		notificationDescription.AutomaticSize = Enum.AutomaticSize.XY
-		notificationDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationDescription.BackgroundTransparency = 1
-		notificationDescription.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationDescription.BorderSizePixel = 0
-		notificationDescription.Size = UDim2.new(1, -12, 0, 0)
+			local notificationDescriptionUIPadding = Instance.new("UIPadding")
+			notificationDescriptionUIPadding.Name = "NotificationDescriptionUIPadding"
+			notificationDescriptionUIPadding.PaddingRight = UDim.new(0, 25)
+			notificationDescriptionUIPadding.PaddingTop = UDim.new(0, 17)
+			notificationDescriptionUIPadding.Parent = notificationDescription
 
-		local notificationDescriptionUIPadding = Instance.new("UIPadding")
-		notificationDescriptionUIPadding.Name = "NotificationDescriptionUIPadding"
-		notificationDescriptionUIPadding.PaddingRight = UDim.new(0, 25)
-		notificationDescriptionUIPadding.PaddingTop = UDim.new(0, 17)
-		notificationDescriptionUIPadding.Parent = notificationDescription
+			notificationDescription.Parent = notificationInformation
 
-		notificationDescription.Parent = notificationInformation
+			local notificationUIPadding = Instance.new("UIPadding")
+			notificationUIPadding.Name = "NotificationUIPadding"
+			notificationUIPadding.PaddingBottom = UDim.new(0, 12)
+			notificationUIPadding.PaddingLeft = UDim.new(0, 10)
+			notificationUIPadding.PaddingRight = UDim.new(0, 10)
+			notificationUIPadding.PaddingTop = UDim.new(0, 10)
+			notificationUIPadding.Parent = notificationInformation
 
-		local notificationUIPadding = Instance.new("UIPadding")
-		notificationUIPadding.Name = "NotificationUIPadding"
-		notificationUIPadding.PaddingBottom = UDim.new(0, 12)
-		notificationUIPadding.PaddingLeft = UDim.new(0, 10)
-		notificationUIPadding.PaddingRight = UDim.new(0, 10)
-		notificationUIPadding.PaddingTop = UDim.new(0, 10)
-		notificationUIPadding.Parent = notificationInformation
+			notificationInformation.Parent = notification
 
-		notificationInformation.Parent = notification
+			local notificationControls = Instance.new("Frame")
+			notificationControls.Name = "NotificationControls"
+			notificationControls.AutomaticSize = Enum.AutomaticSize.Y
+			notificationControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationControls.BackgroundTransparency = 1
+			notificationControls.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationControls.BorderSizePixel = 0
+			notificationControls.Size = UDim2.fromScale(1, 1)
 
-		local notificationControls = Instance.new("Frame")
-		notificationControls.Name = "NotificationControls"
-		notificationControls.AutomaticSize = Enum.AutomaticSize.Y
-		notificationControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		notificationControls.BackgroundTransparency = 1
-		notificationControls.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		notificationControls.BorderSizePixel = 0
-		notificationControls.Size = UDim2.fromScale(1, 1)
+			local interactable = Instance.new("TextButton")
+			interactable.Name = "Interactable"
+			interactable.FontFace = Font.new(assets.interFont)
+			interactable.Text = "✓"
+			interactable.TextColor3 = Color3.fromRGB(255, 255, 255)
+			interactable.TextSize = 17
+			interactable.TextTransparency = 0.2
+			interactable.AnchorPoint = Vector2.new(1, 0.5)
+			interactable.AutomaticSize = Enum.AutomaticSize.XY
+			interactable.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			interactable.BackgroundTransparency = 1
+			interactable.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			interactable.BorderSizePixel = 0
+			interactable.LayoutOrder = 1
+			interactable.Position = UDim2.fromScale(1, 0.5)
+			interactable.Parent = notificationControls
 
-		local interactable = Instance.new("TextButton")
-		interactable.Name = "Interactable"
-		interactable.FontFace = Font.new(assets.interFont)
-		interactable.Text = "✓"
-		interactable.TextColor3 = Color3.fromRGB(255, 255, 255)
-		interactable.TextSize = 17
-		interactable.TextTransparency = 0.2
-		interactable.AnchorPoint = Vector2.new(1, 0.5)
-		interactable.AutomaticSize = Enum.AutomaticSize.XY
-		interactable.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-		interactable.BackgroundTransparency = 1
-		interactable.BorderColor3 = Color3.fromRGB(0, 0, 0)
-		interactable.BorderSizePixel = 0
-		interactable.LayoutOrder = 1
-		interactable.Position = UDim2.fromScale(1, 0.5)
-		interactable.Parent = notificationControls
+			local uIPadding = Instance.new("UIPadding")
+			uIPadding.Name = "UIPadding"
+			uIPadding.PaddingBottom = UDim.new(0, 6)
+			uIPadding.PaddingRight = UDim.new(0, 13)
+			uIPadding.PaddingTop = UDim.new(0, 6)
+			uIPadding.Parent = notificationControls
 
-		local uIPadding = Instance.new("UIPadding")
-		uIPadding.Name = "UIPadding"
-		uIPadding.PaddingBottom = UDim.new(0, 6)
-		uIPadding.PaddingRight = UDim.new(0, 13)
-		uIPadding.PaddingTop = UDim.new(0, 6)
-		uIPadding.Parent = notificationControls
+			notificationControls.Parent = notification
 
-		notificationControls.Parent = notification
+			local tweens = {
+				In = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+					Scale = Settings.Scale or 1
+				}),
+				Out = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+					Scale = 0
+				}),
+			}
 
-		local tweens = {
-			In = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
-				Scale = Settings.Scale or 1
-			}),
-			Out = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
-				Scale = 0
-			}),
-		}
+			local styles = {
+				None = function() interactable:Destroy() end,
+				Confirm = function() interactable.Text = "✓" end,
+				Cancel = function() interactable.Text = "✗" end
+			}
 
-		local styles = {
-			None = function() interactable:Destroy() end,
-			Confirm = function() interactable.Text = "✓" end,
-			Cancel = function() interactable.Text = "✗" end
-		}
+			local style = styles[Settings.Style] or function() interactable:Destroy() end
+			style()
 
-		local style = styles[Settings.Style] or function() interactable:Destroy() end
-		style()
+			if interactable then
+				interactable.MouseButton1Click:Connect(function()
+					NotificationFunctions:Cancel()
+					if Settings.Callback then
+						task.spawn(Settings.Callback)
+					end
+				end)
+			end
 
-		if interactable then
-			interactable.MouseButton1Click:Connect(function()
-				NotificationFunctions:Cancel()
-				if Settings.Callback then
-					task.spawn(Settings.Callback)
+			local AnimateNotification = task.spawn(function()
+				elevateThreadIdentity()
+				tweens.In:Play()
+
+				Settings.Lifetime = Settings.Lifetime or 3
+
+				if Settings.Lifetime ~= 0 then
+					task.wait(Settings.Lifetime)
+
+					local out = tweens.Out
+					out:Play()
+					out.Completed:Wait()
+					elevateThreadIdentity()
+					pcall(function() notification:Destroy() end)
 				end
 			end)
-		end
 
-		local AnimateNotification = task.spawn(function()
-			tweens.In:Play()
+			function NotificationFunctions:UpdateTitle(New)
+				notificationTitle.Text = New
+			end
 
-			Settings.Lifetime = Settings.Lifetime or 3
+			function NotificationFunctions:UpdateDescription(New)
+				notificationDescription.Text = New
+			end
 
-			if Settings.Lifetime ~= 0 then
-				task.wait(Settings.Lifetime)
+			function NotificationFunctions:Resize(X)
+				local targ = X or 250
+				notification.Size = UDim2.fromOffset(targ, 0)
+			end
+
+			function NotificationFunctions:Cancel()
+				elevateThreadIdentity()
+				task.cancel(AnimateNotification)
 
 				local out = tweens.Out
 				out:Play()
 				out.Completed:Wait()
-				notification:Destroy()
+				pcall(function() notification:Destroy() end)
 			end
 		end)
 
-		function NotificationFunctions:UpdateTitle(New)
-			notificationTitle.Text = New
-		end
-
-		function NotificationFunctions:UpdateDescription(New)
-			notificationDescription.Text = New
-		end
-
-		function NotificationFunctions:Resize(X)
-			local targ = X or 250
-			notification.Size = UDim2.fromOffset(targ, 0)
-		end
-
-		function NotificationFunctions:Cancel()
-			task.cancel(AnimateNotification)
-
-			local out = tweens.Out
-			out:Play()
-			out.Completed:Wait()
-			notification:Destroy()
+		if not buildSuccess then
+			pcall(function()
+				local StarterGui = MacLib.GetService("StarterGui") or game:GetService("StarterGui")
+				StarterGui:SetCore("SendNotification", {
+					Title = Settings.Title or "Interface",
+					Text = Settings.Description or "",
+					Duration = Settings.Lifetime or 3,
+				})
+			end)
+			return {
+				UpdateTitle = function() end,
+				UpdateDescription = function() end,
+				Resize = function() end,
+				Cancel = function() end,
+			}
 		end
 
 		return NotificationFunctions
@@ -5560,16 +5595,21 @@ function MacLib:Window(Settings)
 
 			local suc, err = MacLib:LoadConfig(name)
 			if not suc then
-				WindowFunctions:Notify({
-					Title = "Interface",
-					Description = "Error loading autoload config: " .. err
-				})
+				pcall(function()
+					WindowFunctions:Notify({
+						Title = "Interface",
+						Description = "Error loading autoload config: " .. tostring(err)
+					})
+				end)
+				return
 			end
 
-			WindowFunctions:Notify({
-				Title = "Interface",
-				Description = string.format("Autoloaded config: %q", name),
-			})
+			pcall(function()
+				WindowFunctions:Notify({
+					Title = "Interface",
+					Description = string.format("Autoloaded config: %q", name),
+				})
+			end)
 		end
 	end
 
@@ -9238,6 +9278,7 @@ local customLengths = {
 }
 local customWidths = {
 	["firstbossbigspike"] = 28,
+	["firstbossseekingspikes"] = 10,
 }
 local activeRecords = {} -- [hazardInfo] = { ad = BoxHandleAdornment, mainPart = BasePart, connections = {}, lastPos = Vector3, lastClock = number, velocity = Vector3, dir = Vector3, isMoving = boolean }
 local heartbeatConnection = nil
@@ -9254,7 +9295,7 @@ local MOVING_SPEED_THRESHOLD = 3.5 -- studs/s (ngưỡng tốc độ để coi l
 --//   "target_player" (hoặc true): Hướng thẳng từ vị trí projectile tới người chơi tại thời điểm spawn
 --//   "look_vector": Hướng theo LookVector của CFrame projectile lúc spawn
 local INSTANT_PROJECTILES = {
-	["firstbossseekingspikes"] = "target_player",
+	["firstbossseekingspikes"] = "look_vector",
 	["firstbossbigspike"] = "look_vector",
 	["firstbossbeampart"] = "look_vector",
 	["secondbossmovingbeam"] = "look_vector",
@@ -9267,14 +9308,80 @@ local function isBeamTelegraph(hazardName)
 	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
 end
 
+--// Phân loại tia beam thuộc Big Spike hay Seeking Spike
+local function getSpikeBeamType(inst)
+	if not inst then return "seeking_spike" end
+	local name = typeof(inst) == "string" and inst or (inst.Name or "")
+	local clean = name:lower():gsub("%s+", "")
+	if not string.find(clean, "firstbossbeampart", 1, true) then
+		if string.find(clean, "bigspike", 1, true) and not string.find(clean, "seekingspike", 1, true) then
+			return "big_spike"
+		end
+		if string.find(clean, "seekingspike", 1, true) then
+			return "seeking_spike"
+		end
+		return nil
+	end
+
+	if typeof(inst) == "Instance" then
+		local beam = inst:FindFirstChildWhichIsA("Beam", true)
+		if beam then
+			if beam.Width0 >= 25 or beam.Width1 >= 25 then
+				return "big_spike"
+			else
+				return "seeking_spike"
+			end
+		end
+
+		local bPos = inst:IsA("BasePart") and inst.Position or (inst:IsA("Model") and inst:GetPivot().Position)
+		if bPos then
+			for _, child in ipairs(workspace:GetChildren()) do
+				local cName = child.Name:lower():gsub("%s+", "")
+				if string.find(cName, "firstbossbigspike", 1, true) then
+					local sPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
+					if sPos and (sPos - bPos).Magnitude < 15 then
+						return "big_spike"
+					end
+				elseif string.find(cName, "seekingspike", 1, true) then
+					local sPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
+					if sPos and (sPos - bPos).Magnitude < 15 then
+						return "seeking_spike"
+					end
+				end
+			end
+		end
+	end
+
+	return "seeking_spike"
+end
+
 --// Helper nhận diện skill BigSpike (Boss 1 - gồm cả tia telegraph và đạn)
-local function isBigSpike(hazardName)
+local function isBigSpike(hazardName, inst)
 	if not hazardName or type(hazardName) ~= "string" then return false end
 	local clean = hazardName:lower():gsub("%s+", "")
 	if #clean == 0 or string.find(clean, "seekingspike", 1, true) then return false end
+	if string.find(clean, "firstbossbeampart", 1, true) then
+		return getSpikeBeamType(inst) == "big_spike"
+	end
 	return string.find(clean, "firstbossbigspike", 1, true) ~= nil
-		or string.find(clean, "firstbossbeampart", 1, true) ~= nil
 		or string.find(clean, "bigspike", 1, true) ~= nil
+end
+
+--// Helper nhận diện skill SeekingSpike (Boss 1 - gồm cả tia telegraph và đạn)
+local function isSeekingSpike(hazardName, inst)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 or string.find(clean, "firstbossbigspike", 1, true) then return false end
+	if string.find(clean, "firstbossbeampart", 1, true) then
+		return getSpikeBeamType(inst) == "seeking_spike"
+	end
+	return string.find(clean, "firstbossseekingspikes", 1, true) ~= nil
+		or string.find(clean, "seekingspike", 1, true) ~= nil
+end
+
+--// Helper nhận diện chung chiêu Spike của Boss 1 (BigSpike hoặc SeekingSpike)
+local function isBossSpike(hazardName, inst)
+	return isBigSpike(hazardName, inst) or isSeekingSpike(hazardName, inst)
 end
 
 --// Đọc chính xác dữ liệu từ tia định hướng do Game tạo (firstBossBeamPart)
@@ -9293,15 +9400,18 @@ local function getTelegraphBeamData(inst)
 		local spikePos = inst:IsA("BasePart") and inst.Position or (inst:IsA("Model") and inst:GetPivot().Position)
 		if spikePos then
 			local bestDist = 35.0
+			local expectedType = isBigSpike(inst.Name, inst) and "big_spike" or "seeking_spike"
 			for _, child in ipairs(workspace:GetChildren()) do
 				local cName = child.Name:lower()
-				if isBeamTelegraph(cName) or (string.find(cName, "beampart", 1, true) and not string.find(cName, "thirdboss", 1, true)) then
-					local bPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
-					if bPos then
-						local dist = (bPos - spikePos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
-							beamPart = child
+				if isBeamTelegraph(cName) or string.find(cName, "beampart", 1, true) then
+					if getSpikeBeamType(child) == expectedType then
+						local bPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
+						if bPos then
+							local dist = (bPos - spikePos).Magnitude
+							if dist < bestDist then
+								bestDist = dist
+								beamPart = child
+							end
 						end
 					end
 				end
@@ -9371,7 +9481,7 @@ local function measureSpikeDimensions(inst)
 	local dims = { maxDimX, maxDimY, maxDimZ }
 	table.sort(dims)
 	local w = dims[2]
-	if w < 4.0 then
+	if w < 2.0 then
 		w = math.max(dims[1], dims[2])
 	end
 	return w
@@ -9426,6 +9536,63 @@ local function getBigSpikeWidth(mainPart)
 	return 28.0
 end
 
+--// Tính bề rộng thực tế của chính BasePart firstBossSeekingSpikes
+local cachedSeekingSpikeWidth = nil
+local function getSeekingSpikeWidth(mainPart)
+	-- 1. Ưu tiên cấu hình custom width từ slider / user
+	if customWidths["firstbossseekingspikes"] then
+		return customWidths["firstbossseekingspikes"]
+	end
+
+	-- 2. Nếu đã cache kích thước trước đó
+	if cachedSeekingSpikeWidth then
+		return cachedSeekingSpikeWidth
+	end
+
+	-- 3. Đo đạc từ instance thực tế trong workspace
+	if mainPart and not isBeamTelegraph(mainPart.Name) then
+		local w = measureSpikeDimensions(mainPart)
+		if w and w >= 2.0 then
+			cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
+			return cachedSeekingSpikeWidth
+		end
+	end
+
+	-- Hoặc tìm live spike trong workspace
+	for _, child in ipairs(workspace:GetChildren()) do
+		local cName = child.Name:lower():gsub("%s+", "")
+		if string.find(cName, "seekingspike", 1, true) and not isBeamTelegraph(cName) then
+			local w = measureSpikeDimensions(child)
+			if w and w >= 2.0 then
+				cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
+				return cachedSeekingSpikeWidth
+			end
+		end
+	end
+
+	-- 4. Đọc từ ReplicatedStorage.enemyProjectiles.firstBossSeekingSpikes
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local ep = ReplicatedStorage:FindFirstChild("enemyProjectiles")
+	local tmpl = ep and ep:FindFirstChild("firstBossSeekingSpikes")
+	if tmpl then
+		local w = measureSpikeDimensions(tmpl)
+		if w and w >= 2.0 then
+			cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
+			return cachedSeekingSpikeWidth
+		end
+	end
+
+	return 10.0
+end
+
+local function getBossSpikeWidth(hazardName, mainPart)
+	if isBigSpike(hazardName, mainPart) then
+		return getBigSpikeWidth(mainPart)
+	else
+		return getSeekingSpikeWidth(mainPart)
+	end
+end
+
 --// Lấy độ dài trajectory (mặc định hoặc custom theo đối tượng / theo tia định hướng của game)
 local function getHazardPredictionLength(hazardInfoOrName)
 	if not hazardInfoOrName then return predictionLength end
@@ -9438,12 +9605,17 @@ local function getHazardPredictionLength(hazardInfoOrName)
 		record = activeRecords[hazardInfoOrName]
 	end
 
-	-- Nếu là BigSpike: ưu tiên số 1 là độ dài thực tế từ tia định hướng của game
-	if isBigSpike(name) then
+	-- Nếu là Boss Spike (Big Spike hoặc Seeking Spike): ưu tiên số 1 là độ dài thực tế từ tia định hướng của game
+	local inst = (record and record.mainPart) or (type(hazardInfoOrName) == "table" and hazardInfoOrName.Instance)
+	if isBossSpike(name, inst) then
 		if record and record.beamLength then
 			return record.beamLength
 		end
-		return customLengths["firstbossbigspike"] or 140.0
+		if isBigSpike(name, inst) then
+			return customLengths["firstbossbigspike"] or 140.0
+		else
+			return customLengths["firstbossseekingspikes"] or 80.0
+		end
 	end
 
 	if record and record.beamLength then
@@ -9579,6 +9751,21 @@ function trajectory.SetFirstBossBigSpikeWidth(val)
 	else
 		customWidths["firstbossbigspike"] = nil
 	end
+	cachedBigSpikeWidth = nil
+	trajectory.RefreshAll()
+end
+
+function trajectory.GetFirstBossSeekingSpikeWidth()
+	return customWidths["firstbossseekingspikes"] or (cachedSeekingSpikeWidth or 10)
+end
+
+function trajectory.SetFirstBossSeekingSpikeWidth(val)
+	if type(val) == "number" and val > 0 then
+		customWidths["firstbossseekingspikes"] = math.clamp(val, 4, 40)
+	else
+		customWidths["firstbossseekingspikes"] = nil
+	end
+	cachedSeekingSpikeWidth = nil
 	trajectory.RefreshAll()
 end
 
@@ -9620,11 +9807,11 @@ local function getHazardCentroidAndSpan(hazardInfo, dir)
 	local margin = geometry.GetTrajectoryMargin and geometry.GetTrajectoryMargin() or 2.0
 	local hazardName = hazardInfo.Name or (inst and inst.Name) or ""
 
-	if isBigSpike(hazardName) then
+	if isBossSpike(hazardName, inst) then
 		local record = activeRecords[hazardInfo]
 		local mainPart = (record and record.mainPart) or (inst:IsA("BasePart") and inst or inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart"))
 		local startPos = (record and record.beamStartPos) or (mainPart and mainPart.Position) or inst.Position
-		local spikeWidth = getBigSpikeWidth(mainPart)
+		local spikeWidth = getBossSpikeWidth(hazardName, mainPart)
 		local spanWidth = math.max(1, spikeWidth + margin * 2)
 		return Vector3.new(startPos.X, 0, startPos.Z), spanWidth
 	end
@@ -9742,9 +9929,9 @@ local function onHeartbeat()
 				local currentPos = mainPart.Position
 				local dt = now - (record.lastClock or now)
 
-				if record.isBigSpike then
+				if record.isBossSpike then
 					if not record.beamFound then
-						local bLen, bDir, bStart, bTarget = findBigSpikeBeamTelegraph(mainPart)
+						local bLen, bDir, bStart, bTarget = getTelegraphBeamData(mainPart)
 						if bLen and bDir then
 							record.beamFound = true
 							record.beamLength = bLen
@@ -9770,11 +9957,11 @@ local function onHeartbeat()
 
 					if hSpeed >= MOVING_SPEED_THRESHOLD then
 						record.isMoving = true
-						if not record.isBigSpike then
+						if not record.isBossSpike then
 							record.dir = hDelta.Unit
 						end
 					else
-						if not record.isInstant and not record.isBigSpike and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
+						if not record.isInstant and not record.isBossSpike and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
 							record.isMoving = false
 						end
 					end
@@ -9891,16 +10078,29 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	box.Parent = workspace.Terrain
 
 	local hazardName = hazardInfo.Name or (inst and inst.Name)
-	local isBigSpikeHazard = isBigSpike(hazardName)
 	local isBeam = isBeamTelegraph(hazardName)
+	local isSpike = isBossSpike(hazardName, inst)
+	local spikeType = isSpike and (isBigSpike(hazardName, inst) and "big_spike" or "seeking_spike") or nil
 
-	-- Tránh tạo 2 hành lang cam trùng lặp: Nếu firstBossBeamPart đã tạo hành lang,
-	-- firstBossBigSpike không cần tạo thêm hành lang cam thứ 2
-	if isBigSpikeHazard and not isBeam then
-		for otherInfo, otherRecord in pairs(activeRecords) do
-			if otherRecord and otherRecord.isBigSpike and otherRecord.isBeam then
-				hazardInfo.IsTrajectory = false
-				return
+	-- Tránh tạo 2 hành lang cam trùng lặp giữa Beam và Spike:
+	-- Nếu Beam đã tạo hành lang, Spike không tạo hành lang thứ 2 (và ngược lại)
+	if isSpike then
+		if not isBeam then
+			-- inst là Spike thực tế: kiểm tra xem Beam của nó đã tạo corridor chưa
+			for otherInfo, otherRecord in pairs(activeRecords) do
+				if otherRecord and otherRecord.isBeam and otherRecord.spikeType == spikeType then
+					otherRecord.linkedSpike = mainPart
+					hazardInfo.IsTrajectory = false
+					return
+				end
+			end
+		else
+			-- inst là Beam: kiểm tra xem Spike đã tạo corridor chưa
+			for otherInfo, otherRecord in pairs(activeRecords) do
+				if otherRecord and not otherRecord.isBeam and otherRecord.spikeType == spikeType then
+					hazardInfo.IsTrajectory = false
+					return
+				end
 			end
 		end
 	end
@@ -9915,8 +10115,18 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		table.insert(connections, conn)
 	end
 
+	local record = nil
 	local conn2 = mainPart.AncestryChanged:Connect(function(_, parent)
 		if not parent then
+			if record and record.linkedSpike and record.linkedSpike.Parent and record.linkedSpike.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+				local sConn = record.linkedSpike.AncestryChanged:Connect(function(_, spParent)
+					if not spParent then
+						pcall(function() box:Destroy() end)
+					end
+				end)
+				table.insert(connections, sConn)
+				return
+			end
 			pcall(function() box:Destroy() end)
 		end
 	end)
@@ -9927,7 +10137,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	local isInstant = instantDir ~= nil
 
 	local beamLength, beamDir, beamStartPos, beamTargetPos = nil, nil, nil, nil
-	if isBigSpikeHazard then
+	if isSpike then
 		beamLength, beamDir, beamStartPos, beamTargetPos = getTelegraphBeamData(inst)
 		if beamDir then
 			instantDir = beamDir
@@ -9935,7 +10145,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		end
 	end
 
-	activeRecords[hazardInfo] = {
+	record = {
 		ad = box,
 		connections = connections,
 		mainPart = mainPart,
@@ -9946,14 +10156,37 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		isMoving = isInstant,
 		isInstant = isInstant,
 		instantMode = instantMode,
-		isBigSpike = isBigSpikeHazard,
+		isBossSpike = isSpike,
+		isBigSpike = isBigSpike(hazardName, inst),
+		isSeekingSpike = isSeekingSpike(hazardName, inst),
+		spikeType = spikeType,
 		isBeam = isBeam,
 		beamFound = beamLength ~= nil,
 		beamLength = beamLength,
 		beamDir = beamDir,
 		beamStartPos = beamStartPos or mainPart.Position,
 		beamTargetPos = beamTargetPos,
+		linkedSpike = nil,
 	}
+
+	if isBeam and spikeType then
+		local spikeKeyword = spikeType == "big_spike" and "firstbossbigspike" or "seekingspike"
+		for _, child in ipairs(workspace:GetChildren()) do
+			local cName = child.Name:lower():gsub("%s+", "")
+			if string.find(cName, spikeKeyword, 1, true) and not isBeamTelegraph(cName) then
+				local sPart = child:IsA("BasePart") and child or (child:FindFirstChildWhichIsA("BasePart") or (child:IsA("Model") and child.PrimaryPart))
+				if sPart then
+					local dist = (sPart.Position - mainPart.Position).Magnitude
+					if dist < 25 then
+						record.linkedSpike = sPart
+						break
+					end
+				end
+			end
+		end
+	end
+
+	activeRecords[hazardInfo] = record
 
 	-- Nếu là Instant Projectile: Kích hoạt ngay lập tức tại Frame 0 không cần chờ đo vận tốc
 	if isInstant and instantDir then
@@ -10322,8 +10555,9 @@ end
 local function getBaseParts(instance)
 	if not instance then return {} end
 	local parts = {}
+	local isBeam = isBeamTelegraph(instance.Name)
 	local function addPart(part)
-		if part and part.Parent and (part.Transparency <= FADE_TRANSPARENCY_THRESHOLD or isBeamTelegraph(part.Name) or isBeamTelegraph(instance.Name)) then
+		if part and part.Parent and (part.Transparency <= FADE_TRANSPARENCY_THRESHOLD or isBeam) then
 			parts[#parts + 1] = part
 		end
 	end
@@ -12837,6 +13071,8 @@ hazardScanner.GetSecondBossBeamLength = trajectory.GetSecondBossBeamLength
 hazardScanner.SetSecondBossBeamLength = trajectory.SetSecondBossBeamLength
 hazardScanner.GetFirstBossBigSpikeWidth = trajectory.GetFirstBossBigSpikeWidth
 hazardScanner.SetFirstBossBigSpikeWidth = trajectory.SetFirstBossBigSpikeWidth
+hazardScanner.GetFirstBossSeekingSpikeWidth = trajectory.GetFirstBossSeekingSpikeWidth
+hazardScanner.SetFirstBossSeekingSpikeWidth = trajectory.SetFirstBossSeekingSpikeWidth
 hazardScanner.GetCustomTrajectoryWidth = trajectory.GetCustomWidth
 hazardScanner.SetCustomTrajectoryWidth = trajectory.SetCustomWidth
 hazardScanner.RefreshTrajectory = trajectory.RefreshAll
@@ -13659,13 +13895,22 @@ local function stepMovementLoop(deltaTime)
 		local approachDir = flatDelta.Magnitude > 0.1 and flatDelta.Unit or Vector3.new(0, 0, 1)
 
 		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
+		-- Quét 3 tia song song: Tia trung tâm + 2 tia 2 bên (trái & phải) cách 1.2 studs mô phỏng toàn bộ bề rộng thân nhân vật
 		local dangerAhead = false
 		if shouldCheckDanger then
+			local sideOffset = Vector3.new(-approachDir.Z, 0, approachDir.X) * 1.2
+
 			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
 			for _, stepDist in ipairs({ 3, 6, 10 }) do
 				if stepDist < flatDist then
-					local checkPoint = playerPos + approachDir * stepDist
-					if not hazardScanner.IsPointSafe(checkPoint, 0.5) then
+					local checkPointCenter = playerPos + approachDir * stepDist
+					local checkPointLeft = checkPointCenter + sideOffset
+					local checkPointRight = checkPointCenter - sideOffset
+
+					if not hazardScanner.IsPointSafe(checkPointCenter, 0.5)
+						or not hazardScanner.IsPointSafe(checkPointLeft, 0.5)
+						or not hazardScanner.IsPointSafe(checkPointRight, 0.5)
+					then
 						dangerAhead = true
 						break
 					end
@@ -15049,6 +15294,18 @@ return function(window, tab)
 			hazardScanner.SetFirstBossBigSpikeWidth(val)
 		end),
 	}, "Slider_HazardFirstBossBigSpikeWidth"))
+
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "First Boss Seeking Spike Width (studs)",
+		Default = hazardScanner.GetFirstBossSeekingSpikeWidth(),
+		Minimum = 4,
+		Maximum = 30,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetFirstBossSeekingSpikeWidth(val)
+		end),
+	}, "Slider_HazardFirstBossSeekingSpikeWidth"))
 
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
@@ -27924,7 +28181,9 @@ local autoHide = __DIST.load('_')
 	local coordinator = __DIST.load('g')
 
 	coordinator.SetLocked(true)
-	macLib:LoadAutoLoadConfig()
+	pcall(function()
+		macLib:LoadAutoLoadConfig()
+	end)
 
 	--// Đồng bộ config autoload vào autoSave: nếu không gọi SetActive thì
 	--// autoSave.Save() sẽ KHÔNG lưu bất kỳ slider/toggle nào khi thay đổi.

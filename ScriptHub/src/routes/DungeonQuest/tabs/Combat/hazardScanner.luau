@@ -147,6 +147,18 @@ return function(window, tab)
 		end),
 	}, "Slider_HazardFirstBossBigSpikeWidth"))
 
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "First Boss Seeking Spike Width (studs)",
+		Default = hazardScanner.GetFirstBossSeekingSpikeWidth(),
+		Minimum = 4,
+		Maximum = 30,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetFirstBossSeekingSpikeWidth(val)
+		end),
+	}, "Slider_HazardFirstBossSeekingSpikeWidth"))
+
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
 	end)

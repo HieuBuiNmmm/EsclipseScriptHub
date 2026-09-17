@@ -25,6 +25,7 @@ local customLengths = {
 }
 local customWidths = {
 	["firstbossbigspike"] = 28,
+	["firstbossseekingspikes"] = 10,
 }
 local activeRecords = {} -- [hazardInfo] = { ad = BoxHandleAdornment, mainPart = BasePart, connections = {}, lastPos = Vector3, lastClock = number, velocity = Vector3, dir = Vector3, isMoving = boolean }
 local heartbeatConnection = nil
@@ -41,7 +42,7 @@ local MOVING_SPEED_THRESHOLD = 3.5 -- studs/s (ngưỡng tốc độ để coi l
 --//   "target_player" (hoặc true): Hướng thẳng từ vị trí projectile tới người chơi tại thời điểm spawn
 --//   "look_vector": Hướng theo LookVector của CFrame projectile lúc spawn
 local INSTANT_PROJECTILES = {
-	["firstbossseekingspikes"] = "target_player",
+	["firstbossseekingspikes"] = "look_vector",
 	["firstbossbigspike"] = "look_vector",
 	["firstbossbeampart"] = "look_vector",
 	["secondbossmovingbeam"] = "look_vector",
@@ -54,14 +55,80 @@ local function isBeamTelegraph(hazardName)
 	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
 end
 
+--// Phân loại tia beam thuộc Big Spike hay Seeking Spike
+local function getSpikeBeamType(inst)
+	if not inst then return "seeking_spike" end
+	local name = typeof(inst) == "string" and inst or (inst.Name or "")
+	local clean = name:lower():gsub("%s+", "")
+	if not string.find(clean, "firstbossbeampart", 1, true) then
+		if string.find(clean, "bigspike", 1, true) and not string.find(clean, "seekingspike", 1, true) then
+			return "big_spike"
+		end
+		if string.find(clean, "seekingspike", 1, true) then
+			return "seeking_spike"
+		end
+		return nil
+	end
+
+	if typeof(inst) == "Instance" then
+		local beam = inst:FindFirstChildWhichIsA("Beam", true)
+		if beam then
+			if beam.Width0 >= 25 or beam.Width1 >= 25 then
+				return "big_spike"
+			else
+				return "seeking_spike"
+			end
+		end
+
+		local bPos = inst:IsA("BasePart") and inst.Position or (inst:IsA("Model") and inst:GetPivot().Position)
+		if bPos then
+			for _, child in ipairs(workspace:GetChildren()) do
+				local cName = child.Name:lower():gsub("%s+", "")
+				if string.find(cName, "firstbossbigspike", 1, true) then
+					local sPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
+					if sPos and (sPos - bPos).Magnitude < 15 then
+						return "big_spike"
+					end
+				elseif string.find(cName, "seekingspike", 1, true) then
+					local sPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
+					if sPos and (sPos - bPos).Magnitude < 15 then
+						return "seeking_spike"
+					end
+				end
+			end
+		end
+	end
+
+	return "seeking_spike"
+end
+
 --// Helper nhận diện skill BigSpike (Boss 1 - gồm cả tia telegraph và đạn)
-local function isBigSpike(hazardName)
+local function isBigSpike(hazardName, inst)
 	if not hazardName or type(hazardName) ~= "string" then return false end
 	local clean = hazardName:lower():gsub("%s+", "")
 	if #clean == 0 or string.find(clean, "seekingspike", 1, true) then return false end
+	if string.find(clean, "firstbossbeampart", 1, true) then
+		return getSpikeBeamType(inst) == "big_spike"
+	end
 	return string.find(clean, "firstbossbigspike", 1, true) ~= nil
-		or string.find(clean, "firstbossbeampart", 1, true) ~= nil
 		or string.find(clean, "bigspike", 1, true) ~= nil
+end
+
+--// Helper nhận diện skill SeekingSpike (Boss 1 - gồm cả tia telegraph và đạn)
+local function isSeekingSpike(hazardName, inst)
+	if not hazardName or type(hazardName) ~= "string" then return false end
+	local clean = hazardName:lower():gsub("%s+", "")
+	if #clean == 0 or string.find(clean, "firstbossbigspike", 1, true) then return false end
+	if string.find(clean, "firstbossbeampart", 1, true) then
+		return getSpikeBeamType(inst) == "seeking_spike"
+	end
+	return string.find(clean, "firstbossseekingspikes", 1, true) ~= nil
+		or string.find(clean, "seekingspike", 1, true) ~= nil
+end
+
+--// Helper nhận diện chung chiêu Spike của Boss 1 (BigSpike hoặc SeekingSpike)
+local function isBossSpike(hazardName, inst)
+	return isBigSpike(hazardName, inst) or isSeekingSpike(hazardName, inst)
 end
 
 --// Đọc chính xác dữ liệu từ tia định hướng do Game tạo (firstBossBeamPart)
@@ -80,15 +147,18 @@ local function getTelegraphBeamData(inst)
 		local spikePos = inst:IsA("BasePart") and inst.Position or (inst:IsA("Model") and inst:GetPivot().Position)
 		if spikePos then
 			local bestDist = 35.0
+			local expectedType = isBigSpike(inst.Name, inst) and "big_spike" or "seeking_spike"
 			for _, child in ipairs(workspace:GetChildren()) do
 				local cName = child.Name:lower()
-				if isBeamTelegraph(cName) or (string.find(cName, "beampart", 1, true) and not string.find(cName, "thirdboss", 1, true)) then
-					local bPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
-					if bPos then
-						local dist = (bPos - spikePos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
-							beamPart = child
+				if isBeamTelegraph(cName) or string.find(cName, "beampart", 1, true) then
+					if getSpikeBeamType(child) == expectedType then
+						local bPos = child:IsA("BasePart") and child.Position or (child:IsA("Model") and child:GetPivot().Position)
+						if bPos then
+							local dist = (bPos - spikePos).Magnitude
+							if dist < bestDist then
+								bestDist = dist
+								beamPart = child
+							end
 						end
 					end
 				end
@@ -158,7 +228,7 @@ local function measureSpikeDimensions(inst)
 	local dims = { maxDimX, maxDimY, maxDimZ }
 	table.sort(dims)
 	local w = dims[2]
-	if w < 4.0 then
+	if w < 2.0 then
 		w = math.max(dims[1], dims[2])
 	end
 	return w
@@ -213,6 +283,63 @@ local function getBigSpikeWidth(mainPart)
 	return 28.0
 end
 
+--// Tính bề rộng thực tế của chính BasePart firstBossSeekingSpikes
+local cachedSeekingSpikeWidth = nil
+local function getSeekingSpikeWidth(mainPart)
+	-- 1. Ưu tiên cấu hình custom width từ slider / user
+	if customWidths["firstbossseekingspikes"] then
+		return customWidths["firstbossseekingspikes"]
+	end
+
+	-- 2. Nếu đã cache kích thước trước đó
+	if cachedSeekingSpikeWidth then
+		return cachedSeekingSpikeWidth
+	end
+
+	-- 3. Đo đạc từ instance thực tế trong workspace
+	if mainPart and not isBeamTelegraph(mainPart.Name) then
+		local w = measureSpikeDimensions(mainPart)
+		if w and w >= 2.0 then
+			cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
+			return cachedSeekingSpikeWidth
+		end
+	end
+
+	-- Hoặc tìm live spike trong workspace
+	for _, child in ipairs(workspace:GetChildren()) do
+		local cName = child.Name:lower():gsub("%s+", "")
+		if string.find(cName, "seekingspike", 1, true) and not isBeamTelegraph(cName) then
+			local w = measureSpikeDimensions(child)
+			if w and w >= 2.0 then
+				cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
+				return cachedSeekingSpikeWidth
+			end
+		end
+	end
+
+	-- 4. Đọc từ ReplicatedStorage.enemyProjectiles.firstBossSeekingSpikes
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local ep = ReplicatedStorage:FindFirstChild("enemyProjectiles")
+	local tmpl = ep and ep:FindFirstChild("firstBossSeekingSpikes")
+	if tmpl then
+		local w = measureSpikeDimensions(tmpl)
+		if w and w >= 2.0 then
+			cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
+			return cachedSeekingSpikeWidth
+		end
+	end
+
+	return 10.0
+end
+
+local function getBossSpikeWidth(hazardName, mainPart)
+	if isBigSpike(hazardName, mainPart) then
+		return getBigSpikeWidth(mainPart)
+	else
+		return getSeekingSpikeWidth(mainPart)
+	end
+end
+
 --// Lấy độ dài trajectory (mặc định hoặc custom theo đối tượng / theo tia định hướng của game)
 local function getHazardPredictionLength(hazardInfoOrName)
 	if not hazardInfoOrName then return predictionLength end
@@ -225,12 +352,17 @@ local function getHazardPredictionLength(hazardInfoOrName)
 		record = activeRecords[hazardInfoOrName]
 	end
 
-	-- Nếu là BigSpike: ưu tiên số 1 là độ dài thực tế từ tia định hướng của game
-	if isBigSpike(name) then
+	-- Nếu là Boss Spike (Big Spike hoặc Seeking Spike): ưu tiên số 1 là độ dài thực tế từ tia định hướng của game
+	local inst = (record and record.mainPart) or (type(hazardInfoOrName) == "table" and hazardInfoOrName.Instance)
+	if isBossSpike(name, inst) then
 		if record and record.beamLength then
 			return record.beamLength
 		end
-		return customLengths["firstbossbigspike"] or 140.0
+		if isBigSpike(name, inst) then
+			return customLengths["firstbossbigspike"] or 140.0
+		else
+			return customLengths["firstbossseekingspikes"] or 80.0
+		end
 	end
 
 	if record and record.beamLength then
@@ -366,6 +498,21 @@ function trajectory.SetFirstBossBigSpikeWidth(val)
 	else
 		customWidths["firstbossbigspike"] = nil
 	end
+	cachedBigSpikeWidth = nil
+	trajectory.RefreshAll()
+end
+
+function trajectory.GetFirstBossSeekingSpikeWidth()
+	return customWidths["firstbossseekingspikes"] or (cachedSeekingSpikeWidth or 10)
+end
+
+function trajectory.SetFirstBossSeekingSpikeWidth(val)
+	if type(val) == "number" and val > 0 then
+		customWidths["firstbossseekingspikes"] = math.clamp(val, 4, 40)
+	else
+		customWidths["firstbossseekingspikes"] = nil
+	end
+	cachedSeekingSpikeWidth = nil
 	trajectory.RefreshAll()
 end
 
@@ -407,11 +554,11 @@ local function getHazardCentroidAndSpan(hazardInfo, dir)
 	local margin = geometry.GetTrajectoryMargin and geometry.GetTrajectoryMargin() or 2.0
 	local hazardName = hazardInfo.Name or (inst and inst.Name) or ""
 
-	if isBigSpike(hazardName) then
+	if isBossSpike(hazardName, inst) then
 		local record = activeRecords[hazardInfo]
 		local mainPart = (record and record.mainPart) or (inst:IsA("BasePart") and inst or inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart"))
 		local startPos = (record and record.beamStartPos) or (mainPart and mainPart.Position) or inst.Position
-		local spikeWidth = getBigSpikeWidth(mainPart)
+		local spikeWidth = getBossSpikeWidth(hazardName, mainPart)
 		local spanWidth = math.max(1, spikeWidth + margin * 2)
 		return Vector3.new(startPos.X, 0, startPos.Z), spanWidth
 	end
@@ -529,9 +676,9 @@ local function onHeartbeat()
 				local currentPos = mainPart.Position
 				local dt = now - (record.lastClock or now)
 
-				if record.isBigSpike then
+				if record.isBossSpike then
 					if not record.beamFound then
-						local bLen, bDir, bStart, bTarget = findBigSpikeBeamTelegraph(mainPart)
+						local bLen, bDir, bStart, bTarget = getTelegraphBeamData(mainPart)
 						if bLen and bDir then
 							record.beamFound = true
 							record.beamLength = bLen
@@ -557,11 +704,11 @@ local function onHeartbeat()
 
 					if hSpeed >= MOVING_SPEED_THRESHOLD then
 						record.isMoving = true
-						if not record.isBigSpike then
+						if not record.isBossSpike then
 							record.dir = hDelta.Unit
 						end
 					else
-						if not record.isInstant and not record.isBigSpike and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
+						if not record.isInstant and not record.isBossSpike and dt >= 0.25 and speed < MOVING_SPEED_THRESHOLD then
 							record.isMoving = false
 						end
 					end
@@ -678,16 +825,29 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	box.Parent = workspace.Terrain
 
 	local hazardName = hazardInfo.Name or (inst and inst.Name)
-	local isBigSpikeHazard = isBigSpike(hazardName)
 	local isBeam = isBeamTelegraph(hazardName)
+	local isSpike = isBossSpike(hazardName, inst)
+	local spikeType = isSpike and (isBigSpike(hazardName, inst) and "big_spike" or "seeking_spike") or nil
 
-	-- Tránh tạo 2 hành lang cam trùng lặp: Nếu firstBossBeamPart đã tạo hành lang,
-	-- firstBossBigSpike không cần tạo thêm hành lang cam thứ 2
-	if isBigSpikeHazard and not isBeam then
-		for otherInfo, otherRecord in pairs(activeRecords) do
-			if otherRecord and otherRecord.isBigSpike and otherRecord.isBeam then
-				hazardInfo.IsTrajectory = false
-				return
+	-- Tránh tạo 2 hành lang cam trùng lặp giữa Beam và Spike:
+	-- Nếu Beam đã tạo hành lang, Spike không tạo hành lang thứ 2 (và ngược lại)
+	if isSpike then
+		if not isBeam then
+			-- inst là Spike thực tế: kiểm tra xem Beam của nó đã tạo corridor chưa
+			for otherInfo, otherRecord in pairs(activeRecords) do
+				if otherRecord and otherRecord.isBeam and otherRecord.spikeType == spikeType then
+					otherRecord.linkedSpike = mainPart
+					hazardInfo.IsTrajectory = false
+					return
+				end
+			end
+		else
+			-- inst là Beam: kiểm tra xem Spike đã tạo corridor chưa
+			for otherInfo, otherRecord in pairs(activeRecords) do
+				if otherRecord and not otherRecord.isBeam and otherRecord.spikeType == spikeType then
+					hazardInfo.IsTrajectory = false
+					return
+				end
 			end
 		end
 	end
@@ -702,8 +862,18 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		table.insert(connections, conn)
 	end
 
+	local record = nil
 	local conn2 = mainPart.AncestryChanged:Connect(function(_, parent)
 		if not parent then
+			if record and record.linkedSpike and record.linkedSpike.Parent and record.linkedSpike.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+				local sConn = record.linkedSpike.AncestryChanged:Connect(function(_, spParent)
+					if not spParent then
+						pcall(function() box:Destroy() end)
+					end
+				end)
+				table.insert(connections, sConn)
+				return
+			end
 			pcall(function() box:Destroy() end)
 		end
 	end)
@@ -714,7 +884,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	local isInstant = instantDir ~= nil
 
 	local beamLength, beamDir, beamStartPos, beamTargetPos = nil, nil, nil, nil
-	if isBigSpikeHazard then
+	if isSpike then
 		beamLength, beamDir, beamStartPos, beamTargetPos = getTelegraphBeamData(inst)
 		if beamDir then
 			instantDir = beamDir
@@ -722,7 +892,7 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		end
 	end
 
-	activeRecords[hazardInfo] = {
+	record = {
 		ad = box,
 		connections = connections,
 		mainPart = mainPart,
@@ -733,14 +903,37 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		isMoving = isInstant,
 		isInstant = isInstant,
 		instantMode = instantMode,
-		isBigSpike = isBigSpikeHazard,
+		isBossSpike = isSpike,
+		isBigSpike = isBigSpike(hazardName, inst),
+		isSeekingSpike = isSeekingSpike(hazardName, inst),
+		spikeType = spikeType,
 		isBeam = isBeam,
 		beamFound = beamLength ~= nil,
 		beamLength = beamLength,
 		beamDir = beamDir,
 		beamStartPos = beamStartPos or mainPart.Position,
 		beamTargetPos = beamTargetPos,
+		linkedSpike = nil,
 	}
+
+	if isBeam and spikeType then
+		local spikeKeyword = spikeType == "big_spike" and "firstbossbigspike" or "seekingspike"
+		for _, child in ipairs(workspace:GetChildren()) do
+			local cName = child.Name:lower():gsub("%s+", "")
+			if string.find(cName, spikeKeyword, 1, true) and not isBeamTelegraph(cName) then
+				local sPart = child:IsA("BasePart") and child or (child:FindFirstChildWhichIsA("BasePart") or (child:IsA("Model") and child.PrimaryPart))
+				if sPart then
+					local dist = (sPart.Position - mainPart.Position).Magnitude
+					if dist < 25 then
+						record.linkedSpike = sPart
+						break
+					end
+				end
+			end
+		end
+	end
+
+	activeRecords[hazardInfo] = record
 
 	-- Nếu là Instant Projectile: Kích hoạt ngay lập tức tại Frame 0 không cần chờ đo vận tốc
 	if isInstant and instantDir then
