@@ -29,7 +29,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoFarm")
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Rescan Interval (s)",
 		Default = autoFarm.GetScanInterval(),
 		Minimum = 0.5,
@@ -38,7 +38,7 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetScanInterval(val)
 		end),
-	}, "Slider_AF_ScanInterval")
+	}, "Slider_AF_ScanInterval"))
 
 	leftSection:Toggle({
 		Name = "Auto Face Target (Look At Enemy)",
@@ -48,7 +48,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_AF_AutoFaceTarget")
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Repath Distance (studs)",
 		Default = autoFarm.GetRepathDistance(),
 		Minimum = 2,
@@ -58,7 +58,7 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetRepathDistance(val)
 		end),
-	}, "Slider_AF_RepathDistance")
+	}, "Slider_AF_RepathDistance"))
 
 	leftSection:Toggle({
 		Name = "Auto Jump When Stuck (Low Velocity)",
@@ -91,8 +91,8 @@ return function(window, tab)
 	}, "Toggle_AF_AutoSkill")
 
 	combatMaster.OnStateChanged(function(enabled)
-		pcall(function() afToggle:UpdateState(enabled) end)
-		pcall(function() asToggle:UpdateState(enabled) end)
+		pcall(function() afToggle:UpdateState(enabled, true) end)
+		pcall(function() asToggle:UpdateState(enabled, true) end)
 	end)
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
@@ -324,13 +324,13 @@ return function(window, tab)
 
 		if disableDodgeToggle then
 			pcall(function()
-				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey))
+				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey), true)
 			end)
 		end
 
 		if selectedTargetKey == "Mob" then
 			if bossAreaToggle then
-				pcall(function() bossAreaToggle:UpdateState(false) end)
+				pcall(function() bossAreaToggle:UpdateState(false, true) end)
 			end
 			if bossAreaRadiusSlider then
 				pcall(function() bossAreaRadiusSlider:UpdateValue(80) end)
@@ -338,7 +338,7 @@ return function(window, tab)
 		else
 			local baEnabled, baRadius = contextual.GetBossArea(selectedDungeon, selectedTargetKey)
 			if bossAreaToggle then
-				pcall(function() bossAreaToggle:UpdateState(baEnabled) end)
+				pcall(function() bossAreaToggle:UpdateState(baEnabled, true) end)
 			end
 			if bossAreaRadiusSlider then
 				pcall(function() bossAreaRadiusSlider:UpdateValue(baRadius) end)

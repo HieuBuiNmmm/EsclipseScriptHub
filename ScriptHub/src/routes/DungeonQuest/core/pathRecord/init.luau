@@ -23,6 +23,35 @@ local rangeVisual = require("@routes/DungeonQuest/core/pathRecord/rangeVisual")
 --// Table
 local pathRecord = {}
 
+--// State
+local autoPlayWanted = false
+local statusListeners = {}
+local bossConnection = nil
+local storageUnsub = nil
+local roomUnsub = nil
+local mapUnsub = nil
+
+local function fireStatus(reason)
+	local recStat = recorder.GetStatus()
+	local info = {
+		recording = recorder.IsRecording(),
+		playing = mover.IsPlaying(),
+		resume = mover.ResumeWanted(),
+		autoPlayWanted = autoPlayWanted,
+		inLobby = shared.IsInLobby(),
+		map = shared.GetCurrentDungeonName(),
+		room = shared.GetCurrentRoomIndex(),
+		boss = shared.IsBossActive(),
+		recordedMaps = storage.Count(),
+		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
+		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
+		reason = reason,
+	}
+	for _, cb in ipairs(statusListeners) do
+		pcall(cb, info)
+	end
+end
+
 --// Timeline record/replay: đứng chờ (dwell) + kích hoạt skill (chuột phải) + facing.
 local timelineCapture = true
 local timelineReplay = true
@@ -127,33 +156,6 @@ function pathRecord.SetAimSkillE(state)
 	fireStatus("aimskille")
 end
 
---// State
-local statusListeners = {}
-local bossConnection = nil
-local storageUnsub = nil
-local roomUnsub = nil
-local mapUnsub = nil
-
-local function fireStatus(reason)
-	local recStat = recorder.GetStatus()
-	local info = {
-		recording = recorder.IsRecording(),
-		playing = mover.IsPlaying(),
-		resume = mover.ResumeWanted(),
-		autoPlayWanted = autoPlayWanted,
-		inLobby = shared.IsInLobby(),
-		map = shared.GetCurrentDungeonName(),
-		room = shared.GetCurrentRoomIndex(),
-		boss = shared.IsBossActive(),
-		recordedMaps = storage.Count(),
-		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
-		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
-		reason = reason,
-	}
-	for _, cb in ipairs(statusListeners) do
-		pcall(cb, info)
-	end
-end
 
 --// ---------- Record ----------
 
@@ -203,7 +205,6 @@ end
 --// Flag persists "wants to auto-play macro" (được lưu qua config, không phải runtime state).
 --// Khi bật: đang ở dungeon có macro -> phát ngay; phòng boss đang active -> bỏ qua nếu mode NORMAL.
 --// Giữ nguyên trạng thái armed khi ở lobby hoặc khi room đang load.
-local autoPlayWanted = false
 
 function pathRecord.IsAutoPlayWanted()
 	return autoPlayWanted

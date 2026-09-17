@@ -10,6 +10,7 @@
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local storage = require("@routes/DungeonQuest/core/pathRecord/storage")
+local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 
 local RunService = services.RunService
@@ -348,6 +349,7 @@ function recorder.Start()
 	recMap = map
 	beginSlice(room, root.Position)
 	isRecording = true
+	autoSave.SetRecording(true)
 	sessionRooms = 0
 	sessionBossRooms = 0
 	sessionRawPts = 0
@@ -600,6 +602,7 @@ function recorder.Stop(reason)
 	if not isRecording then return false end
 
 	isRecording = false
+	autoSave.SetRecording(false)
 	stopSubscriptions()
 
 	local slice = finalizeSlice(reason, true)
@@ -638,6 +641,7 @@ function recorder.Cancel()
 	stopSubscriptions()
 	clearSessionState()
 	isRecording = false
+	autoSave.SetRecording(false)
 	fireStatus()
 end
 

@@ -75,7 +75,7 @@ return function(window, tab)
 									if not ok then
 										pcall(function()
 											isSyncingRecord = true
-											recordToggle:UpdateState(false)
+											recordToggle:UpdateState(false, true)
 											isSyncingRecord = false
 										end)
 									end
@@ -87,7 +87,7 @@ return function(window, tab)
 									isPromptingRecord = false
 									local ok, err = pcall(function()
 										isSyncingRecord = true
-										recordToggle:UpdateState(false)
+										recordToggle:UpdateState(false, true)
 										isSyncingRecord = false
 									end)
 									if not ok then
@@ -131,7 +131,7 @@ return function(window, tab)
 				notifier.Notify("Path Record", "Chưa có map nào được chọn. Hãy chọn map trong dropdown hoặc vào dungeon.", 3)
 				pcall(function()
 					isSyncingMode = true
-					recordBossToggle:UpdateState(false)
+					recordBossToggle:UpdateState(false, true)
 					isSyncingMode = false
 				end)
 				return
@@ -297,12 +297,12 @@ return function(window, tab)
 
 	local deleteBtn = macroSection:Button({
 		Name = "Delete Selected Map",
-		Callback = autoSave.Wrap(function()
+		Callback = function()
 			local mapName = getSelectedMapFromDropdown()
 			if mapName and #mapName > 0 then
 				pathRecord.RemoveMap(mapName)
 			end
-		end),
+		end,
 	})
 
 	local reloadBtn = macroSection:Button({
@@ -516,13 +516,13 @@ return function(window, tab)
 		return ("<font color='rgb(0,255,180)'>%s</font> <b>%d%%</b>"):format(bar, percent)
 	end
 
-	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop).
+	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop hay autoSave).
 	syncToggles = function(info)
 		if not isPromptingRecord then
 			pcall(function()
 				if recordToggle and recordToggle.GetState and recordToggle:GetState() ~= info.recording then
 					isSyncingRecord = true
-					recordToggle:UpdateState(info.recording)
+					recordToggle:UpdateState(info.recording, true)
 					isSyncingRecord = false
 				end
 			end)
@@ -531,7 +531,7 @@ return function(window, tab)
 			local wantPlay = pathRecord.IsAutoPlayWanted()
 			if playToggle and playToggle.GetState and playToggle:GetState() ~= wantPlay then
 				isSyncingPlay = true
-				playToggle:UpdateState(wantPlay)
+				playToggle:UpdateState(wantPlay, true)
 				isSyncingPlay = false
 			end
 		end)
@@ -541,39 +541,39 @@ return function(window, tab)
 			local wantMode = targetMap and pathRecord.GetMapMode(targetMap) == "full" or false
 			if recordBossToggle and recordBossToggle.GetState and recordBossToggle:GetState() ~= wantMode then
 				isSyncingMode = true
-				recordBossToggle:UpdateState(wantMode)
+				recordBossToggle:UpdateState(wantMode, true)
 				isSyncingMode = false
 			end
 		end)
 
 		pcall(function()
 			if pathVisualToggle and pathVisualToggle.GetState and pathVisualToggle:GetState() ~= pathRecord.IsVisualEnabled() then
-				pathVisualToggle:UpdateState(pathRecord.IsVisualEnabled())
+				pathVisualToggle:UpdateState(pathRecord.IsVisualEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if pathLinesToggle and pathLinesToggle.GetState and pathLinesToggle:GetState() ~= pathRecord.IsVisualShowLinesEnabled() then
-				pathLinesToggle:UpdateState(pathRecord.IsVisualShowLinesEnabled())
+				pathLinesToggle:UpdateState(pathRecord.IsVisualShowLinesEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if pathEventsToggle and pathEventsToggle.GetState and pathEventsToggle:GetState() ~= pathRecord.IsVisualShowEventsEnabled() then
-				pathEventsToggle:UpdateState(pathRecord.IsVisualShowEventsEnabled())
+				pathEventsToggle:UpdateState(pathRecord.IsVisualShowEventsEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if pathFacingToggle and pathFacingToggle.GetState and pathFacingToggle:GetState() ~= pathRecord.IsVisualShowFacingEnabled() then
-				pathFacingToggle:UpdateState(pathRecord.IsVisualShowFacingEnabled())
+				pathFacingToggle:UpdateState(pathRecord.IsVisualShowFacingEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if rangeToggle and rangeToggle.GetState and rangeToggle:GetState() ~= pathRecord.IsRangeVisualEnabled() then
-				rangeToggle:UpdateState(pathRecord.IsRangeVisualEnabled())
+				rangeToggle:UpdateState(pathRecord.IsRangeVisualEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if inRangeHighlightToggle and inRangeHighlightToggle.GetState and inRangeHighlightToggle:GetState() ~= pathRecord.IsHighlightInRangeEnabled() then
-				inRangeHighlightToggle:UpdateState(pathRecord.IsHighlightInRangeEnabled())
+				inRangeHighlightToggle:UpdateState(pathRecord.IsHighlightInRangeEnabled(), true)
 			end
 		end)
 	end

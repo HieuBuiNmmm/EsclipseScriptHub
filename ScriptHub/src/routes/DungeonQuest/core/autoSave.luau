@@ -13,6 +13,8 @@ local activeConfig = nil
 local saveQueued = false
 local suspended = false
 
+local recordingActive = false
+
 function autoSave.Suspend()
 	suspended = true
 	saveQueued = false
@@ -22,13 +24,36 @@ function autoSave.Resume()
 	suspended = false
 end
 
+function autoSave.SetRecording(state)
+	recordingActive = state and true or false
+end
+
+function autoSave.IsRecording()
+	return recordingActive
+end
+
 function autoSave.IsSuspended()
-	return suspended or (macLib.LoadingConfig == true)
+	if suspended or (macLib.LoadingConfig == true) or recordingActive then
+		return true
+	end
+	local ok, coordinator = pcall(require, "@routes/DungeonQuest/core/coordinator")
+	if ok and coordinator and coordinator.IsLocked and coordinator.IsLocked() then
+		return true
+	end
+	return false
 end
 
 -- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
 function autoSave.SetActive(name)
-	activeConfig = (typeof(name) == "string" and #name > 0) and name or nil
+	activeConfig = (typeof(name) == "string" and #name > 0) and string.gsub(name, "[\r\n%s]+", "") or nil
+	if activeConfig and writefile then
+		pcall(function()
+			local folder = macLib.Folder
+			if isfolder and not isfolder(folder) then makefolder(folder) end
+			if isfolder and not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			writefile(folder .. "/settings/autoload.txt", activeConfig)
+		end)
+	end
 end
 
 function autoSave.GetActive()
@@ -45,9 +70,12 @@ local function resolveActiveConfig()
 	local path = folder .. "/settings/autoload.txt"
 	if isfile and isfile(path) then
 		local ok, name = pcall(readfile, path)
-		if ok and typeof(name) == "string" and #name > 0 then
-			activeConfig = name
-			return activeConfig
+		if ok and typeof(name) == "string" then
+			name = string.gsub(name, "[\r\n%s]+", "")
+			if #name > 0 then
+				activeConfig = name
+				return activeConfig
+			end
 		end
 	end
 

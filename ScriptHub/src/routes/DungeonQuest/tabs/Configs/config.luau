@@ -6,6 +6,7 @@
 local macLib = require("@packages/Maclib")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local autoHide = require("@routes/DungeonQuest/core/autoHide")
+local coordinator = require("@routes/DungeonQuest/core/coordinator")
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -13,7 +14,13 @@ return function(window, tab)
 
 	local function getAutoloadName()
 		if isfile and isfile(autoloadPath) then
-			return readfile(autoloadPath)
+			local ok, name = pcall(readfile, autoloadPath)
+			if ok and type(name) == "string" then
+				name = string.gsub(name, "[\r\n%s]+", "")
+				if #name > 0 then
+					return name
+				end
+			end
 		end
 		return nil
 	end
@@ -22,6 +29,11 @@ return function(window, tab)
 		autoSave.SetActive(name)
 		local contextual = require("@routes/DungeonQuest/core/contextual")
 		contextual.LoadData(macLib.contextData)
+		if autoloadLabel then
+			pcall(function()
+				autoloadLabel:UpdateName("Autoload config: " .. name)
+			end)
+		end
 	end
 
 	local section = tab:Section({ Side = "Left" })
@@ -58,7 +70,9 @@ return function(window, tab)
 		Required = false,
 		Options = macLib:RefreshConfigList(),
 		Callback = function(value)
-			activate(value)
+			-- Không gọi activate(value) ở đây.
+			-- Chỉ chọn tên config để thực hiện Load / Overwrite / Set as autoload.
+			-- Tránh autoSave lưu đè UI hiện tại vào config mới chọn trước khi người dùng kịp Load!
 		end,
 	})
 
@@ -96,14 +110,34 @@ return function(window, tab)
 		Name = "Load Config",
 		Callback = function()
 			local name = configSelection.Value
+			if not name or name == "" then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
+			-- Suspend autoSave & Lock coordinator trong suốt quá trình LoadConfig
+			autoSave.Suspend()
+			coordinator.SetLocked(true)
+
 			local success, err = macLib:LoadConfig(name)
 			if not success then
+				coordinator.SetLocked(false)
+				autoSave.Resume()
 				window:Notify({ Title = "Interface", Description = "Unable to load config: " .. tostring(err) })
 				return
 			end
 
-			window:Notify({ Title = "Interface", Description = string.format("Loaded config %q", name) })
 			activate(name)
+
+			-- Mở lại coordinator và autoSave sau khi các toggle/slider đã đồng bộ xong
+			task.delay(0.5, function()
+				coordinator.SetLocked(false)
+			end)
+			task.delay(1.5, function()
+				autoSave.Resume()
+			end)
+
+			window:Notify({ Title = "Interface", Description = string.format("Loaded config %q", name) })
 		end,
 	})
 
@@ -111,14 +145,19 @@ return function(window, tab)
 		Name = "Overwrite Config",
 		Callback = function()
 			local name = configSelection.Value
+			if not name or name == "" then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
 			local success, err = macLib:SaveConfig(name)
 			if not success then
 				window:Notify({ Title = "Interface", Description = "Unable to overwrite config: " .. tostring(err) })
 				return
 			end
 
-			window:Notify({ Title = "Interface", Description = string.format("Overwrote config %q", name) })
 			activate(name)
+			window:Notify({ Title = "Interface", Description = string.format("Overwrote config %q", name) })
 		end,
 	})
 

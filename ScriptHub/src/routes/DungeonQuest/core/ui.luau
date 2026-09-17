@@ -9,12 +9,17 @@ function ui.PatchSliderLoadCallback(sliderElement)
 	if not sliderElement or type(sliderElement.UpdateValue) ~= "function" then return sliderElement end
 	local originalUpdateValue = sliderElement.UpdateValue
 	sliderElement.UpdateValue = function(self, Value)
-		originalUpdateValue(self, Value)
-		local settings = self.Settings
+		local targetSelf = self
+		local targetVal = Value
+		if targetVal == nil and (type(targetSelf) == "number" or type(targetSelf) == "string") then
+			targetVal = targetSelf
+			targetSelf = sliderElement
+		end
+
+		pcall(originalUpdateValue, targetSelf, targetVal)
+		local settings = targetSelf and targetSelf.Settings or sliderElement.Settings
 		if settings and settings.Callback then
-			task.spawn(function()
-				pcall(settings.Callback, tonumber(Value))
-			end)
+			pcall(settings.Callback, tonumber(targetVal))
 		end
 	end
 	return sliderElement

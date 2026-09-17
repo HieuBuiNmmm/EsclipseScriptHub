@@ -47,7 +47,21 @@ local assets = {
 }
 
 --// Functions
+local function elevateThreadIdentity()
+	pcall(function()
+		local fn = setthreadidentity or set_thread_identity or setidentity or (syn and syn.set_thread_identity)
+		if fn then
+			local ok = pcall(fn, 7)
+			if not ok then
+				pcall(fn, 8)
+			end
+		end
+	end)
+end
+MacLib.Elevate = elevateThreadIdentity
+
 local function GetGui()
+	elevateThreadIdentity()
 	local newGui = Instance.new("ScreenGui")
 	newGui.ScreenInsets = Enum.ScreenInsets.None
 	newGui.ResetOnSpawn = false
@@ -64,7 +78,26 @@ local function GetGui()
 end
 
 local function Tween(instance, tweeninfo, propertytable)
-	return TweenService:Create(instance, tweeninfo, propertytable)
+	elevateThreadIdentity()
+	local ok, tw = pcall(TweenService.Create, TweenService, instance, tweeninfo, propertytable)
+	if ok and tw then
+		return tw
+	end
+	-- Fallback: nếu TweenService:Create bị chặn bởi Roblox capability (lacking capability Plugin),
+	-- gán thẳng các thuộc tính để UI cập nhật trạng thái mà không crash thread.
+	if propertytable and typeof(instance) == "Instance" then
+		for prop, val in pairs(propertytable) do
+			pcall(function()
+				instance[prop] = val
+			end)
+		end
+	end
+	return {
+		Play = function() end,
+		Cancel = function() end,
+		Pause = function() end,
+		Completed = { Wait = function() end }
+	}
 end
 
 --// Library Functions
@@ -1777,25 +1810,32 @@ function MacLib:Window(Settings)
 					local togglebool = ToggleFunctions.Settings.Default
 
 					local function NewState(State, callback)
+						elevateThreadIdentity()
 						local transparencyValues = State and {toggle1Transparency.Enabled, togglerHeadTransparency.Enabled}
 							or {toggle1Transparency.Disabled, togglerHeadTransparency.Disabled}
 						local position = State and TweenSettings.EnabledPosition or TweenSettings.DisabledPosition
 
-						Tween(toggle1, TweenSettings.Info, {
-							ImageTransparency = transparencyValues[1]
-						}):Play()
+						pcall(function()
+							Tween(toggle1, TweenSettings.Info, {
+								ImageTransparency = transparencyValues[1]
+							}):Play()
+						end)
 
-						Tween(togglerHead, TweenSettings.Info, {
-							ImageTransparency = transparencyValues[2]
-						}):Play()
+						pcall(function()
+							Tween(togglerHead, TweenSettings.Info, {
+								ImageTransparency = transparencyValues[2]
+							}):Play()
+						end)
 
-						Tween(togglerHead, TweenSettings.Info, {
-							Position = position
-						}):Play()
+						pcall(function()
+							Tween(togglerHead, TweenSettings.Info, {
+								Position = position
+							}):Play()
+						end)
 
 						ToggleFunctions.State = State
 						if callback then
-							callback(togglebool)
+							pcall(callback, togglebool)
 						end
 					end
 
@@ -1811,9 +1851,9 @@ function MacLib:Window(Settings)
 					function ToggleFunctions:Toggle()
 						Toggle()
 					end
-					function ToggleFunctions:UpdateState(State)
+					function ToggleFunctions:UpdateState(State, ignoreCallback)
 						togglebool = State
-						NewState(togglebool, ToggleFunctions.Settings.Callback)
+						NewState(togglebool, not ignoreCallback and ToggleFunctions.Settings.Callback or nil)
 					end
 					function ToggleFunctions:GetState()
 						return togglebool
@@ -1983,6 +2023,7 @@ function MacLib:Window(Settings)
 					local finalValue
 
 					local function SetValue(val, ignorecallback)
+						elevateThreadIdentity()
 						local posXScale
 
 						if typeof(val) == "Instance" then
@@ -1994,11 +2035,15 @@ function MacLib:Window(Settings)
 						end
 
 						local pos = UDim2.new(posXScale, 0, 0.5, 0)
-						sliderHead.Position = pos
+						pcall(function()
+							sliderHead.Position = pos
+						end)
 
 						finalValue = posXScale * (SliderFunctions.Settings.Maximum - SliderFunctions.Settings.Minimum) + Settings.Minimum
 
-						sliderValue.Text = (Settings.Prefix or "") .. ValueDisplayMethod(finalValue, SliderFunctions.Settings.Precision) .. (Settings.Suffix or "")
+						pcall(function()
+							sliderValue.Text = (Settings.Prefix or "") .. ValueDisplayMethod(finalValue, SliderFunctions.Settings.Precision) .. (Settings.Suffix or "")
+						end)
 
 						if not ignorecallback then
 							task.spawn(function()
@@ -5423,6 +5468,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.state ~= nil then
 					MacLib.Options[Flag]:UpdateState(data.state)
 				end
@@ -5437,7 +5483,8 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
-				if MacLib.Options[Flag] and data.value then
+				elevateThreadIdentity()
+				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
 				end
 			end
@@ -5451,6 +5498,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.text and type(data.text) == "string" then
 					MacLib.Options[Flag]:UpdateText(data.text)
 				end
@@ -5465,6 +5513,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.bind then
 					MacLib.Options[Flag]:Bind(Enum.KeyCode[data.bind])
 				end
@@ -5479,6 +5528,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value then
 					MacLib.Options[Flag]:UpdateSelection(data.value)
 				end
@@ -5498,6 +5548,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				local function HexToColor3(hex)
 					local r = tonumber(hex:sub(2, 3), 16) / 255
 					local g = tonumber(hex:sub(4, 5), 16) / 255
@@ -5532,29 +5583,58 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:LoadAutoLoadConfig()
+		elevateThreadIdentity()
 		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
 
-		if isfile(MacLib.Folder .. "/settings/autoload.txt") then
-			local name = readfile(MacLib.Folder .. "/settings/autoload.txt")
+		local autoloadPath = MacLib.Folder .. "/settings/autoload.txt"
+		local name = nil
 
-			local suc, err = MacLib:LoadConfig(name)
-			if not suc then
-				pcall(function()
-					WindowFunctions:Notify({
-						Title = "Interface",
-						Description = "Error loading autoload config: " .. tostring(err)
-					})
-				end)
-				return
+		if isfile(autoloadPath) then
+			local ok, content = pcall(readfile, autoloadPath)
+			if ok and type(content) == "string" then
+				content = string.gsub(content, "[\r\n%s]+", "")
+				if #content > 0 then
+					name = content
+				end
 			end
+		end
 
+		-- Fallback: nếu autoload.txt chưa tồn tại hoặc rỗng, thử nạp Default.json
+		if not name then
+			local defaultFile = MacLib.Folder .. "/settings/Default.json"
+			if isfile(defaultFile) then
+				name = "Default"
+				if writefile then
+					pcall(writefile, autoloadPath, "Default")
+				end
+			end
+		end
+
+		if not name then
+			print("[MacLib] Không tìm thấy autoload config nào trong " .. autoloadPath)
+			return
+		end
+
+		print(string.format("[MacLib] Khởi động nạp autoload config: %q", name))
+		local suc, err = MacLib:LoadConfig(name)
+		if not suc then
 			pcall(function()
 				WindowFunctions:Notify({
 					Title = "Interface",
-					Description = string.format("Autoloaded config: %q", name),
+					Description = "Error loading autoload config: " .. tostring(err)
 				})
 			end)
+			warn(string.format("[MacLib] Lỗi khi nạp autoload config %q: %s", name, tostring(err)))
+			return
 		end
+
+		print(string.format("[MacLib] Nạp autoload config thành công: %q", name))
+		pcall(function()
+			WindowFunctions:Notify({
+				Title = "Interface",
+				Description = string.format("Autoloaded config: %q", name),
+			})
+		end)
 	end
 
 	function MacLib:SetFolder(Folder)
@@ -5595,28 +5675,43 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:LoadConfig(Path)
+		elevateThreadIdentity()
 		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
 
 		if (not Path) then
 			return false, "Please select a config file."
 		end
 
+		Path = string.gsub(tostring(Path), "[\r\n%s]+", "")
+		if #Path == 0 then
+			return false, "Please select a config file."
+		end
+
 		local file = MacLib.Folder .. "/settings/" .. Path .. ".json"
-		if not isfile(file) then return false, "Invalid file" end
+		if not isfile(file) then return false, "Invalid file: " .. tostring(file) end
 
 		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
-		if not success then return false, "Unable to decode JSON data." end
+		if not success or type(decoded) ~= "table" then return false, "Unable to decode JSON data." end
 
 		MacLib.LoadingConfig = true
 		MacLib.contextData = decoded.contextData or {}
 
-		for _, option in next, decoded.objects do
-			if ClassParser[option.type] then
-				pcall(function() 
+		local objects = decoded.objects or {}
+		local loadedCount = 0
+		for _, option in next, objects do
+			if option and option.type and ClassParser[option.type] then
+				local ok, err = pcall(function() 
 					ClassParser[option.type].Load(option.flag, option) 
 				end)
+				if ok then
+					loadedCount = loadedCount + 1
+				else
+					warn(string.format("[MacLib:LoadConfig] Lỗi khi nạp option %s (%s): %s", tostring(option.flag), tostring(option.type), tostring(err)))
+				end
 			end
 		end
+
+		print(string.format("[MacLib:LoadConfig] Đã nạp config %q (%d/%d options thành công)", Path, loadedCount, #objects))
 
 		task.delay(1, function()
 			MacLib.LoadingConfig = false

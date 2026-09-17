@@ -1,6 +1,14 @@
 -- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 return function(self)
+	pcall(function()
+		local fn = setthreadidentity or set_thread_identity or setidentity or (syn and syn.set_thread_identity)
+		if fn then
+			local ok = pcall(fn, 7)
+			if not ok then pcall(fn, 8) end
+		end
+	end)
+
 	--// Quan trọng: Maclib capture `Players.LocalPlayer` NGAY KHI require module
 	--// (trong Maclib: `local LocalPlayer = Players.LocalPlayer` ở top-level).
 	--// Nếu script chạy quá nhanh khi inject, LocalPlayer còn nil, và biến bên trong
@@ -114,9 +122,15 @@ return function(self)
 	local coordinator = require("@routes/DungeonQuest/core/coordinator")
 
 	coordinator.SetLocked(true)
-	pcall(function()
+	if macLib.Elevate then
+		macLib.Elevate()
+	end
+	local loadOk, loadErr = pcall(function()
 		macLib:LoadAutoLoadConfig()
 	end)
+	if not loadOk then
+		warn("[DungeonQuest] Error during LoadAutoLoadConfig:", loadErr)
+	end
 
 	--// Đồng bộ config autoload vào autoSave: nếu không gọi SetActive thì
 	--// autoSave.Save() sẽ KHÔNG lưu bất kỳ slider/toggle nào khi thay đổi.
@@ -124,8 +138,18 @@ return function(self)
 		local path = macLib.Folder .. "/settings/autoload.txt"
 		if isfile and isfile(path) then
 			local ok, name = pcall(readfile, path)
-			if ok and type(name) == "string" and #name > 0 then
-				autoSave.SetActive(name)
+			if ok and type(name) == "string" then
+				name = string.gsub(name, "[\r\n%s]+", "")
+				if #name > 0 then
+					autoSave.SetActive(name)
+					return
+				end
+			end
+		end
+		if not autoSave.GetActive() then
+			local defaultFile = macLib.Folder .. "/settings/Default.json"
+			if isfile and isfile(defaultFile) then
+				autoSave.SetActive("Default")
 			end
 		end
 	end

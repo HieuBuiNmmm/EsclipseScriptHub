@@ -280,8 +280,8 @@ return function(window, tab)
 	}, "Toggle_HazardFallbackPassEnabled")
 
 	combatMaster.OnStateChanged(function(enabled)
-		pcall(function() hsToggle:UpdateState(enabled) end)
-		pcall(function() dodgeToggle:UpdateState(enabled) end)
+		pcall(function() hsToggle:UpdateState(enabled, true) end)
+		pcall(function() dodgeToggle:UpdateState(enabled, true) end)
 		updateMonitor()
 	end)
 

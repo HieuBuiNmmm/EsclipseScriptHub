@@ -28,7 +28,7 @@ return function(window, tab)
 
 	combatMaster.OnStateChanged(function(state)
 		pcall(function()
-			masterToggle:UpdateState(state)
+			masterToggle:UpdateState(state, true)
 		end)
 	end)
 

@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-17T05:40:28.029523+00:00",
+    genDate = "2026-09-17T08:59:19.924205200+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -103,7 +103,21 @@ local assets = {
 }
 
 --// Functions
+local function elevateThreadIdentity()
+	pcall(function()
+		local fn = setthreadidentity or set_thread_identity or setidentity or (syn and syn.set_thread_identity)
+		if fn then
+			local ok = pcall(fn, 7)
+			if not ok then
+				pcall(fn, 8)
+			end
+		end
+	end)
+end
+MacLib.Elevate = elevateThreadIdentity
+
 local function GetGui()
+	elevateThreadIdentity()
 	local newGui = Instance.new("ScreenGui")
 	newGui.ScreenInsets = Enum.ScreenInsets.None
 	newGui.ResetOnSpawn = false
@@ -120,7 +134,26 @@ local function GetGui()
 end
 
 local function Tween(instance, tweeninfo, propertytable)
-	return TweenService:Create(instance, tweeninfo, propertytable)
+	elevateThreadIdentity()
+	local ok, tw = pcall(TweenService.Create, TweenService, instance, tweeninfo, propertytable)
+	if ok and tw then
+		return tw
+	end
+	-- Fallback: nếu TweenService:Create bị chặn bởi Roblox capability (lacking capability Plugin),
+	-- gán thẳng các thuộc tính để UI cập nhật trạng thái mà không crash thread.
+	if propertytable and typeof(instance) == "Instance" then
+		for prop, val in pairs(propertytable) do
+			pcall(function()
+				instance[prop] = val
+			end)
+		end
+	end
+	return {
+		Play = function() end,
+		Cancel = function() end,
+		Pause = function() end,
+		Completed = { Wait = function() end }
+	}
 end
 
 --// Library Functions
@@ -1833,25 +1866,32 @@ function MacLib:Window(Settings)
 					local togglebool = ToggleFunctions.Settings.Default
 
 					local function NewState(State, callback)
+						elevateThreadIdentity()
 						local transparencyValues = State and {toggle1Transparency.Enabled, togglerHeadTransparency.Enabled}
 							or {toggle1Transparency.Disabled, togglerHeadTransparency.Disabled}
 						local position = State and TweenSettings.EnabledPosition or TweenSettings.DisabledPosition
 
-						Tween(toggle1, TweenSettings.Info, {
-							ImageTransparency = transparencyValues[1]
-						}):Play()
+						pcall(function()
+							Tween(toggle1, TweenSettings.Info, {
+								ImageTransparency = transparencyValues[1]
+							}):Play()
+						end)
 
-						Tween(togglerHead, TweenSettings.Info, {
-							ImageTransparency = transparencyValues[2]
-						}):Play()
+						pcall(function()
+							Tween(togglerHead, TweenSettings.Info, {
+								ImageTransparency = transparencyValues[2]
+							}):Play()
+						end)
 
-						Tween(togglerHead, TweenSettings.Info, {
-							Position = position
-						}):Play()
+						pcall(function()
+							Tween(togglerHead, TweenSettings.Info, {
+								Position = position
+							}):Play()
+						end)
 
 						ToggleFunctions.State = State
 						if callback then
-							callback(togglebool)
+							pcall(callback, togglebool)
 						end
 					end
 
@@ -1867,9 +1907,9 @@ function MacLib:Window(Settings)
 					function ToggleFunctions:Toggle()
 						Toggle()
 					end
-					function ToggleFunctions:UpdateState(State)
+					function ToggleFunctions:UpdateState(State, ignoreCallback)
 						togglebool = State
-						NewState(togglebool, ToggleFunctions.Settings.Callback)
+						NewState(togglebool, not ignoreCallback and ToggleFunctions.Settings.Callback or nil)
 					end
 					function ToggleFunctions:GetState()
 						return togglebool
@@ -2039,6 +2079,7 @@ function MacLib:Window(Settings)
 					local finalValue
 
 					local function SetValue(val, ignorecallback)
+						elevateThreadIdentity()
 						local posXScale
 
 						if typeof(val) == "Instance" then
@@ -2050,11 +2091,15 @@ function MacLib:Window(Settings)
 						end
 
 						local pos = UDim2.new(posXScale, 0, 0.5, 0)
-						sliderHead.Position = pos
+						pcall(function()
+							sliderHead.Position = pos
+						end)
 
 						finalValue = posXScale * (SliderFunctions.Settings.Maximum - SliderFunctions.Settings.Minimum) + Settings.Minimum
 
-						sliderValue.Text = (Settings.Prefix or "") .. ValueDisplayMethod(finalValue, SliderFunctions.Settings.Precision) .. (Settings.Suffix or "")
+						pcall(function()
+							sliderValue.Text = (Settings.Prefix or "") .. ValueDisplayMethod(finalValue, SliderFunctions.Settings.Precision) .. (Settings.Suffix or "")
+						end)
 
 						if not ignorecallback then
 							task.spawn(function()
@@ -5479,6 +5524,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.state ~= nil then
 					MacLib.Options[Flag]:UpdateState(data.state)
 				end
@@ -5493,7 +5539,8 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
-				if MacLib.Options[Flag] and data.value then
+				elevateThreadIdentity()
+				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
 				end
 			end
@@ -5507,6 +5554,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.text and type(data.text) == "string" then
 					MacLib.Options[Flag]:UpdateText(data.text)
 				end
@@ -5521,6 +5569,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.bind then
 					MacLib.Options[Flag]:Bind(Enum.KeyCode[data.bind])
 				end
@@ -5535,6 +5584,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value then
 					MacLib.Options[Flag]:UpdateSelection(data.value)
 				end
@@ -5554,6 +5604,7 @@ function MacLib:Window(Settings)
 				}
 			end,
 			Load = function(Flag, data)
+				elevateThreadIdentity()
 				local function HexToColor3(hex)
 					local r = tonumber(hex:sub(2, 3), 16) / 255
 					local g = tonumber(hex:sub(4, 5), 16) / 255
@@ -5588,29 +5639,58 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:LoadAutoLoadConfig()
+		elevateThreadIdentity()
 		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
 
-		if isfile(MacLib.Folder .. "/settings/autoload.txt") then
-			local name = readfile(MacLib.Folder .. "/settings/autoload.txt")
+		local autoloadPath = MacLib.Folder .. "/settings/autoload.txt"
+		local name = nil
 
-			local suc, err = MacLib:LoadConfig(name)
-			if not suc then
-				pcall(function()
-					WindowFunctions:Notify({
-						Title = "Interface",
-						Description = "Error loading autoload config: " .. tostring(err)
-					})
-				end)
-				return
+		if isfile(autoloadPath) then
+			local ok, content = pcall(readfile, autoloadPath)
+			if ok and type(content) == "string" then
+				content = string.gsub(content, "[\r\n%s]+", "")
+				if #content > 0 then
+					name = content
+				end
 			end
+		end
 
+		-- Fallback: nếu autoload.txt chưa tồn tại hoặc rỗng, thử nạp Default.json
+		if not name then
+			local defaultFile = MacLib.Folder .. "/settings/Default.json"
+			if isfile(defaultFile) then
+				name = "Default"
+				if writefile then
+					pcall(writefile, autoloadPath, "Default")
+				end
+			end
+		end
+
+		if not name then
+			print("[MacLib] Không tìm thấy autoload config nào trong " .. autoloadPath)
+			return
+		end
+
+		print(string.format("[MacLib] Khởi động nạp autoload config: %q", name))
+		local suc, err = MacLib:LoadConfig(name)
+		if not suc then
 			pcall(function()
 				WindowFunctions:Notify({
 					Title = "Interface",
-					Description = string.format("Autoloaded config: %q", name),
+					Description = "Error loading autoload config: " .. tostring(err)
 				})
 			end)
+			warn(string.format("[MacLib] Lỗi khi nạp autoload config %q: %s", name, tostring(err)))
+			return
 		end
+
+		print(string.format("[MacLib] Nạp autoload config thành công: %q", name))
+		pcall(function()
+			WindowFunctions:Notify({
+				Title = "Interface",
+				Description = string.format("Autoloaded config: %q", name),
+			})
+		end)
 	end
 
 	function MacLib:SetFolder(Folder)
@@ -5651,28 +5731,43 @@ function MacLib:Window(Settings)
 	end
 
 	function MacLib:LoadConfig(Path)
+		elevateThreadIdentity()
 		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
 
 		if (not Path) then
 			return false, "Please select a config file."
 		end
 
+		Path = string.gsub(tostring(Path), "[\r\n%s]+", "")
+		if #Path == 0 then
+			return false, "Please select a config file."
+		end
+
 		local file = MacLib.Folder .. "/settings/" .. Path .. ".json"
-		if not isfile(file) then return false, "Invalid file" end
+		if not isfile(file) then return false, "Invalid file: " .. tostring(file) end
 
 		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
-		if not success then return false, "Unable to decode JSON data." end
+		if not success or type(decoded) ~= "table" then return false, "Unable to decode JSON data." end
 
 		MacLib.LoadingConfig = true
 		MacLib.contextData = decoded.contextData or {}
 
-		for _, option in next, decoded.objects do
-			if ClassParser[option.type] then
-				pcall(function() 
+		local objects = decoded.objects or {}
+		local loadedCount = 0
+		for _, option in next, objects do
+			if option and option.type and ClassParser[option.type] then
+				local ok, err = pcall(function() 
 					ClassParser[option.type].Load(option.flag, option) 
 				end)
+				if ok then
+					loadedCount = loadedCount + 1
+				else
+					warn(string.format("[MacLib:LoadConfig] Lỗi khi nạp option %s (%s): %s", tostring(option.flag), tostring(option.type), tostring(err)))
+				end
 			end
 		end
+
+		print(string.format("[MacLib:LoadConfig] Đã nạp config %q (%d/%d options thành công)", Path, loadedCount, #objects))
 
 		task.delay(1, function()
 			MacLib.LoadingConfig = false
@@ -6080,6 +6175,8 @@ local activeConfig = nil
 local saveQueued = false
 local suspended = false
 
+local recordingActive = false
+
 function autoSave.Suspend()
 	suspended = true
 	saveQueued = false
@@ -6089,13 +6186,36 @@ function autoSave.Resume()
 	suspended = false
 end
 
+function autoSave.SetRecording(state)
+	recordingActive = state and true or false
+end
+
+function autoSave.IsRecording()
+	return recordingActive
+end
+
 function autoSave.IsSuspended()
-	return suspended or (macLib.LoadingConfig == true)
+	if suspended or (macLib.LoadingConfig == true) or recordingActive then
+		return true
+	end
+	local ok, coordinator = pcall(require, "@routes/DungeonQuest/core/coordinator")
+	if ok and coordinator and coordinator.IsLocked and coordinator.IsLocked() then
+		return true
+	end
+	return false
 end
 
 -- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
 function autoSave.SetActive(name)
-	activeConfig = (typeof(name) == "string" and #name > 0) and name or nil
+	activeConfig = (typeof(name) == "string" and #name > 0) and string.gsub(name, "[\r\n%s]+", "") or nil
+	if activeConfig and writefile then
+		pcall(function()
+			local folder = macLib.Folder
+			if isfolder and not isfolder(folder) then makefolder(folder) end
+			if isfolder and not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			writefile(folder .. "/settings/autoload.txt", activeConfig)
+		end)
+	end
 end
 
 function autoSave.GetActive()
@@ -6112,9 +6232,12 @@ local function resolveActiveConfig()
 	local path = folder .. "/settings/autoload.txt"
 	if isfile and isfile(path) then
 		local ok, name = pcall(readfile, path)
-		if ok and typeof(name) == "string" and #name > 0 then
-			activeConfig = name
-			return activeConfig
+		if ok and typeof(name) == "string" then
+			name = string.gsub(name, "[\r\n%s]+", "")
+			if #name > 0 then
+				activeConfig = name
+				return activeConfig
+			end
 		end
 	end
 
@@ -14796,12 +14919,17 @@ function ui.PatchSliderLoadCallback(sliderElement)
 	if not sliderElement or type(sliderElement.UpdateValue) ~= "function" then return sliderElement end
 	local originalUpdateValue = sliderElement.UpdateValue
 	sliderElement.UpdateValue = function(self, Value)
-		originalUpdateValue(self, Value)
-		local settings = self.Settings
+		local targetSelf = self
+		local targetVal = Value
+		if targetVal == nil and (type(targetSelf) == "number" or type(targetSelf) == "string") then
+			targetVal = targetSelf
+			targetSelf = sliderElement
+		end
+
+		pcall(originalUpdateValue, targetSelf, targetVal)
+		local settings = targetSelf and targetSelf.Settings or sliderElement.Settings
 		if settings and settings.Callback then
-			task.spawn(function()
-				pcall(settings.Callback, tonumber(Value))
-			end)
+			pcall(settings.Callback, tonumber(targetVal))
 		end
 	end
 	return sliderElement
@@ -15428,8 +15556,8 @@ return function(window, tab)
 	}, "Toggle_HazardFallbackPassEnabled")
 
 	combatMaster.OnStateChanged(function(enabled)
-		pcall(function() hsToggle:UpdateState(enabled) end)
-		pcall(function() dodgeToggle:UpdateState(enabled) end)
+		pcall(function() hsToggle:UpdateState(enabled, true) end)
+		pcall(function() dodgeToggle:UpdateState(enabled, true) end)
 		updateMonitor()
 	end)
 
@@ -15741,7 +15869,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoFarm")
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Rescan Interval (s)",
 		Default = autoFarm.GetScanInterval(),
 		Minimum = 0.5,
@@ -15750,7 +15878,7 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetScanInterval(val)
 		end),
-	}, "Slider_AF_ScanInterval")
+	}, "Slider_AF_ScanInterval"))
 
 	leftSection:Toggle({
 		Name = "Auto Face Target (Look At Enemy)",
@@ -15760,7 +15888,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_AF_AutoFaceTarget")
 
-	leftSection:Slider({
+	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Repath Distance (studs)",
 		Default = autoFarm.GetRepathDistance(),
 		Minimum = 2,
@@ -15770,7 +15898,7 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(val)
 			autoFarm.SetRepathDistance(val)
 		end),
-	}, "Slider_AF_RepathDistance")
+	}, "Slider_AF_RepathDistance"))
 
 	leftSection:Toggle({
 		Name = "Auto Jump When Stuck (Low Velocity)",
@@ -15803,8 +15931,8 @@ return function(window, tab)
 	}, "Toggle_AF_AutoSkill")
 
 	combatMaster.OnStateChanged(function(enabled)
-		pcall(function() afToggle:UpdateState(enabled) end)
-		pcall(function() asToggle:UpdateState(enabled) end)
+		pcall(function() afToggle:UpdateState(enabled, true) end)
+		pcall(function() asToggle:UpdateState(enabled, true) end)
 	end)
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
@@ -16036,13 +16164,13 @@ return function(window, tab)
 
 		if disableDodgeToggle then
 			pcall(function()
-				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey))
+				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey), true)
 			end)
 		end
 
 		if selectedTargetKey == "Mob" then
 			if bossAreaToggle then
-				pcall(function() bossAreaToggle:UpdateState(false) end)
+				pcall(function() bossAreaToggle:UpdateState(false, true) end)
 			end
 			if bossAreaRadiusSlider then
 				pcall(function() bossAreaRadiusSlider:UpdateValue(80) end)
@@ -16050,7 +16178,7 @@ return function(window, tab)
 		else
 			local baEnabled, baRadius = contextual.GetBossArea(selectedDungeon, selectedTargetKey)
 			if bossAreaToggle then
-				pcall(function() bossAreaToggle:UpdateState(baEnabled) end)
+				pcall(function() bossAreaToggle:UpdateState(baEnabled, true) end)
 			end
 			if bossAreaRadiusSlider then
 				pcall(function() bossAreaRadiusSlider:UpdateValue(baRadius) end)
@@ -16250,7 +16378,7 @@ return function(window, tab)
 
 	combatMaster.OnStateChanged(function(state)
 		pcall(function()
-			masterToggle:UpdateState(state)
+			masterToggle:UpdateState(state, true)
 		end)
 	end)
 
@@ -20494,6 +20622,7 @@ end function __DIST.aa()-- Module Config trong tab Configs (DungeonQuest): tự 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
 local autoHide = __DIST.load('_')
+local coordinator = __DIST.load('g')
 
 return function(window, tab)
 	local folder = macLib.Folder
@@ -20501,7 +20630,13 @@ return function(window, tab)
 
 	local function getAutoloadName()
 		if isfile and isfile(autoloadPath) then
-			return readfile(autoloadPath)
+			local ok, name = pcall(readfile, autoloadPath)
+			if ok and type(name) == "string" then
+				name = string.gsub(name, "[\r\n%s]+", "")
+				if #name > 0 then
+					return name
+				end
+			end
 		end
 		return nil
 	end
@@ -20510,6 +20645,11 @@ return function(window, tab)
 		autoSave.SetActive(name)
 		local contextual = __DIST.load('t')
 		contextual.LoadData(macLib.contextData)
+		if autoloadLabel then
+			pcall(function()
+				autoloadLabel:UpdateName("Autoload config: " .. name)
+			end)
+		end
 	end
 
 	local section = tab:Section({ Side = "Left" })
@@ -20546,7 +20686,9 @@ return function(window, tab)
 		Required = false,
 		Options = macLib:RefreshConfigList(),
 		Callback = function(value)
-			activate(value)
+			-- Không gọi activate(value) ở đây.
+			-- Chỉ chọn tên config để thực hiện Load / Overwrite / Set as autoload.
+			-- Tránh autoSave lưu đè UI hiện tại vào config mới chọn trước khi người dùng kịp Load!
 		end,
 	})
 
@@ -20584,14 +20726,34 @@ return function(window, tab)
 		Name = "Load Config",
 		Callback = function()
 			local name = configSelection.Value
+			if not name or name == "" then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
+			-- Suspend autoSave & Lock coordinator trong suốt quá trình LoadConfig
+			autoSave.Suspend()
+			coordinator.SetLocked(true)
+
 			local success, err = macLib:LoadConfig(name)
 			if not success then
+				coordinator.SetLocked(false)
+				autoSave.Resume()
 				window:Notify({ Title = "Interface", Description = "Unable to load config: " .. tostring(err) })
 				return
 			end
 
-			window:Notify({ Title = "Interface", Description = string.format("Loaded config %q", name) })
 			activate(name)
+
+			-- Mở lại coordinator và autoSave sau khi các toggle/slider đã đồng bộ xong
+			task.delay(0.5, function()
+				coordinator.SetLocked(false)
+			end)
+			task.delay(1.5, function()
+				autoSave.Resume()
+			end)
+
+			window:Notify({ Title = "Interface", Description = string.format("Loaded config %q", name) })
 		end,
 	})
 
@@ -20599,14 +20761,19 @@ return function(window, tab)
 		Name = "Overwrite Config",
 		Callback = function()
 			local name = configSelection.Value
+			if not name or name == "" then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
 			local success, err = macLib:SaveConfig(name)
 			if not success then
 				window:Notify({ Title = "Interface", Description = "Unable to overwrite config: " .. tostring(err) })
 				return
 			end
 
-			window:Notify({ Title = "Interface", Description = string.format("Overwrote config %q", name) })
 			activate(name)
+			window:Notify({ Title = "Interface", Description = string.format("Overwrote config %q", name) })
 		end,
 	})
 
@@ -21587,6 +21754,7 @@ return storage end function __DIST.ae()-- Path Record System – Recorder: ghi 1
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local storage = __DIST.load('ad')
+local autoSave = __DIST.load('d')
 local notifier = __DIST.load('c')
 
 local RunService = services.RunService
@@ -21925,6 +22093,7 @@ function recorder.Start()
 	recMap = map
 	beginSlice(room, root.Position)
 	isRecording = true
+	autoSave.SetRecording(true)
 	sessionRooms = 0
 	sessionBossRooms = 0
 	sessionRawPts = 0
@@ -22177,6 +22346,7 @@ function recorder.Stop(reason)
 	if not isRecording then return false end
 
 	isRecording = false
+	autoSave.SetRecording(false)
 	stopSubscriptions()
 
 	local slice = finalizeSlice(reason, true)
@@ -22215,6 +22385,7 @@ function recorder.Cancel()
 	stopSubscriptions()
 	clearSessionState()
 	isRecording = false
+	autoSave.SetRecording(false)
 	fireStatus()
 end
 
@@ -24502,6 +24673,35 @@ local rangeVisual = __DIST.load('ah')
 --// Table
 local pathRecord = {}
 
+--// State
+local autoPlayWanted = false
+local statusListeners = {}
+local bossConnection = nil
+local storageUnsub = nil
+local roomUnsub = nil
+local mapUnsub = nil
+
+local function fireStatus(reason)
+	local recStat = recorder.GetStatus()
+	local info = {
+		recording = recorder.IsRecording(),
+		playing = mover.IsPlaying(),
+		resume = mover.ResumeWanted(),
+		autoPlayWanted = autoPlayWanted,
+		inLobby = shared.IsInLobby(),
+		map = shared.GetCurrentDungeonName(),
+		room = shared.GetCurrentRoomIndex(),
+		boss = shared.IsBossActive(),
+		recordedMaps = storage.Count(),
+		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
+		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
+		reason = reason,
+	}
+	for _, cb in ipairs(statusListeners) do
+		pcall(cb, info)
+	end
+end
+
 --// Timeline record/replay: đứng chờ (dwell) + kích hoạt skill (chuột phải) + facing.
 local timelineCapture = true
 local timelineReplay = true
@@ -24606,33 +24806,6 @@ function pathRecord.SetAimSkillE(state)
 	fireStatus("aimskille")
 end
 
---// State
-local statusListeners = {}
-local bossConnection = nil
-local storageUnsub = nil
-local roomUnsub = nil
-local mapUnsub = nil
-
-local function fireStatus(reason)
-	local recStat = recorder.GetStatus()
-	local info = {
-		recording = recorder.IsRecording(),
-		playing = mover.IsPlaying(),
-		resume = mover.ResumeWanted(),
-		autoPlayWanted = autoPlayWanted,
-		inLobby = shared.IsInLobby(),
-		map = shared.GetCurrentDungeonName(),
-		room = shared.GetCurrentRoomIndex(),
-		boss = shared.IsBossActive(),
-		recordedMaps = storage.Count(),
-		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
-		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
-		reason = reason,
-	}
-	for _, cb in ipairs(statusListeners) do
-		pcall(cb, info)
-	end
-end
 
 --// ---------- Record ----------
 
@@ -24682,7 +24855,6 @@ end
 --// Flag persists "wants to auto-play macro" (được lưu qua config, không phải runtime state).
 --// Khi bật: đang ở dungeon có macro -> phát ngay; phòng boss đang active -> bỏ qua nếu mode NORMAL.
 --// Giữ nguyên trạng thái armed khi ở lobby hoặc khi room đang load.
-local autoPlayWanted = false
 
 function pathRecord.IsAutoPlayWanted()
 	return autoPlayWanted
@@ -25161,7 +25333,7 @@ return function(window, tab)
 									if not ok then
 										pcall(function()
 											isSyncingRecord = true
-											recordToggle:UpdateState(false)
+											recordToggle:UpdateState(false, true)
 											isSyncingRecord = false
 										end)
 									end
@@ -25173,7 +25345,7 @@ return function(window, tab)
 									isPromptingRecord = false
 									local ok, err = pcall(function()
 										isSyncingRecord = true
-										recordToggle:UpdateState(false)
+										recordToggle:UpdateState(false, true)
 										isSyncingRecord = false
 									end)
 									if not ok then
@@ -25217,7 +25389,7 @@ return function(window, tab)
 				notifier.Notify("Path Record", "Chưa có map nào được chọn. Hãy chọn map trong dropdown hoặc vào dungeon.", 3)
 				pcall(function()
 					isSyncingMode = true
-					recordBossToggle:UpdateState(false)
+					recordBossToggle:UpdateState(false, true)
 					isSyncingMode = false
 				end)
 				return
@@ -25383,12 +25555,12 @@ return function(window, tab)
 
 	local deleteBtn = macroSection:Button({
 		Name = "Delete Selected Map",
-		Callback = autoSave.Wrap(function()
+		Callback = function()
 			local mapName = getSelectedMapFromDropdown()
 			if mapName and #mapName > 0 then
 				pathRecord.RemoveMap(mapName)
 			end
-		end),
+		end,
 	})
 
 	local reloadBtn = macroSection:Button({
@@ -25602,13 +25774,13 @@ return function(window, tab)
 		return ("<font color='rgb(0,255,180)'>%s</font> <b>%d%%</b>"):format(bar, percent)
 	end
 
-	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop).
+	--// Đồng bộ toggle UI theo trạng thái thực tế (không gọi lại Callback gây loop hay autoSave).
 	syncToggles = function(info)
 		if not isPromptingRecord then
 			pcall(function()
 				if recordToggle and recordToggle.GetState and recordToggle:GetState() ~= info.recording then
 					isSyncingRecord = true
-					recordToggle:UpdateState(info.recording)
+					recordToggle:UpdateState(info.recording, true)
 					isSyncingRecord = false
 				end
 			end)
@@ -25617,7 +25789,7 @@ return function(window, tab)
 			local wantPlay = pathRecord.IsAutoPlayWanted()
 			if playToggle and playToggle.GetState and playToggle:GetState() ~= wantPlay then
 				isSyncingPlay = true
-				playToggle:UpdateState(wantPlay)
+				playToggle:UpdateState(wantPlay, true)
 				isSyncingPlay = false
 			end
 		end)
@@ -25627,39 +25799,39 @@ return function(window, tab)
 			local wantMode = targetMap and pathRecord.GetMapMode(targetMap) == "full" or false
 			if recordBossToggle and recordBossToggle.GetState and recordBossToggle:GetState() ~= wantMode then
 				isSyncingMode = true
-				recordBossToggle:UpdateState(wantMode)
+				recordBossToggle:UpdateState(wantMode, true)
 				isSyncingMode = false
 			end
 		end)
 
 		pcall(function()
 			if pathVisualToggle and pathVisualToggle.GetState and pathVisualToggle:GetState() ~= pathRecord.IsVisualEnabled() then
-				pathVisualToggle:UpdateState(pathRecord.IsVisualEnabled())
+				pathVisualToggle:UpdateState(pathRecord.IsVisualEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if pathLinesToggle and pathLinesToggle.GetState and pathLinesToggle:GetState() ~= pathRecord.IsVisualShowLinesEnabled() then
-				pathLinesToggle:UpdateState(pathRecord.IsVisualShowLinesEnabled())
+				pathLinesToggle:UpdateState(pathRecord.IsVisualShowLinesEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if pathEventsToggle and pathEventsToggle.GetState and pathEventsToggle:GetState() ~= pathRecord.IsVisualShowEventsEnabled() then
-				pathEventsToggle:UpdateState(pathRecord.IsVisualShowEventsEnabled())
+				pathEventsToggle:UpdateState(pathRecord.IsVisualShowEventsEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if pathFacingToggle and pathFacingToggle.GetState and pathFacingToggle:GetState() ~= pathRecord.IsVisualShowFacingEnabled() then
-				pathFacingToggle:UpdateState(pathRecord.IsVisualShowFacingEnabled())
+				pathFacingToggle:UpdateState(pathRecord.IsVisualShowFacingEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if rangeToggle and rangeToggle.GetState and rangeToggle:GetState() ~= pathRecord.IsRangeVisualEnabled() then
-				rangeToggle:UpdateState(pathRecord.IsRangeVisualEnabled())
+				rangeToggle:UpdateState(pathRecord.IsRangeVisualEnabled(), true)
 			end
 		end)
 		pcall(function()
 			if inRangeHighlightToggle and inRangeHighlightToggle.GetState and inRangeHighlightToggle:GetState() ~= pathRecord.IsHighlightInRangeEnabled() then
-				inRangeHighlightToggle:UpdateState(pathRecord.IsHighlightInRangeEnabled())
+				inRangeHighlightToggle:UpdateState(pathRecord.IsHighlightInRangeEnabled(), true)
 			end
 		end)
 	end
@@ -28068,6 +28240,14 @@ end function __DIST.an()-- DungeonQuest: khởi tạo window + tabs, nạp core 
 
 
 return function(self)
+	pcall(function()
+		local fn = setthreadidentity or set_thread_identity or setidentity or (syn and syn.set_thread_identity)
+		if fn then
+			local ok = pcall(fn, 7)
+			if not ok then pcall(fn, 8) end
+		end
+	end)
+
 	--// Quan trọng: Maclib capture `Players.LocalPlayer` NGAY KHI require module
 	--// (trong Maclib: `local LocalPlayer = Players.LocalPlayer` ở top-level).
 	--// Nếu script chạy quá nhanh khi inject, LocalPlayer còn nil, và biến bên trong
@@ -28181,9 +28361,15 @@ local autoHide = __DIST.load('_')
 	local coordinator = __DIST.load('g')
 
 	coordinator.SetLocked(true)
-	pcall(function()
+	if macLib.Elevate then
+		macLib.Elevate()
+	end
+	local loadOk, loadErr = pcall(function()
 		macLib:LoadAutoLoadConfig()
 	end)
+	if not loadOk then
+		warn("[DungeonQuest] Error during LoadAutoLoadConfig:", loadErr)
+	end
 
 	--// Đồng bộ config autoload vào autoSave: nếu không gọi SetActive thì
 	--// autoSave.Save() sẽ KHÔNG lưu bất kỳ slider/toggle nào khi thay đổi.
@@ -28191,8 +28377,18 @@ local autoHide = __DIST.load('_')
 		local path = macLib.Folder .. "/settings/autoload.txt"
 		if isfile and isfile(path) then
 			local ok, name = pcall(readfile, path)
-			if ok and type(name) == "string" and #name > 0 then
-				autoSave.SetActive(name)
+			if ok and type(name) == "string" then
+				name = string.gsub(name, "[\r\n%s]+", "")
+				if #name > 0 then
+					autoSave.SetActive(name)
+					return
+				end
+			end
+		end
+		if not autoSave.GetActive() then
+			local defaultFile = macLib.Folder .. "/settings/Default.json"
+			if isfile and isfile(defaultFile) then
+				autoSave.SetActive("Default")
 			end
 		end
 	end
