@@ -330,8 +330,9 @@ local function isPointInZone(point, zone, extraRadius, isTrajectory)
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
-		local cx = zone.cx or (pos and pos.X) or 0
-		local cz = zone.cz or (pos and pos.Z) or 0
+		local isSynthetic = zone.isSecondBossChain == true
+		local cx = (isSynthetic and zone.cx) or (pos and pos.X) or zone.cx or 0
+		local cz = (isSynthetic and zone.cz) or (pos and pos.Z) or zone.cz or 0
 		local dx = px - cx
 		local dz = pz - cz
 		local r = zone.radius + pad + extraRadius
@@ -628,9 +629,6 @@ local function buildHazardZones(hazardInfo)
 
 		local zone = computePartZone(part, forceCircle, isTrajectory)
 		if zone then
-			if zone.radius then
-				zone.cx, zone.cz = pos.X, pos.Z
-			end
 			zone.part = part
 			zone.isTrajectory = isTrajectory
 			zones[#zones + 1] = zone

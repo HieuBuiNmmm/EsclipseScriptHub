@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-17T03:58:48.306267600+00:00",
+    genDate = "2026-09-17T04:26:04.284547900+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7930,8 +7930,9 @@ local function isPointInZone(point, zone, extraRadius, isTrajectory)
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
-		local cx = zone.cx or (pos and pos.X) or 0
-		local cz = zone.cz or (pos and pos.Z) or 0
+		local isSynthetic = zone.isSecondBossChain == true
+		local cx = (isSynthetic and zone.cx) or (pos and pos.X) or zone.cx or 0
+		local cz = (isSynthetic and zone.cz) or (pos and pos.Z) or zone.cz or 0
 		local dx = px - cx
 		local dz = pz - cz
 		local r = zone.radius + pad + extraRadius
@@ -8228,9 +8229,6 @@ local function buildHazardZones(hazardInfo)
 
 		local zone = computePartZone(part, forceCircle, isTrajectory)
 		if zone then
-			if zone.radius then
-				zone.cx, zone.cz = pos.X, pos.Z
-			end
 			zone.part = part
 			zone.isTrajectory = isTrajectory
 			zones[#zones + 1] = zone
@@ -8428,7 +8426,10 @@ local function updateVisualCFrame(item, targetY)
 	local anchorPart = item.anchorPart or part
 	if not ad or not ad.Parent or not anchorPart or not anchorPart.Parent then return end
 
-	local worldPos = (zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz) or (part and part.Position)
+	local isSynthetic = zone and (zone.isSecondBossChain or (item.hazardInfo and item.hazardInfo.IsSyntheticChain))
+	local worldPos = (isSynthetic and zone.cx and zone.cz and Vector3.new(zone.cx, 0, zone.cz))
+		or (part and part.Parent and part.Position)
+		or ((zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz))
 	if not worldPos then return end
 	local worldTargetPos = Vector3.new(worldPos.X, targetY or worldPos.Y, worldPos.Z)
 

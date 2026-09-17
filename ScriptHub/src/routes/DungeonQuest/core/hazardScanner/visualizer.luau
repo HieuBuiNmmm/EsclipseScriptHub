@@ -59,7 +59,10 @@ local function updateVisualCFrame(item, targetY)
 	local anchorPart = item.anchorPart or part
 	if not ad or not ad.Parent or not anchorPart or not anchorPart.Parent then return end
 
-	local worldPos = (zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz) or (part and part.Position)
+	local isSynthetic = zone and (zone.isSecondBossChain or (item.hazardInfo and item.hazardInfo.IsSyntheticChain))
+	local worldPos = (isSynthetic and zone.cx and zone.cz and Vector3.new(zone.cx, 0, zone.cz))
+		or (part and part.Parent and part.Position)
+		or ((zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz))
 	if not worldPos then return end
 	local worldTargetPos = Vector3.new(worldPos.X, targetY or worldPos.Y, worldPos.Z)
 
