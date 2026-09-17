@@ -166,7 +166,7 @@ function pathRecord.ToggleRecord(state)
 
 		local ok, err = recorder.Start()
 		if not ok then
-			notifier.Notify("Path Record", "Không bắt đầu record: " .. tostring(err), 3)
+			notifier.Notify("Path Record", "Failed to start record: " .. tostring(err), 3)
 		end
 		fireStatus()
 		return ok
@@ -477,9 +477,9 @@ bossConnection = shared.OnBossActiveChanged(function(active)
 			mover.PauseForExclusive()
 			if combatMaster.IsAutoBossCombatEnabled() then
 				combatMaster.Toggle(true, true)
-				notifier.Notify("Path Record", "Boss Room: Bật Combat Master (Auto Farm + Dodge + Skill)", 3)
+				notifier.Notify("Path Record", "Boss Room: Combat Master enabled (Auto Farm + Dodge + Skill)", 3)
 			else
-				notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Hazard Scanner", 3)
+				notifier.Notify("Path Record", "Boss Room: Paused, using Hazard Scanner", 3)
 			end
 			fireStatus("boss")
 		end
@@ -488,7 +488,7 @@ bossConnection = shared.OnBossActiveChanged(function(active)
 		if not isFullMode then
 			if combatMaster.IsAutoTriggeredByBoss() then
 				combatMaster.Toggle(false)
-				notifier.Notify("Path Record", "Hạ gục Boss: Tắt Combat Master", 3)
+				notifier.Notify("Path Record", "Boss Defeated: Combat Master disabled", 3)
 			end
 
 			if autoPlayWanted or mover.ResumeWanted() then
@@ -546,7 +546,7 @@ mapUnsub = shared.OnDungeonNameChanged(function(name)
 		combatMaster.Toggle(false)
 	end
 	if recorder.IsRecording() then
-		recorder.Stop("đổi map")
+		recorder.Stop("map change")
 	end
 	if mover.IsPlaying() or mover.ResumeWanted() then
 		local currentMap = mover.GetActiveMap()

@@ -22,7 +22,7 @@ return function(window, tab)
 	local left = tab:Section({ Side = "Left" })
 	left:Header({ Name = "Path Record Controls" })
 	left:Label({
-		Text = "Macro = 1 bản ghi cho cả map, <font color='rgb(0,255,120)'>bấm Record 1 lần là ghi liên tục</font> qua từng room (tự lưu khi về lobby). Mode FULL -> record & phát luôn cả boss room.",
+		Text = "Macro = 1 recording per map, <font color='rgb(0,255,120)'>click Record once to record continuously</font> across rooms (auto-saves on lobby return). FULL Mode -> records & replays boss rooms as well.",
 	})
 
 	local isSyncingRecord = false
@@ -64,8 +64,8 @@ return function(window, tab)
 
 					window:Dialog({
 						Title = "Confirm Record",
-						Description = "Room này <font color='rgb(255,200,0)'>đã có macro được lưu</font>."
-							.. "\n\nRecord bây giờ sẽ <b>GHI ĐÈ segment cũ</b> của room đó.\nBạn vẫn muốn record lại chứ?",
+						Description = "This room <font color='rgb(255,200,0)'>already has a saved macro</font>."
+							.. "\n\nRecording now will <b>OVERWRITE the existing segment</b> for this room.\nDo you still want to re-record?",
 						Buttons = {
 							{
 								Name = "Record (Overwrite)",
@@ -110,12 +110,12 @@ return function(window, tab)
 		end,
 	})
 	left:Label({
-		Text = "Record bắt <font color='rgb(255,150,80)'>khoảng dừng</font> + <font color='rgb(255,80,80)'>skill (M2 / Q / E)</font> + hướng mặt để phát lại chính xác tuyệt đối.",
+		Text = "Captures <font color='rgb(255,150,80)'>pauses</font> + <font color='rgb(255,80,80)'>skills (M2 / Q / E)</font> + facing direction for pinpoint playback accuracy.",
 	})
 
 	--// Mode theo map: NORMAL = skip boss (dùng Hazard Scanner); FULL = record & phát luôn cả boss room.
 	local modeLabel = left:Label({
-		Text = "Record Mode (theo map): <font color='rgb(120,200,255)'>NORMAL</font>",
+		Text = "Record Mode (Per-map): <font color='rgb(120,200,255)'>NORMAL</font>",
 	})
 
 	local recordBossToggle = left:Toggle({
@@ -128,7 +128,7 @@ return function(window, tab)
 			local targetMap = (currentMap and #currentMap > 0) and currentMap or getSelectedMapFromDropdown()
 
 			if not targetMap or #targetMap == 0 then
-				notifier.Notify("Path Record", "Chưa có map nào được chọn. Hãy chọn map trong dropdown hoặc vào dungeon.", 3)
+				notifier.Notify("Path Record", "No map selected. Please choose a map in the dropdown or join a dungeon.", 3)
 				pcall(function()
 					isSyncingMode = true
 					recordBossToggle:UpdateState(false, true)
@@ -137,7 +137,7 @@ return function(window, tab)
 				return
 			end
 			pathRecord.SetMapMode(targetMap, state and "full" or "normal")
-			notifier.Notify("Path Record", ("Map [%s]: Chế độ %s"):format(targetMap, state and "FULL (record & phát cả boss room)" or "NORMAL (bỏ qua boss, dùng Hazard Scanner)"), 3)
+			notifier.Notify("Path Record", ("Map [%s]: %s Mode"):format(targetMap, state and "FULL (record & replay boss rooms)" or "NORMAL (skip boss, use Hazard Scanner)"), 3)
 			if updateStatus then
 				updateStatus(pathRecord.GetStatus())
 			end
@@ -309,7 +309,7 @@ return function(window, tab)
 		Name = "Reload Macros (EsclipseHub/DQMacro)",
 		Callback = function()
 			pathRecord.ReloadFromDisk()
-			notifier.Notify("Path Record", "Đã quét và tải lại các file macro từ EsclipseHub/DQMacro/", 2)
+			notifier.Notify("Path Record", "Scanned and reloaded macro files from EsclipseHub/DQMacro/", 2)
 		end,
 	})
 
@@ -360,7 +360,7 @@ return function(window, tab)
 	local pathVisualSection = tab:Section({ Side = "Right" })
 	pathVisualSection:Header({ Name = "Path 3D Visualizer" })
 	pathVisualSection:Label({
-		Text = "Visual từng node đường đi: <font color='rgb(255,90,90)'>🔴 Đỏ khi Record</font> (real-time) | <font color='rgb(0,255,120)'>🟢 Xanh lá khi thường</font> (xem / phát macro).",
+		Text = "Path node visuals: <font color='rgb(255,90,90)'>🔴 Red when recording</font> (real-time) | <font color='rgb(0,255,120)'>🟢 Green normally</font> (preview / playback).",
 	})
 
 	local pathVisualToggle = pathVisualSection:Toggle({
@@ -424,7 +424,7 @@ return function(window, tab)
 	local rangeSection = tab:Section({ Side = "Right" })
 	rangeSection:Header({ Name = "Skill Range Visual" })
 	rangeSection:Label({
-		Text = "Vòng tròn quanh nhân vật giúp ước lượng <font color='rgb(0,255,200)'>tầm đánh / phạm vi AOE</font> của skill để căn góc và vị trí xả chiêu khi record.",
+		Text = "Indicator circle around character to estimate <font color='rgb(0,255,200)'>attack range / AOE radius</font> for angle and placement calibration when recording.",
 	})
 
 	local rangeToggle = rangeSection:Toggle({
@@ -659,7 +659,7 @@ return function(window, tab)
 		local modeText = isFullMap
 			and "<font color='rgb(255,140,255)'>FULL</font>"
 			or "<font color='rgb(120,200,255)'>NORMAL</font>"
-		local mapContextText = targetMap and (" (map [" .. targetMap .. "])") or " (theo map)"
+		local mapContextText = targetMap and (" (map [" .. targetMap .. "])") or " (per-map)"
 		pcall(function() modeLabel:UpdateName("Record Mode" .. mapContextText .. ": " .. modeText) end)
 
 		local bossText
@@ -667,7 +667,7 @@ return function(window, tab)
 			if isFullMap then
 				bossText = "<font color='rgb(255,140,255)'>YES (FULL path)</font>"
 			else
-				bossText = "<font color='rgb(255,80,80)'>YES (dùng Hazard Scanner)</font>"
+				bossText = "<font color='rgb(255,80,80)'>YES (Hazard Scanner)</font>"
 			end
 		else
 			bossText = "<font color='rgb(0,255,120)'>No</font>"

@@ -954,7 +954,7 @@ local function playbackLoop()
 				if totalPhases > 1 then
 					notifier.Notify(
 						"Path Record",
-						("Tử trận (Phase %d/%d): Chờ hồi sinh để chạy Phase %d..."):format(
+						("Died (Phase %d/%d): Waiting for respawn to run Phase %d..."):format(
 							currentPhaseIndex - 1,
 							totalPhases,
 							nextPhaseNum
@@ -962,7 +962,7 @@ local function playbackLoop()
 						3
 					)
 				else
-					notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
+					notifier.Notify("Path Record", "Died: Waiting for respawn to retry...", 2)
 				end
 
 				while isPlaying and shared.IsDead() do
@@ -1028,22 +1028,22 @@ end
 
 --// Bắt đầu phát. Trả về ok, err.
 function mover.Start()
-	if isPlaying then return false, "đang phát rồi" end
-	if shared.IsInLobby() then return false, "đang ở lobby" end
+	if isPlaying then return false, "already playing" end
+	if shared.IsInLobby() then return false, "currently in lobby" end
 
 	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 then return false, "chưa có room" end
+	if room <= 0 then return false, "no room found" end
 
 	local map = shared.GetCurrentDungeonName()
-	if not map or #map == 0 then return false, "không xác định được map" end
+	if not map or #map == 0 then return false, "unable to identify map" end
 	if not storage.HasSegmentOrMacro(map, room) then
-		return false, ("map [%s] chưa có segment room %d"):format(map, room)
+		return false, ("map [%s] has no segment for room %d"):format(map, room)
 	end
 
 	--// Mode FULL: đi qua luôn boss room (miễn room đó có segment đã ghi).
 	local full = storage.GetMapMode(map) == "full"
 	if shared.IsBossActive() and (not full or not storage.HasSegmentOrMacro(map, room)) then
-		return false, "boss room (hãy dùng Hazard Scanner)"
+		return false, "boss room (use Hazard Scanner)"
 	end
 
 	activeMap = map
@@ -1099,7 +1099,7 @@ function mover.PauseForExclusive()
 	cancelMove(shared.GetHumanoid())
 	restorePlaybackSpeed()
 	restoreAutoRotate()
-	notifier.Notify("Path Record", "Nhường điều khiển: sẽ tự phát tiếp khi vào room có bản ghi", 3)
+	notifier.Notify("Path Record", "Yielded control: will auto-resume upon entering a recorded room", 3)
 	fireStatus("paused")
 end
 

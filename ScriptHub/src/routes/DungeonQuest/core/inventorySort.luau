@@ -952,13 +952,13 @@ local function hookSortBarButton(button: GuiObject)
 				-- Tri-state: None -> Descending (Power giảm dần) -> Ascending (Power tăng dần) -> None (Bỏ chọn)
 				if mainFilterMode == "None" then
 					mainFilterMode = "Descending"
-					notifier.Notify("Main Filter", "Giảm dần (Power cao -> thấp)", 1.5)
+					notifier.Notify("Main Filter", "Descending (Power High -> Low)", 1.5)
 				elseif mainFilterMode == "Descending" then
 					mainFilterMode = "Ascending"
-					notifier.Notify("Main Filter", "Tăng dần (Power thấp -> cao)", 1.5)
+					notifier.Notify("Main Filter", "Ascending (Power Low -> High)", 1.5)
 				else
 					mainFilterMode = "None"
-					notifier.Notify("Main Filter", "Bỏ chọn (Khôi phục kho đồ mặc định)", 1.5)
+					notifier.Notify("Main Filter", "Deselected (Restore Default Inventory)", 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
@@ -973,9 +973,9 @@ local function hookSortBarButton(button: GuiObject)
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
-					notifier.Notify("Filter", "Chế độ: Độ hiếm (Rarity)", 1.5)
+					notifier.Notify("Filter", "Mode: Rarity", 1.5)
 				else
-					notifier.Notify("Filter", "Tắt lọc Độ hiếm", 1.5)
+					notifier.Notify("Filter", "Rarity Filter Disabled", 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
@@ -989,7 +989,7 @@ local function hookSortBarButton(button: GuiObject)
 
 				if selectedStatFilter == statName then
 					selectedStatFilter = nil
-					notifier.Notify("Filter", "Bỏ chọn " .. statName, 1.5)
+					notifier.Notify("Filter", "Deselected " .. statName, 1.5)
 				else
 					selectedStatFilter = statName
 					rarityEnabled = false
@@ -997,7 +997,7 @@ local function hookSortBarButton(button: GuiObject)
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
-					notifier.Notify("Filter", "Chọn chỉ số: " .. statName, 1.5)
+					notifier.Notify("Filter", "Selected Stat: " .. statName, 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
@@ -1012,9 +1012,9 @@ local function hookSortBarButton(button: GuiObject)
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
-					notifier.Notify("Filter", "Sắp xếp: Kỹ năng (Ability)", 1.5)
+					notifier.Notify("Filter", "Sort: Ability", 1.5)
 				else
-					notifier.Notify("Filter", "Bỏ chọn Kỹ năng", 1.5)
+					notifier.Notify("Filter", "Deselected Ability", 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()

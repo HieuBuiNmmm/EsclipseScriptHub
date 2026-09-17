@@ -101,7 +101,7 @@ function autoSave.SaveNow()
 
 	local success, err = macLib:SaveConfig(name)
 	if not success and err and err ~= "Please select a config file." then
-		notifier.Notify("AutoSave", "Không lưu được config: " .. tostring(err), 3)
+		notifier.Notify("AutoSave", "Failed to save config: " .. tostring(err), 3)
 	end
 end
 

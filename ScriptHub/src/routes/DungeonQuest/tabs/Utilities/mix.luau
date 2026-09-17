@@ -23,7 +23,7 @@ return function(window, tab)
 	}, "Toggle_AntiAFK")
 
 	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Interval (giây)",
+		Name = "Interval (seconds)",
 		Default = antiAfk.GetInterval(),
 		Minimum = 5,
 		Maximum = 300,
@@ -39,7 +39,7 @@ return function(window, tab)
 	streamSection:Header({ Name = "Streaming Mode" })
 
 	streamSection:Toggle({
-		Name = "Streaming Mode (Ẩn danh tính)",
+		Name = "Streaming Mode (Hide Identity)",
 		Default = streamingMode.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			if state then
@@ -51,7 +51,7 @@ return function(window, tab)
 	}, "Toggle_StreamingMode")
 
 	streamSection:Input({
-		Name = "Tên hiển thị thay thế",
+		Name = "Fake Display Name",
 		Placeholder = "EclipseHub",
 		AcceptedCharacters = "All",
 		Default = streamingMode.GetReplacement(),

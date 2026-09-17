@@ -8,7 +8,7 @@ local renderAutoFarm = require("@routes/DungeonQuest/tabs/Combat/autoFarm")
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
-	leftSection:Header({ Name = "Combat Master (Cầu Dao Tổng)" })
+	leftSection:Header({ Name = "Combat Master" })
 
 	local masterToggle = leftSection:Toggle({
 		Name = "Enable Combat Master",

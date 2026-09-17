@@ -416,7 +416,7 @@ return function(window, tab)
 	local initDisableDodge = contextual.GetDisableDodge(selectedDungeon, selectedTargetKey)
 
 	disableDodgeToggle = ctxSection:Toggle({
-		Name = "Disable Dodge on Target (Không né đòn, chỉ xả skill)",
+		Name = "Disable Dodge on Target (Attack only, no dodging)",
 		Default = initDisableDodge,
 		Callback = function(state)
 			if isSyncingUI then return end

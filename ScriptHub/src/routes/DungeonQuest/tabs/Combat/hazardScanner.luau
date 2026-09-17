@@ -330,7 +330,7 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeLogHazards")
 
 	leftSection:Toggle({
-		Name = "Log Rejected (Không vẽ được)",
+		Name = "Log Rejected (Unrenderable)",
 		Default = hazardScanner.IsLogFailedEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetLogFailed(state)

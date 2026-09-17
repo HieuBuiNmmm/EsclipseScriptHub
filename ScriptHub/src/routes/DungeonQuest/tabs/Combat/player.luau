@@ -32,7 +32,7 @@ return function(window, tab)
 	}, "Slider_FastSpeed"))
 
 	section:Toggle({
-		Name = "Instant Acceleration (Max Speed tức thì)",
+		Name = "Instant Acceleration",
 		Default = shared.IsInstantAccelEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			shared.SetInstantAccelEnabled(state)
@@ -49,10 +49,10 @@ return function(window, tab)
 		end),
 	}, "Toggle_MouseCombo")
 
-	section:Header({ Name = "Auto Reset / Suicide (Tự sát)" })
+	section:Header({ Name = "Auto Reset / Suicide" })
 
 	section:Toggle({
-		Name = "Auto Reset on Room (1 Lần/Run)",
+		Name = "Auto Reset on Room (Once/Run)",
 		Default = autoReset.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			autoReset.Toggle(state)
@@ -60,7 +60,7 @@ return function(window, tab)
 	}, "Toggle_AutoResetRoom")
 
 	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Target Room (Phòng tự sát)",
+		Name = "Target Room",
 		Default = autoReset.GetTargetRoom(),
 		Minimum = 1,
 		Maximum = 15,

@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-17T09:55:15.095143900+00:00",
+    genDate = "2026-09-17T10:52:05.120860400+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6263,7 +6263,7 @@ function autoSave.SaveNow()
 
 	local success, err = macLib:SaveConfig(name)
 	if not success and err and err ~= "Please select a config file." then
-		notifier.Notify("AutoSave", "Không lưu được config: " .. tostring(err), 3)
+		notifier.Notify("AutoSave", "Failed to save config: " .. tostring(err), 3)
 	end
 end
 
@@ -15251,7 +15251,7 @@ local function checkRoomTrigger(currentRoom: number)
 		if not enabled or shared.IsInLobby() or shared.IsDead() then return end
 		if shared.GetCurrentRoomIndex() ~= targetRoom then return end
 
-		notifier.Notify("Auto Reset", ("Đã tự sát tại Room %d (1 lần duy nhất trong run)"):format(targetRoom), 3)
+		notifier.Notify("Auto Reset", ("Reset character at Room %d (Once per run)"):format(targetRoom), 3)
 		executeReset()
 	end)
 end
@@ -15332,7 +15332,7 @@ function autoReset.GetDelay(): number
 end
 
 function autoReset.ResetNow()
-	notifier.Notify("Auto Reset", "Đã thực hiện tự sát thủ công", 2)
+	notifier.Notify("Auto Reset", "Manual character reset executed", 2)
 	executeReset()
 end
 
@@ -15379,7 +15379,7 @@ return function(window, tab)
 	}, "Slider_FastSpeed"))
 
 	section:Toggle({
-		Name = "Instant Acceleration (Max Speed tức thì)",
+		Name = "Instant Acceleration",
 		Default = shared.IsInstantAccelEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			shared.SetInstantAccelEnabled(state)
@@ -15396,10 +15396,10 @@ return function(window, tab)
 		end),
 	}, "Toggle_MouseCombo")
 
-	section:Header({ Name = "Auto Reset / Suicide (Tự sát)" })
+	section:Header({ Name = "Auto Reset / Suicide" })
 
 	section:Toggle({
-		Name = "Auto Reset on Room (1 Lần/Run)",
+		Name = "Auto Reset on Room (Once/Run)",
 		Default = autoReset.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			autoReset.Toggle(state)
@@ -15407,7 +15407,7 @@ return function(window, tab)
 	}, "Toggle_AutoResetRoom")
 
 	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Target Room (Phòng tự sát)",
+		Name = "Target Room",
 		Default = autoReset.GetTargetRoom(),
 		Minimum = 1,
 		Maximum = 15,
@@ -15769,7 +15769,7 @@ return function(window, tab)
 	}, "Toggle_SmartDodgeLogHazards")
 
 	leftSection:Toggle({
-		Name = "Log Rejected (Không vẽ được)",
+		Name = "Log Rejected (Unrenderable)",
 		Default = hazardScanner.IsLogFailedEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			hazardScanner.SetLogFailed(state)
@@ -16419,7 +16419,7 @@ return function(window, tab)
 	local initDisableDodge = contextual.GetDisableDodge(selectedDungeon, selectedTargetKey)
 
 	disableDodgeToggle = ctxSection:Toggle({
-		Name = "Disable Dodge on Target (Không né đòn, chỉ xả skill)",
+		Name = "Disable Dodge on Target (Attack only, no dodging)",
 		Default = initDisableDodge,
 		Callback = function(state)
 			if isSyncingUI then return end
@@ -16521,7 +16521,7 @@ local renderAutoFarm = __DIST.load('G')
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
-	leftSection:Header({ Name = "Combat Master (Cầu Dao Tổng)" })
+	leftSection:Header({ Name = "Combat Master" })
 
 	local masterToggle = leftSection:Toggle({
 		Name = "Enable Combat Master",
@@ -20655,7 +20655,7 @@ return function(window, tab)
 	}, "Toggle_AntiAFK")
 
 	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Interval (giây)",
+		Name = "Interval (seconds)",
 		Default = antiAfk.GetInterval(),
 		Minimum = 5,
 		Maximum = 300,
@@ -20671,7 +20671,7 @@ return function(window, tab)
 	streamSection:Header({ Name = "Streaming Mode" })
 
 	streamSection:Toggle({
-		Name = "Streaming Mode (Ẩn danh tính)",
+		Name = "Streaming Mode (Hide Identity)",
 		Default = streamingMode.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
 			if state then
@@ -20683,7 +20683,7 @@ return function(window, tab)
 	}, "Toggle_StreamingMode")
 
 	streamSection:Input({
-		Name = "Tên hiển thị thay thế",
+		Name = "Fake Display Name",
 		Placeholder = "EclipseHub",
 		AcceptedCharacters = "All",
 		Default = streamingMode.GetReplacement(),
@@ -22167,13 +22167,13 @@ local function finalizeSlice(reason, silent)
 	if not silent then
 		local extra = ""
 		if #roomPhases > 1 then
-			extra = (" (%d phases/mạng hồi sinh, %d điểm phase 1)"):format(#roomPhases, #phase1.points)
+			extra = (" (%d phases/lives, %d phase 1 pts)"):format(#roomPhases, #phase1.points)
 		elseif phase1.events then
-			extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#phase1.points, #(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
+			extra = (" (%d smooth pts, %d skills, %d pauses, %.1fspd)"):format(#phase1.points, #(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
 		else
-			extra = (" (%d điểm mịn, %.1fspd)"):format(#phase1.points, phase1.speed or 0)
+			extra = (" (%d smooth pts, %.1fspd)"):format(#phase1.points, phase1.speed or 0)
 		end
-		notifier.Notify("Path Record", ("Đã lưu room %d%s vào map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
+		notifier.Notify("Path Record", ("Saved room %d%s into map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
 	end
 
 	return { phaseCount = #roomPhases, phase1 = phase1 }
@@ -22238,20 +22238,20 @@ end
 
 --// Bắt đầu record 1 session (1 map, tự rollover theo room). Trả về ok, err.
 function recorder.Start()
-	if isRecording then return false, "đang record rồi" end
+	if isRecording then return false, "already recording" end
 
 	local root = getPlayerRoot()
-	if not root then return false, "chưa có nhân vật" end
-	if shared.IsDead() then return false, "nhân vật đang chết" end
+	if not root then return false, "no character found" end
+	if shared.IsDead() then return false, "character is dead" end
 
 	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 then return false, "không nằm trong dungeon" end
+	if room <= 0 then return false, "not inside a dungeon" end
 
 	local map = shared.GetCurrentDungeonName()
-	if not map or #map == 0 then return false, "không xác định được map" end
+	if not map or #map == 0 then return false, "unable to identify map" end
 
 	allowBoss = storage.GetMapMode(map) == "full"
-	if shared.IsBossActive() and not allowBoss then return false, "boss room (dùng Hazard Scanner)" end
+	if shared.IsBossActive() and not allowBoss then return false, "boss room (use Hazard Scanner)" end
 
 	recMap = map
 	beginSlice(room, root.Position)
@@ -22282,10 +22282,10 @@ function recorder.Start()
 		local lastPt = points[#points]
 		if lastPt and (pos - lastPt).Magnitude > 35 then
 			if not allowBoss then
-				recorder.Stop("dịch chuyển lớn")
+				recorder.Stop("large teleport")
 				return
 			end
-			finalizeSlice("dịch chuyển lớn", true)
+			finalizeSlice("large teleport", true)
 			local r = shared.GetCurrentRoomIndex()
 			if r == startRoom then r = 0 end -- deactivate nếu room cũ chưa untrack (không ghi đè)
 			beginSlice(r, pos)
@@ -22294,7 +22294,7 @@ function recorder.Start()
 			task.spawn(function()
 				task.wait(RUN_END_TIMEOUT)
 				if isRecording and startRoom <= 0 then
-					recorder.Stop("hết map")
+					recorder.Stop("end of map")
 				end
 			end)
 			return
@@ -22350,7 +22350,7 @@ function recorder.Start()
 		local last = points[#points]
 		if last and (pos - last).Magnitude < MIN_SPACING then return end
 		if #points >= MAX_POINTS then
-			recorder.Stop("đạt giới hạn điểm")
+			recorder.Stop("reached max points")
 			return
 		end
 		table.insert(points, pos)
@@ -22423,7 +22423,7 @@ function recorder.Start()
 						if allowBoss then
 							recorder.Rollover()
 						else
-							recorder.Stop("hoàn thành room")
+							recorder.Stop("room completed")
 						end
 					end
 				end)
@@ -22443,19 +22443,19 @@ function recorder.Start()
 			if allowBoss then
 				sliceIsBoss = true
 			else
-				recorder.Stop("vào boss room")
+				recorder.Stop("entered boss room")
 			end
 			return
 		end
 
 		if allowBoss and sliceIsBoss then
-			finalizeSlice("xong boss", true)
+			finalizeSlice("boss defeated", true)
 			sliceIsBoss = false
 			sliceActive = false
 			task.spawn(function()
 				task.wait(RUN_END_TIMEOUT)
 				if isRecording and not sliceActive then
-					recorder.Stop("hết map")
+					recorder.Stop("end of map")
 				end
 			end)
 		end
@@ -22464,7 +22464,7 @@ function recorder.Start()
 	--// Về lobby -> hết map -> tắt + lưu.
 	lobbyConnection = shared.OnLobbyChanged(function(inLobby)
 		if isRecording and inLobby then
-			recorder.Stop("về lobby")
+			recorder.Stop("returned to lobby")
 		end
 	end)
 
@@ -22480,14 +22480,14 @@ function recorder.Start()
 				local curP = #roomPhases + 1
 				notifier.Notify(
 					"Path Record",
-					("Hồi sinh: Đã lưu Phase %d, đang ghi tiếp Phase %d cho room %d"):format(curP - 1, curP, startRoom),
+					("Respawn: Saved Phase %d, recording Phase %d for room %d"):format(curP - 1, curP, startRoom),
 					3
 				)
 			end
 		end)
 	end)
 
-	notifier.Notify("Path Record", ("Bắt đầu record room %d (%s)"):format(room, map), 2)
+	notifier.Notify("Path Record", ("Started recording room %d (%s)"):format(room, map), 2)
 	fireStatus()
 	return true
 end
@@ -22496,7 +22496,7 @@ end
 --// + mở slice mới ngay tại vị trí hiện tại. Session vẫn tiếp tục.
 function recorder.Rollover()
 	if not isRecording then return false end
-	finalizeSlice("chuyển room", true)
+	finalizeSlice("room change", true)
 	local root = getPlayerRoot()
 	local pos = root and root.Position or startPos
 	beginSlice(shared.GetCurrentRoomIndex(), pos)
@@ -22517,23 +22517,23 @@ function recorder.Stop(reason)
 		if sessionRooms > 1 then
 			--// Record liên tục nhiều room: báo tổng hợp 1 lần.
 			local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-			notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
+			notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw points)"):format(recMap, reason or "done", sessionRooms, bossPart, sessionRawPts), 4)
 		else
 			local extra = ""
 			local phase1 = slice.phase1
 			if phase1 and phase1.events then
-				extra = (" (%d skill, %d nhịp dừng, %.1fspd)"):format(#(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
+				extra = (" (%d skills, %d pauses, %.1fspd)"):format(#(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
 			elseif phase1 then
 				extra = (" (%.1fspd)"):format(phase1.speed or 0)
 			end
 			local bossTag = startRoom > 0 and (sliceIsBoss and " (boss)" or "") or ""
-			notifier.Notify("Path Record", ("Đã lưu room %d%s%s vào map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
+			notifier.Notify("Path Record", ("Saved room %d%s%s into map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
 		end
 	elseif sessionRooms > 0 then
 		--// Slice cuối bị "mồ côi" (room 0: kết thúc run tại boss hoặc teleport hết map):
 		--// các room trước đã lưu xong, vẫn báo tổng hợp để người dùng biết đã lưu.
 		local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-		notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
+		notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw points)"):format(recMap, reason or "done", sessionRooms, bossPart, sessionRawPts), 4)
 	end
 
 	clearSessionState()
@@ -23509,7 +23509,7 @@ local function playbackLoop()
 				if totalPhases > 1 then
 					notifier.Notify(
 						"Path Record",
-						("Tử trận (Phase %d/%d): Chờ hồi sinh để chạy Phase %d..."):format(
+						("Died (Phase %d/%d): Waiting for respawn to run Phase %d..."):format(
 							currentPhaseIndex - 1,
 							totalPhases,
 							nextPhaseNum
@@ -23517,7 +23517,7 @@ local function playbackLoop()
 						3
 					)
 				else
-					notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
+					notifier.Notify("Path Record", "Died: Waiting for respawn to retry...", 2)
 				end
 
 				while isPlaying and shared.IsDead() do
@@ -23583,22 +23583,22 @@ end
 
 --// Bắt đầu phát. Trả về ok, err.
 function mover.Start()
-	if isPlaying then return false, "đang phát rồi" end
-	if shared.IsInLobby() then return false, "đang ở lobby" end
+	if isPlaying then return false, "already playing" end
+	if shared.IsInLobby() then return false, "currently in lobby" end
 
 	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 then return false, "chưa có room" end
+	if room <= 0 then return false, "no room found" end
 
 	local map = shared.GetCurrentDungeonName()
-	if not map or #map == 0 then return false, "không xác định được map" end
+	if not map or #map == 0 then return false, "unable to identify map" end
 	if not storage.HasSegmentOrMacro(map, room) then
-		return false, ("map [%s] chưa có segment room %d"):format(map, room)
+		return false, ("map [%s] has no segment for room %d"):format(map, room)
 	end
 
 	--// Mode FULL: đi qua luôn boss room (miễn room đó có segment đã ghi).
 	local full = storage.GetMapMode(map) == "full"
 	if shared.IsBossActive() and (not full or not storage.HasSegmentOrMacro(map, room)) then
-		return false, "boss room (hãy dùng Hazard Scanner)"
+		return false, "boss room (use Hazard Scanner)"
 	end
 
 	activeMap = map
@@ -23654,7 +23654,7 @@ function mover.PauseForExclusive()
 	cancelMove(shared.GetHumanoid())
 	restorePlaybackSpeed()
 	restoreAutoRotate()
-	notifier.Notify("Path Record", "Nhường điều khiển: sẽ tự phát tiếp khi vào room có bản ghi", 3)
+	notifier.Notify("Path Record", "Yielded control: will auto-resume upon entering a recorded room", 3)
 	fireStatus("paused")
 end
 
@@ -24987,7 +24987,7 @@ function pathRecord.ToggleRecord(state)
 
 		local ok, err = recorder.Start()
 		if not ok then
-			notifier.Notify("Path Record", "Không bắt đầu record: " .. tostring(err), 3)
+			notifier.Notify("Path Record", "Failed to start record: " .. tostring(err), 3)
 		end
 		fireStatus()
 		return ok
@@ -25298,9 +25298,9 @@ bossConnection = shared.OnBossActiveChanged(function(active)
 			mover.PauseForExclusive()
 			if combatMaster.IsAutoBossCombatEnabled() then
 				combatMaster.Toggle(true, true)
-				notifier.Notify("Path Record", "Boss Room: Bật Combat Master (Auto Farm + Dodge + Skill)", 3)
+				notifier.Notify("Path Record", "Boss Room: Combat Master enabled (Auto Farm + Dodge + Skill)", 3)
 			else
-				notifier.Notify("Path Record", "Boss room: tạm dừng, dùng Hazard Scanner", 3)
+				notifier.Notify("Path Record", "Boss Room: Paused, using Hazard Scanner", 3)
 			end
 			fireStatus("boss")
 		end
@@ -25309,7 +25309,7 @@ bossConnection = shared.OnBossActiveChanged(function(active)
 		if not isFullMode then
 			if combatMaster.IsAutoTriggeredByBoss() then
 				combatMaster.Toggle(false)
-				notifier.Notify("Path Record", "Hạ gục Boss: Tắt Combat Master", 3)
+				notifier.Notify("Path Record", "Boss Defeated: Combat Master disabled", 3)
 			end
 
 			if autoPlayWanted or mover.ResumeWanted() then
@@ -25367,7 +25367,7 @@ mapUnsub = shared.OnDungeonNameChanged(function(name)
 		combatMaster.Toggle(false)
 	end
 	if recorder.IsRecording() then
-		recorder.Stop("đổi map")
+		recorder.Stop("map change")
 	end
 	if mover.IsPlaying() or mover.ResumeWanted() then
 		local currentMap = mover.GetActiveMap()
@@ -25451,7 +25451,7 @@ return function(window, tab)
 	local left = tab:Section({ Side = "Left" })
 	left:Header({ Name = "Path Record Controls" })
 	left:Label({
-		Text = "Macro = 1 bản ghi cho cả map, <font color='rgb(0,255,120)'>bấm Record 1 lần là ghi liên tục</font> qua từng room (tự lưu khi về lobby). Mode FULL -> record & phát luôn cả boss room.",
+		Text = "Macro = 1 recording per map, <font color='rgb(0,255,120)'>click Record once to record continuously</font> across rooms (auto-saves on lobby return). FULL Mode -> records & replays boss rooms as well.",
 	})
 
 	local isSyncingRecord = false
@@ -25493,8 +25493,8 @@ return function(window, tab)
 
 					window:Dialog({
 						Title = "Confirm Record",
-						Description = "Room này <font color='rgb(255,200,0)'>đã có macro được lưu</font>."
-							.. "\n\nRecord bây giờ sẽ <b>GHI ĐÈ segment cũ</b> của room đó.\nBạn vẫn muốn record lại chứ?",
+						Description = "This room <font color='rgb(255,200,0)'>already has a saved macro</font>."
+							.. "\n\nRecording now will <b>OVERWRITE the existing segment</b> for this room.\nDo you still want to re-record?",
 						Buttons = {
 							{
 								Name = "Record (Overwrite)",
@@ -25539,12 +25539,12 @@ return function(window, tab)
 		end,
 	})
 	left:Label({
-		Text = "Record bắt <font color='rgb(255,150,80)'>khoảng dừng</font> + <font color='rgb(255,80,80)'>skill (M2 / Q / E)</font> + hướng mặt để phát lại chính xác tuyệt đối.",
+		Text = "Captures <font color='rgb(255,150,80)'>pauses</font> + <font color='rgb(255,80,80)'>skills (M2 / Q / E)</font> + facing direction for pinpoint playback accuracy.",
 	})
 
 	--// Mode theo map: NORMAL = skip boss (dùng Hazard Scanner); FULL = record & phát luôn cả boss room.
 	local modeLabel = left:Label({
-		Text = "Record Mode (theo map): <font color='rgb(120,200,255)'>NORMAL</font>",
+		Text = "Record Mode (Per-map): <font color='rgb(120,200,255)'>NORMAL</font>",
 	})
 
 	local recordBossToggle = left:Toggle({
@@ -25557,7 +25557,7 @@ return function(window, tab)
 			local targetMap = (currentMap and #currentMap > 0) and currentMap or getSelectedMapFromDropdown()
 
 			if not targetMap or #targetMap == 0 then
-				notifier.Notify("Path Record", "Chưa có map nào được chọn. Hãy chọn map trong dropdown hoặc vào dungeon.", 3)
+				notifier.Notify("Path Record", "No map selected. Please choose a map in the dropdown or join a dungeon.", 3)
 				pcall(function()
 					isSyncingMode = true
 					recordBossToggle:UpdateState(false, true)
@@ -25566,7 +25566,7 @@ return function(window, tab)
 				return
 			end
 			pathRecord.SetMapMode(targetMap, state and "full" or "normal")
-			notifier.Notify("Path Record", ("Map [%s]: Chế độ %s"):format(targetMap, state and "FULL (record & phát cả boss room)" or "NORMAL (bỏ qua boss, dùng Hazard Scanner)"), 3)
+			notifier.Notify("Path Record", ("Map [%s]: %s Mode"):format(targetMap, state and "FULL (record & replay boss rooms)" or "NORMAL (skip boss, use Hazard Scanner)"), 3)
 			if updateStatus then
 				updateStatus(pathRecord.GetStatus())
 			end
@@ -25738,7 +25738,7 @@ return function(window, tab)
 		Name = "Reload Macros (EsclipseHub/DQMacro)",
 		Callback = function()
 			pathRecord.ReloadFromDisk()
-			notifier.Notify("Path Record", "Đã quét và tải lại các file macro từ EsclipseHub/DQMacro/", 2)
+			notifier.Notify("Path Record", "Scanned and reloaded macro files from EsclipseHub/DQMacro/", 2)
 		end,
 	})
 
@@ -25789,7 +25789,7 @@ return function(window, tab)
 	local pathVisualSection = tab:Section({ Side = "Right" })
 	pathVisualSection:Header({ Name = "Path 3D Visualizer" })
 	pathVisualSection:Label({
-		Text = "Visual từng node đường đi: <font color='rgb(255,90,90)'>🔴 Đỏ khi Record</font> (real-time) | <font color='rgb(0,255,120)'>🟢 Xanh lá khi thường</font> (xem / phát macro).",
+		Text = "Path node visuals: <font color='rgb(255,90,90)'>🔴 Red when recording</font> (real-time) | <font color='rgb(0,255,120)'>🟢 Green normally</font> (preview / playback).",
 	})
 
 	local pathVisualToggle = pathVisualSection:Toggle({
@@ -25853,7 +25853,7 @@ return function(window, tab)
 	local rangeSection = tab:Section({ Side = "Right" })
 	rangeSection:Header({ Name = "Skill Range Visual" })
 	rangeSection:Label({
-		Text = "Vòng tròn quanh nhân vật giúp ước lượng <font color='rgb(0,255,200)'>tầm đánh / phạm vi AOE</font> của skill để căn góc và vị trí xả chiêu khi record.",
+		Text = "Indicator circle around character to estimate <font color='rgb(0,255,200)'>attack range / AOE radius</font> for angle and placement calibration when recording.",
 	})
 
 	local rangeToggle = rangeSection:Toggle({
@@ -26088,7 +26088,7 @@ return function(window, tab)
 		local modeText = isFullMap
 			and "<font color='rgb(255,140,255)'>FULL</font>"
 			or "<font color='rgb(120,200,255)'>NORMAL</font>"
-		local mapContextText = targetMap and (" (map [" .. targetMap .. "])") or " (theo map)"
+		local mapContextText = targetMap and (" (map [" .. targetMap .. "])") or " (per-map)"
 		pcall(function() modeLabel:UpdateName("Record Mode" .. mapContextText .. ": " .. modeText) end)
 
 		local bossText
@@ -26096,7 +26096,7 @@ return function(window, tab)
 			if isFullMap then
 				bossText = "<font color='rgb(255,140,255)'>YES (FULL path)</font>"
 			else
-				bossText = "<font color='rgb(255,80,80)'>YES (dùng Hazard Scanner)</font>"
+				bossText = "<font color='rgb(255,80,80)'>YES (Hazard Scanner)</font>"
 			end
 		else
 			bossText = "<font color='rgb(0,255,120)'>No</font>"
@@ -27874,13 +27874,13 @@ local function hookSortBarButton(button: GuiObject)
 				-- Tri-state: None -> Descending (Power giảm dần) -> Ascending (Power tăng dần) -> None (Bỏ chọn)
 				if mainFilterMode == "None" then
 					mainFilterMode = "Descending"
-					notifier.Notify("Main Filter", "Giảm dần (Power cao -> thấp)", 1.5)
+					notifier.Notify("Main Filter", "Descending (Power High -> Low)", 1.5)
 				elseif mainFilterMode == "Descending" then
 					mainFilterMode = "Ascending"
-					notifier.Notify("Main Filter", "Tăng dần (Power thấp -> cao)", 1.5)
+					notifier.Notify("Main Filter", "Ascending (Power Low -> High)", 1.5)
 				else
 					mainFilterMode = "None"
-					notifier.Notify("Main Filter", "Bỏ chọn (Khôi phục kho đồ mặc định)", 1.5)
+					notifier.Notify("Main Filter", "Deselected (Restore Default Inventory)", 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
@@ -27895,9 +27895,9 @@ local function hookSortBarButton(button: GuiObject)
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
-					notifier.Notify("Filter", "Chế độ: Độ hiếm (Rarity)", 1.5)
+					notifier.Notify("Filter", "Mode: Rarity", 1.5)
 				else
-					notifier.Notify("Filter", "Tắt lọc Độ hiếm", 1.5)
+					notifier.Notify("Filter", "Rarity Filter Disabled", 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
@@ -27911,7 +27911,7 @@ local function hookSortBarButton(button: GuiObject)
 
 				if selectedStatFilter == statName then
 					selectedStatFilter = nil
-					notifier.Notify("Filter", "Bỏ chọn " .. statName, 1.5)
+					notifier.Notify("Filter", "Deselected " .. statName, 1.5)
 				else
 					selectedStatFilter = statName
 					rarityEnabled = false
@@ -27919,7 +27919,7 @@ local function hookSortBarButton(button: GuiObject)
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
-					notifier.Notify("Filter", "Chọn chỉ số: " .. statName, 1.5)
+					notifier.Notify("Filter", "Selected Stat: " .. statName, 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
@@ -27934,9 +27934,9 @@ local function hookSortBarButton(button: GuiObject)
 					if mainFilterMode == "None" then
 						mainFilterMode = "Descending"
 					end
-					notifier.Notify("Filter", "Sắp xếp: Kỹ năng (Ability)", 1.5)
+					notifier.Notify("Filter", "Sort: Ability", 1.5)
 				else
-					notifier.Notify("Filter", "Bỏ chọn Kỹ năng", 1.5)
+					notifier.Notify("Filter", "Deselected Ability", 1.5)
 				end
 				refreshAllSortBarButtons(true)
 				notifyStateChanged()
@@ -28432,7 +28432,7 @@ return function(self)
 	end
 	local localPlayer = Players.LocalPlayer
 	if not localPlayer then
-		return warn("[DungeonQuest] Không lấy được LocalPlayer, hủy khởi tạo script.")
+		return warn("[DungeonQuest] Failed to retrieve LocalPlayer, aborting script initialization.")
 	end
 
 	--// Imports

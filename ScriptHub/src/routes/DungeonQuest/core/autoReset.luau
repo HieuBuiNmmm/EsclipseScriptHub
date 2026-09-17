@@ -58,7 +58,7 @@ local function checkRoomTrigger(currentRoom: number)
 		if not enabled or shared.IsInLobby() or shared.IsDead() then return end
 		if shared.GetCurrentRoomIndex() ~= targetRoom then return end
 
-		notifier.Notify("Auto Reset", ("Đã tự sát tại Room %d (1 lần duy nhất trong run)"):format(targetRoom), 3)
+		notifier.Notify("Auto Reset", ("Reset character at Room %d (Once per run)"):format(targetRoom), 3)
 		executeReset()
 	end)
 end
@@ -139,7 +139,7 @@ function autoReset.GetDelay(): number
 end
 
 function autoReset.ResetNow()
-	notifier.Notify("Auto Reset", "Đã thực hiện tự sát thủ công", 2)
+	notifier.Notify("Auto Reset", "Manual character reset executed", 2)
 	executeReset()
 end
 

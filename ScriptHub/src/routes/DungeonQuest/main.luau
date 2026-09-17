@@ -22,7 +22,7 @@ return function(self)
 	end
 	local localPlayer = Players.LocalPlayer
 	if not localPlayer then
-		return warn("[DungeonQuest] Không lấy được LocalPlayer, hủy khởi tạo script.")
+		return warn("[DungeonQuest] Failed to retrieve LocalPlayer, aborting script initialization.")
 	end
 
 	--// Imports
