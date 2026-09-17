@@ -353,26 +353,7 @@ function storage.HasMap(mapName)
 	return false
 end
 
---// Decode 1 phase segment độc lập
-local function decodePhaseSeg(raw)
-	if not raw or type(raw) ~= "table" or type(raw.points) ~= "table" then return nil end
-	local points = {}
-	for _, p in ipairs(raw.points) do
-		local vec = decodeVec(p)
-		if vec then
-			points[#points + 1] = vec
-		end
-	end
-	if #points == 0 then return nil end
-	return {
-		startPos = decodeVec(raw.startPos) or points[1],
-		points = points,
-		events = raw.events and decodeEvents(raw.events) or nil,
-		speed = tonumber(raw.speed) or 0,
-	}
-end
-
---// Lấy 1 segment (room) từ macro của map. Trả về { startPos, points, events, speed, boss, phases } hoặc nil.
+--// Lấy 1 segment (room) từ macro của map. Trả về { startPos, points, events, speed, boss } hoặc nil.
 function storage.GetRoomSegment(mapName, roomIndex)
 	if type(mapName) ~= "string" or type(roomIndex) ~= "number" then return nil end
 	initStorage()
@@ -391,33 +372,13 @@ function storage.GetRoomSegment(mapName, roomIndex)
 	end
 	if #points == 0 then return nil end
 
-	local mainSeg = {
+	return {
 		startPos = decodeVec(raw.startPos) or points[1],
 		points = points,
 		events = raw.events and decodeEvents(raw.events) or nil,
 		speed = tonumber(raw.speed) or 0,
 		boss = raw.boss == true,
 	}
-
-	-- Decode phases nếu có (multi-phase / multi-life)
-	local phases = {}
-	if type(raw.phases) == "table" and #raw.phases > 0 then
-		for _, rawP in ipairs(raw.phases) do
-			local pSeg = decodePhaseSeg(rawP)
-			if pSeg then
-				pSeg.boss = raw.boss == true
-				phases[#phases + 1] = pSeg
-			end
-		end
-	end
-
-	-- Fallback nếu file macro cũ chỉ có 1 path đơn: phase 1 chính là mainSeg
-	if #phases == 0 then
-		phases[1] = mainSeg
-	end
-	mainSeg.phases = phases
-
-	return mainSeg
 end
 
 --// Có segment (room) trong macro của map không?
@@ -425,7 +386,7 @@ function storage.HasSegmentOrMacro(mapName, roomIndex)
 	return storage.GetRoomSegment(mapName, roomIndex) ~= nil
 end
 
---// Macro map đầy đủ (đã decode): { map, version, rooms = {[idx] = {startPos, points, events, speed, boss, phases}}, created, updated }
+--// Macro map đầy đủ (đã decode): { map, version, rooms = {[idx] = {startPos, points, events, speed, boss}}, created, updated }
 function storage.GetMap(mapName)
 	if not storage.HasMap(mapName) then return nil end
 	initStorage()
@@ -462,22 +423,11 @@ function storage.GetMaps()
 			local roomCount = 0
 			local bossCount = 0
 			local pointCount = 0
-			local phaseCount = 0
 			for key, raw in pairs(macro.rooms) do
 				if tonumber(key) ~= nil and isRoomSeg(raw) then
 					roomCount += 1
 					if raw.boss == true then bossCount += 1 end
 					pointCount += #raw.points
-					if type(raw.phases) == "table" and #raw.phases > 0 then
-						phaseCount += #raw.phases
-						for _, p in ipairs(raw.phases) do
-							if p ~= raw and type(p.points) == "table" then
-								pointCount += #p.points
-							end
-						end
-					else
-						phaseCount += 1
-					end
 				end
 			end
 			if roomCount > 0 then
@@ -486,7 +436,6 @@ function storage.GetMaps()
 					roomCount = roomCount,
 					bossCount = bossCount,
 					pointCount = pointCount,
-					phaseCount = phaseCount,
 					updated = macro.updated,
 					mode = normalizeMode(macro.mode),
 				})
@@ -503,11 +452,10 @@ function storage.Count()
 	return #storage.GetMaps()
 end
 
---// Lưu/ghi đè 1 segment (room) vào macro của map (hỗ trợ multi-phase / nhiều mạng).
---// phasesList (optional): danh sách các phase { { startPos, points, events, speed }, ... }
+--// Lưu/ghi đè 1 segment (room) vào macro của map.
 --// isBoss (optional): segment thuộc phòng boss -> đánh dấu `boss: true`.
 --// Ghi trực tiếp ra file EsclipseHub/DQMacro/<mapName>.json.
-function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed, isBoss, phasesList)
+function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed, isBoss)
 	if type(mapName) ~= "string" or #mapName == 0 then return false end
 	if type(roomIndex) ~= "number" or roomIndex <= 0 then return false end
 	if not startPos or not points or #points == 0 then return false end
@@ -571,29 +519,6 @@ function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed
 	if events and type(events) == "table" then
 		local enc = encodeEventsTable(events)
 		if enc then seg.events = enc end
-	end
-
-	-- Lưu danh sách phases (nếu có nhiều phase được truyền vào)
-	if type(phasesList) == "table" and #phasesList > 0 then
-		local encPhases = {}
-		for _, pData in ipairs(phasesList) do
-			if pData and pData.points and #pData.points > 0 then
-				local pEncoded = {}
-				for _, pt in ipairs(pData.points) do
-					pEncoded[#pEncoded + 1] = encodeVec(pt)
-				end
-				local pSeg = {
-					startPos = encodeVec(pData.startPos) or pEncoded[1],
-					points = pEncoded,
-					speed = type(pData.speed) == "number" and pData.speed > 0 and pData.speed or nil,
-					events = encodeEventsTable(pData.events),
-				}
-				encPhases[#encPhases + 1] = pSeg
-			end
-		end
-		if #encPhases > 0 then
-			seg.phases = encPhases
-		end
 	end
 
 	macro.rooms[tostring(roomIndex)] = seg

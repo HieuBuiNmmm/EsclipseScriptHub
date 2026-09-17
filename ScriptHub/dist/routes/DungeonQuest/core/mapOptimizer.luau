@@ -10,32 +10,32 @@ end end if b.cleaned then pcall(c)return function()end end table.insert(b.
 callbacks,c)return function()for d,e in ipairs(b.callbacks)do if e==c then table
 .remove(b.callbacks,d)break end end end end function b.Cleanup()if b.cleaned
 then return end b.cleaned=true for c=#b.callbacks,1,-1 do pcall(b.callbacks[c])
-end table.clear(b.callbacks)end function b.IsActive()return not b.cleaned end
-return b end end local b,c,d,e,f,g,h,i,j=a.load'a',a.load'b',{},false,{},{},{},2
-,function(b)if not b then return false end local c=b while c and c~=workspace do
-local d=c.Name:lower()if d:find'stairramp'or d:find'step'or d:find
-'meshes/cylinder'or d:find'cylinder'then return true end c=c.Parent end return
-false end local k=function(k)if not e or not k or not k:IsA'BasePart'then return
-end if j(k)then return end if not g[k]then g[k]={CanCollide=k.CanCollide,
-CanTouch=k.CanTouch}end pcall(function()k.CanCollide=false k.CanTouch=false end)
-end local l={['meshes/ice3']=true,['meshes/snow']=true,['invisible platform']=
-true,part=true}local m,n,o=function(m)if not m then return true end if m:IsA
-'Model'or m:IsA'Folder'then return true end local n=m.Name:lower()if l[n]or m.
-Name=='Meshes/Ice3'or m.Name=='Meshes/Snow'or m.Name=='Invisible platform'or m.
-Name=='Part'then return true end return false end,function()if not e then return
+end table.clear(b.callbacks)end function b.IsActive()return not b.cleaned end b.
+OnCleanup=b.Register return b end end local b,c,d,e,f,g,h,i,j=a.load'a',a.load
+'b',{},false,{},{},{},2,function(b)if not b then return false end local c=b
+while c and c~=workspace do local d=c.Name:lower()if d:find'stairramp'or d:find
+'step'or d:find'meshes/cylinder'or d:find'cylinder'then return true end c=c.
+Parent end return false end local k=function(k)if not e or not k or not k:IsA
+'BasePart'then return end if j(k)then return end if not g[k]then g[k]={
+CanCollide=k.CanCollide,CanTouch=k.CanTouch}end pcall(function()k.CanCollide=
+false k.CanTouch=false end)end local l={['meshes/ice3']=true,['meshes/snow']=
+true,['invisible platform']=true,part=true}local m,n,o=function(m)if not m then
+return true end if m:IsA'Model'or m:IsA'Folder'then return true end local n=m.
+Name:lower()if l[n]or m.Name=='Meshes/Ice3'or m.Name=='Meshes/Snow'or m.Name==
+'Invisible platform'or m.Name=='Part'then return true end return false end,
+function()if not e then return end local m=workspace:FindFirstChild'Map'if not m
+then return end for n,o in ipairs(m:GetDescendants())do if(o:IsA'Model'or o:IsA
+'Folder')and o.Name:lower():find'border'then for p,q in ipairs(o:GetChildren())
+do pcall(function()q:Destroy()end)end end end end,function()if not e then return
 end local m=workspace:FindFirstChild'Map'if not m then return end for n,o in
-ipairs(m:GetDescendants())do if(o:IsA'Model'or o:IsA'Folder')and o.Name:lower():
-find'border'then for p,q in ipairs(o:GetChildren())do pcall(function()q:Destroy(
-)end)end end end end,function()if not e then return end local m=workspace:
-FindFirstChild'Map'if not m then return end for n,o in ipairs(m:GetDescendants()
-)do if o.Name:lower():find'wooden plank'then local p=o.Parent while p and p~=m
-and p~=workspace do if p:IsA'Model'then pcall(function()p:Destroy()end)break end
-p=p.Parent end end end end local p,q,r=function()if not e then return end local
-p=workspace:FindFirstChild'Map'if not p then return end for q,r in ipairs(p:
-GetChildren())do if not m(r)then pcall(function()r:Destroy()end)end end end,{
-Vector3.new(-724.4873046875,33.9286003112793,174.7227325439453),Vector3.new(-
-697.8023681640625,26.397010803222656,380.60272216796875),Vector3.new(-
-649.3167724609375,31.39712905883789,397.80535888671875),Vector3.new(-
+ipairs(m:GetDescendants())do if o.Name:lower():find'wooden plank'then local p=o.
+Parent while p and p~=m and p~=workspace do if p:IsA'Model'then pcall(function()
+p:Destroy()end)break end p=p.Parent end end end end local p,q,r=function()if not
+e then return end local p=workspace:FindFirstChild'Map'if not p then return end
+for q,r in ipairs(p:GetChildren())do if not m(r)then pcall(function()r:Destroy()
+end)end end end,{Vector3.new(-724.4873046875,33.9286003112793,174.7227325439453)
+,Vector3.new(-697.8023681640625,26.397010803222656,380.60272216796875),Vector3.
+new(-649.3167724609375,31.39712905883789,397.80535888671875),Vector3.new(-
 581.634033203125,3.4567506313323975,318.2510070800781),Vector3.new(-
 491.9974365234375,41.522090911865234,384.67694091796875),Vector3.new(-
 484.0378723144531,35.76678466796875,418.82659912109375),Vector3.new(-

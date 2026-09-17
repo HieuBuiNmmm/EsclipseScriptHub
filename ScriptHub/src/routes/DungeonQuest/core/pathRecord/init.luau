@@ -44,7 +44,6 @@ local function fireStatus(reason)
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
 		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
-		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
 		reason = reason,
 	}
 	for _, cb in ipairs(statusListeners) do
@@ -423,7 +422,6 @@ function pathRecord.GetStatus()
 		pointCount = recStat.pointCount,
 		dwellCount = recStat.dwellCount or 0,
 		skillCount = recStat.skillCount or 0,
-		phase = mover.IsPlaying() and mover.GetCurrentPhaseIndex() or (recorder.IsRecording() and recStat.phaseCount or 1),
 		progressPercent = playStat.progressPercent or 0,
 		progressStuds = playStat.progressStuds or 0,
 		totalStuds = playStat.totalStuds or 0,

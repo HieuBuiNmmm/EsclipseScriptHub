@@ -196,14 +196,30 @@ end)end end function h.EnableControls(aq)aq=aq or'default'an[aq]=nil if next(an)
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
 nil end for aq,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
 clear(G)table.clear(an)local aq=ap()if aq and type(aq.Enable)=='function'then
-pcall(function()aq:Enable()end)end N()end)return h end end local aa,ab=a.load'a'
-,a.load'c'local ac,ad=aa.player,{}function ad.Validate(ae)if not ae then return
-false end local af=ae.Model if not af or not af.Parent or af==ac.Character then
-return false end local ag=ae.Humanoid if not ag or not ag.Parent then ag=af:
-FindFirstChildOfClass'Humanoid'ae.Humanoid=ag end if not ag or ag.Health<=0 then
-return false end local ah=ae.Root if not ah or not ah.Parent then ah=af:
-FindFirstChild'HumanoidRootPart'or af.PrimaryPart if not ah then for ai,aj in
-ipairs(af:GetDescendants())do if aj:IsA'BasePart'then ah=aj break end end end if
-not ah then return false end ae.Root=ah end return true end function ad.Scan()
-local ae,af={},ab.GetTrackedEnemyData()for ag,ah in ipairs(af)do if ad.Validate(
-ah)then table.insert(ae,ah)end end return ae end return ad
+pcall(function()aq:Enable()end)end N()end)return h end function a.d()local aa,ab
+={}function aa:SetWindow(ac)ab=ac end function aa.Notify(ac,ad,ae)ae=ae or 3 if
+ab then local af=pcall(function()ab:Notify{Title=ac,Description=ad,Lifetime=ae}
+end)if af then return end end pcall(function()game:GetService'StarterGui':
+SetCore('SendNotification',{Title=ac,Text=ad,Duration=ae})end)end return aa end
+end local aa,ab,ac,ad=a.load'a',a.load'c',a.load'd',a.load'b'local ae,af,ag,ah,
+ai,aj,ak,al,am=aa.player,{},false,2,0,false local an=function()local an,ao=ab.
+GetHumanoid(),ae and ae.Character if an and an.Health>0 then pcall(function()an.
+Health=0 end)pcall(function()an:ChangeState(Enum.HumanoidStateType.Dead)end)end
+if ao and ao.Parent then pcall(function()ao:BreakJoints()end)end end local ao=
+function(ao)if not ag or aj then return end if ab.IsInLobby()or ab.IsDead()then
+return end if ao<=0 or ao~=ah then return end aj=true task.spawn(function()if ai
+>0 then task.wait(ai)end if not ag or ab.IsInLobby()or ab.IsDead()then return
+end if ab.GetCurrentRoomIndex()~=ah then return end ac.Notify('Auto Reset',(
+'Reset character at Room %d (Once per run)'):format(ah),3)an()end)end local ap,
+aq=function()if ak then return end ak=ab.OnRoomIndexChanged(function(ap)if ap<=1
+then aj=false end ao(ap)end)al=ab.OnLobbyChanged(function(ap)if ap then aj=false
+end end)am=ab.OnDungeonNameChanged(function()aj=false end)end,function()if ak
+then ak()ak=nil end if al then al()al=nil end if am then am()am=nil end end
+function af.Toggle(b)ag=b and true or false if ag then aj=false ap()ao(ab.
+GetCurrentRoomIndex())else aq()end end function af.IsEnabled()return ag end
+function af.SetTargetRoom(b)if type(b)=='number'then ah=math.clamp(math.floor(b)
+,1,20)end end function af.GetTargetRoom()return ah end function af.SetDelay(b)if
+type(b)=='number'then ai=math.clamp(b,0,15)end end function af.GetDelay()return
+ai end function af.ResetNow()ac.Notify('Auto Reset',
+'Manual character reset executed',2)an()end ad.Register(function()aq()ag=false
+aj=false end)return af

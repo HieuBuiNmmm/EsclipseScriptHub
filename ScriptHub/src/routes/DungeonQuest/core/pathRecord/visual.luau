@@ -285,16 +285,7 @@ function visual.Update()
 	local skillsList = {}
 
 	if isRecording then
-		-- Chế độ RECORDING: Lấy toàn bộ points của các phase và phase hiện tại đang ghi
-		local prevPhases = recorder.GetRoomPhases and recorder.GetRoomPhases()
-		if prevPhases and #prevPhases > 0 then
-			for _, p in ipairs(prevPhases) do
-				if p and p.points and #p.points > 0 then
-					table.insert(pointLists, p.points)
-				end
-			end
-		end
-
+		-- Chế độ RECORDING: Lấy points của segment hiện tại đang ghi
 		local curPoints = recorder.GetCurrentPoints()
 		if curPoints and #curPoints > 0 then
 			table.insert(pointLists, curPoints)
@@ -313,13 +304,7 @@ function visual.Update()
 		if map and #map > 0 and room > 0 then
 			local seg = storage.GetRoomSegment(map, room)
 			if seg then
-				if seg.phases and #seg.phases > 0 then
-					for _, p in ipairs(seg.phases) do
-						if p and p.points and #p.points > 0 then
-							table.insert(pointLists, p.points)
-						end
-					end
-				elseif seg.points and #seg.points > 0 then
+				if seg.points and #seg.points > 0 then
 					table.insert(pointLists, seg.points)
 				end
 

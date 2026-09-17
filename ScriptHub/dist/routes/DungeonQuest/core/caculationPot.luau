@@ -5,9 +5,9 @@ cleaned then pcall(c)return function()end end table.insert(b.callbacks,c)return
 function()for d,e in ipairs(b.callbacks)do if e==c then table.remove(b.callbacks
 ,d)break end end end end function b.Cleanup()if b.cleaned then return end b.
 cleaned=true for c=#b.callbacks,1,-1 do pcall(b.callbacks[c])end table.clear(b.
-callbacks)end function b.IsActive()return not b.cleaned end return b end
-function a.b()local b,c,d,e=game:GetService'Players',game:GetService
-'UserInputService',game:GetService'RunService',game:GetService
+callbacks)end function b.IsActive()return not b.cleaned end b.OnCleanup=b.
+Register return b end function a.b()local b,c,d,e=game:GetService'Players',game:
+GetService'UserInputService',game:GetService'RunService',game:GetService
 'VirtualInputManager'local f=b.LocalPlayer if not f then local g=os.clock()+5
 repeat f=b.LocalPlayer if f then break end task.wait(0.1)until os.clock()>g end
 return{Players=b,UserInputService=c,RunService=d,VirtualInputManager=e,player=f}

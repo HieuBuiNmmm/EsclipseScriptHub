@@ -54,7 +54,6 @@ local inputConnection = nil
 local roomChangeConnection = nil
 local lobbyConnection = nil
 local bossConnection = nil
-local respawnConnection = nil
 
 --// Timeline events (dwells + skills) của segment đang record.
 local recStartT = 0
@@ -79,8 +78,6 @@ local sliceIsBoss = false
 --// Slice đang-active hay đã "mồ côi" (finalize xong, chờ room mới / hết map).
 --// Deactivated: finalizeSlice bỏ qua (không ghi đè room vừa lưu).
 local sliceActive = false
---// Danh sách các phase đã hoàn thành trong room hiện tại (chết -> chốt phase cũ, mở phase mới)
-local roomPhases = {}
 --// Thống kê TOÀN SESSION đã rollover: số slice đã lưu + boss + tổng điểm gốc (dùng cho notify gộp).
 local sessionRooms = 0
 local sessionBossRooms = 0
@@ -95,7 +92,6 @@ local function fireStatus()
 		map = recMap,
 		room = startRoom,
 		pointCount = #points,
-		phaseCount = #roomPhases + 1,
 		dwellCount = #dwells,
 		skillCount = #skills,
 		savedRooms = sessionRooms,
@@ -127,10 +123,9 @@ local function stopSubscriptions()
 	if roomChangeConnection then roomChangeConnection(); roomChangeConnection = nil end
 	if lobbyConnection then lobbyConnection(); lobbyConnection = nil end
 	if bossConnection then bossConnection(); bossConnection = nil end
-	if respawnConnection then respawnConnection(); respawnConnection = nil end
 end
 
---// Reset phần timeline của 1 slice/phase (dùng chung cho beginSlice / seal phase / Stop / Cancel).
+--// Reset phần timeline của 1 slice (dùng chung cho beginSlice / Stop / Cancel).
 --// Tránh trùng lặp thủ công giữa các nhánh -> không bị sót field gây hành vi "dính" dữ liệu cũ.
 local function resetTimeline(pos)
 	points = { pos }
@@ -184,92 +179,50 @@ local function beginSlice(room, pos)
 	sliceActive = true
 	resetTimeline(pos)
 	sliceIsBoss = shared.IsBossActive()
-	roomPhases = {}
-end
-
---// Chốt phase hiện tại (do chết / hồi sinh) và mở phase tiếp theo từ điểm hồi sinh mới.
-local function sealCurrentPhaseAndStartNext(newRespawnPos)
-	if not sliceActive then return false end
-	local clean = storage.SimplifyPath(points, SIMPLIFY_TOL)
-	if #clean >= 2 then
-		local events
-		if #dwells > 0 or #skills > 0 then
-			events = { dwells = dwells, skills = skills }
-		end
-		local avgSpeed = 0
-		if movingTime > 0.5 and movedDist > 5 then
-			avgSpeed = math.clamp(movedDist / movingTime, 5, 100)
-		end
-		table.insert(roomPhases, {
-			startPos = startPos,
-			points = clean,
-			events = events,
-			speed = avgSpeed,
-		})
-		sessionRawPts += #points
-	end
-
-	-- Khởi tạo phase tiếp theo từ vị trí hồi sinh mới
-	startPos = newRespawnPos
-	resetTimeline(newRespawnPos)
-	fireStatus()
-	return true
 end
 
 --// Chốt slice hiện tại: gói timeline + tốc độ + làm mịn + ghi ĐÈ segment của room này
---// vào macro (hỗ trợ multi-phase). Mặc định silent (rollover không spam notify).
+--// vào macro. Mặc định silent (rollover không spam notify).
 local function finalizeSlice(reason, silent)
 	if not sliceActive then return nil end
 	local clean = storage.SimplifyPath(points, SIMPLIFY_TOL)
-	if #clean >= 2 then
-		local events
-		if #dwells > 0 or #skills > 0 then
-			events = { dwells = dwells, skills = skills }
-		end
-		local avgSpeed = 0
-		if movingTime > 0.5 and movedDist > 5 then
-			avgSpeed = math.clamp(movedDist / movingTime, 5, 100)
-		end
-		table.insert(roomPhases, {
-			startPos = startPos,
-			points = clean,
-			events = events,
-			speed = avgSpeed,
-		})
-		sessionRawPts += #points
+	if #clean < 2 then return nil end
+
+	local events
+	if #dwells > 0 or #skills > 0 then
+		events = { dwells = dwells, skills = skills }
+	end
+	local avgSpeed = 0
+	if movingTime > 0.5 and movedDist > 5 then
+		avgSpeed = math.clamp(movedDist / movingTime, 5, 100)
 	end
 
-	if #roomPhases == 0 then return nil end
-
-	local phase1 = roomPhases[1]
 	local saved = storage.SaveSegment(
 		recMap,
 		startRoom,
-		phase1.startPos,
-		phase1.points,
-		phase1.events,
-		phase1.speed,
-		sliceIsBoss,
-		roomPhases
+		startPos,
+		clean,
+		events,
+		avgSpeed,
+		sliceIsBoss
 	)
 	if not saved then return nil end
 
 	sessionRooms += 1
+	sessionRawPts += #points
 	if sliceIsBoss then sessionBossRooms += 1 end
 
 	if not silent then
 		local extra = ""
-		if #roomPhases > 1 then
-			extra = (" (%d phases/lives, %d phase 1 pts)"):format(#roomPhases, #phase1.points)
-		elseif phase1.events then
-			extra = (" (%d smooth pts, %d skills, %d pauses, %.1fspd)"):format(#phase1.points, #(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
+		if events then
+			extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#clean, #(events.skills or {}), #(events.dwells or {}), avgSpeed)
 		else
-			extra = (" (%d smooth pts, %.1fspd)"):format(#phase1.points, phase1.speed or 0)
+			extra = (" (%d điểm mịn, %.1fspd)"):format(#clean, avgSpeed)
 		end
-		notifier.Notify("Path Record", ("Saved room %d%s into map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
+		notifier.Notify("Path Record", ("Đã lưu room %d%s vào map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
 	end
 
-	return { phaseCount = #roomPhases, phase1 = phase1 }
+	return { points = clean, events = events, speed = avgSpeed }
 end
 
 function recorder.IsRecording()
@@ -280,17 +233,9 @@ function recorder.GetStartRoom()
 	return startRoom
 end
 
-function recorder.GetCurrentPhaseIndex()
-	return #roomPhases + 1
-end
-
 --// Điểm đang ghi (cho visual / status).
 function recorder.GetCurrentPoints()
 	return points
-end
-
-function recorder.GetRoomPhases()
-	return roomPhases
 end
 
 function recorder.GetCurrentDwells()
@@ -309,7 +254,6 @@ function recorder.GetStatus()
 		pointCount = #points,
 		dwellCount = #dwells,
 		skillCount = #skills,
-		phaseCount = #roomPhases + 1,
 		savedRooms = sessionRooms,
 	}
 end
@@ -362,6 +306,8 @@ function recorder.Start()
 			stationarySince = nil
 			currentDwell = nil
 			prevFramePos = nil
+			-- Nhân vật tử trận: điểm chết = điểm kết thúc -> dừng và hoàn thành record
+			recorder.Stop("tử trận")
 			return
 		end
 
@@ -561,26 +507,7 @@ function recorder.Start()
 		end
 	end)
 
-	--// Bắt sự kiện hồi sinh khi đang record: chốt Phase của mạng trước và mở Phase tiếp theo từ điểm hồi sinh mới.
-	--// Người chơi không bị mất tiến trình đã đi; khi replay, bot sẽ đi lần lượt từng Phase tương ứng mỗi lần chết.
-	respawnConnection = shared.OnRespawn(function()
-		if not isRecording then return end
-		task.delay(0.2, function()
-			if not isRecording or shared.IsDead() then return end
-			local target = getPlayerRoot()
-			if not target then return end
-			if sealCurrentPhaseAndStartNext(target.Position) then
-				local curP = #roomPhases + 1
-				notifier.Notify(
-					"Path Record",
-					("Respawn: Saved Phase %d, recording Phase %d for room %d"):format(curP - 1, curP, startRoom),
-					3
-				)
-			end
-		end)
-	end)
-
-	notifier.Notify("Path Record", ("Started recording room %d (%s)"):format(room, map), 2)
+	notifier.Notify("Path Record", ("Bắt đầu record room %d (%s)"):format(room, map), 2)
 	fireStatus()
 	return true
 end
@@ -589,7 +516,7 @@ end
 --// + mở slice mới ngay tại vị trí hiện tại. Session vẫn tiếp tục.
 function recorder.Rollover()
 	if not isRecording then return false end
-	finalizeSlice("room change", true)
+	finalizeSlice("chuyển room", true)
 	local root = getPlayerRoot()
 	local pos = root and root.Position or startPos
 	beginSlice(shared.GetCurrentRoomIndex(), pos)
@@ -610,23 +537,22 @@ function recorder.Stop(reason)
 		if sessionRooms > 1 then
 			--// Record liên tục nhiều room: báo tổng hợp 1 lần.
 			local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-			notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw points)"):format(recMap, reason or "done", sessionRooms, bossPart, sessionRawPts), 4)
+			notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
 		else
 			local extra = ""
-			local phase1 = slice.phase1
-			if phase1 and phase1.events then
-				extra = (" (%d skills, %d pauses, %.1fspd)"):format(#(phase1.events.skills or {}), #(phase1.events.dwells or {}), phase1.speed or 0)
-			elseif phase1 then
-				extra = (" (%.1fspd)"):format(phase1.speed or 0)
+			if slice.events then
+				extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#slice.points, #(slice.events.skills or {}), #(slice.events.dwells or {}), slice.speed or 0)
+			else
+				extra = (" (%d điểm mịn, %.1fspd)"):format(#slice.points, slice.speed or 0)
 			end
 			local bossTag = startRoom > 0 and (sliceIsBoss and " (boss)" or "") or ""
-			notifier.Notify("Path Record", ("Saved room %d%s%s into map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
+			notifier.Notify("Path Record", ("Đã lưu room %d%s%s vào map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
 		end
 	elseif sessionRooms > 0 then
 		--// Slice cuối bị "mồ côi" (room 0: kết thúc run tại boss hoặc teleport hết map):
 		--// các room trước đã lưu xong, vẫn báo tổng hợp để người dùng biết đã lưu.
 		local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-		notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw points)"):format(recMap, reason or "done", sessionRooms, bossPart, sessionRawPts), 4)
+		notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
 	end
 
 	clearSessionState()

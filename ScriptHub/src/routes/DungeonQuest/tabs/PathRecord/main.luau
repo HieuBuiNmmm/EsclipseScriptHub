@@ -681,11 +681,9 @@ return function(window, tab)
 		pcall(function() roomLabel:UpdateName("Map: " .. mapText .. " | Room: " .. roomText .. " | Boss: " .. bossText) end)
 
 		if info.recording then
-			local curP = info.phase or 1
-			pcall(function() pointsLabel:UpdateName(("Events: <font color='rgb(255,170,60)'>%d pts</font> | <font color='rgb(255,90,220)'>%d skills</font> | <font color='rgb(255,215,0)'>%d pauses</font> (Phase %d)"):format(info.pointCount or 0, info.skillCount or 0, info.dwellCount or 0, curP)) end)
+			pcall(function() pointsLabel:UpdateName(("Events: <font color='rgb(255,170,60)'>%d pts</font> | <font color='rgb(255,90,220)'>%d skills</font> | <font color='rgb(255,215,0)'>%d pauses</font>"):format(info.pointCount or 0, info.skillCount or 0, info.dwellCount or 0)) end)
 		elseif info.playing then
-			local curP = info.phase or 1
-			pcall(function() pointsLabel:UpdateName(("Playing: <font color='rgb(0,230,255)'>Phase %d</font>"):format(curP)) end)
+			pcall(function() pointsLabel:UpdateName("<font color='rgb(0,230,255)'>Playing</font>") end)
 		else
 			pcall(function() pointsLabel:UpdateName("Events: <font color='rgb(160,160,160)'>-</font>") end)
 		end
@@ -697,8 +695,7 @@ return function(window, tab)
 			local parts = {}
 			for _, rec in ipairs(maps) do
 				local bossPart = rec.bossCount and rec.bossCount > 0 and ("+%db"):format(rec.bossCount) or ""
-				local phasePart = rec.phaseCount and rec.phaseCount > rec.roomCount and ("/%dph"):format(rec.phaseCount) or ""
-				parts[#parts + 1] = ("%s(%dr%s/%dp%s)"):format(rec.map, rec.roomCount, phasePart, rec.pointCount, bossPart)
+				parts[#parts + 1] = ("%s(%dr/%dp%s)"):format(rec.map, rec.roomCount, rec.pointCount, bossPart)
 			end
 			pcall(function() recordingsLabel:UpdateName("Macros: <font color='rgb(150,255,150)'>" .. table.concat(parts, ", ") .. "</font>") end)
 		end

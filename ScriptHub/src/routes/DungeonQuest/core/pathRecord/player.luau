@@ -192,7 +192,6 @@ local resumeWanted = false -- Bật cờ "tự resume" khi room có segment xu�
 local activeMap = nil -- Map đang playback
 local playFullMap = false -- Mode FULL của map: đi qua cả boss room theo path đã ghi
 local playThread = nil
-local currentPhaseIndex = 1
 local currentProgress = 0
 local totalProgress = 0
 local progressPercent = 0
@@ -204,7 +203,6 @@ local function fireStatus(reason)
 		map = activeMap,
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
-		phase = currentPhaseIndex,
 		resume = resumeWanted,
 		progressPercent = progressPercent,
 		progressStuds = currentProgress,
@@ -214,10 +212,6 @@ local function fireStatus(reason)
 	for _, cb in ipairs(statusListeners) do
 		pcall(cb, info)
 	end
-end
-
-function mover.GetCurrentPhaseIndex()
-	return currentPhaseIndex
 end
 
 local function getPlayerRoot()
@@ -881,7 +875,6 @@ local function playbackLoop()
 	local visitedRoom = 0
 	local walkedThisVisit = false
 	local wasDead = false
-	currentPhaseIndex = 1
 
 	while isPlaying do
 		if resumeWanted then break end
@@ -912,11 +905,10 @@ local function playbackLoop()
 			continue
 		end
 
-		--// Đổi room -> lượt đi mới cho room đó (reset về Phase 1).
+		--// Đổi room -> lượt đi mới cho room đó.
 		if room ~= visitedRoom then
 			visitedRoom = room
 			walkedThisVisit = false
-			currentPhaseIndex = 1
 			currentProgress = 0
 			totalProgress = 0
 			progressPercent = 0
@@ -929,41 +921,22 @@ local function playbackLoop()
 			continue
 		end
 
-		local phases = segment.phases or { segment }
-		local totalPhases = #phases
-
 		if walkedThisVisit then
 			--// Đã đi xong lượt của room -> đứng yên, chờ đổi room.
 			task.wait(0.1)
 			continue
 		end
 
-		local phaseData = phases[math.min(currentPhaseIndex, totalPhases)] or segment
-
-		local ok, reason = walkThrough(phaseData, room, playFullMap)
+		local ok, reason = walkThrough(segment, room, playFullMap)
 		restoreAutoRotate()
 		if ok then
 			walkedThisVisit = true
 			currentProgress = totalProgress
 			progressPercent = 100
 		else
-			--// Bị chết giữa chừng: tăng phase index để khi hồi sinh chạy Phase tiếp theo
+			--// Bị chết giữa chừng: chờ hồi sinh để đi lại
 			if reason == "dead" then
-				currentPhaseIndex += 1
-				local nextPhaseNum = math.min(currentPhaseIndex, totalPhases)
-				if totalPhases > 1 then
-					notifier.Notify(
-						"Path Record",
-						("Died (Phase %d/%d): Waiting for respawn to run Phase %d..."):format(
-							currentPhaseIndex - 1,
-							totalPhases,
-							nextPhaseNum
-						),
-						3
-					)
-				else
-					notifier.Notify("Path Record", "Died: Waiting for respawn to retry...", 2)
-				end
+				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
 
 				while isPlaying and shared.IsDead() do
 					task.wait(0.2)
@@ -1003,7 +976,6 @@ function mover.GetStatus()
 		map = activeMap,
 		room = shared.GetCurrentRoomIndex(),
 		boss = shared.IsBossActive(),
-		phase = currentPhaseIndex,
 		resume = resumeWanted,
 		progressPercent = progressPercent,
 		progressStuds = currentProgress,
@@ -1028,28 +1000,27 @@ end
 
 --// Bắt đầu phát. Trả về ok, err.
 function mover.Start()
-	if isPlaying then return false, "already playing" end
-	if shared.IsInLobby() then return false, "currently in lobby" end
+	if isPlaying then return false, "đang phát rồi" end
+	if shared.IsInLobby() then return false, "đang ở lobby" end
 
 	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 then return false, "no room found" end
+	if room <= 0 then return false, "chưa có room" end
 
 	local map = shared.GetCurrentDungeonName()
-	if not map or #map == 0 then return false, "unable to identify map" end
+	if not map or #map == 0 then return false, "không xác định được map" end
 	if not storage.HasSegmentOrMacro(map, room) then
-		return false, ("map [%s] has no segment for room %d"):format(map, room)
+		return false, ("map [%s] chưa có segment room %d"):format(map, room)
 	end
 
 	--// Mode FULL: đi qua luôn boss room (miễn room đó có segment đã ghi).
 	local full = storage.GetMapMode(map) == "full"
 	if shared.IsBossActive() and (not full or not storage.HasSegmentOrMacro(map, room)) then
-		return false, "boss room (use Hazard Scanner)"
+		return false, "boss room (hãy dùng Hazard Scanner)"
 	end
 
 	activeMap = map
 	playFullMap = full
 	resumeWanted = false
-	currentPhaseIndex = 1
 	currentProgress = 0
 	totalProgress = 0
 	progressPercent = 0
@@ -1067,7 +1038,6 @@ function mover.Stop()
 	resumeWanted = false
 	activeMap = nil
 	playFullMap = false
-	currentPhaseIndex = 1
 	currentProgress = 0
 	totalProgress = 0
 	progressPercent = 0
