@@ -39,11 +39,70 @@ local function getPlayerComponents()
 	return char, hum, root
 end
 
+--// ControlModule management (ngăn Roblox ControlModule ghi đè Move(0,0,0) mỗi frame)
+local function disableControls()
+	if shared.DisableControls then
+		shared.DisableControls("Dodge")
+	end
+end
+
+local function enableControls()
+	if shared.EnableControls then
+		shared.EnableControls("Dodge")
+	end
+end
+
+--// Per-frame Move Driver (cấp vector di chuyển liên tục trước bước tính toán vật lý)
+local activeMoveVector = Vector3.zero
+local moveDriverConnection = nil
+
+local function startMoveDriver()
+	if moveDriverConnection then return end
+	local stepSignal = RunService.PreSimulation or RunService.RenderStepped or RunService.Heartbeat
+	moveDriverConnection = stepSignal:Connect(function()
+		if not isDodging then return end
+		local _, hum = getPlayerComponents()
+		if hum then
+			hum:Move(activeMoveVector, false)
+		end
+	end)
+end
+
+local function stopMoveDriver()
+	if moveDriverConnection then
+		moveDriverConnection:Disconnect()
+		moveDriverConnection = nil
+	end
+	activeMoveVector = Vector3.zero
+end
+
+local function setMoveTarget(targetPos)
+	local _, _, root = getPlayerComponents()
+	if not root or not targetPos then
+		activeMoveVector = Vector3.zero
+		return
+	end
+	local p = root.Position
+	local offset = Vector3.new(targetPos.X - p.X, 0, targetPos.Z - p.Z)
+	if offset.Magnitude > 0.05 then
+		activeMoveVector = offset.Unit
+	else
+		activeMoveVector = Vector3.zero
+	end
+end
+
+local function setMoveZero()
+	activeMoveVector = Vector3.zero
+end
+
 --// Dừng di chuyển của Humanoid
 local function stopMove(hum, root)
-	if hum and root and root.Parent then
-		pcall(function() hum:MoveTo(root.Position) end)
+	setMoveZero()
+	stopMoveDriver()
+	if hum then
+		pcall(function() hum:Move(Vector3.zero, false) end)
 	end
+	enableControls()
 end
 
 --// Vòng lặp Heartbeat: Thực hiện Auto-Dodge khi Player gặp nguy hiểm
@@ -144,16 +203,16 @@ local function onHeartbeat()
 				end
 			end
 		else
-			-- Pha 2: Di chuyển bằng MoveTo về hướng Safe Spot
-			local moveTarget = Vector3.new(activeTargetSpot.X, playerPos.Y, activeTargetSpot.Z)
-			hum:MoveTo(moveTarget)
-
+			-- Pha 2: Di chuyển bằng Move Driver (theo cơ chế PathRecord) về hướng Safe Spot
 			if not isDodging then
 				isDodging = true
+				disableControls()
+				startMoveDriver()
 				for _, cb in ipairs(dodgeStateCallbacks) do
 					pcall(cb, true, activeTargetSpot, flatDist)
 				end
 			end
+			setMoveTarget(activeTargetSpot)
 		end
 	else
 		-- Khi đã an toàn và hoàn tất né / hoặc không còn Safe Spot hợp lệ

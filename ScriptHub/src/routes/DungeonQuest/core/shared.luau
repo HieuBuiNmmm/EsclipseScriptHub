@@ -945,12 +945,55 @@ task.spawn(function()
 	end
 end)
 
+--// ControlModule Management (ngăn Roblox ControlModule ghi đè Move(0,0,0) mỗi frame)
+local controlsModule = nil
+local activeControlClaims = {}
+
+local function getPlayerControls()
+	if controlsModule then return controlsModule end
+	pcall(function()
+		local lp = player or game:GetService("Players").LocalPlayer
+		local pScripts = lp and lp:FindFirstChild("PlayerScripts")
+		local pMod = pScripts and pScripts:FindFirstChild("PlayerModule")
+		if pMod then
+			controlsModule = require(pMod):GetControls()
+		end
+	end)
+	return controlsModule
+end
+
+function shared.DisableControls(tag)
+	tag = tag or "default"
+	activeControlClaims[tag] = true
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Disable) == "function" then
+		pcall(function() ctrl:Disable() end)
+	end
+end
+
+function shared.EnableControls(tag)
+	tag = tag or "default"
+	activeControlClaims[tag] = nil
+	if next(activeControlClaims) ~= nil then
+		return
+	end
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Enable) == "function" then
+		pcall(function() ctrl:Enable() end)
+	end
+end
+
 lifecycle.Register(function()
 	if speedConnection then speedConnection:Disconnect(); speedConnection = nil end
 	for _, connection in ipairs(cleanupConnections) do
 		pcall(function() connection:Disconnect() end)
 	end
 	table.clear(cleanupConnections)
+	table.clear(activeControlClaims)
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Enable) == "function" then
+		pcall(function() ctrl:Enable() end)
+	end
 	resetDungeon()
 end)
 

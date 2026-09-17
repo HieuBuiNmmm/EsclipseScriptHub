@@ -257,16 +257,24 @@ local function getPlayerControls()
 end
 
 local function disableControls()
-	local ctrl = getPlayerControls()
-	if ctrl and type(ctrl.Disable) == "function" then
-		pcall(function() ctrl:Disable() end)
+	if shared.DisableControls then
+		shared.DisableControls("PathRecord")
+	else
+		local ctrl = getPlayerControls()
+		if ctrl and type(ctrl.Disable) == "function" then
+			pcall(function() ctrl:Disable() end)
+		end
 	end
 end
 
 local function enableControls()
-	local ctrl = getPlayerControls()
-	if ctrl and type(ctrl.Enable) == "function" then
-		pcall(function() ctrl:Enable() end)
+	if shared.EnableControls then
+		shared.EnableControls("PathRecord")
+	else
+		local ctrl = getPlayerControls()
+		if ctrl and type(ctrl.Enable) == "function" then
+			pcall(function() ctrl:Enable() end)
+		end
 	end
 end
 

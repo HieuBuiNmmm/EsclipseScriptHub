@@ -93,6 +93,59 @@ local evaluateTarget
 --// HELPERS
 --// ============================================================
 
+--// ControlModule management (uỷ quyền qua shared để đồng bộ với Dodge và PathRecord)
+local function disableControls()
+	if shared.DisableControls then
+		shared.DisableControls("AutoFarm")
+	end
+end
+
+local function enableControls()
+	if shared.EnableControls then
+		shared.EnableControls("AutoFarm")
+	end
+end
+
+--// Per-frame Move Driver (cấp vector di chuyển liên tục trước bước tính toán vật lý)
+local activeMoveVector = Vector3.zero
+local moveDriverConnection = nil
+
+local function startMoveDriver()
+	if moveDriverConnection then return end
+	local stepSignal = RunService.PreSimulation or RunService.RenderStepped or RunService.Heartbeat
+	moveDriverConnection = stepSignal:Connect(function()
+		if not running or isPaused then return end
+		-- Nếu Auto-Dodge đang hoạt động: nhường 100% quyền cho DodgeController, không can thiệp vào Move!
+		if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+			return
+		end
+		local hum = shared.GetHumanoid()
+		if hum then
+			hum:Move(activeMoveVector, false)
+		end
+	end)
+end
+
+local function stopMoveDriver()
+	if moveDriverConnection then
+		moveDriverConnection:Disconnect()
+		moveDriverConnection = nil
+	end
+	activeMoveVector = Vector3.zero
+end
+
+local function setMoveVector(dir)
+	if dir and dir.Magnitude > 0.05 then
+		activeMoveVector = Vector3.new(dir.X, 0, dir.Z).Unit
+	else
+		activeMoveVector = Vector3.zero
+	end
+end
+
+local function setMoveZero()
+	activeMoveVector = Vector3.zero
+end
+
 local function getPlayerRoot()
 	local char = player and player.Character
 	local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -222,11 +275,13 @@ local function stepMovementLoop(deltaTime)
 
 	-- Nếu Auto-Dodge đang chủ động né nguy hiểm -> tạm nhường quyền điều khiển di chuyển
 	if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+		activeMoveVector = Vector3.zero
 		return
 	end
 
 	-- Nếu đang tạm dừng di chuyển (giữ vị trí khi combat hoặc né) -> không bước tiếp
 	if isPaused then
+		activeMoveVector = Vector3.zero
 		return
 	end
 
@@ -248,10 +303,8 @@ local function stepMovementLoop(deltaTime)
 			currentDestination = nil
 			currentDestMode = "None"
 			lastBlockerData = nil
-			pcall(function()
-				humanoid:MoveTo(playerPos)
-				humanoid.AutoRotate = true
-			end)
+			setMoveZero()
+			pcall(function() humanoid.AutoRotate = true end)
 			evaluateTarget()
 			return
 		end
@@ -262,10 +315,8 @@ local function stepMovementLoop(deltaTime)
 		currentDestination = nil
 		currentDestMode = "None"
 		lastBlockerData = nil
-		pcall(function()
-			humanoid:MoveTo(playerPos)
-			humanoid.AutoRotate = true
-		end)
+		setMoveZero()
+		pcall(function() humanoid.AutoRotate = true end)
 		if not selectRunning and now - lastScanTime >= 0.5 then
 			lastScanTime = now
 			evaluateTarget()
@@ -278,10 +329,8 @@ local function stepMovementLoop(deltaTime)
 		tracker.ClearTarget()
 		currentState = State.NO_TARGET
 		lastBlockerData = nil
-		pcall(function()
-			humanoid:MoveTo(playerPos)
-			humanoid.AutoRotate = true
-		end)
+		setMoveZero()
+		pcall(function() humanoid.AutoRotate = true end)
 		return
 	end
 
@@ -305,12 +354,14 @@ local function stepMovementLoop(deltaTime)
 
 	-- Nếu đang ở ngoài Boss Area: Ưu tiên quay lại trong Boss Area ngay lập tức!
 	if isOutsideBossArea and bossCenter2D and bossAreaCenter then
+		local enterDelta = Vector3.new(bossAreaCenter.X - playerPos.X, 0, bossAreaCenter.Z - playerPos.Z)
+		local enterDir = enterDelta.Magnitude > 0.1 and enterDelta.Unit or Vector3.new(0, 0, 1)
 		local enterTarget = Vector3.new(bossAreaCenter.X, playerPos.Y, bossAreaCenter.Z)
 		currentState = State.CHASE
 		currentDestMode = "Enter Boss Area"
 		currentDestination = enterTarget
 		stuckTimer = 0
-		humanoid:MoveTo(enterTarget)
+		setMoveVector(enterDir)
 		return
 	end
 
@@ -354,7 +405,7 @@ local function stepMovementLoop(deltaTime)
 					currentDestMode = "Hold (Boss Area Edge)"
 					currentDestination = nil
 					stuckTimer = 0
-					pcall(function() humanoid:MoveTo(playerPos) end)
+					setMoveZero()
 					return
 				end
 			end
@@ -371,13 +422,13 @@ local function stepMovementLoop(deltaTime)
 			currentDestMode = "Hold (Danger Behind)"
 			currentDestination = nil
 			stuckTimer = 0
-			pcall(function() humanoid:MoveTo(playerPos) end)
+			setMoveZero()
 		else
 			currentState = State.KITE
 			currentDestMode = "Kite"
 			stuckTimer = 0
 			currentDestination = backTarget
-			humanoid:MoveTo(backTarget)
+			setMoveVector(awayDir)
 		end
 	elseif flatDist <= maxCombatDistance then
 		-- Case 2: Nằm trong khoảng lý tưởng [minCombatDistance, maxCombatDistance] -> HOLD
@@ -385,7 +436,7 @@ local function stepMovementLoop(deltaTime)
 		currentDestination = nil
 		currentDestMode = "Hold"
 		stuckTimer = 0
-		pcall(function() humanoid:MoveTo(playerPos) end)
+		setMoveZero()
 	else
 		-- Case 3: Quá xa (> maxCombatDistance) -> CHASE / Tiến thẳng lại gần mục tiêu
 		local approachDir = flatDelta.Magnitude > 0.1 and flatDelta.Unit or Vector3.new(0, 0, 1)
@@ -420,14 +471,14 @@ local function stepMovementLoop(deltaTime)
 			currentDestMode = "Hold (Danger Ahead)"
 			currentDestination = nil
 			stuckTimer = 0
-			pcall(function() humanoid:MoveTo(playerPos) end)
+			setMoveZero()
 		else
 			currentState = State.CHASE
 			currentDestMode = "Chase"
 			local chaseTarget = Vector3.new(enemyPos.X, playerPos.Y, enemyPos.Z)
 			currentDestination = chaseTarget
 
-			humanoid:MoveTo(chaseTarget)
+			setMoveVector(approachDir)
 
 			-- Auto jump khi có chênh lệch độ cao (bậc thang, dốc)
 			local elevDiff = enemyPos.Y - playerPos.Y
@@ -932,13 +983,20 @@ function autoFarm.SetPaused(state)
 	if want == isPaused then return end
 	isPaused = want
 	if isPaused then
+		setMoveZero()
+		enableControls()
 		local h = shared.GetHumanoid()
-		local r = getPlayerRoot()
-		if h and h.Parent and r then
+		if h and h.Parent then
 			pcall(function()
-				h:MoveTo(r.Position)
 				h.AutoRotate = true
+				if not (hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging()) then
+					h:Move(Vector3.zero, false)
+				end
 			end)
+		end
+	else
+		if enabled and running then
+			disableControls()
 		end
 	end
 end
@@ -1101,6 +1159,9 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		end
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
 
+		disableControls()
+		startMoveDriver()
+
 		running = true
 		selectToken = 0
 		selectRunning = false
@@ -1141,16 +1202,20 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		end)
 	else
 		if moveConnection then moveConnection:Disconnect(); moveConnection = nil end
+		stopMoveDriver()
+		enableControls()
 		running = false
 		if enemyChangedConnection then enemyChangedConnection(); enemyChangedConnection = nil end
 		if respawnConnection then respawnConnection(); respawnConnection = nil end
 
+		setMoveZero()
 		local h = shared.GetHumanoid()
-		local r = getPlayerRoot()
-		if h and h.Parent and r then
+		if h and h.Parent then
 			pcall(function()
-				h:MoveTo(r.Position)
 				h.AutoRotate = true
+				if not (hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging()) then
+					h:Move(Vector3.zero, false)
+				end
 			end)
 		end
 
@@ -1163,10 +1228,6 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		selectToken += 1
 		selectRunning = false
 		cleanupDebugVisuals()
-
-
-
-
 	end
 end
 
