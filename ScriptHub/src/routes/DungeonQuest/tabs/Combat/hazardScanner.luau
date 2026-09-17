@@ -221,7 +221,7 @@ return function(window, tab)
 		Name = "Safe Spot Safety Margin (studs)",
 		Default = hazardScanner.GetSafeSpotBuffer(),
 		Minimum = 0.0,
-		Maximum = 6.0,
+		Maximum = 20.0,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)

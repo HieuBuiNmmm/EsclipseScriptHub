@@ -100,15 +100,15 @@ function safeSpot.IsPointSafe(point, extraMargin)
 		end
 	end
 
-	local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
+	local margin = extraMargin or 0
 
 	-- 1. Kiểm tra Ground Danger Zones (Đĩa đỏ / Vùng tròn / OBB trên mặt sàn)
-	if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad) then
+	if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, margin) then
 		return false
 	end
 
 	-- 2. Kiểm tra Trajectory Corridors (Hành lang cam của đạn đang bay)
-	if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, playerRad) then
+	if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, margin) then
 		return false
 	end
 
@@ -143,7 +143,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 75) or nil
 	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 75) or nil
 
-	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc
+	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc (Độc lập hoàn toàn với Player Hitbox Radius)
 	local function isPointSafeScoped(candPoint, extraMargin)
 		if not candPoint then return false end
 		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
@@ -156,21 +156,26 @@ function safeSpot.FindNearestSafeSpot(origin)
 			end
 		end
 
-		local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
+		local margin = extraMargin or 0
 
-		if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad, relevantHazards) then
+		if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, margin, relevantHazards) then
 			return false
 		end
 
-		if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, playerRad, relevantTrajectories) then
+		if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, margin, relevantTrajectories) then
 			return false
 		end
 
 		return true
 	end
 
-	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi hoặc vị trí hiện tại đã an toàn -> Xong ngay lập tức
-	if (relevantHazards and #relevantHazards == 0 and relevantTrajectories and #relevantTrajectories == 0 and not bossAreaCenter2D) or isPointSafeScoped(origin2D, 0) then
+	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi HOẶC Player hoàn toàn không trong nguy hiểm và vị trí hiện tại an toàn -> Xong ngay lập tức
+	local inDanger = false
+	if playerVisual.IsPlayerInDanger then
+		inDanger = playerVisual.IsPlayerInDanger()
+	end
+
+	if (relevantHazards and #relevantHazards == 0 and relevantTrajectories and #relevantTrajectories == 0 and not bossAreaCenter2D) or (not inDanger and isPointSafeScoped(origin2D, 0)) then
 		table.insert(lastEvaluatedCandidates, { pos = origin2D, isSafe = true, isChosen = true })
 		return origin2D, true, 0, Vector3.zero
 	end

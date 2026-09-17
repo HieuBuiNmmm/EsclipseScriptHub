@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-16T22:39:29.860576700+00:00",
+    genDate = "2026-09-17T00:31:58.893893400+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7856,8 +7856,8 @@ local function isPointInZone(point, zone, extraRadius, isTrajectory)
 
 	if zone.radius then
 		local pos = (zone.part and zone.part.Parent) and zone.part.Position
-		local cx = zone.cx or (pos and pos.X) or 0
-		local cz = zone.cz or (pos and pos.Z) or 0
+		local cx = (zone.isSecondBossChain and zone.cx) or (pos and pos.X) or zone.cx or 0
+		local cz = (zone.isSecondBossChain and zone.cz) or (pos and pos.Z) or zone.cz or 0
 		local dx = px - cx
 		local dz = pz - cz
 		local r = zone.radius + pad + extraRadius
@@ -8059,9 +8059,6 @@ local function buildHazardZones(hazardInfo)
 
 		local zone = computePartZone(part, forceCircle, isTrajectory)
 		if zone then
-			if zone.radius then
-				zone.cx, zone.cz = pos.X, pos.Z
-			end
 			zone.part = part
 			zone.isTrajectory = isTrajectory
 			zones[#zones + 1] = zone
@@ -8199,6 +8196,7 @@ return geometry end function __DIST.m()-- HazardScanner – Visualizer: Vẽ tr�
 --// Imports
 
 local services = __DIST.load('e')
+local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local geometry = __DIST.load('l')
 
@@ -8221,13 +8219,36 @@ local ZONE_COLOR_BLUE = Color3.fromRGB(0, 160, 255)
 local ZONE_TRANSPARENCY = 0.55
 local GROUND_THICKNESS = 0.25
 
---// Lấy độ cao mặt sàn theo chân người chơi tại thời điểm vẽ
-local function getPlayerGroundY()
+local CoreGui = services.CoreGui or game:GetService("CoreGui")
+local lastPlayerFloorY = nil
+
+--// Lấy độ cao mặt sàn (Floor Y):
+--// - Khi Player còn sống: Liên tục cập nhật và ghi nhớ độ cao sàn thực tế dưới chân Player (root.Position.Y - 2.5).
+--// - Khi Player chết / ragdoll / chờ hồi sinh: TỰ ĐỘNG KHÓA (LOCK) giữ nguyên độ cao sàn cuối cùng trước khi chết!
+local function getFloorY(itemWorldPos)
 	local char = player and player.Character
-	if not char then return nil end
-	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
-	if not root then return nil end
-	return root.Position.Y - 2.5
+	if char and char.Parent then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 then
+			local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+			if root and root.Parent then
+				lastPlayerFloorY = root.Position.Y - 2.5
+				return lastPlayerFloorY
+			end
+		end
+	end
+
+	-- Khóa và giữ nguyên độ cao sàn của thời điểm trước khi chết
+	if lastPlayerFloorY ~= nil then
+		return lastPlayerFloorY
+	end
+
+	-- Fallback khởi tạo ban đầu khi chưa có nhân vật
+	if itemWorldPos then
+		return itemWorldPos.Y - 2.5
+	end
+
+	return 0
 end
 
 --// Gán data source từ detection (tránh circular dependency)
@@ -8240,16 +8261,25 @@ function visualizer.IsEnabled()
 end
 
 --// Cập nhật vị trí và góc xoay của một Adornment ghim thẳng đứng xuống mặt đất mỗi frame
-local function updateVisualCFrame(item, targetY)
+local function updateVisualCFrame(item)
 	local ad = item.ad
 	local zone = item.zone
 	local part = item.part
 	local anchorPart = item.anchorPart or part
 	if not ad or not ad.Parent or not anchorPart or not anchorPart.Parent then return end
 
-	local worldPos = (zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz) or (part and part.Position)
+	local worldPos = nil
+	if zone and zone.isSecondBossChain and zone.cx and zone.cz then
+		worldPos = Vector3.new(zone.cx, 0, zone.cz)
+	elseif part and part.Parent then
+		worldPos = part.Position
+	elseif zone and zone.cx and zone.cz then
+		worldPos = Vector3.new(zone.cx, 0, zone.cz)
+	end
 	if not worldPos then return end
-	local worldTargetPos = Vector3.new(worldPos.X, targetY or worldPos.Y, worldPos.Z)
+
+	local floorY = getFloorY(worldPos)
+	local worldTargetPos = Vector3.new(worldPos.X, floorY, worldPos.Z)
 
 	if item.isCircle then
 		-- Đĩa tròn: Cố định nằm ngang hoàn toàn trên mặt phẳng World X-Z
@@ -8269,7 +8299,6 @@ end
 local function onHeartbeat()
 	if not enabled then return end
 	local hasAny = false
-	local targetY = getPlayerGroundY()
 	local now = os.clock()
 
 	for info, record in pairs(activeVisuals) do
@@ -8290,7 +8319,7 @@ local function onHeartbeat()
 						end
 					elseif item.ad and item.ad.Parent then
 						table.insert(aliveItems, item)
-						updateVisualCFrame(item, targetY)
+						updateVisualCFrame(item)
 					end
 				end
 				record.items = aliveItems
@@ -8382,7 +8411,6 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local isTraj = hazardInfo.IsTrajectory == true
 	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
 	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
-	local targetY = getPlayerGroundY()
 	local items = {}
 	local adornments = {}
 	local connections = {}
@@ -8409,7 +8437,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				cyl.Transparency = ZONE_TRANSPARENCY
 				cyl.ZIndex = 2
 				cyl.AlwaysOnTop = true
-				cyl.Parent = anchorPart
+				cyl.Parent = CoreGui
 				ad = cyl
 			elseif zone.half and zone.cframe then
 				local box = Instance.new("BoxHandleAdornment")
@@ -8420,7 +8448,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				box.Transparency = ZONE_TRANSPARENCY
 				box.ZIndex = 2
 				box.AlwaysOnTop = true
-				box.Parent = anchorPart
+				box.Parent = CoreGui
 				ad = box
 			end
 
@@ -8432,7 +8460,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 					isCircle = isCircle,
 					zone = zone,
 				}
-				updateVisualCFrame(item, targetY)
+				updateVisualCFrame(item)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
@@ -11518,15 +11546,15 @@ function safeSpot.IsPointSafe(point, extraMargin)
 		end
 	end
 
-	local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
+	local margin = extraMargin or 0
 
 	-- 1. Kiểm tra Ground Danger Zones (Đĩa đỏ / Vùng tròn / OBB trên mặt sàn)
-	if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad) then
+	if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, margin) then
 		return false
 	end
 
 	-- 2. Kiểm tra Trajectory Corridors (Hành lang cam của đạn đang bay)
-	if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, playerRad) then
+	if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, margin) then
 		return false
 	end
 
@@ -11561,7 +11589,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 	local relevantHazards = geometry.GetNearbyHazards and geometry.GetNearbyHazards(origin2D, 75) or nil
 	local relevantTrajectories = trajectory.GetNearbyTrajectories and trajectory.GetNearbyTrajectories(origin2D, 75) or nil
 
-	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc
+	-- Hàm kiểm tra an toàn tối ưu chỉ duyệt qua danh sách relevant đã lọc (Độc lập hoàn toàn với Player Hitbox Radius)
 	local function isPointSafeScoped(candPoint, extraMargin)
 		if not candPoint then return false end
 		local p2D = Vector3.new(candPoint.X, 0, candPoint.Z)
@@ -11574,21 +11602,26 @@ function safeSpot.FindNearestSafeSpot(origin)
 			end
 		end
 
-		local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
+		local margin = extraMargin or 0
 
-		if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad, relevantHazards) then
+		if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, margin, relevantHazards) then
 			return false
 		end
 
-		if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, playerRad, relevantTrajectories) then
+		if trajectory.IsPointInAnyTrajectory and trajectory.IsPointInAnyTrajectory(p2D, margin, relevantTrajectories) then
 			return false
 		end
 
 		return true
 	end
 
-	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi hoặc vị trí hiện tại đã an toàn -> Xong ngay lập tức
-	if (relevantHazards and #relevantHazards == 0 and relevantTrajectories and #relevantTrajectories == 0 and not bossAreaCenter2D) or isPointSafeScoped(origin2D, 0) then
+	-- 2. Nếu không có bất kỳ mối nguy nào trong phạm vi HOẶC Player hoàn toàn không trong nguy hiểm và vị trí hiện tại an toàn -> Xong ngay lập tức
+	local inDanger = false
+	if playerVisual.IsPlayerInDanger then
+		inDanger = playerVisual.IsPlayerInDanger()
+	end
+
+	if (relevantHazards and #relevantHazards == 0 and relevantTrajectories and #relevantTrajectories == 0 and not bossAreaCenter2D) or (not inDanger and isPointSafeScoped(origin2D, 0)) then
 		table.insert(lastEvaluatedCandidates, { pos = origin2D, isSafe = true, isChosen = true })
 		return origin2D, true, 0, Vector3.zero
 	end
@@ -14488,7 +14521,7 @@ return function(window, tab)
 		Name = "Safe Spot Safety Margin (studs)",
 		Default = hazardScanner.GetSafeSpotBuffer(),
 		Minimum = 0.0,
-		Maximum = 6.0,
+		Maximum = 20.0,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)

@@ -6,6 +6,7 @@
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
+local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 
@@ -28,13 +29,36 @@ local ZONE_COLOR_BLUE = Color3.fromRGB(0, 160, 255)
 local ZONE_TRANSPARENCY = 0.55
 local GROUND_THICKNESS = 0.25
 
---// Lấy độ cao mặt sàn theo chân người chơi tại thời điểm vẽ
-local function getPlayerGroundY()
+local CoreGui = services.CoreGui or game:GetService("CoreGui")
+local lastPlayerFloorY = nil
+
+--// Lấy độ cao mặt sàn (Floor Y):
+--// - Khi Player còn sống: Liên tục cập nhật và ghi nhớ độ cao sàn thực tế dưới chân Player (root.Position.Y - 2.5).
+--// - Khi Player chết / ragdoll / chờ hồi sinh: TỰ ĐỘNG KHÓA (LOCK) giữ nguyên độ cao sàn cuối cùng trước khi chết!
+local function getFloorY(itemWorldPos)
 	local char = player and player.Character
-	if not char then return nil end
-	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
-	if not root then return nil end
-	return root.Position.Y - 2.5
+	if char and char.Parent then
+		local hum = char:FindFirstChildOfClass("Humanoid")
+		if hum and hum.Health > 0 then
+			local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+			if root and root.Parent then
+				lastPlayerFloorY = root.Position.Y - 2.5
+				return lastPlayerFloorY
+			end
+		end
+	end
+
+	-- Khóa và giữ nguyên độ cao sàn của thời điểm trước khi chết
+	if lastPlayerFloorY ~= nil then
+		return lastPlayerFloorY
+	end
+
+	-- Fallback khởi tạo ban đầu khi chưa có nhân vật
+	if itemWorldPos then
+		return itemWorldPos.Y - 2.5
+	end
+
+	return 0
 end
 
 --// Gán data source từ detection (tránh circular dependency)
@@ -47,16 +71,25 @@ function visualizer.IsEnabled()
 end
 
 --// Cập nhật vị trí và góc xoay của một Adornment ghim thẳng đứng xuống mặt đất mỗi frame
-local function updateVisualCFrame(item, targetY)
+local function updateVisualCFrame(item)
 	local ad = item.ad
 	local zone = item.zone
 	local part = item.part
 	local anchorPart = item.anchorPart or part
 	if not ad or not ad.Parent or not anchorPart or not anchorPart.Parent then return end
 
-	local worldPos = (zone and zone.cx and zone.cz) and Vector3.new(zone.cx, 0, zone.cz) or (part and part.Position)
+	local worldPos = nil
+	if zone and zone.isSecondBossChain and zone.cx and zone.cz then
+		worldPos = Vector3.new(zone.cx, 0, zone.cz)
+	elseif part and part.Parent then
+		worldPos = part.Position
+	elseif zone and zone.cx and zone.cz then
+		worldPos = Vector3.new(zone.cx, 0, zone.cz)
+	end
 	if not worldPos then return end
-	local worldTargetPos = Vector3.new(worldPos.X, targetY or worldPos.Y, worldPos.Z)
+
+	local floorY = getFloorY(worldPos)
+	local worldTargetPos = Vector3.new(worldPos.X, floorY, worldPos.Z)
 
 	if item.isCircle then
 		-- Đĩa tròn: Cố định nằm ngang hoàn toàn trên mặt phẳng World X-Z
@@ -76,7 +109,6 @@ end
 local function onHeartbeat()
 	if not enabled then return end
 	local hasAny = false
-	local targetY = getPlayerGroundY()
 	local now = os.clock()
 
 	for info, record in pairs(activeVisuals) do
@@ -97,7 +129,7 @@ local function onHeartbeat()
 						end
 					elseif item.ad and item.ad.Parent then
 						table.insert(aliveItems, item)
-						updateVisualCFrame(item, targetY)
+						updateVisualCFrame(item)
 					end
 				end
 				record.items = aliveItems
@@ -189,7 +221,6 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local isTraj = hazardInfo.IsTrajectory == true
 	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
 	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
-	local targetY = getPlayerGroundY()
 	local items = {}
 	local adornments = {}
 	local connections = {}
@@ -216,7 +247,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				cyl.Transparency = ZONE_TRANSPARENCY
 				cyl.ZIndex = 2
 				cyl.AlwaysOnTop = true
-				cyl.Parent = anchorPart
+				cyl.Parent = CoreGui
 				ad = cyl
 			elseif zone.half and zone.cframe then
 				local box = Instance.new("BoxHandleAdornment")
@@ -227,7 +258,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				box.Transparency = ZONE_TRANSPARENCY
 				box.ZIndex = 2
 				box.AlwaysOnTop = true
-				box.Parent = anchorPart
+				box.Parent = CoreGui
 				ad = box
 			end
 
@@ -239,7 +270,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 					isCircle = isCircle,
 					zone = zone,
 				}
-				updateVisualCFrame(item, targetY)
+				updateVisualCFrame(item)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
