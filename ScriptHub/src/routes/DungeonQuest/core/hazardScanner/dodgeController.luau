@@ -149,8 +149,9 @@ local function onHeartbeat()
 		return
 	end
 
-	-- Kiểm tra nếu mục tiêu hiện tại (Boss) được cấu hình tắt né đòn trong Contextual
-	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+	-- Kiểm tra nếu mục tiêu hiện tại (Boss) được cấu hình tắt né đòn hoặc tắt Hazard Scanner trong Contextual
+	if (contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled())
+		or (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled()) then
 		if isDodging or activeTargetSpot then
 			activeTargetSpot = nil
 			isDodging = false

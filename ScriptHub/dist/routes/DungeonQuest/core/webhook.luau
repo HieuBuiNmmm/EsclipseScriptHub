@@ -1767,152 +1767,154 @@ a3)end end end end)local a3=function()return not(aJ and#aJ>0)end task.spawn(
 function()while ab.IsActive()do task.wait(af)local a4=a3()if a4~=aC then aC=a4
 for a5=#aD,1,-1 do pcall(aD[a5],aC)end end end end)task.spawn(function()local a4
 ,a5=pcall(function()return aL()end)if not a4 then warn(
-'[EnemyTracker] Initialization error:',a5)end end)local a4,a5=0,2 task.spawn(
-function()while ab.IsActive()do task.wait(a5)local a6=os.clock()if a6-a4<a5 then
-continue end a4=a6 if not dungeon then continue end local a7=pcall(function()for
-a7,a8 in ipairs(dungeon:GetChildren())do if a8:IsA'Folder'or a8:IsA'Model'then
-for a9,b in ipairs(a8:GetDescendants())do if b:IsA'Model'then aZ(b)end end end
-end aK()end)if not a7 then warn'[EnemyTracker] rescan error'end end end)function
-ag.IsBossActive()return am end function ag.OnBossActiveChanged(a6)if type(a6)~=
-'function'then return function()end end table.insert(an,a6)return function()for
-a7,a8 in ipairs(an)do if a8==a6 then table.remove(an,a7)break end end end end
-function ag.GetCurrentBossIndex()return ao end function ag.GetCombatTargetKey()
-if not am then return'Mob'end local a6=math.clamp(ao,1,3)return'Boss'..tostring(
-a6)end function ag.ResetBossIndex()ao=0 aP=nil for a6=#ap,1,-1 do pcall(ap[a6],
-ao)end end function ag.OnBossIndexChanged(a6)if type(a6)~='function'then return
-function()end end table.insert(ap,a6)return function()for a7,a8 in ipairs(ap)do
-if a8==a6 then table.remove(ap,a7)break end end end end local a6=function(a6)if
-type(a6)~='string'then return 0 end local a7=string.lower(a6)local a8=string.
-match(a7,'boss.*(%d+)')if a8 then return 100+(tonumber(a8)or 1)end if string.
-find(a7,'boss')then return 100+math.max(1,ao)end local a9=string.match(a6,
-'^room(%d+)$')if not a9 then return 0 end return tonumber(a9)or 0 end local a7=
-function()if not dungeon then return 0 end for a7,a8 in pairs(at)do if a8 and a8
-.Room then local a9=a6(a8.Room.Name)if a9>0 then return a9 end end end if am
-then return 100+math.max(1,ao)end return 0 end aN=function()local a8=a7()if a8==
-aq then return end aq=a8 for a9=#ar,1,-1 do pcall(ar[a9],aq)end end function ag.
-GetCurrentRoomIndex()return aq end function ag.OnRoomIndexChanged(a8)if type(a8)
-~='function'then return function()end end table.insert(ar,a8)return function()
-for a9,b in ipairs(ar)do if b==a8 then table.remove(ar,a9)break end end end end
-function ag.GetCurrentDungeonName()return aJ end function ag.
-OnDungeonNameChanged(a8)if type(a8)~='function'then return function()end end
-table.insert(aA,a8)return function()for a9,b in ipairs(aA)do if b==a8 then table
-.remove(aA,a9)break end end end end function ag.IsInLobby()return aC end
-function ag.OnLobbyChanged(a8)if type(a8)~='function'then return function()end
-end table.insert(aD,a8)return function()for a9,b in ipairs(aD)do if b==a8 then
-table.remove(aD,a9)break end end end end local a8 aO=function()if not am or aP~=
-nil then return end for a9,b in pairs(at)do if b and b.Root and b.Root.Parent
-then local ba=false if b.Room and type(b.Room.Name)=='string'and string.find(
-string.lower(b.Room.Name),'boss')then ba=true elseif string.find(string.lower(a9
-.Name),'boss')then ba=true elseif a9.Parent and string.find(string.lower(a9.
-Parent.Name),'boss')then ba=true end if ba then aP=b.Root.Position return end
-end end for a9,b in pairs(at)do if b and b.Root and b.Root.Parent then aP=b.Root
-.Position return end end end local a9=function(a9)if am==a9 then return end am=
-a9 if a9 then ao+=1 aP=nil aO()for b=#ap,1,-1 do pcall(ap[b],ao)end else aP=nil
-end for b=#an,1,-1 do pcall(an[b],am)end aN()end function ag.
-GetBossSpawnPosition()if aP then return aP end aO()return aP end function ag.
-SetBossSpawnPosition(b)aP=b end local function b()if not ac then return end
-local ba=ac:FindFirstChild'PlayerGui'if not ba then a8=nil a9(false)return end
-local bb=ba:FindFirstChild('bossHealth',true)if bb then if bb~=a8 then a8=bb if
-a8:IsA'ScreenGui'then aS(a8:GetPropertyChangedSignal'Enabled':Connect(b))elseif
-a8:IsA'GuiObject'then aS(a8:GetPropertyChangedSignal'Visible':Connect(b))end end
-local bc=if bb:IsA'ScreenGui'then bb.Enabled elseif bb:IsA'GuiObject'then bb.
-Visible else true a9(bc)else a8=nil a9(false)end end task.spawn(function()if not
-ac then return end local ba=ac:WaitForChild('PlayerGui',30)if not ba then return
-end aS(ba.DescendantAdded:Connect(b))aS(ba.DescendantRemoving:Connect(b))b()
-while ab.IsActive()and task.wait(0.5)do b()end end)local ba,bb={}local bc=
-function()if bb then return bb end pcall(function()local bc=ac or game:
-GetService'Players'.LocalPlayer local bd=bc and bc:FindFirstChild'PlayerScripts'
-local be=bd and bd:FindFirstChild'PlayerModule'if be then bb=require(be):
-GetControls()end end)return bb end function ag.DisableControls(bd)bd=bd or
-'default'ba[bd]=true local be=bc()if be and type(be.Disable)=='function'then
-pcall(function()be:Disable()end)end end function ag.EnableControls(bd)bd=bd or
-'default'ba[bd]=nil if next(ba)~=nil then return end local be=bc()if be and
-type(be.Enable)=='function'then pcall(function()be:Enable()end)end end ab.
-Register(function()if aQ then aQ:Disconnect()aQ=nil end for bd,be in ipairs(aF)
-do pcall(function()be:Disconnect()end)end table.clear(aF)table.clear(ba)local bd
-=bc()if bd and type(bd.Enable)=='function'then pcall(function()bd:Enable()end)
-end aM()end)return ag end end local aa,ab,ac,ad,ae=a.load'a',a.load'b',a.load'e'
-,a.load'd',game:GetService'HttpService'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq
-,ar,as,at=aa.Folder..'/settings/webhook.json',{},'',false,false,false,'',{
-'Tier6'},{common=9807270,uncommon=43520,rare=3447003,epic=10181046,legendary=
-16766720,secret=15158332,ultimate=15158332,mythic=15158332},{common=1,uncommon=2
-,rare=3,epic=4,legendary=5,secret=6,ultimate=6,mythic=6},10181046,{{match=
-'northen',prefix='Valhalla'},{match='northern',prefix='Valhalla'}},16766720
-local au,av=function()local au=ac.GetCurrentDungeonName()if not au or au==''then
-return nil end local av=string.lower(au)for aw,ax in ipairs(aq)do if string.
-find(av,ax.match,1,true)then return ax.prefix end end return nil end,{legendary=
-true,secret=true,ultimate=true,mythic=true}local aw,ax,ay,az=function(aw)if not
-aw then return false end if av[tostring(aw.rarity or''):lower()]then return true
-end local ax=au()if ax and ax~=''then local ay=tostring(aw.itemName or'')return
-string.sub(ay,1,#ax)==ax end return false end,{'Tier1','Tier2','Tier3','Tier4',
-'Tier5','Tier6'},function(aw)local ax=tonumber(tostring(aw or''):match
-'Tier(%d+)')return ax or 6 end local aA,aB=function()if az then return az end az
-={}for aA,aB in ipairs(am)do az[ay(aB)]=true end return az end,{uncommon=1,
-common=2,rare=3,epic=4,legendary=5,secret=6}local aC,aD,aE,aF=function(aC)if not
-aC then return nil end local aD=tonumber(tostring(aC.tier or''):match'tier(%d+)'
-)if aD then return aD end if aC.secret==true then return 6 end return aB[string.
-lower(tostring(aC.rarity or''))]end,function()local aC=game:GetService'Players'.
-LocalPlayer if not aC then return'?'end if aC.Name and aC.Name~=''then return aC
-.Name end return aC.DisplayName or'?'end,function()local aC=game:GetService
-'Players'.LocalPlayer if not aC then return nil end local aD=aC:FindFirstChild
-'XP'if aD and aD:IsA'IntValue'then return aD.Value end return nil end
-local function aG(aH,aI,aJ)aJ=aJ or 12 if aJ<0 then return nil end local aK=aH:
-FindFirstChild(aI)if aK then return aK end for aL,aM in ipairs(aH:GetChildren())
-do local aN=aG(aM,aI,aJ-1)if aN then return aN end end return nil end local aH,
-aI=function()local aH=game:GetService'Players'.LocalPlayer if not aH or not aH:
-FindFirstChild'PlayerGui'then return'?'end local aI=aH.PlayerGui:FindFirstChild
-'playerStatus'if not aI then return'?'end local aJ=aG(aI,'levelBorder')if not aJ
-then return'?'end local aK=aJ:FindFirstChild'level'if aK and aK:IsA'TextLabel'
-then return aK.Text end return'?'end,false local aJ=function()if aF~=nil or aI
-then return end aI=true task.spawn(function()local aJ=os.clock()+8 while aF==nil
-and os.clock()<aJ do aF=aE()if aF~=nil then break end task.wait(0.25)end aI=
-false end)end local aK,aL=function()aF=aE()if aF==nil then aJ()end ac.
-SetDungeonStartTime(nil)end,function()if not ac.GetDungeonStartTime()then ac.
-SetDungeonStartTime(os.clock())end if aF==nil then aJ()end end local aM,aN,aO,aP
-,aQ,aR=function()if at then return end local aM=function(aM)if aM then aK()else
-aL()end end aM(ac.IsInLobby())at=ac.OnLobbyChanged(aM)end,function(aM)aM=math.
-max(0,math.floor(aM or 0))local aN,aO=math.floor(aM/60),aM%60 return string.
-format('%d:%02d',aN,aO)end,function()if not(isfile and isfile(af))then return
-end local aM,aN=pcall(function()return ae:JSONDecode(readfile(af))end)if aM and
-type(aN)=='table'then ah=type(aN.url)=='string'and aN.url or''ai=aN.enabled==
-true ak=aN.pingEnabled==true al=type(aN.pingMention)=='string'and aN.pingMention
-or''local aO=aN.pingTiers if type(aO)=='string'then aO={aO}end if type(aO)==
-'table'then local aP={}for aQ,aR in ipairs(aO)do if table.find(ax,aR)and not
-table.find(aP,aR)then table.insert(aP,aR)end end if#aP>0 then am=aP end end az=
-nil end end,function()if not(isfile and writefile)then return end pcall(function
-()writefile(af,ae:JSONEncode{url=ah,enabled=ai,pingEnabled=ak,pingMention=al,
-pingTiers=am})end)end,function(aM)local aN={}for aO,aP in ipairs(aM or{})do
-local aQ,aR=aP.itemName or'Unknown',aw(aP)if aR then aQ='\u{2b50} '..aQ end
-local aS={}if aP.itemType and aP.itemType~='gold'then table.insert(aS,aP.
-itemType)end if aP.rarity then table.insert(aS,aP.rarity)end if#aS>0 then table.
-insert(aN,string.format('%s (%s)',tostring(aQ),table.concat(aS,', ')))else table
-.insert(aN,tostring(aQ))end end return table.concat(aN,'\n')end,function(aM)if
-not aM then return false end local aN=aC(aM)if not aN then return false end
-return aA()[aN]==true end local aS=function(aS)if not ak or al==''then return
-false end for aT,aU in ipairs(aS or{})do if aR(aU)then return true end end
-return false end local aT=function(aT,aU)local aV,aW=tonumber(aT.gold)or 0,{}for
-aX,aY in ipairs(aT.items or{})do if aY.itemName and aY.itemName~='gold'then
-table.insert(aW,aY)end end local aX,aY,aZ,a_,a0=ap,false,function(aX,aY)if aX==
-nil then return aY end if aY==nil then return aX end return(ao[aX]or 0)>=(ao[aY]
-or 0)and aX or aY end for a1,a2 in ipairs(aW)do local a3=tostring(a2.rarity or''
-):lower()if aw(a2)then aY=true a_=aZ(a_,a3)end if an[a3]~=nil then a0=aZ(a0,a3)
-end end if aY then aX=a_ and(an[a_]or ar)or ar elseif a0 then aX=an[a0]end aU=aU
-or{}local a1,a2=tostring(aU.level or'?'),tonumber(aU.expGained)local a3,a4,a5=a2
-and string.format('+%s XP',tostring(a2))or'?',aN(aU.duration),{}if a2 then table
-.insert(a5,a3)end if aV>0 then table.insert(a5,string.format('+%s gold',
-tostring(aV)))end local a6,a7=#a5>0 and table.concat(a5,'  ')or'',#aW>0 and aQ(
-aW)or'None'local a8=a7 if a6~=''then a8=a6..(a7~='None'and('\n'..a7)or'')end
-local a9,b={{name='Player',value=string.format('%s (lv %s)',aD(),a1),inline=true
-},{name='Map',value=ac.GetCurrentDungeonName()or'Unknown',inline=true},{name=
-'Time',value=a4,inline=true},{name='Rewards',value=a8,inline=false}},
-'You cleared the dungeon and received your rewards!'if aS(aW)then b=b..'\n\n'..
-al end return{embeds={{title='Dungeon WIN',description=b,color=aX,fields=a9,
-timestamp=DateTime.now():ToIsoDate()}}}end local aU=function(aU,aV)if ah==''or
-string.find(ah,'^https://discord%.com/api/webhooks/')==nil then return false,
-'Invalid webhook URL'end local aW=aT(aU,aV)local aX,aY=pcall(function()return ae
-:JSONEncode(aW)end)if not aX then return false,'Could not encode payload'end
-local aZ,a_=pcall(function()return request{Url=ah,Method='POST',Headers={[
-'Content-Type']='application/json',['User-Agent']=
+'[EnemyTracker] Initialization error:',a5)end end)local a4=function()if not
+dungeon then dungeon=workspace:FindFirstChild'dungeon'end if not dungeon then
+return end local a4=pcall(function()for a4,a5 in ipairs(dungeon:GetChildren())do
+if a5:IsA'Folder'or a5:IsA'Model'then if a5:IsA'Model'and aU(a5)then aZ(a5)end
+for a6,a7 in ipairs(a5:GetDescendants())do if a7:IsA'Model'then aZ(a7)end end
+end end aK()end)if not a4 then warn'[EnemyTracker] scanDungeonEnemies error'end
+end function ag.ForceRescan()a4()end local a5,a6=0,2 task.spawn(function()while
+ab.IsActive()do task.wait(a6)local a7=os.clock()if a7-a5<a6 then continue end a5
+=a7 a4()end end)function ag.IsBossActive()return am end function ag.
+OnBossActiveChanged(a7)if type(a7)~='function'then return function()end end
+table.insert(an,a7)return function()for a8,a9 in ipairs(an)do if a9==a7 then
+table.remove(an,a8)break end end end end function ag.GetCurrentBossIndex()return
+ao end function ag.GetCombatTargetKey()if not am then return'Mob'end local a7=
+math.clamp(ao,1,3)return'Boss'..tostring(a7)end function ag.ResetBossIndex()ao=0
+aP=nil for a7=#ap,1,-1 do pcall(ap[a7],ao)end end function ag.OnBossIndexChanged
+(a7)if type(a7)~='function'then return function()end end table.insert(ap,a7)
+return function()for a8,a9 in ipairs(ap)do if a9==a7 then table.remove(ap,a8)
+break end end end end local a7=function(a7)if type(a7)~='string'then return 0
+end local a8=string.lower(a7)local a9=string.match(a8,'boss.*(%d+)')if a9 then
+return 100+(tonumber(a9)or 1)end if string.find(a8,'boss')then return 100+math.
+max(1,ao)end local b=string.match(a7,'^room(%d+)$')if not b then return 0 end
+return tonumber(b)or 0 end local a8=function()if not dungeon then return 0 end
+for a8,a9 in pairs(at)do if a9 and a9.Room then local b=a7(a9.Room.Name)if b>0
+then return b end end end if am then return 100+math.max(1,ao)end return 0 end
+aN=function()local a9=a8()if a9==aq then return end aq=a9 for b=#ar,1,-1 do
+pcall(ar[b],aq)end end function ag.GetCurrentRoomIndex()return aq end function
+ag.OnRoomIndexChanged(a9)if type(a9)~='function'then return function()end end
+table.insert(ar,a9)return function()for b,ba in ipairs(ar)do if ba==a9 then
+table.remove(ar,b)break end end end end function ag.GetCurrentDungeonName()
+return aJ end function ag.OnDungeonNameChanged(a9)if type(a9)~='function'then
+return function()end end table.insert(aA,a9)return function()for b,ba in ipairs(
+aA)do if ba==a9 then table.remove(aA,b)break end end end end function ag.
+IsInLobby()return aC end function ag.OnLobbyChanged(a9)if type(a9)~='function'
+then return function()end end table.insert(aD,a9)return function()for b,ba in
+ipairs(aD)do if ba==a9 then table.remove(aD,b)break end end end end local a9 aO=
+function()if not am or aP~=nil then return end for b,ba in pairs(at)do if ba and
+ba.Root and ba.Root.Parent then local bb=false if ba.Room and type(ba.Room.Name)
+=='string'and string.find(string.lower(ba.Room.Name),'boss')then bb=true elseif
+string.find(string.lower(b.Name),'boss')then bb=true elseif b.Parent and string.
+find(string.lower(b.Parent.Name),'boss')then bb=true end if bb then aP=ba.Root.
+Position return end end end for b,ba in pairs(at)do if ba and ba.Root and ba.
+Root.Parent then aP=ba.Root.Position return end end end local b=function(b)if am
+==b then return end am=b if b then ao+=1 aP=nil a4()aO()for ba=#ap,1,-1 do
+pcall(ap[ba],ao)end else aP=nil end for ba=#an,1,-1 do pcall(an[ba],am)end aN()
+end function ag.GetBossSpawnPosition()if aP then return aP end aO()return aP end
+function ag.SetBossSpawnPosition(ba)aP=ba end local function ba()if not ac then
+return end local bb=ac:FindFirstChild'PlayerGui'if not bb then a9=nil b(false)
+return end local bc=bb:FindFirstChild('bossHealth',true)if bc then if bc~=a9
+then a9=bc if a9:IsA'ScreenGui'then aS(a9:GetPropertyChangedSignal'Enabled':
+Connect(ba))elseif a9:IsA'GuiObject'then aS(a9:GetPropertyChangedSignal'Visible'
+:Connect(ba))end end local bd=if bc:IsA'ScreenGui'then bc.Enabled elseif bc:IsA
+'GuiObject'then bc.Visible else true b(bd)else a9=nil b(false)end end task.
+spawn(function()if not ac then return end local bb=ac:WaitForChild('PlayerGui',
+30)if not bb then return end aS(bb.DescendantAdded:Connect(ba))aS(bb.
+DescendantRemoving:Connect(ba))ba()while ab.IsActive()and task.wait(0.5)do ba()
+end end)local bb,bc={}local bd=function()if bc then return bc end pcall(function
+()local bd=ac or game:GetService'Players'.LocalPlayer local be=bd and bd:
+FindFirstChild'PlayerScripts'local bf=be and be:FindFirstChild'PlayerModule'if
+bf then bc=require(bf):GetControls()end end)return bc end function ag.
+DisableControls(be)be=be or'default'bb[be]=true local bf=bd()if bf and type(bf.
+Disable)=='function'then pcall(function()bf:Disable()end)end end function ag.
+EnableControls(be)be=be or'default'bb[be]=nil if next(bb)~=nil then return end
+local bf=bd()if bf and type(bf.Enable)=='function'then pcall(function()bf:
+Enable()end)end end ab.Register(function()if aQ then aQ:Disconnect()aQ=nil end
+for be,bf in ipairs(aF)do pcall(function()bf:Disconnect()end)end table.clear(aF)
+table.clear(bb)local be=bd()if be and type(be.Enable)=='function'then pcall(
+function()be:Enable()end)end aM()end)return ag end end local aa,ab,ac,ad,ae=a.
+load'a',a.load'b',a.load'e',a.load'd',game:GetService'HttpService'local af,ag,ah
+,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at=aa.Folder..'/settings/webhook.json',{},'',
+false,false,false,'',{'Tier6'},{common=9807270,uncommon=43520,rare=3447003,epic=
+10181046,legendary=16766720,secret=15158332,ultimate=15158332,mythic=15158332},{
+common=1,uncommon=2,rare=3,epic=4,legendary=5,secret=6,ultimate=6,mythic=6},
+10181046,{{match='northen',prefix='Valhalla'},{match='northern',prefix=
+'Valhalla'}},16766720 local au,av=function()local au=ac.GetCurrentDungeonName()
+if not au or au==''then return nil end local av=string.lower(au)for aw,ax in
+ipairs(aq)do if string.find(av,ax.match,1,true)then return ax.prefix end end
+return nil end,{legendary=true,secret=true,ultimate=true,mythic=true}local aw,ax
+,ay,az=function(aw)if not aw then return false end if av[tostring(aw.rarity or''
+):lower()]then return true end local ax=au()if ax and ax~=''then local ay=
+tostring(aw.itemName or'')return string.sub(ay,1,#ax)==ax end return false end,{
+'Tier1','Tier2','Tier3','Tier4','Tier5','Tier6'},function(aw)local ax=tonumber(
+tostring(aw or''):match'Tier(%d+)')return ax or 6 end local aA,aB=function()if
+az then return az end az={}for aA,aB in ipairs(am)do az[ay(aB)]=true end return
+az end,{uncommon=1,common=2,rare=3,epic=4,legendary=5,secret=6}local aC,aD,aE,aF
+=function(aC)if not aC then return nil end local aD=tonumber(tostring(aC.tier or
+''):match'tier(%d+)')if aD then return aD end if aC.secret==true then return 6
+end return aB[string.lower(tostring(aC.rarity or''))]end,function()local aC=game
+:GetService'Players'.LocalPlayer if not aC then return'?'end if aC.Name and aC.
+Name~=''then return aC.Name end return aC.DisplayName or'?'end,function()local
+aC=game:GetService'Players'.LocalPlayer if not aC then return nil end local aD=
+aC:FindFirstChild'XP'if aD and aD:IsA'IntValue'then return aD.Value end return
+nil end local function aG(aH,aI,aJ)aJ=aJ or 12 if aJ<0 then return nil end local
+aK=aH:FindFirstChild(aI)if aK then return aK end for aL,aM in ipairs(aH:
+GetChildren())do local aN=aG(aM,aI,aJ-1)if aN then return aN end end return nil
+end local aH,aI=function()local aH=game:GetService'Players'.LocalPlayer if not
+aH or not aH:FindFirstChild'PlayerGui'then return'?'end local aI=aH.PlayerGui:
+FindFirstChild'playerStatus'if not aI then return'?'end local aJ=aG(aI,
+'levelBorder')if not aJ then return'?'end local aK=aJ:FindFirstChild'level'if aK
+and aK:IsA'TextLabel'then return aK.Text end return'?'end,false local aJ=
+function()if aF~=nil or aI then return end aI=true task.spawn(function()local aJ
+=os.clock()+8 while aF==nil and os.clock()<aJ do aF=aE()if aF~=nil then break
+end task.wait(0.25)end aI=false end)end local aK,aL=function()aF=aE()if aF==nil
+then aJ()end ac.SetDungeonStartTime(nil)end,function()if not ac.
+GetDungeonStartTime()then ac.SetDungeonStartTime(os.clock())end if aF==nil then
+aJ()end end local aM,aN,aO,aP,aQ,aR=function()if at then return end local aM=
+function(aM)if aM then aK()else aL()end end aM(ac.IsInLobby())at=ac.
+OnLobbyChanged(aM)end,function(aM)aM=math.max(0,math.floor(aM or 0))local aN,aO=
+math.floor(aM/60),aM%60 return string.format('%d:%02d',aN,aO)end,function()if
+not(isfile and isfile(af))then return end local aM,aN=pcall(function()return ae:
+JSONDecode(readfile(af))end)if aM and type(aN)=='table'then ah=type(aN.url)==
+'string'and aN.url or''ai=aN.enabled==true ak=aN.pingEnabled==true al=type(aN.
+pingMention)=='string'and aN.pingMention or''local aO=aN.pingTiers if type(aO)==
+'string'then aO={aO}end if type(aO)=='table'then local aP={}for aQ,aR in ipairs(
+aO)do if table.find(ax,aR)and not table.find(aP,aR)then table.insert(aP,aR)end
+end if#aP>0 then am=aP end end az=nil end end,function()if not(isfile and
+writefile)then return end pcall(function()writefile(af,ae:JSONEncode{url=ah,
+enabled=ai,pingEnabled=ak,pingMention=al,pingTiers=am})end)end,function(aM)local
+aN={}for aO,aP in ipairs(aM or{})do local aQ,aR=aP.itemName or'Unknown',aw(aP)if
+aR then aQ='\u{2b50} '..aQ end local aS={}if aP.itemType and aP.itemType~='gold'
+then table.insert(aS,aP.itemType)end if aP.rarity then table.insert(aS,aP.rarity
+)end if#aS>0 then table.insert(aN,string.format('%s (%s)',tostring(aQ),table.
+concat(aS,', ')))else table.insert(aN,tostring(aQ))end end return table.concat(
+aN,'\n')end,function(aM)if not aM then return false end local aN=aC(aM)if not aN
+then return false end return aA()[aN]==true end local aS=function(aS)if not ak
+or al==''then return false end for aT,aU in ipairs(aS or{})do if aR(aU)then
+return true end end return false end local aT=function(aT,aU)local aV,aW=
+tonumber(aT.gold)or 0,{}for aX,aY in ipairs(aT.items or{})do if aY.itemName and
+aY.itemName~='gold'then table.insert(aW,aY)end end local aX,aY,aZ,a_,a0=ap,false
+,function(aX,aY)if aX==nil then return aY end if aY==nil then return aX end
+return(ao[aX]or 0)>=(ao[aY]or 0)and aX or aY end for a1,a2 in ipairs(aW)do local
+a3=tostring(a2.rarity or''):lower()if aw(a2)then aY=true a_=aZ(a_,a3)end if an[
+a3]~=nil then a0=aZ(a0,a3)end end if aY then aX=a_ and(an[a_]or ar)or ar elseif
+a0 then aX=an[a0]end aU=aU or{}local a1,a2=tostring(aU.level or'?'),tonumber(aU.
+expGained)local a3,a4,a5=a2 and string.format('+%s XP',tostring(a2))or'?',aN(aU.
+duration),{}if a2 then table.insert(a5,a3)end if aV>0 then table.insert(a5,
+string.format('+%s gold',tostring(aV)))end local a6,a7=#a5>0 and table.concat(a5
+,'  ')or'',#aW>0 and aQ(aW)or'None'local a8=a7 if a6~=''then a8=a6..(a7~='None'
+and('\n'..a7)or'')end local a9,b={{name='Player',value=string.format(
+'%s (lv %s)',aD(),a1),inline=true},{name='Map',value=ac.GetCurrentDungeonName()
+or'Unknown',inline=true},{name='Time',value=a4,inline=true},{name='Rewards',
+value=a8,inline=false}},'You cleared the dungeon and received your rewards!'if
+aS(aW)then b=b..'\n\n'..al end return{embeds={{title='Dungeon WIN',description=b
+,color=aX,fields=a9,timestamp=DateTime.now():ToIsoDate()}}}end local aU=function
+(aU,aV)if ah==''or string.find(ah,'^https://discord%.com/api/webhooks/')==nil
+then return false,'Invalid webhook URL'end local aW=aT(aU,aV)local aX,aY=pcall(
+function()return ae:JSONEncode(aW)end)if not aX then return false,
+'Could not encode payload'end local aZ,a_=pcall(function()return request{Url=ah,
+Method='POST',Headers={['Content-Type']='application/json',['User-Agent']=
 'ScriptHub-DungeonQuest (https://www.roblox.com)'},Body=aY}end)if not aZ then
 return false,'Request error: '..tostring(a_)end if a_ and a_.Success then return
 true end local a0=a_ and a_.StatusCode or'?'return false,'HTTP '..tostring(a0)

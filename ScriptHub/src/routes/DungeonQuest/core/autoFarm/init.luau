@@ -381,11 +381,12 @@ local function stepMovementLoop(deltaTime)
 	-- Auto Skill: Quản lý smart skill Q (Buff khi có hazard) và E (Damage khi có buff & trong tầm range)
 	autoSkill.Step(deltaTime, target, flatDist)
 
-	-- Xác định xem có cần né / kiểm tra nguy hiểm không (bỏ qua nếu bất tử, tắt dodge toàn cục hoặc tắt dodge riêng theo boss)
+	-- Xác định xem có cần né / kiểm tra nguy hiểm không (bỏ qua nếu bất tử, tắt dodge toàn cục hoặc tắt dodge/scanner riêng theo boss)
 	local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
 	local isDodgeDisabled = contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled(target)
+	local isHazardScannerEnabled = not (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled(target))
 	local isAutoDodgeEnabled = hazardScanner.IsAutoDodgeEnabled and hazardScanner.IsAutoDodgeEnabled()
-	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
+	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isHazardScannerEnabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
 
 	if flatDist < minCombatDistance then
 		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly

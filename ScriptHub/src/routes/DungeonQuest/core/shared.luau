@@ -677,6 +677,34 @@ task.spawn(function()
 	end
 end)
 
+--// Quét trực tiếp toàn bộ dungeon để bắt kịp kẻ địch / boss mới xuất hiện
+local function scanDungeonEnemies()
+	if not dungeon then dungeon = workspace:FindFirstChild("dungeon") end
+	if not dungeon then return end
+	local ok = pcall(function()
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				if room:IsA("Model") and isValidEnemy(room) then
+					waitAndTrackModel(room)
+				end
+				for _, object in ipairs(room:GetDescendants()) do
+					if object:IsA("Model") then
+						waitAndTrackModel(object)
+					end
+				end
+			end
+		end
+		cleanupEnemies()
+	end)
+	if not ok then
+		warn("[EnemyTracker] scanDungeonEnemies error")
+	end
+end
+
+function shared.ForceRescan()
+	scanDungeonEnemies()
+end
+
 --// Re-scan định kỳ: reconcile trackedEnemies với nội dung dungeon hiện tại.
 --// Đảm bảo bắt được kẻ địch mà cơ chế event (DescendantAdded) bỏ lỡ do timing
 --// (Humanoid Health = 0 lúc sinh, room tạo sau init...) -> hết "không thấy kẻ địch".
@@ -688,22 +716,7 @@ task.spawn(function()
 		local now = os.clock()
 		if now - lastRescan < RESCAN_INTERVAL then continue end
 		lastRescan = now
-		if not dungeon then continue end
-		local ok = pcall(function()
-			for _, room in ipairs(dungeon:GetChildren()) do
-				if room:IsA("Folder") or room:IsA("Model") then
-					for _, object in ipairs(room:GetDescendants()) do
-						if object:IsA("Model") then
-							waitAndTrackModel(object)
-						end
-					end
-				end
-			end
-			cleanupEnemies()
-		end)
-		if not ok then
-			warn("[EnemyTracker] rescan error")
-		end
+		scanDungeonEnemies()
 	end
 end)
 
@@ -879,6 +892,7 @@ local function setBossActive(active)
 	if active then
 		bossIndex += 1
 		bossInitialSpawnPos = nil
+		scanDungeonEnemies()
 		tryCaptureBossSpawnPosition()
 		for i = #bossIndexCallbacks, 1, -1 do
 			pcall(bossIndexCallbacks[i], bossIndex)

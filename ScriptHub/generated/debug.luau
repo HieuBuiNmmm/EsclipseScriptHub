@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-17T12:52:57.468816400+00:00",
+    genDate = "2026-09-17T13:52:56.863100+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6999,6 +6999,34 @@ task.spawn(function()
 	end
 end)
 
+--// Quét trực tiếp toàn bộ dungeon để bắt kịp kẻ địch / boss mới xuất hiện
+local function scanDungeonEnemies()
+	if not dungeon then dungeon = workspace:FindFirstChild("dungeon") end
+	if not dungeon then return end
+	local ok = pcall(function()
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				if room:IsA("Model") and isValidEnemy(room) then
+					waitAndTrackModel(room)
+				end
+				for _, object in ipairs(room:GetDescendants()) do
+					if object:IsA("Model") then
+						waitAndTrackModel(object)
+					end
+				end
+			end
+		end
+		cleanupEnemies()
+	end)
+	if not ok then
+		warn("[EnemyTracker] scanDungeonEnemies error")
+	end
+end
+
+function shared.ForceRescan()
+	scanDungeonEnemies()
+end
+
 --// Re-scan định kỳ: reconcile trackedEnemies với nội dung dungeon hiện tại.
 --// Đảm bảo bắt được kẻ địch mà cơ chế event (DescendantAdded) bỏ lỡ do timing
 --// (Humanoid Health = 0 lúc sinh, room tạo sau init...) -> hết "không thấy kẻ địch".
@@ -7010,22 +7038,7 @@ task.spawn(function()
 		local now = os.clock()
 		if now - lastRescan < RESCAN_INTERVAL then continue end
 		lastRescan = now
-		if not dungeon then continue end
-		local ok = pcall(function()
-			for _, room in ipairs(dungeon:GetChildren()) do
-				if room:IsA("Folder") or room:IsA("Model") then
-					for _, object in ipairs(room:GetDescendants()) do
-						if object:IsA("Model") then
-							waitAndTrackModel(object)
-						end
-					end
-				end
-			end
-			cleanupEnemies()
-		end)
-		if not ok then
-			warn("[EnemyTracker] rescan error")
-		end
+		scanDungeonEnemies()
 	end
 end)
 
@@ -7201,6 +7214,7 @@ local function setBossActive(active)
 	if active then
 		bossIndex += 1
 		bossInitialSpawnPos = nil
+		scanDungeonEnemies()
 		tryCaptureBossSpawnPosition()
 		for i = #bossIndexCallbacks, 1, -1 do
 			pcall(bossIndexCallbacks[i], bossIndex)
@@ -7421,6 +7435,18 @@ function scanner.Scan()
 			table.insert(validList, data)
 		end
 	end
+
+	-- Nếu chưa thấy mục tiêu nào (hoặc đang chuyển giao sang phòng Boss), ép buộc quét lại dungeon ngay lập tức
+	if #validList == 0 and shared.ForceRescan then
+		shared.ForceRescan()
+		tracked = shared.GetTrackedEnemyData()
+		for _, data in ipairs(tracked) do
+			if scanner.Validate(data) then
+				table.insert(validList, data)
+			end
+		end
+	end
+
 	return validList
 end
 
@@ -10546,7 +10572,419 @@ lifecycle.Register(function()
 end)
 
 return trajectory
-end function __DIST.p()-- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
+end function __DIST.p()-- Core Contextual cho DungeonQuest: Quản lý thiết lập khoảng cách chiến đấu (Min/Max Combat Distance)
+-- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
+-- Dữ liệu được nhúng và lưu trữ trực tiếp trong config MacLib (macLib.contextData).
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('d')
+local shared = __DIST.load('f')
+
+--// Table
+local contextual = {}
+
+--// Default Values per Target Type
+local DEFAULT_DISTANCES = {
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+}
+
+local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
+
+local DISPLAY_TO_KEY = {
+	["Normal"] = "Mob",
+	["Boss 1"] = "Boss1",
+	["Boss 2"] = "Boss2",
+	["Boss 3"] = "Boss3",
+}
+
+local KEY_TO_DISPLAY = {
+	["Mob"] = "Normal",
+	["Boss1"] = "Boss 1",
+	["Boss2"] = "Boss 2",
+	["Boss3"] = "Boss 3",
+}
+
+--// Storage: data[dungeonName][targetKey] = { Min = number, Max = number }
+local data = {}
+local dataChangedCallbacks = {}
+
+function contextual.GetTargetDisplay(key)
+	return KEY_TO_DISPLAY[key] or "Normal"
+end
+
+function contextual.GetTargetKey(display)
+	return DISPLAY_TO_KEY[display] or "Mob"
+end
+
+function contextual.GetTargetOptions()
+	return { "Normal", "Boss 1", "Boss 2", "Boss 3" }
+end
+
+--// Nạp và xuất dữ liệu config
+function contextual.GetSaveData()
+	return data
+end
+
+function contextual.LoadData(incomingData)
+	if type(incomingData) == "table" then
+		data = incomingData
+	else
+		data = {}
+	end
+	macLib.contextData = data
+
+	for _, cb in ipairs(dataChangedCallbacks) do
+		pcall(cb)
+	end
+end
+
+function contextual.OnDataChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(dataChangedCallbacks, callback)
+	return function()
+		for i, cb in ipairs(dataChangedCallbacks) do
+			if cb == callback then
+				table.remove(dataChangedCallbacks, i)
+				break
+			end
+		end
+	end
+end
+
+local function syncToMacLibAndSave()
+	macLib.contextData = data
+	autoSave.Save()
+end
+
+--// Lấy khoảng cách Min/Max của 1 Dungeon x Target cụ thể
+function contextual.GetCombatDistances(dungeonName, targetKey)
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		local minVal = (type(entry.Min) == "number" and entry.Min > 0) and entry.Min or def.Min
+		local maxVal = (type(entry.Max) == "number" and entry.Max > 0) and entry.Max or def.Max
+		return minVal, maxVal
+	end
+
+	return def.Min, def.Max
+end
+
+--// Lấy khoảng cách Min/Max hiện tại dựa trên Dungeon và Target đang chiến đấu
+function contextual.GetActiveCombatDistances(target)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetCombatDistances(dungeon, targetKey)
+end
+
+--// Lấy thiết lập Boss Area (Enabled, Radius) của 1 Dungeon x Target cụ thể (chỉ Boss)
+function contextual.GetBossArea(dungeonName, targetKey)
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then
+		return false, 80.0
+	end
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Boss1
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		local enabled = entry.BossArea == true
+		local radius = (type(entry.BossAreaRadius) == "number" and entry.BossAreaRadius > 0) and entry.BossAreaRadius or (def.BossAreaRadius or 80.0)
+		return enabled, radius
+	end
+	return def.BossArea or false, def.BossAreaRadius or 80.0
+end
+
+--// Cập nhật Boss Area Enabled
+function contextual.SetBossAreaEnabled(dungeonName, targetKey, enabled)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].BossArea = enabled and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Cập nhật Boss Area Radius
+function contextual.SetBossAreaRadius(dungeonName, targetKey, radius)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
+	if type(radius) ~= "number" or radius <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].BossAreaRadius = radius
+
+	syncToMacLibAndSave()
+end
+
+--// Lấy thông tin Boss Area đang hoạt động trong trận chiến hiện tại: (enabled, radius, centerPosition)
+function contextual.GetActiveBossArea(target)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	if not isBoss or targetKey == "Mob" then
+		return false, 0, nil
+	end
+
+	local enabled, radius = contextual.GetBossArea(dungeon, targetKey)
+	if not enabled then
+		return false, radius, nil
+	end
+
+	local center = shared.GetBossSpawnPosition and shared.GetBossSpawnPosition()
+	if not center and target and target.Root then
+		center = target.Root.Position
+		if shared.SetBossSpawnPosition then
+			shared.SetBossSpawnPosition(center)
+		end
+	end
+
+	return enabled, radius, center
+end
+
+--// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể
+function contextual.GetDisableDodge(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.DisableDodge ~= nil then
+			return entry.DisableDodge == true
+		end
+	end
+
+	return def.DisableDodge or false
+end
+
+--// Cập nhật trạng thái Disable Dodge
+function contextual.SetDisableDodge(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].DisableDodge = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Lấy trạng thái Enable Hazard Scanner của 1 Dungeon x Target cụ thể
+function contextual.GetEnableHazardScanner(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.EnableHazardScanner ~= nil then
+			return entry.EnableHazardScanner == true
+		end
+	end
+
+	return def.EnableHazardScanner ~= false
+end
+
+--// Cập nhật trạng thái Enable Hazard Scanner
+function contextual.SetEnableHazardScanner(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].EnableHazardScanner = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
+function contextual.IsActiveDodgeDisabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetDisableDodge(dungeon, targetKey)
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có được bật Hazard Scanner không
+function contextual.IsActiveHazardScannerEnabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	-- Nếu tắt Dodge trên mục tiêu này thì cũng tự động tắt Hazard Scanner
+	if contextual.GetDisableDodge(dungeon, targetKey) then
+		return false
+	end
+
+	return contextual.GetEnableHazardScanner(dungeon, targetKey)
+end
+
+--// Cập nhật Min Combat Distance
+function contextual.SetMinCombatDistance(dungeonName, targetKey, minVal)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if type(minVal) ~= "number" or minVal <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+
+	local currentMax = data[dungeonName][tKey].Max or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Max
+	data[dungeonName][tKey].Min = minVal
+
+	if minVal > currentMax then
+		data[dungeonName][tKey].Max = minVal + 5.0
+	end
+
+	syncToMacLibAndSave()
+end
+
+--// Cập nhật Max Combat Distance
+function contextual.SetMaxCombatDistance(dungeonName, targetKey, maxVal)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if type(maxVal) ~= "number" or maxVal <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+
+	local currentMin = data[dungeonName][tKey].Min or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Min
+	data[dungeonName][tKey].Max = maxVal
+
+	if maxVal < currentMin then
+		data[dungeonName][tKey].Min = math.max(1.0, maxVal - 5.0)
+	end
+
+	syncToMacLibAndSave()
+end
+
+--// Reset một target trong dungeon về mặc định
+function contextual.ResetTarget(dungeonName, targetKey)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if data[dungeonName] then
+		data[dungeonName][tKey] = nil
+		if next(data[dungeonName]) == nil then
+			data[dungeonName] = nil
+		end
+		syncToMacLibAndSave()
+	end
+end
+
+--// Reset toàn bộ các target của 1 dungeon về mặc định
+function contextual.ResetDungeon(dungeonName)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	if data[dungeonName] then
+		data[dungeonName] = nil
+		syncToMacLibAndSave()
+	end
+end
+
+return contextual
+end function __DIST.q()-- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
 -- Đơn giản hóa hoàn toàn: chỉ phát hiện đối tượng skill xuất hiện trong Workspace
 -- qua ChildAdded/ChildRemoved, CHỈ chạy sau sự kiện start dungeon (không còn ở lobby),
 -- và vẽ SelectionBox đơn giản cho từng đối tượng được xác định.
@@ -10561,6 +10999,7 @@ local geometry = __DIST.load('l')
 local visualizer = __DIST.load('m')
 local trajectory = __DIST.load('o')
 local timerVisual = __DIST.load('n')
+local contextual = __DIST.load('p')
 
 --// References
 local Players = game:GetService("Players")
@@ -10987,6 +11426,10 @@ local function retryRegister(instance)
 
 	task.spawn(function()
 		while state.active and instance.Parent and enabled and inDungeon do
+			if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
+				stopRetry(instance)
+				return
+			end
 			if os.clock() < roomTransitionUntil then
 				stopRetry(instance)
 				return
@@ -11045,6 +11488,10 @@ end
 registerHazard = function(instance)
 	if not enabled or not inDungeon then
 		logReject(instance, "Chưa trong dungeon")
+		return false
+	end
+	if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
+		logReject(instance, "Tắt Hazard Scanner cho mục tiêu trong Contextual")
 		return false
 	end
 	if os.clock() < roomTransitionUntil then
@@ -11239,10 +11686,9 @@ function detection.StartScan()
 		unregisterHazard(child, "Destroyed")
 	end))
 
-	-- Gate "start dungeon": dựa vào room index (0 = "Room--").
-	-- CHỈ vẽ các child level 1 MỚI được add (qua ChildAdded) sau khi room >= 1.
-	-- KHÔNG vẽ child level 1 có sẵn từ trước và KHÔNG vẽ child level 2.
-	inDungeon = shared.GetCurrentRoomIndex() > 0
+	-- Gate "start dungeon": dựa vào lobby / dungeon name
+	inDungeon = not (shared.IsInLobby and shared.IsInLobby())
+		and (type(shared.GetCurrentDungeonName()) == "string" and #shared.GetCurrentDungeonName() > 0)
 
 	local lastRecordedRoom = shared.GetCurrentRoomIndex()
 	if roomCleanup then pcall(roomCleanup); roomCleanup = nil end
@@ -11252,18 +11698,12 @@ function detection.StartScan()
 			if room > 0 then
 				inDungeon = true
 				detection.TriggerRoomTransition("Room Transition to room " .. tostring(room))
-			elseif room <= 0 and inDungeon then
+			elseif shared.IsInLobby and shared.IsInLobby() and inDungeon then
 				inDungeon = false
 				detection.ClearAllHazards("Dungeon Ended")
 			end
 		end
 	end)
-
-	table.insert(connections, shared.OnBossActiveChanged(function(active)
-		if inDungeon and enabled then
-			detection.TriggerRoomTransition(active and "Boss Spawned Transition" or "Boss Cleared Transition")
-		end
-	end))
 
 	if logHazards then
 		print("[HazardScanner] 📡 Threat Detector started!")
@@ -11391,7 +11831,7 @@ lifecycle.Register(function()
 	detection.ClearAllHazards("Shutdown")
 end)
 
-return detection end function __DIST.q()-- HazardScanner – Player Visualizer & Danger Detection (DungeonQuest).
+return detection end function __DIST.r()-- HazardScanner – Player Visualizer & Danger Detection (DungeonQuest).
 -- Quản lý visual 2D hình tròn (filled) ghim dưới chân Player biểu thị hitbox 2D trên sàn
 -- và liên tục kiểm tra xem Player có đang đứng trong vùng nguy hiểm (Ground Zone hoặc Trajectory Corridor) hay không.
 
@@ -11401,6 +11841,7 @@ local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
 local geometry = __DIST.load('l')
 local trajectory = __DIST.load('o')
+local contextual = __DIST.load('p')
 
 local RunService = services.RunService or game:GetService("RunService")
 local player = services.player
@@ -11521,6 +11962,20 @@ local function onHeartbeat()
 	end
 
 	-- 2. Đánh giá trạng thái nguy hiểm (In Danger Check: Giao thoa Vòng tròn Player với Danger Zones)
+	-- Nếu mục tiêu hiện tại bị tắt Hazard Scanner trong Contextual: coi như an toàn và bỏ qua kiểm tra
+	if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
+		if isPlayerInDanger then
+			isPlayerInDanger = false
+			currentThreat = nil
+			currentThreatType = nil
+			updateVisualState(false)
+			for _, cb in ipairs(statusCallbacks) do
+				pcall(cb, false, nil, nil)
+			end
+		end
+		return
+	end
+
 	local playerPos = Vector3.new(root.Position.X, 0, root.Position.Z)
 
 	-- Kiểm tra Ground Danger Zones với bán kính vòng tròn Player
@@ -11659,7 +12114,7 @@ lifecycle.Register(function()
 end)
 
 return playerVisual
-end function __DIST.r()-- HazardScanner – Candidate Generator (DungeonQuest).
+end function __DIST.s()-- HazardScanner – Candidate Generator (DungeonQuest).
 -- Module chuyên trách sinh tập điểm ứng viên (Candidate Generation) bằng thuật toán Progressive Radial Sampling.
 -- Độc lập hoàn toàn với Rendering và State (Pure Math / Stateless).
 -- Hỗ trợ Momentum Alignment: Ưu tiên chọn hướng né thuận theo hướng người chơi đang chạy.
@@ -11759,7 +12214,7 @@ function candidateGenerator.SamplePass(origin2D, directions, radii, safetyBuffer
 end
 
 return candidateGenerator
-end function __DIST.s()-- HazardScanner – Safe Spot Visualizer (DungeonQuest).
+end function __DIST.t()-- HazardScanner – Safe Spot Visualizer (DungeonQuest).
 -- Module chuyên trách vẽ và quản lý Adornments hiển thị Safe Spot Marker và Candidate Debug Grid.
 
 --// Constants & Colors
@@ -12008,354 +12463,6 @@ function safeSpotVisual.Cleanup()
 end
 
 return safeSpotVisual
-end function __DIST.t()-- Core Contextual cho DungeonQuest: Quản lý thiết lập khoảng cách chiến đấu (Min/Max Combat Distance)
--- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
--- Dữ liệu được nhúng và lưu trữ trực tiếp trong config MacLib (macLib.contextData).
-
---// Imports
-
-local macLib = __DIST.load('a')
-local autoSave = __DIST.load('d')
-local shared = __DIST.load('f')
-
---// Table
-local contextual = {}
-
---// Default Values per Target Type
-local DEFAULT_DISTANCES = {
-	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
-	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
-	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
-	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
-}
-
-local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
-
-local DISPLAY_TO_KEY = {
-	["Normal"] = "Mob",
-	["Boss 1"] = "Boss1",
-	["Boss 2"] = "Boss2",
-	["Boss 3"] = "Boss3",
-}
-
-local KEY_TO_DISPLAY = {
-	["Mob"] = "Normal",
-	["Boss1"] = "Boss 1",
-	["Boss2"] = "Boss 2",
-	["Boss3"] = "Boss 3",
-}
-
---// Storage: data[dungeonName][targetKey] = { Min = number, Max = number }
-local data = {}
-local dataChangedCallbacks = {}
-
-function contextual.GetTargetDisplay(key)
-	return KEY_TO_DISPLAY[key] or "Normal"
-end
-
-function contextual.GetTargetKey(display)
-	return DISPLAY_TO_KEY[display] or "Mob"
-end
-
-function contextual.GetTargetOptions()
-	return { "Normal", "Boss 1", "Boss 2", "Boss 3" }
-end
-
---// Nạp và xuất dữ liệu config
-function contextual.GetSaveData()
-	return data
-end
-
-function contextual.LoadData(incomingData)
-	if type(incomingData) == "table" then
-		data = incomingData
-	else
-		data = {}
-	end
-	macLib.contextData = data
-
-	for _, cb in ipairs(dataChangedCallbacks) do
-		pcall(cb)
-	end
-end
-
-function contextual.OnDataChanged(callback)
-	if type(callback) ~= "function" then return function() end end
-	table.insert(dataChangedCallbacks, callback)
-	return function()
-		for i, cb in ipairs(dataChangedCallbacks) do
-			if cb == callback then
-				table.remove(dataChangedCallbacks, i)
-				break
-			end
-		end
-	end
-end
-
-local function syncToMacLibAndSave()
-	macLib.contextData = data
-	autoSave.Save()
-end
-
---// Lấy khoảng cách Min/Max của 1 Dungeon x Target cụ thể
-function contextual.GetCombatDistances(dungeonName, targetKey)
-	local tKey = targetKey or "Mob"
-	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
-
-	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
-		local entry = data[dungeonName][tKey]
-		local minVal = (type(entry.Min) == "number" and entry.Min > 0) and entry.Min or def.Min
-		local maxVal = (type(entry.Max) == "number" and entry.Max > 0) and entry.Max or def.Max
-		return minVal, maxVal
-	end
-
-	return def.Min, def.Max
-end
-
---// Lấy khoảng cách Min/Max hiện tại dựa trên Dungeon và Target đang chiến đấu
-function contextual.GetActiveCombatDistances(target)
-	local dungeon = shared.GetCurrentDungeonName()
-	local targetKey = "Mob"
-
-	local isBoss = false
-	if shared.IsBossActive and shared.IsBossActive() then
-		isBoss = true
-		targetKey = shared.GetCombatTargetKey()
-	elseif target then
-		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
-			isBoss = true
-		elseif target.Model then
-			local mName = string.lower(target.Model.Name)
-			if string.find(mName, "boss") then
-				isBoss = true
-			else
-				local parent = target.Model.Parent
-				if parent and string.find(string.lower(parent.Name), "boss") then
-					isBoss = true
-				end
-			end
-		end
-		if isBoss then
-			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
-			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
-		end
-	end
-
-	return contextual.GetCombatDistances(dungeon, targetKey)
-end
-
---// Lấy thiết lập Boss Area (Enabled, Radius) của 1 Dungeon x Target cụ thể (chỉ Boss)
-function contextual.GetBossArea(dungeonName, targetKey)
-	local tKey = targetKey or "Mob"
-	if tKey == "Mob" then
-		return false, 80.0
-	end
-	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Boss1
-	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
-		local entry = data[dungeonName][tKey]
-		local enabled = entry.BossArea == true
-		local radius = (type(entry.BossAreaRadius) == "number" and entry.BossAreaRadius > 0) and entry.BossAreaRadius or (def.BossAreaRadius or 80.0)
-		return enabled, radius
-	end
-	return def.BossArea or false, def.BossAreaRadius or 80.0
-end
-
---// Cập nhật Boss Area Enabled
-function contextual.SetBossAreaEnabled(dungeonName, targetKey, enabled)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
-
-	data[dungeonName] = data[dungeonName] or {}
-	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
-	data[dungeonName][tKey].BossArea = enabled and true or false
-
-	syncToMacLibAndSave()
-end
-
---// Cập nhật Boss Area Radius
-function contextual.SetBossAreaRadius(dungeonName, targetKey, radius)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
-	if type(radius) ~= "number" or radius <= 0 then return end
-
-	data[dungeonName] = data[dungeonName] or {}
-	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
-	data[dungeonName][tKey].BossAreaRadius = radius
-
-	syncToMacLibAndSave()
-end
-
---// Lấy thông tin Boss Area đang hoạt động trong trận chiến hiện tại: (enabled, radius, centerPosition)
-function contextual.GetActiveBossArea(target)
-	local dungeon = shared.GetCurrentDungeonName()
-	local targetKey = "Mob"
-
-	local isBoss = false
-	if shared.IsBossActive and shared.IsBossActive() then
-		isBoss = true
-		targetKey = shared.GetCombatTargetKey()
-	elseif target then
-		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
-			isBoss = true
-		elseif target.Model then
-			local mName = string.lower(target.Model.Name)
-			if string.find(mName, "boss") then
-				isBoss = true
-			else
-				local parent = target.Model.Parent
-				if parent and string.find(string.lower(parent.Name), "boss") then
-					isBoss = true
-				end
-			end
-		end
-		if isBoss then
-			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
-			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
-		end
-	end
-
-	if not isBoss or targetKey == "Mob" then
-		return false, 0, nil
-	end
-
-	local enabled, radius = contextual.GetBossArea(dungeon, targetKey)
-	if not enabled then
-		return false, radius, nil
-	end
-
-	local center = shared.GetBossSpawnPosition and shared.GetBossSpawnPosition()
-	if not center and target and target.Root then
-		center = target.Root.Position
-		if shared.SetBossSpawnPosition then
-			shared.SetBossSpawnPosition(center)
-		end
-	end
-
-	return enabled, radius, center
-end
-
---// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể
-function contextual.GetDisableDodge(dungeonName, targetKey): boolean
-	local tKey = targetKey or "Mob"
-	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
-
-	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
-		local entry = data[dungeonName][tKey]
-		if entry.DisableDodge ~= nil then
-			return entry.DisableDodge == true
-		end
-	end
-
-	return def.DisableDodge or false
-end
-
---// Cập nhật trạng thái Disable Dodge
-function contextual.SetDisableDodge(dungeonName, targetKey, state)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-
-	data[dungeonName] = data[dungeonName] or {}
-	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
-	data[dungeonName][tKey].DisableDodge = state and true or false
-
-	syncToMacLibAndSave()
-end
-
---// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
-function contextual.IsActiveDodgeDisabled(target): boolean
-	local dungeon = shared.GetCurrentDungeonName()
-	local targetKey = "Mob"
-
-	local isBoss = false
-	if shared.IsBossActive and shared.IsBossActive() then
-		isBoss = true
-		targetKey = shared.GetCombatTargetKey()
-	elseif target then
-		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
-			isBoss = true
-		elseif target.Model then
-			local mName = string.lower(target.Model.Name)
-			if string.find(mName, "boss") then
-				isBoss = true
-			else
-				local parent = target.Model.Parent
-				if parent and string.find(string.lower(parent.Name), "boss") then
-					isBoss = true
-				end
-			end
-		end
-		if isBoss then
-			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
-			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
-		end
-	end
-
-	return contextual.GetDisableDodge(dungeon, targetKey)
-end
-
---// Cập nhật Min Combat Distance
-function contextual.SetMinCombatDistance(dungeonName, targetKey, minVal)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-	if type(minVal) ~= "number" or minVal <= 0 then return end
-
-	data[dungeonName] = data[dungeonName] or {}
-	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
-
-	local currentMax = data[dungeonName][tKey].Max or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Max
-	data[dungeonName][tKey].Min = minVal
-
-	if minVal > currentMax then
-		data[dungeonName][tKey].Max = minVal + 5.0
-	end
-
-	syncToMacLibAndSave()
-end
-
---// Cập nhật Max Combat Distance
-function contextual.SetMaxCombatDistance(dungeonName, targetKey, maxVal)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-	if type(maxVal) ~= "number" or maxVal <= 0 then return end
-
-	data[dungeonName] = data[dungeonName] or {}
-	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
-
-	local currentMin = data[dungeonName][tKey].Min or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Min
-	data[dungeonName][tKey].Max = maxVal
-
-	if maxVal < currentMin then
-		data[dungeonName][tKey].Min = math.max(1.0, maxVal - 5.0)
-	end
-
-	syncToMacLibAndSave()
-end
-
---// Reset một target trong dungeon về mặc định
-function contextual.ResetTarget(dungeonName, targetKey)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-	if data[dungeonName] then
-		data[dungeonName][tKey] = nil
-		if next(data[dungeonName]) == nil then
-			data[dungeonName] = nil
-		end
-		syncToMacLibAndSave()
-	end
-end
-
---// Reset toàn bộ các target của 1 dungeon về mặc định
-function contextual.ResetDungeon(dungeonName)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	if data[dungeonName] then
-		data[dungeonName] = nil
-		syncToMacLibAndSave()
-	end
-end
-
-return contextual
 end function __DIST.u()-- HazardScanner – Safe Spot Engine (DungeonQuest).
 -- Logic xác định điểm an toàn gần nhất (Safe Spot) bằng thuật toán Progressive Radial Sampling.
 -- Tích hợp Broad-Phase Spatial Culling, Momentum Alignment (ưu tiên theo đà chạy) và Dynamic Scheduling (tiết kiệm CPU khi rảnh rỗi).
@@ -12367,10 +12474,10 @@ local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local geometry = __DIST.load('l')
 local trajectory = __DIST.load('o')
-local playerVisual = __DIST.load('q')
-local candidateGenerator = __DIST.load('r')
-local safeSpotVisual = __DIST.load('s')
-local contextual = __DIST.load('t')
+local playerVisual = __DIST.load('r')
+local candidateGenerator = __DIST.load('s')
+local safeSpotVisual = __DIST.load('t')
+local contextual = __DIST.load('p')
 
 local RunService = services.RunService or game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -12653,8 +12760,9 @@ local function onHeartbeat()
 		return
 	end
 
-	-- Nếu mục tiêu hiện tại (Boss) bị tắt né đòn trong Contextual -> clear SafeSpot và không tìm điểm né
-	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+	-- Nếu mục tiêu hiện tại (Boss) bị tắt né đòn hoặc tắt Hazard Scanner trong Contextual -> clear SafeSpot và không tìm điểm né
+	if (contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled())
+		or (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled()) then
 		safeSpot.Clear()
 		return
 	end
@@ -12916,9 +13024,9 @@ end function __DIST.v()-- HazardScanner – Dodge Controller (DungeonQuest).
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
-local playerVisual = __DIST.load('q')
+local playerVisual = __DIST.load('r')
 local safeSpot = __DIST.load('u')
-local contextual = __DIST.load('t')
+local contextual = __DIST.load('p')
 
 local RunService = services.RunService or game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -13058,8 +13166,9 @@ local function onHeartbeat()
 		return
 	end
 
-	-- Kiểm tra nếu mục tiêu hiện tại (Boss) được cấu hình tắt né đòn trong Contextual
-	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+	-- Kiểm tra nếu mục tiêu hiện tại (Boss) được cấu hình tắt né đòn hoặc tắt Hazard Scanner trong Contextual
+	if (contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled())
+		or (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled()) then
 		if isDodging or activeTargetSpot then
 			activeTargetSpot = nil
 			isDodging = false
@@ -13245,11 +13354,11 @@ end function __DIST.w()-- HazardScanner (DungeonQuest) – Facade: quét hiểm 
 --// Imports
 
 local lifecycle = __DIST.load('b')
-local detection = __DIST.load('p')
+local detection = __DIST.load('q')
 local geometry = __DIST.load('l')
 local visualizer = __DIST.load('m')
 local trajectory = __DIST.load('o')
-local playerVisual = __DIST.load('q')
+local playerVisual = __DIST.load('r')
 local safeSpot = __DIST.load('u')
 local dodgeController = __DIST.load('v')
 local timerVisual = __DIST.load('n')
@@ -13782,7 +13891,7 @@ local tracker = __DIST.load('j')
 local movement = __DIST.load('k')
 local hazardScanner = __DIST.load('w')
 local autoSkill = __DIST.load('x')
-local contextual = __DIST.load('t')
+local contextual = __DIST.load('p')
 
 --// Services
 local RunService = services.RunService
@@ -14150,11 +14259,12 @@ local function stepMovementLoop(deltaTime)
 	-- Auto Skill: Quản lý smart skill Q (Buff khi có hazard) và E (Damage khi có buff & trong tầm range)
 	autoSkill.Step(deltaTime, target, flatDist)
 
-	-- Xác định xem có cần né / kiểm tra nguy hiểm không (bỏ qua nếu bất tử, tắt dodge toàn cục hoặc tắt dodge riêng theo boss)
+	-- Xác định xem có cần né / kiểm tra nguy hiểm không (bỏ qua nếu bất tử, tắt dodge toàn cục hoặc tắt dodge/scanner riêng theo boss)
 	local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
 	local isDodgeDisabled = contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled(target)
+	local isHazardScannerEnabled = not (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled(target))
 	local isAutoDodgeEnabled = hazardScanner.IsAutoDodgeEnabled and hazardScanner.IsAutoDodgeEnabled()
-	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
+	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isHazardScannerEnabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
 
 	if flatDist < minCombatDistance then
 		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly
@@ -16049,7 +16159,7 @@ return dungeonCatalog end function __DIST.G()-- Module Auto Farm trong tab Comba
 local autoSave = __DIST.load('d')
 local autoFarm = __DIST.load('y')
 local combatMaster = __DIST.load('z')
-local contextual = __DIST.load('t')
+local contextual = __DIST.load('p')
 local dungeonCatalog = __DIST.load('F')
 local shared = __DIST.load('f')
 local services = __DIST.load('e')
@@ -16326,6 +16436,7 @@ return function(window, tab)
 	local minSlider = nil
 	local maxSlider = nil
 	local disableDodgeToggle = nil
+	local enableHazardScannerToggle = nil
 	local bossAreaToggle = nil
 	local bossAreaRadiusSlider = nil
 	local editInfoLabel = nil
@@ -16346,8 +16457,12 @@ return function(window, tab)
 		end
 
 		local curDisableDodge = contextual.GetDisableDodge(curDungeon, curTargetKey)
+		local curEnableHazardScanner = contextual.GetEnableHazardScanner(curDungeon, curTargetKey)
 		if curDisableDodge then
 			extraText = extraText .. " | <font color='rgb(255,100,100)'>No Dodge</font>"
+		end
+		if not curEnableHazardScanner or curDisableDodge then
+			extraText = extraText .. " | <font color='rgb(255,160,50)'>No Scanner</font>"
 		end
 
 		pcall(function()
@@ -16368,6 +16483,12 @@ return function(window, tab)
 		if disableDodgeToggle then
 			pcall(function()
 				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey), true)
+			end)
+		end
+
+		if enableHazardScannerToggle then
+			pcall(function()
+				enableHazardScannerToggle:UpdateState(contextual.GetEnableHazardScanner(selectedDungeon, selectedTargetKey), true)
 			end)
 		end
 
@@ -16457,13 +16578,24 @@ return function(window, tab)
 	}))
 
 	local initDisableDodge = contextual.GetDisableDodge(selectedDungeon, selectedTargetKey)
+	local initEnableHazardScanner = contextual.GetEnableHazardScanner(selectedDungeon, selectedTargetKey)
 
 	disableDodgeToggle = ctxSection:Toggle({
-		Name = "Disable Dodge on Target (Attack only, no dodging)",
+		Name = "Disable Dodge on Target",
 		Default = initDisableDodge,
 		Callback = function(state)
 			if isSyncingUI then return end
 			contextual.SetDisableDodge(selectedDungeon, selectedTargetKey, state)
+			updateActiveStatus()
+		end,
+	})
+
+	enableHazardScannerToggle = ctxSection:Toggle({
+		Name = "Enable Hazard Scanner on Target",
+		Default = initEnableHazardScanner,
+		Callback = function(state)
+			if isSyncingUI then return end
+			contextual.SetEnableHazardScanner(selectedDungeon, selectedTargetKey, state)
 			updateActiveStatus()
 		end,
 	})
@@ -20846,7 +20978,7 @@ return function(window, tab)
 
 	local function activate(name)
 		autoSave.SetActive(name)
-		local contextual = __DIST.load('t')
+		local contextual = __DIST.load('p')
 		contextual.LoadData(macLib.contextData)
 		if autoloadLabel then
 			pcall(function()
@@ -21995,6 +22127,7 @@ local function stopSubscriptions()
 	if roomChangeConnection then roomChangeConnection(); roomChangeConnection = nil end
 	if lobbyConnection then lobbyConnection(); lobbyConnection = nil end
 	if bossConnection then bossConnection(); bossConnection = nil end
+	if respawnConnection then respawnConnection(); respawnConnection = nil end
 end
 
 --// Reset phần timeline của 1 slice (dùng chung cho beginSlice / Stop / Cancel).
@@ -22376,6 +22509,13 @@ function recorder.Start()
 	lobbyConnection = shared.OnLobbyChanged(function(inLobby)
 		if isRecording and inLobby then
 			recorder.Stop("returned to lobby")
+		end
+	end)
+
+	--// Tử trận khi đang record -> chốt slice làm điểm finish kết thúc record
+	respawnConnection = shared.OnRespawn(function()
+		if isRecording then
+			recorder.Stop("player died")
 		end
 	end)
 
@@ -28406,7 +28546,7 @@ local autoHide = __DIST.load('_')
 	end
 	syncActiveConfigFromAutoload()
 
-	local contextual = __DIST.load('t')
+	local contextual = __DIST.load('p')
 	contextual.LoadData(macLib.contextData)
 
 	task.delay(0.3, function()

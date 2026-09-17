@@ -7,6 +7,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
+local contextual = require("@routes/DungeonQuest/core/contextual")
 
 local RunService = services.RunService or game:GetService("RunService")
 local player = services.player
@@ -127,6 +128,20 @@ local function onHeartbeat()
 	end
 
 	-- 2. Đánh giá trạng thái nguy hiểm (In Danger Check: Giao thoa Vòng tròn Player với Danger Zones)
+	-- Nếu mục tiêu hiện tại bị tắt Hazard Scanner trong Contextual: coi như an toàn và bỏ qua kiểm tra
+	if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
+		if isPlayerInDanger then
+			isPlayerInDanger = false
+			currentThreat = nil
+			currentThreatType = nil
+			updateVisualState(false)
+			for _, cb in ipairs(statusCallbacks) do
+				pcall(cb, false, nil, nil)
+			end
+		end
+		return
+	end
+
 	local playerPos = Vector3.new(root.Position.X, 0, root.Position.Z)
 
 	-- Kiểm tra Ground Danger Zones với bán kính vòng tròn Player

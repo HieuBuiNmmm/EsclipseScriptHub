@@ -12,10 +12,10 @@ local contextual = {}
 
 --// Default Values per Target Type
 local DEFAULT_DISTANCES = {
-	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
-	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
-	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
-	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false },
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
 }
 
 local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
@@ -252,6 +252,33 @@ function contextual.SetDisableDodge(dungeonName, targetKey, state)
 	syncToMacLibAndSave()
 end
 
+--// Lấy trạng thái Enable Hazard Scanner của 1 Dungeon x Target cụ thể
+function contextual.GetEnableHazardScanner(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.EnableHazardScanner ~= nil then
+			return entry.EnableHazardScanner == true
+		end
+	end
+
+	return def.EnableHazardScanner ~= false
+end
+
+--// Cập nhật trạng thái Enable Hazard Scanner
+function contextual.SetEnableHazardScanner(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].EnableHazardScanner = state and true or false
+
+	syncToMacLibAndSave()
+end
+
 --// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
 function contextual.IsActiveDodgeDisabled(target): boolean
 	local dungeon = shared.GetCurrentDungeonName()
@@ -282,6 +309,43 @@ function contextual.IsActiveDodgeDisabled(target): boolean
 	end
 
 	return contextual.GetDisableDodge(dungeon, targetKey)
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có được bật Hazard Scanner không
+function contextual.IsActiveHazardScannerEnabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	-- Nếu tắt Dodge trên mục tiêu này thì cũng tự động tắt Hazard Scanner
+	if contextual.GetDisableDodge(dungeon, targetKey) then
+		return false
+	end
+
+	return contextual.GetEnableHazardScanner(dungeon, targetKey)
 end
 
 --// Cập nhật Min Combat Distance

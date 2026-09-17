@@ -283,6 +283,7 @@ return function(window, tab)
 	local minSlider = nil
 	local maxSlider = nil
 	local disableDodgeToggle = nil
+	local enableHazardScannerToggle = nil
 	local bossAreaToggle = nil
 	local bossAreaRadiusSlider = nil
 	local editInfoLabel = nil
@@ -303,8 +304,12 @@ return function(window, tab)
 		end
 
 		local curDisableDodge = contextual.GetDisableDodge(curDungeon, curTargetKey)
+		local curEnableHazardScanner = contextual.GetEnableHazardScanner(curDungeon, curTargetKey)
 		if curDisableDodge then
 			extraText = extraText .. " | <font color='rgb(255,100,100)'>No Dodge</font>"
+		end
+		if not curEnableHazardScanner or curDisableDodge then
+			extraText = extraText .. " | <font color='rgb(255,160,50)'>No Scanner</font>"
 		end
 
 		pcall(function()
@@ -325,6 +330,12 @@ return function(window, tab)
 		if disableDodgeToggle then
 			pcall(function()
 				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey), true)
+			end)
+		end
+
+		if enableHazardScannerToggle then
+			pcall(function()
+				enableHazardScannerToggle:UpdateState(contextual.GetEnableHazardScanner(selectedDungeon, selectedTargetKey), true)
 			end)
 		end
 
@@ -414,13 +425,24 @@ return function(window, tab)
 	}))
 
 	local initDisableDodge = contextual.GetDisableDodge(selectedDungeon, selectedTargetKey)
+	local initEnableHazardScanner = contextual.GetEnableHazardScanner(selectedDungeon, selectedTargetKey)
 
 	disableDodgeToggle = ctxSection:Toggle({
-		Name = "Disable Dodge on Target (Attack only, no dodging)",
+		Name = "Disable Dodge on Target",
 		Default = initDisableDodge,
 		Callback = function(state)
 			if isSyncingUI then return end
 			contextual.SetDisableDodge(selectedDungeon, selectedTargetKey, state)
+			updateActiveStatus()
+		end,
+	})
+
+	enableHazardScannerToggle = ctxSection:Toggle({
+		Name = "Enable Hazard Scanner on Target",
+		Default = initEnableHazardScanner,
+		Callback = function(state)
+			if isSyncingUI then return end
+			contextual.SetEnableHazardScanner(selectedDungeon, selectedTargetKey, state)
 			updateActiveStatus()
 		end,
 	})

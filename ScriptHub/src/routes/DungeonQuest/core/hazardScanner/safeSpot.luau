@@ -294,8 +294,9 @@ local function onHeartbeat()
 		return
 	end
 
-	-- Nếu mục tiêu hiện tại (Boss) bị tắt né đòn trong Contextual -> clear SafeSpot và không tìm điểm né
-	if contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled() then
+	-- Nếu mục tiêu hiện tại (Boss) bị tắt né đòn hoặc tắt Hazard Scanner trong Contextual -> clear SafeSpot và không tìm điểm né
+	if (contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled())
+		or (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled()) then
 		safeSpot.Clear()
 		return
 	end

@@ -12,6 +12,7 @@ local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
 local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
 local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
+local contextual = require("@routes/DungeonQuest/core/contextual")
 
 --// References
 local Players = game:GetService("Players")
@@ -438,6 +439,10 @@ local function retryRegister(instance)
 
 	task.spawn(function()
 		while state.active and instance.Parent and enabled and inDungeon do
+			if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
+				stopRetry(instance)
+				return
+			end
 			if os.clock() < roomTransitionUntil then
 				stopRetry(instance)
 				return
@@ -496,6 +501,10 @@ end
 registerHazard = function(instance)
 	if not enabled or not inDungeon then
 		logReject(instance, "Chưa trong dungeon")
+		return false
+	end
+	if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
+		logReject(instance, "Tắt Hazard Scanner cho mục tiêu trong Contextual")
 		return false
 	end
 	if os.clock() < roomTransitionUntil then
@@ -690,10 +699,9 @@ function detection.StartScan()
 		unregisterHazard(child, "Destroyed")
 	end))
 
-	-- Gate "start dungeon": dựa vào room index (0 = "Room--").
-	-- CHỈ vẽ các child level 1 MỚI được add (qua ChildAdded) sau khi room >= 1.
-	-- KHÔNG vẽ child level 1 có sẵn từ trước và KHÔNG vẽ child level 2.
-	inDungeon = shared.GetCurrentRoomIndex() > 0
+	-- Gate "start dungeon": dựa vào lobby / dungeon name
+	inDungeon = not (shared.IsInLobby and shared.IsInLobby())
+		and (type(shared.GetCurrentDungeonName()) == "string" and #shared.GetCurrentDungeonName() > 0)
 
 	local lastRecordedRoom = shared.GetCurrentRoomIndex()
 	if roomCleanup then pcall(roomCleanup); roomCleanup = nil end
@@ -703,18 +711,12 @@ function detection.StartScan()
 			if room > 0 then
 				inDungeon = true
 				detection.TriggerRoomTransition("Room Transition to room " .. tostring(room))
-			elseif room <= 0 and inDungeon then
+			elseif shared.IsInLobby and shared.IsInLobby() and inDungeon then
 				inDungeon = false
 				detection.ClearAllHazards("Dungeon Ended")
 			end
 		end
 	end)
-
-	table.insert(connections, shared.OnBossActiveChanged(function(active)
-		if inDungeon and enabled then
-			detection.TriggerRoomTransition(active and "Boss Spawned Transition" or "Boss Cleared Transition")
-		end
-	end))
 
 	if logHazards then
 		print("[HazardScanner] 📡 Threat Detector started!")

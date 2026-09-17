@@ -54,6 +54,18 @@ function scanner.Scan()
 			table.insert(validList, data)
 		end
 	end
+
+	-- Nếu chưa thấy mục tiêu nào (hoặc đang chuyển giao sang phòng Boss), ép buộc quét lại dungeon ngay lập tức
+	if #validList == 0 and shared.ForceRescan then
+		shared.ForceRescan()
+		tracked = shared.GetTrackedEnemyData()
+		for _, data in ipairs(tracked) do
+			if scanner.Validate(data) then
+				table.insert(validList, data)
+			end
+		end
+	end
+
 	return validList
 end
 

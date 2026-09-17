@@ -123,6 +123,7 @@ local function stopSubscriptions()
 	if roomChangeConnection then roomChangeConnection(); roomChangeConnection = nil end
 	if lobbyConnection then lobbyConnection(); lobbyConnection = nil end
 	if bossConnection then bossConnection(); bossConnection = nil end
+	if respawnConnection then respawnConnection(); respawnConnection = nil end
 end
 
 --// Reset phần timeline của 1 slice (dùng chung cho beginSlice / Stop / Cancel).
@@ -504,6 +505,13 @@ function recorder.Start()
 	lobbyConnection = shared.OnLobbyChanged(function(inLobby)
 		if isRecording and inLobby then
 			recorder.Stop("returned to lobby")
+		end
+	end)
+
+	--// Tử trận khi đang record -> chốt slice làm điểm finish kết thúc record
+	respawnConnection = shared.OnRespawn(function()
+		if isRecording then
+			recorder.Stop("player died")
 		end
 	end)
 
