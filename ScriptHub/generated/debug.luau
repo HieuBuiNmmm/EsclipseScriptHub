@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-17T13:52:56.863100+00:00",
+    genDate = "2026-09-17T15:31:41.513138500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -6645,7 +6645,7 @@ resetDungeon = function()
 	trackedEnemies = {}
 	enemyCount = 0
 	pendingModels = {}
-	bossInitialSpawnPos = nil
+	shared.ResetBossIndex()
 	dungeon = nil
 end
 
@@ -7070,11 +7070,19 @@ function shared.GetCombatTargetKey()
 end
 
 function shared.ResetBossIndex()
+	local wasBoss = bossActive
 	bossIndex = 0
+	bossActive = false
 	bossInitialSpawnPos = nil
 	for i = #bossIndexCallbacks, 1, -1 do
 		pcall(bossIndexCallbacks[i], bossIndex)
 	end
+	if wasBoss then
+		for i = #bossCallbacks, 1, -1 do
+			pcall(bossCallbacks[i], false)
+		end
+	end
+	refreshRoomIndex()
 end
 
 function shared.OnBossIndexChanged(callback)
@@ -15167,17 +15175,19 @@ function combatMaster.Toggle(state, isAutoBoss)
 	end
 
 	if want then
+		-- Bật độc quyền CombatMaster qua Coordinator (tự động nhường/tắt PathRecord)
+		coordinator.EnableExclusive("CombatMaster")
+
 		-- Bật Hazard Scanner & Auto Dodge
 		hazardScanner.Toggle(true)
 		hazardScanner.SetAutoDodgeEnabled(true)
 
-		-- Bật Auto Farm & Smart Auto Skill
-		coordinator.EnableExclusive("AutoFarm")
-		autoFarm.Toggle(true)
+		-- Bật Auto Farm & Smart Auto Skill (bypass coordinator để không đá CombatMaster)
+		autoFarm.Toggle(true, true)
 		autoFarm.SetAutoSkillEnabled(true)
 	else
 		-- Tắt Auto Farm & Smart Auto Skill
-		autoFarm.Toggle(false)
+		autoFarm.Toggle(false, true)
 		autoFarm.SetAutoSkillEnabled(false)
 
 		-- Tắt Auto Dodge & Hazard Scanner
@@ -15214,6 +15224,13 @@ function combatMaster.OnStateChanged(callback)
 		end
 	end
 end
+
+--// Đăng ký Coordinator: khi hệ thống khác (PathRecord) chiếm độc quyền -> tự tắt CombatMaster
+coordinator.Register("CombatMaster", function(state)
+	if not state then
+		combatMaster.Toggle(false)
+	end
+end, combatMaster.IsEnabled)
 
 lifecycle.Register(function()
 	combatMaster.Toggle(false)
@@ -22601,6 +22618,7 @@ local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local storage = __DIST.load('ad')
 local notifier = __DIST.load('c')
+local autoRetry = __DIST.load('L')
 
 local player = services.player
 local VirtualInputManager = services.VirtualInputManager
@@ -22738,6 +22756,18 @@ end
 
 function mover.IsUseFastSpeedEnabled()
 	return useFastSpeed
+end
+
+--// Tự động Retry dungeon khi chết quá 5 lần trong cùng 1 room thường (macro lỗi/không clear được quái)
+local autoRetryOnDeathLimit = false
+local MAX_ROOM_DEATHS = 5
+
+function mover.SetAutoRetryOnDeathLimit(state)
+	autoRetryOnDeathLimit = state and true or false
+end
+
+function mover.IsAutoRetryOnDeathLimitEnabled()
+	return autoRetryOnDeathLimit
 end
 
 --// Ép WalkSpeed theo tốc độ đã ghi của segment hoặc Fast Speed; nhớ giá trị gốc để khôi phục.
@@ -23461,12 +23491,23 @@ local function playbackLoop()
 	local visitedRoom = 0
 	local walkedThisVisit = false
 	local wasDead = false
+	local roomDeathCount = 0
 
 	while isPlaying do
 		if resumeWanted then break end
 
 		if shared.IsDead() then
-			wasDead = true
+			if not wasDead then
+				wasDead = true
+				if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and visitedRoom > 0 then
+					roomDeathCount += 1
+					if roomDeathCount >= MAX_ROOM_DEATHS then
+						notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %d. Retrying dungeon...", MAX_ROOM_DEATHS, visitedRoom), 3)
+						roomDeathCount = 0
+						autoRetry.RetryNow()
+					end
+				end
+			end
 			task.wait(0.25)
 			continue
 		end
@@ -23491,9 +23532,10 @@ local function playbackLoop()
 			continue
 		end
 
-		--// Đổi room -> lượt đi mới cho room đó.
+		--// Đổi room -> lượt đi mới cho room đó (reset bộ đếm chết theo từng room riêng biệt).
 		if room ~= visitedRoom then
 			visitedRoom = room
+			roomDeathCount = 0
 			walkedThisVisit = false
 			currentProgress = 0
 			totalProgress = 0
@@ -23522,6 +23564,18 @@ local function playbackLoop()
 		else
 			--// Bị chết giữa chừng: chờ hồi sinh để đi lại
 			if reason == "dead" then
+				if not wasDead then
+					wasDead = true
+					if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and room > 0 then
+						roomDeathCount += 1
+						if roomDeathCount >= MAX_ROOM_DEATHS then
+							notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %d. Retrying dungeon...", MAX_ROOM_DEATHS, room), 3)
+							roomDeathCount = 0
+							autoRetry.RetryNow()
+						end
+					end
+				end
+
 				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
 
 				while isPlaying and shared.IsDead() do
@@ -24902,6 +24956,16 @@ function pathRecord.SetUseFastSpeed(state)
 	fireStatus("usefastspeed")
 end
 
+--// Tự động Retry dungeon khi chết quá 5 lần trong cùng 1 room thường (macro lỗi/không clear được quái)
+function pathRecord.IsAutoRetryOnDeathLimitEnabled()
+	return mover.IsAutoRetryOnDeathLimitEnabled()
+end
+
+function pathRecord.SetAutoRetryOnDeathLimit(state)
+	mover.SetAutoRetryOnDeathLimit(state and true or false)
+	fireStatus("retryondeath")
+end
+
 --// Thời gian xoay đón đầu Pre-Aim trước khi tới mốc skill / dwell (0.1s - 1.5s).
 function pathRecord.GetPreAimTime()
 	return mover.GetPreAimTime()
@@ -25320,22 +25384,23 @@ end)
 
 --// Auto-resume & Auto-play: khi sang room mới có segment trong macro -> tự động phát tiếp.
 --// Room boss được auto-resume chỉ khi map ở mode FULL (room đó đã được record).
-roomUnsub = shared.OnRoomIndexChanged(function()
+roomUnsub = shared.OnRoomIndexChanged(function(room)
+	-- Luôn tắt CombatMaster nếu mục tiêu hiện tại không phải Boss hoặc đã rời phòng Boss
+	if not shared.IsBossActive() and (combatMaster.IsAutoTriggeredByBoss() or combatMaster.IsEnabled()) then
+		combatMaster.Toggle(false)
+	end
+
 	if not autoPlayWanted and not mover.ResumeWanted() then return end
 
-	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 or shared.IsInLobby() or shared.IsDead() then return end
+	local curRoom = room or shared.GetCurrentRoomIndex()
+	if curRoom <= 0 or shared.IsInLobby() or shared.IsDead() then return end
 
 	local map = shared.GetCurrentDungeonName()
 	if not map or #map == 0 then return end
 	if mover.GetActiveMap() and mover.GetActiveMap() ~= map then return end
 	if shared.IsBossActive() and storage.GetMapMode(map) ~= "full" then return end
 
-	if combatMaster.IsAutoTriggeredByBoss() and not shared.IsBossActive() then
-		combatMaster.Toggle(false)
-	end
-
-	if not storage.HasSegmentOrMacro(map, room) then return end
+	if not storage.HasSegmentOrMacro(map, curRoom) then return end
 
 	if not mover.IsPlaying() then
 		coordinator.EnableExclusive("PathRecord")
@@ -25347,7 +25412,7 @@ end)
 --// Đổi map giữa chừng: commit nốt record đang dở + dọn trạng thái playback map cũ.
 --// Khi vào map mới và autoPlayWanted bật: nếu room 1 đã có macro -> tự động khởi chạy.
 mapUnsub = shared.OnDungeonNameChanged(function(name)
-	if combatMaster.IsAutoTriggeredByBoss() then
+	if combatMaster.IsAutoTriggeredByBoss() or combatMaster.IsEnabled() then
 		combatMaster.Toggle(false)
 	end
 	if recorder.IsRecording() then
@@ -25598,6 +25663,14 @@ return function(window, tab)
 			pathRecord.SetUseFastSpeed(state)
 		end),
 	}, "Toggle_PR_UseFastSpeed")
+
+	local autoRetryOnDeath = left:Toggle({
+		Name = "Auto Retry on Death Limit (5 Deaths)",
+		Default = pathRecord.IsAutoRetryOnDeathLimitEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetAutoRetryOnDeathLimit(state)
+		end),
+	}, "Toggle_PR_AutoRetryOnDeathLimit")
 
 	--// ============================================================
 	--// LEFT COLUMN: Section 2 - Combat & Skill Timing

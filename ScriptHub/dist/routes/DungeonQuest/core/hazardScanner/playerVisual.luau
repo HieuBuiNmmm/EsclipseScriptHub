@@ -2251,14 +2251,14 @@ DescendantRemoving:Connect(function(a1)if a1:IsA'Model'then aX(a1)end end)}
 return true end aN=function()if not dungeon then return end for a1,a2 in pairs(
 av)do if a2.Added then pcall(function()a2.Added:Disconnect()end)end if a2.
 Removed then pcall(function()a2.Removed:Disconnect()end)end end av={}at={}for a1
-in pairs(au)do aW(a1)end au={}ay=0 ax={}aQ=nil dungeon=nil end aL=function()for
-a1,a2 in pairs(au)do if not a1 or not a1.Parent then aX(a1)else local a3=a2.
-Humanoid or a1:FindFirstChildOfClass'Humanoid'a2.Humanoid=a3 if not a3 or a3.
-Health<=0 then aX(a1)else local a4=a2.Root if not a4 or not a4.Parent then a4=
-aU(a1)if a4 then a2.Root=a4 else aX(a1)end end end end end end function ah.
-SetFastSpeed(a1)aj=a1 if ai and humanoid and humanoid.Parent then if humanoid.
-WalkSpeed<aj then am=true humanoid.WalkSpeed=aj am=false end end end function ah
-.SetSpeedEnabled(a1)ai=a1 if humanoid and humanoid.Parent then am=true if ai
+in pairs(au)do aW(a1)end au={}ay=0 ax={}ah.ResetBossIndex()dungeon=nil end aL=
+function()for a1,a2 in pairs(au)do if not a1 or not a1.Parent then aX(a1)else
+local a3=a2.Humanoid or a1:FindFirstChildOfClass'Humanoid'a2.Humanoid=a3 if not
+a3 or a3.Health<=0 then aX(a1)else local a4=a2.Root if not a4 or not a4.Parent
+then a4=aU(a1)if a4 then a2.Root=a4 else aX(a1)end end end end end end function
+ah.SetFastSpeed(a1)aj=a1 if ai and humanoid and humanoid.Parent then if humanoid
+.WalkSpeed<aj then am=true humanoid.WalkSpeed=aj am=false end end end function
+ah.SetSpeedEnabled(a1)ai=a1 if humanoid and humanoid.Parent then am=true if ai
 then if humanoid.WalkSpeed<aj then humanoid.WalkSpeed=aj end else humanoid.
 WalkSpeed=ak end am=false end end function ah.IsSpeedEnabled()return ai end
 function ah.GetFastSpeed()return aj end function ah.SetInstantAccelEnabled(a1)al
@@ -2336,14 +2336,15 @@ OnBossActiveChanged(a8)if type(a8)~='function'then return function()end end
 table.insert(ao,a8)return function()for a9,b in ipairs(ao)do if b==a8 then table
 .remove(ao,a9)break end end end end function ah.GetCurrentBossIndex()return ap
 end function ah.GetCombatTargetKey()if not an then return'Mob'end local a8=math.
-clamp(ap,1,3)return'Boss'..tostring(a8)end function ah.ResetBossIndex()ap=0 aQ=
-nil for a8=#aq,1,-1 do pcall(aq[a8],ap)end end function ah.OnBossIndexChanged(a8
-)if type(a8)~='function'then return function()end end table.insert(aq,a8)return
-function()for a9,b in ipairs(aq)do if b==a8 then table.remove(aq,a9)break end
-end end end local a8=function(a8)if type(a8)~='string'then return 0 end local a9
-=string.lower(a8)local b=string.match(a9,'boss.*(%d+)')if b then return 100+(
-tonumber(b)or 1)end if string.find(a9,'boss')then return 100+math.max(1,ap)end
-local ba=string.match(a8,'^room(%d+)$')if not ba then return 0 end return
+clamp(ap,1,3)return'Boss'..tostring(a8)end function ah.ResetBossIndex()local a8=
+an ap=0 an=false aQ=nil for a9=#aq,1,-1 do pcall(aq[a9],ap)end if a8 then for a9
+=#ao,1,-1 do pcall(ao[a9],false)end end aO()end function ah.OnBossIndexChanged(
+a8)if type(a8)~='function'then return function()end end table.insert(aq,a8)
+return function()for a9,b in ipairs(aq)do if b==a8 then table.remove(aq,a9)break
+end end end end local a8=function(a8)if type(a8)~='string'then return 0 end
+local a9=string.lower(a8)local b=string.match(a9,'boss.*(%d+)')if b then return
+100+(tonumber(b)or 1)end if string.find(a9,'boss')then return 100+math.max(1,ap)
+end local ba=string.match(a8,'^room(%d+)$')if not ba then return 0 end return
 tonumber(ba)or 0 end local a9=function()if not dungeon then return 0 end for a9,
 b in pairs(au)do if b and b.Room then local ba=a8(b.Room.Name)if ba>0 then
 return ba end end end if an then return 100+math.max(1,ap)end return 0 end aO=

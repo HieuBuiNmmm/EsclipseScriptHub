@@ -45,17 +45,19 @@ function combatMaster.Toggle(state, isAutoBoss)
 	end
 
 	if want then
+		-- Bật độc quyền CombatMaster qua Coordinator (tự động nhường/tắt PathRecord)
+		coordinator.EnableExclusive("CombatMaster")
+
 		-- Bật Hazard Scanner & Auto Dodge
 		hazardScanner.Toggle(true)
 		hazardScanner.SetAutoDodgeEnabled(true)
 
-		-- Bật Auto Farm & Smart Auto Skill
-		coordinator.EnableExclusive("AutoFarm")
-		autoFarm.Toggle(true)
+		-- Bật Auto Farm & Smart Auto Skill (bypass coordinator để không đá CombatMaster)
+		autoFarm.Toggle(true, true)
 		autoFarm.SetAutoSkillEnabled(true)
 	else
 		-- Tắt Auto Farm & Smart Auto Skill
-		autoFarm.Toggle(false)
+		autoFarm.Toggle(false, true)
 		autoFarm.SetAutoSkillEnabled(false)
 
 		-- Tắt Auto Dodge & Hazard Scanner
@@ -92,6 +94,13 @@ function combatMaster.OnStateChanged(callback)
 		end
 	end
 end
+
+--// Đăng ký Coordinator: khi hệ thống khác (PathRecord) chiếm độc quyền -> tự tắt CombatMaster
+coordinator.Register("CombatMaster", function(state)
+	if not state then
+		combatMaster.Toggle(false)
+	end
+end, combatMaster.IsEnabled)
 
 lifecycle.Register(function()
 	combatMaster.Toggle(false)

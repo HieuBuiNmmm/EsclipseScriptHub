@@ -65,8 +65,8 @@ DescendantRemoving:Connect(function(ac)if ac:IsA'Model'then X(ac)end end)}return
 true end N=function()if not dungeon then return end for ac,_ in pairs(v)do if _.
 Added then pcall(function()_.Added:Disconnect()end)end if _.Removed then pcall(
 function()_.Removed:Disconnect()end)end end v={}t={}for ac in pairs(u)do W(ac)
-end u={}y=0 x={}Q=nil dungeon=nil end L=function()for ac,_ in pairs(u)do if not
-ac or not ac.Parent then X(ac)else local ad=_.Humanoid or ac:
+end u={}y=0 x={}h.ResetBossIndex()dungeon=nil end L=function()for ac,_ in pairs(
+u)do if not ac or not ac.Parent then X(ac)else local ad=_.Humanoid or ac:
 FindFirstChildOfClass'Humanoid'_.Humanoid=ad if not ad or ad.Health<=0 then X(ac
 )else local ae=_.Root if not ae or not ae.Parent then ae=U(ac)if ae then _.Root=
 ae else X(ac)end end end end end end function h.SetFastSpeed(ac)j=ac if i and
@@ -147,8 +147,9 @@ ag()end end)function h.IsBossActive()return n end function h.OnBossActiveChanged
 function()for aj,ak in ipairs(o)do if ak==_ then table.remove(o,aj)break end end
 end end function h.GetCurrentBossIndex()return p end function h.
 GetCombatTargetKey()if not n then return'Mob'end local aj=math.clamp(p,1,3)
-return'Boss'..tostring(aj)end function h.ResetBossIndex()p=0 Q=nil for aj=#q,1,-
-1 do pcall(q[aj],p)end end function h.OnBossIndexChanged(aj)if type(aj)~=
+return'Boss'..tostring(aj)end function h.ResetBossIndex()local aj=n p=0 n=false
+Q=nil for ak=#q,1,-1 do pcall(q[ak],p)end if aj then for ak=#o,1,-1 do pcall(o[
+ak],false)end end O()end function h.OnBossIndexChanged(aj)if type(aj)~=
 'function'then return function()end end table.insert(q,aj)return function()for
 ak,_ in ipairs(q)do if _==aj then table.remove(q,ak)break end end end end local
 aj=function(aj)if type(aj)~='string'then return 0 end local ak=string.lower(aj)
@@ -2067,193 +2068,235 @@ and(' | %d boss'):format(aG)or''ae.Notify('Path Record',(
 '\u{110}\u{e3} l\u{1b0}u map [%s] %s: %d room%s (%d \u{111}i\u{1ec3}m g\u{1ed1}c)'
 ):format(aJ,a3 or'xong',aF,a5,aH),4)end a0()aW()return a4~=nil end function ap.
 Cancel()if not as then return end aZ()a0()as=false ad.SetRecording(false)aW()end
-return ap end function a.i()local aa,ab,ac,ad=a.load'a',a.load'c',a.load'g',a.
-load'e'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax,ay,az,
-aA,aB,aC,aD,aE=aa.player,aa.VirtualInputManager,aa.UserInputService,aa.
-RunService or game:GetService'RunService',0.4,0.5,8,2,4.5,8,14,8,2,0.5,2,0.001,
-0.1,{},true,true,true,0.6,0.005,0.45,0.2,false,true function av.SetAimSkillQ(aF)
-aD=aF and true or false end function av.IsAimSkillQEnabled()return aD end
-function av.SetAimSkillE(aF)aE=aF and true or false end function av.
-IsAimSkillEEnabled()return aE end local aF=function(aF)if aF=='Q'then return aD
-elseif aF=='E'then return aE end return aD or aE end function av.
-SetStartPauseTime(aG)if type(aG)=='number'then aC=math.clamp(aG,0,5)end end
-function av.GetStartPauseTime()return aC end function av.SetPreAimTime(aG)if
-type(aG)=='number'then aB=math.clamp(aG,0.1,1.5)end end function av.
-GetPreAimTime()return aB end function av.SetSkillFaceHold(aG)if type(aG)==
-'number'then az=math.clamp(aG,ar,as)end end function av.GetSkillFaceHold()return
-az end function av.SetDoubleClickDelay(aG)if type(aG)=='number'then aA=math.
-clamp(aG,at,au)end end function av.GetDoubleClickDelay()return aA end function
-av.SetReplayTimeline(aG)aG=aG and true or false aw=aG ax=aG ay=aG end function
-av.IsReplayTimelineEnabled()return aw end local aG,aH,aI,aJ=true,false function
-av.SetSpeedMatch(aK)aG=aK and true or false end function av.IsSpeedMatchEnabled(
-)return aG end function av.SetUseFastSpeed(aK)aH=aK and true or false end
-function av.IsUseFastSpeedEnabled()return aH end local aK,aL,aM,aN,aO,aP,aQ,aR,
-aS,aT,aU=function(aK)local aL if aH then local aM=ab.GetFastSpeed()if type(aM)==
-'number'and aM>0 then aL=aM end elseif aG then if type(aK)=='number'and aK>0
-then aL=aK end end if not aL or aL<=0 then return end local aM=ab.GetHumanoid()
-if not aM then return end if aI==nil then aJ=aM.WalkSpeed end aI=aL if aM.
-WalkSpeed~=aL then aM.WalkSpeed=aL end end,function()if aI==nil then return end
-local aK=ab.GetHumanoid()if aJ and aK and aK.WalkSpeed~=aJ then aK.WalkSpeed=aJ
-end aI=nil aJ=nil end,false,false,false,0,0,0,{}local aV,aW,aX,aY,aZ=function(aV
-)local aW={playing=aM,map=aT,room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive(
-),resume=aN,progressPercent=aR,progressStuds=aP,totalStuds=aQ,reason=aV}for aX,
-aY in ipairs(aS)do pcall(aY,aW)end end,function()local aV=ae and ae.Character
-local aW=aV and aV:FindFirstChild'HumanoidRootPart'if aW and aW.Parent then
-return aW end return nil end,function(aV)if not aV or not aV.Parent then return
-nil end local aW,aX=pcall(function()return aV.Position end)if not aW or not aX
-then return nil end return aX end,function(aV,aW)local aX,aY=aV.X-aW.X,aV.Z-aW.Z
-return math.sqrt(aX*aX+aY*aY)end local a_=function()if aZ then return aZ end
-pcall(function()local a_=ae:FindFirstChild'PlayerScripts'local a0=a_ and a_:
-FindFirstChild'PlayerModule'if a0 then aZ=require(a0):GetControls()end end)
-return aZ end local a0,a1,a2,a3=function()if ab.DisableControls then ab.
-DisableControls'PathRecord'else local a0=a_()if a0 and type(a0.Disable)==
-'function'then pcall(function()a0:Disable()end)end end end,function()if ab.
-EnableControls then ab.EnableControls'PathRecord'else local a0=a_()if a0 and
-type(a0.Enable)=='function'then pcall(function()a0:Enable()end)end end end,(
-Vector3.zero)local a4,a5,a6,a7=function()if a3 then return end local a4=ah.
-PreSimulation or ah.Heartbeat or ah.RenderStepped a3=a4:Connect(function()if not
-aM then return end local a5=ab.GetHumanoid()if a5 then a5:Move(a2,false)end end)
-end,function()if a3 then a3:Disconnect()a3=nil end a2=Vector3.zero local a4=ab.
-GetHumanoid()if a4 then pcall(function()a4:Move(Vector3.zero,false)end)end end,
-function(a4)local a5=aW()if not a5 or not a4 then a2=Vector3.zero return end
-local a6=a5.Position local a7=Vector3.new(a4.X-a6.X,0,a4.Z-a6.Z)if a7.Magnitude>
-0.05 then a2=a7.Unit else a2=Vector3.zero end end,function()a2=Vector3.zero
-local a4=ab.GetHumanoid()if a4 then pcall(function()a4:Move(Vector3.zero,false)
-end)end end local a8,a9,b,ba,bb=function(a8)a7()a5()a1()end,function(a8)local a9
-,b=ab.GetKeyHoldTime()or 0.05,aA task.spawn(function()pcall(function()local ba=
-function(ba,bb)af:SendKeyEvent(bb,ba,false,game)end local bb=function(bb)if bb==
-'Q'then ba(Enum.KeyCode.Q,true)task.wait(a9)ba(Enum.KeyCode.Q,false)elseif bb==
-'E'then ba(Enum.KeyCode.E,true)task.wait(a9)ba(Enum.KeyCode.E,false)else ba(Enum
-.KeyCode.Q,true)ba(Enum.KeyCode.E,true)task.wait(a9)ba(Enum.KeyCode.Q,false)ba(
-Enum.KeyCode.E,false)end end bb(a8)if b>0 then task.wait(b)end bb(a8)end)end)end
-,function(a8,a9)if not a8 or not a8.Parent then return end local b=ab.
-GetHumanoid()if b then b.AutoRotate=false end local ba=a9 or Vector3.new(1,0,0)
-if ba.Magnitude<0.1 then ba=Vector3.new(1,0,0)end ba=Vector3.new(ba.X,0,ba.Z).
-Unit pcall(function()local bb=a8.Position a8.CFrame=CFrame.lookAt(bb,bb+ba)end)
-end,function(a8,a9,b)if not a8 or not a8.Parent then return end local ba=ab.
-GetHumanoid()if ba and ba.AutoRotate~=false then ba.AutoRotate=false end local
-bb=a9 or Vector3.new(1,0,0)if bb.Magnitude<0.1 then bb=Vector3.new(1,0,0)end bb=
-Vector3.new(bb.X,0,bb.Z).Unit pcall(function()local bc=a8.Position local bd=
-CFrame.lookAt(bc,bc+bb)a8.CFrame=a8.CFrame:Lerp(bd,math.clamp(b or 0.35,0.05,1))
-end)end,function()local a8=ab.GetHumanoid()if a8 then a8.AutoRotate=true end end
-local bc=function(bc,bd,be)local bf,bg=ab.GetHumanoid(),aW()if not bf or not bg
-then return end aK(bc.speed)local bh=ac.SimplifyPath(bc.points,ai)local bi=#bh
-if bi<2 then return end local bj,bk=0,{}bk[1]=0 for bl=2,bi do local bm=aY(bh[bl
--1],bh[bl])bj+=bm bk[bl]=bj end aP=0 aQ=bj aR=0 aV'progress_init'local bl,bm=
-function(bl,bm,bn)bm=bm or 0 bn=bn or bj local bo,bp=0,math.huge for bq=2,bi do
-if bk[bq]<bm then continue end if bk[bq-1]>bn then continue end local br,bs=bh[
-bq-1],bh[bq]local bt,bu=br.X,br.Z local bv,bw=bs.X-bt,bs.Z-bu local bx,by=bv*bv+
-bw*bw,0 if bx>0 then by=((bl.X-bt)*bv+(bl.Z-bu)*bw)/bx by=math.clamp(by,0,1)end
-local bz,bA=bl.X-(bt+bv*by),bl.Z-(bu+bw*by)local bB=bz*bz+bA*bA if bB<bp then bp
-=bB bo=bk[bq-1]+math.sqrt(bx)*by end end return bo end,function(bl)local bm=2
-while bm<=bi and bk[bm]<bl do bm+=1 end bm=math.min(bm,bi)local bn=bk[bm]-bk[bm-
-1]if bn<=0 then return bh[bm]end local bo,bp,bq=math.clamp((bl-bk[bm-1])/bn,0,1)
-,bh[bm-1],bh[bm]return Vector3.new(bp.X+(bq.X-bp.X)*bo,bp.Y+(bq.Y-bp.Y)*bo,bp.Z+
-(bq.Z-bp.Z)*bo)end local bn,bo,bp=function(bn)local bo=bj-bn if bo<=1 then
-return math.max(0.2,bo)end local bp,bq=math.min(bn+2,bj),math.min(bn+4.5,bj)if
-bq-bn<0.8 then return math.min(al,bo)end local br,bs,bt=bm(bn),bm(bp),bm(bq)
-local bu,bv,bw,bx=bs.X-br.X,bs.Z-br.Z,bt.X-bs.X,bt.Z-bs.Z local by,bz=math.sqrt(
-bu*bu+bv*bv),math.sqrt(bw*bw+bx*bx)if by>0.1 and bz>0.1 then local bA=math.
-clamp((bu*bw+bv*bx)/(by*bz),-1,1)local bB=math.clamp((bA+0.2)/1.2,0,1)local bC=
-al+(am-al)*bB return math.min(bC,bo)end return math.min(am,bo)end,{},{}if bc.
-events and(aw or ax or ay)then local bq,br=bc.events.dwells or{},bc.events.
-skills or{}for bs,bt in ipairs(bq)do local bu,bv=bl(bt.pos),bt.dur or 0 if bu<=
-0.8 or bu>=bj-0.8 then bv=aC end bo[bs]={arc=bu,dur=bv,facing=bt.facing,skills={
-},pos=bt.pos}end if aC>0 and(#bo==0 or bo[1].arc>0.8)then table.insert(bo,1,{arc
-=0,dur=aC,facing=bc.events and bc.events.startFacing or nil,skills={},pos=bc.
-startPos or bh[1]})end for bs,bt in ipairs(br)do local bu=(aw and bt.dw>0 and bo
-[bt.dw])and bo[bt.dw]or nil if bu then table.insert(bu.skills,{tOff=bt.dwT or 0,
-facing=bt.facing,key=bt.key})else table.insert(bp,{arc=bl(bt.pos),facing=bt.
-facing,key=bt.key})end end table.sort(bp,function(bs,bt)return bs.arc<bt.arc end
-)end local bq,br,bs=function(bq)if not aM or(bq.dur or 0)<=0 then return true
-end if aw then a7()if ay and bq.facing then b(bg,bq.facing)end local br,bs,bt=os
-.clock(),{},0 while aM and(os.clock()-br<bq.dur)do if not bg or not bg.Parent
+return ap end function a.i()local aa,ab=a.load'a',a.load'e'local ac,ad,ae,af,ag,
+ah,ai,aj,ak,al,am,an,ao=aa.player,2,false,false,false,false,60,false,
+'\r\nlocal ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\r\n\r\nlocal payload = {}\r\nlocal function collectValue(name)\r\n\tlocal value = workspace:FindFirstChild(name)\r\n\tif value and value:IsA("ValueBase") then\r\n\t\tpayload[name] = value.Value\r\n\tend\r\nend\r\n\r\ncollectValue("dungeonName")\r\ncollectValue("dungeonProgress")\r\ncollectValue("dungeonStarted")\r\n\r\nlocal hardcore = workspace:FindFirstChild("hardcore")\r\nif hardcore and hardcore:IsA("BoolValue") then\r\n\tpayload.hardcore = hardcore.Value\r\n\tpayload.isHardcore = hardcore.Value\r\nend\r\n\r\nlocal dungeon = workspace:FindFirstChild("dungeon")\r\nif dungeon then\r\n\tfor _, value in ipairs(dungeon:GetChildren()) do\r\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\tend\r\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\r\n\tif bossRoom then\r\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\r\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\t\tend\r\n\tend\r\nend\r\n\r\nif not payload.dungeonName then return end\r\nReplayDungeon:FireServer(payload)\r\n'
+,[[game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder]],
+function(ac)local ad,ae=pcall(loadstring,'return '..ac)if ad and type(ae)==
+'function'then return ae end return nil end local ap,aq=pcall(loadstring,ak)if
+ap and type(aq)=='function'then an=aq end ao=am(al)if not ao then ao=function()
+return ac:FindFirstChild'PlayerGui'and ac.PlayerGui:FindFirstChild
+'rewardGuiHolder'and ac.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
+local ar,as,at=function()local ar,as=pcall(function()local ar=ac:FindFirstChild
+'PlayerGui'local as=ar and ar:FindFirstChild'timeLeftGui'local at=as and as:
+FindFirstChild'Frame'return at and at:FindFirstChild'time'end)if not ar or
+typeof(as)~='Instance'then return nil end local at if as:IsA'ValueBase'then at=
+as.Value else at=as.Text end if type(at)=='number'then return at end if type(at)
+=='string'then local au=at:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local av,
+aw=au:match'^(%d+):(%d+)$'if av and aw then return tonumber(av)*60+tonumber(aw)
+end local ax=tonumber(au)if ax then return ax end end return nil end,{},function
+()if not an then ab.Notify('Auto Retry','Remote command invalid',3)return false
+end local ar,as=pcall(an)if ar then ab.Notify('Auto Retry','Retrying dungeon!',3
+)return true end ab.Notify('Auto Retry','Trigger failed: '..tostring(as),3)
+return false end function as.Start()if af then return end af=true ag=false aj=
+false task.spawn(function()while ae or ah do if ae then local au=0 if ao then
+local av,aw=pcall(ao)if av and typeof(aw)=='Instance'and aw.Parent then au=#aw:
+GetChildren()end end if au>=ad and not ag then ag=true at()elseif au<ad then ag=
+false end end if ah then local au=ar()if au and au<ai and not aj then aj=true
+at()elseif au and au>=ai then aj=false end end if not ae and not ah then break
+end task.wait(0.75)end af=false end)end function as.Stop()ae=false end function
+as.Toggle(au)ae=au if au then aj=false as.Start()ab.Notify('Auto Retry',
+'Watching reward holder...',2)else as.Stop()ab.Notify('Auto Retry','Stopped',2)
+end end function as.SetTimeRetryEnabled(au)ah=au==true if ah then aj=false as.
+Start()ab.Notify('Auto Retry','Watching time left...',2)else ab.Notify(
+'Auto Retry','Time retry stopped',2)end end function as.GetTimeRetryEnabled()
+return ah end function as.SetTimeRetryThreshold(au)ai=au end function as.
+GetTimeRetryThreshold()return ai end function as.GetTimeLeft()return ar()end
+function as.RetryNow()task.spawn(function()at()end)end return as end function a.
+j()local aa,ab,ac,ad,ae=a.load'a',a.load'c',a.load'g',a.load'e',a.load'i'local
+af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax,ay,az,aA,aB,aC,aD,aE,aF
+=aa.player,aa.VirtualInputManager,aa.UserInputService,aa.RunService or game:
+GetService'RunService',0.4,0.5,8,2,4.5,8,14,8,2,0.5,2,0.001,0.1,{},true,true,
+true,0.6,0.005,0.45,0.2,false,true function aw.SetAimSkillQ(aG)aE=aG and true or
+false end function aw.IsAimSkillQEnabled()return aE end function aw.SetAimSkillE
+(aG)aF=aG and true or false end function aw.IsAimSkillEEnabled()return aF end
+local aG=function(aG)if aG=='Q'then return aE elseif aG=='E'then return aF end
+return aE or aF end function aw.SetStartPauseTime(aH)if type(aH)=='number'then
+aD=math.clamp(aH,0,5)end end function aw.GetStartPauseTime()return aD end
+function aw.SetPreAimTime(aH)if type(aH)=='number'then aC=math.clamp(aH,0.1,1.5)
+end end function aw.GetPreAimTime()return aC end function aw.SetSkillFaceHold(aH
+)if type(aH)=='number'then aA=math.clamp(aH,as,at)end end function aw.
+GetSkillFaceHold()return aA end function aw.SetDoubleClickDelay(aH)if type(aH)==
+'number'then aB=math.clamp(aH,au,av)end end function aw.GetDoubleClickDelay()
+return aB end function aw.SetReplayTimeline(aH)aH=aH and true or false ax=aH ay=
+aH az=aH end function aw.IsReplayTimelineEnabled()return ax end local aH,aI,aJ,
+aK=true,false function aw.SetSpeedMatch(aL)aH=aL and true or false end function
+aw.IsSpeedMatchEnabled()return aH end function aw.SetUseFastSpeed(aL)aI=aL and
+true or false end function aw.IsUseFastSpeedEnabled()return aI end local aL,aM=
+false,5 function aw.SetAutoRetryOnDeathLimit(aN)aL=aN and true or false end
+function aw.IsAutoRetryOnDeathLimitEnabled()return aL end local aN,aO,aP,aQ,aR,
+aS,aT,aU,aV,aW,aX=function(aN)local aO if aI then local aP=ab.GetFastSpeed()if
+type(aP)=='number'and aP>0 then aO=aP end elseif aH then if type(aN)=='number'
+and aN>0 then aO=aN end end if not aO or aO<=0 then return end local aP=ab.
+GetHumanoid()if not aP then return end if aJ==nil then aK=aP.WalkSpeed end aJ=aO
+if aP.WalkSpeed~=aO then aP.WalkSpeed=aO end end,function()if aJ==nil then
+return end local aN=ab.GetHumanoid()if aK and aN and aN.WalkSpeed~=aK then aN.
+WalkSpeed=aK end aJ=nil aK=nil end,false,false,false,0,0,0,{}local aY,aZ,a_,a0,
+a1=function(aY)local aZ={playing=aP,map=aW,room=ab.GetCurrentRoomIndex(),boss=ab
+.IsBossActive(),resume=aQ,progressPercent=aU,progressStuds=aS,totalStuds=aT,
+reason=aY}for a_,a0 in ipairs(aV)do pcall(a0,aZ)end end,function()local aY=af
+and af.Character local aZ=aY and aY:FindFirstChild'HumanoidRootPart'if aZ and aZ
+.Parent then return aZ end return nil end,function(aY)if not aY or not aY.Parent
+then return nil end local aZ,a_=pcall(function()return aY.Position end)if not aZ
+or not a_ then return nil end return a_ end,function(aY,aZ)local a_,a0=aY.X-aZ.X
+,aY.Z-aZ.Z return math.sqrt(a_*a_+a0*a0)end local a2=function()if a1 then return
+a1 end pcall(function()local a2=af:FindFirstChild'PlayerScripts'local a3=a2 and
+a2:FindFirstChild'PlayerModule'if a3 then a1=require(a3):GetControls()end end)
+return a1 end local a3,a4,a5,a6=function()if ab.DisableControls then ab.
+DisableControls'PathRecord'else local a3=a2()if a3 and type(a3.Disable)==
+'function'then pcall(function()a3:Disable()end)end end end,function()if ab.
+EnableControls then ab.EnableControls'PathRecord'else local a3=a2()if a3 and
+type(a3.Enable)=='function'then pcall(function()a3:Enable()end)end end end,(
+Vector3.zero)local a7,a8,a9,b=function()if a6 then return end local a7=ai.
+PreSimulation or ai.Heartbeat or ai.RenderStepped a6=a7:Connect(function()if not
+aP then return end local a8=ab.GetHumanoid()if a8 then a8:Move(a5,false)end end)
+end,function()if a6 then a6:Disconnect()a6=nil end a5=Vector3.zero local a7=ab.
+GetHumanoid()if a7 then pcall(function()a7:Move(Vector3.zero,false)end)end end,
+function(a7)local a8=aZ()if not a8 or not a7 then a5=Vector3.zero return end
+local a9=a8.Position local b=Vector3.new(a7.X-a9.X,0,a7.Z-a9.Z)if b.Magnitude>
+0.05 then a5=b.Unit else a5=Vector3.zero end end,function()a5=Vector3.zero local
+a7=ab.GetHumanoid()if a7 then pcall(function()a7:Move(Vector3.zero,false)end)end
+end local ba,bb,bc,bd,be=function(ba)b()a8()a4()end,function(ba)local bb,bc=ab.
+GetKeyHoldTime()or 0.05,aB task.spawn(function()pcall(function()local bd=
+function(bd,be)ag:SendKeyEvent(be,bd,false,game)end local be=function(be)if be==
+'Q'then bd(Enum.KeyCode.Q,true)task.wait(bb)bd(Enum.KeyCode.Q,false)elseif be==
+'E'then bd(Enum.KeyCode.E,true)task.wait(bb)bd(Enum.KeyCode.E,false)else bd(Enum
+.KeyCode.Q,true)bd(Enum.KeyCode.E,true)task.wait(bb)bd(Enum.KeyCode.Q,false)bd(
+Enum.KeyCode.E,false)end end be(ba)if bc>0 then task.wait(bc)end be(ba)end)end)
+end,function(ba,bb)if not ba or not ba.Parent then return end local bc=ab.
+GetHumanoid()if bc then bc.AutoRotate=false end local bd=bb or Vector3.new(1,0,0
+)if bd.Magnitude<0.1 then bd=Vector3.new(1,0,0)end bd=Vector3.new(bd.X,0,bd.Z).
+Unit pcall(function()local be=ba.Position ba.CFrame=CFrame.lookAt(be,be+bd)end)
+end,function(ba,bb,bc)if not ba or not ba.Parent then return end local bd=ab.
+GetHumanoid()if bd and bd.AutoRotate~=false then bd.AutoRotate=false end local
+be=bb or Vector3.new(1,0,0)if be.Magnitude<0.1 then be=Vector3.new(1,0,0)end be=
+Vector3.new(be.X,0,be.Z).Unit pcall(function()local bf=ba.Position local bg=
+CFrame.lookAt(bf,bf+be)ba.CFrame=ba.CFrame:Lerp(bg,math.clamp(bc or 0.35,0.05,1)
+)end)end,function()local ba=ab.GetHumanoid()if ba then ba.AutoRotate=true end
+end local bf=function(bf,bg,bh)local bi,bj=ab.GetHumanoid(),aZ()if not bi or not
+bj then return end aN(bf.speed)local bk=ac.SimplifyPath(bf.points,aj)local bl=#
+bk if bl<2 then return end local bm,bn=0,{}bn[1]=0 for bo=2,bl do local bp=a0(bk
+[bo-1],bk[bo])bm+=bp bn[bo]=bm end aS=0 aT=bm aU=0 aY'progress_init'local bo,bp=
+function(bo,bp,bq)bp=bp or 0 bq=bq or bm local br,bs=0,math.huge for bt=2,bl do
+if bn[bt]<bp then continue end if bn[bt-1]>bq then continue end local bu,bv=bk[
+bt-1],bk[bt]local bw,bx=bu.X,bu.Z local by,bz=bv.X-bw,bv.Z-bx local bA,bB=by*by+
+bz*bz,0 if bA>0 then bB=((bo.X-bw)*by+(bo.Z-bx)*bz)/bA bB=math.clamp(bB,0,1)end
+local bC,bD=bo.X-(bw+by*bB),bo.Z-(bx+bz*bB)local bE=bC*bC+bD*bD if bE<bs then bs
+=bE br=bn[bt-1]+math.sqrt(bA)*bB end end return br end,function(bo)local bp=2
+while bp<=bl and bn[bp]<bo do bp+=1 end bp=math.min(bp,bl)local bq=bn[bp]-bn[bp-
+1]if bq<=0 then return bk[bp]end local br,bs,bt=math.clamp((bo-bn[bp-1])/bq,0,1)
+,bk[bp-1],bk[bp]return Vector3.new(bs.X+(bt.X-bs.X)*br,bs.Y+(bt.Y-bs.Y)*br,bs.Z+
+(bt.Z-bs.Z)*br)end local bq,br,bs=function(bq)local br=bm-bq if br<=1 then
+return math.max(0.2,br)end local bs,bt=math.min(bq+2,bm),math.min(bq+4.5,bm)if
+bt-bq<0.8 then return math.min(am,br)end local bu,bv,bw=bp(bq),bp(bs),bp(bt)
+local bx,by,bz,bA=bv.X-bu.X,bv.Z-bu.Z,bw.X-bv.X,bw.Z-bv.Z local bB,bC=math.sqrt(
+bx*bx+by*by),math.sqrt(bz*bz+bA*bA)if bB>0.1 and bC>0.1 then local bD=math.
+clamp((bx*bz+by*bA)/(bB*bC),-1,1)local bE=math.clamp((bD+0.2)/1.2,0,1)local bF=
+am+(an-am)*bE return math.min(bF,br)end return math.min(an,br)end,{},{}if bf.
+events and(ax or ay or az)then local bt,bu=bf.events.dwells or{},bf.events.
+skills or{}for bv,bw in ipairs(bt)do local bx,by=bo(bw.pos),bw.dur or 0 if bx<=
+0.8 or bx>=bm-0.8 then by=aD end br[bv]={arc=bx,dur=by,facing=bw.facing,skills={
+},pos=bw.pos}end if aD>0 and(#br==0 or br[1].arc>0.8)then table.insert(br,1,{arc
+=0,dur=aD,facing=bf.events and bf.events.startFacing or nil,skills={},pos=bf.
+startPos or bk[1]})end for bv,bw in ipairs(bu)do local bx=(ax and bw.dw>0 and br
+[bw.dw])and br[bw.dw]or nil if bx then table.insert(bx.skills,{tOff=bw.dwT or 0,
+facing=bw.facing,key=bw.key})else table.insert(bs,{arc=bo(bw.pos),facing=bw.
+facing,key=bw.key})end end table.sort(bs,function(bv,bw)return bv.arc<bw.arc end
+)end local bt,bu,bv=function(bt)if not aP or(bt.dur or 0)<=0 then return true
+end if ax then b()if az and bt.facing then bc(bj,bt.facing)end local bu,bv,bw=os
+.clock(),{},0 while aP and(os.clock()-bu<bt.dur)do if not bj or not bj.Parent
 then return false,'no_root'end if ab.IsDead()then return false,'dead'end if ab.
-GetCurrentRoomIndex()~=bd then return false,'room_changed'end if ab.
-IsBossActive()and not be then return false,'boss'end a7()local bu=os.clock()-br
-for bv,bw in ipairs(bq.skills or{})do if not bs[bv]and bu>=(bw.tOff or 0)then bs
-[bv]=true if ay and bw.facing and aF(bw.key)then b(bg,bw.facing)bt=os.clock()+az
-end if ax then a9(bw.key or'QE')end end end task.wait(0.03)end for bu,bv in
-ipairs(bq.skills or{})do if not bs[bu]then bs[bu]=true if ay and bv.facing and
-aF(bv.key)then b(bg,bv.facing)bt=os.clock()+az end if ax then a9(bv.key or'QE')
-end end end while aM and os.clock()<bt do a7()task.wait(0.03)end if ay then bb()
-end end return true end,bc.startPos or bh[1],aX(bg)if bs and br then local bt=
-aY(bs,br)if bt>1.8 then local bu=os.clock()+ak while aM and os.clock()<bu do
-local bv=aX(bg)if not bv then break end local bw=aY(bv,br)if bw<=1.8 then break
-end if ab.IsDead()or ab.GetCurrentRoomIndex()~=bd then break end a6(br)task.
-wait(0.03)end a7()end local bu=aX(bg)if bu and aY(bu,br)<=3 then pcall(function(
-)local bv=bg.CFrame.Rotation bg.CFrame=CFrame.new(br.X,bg.Position.Y,br.Z)*bv bg
-.AssemblyLinearVelocity=Vector3.zero bg.AssemblyAngularVelocity=Vector3.zero end
-)end end local bt,bu,bv,bw,bx,by,bz=0,br or aX(bg),os.clock(),1,1,0 a4()while aM
-do if not bg or not bg.Parent then bb()return false,'no_root'end if ab.IsDead()
-then bb()return false,'dead'end if ab.GetCurrentRoomIndex()~=bd then bb()return
-false,'room_changed'end if ab.IsBossActive()and not be then bb()return false,
-'boss'end local bA=aX(bg)if not bA then task.wait(0.08)continue end local bB=bl(
-bA,math.max(0,bt-an),math.min(bj,bt+ao))if bB>bt then bt=bB end aP=bt aR=bj>0
-and math.clamp(math.floor((bt/bj)*100),0,100)or 0 if bu then if aY(bA,bu)>0.02
-then bv=os.clock()end end bu=bA if os.clock()-bv>ap then bt=math.min(bt+aq,bj-aj
-)bv=os.clock()bu=bA end while bx<=#bp and bp[bx].arc<=bt do local bC=bp[bx]if ay
-and bC.facing and aF(bC.key)then b(bg,bC.facing)bz=bC.facing by=os.clock()+az
-end if ax then a9(bC.key or'QE')end bx+=1 end while bw<=#bo and bt>=bo[bw].arc
-do local bC=bo[bw]local bD,bE=bq(bC)if not bD then a7()bb()return false,bE end
-bw+=1 bu=aX(bg)bv=os.clock()end local bC if ay then local bD,bE=math.huge,bw
-while bE<=#bo do local bF,bG=(bo[bE])if bF.skills and#bF.skills>0 then for bH,bI
-in ipairs(bF.skills)do if bI.facing and aF(bI.key)then bG=bI.facing break end
-end end bG=bG or bF.facing if bG then if bF.arc<bD then bD=bF.arc bC=bG end
-break end bE+=1 end local bF=bx while bF<=#bp do local bG=bp[bF]if bG.facing and
-aF(bG.key)then if bG.arc<bD then bD=bG.arc bC=bG.facing end break end bF+=1 end
-end if ay then if os.clock()<by then if bz then ba(bg,bz,0.45)end if bf.
-AutoRotate~=false then bf.AutoRotate=false end elseif bC then ba(bg,bC,0.35)if
-bf.AutoRotate~=false then bf.AutoRotate=false end else if bf.AutoRotate~=true
-then bf.AutoRotate=true end end else if bf.AutoRotate~=true then bf.AutoRotate=
-true end end if bt>=bj-aj then while bw<=#bo do local bD=bo[bw]local bE,bF=bq(bD
-)if not bE then a7()bb()return false,bF end bw+=1 end while bx<=#bp do local bD=
-bp[bx]if ay and bD.facing and aF(bD.key)then b(bg,bD.facing)bz=bD.facing by=os.
-clock()+az end if ax then a9(bD.key or'QE')end bx+=1 end local bD=os.clock()+5
-while aM do local bE=aX(bg)if not bE then break end local bF=aY(bE,bh[bi])if bF
-<=aj then break end if ab.GetCurrentRoomIndex()~=bd then a7()bb()return false,
-'room_changed'end if(ab.IsBossActive()and not be)or ab.IsDead()then a7()bb()
-return false,'dead'end if os.clock()>=bD then break end a6(bh[bi])if os.clock()<
-by then if bz then ba(bg,bz,0.45)end if bf.AutoRotate~=false then bf.AutoRotate=
-false end elseif bf.AutoRotate~=true then bf.AutoRotate=true end task.wait(0.03)
-end a7()bb()aP=bj aR=100 return true,'completed'end local bD=bn(bt)local bE=bm(
-math.min(bt+bD,bj-0.01))a6(bE)task.wait(0.03)end a7()bb()return false,'stopped'
-end local bd=function()local bd,be,bf=0,false,false while aM do if aN then break
-end if ab.IsDead()then bf=true task.wait(0.25)continue end if bf then bf=false
-end if ab.IsInLobby()then aN=false aM=false break end if ab.IsBossActive()and
-not aO then task.wait(0.25)continue end local bg=ab.GetCurrentRoomIndex()if bg<=
-0 then task.wait(0.1)continue end if bg~=bd then bd=bg be=false aP=0 aQ=0 aR=0
-end local bh=ac.GetRoomSegment(aT,bg)if not bh then task.wait(0.1)continue end
-if be then task.wait(0.1)continue end local bi,bj=bc(bh,bg,aO)bb()if bi then be=
-true aP=aQ aR=100 else if bj=='dead'then ad.Notify('Path Record',
+GetCurrentRoomIndex()~=bg then return false,'room_changed'end if ab.
+IsBossActive()and not bh then return false,'boss'end b()local bx=os.clock()-bu
+for by,bz in ipairs(bt.skills or{})do if not bv[by]and bx>=(bz.tOff or 0)then bv
+[by]=true if az and bz.facing and aG(bz.key)then bc(bj,bz.facing)bw=os.clock()+
+aA end if ay then bb(bz.key or'QE')end end end task.wait(0.03)end for bx,by in
+ipairs(bt.skills or{})do if not bv[bx]then bv[bx]=true if az and by.facing and
+aG(by.key)then bc(bj,by.facing)bw=os.clock()+aA end if ay then bb(by.key or'QE')
+end end end while aP and os.clock()<bw do b()task.wait(0.03)end if az then be()
+end end return true end,bf.startPos or bk[1],a_(bj)if bv and bu then local bw=
+a0(bv,bu)if bw>1.8 then local bx=os.clock()+al while aP and os.clock()<bx do
+local by=a_(bj)if not by then break end local bz=a0(by,bu)if bz<=1.8 then break
+end if ab.IsDead()or ab.GetCurrentRoomIndex()~=bg then break end a9(bu)task.
+wait(0.03)end b()end local bx=a_(bj)if bx and a0(bx,bu)<=3 then pcall(function()
+local by=bj.CFrame.Rotation bj.CFrame=CFrame.new(bu.X,bj.Position.Y,bu.Z)*by bj.
+AssemblyLinearVelocity=Vector3.zero bj.AssemblyAngularVelocity=Vector3.zero end)
+end end local bw,bx,by,bz,bA,bB,bC=0,bu or a_(bj),os.clock(),1,1,0 a7()while aP
+do if not bj or not bj.Parent then be()return false,'no_root'end if ab.IsDead()
+then be()return false,'dead'end if ab.GetCurrentRoomIndex()~=bg then be()return
+false,'room_changed'end if ab.IsBossActive()and not bh then be()return false,
+'boss'end local bD=a_(bj)if not bD then task.wait(0.08)continue end local bE=bo(
+bD,math.max(0,bw-ao),math.min(bm,bw+ap))if bE>bw then bw=bE end aS=bw aU=bm>0
+and math.clamp(math.floor((bw/bm)*100),0,100)or 0 if bx then if a0(bD,bx)>0.02
+then by=os.clock()end end bx=bD if os.clock()-by>aq then bw=math.min(bw+ar,bm-ak
+)by=os.clock()bx=bD end while bA<=#bs and bs[bA].arc<=bw do local bF=bs[bA]if az
+and bF.facing and aG(bF.key)then bc(bj,bF.facing)bC=bF.facing bB=os.clock()+aA
+end if ay then bb(bF.key or'QE')end bA+=1 end while bz<=#br and bw>=br[bz].arc
+do local bF=br[bz]local bG,bH=bt(bF)if not bG then b()be()return false,bH end bz
++=1 bx=a_(bj)by=os.clock()end local bF if az then local bG,bH=math.huge,bz while
+bH<=#br do local bI,bJ=(br[bH])if bI.skills and#bI.skills>0 then for bK,bL in
+ipairs(bI.skills)do if bL.facing and aG(bL.key)then bJ=bL.facing break end end
+end bJ=bJ or bI.facing if bJ then if bI.arc<bG then bG=bI.arc bF=bJ end break
+end bH+=1 end local bI=bA while bI<=#bs do local bJ=bs[bI]if bJ.facing and aG(bJ
+.key)then if bJ.arc<bG then bG=bJ.arc bF=bJ.facing end break end bI+=1 end end
+if az then if os.clock()<bB then if bC then bd(bj,bC,0.45)end if bi.AutoRotate~=
+false then bi.AutoRotate=false end elseif bF then bd(bj,bF,0.35)if bi.AutoRotate
+~=false then bi.AutoRotate=false end else if bi.AutoRotate~=true then bi.
+AutoRotate=true end end else if bi.AutoRotate~=true then bi.AutoRotate=true end
+end if bw>=bm-ak then while bz<=#br do local bG=br[bz]local bH,bI=bt(bG)if not
+bH then b()be()return false,bI end bz+=1 end while bA<=#bs do local bG=bs[bA]if
+az and bG.facing and aG(bG.key)then bc(bj,bG.facing)bC=bG.facing bB=os.clock()+
+aA end if ay then bb(bG.key or'QE')end bA+=1 end local bG=os.clock()+5 while aP
+do local bH=a_(bj)if not bH then break end local bI=a0(bH,bk[bl])if bI<=ak then
+break end if ab.GetCurrentRoomIndex()~=bg then b()be()return false,
+'room_changed'end if(ab.IsBossActive()and not bh)or ab.IsDead()then b()be()
+return false,'dead'end if os.clock()>=bG then break end a9(bk[bl])if os.clock()<
+bB then if bC then bd(bj,bC,0.45)end if bi.AutoRotate~=false then bi.AutoRotate=
+false end elseif bi.AutoRotate~=true then bi.AutoRotate=true end task.wait(0.03)
+end b()be()aS=bm aU=100 return true,'completed'end local bG=bq(bw)local bH=bp(
+math.min(bw+bG,bm-0.01))a9(bH)task.wait(0.03)end b()be()return false,'stopped'
+end local bg=function()local bg,bh,bi,bj=0,false,false,0 while aP do if aQ then
+break end if ab.IsDead()then if not bi then bi=true if aL and not aR and not ab.
+IsBossActive()and bg>0 then bj+=1 if bj>=aM then ad.Notify('Path Record',string.
+format('Exceeded %d deaths in Room %d. Retrying dungeon...',aM,bg),3)aP=false ae
+.RetryNow()break end end end task.wait(0.25)continue end if bi then bi=false end
+if ab.IsInLobby()then aQ=false aP=false break end if ab.IsBossActive()and not aR
+then task.wait(0.25)continue end local bk=ab.GetCurrentRoomIndex()if bk<=0 then
+task.wait(0.1)continue end if bk~=bg then bg=bk bj=0 bh=false aS=0 aT=0 aU=0 end
+local bl=ac.GetRoomSegment(aW,bk)if not bl then task.wait(0.1)continue end if bh
+then task.wait(0.1)continue end local bm,bn=bf(bl,bk,aR)be()if bm then bh=true
+aS=aT aU=100 else if bn=='dead'then if not bi then bi=true if aL and not aR and
+not ab.IsBossActive()and bk>0 then bj+=1 if bj>=aM then ad.Notify('Path Record',
+string.format('Exceeded %d deaths in Room %d. Retrying dungeon...',aM,bk),3)aP=
+false ae.RetryNow()break end end end ad.Notify('Path Record',
 'T\u{1eed} tr\u{1ead}n: \u{110}ang ch\u{1edd} h\u{1ed3}i sinh \u{111}\u{1ec3} \u{111}i l\u{1ea1}i...'
-,2)while aM and ab.IsDead()do task.wait(0.2)end task.wait(0.6)end end end a5()
-a1()aL()bb()aU=nil aV()end function av.IsPlaying()return aM end function av.
-ResumeWanted()return aN end function av.GetActiveMap()return aT end function av.
-IsBossPlayActive()return aO end function av.GetStatus()return{playing=aM,map=aT,
-room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive(),resume=aN,progressPercent=
-aR,progressStuds=aP,totalStuds=aQ}end function av.OnStatusChanged(be)if type(be)
-~='function'then return function()end end table.insert(aS,be)return function()
-for bf,bg in ipairs(aS)do if bg==be then table.remove(aS,bf)break end end end
-end function av.Start()if aM then return false,'\u{111}ang ph\u{e1}t r\u{1ed3}i'
-end if ab.IsInLobby()then return false,'\u{111}ang \u{1edf} lobby'end local be=
-ab.GetCurrentRoomIndex()if be<=0 then return false,'ch\u{1b0}a c\u{f3} room'end
-local bf=ab.GetCurrentDungeonName()if not bf or#bf==0 then return false,
+,2)while aP and ab.IsDead()do task.wait(0.2)end task.wait(0.6)end end end a8()
+a4()aO()be()aX=nil aY()end function aw.IsPlaying()return aP end function aw.
+ResumeWanted()return aQ end function aw.GetActiveMap()return aW end function aw.
+IsBossPlayActive()return aR end function aw.GetStatus()return{playing=aP,map=aW,
+room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive(),resume=aQ,progressPercent=
+aU,progressStuds=aS,totalStuds=aT}end function aw.OnStatusChanged(bh)if type(bh)
+~='function'then return function()end end table.insert(aV,bh)return function()
+for bi,bj in ipairs(aV)do if bj==bh then table.remove(aV,bi)break end end end
+end function aw.Start()if aP then return false,'\u{111}ang ph\u{e1}t r\u{1ed3}i'
+end if ab.IsInLobby()then return false,'\u{111}ang \u{1edf} lobby'end local bh=
+ab.GetCurrentRoomIndex()if bh<=0 then return false,'ch\u{1b0}a c\u{f3} room'end
+local bi=ab.GetCurrentDungeonName()if not bi or#bi==0 then return false,
 'kh\u{f4}ng x\u{e1}c \u{111}\u{1ecb}nh \u{111}\u{1b0}\u{1ee3}c map'end if not ac
-.HasSegmentOrMacro(bf,be)then return false,(
-'map [%s] ch\u{1b0}a c\u{f3} segment room %d'):format(bf,be)end local bg=ac.
-GetMapMode(bf)=='full'if ab.IsBossActive()and(not bg or not ac.
-HasSegmentOrMacro(bf,be))then return false,
-'boss room (h\u{e3}y d\u{f9}ng Hazard Scanner)'end aT=bf aO=bg aN=false aP=0 aQ=
-0 aR=0 aM=true a0()a4()aU=task.spawn(bd)aV'started'return true end function av.
-Stop()aM=false aN=false aT=nil aO=false aP=0 aQ=0 aR=0 if aU then task.cancel(aU
-)aU=nil end a8(ab.GetHumanoid())aL()bb()aV'stopped'end function av.
-PauseForExclusive()if not aM then return end aN=true aM=false aO=false aP=0 aQ=0
-aR=0 if aU then task.cancel(aU)aU=nil end a8(ab.GetHumanoid())aL()bb()ad.Notify(
+.HasSegmentOrMacro(bi,bh)then return false,(
+'map [%s] ch\u{1b0}a c\u{f3} segment room %d'):format(bi,bh)end local bj=ac.
+GetMapMode(bi)=='full'if ab.IsBossActive()and(not bj or not ac.
+HasSegmentOrMacro(bi,bh))then return false,
+'boss room (h\u{e3}y d\u{f9}ng Hazard Scanner)'end aW=bi aR=bj aQ=false aS=0 aT=
+0 aU=0 aP=true a3()a7()aX=task.spawn(bg)aY'started'return true end function aw.
+Stop()aP=false aQ=false aW=nil aR=false aS=0 aT=0 aU=0 if aX then task.cancel(aX
+)aX=nil end ba(ab.GetHumanoid())aO()be()aY'stopped'end function aw.
+PauseForExclusive()if not aP then return end aQ=true aP=false aR=false aS=0 aT=0
+aU=0 if aX then task.cancel(aX)aX=nil end ba(ab.GetHumanoid())aO()be()ad.Notify(
 'Path Record',
-[[Yielded control: will auto-resume upon entering a recorded room]],3)aV'paused'
-end return av end end local aa,ab,ac,ad,ae,af,ag=a.load'a',a.load'c',a.load'g',a
-.load'h',a.load'i',a.load'b',game:GetService'Workspace'local ah,ai,aj,ak,al,am,
+[[Yielded control: will auto-resume upon entering a recorded room]],3)aY'paused'
+end return aw end end local aa,ab,ac,ad,ae,af,ag=a.load'a',a.load'c',a.load'g',a
+.load'h',a.load'j',a.load'b',game:GetService'Workspace'local ah,ai,aj,ak,al,am,
 an,ao,ap,aq,ar,as,at,au,av,aw,ax,ay,az,aA,aB,aC,aD=aa.RunService,{},
 'PR_PathVisual_Container','PR_PathVisual_Anchor',Color3.fromRGB(255,60,60),
 Color3.fromRGB(255,90,90),Color3.fromRGB(0,255,120),Color3.fromRGB(0,220,110),

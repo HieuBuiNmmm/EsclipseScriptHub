@@ -1721,14 +1721,14 @@ DescendantRemoving:Connect(function(a0)if a0:IsA'Model'then aW(a0)end end)}
 return true end aM=function()if not dungeon then return end for a0,a1 in pairs(
 au)do if a1.Added then pcall(function()a1.Added:Disconnect()end)end if a1.
 Removed then pcall(function()a1.Removed:Disconnect()end)end end au={}as={}for a0
-in pairs(at)do aV(a0)end at={}ax=0 aw={}aP=nil dungeon=nil end aK=function()for
-a0,a1 in pairs(at)do if not a0 or not a0.Parent then aW(a0)else local a2=a1.
-Humanoid or a0:FindFirstChildOfClass'Humanoid'a1.Humanoid=a2 if not a2 or a2.
-Health<=0 then aW(a0)else local a3=a1.Root if not a3 or not a3.Parent then a3=
-aT(a0)if a3 then a1.Root=a3 else aW(a0)end end end end end end function ag.
-SetFastSpeed(a0)ai=a0 if ah and humanoid and humanoid.Parent then if humanoid.
-WalkSpeed<ai then al=true humanoid.WalkSpeed=ai al=false end end end function ag
-.SetSpeedEnabled(a0)ah=a0 if humanoid and humanoid.Parent then al=true if ah
+in pairs(at)do aV(a0)end at={}ax=0 aw={}ag.ResetBossIndex()dungeon=nil end aK=
+function()for a0,a1 in pairs(at)do if not a0 or not a0.Parent then aW(a0)else
+local a2=a1.Humanoid or a0:FindFirstChildOfClass'Humanoid'a1.Humanoid=a2 if not
+a2 or a2.Health<=0 then aW(a0)else local a3=a1.Root if not a3 or not a3.Parent
+then a3=aT(a0)if a3 then a1.Root=a3 else aW(a0)end end end end end end function
+ag.SetFastSpeed(a0)ai=a0 if ah and humanoid and humanoid.Parent then if humanoid
+.WalkSpeed<ai then al=true humanoid.WalkSpeed=ai al=false end end end function
+ag.SetSpeedEnabled(a0)ah=a0 if humanoid and humanoid.Parent then al=true if ah
 then if humanoid.WalkSpeed<ai then humanoid.WalkSpeed=ai end else humanoid.
 WalkSpeed=aj end al=false end end function ag.IsSpeedEnabled()return ah end
 function ag.GetFastSpeed()return ai end function ag.SetInstantAccelEnabled(a0)ak
@@ -1806,174 +1806,176 @@ OnBossActiveChanged(a7)if type(a7)~='function'then return function()end end
 table.insert(an,a7)return function()for a8,a9 in ipairs(an)do if a9==a7 then
 table.remove(an,a8)break end end end end function ag.GetCurrentBossIndex()return
 ao end function ag.GetCombatTargetKey()if not am then return'Mob'end local a7=
-math.clamp(ao,1,3)return'Boss'..tostring(a7)end function ag.ResetBossIndex()ao=0
-aP=nil for a7=#ap,1,-1 do pcall(ap[a7],ao)end end function ag.OnBossIndexChanged
-(a7)if type(a7)~='function'then return function()end end table.insert(ap,a7)
-return function()for a8,a9 in ipairs(ap)do if a9==a7 then table.remove(ap,a8)
-break end end end end local a7=function(a7)if type(a7)~='string'then return 0
-end local a8=string.lower(a7)local a9=string.match(a8,'boss.*(%d+)')if a9 then
-return 100+(tonumber(a9)or 1)end if string.find(a8,'boss')then return 100+math.
-max(1,ao)end local b=string.match(a7,'^room(%d+)$')if not b then return 0 end
-return tonumber(b)or 0 end local a8=function()if not dungeon then return 0 end
-for a8,a9 in pairs(at)do if a9 and a9.Room then local b=a7(a9.Room.Name)if b>0
-then return b end end end if am then return 100+math.max(1,ao)end return 0 end
-aN=function()local a9=a8()if a9==aq then return end aq=a9 for b=#ar,1,-1 do
-pcall(ar[b],aq)end end function ag.GetCurrentRoomIndex()return aq end function
-ag.OnRoomIndexChanged(a9)if type(a9)~='function'then return function()end end
-table.insert(ar,a9)return function()for b,ba in ipairs(ar)do if ba==a9 then
-table.remove(ar,b)break end end end end function ag.GetCurrentDungeonName()
-return aJ end function ag.OnDungeonNameChanged(a9)if type(a9)~='function'then
-return function()end end table.insert(aA,a9)return function()for b,ba in ipairs(
-aA)do if ba==a9 then table.remove(aA,b)break end end end end function ag.
-IsInLobby()return aC end function ag.OnLobbyChanged(a9)if type(a9)~='function'
-then return function()end end table.insert(aD,a9)return function()for b,ba in
-ipairs(aD)do if ba==a9 then table.remove(aD,b)break end end end end local a9 aO=
-function()if not am or aP~=nil then return end for b,ba in pairs(at)do if ba and
-ba.Root and ba.Root.Parent then local bb=false if ba.Room and type(ba.Room.Name)
-=='string'and string.find(string.lower(ba.Room.Name),'boss')then bb=true elseif
-string.find(string.lower(b.Name),'boss')then bb=true elseif b.Parent and string.
-find(string.lower(b.Parent.Name),'boss')then bb=true end if bb then aP=ba.Root.
-Position return end end end for b,ba in pairs(at)do if ba and ba.Root and ba.
-Root.Parent then aP=ba.Root.Position return end end end local b=function(b)if am
-==b then return end am=b if b then ao+=1 aP=nil a4()aO()for ba=#ap,1,-1 do
-pcall(ap[ba],ao)end else aP=nil end for ba=#an,1,-1 do pcall(an[ba],am)end aN()
-end function ag.GetBossSpawnPosition()if aP then return aP end aO()return aP end
-function ag.SetBossSpawnPosition(ba)aP=ba end local function ba()if not ac then
-return end local bb=ac:FindFirstChild'PlayerGui'if not bb then a9=nil b(false)
-return end local bc=bb:FindFirstChild('bossHealth',true)if bc then if bc~=a9
-then a9=bc if a9:IsA'ScreenGui'then aS(a9:GetPropertyChangedSignal'Enabled':
-Connect(ba))elseif a9:IsA'GuiObject'then aS(a9:GetPropertyChangedSignal'Visible'
-:Connect(ba))end end local bd=if bc:IsA'ScreenGui'then bc.Enabled elseif bc:IsA
-'GuiObject'then bc.Visible else true b(bd)else a9=nil b(false)end end task.
-spawn(function()if not ac then return end local bb=ac:WaitForChild('PlayerGui',
-30)if not bb then return end aS(bb.DescendantAdded:Connect(ba))aS(bb.
-DescendantRemoving:Connect(ba))ba()while ab.IsActive()and task.wait(0.5)do ba()
-end end)local bb,bc={}local bd=function()if bc then return bc end pcall(function
-()local bd=ac or game:GetService'Players'.LocalPlayer local be=bd and bd:
-FindFirstChild'PlayerScripts'local bf=be and be:FindFirstChild'PlayerModule'if
-bf then bc=require(bf):GetControls()end end)return bc end function ag.
-DisableControls(be)be=be or'default'bb[be]=true local bf=bd()if bf and type(bf.
-Disable)=='function'then pcall(function()bf:Disable()end)end end function ag.
-EnableControls(be)be=be or'default'bb[be]=nil if next(bb)~=nil then return end
-local bf=bd()if bf and type(bf.Enable)=='function'then pcall(function()bf:
-Enable()end)end end ab.Register(function()if aQ then aQ:Disconnect()aQ=nil end
-for be,bf in ipairs(aF)do pcall(function()bf:Disconnect()end)end table.clear(aF)
-table.clear(bb)local be=bd()if be and type(be.Enable)=='function'then pcall(
-function()be:Enable()end)end aM()end)return ag end function a.g()local aa,ab,ac,
-ad,ae,af,ag,ah,ai,aj,ak,al,am,an=a.load'd',a.load'f',{},0.05,0.8,Color3.fromRGB(
-0,255,0),'PlayerHitbox_ESP',Color3.fromRGB(255,0,0),'EnemyHitbox_ESP',0.01,
-'Real','Custom',false local ao,ap,aq,ar,as,at,au,av=ak,1.5,aa.player,false,ak,
-1.5,function(ao,ap,aq)local ar=Instance.new'SelectionBox'ar.Name=ao ar.Adornee=
-ap ar.Color3=aq ar.LineThickness=ad*4 ar.SurfaceColor3=aq ar.SurfaceTransparency
-=ae ar.Parent=ap end local aw=function(aw,ax,ay,az,aA)if not ax or not ax.Parent
-then return end local aB,aC=aw..'_Proxy',ax:FindFirstChild(aw)local aD=ax:
-FindFirstChild(aB)if az==al then if aC and aC:IsA'SelectionBox'and aC.Adornee==
-ax then aC:Destroy()end if not aD then aD=Instance.new'Part'aD.Name=aB aD.
-Anchored=true aD.CanCollide=false aD.CanQuery=false aD.CanTouch=false aD.
-Transparency=1 aD.Parent=ax au(aw,aD,ay)end local aE=ax.Size local aF=math.max(
-math.abs(aE.X),math.abs(aE.Y),math.abs(aE.Z))local aG=math.max(aF*aA,1)aD.Size=
-Vector3.new(aG,aG,aG)aD.CFrame=ax.CFrame else if aD then aD:Destroy()end if aC
-and aC:IsA'SelectionBox'and aC.Adornee~=ax then aC:Destroy()aC=nil end if not aC
-or not aC:IsA'SelectionBox'or aC.Adornee~=ax then au(aw,ax,ay)end end end local
-ax,ay=function()local ax=aq and aq.Character local ay=ax and ax:FindFirstChild
-'HumanoidRootPart'if not ay or not ay.Parent then return end aw(ag,ay,af,ao,ap)
-end,function()if an then task.cancel(an)an=nil end local ax=function(ax)if not
-ax then return end for ay,az in ipairs(ax:GetDescendants())do if az.Name==ag or
-az.Name==ag..'_Proxy'then az:Destroy()end end end ax(aq and aq.Character)for ay,
-az in ipairs(aa.Players:GetPlayers())do ax(az.Character)end end function ac.
-TogglePlayerHitbox(az)if az==am then return end am=az if am then if an then task
-.cancel(an)an=nil end an=task.spawn(function()while am do local aA,aB=pcall(ax)
-if not aA then if os.clock()-(ac.lastPlayerWarn or 0)>5 then ac.lastPlayerWarn=
-os.clock()warn('[PlayerHitbox] error:',tostring(aB))end end aa.RunService.
-Heartbeat:Wait()end end)else ay()end end function ac.IsPlayerHitboxEnabled()
-return am end function ac.GetPlayerHitboxMode()return ao end function ac.
-SetPlayerHitboxMode(az)if az~=ak and az~=al then return end ao=az end function
-ac.GetPlayerHitboxScale()return ap end function ac.SetPlayerHitboxScale(az)ap=az
-end local az,aA=function()for az,aA in ipairs(ab.GetTrackedEnemyData())do local
-aB=aA.Root if aB and aB.Parent then aw(ai,aB,ah,as,at)end end end,function()if
-av then task.cancel(av)av=nil end for az,aA in ipairs(game:GetService'Workspace'
-:GetDescendants())do local aB,aC=aA:FindFirstChild(ai),aA:FindFirstChild(ai..
-'_Proxy')if aB then aB:Destroy()end if aC then aC:Destroy()end end end function
-ac.ToggleEnemyHitbox(aB)if aB==ar then return end ar=aB if ar then if av then
-task.cancel(av)av=nil end av=task.spawn(function()while ar do local aC,aD=pcall(
-az)if not aC then if os.clock()-(ac.lastEnemyWarn or 0)>5 then ac.lastEnemyWarn=
-os.clock()warn('[EnemyHitbox] error:',tostring(aD))end end aa.RunService.
-Heartbeat:Wait()end end)else aA()end end function ac.IsEnemyHitboxEnabled()
-return ar end function ac.GetEnemyHitboxMode()return as end function ac.
-SetEnemyHitboxMode(aB)if aB~=ak and aB~=al then return end as=aB end function ac
-.GetEnemyHitboxScale()return at end function ac.SetEnemyHitboxScale(aB)at=aB end
-local aB,aC,aD,aE,aF,aG=Color3.fromRGB(255,0,0),'SkillESP',{},false,false local
-aH=function()table.clear(aD)local aH=game:GetService'Workspace'for aI,aJ in
-ipairs(aH:GetChildren())do aD[aJ]=true end aE=true end aH()local aI,aJ=function(
-aI)local aJ=aq.Character if not aJ then return false end local aK=aI while aK do
-if aK==aJ then return true end aK=aK.Parent end return false end,function(aI)
-local aJ=aI while aJ do if aD[aJ]then return true end aJ=aJ.Parent end return
-false end local aK=function(aK)if not aE then return end if aJ(aK)then return
-end if aI(aK)then return end if aK:FindFirstChild(aC)then return end local aL=
-Instance.new'SelectionBox'aL.Name=aC aL.Adornee=aK aL.Color3=aB aL.SurfaceColor3
-=aB aL.SurfaceTransparency=0.8 aL.Parent=aK end local aL,aM=function()if not aE
-then return end local aL=game:GetService'Workspace'for aM,aN in ipairs(aL:
-GetChildren())do if aN:IsA'BasePart'then aK(aN)end for aO,aP in ipairs(aN:
-GetDescendants())do if aP:IsA'BasePart'then aK(aP)end end end end,function()if
-aG then task.cancel(aG)aG=nil end local aL=game:GetService'Workspace'for aM,aN
-in ipairs(aL:GetDescendants())do local aO=aN:FindFirstChild(aC)if aO then aO:
-Destroy()end end end function ac.ToggleSkillHitbox(aN)if aN==aF then return end
-aF=aN if aF then if aG then task.cancel(aG)aG=nil end aG=task.spawn(function()
-while aF do local aO,aP=pcall(aL)if not aO and os.clock()-(ac.lastSkillWarnH or
-0)>5 then ac.lastSkillWarnH=os.clock()warn('[SkillHitbox] error:',tostring(aP))
-end task.wait(aj)end end)else aM()end end function ac.IsSkillHitboxEnabled()
-return aF end return ac end function a.h()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak
-=a.load'd',a.load'f',{},Color3.fromRGB(255,170,0),0.55,'Enemy_ESP',0.5,{Orange=
-Color3.fromRGB(255,170,0),Red=Color3.fromRGB(255,0,0),Yellow=Color3.fromRGB(255,
-255,0),Green=Color3.fromRGB(0,255,0),Cyan=Color3.fromRGB(0,255,255),Blue=Color3.
-fromRGB(0,120,255),Magenta=Color3.fromRGB(255,0,255),White=Color3.fromRGB(255,
-255,255)},false,'Orange'local al=function()return ah[aj]or ad end local am,an,ao
-=function(am)if not am or not am:IsA'Model'then return end if not am:
-FindFirstChild(af)then local an=Instance.new'Highlight'an.Name=af an.Adornee=am
-an.FillColor=al()an.FillTransparency=ae an.OutlineColor=al()an.
-OutlineTransparency=1 an.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop an.Parent
-=am end end,function()local am=al()for an,ao in ipairs(game:GetService
-'Workspace':GetDescendants())do local ap=ao:FindFirstChild(af)if ap and ap:IsA
-'Highlight'then ap.FillColor=am ap.OutlineColor=am end end end,function()for am,
-an in ipairs(game:GetService'Workspace':GetDescendants())do local ao=an:
-FindFirstChild(af)if ao then ao:Destroy()end end for am,an in ipairs(aa.Players:
-GetPlayers())do local ao=an.Character if ao then for ap,aq in ipairs(ao:
-GetDescendants())do if aq.Name==af then aq:Destroy()end end end end end function
-ac.Toggle(ap)if ap==ai then return end ai=ap if ai then if ak then task.cancel(
-ak)ak=nil end ak=task.spawn(function()while ai do local aq,ar=pcall(function()
-for aq,ar in ipairs(ab.GetTrackedEnemyData())do if ar.Model and ar.Model.Parent
-then am(ar.Model)end end end)if not aq then if os.clock()-(ac.lastWarn or 0)>5
-then ac.lastWarn=os.clock()warn('[EnemyESP] error:',tostring(ar))end end task.
-wait(ag)end end)else if ak then task.cancel(ak)ak=nil end local aq=pcall(ao)if
-not aq then warn'[EnemyESP] cleanup error'end end end function ac.IsEnabled()
-return ai end function ac.GetColorNames()local ap={}for aq in pairs(ah)do table.
-insert(ap,aq)end table.sort(ap)return ap end function ac.GetSelectedColor()
-return aj end function ac.SetSelectedColor(ap)if not ah[ap]then return end if ap
-==aj then return end aj=ap local aq=pcall(an)if not aq then warn
-'[EnemyESP] recolor error'end end return ac end function a.i()local aa,ab,ac,ad,
-ae,af,ag,ah,ai=a.load'd',a.load'e',{},false,{},{},{},2,function(aa)if not aa
-then return false end local ab=aa while ab and ab~=workspace do local ac=ab.Name
-:lower()if ac:find'stairramp'or ac:find'step'or ac:find'meshes/cylinder'or ac:
-find'cylinder'then return true end ab=ab.Parent end return false end local aj=
-function(aj)if not ad or not aj or not aj:IsA'BasePart'then return end if ai(aj)
-then return end if not af[aj]then af[aj]={CanCollide=aj.CanCollide,CanTouch=aj.
-CanTouch}end pcall(function()aj.CanCollide=false aj.CanTouch=false end)end local
-ak={['meshes/ice3']=true,['meshes/snow']=true,['invisible platform']=true,part=
-true}local al,am,an=function(al)if not al then return true end if al:IsA'Model'
-or al:IsA'Folder'then return true end local am=al.Name:lower()if ak[am]or al.
-Name=='Meshes/Ice3'or al.Name=='Meshes/Snow'or al.Name=='Invisible platform'or
-al.Name=='Part'then return true end return false end,function()if not ad then
-return end local al=workspace:FindFirstChild'Map'if not al then return end for
-am,an in ipairs(al:GetDescendants())do if(an:IsA'Model'or an:IsA'Folder')and an.
-Name:lower():find'border'then for ao,ap in ipairs(an:GetChildren())do pcall(
-function()ap:Destroy()end)end end end end,function()if not ad then return end
-local al=workspace:FindFirstChild'Map'if not al then return end for am,an in
-ipairs(al:GetDescendants())do if an.Name:lower():find'wooden plank'then local ao
-=an.Parent while ao and ao~=al and ao~=workspace do if ao:IsA'Model'then pcall(
-function()ao:Destroy()end)break end ao=ao.Parent end end end end local ao,ap,aq=
-function()if not ad then return end local ao=workspace:FindFirstChild'Map'if not
-ao then return end for ap,aq in ipairs(ao:GetChildren())do if not al(aq)then
-pcall(function()aq:Destroy()end)end end end,{Vector3.new(-724.4873046875,
+math.clamp(ao,1,3)return'Boss'..tostring(a7)end function ag.ResetBossIndex()
+local a7=am ao=0 am=false aP=nil for a8=#ap,1,-1 do pcall(ap[a8],ao)end if a7
+then for a8=#an,1,-1 do pcall(an[a8],false)end end aN()end function ag.
+OnBossIndexChanged(a7)if type(a7)~='function'then return function()end end table
+.insert(ap,a7)return function()for a8,a9 in ipairs(ap)do if a9==a7 then table.
+remove(ap,a8)break end end end end local a7=function(a7)if type(a7)~='string'
+then return 0 end local a8=string.lower(a7)local a9=string.match(a8,
+'boss.*(%d+)')if a9 then return 100+(tonumber(a9)or 1)end if string.find(a8,
+'boss')then return 100+math.max(1,ao)end local b=string.match(a7,'^room(%d+)$')
+if not b then return 0 end return tonumber(b)or 0 end local a8=function()if not
+dungeon then return 0 end for a8,a9 in pairs(at)do if a9 and a9.Room then local
+b=a7(a9.Room.Name)if b>0 then return b end end end if am then return 100+math.
+max(1,ao)end return 0 end aN=function()local a9=a8()if a9==aq then return end aq
+=a9 for b=#ar,1,-1 do pcall(ar[b],aq)end end function ag.GetCurrentRoomIndex()
+return aq end function ag.OnRoomIndexChanged(a9)if type(a9)~='function'then
+return function()end end table.insert(ar,a9)return function()for b,ba in ipairs(
+ar)do if ba==a9 then table.remove(ar,b)break end end end end function ag.
+GetCurrentDungeonName()return aJ end function ag.OnDungeonNameChanged(a9)if
+type(a9)~='function'then return function()end end table.insert(aA,a9)return
+function()for b,ba in ipairs(aA)do if ba==a9 then table.remove(aA,b)break end
+end end end function ag.IsInLobby()return aC end function ag.OnLobbyChanged(a9)
+if type(a9)~='function'then return function()end end table.insert(aD,a9)return
+function()for b,ba in ipairs(aD)do if ba==a9 then table.remove(aD,b)break end
+end end end local a9 aO=function()if not am or aP~=nil then return end for b,ba
+in pairs(at)do if ba and ba.Root and ba.Root.Parent then local bb=false if ba.
+Room and type(ba.Room.Name)=='string'and string.find(string.lower(ba.Room.Name),
+'boss')then bb=true elseif string.find(string.lower(b.Name),'boss')then bb=true
+elseif b.Parent and string.find(string.lower(b.Parent.Name),'boss')then bb=true
+end if bb then aP=ba.Root.Position return end end end for b,ba in pairs(at)do if
+ba and ba.Root and ba.Root.Parent then aP=ba.Root.Position return end end end
+local b=function(b)if am==b then return end am=b if b then ao+=1 aP=nil a4()aO()
+for ba=#ap,1,-1 do pcall(ap[ba],ao)end else aP=nil end for ba=#an,1,-1 do pcall(
+an[ba],am)end aN()end function ag.GetBossSpawnPosition()if aP then return aP end
+aO()return aP end function ag.SetBossSpawnPosition(ba)aP=ba end local function
+ba()if not ac then return end local bb=ac:FindFirstChild'PlayerGui'if not bb
+then a9=nil b(false)return end local bc=bb:FindFirstChild('bossHealth',true)if
+bc then if bc~=a9 then a9=bc if a9:IsA'ScreenGui'then aS(a9:
+GetPropertyChangedSignal'Enabled':Connect(ba))elseif a9:IsA'GuiObject'then aS(a9
+:GetPropertyChangedSignal'Visible':Connect(ba))end end local bd=if bc:IsA
+'ScreenGui'then bc.Enabled elseif bc:IsA'GuiObject'then bc.Visible else true b(
+bd)else a9=nil b(false)end end task.spawn(function()if not ac then return end
+local bb=ac:WaitForChild('PlayerGui',30)if not bb then return end aS(bb.
+DescendantAdded:Connect(ba))aS(bb.DescendantRemoving:Connect(ba))ba()while ab.
+IsActive()and task.wait(0.5)do ba()end end)local bb,bc={}local bd=function()if
+bc then return bc end pcall(function()local bd=ac or game:GetService'Players'.
+LocalPlayer local be=bd and bd:FindFirstChild'PlayerScripts'local bf=be and be:
+FindFirstChild'PlayerModule'if bf then bc=require(bf):GetControls()end end)
+return bc end function ag.DisableControls(be)be=be or'default'bb[be]=true local
+bf=bd()if bf and type(bf.Disable)=='function'then pcall(function()bf:Disable()
+end)end end function ag.EnableControls(be)be=be or'default'bb[be]=nil if next(bb
+)~=nil then return end local bf=bd()if bf and type(bf.Enable)=='function'then
+pcall(function()bf:Enable()end)end end ab.Register(function()if aQ then aQ:
+Disconnect()aQ=nil end for be,bf in ipairs(aF)do pcall(function()bf:Disconnect()
+end)end table.clear(aF)table.clear(bb)local be=bd()if be and type(be.Enable)==
+'function'then pcall(function()be:Enable()end)end aM()end)return ag end function
+a.g()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an=a.load'd',a.load'f',{},0.05
+,0.8,Color3.fromRGB(0,255,0),'PlayerHitbox_ESP',Color3.fromRGB(255,0,0),
+'EnemyHitbox_ESP',0.01,'Real','Custom',false local ao,ap,aq,ar,as,at,au,av=ak,
+1.5,aa.player,false,ak,1.5,function(ao,ap,aq)local ar=Instance.new'SelectionBox'
+ar.Name=ao ar.Adornee=ap ar.Color3=aq ar.LineThickness=ad*4 ar.SurfaceColor3=aq
+ar.SurfaceTransparency=ae ar.Parent=ap end local aw=function(aw,ax,ay,az,aA)if
+not ax or not ax.Parent then return end local aB,aC=aw..'_Proxy',ax:
+FindFirstChild(aw)local aD=ax:FindFirstChild(aB)if az==al then if aC and aC:IsA
+'SelectionBox'and aC.Adornee==ax then aC:Destroy()end if not aD then aD=Instance
+.new'Part'aD.Name=aB aD.Anchored=true aD.CanCollide=false aD.CanQuery=false aD.
+CanTouch=false aD.Transparency=1 aD.Parent=ax au(aw,aD,ay)end local aE=ax.Size
+local aF=math.max(math.abs(aE.X),math.abs(aE.Y),math.abs(aE.Z))local aG=math.
+max(aF*aA,1)aD.Size=Vector3.new(aG,aG,aG)aD.CFrame=ax.CFrame else if aD then aD:
+Destroy()end if aC and aC:IsA'SelectionBox'and aC.Adornee~=ax then aC:Destroy()
+aC=nil end if not aC or not aC:IsA'SelectionBox'or aC.Adornee~=ax then au(aw,ax,
+ay)end end end local ax,ay=function()local ax=aq and aq.Character local ay=ax
+and ax:FindFirstChild'HumanoidRootPart'if not ay or not ay.Parent then return
+end aw(ag,ay,af,ao,ap)end,function()if an then task.cancel(an)an=nil end local
+ax=function(ax)if not ax then return end for ay,az in ipairs(ax:GetDescendants()
+)do if az.Name==ag or az.Name==ag..'_Proxy'then az:Destroy()end end end ax(aq
+and aq.Character)for ay,az in ipairs(aa.Players:GetPlayers())do ax(az.Character)
+end end function ac.TogglePlayerHitbox(az)if az==am then return end am=az if am
+then if an then task.cancel(an)an=nil end an=task.spawn(function()while am do
+local aA,aB=pcall(ax)if not aA then if os.clock()-(ac.lastPlayerWarn or 0)>5
+then ac.lastPlayerWarn=os.clock()warn('[PlayerHitbox] error:',tostring(aB))end
+end aa.RunService.Heartbeat:Wait()end end)else ay()end end function ac.
+IsPlayerHitboxEnabled()return am end function ac.GetPlayerHitboxMode()return ao
+end function ac.SetPlayerHitboxMode(az)if az~=ak and az~=al then return end ao=
+az end function ac.GetPlayerHitboxScale()return ap end function ac.
+SetPlayerHitboxScale(az)ap=az end local az,aA=function()for az,aA in ipairs(ab.
+GetTrackedEnemyData())do local aB=aA.Root if aB and aB.Parent then aw(ai,aB,ah,
+as,at)end end end,function()if av then task.cancel(av)av=nil end for az,aA in
+ipairs(game:GetService'Workspace':GetDescendants())do local aB,aC=aA:
+FindFirstChild(ai),aA:FindFirstChild(ai..'_Proxy')if aB then aB:Destroy()end if
+aC then aC:Destroy()end end end function ac.ToggleEnemyHitbox(aB)if aB==ar then
+return end ar=aB if ar then if av then task.cancel(av)av=nil end av=task.spawn(
+function()while ar do local aC,aD=pcall(az)if not aC then if os.clock()-(ac.
+lastEnemyWarn or 0)>5 then ac.lastEnemyWarn=os.clock()warn(
+'[EnemyHitbox] error:',tostring(aD))end end aa.RunService.Heartbeat:Wait()end
+end)else aA()end end function ac.IsEnemyHitboxEnabled()return ar end function ac
+.GetEnemyHitboxMode()return as end function ac.SetEnemyHitboxMode(aB)if aB~=ak
+and aB~=al then return end as=aB end function ac.GetEnemyHitboxScale()return at
+end function ac.SetEnemyHitboxScale(aB)at=aB end local aB,aC,aD,aE,aF,aG=Color3.
+fromRGB(255,0,0),'SkillESP',{},false,false local aH=function()table.clear(aD)
+local aH=game:GetService'Workspace'for aI,aJ in ipairs(aH:GetChildren())do aD[aJ
+]=true end aE=true end aH()local aI,aJ=function(aI)local aJ=aq.Character if not
+aJ then return false end local aK=aI while aK do if aK==aJ then return true end
+aK=aK.Parent end return false end,function(aI)local aJ=aI while aJ do if aD[aJ]
+then return true end aJ=aJ.Parent end return false end local aK=function(aK)if
+not aE then return end if aJ(aK)then return end if aI(aK)then return end if aK:
+FindFirstChild(aC)then return end local aL=Instance.new'SelectionBox'aL.Name=aC
+aL.Adornee=aK aL.Color3=aB aL.SurfaceColor3=aB aL.SurfaceTransparency=0.8 aL.
+Parent=aK end local aL,aM=function()if not aE then return end local aL=game:
+GetService'Workspace'for aM,aN in ipairs(aL:GetChildren())do if aN:IsA'BasePart'
+then aK(aN)end for aO,aP in ipairs(aN:GetDescendants())do if aP:IsA'BasePart'
+then aK(aP)end end end end,function()if aG then task.cancel(aG)aG=nil end local
+aL=game:GetService'Workspace'for aM,aN in ipairs(aL:GetDescendants())do local aO
+=aN:FindFirstChild(aC)if aO then aO:Destroy()end end end function ac.
+ToggleSkillHitbox(aN)if aN==aF then return end aF=aN if aF then if aG then task.
+cancel(aG)aG=nil end aG=task.spawn(function()while aF do local aO,aP=pcall(aL)if
+not aO and os.clock()-(ac.lastSkillWarnH or 0)>5 then ac.lastSkillWarnH=os.
+clock()warn('[SkillHitbox] error:',tostring(aP))end task.wait(aj)end end)else
+aM()end end function ac.IsSkillHitboxEnabled()return aF end return ac end
+function a.h()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak=a.load'd',a.load'f',{},
+Color3.fromRGB(255,170,0),0.55,'Enemy_ESP',0.5,{Orange=Color3.fromRGB(255,170,0)
+,Red=Color3.fromRGB(255,0,0),Yellow=Color3.fromRGB(255,255,0),Green=Color3.
+fromRGB(0,255,0),Cyan=Color3.fromRGB(0,255,255),Blue=Color3.fromRGB(0,120,255),
+Magenta=Color3.fromRGB(255,0,255),White=Color3.fromRGB(255,255,255)},false,
+'Orange'local al=function()return ah[aj]or ad end local am,an,ao=function(am)if
+not am or not am:IsA'Model'then return end if not am:FindFirstChild(af)then
+local an=Instance.new'Highlight'an.Name=af an.Adornee=am an.FillColor=al()an.
+FillTransparency=ae an.OutlineColor=al()an.OutlineTransparency=1 an.DepthMode=
+Enum.HighlightDepthMode.AlwaysOnTop an.Parent=am end end,function()local am=al()
+for an,ao in ipairs(game:GetService'Workspace':GetDescendants())do local ap=ao:
+FindFirstChild(af)if ap and ap:IsA'Highlight'then ap.FillColor=am ap.
+OutlineColor=am end end end,function()for am,an in ipairs(game:GetService
+'Workspace':GetDescendants())do local ao=an:FindFirstChild(af)if ao then ao:
+Destroy()end end for am,an in ipairs(aa.Players:GetPlayers())do local ao=an.
+Character if ao then for ap,aq in ipairs(ao:GetDescendants())do if aq.Name==af
+then aq:Destroy()end end end end end function ac.Toggle(ap)if ap==ai then return
+end ai=ap if ai then if ak then task.cancel(ak)ak=nil end ak=task.spawn(function
+()while ai do local aq,ar=pcall(function()for aq,ar in ipairs(ab.
+GetTrackedEnemyData())do if ar.Model and ar.Model.Parent then am(ar.Model)end
+end end)if not aq then if os.clock()-(ac.lastWarn or 0)>5 then ac.lastWarn=os.
+clock()warn('[EnemyESP] error:',tostring(ar))end end task.wait(ag)end end)else
+if ak then task.cancel(ak)ak=nil end local aq=pcall(ao)if not aq then warn
+'[EnemyESP] cleanup error'end end end function ac.IsEnabled()return ai end
+function ac.GetColorNames()local ap={}for aq in pairs(ah)do table.insert(ap,aq)
+end table.sort(ap)return ap end function ac.GetSelectedColor()return aj end
+function ac.SetSelectedColor(ap)if not ah[ap]then return end if ap==aj then
+return end aj=ap local aq=pcall(an)if not aq then warn'[EnemyESP] recolor error'
+end end return ac end function a.i()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'd',a
+.load'e',{},false,{},{},{},2,function(aa)if not aa then return false end local
+ab=aa while ab and ab~=workspace do local ac=ab.Name:lower()if ac:find
+'stairramp'or ac:find'step'or ac:find'meshes/cylinder'or ac:find'cylinder'then
+return true end ab=ab.Parent end return false end local aj=function(aj)if not ad
+or not aj or not aj:IsA'BasePart'then return end if ai(aj)then return end if not
+af[aj]then af[aj]={CanCollide=aj.CanCollide,CanTouch=aj.CanTouch}end pcall(
+function()aj.CanCollide=false aj.CanTouch=false end)end local ak={['meshes/ice3'
+]=true,['meshes/snow']=true,['invisible platform']=true,part=true}local al,am,an
+=function(al)if not al then return true end if al:IsA'Model'or al:IsA'Folder'
+then return true end local am=al.Name:lower()if ak[am]or al.Name=='Meshes/Ice3'
+or al.Name=='Meshes/Snow'or al.Name=='Invisible platform'or al.Name=='Part'then
+return true end return false end,function()if not ad then return end local al=
+workspace:FindFirstChild'Map'if not al then return end for am,an in ipairs(al:
+GetDescendants())do if(an:IsA'Model'or an:IsA'Folder')and an.Name:lower():find
+'border'then for ao,ap in ipairs(an:GetChildren())do pcall(function()ap:Destroy(
+)end)end end end end,function()if not ad then return end local al=workspace:
+FindFirstChild'Map'if not al then return end for am,an in ipairs(al:
+GetDescendants())do if an.Name:lower():find'wooden plank'then local ao=an.Parent
+while ao and ao~=al and ao~=workspace do if ao:IsA'Model'then pcall(function()ao
+:Destroy()end)break end ao=ao.Parent end end end end local ao,ap,aq=function()if
+not ad then return end local ao=workspace:FindFirstChild'Map'if not ao then
+return end for ap,aq in ipairs(ao:GetChildren())do if not al(aq)then pcall(
+function()aq:Destroy()end)end end end,{Vector3.new(-724.4873046875,
 33.9286003112793,174.7227325439453),Vector3.new(-697.8023681640625,
 26.397010803222656,380.60272216796875),Vector3.new(-649.3167724609375,
 31.39712905883789,397.80535888671875),Vector3.new(-581.634033203125,

@@ -95,6 +95,16 @@ function pathRecord.SetUseFastSpeed(state)
 	fireStatus("usefastspeed")
 end
 
+--// Tự động Retry dungeon khi chết quá 5 lần trong cùng 1 room thường (macro lỗi/không clear được quái)
+function pathRecord.IsAutoRetryOnDeathLimitEnabled()
+	return mover.IsAutoRetryOnDeathLimitEnabled()
+end
+
+function pathRecord.SetAutoRetryOnDeathLimit(state)
+	mover.SetAutoRetryOnDeathLimit(state and true or false)
+	fireStatus("retryondeath")
+end
+
 --// Thời gian xoay đón đầu Pre-Aim trước khi tới mốc skill / dwell (0.1s - 1.5s).
 function pathRecord.GetPreAimTime()
 	return mover.GetPreAimTime()
@@ -513,22 +523,23 @@ end)
 
 --// Auto-resume & Auto-play: khi sang room mới có segment trong macro -> tự động phát tiếp.
 --// Room boss được auto-resume chỉ khi map ở mode FULL (room đó đã được record).
-roomUnsub = shared.OnRoomIndexChanged(function()
+roomUnsub = shared.OnRoomIndexChanged(function(room)
+	-- Luôn tắt CombatMaster nếu mục tiêu hiện tại không phải Boss hoặc đã rời phòng Boss
+	if not shared.IsBossActive() and (combatMaster.IsAutoTriggeredByBoss() or combatMaster.IsEnabled()) then
+		combatMaster.Toggle(false)
+	end
+
 	if not autoPlayWanted and not mover.ResumeWanted() then return end
 
-	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 or shared.IsInLobby() or shared.IsDead() then return end
+	local curRoom = room or shared.GetCurrentRoomIndex()
+	if curRoom <= 0 or shared.IsInLobby() or shared.IsDead() then return end
 
 	local map = shared.GetCurrentDungeonName()
 	if not map or #map == 0 then return end
 	if mover.GetActiveMap() and mover.GetActiveMap() ~= map then return end
 	if shared.IsBossActive() and storage.GetMapMode(map) ~= "full" then return end
 
-	if combatMaster.IsAutoTriggeredByBoss() and not shared.IsBossActive() then
-		combatMaster.Toggle(false)
-	end
-
-	if not storage.HasSegmentOrMacro(map, room) then return end
+	if not storage.HasSegmentOrMacro(map, curRoom) then return end
 
 	if not mover.IsPlaying() then
 		coordinator.EnableExclusive("PathRecord")
@@ -540,7 +551,7 @@ end)
 --// Đổi map giữa chừng: commit nốt record đang dở + dọn trạng thái playback map cũ.
 --// Khi vào map mới và autoPlayWanted bật: nếu room 1 đã có macro -> tự động khởi chạy.
 mapUnsub = shared.OnDungeonNameChanged(function(name)
-	if combatMaster.IsAutoTriggeredByBoss() then
+	if combatMaster.IsAutoTriggeredByBoss() or combatMaster.IsEnabled() then
 		combatMaster.Toggle(false)
 	end
 	if recorder.IsRecording() then

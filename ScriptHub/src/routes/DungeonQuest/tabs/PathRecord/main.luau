@@ -186,6 +186,14 @@ return function(window, tab)
 		end),
 	}, "Toggle_PR_UseFastSpeed")
 
+	local autoRetryOnDeath = left:Toggle({
+		Name = "Auto Retry on Death Limit (5 Deaths)",
+		Default = pathRecord.IsAutoRetryOnDeathLimitEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			pathRecord.SetAutoRetryOnDeathLimit(state)
+		end),
+	}, "Toggle_PR_AutoRetryOnDeathLimit")
+
 	--// ============================================================
 	--// LEFT COLUMN: Section 2 - Combat & Skill Timing
 	--// ============================================================

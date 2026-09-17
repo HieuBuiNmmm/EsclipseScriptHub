@@ -64,53 +64,53 @@ if _ then Z(_)end end end),Removed=dungeon.DescendantRemoving:Connect(function(
 ac)if ac:IsA'Model'then X(ac)end end)}return true end N=function()if not dungeon
 then return end for ac,_ in pairs(v)do if _.Added then pcall(function()_.Added:
 Disconnect()end)end if _.Removed then pcall(function()_.Removed:Disconnect()end)
-end end v={}t={}for ac in pairs(u)do W(ac)end u={}y=0 x={}Q=nil dungeon=nil end
-L=function()for ac,_ in pairs(u)do if not ac or not ac.Parent then X(ac)else
-local ad=_.Humanoid or ac:FindFirstChildOfClass'Humanoid'_.Humanoid=ad if not ad
-or ad.Health<=0 then X(ac)else local ae=_.Root if not ae or not ae.Parent then
-ae=U(ac)if ae then _.Root=ae else X(ac)end end end end end end function h.
-SetFastSpeed(ac)j=ac if i and humanoid and humanoid.Parent then if humanoid.
-WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false end end end function h.
-SetSpeedEnabled(ac)i=ac if humanoid and humanoid.Parent then m=true if i then if
-humanoid.WalkSpeed<j then humanoid.WalkSpeed=j end else humanoid.WalkSpeed=k end
-m=false end end function h.IsSpeedEnabled()return i end function h.GetFastSpeed(
-)return j end function h.SetInstantAccelEnabled(ac)l=ac and true or false end
-function h.IsInstantAccelEnabled()return l end local ac=function()if R then R:
-Disconnect()R=nil end if not humanoid or not humanoid.Parent then return end R=
-humanoid:GetPropertyChangedSignal'WalkSpeed':Connect(function()if m then return
-end if not humanoid or not humanoid.Parent then return end local ac=humanoid.
-WalkSpeed if i then if ac<j then m=true humanoid.WalkSpeed=j m=false end else k=
-ac end end)end function h.SetHumanoid(ad)if not ad then return end local ae=ad:
-WaitForChild('Humanoid',10)if not ae then return end humanoid=ae rootPart=ad:
-WaitForChild('HumanoidRootPart',10)or ad.PrimaryPart k=humanoid.WalkSpeed if i
-and humanoid.WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false end if S then
-S:Disconnect()S=nil end S=humanoid.Died:Connect(function()J=true end)T(humanoid.
-HealthChanged:Connect(function(_)if _<=0 then J=true elseif J and _>0 then J=
-false end end))end local ad=function()if not c.IsActive()then return end if not
-l then return end if not humanoid or not humanoid.Parent or humanoid.Health<=0
-or humanoid.Sit then return end if not rootPart or not rootPart.Parent then
-local ad=d and d.Character rootPart=ad and ad:FindFirstChild'HumanoidRootPart'if
-not rootPart then return end end if rootPart.Anchored then return end local ad,
-ae=humanoid.MoveDirection,rootPart.AssemblyLinearVelocity if ad.Magnitude>0.05
-then local _=i and math.max(j,humanoid.WalkSpeed)or humanoid.WalkSpeed rootPart.
-AssemblyLinearVelocity=Vector3.new(ad.X*_,ae.Y,ad.Z*_)end end if b.RunService
-then local ae=b.RunService.PreSimulation or b.RunService.Heartbeat if ae then T(
-ae:Connect(ad))end end function h.GetDungeonStartTime()return dungeonStartTime
-end function h.SetDungeonStartTime(ae)dungeonStartTime=ae end function h.
-GetDungeonElapsed()if not dungeonStartTime then return nil end return os.clock()
--dungeonStartTime end function h.ReadyDungeon()if not dungeon and not M()then
-return false end return true end function h.GetHumanoid()return humanoid end
-function h.GetEnemyNames()local ae={}local _=function(_)if _ and _~=''and _~=d.
-Name then ae[_]=true end end if dungeon then for af,ag in ipairs(dungeon:
-GetChildren())do if ag:IsA'Folder'or ag:IsA'Model'then for ah,ai in ipairs(ag:
-GetDescendants())do if ai:IsA'Model'and ai:FindFirstChildOfClass'Humanoid'then
-_(ai.Name)end end end end end for af in pairs(u)do _(af.Name)end local af={}for
-ag in pairs(ae)do table.insert(af,ag)end table.sort(af)return af end function h.
-GetEnemyCount()return y end function h.GetTrackedEnemyData()local ae={}for af,ag
-in pairs(u)do if ag and ag.Root and ag.Root.Parent then ae[#ae+1]=ag end end
-return ae end function h.OnEnemyChanged(ae)if type(ae)~='function'then return
-function()end end table.insert(z,ae)return function()for af,ag in ipairs(z)do if
-ag==ae then table.remove(z,af)break end end end end function h.
+end end v={}t={}for ac in pairs(u)do W(ac)end u={}y=0 x={}h.ResetBossIndex()
+dungeon=nil end L=function()for ac,_ in pairs(u)do if not ac or not ac.Parent
+then X(ac)else local ad=_.Humanoid or ac:FindFirstChildOfClass'Humanoid'_.
+Humanoid=ad if not ad or ad.Health<=0 then X(ac)else local ae=_.Root if not ae
+or not ae.Parent then ae=U(ac)if ae then _.Root=ae else X(ac)end end end end end
+end function h.SetFastSpeed(ac)j=ac if i and humanoid and humanoid.Parent then
+if humanoid.WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false end end end
+function h.SetSpeedEnabled(ac)i=ac if humanoid and humanoid.Parent then m=true
+if i then if humanoid.WalkSpeed<j then humanoid.WalkSpeed=j end else humanoid.
+WalkSpeed=k end m=false end end function h.IsSpeedEnabled()return i end function
+h.GetFastSpeed()return j end function h.SetInstantAccelEnabled(ac)l=ac and true
+or false end function h.IsInstantAccelEnabled()return l end local ac=function()
+if R then R:Disconnect()R=nil end if not humanoid or not humanoid.Parent then
+return end R=humanoid:GetPropertyChangedSignal'WalkSpeed':Connect(function()if m
+then return end if not humanoid or not humanoid.Parent then return end local ac=
+humanoid.WalkSpeed if i then if ac<j then m=true humanoid.WalkSpeed=j m=false
+end else k=ac end end)end function h.SetHumanoid(ad)if not ad then return end
+local ae=ad:WaitForChild('Humanoid',10)if not ae then return end humanoid=ae
+rootPart=ad:WaitForChild('HumanoidRootPart',10)or ad.PrimaryPart k=humanoid.
+WalkSpeed if i and humanoid.WalkSpeed<j then m=true humanoid.WalkSpeed=j m=false
+end if S then S:Disconnect()S=nil end S=humanoid.Died:Connect(function()J=true
+end)T(humanoid.HealthChanged:Connect(function(_)if _<=0 then J=true elseif J and
+_>0 then J=false end end))end local ad=function()if not c.IsActive()then return
+end if not l then return end if not humanoid or not humanoid.Parent or humanoid.
+Health<=0 or humanoid.Sit then return end if not rootPart or not rootPart.Parent
+then local ad=d and d.Character rootPart=ad and ad:FindFirstChild
+'HumanoidRootPart'if not rootPart then return end end if rootPart.Anchored then
+return end local ad,ae=humanoid.MoveDirection,rootPart.AssemblyLinearVelocity if
+ad.Magnitude>0.05 then local _=i and math.max(j,humanoid.WalkSpeed)or humanoid.
+WalkSpeed rootPart.AssemblyLinearVelocity=Vector3.new(ad.X*_,ae.Y,ad.Z*_)end end
+if b.RunService then local ae=b.RunService.PreSimulation or b.RunService.
+Heartbeat if ae then T(ae:Connect(ad))end end function h.GetDungeonStartTime()
+return dungeonStartTime end function h.SetDungeonStartTime(ae)dungeonStartTime=
+ae end function h.GetDungeonElapsed()if not dungeonStartTime then return nil end
+return os.clock()-dungeonStartTime end function h.ReadyDungeon()if not dungeon
+and not M()then return false end return true end function h.GetHumanoid()return
+humanoid end function h.GetEnemyNames()local ae={}local _=function(_)if _ and _
+~=''and _~=d.Name then ae[_]=true end end if dungeon then for af,ag in ipairs(
+dungeon:GetChildren())do if ag:IsA'Folder'or ag:IsA'Model'then for ah,ai in
+ipairs(ag:GetDescendants())do if ai:IsA'Model'and ai:FindFirstChildOfClass
+'Humanoid'then _(ai.Name)end end end end end for af in pairs(u)do _(af.Name)end
+local af={}for ag in pairs(ae)do table.insert(af,ag)end table.sort(af)return af
+end function h.GetEnemyCount()return y end function h.GetTrackedEnemyData()local
+ae={}for af,ag in pairs(u)do if ag and ag.Root and ag.Root.Parent then ae[#ae+1]
+=ag end end return ae end function h.OnEnemyChanged(ae)if type(ae)~='function'
+then return function()end end table.insert(z,ae)return function()for af,ag in
+ipairs(z)do if ag==ae then table.remove(z,af)break end end end end function h.
 GetEnemyProjectileNames()local ae,af={},game:GetService'ReplicatedStorage'local
 ag=af:FindFirstChild(f)if not ag then return ae end for ah,ai in ipairs(ag:
 GetChildren())do local _=ai.ClassName if _=='Model'or _=='MeshPart'or _=='Part'
@@ -146,8 +146,9 @@ ag()end end)function h.IsBossActive()return n end function h.OnBossActiveChanged
 function()for aj,ak in ipairs(o)do if ak==_ then table.remove(o,aj)break end end
 end end function h.GetCurrentBossIndex()return p end function h.
 GetCombatTargetKey()if not n then return'Mob'end local aj=math.clamp(p,1,3)
-return'Boss'..tostring(aj)end function h.ResetBossIndex()p=0 Q=nil for aj=#q,1,-
-1 do pcall(q[aj],p)end end function h.OnBossIndexChanged(aj)if type(aj)~=
+return'Boss'..tostring(aj)end function h.ResetBossIndex()local aj=n p=0 n=false
+Q=nil for ak=#q,1,-1 do pcall(q[ak],p)end if aj then for ak=#o,1,-1 do pcall(o[
+ak],false)end end O()end function h.OnBossIndexChanged(aj)if type(aj)~=
 'function'then return function()end end table.insert(q,aj)return function()for
 ak,_ in ipairs(q)do if _==aj then table.remove(q,ak)break end end end end local
 aj=function(aj)if type(aj)~='string'then return 0 end local ak=string.lower(aj)

@@ -64,8 +64,8 @@ DescendantRemoving:Connect(function(ac)if ac:IsA'Model'then X(ac)end end)}return
 true end N=function()if not dungeon then return end for ac,_ in pairs(v)do if _.
 Added then pcall(function()_.Added:Disconnect()end)end if _.Removed then pcall(
 function()_.Removed:Disconnect()end)end end v={}t={}for ac in pairs(u)do W(ac)
-end u={}y=0 x={}Q=nil dungeon=nil end L=function()for ac,_ in pairs(u)do if not
-ac or not ac.Parent then X(ac)else local ad=_.Humanoid or ac:
+end u={}y=0 x={}h.ResetBossIndex()dungeon=nil end L=function()for ac,_ in pairs(
+u)do if not ac or not ac.Parent then X(ac)else local ad=_.Humanoid or ac:
 FindFirstChildOfClass'Humanoid'_.Humanoid=ad if not ad or ad.Health<=0 then X(ac
 )else local ae=_.Root if not ae or not ae.Parent then ae=U(ac)if ae then _.Root=
 ae else X(ac)end end end end end end function h.SetFastSpeed(ac)j=ac if i and
@@ -146,8 +146,9 @@ ag()end end)function h.IsBossActive()return n end function h.OnBossActiveChanged
 function()for aj,ak in ipairs(o)do if ak==_ then table.remove(o,aj)break end end
 end end function h.GetCurrentBossIndex()return p end function h.
 GetCombatTargetKey()if not n then return'Mob'end local aj=math.clamp(p,1,3)
-return'Boss'..tostring(aj)end function h.ResetBossIndex()p=0 Q=nil for aj=#q,1,-
-1 do pcall(q[aj],p)end end function h.OnBossIndexChanged(aj)if type(aj)~=
+return'Boss'..tostring(aj)end function h.ResetBossIndex()local aj=n p=0 n=false
+Q=nil for ak=#q,1,-1 do pcall(q[ak],p)end if aj then for ak=#o,1,-1 do pcall(o[
+ak],false)end end O()end function h.OnBossIndexChanged(aj)if type(aj)~=
 'function'then return function()end end table.insert(q,aj)return function()for
 ak,_ in ipairs(q)do if _==aj then table.remove(q,ak)break end end end end local
 aj=function(aj)if type(aj)~='string'then return 0 end local ak=string.lower(aj)
@@ -3384,12 +3385,13 @@ Register('AutoFarm',ao.Toggle,ao.IsEnabled)ac.Register(function()ao.Toggle(false
 ak,al in ipairs(aj)do pcall(al,ag)end end function af.IsEnabled()return ag end
 function af.Toggle(al,am)local an=al==true if ag==an then if not an then ai=
 false end return end ag=an if am then ai=an elseif not an then ai=false end if
-an then ac.Toggle(true)ac.SetAutoDodgeEnabled(true)ad.EnableExclusive'AutoFarm'
-ab.Toggle(true)ab.SetAutoSkillEnabled(true)else ab.Toggle(false)ab.
-SetAutoSkillEnabled(false)ac.SetAutoDodgeEnabled(false)ac.Toggle(false)end ak()
-end function af.IsAutoTriggeredByBoss()return ai end function af.
+an then ad.EnableExclusive'CombatMaster'ac.Toggle(true)ac.SetAutoDodgeEnabled(
+true)ab.Toggle(true,true)ab.SetAutoSkillEnabled(true)else ab.Toggle(false,true)
+ab.SetAutoSkillEnabled(false)ac.SetAutoDodgeEnabled(false)ac.Toggle(false)end
+ak()end function af.IsAutoTriggeredByBoss()return ai end function af.
 SetAutoBossCombat(al)ah=al==true end function af.IsAutoBossCombatEnabled()return
 ah end function af.OnStateChanged(al)if type(al)~='function'then return function
 ()end end table.insert(aj,al)return function()for am,an in ipairs(aj)do if an==
-al then table.remove(aj,am)break end end end end aa.Register(function()af.
-Toggle(false)end)return af
+al then table.remove(aj,am)break end end end end ad.Register('CombatMaster',
+function(al)if not al then af.Toggle(false)end end,af.IsEnabled)aa.Register(
+function()af.Toggle(false)end)return af

@@ -65,8 +65,8 @@ DescendantRemoving:Connect(function(ac)if ac:IsA'Model'then X(ac)end end)}return
 true end N=function()if not dungeon then return end for ac,_ in pairs(v)do if _.
 Added then pcall(function()_.Added:Disconnect()end)end if _.Removed then pcall(
 function()_.Removed:Disconnect()end)end end v={}t={}for ac in pairs(u)do W(ac)
-end u={}y=0 x={}Q=nil dungeon=nil end L=function()for ac,_ in pairs(u)do if not
-ac or not ac.Parent then X(ac)else local ad=_.Humanoid or ac:
+end u={}y=0 x={}h.ResetBossIndex()dungeon=nil end L=function()for ac,_ in pairs(
+u)do if not ac or not ac.Parent then X(ac)else local ad=_.Humanoid or ac:
 FindFirstChildOfClass'Humanoid'_.Humanoid=ad if not ad or ad.Health<=0 then X(ac
 )else local ae=_.Root if not ae or not ae.Parent then ae=U(ac)if ae then _.Root=
 ae else X(ac)end end end end end end function h.SetFastSpeed(ac)j=ac if i and
@@ -147,8 +147,9 @@ ag()end end)function h.IsBossActive()return n end function h.OnBossActiveChanged
 function()for aj,ak in ipairs(o)do if ak==_ then table.remove(o,aj)break end end
 end end function h.GetCurrentBossIndex()return p end function h.
 GetCombatTargetKey()if not n then return'Mob'end local aj=math.clamp(p,1,3)
-return'Boss'..tostring(aj)end function h.ResetBossIndex()p=0 Q=nil for aj=#q,1,-
-1 do pcall(q[aj],p)end end function h.OnBossIndexChanged(aj)if type(aj)~=
+return'Boss'..tostring(aj)end function h.ResetBossIndex()local aj=n p=0 n=false
+Q=nil for ak=#q,1,-1 do pcall(q[ak],p)end if aj then for ak=#o,1,-1 do pcall(o[
+ak],false)end end O()end function h.OnBossIndexChanged(aj)if type(aj)~=
 'function'then return function()end end table.insert(q,aj)return function()for
 ak,_ in ipairs(q)do if _==aj then table.remove(q,ak)break end end end end local
 aj=function(aj)if type(aj)~='string'then return 0 end local ak=string.lower(aj)
@@ -3386,158 +3387,159 @@ Register('AutoFarm',ao.Toggle,ao.IsEnabled)ac.Register(function()ao.Toggle(false
 function()for ak,al in ipairs(aj)do pcall(al,ag)end end function af.IsEnabled()
 return ag end function af.Toggle(al,am)local an=al==true if ag==an then if not
 an then ai=false end return end ag=an if am then ai=an elseif not an then ai=
-false end if an then ac.Toggle(true)ac.SetAutoDodgeEnabled(true)ad.
-EnableExclusive'AutoFarm'ab.Toggle(true)ab.SetAutoSkillEnabled(true)else ab.
-Toggle(false)ab.SetAutoSkillEnabled(false)ac.SetAutoDodgeEnabled(false)ac.
+false end if an then ad.EnableExclusive'CombatMaster'ac.Toggle(true)ac.
+SetAutoDodgeEnabled(true)ab.Toggle(true,true)ab.SetAutoSkillEnabled(true)else ab
+.Toggle(false,true)ab.SetAutoSkillEnabled(false)ac.SetAutoDodgeEnabled(false)ac.
 Toggle(false)end ak()end function af.IsAutoTriggeredByBoss()return ai end
 function af.SetAutoBossCombat(al)ah=al==true end function af.
 IsAutoBossCombatEnabled()return ah end function af.OnStateChanged(al)if type(al)
 ~='function'then return function()end end table.insert(aj,al)return function()
 for am,an in ipairs(aj)do if an==al then table.remove(aj,am)break end end end
-end aa.Register(function()af.Toggle(false)end)return af end function a.A()local
-aa,ab,ac=a.load'a',a.load'n',a.load'o'local ad,ae,af,ag,ah,ai,aj=aa.HttpService
-or game:GetService'HttpService',{},'DQMacro','pathRecord',3,'normal','full'local
-ak,al,am,an,ao=function(ak)if ak==aj then return aj end return ai end,(isfile~=
-nil and writefile~=nil and makefolder~=nil and isfolder~=nil),{},false,{}local
-ap,aq=function()for ap=#ao,1,-1 do pcall(ao[ap])end end,function()local ap=ab.
-Folder or'EsclipseHub'return ap..'/'..af end local ar,as=function()if not al
-then return end pcall(function()local ar=ab.Folder or'EsclipseHub'if not
-isfolder(ar)then makefolder(ar)end local as=aq()if not isfolder(as)then
-makefolder(as)end end)end,function(ar)if type(ar)~='string'then return'Unknown'
-end return(string.gsub(ar,'[/\\:*?"<>|]','_'))end local at,au,av,ax,ay=function(
-at)return aq()..'/'..as(at)..'.json'end,function(at)if not at then return nil
-end return{X=math.round(at.X*100)/100,Y=math.round(at.Y*100)/100,Z=math.round(at
-.Z*100)/100}end,function(at)if not at or type(at)~='table'then return nil end
-return Vector3.new(at.X or 0,at.Y or 0,at.Z or 0)end,function(at)return type(at)
-=='table'and type(at.points)=='table'and#at.points>0 end,function(at)if type(at)
-~='table'or type(at.X)~='number'then return nil end local au=Vector3.new(at.X,0,
-at.Z)if au.Magnitude<0.001 then return nil end return au.Unit end local az,aA,aB
-,aC,aD,aE=function(az)if type(az)~='table'then return nil end local aA={}for aB,
-aC in ipairs(az.dwells or{})do local aD=av(aC.pos)if aD then aA[#aA+1]={pos=aD,
-dur=tonumber(aC.dur)or 0,facing=ay(aC.facing)}end end local aB={}for aC,aD in
-ipairs(az.skills or{})do local aE=av(aD.pos)if aE then aB[#aB+1]={pos=aE,facing=
-ay(aD.facing),key=aD.key,dw=math.floor(tonumber(aD.dw)or 0),dwT=tonumber(aD.dwT)
-or 0}end end if#aA==0 and#aB==0 then return nil end return{dwells=aA,skills=aB}
-end,function()if an then return end an=true if al then ar()local az=aq()if
-isfolder'DQMacro'and listfiles then pcall(function()local aA=listfiles'DQMacro'
-if type(aA)=='table'then for aB,aC in ipairs(aA)do if type(aC)=='string'and
-string.lower(string.sub(aC,-5))=='.json'and isfile(aC)then local aD=string.
-match(aC,'([^/\\]+)$')or'unknown.json'local aE,aF=az..'/'..aD,readfile(aC)
-writefile(aE,aF)delfile(aC)end end end end)end if listfiles and isfolder(az)then
-local aA,aB=pcall(function()return listfiles(az)end)if aA and type(aB)=='table'
-then for aC,aD in ipairs(aB)do if type(aD)=='string'and string.lower(string.sub(
-aD,-5))=='.json'then pcall(function()if isfile(aD)then local aE=readfile(aD)
-local aF=ad:JSONDecode(aE)if type(aF)=='table'and type(aF.map)=='string'and
-type(aF.rooms)=='table'then am[aF.map]=aF end end end)end end end end local aA=
-ab.contextData if type(aA)=='table'and type(aA[ag])=='table'then local aB,aC=aA[
-ag],false for aD,aE in pairs(aB)do if type(aD)=='string'and type(aE)=='table'
-then if not am[aD]then am[aD]=aE end pcall(function()writefile(at(aD),ad:
-JSONEncode(aE))end)aC=true end end if aC then aA[ag]=nil ac.Save()end end else
-local az=ab.contextData if type(az)=='table'and type(az[ag])=='table'then for aA
-,aB in pairs(az[ag])do if type(aA)=='string'and type(aB)=='table'then am[aA]=aB
-end end end end end,0.1,0.82,0.3,function(az,aA)local aB,aC=az.X-aA.X,az.Z-aA.Z
-return math.sqrt(aB*aB+aC*aC)end function ae.SimplifyPath(aF,aG)local aH=#aF if
-aH<=2 then return aF end local aI={}for aJ=1,aH do aI[aJ]=false end aI[1]=true
-aI[aH]=true local aJ={1}for aK=2,aH-1 do local aL,aM,aN=aF[aK-1],aF[aK],aF[aK+1]
-local aO,aP=aM.X-aL.X,aM.Z-aL.Z local aQ,aR,aS=math.sqrt(aO*aO+aP*aP),aN.X-aM.X,
-aN.Z-aM.Z local aT=math.sqrt(aR*aR+aS*aS)if aQ>=aD and aT>=aD then local aU=(aO*
-aR+aP*aS)/(aQ*aT)if aU<aC then aI[aK]=true table.insert(aJ,aK)end end end table.
-insert(aJ,aH)local aK,aL=aG*aG,{}for aM=1,#aJ-1 do local aN,aO=aJ[aM],aJ[aM+1]if
-aO-aN>1 then table.insert(aL,{aN,aO})end end while#aL>0 do local aM=table.
-remove(aL)local aN,aO=aM[1],aM[2]local aP,aQ,aR,aS=aF[aN].X,aF[aN].Z,aF[aO].X,aF
-[aO].Z local aT,aU=aR-aP,aS-aQ local aV,aW,aX=aT*aT+aU*aU,-1,0 for aY=aN+1,aO-1
-do local aZ=0 if aV>0 then aZ=((aF[aY].X-aP)*aT+(aF[aY].Z-aQ)*aU)/aV aZ=math.
-clamp(aZ,0,1)end local a_,a0=aF[aY].X-(aP+aT*aZ),aF[aY].Z-(aQ+aU*aZ)local a1=a_*
-a_+a0*a0 if a1>aW then aW=a1 aX=aY end end if aX>0 and aW>aK then aI[aX]=true
-table.insert(aL,{aN,aX})table.insert(aL,{aX,aO})end end local aM={}for aN=1,aH
-do if aI[aN]and(#aM==0 or aE(aM[#aM],aF[aN])>=aB or aN==aH)then table.insert(aM,
-aF[aN])end end if#aM==1 then table.insert(aM,aF[aH])end return aM end function
-ae.OnChanged(aF)if type(aF)~='function'then return function()end end table.
-insert(ao,aF)return function()for aG,aH in ipairs(ao)do if aH==aF then table.
-remove(ao,aG)break end end end end function ae.HasMap(aF)if type(aF)~='string'or
-#aF==0 then return false end aA()local aG=am[aF]if not aG or type(aG.rooms)~=
-'table'then return false end for aH,aI in pairs(aG.rooms)do if ax(aI)and#aI.
-points>0 then return true end end return false end function ae.GetRoomSegment(aF
-,aG)if type(aF)~='string'or type(aG)~='number'then return nil end aA()local aH=
-am[aF]if not aH or type(aH.rooms)~='table'then return nil end local aI=aH.rooms[
-tostring(aG)]if not ax(aI)then return nil end local aJ={}for aK,aL in ipairs(aI.
-points)do local aM=av(aL)if aM then aJ[#aJ+1]=aM end end if#aJ==0 then return
-nil end return{startPos=av(aI.startPos)or aJ[1],points=aJ,events=aI.events and
-az(aI.events)or nil,speed=tonumber(aI.speed)or 0,boss=aI.boss==true}end function
-ae.HasSegmentOrMacro(aF,aG)return ae.GetRoomSegment(aF,aG)~=nil end function ae.
-GetMap(aF)if not ae.HasMap(aF)then return nil end aA()local aG=am[aF]if not aG
-then return nil end local aH={}for aI,aJ in pairs(aG.rooms or{})do local aK=
-tonumber(aI)if aK and ax(aJ)then local aL=ae.GetRoomSegment(aF,aK)if aL then aH[
-aK]=aL end end end return{map=aF,version=aG.version,rooms=aH,created=aG.created,
-updated=aG.updated,mode=ak(aG.mode)}end function ae.GetMaps()aA()local aF={}for
-aG,aH in pairs(am)do if type(aG)=='string'and type(aH)=='table'and aH.map==aG
-and type(aH.rooms)=='table'then local aI,aJ,aK=0,0,0 for aL,aM in pairs(aH.rooms
-)do if tonumber(aL)~=nil and ax(aM)then aI+=1 if aM.boss==true then aJ+=1 end aK
-+=#aM.points end end if aI>0 then table.insert(aF,{map=aG,roomCount=aI,bossCount
-=aJ,pointCount=aK,updated=aH.updated,mode=ak(aH.mode)})end end end table.sort(aF
-,function(aG,aH)return aG.map<aH.map end)return aF end function ae.Count()return
-#ae.GetMaps()end function ae.SaveSegment(aF,aG,aH,aI,aJ,aK,aL)if type(aF)~=
-'string'or#aF==0 then return false end if type(aG)~='number'or aG<=0 then return
-false end if not aH or not aI or#aI==0 then return false end aA()local aM=am[aF]
-if not aM or type(aM)~='table'then aM={map=aF,version=ah,created=os.time(),
-updated=os.time(),mode=ai,rooms={}}am[aF]=aM end if type(aM.rooms)~='table'then
-aM.rooms={}end local aN={}for aO,aP in ipairs(aI)do aN[#aN+1]=au(aP)end local aO
-={startPos=au(aH)or aN[1],points=aN}if aL then aO.boss=true end if type(aK)==
-'number'and aK>0 then aO.speed=aK end local aP=function(aP)if not aP or type(aP)
-~='table'then return nil end local aQ,aR=#(aP.dwells or{}),#(aP.skills or{})if
-aQ==0 and aR==0 then return nil end local aS={dwells={},skills={}}for aT,aU in
-ipairs(aP.dwells or{})do aS.dwells[#aS.dwells+1]={pos=au(aU.pos),dur=aU.dur or 0
-,facing=aU.facing}end for aT,aU in ipairs(aP.skills or{})do aS.skills[#aS.skills
-+1]={pos=au(aU.pos),facing=aU.facing,key=aU.key,dw=aU.dw or 0,dwT=aU.dwT or 0}
-end return aS end if aJ and type(aJ)=='table'then local aQ=aP(aJ)if aQ then aO.
-events=aQ end end aM.rooms[tostring(aG)]=aO aM.version=ah aM.map=aF aM.updated=
-os.time()if al then ar()pcall(function()writefile(at(aF),ad:JSONEncode(aM))end)
-else local aQ=ab.contextData if type(aQ)=='table'then if not aQ[ag]then aQ[ag]={
-}end aQ[ag][aF]=aM ac.Save()end end ap()return true end function ae.GetMapMode(
-aF)if type(aF)~='string'or#aF==0 then return ai end aA()local aG=am[aF]if type(
-aG)~='table'then return ai end return ak(aG.mode)end function ae.SetMapMode(aF,
-aG)if type(aF)~='string'or#aF==0 then return false end local aH=ak(aG)aA()local
-aI=am[aF]if not aI or type(aI)~='table'then aI={map=aF,version=ah,created=os.
-time(),updated=os.time(),mode=ai,rooms={}}am[aF]=aI end aI.mode=aH aI.map=aF aI.
-updated=os.time()if al then ar()pcall(function()writefile(at(aF),ad:JSONEncode(
-aI))end)else local aJ=ab.contextData if type(aJ)=='table'then if not aJ[ag]then
-aJ[ag]={}end aJ[ag][aF]=aI ac.Save()end end ap()return true end function ae.
-RemoveMap(aF)aA()if not am[aF]then return false end am[aF]=nil if al then local
-aG=at(aF)pcall(function()if isfile(aG)then delfile(aG)end end)else local aG=ab.
-contextData if type(aG)=='table'and aG[ag]then aG[ag][aF]=nil ac.Save()end end
-ap()return true end function ae.ClearAll()aA()if next(am)==nil then return end
-local aF=aq()if al and isfolder(aF)and listfiles then pcall(function()local aG=
-listfiles(aF)if type(aG)=='table'then for aH,aI in ipairs(aG)do if type(aI)==
-'string'and string.lower(string.sub(aI,-5))=='.json'and isfile(aI)then delfile(
-aI)end end end end)end table.clear(am)local aG=ab.contextData if type(aG)==
-'table'and aG[ag]then aG[ag]=nil ac.Save()end ap()end function ae.ReloadFromDisk
-()table.clear(am)an=false aA()ap()end function ae.ReloadFromConfig()ae.
-ReloadFromDisk()end return ae end function a.B()local aa,ab,ac,ad,ae=a.load'a',a
-.load'c',a.load'A',a.load'o',a.load'e'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,
-ar=aa.RunService,aa.player,aa.UserInputService,0.1,8000,0.4,0.1,1.5,1,6,{},true,
-true function ap.SetCapture(as)as=as and true or false aq=as ar=as end function
-ap.IsCaptureEnabled()return aq or ar end local as,at,au,av,ax,ay,az,aA,aB,aC,aD,
-aE,aF,aG,aH,aI,aJ,aK,aL,aM,aN,aO,aP,aQ,aR,aS,aT,aU,aV,aW=false,0,{},0,{},{},0,
-false,0,0,false,false,false,0,0,0,{}local aX,aY=function()local aX={recording=as
-,map=aK,room=at,pointCount=#au,dwellCount=#ax,skillCount=#ay,savedRooms=aG}for
-aY,aZ in ipairs(aJ)do pcall(aZ,aX)end end,function()local aX=ag and ag.Character
-local aY=aX and aX:FindFirstChild'HumanoidRootPart'if aY and aY.Parent then
-return aY end return nil end local aZ,a_,a0,a1=function()local aZ=aY()if not aZ
-then return nil end local a_=aZ.CFrame.LookVector if a_.Magnitude<0.001 then
-return nil end return{X=a_.X/a_.Magnitude,Z=a_.Z/a_.Magnitude}end,function()if
-aM then aM:Disconnect()aM=nil end if aN then aN:Disconnect()aN=nil end if aO
-then aO()aO=nil end if aP then aP()aP=nil end if aQ then aQ()aQ=nil end if
-respawnConnection then respawnConnection()respawnConnection=nil end end,function
-(aZ)au={aZ}ax={}ay={}aR=nil az=0 aS=nil aT=nil aU=nil aV=aZ aB=0 aC=0 av=os.
-clock()aW=os.clock()aA=false end,function()aK=nil at=0 aL=nil au={}ax={}ay={}aR=
-nil az=0 aS=nil aT=nil aU=nil aV=nil aA=false aB=0 aC=0 aW=nil aE=false aF=false
-aD=false aG=0 aH=0 aI=0 end local a2,a3=function(a2,a3)at=a2 aL=a3 aF=true a0(a3
-)aE=ab.IsBossActive()end,function(a2,a3)if not aF then return nil end local a4=
-ac.SimplifyPath(au,ak)if#a4<2 then return nil end local a5 if#ax>0 or#ay>0 then
-a5={dwells=ax,skills=ay}end local a6=0 if aC>0.5 and aB>5 then a6=math.clamp(aB/
-aC,5,100)end local a7=ac.SaveSegment(aK,at,aL,a4,a5,a6,aE)if not a7 then return
-nil end aG+=1 aI+=#au if aE then aH+=1 end if not a3 then local a8=''if a5 then
-a8=(
+end ad.Register('CombatMaster',function(al)if not al then af.Toggle(false)end
+end,af.IsEnabled)aa.Register(function()af.Toggle(false)end)return af end
+function a.A()local aa,ab,ac=a.load'a',a.load'n',a.load'o'local ad,ae,af,ag,ah,
+ai,aj=aa.HttpService or game:GetService'HttpService',{},'DQMacro','pathRecord',3
+,'normal','full'local ak,al,am,an,ao=function(ak)if ak==aj then return aj end
+return ai end,(isfile~=nil and writefile~=nil and makefolder~=nil and isfolder~=
+nil),{},false,{}local ap,aq=function()for ap=#ao,1,-1 do pcall(ao[ap])end end,
+function()local ap=ab.Folder or'EsclipseHub'return ap..'/'..af end local ar,as=
+function()if not al then return end pcall(function()local ar=ab.Folder or
+'EsclipseHub'if not isfolder(ar)then makefolder(ar)end local as=aq()if not
+isfolder(as)then makefolder(as)end end)end,function(ar)if type(ar)~='string'then
+return'Unknown'end return(string.gsub(ar,'[/\\:*?"<>|]','_'))end local at,au,av,
+ax,ay=function(at)return aq()..'/'..as(at)..'.json'end,function(at)if not at
+then return nil end return{X=math.round(at.X*100)/100,Y=math.round(at.Y*100)/100
+,Z=math.round(at.Z*100)/100}end,function(at)if not at or type(at)~='table'then
+return nil end return Vector3.new(at.X or 0,at.Y or 0,at.Z or 0)end,function(at)
+return type(at)=='table'and type(at.points)=='table'and#at.points>0 end,function
+(at)if type(at)~='table'or type(at.X)~='number'then return nil end local au=
+Vector3.new(at.X,0,at.Z)if au.Magnitude<0.001 then return nil end return au.Unit
+end local az,aA,aB,aC,aD,aE=function(az)if type(az)~='table'then return nil end
+local aA={}for aB,aC in ipairs(az.dwells or{})do local aD=av(aC.pos)if aD then
+aA[#aA+1]={pos=aD,dur=tonumber(aC.dur)or 0,facing=ay(aC.facing)}end end local aB
+={}for aC,aD in ipairs(az.skills or{})do local aE=av(aD.pos)if aE then aB[#aB+1]
+={pos=aE,facing=ay(aD.facing),key=aD.key,dw=math.floor(tonumber(aD.dw)or 0),dwT=
+tonumber(aD.dwT)or 0}end end if#aA==0 and#aB==0 then return nil end return{
+dwells=aA,skills=aB}end,function()if an then return end an=true if al then ar()
+local az=aq()if isfolder'DQMacro'and listfiles then pcall(function()local aA=
+listfiles'DQMacro'if type(aA)=='table'then for aB,aC in ipairs(aA)do if type(aC)
+=='string'and string.lower(string.sub(aC,-5))=='.json'and isfile(aC)then local
+aD=string.match(aC,'([^/\\]+)$')or'unknown.json'local aE,aF=az..'/'..aD,
+readfile(aC)writefile(aE,aF)delfile(aC)end end end end)end if listfiles and
+isfolder(az)then local aA,aB=pcall(function()return listfiles(az)end)if aA and
+type(aB)=='table'then for aC,aD in ipairs(aB)do if type(aD)=='string'and string.
+lower(string.sub(aD,-5))=='.json'then pcall(function()if isfile(aD)then local aE
+=readfile(aD)local aF=ad:JSONDecode(aE)if type(aF)=='table'and type(aF.map)==
+'string'and type(aF.rooms)=='table'then am[aF.map]=aF end end end)end end end
+end local aA=ab.contextData if type(aA)=='table'and type(aA[ag])=='table'then
+local aB,aC=aA[ag],false for aD,aE in pairs(aB)do if type(aD)=='string'and type(
+aE)=='table'then if not am[aD]then am[aD]=aE end pcall(function()writefile(at(aD
+),ad:JSONEncode(aE))end)aC=true end end if aC then aA[ag]=nil ac.Save()end end
+else local az=ab.contextData if type(az)=='table'and type(az[ag])=='table'then
+for aA,aB in pairs(az[ag])do if type(aA)=='string'and type(aB)=='table'then am[
+aA]=aB end end end end end,0.1,0.82,0.3,function(az,aA)local aB,aC=az.X-aA.X,az.
+Z-aA.Z return math.sqrt(aB*aB+aC*aC)end function ae.SimplifyPath(aF,aG)local aH=
+#aF if aH<=2 then return aF end local aI={}for aJ=1,aH do aI[aJ]=false end aI[1]
+=true aI[aH]=true local aJ={1}for aK=2,aH-1 do local aL,aM,aN=aF[aK-1],aF[aK],aF
+[aK+1]local aO,aP=aM.X-aL.X,aM.Z-aL.Z local aQ,aR,aS=math.sqrt(aO*aO+aP*aP),aN.X
+-aM.X,aN.Z-aM.Z local aT=math.sqrt(aR*aR+aS*aS)if aQ>=aD and aT>=aD then local
+aU=(aO*aR+aP*aS)/(aQ*aT)if aU<aC then aI[aK]=true table.insert(aJ,aK)end end end
+table.insert(aJ,aH)local aK,aL=aG*aG,{}for aM=1,#aJ-1 do local aN,aO=aJ[aM],aJ[
+aM+1]if aO-aN>1 then table.insert(aL,{aN,aO})end end while#aL>0 do local aM=
+table.remove(aL)local aN,aO=aM[1],aM[2]local aP,aQ,aR,aS=aF[aN].X,aF[aN].Z,aF[aO
+].X,aF[aO].Z local aT,aU=aR-aP,aS-aQ local aV,aW,aX=aT*aT+aU*aU,-1,0 for aY=aN+1
+,aO-1 do local aZ=0 if aV>0 then aZ=((aF[aY].X-aP)*aT+(aF[aY].Z-aQ)*aU)/aV aZ=
+math.clamp(aZ,0,1)end local a_,a0=aF[aY].X-(aP+aT*aZ),aF[aY].Z-(aQ+aU*aZ)local
+a1=a_*a_+a0*a0 if a1>aW then aW=a1 aX=aY end end if aX>0 and aW>aK then aI[aX]=
+true table.insert(aL,{aN,aX})table.insert(aL,{aX,aO})end end local aM={}for aN=1
+,aH do if aI[aN]and(#aM==0 or aE(aM[#aM],aF[aN])>=aB or aN==aH)then table.
+insert(aM,aF[aN])end end if#aM==1 then table.insert(aM,aF[aH])end return aM end
+function ae.OnChanged(aF)if type(aF)~='function'then return function()end end
+table.insert(ao,aF)return function()for aG,aH in ipairs(ao)do if aH==aF then
+table.remove(ao,aG)break end end end end function ae.HasMap(aF)if type(aF)~=
+'string'or#aF==0 then return false end aA()local aG=am[aF]if not aG or type(aG.
+rooms)~='table'then return false end for aH,aI in pairs(aG.rooms)do if ax(aI)and
+#aI.points>0 then return true end end return false end function ae.
+GetRoomSegment(aF,aG)if type(aF)~='string'or type(aG)~='number'then return nil
+end aA()local aH=am[aF]if not aH or type(aH.rooms)~='table'then return nil end
+local aI=aH.rooms[tostring(aG)]if not ax(aI)then return nil end local aJ={}for
+aK,aL in ipairs(aI.points)do local aM=av(aL)if aM then aJ[#aJ+1]=aM end end if#
+aJ==0 then return nil end return{startPos=av(aI.startPos)or aJ[1],points=aJ,
+events=aI.events and az(aI.events)or nil,speed=tonumber(aI.speed)or 0,boss=aI.
+boss==true}end function ae.HasSegmentOrMacro(aF,aG)return ae.GetRoomSegment(aF,
+aG)~=nil end function ae.GetMap(aF)if not ae.HasMap(aF)then return nil end aA()
+local aG=am[aF]if not aG then return nil end local aH={}for aI,aJ in pairs(aG.
+rooms or{})do local aK=tonumber(aI)if aK and ax(aJ)then local aL=ae.
+GetRoomSegment(aF,aK)if aL then aH[aK]=aL end end end return{map=aF,version=aG.
+version,rooms=aH,created=aG.created,updated=aG.updated,mode=ak(aG.mode)}end
+function ae.GetMaps()aA()local aF={}for aG,aH in pairs(am)do if type(aG)==
+'string'and type(aH)=='table'and aH.map==aG and type(aH.rooms)=='table'then
+local aI,aJ,aK=0,0,0 for aL,aM in pairs(aH.rooms)do if tonumber(aL)~=nil and ax(
+aM)then aI+=1 if aM.boss==true then aJ+=1 end aK+=#aM.points end end if aI>0
+then table.insert(aF,{map=aG,roomCount=aI,bossCount=aJ,pointCount=aK,updated=aH.
+updated,mode=ak(aH.mode)})end end end table.sort(aF,function(aG,aH)return aG.map
+<aH.map end)return aF end function ae.Count()return#ae.GetMaps()end function ae.
+SaveSegment(aF,aG,aH,aI,aJ,aK,aL)if type(aF)~='string'or#aF==0 then return false
+end if type(aG)~='number'or aG<=0 then return false end if not aH or not aI or#
+aI==0 then return false end aA()local aM=am[aF]if not aM or type(aM)~='table'
+then aM={map=aF,version=ah,created=os.time(),updated=os.time(),mode=ai,rooms={}}
+am[aF]=aM end if type(aM.rooms)~='table'then aM.rooms={}end local aN={}for aO,aP
+in ipairs(aI)do aN[#aN+1]=au(aP)end local aO={startPos=au(aH)or aN[1],points=aN}
+if aL then aO.boss=true end if type(aK)=='number'and aK>0 then aO.speed=aK end
+local aP=function(aP)if not aP or type(aP)~='table'then return nil end local aQ,
+aR=#(aP.dwells or{}),#(aP.skills or{})if aQ==0 and aR==0 then return nil end
+local aS={dwells={},skills={}}for aT,aU in ipairs(aP.dwells or{})do aS.dwells[#
+aS.dwells+1]={pos=au(aU.pos),dur=aU.dur or 0,facing=aU.facing}end for aT,aU in
+ipairs(aP.skills or{})do aS.skills[#aS.skills+1]={pos=au(aU.pos),facing=aU.
+facing,key=aU.key,dw=aU.dw or 0,dwT=aU.dwT or 0}end return aS end if aJ and
+type(aJ)=='table'then local aQ=aP(aJ)if aQ then aO.events=aQ end end aM.rooms[
+tostring(aG)]=aO aM.version=ah aM.map=aF aM.updated=os.time()if al then ar()
+pcall(function()writefile(at(aF),ad:JSONEncode(aM))end)else local aQ=ab.
+contextData if type(aQ)=='table'then if not aQ[ag]then aQ[ag]={}end aQ[ag][aF]=
+aM ac.Save()end end ap()return true end function ae.GetMapMode(aF)if type(aF)~=
+'string'or#aF==0 then return ai end aA()local aG=am[aF]if type(aG)~='table'then
+return ai end return ak(aG.mode)end function ae.SetMapMode(aF,aG)if type(aF)~=
+'string'or#aF==0 then return false end local aH=ak(aG)aA()local aI=am[aF]if not
+aI or type(aI)~='table'then aI={map=aF,version=ah,created=os.time(),updated=os.
+time(),mode=ai,rooms={}}am[aF]=aI end aI.mode=aH aI.map=aF aI.updated=os.time()
+if al then ar()pcall(function()writefile(at(aF),ad:JSONEncode(aI))end)else local
+aJ=ab.contextData if type(aJ)=='table'then if not aJ[ag]then aJ[ag]={}end aJ[ag]
+[aF]=aI ac.Save()end end ap()return true end function ae.RemoveMap(aF)aA()if not
+am[aF]then return false end am[aF]=nil if al then local aG=at(aF)pcall(function(
+)if isfile(aG)then delfile(aG)end end)else local aG=ab.contextData if type(aG)==
+'table'and aG[ag]then aG[ag][aF]=nil ac.Save()end end ap()return true end
+function ae.ClearAll()aA()if next(am)==nil then return end local aF=aq()if al
+and isfolder(aF)and listfiles then pcall(function()local aG=listfiles(aF)if
+type(aG)=='table'then for aH,aI in ipairs(aG)do if type(aI)=='string'and string.
+lower(string.sub(aI,-5))=='.json'and isfile(aI)then delfile(aI)end end end end)
+end table.clear(am)local aG=ab.contextData if type(aG)=='table'and aG[ag]then aG
+[ag]=nil ac.Save()end ap()end function ae.ReloadFromDisk()table.clear(am)an=
+false aA()ap()end function ae.ReloadFromConfig()ae.ReloadFromDisk()end return ae
+end function a.B()local aa,ab,ac,ad,ae=a.load'a',a.load'c',a.load'A',a.load'o',a
+.load'e'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar=aa.RunService,aa.player,aa.
+UserInputService,0.1,8000,0.4,0.1,1.5,1,6,{},true,true function ap.SetCapture(as
+)as=as and true or false aq=as ar=as end function ap.IsCaptureEnabled()return aq
+or ar end local as,at,au,av,ax,ay,az,aA,aB,aC,aD,aE,aF,aG,aH,aI,aJ,aK,aL,aM,aN,
+aO,aP,aQ,aR,aS,aT,aU,aV,aW=false,0,{},0,{},{},0,false,0,0,false,false,false,0,0,
+0,{}local aX,aY=function()local aX={recording=as,map=aK,room=at,pointCount=#au,
+dwellCount=#ax,skillCount=#ay,savedRooms=aG}for aY,aZ in ipairs(aJ)do pcall(aZ,
+aX)end end,function()local aX=ag and ag.Character local aY=aX and aX:
+FindFirstChild'HumanoidRootPart'if aY and aY.Parent then return aY end return
+nil end local aZ,a_,a0,a1=function()local aZ=aY()if not aZ then return nil end
+local a_=aZ.CFrame.LookVector if a_.Magnitude<0.001 then return nil end return{X
+=a_.X/a_.Magnitude,Z=a_.Z/a_.Magnitude}end,function()if aM then aM:Disconnect()
+aM=nil end if aN then aN:Disconnect()aN=nil end if aO then aO()aO=nil end if aP
+then aP()aP=nil end if aQ then aQ()aQ=nil end if respawnConnection then
+respawnConnection()respawnConnection=nil end end,function(aZ)au={aZ}ax={}ay={}aR
+=nil az=0 aS=nil aT=nil aU=nil aV=aZ aB=0 aC=0 av=os.clock()aW=os.clock()aA=
+false end,function()aK=nil at=0 aL=nil au={}ax={}ay={}aR=nil az=0 aS=nil aT=nil
+aU=nil aV=nil aA=false aB=0 aC=0 aW=nil aE=false aF=false aD=false aG=0 aH=0 aI=
+0 end local a2,a3=function(a2,a3)at=a2 aL=a3 aF=true a0(a3)aE=ab.IsBossActive()
+end,function(a2,a3)if not aF then return nil end local a4=ac.SimplifyPath(au,ak)
+if#a4<2 then return nil end local a5 if#ax>0 or#ay>0 then a5={dwells=ax,skills=
+ay}end local a6=0 if aC>0.5 and aB>5 then a6=math.clamp(aB/aC,5,100)end local a7
+=ac.SaveSegment(aK,at,aL,a4,a5,a6,aE)if not a7 then return nil end aG+=1 aI+=#au
+if aE then aH+=1 end if not a3 then local a8=''if a5 then a8=(
 ' (%d \u{111}i\u{1ec3}m m\u{1ecb}n, %d skill, %d nh\u{1ecb}p d\u{1eeb}ng, %.1fspd)'
 ):format(#a4,#(a5.skills or{}),#(a5.dwells or{}),a6)else a8=(
 ' (%d \u{111}i\u{1ec3}m m\u{1ecb}n, %.1fspd)'):format(#a4,a6)end ae.Notify(
@@ -4112,45 +4114,45 @@ then return end if ai.IsPlaying()or ah.IsRecording()then return end local au,av=
 ab.GetCurrentDungeonName(),ab.GetCurrentRoomIndex()if au and av>0 and ag.
 HasSegmentOrMacro(au,av)then ad.EnableExclusive'PathRecord'ai.Start()ao'resumed'
 end end)end end end end)storageUnsub=ag.OnChanged(function()ao'storage'end)
-roomUnsub=ab.OnRoomIndexChanged(function()if not am and not ai.ResumeWanted()
-then return end local ar=ab.GetCurrentRoomIndex()if ar<=0 or ab.IsInLobby()or ab
-.IsDead()then return end local as=ab.GetCurrentDungeonName()if not as or#as==0
-then return end if ai.GetActiveMap()and ai.GetActiveMap()~=as then return end if
-ab.IsBossActive()and ag.GetMapMode(as)~='full'then return end if af.
-IsAutoTriggeredByBoss()and not ab.IsBossActive()then af.Toggle(false)end if not
-ag.HasSegmentOrMacro(as,ar)then return end if not ai.IsPlaying()then ad.
-EnableExclusive'PathRecord'ai.Start()ao'resumed'end end)mapUnsub=ab.
-OnDungeonNameChanged(function(ar)if af.IsAutoTriggeredByBoss()then af.Toggle(
-false)end if ah.IsRecording()then ah.Stop'map change'end if ai.IsPlaying()or ai.
-ResumeWanted()then local as=ai.GetActiveMap()if as and as~=ar then ai.Stop()end
-end if am and ar and#ar>0 then task.delay(0.3,function()if not am or ai.
-IsPlaying()or ah.IsRecording()then return end local as=ab.GetCurrentRoomIndex()
-if as>0 and ag.HasSegmentOrMacro(ar,as)then if not(ab.IsBossActive()and ag.
-GetMapMode(ar)~='full')then ad.EnableExclusive'PathRecord'ai.Start()ao
-'map_autoplay'end end end)end ao'map'end)ah.SetCapture(ap)ai.SetReplayTimeline(
-aq)ad.Register('PathRecord',function(ar)if not ar then ai.PauseForExclusive()end
-ao'disabled'end,al.IsEnabled)task.delay(1,function()if am and not ai.IsPlaying()
-and not ah.IsRecording()then local ar=ab.GetCurrentDungeonName()if ar and#ar>0
-and not ab.IsInLobby()then if ag.HasSegmentOrMacro(ar,ab.GetCurrentRoomIndex())
-then al.TogglePlay(true)end end end end)ac.Register(function()ai.Stop()ah.
-Cancel()aj.Clear()if bossConnection then bossConnection()bossConnection=nil end
-if roomUnsub then roomUnsub()roomUnsub=nil end if mapUnsub then mapUnsub()
-mapUnsub=nil end if storageUnsub then storageUnsub()storageUnsub=nil end end)
-return al end function a.G()local aa={}function aa.PatchSliderLoadCallback(ab)if
-not ab or type(ab.UpdateValue)~='function'then return ab end local ac=ab.
-UpdateValue ab.UpdateValue=function(ad,ae)local af,ag=ad,ae if ag==nil and(type(
-af)=='number'or type(af)=='string')then ag=af af=ab end pcall(ac,af,ag)local ah=
-af and af.Settings or ab.Settings if ah and ah.Callback then pcall(ah.Callback,
-tonumber(ag))end end return ab end function aa.PatchDropdownRestore(ab,ac)if not
-ab or type(ab.UpdateSelection)~='function'then return ab end local ad=ab.
-UpdateSelection ab.UpdateSelection=function(ae,af)if type(af)=='string'and af~=
-''and not ae:IsOption(af)then if ac then pcall(function()ae:InsertOptions{af}end
-)else local ag=ae.Settings and ae.Settings.Options if type(ag)=='table'and#ag>0
-then af=ag[1]else local ah=next(ae:GetOptions())if ah then af=ah end end end end
-ad(ae,af)end return ab end return aa end end local aa,ab,ac,ad,ae,af=a.load'a',a
-.load'b',a.load'F',a.load'o',a.load'G',a.load'e'local ag=aa.RunService return
-function(ah,ai)local aj=ai:Section{Side='Left'}aj:Header{Name=
-'Path Record Controls'}aj:Label{Text=
+roomUnsub=ab.OnRoomIndexChanged(function(ar)if not ab.IsBossActive()and(af.
+IsAutoTriggeredByBoss()or af.IsEnabled())then af.Toggle(false)end if not am and
+not ai.ResumeWanted()then return end local as=ar or ab.GetCurrentRoomIndex()if
+as<=0 or ab.IsInLobby()or ab.IsDead()then return end local at=ab.
+GetCurrentDungeonName()if not at or#at==0 then return end if ai.GetActiveMap()
+and ai.GetActiveMap()~=at then return end if ab.IsBossActive()and ag.GetMapMode(
+at)~='full'then return end if not ag.HasSegmentOrMacro(at,as)then return end if
+not ai.IsPlaying()then ad.EnableExclusive'PathRecord'ai.Start()ao'resumed'end
+end)mapUnsub=ab.OnDungeonNameChanged(function(ar)if af.IsAutoTriggeredByBoss()or
+af.IsEnabled()then af.Toggle(false)end if ah.IsRecording()then ah.Stop
+'map change'end if ai.IsPlaying()or ai.ResumeWanted()then local as=ai.
+GetActiveMap()if as and as~=ar then ai.Stop()end end if am and ar and#ar>0 then
+task.delay(0.3,function()if not am or ai.IsPlaying()or ah.IsRecording()then
+return end local as=ab.GetCurrentRoomIndex()if as>0 and ag.HasSegmentOrMacro(ar,
+as)then if not(ab.IsBossActive()and ag.GetMapMode(ar)~='full')then ad.
+EnableExclusive'PathRecord'ai.Start()ao'map_autoplay'end end end)end ao'map'end)
+ah.SetCapture(ap)ai.SetReplayTimeline(aq)ad.Register('PathRecord',function(ar)if
+not ar then ai.PauseForExclusive()end ao'disabled'end,al.IsEnabled)task.delay(1,
+function()if am and not ai.IsPlaying()and not ah.IsRecording()then local ar=ab.
+GetCurrentDungeonName()if ar and#ar>0 and not ab.IsInLobby()then if ag.
+HasSegmentOrMacro(ar,ab.GetCurrentRoomIndex())then al.TogglePlay(true)end end
+end end)ac.Register(function()ai.Stop()ah.Cancel()aj.Clear()if bossConnection
+then bossConnection()bossConnection=nil end if roomUnsub then roomUnsub()
+roomUnsub=nil end if mapUnsub then mapUnsub()mapUnsub=nil end if storageUnsub
+then storageUnsub()storageUnsub=nil end end)return al end function a.G()local aa
+={}function aa.PatchSliderLoadCallback(ab)if not ab or type(ab.UpdateValue)~=
+'function'then return ab end local ac=ab.UpdateValue ab.UpdateValue=function(ad,
+ae)local af,ag=ad,ae if ag==nil and(type(af)=='number'or type(af)=='string')then
+ag=af af=ab end pcall(ac,af,ag)local ah=af and af.Settings or ab.Settings if ah
+and ah.Callback then pcall(ah.Callback,tonumber(ag))end end return ab end
+function aa.PatchDropdownRestore(ab,ac)if not ab or type(ab.UpdateSelection)~=
+'function'then return ab end local ad=ab.UpdateSelection ab.UpdateSelection=
+function(ae,af)if type(af)=='string'and af~=''and not ae:IsOption(af)then if ac
+then pcall(function()ae:InsertOptions{af}end)else local ag=ae.Settings and ae.
+Settings.Options if type(ag)=='table'and#ag>0 then af=ag[1]else local ah=next(ae
+:GetOptions())if ah then af=ah end end end end ad(ae,af)end return ab end return
+aa end end local aa,ab,ac,ad,ae,af=a.load'a',a.load'b',a.load'F',a.load'o',a.
+load'G',a.load'e'local ag=aa.RunService return function(ah,ai)local aj=ai:
+Section{Side='Left'}aj:Header{Name='Path Record Controls'}aj:Label{Text=
 [[Macro = 1 recording per map, <font color='rgb(0,255,120)'>click Record once to record continuously</font> across rooms (auto-saves on lobby return). FULL Mode -> records & replays boss rooms as well.]]
 }local ak,al,am,an,ao,ap,aq=false,false,false,false local ar,as=function()if not
 ao then return nil end local ar=ao:GetOptions()for as,at in pairs(ar)do if at

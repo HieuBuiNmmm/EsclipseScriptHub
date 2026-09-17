@@ -323,7 +323,7 @@ resetDungeon = function()
 	trackedEnemies = {}
 	enemyCount = 0
 	pendingModels = {}
-	bossInitialSpawnPos = nil
+	shared.ResetBossIndex()
 	dungeon = nil
 end
 
@@ -748,11 +748,19 @@ function shared.GetCombatTargetKey()
 end
 
 function shared.ResetBossIndex()
+	local wasBoss = bossActive
 	bossIndex = 0
+	bossActive = false
 	bossInitialSpawnPos = nil
 	for i = #bossIndexCallbacks, 1, -1 do
 		pcall(bossIndexCallbacks[i], bossIndex)
 	end
+	if wasBoss then
+		for i = #bossCallbacks, 1, -1 do
+			pcall(bossCallbacks[i], false)
+		end
+	end
+	refreshRoomIndex()
 end
 
 function shared.OnBossIndexChanged(callback)

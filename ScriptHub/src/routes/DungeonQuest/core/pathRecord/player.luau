@@ -15,6 +15,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local storage = require("@routes/DungeonQuest/core/pathRecord/storage")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 
 local player = services.player
 local VirtualInputManager = services.VirtualInputManager
@@ -152,6 +153,18 @@ end
 
 function mover.IsUseFastSpeedEnabled()
 	return useFastSpeed
+end
+
+--// Tự động Retry dungeon khi chết quá 5 lần trong cùng 1 room thường (macro lỗi/không clear được quái)
+local autoRetryOnDeathLimit = false
+local MAX_ROOM_DEATHS = 5
+
+function mover.SetAutoRetryOnDeathLimit(state)
+	autoRetryOnDeathLimit = state and true or false
+end
+
+function mover.IsAutoRetryOnDeathLimitEnabled()
+	return autoRetryOnDeathLimit
 end
 
 --// Ép WalkSpeed theo tốc độ đã ghi của segment hoặc Fast Speed; nhớ giá trị gốc để khôi phục.
@@ -875,12 +888,23 @@ local function playbackLoop()
 	local visitedRoom = 0
 	local walkedThisVisit = false
 	local wasDead = false
+	local roomDeathCount = 0
 
 	while isPlaying do
 		if resumeWanted then break end
 
 		if shared.IsDead() then
-			wasDead = true
+			if not wasDead then
+				wasDead = true
+				if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and visitedRoom > 0 then
+					roomDeathCount += 1
+					if roomDeathCount >= MAX_ROOM_DEATHS then
+						notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %d. Retrying dungeon...", MAX_ROOM_DEATHS, visitedRoom), 3)
+						roomDeathCount = 0
+						autoRetry.RetryNow()
+					end
+				end
+			end
 			task.wait(0.25)
 			continue
 		end
@@ -905,9 +929,10 @@ local function playbackLoop()
 			continue
 		end
 
-		--// Đổi room -> lượt đi mới cho room đó.
+		--// Đổi room -> lượt đi mới cho room đó (reset bộ đếm chết theo từng room riêng biệt).
 		if room ~= visitedRoom then
 			visitedRoom = room
+			roomDeathCount = 0
 			walkedThisVisit = false
 			currentProgress = 0
 			totalProgress = 0
@@ -936,6 +961,18 @@ local function playbackLoop()
 		else
 			--// Bị chết giữa chừng: chờ hồi sinh để đi lại
 			if reason == "dead" then
+				if not wasDead then
+					wasDead = true
+					if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and room > 0 then
+						roomDeathCount += 1
+						if roomDeathCount >= MAX_ROOM_DEATHS then
+							notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %d. Retrying dungeon...", MAX_ROOM_DEATHS, room), 3)
+							roomDeathCount = 0
+							autoRetry.RetryNow()
+						end
+					end
+				end
+
 				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
 
 				while isPlaying and shared.IsDead() do
