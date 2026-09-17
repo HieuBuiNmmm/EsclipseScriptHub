@@ -37,6 +37,8 @@ local lastHazardInfo = nil
 local connections = {}
 local roomCleanup = nil
 local lastIceSpikesChainTime = 0
+local roomTransitionUntil = 0
+local ROOM_TRANSITION_COOLDOWN = 2.0
 
 --// Danh sách folder template trong ReplicatedStorage: các đối tượng clone từ đây
 --// xuất hiện trong Workspace sẽ KHÔNG được vẽ box.
@@ -426,6 +428,7 @@ local registerHazard
 --// In kết quả chi tiết từng lần retry ra console nếu đang inspect hoặc bật logFailed.
 local function retryRegister(instance)
 	if not instance or not instance.Parent then return end
+	if os.clock() < roomTransitionUntil then return end
 	if isPlayerCharacter(instance) then return end
 	if activeHazards[instance] then return end
 	if retryStates[instance] then return end
@@ -435,6 +438,10 @@ local function retryRegister(instance)
 
 	task.spawn(function()
 		while state.active and instance.Parent and enabled and inDungeon do
+			if os.clock() < roomTransitionUntil then
+				stopRetry(instance)
+				return
+			end
 			if isPlayerCharacter(instance) then
 				stopRetry(instance)
 				return
@@ -489,6 +496,10 @@ end
 registerHazard = function(instance)
 	if not enabled or not inDungeon then
 		logReject(instance, "Chưa trong dungeon")
+		return false
+	end
+	if os.clock() < roomTransitionUntil then
+		logReject(instance, "Đang trong 2s chuyển room (Chặn tạo Danger Zone)")
 		return false
 	end
 	if not instance or not instance.Parent then
@@ -642,6 +653,21 @@ function detection.ClearAllHazards(reason)
 	end
 end
 
+--// Kích hoạt thời gian chuyển room (2 giây): xóa toàn bộ hazard và cấm tạo danger zone mới trong 2s
+function detection.TriggerRoomTransition(reason)
+	roomTransitionUntil = os.clock() + ROOM_TRANSITION_COOLDOWN
+	detection.ClearAllHazards(reason or "Room Transition (2s cooldown)")
+	task.delay(ROOM_TRANSITION_COOLDOWN, function()
+		if inDungeon and enabled then
+			detection.ClearAllHazards("Room Transition Sweep (End 2s)")
+		end
+	end)
+end
+
+function detection.IsRoomTransitioning()
+	return os.clock() < roomTransitionUntil
+end
+
 --// Bat dau quét: lang nghe ChildAdded/ChildRemoved cua Workspace (chi chay sau start dungeon)
 function detection.StartScan()
 	if enabled then return end
@@ -669,15 +695,26 @@ function detection.StartScan()
 	-- KHÔNG vẽ child level 1 có sẵn từ trước và KHÔNG vẽ child level 2.
 	inDungeon = shared.GetCurrentRoomIndex() > 0
 
+	local lastRecordedRoom = shared.GetCurrentRoomIndex()
 	if roomCleanup then pcall(roomCleanup); roomCleanup = nil end
 	roomCleanup = shared.OnRoomIndexChanged(function(room)
-		if room > 0 then
-			inDungeon = true
-		elseif room <= 0 and inDungeon then
-			inDungeon = false
-			detection.ClearAllHazards("Dungeon Ended")
+		if room ~= lastRecordedRoom then
+			lastRecordedRoom = room
+			if room > 0 then
+				inDungeon = true
+				detection.TriggerRoomTransition("Room Transition to room " .. tostring(room))
+			elseif room <= 0 and inDungeon then
+				inDungeon = false
+				detection.ClearAllHazards("Dungeon Ended")
+			end
 		end
 	end)
+
+	table.insert(connections, shared.OnBossActiveChanged(function(active)
+		if inDungeon and enabled then
+			detection.TriggerRoomTransition(active and "Boss Spawned Transition" or "Boss Cleared Transition")
+		end
+	end))
 
 	if logHazards then
 		print("[HazardScanner] 📡 Threat Detector started!")

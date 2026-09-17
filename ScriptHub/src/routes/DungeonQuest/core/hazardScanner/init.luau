@@ -136,6 +136,9 @@ hazardScanner.GetHazardCount = detection.GetHazardCount
 hazardScanner.GetActiveHazards = detection.GetActiveHazards
 hazardScanner.GetLastHazardInfo = detection.GetLastHazardInfo
 hazardScanner.OnHazardChanged = detection.OnHazardChanged
+hazardScanner.ClearAllHazards = detection.ClearAllHazards
+hazardScanner.TriggerRoomTransition = detection.TriggerRoomTransition
+hazardScanner.IsRoomTransitioning = detection.IsRoomTransitioning
 
 --// Bật scanner: bắt đầu quét Workspace
 function hazardScanner.StartScan()
