@@ -26,6 +26,14 @@ return function(window, tab)
 		end,
 	}, "Toggle_Webhook")
 
+	section:Toggle({
+		Name = "Show Item Potential",
+		Default = webhook.IsShowPotential(),
+		Callback = function(state)
+			webhook.SetShowPotential(state)
+		end,
+	}, "Toggle_Webhook_Potential")
+
 	section:Button({
 		Name = "Send Test Notification",
 		Callback = function()

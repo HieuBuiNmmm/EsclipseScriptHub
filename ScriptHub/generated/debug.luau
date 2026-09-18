@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-17T15:31:41.513138500+00:00",
+    genDate = "2026-09-18T00:11:29.286042200+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -19440,6 +19440,9 @@ local disconnectDungeonWatcher = nil
 local pingEnabled = false
 local pingMention = ""
 local pingTiers = { "Tier6" } -- danh sách tier đã chọn (Secret = Tier6)
+local showPotential = true
+local preRunItemIds = {}
+local isSnapshotting = false
 
 --// Color theo rarity (Discord embed Decimal color)
 local RARITY_COLORS = {
@@ -19613,17 +19616,100 @@ local function ensureXpBefore()
 	end)
 end
 
+--// Inventory fetch & Snapshot cho tính toán Potential
+local function fetchRawInventory()
+	local ok, rs = pcall(function()
+		return game:GetService("ReplicatedStorage"):WaitForChild("remotes", 5):WaitForChild("reloadInvy", 5)
+	end)
+	if not ok or not rs or not rs:IsA("RemoteFunction") then return nil end
+
+	local ok2, data = pcall(function()
+		return rs:InvokeServer()
+	end)
+	if not ok2 or data == nil then return nil end
+
+	if type(data) == "table" and data["1"] and type(data["1"]) == "table" then
+		return data["1"]
+	end
+	return data
+end
+
+local function isInventoryItem(t)
+	return type(t) == "table" and (t.sellPrice ~= nil or t.UniqueItemID ~= nil or t.rarity ~= nil or t.name ~= nil)
+end
+
+local function collectInventoryItems(data)
+	if type(data) ~= "table" then return {} end
+	local items = {}
+	local seen = {}
+
+	local function walk(node, category)
+		if type(node) ~= "table" or seen[node] then return end
+		seen[node] = true
+
+		if isInventoryItem(node) then
+			local id = (node.UniqueItemID and tostring(node.UniqueItemID))
+				or (node.uniqueItemNum and tostring(node.uniqueItemNum))
+				or nil
+			table.insert(items, {
+				category = category,
+				raw = node,
+				id = id,
+				name = tostring(node.name or node.itemName or ""),
+				rarity = tostring(node.rarity or ""):lower(),
+			})
+			return
+		end
+
+		for key, val in pairs(node) do
+			if type(val) == "table" then
+				local newCat = category
+				if key == "weapons" or key == "weapon" then newCat = "weapon"
+				elseif key == "helmets" or key == "helmet" then newCat = "helmet"
+				elseif key == "chests" or key == "chest" then newCat = "chest"
+				elseif key == "abilities" or key == "ability" then newCat = "ability"
+				end
+				walk(val, newCat)
+			end
+		end
+	end
+
+	walk(data, nil)
+	return items
+end
+
+local function snapshotInventory()
+	if not showPotential or isSnapshotting then return end
+	isSnapshotting = true
+	task.spawn(function()
+		local data = fetchRawInventory()
+		if data then
+			local items = collectInventoryItems(data)
+			local newSet = {}
+			for _, it in ipairs(items) do
+				if it.id then
+					newSet[it.id] = true
+				end
+			end
+			preRunItemIds = newSet
+		end
+		isSnapshotting = false
+	end)
+end
+
 --// Reset bộ đếm: ghi nhận XP trước dungeon (khi đang ở lobby/startButton hiện)
 local function resetRun()
 	xpBefore = getXp()
 	if xpBefore == nil then ensureXpBefore() end
 	shared.SetDungeonStartTime(nil)
+	if showPotential then snapshotInventory() end
 end
 
 --// Bắt đầu tính thời gian hoàn thành (startButton biến mất -> vào dungeon)
 local function startRun()
 	if not shared.GetDungeonStartTime() then shared.SetDungeonStartTime(os.clock()) end
 	if xpBefore == nil then ensureXpBefore() end
+	if showPotential then snapshotInventory() end
 end
 
 --// Theo dõi trạng thái lobby/dungeon qua shared (startButton + dungName):
@@ -19649,6 +19735,164 @@ local function formatDuration(seconds)
 	return string.format("%d:%02d", m, s)
 end
 
+--// Định dạng số có dấu phẩy phân tách hàng nghìn (ví dụ: 1,008,500)
+local function formatNumber(n)
+	if not n then return "0" end
+	local formatted = tostring(math.floor(n))
+	local k
+	while true do
+		formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+		if k == 0 then break end
+	end
+	return formatted
+end
+
+--// Trích xuất curUpgrades và maxUpgrades từ chuỗi (vd: "0/123773" -> 0, 123773)
+local function parseUpgrades(upgradesStr)
+	if not upgradesStr then return 0, 0 end
+	local clean = string.gsub(tostring(upgradesStr), ",", "")
+	local curStr, maxStr = string.match(clean, "(%d+)%s*/%s*(%d+)")
+	if curStr and maxStr then
+		return tonumber(curStr) or 0, tonumber(maxStr) or 0
+	end
+	local single = tonumber(string.match(clean, "^%s*([%d.-]+)"))
+	return 0, single or 0
+end
+
+--// Gắn potentialInfo cho các món đồ rơi ra từ reward bằng cách so sánh Inventory Diff
+local function attachPotentialInfo(reward)
+	if not showPotential or not reward or type(reward.items) ~= "table" or #reward.items == 0 then
+		return
+	end
+
+	local updatedData = fetchRawInventory()
+	if not updatedData then return end
+
+	local updatedItems = collectInventoryItems(updatedData)
+	if #updatedItems == 0 then return end
+
+	-- 1. Lọc ra các item mới xuất hiện so với preRunItemIds
+	local newlyDropped = {}
+	for _, it in ipairs(updatedItems) do
+		if it.id and not preRunItemIds[it.id] then
+			table.insert(newlyDropped, it)
+		end
+	end
+
+	-- Fallback nếu snapshot rỗng (vd inject script giữa chừng)
+	local candidatePool = (#newlyDropped > 0) and newlyDropped or updatedItems
+	local usedCandidates = {}
+
+	for _, rewItem in ipairs(reward.items) do
+		local itType = tostring(rewItem.itemType or ""):lower()
+		if itType == "ability" or itType == "gold" or rewItem.itemName == "gold" then
+			continue
+		end
+
+		local rewName = tostring(rewItem.itemName or ""):lower()
+		local matched = nil
+
+		for idx, cand in ipairs(candidatePool) do
+			if not usedCandidates[idx] then
+				local candName = cand.name:lower()
+				if candName == rewName or string.find(candName, rewName, 1, true) or string.find(rewName, candName, 1, true) then
+					usedCandidates[idx] = true
+					matched = cand
+					break
+				end
+			end
+		end
+
+		if matched then
+			local raw = matched.raw
+			local itemName = tostring(raw.name or raw.itemName or rewItem.itemName or "")
+			local category = matched.category or itType
+
+			local curUpgrades, maxUpgrades = 0, 0
+			if raw.maxUpgrades ~= nil then
+				maxUpgrades = tonumber(raw.maxUpgrades) or 0
+				curUpgrades = tonumber(raw.curUpgrades or raw.upgrades) or 0
+			elseif raw.upgrades ~= nil then
+				if type(raw.upgrades) == "string" then
+					curUpgrades, maxUpgrades = parseUpgrades(raw.upgrades)
+				elseif type(raw.upgrades) == "number" then
+					curUpgrades = raw.upgrades
+				end
+			end
+
+			local physVal = tonumber(raw.physicalDamage or raw.physicalPower or 0) or 0
+			local spellVal = tonumber(raw.spellPower or 0) or 0
+			local healthVal = tonumber(raw.health or 0) or 0
+
+			local statName = ""
+			local statVal = 0
+			local icon = ""
+
+			if category == "weapon" or string.find(category, "weapon") then
+				if spellVal > physVal then
+					statName = "Spell"
+					statVal = spellVal
+					icon = "🔮"
+				else
+					statName = "Phys"
+					statVal = physVal
+					icon = "⚔️"
+				end
+			else
+				local lowerName = itemName:lower()
+				if string.find(lowerName, "guardian") then
+					statName = "HP"
+					statVal = healthVal
+					icon = "🛡️"
+				elseif string.find(lowerName, "mage") then
+					statName = "Spell"
+					statVal = spellVal
+					icon = "🔮"
+				elseif string.find(lowerName, "warrior") then
+					statName = "Phys"
+					statVal = physVal
+					icon = "⚔️"
+				else
+					if healthVal > 10000 and healthVal > (physVal * 10) then
+						statName = "HP"
+						statVal = healthVal
+						icon = "🛡️"
+					elseif spellVal > physVal then
+						statName = "Spell"
+						statVal = spellVal
+						icon = "🔮"
+					else
+						statName = "Phys"
+						statVal = physVal
+						icon = "⚔️"
+					end
+				end
+			end
+
+			local remainingUpgrades = math.max(0, maxUpgrades - curUpgrades)
+			local maxPotential = statVal + (remainingUpgrades * 10)
+
+			if statVal > 0 or maxUpgrades > 0 then
+				rewItem.potentialInfo = {
+					statName = statName,
+					statVal = statVal,
+					maxPotential = maxPotential,
+					curUpgrades = curUpgrades,
+					maxUpgrades = maxUpgrades,
+					icon = icon,
+				}
+			end
+		end
+	end
+
+	-- Cập nhật lại preRunItemIds để các lần chạy sau (auto retry) có baseline mới
+	local newSet = {}
+	for _, it in ipairs(updatedItems) do
+		if it.id then newSet[it.id] = true end
+	end
+	preRunItemIds = newSet
+end
+
 --// Persistence (writefile/readfile/isfile có sẵn trong executor)
 local function loadSettings()
 	if not (isfile and isfile(SETTINGS_FILE)) then return end
@@ -19660,6 +19904,9 @@ local function loadSettings()
 		enabled = decoded.enabled == true
 		pingEnabled = decoded.pingEnabled == true
 		pingMention = type(decoded.pingMention) == "string" and decoded.pingMention or ""
+		if decoded.showPotential ~= nil then
+			showPotential = decoded.showPotential == true
+		end
 		local rawTiers = decoded.pingTiers
 		if type(rawTiers) == "string" then rawTiers = { rawTiers } end
 		if type(rawTiers) == "table" then
@@ -19684,6 +19931,7 @@ local function saveSettings()
 			pingEnabled = pingEnabled,
 			pingMention = pingMention,
 			pingTiers = pingTiers,
+			showPotential = showPotential,
 		}))
 	end)
 end
@@ -19698,10 +19946,28 @@ local function buildItemsText(items)
 		local meta = {}
 		if item.itemType and item.itemType ~= "gold" then table.insert(meta, item.itemType) end
 		if item.rarity then table.insert(meta, item.rarity) end
+
+		local line = ""
 		if #meta > 0 then
-			table.insert(lines, string.format("%s (%s)", tostring(name), table.concat(meta, ", ")))
+			line = string.format("%s (%s)", tostring(name), table.concat(meta, ", "))
 		else
-			table.insert(lines, tostring(name))
+			line = tostring(name)
+		end
+
+		if showPotential and item.potentialInfo then
+			local p = item.potentialInfo
+			local sub = string.format(
+				"  └ %s %s %s | Pot: %s (%s/%s)",
+				p.icon,
+				formatNumber(p.statVal),
+				p.statName,
+				formatNumber(p.maxPotential),
+				formatNumber(p.curUpgrades),
+				formatNumber(p.maxUpgrades)
+			)
+			table.insert(lines, line .. "\n" .. sub)
+		else
+			table.insert(lines, line)
 		end
 	end
 	return table.concat(lines, "\n")
@@ -19926,18 +20192,47 @@ function webhook.GetPingTierOptions()
 	return PING_TIER_OPTIONS
 end
 
+function webhook.SetShowPotential(state)
+	showPotential = state == true
+	saveSettings()
+end
+
+function webhook.IsShowPotential()
+	return showPotential
+end
+
 function webhook.Send()
 	if not enabled then
 		notifier.Notify("Webhook", "Notifications is disabled", 3)
 		return
 	end
+	local testItems = {
+		{
+			itemName = "Valhalla Mage Armor",
+			rarity = "uncommon",
+			itemType = "chest",
+			potentialInfo = showPotential and {
+				statName = "Spell",
+				statVal = 12400,
+				maxPotential = 1212400,
+				curUpgrades = 0,
+				maxUpgrades = 120000,
+				icon = "🔮",
+			} or nil,
+		},
+		{
+			itemName = "Gale Barrage",
+			rarity = "epic",
+			itemType = "ability",
+		},
+	}
 	local ok, msg = sendEmbed({
-		items = { { itemName = "Test Reward", rarity = "common", itemType = "item" } },
-		gold = 0,
+		items = testItems,
+		gold = 931797476,
 	}, {
 		level = getLevel(),
-		expGained = 0,
-		duration = 0,
+		expGained = 49530000000,
+		duration = 448,
 	})
 	if ok then
 		notifier.Notify("Webhook", "Test sent successfully", 3)
@@ -19982,6 +20277,10 @@ function webhook.Init()
 				expGained = math.max(0, xpAfter - xpBefore)
 			end
 
+			if showPotential then
+				pcall(attachPotentialInfo, reward)
+			end
+
 			local ok, msg = sendEmbed(reward, {
 				level = getLevel(),
 				expGained = expGained,
@@ -19996,6 +20295,9 @@ function webhook.Init()
 	connected = true
 	notifier.Notify("Webhook", "Webhook notifications ready", 2)
 	startDungeonWatcher()
+	if showPotential then
+		snapshotInventory()
+	end
 end
 
 --// Load settings lúc require
@@ -20036,6 +20338,14 @@ return function(window, tab)
 			webhook.SetEnabled(state)
 		end,
 	}, "Toggle_Webhook")
+
+	section:Toggle({
+		Name = "Show Item Potential",
+		Default = webhook.IsShowPotential(),
+		Callback = function(state)
+			webhook.SetShowPotential(state)
+		end,
+	}, "Toggle_Webhook_Potential")
 
 	section:Button({
 		Name = "Send Test Notification",
