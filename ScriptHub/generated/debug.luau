@@ -9,7 +9,11 @@
 --]]
 
 _P = {
+<<<<<<< Updated upstream
     genDate = "2026-09-18T00:11:29.286042200+00:00",
+=======
+    genDate = "2026-09-17T15:34:30.771244+00:00",
+>>>>>>> Stashed changes
     cfg = "Debug",
     vers = "v0.0.0"
 }
