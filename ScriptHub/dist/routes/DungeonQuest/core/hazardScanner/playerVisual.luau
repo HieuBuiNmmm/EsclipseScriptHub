@@ -2358,90 +2358,93 @@ function()end end table.insert(aB,b)return function()for ba,bb in ipairs(aB)do
 if bb==b then table.remove(aB,ba)break end end end end function ah.IsInLobby()
 return aD end function ah.OnLobbyChanged(b)if type(b)~='function'then return
 function()end end table.insert(aE,b)return function()for ba,bb in ipairs(aE)do
-if bb==b then table.remove(aE,ba)break end end end end local b aP=function()if
-not an or aQ~=nil then return end for ba,bb in pairs(au)do if bb and bb.Root and
-bb.Root.Parent then local bc=false if bb.Room and type(bb.Room.Name)=='string'
-and string.find(string.lower(bb.Room.Name),'boss')then bc=true elseif string.
-find(string.lower(ba.Name),'boss')then bc=true elseif ba.Parent and string.find(
-string.lower(ba.Parent.Name),'boss')then bc=true end if bc then aQ=bb.Root.
-Position return end end end for ba,bb in pairs(au)do if bb and bb.Root and bb.
-Root.Parent then aQ=bb.Root.Position return end end end local ba=function(ba)if
-an==ba then return end an=ba if ba then ap+=1 aQ=nil a5()aP()for bb=#aq,1,-1 do
-pcall(aq[bb],ap)end else aQ=nil end for bb=#ao,1,-1 do pcall(ao[bb],an)end aO()
+if bb==b then table.remove(aE,ba)break end end end end local b function ah.
+SetRealPlayerLevel(ba)local bb=tonumber(tostring(ba or''):match'%d+')if bb and
+bb>0 then b=tostring(bb)_G.RealPlayerLevel=b end end function ah.
+GetRealPlayerLevel()return b or _G.RealPlayerLevel end local ba aP=function()if
+not an or aQ~=nil then return end for bb,bc in pairs(au)do if bc and bc.Root and
+bc.Root.Parent then local bd=false if bc.Room and type(bc.Room.Name)=='string'
+and string.find(string.lower(bc.Room.Name),'boss')then bd=true elseif string.
+find(string.lower(bb.Name),'boss')then bd=true elseif bb.Parent and string.find(
+string.lower(bb.Parent.Name),'boss')then bd=true end if bd then aQ=bc.Root.
+Position return end end end for bb,bc in pairs(au)do if bc and bc.Root and bc.
+Root.Parent then aQ=bc.Root.Position return end end end local bb=function(bb)if
+an==bb then return end an=bb if bb then ap+=1 aQ=nil a5()aP()for bc=#aq,1,-1 do
+pcall(aq[bc],ap)end else aQ=nil end for bc=#ao,1,-1 do pcall(ao[bc],an)end aO()
 end function ah.GetBossSpawnPosition()if aQ then return aQ end aP()return aQ end
-function ah.SetBossSpawnPosition(bb)aQ=bb end local function bb()if not ac then
-return end local bc=ac:FindFirstChild'PlayerGui'if not bc then b=nil ba(false)
-return end local bd=bc:FindFirstChild('bossHealth',true)if bd then if bd~=b then
-b=bd if b:IsA'ScreenGui'then aT(b:GetPropertyChangedSignal'Enabled':Connect(bb))
-elseif b:IsA'GuiObject'then aT(b:GetPropertyChangedSignal'Visible':Connect(bb))
-end end local be=if bd:IsA'ScreenGui'then bd.Enabled elseif bd:IsA'GuiObject'
-then bd.Visible else true ba(be)else b=nil ba(false)end end task.spawn(function(
-)if not ac then return end local bc=ac:WaitForChild('PlayerGui',30)if not bc
-then return end aT(bc.DescendantAdded:Connect(bb))aT(bc.DescendantRemoving:
-Connect(bb))bb()while ab.IsActive()and task.wait(0.5)do bb()end end)local bc,bd=
-{}local be=function()if bd then return bd end pcall(function()local be=ac or
-game:GetService'Players'.LocalPlayer local bf=be and be:FindFirstChild
-'PlayerScripts'local bg=bf and bf:FindFirstChild'PlayerModule'if bg then bd=
-require(bg):GetControls()end end)return bd end function ah.DisableControls(bf)bf
-=bf or'default'bc[bf]=true local bg=be()if bg and type(bg.Disable)=='function'
-then pcall(function()bg:Disable()end)end end function ah.EnableControls(bf)bf=bf
-or'default'bc[bf]=nil if next(bc)~=nil then return end local bg=be()if bg and
-type(bg.Enable)=='function'then pcall(function()bg:Enable()end)end end ab.
-Register(function()if aR then aR:Disconnect()aR=nil end for bf,bg in ipairs(aG)
-do pcall(function()bg:Disconnect()end)end table.clear(aG)table.clear(bc)local bf
-=be()if bf and type(bf.Enable)=='function'then pcall(function()bf:Enable()end)
-end aN()end)return ah end function a.k()local aa,ab,ac,ad,ae,af,ah,ai,aj=a.load
-'g',a.load'i',a.load'j',{},{Mob={Min=15,Max=35,BossArea=false,BossAreaRadius=80,
-DisableDodge=false,EnableHazardScanner=true},Boss1={Min=25,Max=50,BossArea=false
-,BossAreaRadius=80,DisableDodge=false,EnableHazardScanner=true},Boss2={Min=25,
-Max=50,BossArea=false,BossAreaRadius=80,DisableDodge=false,EnableHazardScanner=
-true},Boss3={Min=25,Max=50,BossArea=false,BossAreaRadius=80,DisableDodge=false,
-EnableHazardScanner=true}},{Normal='Mob',['Boss 1']='Boss1',['Boss 2']='Boss2',[
-'Boss 3']='Boss3'},{Mob='Normal',Boss1='Boss 1',Boss2='Boss 2',Boss3='Boss 3'},{
-},{}function ad.GetTargetDisplay(ak)return ah[ak]or'Normal'end function ad.
-GetTargetKey(ak)return af[ak]or'Mob'end function ad.GetTargetOptions()return{
-'Normal','Boss 1','Boss 2','Boss 3'}end function ad.GetSaveData()return ai end
-function ad.LoadData(ak)if type(ak)=='table'then ai=ak else ai={}end aa.
-contextData=ai for al,am in ipairs(aj)do pcall(am)end end function ad.
-OnDataChanged(ak)if type(ak)~='function'then return function()end end table.
-insert(aj,ak)return function()for al,am in ipairs(aj)do if am==ak then table.
-remove(aj,al)break end end end end local ak=function()aa.contextData=ai ab.Save(
-)end function ad.GetCombatDistances(al,am)local an=am or'Mob'local ao=ae[an]or
-ae.Mob if type(al)=='string'and#al>0 and ai[al]and ai[al][an]then local ap=ai[al
-][an]local aq,ar=(type(ap.Min)=='number'and ap.Min>0)and ap.Min or ao.Min,(type(
-ap.Max)=='number'and ap.Max>0)and ap.Max or ao.Max return aq,ar end return ao.
-Min,ao.Max end function ad.GetActiveCombatDistances(al)local am,an,ao=ac.
-GetCurrentDungeonName(),'Mob',false if ac.IsBossActive and ac.IsBossActive()then
-ao=true an=ac.GetCombatTargetKey()elseif al then if al.Room and type(al.Room.
-Name)=='string'and string.find(string.lower(al.Room.Name),'boss')then ao=true
-elseif al.Model then local ap=string.lower(al.Model.Name)if string.find(ap,
-'boss')then ao=true else local aq=al.Model.Parent if aq and string.find(string.
-lower(aq.Name),'boss')then ao=true end end end if ao then local ap=ac.
-GetCurrentBossIndex and ac.GetCurrentBossIndex()or 1 an='Boss'..tostring(math.
-clamp(ap,1,3))end end return ad.GetCombatDistances(am,an)end function ad.
-GetBossArea(al,am)local an=am or'Mob'if an=='Mob'then return false,80 end local
-ao=ae[an]or ae.Boss1 if type(al)=='string'and#al>0 and ai[al]and ai[al][an]then
-local ap=ai[al][an]local aq,ar=ap.BossArea==true,(type(ap.BossAreaRadius)==
-'number'and ap.BossAreaRadius>0)and ap.BossAreaRadius or(ao.BossAreaRadius or 80
-)return aq,ar end return ao.BossArea or false,ao.BossAreaRadius or 80 end
-function ad.SetBossAreaEnabled(al,am,an)if not(type(al)=='string'and#al>0)then
-return end local ao=am or'Mob'if ao=='Mob'then return end ai[al]=ai[al]or{}ai[al
-][ao]=ai[al][ao]or{}ai[al][ao].BossArea=an and true or false ak()end function ad
-.SetBossAreaRadius(al,am,an)if not(type(al)=='string'and#al>0)then return end
-local ao=am or'Mob'if ao=='Mob'then return end if type(an)~='number'or an<=0
-then return end ai[al]=ai[al]or{}ai[al][ao]=ai[al][ao]or{}ai[al][ao].
-BossAreaRadius=an ak()end function ad.GetActiveBossArea(al)local am,an,ao=ac.
-GetCurrentDungeonName(),'Mob',false if ac.IsBossActive and ac.IsBossActive()then
-ao=true an=ac.GetCombatTargetKey()elseif al then if al.Room and type(al.Room.
-Name)=='string'and string.find(string.lower(al.Room.Name),'boss')then ao=true
-elseif al.Model then local ap=string.lower(al.Model.Name)if string.find(ap,
-'boss')then ao=true else local aq=al.Model.Parent if aq and string.find(string.
-lower(aq.Name),'boss')then ao=true end end end if ao then local ap=ac.
-GetCurrentBossIndex and ac.GetCurrentBossIndex()or 1 an='Boss'..tostring(math.
-clamp(ap,1,3))end end if not ao or an=='Mob'then return false,0,nil end local ap
-,aq=ad.GetBossArea(am,an)if not ap then return false,aq,nil end local ar=ac.
-GetBossSpawnPosition and ac.GetBossSpawnPosition()if not ar and al and al.Root
-then ar=al.Root.Position if ac.SetBossSpawnPosition then ac.
+function ah.SetBossSpawnPosition(bc)aQ=bc end local function bc()if not ac then
+return end local bd=ac:FindFirstChild'PlayerGui'if not bd then ba=nil bb(false)
+return end local be=bd:FindFirstChild('bossHealth',true)if be then if be~=ba
+then ba=be if ba:IsA'ScreenGui'then aT(ba:GetPropertyChangedSignal'Enabled':
+Connect(bc))elseif ba:IsA'GuiObject'then aT(ba:GetPropertyChangedSignal'Visible'
+:Connect(bc))end end local bf=if be:IsA'ScreenGui'then be.Enabled elseif be:IsA
+'GuiObject'then be.Visible else true bb(bf)else ba=nil bb(false)end end task.
+spawn(function()if not ac then return end local bd=ac:WaitForChild('PlayerGui',
+30)if not bd then return end aT(bd.DescendantAdded:Connect(bc))aT(bd.
+DescendantRemoving:Connect(bc))bc()while ab.IsActive()and task.wait(0.5)do bc()
+end end)local bd,be={}local bf=function()if be then return be end pcall(function
+()local bf=ac or game:GetService'Players'.LocalPlayer local bg=bf and bf:
+FindFirstChild'PlayerScripts'local bh=bg and bg:FindFirstChild'PlayerModule'if
+bh then be=require(bh):GetControls()end end)return be end function ah.
+DisableControls(bg)bg=bg or'default'bd[bg]=true local bh=bf()if bh and type(bh.
+Disable)=='function'then pcall(function()bh:Disable()end)end end function ah.
+EnableControls(bg)bg=bg or'default'bd[bg]=nil if next(bd)~=nil then return end
+local bh=bf()if bh and type(bh.Enable)=='function'then pcall(function()bh:
+Enable()end)end end ab.Register(function()if aR then aR:Disconnect()aR=nil end
+for bg,bh in ipairs(aG)do pcall(function()bh:Disconnect()end)end table.clear(aG)
+table.clear(bd)local bg=bf()if bg and type(bg.Enable)=='function'then pcall(
+function()bg:Enable()end)end aN()end)return ah end function a.k()local aa,ab,ac,
+ad,ae,af,ah,ai,aj=a.load'g',a.load'i',a.load'j',{},{Mob={Min=15,Max=35,BossArea=
+false,BossAreaRadius=80,DisableDodge=false,EnableHazardScanner=true},Boss1={Min=
+25,Max=50,BossArea=false,BossAreaRadius=80,DisableDodge=false,
+EnableHazardScanner=true},Boss2={Min=25,Max=50,BossArea=false,BossAreaRadius=80,
+DisableDodge=false,EnableHazardScanner=true},Boss3={Min=25,Max=50,BossArea=false
+,BossAreaRadius=80,DisableDodge=false,EnableHazardScanner=true}},{Normal='Mob',[
+'Boss 1']='Boss1',['Boss 2']='Boss2',['Boss 3']='Boss3'},{Mob='Normal',Boss1=
+'Boss 1',Boss2='Boss 2',Boss3='Boss 3'},{},{}function ad.GetTargetDisplay(ak)
+return ah[ak]or'Normal'end function ad.GetTargetKey(ak)return af[ak]or'Mob'end
+function ad.GetTargetOptions()return{'Normal','Boss 1','Boss 2','Boss 3'}end
+function ad.GetSaveData()return ai end function ad.LoadData(ak)if type(ak)==
+'table'then ai=ak else ai={}end aa.contextData=ai for al,am in ipairs(aj)do
+pcall(am)end end function ad.OnDataChanged(ak)if type(ak)~='function'then return
+function()end end table.insert(aj,ak)return function()for al,am in ipairs(aj)do
+if am==ak then table.remove(aj,al)break end end end end local ak=function()aa.
+contextData=ai ab.Save()end function ad.GetCombatDistances(al,am)local an=am or
+'Mob'local ao=ae[an]or ae.Mob if type(al)=='string'and#al>0 and ai[al]and ai[al]
+[an]then local ap=ai[al][an]local aq,ar=(type(ap.Min)=='number'and ap.Min>0)and
+ap.Min or ao.Min,(type(ap.Max)=='number'and ap.Max>0)and ap.Max or ao.Max return
+aq,ar end return ao.Min,ao.Max end function ad.GetActiveCombatDistances(al)local
+am,an,ao=ac.GetCurrentDungeonName(),'Mob',false if ac.IsBossActive and ac.
+IsBossActive()then ao=true an=ac.GetCombatTargetKey()elseif al then if al.Room
+and type(al.Room.Name)=='string'and string.find(string.lower(al.Room.Name),
+'boss')then ao=true elseif al.Model then local ap=string.lower(al.Model.Name)if
+string.find(ap,'boss')then ao=true else local aq=al.Model.Parent if aq and
+string.find(string.lower(aq.Name),'boss')then ao=true end end end if ao then
+local ap=ac.GetCurrentBossIndex and ac.GetCurrentBossIndex()or 1 an='Boss'..
+tostring(math.clamp(ap,1,3))end end return ad.GetCombatDistances(am,an)end
+function ad.GetBossArea(al,am)local an=am or'Mob'if an=='Mob'then return false,
+80 end local ao=ae[an]or ae.Boss1 if type(al)=='string'and#al>0 and ai[al]and ai
+[al][an]then local ap=ai[al][an]local aq,ar=ap.BossArea==true,(type(ap.
+BossAreaRadius)=='number'and ap.BossAreaRadius>0)and ap.BossAreaRadius or(ao.
+BossAreaRadius or 80)return aq,ar end return ao.BossArea or false,ao.
+BossAreaRadius or 80 end function ad.SetBossAreaEnabled(al,am,an)if not(type(al)
+=='string'and#al>0)then return end local ao=am or'Mob'if ao=='Mob'then return
+end ai[al]=ai[al]or{}ai[al][ao]=ai[al][ao]or{}ai[al][ao].BossArea=an and true or
+false ak()end function ad.SetBossAreaRadius(al,am,an)if not(type(al)=='string'
+and#al>0)then return end local ao=am or'Mob'if ao=='Mob'then return end if type(
+an)~='number'or an<=0 then return end ai[al]=ai[al]or{}ai[al][ao]=ai[al][ao]or{}
+ai[al][ao].BossAreaRadius=an ak()end function ad.GetActiveBossArea(al)local am,
+an,ao=ac.GetCurrentDungeonName(),'Mob',false if ac.IsBossActive and ac.
+IsBossActive()then ao=true an=ac.GetCombatTargetKey()elseif al then if al.Room
+and type(al.Room.Name)=='string'and string.find(string.lower(al.Room.Name),
+'boss')then ao=true elseif al.Model then local ap=string.lower(al.Model.Name)if
+string.find(ap,'boss')then ao=true else local aq=al.Model.Parent if aq and
+string.find(string.lower(aq.Name),'boss')then ao=true end end end if ao then
+local ap=ac.GetCurrentBossIndex and ac.GetCurrentBossIndex()or 1 an='Boss'..
+tostring(math.clamp(ap,1,3))end end if not ao or an=='Mob'then return false,0,
+nil end local ap,aq=ad.GetBossArea(am,an)if not ap then return false,aq,nil end
+local ar=ac.GetBossSpawnPosition and ac.GetBossSpawnPosition()if not ar and al
+and al.Root then ar=al.Root.Position if ac.SetBossSpawnPosition then ac.
 SetBossSpawnPosition(ar)end end return ap,aq,ar end function ad.GetDisableDodge(
 al,am)local an=am or'Mob'local ao=ae[an]or ae.Mob if type(al)=='string'and#al>0
 and ai[al]and ai[al][an]then local ap=ai[al][an]if ap.DisableDodge~=nil then

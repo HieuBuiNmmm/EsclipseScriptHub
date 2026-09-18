@@ -973,7 +973,7 @@ local function playbackLoop()
 					end
 				end
 
-				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
+				notifier.Notify("Path Record", "Died: Waiting to respawn to retry path...", 2)
 
 				while isPlaying and shared.IsDead() do
 					task.wait(0.2)

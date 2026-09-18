@@ -1742,230 +1742,260 @@ local aU=aT and aT:FindFirstChild'remotes'if not aU then return nil end local aV
 =aU:FindFirstChild'reloadInvy'if not aV or not aV:IsA'RemoteFunction'then return
 nil end return aV:InvokeServer()end)ay=false av=os.clock()if aT and aU then if
 type(aU)=='table'and aU['1']and type(aU['1'])=='table'then aM=aU['1']else aM=aU
-end aN=nil return aM end return aM end local aT=function(aT,aU,aV)if not aT or
-type(aT)~='table'then return nil end if not aN then aN=aR(aT)end return aN[aU..
-'_'..aV]end local aU,aV=function(aU,aV,aW)if not aU:IsA'GuiObject'then return
-nil end local aX=aU:FindFirstChild'itemType'if not aX then return nil end local
-aY,aZ,a_=tostring(aX.Value or''),'',aX:FindFirstChild'uniqueItemNum'if a_ then
-aZ=tostring(a_.Value or'')end local a0,a1,a2,a3,a4,a5,a6,a7=aT(aV,aY,aZ),
-tonumber(aU.Name)or aW,0,0,0,0,0,''if a0 and type(a0)=='table'then a2=tonumber(
-a0.physicalDamage or a0.physicalPower or 0)or 0 a3=tonumber(a0.spellPower or 0)
-or 0 a4=tonumber(a0.health or 0)or 0 local a8=string.lower(tostring(a0.rarity or
-'common'))a5=az[a8]or 0 a6=tonumber(a0.levelReq or 0)or 0 a7=tostring(a0.name or
-'')end return{slot=aU,originalOrder=a1,category=string.lower(aY),physical=a2,
-spell=a3,health=a4,rarityScore=a5,levelReq=a6,name=a7}end,function(aU)local aV=
-string.lower(aU)if aV=='weapon'or aV=='weapons'then return 1 elseif aV=='chest'
-or aV=='chests'or aV=='helmet'or aV=='helmets'or aV=='armor'then return 2 elseif
-aV=='ability'or aV=='abilities'then return 3 end return 4 end local aW,aX,aY=
-function(aW,aX)if ai=='None'and not ak then return aW.originalOrder<aX.
-originalOrder end if ak then local aY,aZ=(aW.category=='ability'or aW.category==
-'abilities'),(aX.category=='ability'or aX.category=='abilities')if aY~=aZ then
-return aY end local a_=(ai~='Ascending')if aY and aZ then if aW.levelReq~=aX.
-levelReq then if a_ then return aW.levelReq>aX.levelReq else return aW.levelReq<
-aX.levelReq end end if aW.rarityScore~=aX.rarityScore then if a_ then return aW.
-rarityScore>aX.rarityScore else return aW.rarityScore<aX.rarityScore end end if
-aW.name~=aX.name then return aW.name<aX.name end return aW.originalOrder<aX.
-originalOrder end local a0,a1=aV(aW.category),aV(aX.category)if a0~=a1 then
-return a0<a1 end if aW.levelReq~=aX.levelReq then if a_ then return aW.levelReq>
-aX.levelReq else return aW.levelReq<aX.levelReq end end if aW.name~=aX.name then
-return aW.name<aX.name end return aW.originalOrder<aX.originalOrder end local aY
-,aZ,a_=(ai=='Descending'),aV(aW.category),aV(aX.category)if aZ~=a_ then return
-aZ<a_ end if aZ==3 then if aW.levelReq~=aX.levelReq then if aY then return aW.
-levelReq>aX.levelReq else return aW.levelReq<aX.levelReq end end if aW.
-rarityScore~=aX.rarityScore then if aY then return aW.rarityScore>aX.rarityScore
-else return aW.rarityScore<aX.rarityScore end end if aW.name~=aX.name then
-return aW.name<aX.name end return aW.originalOrder<aX.originalOrder end if ao~=
-nil then local a0,a1=0,0 if ao=='Physical Damage'then a0=aW.physical a1=aX.
-physical elseif ao=='Spell Power'then a0=aW.spell a1=aX.spell elseif ao==
-'Health'then a0=aW.health a1=aX.health end if a0~=a1 then if aY then return a0>
-a1 else return a0<a1 end end end if aj then if aW.rarityScore~=aX.rarityScore
-then if aY then return aW.rarityScore>aX.rarityScore else return aW.rarityScore<
-aX.rarityScore end end end if ao==nil and not aj then local a0,a1=math.max(aW.
-physical,aW.spell,aW.health),math.max(aX.physical,aX.spell,aX.health)if a0~=a1
-then if aY then return a0>a1 else return a0<a1 end end end if aW.levelReq~=aX.
-levelReq then if aY then return aW.levelReq>aX.levelReq else return aW.levelReq<
-aX.levelReq end end if aj then local a0,a1=math.max(aW.physical,aW.spell,aW.
-health),math.max(aX.physical,aX.spell,aX.health)if a0~=a1 then if aY then return
-a0>a1 else return a0<a1 end end end if ao~=nil then local a0,a1=math.max(aW.
-physical,aW.spell,aW.health),math.max(aX.physical,aX.spell,aX.health)if a0~=a1
-then return a0>a1 end end if aW.name~=aX.name then return aW.name<aX.name end if
-aW.category~=aX.category then local a0,a1=(aW.category=='chest'or aW.category==
-'chests'),(aX.category=='chest'or aX.category=='chests')if a0~=a1 then return a0
-end end return aW.originalOrder<aX.originalOrder end,function()local aW=ab.
-player or ab.Players.LocalPlayer if not aW then return nil,nil end local aX=aW:
-FindFirstChild'PlayerGui'if not aX then return nil,nil end local aY=aX:
-FindFirstChild'inventory'if not aY then return nil,nil end local aZ=aY:
-FindFirstChild'mainBackground'if not aZ or not aZ.Visible then return nil,nil
-end local a_=aZ:FindFirstChild'innerBackground'if not a_ then return nil,nil end
-local a0=a_:FindFirstChild'rightSideFrame'if not a0 then return nil,nil end
-local a1=a0:FindFirstChild'ScrollingFrame'if not a1 or not a1:IsA
-'ScrollingFrame'then return nil,nil end local a2=a1:FindFirstChildOfClass
-'UIGridLayout'return a1,a2 end function ah.RequestSort(aZ)if not al then return
-end if ai=='None'and not ak then return end if aY then task.cancel(aY)aY=nil end
-local a_=aZ or 0.15 aY=task.delay(a_,function()aY=nil ah.ApplySort()end)end
-function ah.ApplySort()if aF then return end local aZ,a_=aX()if not aZ then
-return end aF=true local a0,a1=pcall(function()if a_ and a_.SortOrder~=Enum.
-SortOrder.LayoutOrder then a_.SortOrder=Enum.SortOrder.LayoutOrder end local a0,
-a1,a2=aS(),{},0 for a3,a4 in ipairs(aZ:GetChildren())do if a4:IsA'GuiObject'and
-a4.Name~='UIGridLayout'then a2=a2+1 local a5=aU(a4,a0,a2)if a5 then table.
-insert(a1,a5)end end end if#a1==0 then return end table.sort(a1,function(a3,a4)
-return aW(a3,a4)end)for a3,a4 in ipairs(a1)do if a4.slot.LayoutOrder~=a3 then a4
-.slot.LayoutOrder=a3 end end end)aF=false if not a0 and a1 then warn(
-'[InventorySort] L\u{1ed7}i khi s\u{1eaf}p x\u{1ebf}p kho \u{111}\u{1ed3}:',a1)
-end end local aZ=function(aZ,a_,a0)local a1,a2=aC[a_]or aC.Inactive,aD[aZ.Name]
-local a3,a4,a5,a6,a7,a8=a1.BackgroundTransparency,a1.BackgroundColor3,a1.
-ElementTransparency,a1.ElementColor3,a1.StrokeTransparency,a1.StrokeColor3 if a_
-=='Active'and a2 then a3=0.12 a4=a2.ActiveBg a7=0 a8=a2.ActiveStroke elseif a_==
-'ActiveHovered'and a2 then a3=0.05 a4=a2.ActiveHoverBg a7=0 a8=a2.
-ActiveHoverStroke end local a9=TweenInfo.new(aC.TweenDuration,aC.EasingStyle,aC.
-EasingDirection)pcall(function()if a0 then af:Create(aZ,a9,{
-BackgroundTransparency=a3,BackgroundColor3=a4}):Play()else aZ.
-BackgroundTransparency=a3 aZ.BackgroundColor3=a4 end end)for b,ba in ipairs(aZ:
-GetDescendants())do pcall(function()if ba:IsA'ImageLabel'or ba:IsA'ImageButton'
-then if a0 then af:Create(ba,a9,{ImageTransparency=a5,ImageColor3=a6}):Play()
-else ba.ImageTransparency=a5 ba.ImageColor3=a6 end elseif ba:IsA'TextLabel'or ba
-:IsA'TextButton'then if a0 then af:Create(ba,a9,{TextTransparency=a5,TextColor3=
-a6}):Play()else ba.TextTransparency=a5 ba.TextColor3=a6 end elseif ba:IsA
-'UIStroke'then if a0 then af:Create(ba,a9,{Transparency=a7,Color=a8}):Play()else
-ba.Transparency=a7 ba.Color=a8 end end end)end end local a_=function(a_,a0)if
-not a_ or not a_.Parent then return end local a1=(aG[a_]==true)if a_.Name==
-'IBmainFilter'then local a2,a3=(ai~='None'),aB[ai]or aB.None if a2 then aZ(a_,a1
-and'ActiveHovered'or'Active',a0)else aZ(a_,a1 and'Hovered'or'Inactive',a0)end
-for a4,a5 in ipairs(a_:GetDescendants())do if a5:IsA'ImageLabel'then if a5.Image
-~=a3 then a5.Image=a3 end a5.Rotation=0 end end elseif a_.Name=='IBrarity'then
-local a2=(aj==true)if a2 then aZ(a_,a1 and'ActiveHovered'or'Active',a0)else aZ(
-a_,a1 and'Hovered'or'Inactive',a0)end elseif a_.Name=='IBphysic'then local a2=(
-ao=='Physical Damage')if a2 then aZ(a_,a1 and'ActiveHovered'or'Active',a0)else
-aZ(a_,a1 and'Hovered'or'Inactive',a0)end elseif a_.Name=='IBspell'then local a2=
-(ao=='Spell Power')if a2 then aZ(a_,a1 and'ActiveHovered'or'Active',a0)else aZ(
-a_,a1 and'Hovered'or'Inactive',a0)end elseif a_.Name=='IBhealth'then local a2=(
-ao=='Health')if a2 then aZ(a_,a1 and'ActiveHovered'or'Active',a0)else aZ(a_,a1
-and'Hovered'or'Inactive',a0)end elseif a_.Name=='IBability'then local a2=(ak==
-true)if a2 then aZ(a_,a1 and'ActiveHovered'or'Active',a0)else aZ(a_,a1 and
-'Hovered'or'Inactive',a0)end end end local a0,a1=function(a0)for a1,a2 in
-ipairs(aJ)do a_(a2,a0)end end,false local a2=function()if a1 then return end a1=
-true local a2,a3=ah.GetSortCriteria(),ah.GetSortDirection()for a4,a5 in ipairs(
-aK)do pcall(a5,a2)end for a4,a5 in ipairs(aL)do pcall(a5,a3)end a1=false end
-local a3=function(a3)if aH[a3]then return end aH[a3]=true table.insert(aJ,a3)if
-a3:IsA'ImageButton'or a3:IsA'TextButton'then a3.AutoButtonColor=false end if not
-a3:FindFirstChildOfClass'UICorner'then local a4=Instance.new'UICorner'a4.
-CornerRadius=UDim.new(0,6)a4.Parent=a3 end if not a3:FindFirstChildOfClass
-'UIStroke'then local a4=Instance.new'UIStroke'a4.Thickness=1.2 a4.
-ApplyStrokeMode=Enum.ApplyStrokeMode.Border a4.Transparency=aC.Inactive.
-StrokeTransparency a4.Color=aC.Inactive.StrokeColor3 a4.Parent=a3 end if not a3:
-FindFirstChildOfClass'UIPadding'then local a4=Instance.new'UIPadding'a4.
-PaddingTop=UDim.new(0,7)a4.PaddingBottom=UDim.new(0,7)a4.PaddingLeft=UDim.new(0,
-7)a4.PaddingRight=UDim.new(0,7)a4.Parent=a3 end for a4,a5 in ipairs(a3:
-GetChildren())do if a5:IsA'ImageLabel'then a5.AnchorPoint=Vector2.new(0.5,0.5)a5
-.Position=UDim2.new(0.5,0,0.5,0)a5.Size=UDim2.new(1,0,1,0)a5.ScaleType=Enum.
-ScaleType.Fit elseif a5:IsA'UIListLayout'then a5:Destroy()end end aG[a3]=false
-local a4=a3.MouseEnter:Connect(function()aG[a3]=true a_(a3,true)end)table.
-insert(aE,a4)local a5=a3.MouseLeave:Connect(function()aG[a3]=false a_(a3,true)
-end)table.insert(aE,a5)if a3:IsA'GuiButton'then local a6=a3.Activated:Connect(
-function()if a3.Name=='IBmainFilter'then if ai=='None'then ai='Descending'ac.
+end aN=nil return aM end return aM end local aT,aU,aV=function(aT,aU,aV)if not
+aT or type(aT)~='table'then return nil end if not aN then aN=aR(aT)end return aN
+[aU..'_'..aV]end,false,function(aT)if not aT then return 0,0 end local aU=string
+.gsub(tostring(aT),',','')local aV,aW=string.match(aU,'(%d+)%s*/%s*(%d+)')if aV
+and aW then return tonumber(aV)or 0,tonumber(aW)or 0 end local aX=tonumber(
+string.match(aU,'^%s*([%d.-]+)'))return 0,aX or 0 end local aW=function(aW,aX)if
+not aW or type(aW)~='table'then return 0,0 end if not aU then aU=true local aY={
+}for aZ,a_ in pairs(aW)do table.insert(aY,string.format('%s=%s',tostring(aZ),
+tostring(a_)))end print(string.format('[InventorySort:ItemDump] %s (%s): %s',
+tostring(aW.name or'Unknown'),tostring(aW.rarity or'Common'),table.concat(aY,
+', ')))end local aY,aZ,a_=aW.totalUpgrades or aW.maxUpgrades or aW.totalUpgrade
+or aW.maxUpgrade or aW.upgradesTotal or aW.upgradesMax or aW.upgradeTotal or aW.
+upgradeLimit or aW.availableUpgrades if aY~=nil then a_=tonumber(aY)end local a0
+=aW.curUpgrades or aW.currentUpgrades or aW.currentUpgrade or aW.upgradesCur if
+a0~=nil then aZ=tonumber(a0)end if aW.upgrades~=nil then if type(aW.upgrades)==
+'string'then local a1,a2=aV(aW.upgrades)aZ=aZ or a1 a_=a_ or a2 elseif type(aW.
+upgrades)=='number'then aZ=aZ or aW.upgrades elseif type(aW.upgrades)=='table'
+then local a1,a2=aW.upgrades.cur or aW.upgrades.current or aW.upgrades[1],aW.
+upgrades.max or aW.upgrades.total or aW.upgrades.totalUpgrades or aW.upgrades[2]
+if a1~=nil then aZ=aZ or tonumber(a1)end if a2~=nil then a_=a_ or tonumber(a2)
+end end end if(not a_ or a_==0)and aX and aX:IsA'GuiObject'then for a1,a2 in
+ipairs{'totalUpgrades','maxUpgrades','upgrades','totalUpgrade'}do local a3=aX:
+FindFirstChild(a2)if not a3 then local a4=aX:FindFirstChild'itemType'if a4 then
+a3=a4:FindFirstChild(a2)end end if a3 and a3:IsA'ValueBase'then local a4=
+tonumber(a3.Value)if a4 and a4>0 then a_=a4 break end end end end return aZ or 0
+,a_ or 0 end local aX=function(aX,aY,aZ,a_,a0,a1,a2)if not aX or type(aX)~=
+'table'then local a3=math.max(aZ,a_,a0)return aZ,a_,a0,a3 end local a3,a4=aW(aX,
+a2)local a5=math.max(0,a4-a3)local a6,a7,a8,a9,b=a5*10,aZ,a_,a0,string.lower(aY
+or'')local ba=(b=='weapon'or b=='weapons'or string.find(b,'weapon')~=nil)if ba
+then if a_>aZ then a8=a_+a6 else a7=aZ+a6 end else local bb=string.lower(a1 or''
+)if string.find(bb,'guardian')then a9=a0+a6 elseif string.find(bb,'mage')then a8
+=a_+a6 elseif string.find(bb,'warrior')then a7=aZ+a6 else if a0>10000 and a0>(aZ
+*10)then a9=a0+a6 elseif a_>aZ then a8=a_+a6 else a7=aZ+a6 end end end local bb=
+math.max(a7,a8,a9)return a7,a8,a9,bb end local aY,aZ=function(aY,aZ,a_)if not aY
+:IsA'GuiObject'then return nil end local a0=aY:FindFirstChild'itemType'if not a0
+then return nil end local a1,a2,a3=tostring(a0.Value or''),'',a0:FindFirstChild
+'uniqueItemNum'if a3 then a2=tostring(a3.Value or'')end local a4,a5,a6,a7,a8,a9,
+b,ba=aT(aZ,a1,a2),tonumber(aY.Name)or a_,0,0,0,0,0,''if a4 and type(a4)=='table'
+then a6=tonumber(a4.physicalDamage or a4.physicalPower or 0)or 0 a7=tonumber(a4.
+spellPower or 0)or 0 a8=tonumber(a4.health or 0)or 0 local bb=string.lower(
+tostring(a4.rarity or'common'))a9=az[bb]or 0 b=tonumber(a4.levelReq or 0)or 0 ba
+=tostring(a4.name or'')end local bb,bc,bd,be=aX(a4,a1,a6,a7,a8,ba,aY)return{slot
+=aY,originalOrder=a5,category=string.lower(a1),physical=a6,spell=a7,health=a8,
+maxPhysical=bb,maxSpell=bc,maxHealth=bd,maxPot=be,rarityScore=a9,levelReq=b,name
+=ba}end,function(aY)local aZ=string.lower(aY)if aZ=='weapon'or aZ=='weapons'then
+return 1 elseif aZ=='chest'or aZ=='chests'or aZ=='helmet'or aZ=='helmets'or aZ==
+'armor'then return 2 elseif aZ=='ability'or aZ=='abilities'then return 3 end
+return 4 end local a_,a0,a1=function(a_,a0)if ai=='None'and not ak then return
+a_.originalOrder<a0.originalOrder end if ak then local a1,a2=(a_.category==
+'ability'or a_.category=='abilities'),(a0.category=='ability'or a0.category==
+'abilities')if a1~=a2 then return a1 end local a3=(ai~='Ascending')if a1 and a2
+then if a_.levelReq~=a0.levelReq then if a3 then return a_.levelReq>a0.levelReq
+else return a_.levelReq<a0.levelReq end end if a_.rarityScore~=a0.rarityScore
+then if a3 then return a_.rarityScore>a0.rarityScore else return a_.rarityScore<
+a0.rarityScore end end if a_.name~=a0.name then return a_.name<a0.name end
+return a_.originalOrder<a0.originalOrder end local a4,a5=aZ(a_.category),aZ(a0.
+category)if a4~=a5 then return a4<a5 end if a_.levelReq~=a0.levelReq then if a3
+then return a_.levelReq>a0.levelReq else return a_.levelReq<a0.levelReq end end
+if a_.name~=a0.name then return a_.name<a0.name end return a_.originalOrder<a0.
+originalOrder end local a1,a2,a3=(ai=='Descending'),aZ(a_.category),aZ(a0.
+category)if a2~=a3 then return a2<a3 end if a2==3 then if a_.levelReq~=a0.
+levelReq then if a1 then return a_.levelReq>a0.levelReq else return a_.levelReq<
+a0.levelReq end end if a_.rarityScore~=a0.rarityScore then if a1 then return a_.
+rarityScore>a0.rarityScore else return a_.rarityScore<a0.rarityScore end end if
+a_.name~=a0.name then return a_.name<a0.name end return a_.originalOrder<a0.
+originalOrder end if ao~=nil then local a4,a5=0,0 if ao=='Physical Damage'then
+a4=a_.maxPhysical a5=a0.maxPhysical elseif ao=='Spell Power'then a4=a_.maxSpell
+a5=a0.maxSpell elseif ao=='Health'then a4=a_.maxHealth a5=a0.maxHealth end if a4
+~=a5 then if a1 then return a4>a5 else return a4<a5 end end end if aj then if a_
+.rarityScore~=a0.rarityScore then if a1 then return a_.rarityScore>a0.
+rarityScore else return a_.rarityScore<a0.rarityScore end end end if ao==nil and
+not aj then local a4,a5=a_.maxPot,a0.maxPot if a4~=a5 then if a1 then return a4>
+a5 else return a4<a5 end end end if a_.levelReq~=a0.levelReq then if a1 then
+return a_.levelReq>a0.levelReq else return a_.levelReq<a0.levelReq end end if aj
+then local a4,a5=a_.maxPot,a0.maxPot if a4~=a5 then if a1 then return a4>a5 else
+return a4<a5 end end end if ao~=nil then local a4,a5=a_.maxPot,a0.maxPot if a4~=
+a5 then return a4>a5 end end if a_.name~=a0.name then return a_.name<a0.name end
+if a_.category~=a0.category then local a4,a5=(a_.category=='chest'or a_.category
+=='chests'),(a0.category=='chest'or a0.category=='chests')if a4~=a5 then return
+a4 end end return a_.originalOrder<a0.originalOrder end,function()local a_=ab.
+player or ab.Players.LocalPlayer if not a_ then return nil,nil end local a0=a_:
+FindFirstChild'PlayerGui'if not a0 then return nil,nil end local a1=a0:
+FindFirstChild'inventory'if not a1 then return nil,nil end local a2=a1:
+FindFirstChild'mainBackground'if not a2 or not a2.Visible then return nil,nil
+end local a3=a2:FindFirstChild'innerBackground'if not a3 then return nil,nil end
+local a4=a3:FindFirstChild'rightSideFrame'if not a4 then return nil,nil end
+local a5=a4:FindFirstChild'ScrollingFrame'if not a5 or not a5:IsA
+'ScrollingFrame'then return nil,nil end local a6=a5:FindFirstChildOfClass
+'UIGridLayout'return a5,a6 end function ah.RequestSort(a2)if not al then return
+end if ai=='None'and not ak then return end if a1 then task.cancel(a1)a1=nil end
+local a3=a2 or 0.15 a1=task.delay(a3,function()a1=nil ah.ApplySort()end)end
+function ah.ApplySort()if aF then return end local a2,a3=a0()if not a2 then
+return end aF=true local a4,a5=pcall(function()if a3 and a3.SortOrder~=Enum.
+SortOrder.LayoutOrder then a3.SortOrder=Enum.SortOrder.LayoutOrder end local a4,
+a5,a6=aS(),{},0 for a7,a8 in ipairs(a2:GetChildren())do if a8:IsA'GuiObject'and
+a8.Name~='UIGridLayout'then a6=a6+1 local a9=aY(a8,a4,a6)if a9 then table.
+insert(a5,a9)end end end if#a5==0 then return end table.sort(a5,function(a7,a8)
+return a_(a7,a8)end)for a7,a8 in ipairs(a5)do if a8.slot.LayoutOrder~=a7 then a8
+.slot.LayoutOrder=a7 end end end)aF=false if not a4 and a5 then warn(
+'[InventorySort] L\u{1ed7}i khi s\u{1eaf}p x\u{1ebf}p kho \u{111}\u{1ed3}:',a5)
+end end local a2=function(a2,a3,a4)local a5,a6=aC[a3]or aC.Inactive,aD[a2.Name]
+local a7,a8,a9,b,ba,bb=a5.BackgroundTransparency,a5.BackgroundColor3,a5.
+ElementTransparency,a5.ElementColor3,a5.StrokeTransparency,a5.StrokeColor3 if a3
+=='Active'and a6 then a7=0.12 a8=a6.ActiveBg ba=0 bb=a6.ActiveStroke elseif a3==
+'ActiveHovered'and a6 then a7=0.05 a8=a6.ActiveHoverBg ba=0 bb=a6.
+ActiveHoverStroke end local bc=TweenInfo.new(aC.TweenDuration,aC.EasingStyle,aC.
+EasingDirection)pcall(function()if a4 then af:Create(a2,bc,{
+BackgroundTransparency=a7,BackgroundColor3=a8}):Play()else a2.
+BackgroundTransparency=a7 a2.BackgroundColor3=a8 end end)for bd,be in ipairs(a2:
+GetDescendants())do pcall(function()if be:IsA'ImageLabel'or be:IsA'ImageButton'
+then if a4 then af:Create(be,bc,{ImageTransparency=a9,ImageColor3=b}):Play()else
+be.ImageTransparency=a9 be.ImageColor3=b end elseif be:IsA'TextLabel'or be:IsA
+'TextButton'then if a4 then af:Create(be,bc,{TextTransparency=a9,TextColor3=b}):
+Play()else be.TextTransparency=a9 be.TextColor3=b end elseif be:IsA'UIStroke'
+then if a4 then af:Create(be,bc,{Transparency=ba,Color=bb}):Play()else be.
+Transparency=ba be.Color=bb end end end)end end local a3=function(a3,a4)if not
+a3 or not a3.Parent then return end local a5=(aG[a3]==true)if a3.Name==
+'IBmainFilter'then local a6,a7=(ai~='None'),aB[ai]or aB.None if a6 then a2(a3,a5
+and'ActiveHovered'or'Active',a4)else a2(a3,a5 and'Hovered'or'Inactive',a4)end
+for a8,a9 in ipairs(a3:GetDescendants())do if a9:IsA'ImageLabel'then if a9.Image
+~=a7 then a9.Image=a7 end a9.Rotation=0 end end elseif a3.Name=='IBrarity'then
+local a6=(aj==true)if a6 then a2(a3,a5 and'ActiveHovered'or'Active',a4)else a2(
+a3,a5 and'Hovered'or'Inactive',a4)end elseif a3.Name=='IBphysic'then local a6=(
+ao=='Physical Damage')if a6 then a2(a3,a5 and'ActiveHovered'or'Active',a4)else
+a2(a3,a5 and'Hovered'or'Inactive',a4)end elseif a3.Name=='IBspell'then local a6=
+(ao=='Spell Power')if a6 then a2(a3,a5 and'ActiveHovered'or'Active',a4)else a2(
+a3,a5 and'Hovered'or'Inactive',a4)end elseif a3.Name=='IBhealth'then local a6=(
+ao=='Health')if a6 then a2(a3,a5 and'ActiveHovered'or'Active',a4)else a2(a3,a5
+and'Hovered'or'Inactive',a4)end elseif a3.Name=='IBability'then local a6=(ak==
+true)if a6 then a2(a3,a5 and'ActiveHovered'or'Active',a4)else a2(a3,a5 and
+'Hovered'or'Inactive',a4)end end end local a4,a5=function(a4)for a5,a6 in
+ipairs(aJ)do a3(a6,a4)end end,false local a6=function()if a5 then return end a5=
+true local a6,a7=ah.GetSortCriteria(),ah.GetSortDirection()for a8,a9 in ipairs(
+aK)do pcall(a9,a6)end for a8,a9 in ipairs(aL)do pcall(a9,a7)end a5=false end
+local a7=function(a7)if aH[a7]then return end aH[a7]=true table.insert(aJ,a7)if
+a7:IsA'ImageButton'or a7:IsA'TextButton'then a7.AutoButtonColor=false end if not
+a7:FindFirstChildOfClass'UICorner'then local a8=Instance.new'UICorner'a8.
+CornerRadius=UDim.new(0,6)a8.Parent=a7 end if not a7:FindFirstChildOfClass
+'UIStroke'then local a8=Instance.new'UIStroke'a8.Thickness=1.2 a8.
+ApplyStrokeMode=Enum.ApplyStrokeMode.Border a8.Transparency=aC.Inactive.
+StrokeTransparency a8.Color=aC.Inactive.StrokeColor3 a8.Parent=a7 end if not a7:
+FindFirstChildOfClass'UIPadding'then local a8=Instance.new'UIPadding'a8.
+PaddingTop=UDim.new(0,7)a8.PaddingBottom=UDim.new(0,7)a8.PaddingLeft=UDim.new(0,
+7)a8.PaddingRight=UDim.new(0,7)a8.Parent=a7 end for a8,a9 in ipairs(a7:
+GetChildren())do if a9:IsA'ImageLabel'then a9.AnchorPoint=Vector2.new(0.5,0.5)a9
+.Position=UDim2.new(0.5,0,0.5,0)a9.Size=UDim2.new(1,0,1,0)a9.ScaleType=Enum.
+ScaleType.Fit elseif a9:IsA'UIListLayout'then a9:Destroy()end end aG[a7]=false
+local a8=a7.MouseEnter:Connect(function()aG[a7]=true a3(a7,true)end)table.
+insert(aE,a8)local a9=a7.MouseLeave:Connect(function()aG[a7]=false a3(a7,true)
+end)table.insert(aE,a9)if a7:IsA'GuiButton'then local b=a7.Activated:Connect(
+function()if a7.Name=='IBmainFilter'then if ai=='None'then ai='Descending'ac.
 Notify('Main Filter','Descending (Power High -> Low)',1.5)elseif ai==
 'Descending'then ai='Ascending'ac.Notify('Main Filter',
 'Ascending (Power Low -> High)',1.5)else ai='None'ac.Notify('Main Filter',
-'Deselected (Restore Default Inventory)',1.5)end a0(true)a2()if al then ah.
-RequestSort(0.05)end at()elseif a3.Name=='IBrarity'then aj=not aj if aj then ao=
+'Deselected (Restore Default Inventory)',1.5)end a4(true)a6()if al then ah.
+RequestSort(0.05)end at()elseif a7.Name=='IBrarity'then aj=not aj if aj then ao=
 nil ak=false if ai=='None'then ai='Descending'end ac.Notify('Filter',
-'Mode: Rarity',1.5)else ac.Notify('Filter','Rarity Filter Disabled',1.5)end a0(
-true)a2()if al then ah.RequestSort(0.05)end at()elseif a3.Name=='IBphysic'or a3.
-Name=='IBspell'or a3.Name=='IBhealth'then local a6=(a3.Name=='IBphysic'and
-'Physical Damage')or(a3.Name=='IBspell'and'Spell Power')or'Health'if ao==a6 then
-ao=nil ac.Notify('Filter','Deselected '..a6,1.5)else ao=a6 aj=false ak=false if
-ai=='None'then ai='Descending'end ac.Notify('Filter','Selected Stat: '..a6,1.5)
-end a0(true)a2()if al then ah.RequestSort(0.05)end at()elseif a3.Name==
-'IBability'then ak=not ak if ak then aj=false ao=nil if ai=='None'then ai=
-'Descending'end ac.Notify('Filter','Sort: Ability',1.5)else ac.Notify('Filter',
-'Deselected Ability',1.5)end a0(true)a2()if al then ah.RequestSort(0.05)end at()
-end end)table.insert(aE,a6)end a_(a3,false)end function aQ(a4)if aI[a4]then
-return end aI[a4]=true pcall(function()a4.BackgroundColor3=Color3.fromRGB(18,20,
-26)a4.BackgroundTransparency=0.15 a4.BorderSizePixel=0 if not a4:
-FindFirstChildOfClass'UICorner'then local a5=Instance.new'UICorner'a5.
-CornerRadius=UDim.new(0,8)a5.Parent=a4 end local a5=a4:FindFirstChild
-'DockStroke'or a4:FindFirstChildOfClass'UIStroke'if not a5 then a5=Instance.new
-'UIStroke'a5.Name='DockStroke'a5.Thickness=1.2 a5.Color=Color3.fromRGB(65,72,90)
-a5.Transparency=0.3 a5.ApplyStrokeMode=Enum.ApplyStrokeMode.Border a5.Parent=a4
-end if not a4:FindFirstChildOfClass'UIPadding'then local a6=Instance.new
-'UIPadding'a6.PaddingTop=UDim.new(0,5)a6.PaddingBottom=UDim.new(0,5)a6.
-PaddingLeft=UDim.new(0,5)a6.PaddingRight=UDim.new(0,5)a6.Parent=a4 end end)local
-a5=a4:FindFirstChildOfClass'UIListLayout'if a5 then a5.Padding=UDim.new(0,6)end
-local a6={IBmainFilter=true,IBrarity=true,IBphysic=true,IBspell=true,IBhealth=
-true,IBability=true}for a7,a8 in ipairs(a4:GetChildren())do if a8:IsA'GuiObject'
-and a6[a8.Name]then a3(a8)end end local a7=a4.ChildAdded:Connect(function(a7)if
-a7:IsA'GuiObject'and a6[a7.Name]then a3(a7)end end)table.insert(aE,a7)au(a4)a0(
-false)end function aP()local a4=ab.player or ab.Players.LocalPlayer if not a4
-then return nil end local a5=a4:FindFirstChild'PlayerGui'if not a5 then return
-nil end local a6=a5:FindFirstChild'inventory'if not a6 then return nil end local
-a7=a6:FindFirstChild'mainBackground'if not a7 then return nil end local a8=a7:
-FindFirstChild'innerBackground'if not a8 then return nil end if a8:IsA
-'GuiObject'then a8.ClipsDescendants=false end if a7:IsA'GuiObject'then a7.
-ClipsDescendants=false end local a9=(a8:FindFirstChild'sortBarFrame')if not a9
-and typeof(ad)=='function'then local b,ba=pcall(ad,a8)if b and ba then a9=ba aO=
-ba end end if a9 and typeof(aQ)=='function'and not aI[a9]then aQ(a9)end return
-a9 end function ah.GetScale()return am end function ah.GetMainFilterMode()return
-ai end function ah.SetMainFilterMode(a4)if ai==a4 then return end ai=a4 a0(true)
-a2()if al then ah.RequestSort(0.05)end at()end function ah.IsRarityEnabled()
-return aj end function ah.SetRarityEnabled(a4)local a5=a4 and true or false if
-aj==a5 then return end aj=a5 if aj then ao=nil ak=false if ai=='None'then ai=
-'Descending'end end a0(true)a2()if al then ah.RequestSort(0.05)end at()end
-function ah.GetStatFilter()return ao end function ah.SetStatFilter(a4)if ao==a4
-then return end ao=a4 if ao then aj=false ak=false if ai=='None'then ai=
-'Descending'end end a0(true)a2()if al then ah.RequestSort(0.05)end at()end
-function ah.IsAbilityEnabled()return ak end function ah.SetAbilityEnabled(a4)
-local a5=a4 and true or false if ak==a5 then return end ak=a5 if ak then aj=
-false ao=nil if ai=='None'then ai='Descending'end end a0(true)a2()if al then ah.
-RequestSort(0.05)end at()end function ah.SetSortCriteria(a4)if not a4 or type(a4
-)~='string'then return end local a5=ah.GetSortCriteria()if a4=='None'then if ai
+'Mode: Rarity',1.5)else ac.Notify('Filter','Rarity Filter Disabled',1.5)end a4(
+true)a6()if al then ah.RequestSort(0.05)end at()elseif a7.Name=='IBphysic'or a7.
+Name=='IBspell'or a7.Name=='IBhealth'then local b=(a7.Name=='IBphysic'and
+'Physical Damage')or(a7.Name=='IBspell'and'Spell Power')or'Health'if ao==b then
+ao=nil ac.Notify('Filter','Deselected '..b,1.5)else ao=b aj=false ak=false if ai
+=='None'then ai='Descending'end ac.Notify('Filter','Selected Stat: '..b,1.5)end
+a4(true)a6()if al then ah.RequestSort(0.05)end at()elseif a7.Name=='IBability'
+then ak=not ak if ak then aj=false ao=nil if ai=='None'then ai='Descending'end
+ac.Notify('Filter','Sort: Ability',1.5)else ac.Notify('Filter',
+'Deselected Ability',1.5)end a4(true)a6()if al then ah.RequestSort(0.05)end at()
+end end)table.insert(aE,b)end a3(a7,false)end function aQ(a8)if aI[a8]then
+return end aI[a8]=true pcall(function()a8.BackgroundColor3=Color3.fromRGB(18,20,
+26)a8.BackgroundTransparency=0.15 a8.BorderSizePixel=0 if not a8:
+FindFirstChildOfClass'UICorner'then local a9=Instance.new'UICorner'a9.
+CornerRadius=UDim.new(0,8)a9.Parent=a8 end local a9=a8:FindFirstChild
+'DockStroke'or a8:FindFirstChildOfClass'UIStroke'if not a9 then a9=Instance.new
+'UIStroke'a9.Name='DockStroke'a9.Thickness=1.2 a9.Color=Color3.fromRGB(65,72,90)
+a9.Transparency=0.3 a9.ApplyStrokeMode=Enum.ApplyStrokeMode.Border a9.Parent=a8
+end if not a8:FindFirstChildOfClass'UIPadding'then local b=Instance.new
+'UIPadding'b.PaddingTop=UDim.new(0,5)b.PaddingBottom=UDim.new(0,5)b.PaddingLeft=
+UDim.new(0,5)b.PaddingRight=UDim.new(0,5)b.Parent=a8 end end)local a9=a8:
+FindFirstChildOfClass'UIListLayout'if a9 then a9.Padding=UDim.new(0,6)end local
+b={IBmainFilter=true,IBrarity=true,IBphysic=true,IBspell=true,IBhealth=true,
+IBability=true}for ba,bb in ipairs(a8:GetChildren())do if bb:IsA'GuiObject'and b
+[bb.Name]then a7(bb)end end local ba=a8.ChildAdded:Connect(function(ba)if ba:IsA
+'GuiObject'and b[ba.Name]then a7(ba)end end)table.insert(aE,ba)au(a8)a4(false)
+end function aP()local a8=ab.player or ab.Players.LocalPlayer if not a8 then
+return nil end local a9=a8:FindFirstChild'PlayerGui'if not a9 then return nil
+end local b=a9:FindFirstChild'inventory'if not b then return nil end local ba=b:
+FindFirstChild'mainBackground'if not ba then return nil end local bb=ba:
+FindFirstChild'innerBackground'if not bb then return nil end if bb:IsA
+'GuiObject'then bb.ClipsDescendants=false end if ba:IsA'GuiObject'then ba.
+ClipsDescendants=false end local bc=(bb:FindFirstChild'sortBarFrame')if not bc
+and typeof(ad)=='function'then local bd,be=pcall(ad,bb)if bd and be then bc=be
+aO=be end end if bc and typeof(aQ)=='function'and not aI[bc]then aQ(bc)end
+return bc end function ah.GetScale()return am end function ah.GetMainFilterMode(
+)return ai end function ah.SetMainFilterMode(a8)if ai==a8 then return end ai=a8
+a4(true)a6()if al then ah.RequestSort(0.05)end at()end function ah.
+IsRarityEnabled()return aj end function ah.SetRarityEnabled(a8)local a9=a8 and
+true or false if aj==a9 then return end aj=a9 if aj then ao=nil ak=false if ai==
+'None'then ai='Descending'end end a4(true)a6()if al then ah.RequestSort(0.05)end
+at()end function ah.GetStatFilter()return ao end function ah.SetStatFilter(a8)if
+ao==a8 then return end ao=a8 if ao then aj=false ak=false if ai=='None'then ai=
+'Descending'end end a4(true)a6()if al then ah.RequestSort(0.05)end at()end
+function ah.IsAbilityEnabled()return ak end function ah.SetAbilityEnabled(a8)
+local a9=a8 and true or false if ak==a9 then return end ak=a9 if ak then aj=
+false ao=nil if ai=='None'then ai='Descending'end end a4(true)a6()if al then ah.
+RequestSort(0.05)end at()end function ah.SetSortCriteria(a8)if not a8 or type(a8
+)~='string'then return end local a9=ah.GetSortCriteria()if a8=='None'then if ai
 =='None'and not aj and not ao and not ak then return end ai='None'aj=false ao=
-nil ak=false elseif a4=='Rarity'then if aj and not ak and ao==nil then return
-end aj=true ao=nil ak=false if ai=='None'then ai='Descending'end elseif a4==
+nil ak=false elseif a8=='Rarity'then if aj and not ak and ao==nil then return
+end aj=true ao=nil ak=false if ai=='None'then ai='Descending'end elseif a8==
 'Ability'then if ak then return end ak=true aj=false ao=nil if ai=='None'then ai
-='Descending'end elseif a4=='Physical Damage'or a4=='Spell Power'or a4=='Health'
-then if ao==a4 and not ak and not aj then return end ao=a4 aj=false ak=false if
-ai=='None'then ai='Descending'end elseif a4=='Power'then if ai~='None'and not aj
+='Descending'end elseif a8=='Physical Damage'or a8=='Spell Power'or a8=='Health'
+then if ao==a8 and not ak and not aj then return end ao=a8 aj=false ak=false if
+ai=='None'then ai='Descending'end elseif a8=='Power'then if ai~='None'and not aj
 and ao==nil and not ak then return end if ai=='None'then ai='Descending'end aj=
-false ao=nil ak=false else return end if ah.GetSortCriteria()==a5 then return
-end a0(true)a2()if al then ah.RequestSort(0.05)end at()end function ah.
+false ao=nil ak=false else return end if ah.GetSortCriteria()==a9 then return
+end a4(true)a6()if al then ah.RequestSort(0.05)end at()end function ah.
 GetSortCriteria()if ak then return'Ability'end if aj then return'Rarity'end if
 ao then return ao end if ai~='None'then return'Power'end return'None'end
-function ah.SetSortDirection(a4)if not a4 or type(a4)~='string'then return end
-local a5='None'if a4=='Ascending'or string.find(a4,'Ascending')then a5=
-'Ascending'elseif a4=='Descending'or string.find(a4,'Descending')then a5=
-'Descending'else a5='None'end if ai==a5 then return end ai=a5 a0(true)a2()if al
+function ah.SetSortDirection(a8)if not a8 or type(a8)~='string'then return end
+local a9='None'if a8=='Ascending'or string.find(a8,'Ascending')then a9=
+'Ascending'elseif a8=='Descending'or string.find(a8,'Descending')then a9=
+'Descending'else a9='None'end if ai==a9 then return end ai=a9 a4(true)a6()if al
 then ah.RequestSort(0.05)end at()end function ah.GetSortDirection()if ai==
 'Ascending'then return'Ascending'elseif ai=='Descending'then return'Descending'
-else return'None'end end function ah.OnCriteriaChanged(a4)if type(a4)==
-'function'then table.insert(aK,a4)end end function ah.OnDirectionChanged(a4)if
-type(a4)=='function'then table.insert(aL,a4)end end function ah.SetAutoSort(a4)
-local a5=a4 and true or false if al==a5 then return end al=a5 at()end function
-ah.IsAutoSort()return al end function ah.Init()for a4,a5 in ipairs(aE)do pcall(
-function()a5:Disconnect()end)end table.clear(aE)table.clear(aH)table.clear(aI)
-table.clear(aJ)table.clear(aG)as()a2()local a4=ab.ReplicatedStorage or game:
-GetService'ReplicatedStorage'local a5=a4 and a4:FindFirstChild'remotes'if a5
-then local a6=a5:FindFirstChild'reloadInventory'if a6 and a6:IsA'RemoteEvent'
-then local a7=a6.OnClientEvent:Connect(function()local a7=os.clock()if(a7-av)>=
-ax then aM=nil end ah.RequestSort(0.35)end)table.insert(aE,a7)end end local a6=
-function()local a6=ab.player or ab.Players.LocalPlayer if not a6 then return end
-local a7=a6:WaitForChild('PlayerGui',15)if not a7 then return end local a8=a7:
-WaitForChild('inventory',15)if not a8 then return end local a9=a8:WaitForChild(
-'mainBackground',15)if not a9 then return end local b=a9:WaitForChild(
-'innerBackground',15)if not b then return end aP()if a9.Visible and al and(ai~=
-'None'or ak)then ah.RequestSort(0.2)end local ba=a9:GetPropertyChangedSignal
-'Visible':Connect(function()if a9.Visible then aP()ah.RequestSort(0.15)end end)
-table.insert(aE,ba)local bb=b.ChildAdded:Connect(function(bb)if bb.Name==
-'sortBarFrame'and bb:IsA'GuiObject'then aQ(bb)end end)table.insert(aE,bb)local
-bc=b:WaitForChild('rightSideFrame',10)local bd=bc and bc:WaitForChild(
-'ScrollingFrame',10)if bd then local be=bd.ChildAdded:Connect(function(be)if be:
+else return'None'end end function ah.OnCriteriaChanged(a8)if type(a8)==
+'function'then table.insert(aK,a8)end end function ah.OnDirectionChanged(a8)if
+type(a8)=='function'then table.insert(aL,a8)end end function ah.SetAutoSort(a8)
+local a9=a8 and true or false if al==a9 then return end al=a9 at()end function
+ah.IsAutoSort()return al end function ah.Init()for a8,a9 in ipairs(aE)do pcall(
+function()a9:Disconnect()end)end table.clear(aE)table.clear(aH)table.clear(aI)
+table.clear(aJ)table.clear(aG)as()a6()local a8=ab.ReplicatedStorage or game:
+GetService'ReplicatedStorage'local a9=a8 and a8:FindFirstChild'remotes'if a9
+then local b=a9:FindFirstChild'reloadInventory'if b and b:IsA'RemoteEvent'then
+local ba=b.OnClientEvent:Connect(function()local ba=os.clock()if(ba-av)>=ax then
+aM=nil end ah.RequestSort(0.35)end)table.insert(aE,ba)end end local b=function()
+local b=ab.player or ab.Players.LocalPlayer if not b then return end local ba=b:
+WaitForChild('PlayerGui',15)if not ba then return end local bb=ba:WaitForChild(
+'inventory',15)if not bb then return end local bc=bb:WaitForChild(
+'mainBackground',15)if not bc then return end local bd=bc:WaitForChild(
+'innerBackground',15)if not bd then return end aP()if bc.Visible and al and(ai~=
+'None'or ak)then ah.RequestSort(0.2)end local be=bc:GetPropertyChangedSignal
+'Visible':Connect(function()if bc.Visible then aP()ah.RequestSort(0.15)end end)
+table.insert(aE,be)local bf=bd.ChildAdded:Connect(function(bf)if bf.Name==
+'sortBarFrame'and bf:IsA'GuiObject'then aQ(bf)end end)table.insert(aE,bf)local
+bg=bd:WaitForChild('rightSideFrame',10)local bh=bg and bg:WaitForChild(
+'ScrollingFrame',10)if bh then local bi=bh.ChildAdded:Connect(function(bi)if bi:
 IsA'GuiObject'and al and(ai~='None'or ak)then ah.RequestSort(0.3)end end)table.
-insert(aE,be)end end task.spawn(a6)local a7=ab.player or ab.Players.LocalPlayer
-if a7 then local a8=a7.CharacterAdded:Connect(function()task.delay(1,a6)end)
-table.insert(aE,a8)end end aa.Register(function()if aY then task.cancel(aY)aY=
-nil end if ap then task.cancel(ap)ap=nil pcall(function()ar()local a4,a5=aq(),{
+insert(aE,bi)end end task.spawn(b)local ba=ab.player or ab.Players.LocalPlayer
+if ba then local bb=ba.CharacterAdded:Connect(function()task.delay(1,b)end)table
+.insert(aE,bb)end end aa.Register(function()if a1 then task.cancel(a1)a1=nil end
+if ap then task.cancel(ap)ap=nil pcall(function()ar()local a8,a9=aq(),{
 mainFilterMode=ai,rarityEnabled=aj,selectedStatFilter=ao,abilityEnabled=ak,
-autoSortEnabled=al}writefile(a4,ag:JSONEncode(a5))end)end for a4,a5 in ipairs(aE
-)do pcall(function()a5:Disconnect()end)end table.clear(aE)table.clear(aH)table.
+autoSortEnabled=al}writefile(a8,ag:JSONEncode(a9))end)end for a8,a9 in ipairs(aE
+)do pcall(function()a9:Disconnect()end)end table.clear(aE)table.clear(aH)table.
 clear(aI)table.clear(aJ)table.clear(aG)table.clear(aK)table.clear(aL)aM=nil ai=
 'None'aj=false ao=nil ak=false if aO and aO.Parent then pcall(function()aO:
 Destroy()end)aO=nil end end)ah.Init()return ah

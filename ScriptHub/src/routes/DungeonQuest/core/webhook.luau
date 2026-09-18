@@ -173,17 +173,113 @@ local function findChildRecursive(parent, name, maxDepth)
 	return nil
 end
 
---// Lấy Level hiện tại: Players.LocalPlayer.PlayerGui.playerStatus.Frame.levelBorder.level (TextLabel)
-local function getLevel()
+--// Lưu cache level thực tế cuối cùng để tránh bị mất nếu UI bị che/mask
+local cachedRealLevel = nil
+
+--// Lấy Level hiện tại (không bị ảnh hưởng bởi Streaming Mode / UI Masking)
+local function getLevel(): string
+	-- 1. Ưu tiên kiểm tra shared module
+	if shared and type(shared.GetRealPlayerLevel) == "function" then
+		local lvl = shared.GetRealPlayerLevel()
+		if lvl then
+			local num = tonumber(tostring(lvl):match("%d+"))
+			if num and num > 0 then
+				cachedRealLevel = tostring(num)
+				return cachedRealLevel
+			end
+		end
+	end
+
+	-- 2. Kiểm tra _G / getgenv
+	local gLvl = _G.RealPlayerLevel or (type(getgenv) == "function" and getgenv().RealPlayerLevel)
+	if gLvl then
+		local num = tonumber(tostring(gLvl):match("%d+"))
+		if num and num > 0 then
+			cachedRealLevel = tostring(num)
+			return cachedRealLevel
+		end
+	end
+
 	local p = game:GetService("Players").LocalPlayer
-	if not p or not p:FindFirstChild("PlayerGui") then return "?" end
-	local playerStatus = p.PlayerGui:FindFirstChild("playerStatus")
-	if not playerStatus then return "?" end
-	local levelBorder = findChildRecursive(playerStatus, "levelBorder")
-	if not levelBorder then return "?" end
-	local label = levelBorder:FindFirstChild("level")
-	if label and label:IsA("TextLabel") then return label.Text end
-	return "?"
+	if not p then return cachedRealLevel or "?" end
+
+	-- 3. Quét leaderstats của LocalPlayer
+	local leaderstats = p:FindFirstChild("leaderstats")
+	if leaderstats then
+		for _, child in ipairs(leaderstats:GetChildren()) do
+			local n = string.lower(child.Name)
+			if string.find(n, "level") or string.find(n, "lvl") then
+				local num = tonumber(tostring(child.Value):match("%d+"))
+				if num and num > 0 then
+					cachedRealLevel = tostring(num)
+					if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+					return cachedRealLevel
+				end
+			end
+		end
+	end
+
+	-- 4. Quét ValueBase trực tiếp dưới LocalPlayer
+	for _, child in ipairs(p:GetChildren()) do
+		local n = string.lower(child.Name)
+		if n == "level" or n == "lvl" or string.find(n, "level") then
+			if child:IsA("ValueBase") then
+				local num = tonumber(tostring(child.Value):match("%d+"))
+				if num and num > 0 then
+					cachedRealLevel = tostring(num)
+					if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+					return cachedRealLevel
+				end
+			end
+		end
+	end
+
+	-- 5. Quét Attributes trên LocalPlayer
+	for attrName, attrVal in pairs(p:GetAttributes()) do
+		local n = string.lower(attrName)
+		if string.find(n, "level") or string.find(n, "lvl") then
+			local num = tonumber(tostring(attrVal):match("%d+"))
+			if num and num > 0 then
+				cachedRealLevel = tostring(num)
+				if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+				return cachedRealLevel
+			end
+		end
+	end
+
+	-- 6. Quét UI playerStatus
+	if p:FindFirstChild("PlayerGui") then
+		local playerStatus = p.PlayerGui:FindFirstChild("playerStatus")
+		if playerStatus then
+			local levelBorder = findChildRecursive(playerStatus, "levelBorder")
+			if levelBorder then
+				local label = levelBorder:FindFirstChild("level")
+				if label and label:IsA("TextLabel") then
+					-- Attribute RealLevel do streamingMode gán vào
+					local realAttr = label:GetAttribute("RealLevel") or label:GetAttribute("OriginalText")
+					if realAttr then
+						local num = tonumber(tostring(realAttr):match("%d+"))
+						if num and num > 0 then
+							cachedRealLevel = tostring(num)
+							if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+							return cachedRealLevel
+						end
+					end
+
+					-- Nếu TextLabel hiện tại có chứa số (chưa bị mask thành ???)
+					local txt = label.Text
+					local num = tonumber(tostring(txt):match("%d+"))
+					if num and num > 0 then
+						cachedRealLevel = tostring(num)
+						if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+						return cachedRealLevel
+					end
+				end
+			end
+		end
+	end
+
+	return cachedRealLevel or "?"
 end
 
 --// Retry lấy XP trước dungeon cho tới khi có (tránh nil do timing/XP chưa sẵn sàng).
@@ -395,15 +491,36 @@ local function attachPotentialInfo(reward)
 			local itemName = tostring(raw.name or raw.itemName or rewItem.itemName or "")
 			local category = matched.category or itType
 
+			local rawMax = raw.totalUpgrades
+				or raw.maxUpgrades
+				or raw.totalUpgrade
+				or raw.maxUpgrade
+				or raw.upgradesTotal
+				or raw.upgradesMax
+				or raw.upgradeTotal
+				or raw.upgradeLimit
+				or raw.availableUpgrades
+
 			local curUpgrades, maxUpgrades = 0, 0
-			if raw.maxUpgrades ~= nil then
-				maxUpgrades = tonumber(raw.maxUpgrades) or 0
-				curUpgrades = tonumber(raw.curUpgrades or raw.upgrades) or 0
-			elseif raw.upgrades ~= nil then
+			if rawMax ~= nil then
+				maxUpgrades = tonumber(rawMax) or 0
+			end
+			if raw.curUpgrades ~= nil or raw.currentUpgrades ~= nil then
+				curUpgrades = tonumber(raw.curUpgrades or raw.currentUpgrades) or 0
+			end
+
+			if raw.upgrades ~= nil then
 				if type(raw.upgrades) == "string" then
-					curUpgrades, maxUpgrades = parseUpgrades(raw.upgrades)
+					local c, m = parseUpgrades(raw.upgrades)
+					curUpgrades = curUpgrades ~= 0 and curUpgrades or c
+					maxUpgrades = maxUpgrades ~= 0 and maxUpgrades or m
 				elseif type(raw.upgrades) == "number" then
-					curUpgrades = raw.upgrades
+					curUpgrades = curUpgrades ~= 0 and curUpgrades or raw.upgrades
+				elseif type(raw.upgrades) == "table" then
+					local c = raw.upgrades.cur or raw.upgrades.current or raw.upgrades[1]
+					local m = raw.upgrades.max or raw.upgrades.total or raw.upgrades.totalUpgrades or raw.upgrades[2]
+					if c ~= nil then curUpgrades = curUpgrades ~= 0 and curUpgrades or (tonumber(c) or 0) end
+					if m ~= nil then maxUpgrades = maxUpgrades ~= 0 and maxUpgrades or (tonumber(m) or 0) end
 				end
 			end
 
@@ -543,15 +660,8 @@ local function buildItemsText(items)
 
 		if showPotential and item.potentialInfo then
 			local p = item.potentialInfo
-			local sub = string.format(
-				"  └ %s %s %s | Pot: %s (%s/%s)",
-				p.icon,
-				formatNumber(p.statVal),
-				p.statName,
-				formatNumber(p.maxPotential),
-				formatNumber(p.curUpgrades),
-				formatNumber(p.maxUpgrades)
-			)
+			local icon = (p.icon and p.icon ~= "") and (p.icon .. " ") or ""
+			local sub = string.format("  └ %sMaxPot: %s", icon, formatNumber(p.maxPotential))
 			table.insert(lines, line .. "\n" .. sub)
 		else
 			table.insert(lines, line)
@@ -613,6 +723,12 @@ local function buildEmbed(reward, meta)
 
 	meta = meta or {}
 	local level = tostring(meta.level or "?")
+	if level == "???" or level == "?" or level == "" or not level:match("%d+") then
+		level = getLevel()
+	end
+	if level == "???" or not level:match("%d+") then
+		level = "?"
+	end
 	local expGained = tonumber(meta.expGained)
 	local expText = expGained and string.format("+%s XP", tostring(expGained)) or "?"
 	local durationText = formatDuration(meta.duration)
@@ -631,7 +747,7 @@ local function buildEmbed(reward, meta)
 	local fields = {
 		{
 			name = "Player",
-			value = string.format("%s (lv %s)", getPlayerName(), level),
+			value = string.format("||%s|| (lv %s)", getPlayerName(), level),
 			inline = true,
 		},
 		{

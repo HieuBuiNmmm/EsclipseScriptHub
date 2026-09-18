@@ -216,11 +216,11 @@ local function finalizeSlice(reason, silent)
 	if not silent then
 		local extra = ""
 		if events then
-			extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#clean, #(events.skills or {}), #(events.dwells or {}), avgSpeed)
+			extra = (" (%d smooth pts, %d skills, %d dwells, %.1f spd)"):format(#clean, #(events.skills or {}), #(events.dwells or {}), avgSpeed)
 		else
-			extra = (" (%d điểm mịn, %.1fspd)"):format(#clean, avgSpeed)
+			extra = (" (%d smooth pts, %.1f spd)"):format(#clean, avgSpeed)
 		end
-		notifier.Notify("Path Record", ("Đã lưu room %d%s vào map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
+		notifier.Notify("Path Record", ("Saved room %d%s to map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
 	end
 
 	return { points = clean, events = events, speed = avgSpeed }
@@ -308,7 +308,7 @@ function recorder.Start()
 			currentDwell = nil
 			prevFramePos = nil
 			-- Nhân vật tử trận: điểm chết = điểm kết thúc -> dừng và hoàn thành record
-			recorder.Stop("tử trận")
+			recorder.Stop("player died")
 			return
 		end
 
@@ -515,7 +515,7 @@ function recorder.Start()
 		end
 	end)
 
-	notifier.Notify("Path Record", ("Bắt đầu record room %d (%s)"):format(room, map), 2)
+	notifier.Notify("Path Record", ("Started recording room %d (%s)"):format(room, map), 2)
 	fireStatus()
 	return true
 end
@@ -524,7 +524,7 @@ end
 --// + mở slice mới ngay tại vị trí hiện tại. Session vẫn tiếp tục.
 function recorder.Rollover()
 	if not isRecording then return false end
-	finalizeSlice("chuyển room", true)
+	finalizeSlice("room transition", true)
 	local root = getPlayerRoot()
 	local pos = root and root.Position or startPos
 	beginSlice(shared.GetCurrentRoomIndex(), pos)
@@ -545,22 +545,22 @@ function recorder.Stop(reason)
 		if sessionRooms > 1 then
 			--// Record liên tục nhiều room: báo tổng hợp 1 lần.
 			local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-			notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
+			notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw pts)"):format(recMap, reason or "completed", sessionRooms, bossPart, sessionRawPts), 4)
 		else
 			local extra = ""
 			if slice.events then
-				extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#slice.points, #(slice.events.skills or {}), #(slice.events.dwells or {}), slice.speed or 0)
+				extra = (" (%d smooth pts, %d skills, %d dwells, %.1f spd)"):format(#slice.points, #(slice.events.skills or {}), #(slice.events.dwells or {}), slice.speed or 0)
 			else
-				extra = (" (%d điểm mịn, %.1fspd)"):format(#slice.points, slice.speed or 0)
+				extra = (" (%d smooth pts, %.1f spd)"):format(#slice.points, slice.speed or 0)
 			end
 			local bossTag = startRoom > 0 and (sliceIsBoss and " (boss)" or "") or ""
-			notifier.Notify("Path Record", ("Đã lưu room %d%s%s vào map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
+			notifier.Notify("Path Record", ("Saved room %d%s%s to map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
 		end
 	elseif sessionRooms > 0 then
 		--// Slice cuối bị "mồ côi" (room 0: kết thúc run tại boss hoặc teleport hết map):
 		--// các room trước đã lưu xong, vẫn báo tổng hợp để người dùng biết đã lưu.
 		local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-		notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
+		notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw pts)"):format(recMap, reason or "completed", sessionRooms, bossPart, sessionRawPts), 4)
 	end
 
 	clearSessionState()

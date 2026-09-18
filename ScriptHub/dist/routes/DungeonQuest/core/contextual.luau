@@ -1829,38 +1829,41 @@ function()for b,ba in ipairs(aA)do if ba==a9 then table.remove(aA,b)break end
 end end end function ag.IsInLobby()return aC end function ag.OnLobbyChanged(a9)
 if type(a9)~='function'then return function()end end table.insert(aD,a9)return
 function()for b,ba in ipairs(aD)do if ba==a9 then table.remove(aD,b)break end
-end end end local a9 aO=function()if not am or aP~=nil then return end for b,ba
-in pairs(at)do if ba and ba.Root and ba.Root.Parent then local bb=false if ba.
-Room and type(ba.Room.Name)=='string'and string.find(string.lower(ba.Room.Name),
-'boss')then bb=true elseif string.find(string.lower(b.Name),'boss')then bb=true
-elseif b.Parent and string.find(string.lower(b.Parent.Name),'boss')then bb=true
-end if bb then aP=ba.Root.Position return end end end for b,ba in pairs(at)do if
-ba and ba.Root and ba.Root.Parent then aP=ba.Root.Position return end end end
-local b=function(b)if am==b then return end am=b if b then ao+=1 aP=nil a4()aO()
-for ba=#ap,1,-1 do pcall(ap[ba],ao)end else aP=nil end for ba=#an,1,-1 do pcall(
-an[ba],am)end aN()end function ag.GetBossSpawnPosition()if aP then return aP end
-aO()return aP end function ag.SetBossSpawnPosition(ba)aP=ba end local function
-ba()if not ac then return end local bb=ac:FindFirstChild'PlayerGui'if not bb
-then a9=nil b(false)return end local bc=bb:FindFirstChild('bossHealth',true)if
-bc then if bc~=a9 then a9=bc if a9:IsA'ScreenGui'then aS(a9:
-GetPropertyChangedSignal'Enabled':Connect(ba))elseif a9:IsA'GuiObject'then aS(a9
-:GetPropertyChangedSignal'Visible':Connect(ba))end end local bd=if bc:IsA
-'ScreenGui'then bc.Enabled elseif bc:IsA'GuiObject'then bc.Visible else true b(
-bd)else a9=nil b(false)end end task.spawn(function()if not ac then return end
-local bb=ac:WaitForChild('PlayerGui',30)if not bb then return end aS(bb.
-DescendantAdded:Connect(ba))aS(bb.DescendantRemoving:Connect(ba))ba()while ab.
-IsActive()and task.wait(0.5)do ba()end end)local bb,bc={}local bd=function()if
-bc then return bc end pcall(function()local bd=ac or game:GetService'Players'.
-LocalPlayer local be=bd and bd:FindFirstChild'PlayerScripts'local bf=be and be:
-FindFirstChild'PlayerModule'if bf then bc=require(bf):GetControls()end end)
-return bc end function ag.DisableControls(be)be=be or'default'bb[be]=true local
-bf=bd()if bf and type(bf.Disable)=='function'then pcall(function()bf:Disable()
-end)end end function ag.EnableControls(be)be=be or'default'bb[be]=nil if next(bb
-)~=nil then return end local bf=bd()if bf and type(bf.Enable)=='function'then
-pcall(function()bf:Enable()end)end end ab.Register(function()if aQ then aQ:
-Disconnect()aQ=nil end for be,bf in ipairs(aF)do pcall(function()bf:Disconnect()
-end)end table.clear(aF)table.clear(bb)local be=bd()if be and type(be.Enable)==
-'function'then pcall(function()be:Enable()end)end aM()end)return ag end end
+end end end local a9 function ag.SetRealPlayerLevel(b)local ba=tonumber(
+tostring(b or''):match'%d+')if ba and ba>0 then a9=tostring(ba)_G.
+RealPlayerLevel=a9 end end function ag.GetRealPlayerLevel()return a9 or _G.
+RealPlayerLevel end local b aO=function()if not am or aP~=nil then return end
+for ba,bb in pairs(at)do if bb and bb.Root and bb.Root.Parent then local bc=
+false if bb.Room and type(bb.Room.Name)=='string'and string.find(string.lower(bb
+.Room.Name),'boss')then bc=true elseif string.find(string.lower(ba.Name),'boss')
+then bc=true elseif ba.Parent and string.find(string.lower(ba.Parent.Name),
+'boss')then bc=true end if bc then aP=bb.Root.Position return end end end for ba
+,bb in pairs(at)do if bb and bb.Root and bb.Root.Parent then aP=bb.Root.Position
+return end end end local ba=function(ba)if am==ba then return end am=ba if ba
+then ao+=1 aP=nil a4()aO()for bb=#ap,1,-1 do pcall(ap[bb],ao)end else aP=nil end
+for bb=#an,1,-1 do pcall(an[bb],am)end aN()end function ag.GetBossSpawnPosition(
+)if aP then return aP end aO()return aP end function ag.SetBossSpawnPosition(bb)
+aP=bb end local function bb()if not ac then return end local bc=ac:
+FindFirstChild'PlayerGui'if not bc then b=nil ba(false)return end local bd=bc:
+FindFirstChild('bossHealth',true)if bd then if bd~=b then b=bd if b:IsA
+'ScreenGui'then aS(b:GetPropertyChangedSignal'Enabled':Connect(bb))elseif b:IsA
+'GuiObject'then aS(b:GetPropertyChangedSignal'Visible':Connect(bb))end end local
+be=if bd:IsA'ScreenGui'then bd.Enabled elseif bd:IsA'GuiObject'then bd.Visible
+else true ba(be)else b=nil ba(false)end end task.spawn(function()if not ac then
+return end local bc=ac:WaitForChild('PlayerGui',30)if not bc then return end aS(
+bc.DescendantAdded:Connect(bb))aS(bc.DescendantRemoving:Connect(bb))bb()while ab
+.IsActive()and task.wait(0.5)do bb()end end)local bc,bd={}local be=function()if
+bd then return bd end pcall(function()local be=ac or game:GetService'Players'.
+LocalPlayer local bf=be and be:FindFirstChild'PlayerScripts'local bg=bf and bf:
+FindFirstChild'PlayerModule'if bg then bd=require(bg):GetControls()end end)
+return bd end function ag.DisableControls(bf)bf=bf or'default'bc[bf]=true local
+bg=be()if bg and type(bg.Disable)=='function'then pcall(function()bg:Disable()
+end)end end function ag.EnableControls(bf)bf=bf or'default'bc[bf]=nil if next(bc
+)~=nil then return end local bg=be()if bg and type(bg.Enable)=='function'then
+pcall(function()bg:Enable()end)end end ab.Register(function()if aQ then aQ:
+Disconnect()aQ=nil end for bf,bg in ipairs(aF)do pcall(function()bg:Disconnect()
+end)end table.clear(aF)table.clear(bc)local bf=be()if bf and type(bf.Enable)==
+'function'then pcall(function()bf:Enable()end)end aM()end)return ag end end
 local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'a',a.load'c',a.load'f',{},{Mob={Min=15,
 Max=35,BossArea=false,BossAreaRadius=80,DisableDodge=false,EnableHazardScanner=
 true},Boss1={Min=25,Max=50,BossArea=false,BossAreaRadius=80,DisableDodge=false,

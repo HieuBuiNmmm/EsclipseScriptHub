@@ -169,37 +169,40 @@ function()for am,_ in ipairs(B)do if _==al then table.remove(B,am)break end end
 end end function h.IsInLobby()return D end function h.OnLobbyChanged(al)if type(
 al)~='function'then return function()end end table.insert(E,al)return function()
 for am,_ in ipairs(E)do if _==al then table.remove(E,am)break end end end end
-local al P=function()if not n or Q~=nil then return end for am,_ in pairs(u)do
-if _ and _.Root and _.Root.Parent then local an=false if _.Room and type(_.Room.
-Name)=='string'and string.find(string.lower(_.Room.Name),'boss')then an=true
-elseif string.find(string.lower(am.Name),'boss')then an=true elseif am.Parent
-and string.find(string.lower(am.Parent.Name),'boss')then an=true end if an then
-Q=_.Root.Position return end end end for am,an in pairs(u)do if an and an.Root
-and an.Root.Parent then Q=an.Root.Position return end end end local am=function(
-am)if n==am then return end n=am if am then p+=1 Q=nil ag()P()for an=#q,1,-1 do
-pcall(q[an],p)end else Q=nil end for an=#o,1,-1 do pcall(o[an],n)end O()end
-function h.GetBossSpawnPosition()if Q then return Q end P()return Q end function
-h.SetBossSpawnPosition(an)Q=an end local function an()if not d then return end
-local _=d:FindFirstChild'PlayerGui'if not _ then al=nil am(false)return end
-local ao=_:FindFirstChild('bossHealth',true)if ao then if ao~=al then al=ao if
-al:IsA'ScreenGui'then T(al:GetPropertyChangedSignal'Enabled':Connect(an))elseif
-al:IsA'GuiObject'then T(al:GetPropertyChangedSignal'Visible':Connect(an))end end
-local ap=if ao:IsA'ScreenGui'then ao.Enabled elseif ao:IsA'GuiObject'then ao.
-Visible else true am(ap)else al=nil am(false)end end task.spawn(function()if not
-d then return end local ao=d:WaitForChild('PlayerGui',30)if not ao then return
-end T(ao.DescendantAdded:Connect(an))T(ao.DescendantRemoving:Connect(an))an()
-while c.IsActive()and task.wait(0.5)do an()end end)local ao,ap={}local aq=
-function()if ap then return ap end pcall(function()local _=d or game:GetService
-'Players'.LocalPlayer local aq=_ and _:FindFirstChild'PlayerScripts'local ar=aq
-and aq:FindFirstChild'PlayerModule'if ar then ap=require(ar):GetControls()end
-end)return ap end function h.DisableControls(ar)ar=ar or'default'ao[ar]=true
-local _=aq()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
-end)end end function h.EnableControls(ar)ar=ar or'default'ao[ar]=nil if next(ao)
-~=nil then return end local _=aq()if _ and type(_.Enable)=='function'then pcall(
+local al function h.SetRealPlayerLevel(am)local _=tonumber(tostring(am or''):
+match'%d+')if _ and _>0 then al=tostring(_)_G.RealPlayerLevel=al end end
+function h.GetRealPlayerLevel()return al or _G.RealPlayerLevel end local am P=
+function()if not n or Q~=nil then return end for _,an in pairs(u)do if an and an
+.Root and an.Root.Parent then local ao=false if an.Room and type(an.Room.Name)==
+'string'and string.find(string.lower(an.Room.Name),'boss')then ao=true elseif
+string.find(string.lower(_.Name),'boss')then ao=true elseif _.Parent and string.
+find(string.lower(_.Parent.Name),'boss')then ao=true end if ao then Q=an.Root.
+Position return end end end for an,ao in pairs(u)do if ao and ao.Root and ao.
+Root.Parent then Q=ao.Root.Position return end end end local an=function(an)if n
+==an then return end n=an if an then p+=1 Q=nil ag()P()for ao=#q,1,-1 do pcall(q
+[ao],p)end else Q=nil end for ao=#o,1,-1 do pcall(o[ao],n)end O()end function h.
+GetBossSpawnPosition()if Q then return Q end P()return Q end function h.
+SetBossSpawnPosition(ao)Q=ao end local function ao()if not d then return end
+local _=d:FindFirstChild'PlayerGui'if not _ then am=nil an(false)return end
+local ap=_:FindFirstChild('bossHealth',true)if ap then if ap~=am then am=ap if
+am:IsA'ScreenGui'then T(am:GetPropertyChangedSignal'Enabled':Connect(ao))elseif
+am:IsA'GuiObject'then T(am:GetPropertyChangedSignal'Visible':Connect(ao))end end
+local aq=if ap:IsA'ScreenGui'then ap.Enabled elseif ap:IsA'GuiObject'then ap.
+Visible else true an(aq)else am=nil an(false)end end task.spawn(function()if not
+d then return end local ap=d:WaitForChild('PlayerGui',30)if not ap then return
+end T(ap.DescendantAdded:Connect(ao))T(ap.DescendantRemoving:Connect(ao))ao()
+while c.IsActive()and task.wait(0.5)do ao()end end)local ap,aq={}local ar=
+function()if aq then return aq end pcall(function()local _=d or game:GetService
+'Players'.LocalPlayer local ar=_ and _:FindFirstChild'PlayerScripts'local as=ar
+and ar:FindFirstChild'PlayerModule'if as then aq=require(as):GetControls()end
+end)return aq end function h.DisableControls(as)as=as or'default'ap[as]=true
+local _=ar()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
+end)end end function h.EnableControls(as)as=as or'default'ap[as]=nil if next(ap)
+~=nil then return end local _=ar()if _ and type(_.Enable)=='function'then pcall(
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
-nil end for ar,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
-clear(G)table.clear(ao)local ar=aq()if ar and type(ar.Enable)=='function'then
-pcall(function()ar:Enable()end)end N()end)return h end function a.d()local aa={}
+nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
+clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
+pcall(function()as:Enable()end)end N()end)return h end function a.d()local aa={}
 function aa.SelectBestTarget(ab,ac,ad)local ae,af,ag=(math.huge)for ah,ai in
 ipairs(ac)do if ad and ad()then return nil,nil,nil,nil,math.huge end local aj=ai
 .Root if aj and aj.Parent then local ak=aj.Position local al,am=ak.X-ab.X,ak.Z-
@@ -238,64 +241,64 @@ function ac.Repath(aj,ak)if not ak then return false end local al,am,an=aa.
 ComputePathWithCost(aj,ak)if al and#am>0 then if ah then pcall(function()ah:
 Destroy()end)end ah=al ad=am ae=1 ai=ak return true end return false end return
 ac end end local aa,ab,ac,ad=a.load'a',a.load'c',a.load'b',a.load'f'local ae,af,
-ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,b,c=aa.RunService or game:GetService
+ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,b=aa.RunService or game:GetService
 'RunService',aa.VirtualInputManager or game:GetService'VirtualInputManager',aa.
 player,{},false,35,0.15,4,0,0,false,false,-math.huge,0 function ah.IsEnabled()
-return ai end local d,e function ah.SetEnabled(f)local g=f==true if g==ai then
-return end ai=g if ai then d()else e()end end ah.IsSkillQEnabled=ah.IsEnabled ah
+return ai end local c,d function ah.SetEnabled(e)local f=e==true if f==ai then
+return end ai=f if ai then c()else d()end end ah.IsSkillQEnabled=ah.IsEnabled ah
 .SetSkillQEnabled=ah.SetEnabled ah.IsSkillEEnabled=ah.IsEnabled ah.
 SetSkillEEnabled=ah.SetEnabled function ah.GetSkillERange()return aj end
-function ah.SetSkillERange(f)if type(f)=='number'and f>=2 then aj=f end end
-function ah.GetSpamInterval()return ak end function ah.SetSpamInterval(f)if
-type(f)=='number'and f>=0.05 then ak=f end end function ah.GetBuffDuration()
-return al end function ah.SetBuffDuration(f)if type(f)=='number'and f>=0.5 then
-al=f end end function ah.IsBuffActive()return(os.clock()-aq)<al end function ah.
+function ah.SetSkillERange(e)if type(e)=='number'and e>=2 then aj=e end end
+function ah.GetSpamInterval()return ak end function ah.SetSpamInterval(e)if
+type(e)=='number'and e>=0.05 then ak=e end end function ah.GetBuffDuration()
+return al end function ah.SetBuffDuration(e)if type(e)=='number'and e>=0.5 then
+al=e end end function ah.IsBuffActive()return(os.clock()-aq)<al end function ah.
 TriggerBuff()aq=os.clock()end function ah.GetLastBuffTime()return aq end
-function ah.GetRemainingBuffTime()local f=al-(os.clock()-aq)return f>0 and f or
-0 end local f=function()local f=ag or game:GetService'Players'.LocalPlayer if
-not f then return nil end local g=f:FindFirstChild'Backpack'if g then for h,i in
-ipairs(g:GetChildren())do local j=i:FindFirstChild'abilitySlot'if j and string.
-lower(tostring(j.Value))=='q'then return i end end end local h=f.Character if h
-then for i,j in ipairs(h:GetChildren())do if j:IsA'Tool'then local k=j:
-FindFirstChild'abilitySlot'if k and string.lower(tostring(k.Value))=='q'then
-return j end end end end return nil end local g=function()local g=f()if g then
-local h=g:FindFirstChild'cooldown'if h and typeof(h.Value)=='number'then return
-h.Value end end return nil end local h,i,j,k=function(h)local i=g()if i~=nil
-then if i>(ar+0.5)or(ar<=0.2 and i>0.5)then aq=h end ar=i end end,function()if c
-then return end pcall(function()local h=aa.ReplicatedStorage or game:GetService
-'ReplicatedStorage'local i=h and h:FindFirstChild'remotes'local j=i and i:
-FindFirstChild'abilityCast'if j and j:IsA'RemoteEvent'then c=j.OnClientEvent:
-Connect(function(k,l)local m=ag or game:GetService'Players'.LocalPlayer if k==m
-then local n=f()if(n and n.Name==l)or(not n)then aq=os.clock()end end end)end
-end)end,function()if c then pcall(function()c:Disconnect()end)c=nil end end,
-function()local h=ag or game:GetService'Players'.LocalPlayer local i=h and h.
-Character local j=i and(i:FindFirstChild'HumanoidRootPart'or i.PrimaryPart)if j
-and j.Parent then return j end return nil end local l=function()local l=k()if
-not l then return nil,math.huge,false end local m,n=l.Position,ad.GetTarget and
-ad.GetTarget()if n and n.Root and n.Root.Parent then local o=n.Humanoid or(n.
-Model and n.Model:FindFirstChildOfClass'Humanoid')if o and o.Health>0 then local
-p=n.Root.Position local q=Vector3.new(p.X-m.X,0,p.Z-m.Z).Magnitude return n,q,
-true end end local o,p,q,r=ab.GetTrackedEnemyData and ab.GetTrackedEnemyData(),
-math.huge,false if o and#o>0 then for s,t in ipairs(o)do if t and t.Root and t.
-Root.Parent then local u=t.Humanoid or(t.Model and t.Model:FindFirstChildOfClass
-'Humanoid')if u and u.Health>0 then q=true local v=t.Root.Position local w,x=v.X
--m.X,v.Z-m.Z local y=w*w+x*x if y<p then p=y r=t end end end end end local s=p<
-math.huge and math.sqrt(p)or math.huge return r,s,q end function ah.CastSkillQ()
-if ao then return end ao=true task.spawn(function()local m=(ab.GetKeyHoldTime
+function ah.GetRemainingBuffTime()local e=al-(os.clock()-aq)return e>0 and e or
+0 end local e=function()local e=ag or game:GetService'Players'.LocalPlayer if
+not e then return nil end local f=e:FindFirstChild'Backpack'if f then for g,h in
+ipairs(f:GetChildren())do local i=h:FindFirstChild'abilitySlot'if i and string.
+lower(tostring(i.Value))=='q'then return h end end end local g=e.Character if g
+then for h,i in ipairs(g:GetChildren())do if i:IsA'Tool'then local j=i:
+FindFirstChild'abilitySlot'if j and string.lower(tostring(j.Value))=='q'then
+return i end end end end return nil end local f=function()local f=e()if f then
+local g=f:FindFirstChild'cooldown'if g and typeof(g.Value)=='number'then return
+g.Value end end return nil end local g,h,i,j=function(g)local h=f()if h~=nil
+then if h>(ar+0.5)or(ar<=0.2 and h>0.5)then aq=g end ar=h end end,function()if b
+then return end pcall(function()local g=aa.ReplicatedStorage or game:GetService
+'ReplicatedStorage'local h=g and g:FindFirstChild'remotes'local i=h and h:
+FindFirstChild'abilityCast'if i and i:IsA'RemoteEvent'then b=i.OnClientEvent:
+Connect(function(j,k)local l=ag or game:GetService'Players'.LocalPlayer if j==l
+then local m=e()if(m and m.Name==k)or(not m)then aq=os.clock()end end end)end
+end)end,function()if b then pcall(function()b:Disconnect()end)b=nil end end,
+function()local g=ag or game:GetService'Players'.LocalPlayer local h=g and g.
+Character local i=h and(h:FindFirstChild'HumanoidRootPart'or h.PrimaryPart)if i
+and i.Parent then return i end return nil end local k=function()local k=j()if
+not k then return nil,math.huge,false end local l,m=k.Position,ad.GetTarget and
+ad.GetTarget()if m and m.Root and m.Root.Parent then local n=m.Humanoid or(m.
+Model and m.Model:FindFirstChildOfClass'Humanoid')if n and n.Health>0 then local
+o=m.Root.Position local p=Vector3.new(o.X-l.X,0,o.Z-l.Z).Magnitude return m,p,
+true end end local n,o,p,q=ab.GetTrackedEnemyData and ab.GetTrackedEnemyData(),
+math.huge,false if n and#n>0 then for r,s in ipairs(n)do if s and s.Root and s.
+Root.Parent then local t=s.Humanoid or(s.Model and s.Model:FindFirstChildOfClass
+'Humanoid')if t and t.Health>0 then p=true local u=s.Root.Position local v,w=u.X
+-l.X,u.Z-l.Z local x=v*v+w*w if x<o then o=x q=s end end end end end local r=o<
+math.huge and math.sqrt(o)or math.huge return q,r,p end function ah.CastSkillQ()
+if ao then return end ao=true task.spawn(function()local l=(ab.GetKeyHoldTime
 and ab.GetKeyHoldTime())or 0.05 pcall(function()af:SendKeyEvent(true,Enum.
-KeyCode.Q,false,game)end)task.wait(m)pcall(function()af:SendKeyEvent(false,Enum.
+KeyCode.Q,false,game)end)task.wait(l)pcall(function()af:SendKeyEvent(false,Enum.
 KeyCode.Q,false,game)end)ao=false end)end function ah.CastSkillE()if ap then
-return end ap=true task.spawn(function()local m=(ab.GetKeyHoldTime and ab.
+return end ap=true task.spawn(function()local l=(ab.GetKeyHoldTime and ab.
 GetKeyHoldTime())or 0.05 pcall(function()af:SendKeyEvent(true,Enum.KeyCode.E,
-false,game)end)task.wait(m)pcall(function()af:SendKeyEvent(false,Enum.KeyCode.E,
-false,game)end)ap=false end)end local m=function()if not ai or ab.IsInLobby()
-then return end local m=k()if not m then return end local n=m.Parent local o=n
-and n:FindFirstChildOfClass'Humanoid'if o and o.Health<=0 then return end local
-p,q,r=l()local s=os.clock()h(s)if(s-am>=ak)and not ao then if r then local t=g()
-local u=(t==nil)or(t<=0.2)if u then am=s ah.CastSkillQ()if t==nil and not ah.
-IsBuffActive()then aq=s end end end end if(s-an>=ak)and not ap then if p and q<=
-aj then local t=ah.IsBuffActive()if t then an=s ah.CastSkillE()end end end end d
-=function()if not b then b=ae.Heartbeat:Connect(m)end i()end e=function()if b
-then b:Disconnect()b=nil end j()ao=false ap=false ar=0 aq=-math.huge end
-function ah.Step(n,o,p)end ac.Register(function()ah.SetEnabled(false)end)return
+false,game)end)task.wait(l)pcall(function()af:SendKeyEvent(false,Enum.KeyCode.E,
+false,game)end)ap=false end)end local l=function()if not ai or ab.IsInLobby()
+then return end local l=j()if not l then return end local m=l.Parent local n=m
+and m:FindFirstChildOfClass'Humanoid'if n and n.Health<=0 then return end local
+o,p,q=k()local r=os.clock()g(r)if(r-am>=ak)and not ao then if q then local s=f()
+local t=(s==nil)or(s<=0.2)if t then am=r ah.CastSkillQ()if s==nil and not ah.
+IsBuffActive()then aq=r end end end end if(r-an>=ak)and not ap then if o and p<=
+aj then local s=ah.IsBuffActive()if s then an=r ah.CastSkillE()end end end end c
+=function()if not as then as=ae.Heartbeat:Connect(l)end h()end d=function()if as
+then as:Disconnect()as=nil end i()ao=false ap=false ar=0 aq=-math.huge end
+function ah.Step(m,n,o)end ac.Register(function()ah.SetEnabled(false)end)return
 ah

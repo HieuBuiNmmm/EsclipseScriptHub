@@ -172,38 +172,41 @@ function()for am,_ in ipairs(B)do if _==al then table.remove(B,am)break end end
 end end function h.IsInLobby()return D end function h.OnLobbyChanged(al)if type(
 al)~='function'then return function()end end table.insert(E,al)return function()
 for am,_ in ipairs(E)do if _==al then table.remove(E,am)break end end end end
-local al P=function()if not n or Q~=nil then return end for am,_ in pairs(u)do
-if _ and _.Root and _.Root.Parent then local an=false if _.Room and type(_.Room.
-Name)=='string'and string.find(string.lower(_.Room.Name),'boss')then an=true
-elseif string.find(string.lower(am.Name),'boss')then an=true elseif am.Parent
-and string.find(string.lower(am.Parent.Name),'boss')then an=true end if an then
-Q=_.Root.Position return end end end for am,an in pairs(u)do if an and an.Root
-and an.Root.Parent then Q=an.Root.Position return end end end local am=function(
-am)if n==am then return end n=am if am then p+=1 Q=nil ag()P()for an=#q,1,-1 do
-pcall(q[an],p)end else Q=nil end for an=#o,1,-1 do pcall(o[an],n)end O()end
-function h.GetBossSpawnPosition()if Q then return Q end P()return Q end function
-h.SetBossSpawnPosition(an)Q=an end local function an()if not d then return end
-local _=d:FindFirstChild'PlayerGui'if not _ then al=nil am(false)return end
-local ao=_:FindFirstChild('bossHealth',true)if ao then if ao~=al then al=ao if
-al:IsA'ScreenGui'then T(al:GetPropertyChangedSignal'Enabled':Connect(an))elseif
-al:IsA'GuiObject'then T(al:GetPropertyChangedSignal'Visible':Connect(an))end end
-local ap=if ao:IsA'ScreenGui'then ao.Enabled elseif ao:IsA'GuiObject'then ao.
-Visible else true am(ap)else al=nil am(false)end end task.spawn(function()if not
-d then return end local ao=d:WaitForChild('PlayerGui',30)if not ao then return
-end T(ao.DescendantAdded:Connect(an))T(ao.DescendantRemoving:Connect(an))an()
-while c.IsActive()and task.wait(0.5)do an()end end)local ao,ap={}local aq=
-function()if ap then return ap end pcall(function()local _=d or game:GetService
-'Players'.LocalPlayer local aq=_ and _:FindFirstChild'PlayerScripts'local ar=aq
-and aq:FindFirstChild'PlayerModule'if ar then ap=require(ar):GetControls()end
-end)return ap end function h.DisableControls(ar)ar=ar or'default'ao[ar]=true
-local _=aq()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
-end)end end function h.EnableControls(ar)ar=ar or'default'ao[ar]=nil if next(ao)
-~=nil then return end local _=aq()if _ and type(_.Enable)=='function'then pcall(
+local al function h.SetRealPlayerLevel(am)local _=tonumber(tostring(am or''):
+match'%d+')if _ and _>0 then al=tostring(_)_G.RealPlayerLevel=al end end
+function h.GetRealPlayerLevel()return al or _G.RealPlayerLevel end local am P=
+function()if not n or Q~=nil then return end for _,an in pairs(u)do if an and an
+.Root and an.Root.Parent then local ao=false if an.Room and type(an.Room.Name)==
+'string'and string.find(string.lower(an.Room.Name),'boss')then ao=true elseif
+string.find(string.lower(_.Name),'boss')then ao=true elseif _.Parent and string.
+find(string.lower(_.Parent.Name),'boss')then ao=true end if ao then Q=an.Root.
+Position return end end end for an,ao in pairs(u)do if ao and ao.Root and ao.
+Root.Parent then Q=ao.Root.Position return end end end local an=function(an)if n
+==an then return end n=an if an then p+=1 Q=nil ag()P()for ao=#q,1,-1 do pcall(q
+[ao],p)end else Q=nil end for ao=#o,1,-1 do pcall(o[ao],n)end O()end function h.
+GetBossSpawnPosition()if Q then return Q end P()return Q end function h.
+SetBossSpawnPosition(ao)Q=ao end local function ao()if not d then return end
+local _=d:FindFirstChild'PlayerGui'if not _ then am=nil an(false)return end
+local ap=_:FindFirstChild('bossHealth',true)if ap then if ap~=am then am=ap if
+am:IsA'ScreenGui'then T(am:GetPropertyChangedSignal'Enabled':Connect(ao))elseif
+am:IsA'GuiObject'then T(am:GetPropertyChangedSignal'Visible':Connect(ao))end end
+local aq=if ap:IsA'ScreenGui'then ap.Enabled elseif ap:IsA'GuiObject'then ap.
+Visible else true an(aq)else am=nil an(false)end end task.spawn(function()if not
+d then return end local ap=d:WaitForChild('PlayerGui',30)if not ap then return
+end T(ap.DescendantAdded:Connect(ao))T(ap.DescendantRemoving:Connect(ao))ao()
+while c.IsActive()and task.wait(0.5)do ao()end end)local ap,aq={}local ar=
+function()if aq then return aq end pcall(function()local _=d or game:GetService
+'Players'.LocalPlayer local ar=_ and _:FindFirstChild'PlayerScripts'local as=ar
+and ar:FindFirstChild'PlayerModule'if as then aq=require(as):GetControls()end
+end)return aq end function h.DisableControls(as)as=as or'default'ap[as]=true
+local _=ar()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
+end)end end function h.EnableControls(as)as=as or'default'ap[as]=nil if next(ap)
+~=nil then return end local _=ar()if _ and type(_.Enable)=='function'then pcall(
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
-nil end for ar,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
-clear(G)table.clear(ao)local ar=aq()if ar and type(ar.Enable)=='function'then
-pcall(function()ar:Enable()end)end N()end)return h end end local aa,ab,ac,ad,ae,
-af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,b=a.load'a',a.load'b',a.load'd',{[
+nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
+clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
+pcall(function()as:Enable()end)end N()end)return h end end local aa,ab,ac,ad,ae,
+af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as=a.load'a',a.load'b',a.load'd',{[
 77649408247578]=true,[115445507767090]=true},{},false,false,true,{},{},{},'None'
 ,false,{weapons='Weapons',helmets='Helmets',chests='Chests',abilities=
 'Abilities'},{'Common','Uncommon','Rare','Epic','Legendary','Mythic'},{'1','5',
@@ -212,75 +215,75 @@ af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,b=a.load'a',a.load'b',a.load'd',{[
 '155','160','165','170','175','180','185','190','195','200','205','210','215',
 '220','225','230','235','240','245','250','255','260','265','270','275','280',
 '285','290','295','300'},{'None','Below','Above'},{Common=0,Uncommon=1,Rare=2,
-Epic=3,Legendary=4,Mythic=5},{}for c,d in ipairs(ao)do b[d]=true end local c={}
-for d,e in ipairs(ao)do c[string.lower(e)]=e end local d,e=function(d)if type(d)
-~='string'then return nil end return c[string.lower(d)]end,function(d)local e
-pcall(function()e=game:GetService'ReplicatedStorage':WaitForChild('remotes',5):
-WaitForChild('sellItemEvent',5)end)if not e then return false,0 end local f={}
-for g,h in pairs(d)do if type(h)=='table'and#h>0 then f[g]=h end end if next(f)
-==nil then return false,0 end local g=pcall(function()e:FireServer(f)end)if not
-g then return false,0 end return true,0 end local f=e function ae.SetSellAction(
-g)if type(g)=='function'then f=g end end local g=function()local g,h=pcall(
+Epic=3,Legendary=4,Mythic=5},{}for b,c in ipairs(ao)do as[c]=true end local b={}
+for c,d in ipairs(ao)do b[string.lower(d)]=d end local c,d=function(c)if type(c)
+~='string'then return nil end return b[string.lower(c)]end,function(c)local d
+pcall(function()d=game:GetService'ReplicatedStorage':WaitForChild('remotes',5):
+WaitForChild('sellItemEvent',5)end)if not d then return false,0 end local e={}
+for f,g in pairs(c)do if type(g)=='table'and#g>0 then e[f]=g end end if next(e)
+==nil then return false,0 end local f=pcall(function()d:FireServer(e)end)if not
+f then return false,0 end return true,0 end local e=d function ae.SetSellAction(
+f)if type(f)=='function'then e=f end end local f=function()local f,g=pcall(
 function()return game:GetService'ReplicatedStorage':WaitForChild('remotes',5):
-WaitForChild('reloadInvy',5)end)if not g or not h then return nil,
-'Could not find remote reloadInvy'end local i,j=pcall(function()return h:
-InvokeServer()end)if not i or j==nil then return nil,'Could not read inventory'
-end local k,l,m,n={},{},function(k)return k.sellPrice~=nil or k.UniqueItemID~=
-nil or k.rarity~=nil end,function(k)local l=tostring(k)local m=tonumber(l:match
-'_(%d+)$')if not m then return nil,nil end local n=l:match'^(.-)_%d+$'return n,m
-end local o=function(o,p,q,r)local s=false if type(o.equipped)=='boolean'then s=
-o.equipped elseif type(o.equipped)=='table'then for t,u in pairs(o.equipped)do
-if u==true then s=true break end end end local t=d(o.rarity)or'Common'table.
-insert(k,{Type=an[p]or p or'Unknown',Category=q or p,Index=r,Name=tostring(o.
-name or o.UniqueItemID or'?'),Rarity=t,RarityValue=ar[t],SellPrice=tonumber(o.
-sellPrice)or 0,UniqueItemID=o.UniqueItemID,Equipped=s,LevelReq=tonumber(o.
-levelReq)or 0,Raw=o})end local function p(q,r,s,t)if type(q)~='table'then return
-end if l[q]then return end l[q]=true if m(q)then o(q,r,s,t)return end for u,v in
-pairs(q)do if an[u]then p(v,u,nil,nil)elseif type(v)=='table'and m(v)then local
-w,x=n(u)p(v,r,w,x)else p(v,r,s,t)end end end p(j,nil,nil,nil)return k end
-function ae.ShouldSellItem(h)if not h then return false end if ah and h.Equipped
-then return false end if next(ai)and b[h.Rarity]and not ai[h.Rarity]then return
-false end if next(aj)and h.Type and not aj[h.Type]then return false end local i,
-j=ak,al if next(i)==nil then i={[1]=true}j='None'end local k=h.LevelReq or 0 if
-j=='Below'then local l for m in pairs(i)do if not l or m>l then l=m end end if l
-and k>l then return false end elseif j=='Above'then local l for m in pairs(i)do
-if not l or m<l then l=m end end if l and k<l then return false end else if not
-i[k]then return false end end return true end function ae.HasAnyFilter()return
+WaitForChild('reloadInvy',5)end)if not f or not g then return nil,
+'Could not find remote reloadInvy'end local h,i=pcall(function()return g:
+InvokeServer()end)if not h or i==nil then return nil,'Could not read inventory'
+end local j,k,l,m={},{},function(j)return j.sellPrice~=nil or j.UniqueItemID~=
+nil or j.rarity~=nil end,function(j)local k=tostring(j)local l=tonumber(k:match
+'_(%d+)$')if not l then return nil,nil end local m=k:match'^(.-)_%d+$'return m,l
+end local n=function(n,o,p,q)local r=false if type(n.equipped)=='boolean'then r=
+n.equipped elseif type(n.equipped)=='table'then for s,t in pairs(n.equipped)do
+if t==true then r=true break end end end local s=c(n.rarity)or'Common'table.
+insert(j,{Type=an[o]or o or'Unknown',Category=p or o,Index=q,Name=tostring(n.
+name or n.UniqueItemID or'?'),Rarity=s,RarityValue=ar[s],SellPrice=tonumber(n.
+sellPrice)or 0,UniqueItemID=n.UniqueItemID,Equipped=r,LevelReq=tonumber(n.
+levelReq)or 0,Raw=n})end local function o(p,q,r,s)if type(p)~='table'then return
+end if k[p]then return end k[p]=true if l(p)then n(p,q,r,s)return end for t,u in
+pairs(p)do if an[t]then o(u,t,nil,nil)elseif type(u)=='table'and l(u)then local
+v,w=m(t)o(u,q,v,w)else o(u,q,r,s)end end end o(i,nil,nil,nil)return j end
+function ae.ShouldSellItem(g)if not g then return false end if ah and g.Equipped
+then return false end if next(ai)and as[g.Rarity]and not ai[g.Rarity]then return
+false end if next(aj)and g.Type and not aj[g.Type]then return false end local h,
+i=ak,al if next(h)==nil then h={[1]=true}i='None'end local j=g.LevelReq or 0 if
+i=='Below'then local k for l in pairs(h)do if not k or l>k then k=l end end if k
+and j>k then return false end elseif i=='Above'then local k for l in pairs(h)do
+if not k or l<k then k=l end end if k and j<k then return false end else if not
+h[j]then return false end end return true end function ae.HasAnyFilter()return
 next(ai)~=nil or next(aj)~=nil or next(ak)~=nil end function ae.CountMatches()
-local h,i=g()if not h then return{total=0,matching=0,error=i or
-'Error reading inventory'}end local j,k=0,{}for l,m in ipairs(h)do k[m.Type]=(k[
-m.Type]or 0)+1 if ae.ShouldSellItem(m)then j+=1 end end return{total=#h,matching
-=j,byCategory=k}end function ae.SellItems()if am then return nil end am=true
-local h,i,j={sold=0,skipped=0,gold=0,error=nil},g()if not i then h.error=j or
-'Error reading inventory'am=false return h end local k={}for l,m in ipairs(i)do
-if ae.ShouldSellItem(m)then if m.Index then h.sold+=1 local n=m.Category or m.
-Type k[n]=k[n]or{}table.insert(k[n],m.Index)end else h.skipped+=1 end end local
-l,m=pcall(f,k)if l and m and type(m)=='number'then h.gold=m end am=false return
-h end function ae.SetLevelReqMode(h)if h=='Below'or h=='Above'then al=h else al=
+local g,h=f()if not g then return{total=0,matching=0,error=h or
+'Error reading inventory'}end local i,j=0,{}for k,l in ipairs(g)do j[l.Type]=(j[
+l.Type]or 0)+1 if ae.ShouldSellItem(l)then i+=1 end end return{total=#g,matching
+=i,byCategory=j}end function ae.SellItems()if am then return nil end am=true
+local g,h,i={sold=0,skipped=0,gold=0,error=nil},f()if not h then g.error=i or
+'Error reading inventory'am=false return g end local j={}for k,l in ipairs(h)do
+if ae.ShouldSellItem(l)then if l.Index then g.sold+=1 local m=l.Category or l.
+Type j[m]=j[m]or{}table.insert(j[m],l.Index)end else g.skipped+=1 end end local
+k,l=pcall(e,j)if k and l and type(l)=='number'then g.gold=l end am=false return
+g end function ae.SetLevelReqMode(g)if g=='Below'or g=='Above'then al=g else al=
 'None'end end function ae.GetLevelReqMode()return al end function ae.
-SetExcludeEquipped(h)ah=h end function ae.GetExcludeEquipped()return ah end
-function ae.SetRarityFilter(h)ai={}if type(h)=='table'then for i,j in pairs(h)do
-if j==true and type(i)=='string'then local k=d(i)or i ai[k]=true elseif type(j)
-=='string'then local k=d(j)or j ai[k]=true end end elseif type(h)=='string'then
-local i=d(h)or h ai[i]=true end end function ae.GetRarityFilter()local h={}for i
-in pairs(ai)do table.insert(h,i)end return h end function ae.SetTypeFilter(h)aj=
-{}if type(h)=='table'then for i,j in pairs(h)do if j==true and type(i)=='string'
-then aj[i]=true elseif type(j)=='string'then aj[j]=true end end elseif type(h)==
-'string'then aj[h]=true end end function ae.GetTypeFilter()local h={}for i in
-pairs(aj)do table.insert(h,i)end return h end function ae.SetLevelReqExactFilter
-(h)ak={}if type(h)=='table'then for i,j in pairs(h)do if j==true then local k=
-tonumber(i)if k then ak[k]=true end else local k=tonumber(j)if k then ak[k]=true
-end end end elseif type(h)=='string'or type(h)=='number'then local i=tonumber(h)
-if i then ak[i]=true end end end function ae.GetLevelReqExactFilter()local h={}
-for i in pairs(ak)do table.insert(h,tostring(i))end return h end local h=
-function()return not ad[game.PlaceId]end local i=function()if not af then return
-end if ag then return end if not h()then return end if not ae.HasAnyFilter()then
-return end ag=true task.spawn(function()task.wait(2.5)if not af or not h()then
-return end local i=ae.SellItems()if i and i.sold and i.sold>0 then ab.Notify(
-'AutoSell',('Auto-sold %d item(s) on dungeon start.'):format(i.sold),3)end end)
-end function ae.Toggle(j)af=j and true or false if af and h()and not ag then i()
-end end function ae.IsEnabled()return af end ac.OnDungeonNameChanged(function(j)
-ag=false if j then i()end end)ac.OnLobbyChanged(function(j)if not j then ag=
-false i()else ag=false end end)task.spawn(function()while aa.IsActive()do task.
-wait(1)if af and h()and not ag then i()end end end)aa.Register(function()af=
+SetExcludeEquipped(g)ah=g end function ae.GetExcludeEquipped()return ah end
+function ae.SetRarityFilter(g)ai={}if type(g)=='table'then for h,i in pairs(g)do
+if i==true and type(h)=='string'then local j=c(h)or h ai[j]=true elseif type(i)
+=='string'then local j=c(i)or i ai[j]=true end end elseif type(g)=='string'then
+local h=c(g)or g ai[h]=true end end function ae.GetRarityFilter()local g={}for h
+in pairs(ai)do table.insert(g,h)end return g end function ae.SetTypeFilter(g)aj=
+{}if type(g)=='table'then for h,i in pairs(g)do if i==true and type(h)=='string'
+then aj[h]=true elseif type(i)=='string'then aj[i]=true end end elseif type(g)==
+'string'then aj[g]=true end end function ae.GetTypeFilter()local g={}for h in
+pairs(aj)do table.insert(g,h)end return g end function ae.SetLevelReqExactFilter
+(g)ak={}if type(g)=='table'then for h,i in pairs(g)do if i==true then local j=
+tonumber(h)if j then ak[j]=true end else local j=tonumber(i)if j then ak[j]=true
+end end end elseif type(g)=='string'or type(g)=='number'then local h=tonumber(g)
+if h then ak[h]=true end end end function ae.GetLevelReqExactFilter()local g={}
+for h in pairs(ak)do table.insert(g,tostring(h))end return g end local g=
+function()return not ad[game.PlaceId]end local h=function()if not af then return
+end if ag then return end if not g()then return end if not ae.HasAnyFilter()then
+return end ag=true task.spawn(function()task.wait(2.5)if not af or not g()then
+return end local h=ae.SellItems()if h and h.sold and h.sold>0 then ab.Notify(
+'AutoSell',('Auto-sold %d item(s) on dungeon start.'):format(h.sold),3)end end)
+end function ae.Toggle(i)af=i and true or false if af and g()and not ag then h()
+end end function ae.IsEnabled()return af end ac.OnDungeonNameChanged(function(i)
+ag=false if i then h()end end)ac.OnLobbyChanged(function(i)if not i then ag=
+false h()else ag=false end end)task.spawn(function()while aa.IsActive()do task.
+wait(1)if af and g()and not ag then h()end end end)aa.Register(function()af=
 false end)ae.LEVEL_REQ_OPTIONS=ap ae.LEVEL_REQ_MODE_OPTIONS=aq return ae

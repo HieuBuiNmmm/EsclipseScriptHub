@@ -9,11 +9,7 @@
 --]]
 
 _P = {
-<<<<<<< Updated upstream
-    genDate = "2026-09-18T00:11:29.286042200+00:00",
-=======
-    genDate = "2026-09-17T15:34:30.771244+00:00",
->>>>>>> Stashed changes
+    genDate = "2026-09-18T10:54:47.276437300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -52,6 +48,10 @@ type ParsedItemSlot__DARKLUA_TYPE_f = {
 	physical: number,
 	spell: number,
 	health: number,
+	maxPhysical: number,
+	maxSpell: number,
+	maxHealth: number,
+	maxPot: number,
 	rarityScore: number,
 	levelReq: number,
 	name: string}
@@ -7187,6 +7187,21 @@ function shared.OnLobbyChanged(callback)
 			if cb == callback then table.remove(lobbyCallbacks, i) break end
 		end
 	end
+end
+
+--// ---- Player Real Level (dùng cho Webhook, không bị ảnh hưởng bởi UI masking) ----
+local realPlayerLevel = nil
+
+function shared.SetRealPlayerLevel(level)
+	local num = tonumber(tostring(level or ""):match("%d+"))
+	if num and num > 0 then
+		realPlayerLevel = tostring(num)
+		_G.RealPlayerLevel = realPlayerLevel
+	end
+end
+
+function shared.GetRealPlayerLevel()
+	return realPlayerLevel or _G.RealPlayerLevel
 end
 
 --// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
@@ -19590,17 +19605,113 @@ local function findChildRecursive(parent, name, maxDepth)
 	return nil
 end
 
---// Lấy Level hiện tại: Players.LocalPlayer.PlayerGui.playerStatus.Frame.levelBorder.level (TextLabel)
-local function getLevel()
+--// Lưu cache level thực tế cuối cùng để tránh bị mất nếu UI bị che/mask
+local cachedRealLevel = nil
+
+--// Lấy Level hiện tại (không bị ảnh hưởng bởi Streaming Mode / UI Masking)
+local function getLevel(): string
+	-- 1. Ưu tiên kiểm tra shared module
+	if shared and type(shared.GetRealPlayerLevel) == "function" then
+		local lvl = shared.GetRealPlayerLevel()
+		if lvl then
+			local num = tonumber(tostring(lvl):match("%d+"))
+			if num and num > 0 then
+				cachedRealLevel = tostring(num)
+				return cachedRealLevel
+			end
+		end
+	end
+
+	-- 2. Kiểm tra _G / getgenv
+	local gLvl = _G.RealPlayerLevel or (type(getgenv) == "function" and getgenv().RealPlayerLevel)
+	if gLvl then
+		local num = tonumber(tostring(gLvl):match("%d+"))
+		if num and num > 0 then
+			cachedRealLevel = tostring(num)
+			return cachedRealLevel
+		end
+	end
+
 	local p = game:GetService("Players").LocalPlayer
-	if not p or not p:FindFirstChild("PlayerGui") then return "?" end
-	local playerStatus = p.PlayerGui:FindFirstChild("playerStatus")
-	if not playerStatus then return "?" end
-	local levelBorder = findChildRecursive(playerStatus, "levelBorder")
-	if not levelBorder then return "?" end
-	local label = levelBorder:FindFirstChild("level")
-	if label and label:IsA("TextLabel") then return label.Text end
-	return "?"
+	if not p then return cachedRealLevel or "?" end
+
+	-- 3. Quét leaderstats của LocalPlayer
+	local leaderstats = p:FindFirstChild("leaderstats")
+	if leaderstats then
+		for _, child in ipairs(leaderstats:GetChildren()) do
+			local n = string.lower(child.Name)
+			if string.find(n, "level") or string.find(n, "lvl") then
+				local num = tonumber(tostring(child.Value):match("%d+"))
+				if num and num > 0 then
+					cachedRealLevel = tostring(num)
+					if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+					return cachedRealLevel
+				end
+			end
+		end
+	end
+
+	-- 4. Quét ValueBase trực tiếp dưới LocalPlayer
+	for _, child in ipairs(p:GetChildren()) do
+		local n = string.lower(child.Name)
+		if n == "level" or n == "lvl" or string.find(n, "level") then
+			if child:IsA("ValueBase") then
+				local num = tonumber(tostring(child.Value):match("%d+"))
+				if num and num > 0 then
+					cachedRealLevel = tostring(num)
+					if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+					return cachedRealLevel
+				end
+			end
+		end
+	end
+
+	-- 5. Quét Attributes trên LocalPlayer
+	for attrName, attrVal in pairs(p:GetAttributes()) do
+		local n = string.lower(attrName)
+		if string.find(n, "level") or string.find(n, "lvl") then
+			local num = tonumber(tostring(attrVal):match("%d+"))
+			if num and num > 0 then
+				cachedRealLevel = tostring(num)
+				if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+				return cachedRealLevel
+			end
+		end
+	end
+
+	-- 6. Quét UI playerStatus
+	if p:FindFirstChild("PlayerGui") then
+		local playerStatus = p.PlayerGui:FindFirstChild("playerStatus")
+		if playerStatus then
+			local levelBorder = findChildRecursive(playerStatus, "levelBorder")
+			if levelBorder then
+				local label = levelBorder:FindFirstChild("level")
+				if label and label:IsA("TextLabel") then
+					-- Attribute RealLevel do streamingMode gán vào
+					local realAttr = label:GetAttribute("RealLevel") or label:GetAttribute("OriginalText")
+					if realAttr then
+						local num = tonumber(tostring(realAttr):match("%d+"))
+						if num and num > 0 then
+							cachedRealLevel = tostring(num)
+							if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+							return cachedRealLevel
+						end
+					end
+
+					-- Nếu TextLabel hiện tại có chứa số (chưa bị mask thành ???)
+					local txt = label.Text
+					local num = tonumber(tostring(txt):match("%d+"))
+					if num and num > 0 then
+						cachedRealLevel = tostring(num)
+						if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(cachedRealLevel) end
+						return cachedRealLevel
+					end
+				end
+			end
+		end
+	end
+
+	return cachedRealLevel or "?"
 end
 
 --// Retry lấy XP trước dungeon cho tới khi có (tránh nil do timing/XP chưa sẵn sàng).
@@ -19812,15 +19923,36 @@ local function attachPotentialInfo(reward)
 			local itemName = tostring(raw.name or raw.itemName or rewItem.itemName or "")
 			local category = matched.category or itType
 
+			local rawMax = raw.totalUpgrades
+				or raw.maxUpgrades
+				or raw.totalUpgrade
+				or raw.maxUpgrade
+				or raw.upgradesTotal
+				or raw.upgradesMax
+				or raw.upgradeTotal
+				or raw.upgradeLimit
+				or raw.availableUpgrades
+
 			local curUpgrades, maxUpgrades = 0, 0
-			if raw.maxUpgrades ~= nil then
-				maxUpgrades = tonumber(raw.maxUpgrades) or 0
-				curUpgrades = tonumber(raw.curUpgrades or raw.upgrades) or 0
-			elseif raw.upgrades ~= nil then
+			if rawMax ~= nil then
+				maxUpgrades = tonumber(rawMax) or 0
+			end
+			if raw.curUpgrades ~= nil or raw.currentUpgrades ~= nil then
+				curUpgrades = tonumber(raw.curUpgrades or raw.currentUpgrades) or 0
+			end
+
+			if raw.upgrades ~= nil then
 				if type(raw.upgrades) == "string" then
-					curUpgrades, maxUpgrades = parseUpgrades(raw.upgrades)
+					local c, m = parseUpgrades(raw.upgrades)
+					curUpgrades = curUpgrades ~= 0 and curUpgrades or c
+					maxUpgrades = maxUpgrades ~= 0 and maxUpgrades or m
 				elseif type(raw.upgrades) == "number" then
-					curUpgrades = raw.upgrades
+					curUpgrades = curUpgrades ~= 0 and curUpgrades or raw.upgrades
+				elseif type(raw.upgrades) == "table" then
+					local c = raw.upgrades.cur or raw.upgrades.current or raw.upgrades[1]
+					local m = raw.upgrades.max or raw.upgrades.total or raw.upgrades.totalUpgrades or raw.upgrades[2]
+					if c ~= nil then curUpgrades = curUpgrades ~= 0 and curUpgrades or (tonumber(c) or 0) end
+					if m ~= nil then maxUpgrades = maxUpgrades ~= 0 and maxUpgrades or (tonumber(m) or 0) end
 				end
 			end
 
@@ -19960,15 +20092,8 @@ local function buildItemsText(items)
 
 		if showPotential and item.potentialInfo then
 			local p = item.potentialInfo
-			local sub = string.format(
-				"  └ %s %s %s | Pot: %s (%s/%s)",
-				p.icon,
-				formatNumber(p.statVal),
-				p.statName,
-				formatNumber(p.maxPotential),
-				formatNumber(p.curUpgrades),
-				formatNumber(p.maxUpgrades)
-			)
+			local icon = (p.icon and p.icon ~= "") and (p.icon .. " ") or ""
+			local sub = string.format("  └ %sMaxPot: %s", icon, formatNumber(p.maxPotential))
 			table.insert(lines, line .. "\n" .. sub)
 		else
 			table.insert(lines, line)
@@ -20030,6 +20155,12 @@ local function buildEmbed(reward, meta)
 
 	meta = meta or {}
 	local level = tostring(meta.level or "?")
+	if level == "???" or level == "?" or level == "" or not level:match("%d+") then
+		level = getLevel()
+	end
+	if level == "???" or not level:match("%d+") then
+		level = "?"
+	end
 	local expGained = tonumber(meta.expGained)
 	local expText = expGained and string.format("+%s XP", tostring(expGained)) or "?"
 	local durationText = formatDuration(meta.duration)
@@ -20048,7 +20179,7 @@ local function buildEmbed(reward, meta)
 	local fields = {
 		{
 			name = "Player",
-			value = string.format("%s (lv %s)", getPlayerName(), level),
+			value = string.format("||%s|| (lv %s)", getPlayerName(), level),
 			inline = true,
 		},
 		{
@@ -20560,8 +20691,7 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.X()--// Streaming Mode: Ẩn danh tính Player (Name & DisplayName) trên toàn bộ GUI & Nametag.
---// Thay thế tất cả sự xuất hiện của tên người chơi thành "EclipseHub" (hoặc chuỗi tùy chọn)
+end function __DIST.X()--// Thay thế tất cả sự xuất hiện của tên người chơi thành "Username" (hoặc chuỗi tùy chọn)
 --// để hỗ trợ quay video, livestream mà không làm lộ tên tài khoản Roblox.
 --// Hỗ trợ tự khôi phục lại tên gốc khi tắt, an toàn với RichText tags và chống đệ quy.
 
@@ -20570,6 +20700,7 @@ end function __DIST.X()--// Streaming Mode: Ẩn danh tính Player (Name & Displ
 local macLib = __DIST.load('a')
 local lifecycle = __DIST.load('b')
 local binder = __DIST.load('V')
+local shared = __DIST.load('f')
 
 --// Services
 local Players = game:GetService("Players")
@@ -20582,7 +20713,7 @@ local HttpService = game:GetService("HttpService")
 
 
 
-local DEFAULT_REPLACEMENT = "EclipseHub"
+local DEFAULT_REPLACEMENT = "Username"
 local function getFolder(): string
 	return (macLib and macLib.Folder) or "EsclipseHub"
 end
@@ -20600,10 +20731,20 @@ local replacementText = DEFAULT_REPLACEMENT
 local isMasking = false
 local currentWindow = nil
 local inited = false
+local maskStats = false
 
 local tracked: { [Instance]: TrackedRecord__DARKLUA_TYPE_a } = {}
 local containerConns: { RBXScriptConnection } = {}
 local sweepTask: thread? = nil
+
+local statTracked: { [TextLabel]: { original: string, originalFontFace: any, originalFont: any, conn: RBXScriptConnection? } } = {}
+local isMaskingStat = false
+local statsLoopTask: thread? = nil
+local statsContainerConns: { RBXScriptConnection } = {}
+
+local QUESTION_MARK_ICON = "rbxassetid://92481398073007"
+local portraitTracked: { [ImageLabel]: { originalImage: string, conn: RBXScriptConnection? } } = {}
+local isMaskingPortrait = false
 
 --// Helper: Lấy LocalPlayer an toàn
 local function getPlayer(): Player?
@@ -20637,7 +20778,14 @@ local function loadSettings()
 			enabled = decoded.enabled == true
 		end
 		if type(decoded.replacement) == "string" and #decoded.replacement > 0 then
-			replacementText = decoded.replacement
+			if decoded.replacement == "EclipseHub" then
+				replacementText = DEFAULT_REPLACEMENT
+			else
+				replacementText = decoded.replacement
+			end
+		end
+		if decoded.maskStats ~= nil then
+			maskStats = decoded.maskStats == true
 		end
 	end
 end
@@ -20650,6 +20798,7 @@ local function saveSettings()
 		writefile(getSettingsFile(), HttpService:JSONEncode({
 			enabled = enabled,
 			replacement = replacementText,
+			maskStats = maskStats,
 		}))
 	end)
 end
@@ -21060,6 +21209,410 @@ function streamingMode.IsRunning(): boolean
 	return isRunning
 end
 
+--// ==========================================
+--// Stats Masking (Chuyển XP và HP thành %)
+--// ==========================================
+local SUFFIX_MULTIPLIERS = {
+	k = 1e3,
+	m = 1e6,
+	b = 1e9,
+	t = 1e12,
+	qa = 1e15,
+	qi = 1e18,
+}
+
+local function parseSuffixedNumber(str: string): number?
+	if not str then return nil end
+	local clean = string.gsub(str, "[,%s]", "")
+	local numStr, suffix = string.match(clean, "^([%-%d.]+)%s*(%a*)$")
+	if not numStr then return nil end
+	local val = tonumber(numStr)
+	if not val then return nil end
+	if suffix and #suffix > 0 then
+		local mult = SUFFIX_MULTIPLIERS[string.lower(suffix)]
+		if mult then val = val * mult end
+	end
+	return val
+end
+
+local function formatToPercentage(text: string): string?
+	if not text or #text == 0 then return nil end
+	local plain = string.gsub(text, "<[^>]->", "")
+	local curStr, maxStr = string.match(plain, "^%s*([%-%d.,]+%s*%a*)%s*/%s*([%-%d.,]+%s*%a*)%s*$")
+	if not curStr or not maxStr then return nil end
+
+	local cur = parseSuffixedNumber(curStr)
+	local max = parseSuffixedNumber(maxStr)
+	if not cur or not max or max <= 0 then return nil end
+
+	local pct = math.clamp((cur / max) * 100, 0, 100)
+	if pct == math.floor(pct) then
+		return string.format("%d%%", pct)
+	else
+		return string.format("%.1f%%", pct)
+	end
+end
+
+local function findChildRecursive(parent: Instance, name: string, maxDepth: number?): Instance?
+	local depth = maxDepth or 6
+	if depth < 0 or not parent then return nil end
+	local direct = parent:FindFirstChild(name)
+	if direct then return direct end
+	for _, child in ipairs(parent:GetChildren()) do
+		local found = findChildRecursive(child, name, depth - 1)
+		if found then return found end
+	end
+	return nil
+end
+
+local function findStatLabels(): { TextLabel }
+	local p = getPlayer()
+	if not p then return {} end
+	local pg = p:FindFirstChild("PlayerGui")
+	if not pg then return {} end
+	local playerStatus = pg:FindFirstChild("playerStatus")
+	if not playerStatus then return {} end
+	local frame = playerStatus:FindFirstChild("Frame")
+	if not frame then return {} end
+
+	local labels = {}
+
+	-- 1. XP label: check xpFrame.xp
+	local xpFrame = frame:FindFirstChild("xpFrame")
+	local xpLabel = nil
+	if xpFrame then
+		xpLabel = xpFrame:FindFirstChild("xp")
+		if not (xpLabel and xpLabel:IsA("TextLabel")) then
+			xpLabel = xpFrame:FindFirstChildWhichIsA("TextLabel")
+		end
+	end
+	if not xpLabel then
+		local found = findChildRecursive(frame, "xp", 4)
+		if found and found:IsA("TextLabel") then
+			xpLabel = found
+		end
+	end
+	if xpLabel and xpLabel:IsA("TextLabel") then
+		table.insert(labels, xpLabel)
+	end
+
+	-- 2. HP label: check healthFrame.health / hpFrame.hp
+	local healthFrame = frame:FindFirstChild("healthFrame") or frame:FindFirstChild("hpFrame")
+	local hpLabel = nil
+	if healthFrame then
+		hpLabel = healthFrame:FindFirstChild("health") or healthFrame:FindFirstChild("hp")
+		if not (hpLabel and hpLabel:IsA("TextLabel")) then
+			hpLabel = healthFrame:FindFirstChildWhichIsA("TextLabel")
+		end
+	end
+	if not hpLabel then
+		local found = findChildRecursive(frame, "health", 4) or findChildRecursive(frame, "hp", 4)
+		if found and found:IsA("TextLabel") then
+			hpLabel = found
+		end
+	end
+	if hpLabel and hpLabel:IsA("TextLabel") then
+		table.insert(labels, hpLabel)
+	end
+
+	-- 3. Level label: check levelBorder.level
+	local levelBorder = frame:FindFirstChild("levelBorder")
+	local levelLabel = nil
+	if levelBorder then
+		levelLabel = levelBorder:FindFirstChild("level")
+		if not (levelLabel and levelLabel:IsA("TextLabel")) then
+			levelLabel = levelBorder:FindFirstChildWhichIsA("TextLabel")
+		end
+	end
+	if not levelLabel then
+		local found = findChildRecursive(frame, "level", 4)
+		if found and found:IsA("TextLabel") then
+			levelLabel = found
+		end
+	end
+	if levelLabel and levelLabel:IsA("TextLabel") then
+		table.insert(labels, levelLabel)
+	end
+
+	return labels
+end
+
+local function isLevelLabel(label: TextLabel): boolean
+	if label.Name == "level" then return true end
+	if label.Parent and label.Parent.Name == "levelBorder" then return true end
+	return false
+end
+
+local function getMaskedText(label: TextLabel, text: string): string?
+	if isLevelLabel(label) then
+		return "???"
+	end
+	return formatToPercentage(text)
+end
+
+local function applyGothamFont(label: TextLabel)
+	pcall(function()
+		label.FontFace = Font.fromName("GothamSSm", Enum.FontWeight.Bold)
+	end)
+	pcall(function()
+		label.Font = Enum.Font.GothamBold
+	end)
+end
+
+local function restoreFont(label: TextLabel, record)
+	pcall(function()
+		if record.originalFontFace then
+			label.FontFace = record.originalFontFace
+		elseif record.originalFont then
+			label.Font = record.originalFont
+		end
+	end)
+end
+
+local function processStatLabel(label: TextLabel)
+	if not label or not label:IsA("TextLabel") then return end
+	if statTracked[label] then return end
+
+	local orig = label.Text
+	local maskedText = getMaskedText(label, orig)
+
+	local record = {
+		original = orig,
+		originalFontFace = label.FontFace,
+		originalFont = label.Font,
+		conn = nil :: RBXScriptConnection?,
+	}
+
+	if isLevelLabel(label) then
+		local num = tonumber(tostring(orig):match("%d+"))
+		if num and num > 0 then
+			local numStr = tostring(num)
+			pcall(function() label:SetAttribute("RealLevel", numStr) end)
+			if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(numStr) end
+			_G.RealPlayerLevel = numStr
+		end
+	end
+
+	applyGothamFont(label)
+
+	if maskedText and maskedText ~= orig then
+		isMaskingStat = true
+		label.Text = maskedText
+		isMaskingStat = false
+	end
+
+	local textConn = label:GetPropertyChangedSignal("Text"):Connect(function()
+		if isMaskingStat then return end
+		if not maskStats then return end
+
+		local current = label.Text
+		local newMasked = getMaskedText(label, current)
+		applyGothamFont(label)
+		if newMasked and newMasked ~= current then
+			record.original = current
+			if isLevelLabel(label) then
+				local num = tonumber(tostring(current):match("%d+"))
+				if num and num > 0 then
+					local numStr = tostring(num)
+					pcall(function() label:SetAttribute("RealLevel", numStr) end)
+					if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(numStr) end
+					_G.RealPlayerLevel = numStr
+				end
+			end
+			isMaskingStat = true
+			label.Text = newMasked
+			isMaskingStat = false
+		elseif not newMasked and not string.find(current, "%%") and current ~= "???" then
+			record.original = current
+			if isLevelLabel(label) then
+				local num = tonumber(tostring(current):match("%d+"))
+				if num and num > 0 then
+					local numStr = tostring(num)
+					pcall(function() label:SetAttribute("RealLevel", numStr) end)
+					if shared and shared.SetRealPlayerLevel then shared.SetRealPlayerLevel(numStr) end
+					_G.RealPlayerLevel = numStr
+				end
+			end
+		end
+	end)
+	record.conn = textConn
+
+	local destroyConn
+	destroyConn = label.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if record.conn then pcall(function() record.conn:Disconnect() end) end
+			pcall(function() destroyConn:Disconnect() end)
+			statTracked[label] = nil
+		end
+	end)
+
+	statTracked[label] = record
+end
+
+local function unmaskStats()
+	for label, record in pairs(statTracked) do
+		if record.conn then
+			pcall(function() record.conn:Disconnect() end)
+		end
+		pcall(function()
+			if label and label.Parent then
+				if record.original then
+					isMaskingStat = true
+					label.Text = record.original
+					isMaskingStat = false
+				end
+				restoreFont(label, record)
+			end
+		end)
+	end
+	table.clear(statTracked)
+end
+
+local function findPortraitLabel(): ImageLabel?
+	local p = getPlayer()
+	if not p then return nil end
+	local pg = p:FindFirstChild("PlayerGui")
+	if not pg then return nil end
+	local playerStatus = pg:FindFirstChild("playerStatus")
+	if not playerStatus then return nil end
+	local frame = playerStatus:FindFirstChild("Frame")
+	if not frame then return nil end
+
+	local portraitBorder = frame:FindFirstChild("portraitBorder")
+	if portraitBorder then
+		local portrait = portraitBorder:FindFirstChild("portrait")
+		if portrait and portrait:IsA("ImageLabel") then
+			return portrait
+		end
+		local found = portraitBorder:FindFirstChildWhichIsA("ImageLabel")
+		if found then return found end
+	end
+
+	local foundRecursive = findChildRecursive(frame, "portrait", 4)
+	if foundRecursive and foundRecursive:IsA("ImageLabel") then
+		return foundRecursive
+	end
+	return nil
+end
+
+local function processPortraitLabel(portrait: ImageLabel)
+	if not portrait or not portrait:IsA("ImageLabel") then return end
+	if portraitTracked[portrait] then return end
+
+	local origImg = portrait.Image
+	local record = {
+		originalImage = origImg,
+		conn = nil :: RBXScriptConnection?,
+	}
+
+	if origImg ~= QUESTION_MARK_ICON then
+		isMaskingPortrait = true
+		portrait.Image = QUESTION_MARK_ICON
+		isMaskingPortrait = false
+	end
+
+	local imgConn = portrait:GetPropertyChangedSignal("Image"):Connect(function()
+		if isMaskingPortrait then return end
+		if not maskStats then return end
+
+		local currentImg = portrait.Image
+		if currentImg ~= QUESTION_MARK_ICON then
+			record.originalImage = currentImg
+			isMaskingPortrait = true
+			portrait.Image = QUESTION_MARK_ICON
+			isMaskingPortrait = false
+		end
+	end)
+	record.conn = imgConn
+
+	local destroyConn
+	destroyConn = portrait.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if record.conn then pcall(function() record.conn:Disconnect() end) end
+			pcall(function() destroyConn:Disconnect() end)
+			portraitTracked[portrait] = nil
+		end
+	end)
+
+	portraitTracked[portrait] = record
+end
+
+local function unmaskPortrait()
+	for portrait, record in pairs(portraitTracked) do
+		if record.conn then
+			pcall(function() record.conn:Disconnect() end)
+		end
+		pcall(function()
+			if portrait and portrait.Parent and record.originalImage then
+				isMaskingPortrait = true
+				portrait.Image = record.originalImage
+				isMaskingPortrait = false
+			end
+		end)
+	end
+	table.clear(portraitTracked)
+end
+
+local function sweepStats()
+	if not maskStats then return end
+	local labels = findStatLabels()
+	for _, lbl in ipairs(labels) do
+		processStatLabel(lbl)
+		if statTracked[lbl] then
+			applyGothamFont(lbl)
+		end
+	end
+
+	local portrait = findPortraitLabel()
+	if portrait then
+		processPortraitLabel(portrait)
+		if portraitTracked[portrait] and portrait.Image ~= QUESTION_MARK_ICON then
+			isMaskingPortrait = true
+			portrait.Image = QUESTION_MARK_ICON
+			isMaskingPortrait = false
+		end
+	end
+end
+
+local function startStatsLoop()
+	if statsLoopTask then return end
+	sweepStats()
+	statsLoopTask = task.spawn(function()
+		while maskStats do
+			sweepStats()
+			task.wait(0.5)
+		end
+		statsLoopTask = nil
+	end)
+end
+
+local function stopStatsLoop()
+	if statsLoopTask then
+		pcall(task.cancel, statsLoopTask)
+		statsLoopTask = nil
+	end
+	for _, conn in ipairs(statsContainerConns) do
+		pcall(function() conn:Disconnect() end)
+	end
+	table.clear(statsContainerConns)
+	unmaskStats()
+	unmaskPortrait()
+end
+
+function streamingMode.SetMaskStats(state: boolean)
+	maskStats = state == true
+	saveSettings()
+	if maskStats then
+		startStatsLoop()
+	else
+		stopStatsLoop()
+	end
+end
+
+function streamingMode.IsMaskStats(): boolean
+	return maskStats
+end
+
 function streamingMode.SetReplacement(newText: string)
 	if typeof(newText) ~= "string" or #newText == 0 then
 		newText = DEFAULT_REPLACEMENT
@@ -21097,6 +21650,24 @@ function streamingMode.Init()
 		-- Tự kích hoạt lại nếu đã lưu là bật
 		streamingMode.Start()
 	end
+	if maskStats then
+		startStatsLoop()
+	end
+end
+
+function streamingMode.GetRealLevel(): string?
+	for label, record in pairs(statTracked) do
+		if isLevelLabel(label) and record.original then
+			local num = tonumber(tostring(record.original):match("%d+"))
+			if num and num > 0 then
+				return tostring(num)
+			end
+		end
+	end
+	if _G.RealPlayerLevel then
+		return _G.RealPlayerLevel
+	end
+	return nil
 end
 
 --// Nạp settings lúc require module
@@ -21106,6 +21677,9 @@ loadSettings()
 lifecycle.Register(function()
 	if isRunning then
 		streamingMode.Stop()
+	end
+	if maskStats then
+		stopStatsLoop()
 	end
 	inited = false
 end)
@@ -21121,6 +21695,9 @@ return binder.Wrap(streamingMode, {
 	Replacement = function(value: string)
 		streamingMode.SetReplacement(value)
 	end,
+	MaskStats = function(value: boolean)
+		streamingMode.SetMaskStats(value)
+	end,
 }) :: {
 	Start: () -> (),
 	Stop: () -> (),
@@ -21129,8 +21706,12 @@ return binder.Wrap(streamingMode, {
 	GetReplacement: () -> string,
 	SetWindow: (any) -> (),
 	Init: () -> (),
+	SetMaskStats: (boolean) -> (),
+	IsMaskStats: () -> boolean,
+	GetRealLevel: () -> string?,
 	Enabled: boolean,
-	Replacement: string
+	Replacement: string,
+	MaskStats: boolean
 }
 end function __DIST.Y()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
@@ -21185,9 +21766,17 @@ return function(window, tab)
 		end),
 	}, "Toggle_StreamingMode")
 
+	streamSection:Toggle({
+		Name = "Hide Stats (Level, XP, HP)",
+		Default = streamingMode.IsMaskStats(),
+		Callback = autoSave.Wrap(function(state)
+			streamingMode.SetMaskStats(state)
+		end),
+	}, "Toggle_StreamingMaskStats")
+
 	streamSection:Input({
 		Name = "Fake Display Name",
-		Placeholder = "EclipseHub",
+		Placeholder = "Username",
 		AcceptedCharacters = "All",
 		Default = streamingMode.GetReplacement(),
 		Callback = autoSave.Wrap(function(input)
@@ -22551,11 +23140,11 @@ local function finalizeSlice(reason, silent)
 	if not silent then
 		local extra = ""
 		if events then
-			extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#clean, #(events.skills or {}), #(events.dwells or {}), avgSpeed)
+			extra = (" (%d smooth pts, %d skills, %d dwells, %.1f spd)"):format(#clean, #(events.skills or {}), #(events.dwells or {}), avgSpeed)
 		else
-			extra = (" (%d điểm mịn, %.1fspd)"):format(#clean, avgSpeed)
+			extra = (" (%d smooth pts, %.1f spd)"):format(#clean, avgSpeed)
 		end
-		notifier.Notify("Path Record", ("Đã lưu room %d%s vào map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
+		notifier.Notify("Path Record", ("Saved room %d%s to map [%s] %s"):format(startRoom, extra, recMap, reason and ("- " .. reason) or ""), 3)
 	end
 
 	return { points = clean, events = events, speed = avgSpeed }
@@ -22643,7 +23232,7 @@ function recorder.Start()
 			currentDwell = nil
 			prevFramePos = nil
 			-- Nhân vật tử trận: điểm chết = điểm kết thúc -> dừng và hoàn thành record
-			recorder.Stop("tử trận")
+			recorder.Stop("player died")
 			return
 		end
 
@@ -22850,7 +23439,7 @@ function recorder.Start()
 		end
 	end)
 
-	notifier.Notify("Path Record", ("Bắt đầu record room %d (%s)"):format(room, map), 2)
+	notifier.Notify("Path Record", ("Started recording room %d (%s)"):format(room, map), 2)
 	fireStatus()
 	return true
 end
@@ -22859,7 +23448,7 @@ end
 --// + mở slice mới ngay tại vị trí hiện tại. Session vẫn tiếp tục.
 function recorder.Rollover()
 	if not isRecording then return false end
-	finalizeSlice("chuyển room", true)
+	finalizeSlice("room transition", true)
 	local root = getPlayerRoot()
 	local pos = root and root.Position or startPos
 	beginSlice(shared.GetCurrentRoomIndex(), pos)
@@ -22880,22 +23469,22 @@ function recorder.Stop(reason)
 		if sessionRooms > 1 then
 			--// Record liên tục nhiều room: báo tổng hợp 1 lần.
 			local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-			notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
+			notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw pts)"):format(recMap, reason or "completed", sessionRooms, bossPart, sessionRawPts), 4)
 		else
 			local extra = ""
 			if slice.events then
-				extra = (" (%d điểm mịn, %d skill, %d nhịp dừng, %.1fspd)"):format(#slice.points, #(slice.events.skills or {}), #(slice.events.dwells or {}), slice.speed or 0)
+				extra = (" (%d smooth pts, %d skills, %d dwells, %.1f spd)"):format(#slice.points, #(slice.events.skills or {}), #(slice.events.dwells or {}), slice.speed or 0)
 			else
-				extra = (" (%d điểm mịn, %.1fspd)"):format(#slice.points, slice.speed or 0)
+				extra = (" (%d smooth pts, %.1f spd)"):format(#slice.points, slice.speed or 0)
 			end
 			local bossTag = startRoom > 0 and (sliceIsBoss and " (boss)" or "") or ""
-			notifier.Notify("Path Record", ("Đã lưu room %d%s%s vào map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
+			notifier.Notify("Path Record", ("Saved room %d%s%s to map [%s] %s"):format(startRoom, extra, bossTag, recMap, reason and ("- " .. reason) or ""), 3)
 		end
 	elseif sessionRooms > 0 then
 		--// Slice cuối bị "mồ côi" (room 0: kết thúc run tại boss hoặc teleport hết map):
 		--// các room trước đã lưu xong, vẫn báo tổng hợp để người dùng biết đã lưu.
 		local bossPart = sessionBossRooms > 0 and (" | %d boss"):format(sessionBossRooms) or ""
-		notifier.Notify("Path Record", ("Đã lưu map [%s] %s: %d room%s (%d điểm gốc)"):format(recMap, reason or "xong", sessionRooms, bossPart, sessionRawPts), 4)
+		notifier.Notify("Path Record", ("Saved map [%s] %s: %d room(s)%s (%d raw pts)"):format(recMap, reason or "completed", sessionRooms, bossPart, sessionRawPts), 4)
 	end
 
 	clearSessionState()
@@ -23890,7 +24479,7 @@ local function playbackLoop()
 					end
 				end
 
-				notifier.Notify("Path Record", "Tử trận: Đang chờ hồi sinh để đi lại...", 2)
+				notifier.Notify("Path Record", "Died: Waiting to respawn to retry path...", 2)
 
 				while isPlaying and shared.IsDead() do
 					task.wait(0.2)
@@ -27647,6 +28236,157 @@ local function getItemData(invyData: any, itemType: string, uniqueNum: string): 
 	return cachedLookupMap[itemType .. "_" .. uniqueNum]
 end
 
+local hasLoggedItemKeys = false
+
+local function parseUpgrades(upgradesStr: any): (number, number)
+	if not upgradesStr then return 0, 0 end
+	local clean = string.gsub(tostring(upgradesStr), ",", "")
+	local curStr, maxStr = string.match(clean, "(%d+)%s*/%s*(%d+)")
+	if curStr and maxStr then
+		return tonumber(curStr) or 0, tonumber(maxStr) or 0
+	end
+	local single = tonumber(string.match(clean, "^%s*([%d.-]+)"))
+	return 0, single or 0
+end
+
+local function extractItemUpgrades(item: any, slot: GuiObject?): (number, number)
+	if not item or type(item) ~= "table" then
+		return 0, 0
+	end
+
+	-- Debug dump 1 lần ra console F9 cấu trúc item thực tế từ server
+	if not hasLoggedItemKeys then
+		hasLoggedItemKeys = true
+		local parts = {}
+		for k, v in pairs(item) do
+			table.insert(parts, string.format("%s=%s", tostring(k), tostring(v)))
+		end
+		print(string.format("[InventorySort:ItemDump] %s (%s): %s", tostring(item.name or "Unknown"), tostring(item.rarity or "Common"), table.concat(parts, ", ")))
+	end
+
+	local curUpgrades: number? = nil
+	local maxUpgrades: number? = nil
+
+	-- 1. Tìm maxUpgrades / totalUpgrades từ các trường trong item data
+	local rawMax = item.totalUpgrades
+		or item.maxUpgrades
+		or item.totalUpgrade
+		or item.maxUpgrade
+		or item.upgradesTotal
+		or item.upgradesMax
+		or item.upgradeTotal
+		or item.upgradeLimit
+		or item.availableUpgrades
+
+	if rawMax ~= nil then
+		maxUpgrades = tonumber(rawMax)
+	end
+
+	-- 2. Tìm curUpgrades từ item
+	local rawCur = item.curUpgrades
+		or item.currentUpgrades
+		or item.currentUpgrade
+		or item.upgradesCur
+
+	if rawCur ~= nil then
+		curUpgrades = tonumber(rawCur)
+	end
+
+	-- 3. Xử lý trường item.upgrades (chuỗi, số hoặc bảng)
+	if item.upgrades ~= nil then
+		if type(item.upgrades) == "string" then
+			local c, m = parseUpgrades(item.upgrades)
+			curUpgrades = curUpgrades or c
+			maxUpgrades = maxUpgrades or m
+		elseif type(item.upgrades) == "number" then
+			curUpgrades = curUpgrades or item.upgrades
+		elseif type(item.upgrades) == "table" then
+			local c = item.upgrades.cur or item.upgrades.current or item.upgrades[1]
+			local m = item.upgrades.max or item.upgrades.total or item.upgrades.totalUpgrades or item.upgrades[2]
+			if c ~= nil then curUpgrades = curUpgrades or tonumber(c) end
+			if m ~= nil then maxUpgrades = maxUpgrades or tonumber(m) end
+		end
+	end
+
+	-- 4. Fallback kiểm tra slot GUI / ValueBase nếu item table thiếu
+	if (not maxUpgrades or maxUpgrades == 0) and slot and slot:IsA("GuiObject") then
+		for _, childName in ipairs({ "totalUpgrades", "maxUpgrades", "upgrades", "totalUpgrade" }) do
+			local valObj = slot:FindFirstChild(childName)
+			if not valObj then
+				local itVal = slot:FindFirstChild("itemType")
+				if itVal then valObj = itVal:FindFirstChild(childName) end
+			end
+			if valObj and valObj:IsA("ValueBase") then
+				local n = tonumber(valObj.Value)
+				if n and n > 0 then
+					maxUpgrades = n
+					break
+				end
+			end
+		end
+	end
+
+	return curUpgrades or 0, maxUpgrades or 0
+end
+
+local function calculateItemMaxPot(
+	item: any,
+	category: string,
+	physVal: number,
+	spellVal: number,
+	healthVal: number,
+	itemName: string,
+	slot: GuiObject?
+): (number, number, number, number)
+	if not item or type(item) ~= "table" then
+		local baseMax = math.max(physVal, spellVal, healthVal)
+		return physVal, spellVal, healthVal, baseMax
+	end
+
+	local curUpgrades, maxUpgrades = extractItemUpgrades(item, slot)
+	local remainingUpgrades = math.max(0, maxUpgrades - curUpgrades)
+	local bonus = remainingUpgrades * 10
+
+	local maxPhys = physVal
+	local maxSpell = spellVal
+	local maxHealth = healthVal
+
+	local cat = string.lower(category or "")
+	local isWeapon = (cat == "weapon" or cat == "weapons" or string.find(cat, "weapon") ~= nil)
+
+	if isWeapon then
+		if spellVal > physVal then
+			maxSpell = spellVal + bonus
+		else
+			maxPhys = physVal + bonus
+		end
+	else
+		local lowerName = string.lower(itemName or "")
+		if string.find(lowerName, "guardian") then
+			maxHealth = healthVal + bonus
+		elseif string.find(lowerName, "mage") then
+			maxSpell = spellVal + bonus
+		elseif string.find(lowerName, "warrior") then
+			maxPhys = physVal + bonus
+		else
+			if healthVal > 10000 and healthVal > (physVal * 10) then
+				maxHealth = healthVal + bonus
+			elseif spellVal > physVal then
+				maxSpell = spellVal + bonus
+			else
+				maxPhys = physVal + bonus
+			end
+		end
+	end
+
+	local overallMaxPot = math.max(maxPhys, maxSpell, maxHealth)
+	return maxPhys, maxSpell, maxHealth, overallMaxPot
+end
+
+
+
+
+
 
 
 
@@ -27693,6 +28433,16 @@ local function parseSlot(slot: GuiObject, invyData: any, defaultIndex: number): 
 		itemName = tostring(item.name or "")
 	end
 
+	local maxPhys, maxSpell, maxHealth, maxPot = calculateItemMaxPot(
+		item,
+		cat,
+		physVal,
+		spellVal,
+		healthVal,
+		itemName,
+		slot
+	)
+
 	return {
 		slot = slot,
 		originalOrder = originalOrder,
@@ -27700,6 +28450,10 @@ local function parseSlot(slot: GuiObject, invyData: any, defaultIndex: number): 
 		physical = physVal,
 		spell = spellVal,
 		health = healthVal,
+		maxPhysical = maxPhys,
+		maxSpell = maxSpell,
+		maxHealth = maxHealth,
+		maxPot = maxPot,
 		rarityScore = rarityVal,
 		levelReq = levelReqVal,
 		name = itemName,
@@ -27822,19 +28576,19 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_f, b: ParsedItemSlot
 	end
 
 	-- 5. Cùng nhóm Weapon hoặc cùng nhóm Armor: Sắp xếp theo chế độ độc lập được chọn
-	-- CHẾ ĐỘ 1: Chọn 1 Stat cụ thể (Physic / Spell / Health):
+	-- CHẾ ĐỘ 1: Chọn 1 Stat cụ thể (Physic / Spell / Health) theo MaxPot:
 	if selectedStatFilter ~= nil then
 		local statA = 0
 		local statB = 0
 		if selectedStatFilter == "Physical Damage" then
-			statA = a.physical
-			statB = b.physical
+			statA = a.maxPhysical
+			statB = b.maxPhysical
 		elseif selectedStatFilter == "Spell Power" then
-			statA = a.spell
-			statB = b.spell
+			statA = a.maxSpell
+			statB = b.maxSpell
 		elseif selectedStatFilter == "Health" then
-			statA = a.health
-			statB = b.health
+			statA = a.maxHealth
+			statB = b.maxHealth
 		end
 
 		if statA ~= statB then
@@ -27857,10 +28611,10 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_f, b: ParsedItemSlot
 		end
 	end
 
-	-- CHẾ ĐỘ 3: Không chọn Stat và không chọn Rarity -> Sắp xếp thuần túy theo Power:
+	-- CHẾ ĐỘ 3: Không chọn Stat và không chọn Rarity -> Sắp xếp thuần túy theo MaxPot:
 	if selectedStatFilter == nil and not rarityEnabled then
-		local powerA = math.max(a.physical, a.spell, a.health)
-		local powerB = math.max(b.physical, b.spell, b.health)
+		local powerA = a.maxPot
+		local powerB = b.maxPot
 		if powerA ~= powerB then
 			if isDesc then
 				return powerA > powerB
@@ -27880,10 +28634,10 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_f, b: ParsedItemSlot
 	end
 
 	-- 7. Tie-breakers phụ sau Level Req:
-	-- Trong chế độ Rarity: xét tiếp Power khi cùng Level Req
+	-- Trong chế độ Rarity: xét tiếp MaxPot khi cùng Level Req
 	if rarityEnabled then
-		local powerA = math.max(a.physical, a.spell, a.health)
-		local powerB = math.max(b.physical, b.spell, b.health)
+		local powerA = a.maxPot
+		local powerB = b.maxPot
 		if powerA ~= powerB then
 			if isDesc then
 				return powerA > powerB
@@ -27893,10 +28647,10 @@ local function compareItems(a: ParsedItemSlot__DARKLUA_TYPE_f, b: ParsedItemSlot
 		end
 	end
 
-	-- Trong chế độ Stat: xét tiếp Max Stat tổng quát khi cùng Level Req
+	-- Trong chế độ Stat: xét tiếp MaxPot tổng quát khi cùng Level Req
 	if selectedStatFilter ~= nil then
-		local maxStatA = math.max(a.physical, a.spell, a.health)
-		local maxStatB = math.max(b.physical, b.spell, b.health)
+		local maxStatA = a.maxPot
+		local maxStatB = b.maxPot
 		if maxStatA ~= maxStatB then
 			return maxStatA > maxStatB
 		end

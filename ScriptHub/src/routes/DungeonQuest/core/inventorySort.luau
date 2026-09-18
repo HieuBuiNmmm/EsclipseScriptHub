@@ -357,6 +357,153 @@ local function getItemData(invyData: any, itemType: string, uniqueNum: string): 
 	return cachedLookupMap[itemType .. "_" .. uniqueNum]
 end
 
+local hasLoggedItemKeys = false
+
+local function parseUpgrades(upgradesStr: any): (number, number)
+	if not upgradesStr then return 0, 0 end
+	local clean = string.gsub(tostring(upgradesStr), ",", "")
+	local curStr, maxStr = string.match(clean, "(%d+)%s*/%s*(%d+)")
+	if curStr and maxStr then
+		return tonumber(curStr) or 0, tonumber(maxStr) or 0
+	end
+	local single = tonumber(string.match(clean, "^%s*([%d.-]+)"))
+	return 0, single or 0
+end
+
+local function extractItemUpgrades(item: any, slot: GuiObject?): (number, number)
+	if not item or type(item) ~= "table" then
+		return 0, 0
+	end
+
+	-- Debug dump 1 lần ra console F9 cấu trúc item thực tế từ server
+	if not hasLoggedItemKeys then
+		hasLoggedItemKeys = true
+		local parts = {}
+		for k, v in pairs(item) do
+			table.insert(parts, string.format("%s=%s", tostring(k), tostring(v)))
+		end
+		print(string.format("[InventorySort:ItemDump] %s (%s): %s", tostring(item.name or "Unknown"), tostring(item.rarity or "Common"), table.concat(parts, ", ")))
+	end
+
+	local curUpgrades: number? = nil
+	local maxUpgrades: number? = nil
+
+	-- 1. Tìm maxUpgrades / totalUpgrades từ các trường trong item data
+	local rawMax = item.totalUpgrades
+		or item.maxUpgrades
+		or item.totalUpgrade
+		or item.maxUpgrade
+		or item.upgradesTotal
+		or item.upgradesMax
+		or item.upgradeTotal
+		or item.upgradeLimit
+		or item.availableUpgrades
+
+	if rawMax ~= nil then
+		maxUpgrades = tonumber(rawMax)
+	end
+
+	-- 2. Tìm curUpgrades từ item
+	local rawCur = item.curUpgrades
+		or item.currentUpgrades
+		or item.currentUpgrade
+		or item.upgradesCur
+
+	if rawCur ~= nil then
+		curUpgrades = tonumber(rawCur)
+	end
+
+	-- 3. Xử lý trường item.upgrades (chuỗi, số hoặc bảng)
+	if item.upgrades ~= nil then
+		if type(item.upgrades) == "string" then
+			local c, m = parseUpgrades(item.upgrades)
+			curUpgrades = curUpgrades or c
+			maxUpgrades = maxUpgrades or m
+		elseif type(item.upgrades) == "number" then
+			curUpgrades = curUpgrades or item.upgrades
+		elseif type(item.upgrades) == "table" then
+			local c = item.upgrades.cur or item.upgrades.current or item.upgrades[1]
+			local m = item.upgrades.max or item.upgrades.total or item.upgrades.totalUpgrades or item.upgrades[2]
+			if c ~= nil then curUpgrades = curUpgrades or tonumber(c) end
+			if m ~= nil then maxUpgrades = maxUpgrades or tonumber(m) end
+		end
+	end
+
+	-- 4. Fallback kiểm tra slot GUI / ValueBase nếu item table thiếu
+	if (not maxUpgrades or maxUpgrades == 0) and slot and slot:IsA("GuiObject") then
+		for _, childName in ipairs({ "totalUpgrades", "maxUpgrades", "upgrades", "totalUpgrade" }) do
+			local valObj = slot:FindFirstChild(childName)
+			if not valObj then
+				local itVal = slot:FindFirstChild("itemType")
+				if itVal then valObj = itVal:FindFirstChild(childName) end
+			end
+			if valObj and valObj:IsA("ValueBase") then
+				local n = tonumber(valObj.Value)
+				if n and n > 0 then
+					maxUpgrades = n
+					break
+				end
+			end
+		end
+	end
+
+	return curUpgrades or 0, maxUpgrades or 0
+end
+
+local function calculateItemMaxPot(
+	item: any,
+	category: string,
+	physVal: number,
+	spellVal: number,
+	healthVal: number,
+	itemName: string,
+	slot: GuiObject?
+): (number, number, number, number)
+	if not item or type(item) ~= "table" then
+		local baseMax = math.max(physVal, spellVal, healthVal)
+		return physVal, spellVal, healthVal, baseMax
+	end
+
+	local curUpgrades, maxUpgrades = extractItemUpgrades(item, slot)
+	local remainingUpgrades = math.max(0, maxUpgrades - curUpgrades)
+	local bonus = remainingUpgrades * 10
+
+	local maxPhys = physVal
+	local maxSpell = spellVal
+	local maxHealth = healthVal
+
+	local cat = string.lower(category or "")
+	local isWeapon = (cat == "weapon" or cat == "weapons" or string.find(cat, "weapon") ~= nil)
+
+	if isWeapon then
+		if spellVal > physVal then
+			maxSpell = spellVal + bonus
+		else
+			maxPhys = physVal + bonus
+		end
+	else
+		local lowerName = string.lower(itemName or "")
+		if string.find(lowerName, "guardian") then
+			maxHealth = healthVal + bonus
+		elseif string.find(lowerName, "mage") then
+			maxSpell = spellVal + bonus
+		elseif string.find(lowerName, "warrior") then
+			maxPhys = physVal + bonus
+		else
+			if healthVal > 10000 and healthVal > (physVal * 10) then
+				maxHealth = healthVal + bonus
+			elseif spellVal > physVal then
+				maxSpell = spellVal + bonus
+			else
+				maxPhys = physVal + bonus
+			end
+		end
+	end
+
+	local overallMaxPot = math.max(maxPhys, maxSpell, maxHealth)
+	return maxPhys, maxSpell, maxHealth, overallMaxPot
+end
+
 --// Trích xuất chỉ số phục vụ sắp xếp
 type ParsedItemSlot = {
 	slot: GuiObject,
@@ -365,6 +512,10 @@ type ParsedItemSlot = {
 	physical: number,
 	spell: number,
 	health: number,
+	maxPhysical: number,
+	maxSpell: number,
+	maxHealth: number,
+	maxPot: number,
 	rarityScore: number,
 	levelReq: number,
 	name: string,
@@ -403,6 +554,16 @@ local function parseSlot(slot: GuiObject, invyData: any, defaultIndex: number): 
 		itemName = tostring(item.name or "")
 	end
 
+	local maxPhys, maxSpell, maxHealth, maxPot = calculateItemMaxPot(
+		item,
+		cat,
+		physVal,
+		spellVal,
+		healthVal,
+		itemName,
+		slot
+	)
+
 	return {
 		slot = slot,
 		originalOrder = originalOrder,
@@ -410,6 +571,10 @@ local function parseSlot(slot: GuiObject, invyData: any, defaultIndex: number): 
 		physical = physVal,
 		spell = spellVal,
 		health = healthVal,
+		maxPhysical = maxPhys,
+		maxSpell = maxSpell,
+		maxHealth = maxHealth,
+		maxPot = maxPot,
 		rarityScore = rarityVal,
 		levelReq = levelReqVal,
 		name = itemName,
@@ -532,19 +697,19 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 	end
 
 	-- 5. Cùng nhóm Weapon hoặc cùng nhóm Armor: Sắp xếp theo chế độ độc lập được chọn
-	-- CHẾ ĐỘ 1: Chọn 1 Stat cụ thể (Physic / Spell / Health):
+	-- CHẾ ĐỘ 1: Chọn 1 Stat cụ thể (Physic / Spell / Health) theo MaxPot:
 	if selectedStatFilter ~= nil then
 		local statA = 0
 		local statB = 0
 		if selectedStatFilter == "Physical Damage" then
-			statA = a.physical
-			statB = b.physical
+			statA = a.maxPhysical
+			statB = b.maxPhysical
 		elseif selectedStatFilter == "Spell Power" then
-			statA = a.spell
-			statB = b.spell
+			statA = a.maxSpell
+			statB = b.maxSpell
 		elseif selectedStatFilter == "Health" then
-			statA = a.health
-			statB = b.health
+			statA = a.maxHealth
+			statB = b.maxHealth
 		end
 
 		if statA ~= statB then
@@ -567,10 +732,10 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 		end
 	end
 
-	-- CHẾ ĐỘ 3: Không chọn Stat và không chọn Rarity -> Sắp xếp thuần túy theo Power:
+	-- CHẾ ĐỘ 3: Không chọn Stat và không chọn Rarity -> Sắp xếp thuần túy theo MaxPot:
 	if selectedStatFilter == nil and not rarityEnabled then
-		local powerA = math.max(a.physical, a.spell, a.health)
-		local powerB = math.max(b.physical, b.spell, b.health)
+		local powerA = a.maxPot
+		local powerB = b.maxPot
 		if powerA ~= powerB then
 			if isDesc then
 				return powerA > powerB
@@ -590,10 +755,10 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 	end
 
 	-- 7. Tie-breakers phụ sau Level Req:
-	-- Trong chế độ Rarity: xét tiếp Power khi cùng Level Req
+	-- Trong chế độ Rarity: xét tiếp MaxPot khi cùng Level Req
 	if rarityEnabled then
-		local powerA = math.max(a.physical, a.spell, a.health)
-		local powerB = math.max(b.physical, b.spell, b.health)
+		local powerA = a.maxPot
+		local powerB = b.maxPot
 		if powerA ~= powerB then
 			if isDesc then
 				return powerA > powerB
@@ -603,10 +768,10 @@ local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
 		end
 	end
 
-	-- Trong chế độ Stat: xét tiếp Max Stat tổng quát khi cùng Level Req
+	-- Trong chế độ Stat: xét tiếp MaxPot tổng quát khi cùng Level Req
 	if selectedStatFilter ~= nil then
-		local maxStatA = math.max(a.physical, a.spell, a.health)
-		local maxStatB = math.max(b.physical, b.spell, b.health)
+		local maxStatA = a.maxPot
+		local maxStatB = b.maxPot
 		if maxStatA ~= maxStatB then
 			return maxStatA > maxStatB
 		end

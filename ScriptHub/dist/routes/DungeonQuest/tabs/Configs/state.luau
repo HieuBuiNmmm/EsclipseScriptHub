@@ -169,37 +169,40 @@ function()for am,_ in ipairs(B)do if _==al then table.remove(B,am)break end end
 end end function h.IsInLobby()return D end function h.OnLobbyChanged(al)if type(
 al)~='function'then return function()end end table.insert(E,al)return function()
 for am,_ in ipairs(E)do if _==al then table.remove(E,am)break end end end end
-local al P=function()if not n or Q~=nil then return end for am,_ in pairs(u)do
-if _ and _.Root and _.Root.Parent then local an=false if _.Room and type(_.Room.
-Name)=='string'and string.find(string.lower(_.Room.Name),'boss')then an=true
-elseif string.find(string.lower(am.Name),'boss')then an=true elseif am.Parent
-and string.find(string.lower(am.Parent.Name),'boss')then an=true end if an then
-Q=_.Root.Position return end end end for am,an in pairs(u)do if an and an.Root
-and an.Root.Parent then Q=an.Root.Position return end end end local am=function(
-am)if n==am then return end n=am if am then p+=1 Q=nil ag()P()for an=#q,1,-1 do
-pcall(q[an],p)end else Q=nil end for an=#o,1,-1 do pcall(o[an],n)end O()end
-function h.GetBossSpawnPosition()if Q then return Q end P()return Q end function
-h.SetBossSpawnPosition(an)Q=an end local function an()if not d then return end
-local _=d:FindFirstChild'PlayerGui'if not _ then al=nil am(false)return end
-local ao=_:FindFirstChild('bossHealth',true)if ao then if ao~=al then al=ao if
-al:IsA'ScreenGui'then T(al:GetPropertyChangedSignal'Enabled':Connect(an))elseif
-al:IsA'GuiObject'then T(al:GetPropertyChangedSignal'Visible':Connect(an))end end
-local ap=if ao:IsA'ScreenGui'then ao.Enabled elseif ao:IsA'GuiObject'then ao.
-Visible else true am(ap)else al=nil am(false)end end task.spawn(function()if not
-d then return end local ao=d:WaitForChild('PlayerGui',30)if not ao then return
-end T(ao.DescendantAdded:Connect(an))T(ao.DescendantRemoving:Connect(an))an()
-while c.IsActive()and task.wait(0.5)do an()end end)local ao,ap={}local aq=
-function()if ap then return ap end pcall(function()local _=d or game:GetService
-'Players'.LocalPlayer local aq=_ and _:FindFirstChild'PlayerScripts'local ar=aq
-and aq:FindFirstChild'PlayerModule'if ar then ap=require(ar):GetControls()end
-end)return ap end function h.DisableControls(ar)ar=ar or'default'ao[ar]=true
-local _=aq()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
-end)end end function h.EnableControls(ar)ar=ar or'default'ao[ar]=nil if next(ao)
-~=nil then return end local _=aq()if _ and type(_.Enable)=='function'then pcall(
+local al function h.SetRealPlayerLevel(am)local _=tonumber(tostring(am or''):
+match'%d+')if _ and _>0 then al=tostring(_)_G.RealPlayerLevel=al end end
+function h.GetRealPlayerLevel()return al or _G.RealPlayerLevel end local am P=
+function()if not n or Q~=nil then return end for _,an in pairs(u)do if an and an
+.Root and an.Root.Parent then local ao=false if an.Room and type(an.Room.Name)==
+'string'and string.find(string.lower(an.Room.Name),'boss')then ao=true elseif
+string.find(string.lower(_.Name),'boss')then ao=true elseif _.Parent and string.
+find(string.lower(_.Parent.Name),'boss')then ao=true end if ao then Q=an.Root.
+Position return end end end for an,ao in pairs(u)do if ao and ao.Root and ao.
+Root.Parent then Q=ao.Root.Position return end end end local an=function(an)if n
+==an then return end n=an if an then p+=1 Q=nil ag()P()for ao=#q,1,-1 do pcall(q
+[ao],p)end else Q=nil end for ao=#o,1,-1 do pcall(o[ao],n)end O()end function h.
+GetBossSpawnPosition()if Q then return Q end P()return Q end function h.
+SetBossSpawnPosition(ao)Q=ao end local function ao()if not d then return end
+local _=d:FindFirstChild'PlayerGui'if not _ then am=nil an(false)return end
+local ap=_:FindFirstChild('bossHealth',true)if ap then if ap~=am then am=ap if
+am:IsA'ScreenGui'then T(am:GetPropertyChangedSignal'Enabled':Connect(ao))elseif
+am:IsA'GuiObject'then T(am:GetPropertyChangedSignal'Visible':Connect(ao))end end
+local aq=if ap:IsA'ScreenGui'then ap.Enabled elseif ap:IsA'GuiObject'then ap.
+Visible else true an(aq)else am=nil an(false)end end task.spawn(function()if not
+d then return end local ap=d:WaitForChild('PlayerGui',30)if not ap then return
+end T(ap.DescendantAdded:Connect(ao))T(ap.DescendantRemoving:Connect(ao))ao()
+while c.IsActive()and task.wait(0.5)do ao()end end)local ap,aq={}local ar=
+function()if aq then return aq end pcall(function()local _=d or game:GetService
+'Players'.LocalPlayer local ar=_ and _:FindFirstChild'PlayerScripts'local as=ar
+and ar:FindFirstChild'PlayerModule'if as then aq=require(as):GetControls()end
+end)return aq end function h.DisableControls(as)as=as or'default'ap[as]=true
+local _=ar()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
+end)end end function h.EnableControls(as)as=as or'default'ap[as]=nil if next(ap)
+~=nil then return end local _=ar()if _ and type(_.Enable)=='function'then pcall(
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
-nil end for ar,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
-clear(G)table.clear(ao)local ar=aq()if ar and type(ar.Enable)=='function'then
-pcall(function()ar:Enable()end)end N()end)return h end function a.d()local aa,ab
+nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
+clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
+pcall(function()as:Enable()end)end N()end)return h end function a.d()local aa,ab
 ={}function aa:SetWindow(ac)ab=ac end function aa.Notify(ac,ad,ae)ae=ae or 3 if
 ab then local af=pcall(function()ab:Notify{Title=ac,Description=ad,Lifetime=ae}
 end)if af then return end end pcall(function()game:GetService'StarterGui':
@@ -213,64 +216,65 @@ function(ac)local ad,ae=pcall(loadstring,'return '..ac)if ad and type(ae)==
 ap and type(aq)=='function'then an=aq end ao=am(al)if not ao then ao=function()
 return ac:FindFirstChild'PlayerGui'and ac.PlayerGui:FindFirstChild
 'rewardGuiHolder'and ac.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
-local ar,b,c=function()local ar,b=pcall(function()local ar=ac:FindFirstChild
-'PlayerGui'local b=ar and ar:FindFirstChild'timeLeftGui'local c=b and b:
-FindFirstChild'Frame'return c and c:FindFirstChild'time'end)if not ar or typeof(
-b)~='Instance'then return nil end local c if b:IsA'ValueBase'then c=b.Value else
-c=b.Text end if type(c)=='number'then return c end if type(c)=='string'then
-local d=c:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local e,f=d:match
-'^(%d+):(%d+)$'if e and f then return tonumber(e)*60+tonumber(f)end local g=
-tonumber(d)if g then return g end end return nil end,{},function()if not an then
-ab.Notify('Auto Retry','Remote command invalid',3)return false end local ar,b=
+local ar,as,b=function()local ar,as=pcall(function()local ar=ac:FindFirstChild
+'PlayerGui'local as=ar and ar:FindFirstChild'timeLeftGui'local b=as and as:
+FindFirstChild'Frame'return b and b:FindFirstChild'time'end)if not ar or typeof(
+as)~='Instance'then return nil end local b if as:IsA'ValueBase'then b=as.Value
+else b=as.Text end if type(b)=='number'then return b end if type(b)=='string'
+then local c=b:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local d,e=c:match
+'^(%d+):(%d+)$'if d and e then return tonumber(d)*60+tonumber(e)end local f=
+tonumber(c)if f then return f end end return nil end,{},function()if not an then
+ab.Notify('Auto Retry','Remote command invalid',3)return false end local ar,as=
 pcall(an)if ar then ab.Notify('Auto Retry','Retrying dungeon!',3)return true end
-ab.Notify('Auto Retry','Trigger failed: '..tostring(b),3)return false end
-function b.Start()if af then return end af=true ag=false aj=false task.spawn(
-function()while ae or ah do if ae then local d=0 if ao then local e,f=pcall(ao)
-if e and typeof(f)=='Instance'and f.Parent then d=#f:GetChildren()end end if d>=
-ad and not ag then ag=true c()elseif d<ad then ag=false end end if ah then local
-d=ar()if d and d<ai and not aj then aj=true c()elseif d and d>=ai then aj=false
+ab.Notify('Auto Retry','Trigger failed: '..tostring(as),3)return false end
+function as.Start()if af then return end af=true ag=false aj=false task.spawn(
+function()while ae or ah do if ae then local c=0 if ao then local d,e=pcall(ao)
+if d and typeof(e)=='Instance'and e.Parent then c=#e:GetChildren()end end if c>=
+ad and not ag then ag=true b()elseif c<ad then ag=false end end if ah then local
+c=ar()if c and c<ai and not aj then aj=true b()elseif c and c>=ai then aj=false
 end end if not ae and not ah then break end task.wait(0.75)end af=false end)end
-function b.Stop()ae=false end function b.Toggle(d)ae=d if d then aj=false b.
-Start()ab.Notify('Auto Retry','Watching reward holder...',2)else b.Stop()ab.
-Notify('Auto Retry','Stopped',2)end end function b.SetTimeRetryEnabled(d)ah=d==
-true if ah then aj=false b.Start()ab.Notify('Auto Retry','Watching time left...'
-,2)else ab.Notify('Auto Retry','Time retry stopped',2)end end function b.
-GetTimeRetryEnabled()return ah end function b.SetTimeRetryThreshold(d)ai=d end
-function b.GetTimeRetryThreshold()return ai end function b.GetTimeLeft()return
-ar()end function b.RetryNow()task.spawn(function()c()end)end return b end end
-local aa,ab,ac,ad,ae,af=a.load'c',a.load'e','Boss Active','Boss','Dungeon',
-'Time Left'return function(ag,ah)local ai=ah:Section{Side='Right'}ai:Header{Name
-='Status'}local aj=ai:Label{Text=ac..': '..(aa.IsBossActive()and'Yes'or'No')}
-local ak=function(ak)local al=ak and'0, 255, 0'or'255, 80, 80'aj:UpdateName(ac..
-": <font color='rgb("..al..")'>"..(ak and'Yes'or'No')..'</font>')end ak(aa.
-IsBossActive())aa.OnBossActiveChanged(function(al)ak(al)end)local al=ai:Label{
-Text=ad..': 0'}local am=function()al:UpdateName(ad..': '..aa.
-GetCurrentBossIndex())end am()aa.OnBossIndexChanged(function()am()end)local an=
-ai:Label{Text='Room: --'}local ao=function()local ao=aa.GetCurrentRoomIndex()if
-ao<=0 then an:UpdateName"Room: <font color='rgb(160, 160, 160)'>--</font>"return
-end local ap=ao>=100 local aq=ap and'255, 200, 80'or'0, 255, 0'an:UpdateName(
+function as.Stop()ae=false end function as.Toggle(c)ae=c if c then aj=false as.
+Start()ab.Notify('Auto Retry','Watching reward holder...',2)else as.Stop()ab.
+Notify('Auto Retry','Stopped',2)end end function as.SetTimeRetryEnabled(c)ah=c==
+true if ah then aj=false as.Start()ab.Notify('Auto Retry',
+'Watching time left...',2)else ab.Notify('Auto Retry','Time retry stopped',2)end
+end function as.GetTimeRetryEnabled()return ah end function as.
+SetTimeRetryThreshold(c)ai=c end function as.GetTimeRetryThreshold()return ai
+end function as.GetTimeLeft()return ar()end function as.RetryNow()task.spawn(
+function()b()end)end return as end end local aa,ab,ac,ad,ae,af=a.load'c',a.load
+'e','Boss Active','Boss','Dungeon','Time Left'return function(ag,ah)local ai=ah:
+Section{Side='Right'}ai:Header{Name='Status'}local aj=ai:Label{Text=ac..': '..(
+aa.IsBossActive()and'Yes'or'No')}local ak=function(ak)local al=ak and'0, 255, 0'
+or'255, 80, 80'aj:UpdateName(ac..": <font color='rgb("..al..")'>"..(ak and'Yes'
+or'No')..'</font>')end ak(aa.IsBossActive())aa.OnBossActiveChanged(function(al)
+ak(al)end)local al=ai:Label{Text=ad..': 0'}local am=function()al:UpdateName(ad..
+': '..aa.GetCurrentBossIndex())end am()aa.OnBossIndexChanged(function()am()end)
+local an=ai:Label{Text='Room: --'}local ao=function()local ao=aa.
+GetCurrentRoomIndex()if ao<=0 then an:UpdateName
+"Room: <font color='rgb(160, 160, 160)'>--</font>"return end local ap=ao>=100
+local aq=ap and'255, 200, 80'or'0, 255, 0'an:UpdateName(
 "Room: <font color='rgb("..aq..")'>"..tostring(ao)..'</font>')end ao()aa.
 OnRoomIndexChanged(function()ao()end)local ap=ai:Label{Text='Enemies: 0'}local
 aq=function()if not aa.IsInLobby()and not aa.GetCurrentDungeonName()then ap:
 UpdateName"Enemies: <font color='rgb(160, 160, 160)'>--</font>"return end local
 aq=aa.GetEnemyCount()local ar=aq>0 and'0, 255, 0'or'255, 80, 80'ap:UpdateName(
 "Enemies: <font color='rgb("..ar..")'>"..aq..'</font>')end ai:Header{Name=
-'Timer'}local ar=ai:Label{Text=af..': --'}local b=function()local b=ab.
-GetTimeLeft()if not b then ar:UpdateName(af..
-": <font color='rgb(160, 160, 160)'>--</font>")return end local c=math.floor(b)
-local d,e=string.format('%d:%02d',math.floor(c/60),c%60),ab.GetTimeRetryEnabled(
-)and b<ab.GetTimeRetryThreshold()local f=e and'255, 80, 80'or'0, 255, 0'ar:
-UpdateName(af..": <font color='rgb("..f..")'>"..d..'</font>')end aq()b()local c
-task.spawn(function()while task.wait(0.5)do ak(aa.IsBossActive())am()ao()aq()c()
-b()end end)ai:Header{Name='Level Info'}local d=ai:Label{Text=ae..': Unknown'}
-local e=function()local e=aa.GetCurrentDungeonName()if e then d:UpdateName(ae..
-': '..e)else d:UpdateName(ae..": <font color='rgb(255, 80, 80)'>Unknown</font>")
-end end e()aa.OnDungeonNameChanged(function()e()end)ai:Header{Name=
-'Lobby / Dungeon'}local f=ai:Label{Text='Lobby: Unknown'}c=function()local g=aa.
-IsInLobby()local h=g and'0, 255, 0'or'255, 80, 80'f:UpdateName(
-"Lobby: <font color='rgb("..h..")'>"..(g and'Yes'or'No')..'</font>')end c()aa.
-OnLobbyChanged(function()c()end)ai:Button{Name='Log Enemy Types to Console',
-Callback=function()local g=aa.GetEnemyNames()print(
-'[DungeonQuest] Enemy types in map ('..#g..'):')if#g==0 then print
-'  (no enemies found)'else for h,i in ipairs(g)do print('  - '..i)end end end}
+'Timer'}local ar=ai:Label{Text=af..': --'}local as=function()local as=ab.
+GetTimeLeft()if not as then ar:UpdateName(af..
+": <font color='rgb(160, 160, 160)'>--</font>")return end local b=math.floor(as)
+local c,d=string.format('%d:%02d',math.floor(b/60),b%60),ab.GetTimeRetryEnabled(
+)and as<ab.GetTimeRetryThreshold()local e=d and'255, 80, 80'or'0, 255, 0'ar:
+UpdateName(af..": <font color='rgb("..e..")'>"..c..'</font>')end aq()as()local b
+task.spawn(function()while task.wait(0.5)do ak(aa.IsBossActive())am()ao()aq()b()
+as()end end)ai:Header{Name='Level Info'}local c=ai:Label{Text=ae..': Unknown'}
+local d=function()local d=aa.GetCurrentDungeonName()if d then c:UpdateName(ae..
+': '..d)else c:UpdateName(ae..": <font color='rgb(255, 80, 80)'>Unknown</font>")
+end end d()aa.OnDungeonNameChanged(function()d()end)ai:Header{Name=
+'Lobby / Dungeon'}local e=ai:Label{Text='Lobby: Unknown'}b=function()local f=aa.
+IsInLobby()local g=f and'0, 255, 0'or'255, 80, 80'e:UpdateName(
+"Lobby: <font color='rgb("..g..")'>"..(f and'Yes'or'No')..'</font>')end b()aa.
+OnLobbyChanged(function()b()end)ai:Button{Name='Log Enemy Types to Console',
+Callback=function()local f=aa.GetEnemyNames()print(
+'[DungeonQuest] Enemy types in map ('..#f..'):')if#f==0 then print
+'  (no enemies found)'else for g,h in ipairs(f)do print('  - '..h)end end end}
 end

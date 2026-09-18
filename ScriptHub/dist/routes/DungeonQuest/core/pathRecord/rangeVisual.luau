@@ -169,104 +169,107 @@ function()for am,_ in ipairs(B)do if _==al then table.remove(B,am)break end end
 end end function h.IsInLobby()return D end function h.OnLobbyChanged(al)if type(
 al)~='function'then return function()end end table.insert(E,al)return function()
 for am,_ in ipairs(E)do if _==al then table.remove(E,am)break end end end end
-local al P=function()if not n or Q~=nil then return end for am,_ in pairs(u)do
-if _ and _.Root and _.Root.Parent then local an=false if _.Room and type(_.Room.
-Name)=='string'and string.find(string.lower(_.Room.Name),'boss')then an=true
-elseif string.find(string.lower(am.Name),'boss')then an=true elseif am.Parent
-and string.find(string.lower(am.Parent.Name),'boss')then an=true end if an then
-Q=_.Root.Position return end end end for am,an in pairs(u)do if an and an.Root
-and an.Root.Parent then Q=an.Root.Position return end end end local am=function(
-am)if n==am then return end n=am if am then p+=1 Q=nil ag()P()for an=#q,1,-1 do
-pcall(q[an],p)end else Q=nil end for an=#o,1,-1 do pcall(o[an],n)end O()end
-function h.GetBossSpawnPosition()if Q then return Q end P()return Q end function
-h.SetBossSpawnPosition(an)Q=an end local function an()if not d then return end
-local _=d:FindFirstChild'PlayerGui'if not _ then al=nil am(false)return end
-local ao=_:FindFirstChild('bossHealth',true)if ao then if ao~=al then al=ao if
-al:IsA'ScreenGui'then T(al:GetPropertyChangedSignal'Enabled':Connect(an))elseif
-al:IsA'GuiObject'then T(al:GetPropertyChangedSignal'Visible':Connect(an))end end
-local ap=if ao:IsA'ScreenGui'then ao.Enabled elseif ao:IsA'GuiObject'then ao.
-Visible else true am(ap)else al=nil am(false)end end task.spawn(function()if not
-d then return end local ao=d:WaitForChild('PlayerGui',30)if not ao then return
-end T(ao.DescendantAdded:Connect(an))T(ao.DescendantRemoving:Connect(an))an()
-while c.IsActive()and task.wait(0.5)do an()end end)local ao,ap={}local aq=
-function()if ap then return ap end pcall(function()local _=d or game:GetService
-'Players'.LocalPlayer local aq=_ and _:FindFirstChild'PlayerScripts'local ar=aq
-and aq:FindFirstChild'PlayerModule'if ar then ap=require(ar):GetControls()end
-end)return ap end function h.DisableControls(ar)ar=ar or'default'ao[ar]=true
-local _=aq()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
-end)end end function h.EnableControls(ar)ar=ar or'default'ao[ar]=nil if next(ao)
-~=nil then return end local _=aq()if _ and type(_.Enable)=='function'then pcall(
+local al function h.SetRealPlayerLevel(am)local _=tonumber(tostring(am or''):
+match'%d+')if _ and _>0 then al=tostring(_)_G.RealPlayerLevel=al end end
+function h.GetRealPlayerLevel()return al or _G.RealPlayerLevel end local am P=
+function()if not n or Q~=nil then return end for _,an in pairs(u)do if an and an
+.Root and an.Root.Parent then local ao=false if an.Room and type(an.Room.Name)==
+'string'and string.find(string.lower(an.Room.Name),'boss')then ao=true elseif
+string.find(string.lower(_.Name),'boss')then ao=true elseif _.Parent and string.
+find(string.lower(_.Parent.Name),'boss')then ao=true end if ao then Q=an.Root.
+Position return end end end for an,ao in pairs(u)do if ao and ao.Root and ao.
+Root.Parent then Q=ao.Root.Position return end end end local an=function(an)if n
+==an then return end n=an if an then p+=1 Q=nil ag()P()for ao=#q,1,-1 do pcall(q
+[ao],p)end else Q=nil end for ao=#o,1,-1 do pcall(o[ao],n)end O()end function h.
+GetBossSpawnPosition()if Q then return Q end P()return Q end function h.
+SetBossSpawnPosition(ao)Q=ao end local function ao()if not d then return end
+local _=d:FindFirstChild'PlayerGui'if not _ then am=nil an(false)return end
+local ap=_:FindFirstChild('bossHealth',true)if ap then if ap~=am then am=ap if
+am:IsA'ScreenGui'then T(am:GetPropertyChangedSignal'Enabled':Connect(ao))elseif
+am:IsA'GuiObject'then T(am:GetPropertyChangedSignal'Visible':Connect(ao))end end
+local aq=if ap:IsA'ScreenGui'then ap.Enabled elseif ap:IsA'GuiObject'then ap.
+Visible else true an(aq)else am=nil an(false)end end task.spawn(function()if not
+d then return end local ap=d:WaitForChild('PlayerGui',30)if not ap then return
+end T(ap.DescendantAdded:Connect(ao))T(ap.DescendantRemoving:Connect(ao))ao()
+while c.IsActive()and task.wait(0.5)do ao()end end)local ap,aq={}local ar=
+function()if aq then return aq end pcall(function()local _=d or game:GetService
+'Players'.LocalPlayer local ar=_ and _:FindFirstChild'PlayerScripts'local as=ar
+and ar:FindFirstChild'PlayerModule'if as then aq=require(as):GetControls()end
+end)return aq end function h.DisableControls(as)as=as or'default'ap[as]=true
+local _=ar()if _ and type(_.Disable)=='function'then pcall(function()_:Disable()
+end)end end function h.EnableControls(as)as=as or'default'ap[as]=nil if next(ap)
+~=nil then return end local _=ar()if _ and type(_.Enable)=='function'then pcall(
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
-nil end for ar,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
-clear(G)table.clear(ao)local ar=aq()if ar and type(ar.Enable)=='function'then
-pcall(function()ar:Enable()end)end N()end)return h end end local aa,ab,ac=a.load
-'a',a.load'c',a.load'b'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,b,c,d,
-e,f,g,h,i=aa.player,aa.RunService,aa.CoreGui or game:GetService'CoreGui',game:
+nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
+clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
+pcall(function()as:Enable()end)end N()end)return h end end local aa,ab,ac=a.load
+'a',a.load'c',a.load'b'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,b,c
+,d,e,f,g,h=aa.player,aa.RunService,aa.CoreGui or game:GetService'CoreGui',game:
 GetService'Workspace',{},{Cyan=Color3.fromRGB(0,230,255),Red=Color3.fromRGB(255,
 60,60),Orange=Color3.fromRGB(255,140,0),Yellow=Color3.fromRGB(255,220,40),Green=
 Color3.fromRGB(0,255,120),Emerald=Color3.fromRGB(40,220,160),Blue=Color3.
 fromRGB(0,140,255),Purple=Color3.fromRGB(180,80,255),Magenta=Color3.fromRGB(255,
 60,200),White=Color3.fromRGB(255,255,255)},false,25,0.4,true,true,'Cyan','Red',
-0.8,0.15,'PR_InRange_Highlight',0.2,0,{}local j,k,l,m=function()return ai[ao]or
-ai.Cyan end,function()return ai[ap]or ai.Red end,function()local j=ad and ad.
-Character if not j or not j.Parent then return nil end local k=j:
-FindFirstChildOfClass'Humanoid'if k and k.Health<=0 then return nil end local l=
-j:FindFirstChild'HumanoidRootPart'if l and l.Parent then return l end return nil
-end,function()for j,k in pairs(e)do pcall(function()k:Destroy()end)end table.
-clear(e)pcall(function()for j,k in ipairs(ag:GetDescendants())do if k.Name==b
-then pcall(function()k:Destroy()end)end end end)end local n,o=function()if f
-then pcall(function()f:Destroy()end)f=nil end if g then pcall(function()g:
-Destroy()end)g=nil end i=nil m()end,function()if not f or not f.Parent then
-pcall(function()if f then f:Destroy()end end)f=Instance.new
-'CylinderHandleAdornment'f.Name='PR_SkillRangeRing'f.AlwaysOnTop=true f.ZIndex=5
-f.Parent=af end if am then if not g or not g.Parent then pcall(function()if g
-then g:Destroy()end end)g=Instance.new'CylinderHandleAdornment'g.Name=
-'PR_SkillRangeFill'g.AlwaysOnTop=true g.ZIndex=4 g.Parent=af end else if g then
-pcall(function()g:Destroy()end)g=nil end end end local p,q=function(p)if not aj
-then n()return end o()local q,r=2.6,j()local s=Vector3.new(p.Position.X,p.
-Position.Y-q,p.Position.Z)local t=CFrame.new(s)*CFrame.Angles(math.rad(90),0,0)
-local u=p.CFrame:ToObjectSpace(t)if f then f.Adornee=p f.Height=0.06 f.Radius=ak
-f.InnerRadius=math.max(0.1,ak-al)f.Color3=r f.Transparency=1-aq f.CFrame=u f.
-Visible=(p~=nil and p.Parent~=nil)end if g and am then g.Adornee=p g.Height=0.02
-g.Radius=ak g.InnerRadius=0 g.Color3=r g.Transparency=1-ar g.CFrame=u g.Visible=
-(p~=nil and p.Parent~=nil)end end,function(p)if not aj or not an or not p then
-if next(e)~=nil then m()end return end local q,r,s,t,u=ab.GetTrackedEnemyData(),
-p.Position,ak*ak,{},k()for v,w in ipairs(q)do local x,y,z=w.Model,w.Root,w.
-Humanoid if x and x.Parent and y and y.Parent and z and z.Health>0 then local A,
-B=y.Position.X-r.X,y.Position.Z-r.Z if(A*A+B*B)<=s then t[x]=true end end end
-for v,w in pairs(e)do if not t[v]or not v.Parent then pcall(function()w:Destroy(
-)end)e[v]=nil end end for v in pairs(t)do if not e[v]or not e[v].Parent then
-local w=v:FindFirstChild(b)local x=(w and w:IsA'Highlight')and w or Instance.new
-'Highlight'x.Name=b x.Adornee=v x.FillColor=u x.FillTransparency=0.35 x.
-OutlineColor=Color3.fromRGB(255,255,255)x.OutlineTransparency=0.1 x.DepthMode=
-Enum.HighlightDepthMode.AlwaysOnTop x.Parent=v e[v]=x else local w=e[v]if w.
-FillColor~=u then w.FillColor=u end if not w.Enabled then w.Enabled=true end end
-end end local r=function()if not aj then return end local r=l()if not r then if
-f then f.Visible=false end if g then g.Visible=false end if next(e)~=nil then m(
-)end i=nil return end local s=2.6 local t=Vector3.new(r.Position.X,r.Position.Y-
-s,r.Position.Z)local u=CFrame.new(t)*CFrame.Angles(math.rad(90),0,0)local v=r.
-CFrame:ToObjectSpace(u)if not f or not f.Parent or r~=i then i=r p(r)else if f.
-Adornee~=r then f.Adornee=r end f.CFrame=v if not f.Visible then f.Visible=true
-end if am then if not g or not g.Parent then p(r)else if g.Adornee~=r then g.
-Adornee=r end g.CFrame=v if not g.Visible then g.Visible=true end end elseif g
-and g.Visible then g.Visible=false end end local w=os.clock()if w-d>=c then d=w
-q(r)end end function ah.SetEnabled(s)aj=s and true or false if aj then local t=
-l()if t then p(t)i=t q(t)end if not h then h=ae.Heartbeat:Connect(r)end else n()
-if h then h:Disconnect()h=nil end i=nil end end function ah.IsEnabled()return aj
-end function ah.SetRadius(s)if type(s)=='number'then ak=math.clamp(s,5,150)local
-t=l()if aj and t then p(t)q(t)end end end function ah.GetRadius()return ak end
-function ah.SetFillEnabled(s)am=s and true or false local t=l()if aj and t then
-p(t)end end function ah.IsFillEnabled()return am end function ah.
-SetHighlightInRange(s)an=s and true or false if not an then m()else local t=l()
-if aj and t then q(t)end end end function ah.IsHighlightInRangeEnabled()return
-an end function ah.GetColorNames()local s={'Cyan','Red','Orange','Yellow',
-'Green','Emerald','Blue','Purple','Magenta','White'}return s end function ah.
-GetSelectedCircleColor()return ao end function ah.SetCircleColor(s)if type(s)==
-'string'and ai[s]then ao=s local t=l()if aj and t then p(t)end end end function
-ah.GetSelectedHighlightColor()return ap end function ah.SetHighlightColor(s)if
-type(s)=='string'and ai[s]then ap=s local t=l()if aj and t then q(t)end end end
-if ad then ad.CharacterAdded:Connect(function(s)if aj then task.spawn(function()
-local t=s:WaitForChild('HumanoidRootPart',10)if t and aj then p(t)i=t q(t)end
+0.8,0.15,'PR_InRange_Highlight',0.2,0,{}local i,j,k,l=function()return ai[ao]or
+ai.Cyan end,function()return ai[ap]or ai.Red end,function()local i=ad and ad.
+Character if not i or not i.Parent then return nil end local j=i:
+FindFirstChildOfClass'Humanoid'if j and j.Health<=0 then return nil end local k=
+i:FindFirstChild'HumanoidRootPart'if k and k.Parent then return k end return nil
+end,function()for i,j in pairs(d)do pcall(function()j:Destroy()end)end table.
+clear(d)pcall(function()for i,j in ipairs(ag:GetDescendants())do if j.Name==as
+then pcall(function()j:Destroy()end)end end end)end local m,n=function()if e
+then pcall(function()e:Destroy()end)e=nil end if f then pcall(function()f:
+Destroy()end)f=nil end h=nil l()end,function()if not e or not e.Parent then
+pcall(function()if e then e:Destroy()end end)e=Instance.new
+'CylinderHandleAdornment'e.Name='PR_SkillRangeRing'e.AlwaysOnTop=true e.ZIndex=5
+e.Parent=af end if am then if not f or not f.Parent then pcall(function()if f
+then f:Destroy()end end)f=Instance.new'CylinderHandleAdornment'f.Name=
+'PR_SkillRangeFill'f.AlwaysOnTop=true f.ZIndex=4 f.Parent=af end else if f then
+pcall(function()f:Destroy()end)f=nil end end end local o,p=function(o)if not aj
+then m()return end n()local p,q=2.6,i()local r=Vector3.new(o.Position.X,o.
+Position.Y-p,o.Position.Z)local s=CFrame.new(r)*CFrame.Angles(math.rad(90),0,0)
+local t=o.CFrame:ToObjectSpace(s)if e then e.Adornee=o e.Height=0.06 e.Radius=ak
+e.InnerRadius=math.max(0.1,ak-al)e.Color3=q e.Transparency=1-aq e.CFrame=t e.
+Visible=(o~=nil and o.Parent~=nil)end if f and am then f.Adornee=o f.Height=0.02
+f.Radius=ak f.InnerRadius=0 f.Color3=q f.Transparency=1-ar f.CFrame=t f.Visible=
+(o~=nil and o.Parent~=nil)end end,function(o)if not aj or not an or not o then
+if next(d)~=nil then l()end return end local p,q,r,s,t=ab.GetTrackedEnemyData(),
+o.Position,ak*ak,{},j()for u,v in ipairs(p)do local w,x,y=v.Model,v.Root,v.
+Humanoid if w and w.Parent and x and x.Parent and y and y.Health>0 then local z,
+A=x.Position.X-q.X,x.Position.Z-q.Z if(z*z+A*A)<=r then s[w]=true end end end
+for u,v in pairs(d)do if not s[u]or not u.Parent then pcall(function()v:Destroy(
+)end)d[u]=nil end end for u in pairs(s)do if not d[u]or not d[u].Parent then
+local v=u:FindFirstChild(as)local w=(v and v:IsA'Highlight')and v or Instance.
+new'Highlight'w.Name=as w.Adornee=u w.FillColor=t w.FillTransparency=0.35 w.
+OutlineColor=Color3.fromRGB(255,255,255)w.OutlineTransparency=0.1 w.DepthMode=
+Enum.HighlightDepthMode.AlwaysOnTop w.Parent=u d[u]=w else local v=d[u]if v.
+FillColor~=t then v.FillColor=t end if not v.Enabled then v.Enabled=true end end
+end end local q=function()if not aj then return end local q=k()if not q then if
+e then e.Visible=false end if f then f.Visible=false end if next(d)~=nil then l(
+)end h=nil return end local r=2.6 local s=Vector3.new(q.Position.X,q.Position.Y-
+r,q.Position.Z)local t=CFrame.new(s)*CFrame.Angles(math.rad(90),0,0)local u=q.
+CFrame:ToObjectSpace(t)if not e or not e.Parent or q~=h then h=q o(q)else if e.
+Adornee~=q then e.Adornee=q end e.CFrame=u if not e.Visible then e.Visible=true
+end if am then if not f or not f.Parent then o(q)else if f.Adornee~=q then f.
+Adornee=q end f.CFrame=u if not f.Visible then f.Visible=true end end elseif f
+and f.Visible then f.Visible=false end end local v=os.clock()if v-c>=b then c=v
+p(q)end end function ah.SetEnabled(r)aj=r and true or false if aj then local s=
+k()if s then o(s)h=s p(s)end if not g then g=ae.Heartbeat:Connect(q)end else m()
+if g then g:Disconnect()g=nil end h=nil end end function ah.IsEnabled()return aj
+end function ah.SetRadius(r)if type(r)=='number'then ak=math.clamp(r,5,150)local
+s=k()if aj and s then o(s)p(s)end end end function ah.GetRadius()return ak end
+function ah.SetFillEnabled(r)am=r and true or false local s=k()if aj and s then
+o(s)end end function ah.IsFillEnabled()return am end function ah.
+SetHighlightInRange(r)an=r and true or false if not an then l()else local s=k()
+if aj and s then p(s)end end end function ah.IsHighlightInRangeEnabled()return
+an end function ah.GetColorNames()local r={'Cyan','Red','Orange','Yellow',
+'Green','Emerald','Blue','Purple','Magenta','White'}return r end function ah.
+GetSelectedCircleColor()return ao end function ah.SetCircleColor(r)if type(r)==
+'string'and ai[r]then ao=r local s=k()if aj and s then o(s)end end end function
+ah.GetSelectedHighlightColor()return ap end function ah.SetHighlightColor(r)if
+type(r)=='string'and ai[r]then ap=r local s=k()if aj and s then p(s)end end end
+if ad then ad.CharacterAdded:Connect(function(r)if aj then task.spawn(function()
+local s=r:WaitForChild('HumanoidRootPart',10)if s and aj then o(s)h=s p(s)end
 end)end end)end ab.OnRespawn(function()if aj then task.delay(0.2,function()local
-s=l()if s and aj then p(s)i=s q(s)end end)end end)ac.Register(function()ah.
-SetEnabled(false)n()end)return ah
+r=k()if r and aj then o(r)h=r p(r)end end)end end)ac.Register(function()ah.
+SetEnabled(false)m()end)return ah

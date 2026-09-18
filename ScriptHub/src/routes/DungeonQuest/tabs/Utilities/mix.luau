@@ -50,9 +50,17 @@ return function(window, tab)
 		end),
 	}, "Toggle_StreamingMode")
 
+	streamSection:Toggle({
+		Name = "Hide Stats (Level, XP, HP)",
+		Default = streamingMode.IsMaskStats(),
+		Callback = autoSave.Wrap(function(state)
+			streamingMode.SetMaskStats(state)
+		end),
+	}, "Toggle_StreamingMaskStats")
+
 	streamSection:Input({
 		Name = "Fake Display Name",
-		Placeholder = "EclipseHub",
+		Placeholder = "Username",
 		AcceptedCharacters = "All",
 		Default = streamingMode.GetReplacement(),
 		Callback = autoSave.Wrap(function(input)

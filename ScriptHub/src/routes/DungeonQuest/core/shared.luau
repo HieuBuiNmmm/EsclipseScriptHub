@@ -863,6 +863,21 @@ function shared.OnLobbyChanged(callback)
 	end
 end
 
+--// ---- Player Real Level (dùng cho Webhook, không bị ảnh hưởng bởi UI masking) ----
+local realPlayerLevel = nil
+
+function shared.SetRealPlayerLevel(level)
+	local num = tonumber(tostring(level or ""):match("%d+"))
+	if num and num > 0 then
+		realPlayerLevel = tostring(num)
+		_G.RealPlayerLevel = realPlayerLevel
+	end
+end
+
+function shared.GetRealPlayerLevel()
+	return realPlayerLevel or _G.RealPlayerLevel
+end
+
 --// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
 local bossHealthRef = nil
 
