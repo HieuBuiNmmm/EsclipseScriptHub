@@ -64,11 +64,11 @@ return function(self)
 	local tabGroup = window:TabGroup()
 	local tabs = {
 		Combat = tabGroup:Tab({ Name = "Combat", Image = "rbxassetid://10734975692" }),
-		Dungeon = tabGroup:Tab({ Name = "Dungeon Joiner", Image = "rbxassetid://10734886202" }),
+		PathRecord = tabGroup:Tab({ Name = "Macro", Image = "rbxassetid://10734950309" }),
+		Dungeon = tabGroup:Tab({ Name = "Dungeon", Image = "rbxassetid://10734886202" }),
 		Inventory = tabGroup:Tab({ Name = "Inventory", Image = "rbxassetid://10709769841" }),
 		Utilities = tabGroup:Tab({ Name = "Utilities", Image = "rbxassetid://10747383470" }),
 		Configs = tabGroup:Tab({ Name = "Configs", Image = "rbxassetid://10734950309" }),
-		PathRecord = tabGroup:Tab({ Name = "Path Record", Image = "rbxassetid://10734950309" }),
 	}
 
 	--// Config
@@ -76,18 +76,18 @@ return function(self)
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
 	local combatTab = require("@routes/DungeonQuest/tabs/Combat/main")
+	local pathRecordTab = require("@routes/DungeonQuest/tabs/PathRecord/main")
 	local dungeonTab = require("@routes/DungeonQuest/tabs/Dungeon/main")
 	local inventoryTab = require("@routes/DungeonQuest/tabs/Inventory/main")
 	local utilitiesTab = require("@routes/DungeonQuest/tabs/Utilities/main")
 	local configsTab = require("@routes/DungeonQuest/tabs/Configs/main")
-	local pathRecordTab = require("@routes/DungeonQuest/tabs/PathRecord/main")
 
 	combatTab(window, tabs.Combat)
+	pathRecordTab(window, tabs.PathRecord)
 	dungeonTab(window, tabs.Dungeon)
 	inventoryTab(window, tabs.Inventory)
 	utilitiesTab(window, tabs.Utilities)
 	configsTab(window, tabs.Configs)
-	pathRecordTab(window, tabs.PathRecord)
 
 	--// Phím tắt
 	local shortcuts = require("@routes/DungeonQuest/core/shortcuts")

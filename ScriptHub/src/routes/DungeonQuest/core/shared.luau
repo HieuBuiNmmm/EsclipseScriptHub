@@ -27,7 +27,6 @@ local rootPart = nil
 local enabled = false
 local fastSpeed = 16
 local normalSpeed = 16
-local instantAccelEnabled = true
 local isSettingSpeed = false
 
 local dungeonStartTime = nil
@@ -382,14 +381,6 @@ function shared.GetFastSpeed()
 	return fastSpeed
 end
 
-function shared.SetInstantAccelEnabled(state)
-	instantAccelEnabled = state and true or false
-end
-
-function shared.IsInstantAccelEnabled()
-	return instantAccelEnabled
-end
-
 --// Humanoid setup
 local function connectSpeedListener()
 	if speedConnection then
@@ -445,38 +436,6 @@ function shared.SetHumanoid(character)
 			wasDead = false
 		end
 	end))
-end
-
---// Instant Movement (Acceleration)
-local function updateInstantMovement()
-	if not lifecycle.IsActive() then return end
-	if not instantAccelEnabled then return end
-	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 or humanoid.Sit then return end
-	if not rootPart or not rootPart.Parent then
-		local char = player and player.Character
-		rootPart = char and char:FindFirstChild("HumanoidRootPart")
-		if not rootPart then return end
-	end
-	if rootPart.Anchored then return end
-
-	local moveDir = humanoid.MoveDirection
-	local curVel = rootPart.AssemblyLinearVelocity
-
-	if moveDir.Magnitude > 0.05 then
-		local targetSpeed = enabled and math.max(fastSpeed, humanoid.WalkSpeed) or humanoid.WalkSpeed
-		rootPart.AssemblyLinearVelocity = Vector3.new(
-			moveDir.X * targetSpeed,
-			curVel.Y,
-			moveDir.Z * targetSpeed
-		)
-	end
-end
-
-if services.RunService then
-	local simEvent = services.RunService.PreSimulation or services.RunService.Heartbeat
-	if simEvent then
-		trackCleanupConnection(simEvent:Connect(updateInstantMovement))
-	end
 end
 
 function shared.GetDungeonStartTime()

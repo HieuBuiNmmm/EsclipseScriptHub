@@ -20,7 +20,7 @@ return function(window, tab)
 	--// LEFT COLUMN: Section 1 - Điều khiển & Phát Macro
 	--// ============================================================
 	local left = tab:Section({ Side = "Left" })
-	left:Header({ Name = "Path Record Controls" })
+	left:Header({ Name = "Macro Controls" })
 	left:Label({
 		Text = "Macro = 1 recording per map, <font color='rgb(0,255,120)'>click Record once to record continuously</font> across rooms (auto-saves on lobby return). FULL Mode -> records & replays boss rooms as well.",
 	})
@@ -234,12 +234,12 @@ return function(window, tab)
 		end,
 	}, "Slider_PR_SkillFaceHold"))
 
-	--// Khoảng nghỉ giữa 2 lần click khi double-cast skill (0.005s - 0.1s).
+	--// Khoảng nghỉ giữa 2 lần click khi double-cast skill (0.005s - 0.5s).
 	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Skill Double Click Delay (s)",
 		Default = pathRecord.GetDoubleClickDelay(),
 		Minimum = 0.005,
-		Maximum = 0.1,
+		Maximum = 0.5,
 		DisplayMethod = "Value",
 		Precision = 3,
 		Callback = autoSave.Wrap(function(v)
@@ -251,12 +251,12 @@ return function(window, tab)
 		end,
 	}, "Slider_PR_DoubleClickDelay"))
 
-	--// Thời gian dừng chờ tại node xuất phát & kết thúc (Start / Finish Pause Time) (0s - 3s).
+	--// Thời gian dừng chờ tại node xuất phát & kết thúc (Start / Finish Pause Time) (0s - 5s).
 	ui.PatchSliderLoadCallback(combatSection:Slider({
 		Name = "Start / Finish Pause Time (s)",
 		Default = pathRecord.GetStartPauseTime(),
 		Minimum = 0.0,
-		Maximum = 3.0,
+		Maximum = 5.0,
 		DisplayMethod = "Value",
 		Precision = 2,
 		Callback = autoSave.Wrap(function(v)

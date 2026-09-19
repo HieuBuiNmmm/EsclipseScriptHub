@@ -31,14 +31,6 @@ return function(window, tab)
 		end),
 	}, "Slider_FastSpeed"))
 
-	section:Toggle({
-		Name = "Instant Acceleration",
-		Default = shared.IsInstantAccelEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			shared.SetInstantAccelEnabled(state)
-		end),
-	}, "Toggle_InstantAcceleration")
-
 	section:Header({ Name = "Shortcuts" })
 
 	section:Toggle({

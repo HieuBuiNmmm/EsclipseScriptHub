@@ -28,7 +28,7 @@ local ARRIVE_DIST = 0.5 -- Studs: ngưỡng coi là đã tới đích cuối (ch
 local START_REPOSITION_TIMEOUT = 8.0 -- Giây tối đa đi về node đầu trước khi phát
 local LOOKAHEAD_MIN = 2.0 -- Studs: lookahead tối thiểu tại góc cua gắt (chống cắt góc/rơi vực)
 local LOOKAHEAD_MAX = 4.5 -- Studs: lookahead tối đa trên đường thẳng (bám sát lòng đường tuyệt đối)
-local PRE_AIM_TIME = 0.45 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng
+local PRE_AIM_TIME = 0.1 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng
 local PRE_AIM_DIST_MIN = 6.0 -- Studs tối thiểu để Pre-Aim đón đầu (thấy rõ góc quay)
 local PRE_AIM_DIST_MAX = 14.0 -- Studs tối đa để Pre-Aim đón đầu
 local PROJECT_BACK = 8.0 -- Studs: hình chiếu chỉ tìm trong cửa sổ quanh progress (chống nhảy nhánh giao)
@@ -38,7 +38,7 @@ local STUCK_BUMP = 2.0 -- Studs: nhảy tới trước khi nghi kẹt
 local SKILL_FACE_HOLD_MIN = 0.5 -- Giây tối thiểu giữ facing sau khi xả skill
 local SKILL_FACE_HOLD_MAX = 2.0 -- Giây tối đa giữ facing sau khi xả skill
 local DOUBLE_CLICK_DELAY_MIN = 0.001 -- Giây tối thiểu giữa 2 lần click
-local DOUBLE_CLICK_DELAY_MAX = 0.1 -- Giây tối đa giữa 2 lần click
+local DOUBLE_CLICK_DELAY_MAX = 0.5 -- Giây tối đa giữa 2 lần click
 
 --// Table
 local mover = {}
@@ -47,10 +47,10 @@ local mover = {}
 local replayPauses = true
 local replaySkills = true
 local replayFacing = true
-local skillFaceHold = 0.6 -- Giây giữ facing sau khi xả skill khi đang đi (mặc định 0.6s)
-local doubleClickDelay = 0.005 -- Giây khoảng nghỉ giữa 2 lần click (mặc định 0.005s)
-local preAimLeadTime = 0.45 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng
-local startPauseTime = 0.2 -- Giây dừng chờ tại node xuất phát (Start Node), thay thế thời gian dwell gốc
+local skillFaceHold = 0.9 -- Giây giữ facing sau khi xả skill khi đang đi (mặc định 0.9s)
+local doubleClickDelay = 0.1 -- Giây khoảng nghỉ giữa 2 lần click (mặc định 0.1s)
+local preAimLeadTime = 0.1 -- Giây đón đầu: thời gian xoay đón đầu trước khi chạm mốc xả skill / dừng (mặc định 0.1s)
+local startPauseTime = 2.5 -- Giây dừng chờ tại node xuất phát & kết thúc (Start / Finish Pause Time, mặc định 2.5s)
 
 local aimSkillQ = false -- Aim/xoay mặt khi cast skill Q (mặc định tắt vì Q thường là Buff)
 local aimSkillE = true -- Aim/xoay mặt khi cast skill E (mặc định bật vì E thường là Attack)
