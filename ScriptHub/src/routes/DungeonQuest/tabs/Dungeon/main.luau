@@ -9,6 +9,7 @@ local autoStartLobby = require("@routes/DungeonQuest/core/autoStartLobby")
 local autoRetry = require("@routes/DungeonQuest/core/autoRetry")
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -20,8 +21,18 @@ return function(window, tab)
 		end
 		return nil
 	end
-	section:Header({ Name = "Auto Join Dungeon" })
+	section:Header({ Name = "Auto Join Dungeon (Lobby)" })
 	runSection:Header({ Name = "Dungeon Run Automation" })
+
+	local zoneLabel = section:Label({
+		Text = "Current Zone: " .. (zoneGuard.IsLobby() and "Lobby" or "Dungeon"),
+	}, "Label_DungeonTabZone")
+
+	zoneGuard.OnZoneChanged(function(newZone)
+		pcall(function()
+			zoneLabel:UpdateName("Current Zone: " .. newZone)
+		end)
+	end)
 
 	section:Toggle({
 		Name = "Auto Join Dungeon",

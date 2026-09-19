@@ -1927,99 +1927,119 @@ cancel(aG)aG=nil end aG=task.spawn(function()while aF do local aO,aP=pcall(aL)if
 not aO and os.clock()-(ac.lastSkillWarnH or 0)>5 then ac.lastSkillWarnH=os.
 clock()warn('[SkillHitbox] error:',tostring(aP))end task.wait(aj)end end)else
 aM()end end function ac.IsSkillHitboxEnabled()return aF end return ac end
-function a.h()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak=a.load'd',a.load'f',{},
-Color3.fromRGB(255,170,0),0.55,'Enemy_ESP',0.5,{Orange=Color3.fromRGB(255,170,0)
-,Red=Color3.fromRGB(255,0,0),Yellow=Color3.fromRGB(255,255,0),Green=Color3.
-fromRGB(0,255,0),Cyan=Color3.fromRGB(0,255,255),Blue=Color3.fromRGB(0,120,255),
-Magenta=Color3.fromRGB(255,0,255),White=Color3.fromRGB(255,255,255)},false,
-'Orange'local al=function()return ah[aj]or ad end local am,an,ao=function(am)if
-not am or not am:IsA'Model'then return end if not am:FindFirstChild(af)then
-local an=Instance.new'Highlight'an.Name=af an.Adornee=am an.FillColor=al()an.
-FillTransparency=ae an.OutlineColor=al()an.OutlineTransparency=1 an.DepthMode=
-Enum.HighlightDepthMode.AlwaysOnTop an.Parent=am end end,function()local am=al()
-for an,ao in ipairs(game:GetService'Workspace':GetDescendants())do local ap=ao:
-FindFirstChild(af)if ap and ap:IsA'Highlight'then ap.FillColor=am ap.
-OutlineColor=am end end end,function()for am,an in ipairs(game:GetService
-'Workspace':GetDescendants())do local ao=an:FindFirstChild(af)if ao then ao:
-Destroy()end end for am,an in ipairs(aa.Players:GetPlayers())do local ao=an.
-Character if ao then for ap,aq in ipairs(ao:GetDescendants())do if aq.Name==af
-then aq:Destroy()end end end end end function ac.Toggle(ap)if ap==ai then return
-end ai=ap if ai then if ak then task.cancel(ak)ak=nil end ak=task.spawn(function
-()while ai do local aq,ar=pcall(function()for aq,ar in ipairs(ab.
-GetTrackedEnemyData())do if ar.Model and ar.Model.Parent then am(ar.Model)end
-end end)if not aq then if os.clock()-(ac.lastWarn or 0)>5 then ac.lastWarn=os.
-clock()warn('[EnemyESP] error:',tostring(ar))end end task.wait(ag)end end)else
-if ak then task.cancel(ak)ak=nil end local aq=pcall(ao)if not aq then warn
-'[EnemyESP] cleanup error'end end end function ac.IsEnabled()return ai end
-function ac.GetColorNames()local ap={}for aq in pairs(ah)do table.insert(ap,aq)
-end table.sort(ap)return ap end function ac.GetSelectedColor()return aj end
-function ac.SetSelectedColor(ap)if not ah[ap]then return end if ap==aj then
-return end aj=ap local aq=pcall(an)if not aq then warn'[EnemyESP] recolor error'
-end end return ac end function a.i()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'd',a
-.load'e',{},false,{},{},{},2,function(aa)if not aa then return false end local
-ab=aa while ab and ab~=workspace do local ac=ab.Name:lower()if ac:find
-'stairramp'or ac:find'step'or ac:find'meshes/cylinder'or ac:find'cylinder'then
-return true end ab=ab.Parent end return false end local aj=function(aj)if not ad
-or not aj or not aj:IsA'BasePart'then return end if ai(aj)then return end if not
-af[aj]then af[aj]={CanCollide=aj.CanCollide,CanTouch=aj.CanTouch}end pcall(
-function()aj.CanCollide=false aj.CanTouch=false end)end local ak={['meshes/ice3'
-]=true,['meshes/snow']=true,['invisible platform']=true,part=true}local al,am,an
-=function(al)if not al then return true end if al:IsA'Model'or al:IsA'Folder'
-then return true end local am=al.Name:lower()if ak[am]or al.Name=='Meshes/Ice3'
-or al.Name=='Meshes/Snow'or al.Name=='Invisible platform'or al.Name=='Part'then
-return true end return false end,function()if not ad then return end local al=
-workspace:FindFirstChild'Map'if not al then return end for am,an in ipairs(al:
-GetDescendants())do if(an:IsA'Model'or an:IsA'Folder')and an.Name:lower():find
-'border'then for ao,ap in ipairs(an:GetChildren())do pcall(function()ap:Destroy(
-)end)end end end end,function()if not ad then return end local al=workspace:
-FindFirstChild'Map'if not al then return end for am,an in ipairs(al:
-GetDescendants())do if an.Name:lower():find'wooden plank'then local ao=an.Parent
-while ao and ao~=al and ao~=workspace do if ao:IsA'Model'then pcall(function()ao
-:Destroy()end)break end ao=ao.Parent end end end end local ao,ap,aq=function()if
-not ad then return end local ao=workspace:FindFirstChild'Map'if not ao then
-return end for ap,aq in ipairs(ao:GetChildren())do if not al(aq)then pcall(
-function()aq:Destroy()end)end end end,{Vector3.new(-724.4873046875,
-33.9286003112793,174.7227325439453),Vector3.new(-697.8023681640625,
-26.397010803222656,380.60272216796875),Vector3.new(-649.3167724609375,
-31.39712905883789,397.80535888671875),Vector3.new(-581.634033203125,
-3.4567506313323975,318.2510070800781),Vector3.new(-491.9974365234375,
-41.522090911865234,384.67694091796875),Vector3.new(-484.0378723144531,
-35.76678466796875,418.82659912109375),Vector3.new(-470.1619567871094,
-32.919700622558594,461.6861267089844),Vector3.new(-468.8152770996094,
-39.06712341308594,514.388916015625),Vector3.new(-600.4266357421875,
-13.99144172668457,570.6660766601563),Vector3.new(-338.2521667480469,
-42.990394592285156,439.36456298828125),Vector3.new(-355.2449951171875,
-57.510982513427734,385.5475769042969),Vector3.new(-606.5220336914063,
-37.41774368286133,372.6407470703125)},0.2 local ar=function(ar)if not ar then
-return false end for as,at in ipairs(ap)do if(ar-at).Magnitude<=aq then return
-true end end return false end local as=function(as)if not as or not as:IsA
-'Model'or not as.Parent then return false end local at,au=pcall(function()return
-as:GetPivot().Position end)if at and au and ar(au)then return true end if as.
-PrimaryPart and ar(as.PrimaryPart.Position)then return true end for av,aw in
-ipairs(as:GetDescendants())do if aw:IsA'BasePart'and ar(aw.Position)then return
-true end end return false end local at,au=function()if not ad then return end
-local at=workspace:FindFirstChild'Map'or workspace:FindFirstChild'dungeon'or
-workspace:FindFirstChild'Dungeon'if not at then return end for au,av in ipairs(
-at:GetDescendants())do if not av.Parent then continue end if av:IsA'Model'then
-if as(av)then pcall(function()av:Destroy()end)end elseif av:IsA'BasePart'then if
-ar(av.Position)then local aw=av:FindFirstAncestorOfClass'Model'if aw and aw~=
-workspace and aw~=at then pcall(function()aw:Destroy()end)else pcall(function()
-av:Destroy()end)end end end end end,function(at)if not ad or not at or not at:
-IsA'BasePart'then return end if at.Name=='Meshes/Snow'or at.Name:lower():find
-'meshes/snow'or at.Name:lower()=='snow'then if ag[at]==nil then ag[at]=at.
-Transparency end pcall(function()at.Transparency=1 end)end end local av=function
-()if not ad then return end local av=workspace:FindFirstChild'Map'if not av then
-return end for aw,ax in ipairs(av:GetDescendants())do if ax:IsA'BasePart'and(ax.
-Name=='Meshes/Snow'or ax.Name:lower():find'meshes/snow'or ax.Name:lower()==
-'snow')then au(ax)end end end local aw=function()if not ad then return end ao()
-am()an()at()av()end local ax,ay=function()for ax,ay in ipairs(ae)do pcall(
-function()ay:Disconnect()end)end table.clear(ae)local ax,ay=function(ax)if not
-ax then return end table.insert(ae,ax.ChildAdded:Connect(function(ay)if not ad
-then return end if not al(ay)then pcall(function()ay:Destroy()end)end end))table
-.insert(ae,ax.DescendantAdded:Connect(function(ay)if not ad then return end if
-ay.Name:lower():find'wooden plank'then local az=ay.Parent while az and az~=ax
-and az~=workspace do if az:IsA'Model'then pcall(function()az:Destroy()end)return
-end az=az.Parent end end local az=ay.Parent while az and az~=ax and az~=
+function a.h()local aa,ab,ac,ad,ae,af=a.load'e',a.load'f',{},{},{},'Lobby'
+function ac.GetCurrentZone()return ab.IsInLobby()and'Lobby'or'Dungeon'end
+function ac.IsInZone(ag)if ag=='Global'then return true end return ac.
+GetCurrentZone()==ag end function ac.IsLobby()return ac.GetCurrentZone()==
+'Lobby'end function ac.IsDungeon()return ac.GetCurrentZone()=='Dungeon'end
+function ac.Register(ag)if not ag or type(ag.Name)~='string'or not ag.Zone then
+return end ad[ag.Name]=ag if ac.IsInZone(ag.Zone)and ag.OnEnter then task.spawn(
+function()pcall(ag.OnEnter)end)end end function ac.Unregister(ag)ad[ag]=nil end
+function ac.Guard(ag,ah,ai)return function(...)if not ac.IsInZone(ag)then return
+ai end return ah(...)end end function ac.OnZoneChanged(ag)if type(ag)==
+'function'then table.insert(ae,ag)end end local ag=function(ag)local ah=ag and
+'Lobby'or'Dungeon'if ah==af then return end local ai=af af=ah for aj,ak in
+pairs(ad)do if ak.Zone~='Global'and ak.Zone==ai and ak.OnLeave then task.spawn(
+function()pcall(ak.OnLeave)end)end end for aj,ak in pairs(ad)do if ak.Zone~=
+'Global'and ak.Zone==ah and ak.OnEnter then task.spawn(function()pcall(ak.
+OnEnter)end)end end for aj,ak in ipairs(ae)do task.spawn(function()pcall(ak,ah,
+ai)end)end end af=ac.GetCurrentZone()ab.OnLobbyChanged(function(ah)ag(ah)end)aa.
+Register(function()table.clear(ad)table.clear(ae)end)return ac end function a.i(
+)local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am=a.load'd',a.load'f',a.load'e',a.
+load'h',{},Color3.fromRGB(255,170,0),0.55,'Enemy_ESP',0.5,{Orange=Color3.
+fromRGB(255,170,0),Red=Color3.fromRGB(255,0,0),Yellow=Color3.fromRGB(255,255,0),
+Green=Color3.fromRGB(0,255,0),Cyan=Color3.fromRGB(0,255,255),Blue=Color3.
+fromRGB(0,120,255),Magenta=Color3.fromRGB(255,0,255),White=Color3.fromRGB(255,
+255,255)},false,'Orange'local an=function()return aj[al]or af end local ao,ap,aq
+=function(ao)if not ao or not ao:IsA'Model'then return end if not ao:
+FindFirstChild(ah)then local ap=Instance.new'Highlight'ap.Name=ah ap.Adornee=ao
+ap.FillColor=an()ap.FillTransparency=ag ap.OutlineColor=an()ap.
+OutlineTransparency=1 ap.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop ap.Parent
+=ao end end,function()local ao=an()for ap,aq in ipairs(game:GetService
+'Workspace':GetDescendants())do local ar=aq:FindFirstChild(ah)if ar and ar:IsA
+'Highlight'then ar.FillColor=ao ar.OutlineColor=ao end end end,function()for ao,
+ap in ipairs(game:GetService'Workspace':GetDescendants())do local aq=ap:
+FindFirstChild(ah)if aq then aq:Destroy()end end for ao,ap in ipairs(aa.Players:
+GetPlayers())do local aq=ap.Character if aq then for ar,as in ipairs(aq:
+GetDescendants())do if as.Name==ah then as:Destroy()end end end end end function
+ae.Toggle(ar)if ar==ak then return end ak=ar if ak then if am then task.cancel(
+am)am=nil end am=task.spawn(function()while ak and ac.IsActive()do if not ad.
+IsDungeon()then task.wait(1)continue end local as,at=pcall(function()for as,at
+in ipairs(ab.GetTrackedEnemyData())do if at.Model and at.Model.Parent then ao(at
+.Model)end end end)if not as then if os.clock()-(ae.lastWarn or 0)>5 then ae.
+lastWarn=os.clock()warn('[EnemyESP] error:',tostring(at))end end task.wait(ai)
+end end)else if am then task.cancel(am)am=nil end local as=pcall(aq)if not as
+then warn'[EnemyESP] cleanup error'end end end function ae.IsEnabled()return ak
+end function ae.GetColorNames()local ar={}for as in pairs(aj)do table.insert(ar,
+as)end table.sort(ar)return ar end function ae.GetSelectedColor()return al end
+function ae.SetSelectedColor(ar)if not aj[ar]then return end if ar==al then
+return end al=ar local as=pcall(ap)if not as then warn'[EnemyESP] recolor error'
+end end ad.Register{Name='EnemyESP',Zone='Dungeon',OnLeave=function()pcall(aq)
+end}ac.Register(function()ae.Toggle(false)end)return ae end function a.j()local
+aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'd',a.load'e',{},false,{},{},{},2,function(aa)
+if not aa then return false end local ab=aa while ab and ab~=workspace do local
+ac=ab.Name:lower()if ac:find'stairramp'or ac:find'step'or ac:find
+'meshes/cylinder'or ac:find'cylinder'then return true end ab=ab.Parent end
+return false end local aj=function(aj)if not ad or not aj or not aj:IsA
+'BasePart'then return end if ai(aj)then return end if not af[aj]then af[aj]={
+CanCollide=aj.CanCollide,CanTouch=aj.CanTouch}end pcall(function()aj.CanCollide=
+false aj.CanTouch=false end)end local ak={['meshes/ice3']=true,['meshes/snow']=
+true,['invisible platform']=true,part=true}local al,am,an=function(al)if not al
+then return true end if al:IsA'Model'or al:IsA'Folder'then return true end local
+am=al.Name:lower()if ak[am]or al.Name=='Meshes/Ice3'or al.Name=='Meshes/Snow'or
+al.Name=='Invisible platform'or al.Name=='Part'then return true end return false
+end,function()if not ad then return end local al=workspace:FindFirstChild'Map'if
+not al then return end for am,an in ipairs(al:GetDescendants())do if(an:IsA
+'Model'or an:IsA'Folder')and an.Name:lower():find'border'then for ao,ap in
+ipairs(an:GetChildren())do pcall(function()ap:Destroy()end)end end end end,
+function()if not ad then return end local al=workspace:FindFirstChild'Map'if not
+al then return end for am,an in ipairs(al:GetDescendants())do if an.Name:lower()
+:find'wooden plank'then local ao=an.Parent while ao and ao~=al and ao~=workspace
+do if ao:IsA'Model'then pcall(function()ao:Destroy()end)break end ao=ao.Parent
+end end end end local ao,ap,aq=function()if not ad then return end local ao=
+workspace:FindFirstChild'Map'if not ao then return end for ap,aq in ipairs(ao:
+GetChildren())do if not al(aq)then pcall(function()aq:Destroy()end)end end end,{
+Vector3.new(-724.4873046875,33.9286003112793,174.7227325439453),Vector3.new(-
+697.8023681640625,26.397010803222656,380.60272216796875),Vector3.new(-
+649.3167724609375,31.39712905883789,397.80535888671875),Vector3.new(-
+581.634033203125,3.4567506313323975,318.2510070800781),Vector3.new(-
+491.9974365234375,41.522090911865234,384.67694091796875),Vector3.new(-
+484.0378723144531,35.76678466796875,418.82659912109375),Vector3.new(-
+470.1619567871094,32.919700622558594,461.6861267089844),Vector3.new(-
+468.8152770996094,39.06712341308594,514.388916015625),Vector3.new(-
+600.4266357421875,13.99144172668457,570.6660766601563),Vector3.new(-
+338.2521667480469,42.990394592285156,439.36456298828125),Vector3.new(-
+355.2449951171875,57.510982513427734,385.5475769042969),Vector3.new(-
+606.5220336914063,37.41774368286133,372.6407470703125)},0.2 local ar=function(ar
+)if not ar then return false end for as,at in ipairs(ap)do if(ar-at).Magnitude<=
+aq then return true end end return false end local as=function(as)if not as or
+not as:IsA'Model'or not as.Parent then return false end local at,au=pcall(
+function()return as:GetPivot().Position end)if at and au and ar(au)then return
+true end if as.PrimaryPart and ar(as.PrimaryPart.Position)then return true end
+for av,aw in ipairs(as:GetDescendants())do if aw:IsA'BasePart'and ar(aw.Position
+)then return true end end return false end local at,au=function()if not ad then
+return end local at=workspace:FindFirstChild'Map'or workspace:FindFirstChild
+'dungeon'or workspace:FindFirstChild'Dungeon'if not at then return end for au,av
+in ipairs(at:GetDescendants())do if not av.Parent then continue end if av:IsA
+'Model'then if as(av)then pcall(function()av:Destroy()end)end elseif av:IsA
+'BasePart'then if ar(av.Position)then local aw=av:FindFirstAncestorOfClass
+'Model'if aw and aw~=workspace and aw~=at then pcall(function()aw:Destroy()end)
+else pcall(function()av:Destroy()end)end end end end end,function(at)if not ad
+or not at or not at:IsA'BasePart'then return end if at.Name=='Meshes/Snow'or at.
+Name:lower():find'meshes/snow'or at.Name:lower()=='snow'then if ag[at]==nil then
+ag[at]=at.Transparency end pcall(function()at.Transparency=1 end)end end local
+av=function()if not ad then return end local av=workspace:FindFirstChild'Map'if
+not av then return end for aw,ax in ipairs(av:GetDescendants())do if ax:IsA
+'BasePart'and(ax.Name=='Meshes/Snow'or ax.Name:lower():find'meshes/snow'or ax.
+Name:lower()=='snow')then au(ax)end end end local aw=function()if not ad then
+return end ao()am()an()at()av()end local ax,ay=function()for ax,ay in ipairs(ae)
+do pcall(function()ay:Disconnect()end)end table.clear(ae)local ax,ay=function(ax
+)if not ax then return end table.insert(ae,ax.ChildAdded:Connect(function(ay)if
+not ad then return end if not al(ay)then pcall(function()ay:Destroy()end)end end
+))table.insert(ae,ax.DescendantAdded:Connect(function(ay)if not ad then return
+end if ay.Name:lower():find'wooden plank'then local az=ay.Parent while az and az
+~=ax and az~=workspace do if az:IsA'Model'then pcall(function()az:Destroy()end)
+return end az=az.Parent end end local az=ay.Parent while az and az~=ax and az~=
 workspace do if(az:IsA'Model'or az:IsA'Folder')and az.Name:lower():find'border'
 then pcall(function()ay:Destroy()end)break end az=az.Parent end if ay:IsA'Model'
 and as(ay)then pcall(function()ay:Destroy()end)return elseif ay:IsA'BasePart'and
@@ -2040,7 +2060,7 @@ loopThread)loopThread=nil end loopThread=task.spawn(function()while ad do task.
 wait(ah)pcall(aw)end end)else for aA,aB in ipairs(ae)do pcall(function()aB:
 Disconnect()end)end table.clear(ae)if loopThread then task.cancel(loopThread)
 loopThread=nil end ay()end end function ac.IsEnabled()return ad end ab.Register(
-function()ac.Toggle(false)end)return ac end function a.j()local aa={}function aa
+function()ac.Toggle(false)end)return ac end function a.k()local aa={}function aa
 .PatchSliderLoadCallback(ab)if not ab or type(ab.UpdateValue)~='function'then
 return ab end local ac=ab.UpdateValue ab.UpdateValue=function(ad,ae)local af,ag=
 ad,ae if ag==nil and(type(af)=='number'or type(af)=='string')then ag=af af=ab
@@ -2052,8 +2072,8 @@ type(af)=='string'and af~=''and not ae:IsOption(af)then if ac then pcall(
 function()ae:InsertOptions{af}end)else local ag=ae.Settings and ae.Settings.
 Options if type(ag)=='table'and#ag>0 then af=ag[1]else local ah=next(ae:
 GetOptions())if ah then af=ah end end end end ad(ae,af)end return ab end return
-aa end function a.k()local aa,ab,ac,ad,ae,af,ag=a.load'c',a.load'g',a.load'h',a.
-load'i',a.load'j',{'Custom Hitbox','Real Hitbox'},function(aa)return(aa==
+aa end function a.l()local aa,ab,ac,ad,ae,af,ag=a.load'c',a.load'g',a.load'i',a.
+load'j',a.load'k',{'Custom Hitbox','Real Hitbox'},function(aa)return(aa==
 'Custom'and 1)or 2 end local ah=function(ah)return(ah==af[1]and'Custom')or'Real'
 end return function(ai,aj)local ak,al=(aj:Section{Side='Left'})ak:Header{Name=
 'Player'}ak:Toggle({Name='Hitbox',Default=ab.IsPlayerHitboxEnabled(),Callback=aa
@@ -2084,7 +2104,7 @@ GetPlayerHitboxMode()=='Custom')end)pcall(function()ar:SetVisibility(ab.
 GetEnemyHitboxMode()=='Custom')end)end al()local as=aj:Section{Side='Right'}as:
 Header{Name='Map'}as:Toggle({Name='Map Optimizer',Default=ad.IsEnabled(),
 Callback=aa.Wrap(function(at)ad.Toggle(at)end)},'Toggle_MapOptimizer')end end
-function a.l()local aa,ab,ac,ad,ae=a.load'a',a.load'b',a.load'f',a.load'e',game:
+function a.m()local aa,ab,ac,ad,ae=a.load'a',a.load'b',a.load'f',a.load'e',game:
 GetService'HttpService'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,
 aw=aa.Folder..'/settings/webhook.json',{},'',false,false,false,'',{'Tier6'},true
 ,{},false,{common=9807270,uncommon=43520,rare=3447003,epic=10181046,legendary=
@@ -2286,7 +2306,7 @@ an then pcall(aY,a8)end local bb,bc=a4(a8,{level=aL(),expGained=ba,duration=a9})
 if not bb then ab.Notify('Webhook WIN','Send failed: '..tostring(bc),4)end end)
 end)aj=true ab.Notify('Webhook','Webhook notifications ready',2)aU()if an then
 aR()end end aZ()ad.Register(function()if av then av:Disconnect()av=nil end if aw
-then aw()aw=nil end aj=false end)return ag end function a.m()local aa=a.load'l'
+then aw()aw=nil end aj=false end)return ag end function a.n()local aa=a.load'm'
 return function(ab,ac)local ad=ac:Section{Side='Right'}ad:Header{Name=
 'Discord Webhook'}ad:Input{Name='Webhook URL',Placeholder=
 'https://discord.com/api/webhooks/...',AcceptedCharacters='All',Default=aa.
@@ -2304,7 +2324,7 @@ ae:Dropdown{Name='Ping Tier',Multi=true,Required=false,Options=aa.
 GetPingTierOptions(),Default=aa.GetPingTiers(),Callback=function(af)aa.
 SetPingTiers(af)end}ae:Label{Text=
 [[Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).]]
-}end end function a.n()local aa={}function aa.Apply(ab,ac,ad)for ae,af in pairs(
+}end end function a.o()local aa={}function aa.Apply(ab,ac,ad)for ae,af in pairs(
 ab)do if ad and table.find(ad,ae)then continue end pcall(function()ac[ae]=af end
 )end return ac end function aa.Wrap(ab,ac,ad,ae)local af={}setmetatable(af,{
 __index=function(ag,ah)if ab[ah]~=nil then return ab[ah]elseif ae then local ai,
@@ -2312,7 +2332,7 @@ aj=pcall(function()return ae[ah]end)if ai then return aj end end return end,
 __newindex=function(ag,ah,ai)local aj=ac[ah]if aj then aj(ai)if not(ad and table
 .find(ad,ah))then ab[ah]=ai end elseif ae then local ak,al=pcall(function()ae[ah
 ]=ai end)if not ak then ab[ah]=ai end else ab[ah]=ai end end})return af end
-return aa end function a.o()local aa,ab,ac,ad,ae,af=a.load'n',game:GetService
+return aa end function a.p()local aa,ab,ac,ad,ae,af=a.load'o',game:GetService
 'VirtualUser',{},false,60 local ag=function()pcall(function()ab:
 CaptureController()ab:Button1Down(Vector2.new(0,0))ab:Button1Up(Vector2.new(0,0)
 )ab:Button2Down(Vector2.new(0,0))ab:Button2Up(Vector2.new(0,0))end)end local ah=
@@ -2322,8 +2342,8 @@ return end ad=true task.spawn(ag)af=task.spawn(ah)end function ac.Stop()ad=false
 end function ac.IsEnabled()return ad end function ac.SetInterval(ai)ai=tonumber(
 ai)if ai and ai>0 then ae=ai else ae=60 end end function ac.GetInterval()return
 ae end return(aa.Wrap(ac,{Enabled=function(ai)if ai then ac.Start()else ac.Stop(
-)end end,Interval=function(ai)ac.SetInterval(ai)end}))end function a.p()local aa
-,ab,ac,ad,ae,af,ag=a.load'a',a.load'e',a.load'n',a.load'f',game:GetService
+)end end,Interval=function(ai)ac.SetInterval(ai)end}))end function a.q()local aa
+,ab,ac,ad,ae,af,ag=a.load'a',a.load'e',a.load'o',a.load'f',game:GetService
 'Players',game:GetService'HttpService','Username'local ah=function()return(aa
 and aa.Folder)or'EsclipseHub'end local ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av
 ,aw,ax,ay,az,aA,aB,aC=function()return ah()..'/settings/streaming_mode.json'end,
@@ -2501,8 +2521,8 @@ tostring(a7)end end end if _G.RealPlayerLevel then return _G.RealPlayerLevel end
 return nil end aD()ab.Register(function()if al then aj.Stop()end if ap then a4()
 end ao=false end)return(ac.Wrap(aj,{Enabled=function(a5)if a5 then aj.Start()
 else aj.Stop()end end,Replacement=function(a5)aj.SetReplacement(a5)end,MaskStats
-=function(a5)aj.SetMaskStats(a5)end}))end function a.q()local aa,ab,ac,ad=a.load
-'c',a.load'j',a.load'o',a.load'p'return function(ae,af)local ag=af:Section{Side=
+=function(a5)aj.SetMaskStats(a5)end}))end function a.r()local aa,ab,ac,ad=a.load
+'c',a.load'k',a.load'p',a.load'q'return function(ae,af)local ag=af:Section{Side=
 'Left'}ag:Header{Name='Anti AFK'}ag:Toggle({Name='Anti AFK',Default=ac.
 IsEnabled(),Callback=aa.Wrap(function(ah)if ah then ac.Start()else ac.Stop()end
 end)},'Toggle_AntiAFK')ab.PatchSliderLoadCallback(ag:Slider({Name=
@@ -2516,4 +2536,4 @@ Default=ad.IsMaskStats(),Callback=aa.Wrap(function(ai)ad.SetMaskStats(ai)end)},
 'Toggle_StreamingMaskStats')ah:Input({Name='Fake Display Name',Placeholder=
 'Username',AcceptedCharacters='All',Default=ad.GetReplacement(),Callback=aa.
 Wrap(function(ai)ad.SetReplacement(ai)end)},'Input_StreamingReplacement')end end
-end return function(aa,ab)a.load'k'(aa,ab)a.load'm'(aa,ab)a.load'q'(aa,ab)end
+end return function(aa,ab)a.load'l'(aa,ab)a.load'n'(aa,ab)a.load'r'(aa,ab)end

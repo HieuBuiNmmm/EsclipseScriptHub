@@ -207,21 +207,43 @@ pcall(function()as:Enable()end)end N()end)return h end function a.d()local aa,ab
 ab then local af=pcall(function()ab:Notify{Title=ac,Description=ad,Lifetime=ae}
 end)if af then return end end pcall(function()game:GetService'StarterGui':
 SetCore('SendNotification',{Title=ac,Text=ad,Duration=ae})end)end return aa end
-end local aa,ab,ac,ad,ae,af,ag,ah=a.load'c',a.load'd',{[77649408247578]=true,[
-115445507767090]=true},false,false,false,3,
+function a.e()local aa,ab,ac,ad,ae,af=a.load'b',a.load'c',{},{},{},'Lobby'
+function ac.GetCurrentZone()return ab.IsInLobby()and'Lobby'or'Dungeon'end
+function ac.IsInZone(ag)if ag=='Global'then return true end return ac.
+GetCurrentZone()==ag end function ac.IsLobby()return ac.GetCurrentZone()==
+'Lobby'end function ac.IsDungeon()return ac.GetCurrentZone()=='Dungeon'end
+function ac.Register(ag)if not ag or type(ag.Name)~='string'or not ag.Zone then
+return end ad[ag.Name]=ag if ac.IsInZone(ag.Zone)and ag.OnEnter then task.spawn(
+function()pcall(ag.OnEnter)end)end end function ac.Unregister(ag)ad[ag]=nil end
+function ac.Guard(ag,ah,ai)return function(...)if not ac.IsInZone(ag)then return
+ai end return ah(...)end end function ac.OnZoneChanged(ag)if type(ag)==
+'function'then table.insert(ae,ag)end end local ag=function(ag)local ah=ag and
+'Lobby'or'Dungeon'if ah==af then return end local ai=af af=ah for aj,ak in
+pairs(ad)do if ak.Zone~='Global'and ak.Zone==ai and ak.OnLeave then task.spawn(
+function()pcall(ak.OnLeave)end)end end for aj,ak in pairs(ad)do if ak.Zone~=
+'Global'and ak.Zone==ah and ak.OnEnter then task.spawn(function()pcall(ak.
+OnEnter)end)end end for aj,ak in ipairs(ae)do task.spawn(function()pcall(ak,ah,
+ai)end)end end af=ac.GetCurrentZone()ab.OnLobbyChanged(function(ah)ag(ah)end)aa.
+Register(function()table.clear(ad)table.clear(ae)end)return ac end end local aa,
+ab,ac,ad,ae,af,ag,ah,ai,aj=a.load'c',a.load'd',a.load'b',a.load'e',{[
+77649408247578]=true,[115445507767090]=true,[3220968688]=true,[2414851778]=true}
+,false,false,false,3,
 [[game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()]]
-local ai,aj,ak=function()return not ac[game.PlaceId]end,pcall(loadstring,ah)if
-aj and type(ak)=='function'then autoStartCommandFn=ak end local al,am={},{}
-function al.OnStart(an)if type(an)~='function'then return function()end end
-table.insert(am,an)return function()for ao,ap in ipairs(am)do if ap==an then
-table.remove(am,ao)break end end end end function al.Start()if ae then return
-end ae=true af=false task.spawn(function()while ad do local an,ao=pcall(ai)local
-ap=an and ao==true if ap and not af then af=true local aq=0 while aq<ag and ad
-do task.wait(0.1)aq=aq+0.1 end if not ad then af=false break end if
-autoStartCommandFn then local ar,as=pcall(autoStartCommandFn)if ar then ab.
-Notify('Auto Start','Game started!',3)for b=#am,1,-1 do pcall(am[b])end else ab.
-Notify('Auto Start','Trigger failed: '..tostring(as),3)end else ab.Notify(
-'Auto Start','Remote command invalid',3)end end if not ad then break end task.
-wait(1)end ae=false end)end function al.Stop()ad=false end function al.SetDelay(
-an)ag=tonumber(an)or 3 end function al.GetDelay()return ag end function al.
-Toggle(an)ad=an if an then al.Start()else al.Stop()end end return al
+local ak,al,am=function()return ad.IsDungeon()and not ae[game.PlaceId]end,pcall(
+loadstring,aj)if al and type(am)=='function'then autoStartCommandFn=am end local
+an,ao={},{}function an.OnStart(ap)if type(ap)~='function'then return function()
+end end table.insert(ao,ap)return function()for aq,ar in ipairs(ao)do if ar==ap
+then table.remove(ao,aq)break end end end end function an.Start()if ag then
+return end ag=true ah=false task.spawn(function()while af and ac.IsActive()do
+local ap,aq=pcall(ak)local ar=ap and aq==true if ar and not ah then ah=true
+local as=0 while as<ai and af and ad.IsDungeon()do task.wait(0.1)as=as+0.1 end
+if not af or not ad.IsDungeon()then ah=false break end if autoStartCommandFn
+then local b,c=pcall(autoStartCommandFn)if b then ab.Notify('Auto Start',
+'Game started!',3)for d=#ao,1,-1 do pcall(ao[d])end else ab.Notify('Auto Start',
+'Trigger failed: '..tostring(c),3)end else ab.Notify('Auto Start',
+'Remote command invalid',3)end end if not af then break end task.wait(1)end ag=
+false end)end function an.Stop()af=false end function an.SetDelay(ap)ai=
+tonumber(ap)or 3 end function an.GetDelay()return ai end function an.Toggle(ap)
+af=ap if ap then an.Start()else an.Stop()end end ad.Register{Name='AutoStart',
+Zone='Dungeon',OnLeave=function()ah=false end}ac.Register(function()an.Stop()end
+)return an

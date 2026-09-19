@@ -4,11 +4,15 @@
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
 
 --// Imports
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 --// Lobby placeId — auto-press chỉ hoạt động tại đây
 local LOBBY_PLACE_IDS = {
 	[77649408247578] = true,
 	[115445507767090] = true,
+	[3220968688] = true,
+	[2414851778] = true,
 }
 
 --// Có đang ở lobby place không
@@ -69,9 +73,9 @@ end
 local function runLoop()
 	task.spawn(function()
 		local hadButton = false
-		while enabled do
-			--// Chỉ hoạt động ở lobby place; vào dungeon ngừng hẳn.
-			if not inLobbyPlace() then
+		while enabled and lifecycle.IsActive() do
+			--// Chỉ hoạt động khi ở Lobby
+			if not zoneGuard.IsLobby() or not inLobbyPlace() then
 				task.wait(1)
 				continue
 			end
@@ -103,5 +107,18 @@ function autoStartLobby.Toggle(state)
 		runLoop()
 	end
 end
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "AutoStartLobby",
+	Zone = "Lobby",
+	OnLeave = function()
+		enabled = false
+	end,
+})
+
+lifecycle.Register(function()
+	enabled = false
+end)
 
 return autoStartLobby

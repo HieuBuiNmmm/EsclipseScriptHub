@@ -126,16 +126,55 @@ local function saveSettings()
 	end)
 end
 
---// Áp dụng UIScale lên sortBarFrame (cố định tỉ lệ 1.25x to hơn 25%)
-local function applySortBarScale(sortBar: GuiObject?)
-	if not sortBar then return end
+--// Responsive Layout & Adaptive Viewport Guard cho SortBar
+local function updateSortBarResponsiveLayout(sortBar: GuiObject?)
+	if not sortBar or not sortBar.Parent then return end
+	local parentFrame = sortBar.Parent
+	if not parentFrame:IsA("GuiObject") then return end
+
+	local camera = workspace.CurrentCamera
+	local viewportSize = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local viewportWidth = viewportSize.X
+	local viewportHeight = viewportSize.Y
+
+	-- 1. Tính toán Dynamic Scale thích ứng theo độ cao màn hình và độ cao của kho đồ
+	local baseViewportHeight = 1080
+	local parentHeight = parentFrame.AbsoluteSize.Y
+	local unscaledHeight = 295 -- 6 nút (40px) + 5 gaps (6px) + padding (10px) ~ 295px
+
+	local scaleByScreen = (viewportHeight / baseViewportHeight) * SORT_BAR_SCALE
+	local maxScaleByParent = (parentHeight > 50) and ((parentHeight * 0.94) / unscaledHeight) or SORT_BAR_SCALE
+	local finalScale = math.clamp(math.min(scaleByScreen, maxScaleByParent), 0.75, SORT_BAR_SCALE)
+
 	local uiScale = sortBar:FindFirstChildOfClass("UIScale")
 	if not uiScale then
 		uiScale = Instance.new("UIScale")
 		uiScale.Name = "SortBarUIScale"
 		uiScale.Parent = sortBar
 	end
-	uiScale.Scale = SORT_BAR_SCALE
+	uiScale.Scale = finalScale
+
+	-- 2. Adaptive Viewport Guard (Chống tràn màn hình & Tự động đảo mép Docking)
+	local parentLeft = parentFrame.AbsolutePosition.X
+	local parentRight = parentLeft + parentFrame.AbsoluteSize.X
+	local renderedWidth = 50 * finalScale + 12 -- Kích thước thực tế hiển thị trên màn hình
+
+	local canFitRight = (parentRight + renderedWidth) <= (viewportWidth - 4)
+	local canFitLeft = (parentLeft - renderedWidth) >= 4
+
+	if not canFitRight and canFitLeft then
+		-- Không đủ chỗ bên phải, đảo sang neo mép trái dưới của kho đồ
+		sortBar.AnchorPoint = Vector2.new(1, 1)
+		sortBar.Position = UDim2.new(0, -30, 1, 15)
+	else
+		-- Đủ chỗ bên phải (mặc định): Neo góc dưới bên phải (Bottom-Right) dưới bảng Boss Keys
+		sortBar.AnchorPoint = Vector2.new(0, 1)
+		sortBar.Position = UDim2.new(1, 30, 1, 15)
+	end
+end
+
+local function applySortBarScale(sortBar: GuiObject?)
+	updateSortBarResponsiveLayout(sortBar)
 end
 
 --// Cache dữ liệu inventory
@@ -1260,7 +1299,29 @@ function hookSortBar(sortBar: GuiObject)
 	end)
 	table.insert(activeConnections, childConn)
 
-	applySortBarScale(sortBar)
+	-- Gắn sự kiện cập nhật vị trí & tỷ lệ Responsive khi kích thước màn hình hoặc kho đồ thay đổi
+	local parentFrame = sortBar.Parent
+	if parentFrame and parentFrame:IsA("GuiObject") then
+		local pSizeConn = parentFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			updateSortBarResponsiveLayout(sortBar)
+		end)
+		table.insert(activeConnections, pSizeConn)
+
+		local pPosConn = parentFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+			updateSortBarResponsiveLayout(sortBar)
+		end)
+		table.insert(activeConnections, pPosConn)
+	end
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		local camConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			updateSortBarResponsiveLayout(sortBar)
+		end)
+		table.insert(activeConnections, camConn)
+	end
+
+	updateSortBarResponsiveLayout(sortBar)
 	refreshAllSortBarButtons(false)
 end
 
@@ -1561,7 +1622,8 @@ function inventorySort.Init()
 
 		local visConn = mainBackground:GetPropertyChangedSignal("Visible"):Connect(function()
 			if mainBackground.Visible then
-				ensureSortBar()
+				local sb = ensureSortBar()
+				if sb then updateSortBarResponsiveLayout(sb) end
 				inventorySort.RequestSort(0.15)
 			end
 		end)

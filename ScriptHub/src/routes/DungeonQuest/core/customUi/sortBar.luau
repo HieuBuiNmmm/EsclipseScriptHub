@@ -1,17 +1,17 @@
 -- Custom In-Game UI: sortBarFrame (DungeonQuest)
--- Khởi tạo thanh Sort Bar đính kèm vào GUI kho đồ trong game.
+-- Khởi tạo thanh Sort Bar đính kèm vào GUI kho đồ trong game với Responsive Layout.
 local function createSortBarFrame(parent)
 	local sortBarFrame = Instance.new("Frame")
 	sortBarFrame.Name = "sortBarFrame"
-	sortBarFrame.Size = UDim2.new(0, 50, 0, 280)
+	sortBarFrame.Size = UDim2.new(0, 50, 0, 0)
 	sortBarFrame.AutomaticSize = Enum.AutomaticSize.Y
-	sortBarFrame.Position = UDim2.new(1.0289711952209473, 0, 0.3432777225971222, 0)
-	sortBarFrame.AnchorPoint = Vector2.new(0, 0)
+	sortBarFrame.AnchorPoint = Vector2.new(0, 1)
+	sortBarFrame.Position = UDim2.new(1, 30, 1, 15)
 	sortBarFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
 	sortBarFrame.BackgroundTransparency = 0.15
 	sortBarFrame.BorderSizePixel = 0
 	sortBarFrame.LayoutOrder = 0
-	sortBarFrame.ZIndex = 1
+	sortBarFrame.ZIndex = 2
 	sortBarFrame.Visible = true
 	sortBarFrame.Parent = parent
 
@@ -58,7 +58,7 @@ local function createSortBarFrame(parent)
 		btn.BackgroundTransparency = 0.65
 		btn.BorderSizePixel = 0
 		btn.LayoutOrder = layoutOrder
-		btn.ZIndex = 1
+		btn.ZIndex = 2
 		btn.Visible = true
 		btn.Image = ""
 		btn.AutoButtonColor = false
@@ -91,7 +91,7 @@ local function createSortBarFrame(parent)
 		icon.BackgroundTransparency = 1
 		icon.BorderSizePixel = 0
 		icon.LayoutOrder = 0
-		icon.ZIndex = 1
+		icon.ZIndex = 2
 		icon.Visible = true
 		icon.Image = iconAsset
 		icon.ImageColor3 = Color3.fromRGB(255, 255, 255)

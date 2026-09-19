@@ -207,37 +207,58 @@ pcall(function()as:Enable()end)end N()end)return h end function a.d()local aa,ab
 ab then local af=pcall(function()ab:Notify{Title=ac,Description=ad,Lifetime=ae}
 end)if af then return end end pcall(function()game:GetService'StarterGui':
 SetCore('SendNotification',{Title=ac,Text=ad,Duration=ae})end)end return aa end
-end local aa,ab,ac,ad=a.load'a',a.load'c',a.load'd',a.load'b'local ae,af,ag,ah,
-ai,aj,ak,al,am,an=aa.player,{},false,{[2]=true},0,{},{}for ao=1,15 do table.
-insert(ak,('Room %d'):format(ao))end local ao,ap=function(ao)if type(ao)==
-'number'then return math.clamp(math.floor(ao),1,20)elseif type(ao)=='string'then
-local ap=tonumber(ao:match'%d+')if ap then return math.clamp(math.floor(ap),1,20
-)end end return nil end,function()local ao,ap=ab.GetHumanoid(),ae and ae.
-Character if ao and ao.Health>0 then pcall(function()ao.Health=0 end)pcall(
-function()ao:ChangeState(Enum.HumanoidStateType.Dead)end)end if ap and ap.Parent
-then pcall(function()ap:BreakJoints()end)end end local aq=function(aq)if not ag
-then return end if ab.IsInLobby()or ab.IsDead()then return end if aq<=0 then
-return end if not ah[aq]then return end if aj[aq]then return end aj[aq]=true
-task.spawn(function()if ai>0 then task.wait(ai)end if not ag or ab.IsInLobby()or
-ab.IsDead()then return end if ab.GetCurrentRoomIndex()~=aq then return end ac.
-Notify('Auto Reset',('Reset character at Room %d (Once per room/run)'):format(aq
-),3)ap()end)end local ar,as=function()if al then return end al=ab.
-OnRoomIndexChanged(function(ar)if ar<=1 then table.clear(aj)end aq(ar)end)am=ab.
-OnLobbyChanged(function(ar)if ar then table.clear(aj)end end)an=ab.
-OnDungeonNameChanged(function()table.clear(aj)end)end,function()if al then al()
-al=nil end if am then am()am=nil end if an then an()an=nil end end function af.
-Toggle(b)ag=b and true or false if ag then table.clear(aj)ar()aq(ab.
-GetCurrentRoomIndex())else as()end end function af.IsEnabled()return ag end
-function af.GetRoomOptions()return ak end function af.SetTargetRooms(b)local c={
-}if type(b)=='table'then for d,e in pairs(b)do if e==true then local f=ao(d)if f
-then c[f]=true end else local f=ao(e)if f then c[f]=true end end end elseif b~=
-nil then local d=ao(b)if d then c[d]=true end end ah=c end function af.
-GetTargetRooms()local b={}for c in pairs(ah)do table.insert(b,c)end table.sort(b
-)local c={}for d,e in ipairs(b)do table.insert(c,('Room %d'):format(e))end
-return c end function af.GetTargetRoomNumbers()local b={}for c in pairs(ah)do
-table.insert(b,c)end table.sort(b)return b end function af.SetTargetRoom(b)local
-c=ao(b)if c then ah={[c]=true}end end function af.GetTargetRoom()for b in pairs(
-ah)do return b end return 2 end function af.SetDelay(b)if type(b)=='number'then
-ai=math.clamp(b,0,15)end end function af.GetDelay()return ai end function af.
-ResetNow()ac.Notify('Auto Reset','Manual character reset executed',2)ap()end ad.
-Register(function()as()ag=false table.clear(aj)end)return af
+function a.e()local aa,ab,ac,ad,ae,af=a.load'b',a.load'c',{},{},{},'Lobby'
+function ac.GetCurrentZone()return ab.IsInLobby()and'Lobby'or'Dungeon'end
+function ac.IsInZone(ag)if ag=='Global'then return true end return ac.
+GetCurrentZone()==ag end function ac.IsLobby()return ac.GetCurrentZone()==
+'Lobby'end function ac.IsDungeon()return ac.GetCurrentZone()=='Dungeon'end
+function ac.Register(ag)if not ag or type(ag.Name)~='string'or not ag.Zone then
+return end ad[ag.Name]=ag if ac.IsInZone(ag.Zone)and ag.OnEnter then task.spawn(
+function()pcall(ag.OnEnter)end)end end function ac.Unregister(ag)ad[ag]=nil end
+function ac.Guard(ag,ah,ai)return function(...)if not ac.IsInZone(ag)then return
+ai end return ah(...)end end function ac.OnZoneChanged(ag)if type(ag)==
+'function'then table.insert(ae,ag)end end local ag=function(ag)local ah=ag and
+'Lobby'or'Dungeon'if ah==af then return end local ai=af af=ah for aj,ak in
+pairs(ad)do if ak.Zone~='Global'and ak.Zone==ai and ak.OnLeave then task.spawn(
+function()pcall(ak.OnLeave)end)end end for aj,ak in pairs(ad)do if ak.Zone~=
+'Global'and ak.Zone==ah and ak.OnEnter then task.spawn(function()pcall(ak.
+OnEnter)end)end end for aj,ak in ipairs(ae)do task.spawn(function()pcall(ak,ah,
+ai)end)end end af=ac.GetCurrentZone()ab.OnLobbyChanged(function(ah)ag(ah)end)aa.
+Register(function()table.clear(ad)table.clear(ae)end)return ac end end local aa,
+ab,ac,ad,ae=a.load'a',a.load'c',a.load'd',a.load'b',a.load'e'local af,ag,ah,ai,
+aj,ak,al,am,an,ao=aa.player,{},false,{[2]=true},0,{},{}for ap=1,15 do table.
+insert(al,('Room %d'):format(ap))end local ap,aq=function(ap)if type(ap)==
+'number'then return math.clamp(math.floor(ap),1,20)elseif type(ap)=='string'then
+local aq=tonumber(ap:match'%d+')if aq then return math.clamp(math.floor(aq),1,20
+)end end return nil end,ae.Guard('Dungeon',function()local ap,aq=ab.GetHumanoid(
+),af and af.Character if ap and ap.Health>0 then pcall(function()ap.Health=0 end
+)pcall(function()ap:ChangeState(Enum.HumanoidStateType.Dead)end)end if aq and aq
+.Parent then pcall(function()aq:BreakJoints()end)end end)local ar=function(ar)if
+not ah then return end if ab.IsInLobby()or ab.IsDead()then return end if ar<=0
+then return end if not ai[ar]then return end if ak[ar]then return end ak[ar]=
+true task.spawn(function()if aj>0 then task.wait(aj)end if not ah or ab.
+IsInLobby()or ab.IsDead()then return end if ab.GetCurrentRoomIndex()~=ar then
+return end ac.Notify('Auto Reset',(
+'Reset character at Room %d (Once per room/run)'):format(ar),3)aq()end)end local
+as,b=function()if am then return end am=ab.OnRoomIndexChanged(function(as)if as
+<=1 then table.clear(ak)end ar(as)end)an=ab.OnLobbyChanged(function(as)if as
+then table.clear(ak)end end)ao=ab.OnDungeonNameChanged(function()table.clear(ak)
+end)end,function()if am then am()am=nil end if an then an()an=nil end if ao then
+ao()ao=nil end end function ag.Toggle(c)ah=c and true or false if ah then table.
+clear(ak)as()ar(ab.GetCurrentRoomIndex())else b()end end function ag.IsEnabled()
+return ah end function ag.GetRoomOptions()return al end function ag.
+SetTargetRooms(c)local d={}if type(c)=='table'then for e,f in pairs(c)do if f==
+true then local g=ap(e)if g then d[g]=true end else local g=ap(f)if g then d[g]=
+true end end end elseif c~=nil then local e=ap(c)if e then d[e]=true end end ai=
+d end function ag.GetTargetRooms()local c={}for d in pairs(ai)do table.insert(c,
+d)end table.sort(c)local d={}for e,f in ipairs(c)do table.insert(d,('Room %d'):
+format(f))end return d end function ag.GetTargetRoomNumbers()local c={}for d in
+pairs(ai)do table.insert(c,d)end table.sort(c)return c end function ag.
+SetTargetRoom(c)local d=ap(c)if d then ai={[d]=true}end end function ag.
+GetTargetRoom()for c in pairs(ai)do return c end return 2 end function ag.
+SetDelay(c)if type(c)=='number'then aj=math.clamp(c,0,15)end end function ag.
+GetDelay()return aj end function ag.ResetNow()ac.Notify('Auto Reset',
+'Manual character reset executed',2)aq()end ae.Register{Name='AutoReset',Zone=
+'Dungeon',OnEnter=function()table.clear(ak)if ah then as()end end,OnLeave=
+function()table.clear(ak)b()end}ad.Register(function()b()ah=false table.clear(ak
+)ae.Unregister'AutoReset'end)return ag

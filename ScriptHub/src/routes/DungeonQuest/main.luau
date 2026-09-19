@@ -29,6 +29,7 @@ return function(self)
 	local macLib = require("@packages/Maclib")
 	local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 	local autoSave = require("@routes/DungeonQuest/core/autoSave")
+	local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 	--// Tạm khóa autoSave trong quá trình khởi tạo UI và nạp config để tránh ghi đè file trên đĩa
 	autoSave.Suspend()

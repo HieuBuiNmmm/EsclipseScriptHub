@@ -202,27 +202,45 @@ function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
 nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
 clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
 pcall(function()as:Enable()end)end N()end)return h end function a.d()local aa,ab
-,ac,ad,ae,af,ag={},0.85,0,2,{},64 function aa.BindDetection(ah)ag=ah or nil end
-function aa.GetHazardPadding()return ac end aa.GetHitboxPadding=aa.
-GetHazardPadding function aa.GetTrajectoryMargin()return ad end function aa.
-SetTrajectoryMargin(ah)if type(ah)=='number'and ah>=0 and ah~=ad then ad=ah aa.
-InvalidateCache()for ai,aj in ipairs(ae)do pcall(aj,ad)end end end function aa.
-InvalidateCache()if ag and ag.GetActiveHazardsMap then for ah,ai in pairs(ag.
-GetActiveHazardsMap())do ai.HazardZones=nil end end end function aa.
-OnPaddingChanged(ah)if type(ah)=='function'then table.insert(ae,ah)end end
-function aa.SetHazardPadding(ah)if type(ah)=='number'and ah>=0 and ah~=ac then
-ac=ah aa.InvalidateCache()for ai,aj in ipairs(ae)do pcall(aj,ac)end end end aa.
-SetHitboxPadding=aa.SetHazardPadding local ah,ai,aj,ak=game:GetService
-'ReplicatedStorage',{'firstBossCrissCross','firstBossSeekingSpikes'},{
-'smallicespikes','mediumicespikes','largeicespikes'}local al=function(al)if not
-al or type(al)~='string'then return false end local am=al:lower():gsub('%s+','')
-if#am==0 then return false end for an,ao in ipairs(aj)do if string.find(am,ao,1,
-true)then return true end end return false end function aa.IsIceSpikesChain(am)
-return al(am)end local am,an={'secondbosscriclehitbox','secondbosscirclehitbox'}
-,1.2 local ao=function(ao)if not ao or type(ao)~='string'then return false end
-local ap=ao:lower():gsub('%s+','')if#ap==0 then return false end for aq,ar in
-ipairs(am)do if string.find(ap,ar,1,true)then return true end end return false
-end function aa.IsSecondBossCircleChain(ap)return ao(ap)end function aa.
+,ac,ad,ae,af=a.load'a',a.load'c',{},{},{},'Lobby'function ac.GetCurrentZone()
+return ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag==
+'Global'then return true end return ac.GetCurrentZone()==ag end function ac.
+IsLobby()return ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac
+.GetCurrentZone()=='Dungeon'end function ac.Register(ag)if not ag or type(ag.
+Name)~='string'or not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.
+Zone)and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter)end)end end
+function ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai)return
+function(...)if not ac.IsInZone(ag)then return ai end return ah(...)end end
+function ac.OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)end
+end local ag=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then return
+end local ai=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==
+ai and ak.OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end for aj,
+ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.
+spawn(function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task.
+spawn(function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.
+OnLobbyChanged(function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.
+clear(ae)end)return ac end function a.e()local aa,ab,ac,ad,ae,af,ag={},0.85,0,2,
+{},64 function aa.BindDetection(ah)ag=ah or nil end function aa.GetHazardPadding
+()return ac end aa.GetHitboxPadding=aa.GetHazardPadding function aa.
+GetTrajectoryMargin()return ad end function aa.SetTrajectoryMargin(ah)if type(ah
+)=='number'and ah>=0 and ah~=ad then ad=ah aa.InvalidateCache()for ai,aj in
+ipairs(ae)do pcall(aj,ad)end end end function aa.InvalidateCache()if ag and ag.
+GetActiveHazardsMap then for ah,ai in pairs(ag.GetActiveHazardsMap())do ai.
+HazardZones=nil end end end function aa.OnPaddingChanged(ah)if type(ah)==
+'function'then table.insert(ae,ah)end end function aa.SetHazardPadding(ah)if
+type(ah)=='number'and ah>=0 and ah~=ac then ac=ah aa.InvalidateCache()for ai,aj
+in ipairs(ae)do pcall(aj,ac)end end end aa.SetHitboxPadding=aa.SetHazardPadding
+local ah,ai,aj,ak=game:GetService'ReplicatedStorage',{'firstBossCrissCross',
+'firstBossSeekingSpikes'},{'smallicespikes','mediumicespikes','largeicespikes'}
+local al=function(al)if not al or type(al)~='string'then return false end local
+am=al:lower():gsub('%s+','')if#am==0 then return false end for an,ao in ipairs(
+aj)do if string.find(am,ao,1,true)then return true end end return false end
+function aa.IsIceSpikesChain(am)return al(am)end local am,an={
+'secondbosscriclehitbox','secondbosscirclehitbox'},1.2 local ao=function(ao)if
+not ao or type(ao)~='string'then return false end local ap=ao:lower():gsub('%s+'
+,'')if#ap==0 then return false end for aq,ar in ipairs(am)do if string.find(ap,
+ar,1,true)then return true end end return false end function aa.
+IsSecondBossCircleChain(ap)return ao(ap)end function aa.
 GetSecondBossCircleDuration()return an end function aa.
 SetSecondBossCircleDuration(ap)if type(ap)=='number'and ap>=0.1 then an=math.
 clamp(ap,0.1,10)aa.InvalidateCache()end end local ap={'movingbeam'}local aq=
@@ -337,8 +355,8 @@ A then y=A.Position.X z=A.Position.Z end end local A,B=k.X-y,k.Z-z local C,D=A*A
 +B*B,x.boundingRadius+m if C>D*D then continue end local E=u.IsTrajectory==true
 for F=1,#x.zones do local G=x.zones[F]if e(G.part)and g(k,G,m,E or G.
 isTrajectory)then local H=(k-G.part.Position).Magnitude if H<p then p=H r=u s=G.
-part end break end end end return s~=nil,r,s end return aa end function a.e()
-local aa,ab,ac=a.load'b',a.load'a',a.load'd'local ad,ae,af,ag,ah,ai,aj,ak,al,am,
+part end break end end end return s~=nil,r,s end return aa end function a.f()
+local aa,ab,ac=a.load'b',a.load'a',a.load'e'local ad,ae,af,ag,ah,ai,aj,ak,al,am,
 an,ao,ap=aa.RunService or game:GetService'RunService',aa.player,{},false,{},0.85
 ,Color3.fromRGB(255,45,45),Color3.fromRGB(0,160,255),Color3.fromRGB(0,230,90),
 0.55,0.25 local aq=function()local aq=ae and ae.Character if not aq then return
@@ -407,8 +425,8 @@ ClearAll()if not ag or not ao then return end for d,e in pairs(ao.
 GetActiveHazardsMap())do af.AttachZoneVisuals(e)end end function af.SetEnabled(d
 )ag=d and true or false if ag then af.RefreshAll()else af.ClearAll()end end ac.
 OnPaddingChanged(function()if ag then af.RefreshAll()end end)ab.Register(
-function()af.ClearAll()end)return af end function a.f()local aa,ab,ac=a.load'b',
-a.load'a',a.load'd'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,b,c=aa.
+function()af.ClearAll()end)return af end function a.g()local aa,ab,ac=a.load'b',
+a.load'a',a.load'e'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,b,c=aa.
 RunService or game:GetService'RunService',game:GetService'ReplicatedStorage',aa.
 player,{},true,{},0.85,Color3.fromRGB(255,60,60),Color3.fromRGB(0,180,255),
 Color3.fromRGB(255,140,0),Color3.fromRGB(220,90,255),'enemyProjectiles',false,{}
@@ -502,8 +520,8 @@ DetachTimerVisual(p)end table.clear(ai)end function ag.RefreshAll()ag.ClearAll()
 if not ah or not b then return end for p,q in pairs(b.GetActiveHazardsMap())do
 if q then ag.AttachTimerVisual(q)end end end function ag.SetEnabled(p)ah=p and
 true or false if ah then ag.RefreshAll()else ag.ClearAll()end end ab.Register(
-function()ag.ClearAll()end)return ag end function a.g()local aa,ab,ac,ad=a.load
-'b',a.load'a',a.load'd',a.load'f'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar
+function()ag.ClearAll()end)return ag end function a.h()local aa,ab,ac,ad=a.load
+'b',a.load'a',a.load'e',a.load'g'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar
 ,as,b,c,d=aa.RunService or game:GetService'RunService',aa.player,{},false,45,{
 secondbossmovingbeam=80},{firstbossbigspike=28,firstbossseekingspikes=10},{},
 0.85,Color3.fromRGB(255,140,0),0.65,0.2,3.5,{firstbossseekingspikes=
@@ -657,7 +675,7 @@ isMoving=true if not z.isBossSpike then z.dir=I.Unit end else if not z.isInstant
 and not z.isBossSpike and F>=0.25 and H<aq then z.isMoving=false end end if z.
 isMoving~=K then y.IsTrajectory=z.isMoving y.HazardZones=nil if c and c.
 UpdateHazardVisualColor then pcall(c.UpdateHazardVisualColor,y,z.isMoving)end
-local L=a.load'e'if L and L.UpdateHazardVisualColor then pcall(L.
+local L=a.load'f'if L and L.UpdateHazardVisualColor then pcall(L.
 UpdateHazardVisualColor,y,z.isMoving)end end z.lastPos=E z.lastClock=w end if z.
 isMoving and z.dir and z.ad then local G,H=t(y,z.dir)if G then local I=p(y)u(z.
 ad,B,G,z.dir,x,I,H)end else if z.ad and z.ad.Visible then z.ad.Visible=false end
@@ -702,8 +720,8 @@ local W=(V.Position-A.Position).Magnitude if W<25 then I.linkedSpike=V break end
 end end end end al[x]=I if M and K then x.IsTrajectory=true x.HazardZones=nil
 local R,S,T=s(),t(x,K)local U=p(x)if S then u(C,A,S,K,R,U,T)end if c and c.
 UpdateHazardVisualColor then pcall(c.UpdateHazardVisualColor,x,true)end local V=
-a.load'e'if V and V.UpdateHazardVisualColor then pcall(V.UpdateHazardVisualColor
-,x,true)end local W=a.load'f'if W and W.UpdateHazardVisualColor then pcall(W.
+a.load'f'if V and V.UpdateHazardVisualColor then pcall(V.UpdateHazardVisualColor
+,x,true)end local W=a.load'g'if W and W.UpdateHazardVisualColor then pcall(W.
 UpdateHazardVisualColor,x,true)end end w()end function ag.ClearAll()if d then d:
 Disconnect()d=nil end for x in pairs(al)do ag.DetachTrajectoryVisuals(x)end
 table.clear(al)end function ag.RefreshAll()ag.ClearAll()if not ah or not c then
@@ -730,7 +748,7 @@ then S=Q-N elseif N>R then S=N-R end local T=math.max(0,math.abs(O)-P)if(S*S+T*T
 nil end function ag.SetEnabled(x)ah=x and true or false if ah then ag.
 RefreshAll()else ag.ClearAll()end end ac.OnPaddingChanged(function()if ah then
 ag.RefreshAll()end end)ab.Register(function()ag.ClearAll()end)return ag end
-function a.h()local aa={Options={},Folder='Maclib',contextData={},GetService=
+function a.i()local aa={Options={},Folder='Maclib',contextData={},GetService=
 function(aa)return cloneref and cloneref(game:GetService(aa))or game:GetService(
 aa)end}local ab,ac,ad,ae,af,ag,ah=aa.GetService'TweenService',aa.GetService
 'RunService',aa.GetService'HttpService',aa.GetService'ContentProvider',aa.
@@ -2353,11 +2371,11 @@ SubLabel{Text=
 [[Sub-Label. Lorem ipsum odor amet, consectetuer adipiscing elit.]]}aa:SetFolder
 'Maclib'aw.Settings:InsertConfigSection'Left'at.onUnloaded(function()print
 'Unloaded!'end)aw.Main:Select()aa:LoadAutoLoadConfig()end return aa end function
-a.i()local aa,ab={}function aa:SetWindow(ac)ab=ac end function aa.Notify(ac,ad,
+a.j()local aa,ab={}function aa:SetWindow(ac)ab=ac end function aa.Notify(ac,ad,
 ae)ae=ae or 3 if ab then local af=pcall(function()ab:Notify{Title=ac,Description
 =ad,Lifetime=ae}end)if af then return end end pcall(function()game:GetService
 'StarterGui':SetCore('SendNotification',{Title=ac,Text=ad,Duration=ae})end)end
-return aa end function a.j()local aa,ab,ac,ad,ae,af,ag=a.load'h',a.load'i',{},
+return aa end function a.k()local aa,ab,ac,ad,ae,af,ag=a.load'i',a.load'j',{},
 false,false,false function ac.Suspend()ae=true ad=false end function ac.Resume()
 ae=false end function ac.SetRecording(ah)af=ah and true or false end function ac
 .IsRecording()return af end function ac.IsSuspended()if ae or(aa.LoadingConfig==
@@ -2383,7 +2401,7 @@ IsSuspended()then return end if not ah()then return end if ad then return end ad
 =true task.delay(0.5,function()ad=false if not ac.IsSuspended()and ac.GetActive(
 )then ac.SaveNow()end end)end function ac.Wrap(ai)if type(ai)~='function'then
 return ai end return function(...)ai(...)ac.Save()end end return ac end function
-a.k()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'h',a.load'j',a.load'c',{},{Mob={Min
+a.l()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'i',a.load'k',a.load'c',{},{Mob={Min
 =15,Max=35,BossArea=false,BossAreaRadius=80,DisableDodge=false,
 EnableHazardScanner=true},Boss1={Min=25,Max=50,BossArea=false,BossAreaRadius=80,
 DisableDodge=false,EnableHazardScanner=true},Boss2={Min=25,Max=50,BossArea=false
@@ -2476,8 +2494,8 @@ math.max(1,am-5)end aj()end function ad.ResetTarget(ak,al)if not(type(ak)==
 'string'and#ak>0)then return end local am=al or'Mob'if ah[ak]then ah[ak][am]=nil
 if next(ah[ak])==nil then ah[ak]=nil end aj()end end function ad.ResetDungeon(ak
 )if not(type(ak)=='string'and#ak>0)then return end if ah[ak]then ah[ak]=nil aj()
-end end return ad end function a.l()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak=a.
-load'b',a.load'c',a.load'a',a.load'd',a.load'e',a.load'g',a.load'f',a.load'k',
+end end return ad end function a.m()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak=a.
+load'b',a.load'c',a.load'a',a.load'e',a.load'f',a.load'h',a.load'g',a.load'l',
 game:GetService'Players',game:GetService'Workspace',game:GetService
 'ReplicatedStorage'local al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax,ay,az,aA,aB,aC,
 aD,aE,aF,aG=aa.player,{},false,false,true,false,false,'',false,{},0,{},{},0,0,2,
@@ -2676,8 +2694,8 @@ in pairs(au)do if a6 and a6.Parent==aj then a5[#a5+1]=a7 end end return a5 end
 function am.GetActiveHazardsMap()return au end function am.GetLastHazardInfo()
 return aF end function am.OnHazardChanged(a5)if type(a5)~='function'then return
 end table.insert(aw,a5)end ac.Register(function()am.StopScan()am.ClearAllHazards
-'Shutdown'end)return am end function a.m()local aa,ab,ac,ad,ae=a.load'b',a.load
-'a',a.load'd',a.load'g',a.load'k'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as
+'Shutdown'end)return am end function a.n()local aa,ab,ac,ad,ae=a.load'b',a.load
+'a',a.load'e',a.load'h',a.load'l'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as
 ,at,au,av,aw=aa.RunService or game:GetService'RunService',aa.player,{},true,
 false,{},1.8,Color3.fromRGB(0,255,170),Color3.fromRGB(255,35,35),0.45,0.2,0.2,(
 game:GetService'Players')local ax,ay,az,aA=function()local ax=ag or ar.
@@ -2720,7 +2738,7 @@ pcall(function()av:Destroy()end)av=nil end task.spawn(function()local aF=aE:
 WaitForChild('Humanoid',3)if aF then aF.Died:Connect(function()if av then av.
 Visible=false end end)end end)end aw=aD.CharacterAdded:Connect(aE)if aD.
 Character then aE(aD.Character)end end aD()aC()ab.Register(function()if aw then
-aw:Disconnect()aw=nil end ah.Cleanup()end)return ah end function a.n()local aa,
+aw:Disconnect()aw=nil end ah.Cleanup()end)return ah end function a.o()local aa,
 ab,ac={},{},8 for ad=1,ac do local ae=(ad-1)*(2*math.pi/ac)ab[ad]=Vector3.new(
 math.cos(ae),0,math.sin(ae))end local ad,ae={},16 for af=1,ae do local ag=(af-1)
 *(2*math.pi/ae)ad[af]=Vector3.new(math.cos(ag),0,math.sin(ag))end local af,ag,ah
@@ -2735,7 +2753,7 @@ az in ipairs(at)do local aA=ai+az*aw local aB=an(aA)if ao then table.insert(ao,{
 pos=aA,isSafe=aB,isChosen=false})end if aB then local aC=aA if am and al>0 then
 local aD=aA+az*al if an(aD)then aC=aD end end local aD=(aC-ai).Magnitude if aD<
 aq then aq=aD au=aC ar=az ax=true end end end if ax and au then as=true break
-end end return au,as,aq,ar end return aa end function a.o()local aa,ab,ac,ad,ae,
+end end return au,as,aq,ar end return aa end function a.p()local aa,ab,ac,ad,ae,
 af,ag,ah,ai,aj,ak,al,am=Color3.fromRGB(0,255,120),Color3.fromRGB(0,255,150),
 Color3.fromRGB(255,255,255),Color3.fromRGB(0,235,140),Color3.fromRGB(255,60,60),
 0.2,1.4,0.45,{},{}local an,ao=function(an)if not an then return end if not ak or
@@ -2791,8 +2809,8 @@ Destroy()end)ak=nil end if al then pcall(function()al:Destroy()end)al=nil end if
 am then pcall(function()am:Destroy()end)am=nil end for aq,ar in ipairs(aj)do if
 ar.dot then pcall(function()ar.dot:Destroy()end)end if ar.line then pcall(
 function()ar.line:Destroy()end)end end table.clear(aj)end return ai end function
-a.p()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'b',a.load'c',a.load'a',a.load'd',a.
-load'g',a.load'm',a.load'n',a.load'o',a.load'k'local aj,ak,al,am,an,ao,ap,aq,ar,
+a.q()local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'b',a.load'c',a.load'a',a.load'e',a.
+load'h',a.load'n',a.load'o',a.load'p',a.load'l'local aj,ak,al,am,an,ao,ap,aq,ar,
 as,at,au,av,aw,ax,ay,az,aA,aB,aC=aa.RunService or game:GetService'RunService',
 game:GetService'Players',aa.player,{},true,true,true,true,false,2,0,false,{},{},
 0 local aD,aE,aF=function()local aD=al or ak.LocalPlayer if not aD then return
@@ -2884,8 +2902,8 @@ ab.OnEnemyChanged(function()if ab.GetEnemyCount and ab.GetEnemyCount()==0 then
 am.Clear()end end)end if ab.OnLobbyChanged then ab.OnLobbyChanged(function()am.
 Clear()end)end if ab.OnBossActiveChanged then ab.OnBossActiveChanged(function()
 am.Clear()end)end aH()ac.Register(function()am.Cleanup()end)return am end
-function a.q()local aa,ab,ac,ad,ae,af=a.load'b',a.load'c',a.load'a',a.load'm',a.
-load'p',a.load'k'local ag,ah,ai,aj,ak,al,am,an,ao,ap=aa.RunService or game:
+function a.r()local aa,ab,ac,ad,ae,af=a.load'b',a.load'c',a.load'a',a.load'n',a.
+load'q',a.load'l'local ag,ah,ai,aj,ak,al,am,an,ao,ap=aa.RunService or game:
 GetService'RunService',game:GetService'Players',aa.player,{},false,2,false,{}
 local aq,ar,as,at,au=function()local aq=ai or ah.LocalPlayer if not aq then
 return nil,nil,nil end local ar=aq.Character if not ar or not ar.Parent then
@@ -2936,64 +2954,67 @@ ab.OnEnemyChanged(function()if ab.GetEnemyCount and ab.GetEnemyCount()==0 then
 aj.Clear()end end)end if ab.OnLobbyChanged then ab.OnLobbyChanged(function()aj.
 Clear()end)end if ab.OnBossActiveChanged then ab.OnBossActiveChanged(function()
 aj.Clear()end)end aC()ac.Register(function()aj.Cleanup()end)return aj end end
-local aa,ab,ac,ad,ae,af,ag,ah,ai,aj=a.load'a',a.load'l',a.load'd',a.load'e',a.
-load'g',a.load'm',a.load'p',a.load'q',a.load'f',{}ac.BindDetection(ab)ad.
-BindDetection(ab)ad.BindTrajectory(ae)ae.BindDetection(ab)ai.BindDetection(ab)aj
-.IsPointInAnyHazard=ac.IsPointInAnyHazard aj.GetHazardPadding=ac.
-GetHazardPadding aj.SetHazardPadding=ac.SetHazardPadding aj.GetHitboxPadding=ac.
-GetHazardPadding aj.SetHitboxPadding=ac.SetHazardPadding aj.GetTrajectoryMargin=
-ac.GetTrajectoryMargin aj.SetTrajectoryMargin=ac.SetTrajectoryMargin aj.
-GetHazardZones=ac.GetHazardZones aj.GetNearbyHazards=ac.GetNearbyHazards aj.
-AddForceCircleName=ac.AddForceCircleName aj.GetForceCircleNames=ac.
-GetForceCircleNames aj.IsForceCircle=ac.IsForceCircle aj.IsSecondBossCircleChain
-=ac.IsSecondBossCircleChain aj.GetSecondBossCircleDuration=ac.
-GetSecondBossCircleDuration aj.SetSecondBossCircleDuration=ac.
-SetSecondBossCircleDuration aj.IsPlayerInDanger=af.IsPlayerInDanger aj.
-GetPlayerThreat=af.GetCurrentThreat aj.OnPlayerDangerChanged=af.
-OnDangerStatusChanged aj.SetPlayerVisualEnabled=af.SetVisualEnabled aj.
-IsPlayerVisualEnabled=af.IsVisualEnabled aj.SetPlayerHitboxRadius=af.SetRadius
-aj.GetPlayerHitboxRadius=af.GetRadius aj.FindNearestSafeSpot=ag.
-FindNearestSafeSpot aj.IsPointSafe=ag.IsPointSafe aj.GetLastSafeSpot=ag.
-GetLastSafeSpot aj.OnSafeSpotChanged=ag.OnSafeSpotChanged aj.
-SetSafeSpotVisualEnabled=ag.SetVisualEnabled aj.IsSafeSpotVisualEnabled=ag.
-IsVisualEnabled aj.SetSafeSpotEnabled=ag.SetEnabled aj.IsSafeSpotEnabled=ag.
-IsEnabled aj.SetSafeSpotBuffer=ag.SetSafetyBuffer aj.GetSafeSpotBuffer=ag.
-GetSafetyBuffer aj.SetShowCandidates=ag.SetShowCandidates aj.IsShowCandidates=ag
-.IsShowCandidates aj.SetFinePassEnabled=ag.SetFinePassEnabled aj.
-IsFinePassEnabled=ag.IsFinePassEnabled aj.SetFallbackPassEnabled=ag.
-SetFallbackPassEnabled aj.IsFallbackPassEnabled=ag.IsFallbackPassEnabled aj.
-ClearSafeSpot=ag.Clear aj.SetAutoDodgeEnabled=ah.SetEnabled aj.
-IsAutoDodgeEnabled=ah.IsEnabled aj.SetDodgeSnapDistance=ah.SetSnapDistance aj.
-GetDodgeSnapDistance=ah.GetSnapDistance aj.IsCurrentlyDodging=ah.IsDodging aj.
-OnDodgeStateChanged=ah.OnDodgeStateChanged aj.ClearDodge=ah.Clear aj.
-SetVisualizerEnabled=ad.SetEnabled aj.IsVisualizerEnabled=ad.IsEnabled aj.
-RefreshVisuals=ad.RefreshAll aj.SetTrajectoryEnabled=ae.SetEnabled aj.
-IsTrajectoryEnabled=ae.IsEnabled aj.SetTrajectoryLength=ae.SetPredictionLength
-aj.GetTrajectoryLength=ae.GetPredictionLength aj.GetHazardTrajectoryLength=ae.
-GetHazardPredictionLength aj.GetCustomTrajectoryLength=ae.GetCustomLength aj.
-SetCustomTrajectoryLength=ae.SetCustomLength aj.GetSecondBossBeamLength=ae.
-GetSecondBossBeamLength aj.SetSecondBossBeamLength=ae.SetSecondBossBeamLength aj
-.GetFirstBossBigSpikeWidth=ae.GetFirstBossBigSpikeWidth aj.
-SetFirstBossBigSpikeWidth=ae.SetFirstBossBigSpikeWidth aj.
-GetFirstBossSeekingSpikeWidth=ae.GetFirstBossSeekingSpikeWidth aj.
-SetFirstBossSeekingSpikeWidth=ae.SetFirstBossSeekingSpikeWidth aj.
-GetCustomTrajectoryWidth=ae.GetCustomWidth aj.SetCustomTrajectoryWidth=ae.
-SetCustomWidth aj.RefreshTrajectory=ae.RefreshAll aj.IsPointInAnyTrajectory=ae.
-IsPointInAnyTrajectory aj.GetNearbyTrajectories=ae.GetNearbyTrajectories aj.
-SetSelectionBoxesEnabled=ab.SetSelectionBoxesEnabled aj.IsSelectionBoxesEnabled=
-ab.IsSelectionBoxesEnabled aj.SetTimerVisualEnabled=ai.SetEnabled aj.
-IsTimerVisualEnabled=ai.IsEnabled aj.RefreshTimerVisuals=ai.RefreshAll aj.
-StartDetection=ab.StartScan aj.StopDetection=ab.StopScan aj.IsDetectionEnabled=
-ab.IsEnabled aj.SetDetectionEnabled=ab.SetEnabled aj.SetLogHazards=ab.
-SetLogHazards aj.IsLogHazardsEnabled=ab.IsLogHazardsEnabled aj.SetLogThreats=aj.
-SetLogHazards aj.IsLogThreatsEnabled=aj.IsLogHazardsEnabled aj.SetLogFailed=ab.
-SetLogFailed aj.IsLogFailedEnabled=ab.IsLogFailedEnabled aj.SetInspectTarget=ab.
-SetInspectTarget aj.GetInspectTarget=ab.GetInspectTarget aj.SetInspectEnabled=ab
-.SetInspectEnabled aj.IsInspectEnabled=ab.IsInspectEnabled aj.GetHazardCount=ab.
-GetHazardCount aj.GetActiveHazards=ab.GetActiveHazards aj.GetLastHazardInfo=ab.
-GetLastHazardInfo aj.OnHazardChanged=ab.OnHazardChanged aj.ClearAllHazards=ab.
-ClearAllHazards aj.TriggerRoomTransition=ab.TriggerRoomTransition aj.
-IsRoomTransitioning=ab.IsRoomTransitioning function aj.StartScan()ab.StartScan()
-end function aj.StopScan()ab.StopScan()end function aj.Toggle(ak)if ak then aj.
-StartScan()else aj.StopScan()end end function aj.IsEnabled()return ab.IsEnabled(
-)end aa.Register(function()ab.StopScan()end)return aj
+local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak=a.load'a',a.load'd',a.load'm',a.load'e',a
+.load'f',a.load'h',a.load'n',a.load'q',a.load'r',a.load'g',{}ad.BindDetection(ac
+)ae.BindDetection(ac)ae.BindTrajectory(af)af.BindDetection(ac)aj.BindDetection(
+ac)ak.IsPointInAnyHazard=ad.IsPointInAnyHazard ak.GetHazardPadding=ad.
+GetHazardPadding ak.SetHazardPadding=ad.SetHazardPadding ak.GetHitboxPadding=ad.
+GetHazardPadding ak.SetHitboxPadding=ad.SetHazardPadding ak.GetTrajectoryMargin=
+ad.GetTrajectoryMargin ak.SetTrajectoryMargin=ad.SetTrajectoryMargin ak.
+GetHazardZones=ad.GetHazardZones ak.GetNearbyHazards=ad.GetNearbyHazards ak.
+AddForceCircleName=ad.AddForceCircleName ak.GetForceCircleNames=ad.
+GetForceCircleNames ak.IsForceCircle=ad.IsForceCircle ak.IsSecondBossCircleChain
+=ad.IsSecondBossCircleChain ak.GetSecondBossCircleDuration=ad.
+GetSecondBossCircleDuration ak.SetSecondBossCircleDuration=ad.
+SetSecondBossCircleDuration ak.IsPlayerInDanger=ag.IsPlayerInDanger ak.
+GetPlayerThreat=ag.GetCurrentThreat ak.OnPlayerDangerChanged=ag.
+OnDangerStatusChanged ak.SetPlayerVisualEnabled=ag.SetVisualEnabled ak.
+IsPlayerVisualEnabled=ag.IsVisualEnabled ak.SetPlayerHitboxRadius=ag.SetRadius
+ak.GetPlayerHitboxRadius=ag.GetRadius ak.FindNearestSafeSpot=ah.
+FindNearestSafeSpot ak.IsPointSafe=ah.IsPointSafe ak.GetLastSafeSpot=ah.
+GetLastSafeSpot ak.OnSafeSpotChanged=ah.OnSafeSpotChanged ak.
+SetSafeSpotVisualEnabled=ah.SetVisualEnabled ak.IsSafeSpotVisualEnabled=ah.
+IsVisualEnabled ak.SetSafeSpotEnabled=ah.SetEnabled ak.IsSafeSpotEnabled=ah.
+IsEnabled ak.SetSafeSpotBuffer=ah.SetSafetyBuffer ak.GetSafeSpotBuffer=ah.
+GetSafetyBuffer ak.SetShowCandidates=ah.SetShowCandidates ak.IsShowCandidates=ah
+.IsShowCandidates ak.SetFinePassEnabled=ah.SetFinePassEnabled ak.
+IsFinePassEnabled=ah.IsFinePassEnabled ak.SetFallbackPassEnabled=ah.
+SetFallbackPassEnabled ak.IsFallbackPassEnabled=ah.IsFallbackPassEnabled ak.
+ClearSafeSpot=ah.Clear ak.SetAutoDodgeEnabled=ai.SetEnabled ak.
+IsAutoDodgeEnabled=ai.IsEnabled ak.SetDodgeSnapDistance=ai.SetSnapDistance ak.
+GetDodgeSnapDistance=ai.GetSnapDistance ak.IsCurrentlyDodging=ai.IsDodging ak.
+OnDodgeStateChanged=ai.OnDodgeStateChanged ak.ClearDodge=ai.Clear ak.
+SetVisualizerEnabled=ae.SetEnabled ak.IsVisualizerEnabled=ae.IsEnabled ak.
+RefreshVisuals=ae.RefreshAll ak.SetTrajectoryEnabled=af.SetEnabled ak.
+IsTrajectoryEnabled=af.IsEnabled ak.SetTrajectoryLength=af.SetPredictionLength
+ak.GetTrajectoryLength=af.GetPredictionLength ak.GetHazardTrajectoryLength=af.
+GetHazardPredictionLength ak.GetCustomTrajectoryLength=af.GetCustomLength ak.
+SetCustomTrajectoryLength=af.SetCustomLength ak.GetSecondBossBeamLength=af.
+GetSecondBossBeamLength ak.SetSecondBossBeamLength=af.SetSecondBossBeamLength ak
+.GetFirstBossBigSpikeWidth=af.GetFirstBossBigSpikeWidth ak.
+SetFirstBossBigSpikeWidth=af.SetFirstBossBigSpikeWidth ak.
+GetFirstBossSeekingSpikeWidth=af.GetFirstBossSeekingSpikeWidth ak.
+SetFirstBossSeekingSpikeWidth=af.SetFirstBossSeekingSpikeWidth ak.
+GetCustomTrajectoryWidth=af.GetCustomWidth ak.SetCustomTrajectoryWidth=af.
+SetCustomWidth ak.RefreshTrajectory=af.RefreshAll ak.IsPointInAnyTrajectory=af.
+IsPointInAnyTrajectory ak.GetNearbyTrajectories=af.GetNearbyTrajectories ak.
+SetSelectionBoxesEnabled=ac.SetSelectionBoxesEnabled ak.IsSelectionBoxesEnabled=
+ac.IsSelectionBoxesEnabled ak.SetTimerVisualEnabled=aj.SetEnabled ak.
+IsTimerVisualEnabled=aj.IsEnabled ak.RefreshTimerVisuals=aj.RefreshAll ak.
+StartDetection=ac.StartScan ak.StopDetection=ac.StopScan ak.IsDetectionEnabled=
+ac.IsEnabled ak.SetDetectionEnabled=ac.SetEnabled ak.SetLogHazards=ac.
+SetLogHazards ak.IsLogHazardsEnabled=ac.IsLogHazardsEnabled ak.SetLogThreats=ak.
+SetLogHazards ak.IsLogThreatsEnabled=ak.IsLogHazardsEnabled ak.SetLogFailed=ac.
+SetLogFailed ak.IsLogFailedEnabled=ac.IsLogFailedEnabled ak.SetInspectTarget=ac.
+SetInspectTarget ak.GetInspectTarget=ac.GetInspectTarget ak.SetInspectEnabled=ac
+.SetInspectEnabled ak.IsInspectEnabled=ac.IsInspectEnabled ak.GetHazardCount=ac.
+GetHazardCount ak.GetActiveHazards=ac.GetActiveHazards ak.GetLastHazardInfo=ac.
+GetLastHazardInfo ak.OnHazardChanged=ac.OnHazardChanged ak.ClearAllHazards=ac.
+ClearAllHazards ak.TriggerRoomTransition=ac.TriggerRoomTransition ak.
+IsRoomTransitioning=ac.IsRoomTransitioning function ak.StartScan()if not ab.
+IsDungeon()then return end ac.StartScan()end function ak.StopScan()ac.StopScan()
+end function ak.Toggle(al)if al then ak.StartScan()else ak.StopScan()end end
+function ak.IsEnabled()return ac.IsEnabled()end ab.Register{Name='HazardScanner'
+,Zone='Dungeon',OnLeave=function()ac.StopScan()end,OnEnter=function()if ac.
+IsEnabled()then ac.StartScan()end end}aa.Register(function()ac.StopScan()end)
+return ak

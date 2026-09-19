@@ -6,6 +6,8 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 --// Table
 local enemyEsp = {}
@@ -90,7 +92,12 @@ function enemyEsp.Toggle(state)
 	if enabled then
 		if scanThread then task.cancel(scanThread); scanThread = nil end
 		scanThread = task.spawn(function()
-			while enabled do
+			while enabled and lifecycle.IsActive() do
+				if not zoneGuard.IsDungeon() then
+					task.wait(1)
+					continue
+				end
+
 				local ok, err = pcall(function()
 					for _, data in ipairs(shared.GetTrackedEnemyData()) do
 						if data.Model and data.Model.Parent then
@@ -136,5 +143,18 @@ function enemyEsp.SetSelectedColor(name)
 	local ok = pcall(updateAllHighlightColors)
 	if not ok then warn("[EnemyESP] recolor error") end
 end
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "EnemyESP",
+	Zone = "Dungeon",
+	OnLeave = function()
+		pcall(removeAllHighlights)
+	end,
+})
+
+lifecycle.Register(function()
+	enemyEsp.Toggle(false)
+end)
 
 return enemyEsp

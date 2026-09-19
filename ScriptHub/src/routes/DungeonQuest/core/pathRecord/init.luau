@@ -13,6 +13,7 @@ local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local coordinator = require("@routes/DungeonQuest/core/coordinator")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 local storage = require("@routes/DungeonQuest/core/pathRecord/storage")
 local recorder = require("@routes/DungeonQuest/core/pathRecord/recorder")
@@ -170,6 +171,10 @@ end
 
 function pathRecord.ToggleRecord(state)
 	if state then
+		if not zoneGuard.IsDungeon() then
+			notifier.Notify("Path Record", "Cannot record in Lobby!", 3)
+			return false
+		end
 		if recorder.IsRecording() then return true end
 		if mover.IsPlaying() then mover.Stop() end
 
@@ -231,7 +236,7 @@ function pathRecord.TogglePlay(state)
 			recorder.Stop()
 		end
 
-		if shared.IsInLobby() then
+		if not zoneGuard.IsDungeon() then
 			fireStatus("armed_lobby")
 			return true
 		end
@@ -603,6 +608,22 @@ task.delay(1.0, function()
 		end
 	end
 end)
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "PathRecord",
+	Zone = "Dungeon",
+	OnLeave = function()
+		if recorder.IsRecording() then
+			recorder.Cancel()
+		end
+		if mover.IsPlaying() then
+			mover.Stop()
+		end
+		visual.Clear()
+		fireStatus("zone_leave")
+	end,
+})
 
 lifecycle.Register(function()
 	mover.Stop()

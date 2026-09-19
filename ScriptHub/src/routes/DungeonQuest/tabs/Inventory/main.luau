@@ -16,8 +16,9 @@ return function(window, tab)
 
 	--// Right Section Labels (Filter Summary)
 	local summaryStatusLabel = rightSection:Label({ Text = "Status: --" })
+	local summaryLocationLabel = rightSection:Label({ Text = "Location: --" })
 	local summarySafetyLabel = rightSection:Label({ Text = "Safety: --" })
-	local summaryTriggerLabel = rightSection:Label({ Text = "Trigger: <font color='rgb(200,200,255)'>On Dungeon Start</font>" })
+	local summaryTriggerLabel = rightSection:Label({ Text = "Trigger: <font color='rgb(200,200,255)'>In-Dungeon Only (On Start)</font>" })
 	local summaryRarityLabel = rightSection:Label({ Text = "Rarities: --" })
 	local summaryTypeLabel = rightSection:Label({ Text = "Item Types: --" })
 	local summaryLevelLabel = rightSection:Label({ Text = "Level Req: --" })
@@ -30,6 +31,14 @@ return function(window, tab)
 		local statusText = isAuto and "Enabled" or "Disabled"
 		pcall(function()
 			summaryStatusLabel:UpdateName("Status: <font color='rgb(" .. statusColor .. ")'>" .. statusText .. "</font>")
+		end)
+
+		-- Location Status (In Dungeon vs Lobby)
+		local inDungeon = autoSell.IsDungeon()
+		local locColor = inDungeon and "0, 255, 0" or "255, 160, 80"
+		local locText = inDungeon and "Inside Dungeon (Active)" or "In Lobby (Paused)"
+		pcall(function()
+			summaryLocationLabel:UpdateName("Location: <font color='rgb(" .. locColor .. ")'>" .. locText .. "</font>")
 		end)
 
 		-- Safety Status
@@ -207,6 +216,12 @@ return function(window, tab)
 		Name = "Sell Now",
 		Callback = function()
 			task.spawn(function()
+				if not autoSell.IsDungeon() then
+					notifier.Notify("AutoSell", "AutoSell is only available inside Dungeons.", 3)
+					pcall(function() resultLabel:UpdateName("<font color='rgb(255,80,80)'>AutoSell is only available inside Dungeons.</font>") end)
+					return
+				end
+
 				pcall(function() resultLabel:UpdateName("Reading inventory...") end)
 
 				local preview = autoSell.CountMatches()

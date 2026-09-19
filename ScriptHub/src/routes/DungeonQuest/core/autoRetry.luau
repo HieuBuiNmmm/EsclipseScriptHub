@@ -3,6 +3,8 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local notifier = require("@routes/DungeonQuest/core/notifier")
+local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 --// References
 local player = services.player
@@ -106,6 +108,7 @@ local autoRetry = {}
 
 --// Fire remote retry, trả về true nếu thành công
 local function fireRetry()
+	if not zoneGuard.IsDungeon() then return false end
 	if not autoRetryCommandFn then
 		notifier.Notify("Auto Retry", "Remote command invalid", 3)
 		return false
@@ -126,7 +129,12 @@ function autoRetry.Start()
 	autoRetryTriggered = false
 	timeRetryTriggered = false
 	task.spawn(function()
-		while autoRetryEnabled or timeRetryEnabled do
+		while (autoRetryEnabled or timeRetryEnabled) and lifecycle.IsActive() do
+			if not zoneGuard.IsDungeon() then
+				task.wait(1)
+				continue
+			end
+
 			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
 			if autoRetryEnabled then
 				local count = 0
@@ -208,9 +216,28 @@ function autoRetry.GetTimeLeft()
 end
 
 function autoRetry.RetryNow()
+	if not zoneGuard.IsDungeon() then
+		notifier.Notify("Auto Retry", "Only available in Dungeon!", 3)
+		return
+	end
 	task.spawn(function()
 		fireRetry()
 	end)
 end
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "AutoRetry",
+	Zone = "Dungeon",
+	OnLeave = function()
+		autoRetryTriggered = false
+		timeRetryTriggered = false
+	end,
+})
+
+lifecycle.Register(function()
+	autoRetry.Stop()
+	timeRetryEnabled = false
+end)
 
 return autoRetry

@@ -1,24 +1,23 @@
 local a a={cache={},load=function(b)if not a.cache[b]then a.cache[b]={c=a[b]()}
-end return a.cache[b].c end}do function a.a()local b,c,d,e=game:GetService
-'Players',game:GetService'UserInputService',game:GetService'RunService',game:
-GetService'VirtualInputManager'local f=b.LocalPlayer if not f then local g=os.
-clock()+5 repeat f=b.LocalPlayer if f then break end task.wait(0.1)until os.
-clock()>g end return{Players=b,UserInputService=c,RunService=d,
-VirtualInputManager=e,player=f}end function a.b()local b={cleaned=false,
-callbacks={}}function b.Register(c)if type(c)~='function'then return function()
-end end if b.cleaned then pcall(c)return function()end end table.insert(b.
-callbacks,c)return function()for d,e in ipairs(b.callbacks)do if e==c then table
-.remove(b.callbacks,d)break end end end end function b.Cleanup()if b.cleaned
-then return end b.cleaned=true for c=#b.callbacks,1,-1 do pcall(b.callbacks[c])
-end table.clear(b.callbacks)end function b.IsActive()return not b.cleaned end b.
-OnCleanup=b.Register return b end function a.c()local b,c=a.load'a',a.load'b'
-local d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z=b.player,0.05,
-'enemyProjectiles',0.5,{},false,16,16,true,false,false,{},0,{},0,{},{},{},{},{},
-{},0,{}local A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S=function()for A=#z,1,-1 do
-pcall(z[A])end end,{},'unknown',true,{},{},{},0,4,false local T=function(T)if T
-then table.insert(G,T)end return T end function h.OnRespawn(U)table.insert(F,U)
-end function h.GetLastRespawnTime()return H end function h.
-GetRespawnProtectionDuration()return I end function h.
+end return a.cache[b].c end}do function a.a()local b={cleaned=false,callbacks={}
+}function b.Register(c)if type(c)~='function'then return function()end end if b.
+cleaned then pcall(c)return function()end end table.insert(b.callbacks,c)return
+function()for d,e in ipairs(b.callbacks)do if e==c then table.remove(b.callbacks
+,d)break end end end end function b.Cleanup()if b.cleaned then return end b.
+cleaned=true for c=#b.callbacks,1,-1 do pcall(b.callbacks[c])end table.clear(b.
+callbacks)end function b.IsActive()return not b.cleaned end b.OnCleanup=b.
+Register return b end function a.b()local b,c,d,e=game:GetService'Players',game:
+GetService'UserInputService',game:GetService'RunService',game:GetService
+'VirtualInputManager'local f=b.LocalPlayer if not f then local g=os.clock()+5
+repeat f=b.LocalPlayer if f then break end task.wait(0.1)until os.clock()>g end
+return{Players=b,UserInputService=c,RunService=d,VirtualInputManager=e,player=f}
+end function a.c()local b,c=a.load'b',a.load'a'local d,e,f,g,h,i,j,k,l,m,n,o,p,q
+,r,s,t,u,v,w,x,y,z=b.player,0.05,'enemyProjectiles',0.5,{},false,16,16,true,
+false,false,{},0,{},0,{},{},{},{},{},{},0,{}local A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,
+P,Q,R,S=function()for A=#z,1,-1 do pcall(z[A])end end,{},'unknown',true,{},{},{}
+,0,4,false local T=function(T)if T then table.insert(G,T)end return T end
+function h.OnRespawn(U)table.insert(F,U)end function h.GetLastRespawnTime()
+return H end function h.GetRespawnProtectionDuration()return I end function h.
 SetRespawnProtectionDuration(U)if type(U)=='number'and U>=0 then I=U end end
 function h.GetRespawnProtectionRemaining()if H==0 then return 0 end local U=os.
 clock()-H local V=I-U return math.max(0,V)end function h.IsJustRespawned(U)local
@@ -202,52 +201,22 @@ end)end end function h.EnableControls(as)as=as or'default'ap[as]=nil if next(ap)
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
 nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
 clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
-pcall(function()as:Enable()end)end N()end)return h end function a.d()local aa,ab
-,ac,ad,ae,af=a.load'b',a.load'c',{},{},{},'Lobby'function ac.GetCurrentZone()
-return ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag==
-'Global'then return true end return ac.GetCurrentZone()==ag end function ac.
-IsLobby()return ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac
-.GetCurrentZone()=='Dungeon'end function ac.Register(ag)if not ag or type(ag.
-Name)~='string'or not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.
-Zone)and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter)end)end end
-function ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai)return
-function(...)if not ac.IsInZone(ag)then return ai end return ah(...)end end
-function ac.OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)end
-end local ag=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then return
-end local ai=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==
-ai and ak.OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end for aj,
-ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.
-spawn(function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task.
-spawn(function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.
-OnLobbyChanged(function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.
-clear(ae)end)return ac end end local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am=a.
-load'a',a.load'c',a.load'b',a.load'd',{},Color3.fromRGB(255,170,0),0.55,
-'Enemy_ESP',0.5,{Orange=Color3.fromRGB(255,170,0),Red=Color3.fromRGB(255,0,0),
-Yellow=Color3.fromRGB(255,255,0),Green=Color3.fromRGB(0,255,0),Cyan=Color3.
-fromRGB(0,255,255),Blue=Color3.fromRGB(0,120,255),Magenta=Color3.fromRGB(255,0,
-255),White=Color3.fromRGB(255,255,255)},false,'Orange'local an=function()return
-aj[al]or af end local ao,ap,aq=function(ao)if not ao or not ao:IsA'Model'then
-return end if not ao:FindFirstChild(ah)then local ap=Instance.new'Highlight'ap.
-Name=ah ap.Adornee=ao ap.FillColor=an()ap.FillTransparency=ag ap.OutlineColor=
-an()ap.OutlineTransparency=1 ap.DepthMode=Enum.HighlightDepthMode.AlwaysOnTop ap
-.Parent=ao end end,function()local ao=an()for ap,aq in ipairs(game:GetService
-'Workspace':GetDescendants())do local ar=aq:FindFirstChild(ah)if ar and ar:IsA
-'Highlight'then ar.FillColor=ao ar.OutlineColor=ao end end end,function()for ao,
-ap in ipairs(game:GetService'Workspace':GetDescendants())do local aq=ap:
-FindFirstChild(ah)if aq then aq:Destroy()end end for ao,ap in ipairs(aa.Players:
-GetPlayers())do local aq=ap.Character if aq then for ar,as in ipairs(aq:
-GetDescendants())do if as.Name==ah then as:Destroy()end end end end end function
-ae.Toggle(ar)if ar==ak then return end ak=ar if ak then if am then task.cancel(
-am)am=nil end am=task.spawn(function()while ak and ac.IsActive()do if not ad.
-IsDungeon()then task.wait(1)continue end local as,b=pcall(function()for as,b in
-ipairs(ab.GetTrackedEnemyData())do if b.Model and b.Model.Parent then ao(b.Model
-)end end end)if not as then if os.clock()-(ae.lastWarn or 0)>5 then ae.lastWarn=
-os.clock()warn('[EnemyESP] error:',tostring(b))end end task.wait(ai)end end)else
-if am then task.cancel(am)am=nil end local as=pcall(aq)if not as then warn
-'[EnemyESP] cleanup error'end end end function ae.IsEnabled()return ak end
-function ae.GetColorNames()local ar={}for as in pairs(aj)do table.insert(ar,as)
-end table.sort(ar)return ar end function ae.GetSelectedColor()return al end
-function ae.SetSelectedColor(ar)if not aj[ar]then return end if ar==al then
-return end al=ar local as=pcall(ap)if not as then warn'[EnemyESP] recolor error'
-end end ad.Register{Name='EnemyESP',Zone='Dungeon',OnLeave=function()pcall(aq)
-end}ac.Register(function()ae.Toggle(false)end)return ae
+pcall(function()as:Enable()end)end N()end)return h end end local aa,ab,ac=a.load
+'a',a.load'c',{}local ad,ae,af={},{},'Lobby'function ac.GetCurrentZone()return
+ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag=='Global'
+then return true end return ac.GetCurrentZone()==ag end function ac.IsLobby()
+return ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac.
+GetCurrentZone()=='Dungeon'end function ac.Register(ag)if not ag or type(ag.Name
+)~='string'or not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.Zone)
+and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter)end)end end function
+ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai)return function(...)
+if not ac.IsInZone(ag)then return ai end return ah(...)end end function ac.
+OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)end end local ag
+=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then return end local ai
+=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ai and ak.
+OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end for aj,ak in
+pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.spawn(
+function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task.spawn(
+function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.OnLobbyChanged(
+function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.clear(ae)end)
+return ac

@@ -6,6 +6,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local coordinator = require("@routes/DungeonQuest/core/coordinator")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 local scanner = require("@routes/DungeonQuest/core/autoFarm/scanner")
 local selector = require("@routes/DungeonQuest/core/autoFarm/selector")
@@ -262,7 +263,7 @@ end
 --// ============================================================
 
 local function stepMovementLoop(deltaTime)
-	if shared.IsInLobby() or not dunReady then return end
+	if not zoneGuard.IsDungeon() or not dunReady then return end
 
 	local playerRoot = getPlayerRoot()
 	local humanoid = shared.GetHumanoid()
@@ -544,7 +545,7 @@ local function destroyPathVisuals()
 end
 
 local function updateVisualDebugs()
-	if shared.IsInLobby() then return end
+	if not zoneGuard.IsDungeon() then return end
 
 	local curTarget = tracker.GetTarget()
 	local playerRoot = getPlayerRoot()
@@ -1234,6 +1235,23 @@ end
 
 --// Coordinator Registration & Lifecycle
 coordinator.Register("AutoFarm", autoFarm.Toggle, autoFarm.IsEnabled)
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "AutoFarm",
+	Zone = "Dungeon",
+	OnLeave = function()
+		if running then
+			autoFarm.SetPaused(true)
+		end
+		cleanupDebugVisuals()
+	end,
+	OnEnter = function()
+		if enabled then
+			autoFarm.SetPaused(false)
+		end
+	end,
+})
 
 lifecycle.Register(function()
 	autoFarm.Toggle(false)

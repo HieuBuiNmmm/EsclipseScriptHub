@@ -2017,52 +2017,75 @@ Button{Name='Refresh Config List',Callback=function()ao(am.Value)end}an=ak:Label
 'Hide window after execute',Default=ac.IsEnabled(),Callback=function(ar)ac.
 SetEnabled(ar)end},'Toggle_AutoHide')ak:Label{Text=
 'Press RightControl to show the window again.'}end end function a.k()local aa,ab
-=a.load'f',a.load'b'local ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao=aa.player,2,
-false,false,false,false,60,false,
-'\r\nlocal ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\r\n\r\nlocal payload = {}\r\nlocal function collectValue(name)\r\n\tlocal value = workspace:FindFirstChild(name)\r\n\tif value and value:IsA("ValueBase") then\r\n\t\tpayload[name] = value.Value\r\n\tend\r\nend\r\n\r\ncollectValue("dungeonName")\r\ncollectValue("dungeonProgress")\r\ncollectValue("dungeonStarted")\r\n\r\nlocal hardcore = workspace:FindFirstChild("hardcore")\r\nif hardcore and hardcore:IsA("BoolValue") then\r\n\tpayload.hardcore = hardcore.Value\r\n\tpayload.isHardcore = hardcore.Value\r\nend\r\n\r\nlocal dungeon = workspace:FindFirstChild("dungeon")\r\nif dungeon then\r\n\tfor _, value in ipairs(dungeon:GetChildren()) do\r\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\tend\r\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\r\n\tif bossRoom then\r\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\r\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\t\tend\r\n\tend\r\nend\r\n\r\nif not payload.dungeonName then return end\r\nReplayDungeon:FireServer(payload)\r\n'
+,ac,ad,ae,af=a.load'g',a.load'h',{},{},{},'Lobby'function ac.GetCurrentZone()
+return ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag==
+'Global'then return true end return ac.GetCurrentZone()==ag end function ac.
+IsLobby()return ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac
+.GetCurrentZone()=='Dungeon'end function ac.Register(ag)if not ag or type(ag.
+Name)~='string'or not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.
+Zone)and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter)end)end end
+function ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai)return
+function(...)if not ac.IsInZone(ag)then return ai end return ah(...)end end
+function ac.OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)end
+end local ag=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then return
+end local ai=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==
+ai and ak.OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end for aj,
+ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.
+spawn(function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task.
+spawn(function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.
+OnLobbyChanged(function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.
+clear(ae)end)return ac end function a.l()local aa,ab,ac,ad=a.load'f',a.load'b',a
+.load'g',a.load'k'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq=aa.player,2,false
+,false,false,false,60,false,
+'local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\n\nlocal payload = {}\nlocal function collectValue(name)\n\tlocal value = workspace:FindFirstChild(name)\n\tif value and value:IsA("ValueBase") then\n\t\tpayload[name] = value.Value\n\tend\nend\n\ncollectValue("dungeonName")\ncollectValue("dungeonProgress")\ncollectValue("dungeonStarted")\n\nlocal hardcore = workspace:FindFirstChild("hardcore")\nif hardcore and hardcore:IsA("BoolValue") then\n\tpayload.hardcore = hardcore.Value\n\tpayload.isHardcore = hardcore.Value\nend\n\nlocal dungeon = workspace:FindFirstChild("dungeon")\nif dungeon then\n\tfor _, value in ipairs(dungeon:GetChildren()) do\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\tend\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\n\tif bossRoom then\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\t\tend\n\tend\nend\n\nif not payload.dungeonName then return end\nReplayDungeon:FireServer(payload)\n'
 ,[[game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder]],
-function(ac)local ad,ae=pcall(loadstring,'return '..ac)if ad and type(ae)==
-'function'then return ae end return nil end local ap,aq=pcall(loadstring,ak)if
-ap and type(aq)=='function'then an=aq end ao=am(al)if not ao then ao=function()
-return ac:FindFirstChild'PlayerGui'and ac.PlayerGui:FindFirstChild
-'rewardGuiHolder'and ac.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
-local ar,as,at=function()local ar,as=pcall(function()local ar=ac:FindFirstChild
-'PlayerGui'local as=ar and ar:FindFirstChild'timeLeftGui'local at=as and as:
-FindFirstChild'Frame'return at and at:FindFirstChild'time'end)if not ar or
-typeof(as)~='Instance'then return nil end local at if as:IsA'ValueBase'then at=
-as.Value else at=as.Text end if type(at)=='number'then return at end if type(at)
-=='string'then local au=at:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local av,
-aw=au:match'^(%d+):(%d+)$'if av and aw then return tonumber(av)*60+tonumber(aw)
-end local ax=tonumber(au)if ax then return ax end end return nil end,{},function
-()if not an then ab.Notify('Auto Retry','Remote command invalid',3)return false
-end local ar,as=pcall(an)if ar then ab.Notify('Auto Retry','Retrying dungeon!',3
-)return true end ab.Notify('Auto Retry','Trigger failed: '..tostring(as),3)
-return false end function as.Start()if af then return end af=true ag=false aj=
-false task.spawn(function()while ae or ah do if ae then local au=0 if ao then
-local av,aw=pcall(ao)if av and typeof(aw)=='Instance'and aw.Parent then au=#aw:
-GetChildren()end end if au>=ad and not ag then ag=true at()elseif au<ad then ag=
-false end end if ah then local au=ar()if au and au<ai and not aj then aj=true
-at()elseif au and au>=ai then aj=false end end if not ae and not ah then break
-end task.wait(0.75)end af=false end)end function as.Stop()ae=false end function
-as.Toggle(au)ae=au if au then aj=false as.Start()ab.Notify('Auto Retry',
-'Watching reward holder...',2)else as.Stop()ab.Notify('Auto Retry','Stopped',2)
-end end function as.SetTimeRetryEnabled(au)ah=au==true if ah then aj=false as.
-Start()ab.Notify('Auto Retry','Watching time left...',2)else ab.Notify(
-'Auto Retry','Time retry stopped',2)end end function as.GetTimeRetryEnabled()
-return ah end function as.SetTimeRetryThreshold(au)ai=au end function as.
-GetTimeRetryThreshold()return ai end function as.GetTimeLeft()return ar()end
-function as.RetryNow()task.spawn(function()at()end)end return as end function a.
-l()local aa,ab,ac,ad,ae,af=a.load'h',a.load'k','Boss Active','Boss','Dungeon',
-'Time Left'return function(ag,ah)local ai=ah:Section{Side='Right'}ai:Header{Name
-='Status'}local aj=ai:Label{Text=ac..': '..(aa.IsBossActive()and'Yes'or'No')}
-local ak=function(ak)local al=ak and'0, 255, 0'or'255, 80, 80'aj:UpdateName(ac..
-": <font color='rgb("..al..")'>"..(ak and'Yes'or'No')..'</font>')end ak(aa.
-IsBossActive())aa.OnBossActiveChanged(function(al)ak(al)end)local al=ai:Label{
-Text=ad..': 0'}local am=function()al:UpdateName(ad..': '..aa.
-GetCurrentBossIndex())end am()aa.OnBossIndexChanged(function()am()end)local an=
-ai:Label{Text='Room: --'}local ao=function()local ao=aa.GetCurrentRoomIndex()if
-ao<=0 then an:UpdateName"Room: <font color='rgb(160, 160, 160)'>--</font>"return
-end local ap=ao>=100 local aq=ap and'255, 200, 80'or'0, 255, 0'an:UpdateName(
+function(ae)local af,ag=pcall(loadstring,'return '..ae)if af and type(ag)==
+'function'then return ag end return nil end local ar,as=pcall(loadstring,am)if
+ar and type(as)=='function'then ap=as end aq=ao(an)if not aq then aq=function()
+return ae:FindFirstChild'PlayerGui'and ae.PlayerGui:FindFirstChild
+'rewardGuiHolder'and ae.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
+local at,au,av=function()local at,au=pcall(function()local at=ae:FindFirstChild
+'PlayerGui'local au=at and at:FindFirstChild'timeLeftGui'local av=au and au:
+FindFirstChild'Frame'return av and av:FindFirstChild'time'end)if not at or
+typeof(au)~='Instance'then return nil end local av if au:IsA'ValueBase'then av=
+au.Value else av=au.Text end if type(av)=='number'then return av end if type(av)
+=='string'then local aw=av:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local ax,
+ay=aw:match'^(%d+):(%d+)$'if ax and ay then return tonumber(ax)*60+tonumber(ay)
+end local az=tonumber(aw)if az then return az end end return nil end,{},function
+()if not ad.IsDungeon()then return false end if not ap then ab.Notify(
+'Auto Retry','Remote command invalid',3)return false end local at,au=pcall(ap)if
+at then ab.Notify('Auto Retry','Retrying dungeon!',3)return true end ab.Notify(
+'Auto Retry','Trigger failed: '..tostring(au),3)return false end function au.
+Start()if ah then return end ah=true ai=false al=false task.spawn(function()
+while(ag or aj)and ac.IsActive()do if not ad.IsDungeon()then task.wait(1)
+continue end if ag then local aw=0 if aq then local ax,ay=pcall(aq)if ax and
+typeof(ay)=='Instance'and ay.Parent then aw=#ay:GetChildren()end end if aw>=af
+and not ai then ai=true av()elseif aw<af then ai=false end end if aj then local
+aw=at()if aw and aw<ak and not al then al=true av()elseif aw and aw>=ak then al=
+false end end if not ag and not aj then break end task.wait(0.75)end ah=false
+end)end function au.Stop()ag=false end function au.Toggle(aw)ag=aw if aw then al
+=false au.Start()ab.Notify('Auto Retry','Watching reward holder...',2)else au.
+Stop()ab.Notify('Auto Retry','Stopped',2)end end function au.SetTimeRetryEnabled
+(aw)aj=aw==true if aj then al=false au.Start()ab.Notify('Auto Retry',
+'Watching time left...',2)else ab.Notify('Auto Retry','Time retry stopped',2)end
+end function au.GetTimeRetryEnabled()return aj end function au.
+SetTimeRetryThreshold(aw)ak=aw end function au.GetTimeRetryThreshold()return ak
+end function au.GetTimeLeft()return at()end function au.RetryNow()if not ad.
+IsDungeon()then ab.Notify('Auto Retry','Only available in Dungeon!',3)return end
+task.spawn(function()av()end)end ad.Register{Name='AutoRetry',Zone='Dungeon',
+OnLeave=function()ai=false al=false end}ac.Register(function()au.Stop()aj=false
+end)return au end function a.m()local aa,ab,ac,ad,ae,af=a.load'h',a.load'l',
+'Boss Active','Boss','Dungeon','Time Left'return function(ag,ah)local ai=ah:
+Section{Side='Right'}ai:Header{Name='Status'}local aj=ai:Label{Text=ac..': '..(
+aa.IsBossActive()and'Yes'or'No')}local ak=function(ak)local al=ak and'0, 255, 0'
+or'255, 80, 80'aj:UpdateName(ac..": <font color='rgb("..al..")'>"..(ak and'Yes'
+or'No')..'</font>')end ak(aa.IsBossActive())aa.OnBossActiveChanged(function(al)
+ak(al)end)local al=ai:Label{Text=ad..': 0'}local am=function()al:UpdateName(ad..
+': '..aa.GetCurrentBossIndex())end am()aa.OnBossIndexChanged(function()am()end)
+local an=ai:Label{Text='Room: --'}local ao=function()local ao=aa.
+GetCurrentRoomIndex()if ao<=0 then an:UpdateName
+"Room: <font color='rgb(160, 160, 160)'>--</font>"return end local ap=ao>=100
+local aq=ap and'255, 200, 80'or'0, 255, 0'an:UpdateName(
 "Room: <font color='rgb("..aq..")'>"..tostring(ao)..'</font>')end ao()aa.
 OnRoomIndexChanged(function()ao()end)local ap=ai:Label{Text='Enemies: 0'}local
 aq=function()if not aa.IsInLobby()and not aa.GetCurrentDungeonName()then ap:
@@ -2087,5 +2110,5 @@ and'0, 255, 0'or'255, 80, 80'aw:UpdateName("Lobby: <font color='rgb("..ay..")'>"
 Button{Name='Log Enemy Types to Console',Callback=function()local ax=aa.
 GetEnemyNames()print('[DungeonQuest] Enemy types in map ('..#ax..'):')if#ax==0
 then print'  (no enemies found)'else for ay,az in ipairs(ax)do print('  - '..az)
-end end end}end end end return function(aa,ab)a.load'j'(aa,ab)a.load'l'(aa,ab)
+end end end}end end end return function(aa,ab)a.load'j'(aa,ab)a.load'm'(aa,ab)
 end

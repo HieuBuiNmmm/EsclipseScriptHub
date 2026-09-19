@@ -205,10 +205,27 @@ end)end end function h.EnableControls(as)as=as or'default'ap[as]=nil if next(ap)
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
 nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
 clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
-pcall(function()as:Enable()end)end N()end)return h end end local aa,ab,ac,ad,ae,
-af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as=a.load'a',a.load'b',a.load'd',{[
-77649408247578]=true,[115445507767090]=true},{},false,false,true,{},{},{},'None'
-,false,{weapons='Weapons',helmets='Helmets',chests='Chests',abilities=
+pcall(function()as:Enable()end)end N()end)return h end function a.e()local aa,ab
+,ac,ad,ae,af=a.load'a',a.load'd',{},{},{},'Lobby'function ac.GetCurrentZone()
+return ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag==
+'Global'then return true end return ac.GetCurrentZone()==ag end function ac.
+IsLobby()return ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac
+.GetCurrentZone()=='Dungeon'end function ac.Register(ag)if not ag or type(ag.
+Name)~='string'or not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.
+Zone)and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter)end)end end
+function ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai)return
+function(...)if not ac.IsInZone(ag)then return ai end return ah(...)end end
+function ac.OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)end
+end local ag=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then return
+end local ai=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==
+ai and ak.OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end for aj,
+ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.
+spawn(function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task.
+spawn(function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.
+OnLobbyChanged(function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.
+clear(ae)end)return ac end end local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,
+ao,ap,aq,ar,as=a.load'a',a.load'b',a.load'd',a.load'e',{},false,false,true,{},{}
+,{},'None',false,{weapons='Weapons',helmets='Helmets',chests='Chests',abilities=
 'Abilities'},{'Common','Uncommon','Rare','Epic','Legendary','Mythic'},{'1','5',
 '10','15','20','25','30','35','40','45','50','55','60','65','70','75','80','85',
 '90','95','100','105','110','115','120','125','130','135','140','145','150',
@@ -253,37 +270,41 @@ next(ai)~=nil or next(aj)~=nil or next(ak)~=nil end function ae.CountMatches()
 local g,h=f()if not g then return{total=0,matching=0,error=h or
 'Error reading inventory'}end local i,j=0,{}for k,l in ipairs(g)do j[l.Type]=(j[
 l.Type]or 0)+1 if ae.ShouldSellItem(l)then i+=1 end end return{total=#g,matching
-=i,byCategory=j}end function ae.SellItems()if am then return nil end am=true
-local g,h,i={sold=0,skipped=0,gold=0,error=nil},f()if not h then g.error=i or
-'Error reading inventory'am=false return g end local j={}for k,l in ipairs(h)do
-if ae.ShouldSellItem(l)then if l.Index then g.sold+=1 local m=l.Category or l.
-Type j[m]=j[m]or{}table.insert(j[m],l.Index)end else g.skipped+=1 end end local
-k,l=pcall(e,j)if k and l and type(l)=='number'then g.gold=l end am=false return
-g end function ae.SetLevelReqMode(g)if g=='Below'or g=='Above'then al=g else al=
+=i,byCategory=j}end local g=function()return ad.IsDungeon()end function ae.
+IsDungeon()return ad.IsDungeon()end function ae.SellItems(h)if not h and not g()
+then return{sold=0,skipped=0,gold=0,error=
+'AutoSell is only available inside Dungeons.'}end if am then return nil end am=
+true local i,j,k={sold=0,skipped=0,gold=0,error=nil},f()if not j then i.error=k
+or'Error reading inventory'am=false return i end local l={}for m,n in ipairs(j)
+do if ae.ShouldSellItem(n)then if n.Index then i.sold+=1 local o=n.Category or n
+.Type l[o]=l[o]or{}table.insert(l[o],n.Index)end else i.skipped+=1 end end local
+m,n=pcall(e,l)if m and n and type(n)=='number'then i.gold=n end am=false return
+i end function ae.SetLevelReqMode(h)if h=='Below'or h=='Above'then al=h else al=
 'None'end end function ae.GetLevelReqMode()return al end function ae.
-SetExcludeEquipped(g)ah=g end function ae.GetExcludeEquipped()return ah end
-function ae.SetRarityFilter(g)ai={}if type(g)=='table'then for h,i in pairs(g)do
-if i==true and type(h)=='string'then local j=c(h)or h ai[j]=true elseif type(i)
-=='string'then local j=c(i)or i ai[j]=true end end elseif type(g)=='string'then
-local h=c(g)or g ai[h]=true end end function ae.GetRarityFilter()local g={}for h
-in pairs(ai)do table.insert(g,h)end return g end function ae.SetTypeFilter(g)aj=
-{}if type(g)=='table'then for h,i in pairs(g)do if i==true and type(h)=='string'
-then aj[h]=true elseif type(i)=='string'then aj[i]=true end end elseif type(g)==
-'string'then aj[g]=true end end function ae.GetTypeFilter()local g={}for h in
-pairs(aj)do table.insert(g,h)end return g end function ae.SetLevelReqExactFilter
-(g)ak={}if type(g)=='table'then for h,i in pairs(g)do if i==true then local j=
-tonumber(h)if j then ak[j]=true end else local j=tonumber(i)if j then ak[j]=true
-end end end elseif type(g)=='string'or type(g)=='number'then local h=tonumber(g)
-if h then ak[h]=true end end end function ae.GetLevelReqExactFilter()local g={}
-for h in pairs(ak)do table.insert(g,tostring(h))end return g end local g=
-function()return not ad[game.PlaceId]end local h=function()if not af then return
-end if ag then return end if not g()then return end if not ae.HasAnyFilter()then
-return end ag=true task.spawn(function()task.wait(2.5)if not af or not g()then
-return end local h=ae.SellItems()if h and h.sold and h.sold>0 then ab.Notify(
-'AutoSell',('Auto-sold %d item(s) on dungeon start.'):format(h.sold),3)end end)
-end function ae.Toggle(i)af=i and true or false if af and g()and not ag then h()
-end end function ae.IsEnabled()return af end ac.OnDungeonNameChanged(function(i)
-ag=false if i then h()end end)ac.OnLobbyChanged(function(i)if not i then ag=
-false h()else ag=false end end)task.spawn(function()while aa.IsActive()do task.
-wait(1)if af and g()and not ag then h()end end end)aa.Register(function()af=
-false end)ae.LEVEL_REQ_OPTIONS=ap ae.LEVEL_REQ_MODE_OPTIONS=aq return ae
+SetExcludeEquipped(h)ah=h end function ae.GetExcludeEquipped()return ah end
+function ae.SetRarityFilter(h)ai={}if type(h)=='table'then for i,j in pairs(h)do
+if j==true and type(i)=='string'then local k=c(i)or i ai[k]=true elseif type(j)
+=='string'then local k=c(j)or j ai[k]=true end end elseif type(h)=='string'then
+local i=c(h)or h ai[i]=true end end function ae.GetRarityFilter()local h={}for i
+in pairs(ai)do table.insert(h,i)end return h end function ae.SetTypeFilter(h)aj=
+{}if type(h)=='table'then for i,j in pairs(h)do if j==true and type(i)=='string'
+then aj[i]=true elseif type(j)=='string'then aj[j]=true end end elseif type(h)==
+'string'then aj[h]=true end end function ae.GetTypeFilter()local h={}for i in
+pairs(aj)do table.insert(h,i)end return h end function ae.SetLevelReqExactFilter
+(h)ak={}if type(h)=='table'then for i,j in pairs(h)do if j==true then local k=
+tonumber(i)if k then ak[k]=true end else local k=tonumber(j)if k then ak[k]=true
+end end end elseif type(h)=='string'or type(h)=='number'then local i=tonumber(h)
+if i then ak[i]=true end end end function ae.GetLevelReqExactFilter()local h={}
+for i in pairs(ak)do table.insert(h,tostring(i))end return h end local h=
+function()if not af then return end if ag then return end if not g()then return
+end if not ae.HasAnyFilter()then return end ag=true task.spawn(function()task.
+wait(2.5)if not af or not g()then return end local h=ae.SellItems()if h and h.
+sold and h.sold>0 then ab.Notify('AutoSell',(
+'Auto-sold %d item(s) on dungeon start.'):format(h.sold),3)end end)end function
+ae.Toggle(i)af=i and true or false if af and g()and not ag then h()end end
+function ae.IsEnabled()return af end ad.Register{Name='AutoSell',Zone='Dungeon',
+OnEnter=function()ag=false h()end,OnLeave=function()ag=false end}ac.
+OnDungeonNameChanged(function(i)if i and ad.IsDungeon()then ag=false h()end end)
+task.spawn(function()while aa.IsActive()do task.wait(1.5)if af and ad.IsDungeon(
+)and not ag then h()end end end)aa.Register(function()af=false ad.Unregister
+'AutoSell'end)ae.LEVEL_REQ_OPTIONS=ap ae.LEVEL_REQ_MODE_OPTIONS=aq return ae

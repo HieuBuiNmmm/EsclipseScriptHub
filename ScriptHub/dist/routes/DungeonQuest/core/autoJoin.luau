@@ -247,35 +247,58 @@ end)end end function h.EnableControls(as)as=as or'default'ap[as]=nil if next(ap)
 function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
 nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
 clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
-pcall(function()as:Enable()end)end N()end)return h end end local aa,ab,ac,ad,ae=
-a.load'a',a.load'b',a.load'c',a.load'e',a.load'd'local af,ag,ah,ai,aj,ak,al,am,
-an,ao,ap,aq=aa.player.Name,false,false,false,'Desert Temple','Easy',false,true,
-false,3,{[77649408247578]=true,[3220968688]=true,[2414851778]=true},{}local ar,
-as,b=function()return ap[game.PlaceId]==true end,function()for ar,as in ipairs(
-aq)do pcall(as,aj,ac.GetAllowedDifficulties(aj))end end,function()if ah then
-return end ah=true ai=false task.spawn(function()local ar,as=pcall(function()
-local ar=game:GetService'ReplicatedStorage':WaitForChild('remotes',15)if not ar
-then error'remotes not found'end local as=ac.GetLevelReq(aj,ak)pcall(function()
-ar:WaitForChild('createLobby',10):InvokeServer(aj,ak,as,al,am,an)end)if ai then
-return end task.wait(ao)if ai then return end if am then pcall(function()ar:
-WaitForChild('addPlayerToWhitelist',10):FireServer(af)end)if ai then return end
-task.wait(ao)if ai then return end end local b=0 while b<10 do local c=workspace
-:FindFirstChild'games'and workspace.games:FindFirstChild'inLobby'if c then break
-end task.wait(0.5)b=b+0.5 if ai then return end end if ai then return end task.
-wait(ao)if ai then return end pcall(function()ar:WaitForChild('startDungeon',10)
-:FireServer()end)end)ah=false if ai then return end if ar then ab.Notify(
-'Auto Join','Joined: '..aj,3)else ab.Notify('Auto Join','Join failed: '..
-tostring(as),4)end end)end local c,d=function()while ae.IsActive()do task.wait(
-0.5)if ag and not ah and ar()and ad.IsInLobby()then b()end end end,{}function d.
-Toggle(e)ag=e if ag then ab.Notify('Auto Join','Enabled',2)else ai=true ab.
-Notify('Auto Join','Stopped',2)end end function d.SetDungeon(e)if type(e)~=
-'string'or#e==0 then return end aj=e if not ac.IsDifficultyAllowed(aj,ak)then
-local f=ac.GetAllowedDifficulties(aj)if#f>0 then ak=f[1]end end as()end function
-d.SetDifficulty(e)if type(e)~='string'then return end if ac.IsDifficultyAllowed(
-aj,e)then ak=e end end function d.SetHardcore(e)al=e end function d.SetPrivate(e
-)am=e end function d.SetWaveDefence(e)an=e end function d.SetDelay(e)ao=e end
-function d.GetSelectedDungeon()return aj end function d.GetSelectedDifficulty()
-return ak end function d.GetAllowedDifficulties()return ac.
-GetAllowedDifficulties(aj)end function d.OnDungeonChanged(e)if type(e)==
-'function'then table.insert(aq,e)end end d.JoinNow=function()task.spawn(function
-()b()end)end task.spawn(c)ae.Register(function()d.Toggle(false)end)return d
+pcall(function()as:Enable()end)end N()end)return h end function a.f()local aa,ab
+,ac,ad,ae,af=a.load'd',a.load'e',{},{},{},'Lobby'function ac.GetCurrentZone()
+return ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag==
+'Global'then return true end return ac.GetCurrentZone()==ag end function ac.
+IsLobby()return ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac
+.GetCurrentZone()=='Dungeon'end function ac.Register(ag)if not ag or type(ag.
+Name)~='string'or not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.
+Zone)and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter)end)end end
+function ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai)return
+function(...)if not ac.IsInZone(ag)then return ai end return ah(...)end end
+function ac.OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)end
+end local ag=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then return
+end local ai=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==
+ai and ak.OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end for aj,
+ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.
+spawn(function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task.
+spawn(function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.
+OnLobbyChanged(function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.
+clear(ae)end)return ac end end local aa,ab,ac,ad,ae,af=a.load'a',a.load'b',a.
+load'c',a.load'e',a.load'd',a.load'f'local ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar=
+aa.player.Name,false,false,false,'Desert Temple','Easy',false,true,false,3,{[
+77649408247578]=true,[3220968688]=true,[2414851778]=true},{}local as,b,c=
+function()return aq[game.PlaceId]==true end,function()for as,b in ipairs(ar)do
+pcall(b,ak,ac.GetAllowedDifficulties(ak))end end,function()if not af.IsLobby()
+then return end if ai then return end ai=true aj=false task.spawn(function()
+local as,b=pcall(function()local as=game:GetService'ReplicatedStorage':
+WaitForChild('remotes',15)if not as then error'remotes not found'end local b=ac.
+GetLevelReq(ak,al)pcall(function()as:WaitForChild('createLobby',10):
+InvokeServer(ak,al,b,am,an,ao)end)if aj or not af.IsLobby()then return end task.
+wait(ap)if aj or not af.IsLobby()then return end if an then pcall(function()as:
+WaitForChild('addPlayerToWhitelist',10):FireServer(ag)end)if aj or not af.
+IsLobby()then return end task.wait(ap)if aj or not af.IsLobby()then return end
+end local c=0 while c<10 do local d=workspace:FindFirstChild'games'and workspace
+.games:FindFirstChild'inLobby'if d then break end task.wait(0.5)c=c+0.5 if aj or
+not af.IsLobby()then return end end if aj or not af.IsLobby()then return end
+task.wait(ap)if aj or not af.IsLobby()then return end pcall(function()as:
+WaitForChild('startDungeon',10):FireServer()end)end)ai=false if aj or not af.
+IsLobby()then return end if as then ab.Notify('Auto Join','Joined: '..ak,3)else
+ab.Notify('Auto Join','Join failed: '..tostring(b),4)end end)end local d,e=
+function()while ae.IsActive()do task.wait(0.5)if ah and not ai and as()and af.
+IsLobby()then c()end end end,{}function e.Toggle(f)ah=f if ah then ab.Notify(
+'Auto Join','Enabled',2)else aj=true ab.Notify('Auto Join','Stopped',2)end end
+function e.SetDungeon(f)if type(f)~='string'or#f==0 then return end ak=f if not
+ac.IsDifficultyAllowed(ak,al)then local g=ac.GetAllowedDifficulties(ak)if#g>0
+then al=g[1]end end b()end function e.SetDifficulty(f)if type(f)~='string'then
+return end if ac.IsDifficultyAllowed(ak,f)then al=f end end function e.
+SetHardcore(f)am=f end function e.SetPrivate(f)an=f end function e.
+SetWaveDefence(f)ao=f end function e.SetDelay(f)ap=f end function e.
+GetSelectedDungeon()return ak end function e.GetSelectedDifficulty()return al
+end function e.GetAllowedDifficulties()return ac.GetAllowedDifficulties(ak)end
+function e.OnDungeonChanged(f)if type(f)=='function'then table.insert(ar,f)end
+end e.JoinNow=function()if not af.IsLobby()then ab.Notify('Auto Join',
+'Only available in Lobby!',3)return end task.spawn(function()c()end)end af.
+Register{Name='AutoJoin',Zone='Lobby',OnLeave=function()aj=true ai=false end}
+task.spawn(d)ae.Register(function()e.Toggle(false)end)return e

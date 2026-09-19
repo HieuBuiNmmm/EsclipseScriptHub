@@ -6,6 +6,7 @@
 
 --// Imports
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 local detection = require("@routes/DungeonQuest/core/hazardScanner/detection")
 local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
 local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
@@ -144,6 +145,7 @@ hazardScanner.IsRoomTransitioning = detection.IsRoomTransitioning
 
 --// Bật scanner: bắt đầu quét Workspace
 function hazardScanner.StartScan()
+	if not zoneGuard.IsDungeon() then return end
 	detection.StartScan()
 end
 
@@ -164,6 +166,20 @@ end
 function hazardScanner.IsEnabled()
 	return detection.IsEnabled()
 end
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "HazardScanner",
+	Zone = "Dungeon",
+	OnLeave = function()
+		detection.StopScan()
+	end,
+	OnEnter = function()
+		if detection.IsEnabled() then
+			detection.StartScan()
+		end
+	end,
+})
 
 --// Dọn dẹp toàn diện khi shutdown
 lifecycle.Register(function()

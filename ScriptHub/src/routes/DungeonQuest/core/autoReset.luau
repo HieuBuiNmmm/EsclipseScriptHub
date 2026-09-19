@@ -7,6 +7,7 @@ local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 local player = services.player
 
@@ -38,8 +39,8 @@ local function parseRoomNumber(val): number?
 	return nil
 end
 
---// Thực hiện tự sát / reset nhân vật an toàn
-local function executeReset()
+--// Thực hiện tự sát / reset nhân vật an toàn (Chỉ cho phép trong Dungeon)
+local executeReset = zoneGuard.Guard("Dungeon", function()
 	local hum = shared.GetHumanoid()
 	local char = player and player.Character
 
@@ -57,7 +58,7 @@ local function executeReset()
 			char:BreakJoints()
 		end)
 	end
-end
+end)
 
 --// Kiểm tra và xử lý tự sát khi vào phòng
 local function checkRoomTrigger(currentRoom: number)
@@ -214,11 +215,28 @@ function autoReset.ResetNow()
 	executeReset()
 end
 
+--// Đăng ký với ZoneGuard: AutoReset chỉ hoạt động trong Dungeon
+zoneGuard.Register({
+	Name = "AutoReset",
+	Zone = "Dungeon",
+	OnEnter = function()
+		table.clear(triggeredRooms)
+		if enabled then
+			startListening()
+		end
+	end,
+	OnLeave = function()
+		table.clear(triggeredRooms)
+		stopListening()
+	end,
+})
+
 -- Tự động đăng ký dọn dẹp khi script unload
 lifecycle.Register(function()
 	stopListening()
 	enabled = false
 	table.clear(triggeredRooms)
+	zoneGuard.Unregister("AutoReset")
 end)
 
 return autoReset

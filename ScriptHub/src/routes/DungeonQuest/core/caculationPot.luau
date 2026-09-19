@@ -20,6 +20,7 @@ export type InspectorEntry = {
 	maxUpgrades: number?,
 }
 
+local TARGET_CONTAINERS = { "inventory", "inspectGui", "sellShop", "tradingGui", "blacksmith" }
 local TARGET_FRAMES = { "armorMain", "weaponMain" }
 local STAT_PER_UPGRADE = 10 -- Cả Giáp và Vũ khí đều tăng 10 điểm mỗi lượt upgrade
 
@@ -102,6 +103,8 @@ local originalStates: { [TextLabel]: OriginalLabelState } = {}
 local activeConnections: { RBXScriptConnection } = {}
 local hookedFrames: { [GuiObject]: boolean } = {}
 local hookedLabels: { [TextLabel]: boolean } = {}
+local hookedItemStatFrames: { [GuiObject]: boolean } = {}
+local hookedContainers: { [Instance]: boolean } = {}
 
 local stateCallbacks: { (boolean) -> () } = {}
 local inspectorCallbacks: { (string?, { InspectorEntry }, string?) -> () } = {}
@@ -446,16 +449,10 @@ local function hookTargetFrame(frame: GuiObject)
 	end
 end
 
---// Khởi tạo và theo dõi cây UI
-local function ensureHooks()
-	local player = services.player or services.Players.LocalPlayer
-	if not player then return end
-	local playerGui = player:FindFirstChild("PlayerGui")
-	if not playerGui then return end
-	local inventory = playerGui:FindFirstChild("inventory")
-	if not inventory then return end
-	local itemStatFrame = inventory:FindFirstChild("itemStatFrame")
-	if not itemStatFrame then return end
+--// Gắn sự kiện cho một itemStatFrame cụ thể
+local function hookItemStatFrame(itemStatFrame: GuiObject)
+	if not itemStatFrame or not itemStatFrame:IsA("GuiObject") or hookedItemStatFrames[itemStatFrame] then return end
+	hookedItemStatFrames[itemStatFrame] = true
 
 	local itemStatVisConn = itemStatFrame:GetPropertyChangedSignal("Visible"):Connect(function()
 		if not enabled then return end
@@ -483,9 +480,83 @@ local function ensureHooks()
 			end
 		end
 	end
+
+	local childConn = itemStatFrame.ChildAdded:Connect(function(child)
+		if child:IsA("GuiObject") then
+			for _, frameName in ipairs(TARGET_FRAMES) do
+				if child.Name == frameName then
+					hookTargetFrame(child)
+					if child.Visible and itemStatFrame.Visible then
+						processFrame(child)
+					end
+				end
+			end
+		end
+	end)
+	table.insert(activeConnections, childConn)
 end
 
---// Vòng lặp bổ trợ đảm bảo không sót frame nào khi đổi phòng/rejoin
+--// Gắn sự kiện cho Container chứa itemStatFrame (inventory, inspectGui, sellShop, tradingGui, blacksmith)
+local function hookContainer(container: Instance)
+	if not container or hookedContainers[container] then return end
+	hookedContainers[container] = true
+
+	local itemStatFrame = container:FindFirstChild("itemStatFrame")
+	if itemStatFrame and itemStatFrame:IsA("GuiObject") then
+		hookItemStatFrame(itemStatFrame)
+	end
+
+	local childConn = container.ChildAdded:Connect(function(child)
+		if child.Name == "itemStatFrame" and child:IsA("GuiObject") then
+			hookItemStatFrame(child)
+		end
+	end)
+	table.insert(activeConnections, childConn)
+
+	-- Bắt sự kiện khi container bị hủy hoặc gỡ khỏi PlayerGui (vd khi player rời khỏi Blacksmith NPC)
+	local ancConn = container.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			hookedContainers[container] = nil
+			restoreAllLabels()
+		end
+	end)
+	table.insert(activeConnections, ancConn)
+end
+
+--// Khởi tạo và theo dõi cây UI
+local function ensureHooks()
+	local player = services.player or services.Players.LocalPlayer
+	if not player then return end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return end
+
+	for _, containerName in ipairs(TARGET_CONTAINERS) do
+		local container = playerGui:FindFirstChild(containerName)
+		if not container then
+			for _, child in ipairs(playerGui:GetChildren()) do
+				if string.lower(child.Name) == string.lower(containerName) then
+					container = child
+					break
+				end
+			end
+		end
+		if container then
+			hookContainer(container)
+		end
+	end
+
+	-- Lắng nghe nếu blacksmith, inspectGui, sellShop, tradingGui được tạo động khi player tương tác
+	local pgConn = playerGui.ChildAdded:Connect(function(child)
+		for _, containerName in ipairs(TARGET_CONTAINERS) do
+			if string.lower(child.Name) == string.lower(containerName) then
+				hookContainer(child)
+			end
+		end
+	end)
+	table.insert(activeConnections, pgConn)
+end
+
+--// Vòng lặp bổ trợ đảm bảo không sót frame nào khi đổi phòng/rejoin/mở NPC
 local function stopInspectorLoop()
 	if inspectorThread then
 		task.cancel(inspectorThread)
@@ -498,6 +569,8 @@ local function stopInspectorLoop()
 	table.clear(activeConnections)
 	table.clear(hookedFrames)
 	table.clear(hookedLabels)
+	table.clear(hookedItemStatFrames)
+	table.clear(hookedContainers)
 
 	restoreAllLabels()
 
@@ -525,19 +598,43 @@ local function startInspectorLoop()
 			local player = services.player or services.Players.LocalPlayer
 			if player then
 				local playerGui = player:FindFirstChild("PlayerGui")
-				local inventory = playerGui and playerGui:FindFirstChild("inventory")
-				local itemStatFrame = inventory and inventory:FindFirstChild("itemStatFrame")
-
-				if itemStatFrame and itemStatFrame.Visible then
-					for _, frameName in ipairs(TARGET_FRAMES) do
-						local frame = itemStatFrame:FindFirstChild(frameName)
-						if frame and frame:IsA("GuiObject") then
-							if not hookedFrames[frame] then
-								hookTargetFrame(frame)
+				if playerGui then
+					for _, containerName in ipairs(TARGET_CONTAINERS) do
+						local container = playerGui:FindFirstChild(containerName)
+						if not container then
+							for _, child in ipairs(playerGui:GetChildren()) do
+								if string.lower(child.Name) == string.lower(containerName) then
+									container = child
+									break
+								end
 							end
-							if frame.Visible then
-								anyVisible = true
-								processFrame(frame)
+						end
+
+						if container then
+							if not hookedContainers[container] then
+								hookContainer(container)
+							end
+
+							local itemStatFrame = container:FindFirstChild("itemStatFrame")
+							if itemStatFrame and itemStatFrame:IsA("GuiObject") then
+								if not hookedItemStatFrames[itemStatFrame] then
+									hookItemStatFrame(itemStatFrame)
+								end
+
+								if itemStatFrame.Visible then
+									for _, frameName in ipairs(TARGET_FRAMES) do
+										local frame = itemStatFrame:FindFirstChild(frameName)
+										if frame and frame:IsA("GuiObject") then
+											if not hookedFrames[frame] then
+												hookTargetFrame(frame)
+											end
+											if frame.Visible then
+												anyVisible = true
+												processFrame(frame)
+											end
+										end
+									end
+								end
 							end
 						end
 					end

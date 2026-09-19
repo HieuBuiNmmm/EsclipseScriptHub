@@ -11,105 +11,121 @@ GetService'UserInputService',game:GetService'RunService',game:GetService
 'VirtualInputManager'local f=b.LocalPlayer if not f then local g=os.clock()+5
 repeat f=b.LocalPlayer if f then break end task.wait(0.1)until os.clock()>g end
 return{Players=b,UserInputService=c,RunService=d,VirtualInputManager=e,player=f}
-end end local b,c,d=a.load'a',a.load'b',{}local e,f,g={'armorMain','weaponMain'}
-,10,{warrior={className='Warrior',primaryStat='physicalDamage'},mage={className=
+end end local b,c,d=a.load'a',a.load'b',{}local e,f,g,h={'inventory',
+'inspectGui','sellShop','tradingGui','blacksmith'},{'armorMain','weaponMain'},10
+,{warrior={className='Warrior',primaryStat='physicalDamage'},mage={className=
 'Mage',primaryStat='spellPower'},guardian={className='Guardian',primaryStat=
-'health'}}local h,i=function(h)if not h then return nil,nil end local i=string.
-lower(h)for j,k in pairs(g)do if string.find(i,j)then return k.className,k.
-primaryStat end end return nil,nil end,function(h)if not h then return nil end
-local i=string.match(h,'^%s*([%d,.-]+)')if not i then return nil end local j=
-string.gsub(i,',','')return tonumber(j)end local j,k,l,m,n,o,p,q,r,s=function(j)
-if not j then return 0,0 end local k=string.gsub(j,',','')local l,m=string.
-match(k,'(%d+)%s*/%s*(%d+)')if l and m then return tonumber(l)or 0,tonumber(m)or
-0 end local n=i(k)return 0,n or 0 end,function(j)if not j then return''end local
-k=string.match(j,'^([^\n\r]+)')local l=k or j local m=string.match(l,
-'^(.-)%s*[%(\\[]')if m and m~=''then return string.gsub(m,'%s+$','')end return
-string.gsub(l,'%s+$','')end,function(j)if not j then return false end if string.
-find(j,'[\n\r]%s*[%(\\[].-[%)\\]]')then return true end return string.find(j,
-'%s*[%(\\[].-[%)\\]]%s*$')~=nil end,true,{},'',false local t,u,v,w,x,y={},{},{},
-{},{},{}local z=function(z)local A=t[z]if A and z and z.Parent then p=true
-pcall(function()z.Text=A.text end)p=false end t[z]=nil end local A,B=function()
-for A,B in pairs(t)do z(A)end table.clear(t)end,function(A,B)local C,D=string.
-lower(B),A:FindFirstChild(B)if D then if D:IsA'TextLabel'then return D elseif D:
-IsA'GuiObject'then for E,F in ipairs{'valueText','ValueText','value','Value',
-'amount','Amount','text','label'}do local G=D:FindFirstChild(F)if G and G:IsA
-'TextLabel'then return G end end local E=D:FindFirstChildOfClass'TextLabel'if E
-then return E end end end for E,F in ipairs(A:GetDescendants())do if F:IsA
-'TextLabel'then local G=string.lower(F.Name)if G==C then return F end if(G==
-'valuetext'or G=='value'or G=='amount')and F.Parent then local H=string.lower(F.
-Parent.Name)if string.find(H,C)then return F end end end end if C=='upgrades'
-then for E,F in ipairs(A:GetDescendants())do if F:IsA'TextLabel'and not string.
-find(string.lower(F.Name),'title')then if string.find(F.Text,'%d+%s*/%s*%d+')
-then return F end end end end return nil end local aa=function(C)if not m then
-return end if not C or not C:IsA'GuiObject'or not C.Visible then return end
-local D=C.Parent if D and D:IsA'GuiObject'and not D.Visible then return end if p
-then return end local E,F=C.Name,{}local G={E}for H,I in ipairs(C:
-GetDescendants())do local J=string.lower(I.Name)if not string.find(J,'title')
-then if I:IsA'TextLabel'then local K,L=(I.Parent~=C and I.Parent.Name..'/'..I.
-Name)or I.Name,k(I.Text)table.insert(F,{name=I.Name,value=L,kind='TextLabel',
-path=K,instance=I})table.insert(G,K..'='..L)elseif I:IsA'ValueBase'then local K,
-L=tostring(I.Value),(I.Parent~=C and I.Parent.Name..'/'..I.Name)or I.Name table.
-insert(F,{name=I.Name,value=K,kind='ValueBase',path=L})table.insert(G,L..'='..K)
-end end end local H=B(C,'name')local I=(H and k(H.Text))or nil if not I then for
-J,K in ipairs(F)do if string.lower(K.name)=='name'then I=K.value break end end
-end local J=B(C,'upgrades')local K=(J and k(J.Text))or nil if not K then for L,M
-in ipairs(F)do if string.lower(M.name)=='upgrades'or string.find(M.value,
-'%d+%s*/%s*%d+')then K=M.value break end end end local L,M,N=B(C,
-'physicalDamage')or B(C,'physicalPower'),B(C,'spellPower'),B(C,'health')local O,
-P,Q,R,S,T=L and i(k(L.Text)),M and i(k(M.Text)),N and i(k(N.Text))if E==
-'weaponMain'then if(P or 0)>(O or 0)then R='Mage'S='spellPower'T=M else R=
-'Warrior'S='physicalDamage'T=L end else R,S=h(I)if R=='Warrior'then T=L elseif R
-=='Mage'then T=M elseif R=='Guardian'then T=N else if(Q or 0)>10000 and(Q or 0)>
-((O or 0)*10)then R='Guardian'S='health'T=N elseif(P or 0)>(O or 0)then R='Mage'
-S='spellPower'T=M else R='Warrior'S='physicalDamage'T=L end end end local U,V=j(
-K)local W=math.max(0,V-U)if T and T:IsA'TextLabel'and V>0 then local X=k(T.Text)
-local Y=i(X)if Y then local Z=Y+(W*f)local _=string.format('%s\n(%s)',X,
-tostring(Z))for aa,ab in ipairs(F)do if ab.instance==T or ab.name==S then ab.
-isPrimaryStat=true ab.calculatedTotal=Z ab.remainingUpgrades=W ab.curUpgrades=U
-ab.maxUpgrades=V end end table.insert(G,'calc='..tostring(Z))if T.Text~=_ then
-if not t[T]then t[T]={text=T.Text}end p=true pcall(function()T.Text=_ T.
-ClipsDescendants=false end)p=false end end end local aa={name=1,levelReq=2,
+'health'}}local i,j=function(i)if not i then return nil,nil end local j=string.
+lower(i)for k,l in pairs(h)do if string.find(j,k)then return l.className,l.
+primaryStat end end return nil,nil end,function(i)if not i then return nil end
+local j=string.match(i,'^%s*([%d,.-]+)')if not j then return nil end local k=
+string.gsub(j,',','')return tonumber(k)end local k,l,m,n,o,p,q,r,s,t=function(k)
+if not k then return 0,0 end local l=string.gsub(k,',','')local m,n=string.
+match(l,'(%d+)%s*/%s*(%d+)')if m and n then return tonumber(m)or 0,tonumber(n)or
+0 end local o=j(l)return 0,o or 0 end,function(k)if not k then return''end local
+l=string.match(k,'^([^\n\r]+)')local m=l or k local n=string.match(m,
+'^(.-)%s*[%(\\[]')if n and n~=''then return string.gsub(n,'%s+$','')end return
+string.gsub(m,'%s+$','')end,function(k)if not k then return false end if string.
+find(k,'[\n\r]%s*[%(\\[].-[%)\\]]')then return true end return string.find(k,
+'%s*[%(\\[].-[%)\\]]%s*$')~=nil end,true,{},'',false local u,v,w,x,y,z,A,B={},{}
+,{},{},{},{},{},{}local C=function(C)local D=u[C]if D and C and C.Parent then q=
+true pcall(function()C.Text=D.text end)q=false end u[C]=nil end local D,E=
+function()for D,E in pairs(u)do C(D)end table.clear(u)end,function(D,E)local F,G
+=string.lower(E),D:FindFirstChild(E)if G then if G:IsA'TextLabel'then return G
+elseif G:IsA'GuiObject'then for H,I in ipairs{'valueText','ValueText','value',
+'Value','amount','Amount','text','label'}do local J=G:FindFirstChild(I)if J and
+J:IsA'TextLabel'then return J end end local H=G:FindFirstChildOfClass'TextLabel'
+if H then return H end end end for H,I in ipairs(D:GetDescendants())do if I:IsA
+'TextLabel'then local J=string.lower(I.Name)if J==F then return I end if(J==
+'valuetext'or J=='value'or J=='amount')and I.Parent then local K=string.lower(I.
+Parent.Name)if string.find(K,F)then return I end end end end if F=='upgrades'
+then for H,I in ipairs(D:GetDescendants())do if I:IsA'TextLabel'and not string.
+find(string.lower(I.Name),'title')then if string.find(I.Text,'%d+%s*/%s*%d+')
+then return I end end end end return nil end local aa=function(F)if not n then
+return end if not F or not F:IsA'GuiObject'or not F.Visible then return end
+local G=F.Parent if G and G:IsA'GuiObject'and not G.Visible then return end if q
+then return end local H,I=F.Name,{}local J={H}for K,L in ipairs(F:
+GetDescendants())do local M=string.lower(L.Name)if not string.find(M,'title')
+then if L:IsA'TextLabel'then local N,O=(L.Parent~=F and L.Parent.Name..'/'..L.
+Name)or L.Name,l(L.Text)table.insert(I,{name=L.Name,value=O,kind='TextLabel',
+path=N,instance=L})table.insert(J,N..'='..O)elseif L:IsA'ValueBase'then local N,
+O=tostring(L.Value),(L.Parent~=F and L.Parent.Name..'/'..L.Name)or L.Name table.
+insert(I,{name=L.Name,value=N,kind='ValueBase',path=O})table.insert(J,O..'='..N)
+end end end local K=E(F,'name')local L=(K and l(K.Text))or nil if not L then for
+M,N in ipairs(I)do if string.lower(N.name)=='name'then L=N.value break end end
+end local M=E(F,'upgrades')local N=(M and l(M.Text))or nil if not N then for O,P
+in ipairs(I)do if string.lower(P.name)=='upgrades'or string.find(P.value,
+'%d+%s*/%s*%d+')then N=P.value break end end end local O,P,Q=E(F,
+'physicalDamage')or E(F,'physicalPower'),E(F,'spellPower'),E(F,'health')local R,
+S,T,U,V,W=O and j(l(O.Text)),P and j(l(P.Text)),Q and j(l(Q.Text))if H==
+'weaponMain'then if(S or 0)>(R or 0)then U='Mage'V='spellPower'W=P else U=
+'Warrior'V='physicalDamage'W=O end else U,V=i(L)if U=='Warrior'then W=O elseif U
+=='Mage'then W=P elseif U=='Guardian'then W=Q else if(T or 0)>10000 and(T or 0)>
+((R or 0)*10)then U='Guardian'V='health'W=Q elseif(S or 0)>(R or 0)then U='Mage'
+V='spellPower'W=P else U='Warrior'V='physicalDamage'W=O end end end local X,Y=k(
+N)local Z=math.max(0,Y-X)if W and W:IsA'TextLabel'and Y>0 then local _=l(W.Text)
+local aa=j(_)if aa then local ab=aa+(Z*g)local ac=string.format('%s\n(%s)',_,
+tostring(ab))for ad,ae in ipairs(I)do if ae.instance==W or ae.name==V then ae.
+isPrimaryStat=true ae.calculatedTotal=ab ae.remainingUpgrades=Z ae.curUpgrades=X
+ae.maxUpgrades=Y end end table.insert(J,'calc='..tostring(ab))if W.Text~=ac then
+if not u[W]then u[W]={text=W.Text}end q=true pcall(function()W.Text=ac W.
+ClipsDescendants=false end)q=false end end end local aa={name=1,levelReq=2,
 physicalDamage=3,spellPower=4,health=5,upgrades=6,sellPrice=7,description=8}
-table.sort(F,function(ab,X)local Y,Z=aa[ab.name]or 99,aa[X.name]or 99 if Y~=Z
-then return Y<Z end return ab.path<X.path end)local ab=table.concat(G,'|')if ab
-~=o then o=ab r=E n=F s=R for X,Y in ipairs(y)do pcall(Y,r,n,s)end end end local
-ab=function(ab,C)if w[C]then return end w[C]=true local D=C:
-GetPropertyChangedSignal'Text':Connect(function()if not m or p then return end
-if ab.Visible and not l(C.Text)then aa(ab)end end)table.insert(u,D)end local C=
-function(C)if v[C]then return end v[C]=true local D=C:GetPropertyChangedSignal
-'Visible':Connect(function()if not m then return end if C.Visible then aa(C)else
-A()o=''r=nil n={}s=nil for D,E in ipairs(y)do pcall(E,nil,{},nil)end end end)
-table.insert(u,D)for E,F in ipairs(C:GetDescendants())do if F:IsA'TextLabel'then
-ab(C,F)end end local E=C.DescendantAdded:Connect(function(E)if E:IsA'TextLabel'
-then ab(C,E)if C.Visible then task.defer(function()aa(C)end)end end end)table.
-insert(u,E)if C.Visible then task.defer(function()aa(C)end)end end local D,E=
-function()local D=c.player or c.Players.LocalPlayer if not D then return end
-local E=D:FindFirstChild'PlayerGui'if not E then return end local F=E:
-FindFirstChild'inventory'if not F then return end local G=F:FindFirstChild
-'itemStatFrame'if not G then return end local H=G:GetPropertyChangedSignal
-'Visible':Connect(function()if not m then return end if not G.Visible then A()if
-r~=nil then r=nil n={}s=nil o=''for H,I in ipairs(y)do pcall(I,nil,{},nil)end
-end end end)table.insert(u,H)for I,J in ipairs(e)do local K=G:FindFirstChild(J)
-if K and K:IsA'GuiObject'then C(K)if K.Visible and G.Visible then aa(K)end end
-end end,function()if q then task.cancel(q)q=nil end for D,E in ipairs(u)do
-pcall(function()E:Disconnect()end)end table.clear(u)table.clear(v)table.clear(w)
-A()r=nil n={}s=nil o=''for D,E in ipairs(y)do pcall(E,nil,{},nil)end end local F
-=function()if q then return end D()q=task.spawn(function()while m do task.wait(
-1.5)if not m then break end local F,G=false,c.player or c.Players.LocalPlayer if
-G then local H=G:FindFirstChild'PlayerGui'local I=H and H:FindFirstChild
-'inventory'local J=I and I:FindFirstChild'itemStatFrame'if J and J.Visible then
-for K,L in ipairs(e)do local M=J:FindFirstChild(L)if M and M:IsA'GuiObject'then
-if not v[M]then C(M)end if M.Visible then F=true aa(M)end end end end end if not
-F and next(t)~=nil then A()if r~=nil then r=nil n={}s=nil o=''for H,I in ipairs(
-y)do pcall(I,nil,{},nil)end end end end q=nil end)end function d.IsEnabled()
-return m end function d.GetActiveInspector()return r,n,s end function d.
-SetEnabled(G)local H=G and true or false if m==H then return end m=H if m then
-F()else E()end for I,J in ipairs(x)do pcall(J,m)end end function d.OnChanged(G)
-if type(G)=='function'then table.insert(x,G)end end function d.
-OnInspectorChanged(G)if type(G)=='function'then table.insert(y,G)end end
-function d.GetActiveFrame()local G for H,I in ipairs(n)do if I.name=='name'and I
-.value~=''then G=I.value break end end return r,G end function d.OnFrameChanged(
-G)if type(G)=='function'then table.insert(y,function(H,I,J)local K for L,M in
-ipairs(I)do if M.name=='name'and M.value~=''then K=M.value break end end pcall(G
-,H,K)end)end end function d.Init()if not m then m=true end F()end b.Register(
-function()m=false E()table.clear(x)table.clear(y)end)F()return d
+table.sort(I,function(ab,ac)local ad,ae=aa[ab.name]or 99,aa[ac.name]or 99 if ad
+~=ae then return ad<ae end return ab.path<ac.path end)local ab=table.concat(J,
+'|')if ab~=p then p=ab s=H o=I t=U for ac,ad in ipairs(B)do pcall(ad,s,o,t)end
+end end local ab=function(ab,ac)if x[ac]then return end x[ac]=true local ad=ac:
+GetPropertyChangedSignal'Text':Connect(function()if not n or q then return end
+if ab.Visible and not m(ac.Text)then aa(ab)end end)table.insert(v,ad)end local
+ac=function(ac)if w[ac]then return end w[ac]=true local ad=ac:
+GetPropertyChangedSignal'Visible':Connect(function()if not n then return end if
+ac.Visible then aa(ac)else D()p=''s=nil o={}t=nil for ad,ae in ipairs(B)do
+pcall(ae,nil,{},nil)end end end)table.insert(v,ad)for ae,F in ipairs(ac:
+GetDescendants())do if F:IsA'TextLabel'then ab(ac,F)end end local ae=ac.
+DescendantAdded:Connect(function(ae)if ae:IsA'TextLabel'then ab(ac,ae)if ac.
+Visible then task.defer(function()aa(ac)end)end end end)table.insert(v,ae)if ac.
+Visible then task.defer(function()aa(ac)end)end end local ad=function(ad)if not
+ad or not ad:IsA'GuiObject'or y[ad]then return end y[ad]=true local ae=ad:
+GetPropertyChangedSignal'Visible':Connect(function()if not n then return end if
+not ad.Visible then D()if s~=nil then s=nil o={}t=nil p=''for ae,F in ipairs(B)
+do pcall(F,nil,{},nil)end end end end)table.insert(v,ae)for F,G in ipairs(f)do
+local H=ad:FindFirstChild(G)if H and H:IsA'GuiObject'then ac(H)if H.Visible and
+ad.Visible then aa(H)end end end local F=ad.ChildAdded:Connect(function(F)if F:
+IsA'GuiObject'then for G,H in ipairs(f)do if F.Name==H then ac(F)if F.Visible
+and ad.Visible then aa(F)end end end end end)table.insert(v,F)end local ae=
+function(ae)if not ae or z[ae]then return end z[ae]=true local F=ae:
+FindFirstChild'itemStatFrame'if F and F:IsA'GuiObject'then ad(F)end local G=ae.
+ChildAdded:Connect(function(G)if G.Name=='itemStatFrame'and G:IsA'GuiObject'then
+ad(G)end end)table.insert(v,G)local H=ae.AncestryChanged:Connect(function(H,I)if
+not I then z[ae]=nil D()end end)table.insert(v,H)end local F,G=function()local F
+=c.player or c.Players.LocalPlayer if not F then return end local G=F:
+FindFirstChild'PlayerGui'if not G then return end for H,I in ipairs(e)do local J
+=G:FindFirstChild(I)if not J then for K,L in ipairs(G:GetChildren())do if string
+.lower(L.Name)==string.lower(I)then J=L break end end end if J then ae(J)end end
+local H=G.ChildAdded:Connect(function(H)for I,J in ipairs(e)do if string.lower(H
+.Name)==string.lower(J)then ae(H)end end end)table.insert(v,H)end,function()if r
+then task.cancel(r)r=nil end for F,G in ipairs(v)do pcall(function()G:
+Disconnect()end)end table.clear(v)table.clear(w)table.clear(x)table.clear(y)
+table.clear(z)D()s=nil o={}t=nil p=''for F,G in ipairs(B)do pcall(G,nil,{},nil)
+end end local H=function()if r then return end F()r=task.spawn(function()while n
+do task.wait(1.5)if not n then break end local H,I=false,c.player or c.Players.
+LocalPlayer if I then local J=I:FindFirstChild'PlayerGui'if J then for K,L in
+ipairs(e)do local M=J:FindFirstChild(L)if not M then for N,O in ipairs(J:
+GetChildren())do if string.lower(O.Name)==string.lower(L)then M=O break end end
+end if M then if not z[M]then ae(M)end local N=M:FindFirstChild'itemStatFrame'if
+N and N:IsA'GuiObject'then if not y[N]then ad(N)end if N.Visible then for O,P in
+ipairs(f)do local Q=N:FindFirstChild(P)if Q and Q:IsA'GuiObject'then if not w[Q]
+then ac(Q)end if Q.Visible then H=true aa(Q)end end end end end end end end end
+if not H and next(u)~=nil then D()if s~=nil then s=nil o={}t=nil p=''for J,K in
+ipairs(B)do pcall(K,nil,{},nil)end end end end r=nil end)end function d.
+IsEnabled()return n end function d.GetActiveInspector()return s,o,t end function
+d.SetEnabled(I)local J=I and true or false if n==J then return end n=J if n then
+H()else G()end for K,L in ipairs(A)do pcall(L,n)end end function d.OnChanged(I)
+if type(I)=='function'then table.insert(A,I)end end function d.
+OnInspectorChanged(I)if type(I)=='function'then table.insert(B,I)end end
+function d.GetActiveFrame()local I for J,K in ipairs(o)do if K.name=='name'and K
+.value~=''then I=K.value break end end return s,I end function d.OnFrameChanged(
+I)if type(I)=='function'then table.insert(B,function(J,K,L)local M for N,O in
+ipairs(K)do if O.name=='name'and O.value~=''then M=O.value break end end pcall(I
+,J,M)end)end end function d.Init()if not n then n=true end H()end b.Register(
+function()n=false G()table.clear(A)table.clear(B)end)H()return d

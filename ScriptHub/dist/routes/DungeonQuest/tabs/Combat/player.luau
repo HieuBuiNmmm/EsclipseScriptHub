@@ -1877,45 +1877,65 @@ E,false,game)end)end function af.Init()if af.inited then return end af.inited=
 true ah=ad.InputBegan:Connect(function(aj,ak)if aj.UserInputType==Enum.
 UserInputType.MouseButton2 then if ad:GetFocusedTextBox()then return end if ag
 then ai()end end end)end ac.Register(function()if ah then ah:Disconnect()ah=nil
-end af.inited=false end)return af end function a.i()local aa,ab,ac,ad=a.load'a',
-a.load'c',a.load'f',a.load'b'local ae,af,ag,ah,ai,aj,ak,al,am,an=aa.player,{},
-false,{[2]=true},0,{},{}for ao=1,15 do table.insert(ak,('Room %d'):format(ao))
-end local ao,ap=function(ao)if type(ao)=='number'then return math.clamp(math.
-floor(ao),1,20)elseif type(ao)=='string'then local ap=tonumber(ao:match'%d+')if
-ap then return math.clamp(math.floor(ap),1,20)end end return nil end,function()
-local ao,ap=ab.GetHumanoid(),ae and ae.Character if ao and ao.Health>0 then
-pcall(function()ao.Health=0 end)pcall(function()ao:ChangeState(Enum.
-HumanoidStateType.Dead)end)end if ap and ap.Parent then pcall(function()ap:
-BreakJoints()end)end end local aq=function(aq)if not ag then return end if ab.
-IsInLobby()or ab.IsDead()then return end if aq<=0 then return end if not ah[aq]
-then return end if aj[aq]then return end aj[aq]=true task.spawn(function()if ai>
-0 then task.wait(ai)end if not ag or ab.IsInLobby()or ab.IsDead()then return end
-if ab.GetCurrentRoomIndex()~=aq then return end ac.Notify('Auto Reset',(
-'Reset character at Room %d (Once per room/run)'):format(aq),3)ap()end)end local
-ar,as=function()if al then return end al=ab.OnRoomIndexChanged(function(ar)if ar
-<=1 then table.clear(aj)end aq(ar)end)am=ab.OnLobbyChanged(function(ar)if ar
-then table.clear(aj)end end)an=ab.OnDungeonNameChanged(function()table.clear(aj)
-end)end,function()if al then al()al=nil end if am then am()am=nil end if an then
-an()an=nil end end function af.Toggle(at)ag=at and true or false if ag then
-table.clear(aj)ar()aq(ab.GetCurrentRoomIndex())else as()end end function af.
-IsEnabled()return ag end function af.GetRoomOptions()return ak end function af.
-SetTargetRooms(at)local au={}if type(at)=='table'then for av,aw in pairs(at)do
-if aw==true then local ax=ao(av)if ax then au[ax]=true end else local ax=ao(aw)
-if ax then au[ax]=true end end end elseif at~=nil then local av=ao(at)if av then
-au[av]=true end end ah=au end function af.GetTargetRooms()local at={}for au in
-pairs(ah)do table.insert(at,au)end table.sort(at)local au={}for av,aw in ipairs(
-at)do table.insert(au,('Room %d'):format(aw))end return au end function af.
-GetTargetRoomNumbers()local at={}for au in pairs(ah)do table.insert(at,au)end
-table.sort(at)return at end function af.SetTargetRoom(at)local au=ao(at)if au
-then ah={[au]=true}end end function af.GetTargetRoom()for at in pairs(ah)do
-return at end return 2 end function af.SetDelay(at)if type(at)=='number'then ai=
-math.clamp(at,0,15)end end function af.GetDelay()return ai end function af.
-ResetNow()ac.Notify('Auto Reset','Manual character reset executed',2)ap()end ad.
-Register(function()as()ag=false table.clear(aj)end)return af end end local aa,ab
-,ac,ad,ae=a.load'c',a.load'd',a.load'g',a.load'h',a.load'i'return function(af,ag
-)local ah=ag:Section{Side='Right'}ah:Header{Name='Movement Speed'}ah:Toggle({
-Name='Fast Speed',Default=aa.IsSpeedEnabled(),Callback=ac.Wrap(function(ai)aa.
-SetSpeedEnabled(ai)end)},'Toggle_FastSpeed')ab.PatchSliderLoadCallback(ah:
+end af.inited=false end)return af end function a.i()local aa,ab,ac,ad,ae,af=a.
+load'b',a.load'c',{},{},{},'Lobby'function ac.GetCurrentZone()return ab.
+IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag=='Global'then
+return true end return ac.GetCurrentZone()==ag end function ac.IsLobby()return
+ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac.GetCurrentZone(
+)=='Dungeon'end function ac.Register(ag)if not ag or type(ag.Name)~='string'or
+not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.Zone)and ag.OnEnter
+then task.spawn(function()pcall(ag.OnEnter)end)end end function ac.Unregister(ag
+)ad[ag]=nil end function ac.Guard(ag,ah,ai)return function(...)if not ac.
+IsInZone(ag)then return ai end return ah(...)end end function ac.OnZoneChanged(
+ag)if type(ag)=='function'then table.insert(ae,ag)end end local ag=function(ag)
+local ah=ag and'Lobby'or'Dungeon'if ah==af then return end local ai=af af=ah for
+aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ai and ak.OnLeave then
+task.spawn(function()pcall(ak.OnLeave)end)end end for aj,ak in pairs(ad)do if ak
+.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.spawn(function()pcall(ak
+.OnEnter)end)end end for aj,ak in ipairs(ae)do task.spawn(function()pcall(ak,ah,
+ai)end)end end af=ac.GetCurrentZone()ab.OnLobbyChanged(function(ah)ag(ah)end)aa.
+Register(function()table.clear(ad)table.clear(ae)end)return ac end function a.j(
+)local aa,ab,ac,ad,ae=a.load'a',a.load'c',a.load'f',a.load'b',a.load'i'local af,
+ag,ah,ai,aj,ak,al,am,an,ao=aa.player,{},false,{[2]=true},0,{},{}for ap=1,15 do
+table.insert(al,('Room %d'):format(ap))end local ap,aq=function(ap)if type(ap)==
+'number'then return math.clamp(math.floor(ap),1,20)elseif type(ap)=='string'then
+local aq=tonumber(ap:match'%d+')if aq then return math.clamp(math.floor(aq),1,20
+)end end return nil end,ae.Guard('Dungeon',function()local ap,aq=ab.GetHumanoid(
+),af and af.Character if ap and ap.Health>0 then pcall(function()ap.Health=0 end
+)pcall(function()ap:ChangeState(Enum.HumanoidStateType.Dead)end)end if aq and aq
+.Parent then pcall(function()aq:BreakJoints()end)end end)local ar=function(ar)if
+not ah then return end if ab.IsInLobby()or ab.IsDead()then return end if ar<=0
+then return end if not ai[ar]then return end if ak[ar]then return end ak[ar]=
+true task.spawn(function()if aj>0 then task.wait(aj)end if not ah or ab.
+IsInLobby()or ab.IsDead()then return end if ab.GetCurrentRoomIndex()~=ar then
+return end ac.Notify('Auto Reset',(
+'Reset character at Room %d (Once per room/run)'):format(ar),3)aq()end)end local
+as,at=function()if am then return end am=ab.OnRoomIndexChanged(function(as)if as
+<=1 then table.clear(ak)end ar(as)end)an=ab.OnLobbyChanged(function(as)if as
+then table.clear(ak)end end)ao=ab.OnDungeonNameChanged(function()table.clear(ak)
+end)end,function()if am then am()am=nil end if an then an()an=nil end if ao then
+ao()ao=nil end end function ag.Toggle(au)ah=au and true or false if ah then
+table.clear(ak)as()ar(ab.GetCurrentRoomIndex())else at()end end function ag.
+IsEnabled()return ah end function ag.GetRoomOptions()return al end function ag.
+SetTargetRooms(au)local av={}if type(au)=='table'then for aw,ax in pairs(au)do
+if ax==true then local ay=ap(aw)if ay then av[ay]=true end else local ay=ap(ax)
+if ay then av[ay]=true end end end elseif au~=nil then local aw=ap(au)if aw then
+av[aw]=true end end ai=av end function ag.GetTargetRooms()local au={}for av in
+pairs(ai)do table.insert(au,av)end table.sort(au)local av={}for aw,ax in ipairs(
+au)do table.insert(av,('Room %d'):format(ax))end return av end function ag.
+GetTargetRoomNumbers()local au={}for av in pairs(ai)do table.insert(au,av)end
+table.sort(au)return au end function ag.SetTargetRoom(au)local av=ap(au)if av
+then ai={[av]=true}end end function ag.GetTargetRoom()for au in pairs(ai)do
+return au end return 2 end function ag.SetDelay(au)if type(au)=='number'then aj=
+math.clamp(au,0,15)end end function ag.GetDelay()return aj end function ag.
+ResetNow()ac.Notify('Auto Reset','Manual character reset executed',2)aq()end ae.
+Register{Name='AutoReset',Zone='Dungeon',OnEnter=function()table.clear(ak)if ah
+then as()end end,OnLeave=function()table.clear(ak)at()end}ad.Register(function()
+at()ah=false table.clear(ak)ae.Unregister'AutoReset'end)return ag end end local
+aa,ab,ac,ad,ae=a.load'c',a.load'd',a.load'g',a.load'h',a.load'j'return function(
+af,ag)local ah=ag:Section{Side='Right'}ah:Header{Name='Movement Speed'}ah:
+Toggle({Name='Fast Speed',Default=aa.IsSpeedEnabled(),Callback=ac.Wrap(function(
+ai)aa.SetSpeedEnabled(ai)end)},'Toggle_FastSpeed')ab.PatchSliderLoadCallback(ah:
 Slider({Name='Custom Fast Speed',Default=aa.GetFastSpeed(),Minimum=16,Maximum=24
 ,DisplayMethod='Value',Precision=1,Callback=ac.Wrap(function(ai)aa.SetFastSpeed(
 ai)end)},'Slider_FastSpeed'))ah:Toggle({Name='Instant Acceleration',Default=aa.

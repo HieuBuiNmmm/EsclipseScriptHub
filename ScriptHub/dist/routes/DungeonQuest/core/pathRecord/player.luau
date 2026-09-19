@@ -1972,81 +1972,103 @@ listfiles(aE)if type(aF)=='table'then for aG,aH in ipairs(aF)do if type(aH)==
 aH)end end end end)end table.clear(am)local aF=ab.contextData if type(aF)==
 'table'and aF[ag]then aF[ag]=nil ac.Save()end ap()end function ae.ReloadFromDisk
 ()table.clear(am)an=false az()ap()end function ae.ReloadFromConfig()ae.
-ReloadFromDisk()end return ae end function a.h()local aa,ab=a.load'a',a.load'e'
-local ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao=aa.player,2,false,false,false,false
-,60,false,
-'\r\nlocal ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\r\n\r\nlocal payload = {}\r\nlocal function collectValue(name)\r\n\tlocal value = workspace:FindFirstChild(name)\r\n\tif value and value:IsA("ValueBase") then\r\n\t\tpayload[name] = value.Value\r\n\tend\r\nend\r\n\r\ncollectValue("dungeonName")\r\ncollectValue("dungeonProgress")\r\ncollectValue("dungeonStarted")\r\n\r\nlocal hardcore = workspace:FindFirstChild("hardcore")\r\nif hardcore and hardcore:IsA("BoolValue") then\r\n\tpayload.hardcore = hardcore.Value\r\n\tpayload.isHardcore = hardcore.Value\r\nend\r\n\r\nlocal dungeon = workspace:FindFirstChild("dungeon")\r\nif dungeon then\r\n\tfor _, value in ipairs(dungeon:GetChildren()) do\r\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\tend\r\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\r\n\tif bossRoom then\r\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\r\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\t\tend\r\n\tend\r\nend\r\n\r\nif not payload.dungeonName then return end\r\nReplayDungeon:FireServer(payload)\r\n'
+ReloadFromDisk()end return ae end function a.h()local aa,ab,ac,ad,ae,af=a.load
+'b',a.load'c',{},{},{},'Lobby'function ac.GetCurrentZone()return ab.IsInLobby()
+and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag=='Global'then return true
+end return ac.GetCurrentZone()==ag end function ac.IsLobby()return ac.
+GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac.GetCurrentZone()==
+'Dungeon'end function ac.Register(ag)if not ag or type(ag.Name)~='string'or not
+ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.Zone)and ag.OnEnter
+then task.spawn(function()pcall(ag.OnEnter)end)end end function ac.Unregister(ag
+)ad[ag]=nil end function ac.Guard(ag,ah,ai)return function(...)if not ac.
+IsInZone(ag)then return ai end return ah(...)end end function ac.OnZoneChanged(
+ag)if type(ag)=='function'then table.insert(ae,ag)end end local ag=function(ag)
+local ah=ag and'Lobby'or'Dungeon'if ah==af then return end local ai=af af=ah for
+aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ai and ak.OnLeave then
+task.spawn(function()pcall(ak.OnLeave)end)end end for aj,ak in pairs(ad)do if ak
+.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.spawn(function()pcall(ak
+.OnEnter)end)end end for aj,ak in ipairs(ae)do task.spawn(function()pcall(ak,ah,
+ai)end)end end af=ac.GetCurrentZone()ab.OnLobbyChanged(function(ah)ag(ah)end)aa.
+Register(function()table.clear(ad)table.clear(ae)end)return ac end function a.i(
+)local aa,ab,ac,ad=a.load'a',a.load'e',a.load'b',a.load'h'local ae,af,ag,ah,ai,
+aj,ak,al,am,an,ao,ap,aq=aa.player,2,false,false,false,false,60,false,
+'local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\n\nlocal payload = {}\nlocal function collectValue(name)\n\tlocal value = workspace:FindFirstChild(name)\n\tif value and value:IsA("ValueBase") then\n\t\tpayload[name] = value.Value\n\tend\nend\n\ncollectValue("dungeonName")\ncollectValue("dungeonProgress")\ncollectValue("dungeonStarted")\n\nlocal hardcore = workspace:FindFirstChild("hardcore")\nif hardcore and hardcore:IsA("BoolValue") then\n\tpayload.hardcore = hardcore.Value\n\tpayload.isHardcore = hardcore.Value\nend\n\nlocal dungeon = workspace:FindFirstChild("dungeon")\nif dungeon then\n\tfor _, value in ipairs(dungeon:GetChildren()) do\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\tend\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\n\tif bossRoom then\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\t\tend\n\tend\nend\n\nif not payload.dungeonName then return end\nReplayDungeon:FireServer(payload)\n'
 ,[[game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder]],
-function(ac)local ad,ae=pcall(loadstring,'return '..ac)if ad and type(ae)==
-'function'then return ae end return nil end local ap,aq=pcall(loadstring,ak)if
-ap and type(aq)=='function'then an=aq end ao=am(al)if not ao then ao=function()
-return ac:FindFirstChild'PlayerGui'and ac.PlayerGui:FindFirstChild
-'rewardGuiHolder'and ac.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
-local ar,as,at=function()local ar,as=pcall(function()local ar=ac:FindFirstChild
-'PlayerGui'local as=ar and ar:FindFirstChild'timeLeftGui'local at=as and as:
-FindFirstChild'Frame'return at and at:FindFirstChild'time'end)if not ar or
-typeof(as)~='Instance'then return nil end local at if as:IsA'ValueBase'then at=
-as.Value else at=as.Text end if type(at)=='number'then return at end if type(at)
-=='string'then local au=at:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local av,
-aw=au:match'^(%d+):(%d+)$'if av and aw then return tonumber(av)*60+tonumber(aw)
-end local ax=tonumber(au)if ax then return ax end end return nil end,{},function
-()if not an then ab.Notify('Auto Retry','Remote command invalid',3)return false
-end local ar,as=pcall(an)if ar then ab.Notify('Auto Retry','Retrying dungeon!',3
-)return true end ab.Notify('Auto Retry','Trigger failed: '..tostring(as),3)
-return false end function as.Start()if af then return end af=true ag=false aj=
-false task.spawn(function()while ae or ah do if ae then local au=0 if ao then
-local av,aw=pcall(ao)if av and typeof(aw)=='Instance'and aw.Parent then au=#aw:
-GetChildren()end end if au>=ad and not ag then ag=true at()elseif au<ad then ag=
-false end end if ah then local au=ar()if au and au<ai and not aj then aj=true
-at()elseif au and au>=ai then aj=false end end if not ae and not ah then break
-end task.wait(0.75)end af=false end)end function as.Stop()ae=false end function
-as.Toggle(au)ae=au if au then aj=false as.Start()ab.Notify('Auto Retry',
-'Watching reward holder...',2)else as.Stop()ab.Notify('Auto Retry','Stopped',2)
-end end function as.SetTimeRetryEnabled(au)ah=au==true if ah then aj=false as.
-Start()ab.Notify('Auto Retry','Watching time left...',2)else ab.Notify(
-'Auto Retry','Time retry stopped',2)end end function as.GetTimeRetryEnabled()
-return ah end function as.SetTimeRetryThreshold(au)ai=au end function as.
-GetTimeRetryThreshold()return ai end function as.GetTimeLeft()return ar()end
-function as.RetryNow()task.spawn(function()at()end)end return as end end local
-aa,ab,ac,ad,ae=a.load'a',a.load'c',a.load'g',a.load'e',a.load'h'local af,ag,ah,
-ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax,ay,az,aA,aB,aC,aD,aE,aF=aa.
-player,aa.VirtualInputManager,aa.UserInputService,aa.RunService or game:
-GetService'RunService',0.4,0.5,8,2,4.5,8,14,8,2,0.5,2,0.001,0.1,{},true,true,
-true,0.6,0.005,0.45,0.2,false,true function aw.SetAimSkillQ(aG)aE=aG and true or
-false end function aw.IsAimSkillQEnabled()return aE end function aw.SetAimSkillE
-(aG)aF=aG and true or false end function aw.IsAimSkillEEnabled()return aF end
-local aG=function(aG)if aG=='Q'then return aE elseif aG=='E'then return aF end
-return aE or aF end function aw.SetStartPauseTime(aH)if type(aH)=='number'then
-aD=math.clamp(aH,0,5)end end function aw.GetStartPauseTime()return aD end
-function aw.SetPreAimTime(aH)if type(aH)=='number'then aC=math.clamp(aH,0.1,1.5)
-end end function aw.GetPreAimTime()return aC end function aw.SetSkillFaceHold(aH
-)if type(aH)=='number'then aA=math.clamp(aH,as,at)end end function aw.
-GetSkillFaceHold()return aA end function aw.SetDoubleClickDelay(aH)if type(aH)==
-'number'then aB=math.clamp(aH,au,av)end end function aw.GetDoubleClickDelay()
-return aB end function aw.SetReplayTimeline(aH)aH=aH and true or false ax=aH ay=
-aH az=aH end function aw.IsReplayTimelineEnabled()return ax end local aH,aI,aJ,
-aK=true,false function aw.SetSpeedMatch(aL)aH=aL and true or false end function
-aw.IsSpeedMatchEnabled()return aH end function aw.SetUseFastSpeed(aL)aI=aL and
-true or false end function aw.IsUseFastSpeedEnabled()return aI end local aL,aM=
-false,5 function aw.SetAutoRetryOnDeathLimit(aN)aL=aN and true or false end
-function aw.IsAutoRetryOnDeathLimitEnabled()return aL end local aN,aO,aP,aQ,aR,
-aS,aT,aU,aV,aW,aX=function(aN)local aO if aI then local aP=ab.GetFastSpeed()if
-type(aP)=='number'and aP>0 then aO=aP end elseif aH then if type(aN)=='number'
-and aN>0 then aO=aN end end if not aO or aO<=0 then return end local aP=ab.
-GetHumanoid()if not aP then return end if aJ==nil then aK=aP.WalkSpeed end aJ=aO
-if aP.WalkSpeed~=aO then aP.WalkSpeed=aO end end,function()if aJ==nil then
-return end local aN=ab.GetHumanoid()if aK and aN and aN.WalkSpeed~=aK then aN.
-WalkSpeed=aK end aJ=nil aK=nil end,false,false,false,0,0,0,{}local aY,aZ,a_,a0,
-a1=function(aY)local aZ={playing=aP,map=aW,room=ab.GetCurrentRoomIndex(),boss=ab
-.IsBossActive(),resume=aQ,progressPercent=aU,progressStuds=aS,totalStuds=aT,
-reason=aY}for a_,a0 in ipairs(aV)do pcall(a0,aZ)end end,function()local aY=af
-and af.Character local aZ=aY and aY:FindFirstChild'HumanoidRootPart'if aZ and aZ
-.Parent then return aZ end return nil end,function(aY)if not aY or not aY.Parent
-then return nil end local aZ,a_=pcall(function()return aY.Position end)if not aZ
-or not a_ then return nil end return a_ end,function(aY,aZ)local a_,a0=aY.X-aZ.X
-,aY.Z-aZ.Z return math.sqrt(a_*a_+a0*a0)end local a2=function()if a1 then return
-a1 end pcall(function()local a2=af:FindFirstChild'PlayerScripts'local a3=a2 and
-a2:FindFirstChild'PlayerModule'if a3 then a1=require(a3):GetControls()end end)
+function(ae)local af,ag=pcall(loadstring,'return '..ae)if af and type(ag)==
+'function'then return ag end return nil end local ar,as=pcall(loadstring,am)if
+ar and type(as)=='function'then ap=as end aq=ao(an)if not aq then aq=function()
+return ae:FindFirstChild'PlayerGui'and ae.PlayerGui:FindFirstChild
+'rewardGuiHolder'and ae.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
+local at,au,av=function()local at,au=pcall(function()local at=ae:FindFirstChild
+'PlayerGui'local au=at and at:FindFirstChild'timeLeftGui'local av=au and au:
+FindFirstChild'Frame'return av and av:FindFirstChild'time'end)if not at or
+typeof(au)~='Instance'then return nil end local av if au:IsA'ValueBase'then av=
+au.Value else av=au.Text end if type(av)=='number'then return av end if type(av)
+=='string'then local aw=av:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local ax,
+ay=aw:match'^(%d+):(%d+)$'if ax and ay then return tonumber(ax)*60+tonumber(ay)
+end local az=tonumber(aw)if az then return az end end return nil end,{},function
+()if not ad.IsDungeon()then return false end if not ap then ab.Notify(
+'Auto Retry','Remote command invalid',3)return false end local at,au=pcall(ap)if
+at then ab.Notify('Auto Retry','Retrying dungeon!',3)return true end ab.Notify(
+'Auto Retry','Trigger failed: '..tostring(au),3)return false end function au.
+Start()if ah then return end ah=true ai=false al=false task.spawn(function()
+while(ag or aj)and ac.IsActive()do if not ad.IsDungeon()then task.wait(1)
+continue end if ag then local aw=0 if aq then local ax,ay=pcall(aq)if ax and
+typeof(ay)=='Instance'and ay.Parent then aw=#ay:GetChildren()end end if aw>=af
+and not ai then ai=true av()elseif aw<af then ai=false end end if aj then local
+aw=at()if aw and aw<ak and not al then al=true av()elseif aw and aw>=ak then al=
+false end end if not ag and not aj then break end task.wait(0.75)end ah=false
+end)end function au.Stop()ag=false end function au.Toggle(aw)ag=aw if aw then al
+=false au.Start()ab.Notify('Auto Retry','Watching reward holder...',2)else au.
+Stop()ab.Notify('Auto Retry','Stopped',2)end end function au.SetTimeRetryEnabled
+(aw)aj=aw==true if aj then al=false au.Start()ab.Notify('Auto Retry',
+'Watching time left...',2)else ab.Notify('Auto Retry','Time retry stopped',2)end
+end function au.GetTimeRetryEnabled()return aj end function au.
+SetTimeRetryThreshold(aw)ak=aw end function au.GetTimeRetryThreshold()return ak
+end function au.GetTimeLeft()return at()end function au.RetryNow()if not ad.
+IsDungeon()then ab.Notify('Auto Retry','Only available in Dungeon!',3)return end
+task.spawn(function()av()end)end ad.Register{Name='AutoRetry',Zone='Dungeon',
+OnLeave=function()ai=false al=false end}ac.Register(function()au.Stop()aj=false
+end)return au end end local aa,ab,ac,ad,ae=a.load'a',a.load'c',a.load'g',a.load
+'e',a.load'i'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,aw,ax,ay,
+az,aA,aB,aC,aD,aE,aF=aa.player,aa.VirtualInputManager,aa.UserInputService,aa.
+RunService or game:GetService'RunService',0.4,0.5,8,2,4.5,8,14,8,2,0.5,2,0.001,
+0.1,{},true,true,true,0.6,0.005,0.45,0.2,false,true function aw.SetAimSkillQ(aG)
+aE=aG and true or false end function aw.IsAimSkillQEnabled()return aE end
+function aw.SetAimSkillE(aG)aF=aG and true or false end function aw.
+IsAimSkillEEnabled()return aF end local aG=function(aG)if aG=='Q'then return aE
+elseif aG=='E'then return aF end return aE or aF end function aw.
+SetStartPauseTime(aH)if type(aH)=='number'then aD=math.clamp(aH,0,5)end end
+function aw.GetStartPauseTime()return aD end function aw.SetPreAimTime(aH)if
+type(aH)=='number'then aC=math.clamp(aH,0.1,1.5)end end function aw.
+GetPreAimTime()return aC end function aw.SetSkillFaceHold(aH)if type(aH)==
+'number'then aA=math.clamp(aH,as,at)end end function aw.GetSkillFaceHold()return
+aA end function aw.SetDoubleClickDelay(aH)if type(aH)=='number'then aB=math.
+clamp(aH,au,av)end end function aw.GetDoubleClickDelay()return aB end function
+aw.SetReplayTimeline(aH)aH=aH and true or false ax=aH ay=aH az=aH end function
+aw.IsReplayTimelineEnabled()return ax end local aH,aI,aJ,aK=true,false function
+aw.SetSpeedMatch(aL)aH=aL and true or false end function aw.IsSpeedMatchEnabled(
+)return aH end function aw.SetUseFastSpeed(aL)aI=aL and true or false end
+function aw.IsUseFastSpeedEnabled()return aI end local aL,aM=false,5 function aw
+.SetAutoRetryOnDeathLimit(aN)aL=aN and true or false end function aw.
+IsAutoRetryOnDeathLimitEnabled()return aL end local aN,aO,aP,aQ,aR,aS,aT,aU,aV,
+aW,aX=function(aN)local aO if aI then local aP=ab.GetFastSpeed()if type(aP)==
+'number'and aP>0 then aO=aP end elseif aH then if type(aN)=='number'and aN>0
+then aO=aN end end if not aO or aO<=0 then return end local aP=ab.GetHumanoid()
+if not aP then return end if aJ==nil then aK=aP.WalkSpeed end aJ=aO if aP.
+WalkSpeed~=aO then aP.WalkSpeed=aO end end,function()if aJ==nil then return end
+local aN=ab.GetHumanoid()if aK and aN and aN.WalkSpeed~=aK then aN.WalkSpeed=aK
+end aJ=nil aK=nil end,false,false,false,0,0,0,{}local aY,aZ,a_,a0,a1=function(aY
+)local aZ={playing=aP,map=aW,room=ab.GetCurrentRoomIndex(),boss=ab.IsBossActive(
+),resume=aQ,progressPercent=aU,progressStuds=aS,totalStuds=aT,reason=aY}for a_,
+a0 in ipairs(aV)do pcall(a0,aZ)end end,function()local aY=af and af.Character
+local aZ=aY and aY:FindFirstChild'HumanoidRootPart'if aZ and aZ.Parent then
+return aZ end return nil end,function(aY)if not aY or not aY.Parent then return
+nil end local aZ,a_=pcall(function()return aY.Position end)if not aZ or not a_
+then return nil end return a_ end,function(aY,aZ)local a_,a0=aY.X-aZ.X,aY.Z-aZ.Z
+return math.sqrt(a_*a_+a0*a0)end local a2=function()if a1 then return a1 end
+pcall(function()local a2=af:FindFirstChild'PlayerScripts'local a3=a2 and a2:
+FindFirstChild'PlayerModule'if a3 then a1=require(a3):GetControls()end end)
 return a1 end local a3,a4,a5,a6=function()if ab.DisableControls then ab.
 DisableControls'PathRecord'else local a3=a2()if a3 and type(a3.Disable)==
 'function'then pcall(function()a3:Disable()end)end end end,function()if ab.

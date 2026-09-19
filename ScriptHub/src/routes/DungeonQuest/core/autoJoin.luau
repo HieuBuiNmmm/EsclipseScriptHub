@@ -7,6 +7,7 @@ local notifier = require("@routes/DungeonQuest/core/notifier")
 local dungeonCatalog = require("@routes/DungeonQuest/core/dungeonCatalog")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 local playerName = services.player.Name
 
@@ -42,6 +43,7 @@ local function fireDungeonChanged()
 end
 
 local function joinDungeonNow()
+	if not zoneGuard.IsLobby() then return end
 	if autoJoinRunning then return end
 	autoJoinRunning = true
 	autoJoinCancel = false
@@ -61,17 +63,17 @@ local function joinDungeonNow()
 					waveDefenceEnabled
 				)
 			end)
-			if autoJoinCancel then return end
+			if autoJoinCancel or not zoneGuard.IsLobby() then return end
 			task.wait(autoJoinDelay)
-			if autoJoinCancel then return end
+			if autoJoinCancel or not zoneGuard.IsLobby() then return end
 
 			if privateEnabled then
 				pcall(function()
 					remotes:WaitForChild("addPlayerToWhitelist", 10):FireServer(playerName)
 				end)
-				if autoJoinCancel then return end
+				if autoJoinCancel or not zoneGuard.IsLobby() then return end
 				task.wait(autoJoinDelay)
-				if autoJoinCancel then return end
+				if autoJoinCancel or not zoneGuard.IsLobby() then return end
 			end
 
 			local waitClock = 0
@@ -80,18 +82,18 @@ local function joinDungeonNow()
 				if lobby then break end
 				task.wait(0.5)
 				waitClock = waitClock + 0.5
-				if autoJoinCancel then return end
+				if autoJoinCancel or not zoneGuard.IsLobby() then return end
 			end
-			if autoJoinCancel then return end
+			if autoJoinCancel or not zoneGuard.IsLobby() then return end
 
 			task.wait(autoJoinDelay)
-			if autoJoinCancel then return end
+			if autoJoinCancel or not zoneGuard.IsLobby() then return end
 			pcall(function()
 				remotes:WaitForChild("startDungeon", 10):FireServer()
 			end)
 		end)
 		autoJoinRunning = false
-		if autoJoinCancel then return end
+		if autoJoinCancel or not zoneGuard.IsLobby() then return end
 		if ok then
 			notifier.Notify("Auto Join", "Joined: " .. selectedDungeon, 3)
 		else
@@ -103,7 +105,7 @@ end
 local function joinDungeonWatcher()
 	while lifecycle.IsActive() do
 		task.wait(0.5)
-		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and shared.IsInLobby() then
+		if autoJoinEnabled and not autoJoinRunning and inLobbyPlace() and zoneGuard.IsLobby() then
 			joinDungeonNow()
 		end
 	end
@@ -173,8 +175,22 @@ function autoJoin.OnDungeonChanged(callback)
 end
 
 autoJoin.JoinNow = function()
+	if not zoneGuard.IsLobby() then
+		notifier.Notify("Auto Join", "Only available in Lobby!", 3)
+		return
+	end
 	task.spawn(function() joinDungeonNow() end)
 end
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "AutoJoin",
+	Zone = "Lobby",
+	OnLeave = function()
+		autoJoinCancel = true
+		autoJoinRunning = false
+	end,
+})
 
 --// Initialize: watcher
 task.spawn(joinDungeonWatcher)

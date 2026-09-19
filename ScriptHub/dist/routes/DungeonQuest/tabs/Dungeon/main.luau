@@ -259,140 +259,172 @@ function()_:Enable()end)end end c.Register(function()if R then R:Disconnect()R=
 nil end for as,_ in ipairs(G)do pcall(function()_:Disconnect()end)end table.
 clear(G)table.clear(ap)local as=ar()if as and type(as.Enable)=='function'then
 pcall(function()as:Enable()end)end N()end)return h end function a.g()local aa,ab
-,ac,ad,ae=a.load'b',a.load'c',a.load'd',a.load'f',a.load'e'local af,ag,ah,ai,aj,
-ak,al,am,an,ao,ap,aq=aa.player.Name,false,false,false,'Desert Temple','Easy',
-false,true,false,3,{[77649408247578]=true,[3220968688]=true,[2414851778]=true},{
-}local ar,as,b=function()return ap[game.PlaceId]==true end,function()for ar,as
-in ipairs(aq)do pcall(as,aj,ac.GetAllowedDifficulties(aj))end end,function()if
-ah then return end ah=true ai=false task.spawn(function()local ar,as=pcall(
-function()local ar=game:GetService'ReplicatedStorage':WaitForChild('remotes',15)
-if not ar then error'remotes not found'end local as=ac.GetLevelReq(aj,ak)pcall(
-function()ar:WaitForChild('createLobby',10):InvokeServer(aj,ak,as,al,am,an)end)
-if ai then return end task.wait(ao)if ai then return end if am then pcall(
-function()ar:WaitForChild('addPlayerToWhitelist',10):FireServer(af)end)if ai
-then return end task.wait(ao)if ai then return end end local b=0 while b<10 do
-local c=workspace:FindFirstChild'games'and workspace.games:FindFirstChild
-'inLobby'if c then break end task.wait(0.5)b=b+0.5 if ai then return end end if
-ai then return end task.wait(ao)if ai then return end pcall(function()ar:
-WaitForChild('startDungeon',10):FireServer()end)end)ah=false if ai then return
-end if ar then ab.Notify('Auto Join','Joined: '..aj,3)else ab.Notify('Auto Join'
-,'Join failed: '..tostring(as),4)end end)end local c,d=function()while ae.
-IsActive()do task.wait(0.5)if ag and not ah and ar()and ad.IsInLobby()then b()
-end end end,{}function d.Toggle(e)ag=e if ag then ab.Notify('Auto Join',
-'Enabled',2)else ai=true ab.Notify('Auto Join','Stopped',2)end end function d.
-SetDungeon(e)if type(e)~='string'or#e==0 then return end aj=e if not ac.
-IsDifficultyAllowed(aj,ak)then local f=ac.GetAllowedDifficulties(aj)if#f>0 then
-ak=f[1]end end as()end function d.SetDifficulty(e)if type(e)~='string'then
-return end if ac.IsDifficultyAllowed(aj,e)then ak=e end end function d.
-SetHardcore(e)al=e end function d.SetPrivate(e)am=e end function d.
-SetWaveDefence(e)an=e end function d.SetDelay(e)ao=e end function d.
-GetSelectedDungeon()return aj end function d.GetSelectedDifficulty()return ak
-end function d.GetAllowedDifficulties()return ac.GetAllowedDifficulties(aj)end
-function d.OnDungeonChanged(e)if type(e)=='function'then table.insert(aq,e)end
-end d.JoinNow=function()task.spawn(function()b()end)end task.spawn(c)ae.
-Register(function()d.Toggle(false)end)return d end function a.h()local aa,ab,ac,
-ad,ae,af,ag,ah=a.load'f',a.load'c',{[77649408247578]=true,[115445507767090]=true
-},false,false,false,3,
+,ac,ad,ae,af=a.load'e',a.load'f',{},{},{},'Lobby'function ac.GetCurrentZone()
+return ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.IsInZone(ag)if ag==
+'Global'then return true end return ac.GetCurrentZone()==ag end function ac.
+IsLobby()return ac.GetCurrentZone()=='Lobby'end function ac.IsDungeon()return ac
+.GetCurrentZone()=='Dungeon'end function ac.Register(ag)if not ag or type(ag.
+Name)~='string'or not ag.Zone then return end ad[ag.Name]=ag if ac.IsInZone(ag.
+Zone)and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter)end)end end
+function ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai)return
+function(...)if not ac.IsInZone(ag)then return ai end return ah(...)end end
+function ac.OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)end
+end local ag=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then return
+end local ai=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==
+ai and ak.OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end for aj,
+ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then task.
+spawn(function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task.
+spawn(function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.
+OnLobbyChanged(function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.
+clear(ae)end)return ac end function a.h()local aa,ab,ac,ad,ae,af=a.load'b',a.
+load'c',a.load'd',a.load'f',a.load'e',a.load'g'local ag,ah,ai,aj,ak,al,am,an,ao,
+ap,aq,ar=aa.player.Name,false,false,false,'Desert Temple','Easy',false,true,
+false,3,{[77649408247578]=true,[3220968688]=true,[2414851778]=true},{}local as,b
+,c=function()return aq[game.PlaceId]==true end,function()for as,b in ipairs(ar)
+do pcall(b,ak,ac.GetAllowedDifficulties(ak))end end,function()if not af.IsLobby(
+)then return end if ai then return end ai=true aj=false task.spawn(function()
+local as,b=pcall(function()local as=game:GetService'ReplicatedStorage':
+WaitForChild('remotes',15)if not as then error'remotes not found'end local b=ac.
+GetLevelReq(ak,al)pcall(function()as:WaitForChild('createLobby',10):
+InvokeServer(ak,al,b,am,an,ao)end)if aj or not af.IsLobby()then return end task.
+wait(ap)if aj or not af.IsLobby()then return end if an then pcall(function()as:
+WaitForChild('addPlayerToWhitelist',10):FireServer(ag)end)if aj or not af.
+IsLobby()then return end task.wait(ap)if aj or not af.IsLobby()then return end
+end local c=0 while c<10 do local d=workspace:FindFirstChild'games'and workspace
+.games:FindFirstChild'inLobby'if d then break end task.wait(0.5)c=c+0.5 if aj or
+not af.IsLobby()then return end end if aj or not af.IsLobby()then return end
+task.wait(ap)if aj or not af.IsLobby()then return end pcall(function()as:
+WaitForChild('startDungeon',10):FireServer()end)end)ai=false if aj or not af.
+IsLobby()then return end if as then ab.Notify('Auto Join','Joined: '..ak,3)else
+ab.Notify('Auto Join','Join failed: '..tostring(b),4)end end)end local d,e=
+function()while ae.IsActive()do task.wait(0.5)if ah and not ai and as()and af.
+IsLobby()then c()end end end,{}function e.Toggle(f)ah=f if ah then ab.Notify(
+'Auto Join','Enabled',2)else aj=true ab.Notify('Auto Join','Stopped',2)end end
+function e.SetDungeon(f)if type(f)~='string'or#f==0 then return end ak=f if not
+ac.IsDifficultyAllowed(ak,al)then local g=ac.GetAllowedDifficulties(ak)if#g>0
+then al=g[1]end end b()end function e.SetDifficulty(f)if type(f)~='string'then
+return end if ac.IsDifficultyAllowed(ak,f)then al=f end end function e.
+SetHardcore(f)am=f end function e.SetPrivate(f)an=f end function e.
+SetWaveDefence(f)ao=f end function e.SetDelay(f)ap=f end function e.
+GetSelectedDungeon()return ak end function e.GetSelectedDifficulty()return al
+end function e.GetAllowedDifficulties()return ac.GetAllowedDifficulties(ak)end
+function e.OnDungeonChanged(f)if type(f)=='function'then table.insert(ar,f)end
+end e.JoinNow=function()if not af.IsLobby()then ab.Notify('Auto Join',
+'Only available in Lobby!',3)return end task.spawn(function()c()end)end af.
+Register{Name='AutoJoin',Zone='Lobby',OnLeave=function()aj=true ai=false end}
+task.spawn(d)ae.Register(function()e.Toggle(false)end)return e end function a.i(
+)local aa,ab,ac,ad,ae,af,ag,ah,ai,aj=a.load'f',a.load'c',a.load'e',a.load'g',{[
+77649408247578]=true,[115445507767090]=true,[3220968688]=true,[2414851778]=true}
+,false,false,false,3,
 [[game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()]]
-local ai,aj,ak=function()return not ac[game.PlaceId]end,pcall(loadstring,ah)if
-aj and type(ak)=='function'then autoStartCommandFn=ak end local al,am={},{}
-function al.OnStart(an)if type(an)~='function'then return function()end end
-table.insert(am,an)return function()for ao,ap in ipairs(am)do if ap==an then
-table.remove(am,ao)break end end end end function al.Start()if ae then return
-end ae=true af=false task.spawn(function()while ad do local an,ao=pcall(ai)local
-ap=an and ao==true if ap and not af then af=true local aq=0 while aq<ag and ad
-do task.wait(0.1)aq=aq+0.1 end if not ad then af=false break end if
-autoStartCommandFn then local ar,as=pcall(autoStartCommandFn)if ar then ab.
-Notify('Auto Start','Game started!',3)for b=#am,1,-1 do pcall(am[b])end else ab.
-Notify('Auto Start','Trigger failed: '..tostring(as),3)end else ab.Notify(
-'Auto Start','Remote command invalid',3)end end if not ad then break end task.
-wait(1)end ae=false end)end function al.Stop()ad=false end function al.SetDelay(
-an)ag=tonumber(an)or 3 end function al.GetDelay()return ag end function al.
-Toggle(an)ad=an if an then al.Start()else al.Stop()end end return al end
-function a.i()local aa={[77649408247578]=true,[115445507767090]=true}local ab,ac
-,ad,ae,af=function()return aa[game.PlaceId]==true end,false,game:GetService
-'VirtualInputManager',game:GetService'GuiService',function()local ab=game:
-GetService'Players'.LocalPlayer if not ab then return nil end local ac=ab:
-FindFirstChild'PlayerGui'if not ac then return nil end local ad=ac:
-FindFirstChild'introGui'if not ad or not ad:IsA'ScreenGui'or not ad.Enabled then
-return nil end local ae=ad:FindFirstChild'title'if not ae then return nil end
-local af=ae:FindFirstChild'Frame'if not af then return nil end local ag=af:
-FindFirstChild'TextButton'if not ag or not ag:IsA'TextButton'or not ag.Visible
-then return nil end local ah=''if ag.Text and type(ag.Text)=='string'then ah=ag.
-Text end if not string.find(string.lower(ah),'play')then return nil end return
-ag end local ag=function(ag)pcall(function()ae.SelectedObject=ag end)task.wait(
-0.1)ad:SendKeyEvent(true,Enum.KeyCode.Return,false,game)task.wait()ad:
+local ak,al,am=function()return ad.IsDungeon()and not ae[game.PlaceId]end,pcall(
+loadstring,aj)if al and type(am)=='function'then autoStartCommandFn=am end local
+an,ao={},{}function an.OnStart(ap)if type(ap)~='function'then return function()
+end end table.insert(ao,ap)return function()for aq,ar in ipairs(ao)do if ar==ap
+then table.remove(ao,aq)break end end end end function an.Start()if ag then
+return end ag=true ah=false task.spawn(function()while af and ac.IsActive()do
+local ap,aq=pcall(ak)local ar=ap and aq==true if ar and not ah then ah=true
+local as=0 while as<ai and af and ad.IsDungeon()do task.wait(0.1)as=as+0.1 end
+if not af or not ad.IsDungeon()then ah=false break end if autoStartCommandFn
+then local b,c=pcall(autoStartCommandFn)if b then ab.Notify('Auto Start',
+'Game started!',3)for d=#ao,1,-1 do pcall(ao[d])end else ab.Notify('Auto Start',
+'Trigger failed: '..tostring(c),3)end else ab.Notify('Auto Start',
+'Remote command invalid',3)end end if not af then break end task.wait(1)end ag=
+false end)end function an.Stop()af=false end function an.SetDelay(ap)ai=
+tonumber(ap)or 3 end function an.GetDelay()return ai end function an.Toggle(ap)
+af=ap if ap then an.Start()else an.Stop()end end ad.Register{Name='AutoStart',
+Zone='Dungeon',OnLeave=function()ah=false end}ac.Register(function()an.Stop()end
+)return an end function a.j()local aa,ab,ac=a.load'e',a.load'g',{[77649408247578
+]=true,[115445507767090]=true,[3220968688]=true,[2414851778]=true}local ad,ae,af
+,ag,ah=function()return ac[game.PlaceId]==true end,false,game:GetService
+'VirtualInputManager',game:GetService'GuiService',function()local ad=game:
+GetService'Players'.LocalPlayer if not ad then return nil end local ae=ad:
+FindFirstChild'PlayerGui'if not ae then return nil end local af=ae:
+FindFirstChild'introGui'if not af or not af:IsA'ScreenGui'or not af.Enabled then
+return nil end local ag=af:FindFirstChild'title'if not ag then return nil end
+local ah=ag:FindFirstChild'Frame'if not ah then return nil end local ai=ah:
+FindFirstChild'TextButton'if not ai or not ai:IsA'TextButton'or not ai.Visible
+then return nil end local aj=''if ai.Text and type(ai.Text)=='string'then aj=ai.
+Text end if not string.find(string.lower(aj),'play')then return nil end return
+ai end local ai=function(ai)pcall(function()ag.SelectedObject=ai end)task.wait(
+0.1)af:SendKeyEvent(true,Enum.KeyCode.Return,false,game)task.wait()af:
 SendKeyEvent(false,Enum.KeyCode.Return,false,game)task.wait(0.1)pcall(function()
-ae.SelectedObject=nil end)end local ah,ai=function()task.spawn(function()local
-ah=false while ac do if not ab()then task.wait(1)continue end local ai=af()if ai
-then ag(ai)ah=true elseif ah then print'[AutoStartLobby] Pressed Start'break end
-if not ac then break end task.wait(0.2)end end)end,{}function ai.Toggle(aj)ac=aj
-if ac then ah()end end return ai end function a.j()local aa,ab=a.load'b',a.load
-'c'local ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao=aa.player,2,false,false,false,
-false,60,false,
-'\r\nlocal ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\r\n\r\nlocal payload = {}\r\nlocal function collectValue(name)\r\n\tlocal value = workspace:FindFirstChild(name)\r\n\tif value and value:IsA("ValueBase") then\r\n\t\tpayload[name] = value.Value\r\n\tend\r\nend\r\n\r\ncollectValue("dungeonName")\r\ncollectValue("dungeonProgress")\r\ncollectValue("dungeonStarted")\r\n\r\nlocal hardcore = workspace:FindFirstChild("hardcore")\r\nif hardcore and hardcore:IsA("BoolValue") then\r\n\tpayload.hardcore = hardcore.Value\r\n\tpayload.isHardcore = hardcore.Value\r\nend\r\n\r\nlocal dungeon = workspace:FindFirstChild("dungeon")\r\nif dungeon then\r\n\tfor _, value in ipairs(dungeon:GetChildren()) do\r\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\tend\r\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\r\n\tif bossRoom then\r\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\r\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\r\n\t\tend\r\n\tend\r\nend\r\n\r\nif not payload.dungeonName then return end\r\nReplayDungeon:FireServer(payload)\r\n'
+ag.SelectedObject=nil end)end local aj,ak=function()task.spawn(function()local
+aj=false while ae and aa.IsActive()do if not ab.IsLobby()or not ad()then task.
+wait(1)continue end local ak=ah()if ak then ai(ak)aj=true elseif aj then print
+'[AutoStartLobby] Pressed Start'break end if not ae then break end task.wait(0.2
+)end end)end,{}function ak.Toggle(al)ae=al if ae then aj()end end ab.Register{
+Name='AutoStartLobby',Zone='Lobby',OnLeave=function()ae=false end}aa.Register(
+function()ae=false end)return ak end function a.k()local aa,ab,ac,ad=a.load'b',a
+.load'c',a.load'e',a.load'g'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq=aa.
+player,2,false,false,false,false,60,false,
+'local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\n\nlocal payload = {}\nlocal function collectValue(name)\n\tlocal value = workspace:FindFirstChild(name)\n\tif value and value:IsA("ValueBase") then\n\t\tpayload[name] = value.Value\n\tend\nend\n\ncollectValue("dungeonName")\ncollectValue("dungeonProgress")\ncollectValue("dungeonStarted")\n\nlocal hardcore = workspace:FindFirstChild("hardcore")\nif hardcore and hardcore:IsA("BoolValue") then\n\tpayload.hardcore = hardcore.Value\n\tpayload.isHardcore = hardcore.Value\nend\n\nlocal dungeon = workspace:FindFirstChild("dungeon")\nif dungeon then\n\tfor _, value in ipairs(dungeon:GetChildren()) do\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\tend\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\n\tif bossRoom then\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\t\tend\n\tend\nend\n\nif not payload.dungeonName then return end\nReplayDungeon:FireServer(payload)\n'
 ,[[game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder]],
-function(ac)local ad,ae=pcall(loadstring,'return '..ac)if ad and type(ae)==
-'function'then return ae end return nil end local ap,aq=pcall(loadstring,ak)if
-ap and type(aq)=='function'then an=aq end ao=am(al)if not ao then ao=function()
-return ac:FindFirstChild'PlayerGui'and ac.PlayerGui:FindFirstChild
-'rewardGuiHolder'and ac.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
-local ar,as,b=function()local ar,as=pcall(function()local ar=ac:FindFirstChild
-'PlayerGui'local as=ar and ar:FindFirstChild'timeLeftGui'local b=as and as:
-FindFirstChild'Frame'return b and b:FindFirstChild'time'end)if not ar or typeof(
-as)~='Instance'then return nil end local b if as:IsA'ValueBase'then b=as.Value
-else b=as.Text end if type(b)=='number'then return b end if type(b)=='string'
-then local c=b:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local d,e=c:match
-'^(%d+):(%d+)$'if d and e then return tonumber(d)*60+tonumber(e)end local f=
-tonumber(c)if f then return f end end return nil end,{},function()if not an then
-ab.Notify('Auto Retry','Remote command invalid',3)return false end local ar,as=
-pcall(an)if ar then ab.Notify('Auto Retry','Retrying dungeon!',3)return true end
-ab.Notify('Auto Retry','Trigger failed: '..tostring(as),3)return false end
-function as.Start()if af then return end af=true ag=false aj=false task.spawn(
-function()while ae or ah do if ae then local c=0 if ao then local d,e=pcall(ao)
-if d and typeof(e)=='Instance'and e.Parent then c=#e:GetChildren()end end if c>=
-ad and not ag then ag=true b()elseif c<ad then ag=false end end if ah then local
-c=ar()if c and c<ai and not aj then aj=true b()elseif c and c>=ai then aj=false
-end end if not ae and not ah then break end task.wait(0.75)end af=false end)end
-function as.Stop()ae=false end function as.Toggle(c)ae=c if c then aj=false as.
-Start()ab.Notify('Auto Retry','Watching reward holder...',2)else as.Stop()ab.
-Notify('Auto Retry','Stopped',2)end end function as.SetTimeRetryEnabled(c)ah=c==
-true if ah then aj=false as.Start()ab.Notify('Auto Retry',
-'Watching time left...',2)else ab.Notify('Auto Retry','Time retry stopped',2)end
-end function as.GetTimeRetryEnabled()return ah end function as.
-SetTimeRetryThreshold(c)ai=c end function as.GetTimeRetryThreshold()return ai
-end function as.GetTimeLeft()return ar()end function as.RetryNow()task.spawn(
-function()b()end)end return as end function a.k()local aa={Options={},Folder=
-'Maclib',contextData={},GetService=function(aa)return cloneref and cloneref(game
-:GetService(aa))or game:GetService(aa)end}local ab,ac,ad,ae,af,ag,ah=aa.
-GetService'TweenService',aa.GetService'RunService',aa.GetService'HttpService',aa
-.GetService'ContentProvider',aa.GetService'UserInputService',aa.GetService
-'Lighting',aa.GetService'Players'local ai,aj,ak,al,am,an,ao,ap,aq,ar,as=ac:
-IsStudio(),ah.LocalPlayer,{},0,false,{interFont='rbxassetid://12187365364',
-userInfoBlurred='rbxassetid://18824089198',toggleBackground=
-'rbxassetid://18772190202',togglerHead='rbxassetid://18772309008',buttonImage=
-'rbxassetid://10709791437',searchIcon='rbxassetid://86737463322606',colorWheel=
-'rbxassetid://2849458409',colorTarget='rbxassetid://73265255323268',grid=
-'rbxassetid://121484455191370',globe='rbxassetid://108952102602834',transform=
-'rbxassetid://90336395745819',dropdown='rbxassetid://18865373378',sliderbar=
-'rbxassetid://18772615246',sliderhead='rbxassetid://18772834246'},function()
-pcall(function()local ai=setthreadidentity or set_thread_identity or setidentity
-or(syn and syn.set_thread_identity)if ai then local aj=pcall(ai,7)if not aj then
-pcall(ai,8)end end end)end aa.Elevate=ao local b,c=function()ao()local b=
-Instance.new'ScreenGui'b.ScreenInsets=Enum.ScreenInsets.None b.ResetOnSpawn=
-false b.ZIndexBehavior=Enum.ZIndexBehavior.Sibling b.DisplayOrder=2147483647
-local c=ac:IsStudio()and aj:FindFirstChild'PlayerGui'or(gethui and gethui())or(
-cloneref and cloneref(aa.GetService'CoreGui')or aa.GetService'CoreGui')b.Parent=
-c return b end,function(b,c,d)ao()local e,f=pcall(ab.Create,ab,b,c,d)if e and f
-then return f end if d and typeof(b)=='Instance'then for g,h in pairs(d)do
-pcall(function()b[g]=h end)end end return{Play=function()end,Cancel=function()
-end,Pause=function()end,Completed={Wait=function()end}}end function aa:Window(d)
-local e={Settings=d}if d.AcrylicBlur~=nil then aq=d.AcrylicBlur else aq=true end
-local f,g=b(),Instance.new'Frame'g.Name='Notifications'g.BackgroundColor3=Color3
-.fromRGB(255,255,255)g.BackgroundTransparency=1 g.BorderColor3=Color3.fromRGB(0,
-0,0)g.BorderSizePixel=0 g.Size=UDim2.fromScale(1,1)g.Parent=f g.ZIndex=2 local h
-=Instance.new'UIListLayout'h.Name='NotificationsUIListLayout'h.Padding=UDim.new(
-0,10)h.HorizontalAlignment=Enum.HorizontalAlignment.Right h.SortOrder=Enum.
+function(ae)local af,ag=pcall(loadstring,'return '..ae)if af and type(ag)==
+'function'then return ag end return nil end local ar,as=pcall(loadstring,am)if
+ar and type(as)=='function'then ap=as end aq=ao(an)if not aq then aq=function()
+return ae:FindFirstChild'PlayerGui'and ae.PlayerGui:FindFirstChild
+'rewardGuiHolder'and ae.PlayerGui.rewardGuiHolder:FindFirstChild'holder'end end
+local b,c,d=function()local b,c=pcall(function()local b=ae:FindFirstChild
+'PlayerGui'local c=b and b:FindFirstChild'timeLeftGui'local d=c and c:
+FindFirstChild'Frame'return d and d:FindFirstChild'time'end)if not b or typeof(c
+)~='Instance'then return nil end local d if c:IsA'ValueBase'then d=c.Value else
+d=c.Text end if type(d)=='number'then return d end if type(d)=='string'then
+local e=d:gsub('%s+',''):gsub('^%[',''):gsub('%]$','')local f,g=e:match
+'^(%d+):(%d+)$'if f and g then return tonumber(f)*60+tonumber(g)end local h=
+tonumber(e)if h then return h end end return nil end,{},function()if not ad.
+IsDungeon()then return false end if not ap then ab.Notify('Auto Retry',
+'Remote command invalid',3)return false end local b,c=pcall(ap)if b then ab.
+Notify('Auto Retry','Retrying dungeon!',3)return true end ab.Notify('Auto Retry'
+,'Trigger failed: '..tostring(c),3)return false end function c.Start()if ah then
+return end ah=true ai=false al=false task.spawn(function()while(ag or aj)and ac.
+IsActive()do if not ad.IsDungeon()then task.wait(1)continue end if ag then local
+e=0 if aq then local f,g=pcall(aq)if f and typeof(g)=='Instance'and g.Parent
+then e=#g:GetChildren()end end if e>=af and not ai then ai=true d()elseif e<af
+then ai=false end end if aj then local e=b()if e and e<ak and not al then al=
+true d()elseif e and e>=ak then al=false end end if not ag and not aj then break
+end task.wait(0.75)end ah=false end)end function c.Stop()ag=false end function c
+.Toggle(e)ag=e if e then al=false c.Start()ab.Notify('Auto Retry',
+'Watching reward holder...',2)else c.Stop()ab.Notify('Auto Retry','Stopped',2)
+end end function c.SetTimeRetryEnabled(e)aj=e==true if aj then al=false c.Start(
+)ab.Notify('Auto Retry','Watching time left...',2)else ab.Notify('Auto Retry',
+'Time retry stopped',2)end end function c.GetTimeRetryEnabled()return aj end
+function c.SetTimeRetryThreshold(e)ak=e end function c.GetTimeRetryThreshold()
+return ak end function c.GetTimeLeft()return b()end function c.RetryNow()if not
+ad.IsDungeon()then ab.Notify('Auto Retry','Only available in Dungeon!',3)return
+end task.spawn(function()d()end)end ad.Register{Name='AutoRetry',Zone='Dungeon',
+OnLeave=function()ai=false al=false end}ac.Register(function()c.Stop()aj=false
+end)return c end function a.l()local aa={Options={},Folder='Maclib',contextData=
+{},GetService=function(aa)return cloneref and cloneref(game:GetService(aa))or
+game:GetService(aa)end}local ab,ac,ad,ae,af,ag,ah=aa.GetService'TweenService',aa
+.GetService'RunService',aa.GetService'HttpService',aa.GetService
+'ContentProvider',aa.GetService'UserInputService',aa.GetService'Lighting',aa.
+GetService'Players'local ai,aj,ak,al,am,an,ao,ap,aq,ar,as=ac:IsStudio(),ah.
+LocalPlayer,{},0,false,{interFont='rbxassetid://12187365364',userInfoBlurred=
+'rbxassetid://18824089198',toggleBackground='rbxassetid://18772190202',
+togglerHead='rbxassetid://18772309008',buttonImage='rbxassetid://10709791437',
+searchIcon='rbxassetid://86737463322606',colorWheel='rbxassetid://2849458409',
+colorTarget='rbxassetid://73265255323268',grid='rbxassetid://121484455191370',
+globe='rbxassetid://108952102602834',transform='rbxassetid://90336395745819',
+dropdown='rbxassetid://18865373378',sliderbar='rbxassetid://18772615246',
+sliderhead='rbxassetid://18772834246'},function()pcall(function()local ai=
+setthreadidentity or set_thread_identity or setidentity or(syn and syn.
+set_thread_identity)if ai then local aj=pcall(ai,7)if not aj then pcall(ai,8)end
+end end)end aa.Elevate=ao local b,c=function()ao()local b=Instance.new
+'ScreenGui'b.ScreenInsets=Enum.ScreenInsets.None b.ResetOnSpawn=false b.
+ZIndexBehavior=Enum.ZIndexBehavior.Sibling b.DisplayOrder=2147483647 local c=ac:
+IsStudio()and aj:FindFirstChild'PlayerGui'or(gethui and gethui())or(cloneref and
+cloneref(aa.GetService'CoreGui')or aa.GetService'CoreGui')b.Parent=c return b
+end,function(b,c,d)ao()local e,f=pcall(ab.Create,ab,b,c,d)if e and f then return
+f end if d and typeof(b)=='Instance'then for g,h in pairs(d)do pcall(function()b
+[g]=h end)end end return{Play=function()end,Cancel=function()end,Pause=function(
+)end,Completed={Wait=function()end}}end function aa:Window(d)local e={Settings=d
+}if d.AcrylicBlur~=nil then aq=d.AcrylicBlur else aq=true end local f,g=b(),
+Instance.new'Frame'g.Name='Notifications'g.BackgroundColor3=Color3.fromRGB(255,
+255,255)g.BackgroundTransparency=1 g.BorderColor3=Color3.fromRGB(0,0,0)g.
+BorderSizePixel=0 g.Size=UDim2.fromScale(1,1)g.Parent=f g.ZIndex=2 local h=
+Instance.new'UIListLayout'h.Name='NotificationsUIListLayout'h.Padding=UDim.new(0
+,10)h.HorizontalAlignment=Enum.HorizontalAlignment.Right h.SortOrder=Enum.
 SortOrder.LayoutOrder h.VerticalAlignment=Enum.VerticalAlignment.Bottom h.Parent
 =g local i=Instance.new'UIPadding'i.Name='NotificationsUIPadding'i.PaddingBottom
 =UDim.new(0,10)i.PaddingLeft=UDim.new(0,10)i.PaddingRight=UDim.new(0,10)i.
@@ -1985,7 +2017,7 @@ SubLabel{Text=
 [[Sub-Label. Lorem ipsum odor amet, consectetuer adipiscing elit.]]}aa:SetFolder
 'Maclib'aw.Settings:InsertConfigSection'Left'at.onUnloaded(function()print
 'Unloaded!'end)aw.Main:Select()aa:LoadAutoLoadConfig()end return aa end function
-a.l()local aa,ab,ac,ad,ae,af,ag=a.load'k',a.load'c',{},false,false,false
+a.m()local aa,ab,ac,ad,ae,af,ag=a.load'l',a.load'c',{},false,false,false
 function ac.Suspend()ae=true ad=false end function ac.Resume()ae=false end
 function ac.SetRecording(ah)af=ah and true or false end function ac.IsRecording(
 )return af end function ac.IsSuspended()if ae or(aa.LoadingConfig==true)or af
@@ -2011,48 +2043,51 @@ IsSuspended()then return end if not ah()then return end if ad then return end ad
 =true task.delay(0.5,function()ad=false if not ac.IsSuspended()and ac.GetActive(
 )then ac.SaveNow()end end)end function ac.Wrap(ai)if type(ai)~='function'then
 return ai end return function(...)ai(...)ac.Save()end end return ac end end
-local aa,ab,ac,ad,ae,af,ag=a.load'a',a.load'g',a.load'h',a.load'i',a.load'j',a.
-load'l',a.load'd'return function(ah,ai)local aj,ak,al=ai:Section{Side='Left'},ai
-:Section{Side='Right'},function(aj,ak)for al,am in ipairs(aj)do if am==ak then
-return al end end return nil end aj:Header{Name='Auto Join Dungeon'}ak:Header{
-Name='Dungeon Run Automation'}aj:Toggle({Name='Auto Join Dungeon',Default=false,
-Callback=af.Wrap(function(am)ab.Toggle(am)end)},'Toggle_AutoJoin')local am=ag.
-GetDungeons()local an=aa.PatchDropdownRestore(aj:Dropdown({Name='Dungeon',
-Options=am,Default=al(am,ab.GetSelectedDungeon())or 1,Required=true,Callback=af.
-Wrap(function(an)ab.SetDungeon(an)end)},'Dropdown_Dungeon'),true)aj:Button{Name=
-'Refresh Map List',Callback=function()task.spawn(function()local ao=ag.
-RefreshDungeons()if not ao or#ao==0 then return end pcall(function()an:
-ClearOptions()an:InsertOptions(ao)end)local ap=ab.GetSelectedDungeon()if not
-table.find(ao,ap)then ab.SetDungeon(ao[1])end pcall(function()an:
-UpdateSelection(ab.GetSelectedDungeon())end)end)end}local ao=aj:Label({Text=
-'Recommended Level: ...'},'Label_RecommendedLevel')local ap=function()pcall(
-function()local ap=ag.GetLevelReq(ab.GetSelectedDungeon(),ab.
-GetSelectedDifficulty())ao:UpdateName('Recommended Level: '..tostring(ap))end)
-end ap()local aq=ab.GetAllowedDifficulties()local ar=aa.PatchDropdownRestore(aj:
-Dropdown({Name='Difficulty',Options=aq,Default=al(aq,ab.GetSelectedDifficulty())
-or 1,Required=true,Callback=af.Wrap(function(ar)ab.SetDifficulty(ar)ap()end)},
-'Dropdown_Difficulty'),true)aj:Toggle({Name='Hardcore',Default=false,Callback=af
-.Wrap(function(as)ab.SetHardcore(as)end)},'Toggle_HardcoreAJ')aj:Toggle({Name=
-'Private Room',Default=true,Callback=af.Wrap(function(as)ab.SetPrivate(as)end)},
-'Toggle_PrivateAJ')aj:Toggle({Name='Wave Defence',Default=false,Callback=af.
-Wrap(function(as)ab.SetWaveDefence(as)end)},'Toggle_WaveDefenceAJ')aa.
-PatchSliderLoadCallback(aj:Slider({Name='Join Delay (s)',Default=3,Minimum=0,
-Maximum=15,DisplayMethod='Value',Precision=1,Callback=af.Wrap(function(as)ab.
-SetDelay(as)end)},'Slider_JoinDelay'))aj:Button{Name='Join Now',Callback=
-function()ab.JoinNow()end}ak:Toggle({Name='Auto Start',Default=false,Callback=af
-.Wrap(function(as)ac.Toggle(as)end)},'Toggle_AutoStart')aa.
-PatchSliderLoadCallback(ak:Slider({Name='Start Delay (s)',Default=ac.GetDelay(),
+local aa,ab,ac,ad,ae,af,ag,ah=a.load'a',a.load'h',a.load'i',a.load'j',a.load'k',
+a.load'm',a.load'd',a.load'g'return function(ai,aj)local ak,al,am=aj:Section{
+Side='Left'},aj:Section{Side='Right'},function(ak,al)for am,an in ipairs(ak)do
+if an==al then return am end end return nil end ak:Header{Name=
+'Auto Join Dungeon (Lobby)'}al:Header{Name='Dungeon Run Automation'}local an=ak:
+Label({Text='Current Zone: '..(ah.IsLobby()and'Lobby'or'Dungeon')},
+'Label_DungeonTabZone')ah.OnZoneChanged(function(ao)pcall(function()an:
+UpdateName('Current Zone: '..ao)end)end)ak:Toggle({Name='Auto Join Dungeon',
+Default=false,Callback=af.Wrap(function(ao)ab.Toggle(ao)end)},'Toggle_AutoJoin')
+local ao=ag.GetDungeons()local ap=aa.PatchDropdownRestore(ak:Dropdown({Name=
+'Dungeon',Options=ao,Default=am(ao,ab.GetSelectedDungeon())or 1,Required=true,
+Callback=af.Wrap(function(ap)ab.SetDungeon(ap)end)},'Dropdown_Dungeon'),true)ak:
+Button{Name='Refresh Map List',Callback=function()task.spawn(function()local aq=
+ag.RefreshDungeons()if not aq or#aq==0 then return end pcall(function()ap:
+ClearOptions()ap:InsertOptions(aq)end)local ar=ab.GetSelectedDungeon()if not
+table.find(aq,ar)then ab.SetDungeon(aq[1])end pcall(function()ap:
+UpdateSelection(ab.GetSelectedDungeon())end)end)end}local aq=ak:Label({Text=
+'Recommended Level: ...'},'Label_RecommendedLevel')local ar=function()pcall(
+function()local ar=ag.GetLevelReq(ab.GetSelectedDungeon(),ab.
+GetSelectedDifficulty())aq:UpdateName('Recommended Level: '..tostring(ar))end)
+end ar()local as=ab.GetAllowedDifficulties()local at=aa.PatchDropdownRestore(ak:
+Dropdown({Name='Difficulty',Options=as,Default=am(as,ab.GetSelectedDifficulty())
+or 1,Required=true,Callback=af.Wrap(function(at)ab.SetDifficulty(at)ar()end)},
+'Dropdown_Difficulty'),true)ak:Toggle({Name='Hardcore',Default=false,Callback=af
+.Wrap(function(au)ab.SetHardcore(au)end)},'Toggle_HardcoreAJ')ak:Toggle({Name=
+'Private Room',Default=true,Callback=af.Wrap(function(au)ab.SetPrivate(au)end)},
+'Toggle_PrivateAJ')ak:Toggle({Name='Wave Defence',Default=false,Callback=af.
+Wrap(function(au)ab.SetWaveDefence(au)end)},'Toggle_WaveDefenceAJ')aa.
+PatchSliderLoadCallback(ak:Slider({Name='Join Delay (s)',Default=3,Minimum=0,
+Maximum=15,DisplayMethod='Value',Precision=1,Callback=af.Wrap(function(au)ab.
+SetDelay(au)end)},'Slider_JoinDelay'))ak:Button{Name='Join Now',Callback=
+function()ab.JoinNow()end}al:Toggle({Name='Auto Start',Default=false,Callback=af
+.Wrap(function(au)ac.Toggle(au)end)},'Toggle_AutoStart')aa.
+PatchSliderLoadCallback(al:Slider({Name='Start Delay (s)',Default=ac.GetDelay(),
 Minimum=0,Maximum=15,DisplayMethod='Value',Precision=1,Callback=af.Wrap(function
-(as)ac.SetDelay(as)end)},'Slider_AutoStartDelay'))ak:Toggle({Name=
-'Auto Start Lobby',Default=false,Callback=af.Wrap(function(as)ad.Toggle(as)end)}
-,'Toggle_AutoStartLobby')ak:Toggle({Name='Auto Retry',Default=false,Callback=af.
-Wrap(function(as)ae.Toggle(as)end)},'Toggle_AutoRetry')ak:Button{Name=
-'Manual Retry',Callback=function()task.spawn(function()ae.RetryNow()end)end}ak:
+(au)ac.SetDelay(au)end)},'Slider_AutoStartDelay'))al:Toggle({Name=
+'Auto Start Lobby',Default=false,Callback=af.Wrap(function(au)ad.Toggle(au)end)}
+,'Toggle_AutoStartLobby')al:Toggle({Name='Auto Retry',Default=false,Callback=af.
+Wrap(function(au)ae.Toggle(au)end)},'Toggle_AutoRetry')al:Button{Name=
+'Manual Retry',Callback=function()task.spawn(function()ae.RetryNow()end)end}al:
 Toggle({Name='Retry on Time Low',Default=ae.GetTimeRetryEnabled(),Callback=af.
-Wrap(function(as)ae.SetTimeRetryEnabled(as)end)},'Toggle_RetryTimeLow')aa.
-PatchSliderLoadCallback(ak:Slider({Name='Retry Time Threshold (s)',Default=ae.
+Wrap(function(au)ae.SetTimeRetryEnabled(au)end)},'Toggle_RetryTimeLow')aa.
+PatchSliderLoadCallback(al:Slider({Name='Retry Time Threshold (s)',Default=ae.
 GetTimeRetryThreshold(),Minimum=5,Maximum=120,DisplayMethod='Value',Precision=1,
-Callback=af.Wrap(function(as)ae.SetTimeRetryThreshold(as)end)},
-'Slider_RetryTimeThreshold'))ab.OnDungeonChanged(function(as,at)pcall(function()
-ar:ClearOptions()ar:InsertOptions(at)ar:UpdateSelection(ab.
-GetSelectedDifficulty())end)ap()end)end
+Callback=af.Wrap(function(au)ae.SetTimeRetryThreshold(au)end)},
+'Slider_RetryTimeThreshold'))ab.OnDungeonChanged(function(au,av)pcall(function()
+at:ClearOptions()at:InsertOptions(av)at:UpdateSelection(ab.
+GetSelectedDifficulty())end)ar()end)end

@@ -7,12 +7,7 @@
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 local shared = require("@routes/DungeonQuest/core/shared")
-
---// Lobby placeId — ngoài các place này ra thì đều là dungeon
-local LOBBY_PLACE_IDS = {
-	[77649408247578] = true,
-	[115445507767090] = true,
-}
+local zoneGuard = require("@routes/DungeonQuest/core/zoneGuard")
 
 --// Table
 local autoSell = {}
@@ -268,8 +263,21 @@ function autoSell.CountMatches()
 	return { total = #items, matching = matching, byCategory = byCategory }
 end
 
---// Bán toàn bộ item khớp điều kiện (gọi khi bấm nút). Trả kết quả { sold, skipped, gold }
-function autoSell.SellItems()
+--// Kiểm tra môi trường: Thông qua ZoneGuard
+local function isDungeon(): boolean
+	return zoneGuard.IsDungeon()
+end
+
+function autoSell.IsDungeon(): boolean
+	return zoneGuard.IsDungeon()
+end
+
+--// Bán toàn bộ item khớp điều kiện (CHỈ HOẠT ĐỘNG TRONG DUNGEON). Trả kết quả { sold, skipped, gold }
+function autoSell.SellItems(force: boolean?)
+	if not force and not isDungeon() then
+		return { sold = 0, skipped = 0, gold = 0, error = "AutoSell is only available inside Dungeons." }
+	end
+
 	if sellRunning then return nil end
 	sellRunning = true
 
@@ -396,9 +404,6 @@ function autoSell.GetLevelReqExactFilter()
 end
 
 --// Auto Sell Toggle & Dungeon Start Watcher
-local function isDungeon()
-	return not LOBBY_PLACE_IDS[game.PlaceId]
-end
 
 local function triggerDungeonStartSell()
 	if not autoSellEnabled then return end
@@ -430,27 +435,31 @@ function autoSell.IsEnabled()
 	return autoSellEnabled
 end
 
---// Lắng nghe thay đổi dungeon để reset cờ và trigger bán cho run mới
-shared.OnDungeonNameChanged(function(name)
-	dungeonSellTriggered = false
-	if name then
+--// Đăng ký với ZoneGuard: AutoSell là hệ thống chỉ hoạt động trong Dungeon
+zoneGuard.Register({
+	Name = "AutoSell",
+	Zone = "Dungeon",
+	OnEnter = function()
+		dungeonSellTriggered = false
 		triggerDungeonStartSell()
-	end
-end)
+	end,
+	OnLeave = function()
+		dungeonSellTriggered = false
+	end,
+})
 
-shared.OnLobbyChanged(function(inLobby)
-	if not inLobby then
+-- Lắng nghe thay đổi tên dungeon nếu đang ở trong dungeon để trigger cho run mới
+shared.OnDungeonNameChanged(function(name)
+	if name and zoneGuard.IsDungeon() then
 		dungeonSellTriggered = false
 		triggerDungeonStartSell()
-	else
-		dungeonSellTriggered = false
 	end
 end)
 
 task.spawn(function()
 	while lifecycle.IsActive() do
-		task.wait(1)
-		if autoSellEnabled and isDungeon() and not dungeonSellTriggered then
+		task.wait(1.5)
+		if autoSellEnabled and zoneGuard.IsDungeon() and not dungeonSellTriggered then
 			triggerDungeonStartSell()
 		end
 	end
@@ -458,6 +467,7 @@ end)
 
 lifecycle.Register(function()
 	autoSellEnabled = false
+	zoneGuard.Unregister("AutoSell")
 end)
 
 --// Export constants

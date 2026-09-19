@@ -1864,8 +1864,25 @@ pcall(function()bg:Enable()end)end end ab.Register(function()if aQ then aQ:
 Disconnect()aQ=nil end for bf,bg in ipairs(aF)do pcall(function()bg:Disconnect()
 end)end table.clear(aF)table.clear(bc)local bf=be()if bf and type(bf.Enable)==
 'function'then pcall(function()bf:Enable()end)end aM()end)return ag end function
-a.g()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as=a.load'd',a.
-load'b',a.load'f',{[77649408247578]=true,[115445507767090]=true},{},false,false,
+a.g()local aa,ab,ac,ad,ae,af=a.load'd',a.load'f',{},{},{},'Lobby'function ac.
+GetCurrentZone()return ab.IsInLobby()and'Lobby'or'Dungeon'end function ac.
+IsInZone(ag)if ag=='Global'then return true end return ac.GetCurrentZone()==ag
+end function ac.IsLobby()return ac.GetCurrentZone()=='Lobby'end function ac.
+IsDungeon()return ac.GetCurrentZone()=='Dungeon'end function ac.Register(ag)if
+not ag or type(ag.Name)~='string'or not ag.Zone then return end ad[ag.Name]=ag
+if ac.IsInZone(ag.Zone)and ag.OnEnter then task.spawn(function()pcall(ag.OnEnter
+)end)end end function ac.Unregister(ag)ad[ag]=nil end function ac.Guard(ag,ah,ai
+)return function(...)if not ac.IsInZone(ag)then return ai end return ah(...)end
+end function ac.OnZoneChanged(ag)if type(ag)=='function'then table.insert(ae,ag)
+end end local ag=function(ag)local ah=ag and'Lobby'or'Dungeon'if ah==af then
+return end local ai=af af=ah for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak
+.Zone==ai and ak.OnLeave then task.spawn(function()pcall(ak.OnLeave)end)end end
+for aj,ak in pairs(ad)do if ak.Zone~='Global'and ak.Zone==ah and ak.OnEnter then
+task.spawn(function()pcall(ak.OnEnter)end)end end for aj,ak in ipairs(ae)do task
+.spawn(function()pcall(ak,ah,ai)end)end end af=ac.GetCurrentZone()ab.
+OnLobbyChanged(function(ah)ag(ah)end)aa.Register(function()table.clear(ad)table.
+clear(ae)end)return ac end function a.h()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,
+al,am,an,ao,ap,aq,ar,as=a.load'd',a.load'b',a.load'f',a.load'g',{},false,false,
 true,{},{},{},'None',false,{weapons='Weapons',helmets='Helmets',chests='Chests',
 abilities='Abilities'},{'Common','Uncommon','Rare','Epic','Legendary','Mythic'},
 {'1','5','10','15','20','25','30','35','40','45','50','55','60','65','70','75',
@@ -1914,122 +1931,131 @@ ai)~=nil or next(aj)~=nil or next(ak)~=nil end function ae.CountMatches()local
 ay,az=ax()if not ay then return{total=0,matching=0,error=az or
 'Error reading inventory'}end local aA,aB=0,{}for aC,aD in ipairs(ay)do aB[aD.
 Type]=(aB[aD.Type]or 0)+1 if ae.ShouldSellItem(aD)then aA+=1 end end return{
-total=#ay,matching=aA,byCategory=aB}end function ae.SellItems()if am then return
-nil end am=true local ay,az,aA={sold=0,skipped=0,gold=0,error=nil},ax()if not az
-then ay.error=aA or'Error reading inventory'am=false return ay end local aB={}
-for aC,aD in ipairs(az)do if ae.ShouldSellItem(aD)then if aD.Index then ay.sold
-+=1 local aE=aD.Category or aD.Type aB[aE]=aB[aE]or{}table.insert(aB[aE],aD.
-Index)end else ay.skipped+=1 end end local aC,aD=pcall(aw,aB)if aC and aD and
-type(aD)=='number'then ay.gold=aD end am=false return ay end function ae.
-SetLevelReqMode(ay)if ay=='Below'or ay=='Above'then al=ay else al='None'end end
-function ae.GetLevelReqMode()return al end function ae.SetExcludeEquipped(ay)ah=
-ay end function ae.GetExcludeEquipped()return ah end function ae.SetRarityFilter
-(ay)ai={}if type(ay)=='table'then for az,aA in pairs(ay)do if aA==true and type(
-az)=='string'then local aB=au(az)or az ai[aB]=true elseif type(aA)=='string'then
-local aB=au(aA)or aA ai[aB]=true end end elseif type(ay)=='string'then local az=
-au(ay)or ay ai[az]=true end end function ae.GetRarityFilter()local ay={}for az
-in pairs(ai)do table.insert(ay,az)end return ay end function ae.SetTypeFilter(ay
-)aj={}if type(ay)=='table'then for az,aA in pairs(ay)do if aA==true and type(az)
-=='string'then aj[az]=true elseif type(aA)=='string'then aj[aA]=true end end
-elseif type(ay)=='string'then aj[ay]=true end end function ae.GetTypeFilter()
-local ay={}for az in pairs(aj)do table.insert(ay,az)end return ay end function
-ae.SetLevelReqExactFilter(ay)ak={}if type(ay)=='table'then for az,aA in pairs(ay
-)do if aA==true then local aB=tonumber(az)if aB then ak[aB]=true end else local
-aB=tonumber(aA)if aB then ak[aB]=true end end end elseif type(ay)=='string'or
-type(ay)=='number'then local az=tonumber(ay)if az then ak[az]=true end end end
-function ae.GetLevelReqExactFilter()local ay={}for az in pairs(ak)do table.
-insert(ay,tostring(az))end return ay end local ay=function()return not ad[game.
-PlaceId]end local az=function()if not af then return end if ag then return end
-if not ay()then return end if not ae.HasAnyFilter()then return end ag=true task.
-spawn(function()task.wait(2.5)if not af or not ay()then return end local az=ae.
-SellItems()if az and az.sold and az.sold>0 then ab.Notify('AutoSell',(
-'Auto-sold %d item(s) on dungeon start.'):format(az.sold),3)end end)end function
-ae.Toggle(aA)af=aA and true or false if af and ay()and not ag then az()end end
-function ae.IsEnabled()return af end ac.OnDungeonNameChanged(function(aA)ag=
-false if aA then az()end end)ac.OnLobbyChanged(function(aA)if not aA then ag=
-false az()else ag=false end end)task.spawn(function()while aa.IsActive()do task.
-wait(1)if af and ay()and not ag then az()end end end)aa.Register(function()af=
-false end)ae.LEVEL_REQ_OPTIONS=ap ae.LEVEL_REQ_MODE_OPTIONS=aq return ae end end
-local aa,ab,ac=a.load'c',a.load'g',a.load'b'return function(ad,ae)local af=ae:
-Section{Side='Left'}af:Header{Name='AutoSell'}local ag=ae:Section{Side='Right'}
-ag:Header{Name='Filter Summary'}local ah,ai,aj,ak,al,am,an=ag:Label{Text=
-'Status: --'},ag:Label{Text='Safety: --'},ag:Label{Text=
-[[Trigger: <font color='rgb(200,200,255)'>On Dungeon Start</font>]]},ag:Label{
-Text='Rarities: --'},ag:Label{Text='Item Types: --'},ag:Label{Text=
-'Level Req: --'},ag:Label{Text='Exclude Equipped: --'}local ao=function()local
-ao=ab.IsEnabled()local ap,aq=ao and'0, 255, 0'or'255, 80, 80',ao and'Enabled'or
-'Disabled'pcall(function()ah:UpdateName("Status: <font color='rgb("..ap..")'>"..
-aq..'</font>')end)local ar=ab.HasAnyFilter()local as,at=ar and'0, 255, 0'or
-'255, 80, 80',ar and'\u{2713} Active (Configured)'or
-'\u{26a0} NO filter selected'pcall(function()ai:UpdateName(
-"Safety: <font color='rgb("..as..")'>"..at..'</font>')end)local au=ab.
-GetRarityFilter()local av,aw=#au>0 and table.concat(au,', ')or'All (No filter)',
-#au>0 and'255, 220, 120'or'160, 160, 160'pcall(function()ak:UpdateName(
-"Rarities: <font color='rgb("..aw..")'>"..av..'</font>')end)local ax=ab.
-GetTypeFilter()local ay,az=#ax>0 and table.concat(ax,', ')or'All (No filter)',#
-ax>0 and'255, 220, 120'or'160, 160, 160'pcall(function()al:UpdateName(
-"Item Types: <font color='rgb("..az..")'>"..ay..'</font>')end)local aA,aB=ab.
-GetLevelReqMode(),ab.GetLevelReqExactFilter()table.sort(aB,function(aC,aD)return
-(tonumber(aC)or 0)<(tonumber(aD)or 0)end)local aC,aD='1 (Safe Fallback)',
-'255, 160, 80'if#aB>0 then aD='255, 220, 120'if aA=='Below'then aC=
-'Below (\u{2264} '..aB[#aB]..')'elseif aA=='Above'then aC='Above (\u{2265} '..aB
-[1]..')'else aC='Exact ('..table.concat(aB,', ')..')'end end pcall(function()am:
-UpdateName("Level Req: <font color='rgb("..aD..")'>"..aC..'</font>')end)local aE
-=ab.GetExcludeEquipped()local aF,aG=aE and'0, 255, 0'or'255, 80, 80',aE and
-'Yes (Protected)'or'No (May Sell)'pcall(function()an:UpdateName(
-"Exclude Equipped: <font color='rgb("..aF..")'>"..aG..'</font>')end)end af:
+total=#ay,matching=aA,byCategory=aB}end local ay=function()return ad.IsDungeon()
+end function ae.IsDungeon()return ad.IsDungeon()end function ae.SellItems(az)if
+not az and not ay()then return{sold=0,skipped=0,gold=0,error=
+'AutoSell is only available inside Dungeons.'}end if am then return nil end am=
+true local aA,aB,aC={sold=0,skipped=0,gold=0,error=nil},ax()if not aB then aA.
+error=aC or'Error reading inventory'am=false return aA end local aD={}for aE,aF
+in ipairs(aB)do if ae.ShouldSellItem(aF)then if aF.Index then aA.sold+=1 local
+aG=aF.Category or aF.Type aD[aG]=aD[aG]or{}table.insert(aD[aG],aF.Index)end else
+aA.skipped+=1 end end local aE,aF=pcall(aw,aD)if aE and aF and type(aF)==
+'number'then aA.gold=aF end am=false return aA end function ae.SetLevelReqMode(
+az)if az=='Below'or az=='Above'then al=az else al='None'end end function ae.
+GetLevelReqMode()return al end function ae.SetExcludeEquipped(az)ah=az end
+function ae.GetExcludeEquipped()return ah end function ae.SetRarityFilter(az)ai=
+{}if type(az)=='table'then for aA,aB in pairs(az)do if aB==true and type(aA)==
+'string'then local aC=au(aA)or aA ai[aC]=true elseif type(aB)=='string'then
+local aC=au(aB)or aB ai[aC]=true end end elseif type(az)=='string'then local aA=
+au(az)or az ai[aA]=true end end function ae.GetRarityFilter()local az={}for aA
+in pairs(ai)do table.insert(az,aA)end return az end function ae.SetTypeFilter(az
+)aj={}if type(az)=='table'then for aA,aB in pairs(az)do if aB==true and type(aA)
+=='string'then aj[aA]=true elseif type(aB)=='string'then aj[aB]=true end end
+elseif type(az)=='string'then aj[az]=true end end function ae.GetTypeFilter()
+local az={}for aA in pairs(aj)do table.insert(az,aA)end return az end function
+ae.SetLevelReqExactFilter(az)ak={}if type(az)=='table'then for aA,aB in pairs(az
+)do if aB==true then local aC=tonumber(aA)if aC then ak[aC]=true end else local
+aC=tonumber(aB)if aC then ak[aC]=true end end end elseif type(az)=='string'or
+type(az)=='number'then local aA=tonumber(az)if aA then ak[aA]=true end end end
+function ae.GetLevelReqExactFilter()local az={}for aA in pairs(ak)do table.
+insert(az,tostring(aA))end return az end local az=function()if not af then
+return end if ag then return end if not ay()then return end if not ae.
+HasAnyFilter()then return end ag=true task.spawn(function()task.wait(2.5)if not
+af or not ay()then return end local az=ae.SellItems()if az and az.sold and az.
+sold>0 then ab.Notify('AutoSell',('Auto-sold %d item(s) on dungeon start.'):
+format(az.sold),3)end end)end function ae.Toggle(aA)af=aA and true or false if
+af and ay()and not ag then az()end end function ae.IsEnabled()return af end ad.
+Register{Name='AutoSell',Zone='Dungeon',OnEnter=function()ag=false az()end,
+OnLeave=function()ag=false end}ac.OnDungeonNameChanged(function(aA)if aA and ad.
+IsDungeon()then ag=false az()end end)task.spawn(function()while aa.IsActive()do
+task.wait(1.5)if af and ad.IsDungeon()and not ag then az()end end end)aa.
+Register(function()af=false ad.Unregister'AutoSell'end)ae.LEVEL_REQ_OPTIONS=ap
+ae.LEVEL_REQ_MODE_OPTIONS=aq return ae end end local aa,ab,ac=a.load'c',a.load
+'h',a.load'b'return function(ad,ae)local af=ae:Section{Side='Left'}af:Header{
+Name='AutoSell'}local ag=ae:Section{Side='Right'}ag:Header{Name='Filter Summary'
+}local ah,ai,aj,ak,al,am,an,ao=ag:Label{Text='Status: --'},ag:Label{Text=
+'Location: --'},ag:Label{Text='Safety: --'},ag:Label{Text=
+[[Trigger: <font color='rgb(200,200,255)'>In-Dungeon Only (On Start)</font>]]},
+ag:Label{Text='Rarities: --'},ag:Label{Text='Item Types: --'},ag:Label{Text=
+'Level Req: --'},ag:Label{Text='Exclude Equipped: --'}local ap=function()local
+ap=ab.IsEnabled()local aq,ar=ap and'0, 255, 0'or'255, 80, 80',ap and'Enabled'or
+'Disabled'pcall(function()ah:UpdateName("Status: <font color='rgb("..aq..")'>"..
+ar..'</font>')end)local as=ab.IsDungeon()local at,au=as and'0, 255, 0'or
+'255, 160, 80',as and'Inside Dungeon (Active)'or'In Lobby (Paused)'pcall(
+function()ai:UpdateName("Location: <font color='rgb("..at..")'>"..au..'</font>')
+end)local av=ab.HasAnyFilter()local aw,ax=av and'0, 255, 0'or'255, 80, 80',av
+and'\u{2713} Active (Configured)'or'\u{26a0} NO filter selected'pcall(function()
+aj:UpdateName("Safety: <font color='rgb("..aw..")'>"..ax..'</font>')end)local ay
+=ab.GetRarityFilter()local az,aA=#ay>0 and table.concat(ay,', ')or
+'All (No filter)',#ay>0 and'255, 220, 120'or'160, 160, 160'pcall(function()al:
+UpdateName("Rarities: <font color='rgb("..aA..")'>"..az..'</font>')end)local aB=
+ab.GetTypeFilter()local aC,aD=#aB>0 and table.concat(aB,', ')or'All (No filter)'
+,#aB>0 and'255, 220, 120'or'160, 160, 160'pcall(function()am:UpdateName(
+"Item Types: <font color='rgb("..aD..")'>"..aC..'</font>')end)local aE,aF=ab.
+GetLevelReqMode(),ab.GetLevelReqExactFilter()table.sort(aF,function(aG,aH)return
+(tonumber(aG)or 0)<(tonumber(aH)or 0)end)local aG,aH='1 (Safe Fallback)',
+'255, 160, 80'if#aF>0 then aH='255, 220, 120'if aE=='Below'then aG=
+'Below (\u{2264} '..aF[#aF]..')'elseif aE=='Above'then aG='Above (\u{2265} '..aF
+[1]..')'else aG='Exact ('..table.concat(aF,', ')..')'end end pcall(function()an:
+UpdateName("Level Req: <font color='rgb("..aH..")'>"..aG..'</font>')end)local aI
+=ab.GetExcludeEquipped()local aJ,aK=aI and'0, 255, 0'or'255, 80, 80',aI and
+'Yes (Protected)'or'No (May Sell)'pcall(function()ao:UpdateName(
+"Exclude Equipped: <font color='rgb("..aJ..")'>"..aK..'</font>')end)end af:
 Toggle({Name='Auto Sell on Dungeon Start',Default=ab.IsEnabled(),Callback=aa.
-Wrap(function(ap)ab.Toggle(ap)ao()end)},'Toggle_AutoSellEnabled')local ap,aq={
+Wrap(function(aq)ab.Toggle(aq)ap()end)},'Toggle_AutoSellEnabled')local aq,ar={
 'Common','Uncommon','Rare','Epic','Legendary','Mythic'},{'Weapons','Helmets',
-'Chests','Abilities'}af:Dropdown({Name='Rarity Filter',Options=ap,Default=ab.
-GetRarityFilter(),Multi=true,Required=false,Callback=aa.Wrap(function(ar)ab.
-SetRarityFilter(ar)ao()end)},'Dropdown_AutoSellRarity')af:Dropdown({Name=
-'Item Type Filter',Options=aq,Default=ab.GetTypeFilter(),Multi=true,Required=
-false,Callback=aa.Wrap(function(ar)ab.SetTypeFilter(ar)ao()end)},
-'Dropdown_AutoSellType')local ar,as=(ab.GetLevelReqMode())local at=table.find(ab
-.LEVEL_REQ_MODE_OPTIONS,ar)or 1 af:Dropdown({Name='Level Req Mode',Options=ab.
-LEVEL_REQ_MODE_OPTIONS,Default=at,Multi=false,Required=true,Callback=aa.Wrap(
-function(au)ab.SetLevelReqMode(au)if as then local av=(au=='None')as.Settings.
-Multi=av as.Settings.Required=not av local aw=ab.GetLevelReqExactFilter()if#aw>0
-then if not av and#aw>1 then as:UpdateSelection(aw[1])else as:UpdateSelection(aw
-)end end end ao()end)},'Dropdown_AutoSellLevelReqMode')as=af:Dropdown({Name=
+'Chests','Abilities'}af:Dropdown({Name='Rarity Filter',Options=aq,Default=ab.
+GetRarityFilter(),Multi=true,Required=false,Callback=aa.Wrap(function(as)ab.
+SetRarityFilter(as)ap()end)},'Dropdown_AutoSellRarity')af:Dropdown({Name=
+'Item Type Filter',Options=ar,Default=ab.GetTypeFilter(),Multi=true,Required=
+false,Callback=aa.Wrap(function(as)ab.SetTypeFilter(as)ap()end)},
+'Dropdown_AutoSellType')local as,at=(ab.GetLevelReqMode())local au=table.find(ab
+.LEVEL_REQ_MODE_OPTIONS,as)or 1 af:Dropdown({Name='Level Req Mode',Options=ab.
+LEVEL_REQ_MODE_OPTIONS,Default=au,Multi=false,Required=true,Callback=aa.Wrap(
+function(av)ab.SetLevelReqMode(av)if at then local aw=(av=='None')at.Settings.
+Multi=aw at.Settings.Required=not aw local ax=ab.GetLevelReqExactFilter()if#ax>0
+then if not aw and#ax>1 then at:UpdateSelection(ax[1])else at:UpdateSelection(ax
+)end end end ap()end)},'Dropdown_AutoSellLevelReqMode')at=af:Dropdown({Name=
 'Level Req Filter',Options=ab.LEVEL_REQ_OPTIONS,Default=ab.
-GetLevelReqExactFilter(),Multi=ar=='None',Required=ar~='None',Search=true,
-Callback=aa.Wrap(function(au)ab.SetLevelReqExactFilter(au)ao()end)},
+GetLevelReqExactFilter(),Multi=as=='None',Required=as~='None',Search=true,
+Callback=aa.Wrap(function(av)ab.SetLevelReqExactFilter(av)ap()end)},
 'Dropdown_AutoSellLevelReq')af:Toggle({Name='Exclude Equipped Items',Default=ab.
-GetExcludeEquipped(),Callback=aa.Wrap(function(au)ab.SetExcludeEquipped(au)ao()
-end)},'Toggle_AutoSellExcludeEquipped')local au=af:Label({Text=
+GetExcludeEquipped(),Callback=aa.Wrap(function(av)ab.SetExcludeEquipped(av)ap()
+end)},'Toggle_AutoSellExcludeEquipped')local av=af:Label({Text=
 'No search made yet.'},'Label_AutoSellResult')af:Button{Name='Search',Callback=
-function()task.spawn(function()pcall(function()au:UpdateName
-'Reading inventory...'end)local av=ab.CountMatches()if not av then return end if
-av.error then pcall(function()au:UpdateName(
-"<font color='rgb(255,80,80)'>Error: "..av.error..'</font>')end)return end local
-aw,ax=(
+function()task.spawn(function()pcall(function()av:UpdateName
+'Reading inventory...'end)local aw=ab.CountMatches()if not aw then return end if
+aw.error then pcall(function()av:UpdateName(
+"<font color='rgb(255,80,80)'>Error: "..aw.error..'</font>')end)return end local
+ax,ay=(
 [[Found <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching items.
 ]]
-):format(av.matching,av.total),true for ay,az in ipairs{'Weapons','Helmets',
-'Chests','Abilities'}do local aA=av.byCategory and av.byCategory[az]if aA then
-if ax then aw..=az..': '..aA else aw..=' \u{2022} '..az..': '..aA end ax=false
-end end pcall(function()au:UpdateName(aw)end)end)end}af:Button{Name='Sell Now',
-Callback=function()task.spawn(function()pcall(function()au:UpdateName
-'Reading inventory...'end)local av=ab.CountMatches()if not av then pcall(
-function()au:UpdateName
+):format(aw.matching,aw.total),true for az,aA in ipairs{'Weapons','Helmets',
+'Chests','Abilities'}do local aB=aw.byCategory and aw.byCategory[aA]if aB then
+if ay then ax..=aA..': '..aB else ax..=' \u{2022} '..aA..': '..aB end ay=false
+end end pcall(function()av:UpdateName(ax)end)end)end}af:Button{Name='Sell Now',
+Callback=function()task.spawn(function()if not ab.IsDungeon()then ac.Notify(
+'AutoSell','AutoSell is only available inside Dungeons.',3)pcall(function()av:
+UpdateName
+[[<font color='rgb(255,80,80)'>AutoSell is only available inside Dungeons.</font>]]
+end)return end pcall(function()av:UpdateName'Reading inventory...'end)local aw=
+ab.CountMatches()if not aw then pcall(function()av:UpdateName
 [[<font color='rgb(255,80,80)'>A sale is already running.</font>]]end)return end
-if av.error then pcall(function()au:UpdateName(
-"<font color='rgb(255,80,80)'>Error: "..av.error..'</font>')end)return end local
-aw,ax=ab.HasAnyFilter(),''if not aw then ax=
+if aw.error then pcall(function()av:UpdateName(
+"<font color='rgb(255,80,80)'>Error: "..aw.error..'</font>')end)return end local
+ax,ay=ab.HasAnyFilter(),''if not ax then ay=
 '\n\n<font color="rgb(255,80,80)"><b>\u{26a0} NO filter selected!</b> This will sell the ENTIRE inventory (except equipped items).</font>'
-end local ay=(
+end local az=(
 [[Sell <font color='rgb(0,255,0)'>%d</font>/<font color='rgb(240,240,240)'>%d</font> matching item(s) with current filters.]]
-):format(av.matching,av.total)ay=ay..ax..'\n\nAre you sure?'ad:Dialog{Title=
-'Confirm Sale',Description=ay,Buttons={{Name='Confirm',Callback=function()task.
-spawn(function()pcall(function()au:UpdateName'Reading inventory...'end)ac.
-Notify('AutoSell','Selling...',2)local az=ab.SellItems()if not az then pcall(
-function()au:UpdateName
+):format(aw.matching,aw.total)az=az..ay..'\n\nAre you sure?'ad:Dialog{Title=
+'Confirm Sale',Description=az,Buttons={{Name='Confirm',Callback=function()task.
+spawn(function()pcall(function()av:UpdateName'Reading inventory...'end)ac.
+Notify('AutoSell','Selling...',2)local aA=ab.SellItems()if not aA then pcall(
+function()av:UpdateName
 [[<font color='rgb(255,80,80)'>A sale is already running.</font>]]end)return end
-if az.error then pcall(function()au:UpdateName(
-"<font color='rgb(255,80,80)'>Error: "..az.error..'</font>')end)return end local
-aA=(
+if aA.error then pcall(function()av:UpdateName(
+"<font color='rgb(255,80,80)'>Error: "..aA.error..'</font>')end)return end local
+aB=(
 [[Done: <font color='rgb(0,255,0)'>%d</font> sold, <font color='rgb(255,200,0)'>%d</font> skipped, <font color='rgb(255,220,120)'>%s</font> gold earned.]]
-):format(az.sold,az.skipped,tostring(az.gold))pcall(function()au:UpdateName(aA)
-end)end)end},{Name='Cancel'}}}end)end}ao()end
+):format(aA.sold,aA.skipped,tostring(aA.gold))pcall(function()av:UpdateName(aB)
+end)end)end},{Name='Cancel'}}}end)end}ap()end
