@@ -59,17 +59,16 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoResetRoom")
 
-	ui.PatchSliderLoadCallback(section:Slider({
-		Name = "Target Room",
-		Default = autoReset.GetTargetRoom(),
-		Minimum = 1,
-		Maximum = 15,
-		DisplayMethod = "Round",
-		Precision = 0,
-		Callback = autoSave.Wrap(function(value)
-			autoReset.SetTargetRoom(math.floor(value + 0.5))
+	section:Dropdown({
+		Name = "Target Rooms",
+		Options = autoReset.GetRoomOptions(),
+		Default = autoReset.GetTargetRooms(),
+		Multi = true,
+		Required = false,
+		Callback = autoSave.Wrap(function(selected)
+			autoReset.SetTargetRooms(selected)
 		end),
-	}, "Slider_AutoResetTargetRoom"))
+	}, "Dropdown_AutoResetTargetRooms")
 
 	ui.PatchSliderLoadCallback(section:Slider({
 		Name = "Reset Delay (s)",

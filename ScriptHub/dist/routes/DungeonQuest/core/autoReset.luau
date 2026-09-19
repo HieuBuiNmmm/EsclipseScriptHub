@@ -208,24 +208,36 @@ ab then local af=pcall(function()ab:Notify{Title=ac,Description=ad,Lifetime=ae}
 end)if af then return end end pcall(function()game:GetService'StarterGui':
 SetCore('SendNotification',{Title=ac,Text=ad,Duration=ae})end)end return aa end
 end local aa,ab,ac,ad=a.load'a',a.load'c',a.load'd',a.load'b'local ae,af,ag,ah,
-ai,aj,ak,al,am=aa.player,{},false,2,0,false local an=function()local an,ao=ab.
-GetHumanoid(),ae and ae.Character if an and an.Health>0 then pcall(function()an.
-Health=0 end)pcall(function()an:ChangeState(Enum.HumanoidStateType.Dead)end)end
-if ao and ao.Parent then pcall(function()ao:BreakJoints()end)end end local ao=
-function(ao)if not ag or aj then return end if ab.IsInLobby()or ab.IsDead()then
-return end if ao<=0 or ao~=ah then return end aj=true task.spawn(function()if ai
->0 then task.wait(ai)end if not ag or ab.IsInLobby()or ab.IsDead()then return
-end if ab.GetCurrentRoomIndex()~=ah then return end ac.Notify('Auto Reset',(
-'Reset character at Room %d (Once per run)'):format(ah),3)an()end)end local ap,
-aq=function()if ak then return end ak=ab.OnRoomIndexChanged(function(ap)if ap<=1
-then aj=false end ao(ap)end)al=ab.OnLobbyChanged(function(ap)if ap then aj=false
-end end)am=ab.OnDungeonNameChanged(function()aj=false end)end,function()if ak
-then ak()ak=nil end if al then al()al=nil end if am then am()am=nil end end
-function af.Toggle(ar)ag=ar and true or false if ag then aj=false ap()ao(ab.
-GetCurrentRoomIndex())else aq()end end function af.IsEnabled()return ag end
-function af.SetTargetRoom(ar)if type(ar)=='number'then ah=math.clamp(math.floor(
-ar),1,20)end end function af.GetTargetRoom()return ah end function af.SetDelay(
-ar)if type(ar)=='number'then ai=math.clamp(ar,0,15)end end function af.GetDelay(
-)return ai end function af.ResetNow()ac.Notify('Auto Reset',
-'Manual character reset executed',2)an()end ad.Register(function()aq()ag=false
-aj=false end)return af
+ai,aj,ak,al,am,an=aa.player,{},false,{[2]=true},0,{},{}for ao=1,15 do table.
+insert(ak,('Room %d'):format(ao))end local ao,ap=function(ao)if type(ao)==
+'number'then return math.clamp(math.floor(ao),1,20)elseif type(ao)=='string'then
+local ap=tonumber(ao:match'%d+')if ap then return math.clamp(math.floor(ap),1,20
+)end end return nil end,function()local ao,ap=ab.GetHumanoid(),ae and ae.
+Character if ao and ao.Health>0 then pcall(function()ao.Health=0 end)pcall(
+function()ao:ChangeState(Enum.HumanoidStateType.Dead)end)end if ap and ap.Parent
+then pcall(function()ap:BreakJoints()end)end end local aq=function(aq)if not ag
+then return end if ab.IsInLobby()or ab.IsDead()then return end if aq<=0 then
+return end if not ah[aq]then return end if aj[aq]then return end aj[aq]=true
+task.spawn(function()if ai>0 then task.wait(ai)end if not ag or ab.IsInLobby()or
+ab.IsDead()then return end if ab.GetCurrentRoomIndex()~=aq then return end ac.
+Notify('Auto Reset',('Reset character at Room %d (Once per room/run)'):format(aq
+),3)ap()end)end local ar,as=function()if al then return end al=ab.
+OnRoomIndexChanged(function(ar)if ar<=1 then table.clear(aj)end aq(ar)end)am=ab.
+OnLobbyChanged(function(ar)if ar then table.clear(aj)end end)an=ab.
+OnDungeonNameChanged(function()table.clear(aj)end)end,function()if al then al()
+al=nil end if am then am()am=nil end if an then an()an=nil end end function af.
+Toggle(b)ag=b and true or false if ag then table.clear(aj)ar()aq(ab.
+GetCurrentRoomIndex())else as()end end function af.IsEnabled()return ag end
+function af.GetRoomOptions()return ak end function af.SetTargetRooms(b)local c={
+}if type(b)=='table'then for d,e in pairs(b)do if e==true then local f=ao(d)if f
+then c[f]=true end else local f=ao(e)if f then c[f]=true end end end elseif b~=
+nil then local d=ao(b)if d then c[d]=true end end ah=c end function af.
+GetTargetRooms()local b={}for c in pairs(ah)do table.insert(b,c)end table.sort(b
+)local c={}for d,e in ipairs(b)do table.insert(c,('Room %d'):format(e))end
+return c end function af.GetTargetRoomNumbers()local b={}for c in pairs(ah)do
+table.insert(b,c)end table.sort(b)return b end function af.SetTargetRoom(b)local
+c=ao(b)if c then ah={[c]=true}end end function af.GetTargetRoom()for b in pairs(
+ah)do return b end return 2 end function af.SetDelay(b)if type(b)=='number'then
+ai=math.clamp(b,0,15)end end function af.GetDelay()return ai end function af.
+ResetNow()ac.Notify('Auto Reset','Manual character reset executed',2)ap()end ad.
+Register(function()as()ag=false table.clear(aj)end)return af

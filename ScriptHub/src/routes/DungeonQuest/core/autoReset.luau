@@ -1,5 +1,6 @@
--- Auto Reset / Suicide (DungeonQuest): Chủ động tự sát 1 LẦN DUY NHẤT khi bước vào room X chỉ định.
+-- Auto Reset / Suicide (DungeonQuest): Chủ động tự sát 1 LẦN DUY NHẤT khi bước vào các room chỉ định.
 -- Dùng để trigger điểm checkpoint hồi sinh hoặc kích hoạt phase macro tiếp theo.
+-- Hỗ trợ Multi Target Rooms (chọn nhiều phòng cùng lúc).
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -12,13 +13,30 @@ local player = services.player
 --// State
 local autoReset = {}
 local enabled = false
-local targetRoom = 2
+local targetRooms = { [2] = true } -- set of room numbers: { [number] = true }
 local delaySeconds = 0.0
-local hasTriggeredThisRun = false
+local triggeredRooms = {} -- [roomIndex] = true (đánh dấu phòng đã reset trong run này)
 
 local roomConn = nil
 local lobbyConn = nil
 local dungeonConn = nil
+
+local ROOM_OPTIONS = {}
+for i = 1, 15 do
+	table.insert(ROOM_OPTIONS, ("Room %d"):format(i))
+end
+
+local function parseRoomNumber(val): number?
+	if type(val) == "number" then
+		return math.clamp(math.floor(val), 1, 20)
+	elseif type(val) == "string" then
+		local num = tonumber(val:match("%d+"))
+		if num then
+			return math.clamp(math.floor(num), 1, 20)
+		end
+	end
+	return nil
+end
 
 --// Thực hiện tự sát / reset nhân vật an toàn
 local function executeReset()
@@ -43,12 +61,14 @@ end
 
 --// Kiểm tra và xử lý tự sát khi vào phòng
 local function checkRoomTrigger(currentRoom: number)
-	if not enabled or hasTriggeredThisRun then return end
+	if not enabled then return end
 	if shared.IsInLobby() or shared.IsDead() then return end
-	if currentRoom <= 0 or currentRoom ~= targetRoom then return end
+	if currentRoom <= 0 then return end
+	if not targetRooms[currentRoom] then return end
+	if triggeredRooms[currentRoom] then return end
 
-	-- Đánh dấu đã kích hoạt 1 lần duy nhất trong run này
-	hasTriggeredThisRun = true
+	-- Đánh dấu đã kích hoạt cho phòng này trong run hiện tại (chỉ 1 lần/phòng)
+	triggeredRooms[currentRoom] = true
 
 	task.spawn(function()
 		if delaySeconds > 0 then
@@ -56,9 +76,9 @@ local function checkRoomTrigger(currentRoom: number)
 		end
 
 		if not enabled or shared.IsInLobby() or shared.IsDead() then return end
-		if shared.GetCurrentRoomIndex() ~= targetRoom then return end
+		if shared.GetCurrentRoomIndex() ~= currentRoom then return end
 
-		notifier.Notify("Auto Reset", ("Reset character at Room %d (Once per run)"):format(targetRoom), 3)
+		notifier.Notify("Auto Reset", ("Reset character at Room %d (Once per room/run)"):format(currentRoom), 3)
 		executeReset()
 	end)
 end
@@ -69,20 +89,20 @@ local function startListening()
 
 	roomConn = shared.OnRoomIndexChanged(function(currentRoom)
 		if currentRoom <= 1 then
-			-- Khi bắt đầu lại từ room đầu / room 0 -> reset cờ cho run mới
-			hasTriggeredThisRun = false
+			-- Khi bắt đầu lại từ room đầu / room 0 -> reset danh sách đã trigger cho run mới
+			table.clear(triggeredRooms)
 		end
 		checkRoomTrigger(currentRoom)
 	end)
 
 	lobbyConn = shared.OnLobbyChanged(function(inLobby)
 		if inLobby then
-			hasTriggeredThisRun = false
+			table.clear(triggeredRooms)
 		end
 	end)
 
 	dungeonConn = shared.OnDungeonNameChanged(function()
-		hasTriggeredThisRun = false
+		table.clear(triggeredRooms)
 	end)
 end
 
@@ -105,7 +125,7 @@ end
 function autoReset.Toggle(state: boolean)
 	enabled = state and true or false
 	if enabled then
-		hasTriggeredThisRun = false
+		table.clear(triggeredRooms)
 		startListening()
 		-- Kiểm tra ngay nếu đang ở đúng room chỉ định
 		checkRoomTrigger(shared.GetCurrentRoomIndex())
@@ -118,14 +138,65 @@ function autoReset.IsEnabled(): boolean
 	return enabled
 end
 
+function autoReset.GetRoomOptions(): { string }
+	return ROOM_OPTIONS
+end
+
+function autoReset.SetTargetRooms(selected)
+	local newSet = {}
+	if type(selected) == "table" then
+		for k, v in pairs(selected) do
+			if v == true then
+				local r = parseRoomNumber(k)
+				if r then newSet[r] = true end
+			else
+				local r = parseRoomNumber(v)
+				if r then newSet[r] = true end
+			end
+		end
+	elseif selected ~= nil then
+		local r = parseRoomNumber(selected)
+		if r then newSet[r] = true end
+	end
+
+	targetRooms = newSet
+end
+
+function autoReset.GetTargetRooms(): { string }
+	local list = {}
+	for r in pairs(targetRooms) do
+		table.insert(list, r)
+	end
+	table.sort(list)
+	local result = {}
+	for _, r in ipairs(list) do
+		table.insert(result, ("Room %d"):format(r))
+	end
+	return result
+end
+
+function autoReset.GetTargetRoomNumbers(): { number }
+	local list = {}
+	for r in pairs(targetRooms) do
+		table.insert(list, r)
+	end
+	table.sort(list)
+	return list
+end
+
+-- Backward compatibility
 function autoReset.SetTargetRoom(room: number)
-	if type(room) == "number" then
-		targetRoom = math.clamp(math.floor(room), 1, 20)
+	local r = parseRoomNumber(room)
+	if r then
+		targetRooms = { [r] = true }
 	end
 end
 
 function autoReset.GetTargetRoom(): number
-	return targetRoom
+	for r in pairs(targetRooms) do
+		return r
+	end
+	return 2
 end
 
 function autoReset.SetDelay(seconds: number)
@@ -147,7 +218,7 @@ end
 lifecycle.Register(function()
 	stopListening()
 	enabled = false
-	hasTriggeredThisRun = false
+	table.clear(triggeredRooms)
 end)
 
 return autoReset
