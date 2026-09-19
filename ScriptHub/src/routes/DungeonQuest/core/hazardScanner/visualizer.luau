@@ -3,6 +3,7 @@
 -- Phân loại màu sắc:
 --   - Màu Đỏ (Red): Danger Zone của chiêu thức tĩnh / bình thường.
 --   - Màu Xanh (Blue): Danger Zone của chiêu thức có quỹ đạo bay (Trajectory / Projectile), áp dụng Trajectory Margin riêng.
+--   - Màu Xanh Lá (Green): Danger Zone dự đoán chuỗi vòng tròn Boss 2 (Boss 2 Circle Chain / secondBossCricleHitbox).
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -25,6 +26,7 @@ local heartbeatConnection = nil
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
 local ZONE_COLOR_RED = Color3.fromRGB(255, 45, 45)
 local ZONE_COLOR_BLUE = Color3.fromRGB(0, 160, 255)
+local ZONE_COLOR_GREEN = Color3.fromRGB(0, 230, 90)
 local ZONE_TRANSPARENCY = 0.55
 local GROUND_THICKNESS = 0.25
 
@@ -73,7 +75,7 @@ local function updateVisualCFrame(item, targetY)
 	else
 		-- Hộp OBB: Giữ hướng quay Yaw trên sàn, triệt tiêu Pitch/Roll
 		local desiredWorldCFrame
-		if zone and (zone.isMovingBeam or zone.isBigSpike) then
+		if zone and zone.isBigSpike then
 			local trajDir = trajectorySource and trajectorySource.GetHazardDirection and trajectorySource.GetHazardDirection(item.hazardInfo)
 			if trajDir and trajDir.Magnitude > 0.01 then
 				desiredWorldCFrame = CFrame.lookAt(worldTargetPos, worldTargetPos + trajDir)
@@ -175,8 +177,10 @@ function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 	local record = activeVisuals[hazardInfo]
 	if not record or not record.items then return end
 
+	local name = hazardInfo.Name or (hazardInfo.Instance and hazardInfo.Instance.Name) or ""
+	local isSecondBossChain = (geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(name)) or (hazardInfo and hazardInfo.IsSyntheticChain == true)
 	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
-	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local color = isSecondBossChain and ZONE_COLOR_GREEN or (isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED)
 	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
 
 	for _, item in ipairs(record.items) do
@@ -206,8 +210,10 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local hazardZones = geometry.GetHazardZones(hazardInfo)
 	if not hazardZones or not hazardZones.zones then return end
 
+	local name = hazardInfo.Name or (hazardInfo.Instance and hazardInfo.Instance.Name) or ""
+	local isSecondBossChain = (geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(name)) or (hazardInfo and hazardInfo.IsSyntheticChain == true)
 	local isTraj = hazardInfo.IsTrajectory == true
-	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local color = isSecondBossChain and ZONE_COLOR_GREEN or (isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED)
 	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
 	local targetY = getPlayerGroundY()
 	local items = {}
@@ -219,11 +225,10 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	for _, zone in ipairs(hazardZones.zones) do
 		local part = zone.part
 		local isChain = zone.isSecondBossChain == true
-		local isMovingBeam = zone.isMovingBeam == true
 		local isBigSpike = zone.isBigSpike == true
-		local anchorPart = (isChain or isMovingBeam or isBigSpike) and terrain or part
+		local anchorPart = (isChain or isBigSpike) and terrain or part
 
-		if isChain or isMovingBeam or isBigSpike or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
+		if isChain or isBigSpike or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
 			local ad = nil
 			local isCircle = false
 
@@ -266,7 +271,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
-				if (not isChain and not isMovingBeam) and part then
+				if not isChain and part then
 					-- Tự động destroy visual khi part mờ dần (chỉ part thông thường)
 					local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
 						if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then

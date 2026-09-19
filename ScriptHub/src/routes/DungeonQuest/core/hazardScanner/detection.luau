@@ -538,7 +538,7 @@ registerHazard = function(instance)
 	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
 	if isSecondBossChain then
 		local now = os.clock()
-		if now - lastIceSpikesChainTime < 6.0 then
+		if now - lastIceSpikesChainTime < 5.0 then
 			logReject(instance, "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)")
 			return false
 		end
@@ -560,7 +560,7 @@ registerHazard = function(instance)
 	local fadeConnections = {}
 	local boxes = {}
 	if selectionBoxesEnabled and not isIceSpikes and not isSecondBossChain then
-		boxes = attachSelectionBoxes(parts, fadeConnections)
+		boxes = attachSelectionBoxes(parts, fadeConnections, false)
 	end
 	info.Boxes = boxes
 	info.Connections = fadeConnections
@@ -760,7 +760,7 @@ function detection.SetSelectionBoxesEnabled(state)
 			if inst and inst.Parent and (not info.Boxes or #info.Boxes == 0) then
 				local parts = getBaseParts(inst)
 				info.Connections = info.Connections or {}
-				info.Boxes = attachSelectionBoxes(parts, info.Connections)
+				info.Boxes = attachSelectionBoxes(parts, info.Connections, info.IsTrajectory)
 			end
 		end
 	else

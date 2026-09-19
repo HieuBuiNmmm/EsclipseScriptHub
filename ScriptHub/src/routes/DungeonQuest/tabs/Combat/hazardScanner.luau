@@ -159,6 +159,18 @@ return function(window, tab)
 		end),
 	}, "Slider_HazardFirstBossSeekingSpikeWidth"))
 
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "Second Boss Circle Chain Lifetime (s)",
+		Default = hazardScanner.GetSecondBossCircleDuration(),
+		Minimum = 0.5,
+		Maximum = 4.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetSecondBossCircleDuration(val)
+		end),
+	}, "Slider_HazardSecondBossCircleDuration"))
+
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
 	end)

@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-18T10:54:47.276437300+00:00",
+    genDate = "2026-09-18T23:43:01.565517900+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -7966,6 +7966,8 @@ local SECOND_BOSS_CHAIN_KEYWORDS = {
 	"secondbosscirclehitbox",
 }
 
+local secondBossCircleDuration = 1.2
+
 local function isSecondBossCircleChain(hazardName)
 	if not hazardName or type(hazardName) ~= "string" then return false end
 	local clean = hazardName:lower():gsub("%s+", "")
@@ -7980,6 +7982,17 @@ end
 
 function geometry.IsSecondBossCircleChain(hazardName)
 	return isSecondBossCircleChain(hazardName)
+end
+
+function geometry.GetSecondBossCircleDuration()
+	return secondBossCircleDuration
+end
+
+function geometry.SetSecondBossCircleDuration(val)
+	if type(val) == "number" and val >= 0.1 then
+		secondBossCircleDuration = math.clamp(val, 0.1, 10.0)
+		geometry.InvalidateCache()
+	end
 end
 
 local MOVING_BEAM_KEYWORDS = {
@@ -8147,11 +8160,6 @@ local function computePartZone(part, forceCircle, isTrajectory)
 	local pad = isTrajectory and trajectoryMargin or hazardPadding
 	local partName = (part and part.Name) or ""
 	local parentName = (part and part.Parent and part.Parent.Name) or ""
-	if isMovingBeam(partName) or isMovingBeam(parentName) then
-		local halfX = math.max(size.X, size.Z) / 2 + pad
-		local halfZ = math.max(2.0, math.min(size.X, size.Z) / 2 + pad)
-		return { half = Vector3.new(halfX, 0, halfZ), cframe = part.CFrame, isMovingBeam = true }
-	end
 
 	if isBigSpike(partName) or isBigSpike(parentName) then
 		local s = size
@@ -8318,12 +8326,12 @@ local function buildHazardZones(hazardInfo)
 		-- Vòng 1 (gốc): R = 11 studs, khoảng cách = 0
 		-- Mỗi vòng tiếp theo cách nhau 22 studs, bán kính tăng thêm 3 studs (11, 14, 17, 20, 23, 26, 29, 32, 35, 38)
 		-- Mỗi vòng có expireTime riêng để cắt đuôi dạng sóng (Wave Expiration):
-		-- Vòng 1 tan ở spawnClock + 2.2s, mỗi vòng sau tan chậm hơn 0.4s
+		-- Vòng 1 tan ở spawnClock + 1.2s, mỗi vòng sau tan chậm hơn 0.4s
 		local NUM_CIRCLES = 10
 		local BASE_RADIUS = 11.0
 		local RADIUS_STEP = 3.0
 		local DIST_STEP = 22.0
-		local BASE_DURATION = 2.2
+		local BASE_DURATION = secondBossCircleDuration
 		local WAVE_STEP_DURATION = 0.4
 
 		local totalLength = (NUM_CIRCLES - 1) * DIST_STEP
@@ -8361,48 +8369,6 @@ local function buildHazardZones(hazardInfo)
 			center = centerPos,
 			boundingRadius = boundingRadius,
 			maxExpireTime = maxExpireTime,
-		}
-	end
-
-	if isMovingBeam(hazardName) then
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
-			if not mainPart or not isPartAlive(mainPart) then
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
-
-		if not mainPart then return nil end
-
-		local pos = mainPart.Position
-		local size = mainPart.Size
-		local spanX = math.max(size.X, size.Z)
-		local thickZ = math.max(3.5, math.min(size.X, size.Z))
-		local halfX = spanX / 2 + pad
-		local halfZ = thickZ / 2 + pad
-
-		local singleZone = {
-			half = Vector3.new(halfX, 0, halfZ),
-			cframe = mainPart.CFrame,
-			part = mainPart,
-			cx = pos.X,
-			cz = pos.Z,
-			isTrajectory = isTrajectory,
-			isMovingBeam = true,
-		}
-
-		return {
-			zones = { singleZone },
-			center = Vector3.new(pos.X, 0, pos.Z),
-			boundingRadius = math.sqrt(halfX * halfX + halfZ * halfZ),
 		}
 	end
 
@@ -8628,6 +8594,7 @@ return geometry end function __DIST.m()-- HazardScanner – Visualizer: Vẽ tr�
 -- Phân loại màu sắc:
 --   - Màu Đỏ (Red): Danger Zone của chiêu thức tĩnh / bình thường.
 --   - Màu Xanh (Blue): Danger Zone của chiêu thức có quỹ đạo bay (Trajectory / Projectile), áp dụng Trajectory Margin riêng.
+--   - Màu Xanh Lá (Green): Danger Zone dự đoán chuỗi vòng tròn Boss 2 (Boss 2 Circle Chain / secondBossCricleHitbox).
 
 --// Imports
 
@@ -8651,6 +8618,7 @@ local heartbeatConnection = nil
 local FADE_TRANSPARENCY_THRESHOLD = 0.85
 local ZONE_COLOR_RED = Color3.fromRGB(255, 45, 45)
 local ZONE_COLOR_BLUE = Color3.fromRGB(0, 160, 255)
+local ZONE_COLOR_GREEN = Color3.fromRGB(0, 230, 90)
 local ZONE_TRANSPARENCY = 0.55
 local GROUND_THICKNESS = 0.25
 
@@ -8699,7 +8667,7 @@ local function updateVisualCFrame(item, targetY)
 	else
 		-- Hộp OBB: Giữ hướng quay Yaw trên sàn, triệt tiêu Pitch/Roll
 		local desiredWorldCFrame
-		if zone and (zone.isMovingBeam or zone.isBigSpike) then
+		if zone and zone.isBigSpike then
 			local trajDir = trajectorySource and trajectorySource.GetHazardDirection and trajectorySource.GetHazardDirection(item.hazardInfo)
 			if trajDir and trajDir.Magnitude > 0.01 then
 				desiredWorldCFrame = CFrame.lookAt(worldTargetPos, worldTargetPos + trajDir)
@@ -8801,8 +8769,10 @@ function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 	local record = activeVisuals[hazardInfo]
 	if not record or not record.items then return end
 
+	local name = hazardInfo.Name or (hazardInfo.Instance and hazardInfo.Instance.Name) or ""
+	local isSecondBossChain = (geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(name)) or (hazardInfo and hazardInfo.IsSyntheticChain == true)
 	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
-	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local color = isSecondBossChain and ZONE_COLOR_GREEN or (isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED)
 	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
 
 	for _, item in ipairs(record.items) do
@@ -8832,8 +8802,10 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	local hazardZones = geometry.GetHazardZones(hazardInfo)
 	if not hazardZones or not hazardZones.zones then return end
 
+	local name = hazardInfo.Name or (hazardInfo.Instance and hazardInfo.Instance.Name) or ""
+	local isSecondBossChain = (geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(name)) or (hazardInfo and hazardInfo.IsSyntheticChain == true)
 	local isTraj = hazardInfo.IsTrajectory == true
-	local color = isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED
+	local color = isSecondBossChain and ZONE_COLOR_GREEN or (isTraj and ZONE_COLOR_BLUE or ZONE_COLOR_RED)
 	local pad = isTraj and geometry.GetTrajectoryMargin() or 0.0
 	local targetY = getPlayerGroundY()
 	local items = {}
@@ -8845,11 +8817,10 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 	for _, zone in ipairs(hazardZones.zones) do
 		local part = zone.part
 		local isChain = zone.isSecondBossChain == true
-		local isMovingBeam = zone.isMovingBeam == true
 		local isBigSpike = zone.isBigSpike == true
-		local anchorPart = (isChain or isMovingBeam or isBigSpike) and terrain or part
+		local anchorPart = (isChain or isBigSpike) and terrain or part
 
-		if isChain or isMovingBeam or isBigSpike or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
+		if isChain or isBigSpike or (part and part.Parent and part.Transparency <= FADE_TRANSPARENCY_THRESHOLD) then
 			local ad = nil
 			local isCircle = false
 
@@ -8892,7 +8863,7 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 				table.insert(items, item)
 				table.insert(adornments, ad)
 
-				if (not isChain and not isMovingBeam) and part then
+				if not isChain and part then
 					-- Tự động destroy visual khi part mờ dần (chỉ part thông thường)
 					local conn = part:GetPropertyChangedSignal("Transparency"):Connect(function()
 						if part.Parent and part.Transparency > FADE_TRANSPARENCY_THRESHOLD then
@@ -11552,7 +11523,7 @@ registerHazard = function(instance)
 	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
 	if isSecondBossChain then
 		local now = os.clock()
-		if now - lastIceSpikesChainTime < 6.0 then
+		if now - lastIceSpikesChainTime < 5.0 then
 			logReject(instance, "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)")
 			return false
 		end
@@ -11574,7 +11545,7 @@ registerHazard = function(instance)
 	local fadeConnections = {}
 	local boxes = {}
 	if selectionBoxesEnabled and not isIceSpikes and not isSecondBossChain then
-		boxes = attachSelectionBoxes(parts, fadeConnections)
+		boxes = attachSelectionBoxes(parts, fadeConnections, false)
 	end
 	info.Boxes = boxes
 	info.Connections = fadeConnections
@@ -11774,7 +11745,7 @@ function detection.SetSelectionBoxesEnabled(state)
 			if inst and inst.Parent and (not info.Boxes or #info.Boxes == 0) then
 				local parts = getBaseParts(inst)
 				info.Connections = info.Connections or {}
-				info.Boxes = attachSelectionBoxes(parts, info.Connections)
+				info.Boxes = attachSelectionBoxes(parts, info.Connections, info.IsTrajectory)
 			end
 		end
 	else
@@ -13414,6 +13385,8 @@ hazardScanner.AddForceCircleName = geometry.AddForceCircleName
 hazardScanner.GetForceCircleNames = geometry.GetForceCircleNames
 hazardScanner.IsForceCircle = geometry.IsForceCircle
 hazardScanner.IsSecondBossCircleChain = geometry.IsSecondBossCircleChain
+hazardScanner.GetSecondBossCircleDuration = geometry.GetSecondBossCircleDuration
+hazardScanner.SetSecondBossCircleDuration = geometry.SetSecondBossCircleDuration
 
 --// Player 2D Visualizer & Danger Detection
 hazardScanner.IsPlayerInDanger = playerVisual.IsPlayerInDanger
@@ -15783,6 +15756,18 @@ return function(window, tab)
 			hazardScanner.SetFirstBossSeekingSpikeWidth(val)
 		end),
 	}, "Slider_HazardFirstBossSeekingSpikeWidth"))
+
+	ui.PatchSliderLoadCallback(customTrajSection:Slider({
+		Name = "Second Boss Circle Chain Lifetime (s)",
+		Default = hazardScanner.GetSecondBossCircleDuration(),
+		Minimum = 0.5,
+		Maximum = 4.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScanner.SetSecondBossCircleDuration(val)
+		end),
+	}, "Slider_HazardSecondBossCircleDuration"))
 
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)

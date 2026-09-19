@@ -27,132 +27,124 @@ SetHitboxPadding=b.SetHazardPadding local i,j,k,l=game:GetService
 or type(m)~='string'then return false end local n=m:lower():gsub('%s+','')if#n==
 0 then return false end for o,p in ipairs(k)do if string.find(n,p,1,true)then
 return true end end return false end function b.IsIceSpikesChain(n)return m(n)
-end local n={'secondbosscriclehitbox','secondbosscirclehitbox'}local o=function(
-o)if not o or type(o)~='string'then return false end local p=o:lower():gsub(
-'%s+','')if#p==0 then return false end for q,r in ipairs(n)do if string.find(p,r
-,1,true)then return true end end return false end function b.
-IsSecondBossCircleChain(p)return o(p)end local p={'movingbeam'}local q=function(
-q)if not q or type(q)~='string'then return false end local r=q:lower():gsub(
-'%s+','')if#r==0 then return false end for s,t in ipairs(p)do if string.find(r,t
-,1,true)then return true end end return false end function b.IsMovingBeam(r)
-return q(r)end local r,s={'firstbossbigspike','firstbossbeampart','bigspike'},
-function(r)if not r or type(r)~='string'then return false end local s=r:lower():
-gsub('%s+','')return string.find(s,'firstbossbeampart',1,true)~=nil end function
-b.IsBeamTelegraph(t)return s(t)end local t=function(t)if not t or type(t)~=
-'string'then return false end local u=t:lower():gsub('%s+','')if#u==0 or string.
-find(u,'seekingspike',1,true)then return false end for v,w in ipairs(r)do if
-string.find(u,w,1,true)then return true end end return false end function b.
-IsBigSpike(u)return t(u)end local u=function()if l and l>0 then return l end
-local u,v=45,i:FindFirstChild'enemyProjectiles'if not v then return u end local
-w=v:FindFirstChild'largeIceSpikes'if not w then for x,y in ipairs(v:GetChildren(
-))do local z=(y.Name or''):lower():gsub('%s+','')if z=='largeicespikes'then w=y
-break end end end if not w then return u end local x,y=0,Vector3.zero if w:IsA
-'Model'and w.PrimaryPart then y=w.PrimaryPart.Position elseif w:IsA'BasePart'
-then y=w.Position end local z={}if w:IsA'BasePart'then table.insert(z,w)else for
-A,B in ipairs(w:GetDescendants())do if B:IsA'BasePart'then table.insert(z,B)end
-end end if#z==0 then return u end for A,B in ipairs(z)do local C=B.Size local D,
-E=math.max(C.X,C.Z)/2,(Vector3.new(B.Position.X,0,B.Position.Z)-Vector3.new(y.X,
-0,y.Z)).Magnitude local F=E+D if F>x then x=F end end if x>=5 then l=x return l
-end return u end function b.GetLargeIceSpikesMaxRadius()return u()end local v=
-function(v)if not v or type(v)~='string'then return false end local w=v:lower():
-gsub('%s+','')if#w==0 then return false end for x,y in ipairs(j)do local z=y:
-lower():gsub('%s+','')if#z>0 and string.find(w,z,1,true)then return true end end
-return false end function b.IsForceCircle(w)return v(w)end function b.
-AddForceCircleName(w)if type(w)=='string'and#w>0 then table.insert(j,w)b.
-InvalidateCache()end end function b.GetForceCircleNames()return j end local w,x,
-y,z=function(w)return w and w.Parent and w.Transparency<=c end,function(w,x,y)
-local z,A,B,C=w.Size,y and e or d,(w and w.Name)or'',(w and w.Parent and w.
-Parent.Name)or''if q(B)or q(C)then local D,E=math.max(z.X,z.Z)/2+A,math.max(2,
-math.min(z.X,z.Z)/2+A)return{half=Vector3.new(D,0,E),cframe=w.CFrame,
-isMovingBeam=true}end if t(B)or t(C)then local D,E=z,w:FindFirstChildWhichIsA(
-'SpecialMesh',true)if E then D=Vector3.new(D.X*math.abs(E.Scale.X),D.Y*math.abs(
-E.Scale.Y),D.Z*math.abs(E.Scale.Z))end local F={D.X,D.Y,D.Z}table.sort(F)local G
-,H=math.clamp(F[2],6,60),math.clamp(F[3],8,80)local I,J=G/2+A,H/2+A return{half=
-Vector3.new(I,0,J),cframe=w.CFrame,isBigSpike=true}end if x or(w:IsA'Part'and(w.
-Shape==Enum.PartType.Ball or w.Shape==Enum.PartType.Cylinder))then return{radius
-=math.max(z.X,z.Y,z.Z)/2}end local D=Vector3.new(math.max(z.X,0)/2+A,0,math.max(
-z.Z,0)/2+A)return{half=D,cframe=w.CFrame}end,function(w,x,y,z)if not x then
-return false end if x.expireTime and os.clock()>x.expireTime then return false
-end local A,B=w.X,w.Z y=y or 0 local C=(z or x.isTrajectory)and e or d if x.
-radius then local D,E=(x.part and x.part.Parent)and x.part.Position,x.
-isSecondBossChain==true local F,G=(E and x.cx)or(D and D.X)or x.cx or 0,(E and x
-.cz)or(D and D.Z)or x.cz or 0 local H,I,J=A-F,B-G,x.radius+C+y return(H*H+I*I)<=
-(J*J)end local D=(x.part and x.part.Parent)and x.part.CFrame or x.cframe if D
-then local E,F,G=D:PointToObjectSpace(w),x.half.X,x.half.Z if y<=0 then return
-math.abs(E.X)<=F and math.abs(E.Z)<=G else local H,I=math.max(0,math.abs(E.X)-F)
-,math.max(0,math.abs(E.Z)-G)return(H*H+I*I)<=(y*y)end end return false end,
-function(w,x)local y=(x and x.CFrame)or(w:IsA'Model'and w:GetPivot())if y then
-local z=y.LookVector local A=Vector3.new(-z.X,0,-z.Z)if A.Magnitude>0.05 then
-return A.Unit end end local z=services.player or game:GetService'Players'.
-LocalPlayer local A=z and z.Character local B=A and(A:FindFirstChild
-'HumanoidRootPart'or A.PrimaryPart)if B and x then local C=Vector3.new(B.
-Position.X-x.Position.X,0,B.Position.Z-x.Position.Z)if C.Magnitude>0.1 then
-return C.Unit end end return Vector3.new(0,0,-1)end local A=function(A)if not A
-or not A.Instance or not A.Instance.Parent then return nil end local B=A.
-Instance local C=A.Name or(B and B.Name)or''local D,E=v(C),A.IsTrajectory==true
-local F,G=E and e or d if m(C)then local H,I=(u())if B:IsA'BasePart'then I=w(B)
-and B or nil elseif B:IsA'Model'then if B.PrimaryPart and w(B.PrimaryPart)then I
-=B.PrimaryPart else for J,K in ipairs(B:GetDescendants())do if K:IsA'BasePart'
-and w(K)and K.Parent then I=K break end end end end if not I then return nil end
-local J=I.Position local K={radius=H,cx=J.X,cz=J.Z,part=I,isTrajectory=false,
-isIceSpikes=true}return{zones={K},center=Vector3.new(J.X,0,J.Z),boundingRadius=H
-+F}end if o(C)then local H if B:IsA'BasePart'then H=w(B)and B or nil elseif B:
-IsA'Model'then if B.PrimaryPart and w(B.PrimaryPart)then H=B.PrimaryPart else
-for I,J in ipairs(B:GetDescendants())do if J:IsA'BasePart'and w(J)and J.Parent
-then H=J break end end end end if not H then return nil end local I,J,K,L,M,N,O,
-P,Q,R=H.Position,z(B,H),A.SpawnClock or os.clock(),{},10,11,3,22,2.2,0.4 local S
-=(M-1)*P for T=1,M do local U=(T-1)*P local V,W,X=Vector3.new(I.X,0,I.Z)+J*U,N+(
-T-1)*O,K+Q+(T-1)*R table.insert(L,{radius=W,cx=V.X,cz=V.Z,part=H,expireTime=X,
-isTrajectory=false,isSecondBossChain=true,circleIndex=T})end local T,U=Vector3.
-new(I.X,0,I.Z)+J*(S/2),N+(M-1)*O local V,W=(S/2)+U+F,K+Q+(M-1)*R if A then A.
-MaxExpireTime=W A.IsSyntheticChain=true end return{zones=L,center=T,
-boundingRadius=V,maxExpireTime=W}end if q(C)then local H if B:IsA'BasePart'then
-H=w(B)and B or nil elseif B:IsA'Model'then H=B.PrimaryPart or B:
-FindFirstChildWhichIsA'BasePart'if not H or not w(H)then for I,J in ipairs(B:
-GetDescendants())do if J:IsA'BasePart'and w(J)and J.Parent then H=J break end
-end end end if not H then return nil end local I,J=H.Position,H.Size local K,L=
-math.max(J.X,J.Z),math.max(3.5,math.min(J.X,J.Z))local M,N=K/2+F,L/2+F local O={
-half=Vector3.new(M,0,N),cframe=H.CFrame,part=H,cx=I.X,cz=I.Z,isTrajectory=E,
-isMovingBeam=true}return{zones={O},center=Vector3.new(I.X,0,I.Z),boundingRadius=
-math.sqrt(M*M+N*N)}end if s(C)then return nil end if t(C)then local H if B:IsA
-'BasePart'then H=w(B)and B or nil elseif B:IsA'Model'then H=B.PrimaryPart or B:
-FindFirstChildWhichIsA'BasePart'if not H or not w(H)then for I,J in ipairs(B:
-GetDescendants())do if J:IsA'BasePart'and w(J)and J.Parent then H=J break end
-end end end if not H then return nil end local I,J,K=H.Position,H.Size,H:
-FindFirstChildWhichIsA('SpecialMesh',true)if K then J=Vector3.new(J.X*math.abs(K
-.Scale.X),J.Y*math.abs(K.Scale.Y),J.Z*math.abs(K.Scale.Z))end local L={J.X,J.Y,J
-.Z}table.sort(L)local M,N=math.clamp(L[2],6,60),math.clamp(L[3],8,80)local O,P=M
-/2+F,N/2+F local Q={half=Vector3.new(O,0,P),cframe=H.CFrame,part=H,cx=I.X,cz=I.Z
-,isTrajectory=E,isBigSpike=true}return{zones={Q},center=Vector3.new(I.X,0,I.Z),
-boundingRadius=math.sqrt(O*O+P*P)}end if B:IsA'BasePart'then if not w(B)then
-return nil end G={B}else G={}for H,I in ipairs(B:GetDescendants())do if#G>=g
-then break end if I:IsA'BasePart'and w(I)and I.Parent then G[#G+1]=I end end if#
-G==0 then return nil end end local H,I,J,K,L={},math.huge,-math.huge,math.huge,-
-math.huge for M,N in ipairs(G)do local O,P=N.Position,N.Size local Q=math.max(P.
-X,P.Y,P.Z)/2+F I=math.min(I,O.X-Q)J=math.max(J,O.X+Q)K=math.min(K,O.Z-Q)L=math.
-max(L,O.Z+Q)local R=x(N,D,E)if R then R.part=N R.isTrajectory=E H[#H+1]=R end
-end if#H==0 then return nil end local M,N,O,P=(I+J)/2,(K+L)/2,(J-I)/2,(L-K)/2
-return{zones=H,center=Vector3.new(M,0,N),boundingRadius=math.sqrt(O*O+P*P)}end
-local B=function(B)local C=B and B.HazardZones if not C then C=A(B)if C and B
-then B.HazardZones=C end end return C end function b.GetHazardZones(C)return B(C
-)end function b.GetNearbyHazards(C,D)local E=h if not E then return{}end D=D or
-65 local F,G,H={},C.X,C.Z for I,J in pairs(E.GetActiveHazardsMap())do local K,L=
-J.Instance,B(J)if L then local M,N=L.center.X,L.center.Z if K and K.Parent then
-local O=K:IsA'BasePart'and K or K.PrimaryPart or K:FindFirstChildWhichIsA
-'BasePart'if O then M=O.Position.X N=O.Position.Z end end local O,P=G-M,H-N
-local Q,R=O*O+P*P,D+L.boundingRadius if Q<=R*R then table.insert(F,J)end end end
-return F end function b.IsPointInAnyHazard(C,D,E,F)local G=h if not G then
-return false,nil,nil end E=E or 0 local H,I,J,K=math.huge,F or G.
-GetActiveHazardsMap()for L,M in pairs(I)do local N=M.Instance or(typeof(L)==
-'Instance'and L)if D and(D==N or(N and D.Name==N.Name))then continue end local O
-=M.Name or(N and N.Name)or''if q(O)or t(O)then continue end local P=B(M)if not P
-then continue end local Q,R=P.center.X,P.center.Z if N and N.Parent then local S
-=N:IsA'BasePart'and N or N.PrimaryPart or N:FindFirstChildWhichIsA'BasePart'if S
-then Q=S.Position.X R=S.Position.Z end end local S,T=C.X-Q,C.Z-R local U,V=S*S+T
-*T,P.boundingRadius+E if U>V*V then continue end local W=M.IsTrajectory==true
-for X=1,#P.zones do local Y=P.zones[X]if w(Y.part)and y(C,Y,E,W or Y.
-isTrajectory)then local Z=(C-Y.part.Position).Magnitude if Z<H then H=Z J=M K=Y.
-part end break end end end return K~=nil,J,K end return b end end local b,c,d=a.
+end local n,o={'secondbosscriclehitbox','secondbosscirclehitbox'},1.2 local p=
+function(p)if not p or type(p)~='string'then return false end local q=p:lower():
+gsub('%s+','')if#q==0 then return false end for r,s in ipairs(n)do if string.
+find(q,s,1,true)then return true end end return false end function b.
+IsSecondBossCircleChain(q)return p(q)end function b.GetSecondBossCircleDuration(
+)return o end function b.SetSecondBossCircleDuration(q)if type(q)=='number'and q
+>=0.1 then o=math.clamp(q,0.1,10)b.InvalidateCache()end end local q={
+'movingbeam'}local r=function(r)if not r or type(r)~='string'then return false
+end local s=r:lower():gsub('%s+','')if#s==0 then return false end for t,u in
+ipairs(q)do if string.find(s,u,1,true)then return true end end return false end
+function b.IsMovingBeam(s)return r(s)end local s,t={'firstbossbigspike',
+'firstbossbeampart','bigspike'},function(s)if not s or type(s)~='string'then
+return false end local t=s:lower():gsub('%s+','')return string.find(t,
+'firstbossbeampart',1,true)~=nil end function b.IsBeamTelegraph(u)return t(u)end
+local u=function(u)if not u or type(u)~='string'then return false end local v=u:
+lower():gsub('%s+','')if#v==0 or string.find(v,'seekingspike',1,true)then return
+false end for w,x in ipairs(s)do if string.find(v,x,1,true)then return true end
+end return false end function b.IsBigSpike(v)return u(v)end local v=function()if
+l and l>0 then return l end local v,w=45,i:FindFirstChild'enemyProjectiles'if
+not w then return v end local x=w:FindFirstChild'largeIceSpikes'if not x then
+for y,z in ipairs(w:GetChildren())do local A=(z.Name or''):lower():gsub('%s+',''
+)if A=='largeicespikes'then x=z break end end end if not x then return v end
+local y,z=0,Vector3.zero if x:IsA'Model'and x.PrimaryPart then z=x.PrimaryPart.
+Position elseif x:IsA'BasePart'then z=x.Position end local A={}if x:IsA
+'BasePart'then table.insert(A,x)else for B,C in ipairs(x:GetDescendants())do if
+C:IsA'BasePart'then table.insert(A,C)end end end if#A==0 then return v end for B
+,C in ipairs(A)do local D=C.Size local E,F=math.max(D.X,D.Z)/2,(Vector3.new(C.
+Position.X,0,C.Position.Z)-Vector3.new(z.X,0,z.Z)).Magnitude local G=F+E if G>y
+then y=G end end if y>=5 then l=y return l end return v end function b.
+GetLargeIceSpikesMaxRadius()return v()end local w=function(w)if not w or type(w)
+~='string'then return false end local x=w:lower():gsub('%s+','')if#x==0 then
+return false end for y,z in ipairs(j)do local A=z:lower():gsub('%s+','')if#A>0
+and string.find(x,A,1,true)then return true end end return false end function b.
+IsForceCircle(x)return w(x)end function b.AddForceCircleName(x)if type(x)==
+'string'and#x>0 then table.insert(j,x)b.InvalidateCache()end end function b.
+GetForceCircleNames()return j end local x,y,z,A=function(x)return x and x.Parent
+and x.Transparency<=c end,function(x,y,z)local A,B,C,D=x.Size,z and e or d,(x
+and x.Name)or'',(x and x.Parent and x.Parent.Name)or''if u(C)or u(D)then local E
+,F=A,x:FindFirstChildWhichIsA('SpecialMesh',true)if F then E=Vector3.new(E.X*
+math.abs(F.Scale.X),E.Y*math.abs(F.Scale.Y),E.Z*math.abs(F.Scale.Z))end local G=
+{E.X,E.Y,E.Z}table.sort(G)local H,I=math.clamp(G[2],6,60),math.clamp(G[3],8,80)
+local J,K=H/2+B,I/2+B return{half=Vector3.new(J,0,K),cframe=x.CFrame,isBigSpike=
+true}end if y or(x:IsA'Part'and(x.Shape==Enum.PartType.Ball or x.Shape==Enum.
+PartType.Cylinder))then return{radius=math.max(A.X,A.Y,A.Z)/2}end local E=
+Vector3.new(math.max(A.X,0)/2+B,0,math.max(A.Z,0)/2+B)return{half=E,cframe=x.
+CFrame}end,function(x,y,z,A)if not y then return false end if y.expireTime and
+os.clock()>y.expireTime then return false end local B,C=x.X,x.Z z=z or 0 local D
+=(A or y.isTrajectory)and e or d if y.radius then local E,F=(y.part and y.part.
+Parent)and y.part.Position,y.isSecondBossChain==true local G,H=(F and y.cx)or(E
+and E.X)or y.cx or 0,(F and y.cz)or(E and E.Z)or y.cz or 0 local I,J,K=B-G,C-H,y
+.radius+D+z return(I*I+J*J)<=(K*K)end local E=(y.part and y.part.Parent)and y.
+part.CFrame or y.cframe if E then local F,G,H=E:PointToObjectSpace(x),y.half.X,y
+.half.Z if z<=0 then return math.abs(F.X)<=G and math.abs(F.Z)<=H else local I,J
+=math.max(0,math.abs(F.X)-G),math.max(0,math.abs(F.Z)-H)return(I*I+J*J)<=(z*z)
+end end return false end,function(x,y)local z=(y and y.CFrame)or(x:IsA'Model'and
+x:GetPivot())if z then local A=z.LookVector local B=Vector3.new(-A.X,0,-A.Z)if B
+.Magnitude>0.05 then return B.Unit end end local A=services.player or game:
+GetService'Players'.LocalPlayer local B=A and A.Character local C=B and(B:
+FindFirstChild'HumanoidRootPart'or B.PrimaryPart)if C and y then local D=Vector3
+.new(C.Position.X-y.Position.X,0,C.Position.Z-y.Position.Z)if D.Magnitude>0.1
+then return D.Unit end end return Vector3.new(0,0,-1)end local B=function(B)if
+not B or not B.Instance or not B.Instance.Parent then return nil end local C=B.
+Instance local D=B.Name or(C and C.Name)or''local E,F=w(D),B.IsTrajectory==true
+local G,H=F and e or d if m(D)then local I,J=(v())if C:IsA'BasePart'then J=x(C)
+and C or nil elseif C:IsA'Model'then if C.PrimaryPart and x(C.PrimaryPart)then J
+=C.PrimaryPart else for K,L in ipairs(C:GetDescendants())do if L:IsA'BasePart'
+and x(L)and L.Parent then J=L break end end end end if not J then return nil end
+local K=J.Position local L={radius=I,cx=K.X,cz=K.Z,part=J,isTrajectory=false,
+isIceSpikes=true}return{zones={L},center=Vector3.new(K.X,0,K.Z),boundingRadius=I
++G}end if p(D)then local I if C:IsA'BasePart'then I=x(C)and C or nil elseif C:
+IsA'Model'then if C.PrimaryPart and x(C.PrimaryPart)then I=C.PrimaryPart else
+for J,K in ipairs(C:GetDescendants())do if K:IsA'BasePart'and x(K)and K.Parent
+then I=K break end end end end if not I then return nil end local J,K,L,M,N,O,P,
+Q,R,S=I.Position,A(C,I),B.SpawnClock or os.clock(),{},10,11,3,22,o,0.4 local T=(
+N-1)*Q for U=1,N do local V=(U-1)*Q local W,X,Y=Vector3.new(J.X,0,J.Z)+K*V,O+(U-
+1)*P,L+R+(U-1)*S table.insert(M,{radius=X,cx=W.X,cz=W.Z,part=I,expireTime=Y,
+isTrajectory=false,isSecondBossChain=true,circleIndex=U})end local U,V=Vector3.
+new(J.X,0,J.Z)+K*(T/2),O+(N-1)*P local W,X=(T/2)+V+G,L+R+(N-1)*S if B then B.
+MaxExpireTime=X B.IsSyntheticChain=true end return{zones=M,center=U,
+boundingRadius=W,maxExpireTime=X}end if t(D)then return nil end if u(D)then
+local I if C:IsA'BasePart'then I=x(C)and C or nil elseif C:IsA'Model'then I=C.
+PrimaryPart or C:FindFirstChildWhichIsA'BasePart'if not I or not x(I)then for J,
+K in ipairs(C:GetDescendants())do if K:IsA'BasePart'and x(K)and K.Parent then I=
+K break end end end end if not I then return nil end local J,K,L=I.Position,I.
+Size,I:FindFirstChildWhichIsA('SpecialMesh',true)if L then K=Vector3.new(K.X*
+math.abs(L.Scale.X),K.Y*math.abs(L.Scale.Y),K.Z*math.abs(L.Scale.Z))end local M=
+{K.X,K.Y,K.Z}table.sort(M)local N,O=math.clamp(M[2],6,60),math.clamp(M[3],8,80)
+local P,Q=N/2+G,O/2+G local R={half=Vector3.new(P,0,Q),cframe=I.CFrame,part=I,cx
+=J.X,cz=J.Z,isTrajectory=F,isBigSpike=true}return{zones={R},center=Vector3.new(J
+.X,0,J.Z),boundingRadius=math.sqrt(P*P+Q*Q)}end if C:IsA'BasePart'then if not x(
+C)then return nil end H={C}else H={}for I,J in ipairs(C:GetDescendants())do if#H
+>=g then break end if J:IsA'BasePart'and x(J)and J.Parent then H[#H+1]=J end end
+if#H==0 then return nil end end local I,J,K,L,M={},math.huge,-math.huge,math.
+huge,-math.huge for N,O in ipairs(H)do local P,Q=O.Position,O.Size local R=math.
+max(Q.X,Q.Y,Q.Z)/2+G J=math.min(J,P.X-R)K=math.max(K,P.X+R)L=math.min(L,P.Z-R)M=
+math.max(M,P.Z+R)local S=y(O,E,F)if S then S.part=O S.isTrajectory=F I[#I+1]=S
+end end if#I==0 then return nil end local N,O,P,Q=(J+K)/2,(L+M)/2,(K-J)/2,(M-L)/
+2 return{zones=I,center=Vector3.new(N,0,O),boundingRadius=math.sqrt(P*P+Q*Q)}end
+local C=function(C)local D=C and C.HazardZones if not D then D=B(C)if D and C
+then C.HazardZones=D end end return D end function b.GetHazardZones(D)return C(D
+)end function b.GetNearbyHazards(D,E)local F=h if not F then return{}end E=E or
+65 local G,H,I={},D.X,D.Z for J,K in pairs(F.GetActiveHazardsMap())do local L,M=
+K.Instance,C(K)if M then local N,O=M.center.X,M.center.Z if L and L.Parent then
+local P=L:IsA'BasePart'and L or L.PrimaryPart or L:FindFirstChildWhichIsA
+'BasePart'if P then N=P.Position.X O=P.Position.Z end end local P,Q=H-N,I-O
+local R,S=P*P+Q*Q,E+M.boundingRadius if R<=S*S then table.insert(G,K)end end end
+return G end function b.IsPointInAnyHazard(D,E,F,G)local H=h if not H then
+return false,nil,nil end F=F or 0 local I,J,K,L=math.huge,G or H.
+GetActiveHazardsMap()for M,N in pairs(J)do local O=N.Instance or(typeof(M)==
+'Instance'and M)if E and(E==O or(O and E.Name==O.Name))then continue end local P
+=N.Name or(O and O.Name)or''if r(P)or u(P)then continue end local Q=C(N)if not Q
+then continue end local R,S=Q.center.X,Q.center.Z if O and O.Parent then local T
+=O:IsA'BasePart'and O or O.PrimaryPart or O:FindFirstChildWhichIsA'BasePart'if T
+then R=T.Position.X S=T.Position.Z end end local T,U=D.X-R,D.Z-S local V,W=T*T+U
+*U,Q.boundingRadius+F if V>W*W then continue end local X=N.IsTrajectory==true
+for Y=1,#Q.zones do local Z=Q.zones[Y]if x(Z.part)and z(D,Z,F,X or Z.
+isTrajectory)then local _=(D-Z.part.Position).Magnitude if _<I then I=_ K=N L=Z.
+part end break end end end return L~=nil,K,L end return b end end local b,c,d=a.
 load'a',a.load'b',a.load'c'local e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v=b.
 RunService or game:GetService'RunService',game:GetService'ReplicatedStorage',b.
 player,{},true,{},0.85,Color3.fromRGB(255,60,60),Color3.fromRGB(0,180,255),

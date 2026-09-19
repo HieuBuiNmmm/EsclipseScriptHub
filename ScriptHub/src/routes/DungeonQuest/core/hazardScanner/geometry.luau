@@ -107,6 +107,8 @@ local SECOND_BOSS_CHAIN_KEYWORDS = {
 	"secondbosscirclehitbox",
 }
 
+local secondBossCircleDuration = 1.2
+
 local function isSecondBossCircleChain(hazardName)
 	if not hazardName or type(hazardName) ~= "string" then return false end
 	local clean = hazardName:lower():gsub("%s+", "")
@@ -121,6 +123,17 @@ end
 
 function geometry.IsSecondBossCircleChain(hazardName)
 	return isSecondBossCircleChain(hazardName)
+end
+
+function geometry.GetSecondBossCircleDuration()
+	return secondBossCircleDuration
+end
+
+function geometry.SetSecondBossCircleDuration(val)
+	if type(val) == "number" and val >= 0.1 then
+		secondBossCircleDuration = math.clamp(val, 0.1, 10.0)
+		geometry.InvalidateCache()
+	end
 end
 
 local MOVING_BEAM_KEYWORDS = {
@@ -288,11 +301,6 @@ local function computePartZone(part, forceCircle, isTrajectory)
 	local pad = isTrajectory and trajectoryMargin or hazardPadding
 	local partName = (part and part.Name) or ""
 	local parentName = (part and part.Parent and part.Parent.Name) or ""
-	if isMovingBeam(partName) or isMovingBeam(parentName) then
-		local halfX = math.max(size.X, size.Z) / 2 + pad
-		local halfZ = math.max(2.0, math.min(size.X, size.Z) / 2 + pad)
-		return { half = Vector3.new(halfX, 0, halfZ), cframe = part.CFrame, isMovingBeam = true }
-	end
 
 	if isBigSpike(partName) or isBigSpike(parentName) then
 		local s = size
@@ -459,12 +467,12 @@ local function buildHazardZones(hazardInfo)
 		-- Vòng 1 (gốc): R = 11 studs, khoảng cách = 0
 		-- Mỗi vòng tiếp theo cách nhau 22 studs, bán kính tăng thêm 3 studs (11, 14, 17, 20, 23, 26, 29, 32, 35, 38)
 		-- Mỗi vòng có expireTime riêng để cắt đuôi dạng sóng (Wave Expiration):
-		-- Vòng 1 tan ở spawnClock + 2.2s, mỗi vòng sau tan chậm hơn 0.4s
+		-- Vòng 1 tan ở spawnClock + 1.2s, mỗi vòng sau tan chậm hơn 0.4s
 		local NUM_CIRCLES = 10
 		local BASE_RADIUS = 11.0
 		local RADIUS_STEP = 3.0
 		local DIST_STEP = 22.0
-		local BASE_DURATION = 2.2
+		local BASE_DURATION = secondBossCircleDuration
 		local WAVE_STEP_DURATION = 0.4
 
 		local totalLength = (NUM_CIRCLES - 1) * DIST_STEP
@@ -502,48 +510,6 @@ local function buildHazardZones(hazardInfo)
 			center = centerPos,
 			boundingRadius = boundingRadius,
 			maxExpireTime = maxExpireTime,
-		}
-	end
-
-	if isMovingBeam(hazardName) then
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
-			if not mainPart or not isPartAlive(mainPart) then
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
-
-		if not mainPart then return nil end
-
-		local pos = mainPart.Position
-		local size = mainPart.Size
-		local spanX = math.max(size.X, size.Z)
-		local thickZ = math.max(3.5, math.min(size.X, size.Z))
-		local halfX = spanX / 2 + pad
-		local halfZ = thickZ / 2 + pad
-
-		local singleZone = {
-			half = Vector3.new(halfX, 0, halfZ),
-			cframe = mainPart.CFrame,
-			part = mainPart,
-			cx = pos.X,
-			cz = pos.Z,
-			isTrajectory = isTrajectory,
-			isMovingBeam = true,
-		}
-
-		return {
-			zones = { singleZone },
-			center = Vector3.new(pos.X, 0, pos.Z),
-			boundingRadius = math.sqrt(halfX * halfX + halfZ * halfZ),
 		}
 	end
 

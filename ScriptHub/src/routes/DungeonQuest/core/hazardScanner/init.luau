@@ -39,6 +39,8 @@ hazardScanner.AddForceCircleName = geometry.AddForceCircleName
 hazardScanner.GetForceCircleNames = geometry.GetForceCircleNames
 hazardScanner.IsForceCircle = geometry.IsForceCircle
 hazardScanner.IsSecondBossCircleChain = geometry.IsSecondBossCircleChain
+hazardScanner.GetSecondBossCircleDuration = geometry.GetSecondBossCircleDuration
+hazardScanner.SetSecondBossCircleDuration = geometry.SetSecondBossCircleDuration
 
 --// Player 2D Visualizer & Danger Detection
 hazardScanner.IsPlayerInDanger = playerVisual.IsPlayerInDanger
