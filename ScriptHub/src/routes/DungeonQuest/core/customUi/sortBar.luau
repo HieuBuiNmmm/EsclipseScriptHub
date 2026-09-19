@@ -36,7 +36,7 @@ local function createSortBarFrame(parent)
 
 	local UIScale_SortBar = Instance.new("UIScale")
 	UIScale_SortBar.Name = "SortBarUIScale"
-	UIScale_SortBar.Scale = 1.25
+	UIScale_SortBar.Scale = 0.75
 	UIScale_SortBar.Parent = sortBarFrame
 
 	local UIListLayout_SortBar = Instance.new("UIListLayout")

@@ -6021,7 +6021,7 @@ fromRGB(65,72,90)ad.Transparency=0.3 ad.ApplyStrokeMode=Enum.ApplyStrokeMode.
 Border ad.Parent=ab local ae=Instance.new'UIPadding'ae.PaddingTop=UDim.new(0,5)
 ae.PaddingBottom=UDim.new(0,5)ae.PaddingLeft=UDim.new(0,5)ae.PaddingRight=UDim.
 new(0,5)ae.Parent=ab local af=Instance.new'UIScale'af.Name='SortBarUIScale'af.
-Scale=1.25 af.Parent=ab local ag=Instance.new'UIListLayout'ag.Name=
+Scale=0.75 af.Parent=ab local ag=Instance.new'UIListLayout'ag.Name=
 'UIListLayout'ag.Padding=UDim.new(0,6)ag.FillDirection=Enum.FillDirection.
 Vertical ag.HorizontalAlignment=Enum.HorizontalAlignment.Center ag.
 VerticalAlignment=Enum.VerticalAlignment.Top ag.SortOrder=Enum.SortOrder.
@@ -6055,10 +6055,10 @@ Folder end end)return af end local aq,ar=function()return an()..
 '/settings/inventory_sort.json'end,function()if not(makefolder and isfolder)then
 return end pcall(function()local aq=an()if not isfolder(aq)then makefolder(aq)
 end local ar=aq..'/settings'if not isfolder(ar)then makefolder(ar)end end)end
-local as,at,au=function()if not(isfile and readfile)then return end local as=aq(
-)if not isfile(as)then return end local at,au=pcall(function()local at=readfile(
-as)return ag:JSONDecode(at)end)if not(at and type(au)=='table')then return end
-if au.mainFilterMode=='Descending'or au.mainFilterMode=='Ascending'or au.
+local as,at=function()if not(isfile and readfile)then return end local as=aq()if
+not isfile(as)then return end local at,au=pcall(function()local at=readfile(as)
+return ag:JSONDecode(at)end)if not(at and type(au)=='table')then return end if
+au.mainFilterMode=='Descending'or au.mainFilterMode=='Ascending'or au.
 mainFilterMode=='None'then ai=au.mainFilterMode end if type(au.rarityEnabled)==
 'boolean'then aj=au.rarityEnabled end if au.selectedStatFilter==
 'Physical Damage'or au.selectedStatFilter=='Spell Power'or au.selectedStatFilter
@@ -6069,29 +6069,41 @@ false ao=nil elseif ao~=nil then aj=false end end,function()if not(isfile and
 writefile)then return end if ap then task.cancel(ap)ap=nil end ap=task.delay(0.5
 ,function()ap=nil pcall(function()ar()local as,at=aq(),{mainFilterMode=ai,
 rarityEnabled=aj,selectedStatFilter=ao,abilityEnabled=ak,autoSortEnabled=al}
-writefile(as,ag:JSONEncode(at))end)end)end,function(as)if not as or not as.
-Parent then return end local at=as.Parent if not at:IsA'GuiObject'then return
-end local au=workspace.CurrentCamera local av=au and au.ViewportSize or Vector2.
-new(1920,1080)local ax,ay,az,aA,aB=av.X,av.Y,1080,at.AbsoluteSize.Y,295 local aC
-,aF=(ay/az)*am,(aA>50)and((aA*0.94)/aB)or am local aG,aH=math.clamp(math.min(aC,
-aF),0.75,am),as:FindFirstChildOfClass'UIScale'if not aH then aH=Instance.new
-'UIScale'aH.Name='SortBarUIScale'aH.Parent=as end aH.Scale=aG local aI=at.
-AbsolutePosition.X local aJ,aK=aI+at.AbsoluteSize.X,50*aG+12 local aL,aM=(aJ+aK)
-<=(ax-4),(aI-aK)>=4 if not aL and aM then as.AnchorPoint=Vector2.new(1,1)as.
-Position=UDim2.new(0,-30,1,15)else as.AnchorPoint=Vector2.new(0,1)as.Position=
-UDim2.new(1,30,1,15)end end local av,ax,ay,az,aA,aB,aC,aF,aG,aH,aI,aJ,aK,aL,aM,
-aN,aO=0,30,6,false,{common=1,uncommon=2,rare=3,epic=4,legendary=5,ultimate=6,
-mythic=7},{weapon='weapons',chest='chests',helmet='helmets',ability='abilities'}
-,{None='rbxassetid://73746166761985',Descending='rbxassetid://130494621181478',
-Ascending='rbxassetid://140381370510884'},{TweenDuration=0.16,EasingStyle=Enum.
-EasingStyle.Quad,EasingDirection=Enum.EasingDirection.Out,Inactive={
-BackgroundTransparency=0.2,BackgroundColor3=Color3.fromRGB(28,31,40),
-ElementTransparency=0,ElementColor3=Color3.fromRGB(235,240,252),
-StrokeTransparency=0.4,StrokeColor3=Color3.fromRGB(65,72,90)},Hovered={
-BackgroundTransparency=0.1,BackgroundColor3=Color3.fromRGB(45,52,68),
-ElementTransparency=0,ElementColor3=Color3.fromRGB(255,255,255),
-StrokeTransparency=0.15,StrokeColor3=Color3.fromRGB(150,165,195)},Active={
-BackgroundTransparency=0.1,BackgroundColor3=Color3.fromRGB(30,55,85),
+writefile(as,ag:JSONEncode(at))end)end)end local function au(av)if not av or not
+av.Parent then return end local ax=av.Parent if not ax:IsA'GuiObject'then return
+end local ay=ax.AbsoluteSize.Y if ay<=10 then task.defer(function()if av and av.
+Parent then au(av)end end)return end local az=workspace.CurrentCamera local aA=
+az and az.ViewportSize or Vector2.new(1920,1080)local aB,aC,aF=aA.X,ab.player or
+ab.Players.LocalPlayer local aG=aC and aC:FindFirstChild'PlayerGui'if aG then
+for aH,aI in ipairs(aG:GetChildren())do if aI:IsA'ScreenGui'and aI.Enabled then
+for aJ,aK in ipairs(aI:GetDescendants())do if aK:IsA'GuiObject'and aK.Visible
+and aK.AbsoluteSize.Y>20 then local aL=string.lower(aK.Name)if string.find(aL,
+'bosskey')or string.find(aL,'keyframe')or string.find(aL,'keysframe')or string.
+find(aL,'keysholder')or string.find(aL,'keyholder')then local aM=aK.
+AbsolutePosition.Y+aK.AbsoluteSize.Y if not aF or aM>aF then aF=aM end end end
+end end end end local aH=ax.AbsolutePosition.Y local aI,aJ,aK=aH+ay,280,1.25 if
+aF and aF>aH and aF<aI then local aL=(aI-aF)-10 if aL>30 then aK=math.min(aK,aL/
+aJ)end else if ay<440 then local aL=math.clamp(ay/440,0.35,1)local aM=0.38+(aL*
+0.32)aK=math.min(aK,(ay*aM)/aJ)end end local aL=440 local aM=(ay/aL)*1.25 local
+aN,aO=math.clamp(math.min(aM,aK),0.28,1.25),av:FindFirstChildOfClass'UIScale'if
+not aO then aO=Instance.new'UIScale'aO.Name='SortBarUIScale'aO.Parent=av end aO.
+Scale=aN local aP=aN/1.25 local aQ,aS,aT=math.clamp(math.round(30*aP),8,30),math
+.clamp(math.round(15*aP),0,15),ax.AbsolutePosition.X local aU,aV=aT+ax.
+AbsoluteSize.X,50*aN+aQ local aW,aX=(aU+aV)<=(aB-4),(aT-aV)>=4 if not aW and aX
+then av.AnchorPoint=Vector2.new(1,1)av.Position=UDim2.new(0,-aQ,1,aS)else av.
+AnchorPoint=Vector2.new(0,1)av.Position=UDim2.new(1,aQ,1,aS)end end local av,ax,
+ay,az,aA,aB,aC,aF,aG,aH,aI,aJ,aK,aL,aM,aN,aO=0,30,6,false,{common=1,uncommon=2,
+rare=3,epic=4,legendary=5,ultimate=6,mythic=7},{weapon='weapons',chest='chests',
+helmet='helmets',ability='abilities'},{None='rbxassetid://73746166761985',
+Descending='rbxassetid://130494621181478',Ascending=
+'rbxassetid://140381370510884'},{TweenDuration=0.16,EasingStyle=Enum.EasingStyle
+.Quad,EasingDirection=Enum.EasingDirection.Out,Inactive={BackgroundTransparency=
+0.2,BackgroundColor3=Color3.fromRGB(28,31,40),ElementTransparency=0,
+ElementColor3=Color3.fromRGB(235,240,252),StrokeTransparency=0.4,StrokeColor3=
+Color3.fromRGB(65,72,90)},Hovered={BackgroundTransparency=0.1,BackgroundColor3=
+Color3.fromRGB(45,52,68),ElementTransparency=0,ElementColor3=Color3.fromRGB(255,
+255,255),StrokeTransparency=0.15,StrokeColor3=Color3.fromRGB(150,165,195)},
+Active={BackgroundTransparency=0.1,BackgroundColor3=Color3.fromRGB(30,55,85),
 ElementTransparency=0,ElementColor3=Color3.fromRGB(255,255,255),
 StrokeTransparency=0,StrokeColor3=Color3.fromRGB(80,180,255)},ActiveHovered={
 BackgroundTransparency=0.05,BackgroundColor3=Color3.fromRGB(40,75,115),

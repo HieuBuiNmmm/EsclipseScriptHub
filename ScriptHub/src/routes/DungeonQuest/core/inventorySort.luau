@@ -132,19 +132,70 @@ local function updateSortBarResponsiveLayout(sortBar: GuiObject?)
 	local parentFrame = sortBar.Parent
 	if not parentFrame:IsA("GuiObject") then return end
 
+	local parentHeight = parentFrame.AbsoluteSize.Y
+	if parentHeight <= 10 then
+		-- Nếu frame chưa render kích thước thực tế, thử lại ở frame kế tiếp
+		task.defer(function()
+			if sortBar and sortBar.Parent then
+				updateSortBarResponsiveLayout(sortBar)
+			end
+		end)
+		return
+	end
+
 	local camera = workspace.CurrentCamera
 	local viewportSize = camera and camera.ViewportSize or Vector2.new(1920, 1080)
 	local viewportWidth = viewportSize.X
-	local viewportHeight = viewportSize.Y
 
-	-- 1. Tính toán Dynamic Scale thích ứng theo độ cao màn hình và độ cao của kho đồ
-	local baseViewportHeight = 1080
-	local parentHeight = parentFrame.AbsoluteSize.Y
-	local unscaledHeight = 295 -- 6 nút (40px) + 5 gaps (6px) + padding (10px) ~ 295px
+	-- 1. Tìm vị trí thực tế của khung "Boss Keys" (nếu có trên màn hình) để đo khoảng cách chính xác
+	local bossKeysBottomY: number? = nil
+	local player = services.player or services.Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	if playerGui then
+		for _, gui in ipairs(playerGui:GetChildren()) do
+			if gui:IsA("ScreenGui") and gui.Enabled then
+				for _, desc in ipairs(gui:GetDescendants()) do
+					if desc:IsA("GuiObject") and desc.Visible and desc.AbsoluteSize.Y > 20 then
+						local lowerName = string.lower(desc.Name)
+						if string.find(lowerName, "bosskey") or string.find(lowerName, "keyframe") or string.find(lowerName, "keysframe") or string.find(lowerName, "keysholder") or string.find(lowerName, "keyholder") then
+							local bY = desc.AbsolutePosition.Y + desc.AbsoluteSize.Y
+							if not bossKeysBottomY or bY > bossKeysBottomY then
+								bossKeysBottomY = bY
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 
-	local scaleByScreen = (viewportHeight / baseViewportHeight) * SORT_BAR_SCALE
-	local maxScaleByParent = (parentHeight > 50) and ((parentHeight * 0.94) / unscaledHeight) or SORT_BAR_SCALE
-	local finalScale = math.clamp(math.min(scaleByScreen, maxScaleByParent), 0.75, SORT_BAR_SCALE)
+	-- 2. Tính toán Dynamic Scale:
+	local parentTopY = parentFrame.AbsolutePosition.Y
+	local parentBottomY = parentTopY + parentHeight
+	local unscaledHeight = 280
+
+	local maxAllowedScale = 1.25
+
+	if bossKeysBottomY and bossKeysBottomY > parentTopY and bossKeysBottomY < parentBottomY then
+		-- Đo chính xác pixel khoảng cách từ đáy Boss Keys đến đáy kho đồ
+		local availableHeight = (parentBottomY - bossKeysBottomY) - 10
+		if availableHeight > 30 then
+			maxAllowedScale = math.min(maxAllowedScale, availableHeight / unscaledHeight)
+		end
+	else
+		-- Nếu không tìm thấy tên chính xác, dùng tỷ lệ thích ứng theo độ cao kho đồ:
+		-- Trên màn hình nhỏ (parentHeight < 440), Boss Keys chiếm ~55% nửa trên, SortBar chỉ được chiếm tối đa 38% - 42%
+		if parentHeight < 440 then
+			local smallRatio = math.clamp(parentHeight / 440, 0.35, 1.0)
+			local dynamicMaxRatio = 0.38 + (smallRatio * 0.32) -- từ 0.38 (khi siêu nhỏ) đến 0.70 (khi to)
+			maxAllowedScale = math.min(maxAllowedScale, (parentHeight * dynamicMaxRatio) / unscaledHeight)
+		end
+	end
+
+	-- Scale chuẩn theo tỷ lệ màn hình to, bị giới hạn bởi maxAllowedScale để không bao giờ chạm Boss Keys
+	local REFERENCE_HEIGHT = 440
+	local screenScale = (parentHeight / REFERENCE_HEIGHT) * 1.25
+	local targetScale = math.clamp(math.min(screenScale, maxAllowedScale), 0.28, 1.25)
 
 	local uiScale = sortBar:FindFirstChildOfClass("UIScale")
 	if not uiScale then
@@ -152,12 +203,19 @@ local function updateSortBarResponsiveLayout(sortBar: GuiObject?)
 		uiScale.Name = "SortBarUIScale"
 		uiScale.Parent = sortBar
 	end
-	uiScale.Scale = finalScale
+	uiScale.Scale = targetScale
 
-	-- 2. Adaptive Viewport Guard (Chống tràn màn hình & Tự động đảo mép Docking)
+	-- 3. Dynamic Offset tỷ lệ thuận theo Scale:
+	-- Màn hình to: Đạt chính xác {1, 30}, {1, 15}
+	-- Cửa sổ nhỏ: Tự động co gọn lại khoảng {1, 12-15}, {1, 6-8} để ôm sát mép kho đồ
+	local scaleFactor = targetScale / 1.25
+	local offsetX = math.clamp(math.round(30 * scaleFactor), 8, 30)
+	local offsetY = math.clamp(math.round(15 * scaleFactor), 0, 15)
+
+	-- 4. Adaptive Viewport Guard (Chống tràn màn hình & Tự động đảo mép Docking)
 	local parentLeft = parentFrame.AbsolutePosition.X
 	local parentRight = parentLeft + parentFrame.AbsoluteSize.X
-	local renderedWidth = 50 * finalScale + 12 -- Kích thước thực tế hiển thị trên màn hình
+	local renderedWidth = 50 * targetScale + offsetX
 
 	local canFitRight = (parentRight + renderedWidth) <= (viewportWidth - 4)
 	local canFitLeft = (parentLeft - renderedWidth) >= 4
@@ -165,11 +223,11 @@ local function updateSortBarResponsiveLayout(sortBar: GuiObject?)
 	if not canFitRight and canFitLeft then
 		-- Không đủ chỗ bên phải, đảo sang neo mép trái dưới của kho đồ
 		sortBar.AnchorPoint = Vector2.new(1, 1)
-		sortBar.Position = UDim2.new(0, -30, 1, 15)
+		sortBar.Position = UDim2.new(0, -offsetX, 1, offsetY)
 	else
 		-- Đủ chỗ bên phải (mặc định): Neo góc dưới bên phải (Bottom-Right) dưới bảng Boss Keys
 		sortBar.AnchorPoint = Vector2.new(0, 1)
-		sortBar.Position = UDim2.new(1, 30, 1, 15)
+		sortBar.Position = UDim2.new(1, offsetX, 1, offsetY)
 	end
 end
 

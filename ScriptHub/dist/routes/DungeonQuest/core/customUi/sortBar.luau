@@ -8,7 +8,7 @@ Color=Color3.fromRGB(65,72,90)d.Transparency=0.3 d.ApplyStrokeMode=Enum.
 ApplyStrokeMode.Border d.Parent=b local e=Instance.new'UIPadding'e.PaddingTop=
 UDim.new(0,5)e.PaddingBottom=UDim.new(0,5)e.PaddingLeft=UDim.new(0,5)e.
 PaddingRight=UDim.new(0,5)e.Parent=b local f=Instance.new'UIScale'f.Name=
-'SortBarUIScale'f.Scale=1.25 f.Parent=b local g=Instance.new'UIListLayout'g.Name
+'SortBarUIScale'f.Scale=0.75 f.Parent=b local g=Instance.new'UIListLayout'g.Name
 ='UIListLayout'g.Padding=UDim.new(0,6)g.FillDirection=Enum.FillDirection.
 Vertical g.HorizontalAlignment=Enum.HorizontalAlignment.Center g.
 VerticalAlignment=Enum.VerticalAlignment.Top g.SortOrder=Enum.SortOrder.
