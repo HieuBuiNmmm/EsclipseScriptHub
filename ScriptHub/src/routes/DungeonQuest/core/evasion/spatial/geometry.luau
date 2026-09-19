@@ -1,4 +1,5 @@
 -- HazardScanner - Geometry & Danger Zones (DungeonQuest).
+-- Quản lý toán học hình học và kiểm tra va chạm không gian (Spatial Math Layer).
 -- Range quét: chỉ X-Z (bỏ hẳn Y - chiêu đánh cả sàn).
 -- Zone = union per-part: mỗi BasePart còn rõ (Transparency <= 0.85) trở thành 1 vùng con
 -- (vòng tròn nếu Ball/Cylinder, OBB nếu box/union/mesh). Query point nặng 1 vùng con
@@ -378,7 +379,7 @@ local function getForwardVector2D(instance, mainPart)
 		end
 	end
 
-	local lp = services.player or game:GetService("Players").LocalPlayer
+	local lp = game:GetService("Players").LocalPlayer
 	local char = lp and lp.Character
 	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
 	if root and mainPart then

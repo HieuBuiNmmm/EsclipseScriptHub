@@ -1,5 +1,5 @@
 -- HazardScanner – Dodge Controller (DungeonQuest).
--- Quản lý logic tự động né đòn (Auto-Dodge):
+-- Quản lý logic tự động né đòn (Auto-Dodge / Action Execution Layer):
 -- Di chuyển bằng Humanoid:Move() về hướng Safe Spot và thực hiện Snap pha cuối khi tới gần (flatDist <= snapDistance)
 -- để đảm bảo nhân vật đáp đúng 100% tọa độ an toàn, triệt tiêu sai số quán tính của Roblox physics.
 
@@ -7,8 +7,8 @@
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
-local safeSpot = require("@routes/DungeonQuest/core/hazardScanner/safeSpot")
+local playerHitbox = require("@routes/DungeonQuest/core/evasion/solver/playerHitbox")
+local safeSpot = require("@routes/DungeonQuest/core/evasion/solver/safeSpot")
 local contextual = require("@routes/DungeonQuest/core/contextual")
 
 local RunService = services.RunService or game:GetService("RunService")
@@ -168,7 +168,7 @@ local function onHeartbeat()
 	end
 
 	-- Kiểm tra xem Player có đang trong nguy hiểm hoặc có Safe Spot từ engine không
-	local inDanger = playerVisual.IsPlayerInDanger and playerVisual.IsPlayerInDanger()
+	local inDanger = playerHitbox.IsPlayerInDanger and playerHitbox.IsPlayerInDanger()
 	local targetSpot, distToSpot, isFinding = safeSpot.GetLastSafeSpot()
 
 	-- Nếu có Safe Spot mới được tính ra, đồng bộ làm mục tiêu né chính

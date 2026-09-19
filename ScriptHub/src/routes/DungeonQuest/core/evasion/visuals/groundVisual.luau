@@ -1,5 +1,5 @@
--- HazardScanner – Visualizer: Vẽ trực quan vùng toán học (Ground Visualizer)
--- dựa trên mô hình hình học của geometry.luau.
+-- HazardScanner – Ground Visualizer (DungeonQuest):
+-- Vẽ trực quan vùng toán học (Ground Visualizer) dựa trên mô hình hình học của geometry.luau.
 -- Phân loại màu sắc:
 --   - Màu Đỏ (Red): Danger Zone của chiêu thức tĩnh / bình thường.
 --   - Màu Xanh (Blue): Danger Zone của chiêu thức có quỹ đạo bay (Trajectory / Projectile), áp dụng Trajectory Margin riêng.
@@ -8,13 +8,13 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
+local geometry = require("@routes/DungeonQuest/core/evasion/spatial/geometry")
 
 local RunService = services.RunService or game:GetService("RunService")
 local player = services.player
 
 --// Table
-local visualizer = {}
+local groundVisual = {}
 
 --// State
 local enabled = false
@@ -40,16 +40,16 @@ local function getPlayerGroundY()
 end
 
 --// Gán data source từ detection (tránh circular dependency)
-function visualizer.BindDetection(dataSource)
+function groundVisual.BindDetection(dataSource)
 	data = dataSource or nil
 end
 
 local trajectorySource = nil
-function visualizer.BindTrajectory(source)
+function groundVisual.BindTrajectory(source)
 	trajectorySource = source or nil
 end
 
-function visualizer.IsEnabled()
+function groundVisual.IsEnabled()
 	return enabled
 end
 
@@ -106,7 +106,7 @@ local function onHeartbeat()
 		local isInstanceAlive = info.Instance and info.Instance.Parent
 
 		if not isInstanceAlive and not isChain then
-			visualizer.DetachZoneVisuals(info)
+			groundVisual.DetachZoneVisuals(info)
 		else
 			if record.items then
 				local aliveItems = {}
@@ -126,7 +126,7 @@ local function onHeartbeat()
 				if #aliveItems > 0 then
 					hasAny = true
 				else
-					visualizer.DetachZoneVisuals(info)
+					groundVisual.DetachZoneVisuals(info)
 				end
 			end
 		end
@@ -145,7 +145,7 @@ local function ensureHeartbeat()
 end
 
 --// Xóa visual của một hazard
-function visualizer.DetachZoneVisuals(hazardInfo)
+function groundVisual.DetachZoneVisuals(hazardInfo)
 	if not hazardInfo then return end
 	local record = activeVisuals[hazardInfo]
 	if not record then return end
@@ -172,7 +172,7 @@ function visualizer.DetachZoneVisuals(hazardInfo)
 end
 
 --// Cập nhật màu sắc và bán kính/kích thước visual khi hazard chuyển trạng thái Trajectory (Red <-> Blue)
-function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
+function groundVisual.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 	if not hazardInfo then return end
 	local record = activeVisuals[hazardInfo]
 	if not record or not record.items then return end
@@ -201,10 +201,10 @@ function visualizer.UpdateHazardVisualColor(hazardInfo, isTrajectory)
 end
 
 --// Vẽ visual cho một hazard (Ghim thẳng đứng xuống mặt đất)
-function visualizer.AttachZoneVisuals(hazardInfo)
+function groundVisual.AttachZoneVisuals(hazardInfo)
 	if not enabled or not hazardInfo then return end
 	if activeVisuals[hazardInfo] then
-		visualizer.DetachZoneVisuals(hazardInfo)
+		groundVisual.DetachZoneVisuals(hazardInfo)
 	end
 
 	local hazardZones = geometry.GetHazardZones(hazardInfo)
@@ -295,47 +295,47 @@ function visualizer.AttachZoneVisuals(hazardInfo)
 end
 
 --// Xóa toàn bộ visual
-function visualizer.ClearAll()
+function groundVisual.ClearAll()
 	if heartbeatConnection then
 		heartbeatConnection:Disconnect()
 		heartbeatConnection = nil
 	end
 	for info in pairs(activeVisuals) do
-		visualizer.DetachZoneVisuals(info)
+		groundVisual.DetachZoneVisuals(info)
 	end
 	table.clear(activeVisuals)
 end
 
 --// Refresh lại toàn bộ visual đang hoạt động
-function visualizer.RefreshAll()
-	visualizer.ClearAll()
+function groundVisual.RefreshAll()
+	groundVisual.ClearAll()
 	if not enabled or not data then return end
 
 	for _, info in pairs(data.GetActiveHazardsMap()) do
-		visualizer.AttachZoneVisuals(info)
+		groundVisual.AttachZoneVisuals(info)
 	end
 end
 
 --// Bật / tắt Ground Visualizer
-function visualizer.SetEnabled(state)
+function groundVisual.SetEnabled(state)
 	enabled = state and true or false
 	if enabled then
-		visualizer.RefreshAll()
+		groundVisual.RefreshAll()
 	else
-		visualizer.ClearAll()
+		groundVisual.ClearAll()
 	end
 end
 
 --// Lắng nghe thay đổi margin/padding để refresh visual
 geometry.OnPaddingChanged(function()
 	if enabled then
-		visualizer.RefreshAll()
+		groundVisual.RefreshAll()
 	end
 end)
 
 --// Dọn dẹp khi script shutdown
 lifecycle.Register(function()
-	visualizer.ClearAll()
+	groundVisual.ClearAll()
 end)
 
-return visualizer
+return groundVisual

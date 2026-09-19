@@ -6,11 +6,11 @@
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
-local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
-local playerVisual = require("@routes/DungeonQuest/core/hazardScanner/playerVisual")
-local candidateGenerator = require("@routes/DungeonQuest/core/hazardScanner/candidateGenerator")
-local safeSpotVisual = require("@routes/DungeonQuest/core/hazardScanner/safeSpotVisual")
+local geometry = require("@routes/DungeonQuest/core/evasion/spatial/geometry")
+local trajectory = require("@routes/DungeonQuest/core/evasion/spatial/trajectory")
+local playerHitbox = require("@routes/DungeonQuest/core/evasion/solver/playerHitbox")
+local candidateGenerator = require("@routes/DungeonQuest/core/evasion/solver/candidateGenerator")
+local safeSpotVisual = require("@routes/DungeonQuest/core/evasion/visuals/safeSpotVisual")
 local contextual = require("@routes/DungeonQuest/core/contextual")
 
 local RunService = services.RunService or game:GetService("RunService")
@@ -40,13 +40,7 @@ local lastIdleCheck = 0
 
 --// Lấy HumanoidRootPart của người chơi
 local function getPlayerRoot()
-	local lp = player or Players.LocalPlayer
-	if not lp then return nil end
-	local char = lp.Character
-	if not char or not char.Parent then return nil end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum and hum.Health <= 0 then return nil end
-	return char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+	return playerHitbox.GetPlayerRoot()
 end
 
 --// Lấy vector hướng đang chạy thực tế của người chơi (Running Momentum Direction)
@@ -100,7 +94,7 @@ function safeSpot.IsPointSafe(point, extraMargin)
 		end
 	end
 
-	local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
+	local playerRad = (playerHitbox.GetRadius and playerHitbox.GetRadius() or 1.8) + (extraMargin or 0)
 
 	-- 1. Kiểm tra Ground Danger Zones (Đĩa đỏ / Vùng tròn / OBB trên mặt sàn)
 	if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad) then
@@ -156,7 +150,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 			end
 		end
 
-		local playerRad = (playerVisual.GetRadius and playerVisual.GetRadius() or 1.8) + (extraMargin or 0)
+		local playerRad = (playerHitbox.GetRadius and playerHitbox.GetRadius() or 1.8) + (extraMargin or 0)
 
 		if geometry.IsPointInAnyHazard and geometry.IsPointInAnyHazard(p2D, nil, playerRad, relevantHazards) then
 			return false
@@ -177,7 +171,7 @@ function safeSpot.FindNearestSafeSpot(origin)
 
 	-- 3. Xác định hướng ưu tiên né (Preferred Escape Direction):
 	local preferredDir = momentumDir
-	local playerRad = playerVisual.GetRadius and playerVisual.GetRadius() or 1.8
+	local playerRad = playerHitbox.GetRadius and playerHitbox.GetRadius() or 1.8
 	local inTraj, _, trajDir, trajCentroid = trajectory.IsPointInAnyTrajectory(origin2D, playerRad, relevantTrajectories)
 
 	if inTraj and trajDir and trajCentroid then
@@ -303,8 +297,8 @@ local function onHeartbeat()
 
 	-- Kiểm tra xem Player có đang trong vùng nguy hiểm không
 	local inDanger, threatInfo, threatType = false, nil, nil
-	if playerVisual.IsPlayerInDanger then
-		inDanger, threatInfo, threatType = playerVisual.IsPlayerInDanger()
+	if playerHitbox.IsPlayerInDanger then
+		inDanger, threatInfo, threatType = playerHitbox.IsPlayerInDanger()
 	end
 
 	-- Dynamic Scheduling: Khi Player hoàn toàn an toàn và không đang tìm/né Safe Spot, throttle kiểm tra ~20Hz
@@ -389,9 +383,9 @@ local function startTracking()
 	if not heartbeatConnection then
 		heartbeatConnection = RunService.Heartbeat:Connect(onHeartbeat)
 	end
-	if not dangerChangedConnection and playerVisual.OnDangerStatusChanged then
+	if not dangerChangedConnection and playerHitbox.OnDangerStatusChanged then
 		-- Event-Driven Wakeup: Phản hồi ngay lập tức tại frame nguy hiểm xuất hiện
-		dangerChangedConnection = playerVisual.OnDangerStatusChanged(function(nowInDanger)
+		dangerChangedConnection = playerHitbox.OnDangerStatusChanged(function(nowInDanger)
 			if nowInDanger and enabled then
 				onHeartbeat()
 			end

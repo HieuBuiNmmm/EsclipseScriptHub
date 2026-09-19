@@ -1,17 +1,16 @@
 -- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
--- Đơn giản hóa hoàn toàn: chỉ phát hiện đối tượng skill xuất hiện trong Workspace
--- qua ChildAdded/ChildRemoved, CHỈ chạy sau sự kiện start dungeon (không còn ở lobby),
--- và vẽ SelectionBox đơn giản cho từng đối tượng được xác định.
--- Không còn trajectory / whitelist / boss orb / ngoại lệ / hitbox padding / tên 3D.
+-- Quản lý vòng đời thực thể nguy hiểm (Detection & Lifecycle Layer).
+-- Lắng nghe ChildAdded/ChildRemoved của Workspace sau khi Dungeon bắt đầu,
+-- quản lý danh sách activeHazards, cơ chế retry khi part chưa load, và room transition cooldown.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local shared = require("@routes/DungeonQuest/core/shared")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
-local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
-local trajectory = require("@routes/DungeonQuest/core/hazardScanner/trajectory")
-local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
+local geometry = require("@routes/DungeonQuest/core/evasion/spatial/geometry")
+local groundVisual = require("@routes/DungeonQuest/core/evasion/visuals/groundVisual")
+local trajectory = require("@routes/DungeonQuest/core/evasion/spatial/trajectory")
+local timerVisual = require("@routes/DungeonQuest/core/evasion/visuals/timerVisual")
 local contextual = require("@routes/DungeonQuest/core/contextual")
 
 --// References
@@ -572,8 +571,8 @@ registerHazard = function(instance)
 		Distance = distance,
 	}
 
-	if visualizer.IsEnabled() then
-		visualizer.AttachZoneVisuals(info)
+	if groundVisual.IsEnabled() then
+		groundVisual.AttachZoneVisuals(info)
 	end
 	if trajectory.IsEnabled() then
 		trajectory.AttachTrajectoryVisuals(info)
@@ -615,7 +614,7 @@ local function unregisterHazard(instance, reason)
 
 	printDeepInspect(instance, "DESPAWN", reason, info)
 
-	visualizer.DetachZoneVisuals(info)
+	groundVisual.DetachZoneVisuals(info)
 	trajectory.DetachTrajectoryVisuals(info)
 	timerVisual.DetachTimerVisual(info)
 
@@ -646,7 +645,7 @@ end
 --// Xoa toan bo hazard hien tai
 function detection.ClearAllHazards(reason)
 	lastIceSpikesChainTime = 0
-	visualizer.ClearAll()
+	groundVisual.ClearAll()
 	trajectory.ClearAll()
 	timerVisual.ClearAll()
 	stopAllRetries()
@@ -682,7 +681,7 @@ function detection.StartScan()
 	if enabled then return end
 	enabled = true
 
-	visualizer.BindDetection(detection)
+	groundVisual.BindDetection(detection)
 	trajectory.BindDetection(detection)
 	timerVisual.BindDetection(detection)
 	detection.ClearAllHazards("StartScan Reset")
@@ -755,24 +754,6 @@ end
 
 function detection.SetSelectionBoxesEnabled(state)
 	selectionBoxesEnabled = state and true or false
-	if selectionBoxesEnabled then
-		for inst, info in pairs(activeHazards) do
-			if inst and inst.Parent and (not info.Boxes or #info.Boxes == 0) then
-				local parts = getBaseParts(inst)
-				info.Connections = info.Connections or {}
-				info.Boxes = attachSelectionBoxes(parts, info.Connections, info.IsTrajectory)
-			end
-		end
-	else
-		for _, info in pairs(activeHazards) do
-			if info.Boxes then
-				for _, box in ipairs(info.Boxes) do
-					pcall(function() box:Destroy() end)
-				end
-				table.clear(info.Boxes)
-			end
-		end
-	end
 end
 
 function detection.IsSelectionBoxesEnabled()
@@ -796,7 +777,7 @@ function detection.IsLogFailedEnabled()
 end
 
 function detection.SetInspectTarget(name)
-	inspectTargetName = type(name) == "string" and name or ""
+	inspectTargetName = typeof(name) == "string" and name or ""
 end
 
 function detection.GetInspectTarget()
@@ -817,10 +798,12 @@ end
 
 function detection.GetActiveHazards()
 	local list = {}
-	for inst, data in pairs(activeHazards) do
-		if inst and inst.Parent == Workspace then
-			list[#list + 1] = data
-		end
+	for _, info in pairs(activeHazards) do
+		table.insert(list, {
+			Name = info.Name,
+			Class = info.Class,
+			Distance = info.Distance,
+		})
 	end
 	return list
 end
@@ -834,14 +817,9 @@ function detection.GetLastHazardInfo()
 end
 
 function detection.OnHazardChanged(callback)
-	if type(callback) ~= "function" then return end
-	table.insert(hazardChangedCallbacks, callback)
+	if type(callback) == "function" then
+		table.insert(hazardChangedCallbacks, callback)
+	end
 end
-
---// Dong nap khi shutdown
-lifecycle.Register(function()
-	detection.StopScan()
-	detection.ClearAllHazards("Shutdown")
-end)
 
 return detection

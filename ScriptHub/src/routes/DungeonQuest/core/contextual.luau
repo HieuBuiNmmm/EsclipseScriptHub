@@ -348,6 +348,11 @@ function contextual.IsActiveHazardScannerEnabled(target): boolean
 	return contextual.GetEnableHazardScanner(dungeon, targetKey)
 end
 
+-- Aliases for Evasion naming convention
+contextual.GetEnableEvasion = contextual.GetEnableHazardScanner
+contextual.SetEnableEvasion = contextual.SetEnableHazardScanner
+contextual.IsActiveEvasionEnabled = contextual.IsActiveHazardScannerEnabled
+
 --// Cập nhật Min Combat Distance
 function contextual.SetMinCombatDistance(dungeonName, targetKey, minVal)
 	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end

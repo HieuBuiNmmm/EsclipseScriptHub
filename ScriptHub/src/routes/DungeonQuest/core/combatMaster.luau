@@ -7,7 +7,7 @@
 
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
 local autoFarm = require("@routes/DungeonQuest/core/autoFarm")
-local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local evasion = require("@routes/DungeonQuest/core/evasion")
 local coordinator = require("@routes/DungeonQuest/core/coordinator")
 local notifier = require("@routes/DungeonQuest/core/notifier")
 
@@ -48,9 +48,9 @@ function combatMaster.Toggle(state, isAutoBoss)
 		-- Bật độc quyền CombatMaster qua Coordinator (tự động nhường/tắt PathRecord)
 		coordinator.EnableExclusive("CombatMaster")
 
-		-- Bật Hazard Scanner & Auto Dodge
-		hazardScanner.Toggle(true)
-		hazardScanner.SetAutoDodgeEnabled(true)
+		-- Bật Evasion & Auto Dodge
+		evasion.Toggle(true)
+		evasion.SetAutoDodgeEnabled(true)
 
 		-- Bật Auto Farm & Smart Auto Skill (bypass coordinator để không đá CombatMaster)
 		autoFarm.Toggle(true, true)
@@ -60,9 +60,9 @@ function combatMaster.Toggle(state, isAutoBoss)
 		autoFarm.Toggle(false, true)
 		autoFarm.SetAutoSkillEnabled(false)
 
-		-- Tắt Auto Dodge & Hazard Scanner
-		hazardScanner.SetAutoDodgeEnabled(false)
-		hazardScanner.Toggle(false)
+		-- Tắt Auto Dodge & Evasion
+		evasion.SetAutoDodgeEnabled(false)
+		evasion.Toggle(false)
 	end
 
 	fireStateChanged()

@@ -1,20 +1,20 @@
--- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
--- trong Workspace sau sự kiện start dungeon và vẽ SelectionBox đơn giản cho từng đối tượng.
--- Không còn trajectory / whitelist / ngoại lệ / hitbox padding / tên 3D.
+-- Module Evasion trong tab Combat (DungeonQuest):
+-- Quản lý cấu hình & theo dõi thời gian thực hệ thống né đòn & thoát hiểm thông minh (Evasion Engine).
+-- Bao gồm Threat Detection, Trajectory Prediction, Safe Spot Engine và Auto-Dodge Controller.
 
 --// Imports
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
-local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local evasion = require("@routes/DungeonQuest/core/evasion")
 local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
-	leftSection:Header({ Name = "Hazard Scanner Controls" })
+	leftSection:Header({ Name = "Evasion & Auto-Dodge Controls" })
 
 	local rightSection = tab:Section({ Side = "Right" })
-	rightSection:Header({ Name = "Real-time Hazard Monitor" })
+	rightSection:Header({ Name = "Real-time Evasion Monitor" })
 
 	--// Right Section Labels
 	local statusLabel = rightSection:Label({ Text = "Detector: <font color='rgb(255,80,80)'>Disabled</font>" })
@@ -40,11 +40,11 @@ return function(window, tab)
 		end
 	end
 
-	hazardScanner.OnPlayerDangerChanged(function(inDanger, threatInfo, threatType)
+	evasion.OnPlayerDangerChanged(function(inDanger, threatInfo, threatType)
 		updatePlayerDanger(inDanger, threatInfo, threatType)
 	end)
 
-	hazardScanner.OnSafeSpotChanged(function(inDanger, spot, dist)
+	evasion.OnSafeSpotChanged(function(inDanger, spot, dist)
 		if inDanger and spot then
 			pcall(function()
 				safeSpotLabel:UpdateName(("Safe Spot: <font color='rgb(0,255,120)'><b>Found (%.1f studs)</b></font>"):format(dist))
@@ -56,7 +56,7 @@ return function(window, tab)
 		end
 	end)
 
-	hazardScanner.OnDodgeStateChanged(function(isDodging, spot, dist)
+	evasion.OnDodgeStateChanged(function(isDodging, spot, dist)
 		if isDodging and spot then
 			pcall(function()
 				dodgeStatusLabel:UpdateName(("Auto Dodge: <font color='rgb(0,255,200)'><b>Dodging (%.1f studs)</b></font>"):format(dist))
@@ -69,10 +69,10 @@ return function(window, tab)
 	end)
 
 	local function updateMonitor(count, lastInfo)
-		count = count or hazardScanner.GetHazardCount()
-		lastInfo = lastInfo or hazardScanner.GetLastHazardInfo()
+		count = count or evasion.GetHazardCount()
+		lastInfo = lastInfo or evasion.GetLastHazardInfo()
 
-		local isEnabled = hazardScanner.IsEnabled()
+		local isEnabled = evasion.IsEnabled()
 		local statusColor = isEnabled and "0, 255, 0" or "255, 80, 80"
 		local statusText = isEnabled and "Active (Scanning & SelectionBox)" or "Disabled"
 
@@ -103,9 +103,9 @@ return function(window, tab)
 
 	rightSection:Toggle({
 		Name = "Enable Deep Inspector",
-		Default = hazardScanner.IsInspectEnabled(),
+		Default = evasion.IsInspectEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetInspectEnabled(state)
+			evasion.SetInspectEnabled(state)
 		end),
 	}, "Toggle_HazardDeepInspector")
 
@@ -113,9 +113,9 @@ return function(window, tab)
 		Name = "Target Skill Name",
 		Placeholder = "e.g. Meteor, Spike, Flame...",
 		AcceptedCharacters = "All",
-		Default = hazardScanner.GetInspectTarget(),
+		Default = evasion.GetInspectTarget(),
 		Callback = autoSave.Wrap(function(text)
-			hazardScanner.SetInspectTarget(text)
+			evasion.SetInspectTarget(text)
 		end),
 	})
 
@@ -125,151 +125,151 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(customTrajSection:Slider({
 		Name = "Second Boss Moving Beam (studs)",
-		Default = hazardScanner.GetSecondBossBeamLength(),
+		Default = evasion.GetSecondBossBeamLength(),
 		Minimum = 10,
 		Maximum = 250,
 		DisplayMethod = "Value",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetSecondBossBeamLength(val)
+			evasion.SetSecondBossBeamLength(val)
 		end),
 	}, "Slider_HazardSecondBossBeamLength"))
 
 	ui.PatchSliderLoadCallback(customTrajSection:Slider({
 		Name = "First Boss Big Spike Width (studs)",
-		Default = hazardScanner.GetFirstBossBigSpikeWidth(),
+		Default = evasion.GetFirstBossBigSpikeWidth(),
 		Minimum = 10,
 		Maximum = 60,
 		DisplayMethod = "Value",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetFirstBossBigSpikeWidth(val)
+			evasion.SetFirstBossBigSpikeWidth(val)
 		end),
 	}, "Slider_HazardFirstBossBigSpikeWidth"))
 
 	ui.PatchSliderLoadCallback(customTrajSection:Slider({
 		Name = "First Boss Seeking Spike Width (studs)",
-		Default = hazardScanner.GetFirstBossSeekingSpikeWidth(),
+		Default = evasion.GetFirstBossSeekingSpikeWidth(),
 		Minimum = 4,
 		Maximum = 30,
 		DisplayMethod = "Value",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetFirstBossSeekingSpikeWidth(val)
+			evasion.SetFirstBossSeekingSpikeWidth(val)
 		end),
 	}, "Slider_HazardFirstBossSeekingSpikeWidth"))
 
 	ui.PatchSliderLoadCallback(customTrajSection:Slider({
 		Name = "Second Boss Circle Chain Lifetime (s)",
-		Default = hazardScanner.GetSecondBossCircleDuration(),
+		Default = evasion.GetSecondBossCircleDuration(),
 		Minimum = 0.5,
 		Maximum = 4.0,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetSecondBossCircleDuration(val)
+			evasion.SetSecondBossCircleDuration(val)
 		end),
 	}, "Slider_HazardSecondBossCircleDuration"))
 
-	hazardScanner.OnHazardChanged(function(count, lastInfo)
+	evasion.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
 	end)
 
 	--// Left Section Controls
 	local hsToggle = leftSection:Toggle({
-		Name = "Enable Hazard Scanner",
-		Default = hazardScanner.IsEnabled(),
+		Name = "Enable Evasion Engine",
+		Default = evasion.IsEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.Toggle(state)
+			evasion.Toggle(state)
 			updateMonitor()
 		end),
 	}, "Toggle_SmartDodgeThreatDetection")
 
 	leftSection:Toggle({
 		Name = "Show Player 2D Hitbox (Ground Visual)",
-		Default = hazardScanner.IsPlayerVisualEnabled(),
+		Default = evasion.IsPlayerVisualEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetPlayerVisualEnabled(state)
+			evasion.SetPlayerVisualEnabled(state)
 		end),
 	}, "Toggle_HazardPlayer2DVisual")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Player 2D Hitbox Radius (studs)",
-		Default = hazardScanner.GetPlayerHitboxRadius(),
+		Default = evasion.GetPlayerHitboxRadius(),
 		Minimum = 0.5,
 		Maximum = 8,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetPlayerHitboxRadius(val)
+			evasion.SetPlayerHitboxRadius(val)
 		end),
 	}, "Slider_HazardPlayer2DHitboxRadius"))
 
 	leftSection:Toggle({
 		Name = "Show 3D Selection Boxes (Parts)",
-		Default = hazardScanner.IsSelectionBoxesEnabled(),
+		Default = evasion.IsSelectionBoxesEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetSelectionBoxesEnabled(state)
+			evasion.SetSelectionBoxesEnabled(state)
 		end),
 	}, "Toggle_HazardSelectionBoxes")
 
 	leftSection:Toggle({
 		Name = "Show Lifespan Timer (3D Duration)",
-		Default = hazardScanner.IsTimerVisualEnabled(),
+		Default = evasion.IsTimerVisualEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetTimerVisualEnabled(state)
+			evasion.SetTimerVisualEnabled(state)
 		end),
 	}, "Toggle_HazardLifespanTimer")
 
 	leftSection:Toggle({
 		Name = "Show Danger Zones (Ground Visualizer)",
-		Default = hazardScanner.IsVisualizerEnabled(),
+		Default = evasion.IsVisualizerEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetVisualizerEnabled(state)
+			evasion.SetVisualizerEnabled(state)
 		end),
 	}, "Toggle_HazardGroundVisualizer")
 
 	leftSection:Toggle({
 		Name = "Show Trajectory Paths (Orange)",
-		Default = hazardScanner.IsTrajectoryEnabled(),
+		Default = evasion.IsTrajectoryEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetTrajectoryEnabled(state)
+			evasion.SetTrajectoryEnabled(state)
 		end),
 	}, "Toggle_HazardTrajectoryVisualizer")
 
 	leftSection:Toggle({
 		Name = "Show Safe Spot Marker (Green Visual)",
-		Default = hazardScanner.IsSafeSpotVisualEnabled(),
+		Default = evasion.IsSafeSpotVisualEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetSafeSpotVisualEnabled(state)
+			evasion.SetSafeSpotVisualEnabled(state)
 		end),
 	}, "Toggle_HazardSafeSpotVisual")
 
 	leftSection:Toggle({
 		Name = "Show Candidate Points & Rays (Scan Grid)",
-		Default = hazardScanner.IsShowCandidates(),
+		Default = evasion.IsShowCandidates(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetShowCandidates(state)
+			evasion.SetShowCandidates(state)
 		end),
 	}, "Toggle_HazardShowCandidates")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Safe Spot Safety Margin (studs)",
-		Default = hazardScanner.GetSafeSpotBuffer(),
+		Default = evasion.GetSafeSpotBuffer(),
 		Minimum = 0.0,
 		Maximum = 6.0,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetSafeSpotBuffer(val)
+			evasion.SetSafeSpotBuffer(val)
 		end),
 	}, "Slider_HazardSafeSpotBuffer"))
 
 	local dodgeToggle = leftSection:Toggle({
 		Name = "Enable Auto Dodge (Move + Snap)",
-		Default = hazardScanner.IsAutoDodgeEnabled(),
+		Default = evasion.IsAutoDodgeEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetAutoDodgeEnabled(state)
+			evasion.SetAutoDodgeEnabled(state)
 		end),
 	}, "Toggle_HazardAutoDodgeEnabled")
 
@@ -277,17 +277,17 @@ return function(window, tab)
 
 	leftSection:Toggle({
 		Name = "Enable Fine Pass (Tier 2 - Max 45s)",
-		Default = hazardScanner.IsFinePassEnabled(),
+		Default = evasion.IsFinePassEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetFinePassEnabled(state)
+			evasion.SetFinePassEnabled(state)
 		end),
 	}, "Toggle_HazardFinePassEnabled")
 
 	leftSection:Toggle({
 		Name = "Enable Emergency Fallback (Tier 3 - Max 55s)",
-		Default = hazardScanner.IsFallbackPassEnabled(),
+		Default = evasion.IsFallbackPassEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetFallbackPassEnabled(state)
+			evasion.SetFallbackPassEnabled(state)
 		end),
 	}, "Toggle_HazardFallbackPassEnabled")
 
@@ -299,13 +299,13 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Dodge Snap Distance (studs)",
-		Default = hazardScanner.GetDodgeSnapDistance(),
+		Default = evasion.GetDodgeSnapDistance(),
 		Minimum = 0.5,
 		Maximum = 5.0,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetDodgeSnapDistance(val)
+			evasion.SetDodgeSnapDistance(val)
 		end),
 	}, "Slider_HazardDodgeSnapDistance"))
 
@@ -323,41 +323,41 @@ return function(window, tab)
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Trajectory Length (studs)",
-		Default = hazardScanner.GetTrajectoryLength(),
+		Default = evasion.GetTrajectoryLength(),
 		Minimum = 10,
 		Maximum = 150,
 		DisplayMethod = "Value",
 		Precision = 0,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetTrajectoryLength(val)
+			evasion.SetTrajectoryLength(val)
 		end),
 	}, "Slider_HazardTrajectoryLength"))
 
 	leftSection:Toggle({
 		Name = "Log Hazards (Spawns / Despawns)",
-		Default = hazardScanner.IsLogHazardsEnabled(),
+		Default = evasion.IsLogHazardsEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetLogHazards(state)
+			evasion.SetLogHazards(state)
 		end),
 	}, "Toggle_SmartDodgeLogHazards")
 
 	leftSection:Toggle({
 		Name = "Log Rejected (Unrenderable)",
-		Default = hazardScanner.IsLogFailedEnabled(),
+		Default = evasion.IsLogFailedEnabled(),
 		Callback = autoSave.Wrap(function(state)
-			hazardScanner.SetLogFailed(state)
+			evasion.SetLogFailed(state)
 		end),
 	}, "Toggle_SmartDodgeLogRejected")
 
 	ui.PatchSliderLoadCallback(leftSection:Slider({
 		Name = "Blue Danger Zone Margin (studs)",
-		Default = hazardScanner.GetTrajectoryMargin(),
+		Default = evasion.GetTrajectoryMargin(),
 		Minimum = 0,
 		Maximum = 10,
 		DisplayMethod = "Value",
 		Precision = 1,
 		Callback = autoSave.Wrap(function(val)
-			hazardScanner.SetTrajectoryMargin(val)
+			evasion.SetTrajectoryMargin(val)
 		end),
 	}, "Slider_HazardTrajectoryMargin"))
 

@@ -10,7 +10,7 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
+local geometry = require("@routes/DungeonQuest/core/evasion/spatial/geometry")
 
 local RunService = services.RunService or game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")

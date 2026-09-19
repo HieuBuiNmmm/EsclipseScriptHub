@@ -3,7 +3,7 @@
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
 local renderPlayer = require("@routes/DungeonQuest/tabs/Combat/player")
-local renderHazardScanner = require("@routes/DungeonQuest/tabs/Combat/hazardScanner")
+local renderEvasion = require("@routes/DungeonQuest/tabs/Combat/evasion")
 local renderAutoFarm = require("@routes/DungeonQuest/tabs/Combat/autoFarm")
 
 return function(window, tab)
@@ -33,7 +33,7 @@ return function(window, tab)
 	end)
 
 	renderPlayer(window, tab)
-	renderHazardScanner(window, tab)
+	renderEvasion(window, tab)
 	renderAutoFarm(window, tab)
 end
 

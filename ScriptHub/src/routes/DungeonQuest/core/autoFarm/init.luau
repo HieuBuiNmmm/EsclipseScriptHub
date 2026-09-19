@@ -12,7 +12,7 @@ local scanner = require("@routes/DungeonQuest/core/autoFarm/scanner")
 local selector = require("@routes/DungeonQuest/core/autoFarm/selector")
 local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
 local movement = require("@routes/DungeonQuest/core/autoFarm/movement")
-local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local evasion = require("@routes/DungeonQuest/core/evasion")
 local autoSkill = require("@routes/DungeonQuest/core/autoFarm/autoSkill")
 local contextual = require("@routes/DungeonQuest/core/contextual")
 
@@ -117,7 +117,7 @@ local function startMoveDriver()
 	moveDriverConnection = stepSignal:Connect(function()
 		if not running or isPaused then return end
 		-- Nếu Auto-Dodge đang hoạt động: nhường 100% quyền cho DodgeController, không can thiệp vào Move!
-		if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+		if evasion.IsCurrentlyDodging and evasion.IsCurrentlyDodging() then
 			return
 		end
 		local hum = shared.GetHumanoid()
@@ -275,7 +275,7 @@ local function stepMovementLoop(deltaTime)
 	if not playerPos then return end
 
 	-- Nếu Auto-Dodge đang chủ động né nguy hiểm -> tạm nhường quyền điều khiển di chuyển
-	if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+	if evasion.IsCurrentlyDodging and evasion.IsCurrentlyDodging() then
 		activeMoveVector = Vector3.zero
 		return
 	end
@@ -386,8 +386,8 @@ local function stepMovementLoop(deltaTime)
 	local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
 	local isDodgeDisabled = contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled(target)
 	local isHazardScannerEnabled = not (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled(target))
-	local isAutoDodgeEnabled = hazardScanner.IsAutoDodgeEnabled and hazardScanner.IsAutoDodgeEnabled()
-	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isHazardScannerEnabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
+	local isAutoDodgeEnabled = evasion.IsAutoDodgeEnabled and evasion.IsAutoDodgeEnabled()
+	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isHazardScannerEnabled and isAutoDodgeEnabled and evasion and evasion.IsPointSafe
 
 	if flatDist < minCombatDistance then
 		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly
@@ -416,7 +416,7 @@ local function stepMovementLoop(deltaTime)
 		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh hoặc tắt Dodge)
 		local isBackSafe = true
 		if shouldCheckDanger then
-			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
+			isBackSafe = evasion.IsPointSafe(backTarget, 0.5)
 		end
 
 		if not isBackSafe then
@@ -444,25 +444,32 @@ local function stepMovementLoop(deltaTime)
 		local approachDir = flatDelta.Magnitude > 0.1 and flatDelta.Unit or Vector3.new(0, 0, 1)
 
 		-- Kiểm tra xem hướng bước tới (Lookahead Points) có đang nằm trong vùng nguy hiểm / đạn bay không
-		-- Quét 3 tia song song: Tia trung tâm + 2 tia 2 bên (trái & phải) cách 1.2 studs mô phỏng toàn bộ bề rộng thân nhân vật
+		-- Quét đa điểm Lookahead:
+		--   - Tia trung tâm (Center): 2 node check (3 studs & 7 studs)
+		--   - 2 tia 2 bên (Trái & Phải vai ±1.2 studs): 1 node check (3 studs)
 		local dangerAhead = false
 		if shouldCheckDanger then
 			local sideOffset = Vector3.new(-approachDir.Z, 0, approachDir.X) * 1.2
 
-			-- Check các điểm trước mặt ở cự ly 3 studs, 6 studs, 10 studs
-			for _, stepDist in ipairs({ 3, 6, 10 }) do
+			-- 1. Tia trung tâm: 2 node check (3 studs và 7 studs)
+			for _, stepDist in ipairs({ 3, 7 }) do
 				if stepDist < flatDist then
 					local checkPointCenter = playerPos + approachDir * stepDist
-					local checkPointLeft = checkPointCenter + sideOffset
-					local checkPointRight = checkPointCenter - sideOffset
-
-					if not hazardScanner.IsPointSafe(checkPointCenter, 0.5)
-						or not hazardScanner.IsPointSafe(checkPointLeft, 0.5)
-						or not hazardScanner.IsPointSafe(checkPointRight, 0.5)
-					then
+					if not evasion.IsPointSafe(checkPointCenter, 0.5) then
 						dangerAhead = true
 						break
 					end
+				end
+			end
+
+			-- 2. 2 tia 2 bên (Trái & Phải): 1 node check (3 studs)
+			if not dangerAhead and 3 < flatDist then
+				local checkPointBase = playerPos + approachDir * 3
+				local checkPointLeft = checkPointBase + sideOffset
+				local checkPointRight = checkPointBase - sideOffset
+
+				if not evasion.IsPointSafe(checkPointLeft, 0.5) or not evasion.IsPointSafe(checkPointRight, 0.5) then
+					dangerAhead = true
 				end
 			end
 		end
@@ -991,7 +998,7 @@ function autoFarm.SetPaused(state)
 		if h and h.Parent then
 			pcall(function()
 				h.AutoRotate = true
-				if not (hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging()) then
+				if not (evasion.IsCurrentlyDodging and evasion.IsCurrentlyDodging()) then
 					h:Move(Vector3.zero, false)
 				end
 			end)
@@ -1215,7 +1222,7 @@ function autoFarm.Toggle(state, bypassCoordinator)
 		if h and h.Parent then
 			pcall(function()
 				h.AutoRotate = true
-				if not (hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging()) then
+				if not (evasion.IsCurrentlyDodging and evasion.IsCurrentlyDodging()) then
 					h:Move(Vector3.zero, false)
 				end
 			end)

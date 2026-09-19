@@ -7,8 +7,9 @@
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
 local lifecycle = require("@routes/DungeonQuest/core/lifecycle")
-local geometry = require("@routes/DungeonQuest/core/hazardScanner/geometry")
-local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
+local geometry = require("@routes/DungeonQuest/core/evasion/spatial/geometry")
+local timerVisual = require("@routes/DungeonQuest/core/evasion/visuals/timerVisual")
+local groundVisual = require("@routes/DungeonQuest/core/evasion/visuals/groundVisual")
 
 local RunService = services.RunService or game:GetService("RunService")
 local player = services.player
@@ -248,88 +249,37 @@ local function getBigSpikeWidth(mainPart)
 	end
 
 	-- 3. Đo đạc từ instance thực tế trong workspace
-	if mainPart and not isBeamTelegraph(mainPart.Name) then
-		local w = measureSpikeDimensions(mainPart)
-		if w and w >= 4.0 then
-			cachedBigSpikeWidth = math.clamp(w, 8.0, 60.0)
+	if mainPart and mainPart.Parent then
+		local rootModel = mainPart:FindFirstAncestorWhichIsA("Model") or mainPart
+		local measured = measureSpikeDimensions(rootModel)
+		if measured and measured >= 6.0 then
+			cachedBigSpikeWidth = measured
 			return cachedBigSpikeWidth
 		end
 	end
 
-	-- Hoặc tìm live spike trong workspace
-	for _, child in ipairs(workspace:GetChildren()) do
-		local cName = child.Name:lower()
-		if string.find(cName, "firstbossbigspike", 1, true) or (string.find(cName, "bigspike", 1, true) and not string.find(cName, "seekingspike", 1, true) and not isBeamTelegraph(cName)) then
-			local w = measureSpikeDimensions(child)
-			if w and w >= 4.0 then
-				cachedBigSpikeWidth = math.clamp(w, 8.0, 60.0)
-				return cachedBigSpikeWidth
-			end
-		end
-	end
-
-	-- 4. Đọc từ ReplicatedStorage.enemyProjectiles.firstBossBigSpike
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local ep = ReplicatedStorage:FindFirstChild("enemyProjectiles")
-	local tmpl = ep and ep:FindFirstChild("firstBossBigSpike")
-	if tmpl then
-		local w = measureSpikeDimensions(tmpl)
-		if w and w >= 4.0 then
-			cachedBigSpikeWidth = math.clamp(w, 8.0, 60.0)
-			return cachedBigSpikeWidth
-		end
-	end
-
-	return 28.0
+	-- 4. Fallback mặc định
+	return 28
 end
 
---// Tính bề rộng thực tế của chính BasePart firstBossSeekingSpikes
+--// Tính bề rộng thực tế của firstBossSeekingSpikes
 local cachedSeekingSpikeWidth = nil
 local function getSeekingSpikeWidth(mainPart)
-	-- 1. Ưu tiên cấu hình custom width từ slider / user
 	if customWidths["firstbossseekingspikes"] then
 		return customWidths["firstbossseekingspikes"]
 	end
-
-	-- 2. Nếu đã cache kích thước trước đó
 	if cachedSeekingSpikeWidth then
 		return cachedSeekingSpikeWidth
 	end
-
-	-- 3. Đo đạc từ instance thực tế trong workspace
-	if mainPart and not isBeamTelegraph(mainPart.Name) then
-		local w = measureSpikeDimensions(mainPart)
-		if w and w >= 2.0 then
-			cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
+	if mainPart and mainPart.Parent then
+		local rootModel = mainPart:FindFirstAncestorWhichIsA("Model") or mainPart
+		local measured = measureSpikeDimensions(rootModel)
+		if measured and measured >= 2.0 then
+			cachedSeekingSpikeWidth = measured
 			return cachedSeekingSpikeWidth
 		end
 	end
-
-	-- Hoặc tìm live spike trong workspace
-	for _, child in ipairs(workspace:GetChildren()) do
-		local cName = child.Name:lower():gsub("%s+", "")
-		if string.find(cName, "seekingspike", 1, true) and not isBeamTelegraph(cName) then
-			local w = measureSpikeDimensions(child)
-			if w and w >= 2.0 then
-				cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
-				return cachedSeekingSpikeWidth
-			end
-		end
-	end
-
-	-- 4. Đọc từ ReplicatedStorage.enemyProjectiles.firstBossSeekingSpikes
-	local ReplicatedStorage = game:GetService("ReplicatedStorage")
-	local ep = ReplicatedStorage:FindFirstChild("enemyProjectiles")
-	local tmpl = ep and ep:FindFirstChild("firstBossSeekingSpikes")
-	if tmpl then
-		local w = measureSpikeDimensions(tmpl)
-		if w and w >= 2.0 then
-			cachedSeekingSpikeWidth = math.clamp(w, 4.0, 40.0)
-			return cachedSeekingSpikeWidth
-		end
-	end
-
-	return 10.0
+	return 10
 end
 
 local function getBossSpikeWidth(hazardName, mainPart)
@@ -340,99 +290,85 @@ local function getBossSpikeWidth(hazardName, mainPart)
 	end
 end
 
---// Lấy độ dài trajectory (mặc định hoặc custom theo đối tượng / theo tia định hướng của game)
-local function getHazardPredictionLength(hazardInfoOrName)
-	if not hazardInfoOrName then return predictionLength end
-	local name = ""
-	local record = nil
-	if type(hazardInfoOrName) == "string" then
-		name = hazardInfoOrName
-	elseif type(hazardInfoOrName) == "table" then
-		name = hazardInfoOrName.Name or (hazardInfoOrName.Instance and hazardInfoOrName.Instance.Name) or ""
-		record = activeRecords[hazardInfoOrName]
-	end
+--// Lấy độ dài quỹ đạo cho từng loại hazard
+local function getHazardPredictionLength(hazardInfo)
+	if not hazardInfo then return predictionLength end
+	local inst = hazardInfo.Instance
+	local hazardName = hazardInfo.Name or (inst and inst.Name) or ""
+	local clean = hazardName:lower():gsub("%s+", "")
 
-	-- Nếu là Boss Spike (Big Spike hoặc Seeking Spike): ưu tiên số 1 là độ dài thực tế từ tia định hướng của game
-	local inst = (record and record.mainPart) or (type(hazardInfoOrName) == "table" and hazardInfoOrName.Instance)
-	if isBossSpike(name, inst) then
-		if record and record.beamLength then
+	if isBossSpike(hazardName, inst) then
+		local record = activeRecords[hazardInfo]
+		if record and record.beamLength and record.beamLength > 5 then
 			return record.beamLength
 		end
-		if isBigSpike(name, inst) then
-			return customLengths["firstbossbigspike"] or 140.0
-		else
-			return customLengths["firstbossseekingspikes"] or 80.0
+		local bLen = getTelegraphBeamData(inst)
+		if bLen and bLen > 5 then
+			return bLen
 		end
+		if customLengths["firstbossbigspike"] then
+			return customLengths["firstbossbigspike"]
+		end
+		return 60
 	end
 
-	if record and record.beamLength then
-		return record.beamLength
-	end
-
-	local clean = name:lower():gsub("%s+", "")
 	if customLengths[clean] then
 		return customLengths[clean]
 	end
-	for k, v in pairs(customLengths) do
-		if string.find(clean, k, 1, true) then
-			return v
+	for key, len in pairs(customLengths) do
+		if string.find(clean, key, 1, true) then
+			return len
 		end
 	end
 	return predictionLength
 end
 
---// Lấy vị trí người chơi
-local function getPlayerPosition()
-	local char = player and player.Character
-	if not char then return nil end
-	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
-	if not root then return nil end
-	return root.Position
-end
-
---// Tính hướng bay ngay lập tức tại Frame 0 nếu hazard nằm trong danh sách INSTANT_PROJECTILES
+--// Helper lấy hướng bay cho Instant Projectiles
 local function getInstantDirection(hazardName, mainPart)
-	if not hazardName or not mainPart then return nil, nil end
+	if not hazardName or not mainPart or not mainPart.Parent then return nil end
 	local clean = hazardName:lower():gsub("%s+", "")
-	local mode = INSTANT_PROJECTILES[clean]
-	if not mode then
-		for name, m in pairs(INSTANT_PROJECTILES) do
-			if string.find(clean, name, 1, true) then
+
+	local mode = nil
+	if INSTANT_PROJECTILES[clean] then
+		mode = INSTANT_PROJECTILES[clean]
+	else
+		for key, m in pairs(INSTANT_PROJECTILES) do
+			if string.find(clean, key, 1, true) then
 				mode = m
 				break
 			end
 		end
 	end
-	if not mode then return nil, nil end
+
+	if not mode then return nil end
 
 	if mode == "look_vector" then
-		local lv = mainPart.CFrame.LookVector
+		local cf = mainPart.CFrame
+		local lv = cf.LookVector
 		local hDir = Vector3.new(lv.X, 0, lv.Z)
-		if hDir.Magnitude > 0.01 then
+		if hDir.Magnitude > 0.05 then
 			return hDir.Unit, mode
 		end
-	else
-		-- "target_player" / true: Hướng thẳng từ projectile tới player
-		local pPos = getPlayerPosition()
-		if pPos then
-			local diff = pPos - mainPart.Position
-			local hDiff = Vector3.new(diff.X, 0, diff.Z)
-			if hDiff.Magnitude > 0.1 then
-				return hDiff.Unit, mode
+	elseif mode == "target_player" or mode == true then
+		local lp = game:GetService("Players").LocalPlayer
+		local char = lp and lp.Character
+		local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+		if root then
+			local delta = root.Position - mainPart.Position
+			local hDelta = Vector3.new(delta.X, 0, delta.Z)
+			if hDelta.Magnitude > 0.1 then
+				return hDelta.Unit, mode
 			end
 		end
-		local lv = mainPart.CFrame.LookVector
-		local hDir = Vector3.new(lv.X, 0, lv.Z)
-		if hDir.Magnitude > 0.01 then
-			return hDir.Unit, mode
-		end
 	end
-	return nil, nil
+
+	return nil
 end
 
---// Lấy độ cao mặt sàn theo chân người chơi
+--// Lấy độ cao mặt sàn theo chân người chơi tại thời điểm vẽ
 local function getPlayerGroundY()
-	local char = player and player.Character
+	local lp = game:GetService("Players").LocalPlayer
+	local char = lp and lp.Character
 	if not char then return nil end
 	local root = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
 	if not root then return nil end
@@ -453,14 +389,14 @@ function trajectory.GetPredictionLength()
 end
 
 function trajectory.SetPredictionLength(val)
-	if type(val) == "number" and val > 0 then
-		predictionLength = math.clamp(val, 10, 200)
+	if type(val) == "number" and val >= 5 then
+		predictionLength = val
 		trajectory.RefreshAll()
 	end
 end
 
-function trajectory.GetHazardPredictionLength(hazardNameOrInfo)
-	return getHazardPredictionLength(hazardNameOrInfo)
+function trajectory.GetHazardPredictionLength(hazardInfo)
+	return getHazardPredictionLength(hazardInfo)
 end
 
 function trajectory.GetCustomLength(key)
@@ -472,8 +408,8 @@ end
 function trajectory.SetCustomLength(key, val)
 	if not key then return end
 	local clean = key:lower():gsub("%s+", "")
-	if type(val) == "number" and val > 0 then
-		customLengths[clean] = math.clamp(val, 10, 300)
+	if type(val) == "number" and val >= 5 then
+		customLengths[clean] = val
 	else
 		customLengths[clean] = nil
 	end
@@ -485,16 +421,21 @@ function trajectory.GetSecondBossBeamLength()
 end
 
 function trajectory.SetSecondBossBeamLength(val)
-	trajectory.SetCustomLength("secondbossmovingbeam", val)
+	if type(val) == "number" and val >= 5 then
+		customLengths["secondbossmovingbeam"] = val
+	else
+		customLengths["secondbossmovingbeam"] = nil
+	end
+	trajectory.RefreshAll()
 end
 
 function trajectory.GetFirstBossBigSpikeWidth()
-	return customWidths["firstbossbigspike"] or 28
+	return customWidths["firstbossbigspike"] or (cachedBigSpikeWidth or 28)
 end
 
 function trajectory.SetFirstBossBigSpikeWidth(val)
 	if type(val) == "number" and val > 0 then
-		customWidths["firstbossbigspike"] = math.clamp(val, 6, 60)
+		customWidths["firstbossbigspike"] = math.clamp(val, 6, 80)
 	else
 		customWidths["firstbossbigspike"] = nil
 	end
@@ -719,9 +660,8 @@ local function onHeartbeat()
 						if data and data.UpdateHazardVisualColor then
 							pcall(data.UpdateHazardVisualColor, info, record.isMoving)
 						end
-						local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
-						if visualizer and visualizer.UpdateHazardVisualColor then
-							pcall(visualizer.UpdateHazardVisualColor, info, record.isMoving)
+						if groundVisual and groundVisual.UpdateHazardVisualColor then
+							pcall(groundVisual.UpdateHazardVisualColor, info, record.isMoving)
 						end
 					end
 
@@ -948,11 +888,9 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 		if data and data.UpdateHazardVisualColor then
 			pcall(data.UpdateHazardVisualColor, hazardInfo, true)
 		end
-		local visualizer = require("@routes/DungeonQuest/core/hazardScanner/visualizer")
-		if visualizer and visualizer.UpdateHazardVisualColor then
-			pcall(visualizer.UpdateHazardVisualColor, hazardInfo, true)
+		if groundVisual and groundVisual.UpdateHazardVisualColor then
+			pcall(groundVisual.UpdateHazardVisualColor, hazardInfo, true)
 		end
-		local timerVisual = require("@routes/DungeonQuest/core/hazardScanner/timerVisual")
 		if timerVisual and timerVisual.UpdateHazardVisualColor then
 			pcall(timerVisual.UpdateHazardVisualColor, hazardInfo, true)
 		end
