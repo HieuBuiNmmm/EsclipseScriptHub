@@ -47,19 +47,19 @@ return function(window, tab)
 	})
 
 	local function updateRoom()
-		local room = shared.GetCurrentRoomIndex()
-		if room <= 0 then
+		local room = shared.GetCurrentRoomName()
+		if not room then
 			roomLabel:UpdateName("Room: <font color='rgb(160, 160, 160)'>--</font>")
 			return
 		end
-		local isBoss = room >= 100
+		local isBoss = string.lower(room) == string.lower(shared.GetBossRoomName())
 		local color = isBoss and "255, 200, 80" or "0, 255, 0"
-		roomLabel:UpdateName("Room: <font color='rgb(" .. color .. ")'>" .. tostring(room) .. "</font>")
+		roomLabel:UpdateName("Room: <font color='rgb(" .. color .. ")'>" .. room .. "</font>")
 	end
 
 	updateRoom()
 
-	shared.OnRoomIndexChanged(function()
+	shared.OnRoomNameChanged(function()
 		updateRoom()
 	end)
 

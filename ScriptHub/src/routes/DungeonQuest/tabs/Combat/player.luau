@@ -51,7 +51,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoResetRoom")
 
-	section:Dropdown({
+	local roomDropdown = ui.PatchDropdownRestore(section:Dropdown({
 		Name = "Target Rooms",
 		Options = autoReset.GetRoomOptions(),
 		Default = autoReset.GetTargetRooms(),
@@ -60,7 +60,18 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(selected)
 			autoReset.SetTargetRooms(selected)
 		end),
-	}, "Dropdown_AutoResetTargetRooms")
+	}, "Dropdown_AutoResetTargetRooms"), true)
+
+	--// Khi cấu trúc room thật đổi (vào dungeon mới), refresh danh sách room trong
+	--// dropdown để không còn dữ liệu ước chừng nữa.
+	shared.OnRoomStructureChanged(function()
+		pcall(function()
+			local newOptions = autoReset.GetRoomOptions()
+			roomDropdown:ClearOptions()
+			roomDropdown:InsertOptions(newOptions)
+			roomDropdown:UpdateSelection(autoReset.GetTargetRooms())
+		end)
+	end)
 
 	ui.PatchSliderLoadCallback(section:Slider({
 		Name = "Reset Delay (s)",

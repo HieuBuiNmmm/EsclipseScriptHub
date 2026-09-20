@@ -42,10 +42,27 @@ local bossRoomRef = nil --// room model của boss hiện tại (tránh đếm l
 local bossIndex = 0
 local bossIndexCallbacks = {}
 
---// Room index: số room hiện tại, lấy từ TÊN room có quái ("room<so>").
---// Reset khi vào dungeon mới.
-local roomIndex = 0
-local roomIndexCallbacks = {}
+--// Cấu trúc room chuẩn của game: workspace.dungeon (level 1) là các folder,
+--// MỖI folder = 1 room (tên folder chính là tên room).
+--// Map thường có: "initialRoom" (room bắt đầu), "room1".."roomN", và "bossRoom" (boss cuối, KHÔNG đánh số).
+local ROOM_INITIAL_NAME = "initialRoom"
+local ROOM_BOSS_NAME = "bossRoom"
+--// Chỉ dùng để normalize config/API cũ: 103 = mã nội bộ của bossRoom trong ResolveRoomName.
+local BOSS_ROOM_INDEX = 103
+
+--// Room identity = TÊN FOLDER của room hiện tại (đúng tên folder level-1 của
+--// dungeon, vd "room5", "bossRoom"). Toàn hệ dùng TÊN, không còn layer số.
+local roomName = nil
+local roomNameCallbacks = {}
+
+--// Thông báo khi cấu trúc room (danh sách folder) THAY ĐỔI: vào dungeon mới, reset dungeon.
+--// Dùng để UI refresh dropdown danh sách room thực tế.
+local roomStructureCallbacks = {}
+local function fireRoomStructureChanged()
+	for i = #roomStructureCallbacks, 1, -1 do
+		pcall(roomStructureCallbacks[i])
+	end
+end
 
 local dungeon = nil
 local trackedRooms = {}
@@ -82,7 +99,7 @@ local lobbyCallbacks = {}
 local cleanupEnemies
 local initializeRooms
 local resetDungeon
-local refreshRoomIndex
+local refreshRoomName
 local tryCaptureBossSpawnPosition
 local bossInitialSpawnPos = nil
 
@@ -195,7 +212,7 @@ local function untrackEnemy(enemy)
 	enemyCount -= 1
 	disconnectEnemyConnections(enemy)
 	fireEnemyChanged()
-	refreshRoomIndex()
+	refreshRoomName()
 end
 
 --// Tìm room (con trực tiếp của dungeon) chứa model.
@@ -227,7 +244,7 @@ local function trackEnemy(enemy)
 		end
 	end
 	fireEnemyChanged()
-	refreshRoomIndex()
+	refreshRoomName()
 end
 
 local function waitAndTrackModel(model)
@@ -280,11 +297,6 @@ initializeRooms = function()
 		pcall(bossIndexCallbacks[i], bossIndex)
 	end
 
-	roomIndex = 0
-	for i = #roomIndexCallbacks, 1, -1 do
-		pcall(roomIndexCallbacks[i], roomIndex)
-	end
-
 	for _, room in ipairs(dungeon:GetChildren()) do
 		if room:IsA("Folder") or room:IsA("Model") then trackRoom(room) end
 	end
@@ -305,6 +317,8 @@ initializeRooms = function()
 			if object:IsA("Model") then untrackEnemy(object) end
 		end),
 	}
+	fireRoomStructureChanged()
+	refreshRoomName()
 	return true
 end
 
@@ -572,7 +586,7 @@ task.spawn(function()
 			initializeRooms()
 		end
 		--// Cập nhật room hiện tại khi dungeon/enemy thay đổi.
-		refreshRoomIndex()
+		refreshRoomName()
 	end
 end)
 
@@ -719,7 +733,7 @@ function shared.ResetBossIndex()
 			pcall(bossCallbacks[i], false)
 		end
 	end
-	refreshRoomIndex()
+	refreshRoomName()
 end
 
 function shared.OnBossIndexChanged(callback)
@@ -732,62 +746,136 @@ function shared.OnBossIndexChanged(callback)
 	end
 end
 
---// Đọc số room từ tên (room1 -> 1, room12 -> 12...). Trả 0 nếu không khớp.
-local function parseRoomNumber(name)
-	if type(name) ~= "string" then return 0 end
-	local lower = string.lower(name)
-	local bossMatch = string.match(lower, "boss.*(%d+)")
-	if bossMatch then
-		return 100 + (tonumber(bossMatch) or 1)
-	end
-	if string.find(lower, "boss") then
-		return 100 + math.max(1, bossIndex)
-	end
-	local number = string.match(name, "^room(%d+)$")
-	if not number then return 0 end
-	return tonumber(number) or 0
-end
-
---// Tính room hiện tại: room chứa enemy đang track còn sống.
---// Game clear theo kiểu tuần tự: xong quái room này mới spawn quái room sau, nên
---// tại 1 thời điểm chỉ có đúng 1 room có quái -> room của bất kỳ quái đang track
---// chính là room hiện tại (không cần scan theo khoảng cách).
---// Room nhận diện qua TÊN "room<so>" (room1, room2...). Không có enemy/dungeon -> 0.
---// Fallback phòng Boss: nếu bossActive = true, trả về 100 + math.max(1, bossIndex) (101, 102...).
-local function computeRoomIndex()
-	if not dungeon then return 0 end
+--// Tên folder của room hiện tại (danh tính thật). Fallback phòng Boss: bossActive -> "bossRoom".
+local function computeRoomName()
+	if not dungeon then return nil end
 	for model, data in pairs(trackedEnemies) do
 		if data and data.Room then
-			local idx = parseRoomNumber(data.Room.Name)
-			if idx > 0 then return idx end
+			local name = data.Room.Name
+			if type(name) == "string" and name ~= "" then
+				return name
+			end
 		end
 	end
 	if bossActive then
-		return 100 + math.max(1, bossIndex)
+		return ROOM_BOSS_NAME
 	end
-	return 0
+	return nil
 end
 
---// Đồng bộ roomIndex hiện tại, fire callback nếu đổi.
-refreshRoomIndex = function()
-	local newIndex = computeRoomIndex()
-	if newIndex == roomIndex then return end
-	roomIndex = newIndex
-	for i = #roomIndexCallbacks, 1, -1 do
-		pcall(roomIndexCallbacks[i], roomIndex)
+--// Đồng bộ tên room hiện tại (danh tính), fire callback nếu đổi.
+refreshRoomName = function()
+	local newName = computeRoomName()
+	if newName == roomName then return end
+	roomName = newName
+	for i = #roomNameCallbacks, 1, -1 do
+		pcall(roomNameCallbacks[i], roomName)
 	end
 end
 
-function shared.GetCurrentRoomIndex()
-	return roomIndex
+function shared.GetCurrentRoomName(): string?
+	return roomName
 end
 
-function shared.OnRoomIndexChanged(callback)
+function shared.OnRoomNameChanged(callback)
 	if type(callback) ~= "function" then return function() end end
-	table.insert(roomIndexCallbacks, callback)
+	table.insert(roomNameCallbacks, callback)
 	return function()
-		for i, cb in ipairs(roomIndexCallbacks) do
-			if cb == callback then table.remove(roomIndexCallbacks, i) break end
+		for i, cb in ipairs(roomNameCallbacks) do
+			if cb == callback then table.remove(roomNameCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Room structure (Real layout) ----
+--// Tên folder chuẩn của bossRoom (boss cuối, folder không đánh số).
+function shared.GetBossRoomName()
+	return ROOM_BOSS_NAME
+end
+
+--// Tên folder room bắt đầu ("initialRoom") và room đầu tiên theo thứ tự ("room1").
+function shared.GetInitialRoomName()
+	return ROOM_INITIAL_NAME
+end
+
+function shared.GetFirstRoomName()
+	return "room1"
+end
+
+--// Danh sách TÊN room THỰC TẾ của dungeon hiện tại, đọc trực tiếp từ các
+--// folder level-1 của workspace.dungeon (tên folder = tên room). Không còn dựa
+--// vào quái để ước lượng số room như trước.
+--// Trả về { string } đã sort, VD: "initialRoom", "room1".."roomN", "bossRoom".
+--// Rỗng nếu chưa có dungeon.
+function shared.GetRealRoomNames(): { string }
+	local result = {}
+	if not dungeon then return result end
+	for _, room in ipairs(dungeon:GetChildren()) do
+		if room:IsA("Folder") or room:IsA("Model") then
+			table.insert(result, room.Name)
+		end
+	end
+	table.sort(result)
+	return result
+end
+
+--// Danh sách tên room thực tế (tên folder), dùng cho dropdown không cần hardcode.
+function shared.GetRoomOptions(): { string }
+	return shared.GetRealRoomNames()
+end
+
+--// Chuẩn hoá 1 giá trị về TÊN ROOM hợp lệ (tên folder thật).
+--// Nhận number (1 -> "room1", 103 -> "bossRoom") hoặc string ("room5",
+--// "Room 5", "5", "bossRoom") -> trả tên folder hợp lệ nếu có trong danh sách
+--// room thực tế của dungeon hiện tại; else nil. Khi chưa có dungeon cho phép
+--// giữ tên (phục vụ config restore).
+function shared.ResolveRoomName(value): string?
+	if value == nil then return nil end
+	local name
+	if type(value) == "number" then
+		local n = math.floor(value)
+		if n == BOSS_ROOM_INDEX then
+			name = ROOM_BOSS_NAME
+		elseif n <= 0 then
+			return nil
+		else
+			name = ("room%d"):format(n)
+		end
+	elseif type(value) == "string" then
+		local lower = string.lower(value)
+		if lower == ROOM_BOSS_NAME or lower == "bossroom" or value == tostring(BOSS_ROOM_INDEX) then
+			name = ROOM_BOSS_NAME
+		else
+			local num = tonumber(value:match("(%d+)"))
+			if num then
+				name = ("room%d"):format(math.floor(num))
+			else
+				name = value
+			end
+		end
+	else
+		return nil
+	end
+	local real = shared.GetRealRoomNames()
+	if #real > 0 then
+		for _, roomName in ipairs(real) do
+			if string.lower(roomName) == string.lower(name) then
+				return roomName
+			end
+		end
+		return nil
+	end
+	return name
+end
+
+--// Đăng ký callback chạy khi danh sách room thực tế thay đổi (vào dungeon mới/reset).
+--// Trả về hàm huỷ.
+function shared.OnRoomStructureChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(roomStructureCallbacks, callback)
+	return function()
+		for i, cb in ipairs(roomStructureCallbacks) do
+			if cb == callback then table.remove(roomStructureCallbacks, i) break end
 		end
 	end
 end
@@ -885,7 +973,7 @@ local function setBossActive(active)
 	for i = #bossCallbacks, 1, -1 do
 		pcall(bossCallbacks[i], bossActive)
 	end
-	refreshRoomIndex()
+	refreshRoomName()
 end
 
 function shared.GetBossSpawnPosition()

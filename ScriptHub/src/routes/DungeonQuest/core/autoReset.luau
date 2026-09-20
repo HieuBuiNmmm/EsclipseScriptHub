@@ -14,29 +14,27 @@ local player = services.player
 --// State
 local autoReset = {}
 local enabled = false
-local targetRooms = { [2] = true } -- set of room numbers: { [number] = true }
+local targetRooms = { ["room2"] = true } -- set of room folder names: { [name] = true }
 local delaySeconds = 0.0
-local triggeredRooms = {} -- [roomIndex] = true (đánh dấu phòng đã reset trong run này)
+local triggeredRooms = {} -- [roomName] = true (đánh dấu phòng đã reset trong run này)
 
 local roomConn = nil
 local lobbyConn = nil
 local dungeonConn = nil
 
-local ROOM_OPTIONS = {}
+--// Danh sách room mặc định dùng khi CHƯA vào dungeon (dropdown không bị rỗng).
+--// Khi đã trong dungeon, sẽ dùng danh sách THỰC TẾ lấy từ folder level-1 của workspace.dungeon.
+local DEFAULT_ROOM_OPTIONS = {}
 for i = 1, 15 do
-	table.insert(ROOM_OPTIONS, ("Room %d"):format(i))
+	table.insert(DEFAULT_ROOM_OPTIONS, ("room%d"):format(i))
 end
+table.insert(DEFAULT_ROOM_OPTIONS, "bossRoom")
 
-local function parseRoomNumber(val): number?
-	if type(val) == "number" then
-		return math.clamp(math.floor(val), 1, 20)
-	elseif type(val) == "string" then
-		local num = tonumber(val:match("%d+"))
-		if num then
-			return math.clamp(math.floor(num), 1, 20)
-		end
-	end
-	return nil
+--// Chuẩn hoá 1 giá trị nhận từ UI (tên folder, number, "Room 5" cũ) về tên folder room.
+--// Khi đã vào dungeon -> chỉ chấp nhận room có thật; chưa vào dungeon -> giữ nguyên
+--// (phục vụ config restore).
+local function resolveRoomName(val: string | number): string?
+	return shared.ResolveRoomName(val)
 end
 
 --// Thực hiện tự sát / reset nhân vật an toàn (Chỉ cho phép trong Dungeon)
@@ -61,15 +59,15 @@ local executeReset = zoneGuard.Guard("Dungeon", function()
 end)
 
 --// Kiểm tra và xử lý tự sát khi vào phòng
-local function checkRoomTrigger(currentRoom: number)
+local function checkRoomTrigger(currentRoomName: string?)
 	if not enabled then return end
 	if shared.IsInLobby() or shared.IsDead() then return end
-	if currentRoom <= 0 then return end
-	if not targetRooms[currentRoom] then return end
-	if triggeredRooms[currentRoom] then return end
+	if not currentRoomName then return end
+	if not targetRooms[currentRoomName] then return end
+	if triggeredRooms[currentRoomName] then return end
 
 	-- Đánh dấu đã kích hoạt cho phòng này trong run hiện tại (chỉ 1 lần/phòng)
-	triggeredRooms[currentRoom] = true
+	triggeredRooms[currentRoomName] = true
 
 	task.spawn(function()
 		if delaySeconds > 0 then
@@ -77,9 +75,9 @@ local function checkRoomTrigger(currentRoom: number)
 		end
 
 		if not enabled or shared.IsInLobby() or shared.IsDead() then return end
-		if shared.GetCurrentRoomIndex() ~= currentRoom then return end
+		if shared.GetCurrentRoomName() ~= currentRoomName then return end
 
-		notifier.Notify("Auto Reset", ("Reset character at Room %d (Once per room/run)"):format(currentRoom), 3)
+		notifier.Notify("Auto Reset", ("Reset character at %s (Once per room/run)"):format(currentRoomName), 3)
 		executeReset()
 	end)
 end
@@ -88,12 +86,16 @@ end
 local function startListening()
 	if roomConn then return end
 
-	roomConn = shared.OnRoomIndexChanged(function(currentRoom)
-		if currentRoom <= 1 then
-			-- Khi bắt đầu lại từ room đầu / room 0 -> reset danh sách đã trigger cho run mới
+	roomConn = shared.OnRoomNameChanged(function(currentRoomName)
+		if not currentRoomName then
+			table.clear(triggeredRooms)
+			return
+		end
+		-- Về lại room bắt đầu (initialRoom / room1) -> reset cho run mới
+		if currentRoomName == shared.GetInitialRoomName() or currentRoomName == shared.GetFirstRoomName() then
 			table.clear(triggeredRooms)
 		end
-		checkRoomTrigger(currentRoom)
+		checkRoomTrigger(currentRoomName)
 	end)
 
 	lobbyConn = shared.OnLobbyChanged(function(inLobby)
@@ -129,7 +131,7 @@ function autoReset.Toggle(state: boolean)
 		table.clear(triggeredRooms)
 		startListening()
 		-- Kiểm tra ngay nếu đang ở đúng room chỉ định
-		checkRoomTrigger(shared.GetCurrentRoomIndex())
+		checkRoomTrigger(shared.GetCurrentRoomName())
 	else
 		stopListening()
 	end
@@ -140,7 +142,11 @@ function autoReset.IsEnabled(): boolean
 end
 
 function autoReset.GetRoomOptions(): { string }
-	return ROOM_OPTIONS
+	--// Ưu tiên danh sách room THỰC TẾ (tên folder từ dungeon). Khi chưa vào dungeon
+	--// (lobby) thì fallback list mặc định để dropdown không bị rỗng.
+	local real = shared.GetRoomOptions()
+	if #real > 0 then return real end
+	return DEFAULT_ROOM_OPTIONS
 end
 
 function autoReset.SetTargetRooms(selected)
@@ -148,15 +154,15 @@ function autoReset.SetTargetRooms(selected)
 	if type(selected) == "table" then
 		for k, v in pairs(selected) do
 			if v == true then
-				local r = parseRoomNumber(k)
+				local r = resolveRoomName(k)
 				if r then newSet[r] = true end
 			else
-				local r = parseRoomNumber(v)
+				local r = resolveRoomName(v)
 				if r then newSet[r] = true end
 			end
 		end
 	elseif selected ~= nil then
-		local r = parseRoomNumber(selected)
+		local r = resolveRoomName(selected)
 		if r then newSet[r] = true end
 	end
 
@@ -169,36 +175,11 @@ function autoReset.GetTargetRooms(): { string }
 		table.insert(list, r)
 	end
 	table.sort(list)
-	local result = {}
-	for _, r in ipairs(list) do
-		table.insert(result, ("Room %d"):format(r))
-	end
-	return result
-end
-
-function autoReset.GetTargetRoomNumbers(): { number }
-	local list = {}
-	for r in pairs(targetRooms) do
-		table.insert(list, r)
-	end
-	table.sort(list)
 	return list
 end
 
--- Backward compatibility
-function autoReset.SetTargetRoom(room: number)
-	local r = parseRoomNumber(room)
-	if r then
-		targetRooms = { [r] = true }
-	end
-end
-
-function autoReset.GetTargetRoom(): number
-	for r in pairs(targetRooms) do
-		return r
-	end
-	return 2
-end
+-- Backward compatibility: các API số cũ đã bỏ (GetTargetRoom/SetTargetRoom/GetTargetRoomNumbers).
+-- Room target giờ chỉ dùng TÊN FOLDER duy nhất (autoReset.GetTargetRooms / SetTargetRooms).
 
 function autoReset.SetDelay(seconds: number)
 	if type(seconds) == "number" then

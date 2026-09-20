@@ -1,6 +1,6 @@
 -- Module Auto Farm trong tab Combat (DungeonQuest)
 -- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
--- và Contextual Combat Distance (tùy chỉnh Min/Max Combat Distance theo từng Dungeon x Loại Mục Tiêu).
+-- và Contextual Combat Settings (tùy chỉnh Min/Max Combat Distance + Evasion theo từng Dungeon x Loại Mục Tiêu).
 
 --// Imports
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
@@ -268,10 +268,10 @@ return function(window, tab)
 	end)
 
 	--// ============================================================
-	--// RIGHT COLUMN BOTTOM: Contextual Combat Distance
+	--// RIGHT COLUMN BOTTOM: Contextual Combat Settings
 	--// ============================================================
 	local ctxSection = tab:Section({ Side = "Right" })
-	ctxSection:Header({ Name = "Contextual Combat Distance" })
+	ctxSection:Header({ Name = "Contextual Combat Settings" })
 
 	local activeStatusLabel = ctxSection:Label({ Text = "Active: -" })
 
@@ -282,8 +282,7 @@ return function(window, tab)
 	local isSyncingUI = false
 	local minSlider = nil
 	local maxSlider = nil
-	local disableDodgeToggle = nil
-	local enableHazardScannerToggle = nil
+	local enableEvasionToggle = nil
 	local bossAreaToggle = nil
 	local bossAreaRadiusSlider = nil
 	local editInfoLabel = nil
@@ -303,13 +302,9 @@ return function(window, tab)
 			extraText = " | " .. baText
 		end
 
-		local curDisableDodge = contextual.GetDisableDodge(curDungeon, curTargetKey)
-		local curEnableHazardScanner = contextual.GetEnableHazardScanner(curDungeon, curTargetKey)
-		if curDisableDodge then
-			extraText = extraText .. " | <font color='rgb(255,100,100)'>No Dodge</font>"
-		end
-		if not curEnableHazardScanner or curDisableDodge then
-			extraText = extraText .. " | <font color='rgb(255,160,50)'>No Scanner</font>"
+		local curEnableEvasion = contextual.GetEnableEvasion(curDungeon, curTargetKey)
+		if not curEnableEvasion then
+			extraText = extraText .. " | <font color='rgb(255,100,100)'>No Evasion</font>"
 		end
 
 		pcall(function()
@@ -327,15 +322,9 @@ return function(window, tab)
 			pcall(function() maxSlider:UpdateValue(curMax) end)
 		end
 
-		if disableDodgeToggle then
+		if enableEvasionToggle then
 			pcall(function()
-				disableDodgeToggle:UpdateState(contextual.GetDisableDodge(selectedDungeon, selectedTargetKey), true)
-			end)
-		end
-
-		if enableHazardScannerToggle then
-			pcall(function()
-				enableHazardScannerToggle:UpdateState(contextual.GetEnableHazardScanner(selectedDungeon, selectedTargetKey), true)
+				enableEvasionToggle:UpdateState(contextual.GetEnableEvasion(selectedDungeon, selectedTargetKey), true)
 			end)
 		end
 
@@ -424,25 +413,14 @@ return function(window, tab)
 		end,
 	}))
 
-	local initDisableDodge = contextual.GetDisableDodge(selectedDungeon, selectedTargetKey)
-	local initEnableHazardScanner = contextual.GetEnableHazardScanner(selectedDungeon, selectedTargetKey)
+	local initEnableEvasion = contextual.GetEnableEvasion(selectedDungeon, selectedTargetKey)
 
-	disableDodgeToggle = ctxSection:Toggle({
-		Name = "Disable Dodge on Target",
-		Default = initDisableDodge,
+	enableEvasionToggle = ctxSection:Toggle({
+		Name = "Enable Evasion on Target",
+		Default = initEnableEvasion,
 		Callback = function(state)
 			if isSyncingUI then return end
-			contextual.SetDisableDodge(selectedDungeon, selectedTargetKey, state)
-			updateActiveStatus()
-		end,
-	})
-
-	enableHazardScannerToggle = ctxSection:Toggle({
-		Name = "Enable Hazard Scanner on Target",
-		Default = initEnableHazardScanner,
-		Callback = function(state)
-			if isSyncingUI then return end
-			contextual.SetEnableHazardScanner(selectedDungeon, selectedTargetKey, state)
+			contextual.SetEnableEvasion(selectedDungeon, selectedTargetKey, state)
 			updateActiveStatus()
 		end,
 	})

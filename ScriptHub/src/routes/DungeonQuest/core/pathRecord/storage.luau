@@ -15,10 +15,13 @@
 --       "updated": os.time(),
 --       "mode": "normal" | "full",
 --       "rooms": {
---         "1": { "startPos": {X,Y,Z}, "points": [ {X,Y,Z}, ... ], "speed": 18, "events": { ... }, "boss": true },
+--         "room1": { "startPos": {X,Y,Z}, "points": [ {X,Y,Z}, ... ], "speed": 18, "events": { ... }, "boss": true },
+--         "bossRoom": { ... },
 --         ...
 --       }
 --     }
+--   - KEY của rooms = TÊN FOLDER của room ("room1".."roomN", "bossRoom"). Dữ liệu cũ
+--     lưu theo số ("1".. / "103") được tự migrate khi load (xem storage.MigrateRoomKeys).
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -43,6 +46,43 @@ local MODE_FULL = "full"
 local function normalizeMode(mode)
 	if mode == MODE_FULL then return MODE_FULL end
 	return MODE_NORMAL
+end
+
+--// Tên folder chuẩn của phòng boss (khớp shared.GetBossRoomName / "bossRoom").
+local ROOM_BOSS_NAME = "bossRoom"
+local ROOM_INITIAL_NAME = "initialRoom"
+
+--// Chuẩn hoá 1 room key (number HOẶC string) về TÊN FOLDER chuẩn.
+--//   number 5        -> "room5"
+--//   number 1..15... -> "roomN"
+--//   number 100..199 -> "bossRoom" (key boss legacy: 101/102/103 theo code cũ)
+--//   string "room2"  -> "room2" (giữ nguyên)
+--//   string "5"      -> "room5"
+--//   string "103"    -> "bossRoom"
+--//   string "bossRoom" -> "bossRoom"
+--//   nil / <= 0       -> nil (room không hợp lệ để lưu)
+local function normalizeRoomKey(value)
+	if type(value) == "number" then
+		local n = math.floor(value)
+		if n <= 0 then return nil end
+		if n >= 100 then return ROOM_BOSS_NAME end
+		return ("room%d"):format(n)
+	end
+	if type(value) == "string" and #value > 0 then
+		local num = tonumber(value)
+		if num then
+			return normalizeRoomKey(num)
+		end
+		local lower = string.lower(value)
+		if lower == ROOM_BOSS_NAME or lower == "bossroom" then
+			return ROOM_BOSS_NAME
+		end
+		if lower == ROOM_INITIAL_NAME then
+			return nil
+		end
+		return value
+	end
+	return nil
 end
 
 --// File system check
@@ -229,6 +269,9 @@ local function initStorage()
 			end
 		end
 	end
+
+	--// Tự migrate key room cũ (số -> tên folder) ngay khi load, kể cả nguồn cũ.
+	storage.MigrateRoomKeys()
 end
 
 --// Làm mịn đường gấp khúc (Douglas-Peucker trên mặt phẳng XZ) kèm bảo toàn góc cua gấp (Smart Corner Preservation).
@@ -354,13 +397,16 @@ function storage.HasMap(mapName)
 end
 
 --// Lấy 1 segment (room) từ macro của map. Trả về { startPos, points, events, speed, boss } hoặc nil.
-function storage.GetRoomSegment(mapName, roomIndex)
-	if type(mapName) ~= "string" or type(roomIndex) ~= "number" then return nil end
+--// roomKey: TÊN FOLDER của room ("room2"/"bossRoom") hoặc number legacy (2, 103, ...).
+function storage.GetRoomSegment(mapName, roomKey)
+	if type(mapName) ~= "string" then return nil end
+	local key = normalizeRoomKey(roomKey)
+	if not key then return nil end
 	initStorage()
 	local macro = cache[mapName]
 	if not macro or type(macro.rooms) ~= "table" then return nil end
 
-	local raw = macro.rooms[tostring(roomIndex)]
+	local raw = macro.rooms[key]
 	if not isRoomSeg(raw) then return nil end
 
 	local points = {}
@@ -382,11 +428,12 @@ function storage.GetRoomSegment(mapName, roomIndex)
 end
 
 --// Có segment (room) trong macro của map không?
-function storage.HasSegmentOrMacro(mapName, roomIndex)
-	return storage.GetRoomSegment(mapName, roomIndex) ~= nil
+--// roomKey: TÊN FOLDER của room ("room2"/"bossRoom") hoặc number legacy (2, 103, ...).
+function storage.HasSegmentOrMacro(mapName, roomKey)
+	return storage.GetRoomSegment(mapName, roomKey) ~= nil
 end
 
---// Macro map đầy đủ (đã decode): { map, version, rooms = {[idx] = {startPos, points, events, speed, boss}}, created, updated }
+--// Macro map đầy đủ (đã decode): { map, version, rooms = {[folderName] = {startPos, points, events, speed, boss}}, created, updated }
 function storage.GetMap(mapName)
 	if not storage.HasMap(mapName) then return nil end
 	initStorage()
@@ -395,11 +442,11 @@ function storage.GetMap(mapName)
 
 	local rooms = {}
 	for key, raw in pairs(macro.rooms or {}) do
-		local room = tonumber(key)
-		if room and isRoomSeg(raw) then
-			local seg = storage.GetRoomSegment(mapName, room)
+		local roomName = normalizeRoomKey(key)
+		if roomName and isRoomSeg(raw) then
+			local seg = storage.GetRoomSegment(mapName, roomName)
 			if seg then
-				rooms[room] = seg
+				rooms[roomName] = seg
 			end
 		end
 	end
@@ -424,7 +471,7 @@ function storage.GetMaps()
 			local bossCount = 0
 			local pointCount = 0
 			for key, raw in pairs(macro.rooms) do
-				if tonumber(key) ~= nil and isRoomSeg(raw) then
+				if normalizeRoomKey(key) and isRoomSeg(raw) then
 					roomCount += 1
 					if raw.boss == true then bossCount += 1 end
 					pointCount += #raw.points
@@ -453,11 +500,13 @@ function storage.Count()
 end
 
 --// Lưu/ghi đè 1 segment (room) vào macro của map.
+--// roomKey: TÊN FOLDER của room ("room2"/"bossRoom") hoặc number legacy (2, 103, ...).
 --// isBoss (optional): segment thuộc phòng boss -> đánh dấu `boss: true`.
 --// Ghi trực tiếp ra file EsclipseHub/DQMacro/<mapName>.json.
-function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed, isBoss)
+function storage.SaveSegment(mapName, roomKey, startPos, points, events, speed, isBoss)
 	if type(mapName) ~= "string" or #mapName == 0 then return false end
-	if type(roomIndex) ~= "number" or roomIndex <= 0 then return false end
+	local key = normalizeRoomKey(roomKey)
+	if not key then return false end
 	if not startPos or not points or #points == 0 then return false end
 
 	initStorage()
@@ -521,7 +570,7 @@ function storage.SaveSegment(mapName, roomIndex, startPos, points, events, speed
 		if enc then seg.events = enc end
 	end
 
-	macro.rooms[tostring(roomIndex)] = seg
+	macro.rooms[key] = seg
 	macro.version = CURRENT_VERSION
 	macro.map = mapName
 	macro.updated = os.time()
@@ -650,6 +699,75 @@ function storage.ClearAll()
 	end
 
 	fireChanged()
+end
+
+--// Ghi 1 macro (toàn bộ map) ra file JSON / legacy config. Dùng chung cho save & convert.
+local function writeMacro(macro)
+	if type(macro) ~= "table" then return end
+	if hasFileSystem then
+		ensureFolder()
+		pcall(function()
+			writefile(getFilePathForMap(macro.map), HttpService:JSONEncode(macro))
+		end)
+	else
+		local context = macLib.contextData
+		if type(context) == "table" then
+			if type(macro.map) == "string" and #macro.map > 0 then
+				if not context[LEGACY_STORAGE_KEY] then context[LEGACY_STORAGE_KEY] = {} end
+				context[LEGACY_STORAGE_KEY][macro.map] = macro
+				autoSave.Save()
+			end
+		end
+	end
+end
+
+--// MIGRATE: key room cũ lưu theo SỐ ("1", "5", "103", legacy boss "101"/"102") -> TÊN FOLDER
+--// ("room1", "room5", "bossRoom"). Mọi key boss legacy (100..199) gom về "bossRoom";
+--// nếu trùng key thì giữ segment nhiều điểm hơn. Rewrite file đã đổi.
+--// Trả về { maps = số map đổi, segments = số segment đã re-key }.
+function storage.MigrateRoomKeys()
+	initStorage()
+	local fixedSegments = 0
+	local fixedMaps = 0
+
+	for mapName, macro in pairs(cache) do
+		if type(macro) == "table" and type(macro.rooms) == "table" then
+			local newRooms = {}
+			local hasLegacy = false
+
+			for originKey, seg in pairs(macro.rooms) do
+				local newKey = normalizeRoomKey(originKey)
+				if not newKey or newKey == originKey then
+					--// Key hợp lệ (đã là folder name hoặc không normalize được): giữ nguyên.
+					newRooms[originKey] = seg
+				else
+					hasLegacy = true
+					--// Đã có segment key mới -> giữ bên nhiều điểm hơn.
+					if not newRooms[newKey] or (#(seg.points or {}) > #((newRooms[newKey].points or {}))) then
+						newRooms[newKey] = seg
+					end
+					fixedSegments += 1
+				end
+			end
+
+			if hasLegacy then
+				macro.rooms = newRooms
+				macro.updated = os.time()
+				writeMacro(macro)
+				fixedMaps += 1
+			end
+		end
+	end
+
+	if fixedMaps > 0 then
+		fireChanged()
+	end
+	return { maps = fixedMaps, segments = fixedSegments }
+end
+
+--// Alias tương thích: migration cũ chỉ gom boss key legacy (101/102/...) về 103.
+function storage.FixBossRoomKeys()
+	return storage.MigrateRoomKeys()
 end
 
 --// Quét lại toàn bộ file từ disk (dùng khi người dùng vừa copy file JSON mới vào EsclipseHub/DQMacro/)

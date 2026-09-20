@@ -12,10 +12,10 @@ local contextual = {}
 
 --// Default Values per Target Type
 local DEFAULT_DISTANCES = {
-	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
-	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
-	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
-	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, EnableEvasion = true },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, EnableEvasion = true },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, EnableEvasion = true },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, EnableEvasion = true },
 }
 
 local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
@@ -225,58 +225,59 @@ function contextual.GetActiveBossArea(target)
 	return enabled, radius, center
 end
 
---// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể
+--// Lấy trạng thái Evasion (Dodge + Hazard Scanner) của 1 Dungeon x Target cụ thể
+--// Để né được thì Hazard Scanner phải hoạt động, nên 2 trạng thái cũ đã được gộp thành 1.
+function contextual.GetEnableEvasion(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.EnableEvasion ~= nil then
+			return entry.EnableEvasion == true
+		end
+		--// Legacy: migrate DisableDodge / EnableHazardScanner của bản cũ sang EnableEvasion
+		if entry.DisableDodge ~= nil or entry.EnableHazardScanner ~= nil then
+			local evasionOn = not (entry.DisableDodge == true or entry.EnableHazardScanner == false)
+			entry.EnableEvasion = evasionOn
+			entry.DisableDodge = nil
+			entry.EnableHazardScanner = nil
+			return evasionOn
+		end
+	end
+
+	return def.EnableEvasion ~= false
+end
+
+--// Cập nhật trạng thái Evasion (cả Dodge lẫn Hazard Scanner)
+function contextual.SetEnableEvasion(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].EnableEvasion = state and true or false
+	data[dungeonName][tKey].DisableDodge = nil
+	data[dungeonName][tKey].EnableHazardScanner = nil
+
+	syncToMacLibAndSave()
+end
+
+--// Compatibility: các getter/setter cũ (tách riêng Dodge và Scanner) giờ đều ánh xạ chung vào EnableEvasion
 function contextual.GetDisableDodge(dungeonName, targetKey): boolean
-	local tKey = targetKey or "Mob"
-	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
-
-	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
-		local entry = data[dungeonName][tKey]
-		if entry.DisableDodge ~= nil then
-			return entry.DisableDodge == true
-		end
-	end
-
-	return def.DisableDodge or false
+	return not contextual.GetEnableEvasion(dungeonName, targetKey)
 end
 
---// Cập nhật trạng thái Disable Dodge
 function contextual.SetDisableDodge(dungeonName, targetKey, state)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-
-	data[dungeonName] = data[dungeonName] or {}
-	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
-	data[dungeonName][tKey].DisableDodge = state and true or false
-
-	syncToMacLibAndSave()
+	contextual.SetEnableEvasion(dungeonName, targetKey, not state)
 end
 
---// Lấy trạng thái Enable Hazard Scanner của 1 Dungeon x Target cụ thể
 function contextual.GetEnableHazardScanner(dungeonName, targetKey): boolean
-	local tKey = targetKey or "Mob"
-	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
-
-	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
-		local entry = data[dungeonName][tKey]
-		if entry.EnableHazardScanner ~= nil then
-			return entry.EnableHazardScanner == true
-		end
-	end
-
-	return def.EnableHazardScanner ~= false
+	return contextual.GetEnableEvasion(dungeonName, targetKey)
 end
 
---// Cập nhật trạng thái Enable Hazard Scanner
 function contextual.SetEnableHazardScanner(dungeonName, targetKey, state)
-	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
-	local tKey = targetKey or "Mob"
-
-	data[dungeonName] = data[dungeonName] or {}
-	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
-	data[dungeonName][tKey].EnableHazardScanner = state and true or false
-
-	syncToMacLibAndSave()
+	contextual.SetEnableEvasion(dungeonName, targetKey, state)
 end
 
 --// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
@@ -340,17 +341,11 @@ function contextual.IsActiveHazardScannerEnabled(target): boolean
 		end
 	end
 
-	-- Nếu tắt Dodge trên mục tiêu này thì cũng tự động tắt Hazard Scanner
-	if contextual.GetDisableDodge(dungeon, targetKey) then
-		return false
-	end
-
-	return contextual.GetEnableHazardScanner(dungeon, targetKey)
+	-- Vì đã gộp thành 1 trạng thái, không còn trường hợp "tắt Dodge nhưng vẫn bật Scanner"
+	return contextual.GetEnableEvasion(dungeon, targetKey)
 end
 
--- Aliases for Evasion naming convention
-contextual.GetEnableEvasion = contextual.GetEnableHazardScanner
-contextual.SetEnableEvasion = contextual.SetEnableHazardScanner
+-- Alias cho văn phạm cũ
 contextual.IsActiveEvasionEnabled = contextual.IsActiveHazardScannerEnabled
 
 --// Cập nhật Min Combat Distance

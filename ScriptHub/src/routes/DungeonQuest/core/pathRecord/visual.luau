@@ -299,9 +299,9 @@ function visual.Update()
 	else
 		-- Chế độ THƯỜNG (Idle / Playback / Xem Room): Lấy points từ segment đã lưu của map & room hiện tại
 		local map = shared.GetCurrentDungeonName()
-		local room = shared.GetCurrentRoomIndex()
+		local room = shared.GetCurrentRoomName()
 
-		if map and #map > 0 and room > 0 then
+		if map and #map > 0 and room ~= nil then
 			local seg = storage.GetRoomSegment(map, room)
 			if seg then
 				if seg.points and #seg.points > 0 then

@@ -1,7 +1,9 @@
 -- HazardScanner – Module: Threat Detection Engine (DungeonQuest).
--- Quản lý vòng đời thực thể nguy hiểm (Detection & Lifecycle Layer).
--- Lắng nghe ChildAdded/ChildRemoved của Workspace sau khi Dungeon bắt đầu,
--- quản lý danh sách activeHazards, cơ chế retry khi part chưa load, và room transition cooldown.
+-- Pipeline quyết định hazard được chia 3 lớp rõ ràng:
+--   LỚP 1 (Trạng thái nền) : scanner bật?, đang trong dungeon?, evasion enabled?, cooldown chuyển room, instance còn Parent.
+--   LỚP 2 (Gate chính)     : object có phải hazard thật (không phải player / không bị ignore / có phần thân nhìn thấy).
+--   LỚP 3 (Quy tắc đặc biệt): ngoại lệ theo boss/chiêu riêng (tia telegraph, chuỗi vòng sóng, ice spikes).
+-- Debug / inspect chi tiết đã tách sang debug/deepInspect.luau.
 
 --// Imports
 local services = require("@routes/DungeonQuest/core/services")
@@ -12,6 +14,7 @@ local groundVisual = require("@routes/DungeonQuest/core/evasion/visuals/groundVi
 local trajectory = require("@routes/DungeonQuest/core/evasion/spatial/trajectory")
 local timerVisual = require("@routes/DungeonQuest/core/evasion/visuals/timerVisual")
 local contextual = require("@routes/DungeonQuest/core/contextual")
+local deepInspect = require("@routes/DungeonQuest/core/evasion/debug/deepInspect")
 
 --// References
 local Players = game:GetService("Players")
@@ -22,14 +25,41 @@ local player = services.player
 --// Table
 local detection = {}
 
---// State
+--// ============================================================
+--// CONFIG (hằng số tập trung một chỗ)
+--// ============================================================
+
+-- Thời gian cooldown khi chuyển phòng (không tạo danger zone trong khoảng này)
+local ROOM_TRANSITION_COOLDOWN = 2.0
+-- Ngưỡng part coi như đã mờ hoàn toàn -> không phải danger zone
+local FADE_TRANSPARENCY_THRESHOLD = 0.85
+-- Retry tối đa khi object chưa kịp khởi tạo đủ parts (0.05s/lần)
+local MAX_REGISTER_RETRIES = 50
+local RETRY_INTERVAL = 0.05
+-- Chỉ dựng vòng đầu mỗi chuỗi vòng sóng của Boss 2 trong khoảng thời gian này
+local SECOND_BOSS_CHAIN_INTERVAL = 5.0
+
+-- Danh sách folder template trong ReplicatedStorage: đối tượng clone từ đây sẽ KHÔNG được vẽ box
+local IGNORE_FOLDERS = { "abilities", "projectiles" }
+-- Blacklist: tên đối tượng trong Workspace KHÔNG BAO GIỜ coi là Danger Zone
+local HAZARD_BLACKLIST = {
+	["firstbossbeamparticles"] = true,
+}
+
+-- SelectionBox Colors (Red cho chiêu tĩnh, Blue cho chiêu có trajectory)
+local BOX_COLOR_RED = Color3.fromRGB(255, 45, 45)
+local BOX_SURFACE_RED = Color3.fromRGB(255, 30, 30)
+local BOX_COLOR_BLUE = Color3.fromRGB(0, 170, 255)
+local BOX_SURFACE_BLUE = Color3.fromRGB(0, 140, 255)
+
+--// ============================================================
+--// STATE
+--// ============================================================
 local enabled = false
 local inDungeon = false
 local selectionBoxesEnabled = true
 local logHazards = false
 local logFailed = false
-local inspectTargetName = ""
-local inspectEnabled = false
 local activeHazards = {} -- [Instance] = { Name, Class, Distance, Boxes = {} }
 local hazardCount = 0
 local hazardChangedCallbacks = {}
@@ -38,19 +68,35 @@ local connections = {}
 local roomCleanup = nil
 local lastIceSpikesChainTime = 0
 local roomTransitionUntil = 0
-local ROOM_TRANSITION_COOLDOWN = 2.0
-
---// Danh sách folder template trong ReplicatedStorage: các đối tượng clone từ đây
---// xuất hiện trong Workspace sẽ KHÔNG được vẽ box.
-local IGNORE_FOLDERS = { "abilities", "projectiles" }
 local ignoreNamesLoaded = false
 local ignoreNames = {} -- [cleanName] = true
+local retryStates = {} -- [Instance] = { active = boolean, count = number }
 
---// Blacklist: Danh sách tên đối tượng trong Workspace KHÔNG BAO GIỜ coi là Danger Zone
-local HAZARD_BLACKLIST = {
-	["firstbossbeamparticles"] = true,
-}
+--// ============================================================
+--// LỚP 1: TRẠNG THÁI NỀN (environment state)
+--// Trả về lý do reject nếu không vượt được, nil nếu OK.
+--// ============================================================
+local function checkBackgroundState(instance)
+	if not enabled or not inDungeon then
+		return "Chưa trong dungeon"
+	end
+	if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
+		return "Tắt Hazard Scanner cho mục tiêu trong Contextual"
+	end
+	if os.clock() < roomTransitionUntil then
+		return "Đang trong 2s chuyển room (Chặn tạo Danger Zone)"
+	end
+	if not instance or not instance.Parent then
+		return "Không còn Parent"
+	end
+	return nil
+end
 
+--// ============================================================
+--// LỚP 2: GATE CHÍNH (object có đúng là hazard không)
+--// ============================================================
+
+--// Nạp tên template từ ReplicatedStorage
 local function loadIgnoreNames()
 	if ignoreNamesLoaded then return end
 	ignoreNamesLoaded = true
@@ -65,6 +111,7 @@ local function loadIgnoreNames()
 	end
 end
 
+--// Lọc tên: debug part / container visual của script / template trong ReplicatedStorage / blacklist
 local function isIgnoredName(instance)
 	if not instance then return true end
 	local name = instance.Name
@@ -129,55 +176,35 @@ local function isPlayerCharacter(instance)
 	return false
 end
 
---// Fire callback thay đổi hazard (count, lastInfo)
-local function fireHazardChanged()
-	local count = 0
-	for _ in pairs(activeHazards) do count += 1 end
-	hazardCount = count
-	for i = #hazardChangedCallbacks, 1, -1 do
-		pcall(hazardChangedCallbacks[i], count, lastHazardInfo)
+--// Trả về lý do reject nếu object thuộc loại KHÔNG BAO GIỜ xử lý (player / tên bị ignore)
+local function checkTargetFilters(instance)
+	if isPlayerCharacter(instance) then
+		return "Nhân vật người chơi (Player/Teammate)"
 	end
+	loadIgnoreNames()
+	if isIgnoredName(instance) then
+		return "Trùng tên trong ReplicatedStorage (abilities/projectiles)"
+	end
+	return nil
 end
 
---// Ngưỡng coi như part đã mờ hoàn toàn -> không vẽ box
-local FADE_TRANSPARENCY_THRESHOLD = 0.85
-
---// Retry: object xuất hiện nhưng chưa kịp khởi tạo đủ parts (DescendantAdded đến sau
---// ChildAdded). Retry tối đa MAX_REGISTER_RETRIES lần mỗi khi có descendant mới.
-local MAX_REGISTER_RETRIES = 50
-local RETRY_INTERVAL = 0.05
-local retryStates = {} -- [Instance] = { active = boolean, count = number }
-
-local function stopRetry(instance)
-	local state = retryStates[instance]
-	if state then
-		state.active = false
-		retryStates[instance] = nil
-	end
-end
-
-local function stopAllRetries()
-	for _, state in pairs(retryStates) do
-		if state then state.active = false end
-	end
-	table.clear(retryStates)
-end
-
+--// Tia định hướng telegraph của Boss 1 (được xử lý đặc biệt ở LỚP 3)
 local function isBeamTelegraph(name)
 	if not name or type(name) ~= "string" then return false end
 	local clean = name:lower():gsub("%s+", "")
 	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
 end
 
---// Lay danh sach BasePart cua instance (BasePart -> chinh no; Model / Folder -> cac BasePart descendant)
---// Chỉ lấy part còn rõ (Transparency <= 0.85) hoặc là tia định hướng telegraph của Boss
-local function getBaseParts(instance)
+--// Gom danh sách BasePart của instance (BasePart -> chính nó; Model/Folder -> các BasePart descendant).
+--// allowTransparent = true: giữ cả part đang mờ (chỉ dùng cho ngoại lệ tia telegraph)
+local function getPartsIncluding(instance, allowTransparent)
 	if not instance then return {} end
 	local parts = {}
-	local isBeam = isBeamTelegraph(instance.Name)
 	local function addPart(part)
-		if part and part.Parent and (part.Transparency <= FADE_TRANSPARENCY_THRESHOLD or isBeam) then
-			parts[#parts + 1] = part
+		if part and part.Parent then
+			if allowTransparent or part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+				parts[#parts + 1] = part
+			end
 		end
 	end
 	if instance:IsA("BasePart") then
@@ -190,6 +217,52 @@ local function getBaseParts(instance)
 		end
 	end
 	return parts
+end
+
+--// Gate chính về parts: chỉ part còn rõ (Transparency <= 0.85) mới tính là danger zone
+local function getBaseParts(instance)
+	return getPartsIncluding(instance, false)
+end
+
+--// Gate chính về parts kết hợp ngoại lệ LỚP 3: tia telegraph của Boss 1 được dựng zone dù đang mờ
+local function getDangerParts(instance)
+	if isBeamTelegraph(instance.Name) then
+		return getPartsIncluding(instance, true)
+	end
+	return getBaseParts(instance)
+end
+
+--// ============================================================
+--// LỚP 3: QUY TẮC ĐẶC BIỆT (ngoại lệ theo boss/chiêu riêng)
+--// Trả về (reason, skipBoxes): reject nếu có reason, ngược lại skipBoxes = bỏ vẽ SelectionBox
+--// ============================================================
+local function checkSpecialRules(instance)
+	local isIceSpikes = geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(instance.Name)
+	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
+
+	if isSecondBossChain then
+		local now = os.clock()
+		if now - lastIceSpikesChainTime < SECOND_BOSS_CHAIN_INTERVAL then
+			return "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)", true
+		end
+		lastIceSpikesChainTime = now
+	end
+
+	return nil, (isIceSpikes or isSecondBossChain)
+end
+
+--// ============================================================
+--// UTIL (fire callback, distance, visual, logger, retry)
+--// ============================================================
+
+--// Fire callback thay đổi hazard (count, lastInfo)
+local function fireHazardChanged()
+	local count = 0
+	for _ in pairs(activeHazards) do count += 1 end
+	hazardCount = count
+	for i = #hazardChangedCallbacks, 1, -1 do
+		pcall(hazardChangedCallbacks[i], count, lastHazardInfo)
+	end
 end
 
 --// Khoang cach tu player den instance (studs, lam tron)
@@ -218,11 +291,16 @@ local function computeDistance(instance)
 	return math.floor((rootPos - pos).Magnitude + 0.5)
 end
 
---// SelectionBox Colors (Red cho chiêu tĩnh, Blue cho chiêu có trajectory)
-local BOX_COLOR_RED = Color3.fromRGB(255, 45, 45)
-local BOX_SURFACE_RED = Color3.fromRGB(255, 30, 30)
-local BOX_COLOR_BLUE = Color3.fromRGB(0, 170, 255)
-local BOX_SURFACE_BLUE = Color3.fromRGB(0, 140, 255)
+deepInspect.BindComputeDistance(computeDistance)
+
+--// Log đối tượng không vẽ được (bị loại qua gate hoặc không có gì để vẽ)
+local function logReject(instance, reason)
+	deepInspect.LogReject(instance, reason)
+	if not logFailed then return end
+	local name = instance and instance.Name or "?"
+	local class = instance and instance.ClassName or "?"
+	print(("[HazardScanner][Reject] ⚪ %s (%s) — %s"):format(name, class, reason))
+end
 
 --// Tao va gan SelectionBox don gian len tung BasePart.
 --// Khi part mo dan (Transparency > 0.85) thi box tu destroy.
@@ -255,177 +333,25 @@ local function attachSelectionBoxes(parts, fadeConnections, isTrajectory)
 	return boxes
 end
 
---// Cập nhật màu SelectionBox khi chuyển trạng thái Trajectory (Red <-> Blue)
-function detection.UpdateHazardVisualColor(hazardInfo, isTrajectory)
-	if not hazardInfo or not hazardInfo.Boxes then return end
-	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
-	local boxColor = isTraj and BOX_COLOR_BLUE or BOX_COLOR_RED
-	local surfColor = isTraj and BOX_SURFACE_BLUE or BOX_SURFACE_RED
-	for _, box in ipairs(hazardInfo.Boxes) do
-		if box and box.Parent then
-			box.Color3 = boxColor
-			box.SurfaceColor3 = surfColor
-		end
+local function stopRetry(instance)
+	local state = retryStates[instance]
+	if state then
+		state.active = false
+		retryStates[instance] = nil
 	end
-	timerVisual.UpdateHazardVisualColor(hazardInfo, isTraj)
 end
 
---// Specific Skill Deep Inspector
-local function matchesInspectTarget(name)
-	if not inspectEnabled or inspectTargetName == "" then return false end
-	if not name or type(name) ~= "string" then return false end
-	local cleanTarget = inspectTargetName:lower():gsub("%s+", "")
-	if #cleanTarget == 0 then return false end
-	local cleanName = name:lower():gsub("%s+", "")
-	return string.find(cleanName, cleanTarget, 1, true) ~= nil
-end
-
-local function formatVector3(v)
-	if not v then return "nil" end
-	return ("(%.2f, %.2f, %.2f)"):format(v.X, v.Y, v.Z)
-end
-
-local function printDeepInspect(instance, eventType, extraReason, infoData)
-	if not instance then return end
-	local name = instance.Name
-	if not matchesInspectTarget(name) then return end
-
-	local class = instance.ClassName
-	local parentPath = instance.Parent and instance.Parent:GetFullName() or "nil"
-	local distance = computeDistance(instance)
-
-	print("================== 🔍 [HAZARD DEEP INSPECT] 🔍 ==================")
-	print(("  🎯 Target Name    : %s (%s)"):format(name, class))
-	print(("  📌 Event Type     : %s%s"):format(eventType, extraReason and (" -> " .. tostring(extraReason)) or ""))
-	print(("  📍 Full Path      : %s"):format(parentPath))
-	print(("  📏 Dist to Player : %d studs"):format(distance))
-
-	if eventType == "SPAWN" then
-		local parts = {}
-		if instance:IsA("BasePart") then
-			table.insert(parts, instance)
-		else
-			for _, desc in ipairs(instance:GetDescendants()) do
-				if desc:IsA("BasePart") then
-					table.insert(parts, desc)
-				end
-			end
-		end
-
-		print(("  🧩 Total Parts (%d) :"):format(#parts))
-		for idx, p in ipairs(parts) do
-			local shapeStr = p:IsA("Part") and tostring(p.Shape.Name) or (p.ClassName == "MeshPart" and "MeshPart" or p.ClassName)
-			print(("     [%d] %q (%s)"):format(idx, p.Name, p.ClassName))
-			print(("         • Size: %s | Shape: %s | Trans: %.2f | CanCollide: %s"):format(
-				formatVector3(p.Size),
-				shapeStr,
-				p.Transparency,
-				tostring(p.CanCollide)
-			))
-			print(("         • Pos : %s"):format(formatVector3(p.Position)))
-		end
-
-		local hazardZones = geometry.GetHazardZones(infoData)
-		if hazardZones and hazardZones.zones then
-			local pad = geometry.GetHitboxPadding()
-			print(("  📐 Math Geometry (Zones: %d, BoundingRadius: %.1f studs):"):format(
-				#hazardZones.zones,
-				hazardZones.boundingRadius or 0
-			))
-			for idx, z in ipairs(hazardZones.zones) do
-				if z.radius then
-					print(("     - Zone [%d]: Circle/Ball (Base Radius: %.2f + Pad: %.2f = %.2f studs)"):format(
-						idx, z.radius, pad, z.radius + pad
-					))
-				elseif z.half then
-					print(("     - Zone [%d]: Box/OBB (HalfSize: %s)"):format(
-						idx, formatVector3(z.half)
-					))
-				end
-			end
-		end
-
-		-- Bắt đầu theo dõi phân tích chuyển động xoay (Spinning Analysis)
-		task.spawn(function()
-			local targetPart = nil
-			if instance:IsA("BasePart") then
-				targetPart = instance
-			elseif instance:IsA("Model") then
-				targetPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
-			end
-			if not targetPart then return end
-
-			local t0 = os.clock()
-			local cf0 = targetPart.CFrame
-			task.wait(0.12)
-
-			if not instance.Parent or not targetPart.Parent then return end
-
-			local t1 = os.clock()
-			local cf1 = targetPart.CFrame
-			local dt = t1 - t0
-			if dt <= 0 then return end
-
-			-- Delta trong hệ tọa độ Thế giới (World Space)
-			local worldDelta = cf1 * cf0:Inverse()
-			local worldAxis, worldAngle = worldDelta:ToAxisAngle()
-			local worldDegPerSec = math.deg(worldAngle) / dt
-
-			-- Delta trong hệ tọa độ Cục bộ (Local Space)
-			local localDelta = cf0:Inverse() * cf1
-			local localAxis, localAngle = localDelta:ToAxisAngle()
-
-			if math.abs(math.deg(worldAngle)) >= 1.5 then
-				local worldAxisDesc = "Trục tự do / Hỗn hợp"
-				if math.abs(worldAxis.Y) >= 0.8 then
-					worldAxisDesc = "Trục Y (Yaw - Quét ngang mặt sàn)"
-				elseif math.abs(worldAxis.X) >= 0.8 then
-					worldAxisDesc = "Trục X (Pitch - Lăn nhào lộn)"
-				elseif math.abs(worldAxis.Z) >= 0.8 then
-					worldAxisDesc = "Trục Z (Roll - Nghiêng lật bên)"
-				end
-
-				local localAxisDesc = "Trục tự do"
-				if math.abs(localAxis.Y) >= 0.8 then
-					localAxisDesc = "Trục Local Y"
-				elseif math.abs(localAxis.X) >= 0.8 then
-					localAxisDesc = "Trục Local X"
-				elseif math.abs(localAxis.Z) >= 0.8 then
-					localAxisDesc = "Trục Local Z"
-				end
-
-				print("================== 🔄 [INSPECT: SPINNING DETECTED] 🔄 ==================")
-				print(("  🎯 Target Name    : %s (%s)"):format(instance.Name, targetPart.Name))
-				print(("  ⚡ Tốc độ xoay    : %.2f °/s (%.2f rad/s)"):format(worldDegPerSec, worldAngle / dt))
-				print(("  🌐 World Spin Axis: %s -> %s"):format(formatVector3(worldAxis), worldAxisDesc))
-				print(("  🧩 Local Spin Axis: %s -> %s"):format(formatVector3(localAxis), localAxisDesc))
-				print("========================================================================")
-			end
-		end)
-	elseif eventType == "DESPAWN" then
-		if infoData and infoData.SpawnClock then
-			local elapsed = os.clock() - infoData.SpawnClock
-			print(("  ⏱️ Lifetime Active: %.2f seconds"):format(elapsed))
-		end
-	elseif eventType == "REJECTED" then
-		print(("  ⚠️ Rejection Reason: %s"):format(tostring(extraReason)))
+local function stopAllRetries()
+	for _, state in pairs(retryStates) do
+		if state then state.active = false end
 	end
-	print("================================================================")
-end
-
---// Log đối tượng không vẽ được (bị loại qua gate hoặc không có gì để vẽ)
-local function logReject(instance, reason)
-	printDeepInspect(instance, "REJECTED", reason, nil)
-	if not logFailed then return end
-	local name = instance and instance.Name or "?"
-	local class = instance and instance.ClassName or "?"
-	print(("[HazardScanner][Reject] ⚪ %s (%s) — %s"):format(name, class, reason))
+	table.clear(retryStates)
 end
 
 local registerHazard
 
---// Lên lịch retry khi object chưa đủ parts để vẽ (polling 10 lần, mỗi 0.05s).
---// In kết quả chi tiết từng lần retry ra console nếu đang inspect hoặc bật logFailed.
+--// Lên lịch retry khi object chưa đủ parts để vẽ (Max lần, mỗi 0.05s).
+--// In kết quả chi tiết ra console nếu đang inspect hoặc bật logFailed.
 local function retryRegister(instance)
 	if not instance or not instance.Parent then return end
 	if os.clock() < roomTransitionUntil then return end
@@ -438,11 +364,7 @@ local function retryRegister(instance)
 
 	task.spawn(function()
 		while state.active and instance.Parent and enabled and inDungeon do
-			if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
-				stopRetry(instance)
-				return
-			end
-			if os.clock() < roomTransitionUntil then
+			if checkBackgroundState(instance) then
 				stopRetry(instance)
 				return
 			end
@@ -452,9 +374,9 @@ local function retryRegister(instance)
 			end
 			state.count += 1
 			local allDesc = instance:GetDescendants()
-			local validParts = getBaseParts(instance)
+			local validParts = getDangerParts(instance)
 
-			local isTarget = matchesInspectTarget(instance.Name)
+			local isTarget = deepInspect.Matches(instance.Name)
 			if logFailed or isTarget then
 				print(("[HazardScanner][Retry] 🔄 Lần %d/%d: %q (%s) | Descendants: %d | Valid Parts (Trans<=%.2f): %d"):format(
 					state.count,
@@ -496,52 +418,38 @@ local function retryRegister(instance)
 	end)
 end
 
---// Dang ky hazard: vẽ SelectionBox quanh moi object xuat hien trong Workspace
+--// ============================================================
+--// REGISTER / UNREGISTER
+--// ============================================================
+
+--// Dang ky hazard: chạy pipeline 3 lớp rồi vẽ SelectionBox quanh moi object xuat hien trong Workspace
 registerHazard = function(instance)
-	if not enabled or not inDungeon then
-		logReject(instance, "Chưa trong dungeon")
+	-- LỚP 1: trạng thái nền
+	local bgReason = checkBackgroundState(instance)
+	if bgReason then
+		logReject(instance, bgReason)
 		return false
 	end
-	if contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled() then
-		logReject(instance, "Tắt Hazard Scanner cho mục tiêu trong Contextual")
-		return false
-	end
-	if os.clock() < roomTransitionUntil then
-		logReject(instance, "Đang trong 2s chuyển room (Chặn tạo Danger Zone)")
-		return false
-	end
-	if not instance or not instance.Parent then
-		logReject(instance, "Không còn Parent")
-		return false
-	end
-	if isPlayerCharacter(instance) then
-		logReject(instance, "Nhân vật người chơi (Player/Teammate)")
-		return false
-	end
+
+	-- LỚP 2: gate chính (dedup -> định danh -> parts)
 	if activeHazards[instance] then return true end
-
-	loadIgnoreNames()
-	if isIgnoredName(instance) then
-		logReject(instance, "Trùng tên trong ReplicatedStorage (abilities/projectiles)")
+	local denyReason = checkTargetFilters(instance)
+	if denyReason then
+		logReject(instance, denyReason)
 		return false
 	end
-
-	local parts = getBaseParts(instance)
+	local parts = getDangerParts(instance)
 	if #parts == 0 then
 		logReject(instance, "Chưa có part để vẽ (sẽ retry)")
 		retryRegister(instance)
 		return false
 	end
 
-	local isIceSpikes = geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(instance.Name)
-	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
-	if isSecondBossChain then
-		local now = os.clock()
-		if now - lastIceSpikesChainTime < 5.0 then
-			logReject(instance, "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)")
-			return false
-		end
-		lastIceSpikesChainTime = now
+	-- LỚP 3: quy tắc đặc biệt
+	local ruleReason, skipBoxes = checkSpecialRules(instance)
+	if ruleReason then
+		logReject(instance, ruleReason)
+		return false
 	end
 
 	local distance = computeDistance(instance)
@@ -558,7 +466,7 @@ registerHazard = function(instance)
 
 	local fadeConnections = {}
 	local boxes = {}
-	if selectionBoxesEnabled and not isIceSpikes and not isSecondBossChain then
+	if selectionBoxesEnabled and not skipBoxes then
 		boxes = attachSelectionBoxes(parts, fadeConnections, false)
 	end
 	info.Boxes = boxes
@@ -583,7 +491,7 @@ registerHazard = function(instance)
 
 	stopRetry(instance)
 
-	printDeepInspect(instance, "SPAWN", "Passed all gates", info)
+	deepInspect.LogSpawn(instance, info)
 
 	if logHazards then
 		print(("[HazardScanner][Hazard] 🔴 Hazard Detected: %s (%s, %d studs)")
@@ -612,7 +520,7 @@ local function unregisterHazard(instance, reason)
 		return
 	end
 
-	printDeepInspect(instance, "DESPAWN", reason, info)
+	deepInspect.LogDespawn(instance, reason, info)
 
 	groundVisual.DetachZoneVisuals(info)
 	trajectory.DetachTrajectoryVisuals(info)
@@ -661,6 +569,25 @@ function detection.ClearAllHazards(reason)
 	end
 end
 
+--// Cập nhật màu SelectionBox khi chuyển trạng thái Trajectory (Red <-> Blue)
+function detection.UpdateHazardVisualColor(hazardInfo, isTrajectory)
+	if not hazardInfo or not hazardInfo.Boxes then return end
+	local isTraj = isTrajectory == true or hazardInfo.IsTrajectory == true
+	local boxColor = isTraj and BOX_COLOR_BLUE or BOX_COLOR_RED
+	local surfColor = isTraj and BOX_SURFACE_BLUE or BOX_SURFACE_RED
+	for _, box in ipairs(hazardInfo.Boxes) do
+		if box and box.Parent then
+			box.Color3 = boxColor
+			box.SurfaceColor3 = surfColor
+		end
+	end
+	timerVisual.UpdateHazardVisualColor(hazardInfo, isTraj)
+end
+
+--// ============================================================
+--// LIFECYCLE
+--// ============================================================
+
 --// Kích hoạt thời gian chuyển room (2 giây): xóa toàn bộ hazard và cấm tạo danger zone mới trong 2s
 function detection.TriggerRoomTransition(reason)
 	roomTransitionUntil = os.clock() + ROOM_TRANSITION_COOLDOWN
@@ -702,14 +629,14 @@ function detection.StartScan()
 	inDungeon = not (shared.IsInLobby and shared.IsInLobby())
 		and (type(shared.GetCurrentDungeonName()) == "string" and #shared.GetCurrentDungeonName() > 0)
 
-	local lastRecordedRoom = shared.GetCurrentRoomIndex()
+	local lastRecordedRoom = shared.GetCurrentRoomName()
 	if roomCleanup then pcall(roomCleanup); roomCleanup = nil end
-	roomCleanup = shared.OnRoomIndexChanged(function(room)
+	roomCleanup = shared.OnRoomNameChanged(function(room)
 		if room ~= lastRecordedRoom then
 			lastRecordedRoom = room
-			if room > 0 then
+			if room ~= nil and room ~= shared.GetInitialRoomName() then
 				inDungeon = true
-				detection.TriggerRoomTransition("Room Transition to room " .. tostring(room))
+				detection.TriggerRoomTransition("Room Transition to " .. room)
 			elseif shared.IsInLobby and shared.IsInLobby() and inDungeon then
 				inDungeon = false
 				detection.ClearAllHazards("Dungeon Ended")
@@ -739,7 +666,10 @@ function detection.StopScan()
 	end
 end
 
---// Public accessors
+--// ============================================================
+--// PUBLIC ACCESSORS
+--// ============================================================
+
 function detection.IsEnabled()
 	return enabled
 end
@@ -777,19 +707,19 @@ function detection.IsLogFailedEnabled()
 end
 
 function detection.SetInspectTarget(name)
-	inspectTargetName = typeof(name) == "string" and name or ""
+	deepInspect.SetInspectTarget(name)
 end
 
 function detection.GetInspectTarget()
-	return inspectTargetName
+	return deepInspect.GetInspectTarget()
 end
 
 function detection.SetInspectEnabled(state)
-	inspectEnabled = state and true or false
+	deepInspect.SetInspectEnabled(state)
 end
 
 function detection.IsInspectEnabled()
-	return inspectEnabled
+	return deepInspect.IsInspectEnabled()
 end
 
 function detection.GetHazardCount()

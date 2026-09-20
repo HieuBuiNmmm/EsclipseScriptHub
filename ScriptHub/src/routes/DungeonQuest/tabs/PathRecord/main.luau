@@ -313,6 +313,39 @@ return function(window, tab)
 		end,
 	})
 
+	local fixBossArmed = false
+	local fixBossTimer = nil
+	local FIX_BOSS_NAME = "Migrate Room Keys (numbers -> folder names)"
+	local FIX_BOSS_CONFIRM_NAME = "<font color='rgb(255,80,80)'>Confirm Migrate Keys?</font>"
+	local FIX_BOSS_TIMEOUT = 3
+
+	local function disarmFixBoss()
+		if not fixBossArmed then return end
+		fixBossArmed = false
+		if fixBossTimer then task.cancel(fixBossTimer); fixBossTimer = nil end
+		pcall(function() fixBossBtn:UpdateName(FIX_BOSS_NAME) end)
+	end
+
+	local fixBossBtn = macroSection:Button({
+		Name = FIX_BOSS_NAME,
+		Callback = function()
+			if not fixBossArmed then
+				fixBossArmed = true
+				if fixBossTimer then task.cancel(fixBossTimer) end
+				fixBossTimer = task.delay(FIX_BOSS_TIMEOUT, disarmFixBoss)
+				pcall(function() fixBossBtn:UpdateName(FIX_BOSS_CONFIRM_NAME) end)
+				return
+			end
+			disarmFixBoss()
+			local result = pathRecord.MigrateRoomKeys()
+			if result and result.maps > 0 then
+				notifier.Notify("Path Record", ("Converted %d room segment key(s) across %d map(s) to folder names"):format(result.segments, result.maps), 3)
+			else
+				notifier.Notify("Path Record", "No legacy numeric keys found (all already folder names)", 2)
+			end
+		end,
+	})
+
 	local reloadBtn = macroSection:Button({
 		Name = "Reload Macros (EsclipseHub/DQMacro)",
 		Callback = function()
@@ -680,8 +713,8 @@ return function(window, tab)
 		else
 			bossText = "<font color='rgb(0,255,120)'>No</font>"
 		end
-		local roomText = info.room and info.room > 0
-			and ("<font color='rgb(0,255,255)'>room %d</font>"):format(info.room)
+		local roomText = info.room
+			and ("<font color='rgb(0,255,255)'>room %s</font>"):format(info.room)
 			or "<font color='rgb(160,160,160)'>-</font>"
 		local mapText = info.map and #info.map > 0
 			and ("<font color='rgb(150,255,150)'>%s</font>"):format(info.map)

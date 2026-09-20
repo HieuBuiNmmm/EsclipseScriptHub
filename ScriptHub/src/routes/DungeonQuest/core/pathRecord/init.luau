@@ -41,7 +41,7 @@ local function fireStatus(reason)
 		autoPlayWanted = autoPlayWanted,
 		inLobby = shared.IsInLobby(),
 		map = shared.GetCurrentDungeonName(),
-		room = shared.GetCurrentRoomIndex(),
+		room = shared.GetCurrentRoomName(),
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
 		pointCount = recorder.IsRecording() and recStat.pointCount or 0,
@@ -198,7 +198,7 @@ end
 
 --// Room hiện tại đã có segment trong macro chưa? (để xác nhận trước khi record ghi đè)
 function pathRecord.CurrentRoomHasRecord()
-	return storage.HasSegmentOrMacro(shared.GetCurrentDungeonName(), shared.GetCurrentRoomIndex())
+	return storage.HasSegmentOrMacro(shared.GetCurrentDungeonName(), shared.GetCurrentRoomName())
 end
 
 --// ---------- Map Mode (NORMAL / FULL) ----------
@@ -242,9 +242,9 @@ function pathRecord.TogglePlay(state)
 		end
 
 		local map = shared.GetCurrentDungeonName()
-		local room = shared.GetCurrentRoomIndex()
+		local room = shared.GetCurrentRoomName()
 
-		if not map or #map == 0 or room <= 0 then
+		if not map or #map == 0 or room == nil or room == shared.GetInitialRoomName() then
 			fireStatus("armed_waiting")
 			return true
 		end
@@ -419,6 +419,19 @@ function pathRecord.ReloadFromDisk()
 	fireStatus("reloaded")
 end
 
+--// Migrate room keys cũ (lưu theo số "1"/"103"...) -> TÊN FOLDER ("room1"/"bossRoom").
+--// Trả về { maps, segments }.
+function pathRecord.MigrateRoomKeys()
+	local result = storage.MigrateRoomKeys()
+	fireStatus("fix_boss_keys")
+	return result
+end
+
+--// Alias tương thích cho code/UI cũ.
+function pathRecord.FixBossRoomKeys()
+	return pathRecord.MigrateRoomKeys()
+end
+
 --// ---------- Status ----------
 
 function pathRecord.GetStatus()
@@ -431,7 +444,7 @@ function pathRecord.GetStatus()
 		autoPlayWanted = autoPlayWanted,
 		inLobby = shared.IsInLobby(),
 		map = shared.GetCurrentDungeonName(),
-		room = shared.GetCurrentRoomIndex(),
+		room = shared.GetCurrentRoomName(),
 		boss = shared.IsBossActive(),
 		recordedMaps = storage.Count(),
 		pointCount = recStat.pointCount,
@@ -473,8 +486,8 @@ bossConnection = shared.OnBossActiveChanged(function(active)
 	if active then
 		if isFullMode then
 			if mover.ResumeWanted() or autoPlayWanted then
-				local room = shared.GetCurrentRoomIndex()
-				if room > 0 and storage.HasSegmentOrMacro(map, room) then
+				local room = shared.GetCurrentRoomName()
+				if room ~= nil and room ~= shared.GetInitialRoomName() and storage.HasSegmentOrMacro(map, room) then
 					coordinator.EnableExclusive("PathRecord")
 					mover.Start()
 					fireStatus("boss")
@@ -509,8 +522,8 @@ bossConnection = shared.OnBossActiveChanged(function(active)
 					if not autoPlayWanted and not mover.ResumeWanted() then return end
 					if mover.IsPlaying() or recorder.IsRecording() then return end
 					local curMap = shared.GetCurrentDungeonName()
-					local curRoom = shared.GetCurrentRoomIndex()
-					if curMap and curRoom > 0 and storage.HasSegmentOrMacro(curMap, curRoom) then
+					local curRoom = shared.GetCurrentRoomName()
+					if curMap and curRoom ~= nil and curRoom ~= shared.GetInitialRoomName() and storage.HasSegmentOrMacro(curMap, curRoom) then
 						coordinator.EnableExclusive("PathRecord")
 						mover.Start()
 						fireStatus("resumed")
@@ -528,7 +541,7 @@ end)
 
 --// Auto-resume & Auto-play: khi sang room mới có segment trong macro -> tự động phát tiếp.
 --// Room boss được auto-resume chỉ khi map ở mode FULL (room đó đã được record).
-roomUnsub = shared.OnRoomIndexChanged(function(room)
+roomUnsub = shared.OnRoomNameChanged(function(room)
 	-- Luôn tắt CombatMaster nếu mục tiêu hiện tại không phải Boss hoặc đã rời phòng Boss
 	if not shared.IsBossActive() and (combatMaster.IsAutoTriggeredByBoss() or combatMaster.IsEnabled()) then
 		combatMaster.Toggle(false)
@@ -536,8 +549,8 @@ roomUnsub = shared.OnRoomIndexChanged(function(room)
 
 	if not autoPlayWanted and not mover.ResumeWanted() then return end
 
-	local curRoom = room or shared.GetCurrentRoomIndex()
-	if curRoom <= 0 or shared.IsInLobby() or shared.IsDead() then return end
+	local curRoom = room or shared.GetCurrentRoomName()
+	if curRoom == nil or curRoom == shared.GetInitialRoomName() or shared.IsInLobby() or shared.IsDead() then return end
 
 	local map = shared.GetCurrentDungeonName()
 	if not map or #map == 0 then return end
@@ -571,8 +584,8 @@ mapUnsub = shared.OnDungeonNameChanged(function(name)
 	if autoPlayWanted and name and #name > 0 then
 		task.delay(0.3, function()
 			if not autoPlayWanted or mover.IsPlaying() or recorder.IsRecording() then return end
-			local room = shared.GetCurrentRoomIndex()
-			if room > 0 and storage.HasSegmentOrMacro(name, room) then
+			local room = shared.GetCurrentRoomName()
+			if room ~= nil and room ~= shared.GetInitialRoomName() and storage.HasSegmentOrMacro(name, room) then
 				if not (shared.IsBossActive() and storage.GetMapMode(name) ~= "full") then
 					coordinator.EnableExclusive("PathRecord")
 					mover.Start()
@@ -602,7 +615,7 @@ task.delay(1.0, function()
 	if autoPlayWanted and not mover.IsPlaying() and not recorder.IsRecording() then
 		local map = shared.GetCurrentDungeonName()
 		if map and #map > 0 and not shared.IsInLobby() then
-			if storage.HasSegmentOrMacro(map, shared.GetCurrentRoomIndex()) then
+			if storage.HasSegmentOrMacro(map, shared.GetCurrentRoomName()) then
 				pathRecord.TogglePlay(true)
 			end
 		end

@@ -214,7 +214,7 @@ local function fireStatus(reason)
 	local info = {
 		playing = isPlaying,
 		map = activeMap,
-		room = shared.GetCurrentRoomIndex(),
+		room = shared.GetCurrentRoomName(),
 		boss = shared.IsBossActive(),
 		resume = resumeWanted,
 		progressPercent = progressPercent,
@@ -609,7 +609,7 @@ local function walkThrough(segment, room, allowBoss)
 			while isPlaying and (os.clock() - startT < dwell.dur) do
 				if not root or not root.Parent then return false, "no_root" end
 				if shared.IsDead() then return false, "dead" end
-				if shared.GetCurrentRoomIndex() ~= room then return false, "room_changed" end
+				if shared.GetCurrentRoomName() ~= room then return false, "room_changed" end
 				if shared.IsBossActive() and not allowBoss then return false, "boss" end
 
 				-- Ngăn di chuyển trong lúc dwell
@@ -670,7 +670,7 @@ local function walkThrough(segment, room, allowBoss)
 				if not p then break end
 				local curDist = flatDistance(p, startNode)
 				if curDist <= 1.8 then break end
-				if shared.IsDead() or shared.GetCurrentRoomIndex() ~= room then break end
+				if shared.IsDead() or shared.GetCurrentRoomName() ~= room then break end
 
 				setMoveTarget(startNode)
 				task.wait(0.03)
@@ -705,7 +705,7 @@ local function walkThrough(segment, room, allowBoss)
 	while isPlaying do
 		if not root or not root.Parent then restoreAutoRotate(); return false, "no_root" end
 		if shared.IsDead() then restoreAutoRotate(); return false, "dead" end
-		if shared.GetCurrentRoomIndex() ~= room then restoreAutoRotate(); return false, "room_changed" end
+		if shared.GetCurrentRoomName() ~= room then restoreAutoRotate(); return false, "room_changed" end
 		if shared.IsBossActive() and not allowBoss then restoreAutoRotate(); return false, "boss" end -- boss mới xuất hiện -> đứng yên (chỉ khi NORMAL)
 
 		local pos = getSafePosition(root)
@@ -850,7 +850,7 @@ local function walkThrough(segment, room, allowBoss)
 				if not p2 then break end
 				local curDist = flatDistance(p2, path[n])
 				if curDist <= ARRIVE_DIST then break end
-				if shared.GetCurrentRoomIndex() ~= room then setMoveZero(); restoreAutoRotate(); return false, "room_changed" end
+				if shared.GetCurrentRoomName() ~= room then setMoveZero(); restoreAutoRotate(); return false, "room_changed" end
 				if (shared.IsBossActive() and not allowBoss) or shared.IsDead() then setMoveZero(); restoreAutoRotate(); return false, "dead" end
 				if os.clock() >= deadline then break end
 
@@ -885,7 +885,7 @@ end
 local function playbackLoop()
 	--// Đi ĐÚNG 1 LẦN: mỗi room đi hết segment 1 lượt rồi ĐỨNG YÊN chờ đổi room;
 	--// không đi qua lại trong room. Khi hết map (lobby) -> dừng hẳn.
-	local visitedRoom = 0
+	local visitedRoom = nil
 	local walkedThisVisit = false
 	local wasDead = false
 	local roomDeathCount = 0
@@ -896,10 +896,10 @@ local function playbackLoop()
 		if shared.IsDead() then
 			if not wasDead then
 				wasDead = true
-				if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and visitedRoom > 0 then
+				if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and visitedRoom ~= nil then
 					roomDeathCount += 1
 					if roomDeathCount >= MAX_ROOM_DEATHS then
-						notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %d. Retrying dungeon...", MAX_ROOM_DEATHS, visitedRoom), 3)
+						notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %s. Retrying dungeon...", MAX_ROOM_DEATHS, visitedRoom), 3)
 						roomDeathCount = 0
 						autoRetry.RetryNow()
 					end
@@ -923,8 +923,8 @@ local function playbackLoop()
 			continue
 		end
 
-		local room = shared.GetCurrentRoomIndex()
-		if room <= 0 then
+		local room = shared.GetCurrentRoomName()
+		if room == nil or room == shared.GetInitialRoomName() then
 			task.wait(0.1)
 			continue
 		end
@@ -963,10 +963,10 @@ local function playbackLoop()
 			if reason == "dead" then
 				if not wasDead then
 					wasDead = true
-					if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and room > 0 then
+					if autoRetryOnDeathLimit and not playFullMap and not shared.IsBossActive() and room ~= nil then
 						roomDeathCount += 1
 						if roomDeathCount >= MAX_ROOM_DEATHS then
-							notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %d. Retrying dungeon...", MAX_ROOM_DEATHS, room), 3)
+							notifier.Notify("Path Record", string.format("Exceeded %d deaths in Room %s. Retrying dungeon...", MAX_ROOM_DEATHS, room), 3)
 							roomDeathCount = 0
 							autoRetry.RetryNow()
 						end
@@ -1011,7 +1011,7 @@ function mover.GetStatus()
 	return {
 		playing = isPlaying,
 		map = activeMap,
-		room = shared.GetCurrentRoomIndex(),
+		room = shared.GetCurrentRoomName(),
 		boss = shared.IsBossActive(),
 		resume = resumeWanted,
 		progressPercent = progressPercent,
@@ -1040,13 +1040,13 @@ function mover.Start()
 	if isPlaying then return false, "đang phát rồi" end
 	if shared.IsInLobby() then return false, "đang ở lobby" end
 
-	local room = shared.GetCurrentRoomIndex()
-	if room <= 0 then return false, "chưa có room" end
+	local room = shared.GetCurrentRoomName()
+	if room == nil or room == shared.GetInitialRoomName() then return false, "chưa có room" end
 
 	local map = shared.GetCurrentDungeonName()
 	if not map or #map == 0 then return false, "không xác định được map" end
 	if not storage.HasSegmentOrMacro(map, room) then
-		return false, ("map [%s] chưa có segment room %d"):format(map, room)
+		return false, ("map [%s] chưa có segment room %s"):format(map, room)
 	end
 
 	--// Mode FULL: đi qua luôn boss room (miễn room đó có segment đã ghi).

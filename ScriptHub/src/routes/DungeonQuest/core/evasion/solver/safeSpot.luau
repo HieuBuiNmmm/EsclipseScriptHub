@@ -507,8 +507,8 @@ end
 hookRespawn()
 
 -- Lắng nghe room thay đổi hoặc hết quái để lập tức dọn sạch Safe Spot cũ
-if shared.OnRoomIndexChanged then
-	shared.OnRoomIndexChanged(function()
+if shared.OnRoomNameChanged then
+	shared.OnRoomNameChanged(function()
 		safeSpot.Clear()
 	end)
 end
