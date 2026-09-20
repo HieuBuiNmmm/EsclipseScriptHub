@@ -1042,6 +1042,31 @@ function trajectory.IsPointInAnyTrajectory(point, extraRadius, trajectoryList)
 	return false, nil, nil, nil, nil
 end
 
+--// Lấy danh sách các quỹ đạo nguy hiểm đang active (dùng cho telemetry / live radar)
+function trajectory.GetActiveTrajectoriesList()
+	local list = {}
+	for info, record in pairs(activeRecords) do
+		if record and record.isMoving and record.dir and record.mainPart and record.mainPart.Parent then
+			local centroid, spanWidth = getHazardCentroidAndSpan(info, record.dir)
+			if centroid and spanWidth then
+				local hLength = getHazardPredictionLength(info)
+				local speed = (record.velocity and record.velocity.Magnitude) or 0
+				table.insert(list, {
+					name = info.Name or (record.mainPart and record.mainPart.Name) or "Trajectory",
+					originX = centroid.X,
+					originZ = centroid.Z,
+					dirX = record.dir.X,
+					dirZ = record.dir.Z,
+					length = hLength,
+					width = spanWidth,
+					speed = speed,
+				})
+			end
+		end
+	end
+	return list
+end
+
 --// Bật / tắt Trajectory Visualizer
 function trajectory.SetEnabled(state)
 	enabled = state and true or false

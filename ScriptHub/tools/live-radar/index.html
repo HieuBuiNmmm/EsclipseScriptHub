@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚡ Esclipse Live 2D Radar & Boss Simulator (HazardScannerV2)</title>
+  <style>
+    :root {
+      --bg-color: #080c14;
+      --card-bg: rgba(14, 22, 36, 0.88);
+      --card-border: #1e3152;
+      --accent-cyan: #00f3ff;
+      --accent-green: #00ff88;
+      --accent-red: #ff2a55;
+      --accent-orange: #ff8800;
+      --accent-purple: #b34eff;
+      --accent-gold: #ffdd44;
+      --text-main: #f0f6fc;
+      --text-muted: #8b9bb4;
+      --font-mono: 'Consolas', 'JetBrains Mono', 'Fira Code', monospace;
+      --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Top HUD Navigation Bar */
+    header {
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 100;
+      flex-shrink: 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-title {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .brand-title span {
+      background: linear-gradient(135deg, var(--accent-cyan), #00a8ff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      background: rgba(255, 42, 85, 0.15);
+      border: 1px solid rgba(255, 42, 85, 0.4);
+      color: var(--accent-red);
+      transition: all 0.3s ease;
+    }
+
+    .status-pill.connected {
+      background: rgba(0, 255, 136, 0.15);
+      border-color: rgba(0, 255, 136, 0.4);
+      color: var(--accent-green);
+    }
+
+    .status-pill.waiting {
+      background: rgba(255, 136, 0, 0.15);
+      border-color: rgba(255, 136, 0, 0.4);
+      color: var(--accent-orange);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    /* Telemetry HUD Cards */
+    .hud-metrics {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .metric-card {
+      background: rgba(10, 16, 26, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 4px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 90px;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .metric-val {
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      color: #fff;
+    }
+
+    .metric-val.danger { color: var(--accent-red); }
+    .metric-val.safe { color: var(--accent-green); }
+    .metric-val.casting { color: var(--accent-purple); animation: pulseCast 0.8s infinite alternate; }
+
+    @keyframes pulseCast {
+      0% { opacity: 0.6; }
+      100% { opacity: 1; text-shadow: 0 0 8px var(--accent-purple); }
+    }
+
+    .cast-bar-wrap {
+      width: 90px;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 3px;
+    }
+
+    .cast-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #b34eff, #ff2a55);
+      transition: width 0.1s linear;
+    }
+
+    /* HUD Controls */
+    .hud-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    button.hud-btn {
+      background: rgba(20, 32, 54, 0.8);
+      border: 1px solid var(--card-border);
+      color: var(--text-main);
+      padding: 6px 11px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    button.hud-btn:hover {
+      background: rgba(30, 48, 80, 0.9);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      box-shadow: 0 0 10px rgba(0, 243, 255, 0.2);
+    }
+
+    button.hud-btn.active {
+      background: rgba(0, 243, 255, 0.2);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    button.hud-btn.record-active {
+      background: rgba(255, 42, 85, 0.25);
+      border-color: var(--accent-red);
+      color: var(--accent-red);
+      animation: pulseDanger 1s infinite alternate;
+    }
+
+    @keyframes pulseDanger {
+      0% { opacity: 0.7; box-shadow: 0 0 4px var(--accent-red); }
+      100% { opacity: 1; box-shadow: 0 0 12px var(--accent-red); }
+    }
+
+    /* Main Workspace Layout */
+    .main-workspace {
+      flex: 1;
+      display: flex;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Canvas Area */
+    .canvas-container {
+      flex: 1;
+      position: relative;
+      background-color: var(--bg-color);
+      cursor: crosshair;
+    }
+
+    canvas#radarCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* Floating Canvas Overlay Controls */
+    .canvas-overlay-controls {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 10;
+    }
+
+    .overlay-btn-group {
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    }
+
+    .overlay-btn {
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .overlay-btn:hover {
+      background: rgba(0, 243, 255, 0.15);
+      color: var(--accent-cyan);
+    }
+
+    /* Scale & Coordinate Legend */
+    .canvas-scale-widget {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: var(--card-bg);
+      backdrop-filter: blur(8px);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .scale-bar {
+      height: 3px;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 6px var(--accent-cyan);
+      width: 60px;
+      border-radius: 2px;
+    }
+
+    /* Side Panel */
+    .side-panel {
+      width: 340px;
+      background: var(--card-bg);
+      backdrop-filter: blur(12px);
+      border-left: 1px solid var(--card-border);
+      display: flex;
+      flex-direction: column;
+      z-index: 20;
+      transition: transform 0.3s ease;
+    }
+
+    .side-panel.collapsed {
+      transform: translateX(100%);
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+    }
+
+    .panel-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .panel-tab {
+      flex: 1;
+      padding: 10px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .panel-tab.active {
+      color: var(--accent-cyan);
+      border-bottom-color: var(--accent-cyan);
+      background: rgba(0, 243, 255, 0.05);
+    }
+
+    .panel-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Hazard Inspector Cards */
+    .hazard-card {
+      background: rgba(10, 16, 26, 0.85);
+      border: 1px solid var(--card-border);
+      border-left: 4px solid var(--accent-red);
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .hazard-card.spinning { border-left-color: var(--accent-purple); }
+    .hazard-card.linear { border-left-color: var(--accent-orange); }
+    .hazard-card.homing { border-left-color: var(--accent-gold); }
+
+    .hazard-card-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .hazard-card-meta {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* Event Log Items */
+    .log-item {
+      font-size: 11px;
+      font-family: var(--font-mono);
+      padding: 6px 8px;
+      border-radius: 4px;
+      background: rgba(10, 16, 26, 0.6);
+      border-left: 3px solid var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .log-item.danger { border-left-color: var(--accent-red); color: #ff99aa; }
+    .log-item.safe { border-left-color: var(--accent-green); color: #aaffcc; }
+    .log-item.telegraph { border-left-color: var(--accent-purple); color: #eeaaff; }
+    .log-item.kinematics { border-left-color: var(--accent-orange); color: #ffcc88; }
+
+    .log-time {
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    .layer-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-main);
+      cursor: pointer;
+    }
+
+    .layer-item input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--accent-cyan);
+    }
+  </style>
+</head>
+<body>
+  <!-- Top Bar -->
+  <header>
+    <div class="brand">
+      <div class="brand-title">⚡ ESCLIPSE <span>RADAR V2</span></div>
+      <div id="statusPill" class="status-pill waiting">
+        <div class="status-dot"></div>
+        <span id="statusText">CONNECTING...</span>
+      </div>
+    </div>
+
+    <!-- Live Telemetry Badges -->
+    <div class="hud-metrics">
+      <div class="metric-card">
+        <div class="metric-label">Dungeon</div>
+        <div id="dungeonName" class="metric-val">Lobby</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Player</div>
+        <div id="playerBadge" class="metric-val" style="color: var(--accent-cyan);">--</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Boss / Target</div>
+        <div id="bossName" class="metric-val">None</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Boss Telegraph</div>
+        <div id="bossCastState" class="metric-val">Idle</div>
+        <div class="cast-bar-wrap">
+          <div id="castBarFill" class="cast-bar-fill"></div>
+        </div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Enemies</div>
+        <div id="enemyCountBadge" class="metric-val">0 Mobs</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label">Active Hazards</div>
+        <div id="hazardCountBadge" class="metric-val">0</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="hud-actions">
+      <button id="btnFollowPlayer" class="hud-btn active" title="Lock camera on Player">🎯 Follow</button>
+      <button id="btnFitAll" class="hud-btn" title="Fit all entities in view">🗺️ Fit All</button>
+      <button id="btnRecordSession" class="hud-btn" title="Record telemetry session for AI Dataset">⏺️ Record</button>
+      <button id="btnPause" class="hud-btn" title="Pause live rendering to inspect frame">⏸️ Freeze</button>
+      <button id="btnToggleSide" class="hud-btn" title="Toggle Sidebar">📊 Inspector</button>
+      <button id="btnSimulate" class="hud-btn" title="Simulate V2 Boss Mechanics (Sandbox)">⚡ Sim V2</button>
+    </div>
+  </header>
+
+  <!-- Main View -->
+  <div class="main-workspace">
+    <!-- 2D Canvas Area -->
+    <div class="canvas-container" id="canvasContainer">
+      <canvas id="radarCanvas"></canvas>
+
+      <!-- Floating Controls -->
+      <div class="canvas-overlay-controls">
+        <div class="overlay-btn-group">
+          <button class="overlay-btn" id="btnZoomIn" title="Zoom In (+)">➕</button>
+          <button class="overlay-btn" id="btnZoomReset" title="Reset Zoom">🔍</button>
+          <button class="overlay-btn" id="btnZoomOut" title="Zoom Out (-)">➖</button>
+          <button class="overlay-btn" id="btnCenterPlayer" title="Center Player">🎯</button>
+        </div>
+      </div>
+
+      <!-- Scale & Coordinate Legend -->
+      <div class="canvas-scale-widget">
+        <div id="scaleText">Scale: 10 studs</div>
+        <div class="scale-bar" id="scaleBar"></div>
+        <div id="coordText">X: 0.0 | Z: 0.0</div>
+        <div id="fpsBadge" style="font-size: 10px; color: var(--accent-cyan); margin-top: 2px;">FPS: 60 | Stream: --</div>
+      </div>
+    </div>
+
+    <!-- Side Panel -->
+    <div class="side-panel" id="sidePanel">
+      <div class="panel-tabs">
+        <div class="panel-tab active" data-tab="hazards">⚠️ V2 Hazards (<span id="hazardTabCount">0</span>)</div>
+        <div class="panel-tab" data-tab="logs">📜 Combat Log</div>
+        <div class="panel-tab" data-tab="layers">👁️ Layers</div>
+      </div>
+
+      <!-- Content 1: Hazards Inspector -->
+      <div class="panel-content" id="tabHazards">
+        <div style="font-size: 12px; color: var(--text-muted); text-align: center; margin-top: 20px;" id="noHazardsMsg">
+          HazardScannerV2 is scanning Workspace...
+        </div>
+        <div id="hazardListWrap"></div>
+      </div>
+
+      <!-- Content 2: Combat Logs -->
+      <div class="panel-content" id="tabLogs" style="display: none;">
+        <div id="logListWrap"></div>
+      </div>
+
+      <!-- Content 3: Layers / Options -->
+      <div class="panel-content" id="tabLayers" style="display: none;">
+        <label class="layer-item"><input type="checkbox" id="chkGrid" checked> Coordinate Grid & Crosshair</label>
+        <label class="layer-item"><input type="checkbox" id="chkBossArena" checked> Boss Arena Boundary</label>
+        <label class="layer-item"><input type="checkbox" id="chkGroundZones" checked> Universal Danger Zones</label>
+        <label class="layer-item"><input type="checkbox" id="chkKinematics" checked> Kinematics & Velocity Vectors</label>
+        <label class="layer-item"><input type="checkbox" id="chkSpinSweep" checked> Spinning Sweeping Arcs</label>
+        <label class="layer-item"><input type="checkbox" id="chkFuturePath" checked> Predicted Trajectory Points</label>
+        <label class="layer-item"><input type="checkbox" id="chkEnemies" checked> Enemy Mobs</label>
+        <label class="layer-item"><input type="checkbox" id="chkNameTags" checked> 🏷️ Name Tags (Player, Boss, Mobs)</label>
+        <label class="layer-item"><input type="checkbox" id="chkHazardNames" checked> ⚠️ Hazard Skill Name Badges</label>
+        <hr style="border: none; border-top: 1px solid var(--card-border); margin: 6px 0;">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--text-muted);">WebSocket Connection:</div>
+          <input type="text" id="customWsUrl" value="ws://127.0.0.1:8765" style="background: rgba(10,16,26,0.8); border: 1px solid var(--card-border); color: #fff; padding: 6px 8px; border-radius: 4px; font-family: var(--font-mono); font-size: 11px;">
+          <button id="btnReconnectWs" class="hud-btn" style="justify-content: center;">🔄 Reconnect WebSocket</button>
+        </div>
+        <hr style="border: none; border-top: 1px solid var(--card-border); margin: 6px 0;">
+        <div style="font-size: 11px; color: var(--text-muted); line-height: 1.5;">
+          <b>HazardScannerV2 Engine:</b><br>
+          • <b>Universal Shape:</b> Circle, OBB Box, Beam.<br>
+          • <b>Kinematics:</b> Linear speed (studs/s) & Angular spin (deg/s).<br>
+          • <b>Telegraph:</b> Real-time Boss Animation Track parser.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // =========================================================================
+    // Radar V2 Engine & State
+    // =========================================================================
+    const canvas = document.getElementById('radarCanvas');
+    const ctx = canvas.getContext('2d');
+    const container = document.getElementById('canvasContainer');
+
+    let ws = null;
+    let isConnected = false;
+    let isPaused = false;
+    let followPlayer = true;
+    let simulationMode = false;
+    let isRecording = false;
+    const recordedFrames = [];
+
+    let totalPacketsReceived = 0;
+    let packetRate = 0;
+    let lastPacketTime = 0;
+    let packetCountInterval = 0;
+    let hasSnappedToPlayer = false;
+
+    let camera = {
+      x: 0,
+      z: 0,
+      zoom: 3.5,
+      minZoom: 0.5,
+      maxZoom: 25.0,
+    };
+
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+    let cameraStart = { x: 0, z: 0 };
+
+    let telemetry = {
+      version: "V2",
+      timestamp: Date.now(),
+      dungeon: "Lobby",
+      inLobby: true,
+      room: 0,
+      player: {
+        name: "Player",
+        x: 0, y: 0, z: 0,
+        yaw: 0,
+        moveX: 0, moveZ: 0,
+        health: 100, maxHealth: 100, healthPercent: 100,
+        isInvulnerable: false,
+        isDead: false,
+      },
+      boss: {
+        active: false,
+        name: "None",
+        x: 0, y: 0, z: 0,
+        yaw: 0,
+        health: 100, maxHealth: 100, healthPercent: 100,
+        isCasting: false,
+        activeAnimations: [],
+        primaryAnimation: null,
+        arenaActive: false,
+        arenaCenterX: 0,
+        arenaCenterZ: 0,
+        arenaRadius: 80,
+      },
+      enemies: [],
+      hazards: [],
+    };
+
+    const playerTrail = [];
+    const eventLogs = [];
+
+    const layers = {
+      grid: true,
+      bossArena: true,
+      groundZones: true,
+      kinematics: true,
+      spinSweep: true,
+      futurePath: true,
+      enemies: true,
+      nameTags: true,
+      hazardNames: true,
+    };
+
+    function resizeCanvas() {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function worldToScreen(wx, wz) {
+      const rect = container.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      return {
+        x: cx + (wx - camera.x) * camera.zoom,
+        y: cy + (wz - camera.z) * camera.zoom,
+      };
+    }
+
+    function screenToWorld(sx, sy) {
+      const rect = container.getBoundingClientRect();
+      const cx = rect.width / 2;
+      const cy = rect.height / 2;
+      return {
+        x: camera.x + (sx - cx) / camera.zoom,
+        z: camera.z + (sy - cy) / camera.zoom,
+      };
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragStart = { x: e.clientX, y: e.clientY };
+      cameraStart = { x: camera.x, z: camera.z };
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        const dx = (e.clientX - dragStart.x) / camera.zoom;
+        const dz = (e.clientY - dragStart.y) / camera.zoom;
+        camera.x = cameraStart.x - dx;
+        camera.z = cameraStart.z - dz;
+        followPlayer = false;
+        document.getElementById('btnFollowPlayer').classList.remove('active');
+      }
+
+      const rect = container.getBoundingClientRect();
+      const worldPos = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+      document.getElementById('coordText').innerText = `X: ${worldPos.x.toFixed(1)} | Z: ${worldPos.z.toFixed(1)}`;
+    });
+
+    window.addEventListener('mouseup', () => { isDragging = false; });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomFactor = e.deltaY < 0 ? 1.15 : 0.85;
+      camera.zoom = Math.min(camera.maxZoom, Math.max(camera.minZoom, camera.zoom * zoomFactor));
+      updateScaleLegend();
+    }, { passive: false });
+
+    function updateScaleLegend() {
+      const studPixels = 10 * camera.zoom;
+      const scaleBar = document.getElementById('scaleBar');
+      const scaleText = document.getElementById('scaleText');
+      if (studPixels > 120) {
+        scaleBar.style.width = `${5 * camera.zoom}px`;
+        scaleText.innerText = `Scale: 5 studs`;
+      } else {
+        scaleBar.style.width = `${10 * camera.zoom}px`;
+        scaleText.innerText = `Scale: 10 studs`;
+      }
+    }
+
+    // Packet rate ticker
+    setInterval(() => {
+      packetRate = packetCountInterval;
+      packetCountInterval = 0;
+      
+      const fpsBadge = document.getElementById('fpsBadge');
+      const statusPill = document.getElementById('statusPill');
+      const statusText = document.getElementById('statusText');
+
+      if (!isConnected) {
+        statusPill.className = 'status-pill';
+        statusText.innerText = 'OFFLINE (RETRYING)';
+        fpsBadge.innerText = `FPS: 60 | Stream: Disconnected`;
+      } else if (packetRate > 0) {
+        statusPill.className = 'status-pill connected';
+        statusText.innerText = `LIVE (${packetRate} FPS • ${totalPacketsReceived} PKTS)`;
+        fpsBadge.innerText = `FPS: 60 | Stream: ${packetRate} pkt/s (${totalPacketsReceived} total)`;
+      } else {
+        statusPill.className = 'status-pill waiting';
+        statusText.innerText = 'SERVER READY • WAITING ROBLOX';
+        fpsBadge.innerText = `FPS: 60 | Stream: Idle`;
+      }
+    }, 1000);
+
+    function connectWebSocket(customUrl = null) {
+      if (ws) {
+        try { ws.close(); } catch(e){}
+        ws = null;
+      }
+
+      let wsUrl = customUrl;
+      if (!wsUrl) {
+        if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const host = window.location.host || '127.0.0.1:8765';
+          wsUrl = `${protocol}//${host}`;
+        } else {
+          wsUrl = 'ws://127.0.0.1:8765';
+        }
+      }
+
+      const inputUrl = document.getElementById('customWsUrl');
+      if (inputUrl) inputUrl.value = wsUrl;
+
+      const statusPill = document.getElementById('statusPill');
+      const statusText = document.getElementById('statusText');
+
+      statusPill.className = 'status-pill waiting';
+      statusText.innerText = 'CONNECTING...';
+
+      try {
+        ws = new WebSocket(wsUrl);
+      } catch (err) {
+        statusPill.className = 'status-pill';
+        statusText.innerText = 'OFFLINE';
+        setTimeout(() => connectWebSocket(), 3000);
+        return;
+      }
+
+      ws.onopen = () => {
+        isConnected = true;
+        statusPill.className = 'status-pill waiting';
+        statusText.innerText = 'SERVER READY • WAITING ROBLOX';
+        addEventLog(`Connected to Relay Server: ${wsUrl}`, 'safe');
+      };
+
+      ws.onmessage = (event) => {
+        if (isPaused) return;
+        totalPacketsReceived++;
+        packetCountInterval++;
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type === 'TELEMETRY') {
+            processTelemetry(data);
+          }
+        } catch (e) {}
+      };
+
+      ws.onclose = () => {
+        isConnected = false;
+        statusPill.className = 'status-pill';
+        statusText.innerText = 'OFFLINE (RETRYING)';
+        setTimeout(() => connectWebSocket(), 2000);
+      };
+
+      ws.onerror = () => {
+        try { ws.close(); } catch(e){}
+      };
+    }
+
+    document.getElementById('btnReconnectWs').addEventListener('click', () => {
+      const url = document.getElementById('customWsUrl').value.trim();
+      if (url) connectWebSocket(url);
+    });
+
+    let lastBossCastAnim = null;
+
+    function processTelemetry(data) {
+      telemetry = data;
+
+      if (isRecording) {
+        recordedFrames.push(JSON.parse(JSON.stringify(data)));
+      }
+
+      if (data.player) {
+        playerTrail.push({ x: data.player.x, z: data.player.z, time: Date.now() });
+        if (playerTrail.length > 60) playerTrail.shift();
+
+        // Snap camera on first frame
+        if (!hasSnappedToPlayer && (data.player.x !== 0 || data.player.z !== 0)) {
+          camera.x = data.player.x;
+          camera.z = data.player.z;
+          camera.zoom = 3.5;
+          hasSnappedToPlayer = true;
+          updateScaleLegend();
+        } else if (followPlayer) {
+          camera.x += (data.player.x - camera.x) * 0.15;
+          camera.z += (data.player.z - camera.z) * 0.15;
+        }
+
+        const pBadge = document.getElementById('playerBadge');
+        pBadge.innerText = `${data.player.name} (${Math.round(data.player.healthPercent || 100)}%)`;
+      }
+
+      // Dungeon HUD
+      const dName = data.dungeon || 'Lobby';
+      const rNum = (data.room && data.room > 0) ? ` (Room ${data.room})` : '';
+      document.getElementById('dungeonName').innerText = `${dName}${rNum}`;
+      
+      // Boss HUD
+      const bName = (data.boss && data.boss.active) ? `${data.boss.name}` : 'None';
+      document.getElementById('bossName').innerText = bName;
+
+      // Enemies HUD
+      const eCount = data.enemies ? data.enemies.length : 0;
+      document.getElementById('enemyCountBadge').innerText = `${eCount} Mobs`;
+
+      // Boss Telegraph & Casting State
+      const castStateEl = document.getElementById('bossCastState');
+      const castBarFill = document.getElementById('castBarFill');
+      if (data.boss && data.boss.isCasting && data.boss.primaryAnimation) {
+        const anim = data.boss.primaryAnimation;
+        castStateEl.innerText = `⚡ ${anim.name} (${Math.round(anim.progress * 100)}%)`;
+        castStateEl.className = 'metric-val casting';
+        castBarFill.style.width = `${anim.progress * 100}%`;
+
+        if (anim.name !== lastBossCastAnim) {
+          addEventLog(`👑 Boss started casting: [${anim.name}] (AnimId: ${anim.animId})`, 'telegraph');
+          lastBossCastAnim = anim.name;
+        }
+      } else {
+        castStateEl.innerText = 'Idle';
+        castStateEl.className = 'metric-val';
+        castBarFill.style.width = '0%';
+        lastBossCastAnim = null;
+      }
+
+      const hCount = data.hazards ? data.hazards.length : 0;
+      document.getElementById('hazardCountBadge').innerText = hCount;
+
+      if (data.hazards && data.hazards.length > 0) {
+        for (const h of data.hazards) {
+          console.log("[RADAR] h =", h);
+          console.log("[RADAR] polygons =", h.polygons);
+        }
+      }
+
+      updateHazardInspector(data.hazards);
+    }
+
+    function updateHazardInspector(hazards) {
+      const listWrap = document.getElementById('hazardListWrap');
+      const noMsg = document.getElementById('noHazardsMsg');
+      const tabCount = document.getElementById('hazardTabCount');
+
+      tabCount.innerText = hazards ? hazards.length : 0;
+
+      if (!hazards || hazards.length === 0) {
+        listWrap.innerHTML = '';
+        noMsg.style.display = 'block';
+        return;
+      }
+
+      noMsg.style.display = 'none';
+      let html = '';
+
+      for (const h of hazards) {
+        const p = telemetry.player;
+        const dist = p ? Math.hypot(h.x - p.x, h.z - p.z).toFixed(1) : '?';
+        const cardClass = `hazard-card ${h.motionType ? h.motionType.toLowerCase() : ''}`;
+        
+        let shapeDesc = '';
+        if (h.shape === 'compound_multiring') shapeDesc = `Multi-Ring (7 Arcs, R=105s, Core=12.5s)`;
+        else if (h.shape === 'circle') shapeDesc = `Circle (R=${h.radius ? h.radius.toFixed(1) : 0}s)`;
+        else if (h.shape === 'box') shapeDesc = `Box (${h.halfX ? (h.halfX*2).toFixed(1) : 0}x${h.halfZ ? (h.halfZ*2).toFixed(1) : 0}s)`;
+        else if (h.shape === 'polygon') shapeDesc = `Polygon (${h.vertices ? h.vertices.length : 0} pts)`;
+        else if (h.shape === 'beam') shapeDesc = `Beam (L=${h.length ? h.length.toFixed(1) : 0}s, W=${h.width ? h.width.toFixed(1) : 0}s)`;
+
+        const motionBadge = h.motionType === 'SPINNING' 
+          ? `🌀 Spin (${Math.round(h.angularVel || 0)}°/s)` 
+          : (h.motionType === 'LINEAR' ? `🚀 Spd: ${(h.speed || 0).toFixed(1)}s/s` : '🛑 Static');
+
+        html += `
+          <div class="${cardClass}" style="border-left-color: ${h.color || '#ff2a55'}">
+            <div class="hazard-card-title">
+              <span style="color: ${h.color || '#fff'}">${h.name}</span>
+              <span>${motionBadge}</span>
+            </div>
+            <div class="hazard-card-meta">
+              <span>${shapeDesc}</span>
+              <span>Dist: ${dist}s</span>
+            </div>
+          </div>
+        `;
+      }
+
+      listWrap.innerHTML = html;
+    }
+
+    function addEventLog(msg, type = 'info') {
+      const timeStr = new Date().toLocaleTimeString();
+      eventLogs.unshift({ time: timeStr, msg, type });
+      if (eventLogs.length > 50) eventLogs.pop();
+
+      const logWrap = document.getElementById('logListWrap');
+      let html = '';
+      for (const log of eventLogs) {
+        html += `
+          <div class="log-item ${log.type}">
+            <span class="log-time">[${log.time}]</span>
+            <span>${log.msg}</span>
+          </div>
+        `;
+      }
+      logWrap.innerHTML = html;
+    }
+
+    // =========================================================================
+    // 2D Canvas Radar Rendering (60 FPS)
+    // =========================================================================
+    let animPulse = 0;
+
+    function renderRadar() {
+      requestAnimationFrame(renderRadar);
+      animPulse += 0.04;
+
+      const rect = container.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      if (layers.grid) drawGrid(w, h);
+      if (layers.bossArena && telemetry.boss && telemetry.boss.arenaActive) drawBossArena(telemetry.boss);
+
+      if (layers.groundZones && telemetry.hazards) {
+        for (const h of telemetry.hazards) {
+          drawV2Hazard(h);
+        }
+      }
+
+      if (layers.enemies && telemetry.enemies) {
+        for (const enemy of telemetry.enemies) {
+          if (!enemy.isBoss) drawEnemyMob(enemy);
+        }
+      }
+
+      if (telemetry.boss && telemetry.boss.active) drawBossMarker(telemetry.boss);
+      if (telemetry.player) drawPlayerMarker(telemetry.player);
+    }
+
+    function drawGrid(w, h) {
+      const startWorld = screenToWorld(0, 0);
+      const endWorld = screenToWorld(w, h);
+
+      const minX = Math.floor(startWorld.x / 20) * 20;
+      const maxX = Math.ceil(endWorld.x / 20) * 20;
+      const minZ = Math.floor(startWorld.z / 20) * 20;
+      const maxZ = Math.ceil(endWorld.z / 20) * 20;
+
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(25, 45, 75, 0.4)';
+
+      for (let x = minX; x <= maxX; x += 20) {
+        const p1 = worldToScreen(x, minZ);
+        const p2 = worldToScreen(x, maxZ);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+
+      for (let z = minZ; z <= maxZ; z += 20) {
+        const p1 = worldToScreen(minX, z);
+        const p2 = worldToScreen(maxX, z);
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+        ctx.stroke();
+      }
+
+      const origin = worldToScreen(0, 0);
+      ctx.strokeStyle = 'rgba(0, 243, 255, 0.25)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(origin.x, 0); ctx.lineTo(origin.x, h);
+      ctx.moveTo(0, origin.y); ctx.lineTo(w, origin.y);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawBossArena(boss) {
+      const pos = worldToScreen(boss.arenaCenterX, boss.arenaCenterZ);
+      const radPx = boss.arenaRadius * camera.zoom;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radPx, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(179, 78, 255, 0.4)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function hexToRgba(hex, alpha = 1) {
+      if (!hex || hex[0] !== '#') return `rgba(255, 42, 85, ${alpha})`;
+      let c = hex.substring(1);
+      if (c.length === 3) c = c.split('').map(x => x + x).join('');
+      const num = parseInt(c, 16);
+      return `rgba(${(num >> 16) & 255}, ${(num >> 8) & 255}, ${num & 255}, ${alpha})`;
+    }
+
+    function drawNameTag(text, x, y, options = {}) {
+      if (!layers.nameTags || !text) return;
+      ctx.save();
+
+      const fontSize = options.fontSize || 10;
+      ctx.font = options.bold ? `bold ${fontSize}px sans-serif` : `${fontSize}px sans-serif`;
+      
+      const paddingX = 6;
+      const paddingY = 3;
+      const textWidth = ctx.measureText(text).width;
+      const badgeW = textWidth + paddingX * 2;
+      const badgeH = fontSize + paddingY * 2;
+
+      const posX = x - badgeW / 2;
+      const posY = y - badgeH / 2;
+
+      // Background pill
+      ctx.fillStyle = options.bg || 'rgba(10, 16, 26, 0.88)';
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(posX, posY, badgeW, badgeH, 4);
+      } else {
+        ctx.rect(posX, posY, badgeW, badgeH);
+      }
+      ctx.fill();
+
+      // Border
+      ctx.strokeStyle = options.border || 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Text
+      ctx.fillStyle = options.color || '#fff';
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      ctx.fillText(text, posX + paddingX, y);
+
+      ctx.restore();
+    }
+
+    function drawV2Hazard(h) {
+      ctx.save();
+      const isSpinning = h.motionType === 'SPINNING';
+      const hexColor = h.color || (isSpinning ? '#b34eff' : '#ff2a55');
+      const baseAlpha = (h.transparency !== undefined) ? Math.min(0.6, Math.max(0.2, (1 - h.transparency) * 0.7)) : 0.35;
+      const fillColor = hexToRgba(hexColor, baseAlpha);
+      const strokeColor = hexColor;
+
+      ctx.shadowColor = hexColor;
+      ctx.shadowBlur = 8;
+
+      if (h.shape === 'compound_multiring') {
+        const p = worldToScreen(h.x, h.z);
+        const yawDeg = h.yaw || 0;
+        const baseCanvasAng = (yawDeg - 90) * Math.PI / 180;
+        
+        // 1. Ưu tiên vẽ bằng mảng Polygon Đa giác nếu có
+        if (h.polygons && h.polygons.length > 0) {
+          for (const poly of h.polygons) {
+            if (poly && poly.length >= 3) {
+              ctx.beginPath();
+              for (let i = 0; i < poly.length; i++) {
+                const sp = worldToScreen(poly[i].x, poly[i].z);
+                if (i === 0) ctx.moveTo(sp.x, sp.y);
+                else ctx.lineTo(sp.x, sp.y);
+              }
+              ctx.closePath();
+              ctx.fillStyle = fillColor;
+              ctx.fill();
+              ctx.strokeStyle = strokeColor;
+              ctx.lineWidth = 2;
+              ctx.stroke();
+            }
+          }
+        } else {
+          // 2. Fallback vẽ cung tròn chính xác theo Ground-Truth (image2.png):
+          // Core: R = 12.5 studs
+          const coreRadPx = (h.coreRadius || 12.5) * camera.zoom;
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, coreRadPx, 0, Math.PI * 2);
+          ctx.fillStyle = fillColor;
+          ctx.fill();
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+
+          // 7 Concentric Semicircles (Ground Truth)
+          const defaultRings = [
+            { rIn: 12.5, rOut: 25.0, yawOffset: 180 },
+            { rIn: 25.0, rOut: 37.5, yawOffset: 0 },
+            { rIn: 37.5, rOut: 50.0, yawOffset: 180 },
+            { rIn: 50.0, rOut: 62.5, yawOffset: 0 },
+            { rIn: 62.5, rOut: 75.0, yawOffset: 180 },
+            { rIn: 75.0, rOut: 87.5, yawOffset: 0 },
+            { rIn: 87.5, rOut: 105.0, yawOffset: 180 },
+          ];
+          const rings = h.rings || defaultRings;
+
+          for (const ring of rings) {
+            const rOutPx = ring.rOut * camera.zoom;
+            const rInPx = ring.rIn * camera.zoom;
+            const arcYaw = ring.yaw !== undefined ? ring.yaw : (yawDeg + (ring.yawOffset || 0));
+            const arcCenterAng = (arcYaw - 90) * Math.PI / 180;
+            const startAng = arcCenterAng - Math.PI / 2;
+            const endAng = arcCenterAng + Math.PI / 2;
+
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, rOutPx, startAng, endAng, false);
+            ctx.arc(p.x, p.y, rInPx, endAng, startAng, true);
+            ctx.closePath();
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+
+        // 3. Subtle Seam / Axis Split Line across the center (R = 105 studs)
+        const maxRPx = (h.maxRadius || 105.0) * camera.zoom;
+        const seamAng = baseCanvasAng + Math.PI / 2;
+        const cosS = Math.cos(seamAng);
+        const sinS = Math.sin(seamAng);
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(p.x - cosS * maxRPx, p.y - sinS * maxRPx);
+        ctx.lineTo(p.x + cosS * maxRPx, p.y + sinS * maxRPx);
+        ctx.strokeStyle = 'rgba(60, 208, 208, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.restore();
+      } else if (h.shape === 'circle') {
+        const p = worldToScreen(h.x, h.z);
+        const rPx = h.radius * camera.zoom;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, rPx, 0, Math.PI * 2);
+        ctx.fillStyle = fillColor;
+        ctx.fill();
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else if (h.shape === 'box') {
+        if (h.vertices && h.vertices.length >= 4) {
+          ctx.beginPath();
+          for (let i = 0; i < h.vertices.length; i++) {
+            const sp = worldToScreen(h.vertices[i].x, h.vertices[i].z);
+            if (i === 0) ctx.moveTo(sp.x, sp.y);
+            else ctx.lineTo(sp.x, sp.y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = fillColor;
+          ctx.fill();
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // Sweeping arc if spinning
+          if (layers.spinSweep && isSpinning) {
+            const p = worldToScreen(h.x, h.z);
+            const wPx = (h.halfX || 5) * 2 * camera.zoom;
+            const hPx = (h.halfZ || 5) * 2 * camera.zoom;
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.beginPath();
+            ctx.arc(0, 0, Math.max(wPx, hPx), 0, Math.PI * 0.5);
+            ctx.strokeStyle = hexToRgba(hexColor, 0.4);
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.restore();
+          }
+        } else {
+          const p = worldToScreen(h.x, h.z);
+          const wPx = h.halfX * 2 * camera.zoom;
+          const hPx = h.halfZ * 2 * camera.zoom;
+          const radYaw = (h.yaw || 0) * Math.PI / 180;
+
+          ctx.translate(p.x, p.y);
+          ctx.rotate(radYaw);
+
+          ctx.fillStyle = fillColor;
+          ctx.fillRect(-wPx / 2, -hPx / 2, wPx, hPx);
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 2;
+          ctx.strokeRect(-wPx / 2, -hPx / 2, wPx, hPx);
+
+          // Sweeping arc if spinning
+          if (layers.spinSweep && isSpinning) {
+            ctx.beginPath();
+            ctx.arc(0, 0, Math.max(wPx, hPx), 0, Math.PI * 0.5);
+            ctx.strokeStyle = hexToRgba(hexColor, 0.4);
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          }
+        }
+      } else if (h.shape === 'polygon' || h.vertices) {
+        const pts = h.vertices || h.points;
+        if (pts && pts.length >= 3) {
+          ctx.beginPath();
+          for (let i = 0; i < pts.length; i++) {
+            const sp = worldToScreen(pts[i].x, pts[i].z);
+            if (i === 0) ctx.moveTo(sp.x, sp.y);
+            else ctx.lineTo(sp.x, sp.y);
+          }
+          ctx.closePath();
+          ctx.fillStyle = fillColor;
+          ctx.fill();
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+      } else if (h.shape === 'beam') {
+        const p = worldToScreen(h.x, h.z);
+        const lenPx = h.length * camera.zoom;
+        const wPx = h.width * camera.zoom;
+        const radYaw = (h.yaw || 0) * Math.PI / 180;
+
+        ctx.translate(p.x, p.y);
+        ctx.rotate(radYaw);
+
+        ctx.fillStyle = 'rgba(255, 140, 0, 0.25)';
+        ctx.fillRect(-wPx / 2, -lenPx / 2, wPx, lenPx);
+        ctx.strokeStyle = '#ff8c00';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-wPx / 2, -lenPx / 2, wPx, lenPx);
+      }
+      ctx.restore();
+
+      // Predicted Future Path dots
+      if (layers.futurePath && h.trajectory && h.trajectory.futurePoints) {
+        ctx.save();
+        for (const fp of h.trajectory.futurePoints) {
+          const sp = worldToScreen(fp.x, fp.z);
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 170, 0, 0.6)';
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // Hazard Skill Name Tag (Centered at exact origin and locked horizontally)
+      if (layers.hazardNames && layers.nameTags && h.name) {
+        const p = worldToScreen(h.x, h.z);
+        const motionStr = h.motionType === 'SPINNING' 
+          ? ` [🌀 ${Math.round(h.angularVel || 0)}°/s]` 
+          : (h.motionType === 'LINEAR' && h.speed > 2 ? ` [🚀 ${h.speed.toFixed(1)}s/s]` : '');
+        
+        drawNameTag(`⚠️ ${h.name}${motionStr}`, p.x, p.y, {
+          color: hexColor,
+          border: hexToRgba(hexColor, 0.7),
+          bg: 'rgba(10, 14, 22, 0.92)',
+          fontSize: 9,
+          bold: true,
+        });
+      }
+    }
+
+    function drawEnemyMob(enemy) {
+      const p = worldToScreen(enemy.x, enemy.z);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 100, 50, 0.8)';
+      ctx.fill();
+      ctx.strokeStyle = '#ff6432';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Mob Facing Direction Indicator
+      if (enemy.yaw !== undefined) {
+        const radYaw = (enemy.yaw || 0) * Math.PI / 180;
+        const fX = p.x + Math.sin(radYaw) * 9;
+        const fY = p.y - Math.cos(radYaw) * 9;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(fX, fY);
+        ctx.strokeStyle = '#ffaa44';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Mob Name Tag
+      if (layers.nameTags && camera.zoom >= 2.0) {
+        const hpStr = enemy.health ? ` (${Math.round((enemy.health / enemy.maxHealth) * 100)}%)` : '';
+        drawNameTag(`💀 ${enemy.name}${hpStr}`, p.x, p.y - 12, {
+          color: '#ffaa88',
+          border: 'rgba(255, 100, 50, 0.6)',
+          bg: 'rgba(14, 18, 26, 0.9)',
+          fontSize: 9,
+        });
+      }
+    }
+
+    function drawBossMarker(boss) {
+      const p = worldToScreen(boss.x, boss.z);
+      ctx.save();
+
+      const pulseR = 14 + Math.sin(animPulse * 3) * 3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, pulseR, 0, Math.PI * 2);
+      ctx.fillStyle = boss.isCasting ? 'rgba(179, 78, 255, 0.4)' : 'rgba(255, 42, 85, 0.35)';
+      ctx.fill();
+      ctx.strokeStyle = boss.isCasting ? '#b34eff' : '#ff2a55';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      const radYaw = (boss.yaw || 0) * Math.PI / 180;
+      const fX = p.x + Math.sin(radYaw) * 22;
+      const fY = p.y - Math.cos(radYaw) * 22;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(fX, fY);
+      ctx.strokeStyle = '#ffdd44';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+
+      // Boss Name Tag
+      if (layers.nameTags) {
+        const castStr = boss.isCasting && boss.primaryAnimation ? ` ⚡ ${boss.primaryAnimation.name}` : '';
+        drawNameTag(`👑 ${boss.name} (${Math.round(boss.healthPercent)}%)${castStr}`, p.x, p.y - 24, {
+          color: boss.isCasting ? '#d88bff' : '#ff4477',
+          border: boss.isCasting ? 'rgba(179, 78, 255, 0.8)' : 'rgba(255, 42, 85, 0.8)',
+          bg: 'rgba(18, 10, 24, 0.92)',
+          bold: true,
+          fontSize: 11,
+        });
+      }
+    }
+
+    function drawPlayerMarker(p) {
+      const pos = worldToScreen(p.x, p.z);
+      ctx.save();
+
+      // Player Trail
+      if (playerTrail.length > 1) {
+        ctx.beginPath();
+        for (let i = 0; i < playerTrail.length; i++) {
+          const tp = worldToScreen(playerTrail[i].x, playerTrail[i].z);
+          if (i === 0) ctx.moveTo(tp.x, tp.y);
+          else ctx.lineTo(tp.x, tp.y);
+        }
+        ctx.strokeStyle = 'rgba(0, 243, 255, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, 1.8 * camera.zoom, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(0, 243, 255, 0.15)';
+      ctx.fill();
+      ctx.strokeStyle = '#00f3ff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      const radYaw = (p.yaw || 0) * Math.PI / 180;
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(radYaw);
+
+      ctx.beginPath();
+      ctx.moveTo(0, -10);
+      ctx.lineTo(7, 8);
+      ctx.lineTo(0, 4);
+      ctx.lineTo(-7, 8);
+      ctx.closePath();
+      ctx.fillStyle = '#00f3ff';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.restore();
+
+      // Player Name Tag
+      if (layers.nameTags) {
+        const statusTag = p.isInvulnerable ? ' [SHIELD]' : (p.isDodging ? ' [DODGE]' : '');
+        const hpTag = ` (${Math.round(p.healthPercent || 100)}%)`;
+        drawNameTag(`👤 ${p.name || 'Player'}${hpTag}${statusTag}`, pos.x, pos.y + 18, {
+          color: '#00f3ff',
+          border: 'rgba(0, 243, 255, 0.6)',
+          bg: 'rgba(8, 14, 24, 0.92)',
+          bold: true,
+          fontSize: 10,
+        });
+      }
+    }
+
+    // UI Buttons
+    document.getElementById('btnFollowPlayer').addEventListener('click', (e) => {
+      followPlayer = !followPlayer;
+      e.target.classList.toggle('active', followPlayer);
+    });
+
+    document.getElementById('btnCenterPlayer').addEventListener('click', () => {
+      if (telemetry.player) {
+        camera.x = telemetry.player.x;
+        camera.z = telemetry.player.z;
+        followPlayer = true;
+        document.getElementById('btnFollowPlayer').classList.add('active');
+      }
+    });
+
+    document.getElementById('btnFitAll').addEventListener('click', () => {
+      let minX = telemetry.player ? telemetry.player.x : 0;
+      let maxX = minX;
+      let minZ = telemetry.player ? telemetry.player.z : 0;
+      let maxZ = minZ;
+
+      if (telemetry.enemies) {
+        for (const e of telemetry.enemies) {
+          minX = Math.min(minX, e.x);
+          maxX = Math.max(maxX, e.x);
+          minZ = Math.min(minZ, e.z);
+          maxZ = Math.max(maxZ, e.z);
+        }
+      }
+
+      if (telemetry.hazards) {
+        for (const h of telemetry.hazards) {
+          minX = Math.min(minX, h.x);
+          maxX = Math.max(maxX, h.x);
+          minZ = Math.min(minZ, h.z);
+          maxZ = Math.max(maxZ, h.z);
+        }
+      }
+
+      camera.x = (minX + maxX) / 2;
+      camera.z = (minZ + maxZ) / 2;
+
+      const spanX = Math.max(40, (maxX - minX) + 40);
+      const spanZ = Math.max(40, (maxZ - minZ) + 40);
+      const rect = container.getBoundingClientRect();
+
+      camera.zoom = Math.min(camera.maxZoom, Math.max(camera.minZoom, Math.min(rect.width / spanX, rect.height / spanZ)));
+      followPlayer = false;
+      document.getElementById('btnFollowPlayer').classList.remove('active');
+      updateScaleLegend();
+    });
+
+    document.getElementById('btnPause').addEventListener('click', (e) => {
+      isPaused = !isPaused;
+      e.target.classList.toggle('active', isPaused);
+      e.target.innerText = isPaused ? '▶️ Resume' : '⏸️ Freeze';
+    });
+
+    document.getElementById('btnRecordSession').addEventListener('click', (e) => {
+      isRecording = !isRecording;
+      e.target.classList.toggle('record-active', isRecording);
+      if (isRecording) {
+        recordedFrames.length = 0;
+        e.target.innerText = '⏹️ Stop & Save';
+        addEventLog('⏺️ Recording telemetry session for AI Dataset...', 'telegraph');
+      } else {
+        e.target.innerText = '⏺️ Record';
+        addEventLog(`📁 Recorded ${recordedFrames.length} frames. Downloading JSON...`, 'safe');
+        downloadDataset(recordedFrames);
+      }
+    });
+
+    function downloadDataset(data) {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `telemetry_session_${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    document.getElementById('btnZoomIn').addEventListener('click', () => {
+      camera.zoom = Math.min(camera.maxZoom, camera.zoom * 1.3);
+      updateScaleLegend();
+    });
+
+    document.getElementById('btnZoomOut').addEventListener('click', () => {
+      camera.zoom = Math.max(camera.minZoom, camera.zoom / 1.3);
+      updateScaleLegend();
+    });
+
+    document.getElementById('btnZoomReset').addEventListener('click', () => {
+      camera.zoom = 3.5;
+      if (telemetry.player) {
+        camera.x = telemetry.player.x;
+        camera.z = telemetry.player.z;
+      }
+      updateScaleLegend();
+    });
+
+    document.querySelectorAll('.panel-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+
+        const target = tab.dataset.tab;
+        document.getElementById('tabHazards').style.display = target === 'hazards' ? 'flex' : 'none';
+        document.getElementById('tabLogs').style.display = target === 'logs' ? 'flex' : 'none';
+        document.getElementById('tabLayers').style.display = target === 'layers' ? 'flex' : 'none';
+      });
+    });
+
+    document.getElementById('btnToggleSide').addEventListener('click', () => {
+      document.getElementById('sidePanel').classList.toggle('collapsed');
+    });
+
+    // Layer Checkboxes
+    document.getElementById('chkGrid').addEventListener('change', (e) => layers.grid = e.target.checked);
+    document.getElementById('chkBossArena').addEventListener('change', (e) => layers.bossArena = e.target.checked);
+    document.getElementById('chkGroundZones').addEventListener('change', (e) => layers.groundZones = e.target.checked);
+    document.getElementById('chkKinematics').addEventListener('change', (e) => layers.kinematics = e.target.checked);
+    document.getElementById('chkSpinSweep').addEventListener('change', (e) => layers.spinSweep = e.target.checked);
+    document.getElementById('chkFuturePath').addEventListener('change', (e) => layers.futurePath = e.target.checked);
+    document.getElementById('chkEnemies').addEventListener('change', (e) => layers.enemies = e.target.checked);
+    document.getElementById('chkNameTags').addEventListener('change', (e) => layers.nameTags = e.target.checked);
+    document.getElementById('chkHazardNames').addEventListener('change', (e) => layers.hazardNames = e.target.checked);
+
+    // Sandbox Simulator V2
+    document.getElementById('btnSimulate').addEventListener('click', () => {
+      simulationMode = !simulationMode;
+      document.getElementById('btnSimulate').classList.toggle('active', simulationMode);
+      if (simulationMode) startSimulationV2();
+    });
+
+    let simInterval = null;
+    function startSimulationV2() {
+      let tick = 0;
+      if (simInterval) clearInterval(simInterval);
+
+      simInterval = setInterval(() => {
+        if (!simulationMode) {
+          clearInterval(simInterval);
+          return;
+        }
+        tick++;
+
+        const isCasting = (tick % 60) > 35;
+        const castProgress = isCasting ? ((tick % 60) - 35) / 25 : 0;
+
+        processTelemetry({
+          type: 'TELEMETRY',
+          version: 'V2',
+          timestamp: Date.now(),
+          dungeon: 'Simulation Arena V2',
+          inLobby: false,
+          room: 101,
+          player: {
+            name: 'LocalPlayer',
+            x: Math.cos(tick * 0.05) * 18,
+            y: 0,
+            z: Math.sin(tick * 0.05) * 18,
+            yaw: (tick * 0.05 * 180 / Math.PI) + 90,
+            health: 14000,
+            maxHealth: 15000,
+            healthPercent: 93,
+          },
+          boss: {
+            active: true,
+            name: 'Pharaoh Lord (V2)',
+            x: 0, y: 0, z: -30,
+            yaw: 180 + Math.sin(tick * 0.03) * 30,
+            health: 90000, maxHealth: 100000, healthPercent: 90,
+            isCasting: isCasting,
+            primaryAnimation: isCasting ? {
+              name: 'SunBeamCast',
+              animId: 'rbxassetid://12345678',
+              progress: castProgress,
+            } : null,
+            arenaActive: true,
+            arenaCenterX: 0, arenaCenterZ: 0, arenaRadius: 75,
+          },
+          hazards: [
+            // Pharaoh Lord Multi Rings (Ground Truth compound_multiring)
+            {
+              name: 'thirdBossMultiRings',
+              shape: 'compound_multiring',
+              x: 0,
+              y: 0,
+              z: -30,
+              yaw: 225,
+              coreRadius: 12.5,
+              maxRadius: 105.0,
+              color: '#3cd0d0',
+              transparency: 0.45,
+              motionType: 'STATIC',
+              rings: [
+                { rIn: 12.5, rOut: 25.0, yawOffset: 180 },
+                { rIn: 25.0, rOut: 37.5, yawOffset: 0 },
+                { rIn: 37.5, rOut: 50.0, yawOffset: 180 },
+                { rIn: 50.0, rOut: 62.5, yawOffset: 0 },
+                { rIn: 62.5, rOut: 75.0, yawOffset: 180 },
+                { rIn: 75.0, rOut: 87.5, yawOffset: 0 },
+                { rIn: 87.5, rOut: 105.0, yawOffset: 180 },
+              ],
+            },
+            // Spinning blade (Box OBB)
+            {
+              name: 'SpinningBlade',
+              shape: 'box',
+              x: Math.cos(tick * 0.02) * 10,
+              z: -15,
+              halfX: 12, halfZ: 4,
+              yaw: (tick * 6) % 360,
+              color: '#b34eff',
+              motionType: 'SPINNING',
+              angularVel: 120,
+              speed: 0,
+            },
+          ],
+          enemies: [],
+        });
+      }, 33);
+    }
+
+    connectWebSocket();
+    renderRadar();
+    updateScaleLegend();
+  </script>
+</body>
+</html>

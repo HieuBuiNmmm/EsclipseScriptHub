@@ -148,6 +148,8 @@ evasion.IsInspectEnabled = detection.IsInspectEnabled
 
 evasion.GetHazardCount = detection.GetHazardCount
 evasion.GetActiveHazards = detection.GetActiveHazards
+evasion.GetActiveHazardsMap = detection.GetActiveHazardsMap
+evasion.GetActiveTrajectoriesList = trajectory.GetActiveTrajectoriesList
 evasion.GetLastHazardInfo = detection.GetLastHazardInfo
 evasion.OnHazardChanged = detection.OnHazardChanged
 evasion.ClearAllHazards = detection.ClearAllHazards
