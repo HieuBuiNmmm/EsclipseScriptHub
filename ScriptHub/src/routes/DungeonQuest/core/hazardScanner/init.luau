@@ -137,6 +137,8 @@ hazardScanner.IsInspectEnabled = detection.IsInspectEnabled
 
 hazardScanner.GetHazardCount = detection.GetHazardCount
 hazardScanner.GetActiveHazards = detection.GetActiveHazards
+hazardScanner.GetActiveHazardsMap = detection.GetActiveHazardsMap
+hazardScanner.GetActiveTrajectoriesList = trajectory.GetActiveTrajectoriesList
 hazardScanner.GetLastHazardInfo = detection.GetLastHazardInfo
 hazardScanner.OnHazardChanged = detection.OnHazardChanged
 hazardScanner.ClearAllHazards = detection.ClearAllHazards

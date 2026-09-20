@@ -6,6 +6,7 @@
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local liveRadar = require("@routes/DungeonQuest/core/liveRadar")
 local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 
@@ -170,6 +171,59 @@ return function(window, tab)
 			hazardScanner.SetSecondBossCircleDuration(val)
 		end),
 	}, "Slider_HazardSecondBossCircleDuration"))
+
+	--// Right Section - Live 2D Radar & WebSocket Telemetry
+	local radarSection = tab:Section({ Side = "Right" })
+	radarSection:Header({ Name = "Live 2D Top-Down Radar (WebSocket)" })
+
+	local radarStatusLabel = radarSection:Label({ Text = "Radar Server: <font color='rgb(255,80,80)'>Disconnected</font>" })
+
+	local function updateRadarStatus(st)
+		local col = "255,80,80"
+		if st == "Connected" then
+			col = "0,255,136"
+		elseif st == "Connecting" then
+			col = "255,170,0"
+		end
+		pcall(function()
+			radarStatusLabel:UpdateName("Radar Server: <font color='rgb(" .. col .. ")'><b>" .. tostring(st) .. "</b></font>")
+		end)
+	end
+
+	liveRadar.OnStatusChanged(function(st)
+		updateRadarStatus(st)
+	end)
+
+	radarSection:Toggle({
+		Name = "Enable Live 2D Radar Stream",
+		Default = liveRadar.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			liveRadar.SetEnabled(state)
+			updateRadarStatus(liveRadar.GetStatus())
+		end),
+	}, "Toggle_LiveRadarEnabled")
+
+	radarSection:Input({
+		Name = "WebSocket Server URL",
+		Placeholder = "ws://127.0.0.1:8765",
+		AcceptedCharacters = "All",
+		Default = liveRadar.GetUrl(),
+		Callback = autoSave.Wrap(function(text)
+			liveRadar.SetUrl(text)
+		end),
+	})
+
+	ui.PatchSliderLoadCallback(radarSection:Slider({
+		Name = "Stream Refresh Rate (FPS)",
+		Default = liveRadar.GetFps(),
+		Minimum = 10,
+		Maximum = 60,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			liveRadar.SetFps(val)
+		end),
+	}, "Slider_LiveRadarFps"))
 
 	hazardScanner.OnHazardChanged(function(count, lastInfo)
 		updateMonitor(count, lastInfo)
