@@ -97,6 +97,7 @@ local function buildTelemetryPacket()
 	-- Lấy dữ liệu Hazards & Boss từ HazardScannerV2
 	local hazardsList = hazardScannerV2.GetActiveHazardsTelemetry()
 	local bossData = hazardScannerV2.GetBossTelegraphTelemetry()
+	local memoryData = hazardScannerV2.GetMemoryGameTelemetry and hazardScannerV2.GetMemoryGameTelemetry() or nil
 
 	local packet = {
 		type = "TELEMETRY",
@@ -123,6 +124,7 @@ local function buildTelemetryPacket()
 		boss = bossData,
 		enemies = getEnemiesTelemetry(),
 		hazards = hazardsList,
+		memory = memoryData,
 	}
 
 	return packet

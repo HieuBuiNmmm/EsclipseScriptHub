@@ -3580,18 +3580,26 @@ or tostring(ai)local ak=aj:lower():gsub('%s+','')return string.find(ak,
 end function ae.IsSweepingFlames(ai)if not ai then return false end local aj=
 typeof(ai)=='Instance'and ai.Name or tostring(ai)local ak=aj:lower():gsub('%s+',
 '')return string.find(ak,'bonusbosssweepingflames',1,true)~=nil or string.find(
-ak,'sweepingflames',1,true)~=nil end function ae.IsHazardPart(ai,aj)if not ai or
-not ai:IsA'BasePart'or not ai.Parent then return false end if ai.Name==
-'PrimaryPart'then return false end if ae.IsMultiRing(ai)or(ai.Parent and ae.
-IsMultiRing(ai.Parent))or(aj and ae.IsMultiRing(aj))then local ak=ai.Name:lower(
-)if ak=='center'or ak:find'multiring'then return true end return false end if ae
-.IsIceSpikes(ai)or(ai.Parent and ae.IsIceSpikes(ai.Parent))or(aj and ae.
-IsIceSpikes(aj))then return true end local ak=ae.IsSweepingFlames(ai)or(ai.
+ak,'sweepingflames',1,true)~=nil end function ae.IsMemoryModel(ai)if not ai then
+return false end local aj=typeof(ai)=='Instance'and ai.Name or tostring(ai)local
+ak=aj:lower():gsub('%s+','')return string.find(ak,'bonusbossmemorymodel',1,true)
+~=nil or string.find(ak,'memorymodel',1,true)~=nil end function ae.IsHazardPart(
+ai,aj)if not ai or not ai:IsA'BasePart'or not ai.Parent then return false end if
+ai.Name=='PrimaryPart'then return false end if ae.IsMultiRing(ai)or(ai.Parent
+and ae.IsMultiRing(ai.Parent))or(aj and ae.IsMultiRing(aj))then local ak=ai.Name
+:lower()if ak=='center'or ak:find'multiring'then return true end return false
+end if ae.IsIceSpikes(ai)or(ai.Parent and ae.IsIceSpikes(ai.Parent))or(aj and ae
+.IsIceSpikes(aj))then return true end local ak=ae.IsSweepingFlames(ai)or(ai.
 Parent and ae.IsSweepingFlames(ai.Parent))or(ai.Parent and ai.Parent.Parent and
 ae.IsSweepingFlames(ai.Parent.Parent))or(aj and ae.IsSweepingFlames(aj))if ak
 then local al=ai.Name:lower()if al=='precast'then if ai.Transparency<=0.85 then
 return true end local am=ai:FindFirstChildWhichIsA'ParticleEmitter'if am and am.
-Enabled then return true end return false end return false end if ai.
+Enabled then return true end return false end return false end local al=ae.
+IsMemoryModel(ai)or(ai.Parent and ae.IsMemoryModel(ai.Parent))or(aj and ae.
+IsMemoryModel(aj))if al then local am=ai.Name:lower()if am=='primarypart'then
+return false end if am:find'precast'or am:find'hitbox'then if ai.Transparency<=
+0.85 then return true end local an=ai:FindFirstChildWhichIsA'ParticleEmitter'if
+an and an.Enabled then return true end return false end return false end if ai.
 Transparency>0.85 then return false end if ai.Material==Enum.Material.Neon then
 return true end return false end ae.IsNeonHazardPart=ae.IsHazardPart function ae
 .FindHazardPartsInLevel1Child(ai)local aj={}if not ae.
@@ -3624,11 +3632,13 @@ end return ae end function ab.AnalyzeHazardPart(ah)if not ah or not ah:IsA
 local ak,al,am=aj.Position,ad(aj),ac(ah.Color)if aa.IsIceSpikes(ah)or(ah.Parent
 and aa.IsIceSpikes(ah.Parent))then am='#38d9ff'end if aa.IsSweepingFlames(ah)or(
 ah.Parent and aa.IsSweepingFlames(ah.Parent))or(ah.Parent and ah.Parent.Parent
-and aa.IsSweepingFlames(ah.Parent.Parent))then am='#ff6b22'end local an=ah:
-FindFirstChildWhichIsA('SpecialMesh',true)if an then local ao,ap,aq=math.abs(an.
-Scale.X),math.abs(an.Scale.Y),math.abs(an.Scale.Z)ai=Vector3.new(ai.X*ao,ai.Y*ap
-,ai.Z*aq)end local ao,ap=ah.Name:lower(),(ah.Parent and ah.Parent.Name:lower())
-or''local aq=aa.IsMultiRing(ah)or aa.IsMultiRing(ah.Parent)or(ao=='center'and
+and aa.IsSweepingFlames(ah.Parent.Parent))then am='#ff6b22'end if aa.
+IsMemoryModel(ah)or(ah.Parent and aa.IsMemoryModel(ah.Parent))then local an=ah.
+Name:lower()if an:find'good'then am='#22ff88'else am='#ff2a55'end end local an=
+ah:FindFirstChildWhichIsA('SpecialMesh',true)if an then local ao,ap,aq=math.abs(
+an.Scale.X),math.abs(an.Scale.Y),math.abs(an.Scale.Z)ai=Vector3.new(ai.X*ao,ai.Y
+*ap,ai.Z*aq)end local ao,ap=ah.Name:lower(),(ah.Parent and ah.Parent.Name:lower(
+))or''local aq=aa.IsMultiRing(ah)or aa.IsMultiRing(ah.Parent)or(ao=='center'and
 string.find(ap,'ring')~=nil)if aq then local ar,as,at=ak,ah,(ah.Parent and ah.
 Parent:IsA'Model')and ah.Parent or nil if at then local au=at:FindFirstChild(
 'center',true)if au and au:IsA'BasePart'then ar=au.Position as=au end end local
@@ -3709,121 +3719,161 @@ MaxHealth)*100,0,100),yaw=af(ai.CFrame.LookVector),isCasting=ap,activeAnimations
 =ao,primaryAnimation=aq,arenaActive=al or false,arenaCenterX=(an and an.X)or 0,
 arenaCenterZ=(an and an.Z)or 0,arenaRadius=am or 80}end return ac end function a
 .J()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am=game:GetService'Workspace',a.
-load'e',a.load'b',a.load'F',a.load'G',a.load'H',a.load'I',{},false,{},{},{}local
-an,ao=function(an,ao)if not an or not an:IsA'BasePart'then return end if not ad.
-IsHazardPart(an,ao)then return end if aj[an]then return end local ap=ao and ao.
-Name or(an.Parent and an.Parent.Name)or an.Name local aq=ad.IsMultiRing(ap)or ad
-.IsMultiRing(an)or(an.Parent and ad.IsMultiRing(an.Parent.Name))or(ao and ad.
-IsMultiRing(ao))if aq then for ar,as in pairs(aj)do if as.level1Parent==ao or(ao
-and ar:IsDescendantOf(ao))or ar==an then return end end end local ar=ae.
-AnalyzeHazardPart(an)if not ar then return end local as,at=os.clock(),Vector3.
-new(ar.x,ar.y,ar.z)local au,av=af.UpdateRecord(an,at,ar.yaw or 0),(an.Name==ap)
-and ap or(ap..'/'..an.Name)if aq then av=ap elseif ad.IsSweepingFlames(ap)and an
-.Parent and an.Parent~=ao then av=ap..'/'..an.Parent.Name end aj[an]={part=an,
-level1Parent=ao or an,name=av,spawnTime=as,shape=ar,motion=au}end,function(an)if
-aj[an]then aj[an]=nil af.RemoveRecord(an)end end local ap,aq,ar,as=function(ap)
-if not ad.IsValidLevel1WorkspaceChild(ap)then return end local aq=ad.
-FindHazardPartsInLevel1Child(ap)for ar,as in ipairs(aq)do an(as,ap)end if ap:IsA
-'Model'then ak[ap]=ap.DescendantAdded:Connect(function(ar)if ar:IsA'BasePart'
-then if ad.IsMultiRing(ap)then local as=false for at,au in pairs(aj)do if au.
-level1Parent==ap or at:IsDescendantOf(ap)or at==ap then as=true break end end if
-not as and ad.IsHazardPart(ar,ap)then an(ar,ap)end elseif ad.IsHazardPart(ar,ap)
-then an(ar,ap)end end end)end end,function(ap)if ak[ap]then ak[ap]:Disconnect()
-ak[ap]=nil end local aq={}for ar,as in pairs(aj)do if as.level1Parent==ap or ar
-==ap or(ap:IsA'Instance'and ar:IsDescendantOf(ap))then table.insert(aq,ar)end
-end for ar,as in ipairs(aq)do ao(as)end end,function()for ap,aq in ipairs(aa:
-GetChildren())do if ad.IsValidLevel1WorkspaceChild(aq)then local ar=ad.
-FindHazardPartsInLevel1Child(aq)for as,at in ipairs(ar)do an(at,aq)end end end
-end,function()if not ai then return end local ap,aq={},os.clock()for ar,as in
-pairs(aj)do if not ar or not ar:IsDescendantOf(aa)then table.insert(ap,ar)
-continue end if as.level1Parent and not as.level1Parent:IsDescendantOf(aa)then
-table.insert(ap,ar)continue end local at,au=ad.IsMultiRing(as.name)or ad.
-IsMultiRing(ar)or(as.level1Parent and ad.IsMultiRing(as.level1Parent)),ad.
-IsSweepingFlames(as.name)or ad.IsSweepingFlames(ar)or(as.level1Parent and ad.
-IsSweepingFlames(as.level1Parent))if at then local av=aq-as.spawnTime if av>4.5
-then table.insert(ap,ar)continue end local ax=(as.level1Parent and as.
-level1Parent:IsA'Model'and as.level1Parent)or(ar.Parent and ar.Parent:IsA'Model'
-and ar.Parent)if ax then local ay=false for az,aA in ipairs(ax:GetDescendants())
-do if aA:IsA'BasePart'and aA.Name~='PrimaryPart'then if aA.Transparency<=0.85
-then ay=true break end end end if not ay then table.insert(ap,ar)continue end
-elseif ar.Transparency>0.85 then table.insert(ap,ar)continue end elseif au then
-local av=false if ar.Transparency<=0.85 then av=true else local ax=ar:
-FindFirstChildWhichIsA'ParticleEmitter'if ax and ax.Enabled then av=true end end
-local ax=aq-as.spawnTime if not av or ax>2 then table.insert(ap,ar)continue end
-else if ar.Transparency>0.85 then table.insert(ap,ar)continue end end local av=
-ae.AnalyzeHazardPart(ar)if av then as.shape=av local ax=Vector3.new(av.x,av.y,av
-.z)as.motion=af.UpdateRecord(ar,ax,av.yaw or 0)else table.insert(ap,ar)end end
-for ar,as in ipairs(ap)do ao(as)end for ar,as in ipairs(aa:GetChildren())do if
-ad.IsSweepingFlames(as)and as:IsA'Model'then for at,au in ipairs(as:
-GetDescendants())do if au:IsA'BasePart'and au.Name:lower()=='precast'and not aj[
-au]then if ad.IsHazardPart(au,as)then an(au,as)end end end end end end function
-ah.StartScan()if ai then return end ai=true table.clear(aj)table.clear(ak)af.
-ClearAll()table.insert(al,aa.ChildAdded:Connect(ap))table.insert(al,aa.
-ChildRemoved:Connect(aq))local at=ab.RunService or game:GetService'RunService'am
-=at.Heartbeat:Connect(as)ar()end function ah.StopScan()if not ai then return end
-ai=false if am then am:Disconnect()am=nil end for at,au in ipairs(al)do if au
-and au.Disconnect then au:Disconnect()end end table.clear(al)for at,au in pairs(
-ak)do if au and au.Disconnect then au:Disconnect()end end table.clear(ak)table.
-clear(aj)af.ClearAll()end function ah.IsEnabled()return ai end function ah.
-GetActiveHazardsTelemetry()local at,au={},os.clock()for av,ax in pairs(aj)do
-local ay=ax.shape if not ay then continue end local az,aA=af.
-GetTrajectoryProjection(av,1.5),au-ax.spawnTime if ay.shape==
-'compound_multiring'then table.insert(at,{id=tostring(av),name=ax.name,shape=
-'compound_multiring',x=ay.x,y=ay.y,z=ay.z,yaw=ay.yaw or 0,coreRadius=ay.
-coreRadius or 12.5,maxRadius=ay.maxRadius or 105,rings=ay.rings,polygons=ay.
-polygons,color=ay.color or'#3cd0d0',transparency=ay.transparency or 0.5,age=aA,
-motionType=ax.motion and ax.motion.motionType or'STATIC',speed=ax.motion and ax.
-motion.speed or 0,angularVel=ax.motion and ax.motion.angularVel or 0,trajectory=
-az})elseif ay.shape=='circle'then table.insert(at,{id=tostring(av),name=ax.name,
-shape='circle',x=ay.x,y=ay.y,z=ay.z,radius=ay.radius,color=ay.color or'#ff2a55',
-age=aA,motionType=ax.motion and ax.motion.motionType or'STATIC',speed=ax.motion
-and ax.motion.speed or 0,angularVel=ax.motion and ax.motion.angularVel or 0,
-trajectory=az})elseif ay.shape=='box'then table.insert(at,{id=tostring(av),name=
-ax.name,shape='box',x=ay.x,y=ay.y,z=ay.z,halfX=ay.halfX,halfZ=ay.halfZ,yaw=ay.
-yaw,vertices=ay.vertices,color=ay.color or'#ff2a55',age=aA,motionType=ax.motion
-and ax.motion.motionType or'STATIC',speed=ax.motion and ax.motion.speed or 0,
-angularVel=ax.motion and ax.motion.angularVel or 0,trajectory=az})elseif ay.
-shape=='polygon'then table.insert(at,{id=tostring(av),name=ax.name,shape=
-'polygon',x=ay.x,y=ay.y,z=ay.z,vertices=ay.vertices,color=ay.color or'#ff2a55',
-age=aA,motionType=ax.motion and ax.motion.motionType or'STATIC',speed=ax.motion
-and ax.motion.speed or 0,angularVel=ax.motion and ax.motion.angularVel or 0,
-trajectory=az})end end return at end function ah.GetBossTelegraphTelemetry()
-return ag.GetBossTelegraphData()end ac.Register(function()ah.StopScan()end)
-return ah end function a.K()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an=game
-:GetService'HttpService',game:GetService'Players',a.load'e',a.load'f',a.load'q',
-a.load'J',a.load'b',{},false,'ws://127.0.0.1:8765',30,'Disconnected',{},function
-()if typeof(WebSocket)=='table'and typeof(WebSocket.connect)=='function'then
-return WebSocket.connect elseif typeof(WebSocket)=='table'and typeof(WebSocket.
-Connect)=='function'then return WebSocket.Connect elseif typeof(websocket)==
-'table'and typeof(websocket.connect)=='function'then return websocket.connect
-elseif typeof(syn)=='table'and typeof(syn.websocket)=='table'and typeof(syn.
-websocket.connect)=='function'then return syn.websocket.connect end return nil
-end local ao,ap=function(ao)if al==ao then return end al=ao for ap,aq in ipairs(
-am)do pcall(aq,al)end end,function(ao)if not ao or ao.Magnitude<0.001 then
-return 0 end return math.deg(math.atan2(ao.X,-ao.Z))end local aq=function()local
-aq={}if not ad.GetTrackedEnemyData then return aq end local ar=ad.
-GetTrackedEnemyData()for as,at in ipairs(ar)do if at and at.Model and at.Root
-and at.Humanoid and at.Humanoid.Health>0 then local au=at.Model.Name local av=
-string.find(au:lower(),'boss')~=nil table.insert(aq,{name=au,x=at.Root.Position.
-X,y=at.Root.Position.Y,z=at.Root.Position.Z,yaw=at.Root and ap(at.Root.CFrame.
-LookVector)or 0,health=math.max(0,at.Humanoid.Health),maxHealth=math.max(1,at.
-Humanoid.MaxHealth),isBoss=av})end end return aq end local ar,as,at=function()
-local ar=ac.player or ab.LocalPlayer local as=ar and ar.Character local at,au=as
-and(as:FindFirstChild'HumanoidRootPart'or as.PrimaryPart),as and as:
-FindFirstChildOfClass'Humanoid'local av,ax,ay,az,aA=at and at.Position or
-Vector3.zero,at and ap(at.CFrame.LookVector)or 0,au and au.MoveDirection or
-Vector3.zero,false if ad.IsInvulnerable then az,aA=ad.IsInvulnerable()end local
-aB,aC=af.GetActiveHazardsTelemetry(),af.GetBossTelegraphTelemetry()local aF={
-type='TELEMETRY',version='V2',timestamp=os.clock(),dungeon=(ad.
-GetCurrentDungeonName and ad.GetCurrentDungeonName())or'Unknown',inLobby=(ad.
-IsInLobby and ad.IsInLobby())or false,room=(ad.GetCurrentRoomIndex and ad.
-GetCurrentRoomIndex())or 0,player={name=ar and ar.Name or'Player',x=av.X,y=av.Y,
-z=av.Z,yaw=ax,moveX=ay.X,moveZ=ay.Z,health=au and math.max(0,au.Health)or 100,
-maxHealth=au and math.max(1,au.MaxHealth)or 100,healthPercent=au and math.clamp(
-(au.Health/au.MaxHealth)*100,0,100)or 100,isInvulnerable=az,invulnReason=aA,
-isDead=(ad.IsDead and ad.IsDead())or(au and au.Health<=0)or false},boss=aC,
-enemies=aq(),hazards=aB}return aF end,function(ar,as)if not ar then return false
-,'No websocket instance'end if typeof(ar.Send)=='function'then return pcall(
+load'F',{},false,{},0,'IDLE',0,0,0.25 local an,ao=function(an)if not an or not
+an:IsA'BasePart'or not an:IsDescendantOf(aa)then return false end if an.
+Transparency<=0.85 then return true end local ao=an:FindFirstChildWhichIsA
+'ParticleEmitter'if ao and ao.Enabled then return true end return false end,
+function()for an,ao in ipairs(aa:GetChildren())do if ab.IsMemoryModel(ao)and ao:
+IsA'Model'then return ao end end return nil end function ac.Reset()ad=false
+table.clear(ae)af=0 ag='IDLE'ak=nil ah=0 ai=0 al=nil am=nil end function ac.
+Update(ap)local aq=ao()if not aq then if ad then ac.Reset()end return end if not
+ad then ad=true ai=ap table.clear(ae)af=0 ag='HINT'end local ar,as,at,au,av,ax=
+aq:FindFirstChild'leftPrecast',aq:FindFirstChild'rightPrecast',aq:FindFirstChild
+'leftHitbox',aq:FindFirstChild'rightHitbox',aq:FindFirstChild'leftPrecastGood',
+aq:FindFirstChild'rightPrecastGood'local ay,az,aA,aB=an(ar)or an(av),an(as)or
+an(ax),an(at),an(au)local aC=aA or aB if aC and ag~='EXECUTION'then ag=
+'EXECUTION'af=1 ak=nil ah=0 end if ag=='HINT'then local aF if ay and not az then
+aF='LEFT'elseif az and not ay then aF='RIGHT'end if aF and aF~=ak and(ap-ah>aj)
+then table.insert(ae,aF)ak=aF ah=ap elseif not aF and ak and(ap-ah>aj)then ak=
+nil end elseif ag=='EXECUTION'then local aF if aA then aF='LEFT'elseif aB then
+aF='RIGHT'end al=aF if aF=='LEFT'then am='RIGHT'elseif aF=='RIGHT'then am='LEFT'
+else local aG=math.clamp(af,1,math.max(1,#ae))am=ae[aG]or nil end if aF and aF~=
+ak and(ap-ah>aj)then ak=aF ah=ap elseif not aF and ak and(ap-ah>aj)then af=math.
+min(#ae,af+1)ak=nil end end end function ac.GetMemoryTelemetry()if not ad and#ae
+==0 then return nil end local ap='Waiting...'if ag=='HINT'then ap=string.format(
+'\u{1f9e0} Phase 1: Recorded %d steps',#ae)elseif ag=='EXECUTION'then local aq,
+ar=math.clamp(af,1,math.max(1,#ae)),math.max(1,#ae)if am then local as=(am==
+'LEFT')and'RIGHT'or'LEFT'ap=string.format(
+'\u{1f7e2} SAFE: %s | \u{1f534} DANGER: %s (Step %d/%d)',am,as,aq,ar)else ap=
+string.format('\u{26a1} Preparing Strike (Step %d/%d)',aq,ar)end end return{
+active=ad,phase=ag,sequence=ae,currentStep=math.clamp(af,1,math.max(1,#ae)),
+totalSteps=#ae,currentAttackSide=al,safeSide=am,hintText=ap}end return ac end
+function a.K()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an=game:GetService
+'Workspace',a.load'e',a.load'b',a.load'F',a.load'G',a.load'H',a.load'I',a.load
+'J',{},false,{},{},{}local ao,ap=function(ao,ap)if not ao or not ao:IsA
+'BasePart'then return end if not ad.IsHazardPart(ao,ap)then return end if ak[ao]
+then return end local aq=ap and ap.Name or(ao.Parent and ao.Parent.Name)or ao.
+Name local ar=ad.IsMultiRing(aq)or ad.IsMultiRing(ao)or(ao.Parent and ad.
+IsMultiRing(ao.Parent.Name))or(ap and ad.IsMultiRing(ap))if ar then for as,at in
+pairs(ak)do if at.level1Parent==ap or(ap and as:IsDescendantOf(ap))or as==ao
+then return end end end local as=ae.AnalyzeHazardPart(ao)if not as then return
+end local at,au=os.clock(),Vector3.new(as.x,as.y,as.z)local av,ax=af.
+UpdateRecord(ao,au,as.yaw or 0),(ao.Name==aq)and aq or(aq..'/'..ao.Name)if ar
+then ax=aq elseif ad.IsSweepingFlames(aq)and ao.Parent and ao.Parent~=ap then ax
+=aq..'/'..ao.Parent.Name elseif ad.IsMemoryModel(aq)then ax=aq..'/'..ao.Name end
+ak[ao]={part=ao,level1Parent=ap or ao,name=ax,spawnTime=at,shape=as,motion=av}
+end,function(ao)if ak[ao]then ak[ao]=nil af.RemoveRecord(ao)end end local aq,ar,
+as,at=function(aq)if not ad.IsValidLevel1WorkspaceChild(aq)then return end local
+ar=ad.FindHazardPartsInLevel1Child(aq)for as,at in ipairs(ar)do ao(at,aq)end if
+aq:IsA'Model'then al[aq]=aq.DescendantAdded:Connect(function(as)if as:IsA
+'BasePart'then if ad.IsMultiRing(aq)then local at=false for au,av in pairs(ak)do
+if av.level1Parent==aq or au:IsDescendantOf(aq)or au==aq then at=true break end
+end if not at and ad.IsHazardPart(as,aq)then ao(as,aq)end elseif ad.
+IsHazardPart(as,aq)then ao(as,aq)end end end)end end,function(aq)if al[aq]then
+al[aq]:Disconnect()al[aq]=nil end local ar={}for as,at in pairs(ak)do if at.
+level1Parent==aq or as==aq or(aq:IsA'Instance'and as:IsDescendantOf(aq))then
+table.insert(ar,as)end end for as,at in ipairs(ar)do ap(at)end end,function()for
+aq,ar in ipairs(aa:GetChildren())do if ad.IsValidLevel1WorkspaceChild(ar)then
+local as=ad.FindHazardPartsInLevel1Child(ar)for at,au in ipairs(as)do ao(au,ar)
+end end end end,function()if not aj then return end local aq,ar={},os.clock()ah.
+Update(ar)for as,at in pairs(ak)do if not as or not as:IsDescendantOf(aa)then
+table.insert(aq,as)continue end if at.level1Parent and not at.level1Parent:
+IsDescendantOf(aa)then table.insert(aq,as)continue end local au,av,ax=ad.
+IsMultiRing(at.name)or ad.IsMultiRing(as)or(at.level1Parent and ad.IsMultiRing(
+at.level1Parent)),ad.IsSweepingFlames(at.name)or ad.IsSweepingFlames(as)or(at.
+level1Parent and ad.IsSweepingFlames(at.level1Parent)),ad.IsMemoryModel(at.name)
+or ad.IsMemoryModel(as)or(at.level1Parent and ad.IsMemoryModel(at.level1Parent))
+if au then local ay=ar-at.spawnTime if ay>4.5 then table.insert(aq,as)continue
+end local az=(at.level1Parent and at.level1Parent:IsA'Model'and at.level1Parent)
+or(as.Parent and as.Parent:IsA'Model'and as.Parent)if az then local aA=false for
+aB,aC in ipairs(az:GetDescendants())do if aC:IsA'BasePart'and aC.Name~=
+'PrimaryPart'then if aC.Transparency<=0.85 then aA=true break end end end if not
+aA then table.insert(aq,as)continue end elseif as.Transparency>0.85 then table.
+insert(aq,as)continue end elseif av then local ay=false if as.Transparency<=0.85
+then ay=true else local az=as:FindFirstChildWhichIsA'ParticleEmitter'if az and
+az.Enabled then ay=true end end local az=ar-at.spawnTime if not ay or az>2 then
+table.insert(aq,as)continue end elseif ax then local ay=false if as.Transparency
+<=0.85 then ay=true else local az=as:FindFirstChildWhichIsA'ParticleEmitter'if
+az and az.Enabled then ay=true end end local az=ar-at.spawnTime if not ay or az>
+2.5 then table.insert(aq,as)continue end else if as.Transparency>0.85 then table
+.insert(aq,as)continue end end local ay=ae.AnalyzeHazardPart(as)if ay then at.
+shape=ay local az=Vector3.new(ay.x,ay.y,ay.z)at.motion=af.UpdateRecord(as,az,ay.
+yaw or 0)else table.insert(aq,as)end end for as,at in ipairs(aq)do ap(at)end for
+as,at in ipairs(aa:GetChildren())do if ad.IsSweepingFlames(at)and at:IsA'Model'
+then for au,av in ipairs(at:GetDescendants())do if av:IsA'BasePart'and av.Name:
+lower()=='precast'and not ak[av]then if ad.IsHazardPart(av,at)then ao(av,at)end
+end end elseif ad.IsMemoryModel(at)and at:IsA'Model'then for au,av in ipairs(at:
+GetDescendants())do if av:IsA'BasePart'and not ak[av]then if ad.IsHazardPart(av,
+at)then ao(av,at)end end end end end end function ai.StartScan()if aj then
+return end aj=true table.clear(ak)table.clear(al)af.ClearAll()ah.Reset()table.
+insert(am,aa.ChildAdded:Connect(aq))table.insert(am,aa.ChildRemoved:Connect(ar))
+local au=ab.RunService or game:GetService'RunService'an=au.Heartbeat:Connect(at)
+as()end function ai.StopScan()if not aj then return end aj=false if an then an:
+Disconnect()an=nil end for au,av in ipairs(am)do if av and av.Disconnect then av
+:Disconnect()end end table.clear(am)for au,av in pairs(al)do if av and av.
+Disconnect then av:Disconnect()end end table.clear(al)table.clear(ak)af.
+ClearAll()ah.Reset()end function ai.IsEnabled()return aj end function ai.
+GetActiveHazardsTelemetry()local au,av={},os.clock()for ax,ay in pairs(ak)do
+local az=ay.shape if not az then continue end local aA,aB=af.
+GetTrajectoryProjection(ax,1.5),av-ay.spawnTime if az.shape==
+'compound_multiring'then table.insert(au,{id=tostring(ax),name=ay.name,shape=
+'compound_multiring',x=az.x,y=az.y,z=az.z,yaw=az.yaw or 0,coreRadius=az.
+coreRadius or 12.5,maxRadius=az.maxRadius or 105,rings=az.rings,polygons=az.
+polygons,color=az.color or'#3cd0d0',transparency=az.transparency or 0.5,age=aB,
+motionType=ay.motion and ay.motion.motionType or'STATIC',speed=ay.motion and ay.
+motion.speed or 0,angularVel=ay.motion and ay.motion.angularVel or 0,trajectory=
+aA})elseif az.shape=='circle'then table.insert(au,{id=tostring(ax),name=ay.name,
+shape='circle',x=az.x,y=az.y,z=az.z,radius=az.radius,color=az.color or'#ff2a55',
+age=aB,motionType=ay.motion and ay.motion.motionType or'STATIC',speed=ay.motion
+and ay.motion.speed or 0,angularVel=ay.motion and ay.motion.angularVel or 0,
+trajectory=aA})elseif az.shape=='box'then table.insert(au,{id=tostring(ax),name=
+ay.name,shape='box',x=az.x,y=az.y,z=az.z,halfX=az.halfX,halfZ=az.halfZ,yaw=az.
+yaw,vertices=az.vertices,color=az.color or'#ff2a55',age=aB,motionType=ay.motion
+and ay.motion.motionType or'STATIC',speed=ay.motion and ay.motion.speed or 0,
+angularVel=ay.motion and ay.motion.angularVel or 0,trajectory=aA})elseif az.
+shape=='polygon'then table.insert(au,{id=tostring(ax),name=ay.name,shape=
+'polygon',x=az.x,y=az.y,z=az.z,vertices=az.vertices,color=az.color or'#ff2a55',
+age=aB,motionType=ay.motion and ay.motion.motionType or'STATIC',speed=ay.motion
+and ay.motion.speed or 0,angularVel=ay.motion and ay.motion.angularVel or 0,
+trajectory=aA})end end return au end function ai.GetBossTelegraphTelemetry()
+return ag.GetBossTelegraphData()end function ai.GetMemoryGameTelemetry()return
+ah.GetMemoryTelemetry()end ac.Register(function()ai.StopScan()end)return ai end
+function a.L()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,am,an=game:GetService
+'HttpService',game:GetService'Players',a.load'e',a.load'f',a.load'q',a.load'K',a
+.load'b',{},false,'ws://127.0.0.1:8765',30,'Disconnected',{},function()if
+typeof(WebSocket)=='table'and typeof(WebSocket.connect)=='function'then return
+WebSocket.connect elseif typeof(WebSocket)=='table'and typeof(WebSocket.Connect)
+=='function'then return WebSocket.Connect elseif typeof(websocket)=='table'and
+typeof(websocket.connect)=='function'then return websocket.connect elseif
+typeof(syn)=='table'and typeof(syn.websocket)=='table'and typeof(syn.websocket.
+connect)=='function'then return syn.websocket.connect end return nil end local
+ao,ap=function(ao)if al==ao then return end al=ao for ap,aq in ipairs(am)do
+pcall(aq,al)end end,function(ao)if not ao or ao.Magnitude<0.001 then return 0
+end return math.deg(math.atan2(ao.X,-ao.Z))end local aq=function()local aq={}if
+not ad.GetTrackedEnemyData then return aq end local ar=ad.GetTrackedEnemyData()
+for as,at in ipairs(ar)do if at and at.Model and at.Root and at.Humanoid and at.
+Humanoid.Health>0 then local au=at.Model.Name local av=string.find(au:lower(),
+'boss')~=nil table.insert(aq,{name=au,x=at.Root.Position.X,y=at.Root.Position.Y,
+z=at.Root.Position.Z,yaw=at.Root and ap(at.Root.CFrame.LookVector)or 0,health=
+math.max(0,at.Humanoid.Health),maxHealth=math.max(1,at.Humanoid.MaxHealth),
+isBoss=av})end end return aq end local ar,as,at=function()local ar=ac.player or
+ab.LocalPlayer local as=ar and ar.Character local at,au=as and(as:FindFirstChild
+'HumanoidRootPart'or as.PrimaryPart),as and as:FindFirstChildOfClass'Humanoid'
+local av,ax,ay,az,aA=at and at.Position or Vector3.zero,at and ap(at.CFrame.
+LookVector)or 0,au and au.MoveDirection or Vector3.zero,false if ad.
+IsInvulnerable then az,aA=ad.IsInvulnerable()end local aB,aC,aF=af.
+GetActiveHazardsTelemetry(),af.GetBossTelegraphTelemetry(),af.
+GetMemoryGameTelemetry and af.GetMemoryGameTelemetry()or nil local aG={type=
+'TELEMETRY',version='V2',timestamp=os.clock(),dungeon=(ad.GetCurrentDungeonName
+and ad.GetCurrentDungeonName())or'Unknown',inLobby=(ad.IsInLobby and ad.
+IsInLobby())or false,room=(ad.GetCurrentRoomIndex and ad.GetCurrentRoomIndex())
+or 0,player={name=ar and ar.Name or'Player',x=av.X,y=av.Y,z=av.Z,yaw=ax,moveX=ay
+.X,moveZ=ay.Z,health=au and math.max(0,au.Health)or 100,maxHealth=au and math.
+max(1,au.MaxHealth)or 100,healthPercent=au and math.clamp((au.Health/au.
+MaxHealth)*100,0,100)or 100,isInvulnerable=az,invulnReason=aA,isDead=(ad.IsDead
+and ad.IsDead())or(au and au.Health<=0)or false},boss=aC,enemies=aq(),hazards=aB
+,memory=aF}return aG end,function(ar,as)if not ar then return false,
+'No websocket instance'end if typeof(ar.Send)=='function'then return pcall(
 function()ar:Send(as)end)elseif typeof(ar.send)=='function'then return pcall(
 function()ar:send(as)end)end return false,'No Send method on websocket object'
 end,function(ar)if not ar then return end if typeof(ar.Close)=='function'then
@@ -3857,8 +3907,8 @@ return aj end function ah.SetFps(ax)if type(ax)=='number'and ax>=5 and ax<=60
 then ak=math.floor(ax)end end function ah.GetFps()return ak end function ah.
 GetStatus()return al end function ah.OnStatusChanged(ax)if type(ax)=='function'
 then table.insert(am,ax)end end ag.Register(function()ah.SetEnabled(false)end)
-return ah end function a.L()local aa,ab,ac,ad,ae,af=a.load'd',a.load'A',a.load
-'x',a.load'K',a.load'f',a.load'B'return function(ag,ah)local ai=ah:Section{Side=
+return ah end function a.M()local aa,ab,ac,ad,ae,af=a.load'd',a.load'A',a.load
+'x',a.load'L',a.load'f',a.load'B'return function(ag,ah)local ai=ah:Section{Side=
 'Left'}ai:Header{Name='Hazard Scanner Controls'}local aj=ah:Section{Side='Right'
 }aj:Header{Name='Real-time Hazard Monitor'}local ak,al,am,an,ao,ap=aj:Label{Text
 ="Detector: <font color='rgb(255,80,80)'>Disabled</font>"},aj:Label{Text=
@@ -3986,7 +4036,7 @@ Callback=aa.Wrap(function(az)ac.SetLogFailed(az)end)},
 Maximum=10,DisplayMethod='Value',Precision=1,Callback=aa.Wrap(function(az)ac.
 SetTrajectoryMargin(az)end)},'Slider_HazardTrajectoryMargin'))ai:Button{Name=
 'Clear Console',Callback=function()pcall(function()if rconsoleclear then
-rconsoleclear()end end)end}ar()end end function a.M()local aa,ab,ac,ad,ae,af,ag,
+rconsoleclear()end end)end}ar()end end function a.N()local aa,ab,ac,ad,ae,af,ag,
 ah={'Easy','Medium','Hard','Insane','Nightmare'},{'Desert Temple',
 'Winter Outpost','Pirate Island',"King's Castle",'The Underworld',
 'Samurai Palace','The Canals','Ghastly Harbor','Steampunk Sewers',
@@ -4030,9 +4080,9 @@ GetAllowedDifficulties(an))do if aq==ao then return true end end return false
 end function ad.GetLevelReq(an,ao)if type(an)~='string'then return 0 end local
 ap=ac[an]if ap then return ap.LevelReq or 0 end local aq=ad.GetDungeonStats(an)
 if aq and type(ao)=='string'and aq[ao]then return tonumber(aq[ao].levelReq)or 0
-end return 0 end ad.DUNGEONS=ab ad.DIFFICULTIES=aa return ad end function a.N()
+end return 0 end ad.DUNGEONS=ab ad.DIFFICULTIES=aa return ad end function a.O()
 local aa,ab,ac,ad,ae,af,ag,ah,ai=a.load'd',a.load'z',a.load'A',a.load'q',a.load
-'M',a.load'f',a.load'e',a.load'B',a.load'b'local aj=ag.RunService return
+'N',a.load'f',a.load'e',a.load'B',a.load'b'local aj=ag.RunService return
 function(ak,al)local am=al:Section{Side='Left'}am:Header{Name='Auto Farm'}local
 an=am:Toggle({Name='Enable Auto Farm',Default=ab.IsEnabled(),Callback=aa.Wrap(
 function(an)ab.Toggle(an)end)},'Toggle_AutoFarm')ah.PatchSliderLoadCallback(am:
@@ -4173,7 +4223,7 @@ function(a0)if a0 and type(a0)=='string'and#a0>0 then aG=a0 pcall(function()aT:
 UpdateSelection(a0)end)end aS()end),af.OnBossActiveChanged(function()aJ()end),af
 .OnBossIndexChanged(function()aJ()end),ad.OnDataChanged(function()aS()end)ai.
 Register(function()pcall(a0)pcall(a1)pcall(a2)pcall(a3)end)aS()end end function
-a.O()local aa,ab,ac,ad,ae=a.load'd',a.load'A',a.load'E',a.load'L',a.load'N'
+a.P()local aa,ab,ac,ad,ae=a.load'd',a.load'A',a.load'E',a.load'M',a.load'O'
 return function(af,ag)local ah=ag:Section{Side='Left'}ah:Header{Name=
 'Combat Master'}local ai=ah:Toggle({Name='Enable Combat Master',Default=ab.
 IsEnabled(),Callback=aa.Wrap(function(ai)ab.Toggle(ai)end)},
@@ -4181,7 +4231,7 @@ IsEnabled(),Callback=aa.Wrap(function(ai)ab.Toggle(ai)end)},
 Default=ab.IsAutoBossCombatEnabled(),Callback=aa.Wrap(function(aj)ab.
 SetAutoBossCombat(aj)end)},'Toggle_AutoBossCombat')ab.OnStateChanged(function(aj
 )pcall(function()ai:UpdateState(aj,true)end)end)ac(af,ag)ad(af,ag)ae(af,ag)end
-end function a.P()local aa,ab,ac,ad,ae,af=a.load'e',a.load'c',a.load'M',a.load
+end function a.Q()local aa,ab,ac,ad,ae,af=a.load'e',a.load'c',a.load'N',a.load
 'f',a.load'b',a.load'g'local ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar=aa.player.Name,
 false,false,false,'Desert Temple','Easy',false,true,false,3,{[77649408247578]=
 true,[3220968688]=true,[2414851778]=true},{}local as,at,au=function()return aq[
@@ -4218,7 +4268,7 @@ ac.GetAllowedDifficulties(ak)end function ax.OnDungeonChanged(ay)if type(ay)==
 IsLobby()then ab.Notify('Auto Join','Only available in Lobby!',3)return end task
 .spawn(function()au()end)end af.Register{Name='AutoJoin',Zone='Lobby',OnLeave=
 function()aj=true ai=false end}task.spawn(av)ae.Register(function()ax.Toggle(
-false)end)return ax end function a.Q()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj=a.load
+false)end)return ax end function a.R()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj=a.load
 'f',a.load'c',a.load'b',a.load'g',{[77649408247578]=true,[115445507767090]=true,
 [3220968688]=true,[2414851778]=true},false,false,false,3,
 [[game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("changeStartValue"):FireServer()]]
@@ -4239,7 +4289,7 @@ false end)end function an.Stop()af=false end function an.SetDelay(ap)ai=
 tonumber(ap)or 3 end function an.GetDelay()return ai end function an.Toggle(ap)
 af=ap if ap then an.Start()else an.Stop()end end ad.Register{Name='AutoStart',
 Zone='Dungeon',OnLeave=function()ah=false end}ac.Register(function()an.Stop()end
-)return an end function a.R()local aa,ab,ac=a.load'b',a.load'g',{[77649408247578
+)return an end function a.S()local aa,ab,ac=a.load'b',a.load'g',{[77649408247578
 ]=true,[115445507767090]=true,[3220968688]=true,[2414851778]=true}local ad,ae,af
 ,ag,ah=function()return ac[game.PlaceId]==true end,false,game:GetService
 'VirtualInputManager',game:GetService'GuiService',function()local ad=game:
@@ -4260,7 +4310,7 @@ wait(1)continue end local ak=ah()if ak then ai(ak)aj=true elseif aj then print
 '[AutoStartLobby] Pressed Start'break end if not ae then break end task.wait(0.2
 )end end)end,{}function ak.Toggle(al)ae=al if ae then aj()end end ab.Register{
 Name='AutoStartLobby',Zone='Lobby',OnLeave=function()ae=false end}aa.Register(
-function()ae=false end)return ak end function a.S()local aa,ab,ac,ad=a.load'e',a
+function()ae=false end)return ak end function a.T()local aa,ab,ac,ad=a.load'e',a
 .load'c',a.load'b',a.load'g'local ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq=aa.
 player,2,false,false,false,false,60,false,
 'local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")\n\nlocal payload = {}\nlocal function collectValue(name)\n\tlocal value = workspace:FindFirstChild(name)\n\tif value and value:IsA("ValueBase") then\n\t\tpayload[name] = value.Value\n\tend\nend\n\ncollectValue("dungeonName")\ncollectValue("dungeonProgress")\ncollectValue("dungeonStarted")\n\nlocal hardcore = workspace:FindFirstChild("hardcore")\nif hardcore and hardcore:IsA("BoolValue") then\n\tpayload.hardcore = hardcore.Value\n\tpayload.isHardcore = hardcore.Value\nend\n\nlocal dungeon = workspace:FindFirstChild("dungeon")\nif dungeon then\n\tfor _, value in ipairs(dungeon:GetChildren()) do\n\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\tend\n\tlocal bossRoom = dungeon:FindFirstChild("bossRoom")\n\tif bossRoom then\n\t\tfor _, value in ipairs(bossRoom:GetChildren()) do\n\t\t\tif value:IsA("ValueBase") then payload[value.Name] = value.Value end\n\t\tend\n\tend\nend\n\nif not payload.dungeonName then return end\nReplayDungeon:FireServer(payload)\n'
@@ -4300,8 +4350,8 @@ end function au.GetTimeLeft()return at()end function au.RetryNow()if not ad.
 IsDungeon()then ab.Notify('Auto Retry','Only available in Dungeon!',3)return end
 task.spawn(function()av()end)end ad.Register{Name='AutoRetry',Zone='Dungeon',
 OnLeave=function()ai=false al=false end}ac.Register(function()au.Stop()aj=false
-end)return au end function a.T()local aa,ab,ac,ad,ae,af,ag,ah=a.load'B',a.load
-'P',a.load'Q',a.load'R',a.load'S',a.load'd',a.load'M',a.load'g'return function(
+end)return au end function a.U()local aa,ab,ac,ad,ae,af,ag,ah=a.load'B',a.load
+'Q',a.load'R',a.load'S',a.load'T',a.load'd',a.load'N',a.load'g'return function(
 ai,aj)local ak,al,am=aj:Section{Side='Left'},aj:Section{Side='Right'},function(
 ak,al)for am,an in ipairs(ak)do if an==al then return am end end return nil end
 ak:Header{Name='Auto Join Dungeon (Lobby)'}al:Header{Name=
@@ -4347,7 +4397,7 @@ GetTimeRetryThreshold(),Minimum=5,Maximum=120,DisplayMethod='Value',Precision=1,
 Callback=af.Wrap(function(au)ae.SetTimeRetryThreshold(au)end)},
 'Slider_RetryTimeThreshold'))ab.OnDungeonChanged(function(au,av)pcall(function()
 at:ClearOptions()at:InsertOptions(av)at:UpdateSelection(ab.
-GetSelectedDifficulty())end)ar()end)end end function a.U()local aa,ab,ac,ad,ae,
+GetSelectedDifficulty())end)ar()end)end end function a.V()local aa,ab,ac,ad,ae,
 af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as=a.load'b',a.load'c',a.load'f',a.load
 'g',{},false,false,true,{},{},{},'None',false,{weapons='Weapons',helmets=
 'Helmets',chests='Chests',abilities='Abilities'},{'Common','Uncommon','Rare',
@@ -4436,8 +4486,8 @@ OnLeave=function()ag=false end}ac.OnDungeonNameChanged(function(aB)if aB and ad.
 IsDungeon()then ag=false aA()end end)task.spawn(function()while aa.IsActive()do
 task.wait(1.5)if af and ad.IsDungeon()and not ag then aA()end end end)aa.
 Register(function()af=false ad.Unregister'AutoSell'end)ae.LEVEL_REQ_OPTIONS=ap
-ae.LEVEL_REQ_MODE_OPTIONS=aq return ae end function a.V()local aa,ab,ac=a.load
-'d',a.load'U',a.load'c'return function(ad,ae)local af=ae:Section{Side='Left'}af:
+ae.LEVEL_REQ_MODE_OPTIONS=aq return ae end function a.W()local aa,ab,ac=a.load
+'d',a.load'V',a.load'c'return function(ad,ae)local af=ae:Section{Side='Left'}af:
 Header{Name='AutoSell'}local ag=ae:Section{Side='Right'}ag:Header{Name=
 'Filter Summary'}local ah,ai,aj,ak,al,am,an,ao=ag:Label{Text='Status: --'},ag:
 Label{Text='Location: --'},ag:Label{Text='Safety: --'},ag:Label{Text=
@@ -4524,7 +4574,7 @@ if aB.error then pcall(function()av:UpdateName(
 aC=(
 [[Done: <font color='rgb(0,255,0)'>%d</font> sold, <font color='rgb(255,200,0)'>%d</font> skipped, <font color='rgb(255,220,120)'>%s</font> gold earned.]]
 ):format(aB.sold,aB.skipped,tostring(aB.gold))pcall(function()av:UpdateName(aC)
-end)end)end},{Name='Cancel'}}}end)end}ap()end end function a.W()local aa,ab,ac,
+end)end)end},{Name='Cancel'}}}end)end}ap()end end function a.X()local aa,ab,ac,
 ad,ae,af,ag,ah,ai,aj,ak,al,am,an=a.load'e',a.load'f',{},0.05,0.8,Color3.fromRGB(
 0,255,0),'PlayerHitbox_ESP',Color3.fromRGB(255,0,0),'EnemyHitbox_ESP',0.01,
 'Real','Custom',false local ao,ap,aq,ar,as,at,au,av=ak,1.5,aa.player,false,ak,
@@ -4587,7 +4637,7 @@ aI=aQ if aI then if aJ then task.cancel(aJ)aJ=nil end aJ=task.spawn(function()
 while aI do local aS,aT=pcall(aO)if not aS and os.clock()-(ac.lastSkillWarnH or
 0)>5 then ac.lastSkillWarnH=os.clock()warn('[SkillHitbox] error:',tostring(aT))
 end task.wait(aj)end end)else aP()end end function ac.IsSkillHitboxEnabled()
-return aI end return ac end function a.X()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak
+return aI end return ac end function a.Y()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak
 ,al,am=a.load'e',a.load'f',a.load'b',a.load'g',{},Color3.fromRGB(255,170,0),0.55
 ,'Enemy_ESP',0.5,{Orange=Color3.fromRGB(255,170,0),Red=Color3.fromRGB(255,0,0),
 Yellow=Color3.fromRGB(255,255,0),Green=Color3.fromRGB(0,255,0),Cyan=Color3.
@@ -4617,7 +4667,7 @@ as)end table.sort(ar)return ar end function ae.GetSelectedColor()return al end
 function ae.SetSelectedColor(ar)if not aj[ar]then return end if ar==al then
 return end al=ar local as=pcall(ap)if not as then warn'[EnemyESP] recolor error'
 end end ad.Register{Name='EnemyESP',Zone='Dungeon',OnLeave=function()pcall(aq)
-end}ac.Register(function()ae.Toggle(false)end)return ae end function a.Y()local
+end}ac.Register(function()ae.Toggle(false)end)return ae end function a.Z()local
 aa,ab,ac,ad,ae,af,ag,ah=a.load'e',a.load'b',{},false,{},{},{},2 local ai={[
 'meshes/ice3']=true,['meshes/snow']=true,['invisible platform']=true,part=true}
 local aj,ak,al=function(aj)if not aj then return true end if aj:IsA'Model'or aj:
@@ -4696,8 +4746,8 @@ loopThread)loopThread=nil end loopThread=task.spawn(function()while ad do task.
 wait(ah)pcall(au)end end)else for az,aA in ipairs(ae)do pcall(function()aA:
 Disconnect()end)end table.clear(ae)if loopThread then task.cancel(loopThread)
 loopThread=nil end ax()end end function ac.IsEnabled()return ad end ab.Register(
-function()ac.Toggle(false)end)return ac end function a.Z()local aa,ab,ac,ad,ae,
-af,ag=a.load'd',a.load'W',a.load'X',a.load'Y',a.load'B',{'Custom Hitbox',
+function()ac.Toggle(false)end)return ac end function a._()local aa,ab,ac,ad,ae,
+af,ag=a.load'd',a.load'X',a.load'Y',a.load'Z',a.load'B',{'Custom Hitbox',
 'Real Hitbox'},function(aa)return(aa=='Custom'and 1)or 2 end local ah=function(
 ah)return(ah==af[1]and'Custom')or'Real'end return function(ai,aj)local ak,al=(aj
 :Section{Side='Left'})ak:Header{Name='Player'}ak:Toggle({Name='Hitbox',Default=
@@ -4729,166 +4779,167 @@ GetPlayerHitboxMode()=='Custom')end)pcall(function()ar:SetVisibility(ab.
 GetEnemyHitboxMode()=='Custom')end)end al()local as=aj:Section{Side='Right'}as:
 Header{Name='Map'}as:Toggle({Name='Map Optimizer',Default=ad.IsEnabled(),
 Callback=aa.Wrap(function(at)ad.Toggle(at)end)},'Toggle_MapOptimizer')end end
-function a._()local aa,ab,ac,ad,ae=a.load'a',a.load'c',a.load'f',a.load'b',game:
-GetService'HttpService'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,
-ax=aa.Folder..'/settings/webhook.json',{},'',false,false,false,'',{'Tier6'},true
-,{},false,{common=9807270,uncommon=43520,rare=3447003,epic=10181046,legendary=
-16766720,secret=15158332,ultimate=15158332,mythic=15158332},{common=1,uncommon=2
-,rare=3,epic=4,legendary=5,secret=6,ultimate=6,mythic=6},10181046,{{match=
-'northen',prefix='Valhalla'},{match='northern',prefix='Valhalla'}},16766720
-local ay,az=function()local ay=ac.GetCurrentDungeonName()if not ay or ay==''then
-return nil end local az=string.lower(ay)for aA,aB in ipairs(at)do if string.
-find(az,aB.match,1,true)then return aB.prefix end end return nil end,{legendary=
-true,secret=true,ultimate=true,mythic=true}local aA,aB,aC,aF=function(aA)if not
-aA then return false end if az[tostring(aA.rarity or''):lower()]then return true
-end local aB=ay()if aB and aB~=''then local aC=tostring(aA.itemName or'')return
-string.sub(aC,1,#aB)==aB end return false end,{'Tier1','Tier2','Tier3','Tier4',
-'Tier5','Tier6'},function(aA)local aB=tonumber(tostring(aA or''):match
-'Tier(%d+)')return aB or 6 end local aG,aH=function()if aF then return aF end aF
-={}for aG,aH in ipairs(am)do aF[aC(aH)]=true end return aF end,{uncommon=1,
-common=2,rare=3,epic=4,legendary=5,secret=6}local aI,aJ,aK,aL=function(aI)if not
-aI then return nil end local aJ=tonumber(tostring(aI.tier or''):match'tier(%d+)'
-)if aJ then return aJ end if aI.secret==true then return 6 end return aH[string.
-lower(tostring(aI.rarity or''))]end,function()local aI=game:GetService'Players'.
-LocalPlayer if not aI then return'?'end if aI.Name and aI.Name~=''then return aI
-.Name end return aI.DisplayName or'?'end,function()local aI=game:GetService
-'Players'.LocalPlayer if not aI then return nil end local aJ=aI:FindFirstChild
-'XP'if aJ and aJ:IsA'IntValue'then return aJ.Value end return nil end
-local function aM(aN,aO,aP)aP=aP or 12 if aP<0 then return nil end local aQ=aN:
-FindFirstChild(aO)if aQ then return aQ end for aS,aT in ipairs(aN:GetChildren())
-do local aU=aM(aT,aO,aP-1)if aU then return aU end end return nil end local aN
-local aO,aP=function()if ac and type(ac.GetRealPlayerLevel)=='function'then
-local aO=ac.GetRealPlayerLevel()if aO then local aP=tonumber(tostring(aO):match
-'%d+')if aP and aP>0 then aN=tostring(aP)return aN end end end local aO=_G.
-RealPlayerLevel or(type(getgenv)=='function'and getgenv().RealPlayerLevel)if aO
-then local aP=tonumber(tostring(aO):match'%d+')if aP and aP>0 then aN=tostring(
-aP)return aN end end local aP=game:GetService'Players'.LocalPlayer if not aP
-then return aN or'?'end local aQ=aP:FindFirstChild'leaderstats'if aQ then for aS
-,aT in ipairs(aQ:GetChildren())do local aU=string.lower(aT.Name)if string.find(
-aU,'level')or string.find(aU,'lvl')then local aV=tonumber(tostring(aT.Value):
-match'%d+')if aV and aV>0 then aN=tostring(aV)if ac and ac.SetRealPlayerLevel
-then ac.SetRealPlayerLevel(aN)end return aN end end end end for aS,aT in ipairs(
-aP:GetChildren())do local aU=string.lower(aT.Name)if aU=='level'or aU=='lvl'or
-string.find(aU,'level')then if aT:IsA'ValueBase'then local aV=tonumber(tostring(
-aT.Value):match'%d+')if aV and aV>0 then aN=tostring(aV)if ac and ac.
-SetRealPlayerLevel then ac.SetRealPlayerLevel(aN)end return aN end end end end
-for aS,aT in pairs(aP:GetAttributes())do local aU=string.lower(aS)if string.
-find(aU,'level')or string.find(aU,'lvl')then local aV=tonumber(tostring(aT):
-match'%d+')if aV and aV>0 then aN=tostring(aV)if ac and ac.SetRealPlayerLevel
-then ac.SetRealPlayerLevel(aN)end return aN end end end if aP:FindFirstChild
-'PlayerGui'then local aS=aP.PlayerGui:FindFirstChild'playerStatus'if aS then
-local aT=aM(aS,'levelBorder')if aT then local aU=aT:FindFirstChild'level'if aU
-and aU:IsA'TextLabel'then local aV=aU:GetAttribute'RealLevel'or aU:GetAttribute
-'OriginalText'if aV then local aW=tonumber(tostring(aV):match'%d+')if aW and aW>
-0 then aN=tostring(aW)if ac and ac.SetRealPlayerLevel then ac.
-SetRealPlayerLevel(aN)end return aN end end local aW=aU.Text local aX=tonumber(
-tostring(aW):match'%d+')if aX and aX>0 then aN=tostring(aX)if ac and ac.
-SetRealPlayerLevel then ac.SetRealPlayerLevel(aN)end return aN end end end end
-end return aN or'?'end,false local aQ,aS,aT=function()if aL~=nil or aP then
-return end aP=true task.spawn(function()local aQ=os.clock()+8 while aL==nil and
-os.clock()<aQ do aL=aK()if aL~=nil then break end task.wait(0.25)end aP=false
-end)end,function()local aQ,aS=pcall(function()return game:GetService
-'ReplicatedStorage':WaitForChild('remotes',5):WaitForChild('reloadInvy',5)end)if
-not aQ or not aS or not aS:IsA'RemoteFunction'then return nil end local aT,aU=
-pcall(function()return aS:InvokeServer()end)if not aT or aU==nil then return nil
-end if type(aU)=='table'and aU['1']and type(aU['1'])=='table'then return aU['1']
-end return aU end,function(aQ)return type(aQ)=='table'and(aQ.sellPrice~=nil or
-aQ.UniqueItemID~=nil or aQ.rarity~=nil or aQ.name~=nil)end local aU=function(aU)
-if type(aU)~='table'then return{}end local aV,aW={},{}local function aX(aY,aZ)if
-type(aY)~='table'or aW[aY]then return end aW[aY]=true if aT(aY)then local a_=(aY
-.UniqueItemID and tostring(aY.UniqueItemID))or(aY.uniqueItemNum and tostring(aY.
-uniqueItemNum))or nil table.insert(aV,{category=aZ,raw=aY,id=a_,name=tostring(aY
-.name or aY.itemName or''),rarity=tostring(aY.rarity or''):lower()})return end
-for a_,a0 in pairs(aY)do if type(a0)=='table'then local a1=aZ if a_=='weapons'or
-a_=='weapon'then a1='weapon'elseif a_=='helmets'or a_=='helmet'then a1='helmet'
-elseif a_=='chests'or a_=='chest'then a1='chest'elseif a_=='abilities'or a_==
-'ability'then a1='ability'end aX(a0,a1)end end end aX(aU,nil)return aV end local
-aV=function()if not an or ap then return end ap=true task.spawn(function()local
-aV=aS()if aV then local aW,aX=aU(aV),{}for aY,aZ in ipairs(aW)do if aZ.id then
-aX[aZ.id]=true end end ao=aX end ap=false end)end local aW,aX=function()aL=aK()
-if aL==nil then aQ()end ac.SetDungeonStartTime(nil)if an then aV()end end,
-function()if not ac.GetDungeonStartTime()then ac.SetDungeonStartTime(os.clock())
-end if aL==nil then aQ()end if an then aV()end end local aY,aZ,a_,a0=function()
-if ax then return end local aY=function(aY)if aY then aW()else aX()end end aY(ac
-.IsInLobby())ax=ac.OnLobbyChanged(aY)end,function(aY)aY=math.max(0,math.floor(aY
-or 0))local aZ,a_=math.floor(aY/60),aY%60 return string.format('%d:%02d',aZ,a_)
-end,function(aY)if not aY then return'0'end local aZ,a_=(tostring(math.floor(aY)
-))while true do aZ,a_=string.gsub(aZ,'^(-?%d+)(%d%d%d)','%1,%2')if a_==0 then
-break end end return aZ end,function(aY)if not aY then return 0,0 end local aZ=
-string.gsub(tostring(aY),',','')local a_,a0=string.match(aZ,'(%d+)%s*/%s*(%d+)')
-if a_ and a0 then return tonumber(a_)or 0,tonumber(a0)or 0 end local a1=
-tonumber(string.match(aZ,'^%s*([%d.-]+)'))return 0,a1 or 0 end local a1,a2,a3,a4
-,a5=function(a1)if not an or not a1 or type(a1.items)~='table'or#a1.items==0
-then return end local a2=aS()if not a2 then return end local a3=aU(a2)if#a3==0
-then return end local a4={}for a5,a6 in ipairs(a3)do if a6.id and not ao[a6.id]
-then table.insert(a4,a6)end end local a5,a6=(#a4>0)and a4 or a3,{}for a7,a8 in
-ipairs(a1.items)do local a9=tostring(a8.itemType or''):lower()if a9=='ability'or
-a9=='gold'or a8.itemName=='gold'then continue end local b,ba=(tostring(a8.
-itemName or''):lower())for bb,bc in ipairs(a5)do if not a6[bb]then local bd=bc.
-name:lower()if bd==b or string.find(bd,b,1,true)or string.find(b,bd,1,true)then
-a6[bb]=true ba=bc break end end end if ba then local bb=ba.raw local bc,bd,be,bf
-,bg=tostring(bb.name or bb.itemName or a8.itemName or''),ba.category or a9,bb.
-totalUpgrades or bb.maxUpgrades or bb.totalUpgrade or bb.maxUpgrade or bb.
-upgradesTotal or bb.upgradesMax or bb.upgradeTotal or bb.upgradeLimit or bb.
-availableUpgrades,0,0 if be~=nil then bg=tonumber(be)or 0 end if bb.curUpgrades
-~=nil or bb.currentUpgrades~=nil then bf=tonumber(bb.curUpgrades or bb.
-currentUpgrades)or 0 end if bb.upgrades~=nil then if type(bb.upgrades)=='string'
-then local bh,bi=a0(bb.upgrades)bf=bf~=0 and bf or bh bg=bg~=0 and bg or bi
-elseif type(bb.upgrades)=='number'then bf=bf~=0 and bf or bb.upgrades elseif
-type(bb.upgrades)=='table'then local bh,bi=bb.upgrades.cur or bb.upgrades.
-current or bb.upgrades[1],bb.upgrades.max or bb.upgrades.total or bb.upgrades.
-totalUpgrades or bb.upgrades[2]if bh~=nil then bf=bf~=0 and bf or(tonumber(bh)or
-0)end if bi~=nil then bg=bg~=0 and bg or(tonumber(bi)or 0)end end end local bh,
-bi,bj,bk,bl,bm=tonumber(bb.physicalDamage or bb.physicalPower or 0)or 0,
-tonumber(bb.spellPower or 0)or 0,tonumber(bb.health or 0)or 0,'',0,''if bd==
-'weapon'or string.find(bd,'weapon')then if bi>bh then bk='Spell'bl=bi bm=
-'\u{1f52e}'else bk='Phys'bl=bh bm='\u{2694}\u{fe0f}'end else local bn=bc:lower()
-if string.find(bn,'guardian')then bk='HP'bl=bj bm='\u{1f6e1}\u{fe0f}'elseif
-string.find(bn,'mage')then bk='Spell'bl=bi bm='\u{1f52e}'elseif string.find(bn,
-'warrior')then bk='Phys'bl=bh bm='\u{2694}\u{fe0f}'else if bj>10000 and bj>(bh*
-10)then bk='HP'bl=bj bm='\u{1f6e1}\u{fe0f}'elseif bi>bh then bk='Spell'bl=bi bm=
-'\u{1f52e}'else bk='Phys'bl=bh bm='\u{2694}\u{fe0f}'end end end local bn=math.
-max(0,bg-bf)local bo=bl+(bn*10)if bl>0 or bg>0 then a8.potentialInfo={statName=
-bk,statVal=bl,maxPotential=bo,curUpgrades=bf,maxUpgrades=bg,icon=bm}end end end
-local a7={}for a8,a9 in ipairs(a3)do if a9.id then a7[a9.id]=true end end ao=a7
-end,function()if not(isfile and isfile(af))then return end local a1,a2=pcall(
-function()return ae:JSONDecode(readfile(af))end)if a1 and type(a2)=='table'then
-ah=type(a2.url)=='string'and a2.url or''ai=a2.enabled==true ak=a2.pingEnabled==
-true al=type(a2.pingMention)=='string'and a2.pingMention or''if a2.showPotential
-~=nil then an=a2.showPotential==true end local a3=a2.pingTiers if type(a3)==
-'string'then a3={a3}end if type(a3)=='table'then local a4={}for a5,a6 in ipairs(
-a3)do if table.find(aB,a6)and not table.find(a4,a6)then table.insert(a4,a6)end
-end if#a4>0 then am=a4 end end aF=nil end end,function()if not(isfile and
-writefile)then return end pcall(function()writefile(af,ae:JSONEncode{url=ah,
-enabled=ai,pingEnabled=ak,pingMention=al,pingTiers=am,showPotential=an})end)end,
-function(a1)local a2={}for a3,a4 in ipairs(a1 or{})do local a5,a6=a4.itemName or
-'Unknown',aA(a4)if a6 then a5='\u{2b50} '..a5 end local a7={}if a4.itemType and
-a4.itemType~='gold'then table.insert(a7,a4.itemType)end if a4.rarity then table.
-insert(a7,a4.rarity)end local a8=''if#a7>0 then a8=string.format('%s (%s)',
-tostring(a5),table.concat(a7,', '))else a8=tostring(a5)end if an and a4.
-potentialInfo then local a9=a4.potentialInfo local b=(a9.icon and a9.icon~='')
-and(a9.icon..' ')or''local ba=string.format('  \u{2514} %sMaxPot: %s',b,a_(a9.
-maxPotential))table.insert(a2,a8..'\n'..ba)else table.insert(a2,a8)end end
-return table.concat(a2,'\n')end,function(a1)if not a1 then return false end
-local a2=aI(a1)if not a2 then return false end return aG()[a2]==true end local
-a6=function(a6)if not ak or al==''then return false end for a7,a8 in ipairs(a6
-or{})do if a5(a8)then return true end end return false end local a7=function(a7,
-a8)local a9,b=tonumber(a7.gold)or 0,{}for ba,bb in ipairs(a7.items or{})do if bb
-.itemName and bb.itemName~='gold'then table.insert(b,bb)end end local ba,bb,bc,
-bd,be=as,false,function(ba,bb)if ba==nil then return bb end if bb==nil then
-return ba end return(ar[ba]or 0)>=(ar[bb]or 0)and ba or bb end for bf,bg in
-ipairs(b)do local bh=tostring(bg.rarity or''):lower()if aA(bg)then bb=true bd=
-bc(bd,bh)end if aq[bh]~=nil then be=bc(be,bh)end end if bb then ba=bd and(aq[bd]
-or au)or au elseif be then ba=aq[be]end a8=a8 or{}local bf=tostring(a8.level or
-'?')if bf=='???'or bf=='?'or bf==''or not bf:match'%d+'then bf=aO()end if bf==
-'???'or not bf:match'%d+'then bf='?'end local bg=tonumber(a8.expGained)local bh,
-bi,bj=bg and string.format('+%s XP',tostring(bg))or'?',aZ(a8.duration),{}if bg
-then table.insert(bj,bh)end if a9>0 then table.insert(bj,string.format(
-'+%s gold',tostring(a9)))end local bk,bl=#bj>0 and table.concat(bj,'  ')or'',#b>
-0 and a4(b)or'None'local bm=bl if bk~=''then bm=bk..(bl~='None'and('\n'..bl)or''
-)end local bn,bo={{name='Player',value=string.format('||%s|| (lv %s)',aJ(),bf),
-inline=true},{name='Map',value=ac.GetCurrentDungeonName()or'Unknown',inline=true
-},{name='Time',value=bi,inline=true},{name='Rewards',value=bm,inline=false}},
+function a.aa()local aa,ab,ac,ad,ae=a.load'a',a.load'c',a.load'f',a.load'b',game
+:GetService'HttpService'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av
+,ax=aa.Folder..'/settings/webhook.json',{},'',false,false,false,'',{'Tier6'},
+true,{},false,{common=9807270,uncommon=43520,rare=3447003,epic=10181046,
+legendary=16766720,secret=15158332,ultimate=15158332,mythic=15158332},{common=1,
+uncommon=2,rare=3,epic=4,legendary=5,secret=6,ultimate=6,mythic=6},10181046,{{
+match='northen',prefix='Valhalla'},{match='northern',prefix='Valhalla'}},
+16766720 local ay,az=function()local ay=ac.GetCurrentDungeonName()if not ay or
+ay==''then return nil end local az=string.lower(ay)for aA,aB in ipairs(at)do if
+string.find(az,aB.match,1,true)then return aB.prefix end end return nil end,{
+legendary=true,secret=true,ultimate=true,mythic=true}local aA,aB,aC,aF=function(
+aA)if not aA then return false end if az[tostring(aA.rarity or''):lower()]then
+return true end local aB=ay()if aB and aB~=''then local aC=tostring(aA.itemName
+or'')return string.sub(aC,1,#aB)==aB end return false end,{'Tier1','Tier2',
+'Tier3','Tier4','Tier5','Tier6'},function(aA)local aB=tonumber(tostring(aA or'')
+:match'Tier(%d+)')return aB or 6 end local aG,aH=function()if aF then return aF
+end aF={}for aG,aH in ipairs(am)do aF[aC(aH)]=true end return aF end,{uncommon=1
+,common=2,rare=3,epic=4,legendary=5,secret=6}local aI,aJ,aK,aL=function(aI)if
+not aI then return nil end local aJ=tonumber(tostring(aI.tier or''):match
+'tier(%d+)')if aJ then return aJ end if aI.secret==true then return 6 end return
+aH[string.lower(tostring(aI.rarity or''))]end,function()local aI=game:GetService
+'Players'.LocalPlayer if not aI then return'?'end if aI.Name and aI.Name~=''then
+return aI.Name end return aI.DisplayName or'?'end,function()local aI=game:
+GetService'Players'.LocalPlayer if not aI then return nil end local aJ=aI:
+FindFirstChild'XP'if aJ and aJ:IsA'IntValue'then return aJ.Value end return nil
+end local function aM(aN,aO,aP)aP=aP or 12 if aP<0 then return nil end local aQ=
+aN:FindFirstChild(aO)if aQ then return aQ end for aS,aT in ipairs(aN:
+GetChildren())do local aU=aM(aT,aO,aP-1)if aU then return aU end end return nil
+end local aN local aO,aP=function()if ac and type(ac.GetRealPlayerLevel)==
+'function'then local aO=ac.GetRealPlayerLevel()if aO then local aP=tonumber(
+tostring(aO):match'%d+')if aP and aP>0 then aN=tostring(aP)return aN end end end
+local aO=_G.RealPlayerLevel or(type(getgenv)=='function'and getgenv().
+RealPlayerLevel)if aO then local aP=tonumber(tostring(aO):match'%d+')if aP and
+aP>0 then aN=tostring(aP)return aN end end local aP=game:GetService'Players'.
+LocalPlayer if not aP then return aN or'?'end local aQ=aP:FindFirstChild
+'leaderstats'if aQ then for aS,aT in ipairs(aQ:GetChildren())do local aU=string.
+lower(aT.Name)if string.find(aU,'level')or string.find(aU,'lvl')then local aV=
+tonumber(tostring(aT.Value):match'%d+')if aV and aV>0 then aN=tostring(aV)if ac
+and ac.SetRealPlayerLevel then ac.SetRealPlayerLevel(aN)end return aN end end
+end end for aS,aT in ipairs(aP:GetChildren())do local aU=string.lower(aT.Name)if
+aU=='level'or aU=='lvl'or string.find(aU,'level')then if aT:IsA'ValueBase'then
+local aV=tonumber(tostring(aT.Value):match'%d+')if aV and aV>0 then aN=tostring(
+aV)if ac and ac.SetRealPlayerLevel then ac.SetRealPlayerLevel(aN)end return aN
+end end end end for aS,aT in pairs(aP:GetAttributes())do local aU=string.lower(
+aS)if string.find(aU,'level')or string.find(aU,'lvl')then local aV=tonumber(
+tostring(aT):match'%d+')if aV and aV>0 then aN=tostring(aV)if ac and ac.
+SetRealPlayerLevel then ac.SetRealPlayerLevel(aN)end return aN end end end if aP
+:FindFirstChild'PlayerGui'then local aS=aP.PlayerGui:FindFirstChild
+'playerStatus'if aS then local aT=aM(aS,'levelBorder')if aT then local aU=aT:
+FindFirstChild'level'if aU and aU:IsA'TextLabel'then local aV=aU:GetAttribute
+'RealLevel'or aU:GetAttribute'OriginalText'if aV then local aW=tonumber(
+tostring(aV):match'%d+')if aW and aW>0 then aN=tostring(aW)if ac and ac.
+SetRealPlayerLevel then ac.SetRealPlayerLevel(aN)end return aN end end local aW=
+aU.Text local aX=tonumber(tostring(aW):match'%d+')if aX and aX>0 then aN=
+tostring(aX)if ac and ac.SetRealPlayerLevel then ac.SetRealPlayerLevel(aN)end
+return aN end end end end end return aN or'?'end,false local aQ,aS,aT=function()
+if aL~=nil or aP then return end aP=true task.spawn(function()local aQ=os.clock(
+)+8 while aL==nil and os.clock()<aQ do aL=aK()if aL~=nil then break end task.
+wait(0.25)end aP=false end)end,function()local aQ,aS=pcall(function()return game
+:GetService'ReplicatedStorage':WaitForChild('remotes',5):WaitForChild(
+'reloadInvy',5)end)if not aQ or not aS or not aS:IsA'RemoteFunction'then return
+nil end local aT,aU=pcall(function()return aS:InvokeServer()end)if not aT or aU
+==nil then return nil end if type(aU)=='table'and aU['1']and type(aU['1'])==
+'table'then return aU['1']end return aU end,function(aQ)return type(aQ)=='table'
+and(aQ.sellPrice~=nil or aQ.UniqueItemID~=nil or aQ.rarity~=nil or aQ.name~=nil)
+end local aU=function(aU)if type(aU)~='table'then return{}end local aV,aW={},{}
+local function aX(aY,aZ)if type(aY)~='table'or aW[aY]then return end aW[aY]=true
+if aT(aY)then local a_=(aY.UniqueItemID and tostring(aY.UniqueItemID))or(aY.
+uniqueItemNum and tostring(aY.uniqueItemNum))or nil table.insert(aV,{category=aZ
+,raw=aY,id=a_,name=tostring(aY.name or aY.itemName or''),rarity=tostring(aY.
+rarity or''):lower()})return end for a_,a0 in pairs(aY)do if type(a0)=='table'
+then local a1=aZ if a_=='weapons'or a_=='weapon'then a1='weapon'elseif a_==
+'helmets'or a_=='helmet'then a1='helmet'elseif a_=='chests'or a_=='chest'then a1
+='chest'elseif a_=='abilities'or a_=='ability'then a1='ability'end aX(a0,a1)end
+end end aX(aU,nil)return aV end local aV=function()if not an or ap then return
+end ap=true task.spawn(function()local aV=aS()if aV then local aW,aX=aU(aV),{}
+for aY,aZ in ipairs(aW)do if aZ.id then aX[aZ.id]=true end end ao=aX end ap=
+false end)end local aW,aX=function()aL=aK()if aL==nil then aQ()end ac.
+SetDungeonStartTime(nil)if an then aV()end end,function()if not ac.
+GetDungeonStartTime()then ac.SetDungeonStartTime(os.clock())end if aL==nil then
+aQ()end if an then aV()end end local aY,aZ,a_,a0=function()if ax then return end
+local aY=function(aY)if aY then aW()else aX()end end aY(ac.IsInLobby())ax=ac.
+OnLobbyChanged(aY)end,function(aY)aY=math.max(0,math.floor(aY or 0))local aZ,a_=
+math.floor(aY/60),aY%60 return string.format('%d:%02d',aZ,a_)end,function(aY)if
+not aY then return'0'end local aZ,a_=(tostring(math.floor(aY)))while true do aZ,
+a_=string.gsub(aZ,'^(-?%d+)(%d%d%d)','%1,%2')if a_==0 then break end end return
+aZ end,function(aY)if not aY then return 0,0 end local aZ=string.gsub(tostring(
+aY),',','')local a_,a0=string.match(aZ,'(%d+)%s*/%s*(%d+)')if a_ and a0 then
+return tonumber(a_)or 0,tonumber(a0)or 0 end local a1=tonumber(string.match(aZ,
+'^%s*([%d.-]+)'))return 0,a1 or 0 end local a1,a2,a3,a4,a5=function(a1)if not an
+or not a1 or type(a1.items)~='table'or#a1.items==0 then return end local a2=aS()
+if not a2 then return end local a3=aU(a2)if#a3==0 then return end local a4={}for
+a5,a6 in ipairs(a3)do if a6.id and not ao[a6.id]then table.insert(a4,a6)end end
+local a5,a6=(#a4>0)and a4 or a3,{}for a7,a8 in ipairs(a1.items)do local a9=
+tostring(a8.itemType or''):lower()if a9=='ability'or a9=='gold'or a8.itemName==
+'gold'then continue end local b,ba=(tostring(a8.itemName or''):lower())for bb,bc
+in ipairs(a5)do if not a6[bb]then local bd=bc.name:lower()if bd==b or string.
+find(bd,b,1,true)or string.find(b,bd,1,true)then a6[bb]=true ba=bc break end end
+end if ba then local bb=ba.raw local bc,bd,be,bf,bg=tostring(bb.name or bb.
+itemName or a8.itemName or''),ba.category or a9,bb.totalUpgrades or bb.
+maxUpgrades or bb.totalUpgrade or bb.maxUpgrade or bb.upgradesTotal or bb.
+upgradesMax or bb.upgradeTotal or bb.upgradeLimit or bb.availableUpgrades,0,0 if
+be~=nil then bg=tonumber(be)or 0 end if bb.curUpgrades~=nil or bb.
+currentUpgrades~=nil then bf=tonumber(bb.curUpgrades or bb.currentUpgrades)or 0
+end if bb.upgrades~=nil then if type(bb.upgrades)=='string'then local bh,bi=a0(
+bb.upgrades)bf=bf~=0 and bf or bh bg=bg~=0 and bg or bi elseif type(bb.upgrades)
+=='number'then bf=bf~=0 and bf or bb.upgrades elseif type(bb.upgrades)=='table'
+then local bh,bi=bb.upgrades.cur or bb.upgrades.current or bb.upgrades[1],bb.
+upgrades.max or bb.upgrades.total or bb.upgrades.totalUpgrades or bb.upgrades[2]
+if bh~=nil then bf=bf~=0 and bf or(tonumber(bh)or 0)end if bi~=nil then bg=bg~=0
+and bg or(tonumber(bi)or 0)end end end local bh,bi,bj,bk,bl,bm=tonumber(bb.
+physicalDamage or bb.physicalPower or 0)or 0,tonumber(bb.spellPower or 0)or 0,
+tonumber(bb.health or 0)or 0,'',0,''if bd=='weapon'or string.find(bd,'weapon')
+then if bi>bh then bk='Spell'bl=bi bm='\u{1f52e}'else bk='Phys'bl=bh bm=
+'\u{2694}\u{fe0f}'end else local bn=bc:lower()if string.find(bn,'guardian')then
+bk='HP'bl=bj bm='\u{1f6e1}\u{fe0f}'elseif string.find(bn,'mage')then bk='Spell'
+bl=bi bm='\u{1f52e}'elseif string.find(bn,'warrior')then bk='Phys'bl=bh bm=
+'\u{2694}\u{fe0f}'else if bj>10000 and bj>(bh*10)then bk='HP'bl=bj bm=
+'\u{1f6e1}\u{fe0f}'elseif bi>bh then bk='Spell'bl=bi bm='\u{1f52e}'else bk=
+'Phys'bl=bh bm='\u{2694}\u{fe0f}'end end end local bn=math.max(0,bg-bf)local bo=
+bl+(bn*10)if bl>0 or bg>0 then a8.potentialInfo={statName=bk,statVal=bl,
+maxPotential=bo,curUpgrades=bf,maxUpgrades=bg,icon=bm}end end end local a7={}for
+a8,a9 in ipairs(a3)do if a9.id then a7[a9.id]=true end end ao=a7 end,function()
+if not(isfile and isfile(af))then return end local a1,a2=pcall(function()return
+ae:JSONDecode(readfile(af))end)if a1 and type(a2)=='table'then ah=type(a2.url)==
+'string'and a2.url or''ai=a2.enabled==true ak=a2.pingEnabled==true al=type(a2.
+pingMention)=='string'and a2.pingMention or''if a2.showPotential~=nil then an=a2
+.showPotential==true end local a3=a2.pingTiers if type(a3)=='string'then a3={a3}
+end if type(a3)=='table'then local a4={}for a5,a6 in ipairs(a3)do if table.find(
+aB,a6)and not table.find(a4,a6)then table.insert(a4,a6)end end if#a4>0 then am=
+a4 end end aF=nil end end,function()if not(isfile and writefile)then return end
+pcall(function()writefile(af,ae:JSONEncode{url=ah,enabled=ai,pingEnabled=ak,
+pingMention=al,pingTiers=am,showPotential=an})end)end,function(a1)local a2={}for
+a3,a4 in ipairs(a1 or{})do local a5,a6=a4.itemName or'Unknown',aA(a4)if a6 then
+a5='\u{2b50} '..a5 end local a7={}if a4.itemType and a4.itemType~='gold'then
+table.insert(a7,a4.itemType)end if a4.rarity then table.insert(a7,a4.rarity)end
+local a8=''if#a7>0 then a8=string.format('%s (%s)',tostring(a5),table.concat(a7,
+', '))else a8=tostring(a5)end if an and a4.potentialInfo then local a9=a4.
+potentialInfo local b=(a9.icon and a9.icon~='')and(a9.icon..' ')or''local ba=
+string.format('  \u{2514} %sMaxPot: %s',b,a_(a9.maxPotential))table.insert(a2,a8
+..'\n'..ba)else table.insert(a2,a8)end end return table.concat(a2,'\n')end,
+function(a1)if not a1 then return false end local a2=aI(a1)if not a2 then return
+false end return aG()[a2]==true end local a6=function(a6)if not ak or al==''then
+return false end for a7,a8 in ipairs(a6 or{})do if a5(a8)then return true end
+end return false end local a7=function(a7,a8)local a9,b=tonumber(a7.gold)or 0,{}
+for ba,bb in ipairs(a7.items or{})do if bb.itemName and bb.itemName~='gold'then
+table.insert(b,bb)end end local ba,bb,bc,bd,be=as,false,function(ba,bb)if ba==
+nil then return bb end if bb==nil then return ba end return(ar[ba]or 0)>=(ar[bb]
+or 0)and ba or bb end for bf,bg in ipairs(b)do local bh=tostring(bg.rarity or'')
+:lower()if aA(bg)then bb=true bd=bc(bd,bh)end if aq[bh]~=nil then be=bc(be,bh)
+end end if bb then ba=bd and(aq[bd]or au)or au elseif be then ba=aq[be]end a8=a8
+or{}local bf=tostring(a8.level or'?')if bf=='???'or bf=='?'or bf==''or not bf:
+match'%d+'then bf=aO()end if bf=='???'or not bf:match'%d+'then bf='?'end local
+bg=tonumber(a8.expGained)local bh,bi,bj=bg and string.format('+%s XP',tostring(
+bg))or'?',aZ(a8.duration),{}if bg then table.insert(bj,bh)end if a9>0 then table
+.insert(bj,string.format('+%s gold',tostring(a9)))end local bk,bl=#bj>0 and
+table.concat(bj,'  ')or'',#b>0 and a4(b)or'None'local bm=bl if bk~=''then bm=bk
+..(bl~='None'and('\n'..bl)or'')end local bn,bo={{name='Player',value=string.
+format('||%s|| (lv %s)',aJ(),bf),inline=true},{name='Map',value=ac.
+GetCurrentDungeonName()or'Unknown',inline=true},{name='Time',value=bi,inline=
+true},{name='Rewards',value=bm,inline=false}},
 'You cleared the dungeon and received your rewards!'if a6(b)then bo=bo..'\n\n'..
 al end return{embeds={{title='Dungeon WIN',description=bo,color=ba,fields=bn,
 timestamp=DateTime.now():ToIsoDate()}}}end local a8=function(a8,a9)if ah==''or
@@ -4931,8 +4982,8 @@ if an then pcall(a1,bb)end local bf,bg=a8(bb,{level=aO(),expGained=be,duration=
 bc})if not bf then ab.Notify('Webhook WIN','Send failed: '..tostring(bg),4)end
 end)end)aj=true ab.Notify('Webhook','Webhook notifications ready',2)aY()if an
 then aV()end end a2()ad.Register(function()if av then av:Disconnect()av=nil end
-if ax then ax()ax=nil end aj=false end)return ag end function a.aa()local aa=a.
-load'_'return function(ab,ac)local ad=ac:Section{Side='Right'}ad:Header{Name=
+if ax then ax()ax=nil end aj=false end)return ag end function a.ab()local aa=a.
+load'aa'return function(ab,ac)local ad=ac:Section{Side='Right'}ad:Header{Name=
 'Discord Webhook'}ad:Input{Name='Webhook URL',Placeholder=
 'https://discord.com/api/webhooks/...',AcceptedCharacters='All',Default=aa.
 GetUrl(),Callback=function(ae)aa.SetUrl(ae)end}ad:Toggle({Name=
@@ -4949,7 +5000,7 @@ ae:Dropdown{Name='Ping Tier',Multi=true,Required=false,Options=aa.
 GetPingTierOptions(),Default=aa.GetPingTiers(),Callback=function(af)aa.
 SetPingTiers(af)end}ae:Label{Text=
 [[Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).]]
-}end end function a.ab()local aa={}function aa.Apply(ab,ac,ad)for ae,af in
+}end end function a.ac()local aa={}function aa.Apply(ab,ac,ad)for ae,af in
 pairs(ab)do if ad and table.find(ad,ae)then continue end pcall(function()ac[ae]=
 af end)end return ac end function aa.Wrap(ab,ac,ad,ae)local af={}setmetatable(af
 ,{__index=function(ag,ah)if ab[ah]~=nil then return ab[ah]elseif ae then local
@@ -4957,7 +5008,7 @@ ai,aj=pcall(function()return ae[ah]end)if ai then return aj end end return end,
 __newindex=function(ag,ah,ai)local aj=ac[ah]if aj then aj(ai)if not(ad and table
 .find(ad,ah))then ab[ah]=ai end elseif ae then local ak,al=pcall(function()ae[ah
 ]=ai end)if not ak then ab[ah]=ai end else ab[ah]=ai end end})return af end
-return aa end function a.ac()local aa,ab,ac,ad,ae,af=a.load'ab',game:GetService
+return aa end function a.ad()local aa,ab,ac,ad,ae,af=a.load'ac',game:GetService
 'VirtualUser',{},false,60 local ag=function()pcall(function()ab:
 CaptureController()ab:Button1Down(Vector2.new(0,0))ab:Button1Up(Vector2.new(0,0)
 )ab:Button2Down(Vector2.new(0,0))ab:Button2Up(Vector2.new(0,0))end)end local ah=
@@ -4967,8 +5018,8 @@ return end ad=true task.spawn(ag)af=task.spawn(ah)end function ac.Stop()ad=false
 end function ac.IsEnabled()return ad end function ac.SetInterval(ai)ai=tonumber(
 ai)if ai and ai>0 then ae=ai else ae=60 end end function ac.GetInterval()return
 ae end return(aa.Wrap(ac,{Enabled=function(ai)if ai then ac.Start()else ac.Stop(
-)end end,Interval=function(ai)ac.SetInterval(ai)end}))end function a.ad()local
-aa,ab,ac,ad,ae,af,ag=a.load'a',a.load'b',a.load'ab',a.load'f',game:GetService
+)end end,Interval=function(ai)ac.SetInterval(ai)end}))end function a.ae()local
+aa,ab,ac,ad,ae,af,ag=a.load'a',a.load'b',a.load'ac',a.load'f',game:GetService
 'Players',game:GetService'HttpService','Username'local ah=function()return(aa
 and aa.Folder)or'EsclipseHub'end local ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av
 ,ax,ay,az,aA,aB,aC,aF=function()return ah()..'/settings/streaming_mode.json'end,
@@ -5146,8 +5197,8 @@ tostring(ba)end end end if _G.RealPlayerLevel then return _G.RealPlayerLevel end
 return nil end aG()ab.Register(function()if al then aj.Stop()end if ap then a8()
 end ao=false end)return(ac.Wrap(aj,{Enabled=function(a9)if a9 then aj.Start()
 else aj.Stop()end end,Replacement=function(a9)aj.SetReplacement(a9)end,MaskStats
-=function(a9)aj.SetMaskStats(a9)end}))end function a.ae()local aa,ab,ac,ad=a.
-load'd',a.load'B',a.load'ac',a.load'ad'return function(ae,af)local ag=af:Section
+=function(a9)aj.SetMaskStats(a9)end}))end function a.af()local aa,ab,ac,ad=a.
+load'd',a.load'B',a.load'ad',a.load'ae'return function(ae,af)local ag=af:Section
 {Side='Left'}ag:Header{Name='Anti AFK'}ag:Toggle({Name='Anti AFK',Default=ac.
 IsEnabled(),Callback=aa.Wrap(function(ah)if ah then ac.Start()else ac.Stop()end
 end)},'Toggle_AntiAFK')ab.PatchSliderLoadCallback(ag:Slider({Name=
@@ -5161,8 +5212,8 @@ Default=ad.IsMaskStats(),Callback=aa.Wrap(function(ai)ad.SetMaskStats(ai)end)},
 'Toggle_StreamingMaskStats')ah:Input({Name='Fake Display Name',Placeholder=
 'Username',AcceptedCharacters='All',Default=ad.GetReplacement(),Callback=aa.
 Wrap(function(ai)ad.SetReplacement(ai)end)},'Input_StreamingReplacement')end end
-function a.af()return function(aa,ab)a.load'Z'(aa,ab)a.load'aa'(aa,ab)a.load
-'ae'(aa,ab)end end function a.ag()local aa,ab,ac=a.load'a',a.load'c',game:
+function a.ag()return function(aa,ab)a.load'_'(aa,ab)a.load'ab'(aa,ab)a.load
+'af'(aa,ab)end end function a.ah()local aa,ab,ac=a.load'a',a.load'c',game:
 GetService'HttpService'local ad,ae,af,ag=aa.Folder..'/settings/autohide.json',{}
 ,false local ah,ai=function()if not(isfile and isfile(ad))then return end local
 ah,ai=pcall(function()return ac:JSONDecode(readfile(ad))end)if ah and type(ai)==
@@ -5173,8 +5224,8 @@ function ae.IsEnabled()return af end function ae.Hide()if not af or not ag then
 return end local aj=pcall(function()ag:SetState(false)end)if not aj then warn
 '[AutoHide] Kh\u{f4}ng \u{1ea9}n \u{111}\u{1b0}\u{1ee3}c window'end end function
 ae.Execute()if not af then return end task.spawn(function()task.wait(0.5)ae.
-Hide()end)end ah()return ae end function a.ah()local aa,ab,ac,ad=a.load'a',a.
-load'd',a.load'ag',a.load'h'return function(ae,af)local ag=aa.Folder local ah=ag
+Hide()end)end ah()return ae end function a.ai()local aa,ab,ac,ad=a.load'a',a.
+load'd',a.load'ah',a.load'h'return function(ae,af)local ag=aa.Folder local ah=ag
 ..'/settings/autoload.txt'local ai,aj,ak=function()if isfile and isfile(ah)then
 local ai,aj=pcall(readfile,ah)if ai and type(aj)=='string'then aj=string.gsub(aj
 ,'[\r\n%s]+','')if#aj>0 then return aj end end end return nil end,function(ai)ab
@@ -5214,8 +5265,8 @@ Button{Name='Refresh Config List',Callback=function()ao(am.Value)end}an=ak:Label
 'Autoload config: '..aq)end ak:Header{Name='Auto Hide UI'}ak:Toggle({Name=
 'Hide window after execute',Default=ac.IsEnabled(),Callback=function(ar)ac.
 SetEnabled(ar)end},'Toggle_AutoHide')ak:Label{Text=
-'Press RightControl to show the window again.'}end end function a.ai()local aa,
-ab,ac,ad,ae,af=a.load'f',a.load'S','Boss Active','Boss','Dungeon','Time Left'
+'Press RightControl to show the window again.'}end end function a.aj()local aa,
+ab,ac,ad,ae,af=a.load'f',a.load'T','Boss Active','Boss','Dungeon','Time Left'
 return function(ag,ah)local ai=ah:Section{Side='Right'}ai:Header{Name='Status'}
 local aj=ai:Label{Text=ac..': '..(aa.IsBossActive()and'Yes'or'No')}local ak=
 function(ak)local al=ak and'0, 255, 0'or'255, 80, 80'aj:UpdateName(ac..
@@ -5250,8 +5301,8 @@ and'0, 255, 0'or'255, 80, 80'ax:UpdateName("Lobby: <font color='rgb("..az..")'>"
 Button{Name='Log Enemy Types to Console',Callback=function()local ay=aa.
 GetEnemyNames()print('[DungeonQuest] Enemy types in map ('..#ay..'):')if#ay==0
 then print'  (no enemies found)'else for az,aA in ipairs(ay)do print('  - '..aA)
-end end end}end end function a.aj()return function(aa,ab)a.load'ah'(aa,ab)a.load
-'ai'(aa,ab)end end function a.ak()local aa,ab,ac=a.load'e',a.load'a',a.load'd'
+end end end}end end function a.ak()return function(aa,ab)a.load'ai'(aa,ab)a.load
+'aj'(aa,ab)end end function a.al()local aa,ab,ac=a.load'e',a.load'a',a.load'd'
 local ad,ae,af,ag,ah,ai,aj=aa.HttpService or game:GetService'HttpService',{},
 'DQMacro','pathRecord',3,'normal','full'local ak,al,am,an,ao=function(ak)if ak==
 aj then return aj end return ai end,(isfile~=nil and writefile~=nil and
@@ -5369,7 +5420,7 @@ lower(string.sub(aK,-5))=='.json'and isfile(aK)then delfile(aK)end end end end)
 end table.clear(am)local aI=ab.contextData if type(aI)=='table'and aI[ag]then aI
 [ag]=nil ac.Save()end ap()end function ae.ReloadFromDisk()table.clear(am)an=
 false aA()ap()end function ae.ReloadFromConfig()ae.ReloadFromDisk()end return ae
-end function a.al()local aa,ab,ac,ad,ae=a.load'e',a.load'f',a.load'ak',a.load'd'
+end function a.am()local aa,ab,ac,ad,ae=a.load'e',a.load'f',a.load'al',a.load'd'
 ,a.load'c'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar=aa.RunService,aa.player,
 aa.UserInputService,0.1,8000,0.4,0.1,1.5,1,6,{},true,true function ap.SetCapture
 (as)as=as and true or false aq=as ar=as end function ap.IsCaptureEnabled()return
@@ -5463,8 +5514,8 @@ end elseif aI>0 then local a9=aJ>0 and(' | %d boss'):format(aJ)or''ae.Notify(
 'Path Record',('Saved map [%s] %s: %d room(s)%s (%d raw pts)'):format(aM,a7 or
 'completed',aI,a9,aK),4)end a4()a_()return a8~=nil end function ap.Cancel()if
 not as then return end a2()a4()as=false ad.SetRecording(false)a_()end return ap
-end function a.am()local aa,ab,ac,ad,ae=a.load'e',a.load'f',a.load'ak',a.load'c'
-,a.load'S'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,ax,ay,az,aA,
+end function a.an()local aa,ab,ac,ad,ae=a.load'e',a.load'f',a.load'al',a.load'c'
+,a.load'T'local af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,ax,ay,az,aA,
 aB,aC,aF,aG,aH,aI=aa.player,aa.VirtualInputManager,aa.UserInputService,aa.
 RunService or game:GetService'RunService',0.4,0.5,8,2,4.5,8,14,8,2,0.5,2,0.001,
 0.1,{},true,true,true,0.6,0.005,0.45,0.2,false,true function ax.SetAimSkillQ(aJ)
@@ -5656,8 +5707,8 @@ PauseForExclusive()if not aT then return end aU=true aT=false aV=false aW=0 aX=0
 aY=0 if a0 then task.cancel(a0)a0=nil end be(ab.GetHumanoid())aS()bi()ad.Notify(
 'Path Record',
 [[Yielded control: will auto-resume upon entering a recorded room]],3)a1'paused'
-end return ax end function a.an()local aa,ab,ac,ad,ae,af,ag=a.load'e',a.load'f',
-a.load'ak',a.load'al',a.load'am',a.load'b',game:GetService'Workspace'local ah,ai
+end return ax end function a.ao()local aa,ab,ac,ad,ae,af,ag=a.load'e',a.load'f',
+a.load'al',a.load'am',a.load'an',a.load'b',game:GetService'Workspace'local ah,ai
 ,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,ax,ay,az,aA,aB,aC,aF,aG=aa.RunService,{}
 ,'PR_PathVisual_Container','PR_PathVisual_Anchor',Color3.fromRGB(255,60,60),
 Color3.fromRGB(255,90,90),Color3.fromRGB(0,255,120),Color3.fromRGB(0,220,110),
@@ -5801,7 +5852,7 @@ end function ai.Clear()a_()table.clear(aK)table.clear(aL)table.clear(aM)table.
 clear(aN)table.clear(aO)local a1=ag:FindFirstChild(aj)if a1 then pcall(function(
 )a1:Destroy()end)end aP=nil aQ=nil end function ai.Destroy()if aS then aS:
 Disconnect()aS=nil end ai.Clear()end ai.Clear()a0()af.Register(function()ai.
-Destroy()end)return ai end function a.ao()local aa,ab,ac=a.load'e',a.load'f',a.
+Destroy()end)return ai end function a.ap()local aa,ab,ac=a.load'e',a.load'f',a.
 load'b'local ad,ae,af,ag,ah,ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at,au,av,ax,ay,az,
 aA=aa.player,aa.RunService,aa.CoreGui or game:GetService'CoreGui',game:
 GetService'Workspace',{},{Cyan=Color3.fromRGB(0,230,255),Red=Color3.fromRGB(255,
@@ -5875,9 +5926,9 @@ aM local aN=aF()if aj and aN then aK(aN)end end end if ad then ad.CharacterAdded
 'HumanoidRootPart',10)if aN and aj then aJ(aN)aA=aN aK(aN)end end)end end)end ab
 .OnRespawn(function()if aj then task.delay(0.2,function()local aM=aF()if aM and
 aj then aJ(aM)aA=aM aK(aM)end end)end end)ac.Register(function()ah.SetEnabled(
-false)aH()end)return ah end function a.ap()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,
+false)aH()end)return ah end function a.aq()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,
 ak,al,am,an,ao=a.load'e',a.load'f',a.load'b',a.load'h',a.load'c',a.load'A',a.
-load'g',a.load'ak',a.load'al',a.load'am',a.load'an',a.load'ao',{},false,{}local
+load'g',a.load'al',a.load'am',a.load'an',a.load'ao',a.load'ap',{},false,{}local
 ap,aq,ar=function(ap)local aq=ai.GetStatus()local ar={recording=ai.IsRecording()
 ,playing=aj.IsPlaying(),resume=aj.ResumeWanted(),autoPlayWanted=an,inLobby=ab.
 IsInLobby(),map=ab.GetCurrentDungeonName(),room=ab.GetCurrentRoomIndex(),boss=ab
@@ -6003,7 +6054,7 @@ IsRecording()then ai.Cancel()end if aj.IsPlaying()then aj.Stop()end ak.Clear()ap
 bossConnection then bossConnection()bossConnection=nil end if roomUnsub then
 roomUnsub()roomUnsub=nil end if mapUnsub then mapUnsub()mapUnsub=nil end if
 storageUnsub then storageUnsub()storageUnsub=nil end end)return am end function
-a.aq()local aa,ab,ac,ad,ae,af=a.load'e',a.load'b',a.load'ap',a.load'd',a.load'B'
+a.ar()local aa,ab,ac,ad,ae,af=a.load'e',a.load'b',a.load'aq',a.load'd',a.load'B'
 ,a.load'c'local ag=aa.RunService return function(ah,ai)local aj=ai:Section{Side=
 'Left'}aj:Header{Name='Path Record Controls'}aj:Label{Text=
 [[Macro = 1 recording per map, <font color='rgb(0,255,120)'>click Record once to record continuously</font> across rooms (auto-saves on lobby return). FULL Mode -> records & replays boss rooms as well.]]
@@ -6211,7 +6262,7 @@ end b(bk)end local ba,bb=ac.OnStatusChanged(function(ba)ap(ba)aq(ba)end),0 local
 bc=ag.Heartbeat:Connect(function()local bc=os.clock()if bc-bb<0.35 then return
 end bb=bc local bd=ac.GetStatus()ap(bd)aq(bd)end)ab.Register(function()if bc
 then bc:Disconnect()bc=nil end if ba then ba()ba=nil end end)ap(ac.GetStatus())
-aq(ac.GetStatus())end end function a.ar()local aa,ab,ac,ad,ae,af,ag=a.load'b',a.
+aq(ac.GetStatus())end end function a.as()local aa,ab,ac,ad,ae,af,ag=a.load'b',a.
 load'e',{},{'inventory','inspectGui','sellShop','tradingGui','blacksmith'},{
 'armorMain','weaponMain'},10,{warrior={className='Warrior',primaryStat=
 'physicalDamage'},mage={className='Mage',primaryStat='spellPower'},guardian={
@@ -6337,7 +6388,7 @@ break end end return aA,aP end function ac.OnFrameChanged(aP)if type(aP)==
 )do if aW.name=='name'and aW.value~=''then aU=aW.value break end end pcall(aP,aQ
 ,aU)end)end end function ac.Init()if not am then am=true end aO()end aa.
 Register(function()am=false aN()table.clear(ax)table.clear(ay)end)aO()return ac
-end function a.as()local aa=function(aa)local ab=Instance.new'Frame'ab.Name=
+end function a.at()local aa=function(aa)local ab=Instance.new'Frame'ab.Name=
 'sortBarFrame'ab.Size=UDim2.new(0,50,0,0)ab.AutomaticSize=Enum.AutomaticSize.Y
 ab.AnchorPoint=Vector2.new(0,1)ab.Position=UDim2.new(1,30,1,15)ab.
 BackgroundColor3=Color3.fromRGB(18,20,26)ab.BackgroundTransparency=0.15 ab.
@@ -6373,8 +6424,8 @@ fromRGB(255,255,255)ap.ImageTransparency=0.35 ap.ScaleType=Enum.ScaleType.Fit ap
 'rbxassetid://121406454377051')ah('IBspell',4,'imageSpell',
 'rbxassetid://125012650497883')ah('IBhealth',5,'imageHealth',
 'rbxassetid://88525382655929')ah('IBability',6,'imageAbility',
-'rbxassetid://109718589733073')return ab end return aa end function a.at()local
-aa,ab,ac,ad,ae=a.load'b',a.load'e',a.load'c',a.load'as',a.load'a'local af,ag,ah,
+'rbxassetid://109718589733073')return ab end return aa end function a.au()local
+aa,ab,ac,ad,ae=a.load'b',a.load'e',a.load'c',a.load'at',a.load'a'local af,ag,ah,
 ai,aj,ak,al,am,an,ao,ap=ab.TweenService or game:GetService'TweenService',ab.
 HttpService or game:GetService'HttpService',{},'None',false,false,true,1.25,
 function()local af='EsclipseHub'pcall(function()if ae and ae.Folder then af=ae.
@@ -6730,7 +6781,7 @@ end)end table.clear(aH)table.clear(aK)table.clear(aL)table.clear(aM)table.clear(
 aJ)table.clear(aN)table.clear(aO)cachedInventoryData=nil ai='None'aj=false ao=
 nil ak=false if injectedSortBar and injectedSortBar.Parent then pcall(function()
 injectedSortBar:Destroy()end)injectedSortBar=nil end end)ah.Init()return ah end
-function a.au()return function(aa)pcall(function()local ab=setthreadidentity or
+function a.av()return function(aa)pcall(function()local ab=setthreadidentity or
 set_thread_identity or setidentity or(syn and syn.set_thread_identity)if ab then
 local ac=pcall(ab,7)if not ac then pcall(ab,8)end end end)local ab,ac=game:
 GetService'Players',os.clock()+15 while not ab.LocalPlayer do if os.clock()>ac
@@ -6750,12 +6801,12 @@ Image='rbxassetid://10734886202'},Inventory=ak:Tab{Name='Inventory',Image=
 'rbxassetid://10747383470'},Configs=ak:Tab{Name='Configs',Image=
 'rbxassetid://10734950309'},PathRecord=ak:Tab{Name='Path Record',Image=
 'rbxassetid://10734950309'}}ae:SetFolder'EsclipseHub'local am,an,ao,ap,aq,ar=a.
-load'O',a.load'T',a.load'V',a.load'af',a.load'aj',a.load'aq'am(ai,al.Combat)an(
+load'P',a.load'U',a.load'W',a.load'ag',a.load'ak',a.load'ar'am(ai,al.Combat)an(
 ai,al.Dungeon)ao(ai,al.Inventory)ap(ai,al.Utilities)aq(ai,al.Configs)ar(ai,al.
-PathRecord)local as=a.load'C'as.Init()local at=a.load'_'at.Init()a.load'X'a.load
-'ar'a.load'at'local au=a.load'ag'au.SetWindow(ai)au.Execute()local av=a.load'ad'
-av.SetWindow(ai)av.Init()al.Combat:Select()local ax=a.load'h'ax.SetLocked(true)
-if ae.Elevate then ae.Elevate()end local ay,az=pcall(function()ae:
+PathRecord)local as=a.load'C'as.Init()local at=a.load'aa'at.Init()a.load'Y'a.
+load'as'a.load'au'local au=a.load'ah'au.SetWindow(ai)au.Execute()local av=a.load
+'ae'av.SetWindow(ai)av.Init()al.Combat:Select()local ax=a.load'h'ax.SetLocked(
+true)if ae.Elevate then ae.Elevate()end local ay,az=pcall(function()ae:
 LoadAutoLoadConfig()end)if not ay then warn(
 '[DungeonQuest] Error during LoadAutoLoadConfig:',az)end local aA=function()
 local aA=ae.Folder..'/settings/autoload.txt'if isfile and isfile(aA)then local
@@ -6764,38 +6815,38 @@ aB,aC=pcall(readfile,aA)if aB and type(aC)=='string'then aC=string.gsub(aC,
 GetActive()then local aB=ae.Folder..'/settings/Default.json'if isfile and
 isfile(aB)then ag.SetActive'Default'end end end aA()local aB=a.load'q'aB.
 LoadData(ae.contextData)task.delay(0.3,function()ax.SetLocked(false)end)task.
-delay(1.5,function()ag.Resume()end)end end function a.av()local aa={}function aa
+delay(1.5,function()ag.Resume()end)end end function a.aw()local aa={}function aa
 :Export()local ab={}for ac,ad in pairs(self)do if typeof(ad)=='Instance'or type(
 ad)=='table'then local ae,af=pcall(function()end)if ae and af~=nil then ab[ac]=
 af end end end return ab end function aa:Import(ab)for ac,ad in pairs(ab)do
 local ae=self[ac]if ae and ae.Value~=nil then local af=pcall(function()end)if
 not af then warn(`Failed to import value for flag "{ac}"`)end end end end
 function aa:Reset()for ab in pairs(self)do self[ab]=nil end end return aa end
-function a.aw()local aa,ab=a.load'ab',{}function ab:Window(ac)ac=ac or{}print
+function a.ax()local aa,ab=a.load'ac',{}function ab:Window(ac)ac=ac or{}print
 'Made a window'local ad=aa.Wrap(ac,{Visible=function(ad)print(
 'Set window visibility to:',ad)end})return aa.Apply(ac,ad)end return ab end
-function a.ax()local aa,ab=a.load'ab',{}return(aa.Wrap(ab,{Enabled=function(ac)
-print(`{ac and'Enabled'or'Disabled'} ESP.`)end}))end function a.ay()local aa,ab,
-ac=a.load'av',a.load'aw',a.load'ax'local ad=ab:Window{Visible=true}return{Flags=
+function a.ay()local aa,ab=a.load'ac',{}return(aa.Wrap(ab,{Enabled=function(ac)
+print(`{ac and'Enabled'or'Disabled'} ESP.`)end}))end function a.az()local aa,ab,
+ac=a.load'aw',a.load'ax',a.load'ay'local ad=ab:Window{Visible=true}return{Flags=
 aa,Esp=ac,Interface=ab,Window=ad,Tabs={Home=function(ae)end,Visuals=function(ae)
-end,Settings=function(ae)end,Config=function(ae)end}}end function a.az()local aa
+end,Settings=function(ae)end,Config=function(ae)end}}end function a.aA()local aa
 ={}function aa.GetPlayer()local ab,ac=pcall(function()return game:GetService
 'Players'end)return ab and(ac).LocalPlayer end function aa.GetCharacter(ab)local
 ac,ad=pcall(function()return ab and ab.Character end)return ac and ad end
 function aa.GetHumanoid(ab)local ac,ad=pcall(function()local ac=aa.GetCharacter(
 ab)return ac and ac:FindFirstChildOfClass'Humanoid'end)return ac and ad end
-return aa end function a.aA()local aa=function(aa)return game:GetService(aa)end
-return{Players=(aa'Players')}end function a.aB()return function(aa)local ab,ac,
-ad=a.load'ay',a.load'az',a.load'aA'local ae,af,ag,ah,ai,aj,ak=ab.Flags,ab.Esp,ab
+return aa end function a.aB()local aa=function(aa)return game:GetService(aa)end
+return{Players=(aa'Players')}end function a.aC()return function(aa)local ab,ac,
+ad=a.load'az',a.load'aA',a.load'aB'local ae,af,ag,ah,ai,aj,ak=ab.Flags,ab.Esp,ab
 .Interface,ab.Window,ab.Tabs,ac.GetPlayer(),ad.Players do ai.Home(aa)end do
 local al=ah:Tab{Name='Exploits'}al:Toggle{Name='Flight'}end do ai.Visuals(aa)end
 do local al=ai.Settings(aa)al:Toggle{Name='Dark Mode'}end do ai.Config(aa)end ah
 .Title=aa.Name end end end local aa=_G.ScriptHub_Cleanup if typeof(aa)==
 'function'then pcall(aa)end _G.ScriptHub_Cleanup=nil local ab=_G.ScriptHub_UI if
 typeof(ab)=='table'and typeof(ab.Unload)=='function'then pcall(ab.Unload,ab)end
-_G.ScriptHub_UI=nil local ac={{Name='DungeonQuest',Load=a.load'au',UniverseId=
+_G.ScriptHub_UI=nil local ac={{Name='DungeonQuest',Load=a.load'av',UniverseId=
 9931749389,Places={77649408247578,3220968688,2414851778}},{Name='Game 2',Load=a.
-load'aB',Places={123456789,987654321}}}for ad=1,300 do if game.GameId~=0 and
+load'aC',Places={123456789,987654321}}}for ad=1,300 do if game.GameId~=0 and
 game.PlaceId~=0 then break end task.wait(0.1)end for ad,ae in pairs(ac)do if ae.
 Places then for af,ag in ipairs(ae.Places)do if ag==game.PlaceId then return ae:
 Load()end end end if ae.UniverseId and ae.UniverseId==game.GameId then return ae

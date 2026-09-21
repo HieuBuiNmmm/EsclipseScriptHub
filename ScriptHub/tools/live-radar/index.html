@@ -429,6 +429,90 @@
       cursor: pointer;
       accent-color: var(--accent-cyan);
     }
+
+    /* Simon-Says Memory Dance Widget */
+    .canvas-memory-widget {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10, 16, 26, 0.92);
+      border: 1px solid rgba(0, 243, 255, 0.4);
+      box-shadow: 0 0 20px rgba(0, 243, 255, 0.2), 0 8px 32px rgba(0, 0, 0, 0.6);
+      border-radius: 8px;
+      padding: 8px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      z-index: 100;
+      pointer-events: none;
+      backdrop-filter: blur(8px);
+      transition: all 0.3s ease;
+    }
+
+    .memory-widget-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .memory-phase-badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .memory-phase-badge.hint {
+      background: rgba(255, 184, 0, 0.2);
+      border: 1px solid var(--accent-gold);
+      color: var(--accent-gold);
+    }
+    .memory-phase-badge.exec {
+      background: rgba(255, 42, 85, 0.2);
+      border: 1px solid var(--accent-red);
+      color: #ff99aa;
+    }
+
+    .memory-sequence-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .memory-step-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--card-border);
+      color: var(--text-muted);
+    }
+    .memory-step-pill.left { border-color: rgba(60, 208, 208, 0.4); color: #3cd0d0; }
+    .memory-step-pill.right { border-color: rgba(255, 107, 34, 0.4); color: #ff9944; }
+    .memory-step-pill.active {
+      border-color: var(--accent-green);
+      background: rgba(0, 255, 136, 0.2);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(0, 255, 136, 0.6);
+      transform: scale(1.08);
+    }
+
+    .memory-safe-callout {
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--accent-green);
+      text-shadow: 0 0 10px rgba(0, 255, 136, 0.6);
+    }
   </style>
 </head>
 <body>
@@ -494,6 +578,16 @@
     <!-- 2D Canvas Area -->
     <div class="canvas-container" id="canvasContainer">
       <canvas id="radarCanvas"></canvas>
+
+      <!-- Simon-Says Memory Dance Widget -->
+      <div class="canvas-memory-widget" id="memoryWidget" style="display: none;">
+        <div class="memory-widget-header">
+          <span>🧠 Simon-Says Memory Dance</span>
+          <span id="memoryPhaseBadge" class="memory-phase-badge hint">Recording</span>
+        </div>
+        <div class="memory-sequence-wrap" id="memorySequenceList"></div>
+        <div class="memory-safe-callout" id="memorySafeCallout">🟢 SAFE SIDE: RIGHT</div>
+      </div>
 
       <!-- Floating Controls -->
       <div class="canvas-overlay-controls">
@@ -742,6 +836,9 @@
       }
     }, 1000);
 
+    let reconnectAttempts = 0;
+    const wsEndpoints = ['ws://127.0.0.1:8765', 'ws://localhost:8765'];
+
     function connectWebSocket(customUrl = null) {
       if (ws) {
         try { ws.close(); } catch(e){}
@@ -755,7 +852,7 @@
           const host = window.location.host || '127.0.0.1:8765';
           wsUrl = `${protocol}//${host}`;
         } else {
-          wsUrl = 'ws://127.0.0.1:8765';
+          wsUrl = wsEndpoints[reconnectAttempts % wsEndpoints.length];
         }
       }
 
@@ -766,21 +863,26 @@
       const statusText = document.getElementById('statusText');
 
       statusPill.className = 'status-pill waiting';
-      statusText.innerText = 'CONNECTING...';
+      statusText.innerText = `CONNECTING (${wsUrl})...`;
+      console.log(`[Radar WebSocket] Attempting connection to: ${wsUrl}`);
 
       try {
         ws = new WebSocket(wsUrl);
       } catch (err) {
+        console.error('[Radar WebSocket] Constructor error:', err);
         statusPill.className = 'status-pill';
-        statusText.innerText = 'OFFLINE';
-        setTimeout(() => connectWebSocket(), 3000);
+        statusText.innerText = 'OFFLINE (RETRYING)';
+        reconnectAttempts++;
+        setTimeout(() => connectWebSocket(), 2000);
         return;
       }
 
       ws.onopen = () => {
         isConnected = true;
+        reconnectAttempts = 0;
         statusPill.className = 'status-pill waiting';
         statusText.innerText = 'SERVER READY • WAITING ROBLOX';
+        console.log(`[Radar WebSocket] Connected successfully to: ${wsUrl}`);
         addEventLog(`Connected to Relay Server: ${wsUrl}`, 'safe');
       };
 
@@ -793,17 +895,22 @@
           if (data && data.type === 'TELEMETRY') {
             processTelemetry(data);
           }
-        } catch (e) {}
+        } catch (e) {
+          console.warn('[Radar WebSocket] JSON parse error:', e);
+        }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         isConnected = false;
         statusPill.className = 'status-pill';
         statusText.innerText = 'OFFLINE (RETRYING)';
+        console.warn(`[Radar WebSocket] Connection closed (code: ${event.code}, reason: ${event.reason || 'None'}). Retrying in 2s...`);
+        reconnectAttempts++;
         setTimeout(() => connectWebSocket(), 2000);
       };
 
-      ws.onerror = () => {
+      ws.onerror = (err) => {
+        console.error('[Radar WebSocket] Error event:', err);
         try { ws.close(); } catch(e){}
       };
     }
@@ -814,6 +921,8 @@
     });
 
     let lastBossCastAnim = null;
+    let lastDomUpdate = 0;
+    let lastSeqHash = '';
 
     function processTelemetry(data) {
       telemetry = data;
@@ -837,7 +946,18 @@
           camera.x += (data.player.x - camera.x) * 0.15;
           camera.z += (data.player.z - camera.z) * 0.15;
         }
+      }
 
+      // Throttle heavy DOM updates to 10 FPS (100ms) to avoid DOM layout thrashing & freezing
+      const now = Date.now();
+      if (now - lastDomUpdate > 100) {
+        lastDomUpdate = now;
+        updateDomHud(data);
+      }
+    }
+
+    function updateDomHud(data) {
+      if (data.player) {
         const pBadge = document.getElementById('playerBadge');
         pBadge.innerText = `${data.player.name} (${Math.round(data.player.healthPercent || 100)}%)`;
       }
@@ -878,11 +998,59 @@
       const hCount = data.hazards ? data.hazards.length : 0;
       document.getElementById('hazardCountBadge').innerText = hCount;
 
-      if (data.hazards && data.hazards.length > 0) {
-        for (const h of data.hazards) {
-          console.log("[RADAR] h =", h);
-          console.log("[RADAR] polygons =", h.polygons);
+      // Simon-Says Memory Dance Widget Update
+      const memWidget = document.getElementById('memoryWidget');
+      if (data.memory && data.memory.active) {
+        memWidget.style.display = 'flex';
+        const phaseBadge = document.getElementById('memoryPhaseBadge');
+        const seqWrap = document.getElementById('memorySequenceList');
+        const callout = document.getElementById('memorySafeCallout');
+
+        if (data.memory.phase === 'HINT') {
+          phaseBadge.className = 'memory-phase-badge hint';
+          phaseBadge.innerText = `Recording (${data.memory.sequence ? data.memory.sequence.length : 0} steps)`;
+          callout.innerText = `🧠 Ghi nhớ: ${data.memory.sequence ? data.memory.sequence.length : 0} nhịp đã xuất hiện`;
+          callout.style.color = 'var(--accent-gold)';
+        } else {
+          phaseBadge.className = 'memory-phase-badge exec';
+          phaseBadge.innerText = `Executing (Step ${data.memory.currentStep || 1}/${data.memory.totalSteps || 1})`;
+          if (data.memory.safeSide) {
+            callout.innerText = `🟢 ĐỨNG BÊN: ${data.memory.safeSide === 'LEFT' ? '⬅️ TRÁI (LEFT)' : '➡️ PHẢI (RIGHT)'}`;
+            callout.style.color = 'var(--accent-green)';
+          } else {
+            callout.innerText = `⚡ Chuẩn bị đòn đánh tiếp theo...`;
+            callout.style.color = 'var(--accent-cyan)';
+          }
         }
+
+        const seq = data.memory.sequence || [];
+        const currentSeqHash = `${data.memory.phase}_${data.memory.currentStep}_${seq.join(',')}`;
+        if (currentSeqHash !== lastSeqHash) {
+          lastSeqHash = currentSeqHash;
+          let seqHtml = '';
+          for (let i = 0; i < seq.length; i++) {
+            const stepNum = i + 1;
+            const side = seq[i];
+            const isCurrent = (data.memory.phase === 'EXECUTION' && stepNum === data.memory.currentStep);
+            const icon = side === 'LEFT' ? '⬅️ L' : '➡️ R';
+            const sideClass = side ? side.toLowerCase() : '';
+            const activeClass = isCurrent ? 'active' : '';
+
+            seqHtml += `
+              <div class="memory-step-pill ${sideClass} ${activeClass}">
+                <span>#${stepNum}</span>
+                <span>${icon}</span>
+              </div>
+            `;
+            if (i < seq.length - 1) {
+              seqHtml += `<span style="color: var(--text-muted); font-size: 10px;">➔</span>`;
+            }
+          }
+          seqWrap.innerHTML = seqHtml || '<span style="font-size: 11px; color: var(--text-muted);">Waiting for flashes...</span>';
+        }
+      } else {
+        memWidget.style.display = 'none';
+        lastSeqHash = '';
       }
 
       updateHazardInspector(data.hazards);
@@ -1101,9 +1269,6 @@
       const fillColor = hexToRgba(hexColor, baseAlpha);
       const strokeColor = hexColor;
 
-      ctx.shadowColor = hexColor;
-      ctx.shadowBlur = 8;
-
       if (h.shape === 'compound_multiring') {
         const p = worldToScreen(h.x, h.z);
         const yawDeg = h.yaw || 0;
@@ -1228,10 +1393,11 @@
           }
         } else {
           const p = worldToScreen(h.x, h.z);
-          const wPx = h.halfX * 2 * camera.zoom;
-          const hPx = h.halfZ * 2 * camera.zoom;
+          const wPx = (h.halfX || 5) * 2 * camera.zoom;
+          const hPx = (h.halfZ || 5) * 2 * camera.zoom;
           const radYaw = (h.yaw || 0) * Math.PI / 180;
 
+          ctx.save();
           ctx.translate(p.x, p.y);
           ctx.rotate(radYaw);
 
@@ -1249,6 +1415,7 @@
             ctx.lineWidth = 2;
             ctx.stroke();
           }
+          ctx.restore();
         }
       } else if (h.shape === 'polygon' || h.vertices) {
         const pts = h.vertices || h.points;
@@ -1268,10 +1435,11 @@
         }
       } else if (h.shape === 'beam') {
         const p = worldToScreen(h.x, h.z);
-        const lenPx = h.length * camera.zoom;
-        const wPx = h.width * camera.zoom;
+        const lenPx = (h.length || 20) * camera.zoom;
+        const wPx = (h.width || 6) * camera.zoom;
         const radYaw = (h.yaw || 0) * Math.PI / 180;
 
+        ctx.save();
         ctx.translate(p.x, p.y);
         ctx.rotate(radYaw);
 
@@ -1280,6 +1448,7 @@
         ctx.strokeStyle = '#ff8c00';
         ctx.lineWidth = 2;
         ctx.strokeRect(-wPx / 2, -lenPx / 2, wPx, lenPx);
+        ctx.restore();
       }
       ctx.restore();
 
@@ -1594,6 +1763,78 @@
         const isCasting = (tick % 60) > 35;
         const castProgress = isCasting ? ((tick % 60) - 35) / 25 : 0;
 
+        // Simon-Says Memory Dance Simulation
+        const simCycle = Math.floor(tick / 60) % 8;
+        const simSeq = ['LEFT', 'LEFT', 'RIGHT', 'RIGHT'];
+        let simMemory = null;
+        let memHazards = [];
+
+        if (simCycle >= 0 && simCycle <= 3) {
+          simMemory = {
+            active: true,
+            phase: 'HINT',
+            sequence: simSeq.slice(0, simCycle + 1),
+            currentStep: 0,
+            totalSteps: 4,
+            safeSide: null,
+          };
+          const flashSide = simSeq[simCycle];
+          const isLeft = flashSide === 'LEFT';
+          memHazards.push({
+            name: `bonusBossMemoryModel/${isLeft ? 'leftPrecastGood' : 'rightPrecastGood'}`,
+            shape: 'box',
+            x: isLeft ? -15 : 15,
+            y: 0,
+            z: 0,
+            halfX: 14,
+            halfZ: 30,
+            yaw: 0,
+            color: '#22ff88',
+            transparency: 0.35,
+            motionType: 'STATIC',
+          });
+        } else if (simCycle >= 4 && simCycle <= 7) {
+          const step = (simCycle - 3);
+          const safeSide = simSeq[step - 1]; // Safe side matches the memorized hint
+          const attackSide = safeSide === 'LEFT' ? 'RIGHT' : 'LEFT'; // Danger side is opposite
+          simMemory = {
+            active: true,
+            phase: 'EXECUTION',
+            sequence: simSeq,
+            currentStep: step,
+            totalSteps: 4,
+            currentAttackSide: attackSide,
+            safeSide: safeSide,
+          };
+          const isLeftAttack = attackSide === 'LEFT';
+          memHazards.push({
+            name: `bonusBossMemoryModel/${isLeftAttack ? 'leftHitbox' : 'rightHitbox'}`,
+            shape: 'box',
+            x: isLeftAttack ? -15 : 15,
+            y: 0,
+            z: 0,
+            halfX: 14,
+            halfZ: 30,
+            yaw: 0,
+            color: '#ff2a55',
+            transparency: 0.25,
+            motionType: 'STATIC',
+          });
+          memHazards.push({
+            name: `bonusBossMemoryModel/${isLeftAttack ? 'rightPrecastGood' : 'leftPrecastGood'}`,
+            shape: 'box',
+            x: isLeftAttack ? 15 : -15,
+            y: 0,
+            z: 0,
+            halfX: 14,
+            halfZ: 30,
+            yaw: 0,
+            color: '#22ff88',
+            transparency: 0.45,
+            motionType: 'STATIC',
+          });
+        }
+
         processTelemetry({
           type: 'TELEMETRY',
           version: 'V2',
@@ -1627,6 +1868,7 @@
             arenaCenterX: 0, arenaCenterZ: 0, arenaRadius: 75,
           },
           hazards: [
+            ...memHazards,
             // Pharaoh Lord Multi Rings (Ground Truth compound_multiring)
             {
               name: 'thirdBossMultiRings',
@@ -1665,6 +1907,7 @@
             },
           ],
           enemies: [],
+          memory: simMemory,
         });
       }, 33);
     }

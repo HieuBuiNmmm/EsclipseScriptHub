@@ -112,6 +112,16 @@ function analyzer.AnalyzeHazardPart(part)
 		hexColor = "#ff6b22"
 	end
 
+	-- Xử lý màu riêng cho bonusBossMemoryModel (Good = Xanh lá #22ff88, Danger/Hitbox = Đỏ #ff2a55)
+	if filter.IsMemoryModel(part) or (part.Parent and filter.IsMemoryModel(part.Parent)) then
+		local pLower = part.Name:lower()
+		if pLower:find("good") then
+			hexColor = "#22ff88"
+		else
+			hexColor = "#ff2a55"
+		end
+	end
+
 	-- Xử lý scale nếu có SpecialMesh
 	local mesh = part:FindFirstChildWhichIsA("SpecialMesh", true)
 	if mesh then

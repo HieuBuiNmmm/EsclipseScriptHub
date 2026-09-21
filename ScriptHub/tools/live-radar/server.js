@@ -262,11 +262,11 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, () => {
   console.log('====================================================');
   console.log(`🚀 Live 2D Radar & Boss Simulator Relay Server`);
-  console.log(`🌐 Web UI URL:       http://localhost:${PORT}`);
-  console.log(`📡 WebSocket URL:    ws://localhost:${PORT}`);
+  console.log(`🌐 Web UI URL:       http://localhost:${PORT} or http://127.0.0.1:${PORT}`);
+  console.log(`📡 WebSocket URL:    ws://localhost:${PORT} or ws://127.0.0.1:${PORT}`);
   console.log('====================================================');
   console.log('Waiting for Roblox script & Web browser to connect...\n');
 });

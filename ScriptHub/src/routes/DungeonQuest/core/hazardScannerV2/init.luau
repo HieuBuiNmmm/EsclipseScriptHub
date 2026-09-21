@@ -13,6 +13,7 @@ local filter = require("@routes/DungeonQuest/core/hazardScannerV2/filter")
 local analyzer = require("@routes/DungeonQuest/core/hazardScannerV2/analyzer")
 local motion = require("@routes/DungeonQuest/core/hazardScannerV2/motion")
 local bossWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/bossWatcher")
+local memoryWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/memoryWatcher")
 
 --// Table
 local hazardScannerV2 = {}
@@ -57,6 +58,8 @@ local function registerHazardPart(part, level1Child)
 		displayName = rootName
 	elseif filter.IsSweepingFlames(rootName) and part.Parent and part.Parent ~= level1Child then
 		displayName = rootName .. "/" .. part.Parent.Name
+	elseif filter.IsMemoryModel(rootName) then
+		displayName = rootName .. "/" .. part.Name
 	end
 
 	activeHazards[part] = {
@@ -150,6 +153,9 @@ local function onHeartbeat()
 	local deadList = {}
 	local now = os.clock()
 
+	-- Cập nhật bộ theo dõi Memory Game của Bonus Boss
+	memoryWatcher.Update(now)
+
 	for part, data in pairs(activeHazards) do
 		-- 1. Kiểm tra tồn tại trong Workspace Hierarchy
 		if not part or not part:IsDescendantOf(Workspace) then
@@ -169,6 +175,10 @@ local function onHeartbeat()
 		local isSweepingFlames = filter.IsSweepingFlames(data.name)
 			or filter.IsSweepingFlames(part)
 			or (data.level1Parent and filter.IsSweepingFlames(data.level1Parent))
+
+		local isMemoryModel = filter.IsMemoryModel(data.name)
+			or filter.IsMemoryModel(part)
+			or (data.level1Parent and filter.IsMemoryModel(data.level1Parent))
 
 		-- 2. Kiểm tra sống/chết cho MultiRing
 		if isMultiRing then
@@ -219,6 +229,23 @@ local function onHeartbeat()
 				table.insert(deadList, part)
 				continue
 			end
+		elseif isMemoryModel then
+			-- Kiểm tra part của bonusBossMemoryModel còn active không
+			local isStillActive = false
+			if part.Transparency <= 0.85 then
+				isStillActive = true
+			else
+				local emitter = part:FindFirstChildWhichIsA("ParticleEmitter")
+				if emitter and emitter.Enabled then
+					isStillActive = true
+				end
+			end
+
+			local age = now - data.spawnTime
+			if not isStillActive or age > 2.5 then
+				table.insert(deadList, part)
+				continue
+			end
 		else
 			-- 3. Hazard thông thường: Bỏ nếu độ trong suốt > 0.85
 			if part.Transparency > 0.85 then
@@ -242,11 +269,19 @@ local function onHeartbeat()
 		unregisterHazardPart(dead)
 	end
 
-	-- 5. Quét bổ sung các tia mới kích hoạt theo tuần tự bên trong các Model Sweeping Flames
+	-- 5. Quét bổ sung các tia mới kích hoạt theo tuần tự bên trong các Model Sweeping Flames & Memory Model
 	for _, child in ipairs(Workspace:GetChildren()) do
 		if filter.IsSweepingFlames(child) and child:IsA("Model") then
 			for _, desc in ipairs(child:GetDescendants()) do
 				if desc:IsA("BasePart") and desc.Name:lower() == "precast" and not activeHazards[desc] then
+					if filter.IsHazardPart(desc, child) then
+						registerHazardPart(desc, child)
+					end
+				end
+			end
+		elseif filter.IsMemoryModel(child) and child:IsA("Model") then
+			for _, desc in ipairs(child:GetDescendants()) do
+				if desc:IsA("BasePart") and not activeHazards[desc] then
 					if filter.IsHazardPart(desc, child) then
 						registerHazardPart(desc, child)
 					end
@@ -264,6 +299,7 @@ function hazardScannerV2.StartScan()
 	table.clear(activeHazards)
 	table.clear(childConnections)
 	motion.ClearAll()
+	memoryWatcher.Reset()
 
 	-- CHỈ lắng nghe sự kiện Level 1 trên Workspace
 	table.insert(connections, Workspace.ChildAdded:Connect(onWorkspaceChildAdded))
@@ -301,6 +337,7 @@ function hazardScannerV2.StopScan()
 
 	table.clear(activeHazards)
 	motion.ClearAll()
+	memoryWatcher.Reset()
 end
 
 function hazardScannerV2.IsEnabled()
@@ -400,6 +437,11 @@ end
 -- Lấy Boss & Animation Telegraph Telemetry
 function hazardScannerV2.GetBossTelegraphTelemetry()
 	return bossWatcher.GetBossTelegraphData()
+end
+
+-- Lấy Dữ liệu Simon-Says Memory Dance Telemetry
+function hazardScannerV2.GetMemoryGameTelemetry()
+	return memoryWatcher.GetMemoryTelemetry()
 end
 
 -- Dọn dẹp khi shutdown

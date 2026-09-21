@@ -153,6 +153,15 @@ function filter.IsSweepingFlames(nameOrInstance)
 		or string.find(clean, "sweepingflames", 1, true) ~= nil
 end
 
+-- Kiểm tra xem 1 tên hoặc instance có phải là chiêu bonusBossMemoryModel không
+function filter.IsMemoryModel(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	return string.find(clean, "bonusbossmemorymodel", 1, true) ~= nil 
+		or string.find(clean, "memorymodel", 1, true) ~= nil
+end
+
 -- Kiểm tra xem một BasePart có phải là Hazard Part hợp lệ hay không
 function filter.IsHazardPart(part, hazardContext)
 	if not part or not part:IsA("BasePart") or not part.Parent then
@@ -201,6 +210,27 @@ function filter.IsHazardPart(part, hazardContext)
 			return false
 		end
 		-- Bỏ qua hitBox, PrimaryPart và các part phụ khác
+		return false
+	end
+
+	-- NGOẠI LỆ 4: bonusBossMemoryModel (Quét các part Precast / PrecastGood / Hitbox khi active)
+	local isMemory = filter.IsMemoryModel(part)
+		or (part.Parent and filter.IsMemoryModel(part.Parent))
+		or (hazardContext and filter.IsMemoryModel(hazardContext))
+
+	if isMemory then
+		local pLower = part.Name:lower()
+		if pLower == "primarypart" then return false end
+		if pLower:find("precast") or pLower:find("hitbox") then
+			if part.Transparency <= 0.85 then
+				return true
+			end
+			local emitter = part:FindFirstChildWhichIsA("ParticleEmitter")
+			if emitter and emitter.Enabled then
+				return true
+			end
+			return false
+		end
 		return false
 	end
 
