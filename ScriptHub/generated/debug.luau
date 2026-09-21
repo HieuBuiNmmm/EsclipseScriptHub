@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-20T23:01:20.100689700+00:00",
+    genDate = "2026-09-21T00:15:30.483606300+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -8432,6 +8432,58 @@ local function getForwardVector2D(instance, mainPart)
 	return Vector3.new(0, 0, -1)
 end
 
+--// Danh sách phần thân đã qua pipeline lọc của detection (LỚP 2 + LỚP 3) — single source of truth.
+--// Geometry KHÔNG tự quét lại descendants: chỉ nhận list này và loại bỏ part đã mờ lúc build.
+--// Trả về nil nếu hazard chưa có Parts (legacy) -> dùng fallback quét cũ.
+local function getHazardPartList(hazardInfo)
+	local raw = hazardInfo and hazardInfo.Parts
+	if type(raw) ~= "table" then return nil end
+	local alive = {}
+	for _, p in ipairs(raw) do
+		if isPartAlive(p) then
+			alive[#alive + 1] = p
+		end
+	end
+	return alive
+end
+
+--// Chọn part đại diện cho hazard: ưu tiên Parts từ detection, fallback quét descendants (legacy)
+local function resolveMainPart(instance, detectedParts)
+	if detectedParts and detectedParts[1] and isPartAlive(detectedParts[1]) then
+		return detectedParts[1]
+	end
+	if instance:IsA("BasePart") then
+		return isPartAlive(instance) and instance or nil
+	end
+	if instance:IsA("Model") then
+		if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
+			return instance.PrimaryPart
+		end
+		for _, desc in ipairs(instance:GetDescendants()) do
+			if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+				return desc
+			end
+		end
+	end
+	return nil
+end
+
+--// Quét descendants để lấy part còn sống (chỉ dùng cho hazard legacy chưa có Parts từ pipeline detection)
+local function scanAliveParts(instance)
+	if instance:IsA("BasePart") then
+		if isPartAlive(instance) then return { instance } end
+		return {}
+	end
+	local parts = {}
+	for _, desc in ipairs(instance:GetDescendants()) do
+		if #parts >= MAX_PARTS_PER_HAZARD then break end
+		if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+			parts[#parts + 1] = desc
+		end
+	end
+	return parts
+end
+
 --// Chuan bi danh sach zone + bounding radius cua 1 hazard (cache vao info.HazardZones)
 local function buildHazardZones(hazardInfo)
 	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then return nil end
@@ -8441,25 +8493,12 @@ local function buildHazardZones(hazardInfo)
 	local forceCircle = isForceCircle(hazardName)
 	local isTrajectory = hazardInfo.IsTrajectory == true
 	local pad = isTrajectory and trajectoryMargin or hazardPadding
-	local parts
+	local detectedParts = getHazardPartList(hazardInfo)
+	local parts = detectedParts
 
 	if isIceSpikesChain(hazardName) then
 		local maxRadius = getLargeIceSpikesMaxRadius()
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
-				mainPart = instance.PrimaryPart
-			else
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
+		local mainPart = resolveMainPart(instance, detectedParts)
 
 		if not mainPart then return nil end
 
@@ -8481,21 +8520,7 @@ local function buildHazardZones(hazardInfo)
 	end
 
 	if isSecondBossCircleChain(hazardName) then
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
-				mainPart = instance.PrimaryPart
-			else
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
+		local mainPart = resolveMainPart(instance, detectedParts)
 
 		if not mainPart then return nil end
 
@@ -8560,20 +8585,7 @@ local function buildHazardZones(hazardInfo)
 	end
 
 	if isBigSpike(hazardName) then
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
-			if not mainPart or not isPartAlive(mainPart) then
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
+		local mainPart = resolveMainPart(instance, detectedParts)
 
 		if not mainPart then return nil end
 
@@ -8607,19 +8619,11 @@ local function buildHazardZones(hazardInfo)
 		}
 	end
 
-	if instance:IsA("BasePart") then
-		if not isPartAlive(instance) then return nil end
-		parts = { instance }
-	else
-		parts = {}
-		for _, desc in ipairs(instance:GetDescendants()) do
-			if #parts >= MAX_PARTS_PER_HAZARD then break end
-			if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-				parts[#parts + 1] = desc
-			end
-		end
-		if #parts == 0 then return nil end
+	if not parts then
+		-- Legacy hazard (chưa đi qua pipeline detection Parts): quét descendants như cũ
+		parts = scanAliveParts(instance)
 	end
+	if #parts == 0 then return nil end
 
 	local zones = {}
 	local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
@@ -10362,15 +10366,21 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	end
 
 	local mainPart = nil
-	if inst:IsA("BasePart") then
-		mainPart = inst
+	local detectedParts = hazardInfo.Parts
+	if type(detectedParts) == "table" and detectedParts[1] and detectedParts[1].Parent then
+		-- Cùng part detection đã chốt (info.Parts) — single source of truth với box/zones/geometry
+		mainPart = detectedParts[1]
 	else
-		mainPart = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
-		if not mainPart then
-			for _, desc in ipairs(inst:GetDescendants()) do
-				if desc:IsA("BasePart") and desc.Parent then
-					mainPart = desc
-					break
+		if inst:IsA("BasePart") then
+			mainPart = inst
+		else
+			mainPart = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+			if not mainPart then
+				for _, desc in ipairs(inst:GetDescendants()) do
+					if desc:IsA("BasePart") and desc.Parent then
+						mainPart = desc
+						break
+					end
 				end
 			end
 		end
@@ -11502,60 +11512,61 @@ local function isBeamTelegraph(name)
 	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
 end
 
---// Gom danh sách BasePart của instance (BasePart -> chính nó; Model/Folder -> các BasePart descendant).
---// allowTransparent = true: giữ cả part đang mờ (chỉ dùng cho ngoại lệ tia telegraph)
-local function getPartsIncluding(instance, allowTransparent)
+--// Gate chính về parts: chỉ part còn rõ (Transparency <= 0.85), mỗi object chỉ giữ 1 part LỚN NHẤT
+--// để làm đại diện (tránh vẽ không cần thiết). Hình dạng đặc biệt cần nhiều part sẽ được
+--// bổ sung thêm quy tắc trong LỚP 3 khi cần.
+local function getDangerParts(instance)
 	if not instance then return {} end
-	local parts = {}
-	local function addPart(part)
-		if part and part.Parent then
-			if allowTransparent or part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
-				parts[#parts + 1] = part
-			end
+	local best = nil
+	local bestVolume = 0
+	local function consider(part)
+		local size = part.Size
+		local volume = math.max(size.X, 1) * math.max(size.Y, 1) * math.max(size.Z, 1)
+		if volume > bestVolume then
+			bestVolume = volume
+			best = part
 		end
 	end
 	if instance:IsA("BasePart") then
-		addPart(instance)
+		if instance.Parent and instance.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+			consider(instance)
+		end
 	else
 		for _, desc in ipairs(instance:GetDescendants()) do
-			if desc:IsA("BasePart") and desc.Parent then
-				addPart(desc)
+			if desc:IsA("BasePart") and desc.Parent and desc.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+				consider(desc)
 			end
 		end
 	end
-	return parts
-end
-
---// Gate chính về parts: chỉ part còn rõ (Transparency <= 0.85) mới tính là danger zone
-local function getBaseParts(instance)
-	return getPartsIncluding(instance, false)
-end
-
---// Gate chính về parts kết hợp ngoại lệ LỚP 3: tia telegraph của Boss 1 được dựng zone dù đang mờ
-local function getDangerParts(instance)
-	if isBeamTelegraph(instance.Name) then
-		return getPartsIncluding(instance, true)
+	if best then
+		return { best }
 	end
-	return getBaseParts(instance)
+	return {}
 end
 
 --// ============================================================
 --// LỚP 3: QUY TẮC ĐẶC BIỆT (ngoại lệ theo boss/chiêu riêng)
 --// Trả về (reason, skipBoxes): reject nếu có reason, ngược lại skipBoxes = bỏ vẽ SelectionBox
 --// ============================================================
-local function checkSpecialRules(instance)
+local function checkSpecialRules(instance, parts)
 	local isIceSpikes = geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(instance.Name)
 	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
 
 	if isSecondBossChain then
 		local now = os.clock()
 		if now - lastIceSpikesChainTime < SECOND_BOSS_CHAIN_INTERVAL then
-			return "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)", true
+			return "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)", true, false
 		end
 		lastIceSpikesChainTime = now
 	end
 
-	return nil, (isIceSpikes or isSecondBossChain)
+	-- Tia telegraph của Boss 1: không vẽ box, nhưng được phép register dù part đã mờ
+	-- (trajectory tự dựng hành lang corridor từ data model của chính nó)
+	if isBeamTelegraph(instance.Name) then
+		return nil, true, (#parts == 0)
+	end
+
+	return nil, (isIceSpikes or isSecondBossChain), false
 end
 
 --// ============================================================
@@ -11738,7 +11749,7 @@ registerHazard = function(instance)
 		return false
 	end
 
-	-- LỚP 2: gate chính (dedup -> định danh -> parts)
+	-- LỚP 2: gate chính (dedup -> định danh -> thu 1 part lớn nhất)
 	if activeHazards[instance] then return true end
 	local denyReason = checkTargetFilters(instance)
 	if denyReason then
@@ -11746,16 +11757,17 @@ registerHazard = function(instance)
 		return false
 	end
 	local parts = getDangerParts(instance)
-	if #parts == 0 then
-		logReject(instance, "Chưa có part để vẽ (sẽ retry)")
-		retryRegister(instance)
+
+	-- LỚP 3: quy tắc đặc biệt (có thể cho phép đăng ký dù không còn part nhìn thấy)
+	local ruleReason, skipBoxes, allowsEmpty = checkSpecialRules(instance, parts)
+	if ruleReason then
+		logReject(instance, ruleReason)
 		return false
 	end
 
-	-- LỚP 3: quy tắc đặc biệt
-	local ruleReason, skipBoxes = checkSpecialRules(instance)
-	if ruleReason then
-		logReject(instance, ruleReason)
+	if #parts == 0 and not allowsEmpty then
+		logReject(instance, "Chưa có part để vẽ (sẽ retry)")
+		retryRegister(instance)
 		return false
 	end
 
@@ -11766,6 +11778,7 @@ registerHazard = function(instance)
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Distance = distance,
+		Parts = parts,
 		Boxes = {},
 		Connections = {},
 		SpawnClock = os.clock(),

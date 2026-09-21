@@ -195,60 +195,61 @@ local function isBeamTelegraph(name)
 	return string.find(clean, "firstbossbeampart", 1, true) ~= nil
 end
 
---// Gom danh sách BasePart của instance (BasePart -> chính nó; Model/Folder -> các BasePart descendant).
---// allowTransparent = true: giữ cả part đang mờ (chỉ dùng cho ngoại lệ tia telegraph)
-local function getPartsIncluding(instance, allowTransparent)
+--// Gate chính về parts: chỉ part còn rõ (Transparency <= 0.85), mỗi object chỉ giữ 1 part LỚN NHẤT
+--// để làm đại diện (tránh vẽ không cần thiết). Hình dạng đặc biệt cần nhiều part sẽ được
+--// bổ sung thêm quy tắc trong LỚP 3 khi cần.
+local function getDangerParts(instance)
 	if not instance then return {} end
-	local parts = {}
-	local function addPart(part)
-		if part and part.Parent then
-			if allowTransparent or part.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
-				parts[#parts + 1] = part
-			end
+	local best = nil
+	local bestVolume = 0
+	local function consider(part)
+		local size = part.Size
+		local volume = math.max(size.X, 1) * math.max(size.Y, 1) * math.max(size.Z, 1)
+		if volume > bestVolume then
+			bestVolume = volume
+			best = part
 		end
 	end
 	if instance:IsA("BasePart") then
-		addPart(instance)
+		if instance.Parent and instance.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+			consider(instance)
+		end
 	else
 		for _, desc in ipairs(instance:GetDescendants()) do
-			if desc:IsA("BasePart") and desc.Parent then
-				addPart(desc)
+			if desc:IsA("BasePart") and desc.Parent and desc.Transparency <= FADE_TRANSPARENCY_THRESHOLD then
+				consider(desc)
 			end
 		end
 	end
-	return parts
-end
-
---// Gate chính về parts: chỉ part còn rõ (Transparency <= 0.85) mới tính là danger zone
-local function getBaseParts(instance)
-	return getPartsIncluding(instance, false)
-end
-
---// Gate chính về parts kết hợp ngoại lệ LỚP 3: tia telegraph của Boss 1 được dựng zone dù đang mờ
-local function getDangerParts(instance)
-	if isBeamTelegraph(instance.Name) then
-		return getPartsIncluding(instance, true)
+	if best then
+		return { best }
 	end
-	return getBaseParts(instance)
+	return {}
 end
 
 --// ============================================================
 --// LỚP 3: QUY TẮC ĐẶC BIỆT (ngoại lệ theo boss/chiêu riêng)
 --// Trả về (reason, skipBoxes): reject nếu có reason, ngược lại skipBoxes = bỏ vẽ SelectionBox
 --// ============================================================
-local function checkSpecialRules(instance)
+local function checkSpecialRules(instance, parts)
 	local isIceSpikes = geometry.IsIceSpikesChain and geometry.IsIceSpikesChain(instance.Name)
 	local isSecondBossChain = geometry.IsSecondBossCircleChain and geometry.IsSecondBossCircleChain(instance.Name)
 
 	if isSecondBossChain then
 		local now = os.clock()
 		if now - lastIceSpikesChainTime < SECOND_BOSS_CHAIN_INTERVAL then
-			return "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)", true
+			return "Vòng con của chuỗi secondBossCricleHitbox (đã dựng trước 10 vòng)", true, false
 		end
 		lastIceSpikesChainTime = now
 	end
 
-	return nil, (isIceSpikes or isSecondBossChain)
+	-- Tia telegraph của Boss 1: không vẽ box, nhưng được phép register dù part đã mờ
+	-- (trajectory tự dựng hành lang corridor từ data model của chính nó)
+	if isBeamTelegraph(instance.Name) then
+		return nil, true, (#parts == 0)
+	end
+
+	return nil, (isIceSpikes or isSecondBossChain), false
 end
 
 --// ============================================================
@@ -431,7 +432,7 @@ registerHazard = function(instance)
 		return false
 	end
 
-	-- LỚP 2: gate chính (dedup -> định danh -> parts)
+	-- LỚP 2: gate chính (dedup -> định danh -> thu 1 part lớn nhất)
 	if activeHazards[instance] then return true end
 	local denyReason = checkTargetFilters(instance)
 	if denyReason then
@@ -439,16 +440,17 @@ registerHazard = function(instance)
 		return false
 	end
 	local parts = getDangerParts(instance)
-	if #parts == 0 then
-		logReject(instance, "Chưa có part để vẽ (sẽ retry)")
-		retryRegister(instance)
+
+	-- LỚP 3: quy tắc đặc biệt (có thể cho phép đăng ký dù không còn part nhìn thấy)
+	local ruleReason, skipBoxes, allowsEmpty = checkSpecialRules(instance, parts)
+	if ruleReason then
+		logReject(instance, ruleReason)
 		return false
 	end
 
-	-- LỚP 3: quy tắc đặc biệt
-	local ruleReason, skipBoxes = checkSpecialRules(instance)
-	if ruleReason then
-		logReject(instance, ruleReason)
+	if #parts == 0 and not allowsEmpty then
+		logReject(instance, "Chưa có part để vẽ (sẽ retry)")
+		retryRegister(instance)
 		return false
 	end
 
@@ -459,6 +461,7 @@ registerHazard = function(instance)
 		Name = instance.Name,
 		Class = instance.ClassName,
 		Distance = distance,
+		Parts = parts,
 		Boxes = {},
 		Connections = {},
 		SpawnClock = os.clock(),

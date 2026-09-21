@@ -392,6 +392,58 @@ local function getForwardVector2D(instance, mainPart)
 	return Vector3.new(0, 0, -1)
 end
 
+--// Danh sách phần thân đã qua pipeline lọc của detection (LỚP 2 + LỚP 3) — single source of truth.
+--// Geometry KHÔNG tự quét lại descendants: chỉ nhận list này và loại bỏ part đã mờ lúc build.
+--// Trả về nil nếu hazard chưa có Parts (legacy) -> dùng fallback quét cũ.
+local function getHazardPartList(hazardInfo)
+	local raw = hazardInfo and hazardInfo.Parts
+	if type(raw) ~= "table" then return nil end
+	local alive = {}
+	for _, p in ipairs(raw) do
+		if isPartAlive(p) then
+			alive[#alive + 1] = p
+		end
+	end
+	return alive
+end
+
+--// Chọn part đại diện cho hazard: ưu tiên Parts từ detection, fallback quét descendants (legacy)
+local function resolveMainPart(instance, detectedParts)
+	if detectedParts and detectedParts[1] and isPartAlive(detectedParts[1]) then
+		return detectedParts[1]
+	end
+	if instance:IsA("BasePart") then
+		return isPartAlive(instance) and instance or nil
+	end
+	if instance:IsA("Model") then
+		if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
+			return instance.PrimaryPart
+		end
+		for _, desc in ipairs(instance:GetDescendants()) do
+			if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+				return desc
+			end
+		end
+	end
+	return nil
+end
+
+--// Quét descendants để lấy part còn sống (chỉ dùng cho hazard legacy chưa có Parts từ pipeline detection)
+local function scanAliveParts(instance)
+	if instance:IsA("BasePart") then
+		if isPartAlive(instance) then return { instance } end
+		return {}
+	end
+	local parts = {}
+	for _, desc in ipairs(instance:GetDescendants()) do
+		if #parts >= MAX_PARTS_PER_HAZARD then break end
+		if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
+			parts[#parts + 1] = desc
+		end
+	end
+	return parts
+end
+
 --// Chuan bi danh sach zone + bounding radius cua 1 hazard (cache vao info.HazardZones)
 local function buildHazardZones(hazardInfo)
 	if not hazardInfo or not hazardInfo.Instance or not hazardInfo.Instance.Parent then return nil end
@@ -401,25 +453,12 @@ local function buildHazardZones(hazardInfo)
 	local forceCircle = isForceCircle(hazardName)
 	local isTrajectory = hazardInfo.IsTrajectory == true
 	local pad = isTrajectory and trajectoryMargin or hazardPadding
-	local parts
+	local detectedParts = getHazardPartList(hazardInfo)
+	local parts = detectedParts
 
 	if isIceSpikesChain(hazardName) then
 		local maxRadius = getLargeIceSpikesMaxRadius()
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
-				mainPart = instance.PrimaryPart
-			else
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
+		local mainPart = resolveMainPart(instance, detectedParts)
 
 		if not mainPart then return nil end
 
@@ -441,21 +480,7 @@ local function buildHazardZones(hazardInfo)
 	end
 
 	if isSecondBossCircleChain(hazardName) then
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			if instance.PrimaryPart and isPartAlive(instance.PrimaryPart) then
-				mainPart = instance.PrimaryPart
-			else
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
+		local mainPart = resolveMainPart(instance, detectedParts)
 
 		if not mainPart then return nil end
 
@@ -520,20 +545,7 @@ local function buildHazardZones(hazardInfo)
 	end
 
 	if isBigSpike(hazardName) then
-		local mainPart = nil
-		if instance:IsA("BasePart") then
-			mainPart = isPartAlive(instance) and instance or nil
-		elseif instance:IsA("Model") then
-			mainPart = instance.PrimaryPart or instance:FindFirstChildWhichIsA("BasePart")
-			if not mainPart or not isPartAlive(mainPart) then
-				for _, desc in ipairs(instance:GetDescendants()) do
-					if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-						mainPart = desc
-						break
-					end
-				end
-			end
-		end
+		local mainPart = resolveMainPart(instance, detectedParts)
 
 		if not mainPart then return nil end
 
@@ -567,19 +579,11 @@ local function buildHazardZones(hazardInfo)
 		}
 	end
 
-	if instance:IsA("BasePart") then
-		if not isPartAlive(instance) then return nil end
-		parts = { instance }
-	else
-		parts = {}
-		for _, desc in ipairs(instance:GetDescendants()) do
-			if #parts >= MAX_PARTS_PER_HAZARD then break end
-			if desc:IsA("BasePart") and isPartAlive(desc) and desc.Parent then
-				parts[#parts + 1] = desc
-			end
-		end
-		if #parts == 0 then return nil end
+	if not parts then
+		-- Legacy hazard (chưa đi qua pipeline detection Parts): quét descendants như cũ
+		parts = scanAliveParts(instance)
 	end
+	if #parts == 0 then return nil end
 
 	local zones = {}
 	local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge

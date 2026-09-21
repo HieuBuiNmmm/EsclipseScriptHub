@@ -736,15 +736,21 @@ function trajectory.AttachTrajectoryVisuals(hazardInfo)
 	end
 
 	local mainPart = nil
-	if inst:IsA("BasePart") then
-		mainPart = inst
+	local detectedParts = hazardInfo.Parts
+	if type(detectedParts) == "table" and detectedParts[1] and detectedParts[1].Parent then
+		-- Cùng part detection đã chốt (info.Parts) — single source of truth với box/zones/geometry
+		mainPart = detectedParts[1]
 	else
-		mainPart = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
-		if not mainPart then
-			for _, desc in ipairs(inst:GetDescendants()) do
-				if desc:IsA("BasePart") and desc.Parent then
-					mainPart = desc
-					break
+		if inst:IsA("BasePart") then
+			mainPart = inst
+		else
+			mainPart = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
+			if not mainPart then
+				for _, desc in ipairs(inst:GetDescendants()) do
+					if desc:IsA("BasePart") and desc.Parent then
+						mainPart = desc
+						break
+					end
 				end
 			end
 		end
