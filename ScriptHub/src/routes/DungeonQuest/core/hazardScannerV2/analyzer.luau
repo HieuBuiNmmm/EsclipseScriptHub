@@ -3,6 +3,7 @@
 
 --// Imports
 local filter = require("@routes/DungeonQuest/core/hazardScannerV2/filter")
+local corridor = require("@routes/DungeonQuest/core/hazardScannerV2/corridor")
 
 --// Table
 local analyzer = {}
@@ -91,7 +92,7 @@ local function generateCirclePolygon(cx, cz, radius, steps)
 end
 
 -- Phân tích 1 Hazard Part đơn lẻ thành dạng hình học 2D chuẩn xác
-function analyzer.AnalyzeHazardPart(part, motionRecord)
+local function analyzeHazardPartInternal(part, motionRecord)
 	if not part or not part:IsA("BasePart") or not part.Parent then
 		return nil
 	end
@@ -300,13 +301,20 @@ function analyzer.AnalyzeHazardPart(part, motionRecord)
 			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
 		else
 			local lv = cf.LookVector
-			local horizLv = Vector3.new(-lv.X, 0, -lv.Z)
+			local horizLv = Vector3.new(lv.X, 0, lv.Z)
 			if horizLv.Magnitude > 0.01 then
 				fwd2D = horizLv.Unit
 			else
 				fwd2D = Vector3.new(0, 0, -1)
 			end
 			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		end
+
+		if motionRecord and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 and motionRecord.speed and motionRecord.speed >= 1.0 then
+			if fwd2D:Dot(motionRecord.headingDir) < 0 then
+				fwd2D = -fwd2D
+				right2D = -right2D
+			end
 		end
 	elseif isHorizontalCylinder then
 		local rv = cf.RightVector
@@ -368,6 +376,13 @@ function analyzer.AnalyzeHazardPart(part, motionRecord)
 		transparency = part.Transparency,
 		part = part,
 	}
+end
+function analyzer.AnalyzeHazardPart(part, motionRecord)
+	local shapeData = analyzeHazardPartInternal(part, motionRecord)
+	if shapeData and corridor.IsCorridorSkill(part) then
+		shapeData.corridor = corridor.ComputeCorridor(part, shapeData, motionRecord)
+	end
+	return shapeData
 end
 analyzer.AnalyzeNeonPart = analyzer.AnalyzeHazardPart
 

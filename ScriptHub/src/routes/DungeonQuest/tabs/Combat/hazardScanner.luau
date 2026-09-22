@@ -293,6 +293,14 @@ return function(window, tab)
 	}, "Toggle_HazardGroundVisualizerV2")
 
 	leftSection:Toggle({
+		Name = "Show Threat Corridor V2 (Orange Paths)",
+		Default = hazardScannerV2.IsCorridorEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetCorridorEnabled(state)
+		end),
+	}, "Toggle_HazardThreatCorridorV2")
+
+	leftSection:Toggle({
 		Name = "Show Trajectory Paths (Orange)",
 		Default = hazardScanner.IsTrajectoryEnabled(),
 		Callback = autoSave.Wrap(function(state)

@@ -13,6 +13,8 @@ local visualizerV2 = {}
 
 --// State
 local enabled = false
+local groundShadowsEnabled = false
+local corridorEnabled = false
 local activeVisuals = {} -- [BasePart] = { adornments = {}, part = part, lastFloorY = number }
 local heartbeatConn = nil
 local visualFolder = nil
@@ -23,6 +25,9 @@ local FADE_THRESHOLD = 0.85
 local DEFAULT_TRANSPARENCY = 0.48
 local COLOR_YELLOW = Color3.fromRGB(255, 220, 20)
 local COLOR_SAFE_GREEN = Color3.fromRGB(34, 255, 136)
+local COLOR_CORRIDOR = Color3.fromRGB(255, 140, 0) -- Màu cam nổi bật cho Threat Corridor
+local CORRIDOR_TRANSPARENCY = 0.60
+local CORRIDOR_THICKNESS = 0.20
 
 -- Xác định màu sắc hiển thị (Mặc định màu vàng sáng nổi bật cho toàn bộ hazard)
 local function getVisualColor(shape)
@@ -78,6 +83,11 @@ function visualizerV2.Detach(part)
 		table.clear(record.adornments)
 	end
 
+	if record.corridorAdornment then
+		pcall(function() record.corridorAdornment:Destroy() end)
+		record.corridorAdornment = nil
+	end
+
 	activeVisuals[part] = nil
 end
 
@@ -128,8 +138,10 @@ function visualizerV2.Update(part, data)
 		end
 	end
 
-	-- 1. HÌNH TRÒN (CIRCLE AOE)
-	if shape.shape == "circle" then
+	-- 1. VẼ GROUND SHADOW (Bóng sàn 2D vàng / xanh ngọc)
+	if groundShadowsEnabled then
+		-- 1. HÌNH TRÒN (CIRCLE AOE)
+		if shape.shape == "circle" then
 		local cyl = record.adornments[1]
 		if not cyl or not cyl.Parent or not cyl:IsA("CylinderHandleAdornment") then
 			if cyl then
@@ -215,10 +227,10 @@ function visualizerV2.Update(part, data)
 		coreCyl.Height = GROUND_THICKNESS
 		coreCyl.CFrame = CFrame.new(shape.x, floorY, shape.z) * CFrame.Angles(math.rad(90), 0, 0)
 
-		-- 7 Vành bán nguyệt (Mỗi vành tạo 5 cung cong tiếp tuyến BoxHandleAdornment)
+		-- 7 Vành bán nguyệt (Mỗi vành tạo 14 cung cong tiếp tuyến BoxHandleAdornment để đường tròn mịn mượt)
 		local rings = shape.rings or {}
 		local adIndex = 2
-		local segmentsPerRing = 5
+		local segmentsPerRing = 14
 
 		for _, ring in ipairs(rings) do
 			local rIn = ring.rIn or 12.5
@@ -230,7 +242,7 @@ function visualizerV2.Update(part, data)
 			local angleSpan = math.pi -- 180 độ
 			local angleStep = angleSpan / segmentsPerRing
 			local startAngle = math.rad(ringYaw - 90)
-			local segLen = rMid * angleStep * 1.08 -- Hơi chồng mép nhẹ để khép kín vòng cung
+			local segLen = rMid * angleStep * 1.04 -- Chồng nhẹ 4% để mép khép kín hoàn hảo mà không lộ khớp nối
 
 			for s = 1, segmentsPerRing do
 				local a = startAngle + (s - 0.5) * angleStep
@@ -276,6 +288,57 @@ function visualizerV2.Update(part, data)
 			end
 		end
 	end
+	else
+		if record and record.adornments and #record.adornments > 0 then
+			for _, ad in ipairs(record.adornments) do
+				pcall(function() ad:Destroy() end)
+			end
+			table.clear(record.adornments)
+		end
+	end
+
+	-- 4. XỬ LÝ THREAT CORRIDOR (Hành lang màu cam đón đầu theo Whitelist)
+	if corridorEnabled and shape.corridor then
+		local corr = shape.corridor
+		local cBox = record.corridorAdornment
+		if not cBox or not cBox.Parent or not cBox:IsA("BoxHandleAdornment") then
+			if cBox then
+				pcall(function() cBox:Destroy() end)
+			end
+			cBox = Instance.new("BoxHandleAdornment")
+			cBox.Name = "ThreatCorridor_" .. (corr.model and corr.model.Name or part.Name)
+			cBox.Adornee = Workspace.Terrain
+			cBox.AlwaysOnTop = true
+			cBox.ZIndex = 1 -- Nằm dưới Ground Shadow (ZIndex = 2)
+			cBox.Transparency = CORRIDOR_TRANSPARENCY
+			cBox.Color3 = COLOR_CORRIDOR
+			cBox.Parent = folder
+			record.corridorAdornment = cBox
+		end
+
+		cBox.Size = Vector3.new(corr.width, CORRIDOR_THICKNESS, corr.length)
+		local corridorFloorY = floorY
+		if corr.isModelCorridor then
+			corridorFloorY = getFloorY(Vector3.new(corr.centerX, pos.Y, corr.centerZ))
+		end
+		local centerPos = Vector3.new(corr.centerX, corridorFloorY, corr.centerZ)
+		local targetLook = centerPos + Vector3.new(corr.fwd2D.X, 0, corr.fwd2D.Z)
+		local ok, cf = pcall(function()
+			return CFrame.lookAt(centerPos, targetLook)
+		end)
+		if ok and cf then
+			cBox.CFrame = cf
+		else
+			cBox.CFrame = CFrame.new(centerPos)
+		end
+		if not cBox.Visible then
+			cBox.Visible = true
+		end
+	else
+		if record.corridorAdornment and record.corridorAdornment.Visible then
+			record.corridorAdornment.Visible = false
+		end
+	end
 end
 
 -- Vòng lặp cập nhật liên tục mỗi frame
@@ -294,10 +357,10 @@ local function onHeartbeat()
 	end
 end
 
--- Bật / tắt Ground Visualizer V2
-function visualizerV2.SetEnabled(state)
-	if enabled == state then return end
-	enabled = state
+local function updateActiveState()
+	local shouldBeActive = groundShadowsEnabled or corridorEnabled
+	if enabled == shouldBeActive then return end
+	enabled = shouldBeActive
 
 	if enabled then
 		visualizerV2.ClearAll()
@@ -313,8 +376,42 @@ function visualizerV2.SetEnabled(state)
 	end
 end
 
+-- Bật / tắt Ground Visualizer V2 (Bóng sàn 2D)
+function visualizerV2.SetEnabled(state)
+	groundShadowsEnabled = state and true or false
+	updateActiveState()
+	if not groundShadowsEnabled then
+		for _, rec in pairs(activeVisuals) do
+			if rec.adornments then
+				for _, ad in ipairs(rec.adornments) do
+					pcall(function() ad:Destroy() end)
+				end
+				table.clear(rec.adornments)
+			end
+		end
+	end
+end
+
 function visualizerV2.IsEnabled()
-	return enabled
+	return groundShadowsEnabled
+end
+
+-- Bật / tắt hiển thị Threat Corridor V2 (Hành lang màu cam)
+function visualizerV2.SetCorridorEnabled(state)
+	corridorEnabled = state and true or false
+	updateActiveState()
+	if not corridorEnabled then
+		for _, rec in pairs(activeVisuals) do
+			if rec.corridorAdornment then
+				pcall(function() rec.corridorAdornment:Destroy() end)
+				rec.corridorAdornment = nil
+			end
+		end
+	end
+end
+
+function visualizerV2.IsCorridorEnabled()
+	return corridorEnabled
 end
 
 return visualizerV2

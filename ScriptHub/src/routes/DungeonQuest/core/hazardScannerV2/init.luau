@@ -15,6 +15,7 @@ local motion = require("@routes/DungeonQuest/core/hazardScannerV2/motion")
 local bossWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/bossWatcher")
 local memoryWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/memoryWatcher")
 local visualizerV2 = require("@routes/DungeonQuest/core/hazardScannerV2/visualizerV2")
+local corridor = require("@routes/DungeonQuest/core/hazardScannerV2/corridor")
 
 --// Table
 local hazardScannerV2 = {}
@@ -84,6 +85,10 @@ local function unregisterHazardPart(part)
 		visualizerV2.Detach(part)
 		activeHazards[part] = nil
 		motion.RemoveRecord(part)
+		corridor.RemoveRecord(part)
+		if part.Parent and part.Parent:IsA("Model") then
+			corridor.RemoveRecord(part.Parent)
+		end
 	end
 end
 
@@ -139,6 +144,8 @@ local function onWorkspaceChildRemoved(child)
 	for _, p in ipairs(toRemove) do
 		unregisterHazardPart(p)
 	end
+
+	corridor.RemoveRecord(child)
 end
 
 -- Quét toàn bộ các đối tượng Level 1 đang có trong Workspace
@@ -289,7 +296,7 @@ local function onHeartbeat()
 			data.shape = shapeData
 			local pos = Vector3.new(shapeData.x, shapeData.y, shapeData.z)
 			data.motion = motion.UpdateRecord(part, pos, shapeData.yaw or 0)
-			if visualizerV2.IsEnabled() then
+			if visualizerV2.IsEnabled() or visualizerV2.IsCorridorEnabled() then
 				visualizerV2.Update(part, data)
 			end
 		else
@@ -377,6 +384,7 @@ function hazardScannerV2.StopScan()
 	visualizerV2.ClearAll()
 	table.clear(activeHazards)
 	motion.ClearAll()
+	corridor.ClearAll()
 	memoryWatcher.Reset()
 end
 
@@ -385,20 +393,68 @@ function hazardScannerV2.IsEnabled()
 end
 
 function hazardScannerV2.SetVisualizerEnabled(state)
-	if state then
+	if state and not hazardScannerV2.IsEnabled() then
 		hazardScannerV2.StartScan()
-		visualizerV2.SetEnabled(true)
+	end
+	visualizerV2.SetEnabled(state)
+	if visualizerV2.IsEnabled() or visualizerV2.IsCorridorEnabled() then
 		for part, data in pairs(activeHazards) do
 			visualizerV2.Update(part, data)
 		end
-	else
-		visualizerV2.SetEnabled(false)
 	end
 end
 
 function hazardScannerV2.IsVisualizerEnabled()
 	return visualizerV2.IsEnabled()
 end
+
+--// THREAT CORRIDOR (Hành lang màu cam đón đầu theo Whitelist)
+function hazardScannerV2.SetCorridorEnabled(state)
+	if state and not hazardScannerV2.IsEnabled() then
+		hazardScannerV2.StartScan()
+	end
+	corridor.SetEnabled(state)
+	visualizerV2.SetCorridorEnabled(state)
+	if visualizerV2.IsEnabled() or visualizerV2.IsCorridorEnabled() then
+		for part, data in pairs(activeHazards) do
+			visualizerV2.Update(part, data)
+		end
+	end
+end
+
+function hazardScannerV2.IsCorridorEnabled()
+	return corridor.IsEnabled() and visualizerV2.IsCorridorEnabled()
+end
+
+-- Kiểm tra xem 1 điểm (hoặc bán kính người chơi) có nằm trong bất kỳ Threat Corridor nào không
+function hazardScannerV2.IsPointInAnyCorridor(point, extraRadius)
+	if not point then return false, nil end
+	for part, data in pairs(activeHazards) do
+		if data.shape and data.shape.corridor then
+			if corridor.IsPointInCorridor(point, data.shape.corridor, extraRadius) then
+				return true, data
+			end
+		end
+	end
+	return false, nil
+end
+
+-- Lấy danh sách tất cả các Threat Corridor đang hoạt động
+function hazardScannerV2.GetActiveCorridors()
+	local list = {}
+	for part, data in pairs(activeHazards) do
+		if data.shape and data.shape.corridor then
+			table.insert(list, {
+				part = part,
+				name = data.name,
+				corridor = data.shape.corridor,
+			})
+		end
+	end
+	return list
+end
+
+hazardScannerV2.Corridor = corridor
 
 -- Trích xuất Telemetry chuẩn hóa gửi qua WebSocket
 function hazardScannerV2.GetActiveHazardsTelemetry()
@@ -432,6 +488,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		elseif shape.shape == "circle" then
 			table.insert(list, {
@@ -448,6 +505,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		elseif shape.shape == "box" then
 			table.insert(list, {
@@ -467,6 +525,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		elseif shape.shape == "polygon" then
 			table.insert(list, {
@@ -483,6 +542,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		end
 	end

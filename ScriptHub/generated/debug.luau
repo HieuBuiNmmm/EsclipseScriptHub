@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-22T04:16:31.735359+00:00",
+    genDate = "2026-09-22T14:23:40.300094900+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -16193,12 +16193,598 @@ end
 filter.FindNeonPartsInLevel1Child = filter.FindHazardPartsInLevel1Child
 
 return filter
-end function __DIST.G()-- HazardScannerV2 - Shape & Color Analyzer
+end function __DIST.G()-- HazardScannerV2 - Threat Corridor Engine (Whitelist-Based)
+-- Quản lý danh sách các skill có hành lang nguy hiểm (Threat Corridor) kéo dài đón đầu.
+-- Cứ skill nào có tên trong danh sách thì tự động sinh hành lang màu cam chuẩn xác.
+
+--// Imports
+
+local filter = __DIST.load('F')
+local services = __DIST.load('e')
+local Players = game:GetService("Players")
+
+--// Table
+local corridor = {}
+
+--// State
+local corridorEnabled = true
+local trackedCorridors = {} -- [Instance] = { fwd2D = Vector3, right2D = Vector3, yaw = number, velocityConfirmed = boolean, locked = boolean, lastBounceTime = number }
+
+-- Helper lấy tọa độ nhân vật Player thời gian thực
+local function getPlayerPos()
+	local lp = (services and services.player) or Players.LocalPlayer
+	local char = lp and lp.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	return root and root.Position or nil
+end
+
+-- Danh sách cấu hình Threat Corridor theo tên chuẩn hóa (lowercase, không khoảng trắng)
+-- CHỈ bao gồm đúng các skill do người dùng yêu cầu:
+-- Boss 1: firstBossCrissCross, firstBossSeekingSpikes, firstBossBigSpike
+-- Boss 2: secondBossMovingBeam, secondBossGreenOrb, secondBossYellowOrb, secondBossRedOrb
+-- Boss 3: thirdBossMissile, thirdBossBouncingOrb
+local CORRIDOR_SKILLS = {
+	-- BOSS 1
+	["firstbossbigspike"] = {
+		name = "Boss 1 Big Spike",
+		length = 120,
+		width = 28,
+		mode = "look_vector",
+	},
+	["firstbossseekingspikes"] = {
+		name = "Boss 1 Seeking Spikes",
+		length = 85,
+		width = 10,
+		mode = "look_vector",
+	},
+	["firstbosscrisscross"] = {
+		name = "Boss 1 Criss Cross",
+		length = 80,
+		width = 8,
+		mode = "look_vector",
+	},
+
+	-- BOSS 2
+	["secondbossmovingbeam"] = {
+		name = "Boss 2 Moving Beam",
+		length = 80,
+		width = 35,
+		mode = "heading_or_look",
+	},
+	["secondbossgreenorb"] = {
+		name = "Boss 2 Green Orb",
+		length = 25,
+		width = 10,
+		mode = "homing_player",
+	},
+	["secondbossyelloworb"] = {
+		name = "Boss 2 Yellow Orb",
+		length = 25,
+		width = 10,
+		mode = "homing_player",
+	},
+	["secondbossredorb"] = {
+		name = "Boss 2 Red Orb",
+		length = 25,
+		width = 10,
+		mode = "homing_player",
+	},
+
+	-- BOSS 3
+	["thirdbossmissile"] = {
+		name = "Boss 3 Missile",
+		length = 90,
+		width = 8,
+		mode = "heading_or_look",
+	},
+	["thirdbossbouncingorb"] = {
+		name = "Boss 3 Bouncing Orb",
+		length = 30,
+		width = 10,
+		mode = "bouncing",
+	},
+}
+
+-- Chuẩn hóa chuỗi (chữ thường, xóa dấu cách)
+local function cleanString(str)
+	if not str then return "" end
+	return tostring(str):lower():gsub("%s+", "")
+end
+
+-- Lấy cấu hình Threat Corridor của 1 instance hoặc tên
+function corridor.GetConfig(nameOrInstance)
+	if not nameOrInstance then return nil end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = cleanString(name)
+	if #clean > 0 then
+		for key, cfg in pairs(CORRIDOR_SKILLS) do
+			if string.find(clean, key, 1, true) then
+				return cfg, key
+			end
+		end
+	end
+
+	-- Duyệt toàn bộ tổ tiên (ancestors) lên tới Workspace/game
+	if typeof(nameOrInstance) == "Instance" then
+		local cur = nameOrInstance.Parent
+		while cur and cur ~= workspace and cur ~= game do
+			local pClean = cleanString(cur.Name)
+			if #pClean > 0 then
+				for key, cfg in pairs(CORRIDOR_SKILLS) do
+					if string.find(pClean, key, 1, true) then
+						return cfg, key
+					end
+				end
+			end
+			cur = cur.Parent
+		end
+	end
+
+	return nil
+end
+
+-- Kiểm tra xem đối tượng có nằm trong danh sách Threat Corridor hay không
+function corridor.IsCorridorSkill(nameOrInstance)
+	return corridor.GetConfig(nameOrInstance) ~= nil
+end
+
+-- Đăng ký thêm skill mới vào danh sách
+function corridor.RegisterSkill(key, config)
+	if not key or type(config) ~= "table" then return end
+	local cleanKey = cleanString(key)
+	CORRIDOR_SKILLS[cleanKey] = {
+		name = config.name or key,
+		length = config.length or 60,
+		width = config.width or 10,
+		mode = config.mode or "look_vector",
+	}
+end
+
+-- Hủy đăng ký một skill
+function corridor.UnregisterSkill(key)
+	if not key then return end
+	local cleanKey = cleanString(key)
+	CORRIDOR_SKILLS[cleanKey] = nil
+end
+
+-- Lấy toàn bộ danh sách cấu hình
+function corridor.GetConfigMap()
+	return CORRIDOR_SKILLS
+end
+
+-- Bật / tắt tính năng Threat Corridor
+function corridor.SetEnabled(state)
+	corridorEnabled = state and true or false
+end
+
+function corridor.IsEnabled()
+	return corridorEnabled
+end
+
+-- Xóa bản ghi khóa hướng của 1 part/model khi despawn
+function corridor.RemoveRecord(inst)
+	if inst then
+		trackedCorridors[inst] = nil
+	end
+end
+
+-- Xóa toàn bộ bản ghi khóa hướng
+function corridor.ClearAll()
+	table.clear(trackedCorridors)
+end
+
+-- Helper tìm Model secondBossMovingBeam nếu part là con/hậu duệ
+local function getMovingBeamModel(inst)
+	if not inst then return nil end
+	local cur = inst:IsA("Model") and inst or inst.Parent
+	while cur and cur ~= workspace and cur ~= game do
+		local pClean = cleanString(cur.Name)
+		if (pClean:find("movingbeam", 1, true) or pClean:find("secondbossmovingbeam", 1, true)) and cur:IsA("Model") then
+			return cur
+		end
+		cur = cur.Parent
+	end
+	return nil
+end
+
+-- Tìm duy nhất 1 part đại diện hợp lệ cho Model secondBossMovingBeam
+local function getMovingBeamRepresentativePart(model)
+	if not model then return nil end
+	-- 1. Nếu PrimaryPart là một hazard part hợp lệ, ưu tiên PrimaryPart
+	if model.PrimaryPart and filter.IsHazardPart(model.PrimaryPart, model) then
+		return model.PrimaryPart
+	end
+	-- 2. Tìm BasePart đầu tiên trong Model thỏa mãn là hazard part hợp lệ (Neon, Transparency <= 0.85)
+	for _, desc in ipairs(model:GetDescendants()) do
+		if desc:IsA("BasePart") and filter.IsHazardPart(desc, model) then
+			return desc
+		end
+	end
+	-- 3. Dự phòng bất kỳ BasePart nào có trong Model
+	return model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+end
+
+-- Tính toán hình học Threat Corridor cho Parent Model tổng thể (secondBossMovingBeam)
+local function computeMovingBeamModelCorridor(model, repPart, shapeData, motionRecord, cfg)
+	local ok, modelCF, modelSize = pcall(function()
+		return model:GetBoundingBox()
+	end)
+	if not ok or not modelCF or not modelSize then
+		modelCF = repPart.CFrame
+		modelSize = repPart.Size
+	end
+
+	local startX = modelCF.Position.X
+	local startZ = modelCF.Position.Z
+
+	-- Bề ngang bao quát toàn bộ Model của beam
+	local modelSpan = math.max(modelSize.X, math.max(modelSize.Y, modelSize.Z))
+	local baseWidth = cfg.width or 35
+	local width = math.max(baseWidth, modelSpan)
+
+	-- Hướng di chuyển và khóa hướng (tracked trên Model)
+	local tracked = trackedCorridors[model]
+	local fwd2D = nil
+	local right2D = nil
+	local yaw = nil
+
+	if tracked and tracked.locked then
+		fwd2D = tracked.fwd2D
+		right2D = tracked.right2D
+		yaw = tracked.yaw
+
+		-- Nếu ban đầu khóa hướng Frame 0 trước khi kịp di chuyển,
+		-- nay bắt đầu chuyển động tịnh tiến rõ rệt (speed >= 1.0 studs/s):
+		-- Cập nhật 1 lần duy nhất theo vector vận tốc thực tế của thanh beam
+		if not tracked.velocityConfirmed and motionRecord and motionRecord.speed and motionRecord.speed >= 1.0 and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+			yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+			tracked.fwd2D = fwd2D
+			tracked.right2D = right2D
+			tracked.yaw = yaw
+			tracked.velocityConfirmed = true
+		end
+	else
+		-- KHÓA HƯỚNG LẦN ĐẦU TIÊN (FRAME 0 LOCK CHO MODEL):
+		-- 1. Ưu tiên vector vận tốc tịnh tiến nếu đã di chuyển
+		if motionRecord and motionRecord.speed and motionRecord.speed >= 1.0 and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+			yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+			tracked = {
+				fwd2D = fwd2D,
+				right2D = right2D,
+				yaw = yaw,
+				velocityConfirmed = true,
+				locked = true,
+			}
+		-- 2. Ưu tiên hướng fwd2D & right2D do shapeData đã tính toán (Section 3 Planar OBB)
+		elseif shapeData and shapeData.fwd2D and shapeData.right2D and shapeData.fwd2D.Magnitude > 0.1 then
+			fwd2D = shapeData.fwd2D.Unit
+			right2D = shapeData.right2D.Unit
+			yaw = shapeData.yaw or math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+			tracked = {
+				fwd2D = fwd2D,
+				right2D = right2D,
+				yaw = yaw,
+				velocityConfirmed = false,
+				locked = true,
+			}
+		-- 3. Fallback theo LookVector của CFrame Model
+		else
+			local lv = modelCF.LookVector
+			local hLv = Vector3.new(lv.X, 0, lv.Z)
+			if hLv.Magnitude > 0.01 then
+				fwd2D = hLv.Unit
+			else
+				fwd2D = Vector3.new(0, 0, -1)
+			end
+			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+			yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+			tracked = {
+				fwd2D = fwd2D,
+				right2D = right2D,
+				yaw = yaw,
+				velocityConfirmed = false,
+				locked = true,
+			}
+		end
+
+		trackedCorridors[model] = tracked
+	end
+
+	local length = cfg.length or 80
+	local halfLen = length / 2
+	local centerX = startX + fwd2D.X * halfLen
+	local centerZ = startZ + fwd2D.Z * halfLen
+	local endX = startX + fwd2D.X * length
+	local endZ = startZ + fwd2D.Z * length
+
+	return {
+		skillKey = cleanString(model.Name),
+		name = cfg.name or "Boss 2 Moving Beam",
+		length = length,
+		width = width,
+		fwd2D = fwd2D,
+		right2D = right2D,
+		startX = startX,
+		startZ = startZ,
+		centerX = centerX,
+		centerZ = centerZ,
+		endX = endX,
+		endZ = endZ,
+		yaw = yaw,
+		isModelCorridor = true,
+		model = model,
+	}
+end
+
+-- Tính toán hình học Threat Corridor cho Part
+function corridor.ComputeCorridor(part, shapeData, motionRecord)
+	if not corridorEnabled or not part or not part:IsA("BasePart") or not shapeData then
+		return nil
+	end
+
+	local cfg = corridor.GetConfig(part)
+	if not cfg then
+		return nil
+	end
+
+	-- NGOẠI LỆ CHO MOVING BEAM:
+	-- secondBossMovingBeam là một Model chứa rất nhiều Part nhỏ bên trong.
+	-- Ta CHỈ vẽ Threat Corridor duy nhất 1 lần theo Parent Model tổng thể (secondBossMovingBeam).
+	-- Mọi part con anh em khác đều trả về nil để không vẽ đè/lệch corridor.
+	local beamModel = getMovingBeamModel(part)
+	if beamModel then
+		local repPart = getMovingBeamRepresentativePart(beamModel)
+		if part ~= repPart then
+			return nil
+		end
+		return computeMovingBeamModelCorridor(beamModel, repPart, shapeData, motionRecord, cfg)
+	end
+
+	-- NGOẠI LỆ CHO HOMING PLAYER ORBS (secondBossGreenOrb / YellowOrb / RedOrb):
+	-- Kỹ năng này luôn dí theo Player, vì vậy Threat Corridor luôn luôn chĩa thẳng về phía nhân vật Player theo thời gian thực.
+	-- KHÔNG khóa cứng hướng (không dùng Frame 0 Lock) và giữ nguyên chiều dài cố định (không dùng Dynamic Length).
+	if cfg.mode == "homing_player" then
+		local pPos = getPlayerPos()
+		if pPos then
+			local toPlayer2D = Vector3.new(pPos.X - shapeData.x, 0, pPos.Z - shapeData.z)
+			if toPlayer2D.Magnitude > 0.5 then
+				fwd2D = toPlayer2D.Unit
+			end
+		end
+
+		if not fwd2D then
+			if motionRecord and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+				fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			else
+				local lv = part.CFrame.LookVector
+				local hLv = Vector3.new(lv.X, 0, lv.Z)
+				fwd2D = hLv.Magnitude > 0.01 and hLv.Unit or Vector3.new(0, 0, -1)
+			end
+		end
+
+		right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+		trackedCorridors[part] = {
+			fwd2D = fwd2D,
+			right2D = right2D,
+			yaw = yaw,
+			velocityConfirmed = true,
+			locked = false,
+		}
+
+		local length = cfg.length or 25
+		local width = cfg.width or 10
+		if shapeData.halfWidth and (shapeData.halfWidth * 2) > width then
+			width = shapeData.halfWidth * 2
+		end
+
+		local startX = shapeData.x
+		local startZ = shapeData.z
+		local halfLen = length / 2
+		local centerX = startX + fwd2D.X * halfLen
+		local centerZ = startZ + fwd2D.Z * halfLen
+		local endX = startX + fwd2D.X * length
+		local endZ = startZ + fwd2D.Z * length
+
+		return {
+			skillKey = cleanString(part.Name),
+			name = cfg.name,
+			length = length,
+			width = width,
+			fwd2D = fwd2D,
+			right2D = right2D,
+			startX = startX,
+			startZ = startZ,
+			centerX = centerX,
+			centerZ = centerZ,
+			endX = endX,
+			endZ = endZ,
+			yaw = yaw,
+		}
+	end
+
+	local tracked = trackedCorridors[part]
+	local fwd2D = nil
+	local right2D = nil
+	local yaw = nil
+
+	if tracked and tracked.locked then
+		fwd2D = tracked.fwd2D
+		right2D = tracked.right2D
+		yaw = tracked.yaw
+
+		-- Nếu ban đầu khóa bằng LookVector lúc chưa kịp di chuyển (Frame 0),
+		-- nay bắt đầu chuyển động tịnh tiến tuyến tính rõ rệt (speed >= 1.0 studs/s):
+		-- Cập nhật theo vector vận tốc thực tế rồi chốt chặt
+		if motionRecord and motionRecord.speed and motionRecord.speed >= 1.0 and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			-- Tự động đảo chiều nếu phát hiện hướng bay thực tế ngược chiều với fwd2D (Dot < -0.3)
+			if fwd2D:Dot(motionRecord.headingDir) < -0.3 then
+				fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+				right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+				yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+				tracked.fwd2D = fwd2D
+				tracked.right2D = right2D
+				tracked.yaw = yaw
+				tracked.velocityConfirmed = true
+			elseif not tracked.velocityConfirmed then
+				fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+				right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+				yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+				tracked.fwd2D = fwd2D
+				tracked.right2D = right2D
+				tracked.yaw = yaw
+				tracked.velocityConfirmed = true
+			end
+		end
+
+		-- Xử lý riêng cho Bouncing Orb: Nếu vừa nảy vào tường đổi hướng (Dot product giữa vận tốc mới và hướng cũ < 0.70)
+		if cfg.mode == "bouncing" and motionRecord and motionRecord.speed and motionRecord.speed >= 1.0 and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			local newHeading = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			local now = os.clock()
+			local lastBounce = tracked.lastBounceTime or 0
+
+			-- Kiểm tra xem vector vận tốc mới có bị bẻ góc (Dot < 0.70 tương đương góc lệch > 45 độ hoặc nảy ngược)
+			if fwd2D:Dot(newHeading) < 0.70 and (now - lastBounce) > 0.20 then
+				fwd2D = newHeading
+				right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+				yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+				tracked.fwd2D = fwd2D
+				tracked.right2D = right2D
+				tracked.yaw = yaw
+				tracked.lastBounceTime = now
+				tracked.velocityConfirmed = true
+			end
+		end
+	else
+		-- KHÓA HƯỚNG LẦN ĐẦU TIÊN (FRAME 0 DIRECTION LOCK):
+		-- 1. Ưu tiên vector vận tốc tịnh tiến nếu đã chuyển động (dựa trên Position nên tuyệt đối không bị xoay tròn theo mesh)
+		if motionRecord and motionRecord.speed and motionRecord.speed >= 1.0 and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			tracked = {
+				fwd2D = fwd2D,
+				right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X),
+				yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z)),
+				velocityConfirmed = true,
+				locked = true,
+			}
+		-- 2. Nếu shapeData đã tính sẵn fwd2D và right2D (ví dụ: movingBeam hoặc planar box do analyzer tính riêng)
+		elseif shapeData.fwd2D and shapeData.right2D and shapeData.fwd2D.Magnitude > 0.1 then
+			fwd2D = shapeData.fwd2D.Unit
+			right2D = shapeData.right2D.Unit
+			tracked = {
+				fwd2D = fwd2D,
+				right2D = right2D,
+				yaw = shapeData.yaw or math.deg(math.atan2(fwd2D.X, -fwd2D.Z)),
+				velocityConfirmed = false,
+				locked = true,
+			}
+		else
+			-- 3. Khóa cố định theo CFrame.LookVector tại thời điểm Frame 0 lúc vừa spawn
+			local cf = part.CFrame
+			local lv = cf.LookVector
+			local hLv = Vector3.new(lv.X, 0, lv.Z)
+			if hLv.Magnitude > 0.01 then
+				fwd2D = hLv.Unit
+			elseif motionRecord and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+				fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			else
+				fwd2D = Vector3.new(0, 0, -1)
+			end
+			tracked = {
+				fwd2D = fwd2D,
+				right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X),
+				yaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z)),
+				velocityConfirmed = false,
+				locked = true,
+			}
+		end
+
+		right2D = tracked.right2D
+		yaw = tracked.yaw
+		trackedCorridors[part] = tracked
+	end
+
+	-- Kích thước hành lang
+	local length = cfg.length or 60
+	local width = cfg.width or 10
+
+	-- Nếu shapeData có kích thước thực tế lớn hơn config, ưu tiên kích thước thực tế
+	if shapeData.halfWidth and (shapeData.halfWidth * 2) > width then
+		width = shapeData.halfWidth * 2
+	end
+
+	local startX = shapeData.x
+	local startZ = shapeData.z
+	local halfLen = length / 2
+	local centerX = startX + fwd2D.X * halfLen
+	local centerZ = startZ + fwd2D.Z * halfLen
+	local endX = startX + fwd2D.X * length
+	local endZ = startZ + fwd2D.Z * length
+
+	return {
+		skillKey = cleanString(part.Name),
+		name = cfg.name,
+		length = length,
+		width = width,
+		fwd2D = fwd2D,
+		right2D = right2D,
+		startX = startX,
+		startZ = startZ,
+		centerX = centerX,
+		centerZ = centerZ,
+		endX = endX,
+		endZ = endZ,
+		yaw = yaw,
+	}
+end
+
+-- Kiểm tra xem 1 điểm (hoặc vòng tròn bán kính extraRadius) có nằm trong Threat Corridor hay không
+function corridor.IsPointInCorridor(point, corridorData, extraRadius)
+	if not point or not corridorData then return false end
+	extraRadius = extraRadius or 0
+
+	local px, pz = point.X, point.Z
+	local vx = px - corridorData.startX
+	local vz = pz - corridorData.startZ
+
+	local fwd = corridorData.fwd2D
+	local right = corridorData.right2D
+	local halfWidth = corridorData.width / 2
+
+	-- Chiếu lên trục U (dọc theo hướng bay) và trục N (vuông góc hướng bay)
+	local projU = vx * fwd.X + vz * fwd.Z
+	local projN = vx * right.X + vz * right.Z
+
+	-- Phủ lùi nhẹ 2 studs về sau điểm gốc để bao trọn đuôi đạn
+	local minU = -2.0
+	local maxU = corridorData.length
+
+	if extraRadius <= 0 then
+		return (projU >= minU and projU <= maxU and math.abs(projN) <= halfWidth)
+	else
+		local dU = 0
+		if projU < minU then
+			dU = minU - projU
+		elseif projU > maxU then
+			dU = projU - maxU
+		end
+		local dN = math.max(0, math.abs(projN) - halfWidth)
+		return (dU * dU + dN * dN) <= (extraRadius * extraRadius)
+	end
+end
+
+return corridor
+end function __DIST.H()-- HazardScannerV2 - Shape & Color Analyzer
 -- Trích xuất hình học chính xác (Circle / Box OBB) và Màu sắc phát sáng Neon thực tế từ Part.
 
 --// Imports
 
 local filter = __DIST.load('F')
+local corridor = __DIST.load('G')
 
 --// Table
 local analyzer = {}
@@ -16287,7 +16873,7 @@ local function generateCirclePolygon(cx, cz, radius, steps)
 end
 
 -- Phân tích 1 Hazard Part đơn lẻ thành dạng hình học 2D chuẩn xác
-function analyzer.AnalyzeHazardPart(part, motionRecord)
+local function analyzeHazardPartInternal(part, motionRecord)
 	if not part or not part:IsA("BasePart") or not part.Parent then
 		return nil
 	end
@@ -16496,13 +17082,20 @@ function analyzer.AnalyzeHazardPart(part, motionRecord)
 			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
 		else
 			local lv = cf.LookVector
-			local horizLv = Vector3.new(-lv.X, 0, -lv.Z)
+			local horizLv = Vector3.new(lv.X, 0, lv.Z)
 			if horizLv.Magnitude > 0.01 then
 				fwd2D = horizLv.Unit
 			else
 				fwd2D = Vector3.new(0, 0, -1)
 			end
 			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		end
+
+		if motionRecord and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 and motionRecord.speed and motionRecord.speed >= 1.0 then
+			if fwd2D:Dot(motionRecord.headingDir) < 0 then
+				fwd2D = -fwd2D
+				right2D = -right2D
+			end
 		end
 	elseif isHorizontalCylinder then
 		local rv = cf.RightVector
@@ -16565,10 +17158,17 @@ function analyzer.AnalyzeHazardPart(part, motionRecord)
 		part = part,
 	}
 end
+function analyzer.AnalyzeHazardPart(part, motionRecord)
+	local shapeData = analyzeHazardPartInternal(part, motionRecord)
+	if shapeData and corridor.IsCorridorSkill(part) then
+		shapeData.corridor = corridor.ComputeCorridor(part, shapeData, motionRecord)
+	end
+	return shapeData
+end
 analyzer.AnalyzeNeonPart = analyzer.AnalyzeHazardPart
 
 return analyzer
-end function __DIST.H()-- HazardScannerV2 - Neon Kinematics & Motion Engine
+end function __DIST.I()-- HazardScannerV2 - Neon Kinematics & Motion Engine
 -- Đo lường vận tốc tịnh tiến, vận tốc góc xoay quanh trục và dự báo quỹ đạo cho các Neon Hazard Parts.
 
 --// Imports
@@ -16719,7 +17319,7 @@ function motion.ClearAll()
 end
 
 return motion
-end function __DIST.I()-- HazardScannerV2 - Boss Telegraph & Animation Tracker
+end function __DIST.J()-- HazardScannerV2 - Boss Telegraph & Animation Tracker
 -- Theo dõi Boss: Bắt Animation Track đang chạy (Cast animation),
 -- Tiến độ niệm chiêu (TimePosition / Length), Góc nhìn và Trạng thái chiến đấu.
 
@@ -16844,7 +17444,7 @@ function bossWatcher.GetBossTelegraphData()
 end
 
 return bossWatcher
-end function __DIST.J()-- HazardScannerV2 - Bonus Boss Memory Game (Simon Says) Watcher
+end function __DIST.K()-- HazardScannerV2 - Bonus Boss Memory Game (Simon Says) Watcher
 -- Tự động theo dõi, ghi nhớ chuỗi gợi ý (Left/Right) và hiển thị vùng an toàn thời gian thực.
 
 --// Imports
@@ -17034,7 +17634,7 @@ function memoryWatcher.GetMemoryTelemetry()
 end
 
 return memoryWatcher
-end function __DIST.K()-- HazardScannerV2 - In-Game Ground Visualizer V2
+end function __DIST.L()-- HazardScannerV2 - In-Game Ground Visualizer V2
 -- Trực quan hóa các vùng nguy hiểm (Ground Shadows) của HazardScannerV2 trực tiếp trong Roblox 3D Viewport.
 -- Khóa 100% phẳng sát mặt sàn (2D Ground Shadows), triệt tiêu hoàn toàn rung lắc và xoay tròn 3D.
 
@@ -17050,6 +17650,8 @@ local visualizerV2 = {}
 
 --// State
 local enabled = false
+local groundShadowsEnabled = false
+local corridorEnabled = false
 local activeVisuals = {} -- [BasePart] = { adornments = {}, part = part, lastFloorY = number }
 local heartbeatConn = nil
 local visualFolder = nil
@@ -17060,6 +17662,9 @@ local FADE_THRESHOLD = 0.85
 local DEFAULT_TRANSPARENCY = 0.48
 local COLOR_YELLOW = Color3.fromRGB(255, 220, 20)
 local COLOR_SAFE_GREEN = Color3.fromRGB(34, 255, 136)
+local COLOR_CORRIDOR = Color3.fromRGB(255, 140, 0) -- Màu cam nổi bật cho Threat Corridor
+local CORRIDOR_TRANSPARENCY = 0.60
+local CORRIDOR_THICKNESS = 0.20
 
 -- Xác định màu sắc hiển thị (Mặc định màu vàng sáng nổi bật cho toàn bộ hazard)
 local function getVisualColor(shape)
@@ -17115,6 +17720,11 @@ function visualizerV2.Detach(part)
 		table.clear(record.adornments)
 	end
 
+	if record.corridorAdornment then
+		pcall(function() record.corridorAdornment:Destroy() end)
+		record.corridorAdornment = nil
+	end
+
 	activeVisuals[part] = nil
 end
 
@@ -17165,8 +17775,10 @@ function visualizerV2.Update(part, data)
 		end
 	end
 
-	-- 1. HÌNH TRÒN (CIRCLE AOE)
-	if shape.shape == "circle" then
+	-- 1. VẼ GROUND SHADOW (Bóng sàn 2D vàng / xanh ngọc)
+	if groundShadowsEnabled then
+		-- 1. HÌNH TRÒN (CIRCLE AOE)
+		if shape.shape == "circle" then
 		local cyl = record.adornments[1]
 		if not cyl or not cyl.Parent or not cyl:IsA("CylinderHandleAdornment") then
 			if cyl then
@@ -17252,10 +17864,10 @@ function visualizerV2.Update(part, data)
 		coreCyl.Height = GROUND_THICKNESS
 		coreCyl.CFrame = CFrame.new(shape.x, floorY, shape.z) * CFrame.Angles(math.rad(90), 0, 0)
 
-		-- 7 Vành bán nguyệt (Mỗi vành tạo 5 cung cong tiếp tuyến BoxHandleAdornment)
+		-- 7 Vành bán nguyệt (Mỗi vành tạo 14 cung cong tiếp tuyến BoxHandleAdornment để đường tròn mịn mượt)
 		local rings = shape.rings or {}
 		local adIndex = 2
-		local segmentsPerRing = 5
+		local segmentsPerRing = 14
 
 		for _, ring in ipairs(rings) do
 			local rIn = ring.rIn or 12.5
@@ -17267,7 +17879,7 @@ function visualizerV2.Update(part, data)
 			local angleSpan = math.pi -- 180 độ
 			local angleStep = angleSpan / segmentsPerRing
 			local startAngle = math.rad(ringYaw - 90)
-			local segLen = rMid * angleStep * 1.08 -- Hơi chồng mép nhẹ để khép kín vòng cung
+			local segLen = rMid * angleStep * 1.04 -- Chồng nhẹ 4% để mép khép kín hoàn hảo mà không lộ khớp nối
 
 			for s = 1, segmentsPerRing do
 				local a = startAngle + (s - 0.5) * angleStep
@@ -17313,6 +17925,57 @@ function visualizerV2.Update(part, data)
 			end
 		end
 	end
+	else
+		if record and record.adornments and #record.adornments > 0 then
+			for _, ad in ipairs(record.adornments) do
+				pcall(function() ad:Destroy() end)
+			end
+			table.clear(record.adornments)
+		end
+	end
+
+	-- 4. XỬ LÝ THREAT CORRIDOR (Hành lang màu cam đón đầu theo Whitelist)
+	if corridorEnabled and shape.corridor then
+		local corr = shape.corridor
+		local cBox = record.corridorAdornment
+		if not cBox or not cBox.Parent or not cBox:IsA("BoxHandleAdornment") then
+			if cBox then
+				pcall(function() cBox:Destroy() end)
+			end
+			cBox = Instance.new("BoxHandleAdornment")
+			cBox.Name = "ThreatCorridor_" .. (corr.model and corr.model.Name or part.Name)
+			cBox.Adornee = Workspace.Terrain
+			cBox.AlwaysOnTop = true
+			cBox.ZIndex = 1 -- Nằm dưới Ground Shadow (ZIndex = 2)
+			cBox.Transparency = CORRIDOR_TRANSPARENCY
+			cBox.Color3 = COLOR_CORRIDOR
+			cBox.Parent = folder
+			record.corridorAdornment = cBox
+		end
+
+		cBox.Size = Vector3.new(corr.width, CORRIDOR_THICKNESS, corr.length)
+		local corridorFloorY = floorY
+		if corr.isModelCorridor then
+			corridorFloorY = getFloorY(Vector3.new(corr.centerX, pos.Y, corr.centerZ))
+		end
+		local centerPos = Vector3.new(corr.centerX, corridorFloorY, corr.centerZ)
+		local targetLook = centerPos + Vector3.new(corr.fwd2D.X, 0, corr.fwd2D.Z)
+		local ok, cf = pcall(function()
+			return CFrame.lookAt(centerPos, targetLook)
+		end)
+		if ok and cf then
+			cBox.CFrame = cf
+		else
+			cBox.CFrame = CFrame.new(centerPos)
+		end
+		if not cBox.Visible then
+			cBox.Visible = true
+		end
+	else
+		if record.corridorAdornment and record.corridorAdornment.Visible then
+			record.corridorAdornment.Visible = false
+		end
+	end
 end
 
 -- Vòng lặp cập nhật liên tục mỗi frame
@@ -17331,10 +17994,10 @@ local function onHeartbeat()
 	end
 end
 
--- Bật / tắt Ground Visualizer V2
-function visualizerV2.SetEnabled(state)
-	if enabled == state then return end
-	enabled = state
+local function updateActiveState()
+	local shouldBeActive = groundShadowsEnabled or corridorEnabled
+	if enabled == shouldBeActive then return end
+	enabled = shouldBeActive
 
 	if enabled then
 		visualizerV2.ClearAll()
@@ -17350,12 +18013,46 @@ function visualizerV2.SetEnabled(state)
 	end
 end
 
+-- Bật / tắt Ground Visualizer V2 (Bóng sàn 2D)
+function visualizerV2.SetEnabled(state)
+	groundShadowsEnabled = state and true or false
+	updateActiveState()
+	if not groundShadowsEnabled then
+		for _, rec in pairs(activeVisuals) do
+			if rec.adornments then
+				for _, ad in ipairs(rec.adornments) do
+					pcall(function() ad:Destroy() end)
+				end
+				table.clear(rec.adornments)
+			end
+		end
+	end
+end
+
 function visualizerV2.IsEnabled()
-	return enabled
+	return groundShadowsEnabled
+end
+
+-- Bật / tắt hiển thị Threat Corridor V2 (Hành lang màu cam)
+function visualizerV2.SetCorridorEnabled(state)
+	corridorEnabled = state and true or false
+	updateActiveState()
+	if not corridorEnabled then
+		for _, rec in pairs(activeVisuals) do
+			if rec.corridorAdornment then
+				pcall(function() rec.corridorAdornment:Destroy() end)
+				rec.corridorAdornment = nil
+			end
+		end
+	end
+end
+
+function visualizerV2.IsCorridorEnabled()
+	return corridorEnabled
 end
 
 return visualizerV2
-end function __DIST.L()-- HazardScannerV2 - Core Hazard Detection & Telemetry Manager
+end function __DIST.M()-- HazardScannerV2 - Core Hazard Detection & Telemetry Manager
 -- Quy tắc:
 -- 1. CHỈ bắt các đối tượng Level 1 trong Workspace qua Workspace.ChildAdded/ChildRemoved.
 -- 2. LOẠI TRỪ 100% các Level 1 Folder (workspace.dungeon, workspace.drops, effects...).
@@ -17368,11 +18065,12 @@ local Workspace = game:GetService("Workspace")
 local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
 local filter = __DIST.load('F')
-local analyzer = __DIST.load('G')
-local motion = __DIST.load('H')
-local bossWatcher = __DIST.load('I')
-local memoryWatcher = __DIST.load('J')
-local visualizerV2 = __DIST.load('K')
+local analyzer = __DIST.load('H')
+local motion = __DIST.load('I')
+local bossWatcher = __DIST.load('J')
+local memoryWatcher = __DIST.load('K')
+local visualizerV2 = __DIST.load('L')
+local corridor = __DIST.load('G')
 
 --// Table
 local hazardScannerV2 = {}
@@ -17442,6 +18140,10 @@ local function unregisterHazardPart(part)
 		visualizerV2.Detach(part)
 		activeHazards[part] = nil
 		motion.RemoveRecord(part)
+		corridor.RemoveRecord(part)
+		if part.Parent and part.Parent:IsA("Model") then
+			corridor.RemoveRecord(part.Parent)
+		end
 	end
 end
 
@@ -17497,6 +18199,8 @@ local function onWorkspaceChildRemoved(child)
 	for _, p in ipairs(toRemove) do
 		unregisterHazardPart(p)
 	end
+
+	corridor.RemoveRecord(child)
 end
 
 -- Quét toàn bộ các đối tượng Level 1 đang có trong Workspace
@@ -17647,7 +18351,7 @@ local function onHeartbeat()
 			data.shape = shapeData
 			local pos = Vector3.new(shapeData.x, shapeData.y, shapeData.z)
 			data.motion = motion.UpdateRecord(part, pos, shapeData.yaw or 0)
-			if visualizerV2.IsEnabled() then
+			if visualizerV2.IsEnabled() or visualizerV2.IsCorridorEnabled() then
 				visualizerV2.Update(part, data)
 			end
 		else
@@ -17735,6 +18439,7 @@ function hazardScannerV2.StopScan()
 	visualizerV2.ClearAll()
 	table.clear(activeHazards)
 	motion.ClearAll()
+	corridor.ClearAll()
 	memoryWatcher.Reset()
 end
 
@@ -17743,20 +18448,68 @@ function hazardScannerV2.IsEnabled()
 end
 
 function hazardScannerV2.SetVisualizerEnabled(state)
-	if state then
+	if state and not hazardScannerV2.IsEnabled() then
 		hazardScannerV2.StartScan()
-		visualizerV2.SetEnabled(true)
+	end
+	visualizerV2.SetEnabled(state)
+	if visualizerV2.IsEnabled() or visualizerV2.IsCorridorEnabled() then
 		for part, data in pairs(activeHazards) do
 			visualizerV2.Update(part, data)
 		end
-	else
-		visualizerV2.SetEnabled(false)
 	end
 end
 
 function hazardScannerV2.IsVisualizerEnabled()
 	return visualizerV2.IsEnabled()
 end
+
+--// THREAT CORRIDOR (Hành lang màu cam đón đầu theo Whitelist)
+function hazardScannerV2.SetCorridorEnabled(state)
+	if state and not hazardScannerV2.IsEnabled() then
+		hazardScannerV2.StartScan()
+	end
+	corridor.SetEnabled(state)
+	visualizerV2.SetCorridorEnabled(state)
+	if visualizerV2.IsEnabled() or visualizerV2.IsCorridorEnabled() then
+		for part, data in pairs(activeHazards) do
+			visualizerV2.Update(part, data)
+		end
+	end
+end
+
+function hazardScannerV2.IsCorridorEnabled()
+	return corridor.IsEnabled() and visualizerV2.IsCorridorEnabled()
+end
+
+-- Kiểm tra xem 1 điểm (hoặc bán kính người chơi) có nằm trong bất kỳ Threat Corridor nào không
+function hazardScannerV2.IsPointInAnyCorridor(point, extraRadius)
+	if not point then return false, nil end
+	for part, data in pairs(activeHazards) do
+		if data.shape and data.shape.corridor then
+			if corridor.IsPointInCorridor(point, data.shape.corridor, extraRadius) then
+				return true, data
+			end
+		end
+	end
+	return false, nil
+end
+
+-- Lấy danh sách tất cả các Threat Corridor đang hoạt động
+function hazardScannerV2.GetActiveCorridors()
+	local list = {}
+	for part, data in pairs(activeHazards) do
+		if data.shape and data.shape.corridor then
+			table.insert(list, {
+				part = part,
+				name = data.name,
+				corridor = data.shape.corridor,
+			})
+		end
+	end
+	return list
+end
+
+hazardScannerV2.Corridor = corridor
 
 -- Trích xuất Telemetry chuẩn hóa gửi qua WebSocket
 function hazardScannerV2.GetActiveHazardsTelemetry()
@@ -17790,6 +18543,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		elseif shape.shape == "circle" then
 			table.insert(list, {
@@ -17806,6 +18560,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		elseif shape.shape == "box" then
 			table.insert(list, {
@@ -17825,6 +18580,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		elseif shape.shape == "polygon" then
 			table.insert(list, {
@@ -17841,6 +18597,7 @@ function hazardScannerV2.GetActiveHazardsTelemetry()
 				speed = data.motion and data.motion.speed or 0,
 				angularVel = data.motion and data.motion.angularVel or 0,
 				trajectory = trajProj,
+				corridor = shape.corridor,
 			})
 		end
 	end
@@ -17864,7 +18621,7 @@ lifecycle.Register(function()
 end)
 
 return hazardScannerV2
-end function __DIST.M()-- Live Radar (DungeonQuest): WebSocket Telemetry Streamer (V2 Architecture).
+end function __DIST.N()-- Live Radar (DungeonQuest): WebSocket Telemetry Streamer (V2 Architecture).
 -- Sử dụng hoàn toàn HazardScannerV2 để quét hình học tổng quát, động học và telegraph.
 -- Truyền dữ liệu thời gian thực qua WebSocket (ws://localhost:8765) tới công cụ Web 2D Radar.
 -- ĐỘC LẬP HOÀN TOÀN: Không can thiệp hay phụ thuộc vào hệ thống hazard scanner V1 cũ.
@@ -17876,7 +18633,7 @@ local Players = game:GetService("Players")
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
 local contextual = __DIST.load('q')
-local hazardScannerV2 = __DIST.load('L')
+local hazardScannerV2 = __DIST.load('M')
 local lifecycle = __DIST.load('b')
 
 --// Table
@@ -18202,7 +18959,7 @@ lifecycle.Register(function()
 end)
 
 return liveRadar
-end function __DIST.N()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
+end function __DIST.O()-- Module Hazard Scanner trong tab Combat (DungeonQuest): quét đối tượng skill xuất hiện
 -- trong Workspace sau sự kiện start dungeon và vẽ SelectionBox đơn giản cho từng đối tượng.
 -- Không còn trajectory / whitelist / ngoại lệ / hitbox padding / tên 3D.
 
@@ -18211,8 +18968,8 @@ end function __DIST.N()-- Module Hazard Scanner trong tab Combat (DungeonQuest):
 local autoSave = __DIST.load('d')
 local combatMaster = __DIST.load('A')
 local hazardScanner = __DIST.load('x')
-local hazardScannerV2 = __DIST.load('L')
-local liveRadar = __DIST.load('M')
+local hazardScannerV2 = __DIST.load('M')
+local liveRadar = __DIST.load('N')
 local shared = __DIST.load('f')
 local ui = __DIST.load('B')
 
@@ -18498,6 +19255,14 @@ return function(window, tab)
 	}, "Toggle_HazardGroundVisualizerV2")
 
 	leftSection:Toggle({
+		Name = "Show Threat Corridor V2 (Orange Paths)",
+		Default = hazardScannerV2.IsCorridorEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetCorridorEnabled(state)
+		end),
+	}, "Toggle_HazardThreatCorridorV2")
+
+	leftSection:Toggle({
 		Name = "Show Trajectory Paths (Orange)",
 		Default = hazardScanner.IsTrajectoryEnabled(),
 		Callback = autoSave.Wrap(function(state)
@@ -18640,7 +19405,7 @@ return function(window, tab)
 
 	-- Khởi tạo monitor
 	updateMonitor()
-end end function __DIST.O()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
+end end function __DIST.P()-- Catalog map + độ khó cho DungeonQuest, dựa trên module chooseDungeon của game.
 -- Map thường: fetch động qua remote getDungeonStats (có cache).
 -- Map đặc biệt (Egg Island, Krampus, Tutorial): override tĩnh đúng như game gốc.
 
@@ -18841,7 +19606,7 @@ end
 dungeonCatalog.DUNGEONS = DUNGEONS
 dungeonCatalog.DIFFICULTIES = DIFFICULTIES
 
-return dungeonCatalog end function __DIST.P()-- Module Auto Farm trong tab Combat (DungeonQuest)
+return dungeonCatalog end function __DIST.Q()-- Module Auto Farm trong tab Combat (DungeonQuest)
 -- Tích hợp Auto Farm AI (Scanner, Validator, Selector, Tracker, Movement Controller, Blocker Checker)
 -- và Contextual Combat Distance (tùy chỉnh Min/Max Combat Distance theo từng Dungeon x Loại Mục Tiêu).
 
@@ -18851,7 +19616,7 @@ local autoSave = __DIST.load('d')
 local autoFarm = __DIST.load('z')
 local combatMaster = __DIST.load('A')
 local contextual = __DIST.load('q')
-local dungeonCatalog = __DIST.load('O')
+local dungeonCatalog = __DIST.load('P')
 local shared = __DIST.load('f')
 local services = __DIST.load('e')
 local ui = __DIST.load('B')
@@ -19373,14 +20138,14 @@ return function(window, tab)
 	-- Initial UI setup
 	refreshEditorValues()
 end
-end function __DIST.Q()-- Tab Combat (DungeonQuest): gộp Master Combat Switch + Player (Speed) + Hazard Scanner + AutoFarm.
+end function __DIST.R()-- Tab Combat (DungeonQuest): gộp Master Combat Switch + Player (Speed) + Hazard Scanner + AutoFarm.
 
 
 local autoSave = __DIST.load('d')
 local combatMaster = __DIST.load('A')
 local renderPlayer = __DIST.load('E')
-local renderHazardScanner = __DIST.load('N')
-local renderAutoFarm = __DIST.load('P')
+local renderHazardScanner = __DIST.load('O')
+local renderAutoFarm = __DIST.load('Q')
 
 return function(window, tab)
 	local leftSection = tab:Section({ Side = "Left" })
@@ -19414,14 +20179,14 @@ return function(window, tab)
 end
 
 
-end function __DIST.R()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
+end function __DIST.S()-- Auto Join Dungeon cho DungeonQuest: tạo phòng (createLobby) + whitelist + start dungeon.
 -- Scalable: map/độ khó lấy từ dungeonCatalog (động qua getDungeonStats + override map đặc biệt).
 
 --// Imports
 
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local dungeonCatalog = __DIST.load('O')
+local dungeonCatalog = __DIST.load('P')
 local shared = __DIST.load('f')
 local lifecycle = __DIST.load('b')
 local zoneGuard = __DIST.load('g')
@@ -19617,7 +20382,7 @@ lifecycle.Register(function()
 end)
 
 return autoJoin
-end function __DIST.S()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
+end function __DIST.T()-- Auto Start Game cho DungeonQuest: chờ tới khi đang ở TRONG dungeon rồi fire
 -- remote start. Dungeon được xác định bằng cách LOẠI TRỪ các placeId lobby: ngoài
 -- 2 lobby (Lobby1/Lobby2) thì mọi place khác đều coi là dungeon. Ở lobby không
 -- hoạt động dù toggle có bật.
@@ -19749,7 +20514,7 @@ lifecycle.Register(function()
 	autoStart.Stop()
 end)
 
-return autoStart end function __DIST.T()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
+return autoStart end function __DIST.U()-- Auto-press nút Start ở LOBBY cho DungeonQuest: chờ nút Start (introGui.title.Frame.
 -- TextButton) xuất hiện rồi mô phỏng nhấn Enter như Script3.txt. Chỉ hoạt động khi
 -- đang ở lobby place; vào dungeon (đổi place) thì script reload ngừng hẳn. Sau khi
 -- bấm, introGui biến mất nên phải chờ cả introGui + nút xuất hiện lại mới bấm lần nữa.
@@ -19873,7 +20638,7 @@ lifecycle.Register(function()
 	enabled = false
 end)
 
-return autoStartLobby end function __DIST.U()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+return autoStartLobby end function __DIST.V()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
 
 --// Imports
 
@@ -20117,18 +20882,18 @@ lifecycle.Register(function()
 end)
 
 return autoRetry
-end function __DIST.V()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
+end function __DIST.W()-- Tab Dungeon (DungeonQuest): Auto Join Dungeon scalable.
 -- Difficulty dropdown tự update options theo map đang chọn (lấy từ dungeonCatalog).
 
 --// Imports
 
 local ui = __DIST.load('B')
-local autoJoin = __DIST.load('R')
-local autoStart = __DIST.load('S')
-local autoStartLobby = __DIST.load('T')
-local autoRetry = __DIST.load('U')
+local autoJoin = __DIST.load('S')
+local autoStart = __DIST.load('T')
+local autoStartLobby = __DIST.load('U')
+local autoRetry = __DIST.load('V')
 local autoSave = __DIST.load('d')
-local dungeonCatalog = __DIST.load('O')
+local dungeonCatalog = __DIST.load('P')
 local zoneGuard = __DIST.load('g')
 
 return function(window, tab)
@@ -20339,7 +21104,7 @@ return function(window, tab)
 		updateLevelLabel()
 	end)
 end
-end function __DIST.W()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
+end function __DIST.X()-- Auto Sell (DungeonQuest): bán vật phẩm trong inventory theo điều kiện lọc.
 -- Cơ chế: bấm nút "Sell Now" -> đọc inventory (remote `reloadInvy`) -> lọc theo
 -- rarity/type/prefix-name/levelReq/equipped -> gom index theo category -> fire
 -- remote `sellItemEvent` (payload { [category] = {index,...} }, vd { weapon = {49} }).
@@ -20817,14 +21582,14 @@ autoSell.LEVEL_REQ_OPTIONS = LEVEL_REQ_OPTIONS
 autoSell.LEVEL_REQ_MODE_OPTIONS = LEVEL_REQ_MODE_OPTIONS
 
 return autoSell
-end function __DIST.X()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
+end function __DIST.Y()-- Tab Inventory (DungeonQuest): AutoSell section - sell items by filter.
 -- Uses multichoice dropdowns for Rarity and Item Type; "Sell Now" sells once
 -- after a confirmation dialog.
 
 --// Imports
 
 local autoSave = __DIST.load('d')
-local autoSell = __DIST.load('W')
+local autoSell = __DIST.load('X')
 local notifier = __DIST.load('c')
 
 return function(window, tab)
@@ -21103,7 +21868,7 @@ return function(window, tab)
 	-- Khởi tạo hiển thị summary lần đầu
 	updateSummary()
 end
-end function __DIST.Y()-- ESP hitbox cho DungeonQuest.
+end function __DIST.Z()-- ESP hitbox cho DungeonQuest.
 -- Bao gồm Player/Enemy Hitbox (Real/Custom) + Show Skill Hitbox (tạm thời chỉ northernMageShot - precast).
 
 --// Imports
@@ -21453,7 +22218,7 @@ function esp.IsSkillHitboxEnabled()
 end
 
 return esp
-end function __DIST.Z()-- ESP Enemy (Highlight) cho DungeonQuest.
+end function __DIST._()-- ESP Enemy (Highlight) cho DungeonQuest.
 -- Vẽ highlight phủ toàn bộ model enemy (giống glow Minecraft) đang track trong
 -- dungeon, dựa trên shared.GetTrackedEnemyData. Màu cam để phân biệt với ESP
 -- hitbox projectile (đỏ) và player hitbox (xanh lá).
@@ -21614,7 +22379,7 @@ lifecycle.Register(function()
 end)
 
 return enemyEsp
-end function __DIST._()-- Map Optimizer (DungeonQuest): Clean Map
+end function __DIST.aa()-- Map Optimizer (DungeonQuest): Clean Map
 -- 1. Làm tàng hình (Transparency = 1) đối với tất cả các Part trong workspace.Map.
 -- 2. Bắn Raycast theo trục X và Z xung quanh người chơi: nếu gặp vật cản/tường xung quanh thì lập tức set CanCollide = false và CanTouch = false (ngoại trừ "Solid spikes").
 
@@ -22068,14 +22833,14 @@ lifecycle.Register(function()
 	mapOptimizer.Toggle(false)
 end)
 
-return mapOptimizer end function __DIST.aa()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
+return mapOptimizer end function __DIST.ab()-- Module Visual trong tab Utilities (DungeonQuest): các tính năng hiển thị trực quan.
 
 --// Imports
 	
 local autoSave = __DIST.load('d')
-	local esp = __DIST.load('Y')
-	local enemyEsp = __DIST.load('Z')
-	local mapOptimizer = __DIST.load('_')
+	local esp = __DIST.load('Z')
+	local enemyEsp = __DIST.load('_')
+	local mapOptimizer = __DIST.load('aa')
 	local ui = __DIST.load('B')
 
 --// Hitbox mode options
@@ -22212,7 +22977,7 @@ return function(window, tab)
 	}, "Toggle_MapOptimizer")
 
 end
-end function __DIST.ab()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
+end function __DIST.ac()-- Webhook Discord cho DungeonQuest: gửi thông báo WIN + Reward qua Discord.
 -- Bắt sự kiện `cloneRewardGui` (RemoteEvent do game fire khi thắng dungeon), đọc
 -- reward, build Discord embed và gửi qua HttpService / `request` của executor.
 
@@ -23228,12 +23993,12 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.ac()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
+end function __DIST.ad()-- Module Notifications trong tab Utilities (DungeonQuest): cấu hình Webhook Discord.
 -- Input webhook URL + toggle bật/tắt + nút test gửi thử + cấu hình ping.
 
 --// Imports
 
-local webhook = __DIST.load('ab')
+local webhook = __DIST.load('ac')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Right" })
@@ -23308,7 +24073,7 @@ return function(window, tab)
 		Text = "Ping triggers when a reward item matches any selected Tier (multi-select, Secret = Tier6).",
 	})
 end
-end function __DIST.ad()
+end function __DIST.ae()
 local binder = {}
 
 function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
@@ -23377,12 +24142,12 @@ function binder.Wrap(
 end
 
 return binder
-end function __DIST.ae()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+end function __DIST.af()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
 --// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
 
 --// Imports
 
-local binder = __DIST.load('ad')
+local binder = __DIST.load('ae')
 
 --// Services
 local VirtualUser = game:GetService("VirtualUser")
@@ -23474,7 +24239,7 @@ return binder.Wrap(antiAfk, {
 	SetInterval: (number) -> (),
 	GetInterval: () -> number
 }
-end function __DIST.af()--// Thay thế tất cả sự xuất hiện của tên người chơi thành "Username" (hoặc chuỗi tùy chọn)
+end function __DIST.ag()--// Thay thế tất cả sự xuất hiện của tên người chơi thành "Username" (hoặc chuỗi tùy chọn)
 --// để hỗ trợ quay video, livestream mà không làm lộ tên tài khoản Roblox.
 --// Hỗ trợ tự khôi phục lại tên gốc khi tắt, an toàn với RichText tags và chống đệ quy.
 
@@ -23482,7 +24247,7 @@ end function __DIST.af()--// Thay thế tất cả sự xuất hiện của tên
 
 local macLib = __DIST.load('a')
 local lifecycle = __DIST.load('b')
-local binder = __DIST.load('ad')
+local binder = __DIST.load('ae')
 local shared = __DIST.load('f')
 
 --// Services
@@ -24496,14 +25261,14 @@ return binder.Wrap(streamingMode, {
 	Replacement: string,
 	MaskStats: boolean
 }
-end function __DIST.ag()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
+end function __DIST.ah()-- Module Mix trong tab Utilities (DungeonQuest): các tiện ích tổng hợp (anti afk, ...).
 
 --// Imports
 
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('B')
-local antiAfk = __DIST.load('ae')
-local streamingMode = __DIST.load('af')
+local antiAfk = __DIST.load('af')
+local streamingMode = __DIST.load('ag')
 
 return function(window, tab)
 	local section = tab:Section({ Side = "Left" })
@@ -24568,15 +25333,15 @@ return function(window, tab)
 	}, "Input_StreamingReplacement")
 end
 
-end function __DIST.ah()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
+end function __DIST.ai()-- Tab Utilities (DungeonQuest): gộp Visual + Notifications (Webhook) + Mix (Anti AFK).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('aa')(window, tab)
-__DIST.load('ac')(window, tab)
-__DIST.load('ag')(window, tab)
-end end function __DIST.ai()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+__DIST.load('ab')(window, tab)
+__DIST.load('ad')(window, tab)
+__DIST.load('ah')(window, tab)
+end end function __DIST.aj()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
 -- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
 
 --// Imports
@@ -24651,7 +25416,7 @@ end
 loadSettings()
 
 return autoHide
-end function __DIST.aj()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+end function __DIST.ak()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
 -- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
 -- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
 
@@ -24659,7 +25424,7 @@ end function __DIST.aj()-- Module Config trong tab Configs (DungeonQuest): tự 
 
 local macLib = __DIST.load('a')
 local autoSave = __DIST.load('d')
-local autoHide = __DIST.load('ai')
+local autoHide = __DIST.load('aj')
 local coordinator = __DIST.load('h')
 
 return function(window, tab)
@@ -24857,12 +25622,12 @@ return function(window, tab)
 		Text = "Press RightControl to show the window again.",
 	})
 end
-end function __DIST.ak()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+end function __DIST.al()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
 
 --// Imports
 
 local shared = __DIST.load('f')
-local autoRetry = __DIST.load('U')
+local autoRetry = __DIST.load('V')
 
 local BOSS_LABEL = "Boss Active"
 local BOSS_INDEX_LABEL = "Boss"
@@ -25029,14 +25794,14 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.al()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+end function __DIST.am()-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
 -- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
 
 
 return function(window, tab)
-__DIST.load('aj')(window, tab)
 __DIST.load('ak')(window, tab)
-end end function __DIST.am()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
+__DIST.load('al')(window, tab)
+end end function __DIST.an()-- Path Record System – Storage: quản lý MACRO bản ghi cho từng MAP.
 --   - Macro = 1 bản ghi cho cả map, chứa toàn bộ segment của các room đã record.
 --   - Mỗi segment = 1 room (auto-split khi record liên tục xuyên các room); segment
 --     phòng bosss được đánh dấu `boss: true`.
@@ -25704,7 +26469,7 @@ function storage.ReloadFromConfig()
 	storage.ReloadFromDisk()
 end
 
-return storage end function __DIST.an()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
+return storage end function __DIST.ao()-- Path Record System – Recorder: ghi 1 SESSION liên tục cho toàn map.
 --   - Bấm Record 1 lần ở map = ghi NHIỀU room: khi CHUYỂN ROOM tự "rollover"
 --     (lưu segment room cũ + mở slice mới cho room mới tại vị trí cạnh cửa).
 --   - TỰ TẮT + lưu khi về LOBBY (hết map), vào BOSS (mode NORMAL), hoặc giới hạn điểm.
@@ -25716,7 +26481,7 @@ return storage end function __DIST.an()-- Path Record System – Recorder: ghi 1
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('am')
+local storage = __DIST.load('an')
 local autoSave = __DIST.load('d')
 local notifier = __DIST.load('c')
 
@@ -26286,7 +27051,7 @@ function recorder.Cancel()
 	fireStatus()
 end
 
-return recorder end function __DIST.ao()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
+return recorder end function __DIST.ap()-- Path Record System – Player: chạy MACRO của 1 map (toàn bộ room đã record) ĐÚNG 1 LẦN.
 --   - Đi qua từng room có segment trong macro; mỗi room đi hết 1 lượt rồi
 --     ĐỨNG YÊN chờ đổi room (không đi qua lại trong room).
 --   - BOSS room:
@@ -26302,9 +27067,9 @@ return recorder end function __DIST.ao()-- Path Record System – Player: chạy
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('am')
+local storage = __DIST.load('an')
 local notifier = __DIST.load('c')
-local autoRetry = __DIST.load('U')
+local autoRetry = __DIST.load('V')
 
 local player = services.player
 local VirtualInputManager = services.VirtualInputManager
@@ -27399,7 +28164,7 @@ function mover.PauseForExclusive()
 	fireStatus("paused")
 end
 
-return mover end function __DIST.ap()-- Path Record System – Visual: 3D Visualizer cho Path Macro & Real-time Record.
+return mover end function __DIST.aq()-- Path Record System – Visual: 3D Visualizer cho Path Macro & Real-time Record.
 --   - Hiển thị từng Node của đường đi dưới dạng hình cầu 3D (SphereHandleAdornment).
 --   - Lúc Record: Sphere màu ĐỎ (real-time thêm node khi nhân vật di chuyển).
 --   - Lúc thường (xem room / playback / idle): Sphere màu XANH LÁ (đọc từ macro segment đã lưu của room).
@@ -27413,9 +28178,9 @@ return mover end function __DIST.ap()-- Path Record System – Visual: 3D Visual
 
 local services = __DIST.load('e')
 local shared = __DIST.load('f')
-local storage = __DIST.load('am')
-local recorder = __DIST.load('an')
-local mover = __DIST.load('ao')
+local storage = __DIST.load('an')
+local recorder = __DIST.load('ao')
+local mover = __DIST.load('ap')
 local lifecycle = __DIST.load('b')
 
 local Workspace = game:GetService("Workspace")
@@ -28139,7 +28904,7 @@ lifecycle.Register(function()
 	visual.Destroy()
 end)
 
-return visual end function __DIST.aq()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
+return visual end function __DIST.ar()-- Path Record System – Range Visual: Vòng tròn trực quan quanh nhân vật
 -- giúp người chơi ước lượng phạm vi/tầm đánh của Skill (AOE) để căn điểm record.
 -- Đồng thời tự động HIGHLIGHT kẻ địch khi chúng bước vào trong tầm (in-range).
 
@@ -28544,7 +29309,7 @@ lifecycle.Register(function()
 end)
 
 return rangeVisual
-end function __DIST.ar()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
+end function __DIST.as()-- Path Record System (DungeonQuest) – Facade: điều phối Record / Playback.
 --   - Macro = 1 bản ghi cho cả MAP, record liên tục nhiều room trong 1 session
 --     (tự auto-split theo room; segment phòng boss đánh dấu `boss`).
 --   - Mode của map do người dùng chọn (lưu trong file macro):
@@ -28562,11 +29327,11 @@ local notifier = __DIST.load('c')
 local combatMaster = __DIST.load('A')
 local zoneGuard = __DIST.load('g')
 
-local storage = __DIST.load('am')
-local recorder = __DIST.load('an')
-local mover = __DIST.load('ao')
-local visual = __DIST.load('ap')
-local rangeVisual = __DIST.load('aq')
+local storage = __DIST.load('an')
+local recorder = __DIST.load('ao')
+local mover = __DIST.load('ap')
+local visual = __DIST.load('aq')
+local rangeVisual = __DIST.load('ar')
 
 --// Table
 local pathRecord = {}
@@ -29182,7 +29947,7 @@ lifecycle.Register(function()
 	if storageUnsub then storageUnsub(); storageUnsub = nil end
 end)
 
-return pathRecord end function __DIST.as()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
+return pathRecord end function __DIST.at()-- Tab Path Record (DungeonQuest): thử nghiệm macro di chuyển theo quỹ đạo record sẵn.
 --   - MACRO = 1 bản ghi cho cả map: bấm Record 1 lần, tự ghi liên tục qua các room
 --     (auto-split segment theo room), tự lưu khi về lobby. Record lại room nào thì ghi đè room đó.
 --   - Mode theo map: NORMAL (mặc định) skip boss, dùng Hazard Scanner; FULL record & phát luôn cả boss room.
@@ -29193,7 +29958,7 @@ return pathRecord end function __DIST.as()-- Tab Path Record (DungeonQuest): th�
 
 local services = __DIST.load('e')
 local lifecycle = __DIST.load('b')
-local pathRecord = __DIST.load('ar')
+local pathRecord = __DIST.load('as')
 local autoSave = __DIST.load('d')
 local ui = __DIST.load('B')
 local notifier = __DIST.load('c')
@@ -29919,7 +30684,7 @@ return function(window, tab)
 
 	updateStatus(pathRecord.GetStatus())
 	syncToggles(pathRecord.GetStatus())
-end end function __DIST.at()-- CaculationPot Extension Module (DungeonQuest)
+end end function __DIST.au()-- CaculationPot Extension Module (DungeonQuest)
 -- Quản lý trạng thái và logic cho extension CaculationPot trong tab Utilities
 -- Cơ chế "Làm chay + Truy xuất ngược": Hook trực tiếp sự kiện GUI và can thiệp TextLabel tooltip in-game
 
@@ -30662,7 +31427,7 @@ end)
 startInspectorLoop()
 
 return caculationPot
-end function __DIST.au()-- Custom In-Game UI: sortBarFrame (DungeonQuest)
+end function __DIST.av()-- Custom In-Game UI: sortBarFrame (DungeonQuest)
 -- Khởi tạo thanh Sort Bar đính kèm vào GUI kho đồ trong game với Responsive Layout.
 
 local function createSortBarFrame(parent)
@@ -30777,7 +31542,7 @@ local function createSortBarFrame(parent)
 	return sortBarFrame
 end
 
-return createSortBarFrame end function __DIST.av()-- Inventory Sort Module (DungeonQuest)
+return createSortBarFrame end function __DIST.aw()-- Inventory Sort Module (DungeonQuest)
 -- Sắp xếp kho đồ game tức thì bằng cách thay đổi LayoutOrder trên UIGridLayout của ScrollingFrame
 -- Hỗ trợ cơ chế kết hợp:
 --   - Main filter (Tri-state): None (bỏ chọn) -> Descending (Power giảm dần) -> Ascending (Power tăng dần) -> None
@@ -30789,7 +31554,7 @@ return createSortBarFrame end function __DIST.av()-- Inventory Sort Module (Dung
 local lifecycle = __DIST.load('b')
 local services = __DIST.load('e')
 local notifier = __DIST.load('c')
-local createSortBarFrame = __DIST.load('au')
+local createSortBarFrame = __DIST.load('av')
 local macLib = __DIST.load('a')
 
 local TweenService = services.TweenService or game:GetService("TweenService")
@@ -32550,7 +33315,7 @@ end)
 inventorySort.Init()
 
 return inventorySort
-end function __DIST.aw()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
+end function __DIST.ax()-- DungeonQuest: khởi tạo window + tabs, nạp core logic và các tab UI.
 
 
 return function(self)
@@ -32628,12 +33393,12 @@ return function(self)
 	macLib:SetFolder("EsclipseHub")
 
 	--// Tab UI (mỗi tab trigger require các core logic tương ứng)
-	local combatTab = __DIST.load('Q')
-	local dungeonTab = __DIST.load('V')
-	local inventoryTab = __DIST.load('X')
-	local utilitiesTab = __DIST.load('ah')
-	local configsTab = __DIST.load('al')
-	local pathRecordTab = __DIST.load('as')
+	local combatTab = __DIST.load('R')
+	local dungeonTab = __DIST.load('W')
+	local inventoryTab = __DIST.load('Y')
+	local utilitiesTab = __DIST.load('ai')
+	local configsTab = __DIST.load('am')
+	local pathRecordTab = __DIST.load('at')
 
 	combatTab(window, tabs.Combat)
 	dungeonTab(window, tabs.Dungeon)
@@ -32647,11 +33412,11 @@ return function(self)
 	shortcuts.Init()
 
 	--// Webhook Discord (thông báo WIN + Reward)
-	local webhook = __DIST.load('ab')
+	local webhook = __DIST.load('ac')
 	webhook.Init()
-__DIST.load('Z')
-__DIST.load('at')
-__DIST.load('av')
+__DIST.load('_')
+__DIST.load('au')
+__DIST.load('aw')
 	
 
 	--// Auto Hide UI (ẩn cửa sổ sau khi execute)
@@ -32661,12 +33426,12 @@ __DIST.load('av')
 
 
 
-local autoHide = __DIST.load('ai')
+local autoHide = __DIST.load('aj')
 	autoHide.SetWindow(window)
 	autoHide.Execute()
 
 	--// Streaming Mode (ẩn danh tính player trên GUI / nametag)
-    local streamingMode = __DIST.load('af')
+    local streamingMode = __DIST.load('ag')
     streamingMode.SetWindow(window)
     streamingMode.Init()
 	
@@ -32721,7 +33486,7 @@ local autoHide = __DIST.load('ai')
 		autoSave.Resume()
 	end)
 end
-end function __DIST.ax()
+end function __DIST.ay()
 local flags = {}
 
 function flags:Export()
@@ -32764,12 +33529,12 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.ay()
+return flags end function __DIST.az()
 --// Imports
 
 
 
-local binder = __DIST.load('ad')
+local binder = __DIST.load('ae')
 
 --// Variables
 local interface = {}
@@ -32789,9 +33554,9 @@ function interface:Window(properties: Window__DARKLUA_TYPE_i): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.az()--// Imports
+end function __DIST.aA()--// Imports
 
-local binder = __DIST.load('ad')
+local binder = __DIST.load('ae')
 
 --// Variables
 local esp = {}
@@ -32802,11 +33567,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.aA()--// Imports
+end function __DIST.aB()--// Imports
 
-local flags = __DIST.load('ax')
-local interface = __DIST.load('ay')
-local esp = __DIST.load('az')
+local flags = __DIST.load('ay')
+local interface = __DIST.load('az')
+local esp = __DIST.load('aA')
 
 --// Initialize
 local window = interface:Window({
@@ -32845,7 +33610,7 @@ return {
 		end,
 	},
 }
-end function __DIST.aB()--// Variables
+end function __DIST.aC()--// Variables
 
 local utility = {}
 
@@ -32877,7 +33642,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.aC()--// Functions
+end function __DIST.aD()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -32887,14 +33652,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.aD()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.aE()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('aA')
-	local utility = __DIST.load('aB')
-	local services = __DIST.load('aC')
+	local base = __DIST.load('aB')
+	local utility = __DIST.load('aC')
+	local services = __DIST.load('aD')
 
 	--// References
 	local flags = base.Flags
@@ -32960,7 +33725,7 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = __DIST.load('aw'),
+		Load = __DIST.load('ax'),
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
@@ -32971,7 +33736,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('aD'),
+		Load = __DIST.load('aE'),
 		Places = {
 			123456789,
 			987654321,
