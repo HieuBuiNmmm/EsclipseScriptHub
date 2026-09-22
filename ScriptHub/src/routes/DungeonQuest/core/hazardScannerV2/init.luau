@@ -14,6 +14,7 @@ local analyzer = require("@routes/DungeonQuest/core/hazardScannerV2/analyzer")
 local motion = require("@routes/DungeonQuest/core/hazardScannerV2/motion")
 local bossWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/bossWatcher")
 local memoryWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/memoryWatcher")
+local visualizerV2 = require("@routes/DungeonQuest/core/hazardScannerV2/visualizerV2")
 
 --// Table
 local hazardScannerV2 = {}
@@ -62,7 +63,7 @@ local function registerHazardPart(part, level1Child)
 		displayName = rootName .. "/" .. part.Name
 	end
 
-	activeHazards[part] = {
+	local hazardData = {
 		part = part,
 		level1Parent = level1Child or part,
 		name = displayName,
@@ -70,11 +71,17 @@ local function registerHazardPart(part, level1Child)
 		shape = shapeData,
 		motion = motionRec,
 	}
+	activeHazards[part] = hazardData
+
+	if visualizerV2.IsEnabled() then
+		visualizerV2.Update(part, hazardData)
+	end
 end
 
 -- Hủy đăng ký 1 Hazard Part
 local function unregisterHazardPart(part)
 	if activeHazards[part] then
+		visualizerV2.Detach(part)
 		activeHazards[part] = nil
 		motion.RemoveRecord(part)
 	end
@@ -180,6 +187,10 @@ local function onHeartbeat()
 			or filter.IsMemoryModel(part)
 			or (data.level1Parent and filter.IsMemoryModel(data.level1Parent))
 
+		local isBigSpike = filter.IsFirstBossBigSpike(data.name)
+			or filter.IsFirstBossBigSpike(part)
+			or (data.level1Parent and filter.IsFirstBossBigSpike(data.level1Parent))
+
 		-- 2. Kiểm tra sống/chết cho MultiRing
 		if isMultiRing then
 			local age = now - data.spawnTime
@@ -246,6 +257,23 @@ local function onHeartbeat()
 				table.insert(deadList, part)
 				continue
 			end
+		elseif isBigSpike then
+			-- Kiểm tra firstBossBigSpike còn active hay không (precast qua beamPart hoặc đang bay)
+			local isStillActive = false
+			if part.Transparency <= 0.85 then
+				isStillActive = true
+			else
+				local beamPart = Workspace:FindFirstChild("firstBossBeamPart")
+				if beamPart then
+					isStillActive = true
+				end
+			end
+
+			local age = now - data.spawnTime
+			if not isStillActive or age > 5.0 then
+				table.insert(deadList, part)
+				continue
+			end
 		else
 			-- 3. Hazard thông thường: Bỏ nếu độ trong suốt > 0.85
 			if part.Transparency > 0.85 then
@@ -255,11 +283,15 @@ local function onHeartbeat()
 		end
 
 		-- 4. Cập nhật phân tích hình học & chuyển động
-		local shapeData = analyzer.AnalyzeHazardPart(part)
+		local existingRec = motion.GetRecord(part)
+		local shapeData = analyzer.AnalyzeHazardPart(part, existingRec)
 		if shapeData then
 			data.shape = shapeData
 			local pos = Vector3.new(shapeData.x, shapeData.y, shapeData.z)
 			data.motion = motion.UpdateRecord(part, pos, shapeData.yaw or 0)
+			if visualizerV2.IsEnabled() then
+				visualizerV2.Update(part, data)
+			end
 		else
 			table.insert(deadList, part)
 		end
@@ -285,6 +317,13 @@ local function onHeartbeat()
 					if filter.IsHazardPart(desc, child) then
 						registerHazardPart(desc, child)
 					end
+				end
+			end
+		elseif filter.IsFirstBossBigSpike(child) then
+			local parts = filter.FindHazardPartsInLevel1Child(child)
+			for _, p in ipairs(parts) do
+				if not activeHazards[p] and filter.IsHazardPart(p, child) then
+					registerHazardPart(p, child)
 				end
 			end
 		end
@@ -335,6 +374,7 @@ function hazardScannerV2.StopScan()
 	end
 	table.clear(childConnections)
 
+	visualizerV2.ClearAll()
 	table.clear(activeHazards)
 	motion.ClearAll()
 	memoryWatcher.Reset()
@@ -342,6 +382,22 @@ end
 
 function hazardScannerV2.IsEnabled()
 	return enabled
+end
+
+function hazardScannerV2.SetVisualizerEnabled(state)
+	if state then
+		hazardScannerV2.StartScan()
+		visualizerV2.SetEnabled(true)
+		for part, data in pairs(activeHazards) do
+			visualizerV2.Update(part, data)
+		end
+	else
+		visualizerV2.SetEnabled(false)
+	end
+end
+
+function hazardScannerV2.IsVisualizerEnabled()
+	return visualizerV2.IsEnabled()
 end
 
 -- Trích xuất Telemetry chuẩn hóa gửi qua WebSocket

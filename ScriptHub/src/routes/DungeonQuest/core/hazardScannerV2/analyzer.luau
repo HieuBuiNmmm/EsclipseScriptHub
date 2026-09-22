@@ -91,7 +91,7 @@ local function generateCirclePolygon(cx, cz, radius, steps)
 end
 
 -- Phân tích 1 Hazard Part đơn lẻ thành dạng hình học 2D chuẩn xác
-function analyzer.AnalyzeHazardPart(part)
+function analyzer.AnalyzeHazardPart(part, motionRecord)
 	if not part or not part:IsA("BasePart") or not part.Parent then
 		return nil
 	end
@@ -193,6 +193,26 @@ function analyzer.AnalyzeHazardPart(part)
 		}
 	end
 
+	-- 0.8. Nhận diện firstBossBigSpike (Boss 1): Gai xoay tròn -> Đổ bóng Hình tròn Circle
+	local isBigSpike = filter.IsFirstBossBigSpike(part) or (part.Parent and filter.IsFirstBossBigSpike(part.Parent))
+	if isBigSpike then
+		local dims = { size.X, size.Y, size.Z }
+		table.sort(dims)
+		local maxDim = math.max(dims[2], dims[3])
+		local rad = math.clamp(maxDim / 2, 10.0, 35.0)
+		if rad < 12.0 then rad = 14.0 end
+		return {
+			shape = "circle",
+			x = pos.X,
+			y = pos.Y,
+			z = pos.Z,
+			radius = rad,
+			color = hexColor,
+			transparency = part.Transparency,
+			part = part,
+		}
+	end
+
 	-- 1. Nếu là Ball -> Hình tròn Circle
 	if part:IsA("Part") and part.Shape == Enum.PartType.Ball then
 		local rad = math.max(size.X, size.Y, size.Z) / 2
@@ -242,15 +262,87 @@ function analyzer.AnalyzeHazardPart(part)
 		}
 	end
 
-	-- 3. Hộp chữ nhật xoay (OBB Box)
-	local halfX = math.max(0.5, size.X / 2)
-	local halfZ = math.max(0.5, size.Z / 2)
+	-- 3. Hộp chữ nhật chuẩn hóa theo mặt phẳng 2D (Planar OBB Box)
+	local isHorizontalCylinder = (part:IsA("Part") and part.Shape == Enum.PartType.Cylinder)
+	local isMovingBeam = (pName:find("movingbeam") ~= nil) or (parentName:find("movingbeam") ~= nil)
+	local isMissile = (pName:find("missile") ~= nil) or (parentName:find("missile") ~= nil)
 
-	-- 4 đỉnh thế giới (World-space 4 corners) chiếu xuống mặt phẳng 2D (X, Z)
-	local c1 = cf:PointToWorldSpace(Vector3.new(halfX, 0, halfZ))
-	local c2 = cf:PointToWorldSpace(Vector3.new(-halfX, 0, halfZ))
-	local c3 = cf:PointToWorldSpace(Vector3.new(-halfX, 0, -halfZ))
-	local c4 = cf:PointToWorldSpace(Vector3.new(halfX, 0, -halfZ))
+	local fwd2D, right2D, halfWidth, halfLength
+
+	if isMovingBeam then
+		-- BOSS 2: Moving Beam (Sải ngang rộng dọc theo right2D, bề dày mỏng dọc theo fwd2D)
+		halfWidth = math.max(size.X, size.Z) / 2
+		halfLength = math.max(2.0, math.min(size.X, math.max(size.Y, size.Z)) / 2)
+
+		local horizRv = Vector3.new(cf.RightVector.X, 0, cf.RightVector.Z)
+		if horizRv.Magnitude > 0.01 then
+			right2D = horizRv.Unit
+		else
+			right2D = Vector3.new(1, 0, 0)
+		end
+		fwd2D = Vector3.new(-right2D.Z, 0, right2D.X)
+
+		if motionRecord and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			if fwd2D:Dot(motionRecord.headingDir) < 0 then
+				fwd2D = -fwd2D
+				right2D = -right2D
+			end
+		end
+	elseif isMissile then
+		-- BOSS 3: Missile (Chiều dài dọc theo fwd2D, tiết diện ngang dọc theo right2D)
+		local maxDim = math.max(size.X, math.max(size.Y, size.Z))
+		local minDim = math.min(size.X, math.min(size.Y, size.Z))
+		halfLength = math.max(0.5, maxDim / 2)
+		halfWidth = math.max(1.5, minDim / 2)
+
+		if motionRecord and motionRecord.speed and motionRecord.speed >= 1.0 and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		else
+			local lv = cf.LookVector
+			local horizLv = Vector3.new(-lv.X, 0, -lv.Z)
+			if horizLv.Magnitude > 0.01 then
+				fwd2D = horizLv.Unit
+			else
+				fwd2D = Vector3.new(0, 0, -1)
+			end
+			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		end
+	elseif isHorizontalCylinder then
+		local rv = cf.RightVector
+		local horizRv = Vector3.new(rv.X, 0, rv.Z)
+		if horizRv.Magnitude > 0.01 then
+			fwd2D = horizRv.Unit
+		else
+			fwd2D = Vector3.new(0, 0, -1)
+		end
+		right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		halfLength = math.max(0.5, size.X / 2)
+		halfWidth = math.max(0.5, math.max(size.Y, size.Z) / 2)
+	else
+		-- Hazard tĩnh thông thường: dùng trục chuẩn LookVector và RightVector
+		local halfX = math.max(0.5, size.X / 2)
+		local halfZ = math.max(0.5, size.Z / 2)
+		halfWidth = halfX
+		halfLength = halfZ
+
+		local lv = cf.LookVector
+		local horizLv = Vector3.new(lv.X, 0, lv.Z)
+		if horizLv.Magnitude > 0.01 then
+			fwd2D = horizLv.Unit
+		else
+			fwd2D = Vector3.new(0, 0, -1)
+		end
+		right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+	end
+
+	local planarYaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+
+	local cx, cz = pos.X, pos.Z
+	local c1 = Vector3.new(cx, pos.Y, cz) + right2D * halfWidth + fwd2D * halfLength
+	local c2 = Vector3.new(cx, pos.Y, cz) - right2D * halfWidth + fwd2D * halfLength
+	local c3 = Vector3.new(cx, pos.Y, cz) - right2D * halfWidth - fwd2D * halfLength
+	local c4 = Vector3.new(cx, pos.Y, cz) + right2D * halfWidth - fwd2D * halfLength
 
 	local boxVertices = {
 		{ x = c1.X, z = c1.Z },
@@ -264,9 +356,13 @@ function analyzer.AnalyzeHazardPart(part)
 		x = pos.X,
 		y = pos.Y,
 		z = pos.Z,
-		halfX = halfX,
-		halfZ = halfZ,
-		yaw = yaw,
+		halfX = halfWidth,
+		halfZ = halfLength,
+		halfWidth = halfWidth,
+		halfLength = halfLength,
+		fwd2D = fwd2D,
+		right2D = right2D,
+		yaw = planarYaw,
 		vertices = boxVertices,
 		color = hexColor,
 		transparency = part.Transparency,

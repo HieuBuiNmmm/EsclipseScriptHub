@@ -6,6 +6,7 @@
 local autoSave = require("@routes/DungeonQuest/core/autoSave")
 local combatMaster = require("@routes/DungeonQuest/core/combatMaster")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local hazardScannerV2 = require("@routes/DungeonQuest/core/hazardScannerV2")
 local liveRadar = require("@routes/DungeonQuest/core/liveRadar")
 local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
@@ -282,6 +283,14 @@ return function(window, tab)
 			hazardScanner.SetVisualizerEnabled(state)
 		end),
 	}, "Toggle_HazardGroundVisualizer")
+
+	leftSection:Toggle({
+		Name = "Show Ground Visualizer V2 (2D Shadows)",
+		Default = hazardScannerV2.IsVisualizerEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetVisualizerEnabled(state)
+		end),
+	}, "Toggle_HazardGroundVisualizerV2")
 
 	leftSection:Toggle({
 		Name = "Show Trajectory Paths (Orange)",

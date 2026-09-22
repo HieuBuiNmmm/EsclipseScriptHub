@@ -65,9 +65,7 @@ function motion.UpdateRecord(part, currentPos, currentYaw)
 			record.headingDir = record.velocity.Unit
 		end
 
-		if math.abs(record.angularVel) >= MIN_SPINNING_ANGULAR_VEL then
-			record.motionType = "SPINNING"
-		elseif record.speed >= MIN_MOVING_SPEED then
+		if record.speed >= MIN_MOVING_SPEED then
 			local pPos = getPlayerPos()
 			if pPos and (pPos - currentPos).Magnitude < 100 then
 				local toPlayer = (pPos - currentPos).Unit
@@ -80,6 +78,9 @@ function motion.UpdateRecord(part, currentPos, currentYaw)
 			else
 				record.motionType = "LINEAR"
 			end
+			record.angularVel = 0
+		elseif math.abs(record.angularVel) >= MIN_SPINNING_ANGULAR_VEL then
+			record.motionType = "SPINNING"
 		else
 			record.motionType = "STATIC"
 		end
@@ -90,6 +91,10 @@ function motion.UpdateRecord(part, currentPos, currentYaw)
 	end
 
 	return record
+end
+
+function motion.GetRecord(part)
+	return trackedRecords[part]
 end
 
 function motion.GetTrajectoryProjection(part, duration)

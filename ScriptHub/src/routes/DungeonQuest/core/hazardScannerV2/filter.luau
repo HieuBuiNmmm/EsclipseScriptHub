@@ -57,6 +57,16 @@ function filter.IsIceSpikes(nameOrInstance)
 	return false
 end
 
+-- Kiểm tra xem 1 tên hoặc instance có phải là chiêu firstBossBigSpike (Boss 1) không
+function filter.IsFirstBossBigSpike(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	if #clean == 0 or string.find(clean, "seekingspike", 1, true) then return false end
+	return string.find(clean, "firstbossbigspike", 1, true) ~= nil
+		or string.find(clean, "bigspike", 1, true) ~= nil
+end
+
 -- Kiểm tra xem 1 instance có thuộc nhân vật người chơi / party hay không
 function filter.IsPlayerCharacter(instance)
 	if not instance then return true end
@@ -234,6 +244,17 @@ function filter.IsHazardPart(part, hazardContext)
 		return false
 	end
 
+	-- NGOẠI LỆ 5: firstBossBigSpike (Material Plastic / MeshPart)
+	local isBigSpike = filter.IsFirstBossBigSpike(part)
+		or (part.Parent and filter.IsFirstBossBigSpike(part.Parent))
+		or (hazardContext and filter.IsFirstBossBigSpike(hazardContext))
+
+	if isBigSpike then
+		local pLower = part.Name:lower()
+		if pLower == "primarypart" then return false end
+		return true
+	end
+
 	-- Kiểm tra độ trong suốt (bỏ qua part tàng hình / đã tan biến)
 	if part.Transparency > 0.85 then
 		return false
@@ -266,6 +287,15 @@ function filter.FindHazardPartsInLevel1Child(level1Child)
 				or level1Child:FindFirstChildWhichIsA("BasePart")
 			if centerPart and centerPart.Name ~= "PrimaryPart" then
 				table.insert(hazardParts, centerPart)
+				return hazardParts
+			end
+		end
+
+		-- firstBossBigSpike nếu là Model: Chỉ lấy 1 part chính duy nhất đại diện
+		if filter.IsFirstBossBigSpike(level1Child) then
+			local mainPart = level1Child.PrimaryPart or level1Child:FindFirstChildWhichIsA("BasePart")
+			if mainPart and filter.IsHazardPart(mainPart, level1Child) then
+				table.insert(hazardParts, mainPart)
 				return hazardParts
 			end
 		end
