@@ -16,13 +16,16 @@ local bossWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/bossWatch
 local memoryWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/memoryWatcher")
 local visualizerV2 = require("@routes/DungeonQuest/core/hazardScannerV2/visualizerV2")
 local corridor = require("@routes/DungeonQuest/core/hazardScannerV2/corridor")
+local danger = require("@routes/DungeonQuest/core/hazardScannerV2/danger")
 
 --// Table
 local hazardScannerV2 = {}
 
 --// State
 local enabled = false
+local dangerDetectionEnabled = false
 local activeHazards = {} -- [BasePart] = { part, level1Parent, name, spawnTime, shape, motion }
+danger.SetHazardsMap(activeHazards)
 local childConnections = {} -- [Instance] = { conn1, conn2 }
 local connections = {}
 local heartbeatConn = nil
@@ -41,6 +44,20 @@ local function registerHazardPart(part, level1Child)
 
 	-- Đảm bảo mỗi đối tượng MultiRing chỉ có DUY NHẤT 1 Hazard trong activeHazards
 	if isMultiRing then
+		for p, data in pairs(activeHazards) do
+			if data.level1Parent == level1Child or (level1Child and p:IsDescendantOf(level1Child)) or p == part then
+				return
+			end
+		end
+	end
+
+	local isIceSpikes = filter.IsIceSpikes(rootName) 
+		or filter.IsIceSpikes(part) 
+		or (part.Parent and filter.IsIceSpikes(part.Parent.Name))
+		or (level1Child and filter.IsIceSpikes(level1Child))
+
+	-- Đảm bảo mỗi cụm IceSpikes chỉ có DUY NHẤT 1 Hazard (part 'precast') trong activeHazards
+	if isIceSpikes then
 		for p, data in pairs(activeHazards) do
 			if data.level1Parent == level1Child or (level1Child and p:IsDescendantOf(level1Child)) or p == part then
 				return
@@ -108,7 +125,7 @@ local function onWorkspaceChildAdded(child)
 	if child:IsA("Model") then
 		childConnections[child] = child.DescendantAdded:Connect(function(desc)
 			if desc:IsA("BasePart") then
-				if filter.IsMultiRing(child) then
+				if filter.IsMultiRing(child) or filter.IsIceSpikes(child) then
 					local alreadyRegistered = false
 					for p, data in pairs(activeHazards) do
 						if data.level1Parent == child or p:IsDescendantOf(child) or p == child then
@@ -355,6 +372,9 @@ function hazardScannerV2.StartScan()
 	heartbeatConn = RunService.Heartbeat:Connect(onHeartbeat)
 
 	scanExistingWorkspaceChildren()
+	if dangerDetectionEnabled then
+		danger.SetEnabled(true)
+	end
 end
 
 -- Dừng bộ quét V2
@@ -386,6 +406,8 @@ function hazardScannerV2.StopScan()
 	motion.ClearAll()
 	corridor.ClearAll()
 	memoryWatcher.Reset()
+	danger.SetEnabled(false)
+	danger.Clear()
 end
 
 function hazardScannerV2.IsEnabled()
@@ -401,6 +423,9 @@ function hazardScannerV2.SetVisualizerEnabled(state)
 		for part, data in pairs(activeHazards) do
 			visualizerV2.Update(part, data)
 		end
+	end
+	if not visualizerV2.IsEnabled() and not corridor.IsEnabled() and not dangerDetectionEnabled then
+		hazardScannerV2.StopScan()
 	end
 end
 
@@ -420,10 +445,29 @@ function hazardScannerV2.SetCorridorEnabled(state)
 			visualizerV2.Update(part, data)
 		end
 	end
+	if not visualizerV2.IsEnabled() and not corridor.IsEnabled() and not dangerDetectionEnabled then
+		hazardScannerV2.StopScan()
+	end
 end
 
 function hazardScannerV2.IsCorridorEnabled()
 	return corridor.IsEnabled() and visualizerV2.IsCorridorEnabled()
+end
+
+--// DANGER DETECTION V2 (Phát hiện nguy hiểm & Hitbox 2D chân người chơi)
+function hazardScannerV2.SetDangerDetectionEnabled(state)
+	dangerDetectionEnabled = state and true or false
+	if dangerDetectionEnabled and not hazardScannerV2.IsEnabled() then
+		hazardScannerV2.StartScan()
+	end
+	danger.SetEnabled(dangerDetectionEnabled)
+	if not visualizerV2.IsEnabled() and not corridor.IsEnabled() and not dangerDetectionEnabled then
+		hazardScannerV2.StopScan()
+	end
+end
+
+function hazardScannerV2.IsDangerDetectionEnabled()
+	return dangerDetectionEnabled
 end
 
 -- Kiểm tra xem 1 điểm (hoặc bán kính người chơi) có nằm trong bất kỳ Threat Corridor nào không
@@ -455,6 +499,22 @@ function hazardScannerV2.GetActiveCorridors()
 end
 
 hazardScannerV2.Corridor = corridor
+hazardScannerV2.Danger = danger
+hazardScannerV2.IsPlayerInDanger = danger.IsPlayerInDanger
+hazardScannerV2.IsPointInDanger = danger.IsPointInDanger
+hazardScannerV2.IsPointSafe = danger.IsPointSafe
+hazardScannerV2.GetRelevantHazards = danger.GetRelevantHazards
+hazardScannerV2.SetDangerVisualEnabled = danger.SetVisualEnabled
+hazardScannerV2.IsDangerVisualEnabled = danger.IsVisualEnabled
+hazardScannerV2.OnDangerChanged = danger.OnDangerChanged
+hazardScannerV2.SetPlayerHitboxRadius = danger.SetPlayerRadius
+hazardScannerV2.GetPlayerHitboxRadius = danger.GetPlayerRadius
+hazardScannerV2.GetPlayerHitboxShape = danger.GetShapeMode
+hazardScannerV2.SetPlayerHitboxShape = danger.SetShapeMode
+hazardScannerV2.GetPlayerHitboxWidth = danger.GetPlayerWidth
+hazardScannerV2.SetPlayerHitboxWidth = danger.SetPlayerWidth
+hazardScannerV2.GetPlayerHitboxLength = danger.GetPlayerLength
+hazardScannerV2.SetPlayerHitboxLength = danger.SetPlayerLength
 
 -- Trích xuất Telemetry chuẩn hóa gửi qua WebSocket
 function hazardScannerV2.GetActiveHazardsTelemetry()

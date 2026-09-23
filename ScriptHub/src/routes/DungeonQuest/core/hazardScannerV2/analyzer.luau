@@ -103,11 +103,6 @@ local function analyzeHazardPartInternal(part, motionRecord)
 	local yaw = getYawDegrees(cf)
 	local hexColor = colorToHex(part.Color)
 
-	-- Xử lý màu riêng cho Ice Spikes (Material Plastic) thành màu xanh băng phát sáng
-	if filter.IsIceSpikes(part) or (part.Parent and filter.IsIceSpikes(part.Parent)) then
-		hexColor = "#38d9ff"
-	end
-
 	-- Xử lý màu riêng cho bonusBossSweepingFlames (Lửa cam neon rực rỡ)
 	if filter.IsSweepingFlames(part) or (part.Parent and filter.IsSweepingFlames(part.Parent)) or (part.Parent and part.Parent.Parent and filter.IsSweepingFlames(part.Parent.Parent)) then
 		hexColor = "#ff6b22"
@@ -194,6 +189,25 @@ local function analyzeHazardPartInternal(part, motionRecord)
 		}
 	end
 
+	-- 0.7. Nhận diện Ice Spikes precast (largeIceSpikes, mediumIceSpikes, smallIceSpikes): Vùng báo động gai băng hình tròn
+	local isIceSpikes = filter.IsIceSpikes(part) or (part.Parent and filter.IsIceSpikes(part.Parent))
+	if isIceSpikes then
+		local dims = { size.X, size.Y, size.Z }
+		table.sort(dims)
+		local rad = math.max(dims[2], dims[3]) / 2
+		if rad < 2.0 then rad = 4.0 end
+		return {
+			shape = "circle",
+			x = pos.X,
+			y = pos.Y,
+			z = pos.Z,
+			radius = rad,
+			color = hexColor,
+			transparency = part.Transparency,
+			part = part,
+		}
+	end
+
 	-- 0.8. Nhận diện firstBossBigSpike (Boss 1): Gai xoay tròn -> Đổ bóng Hình tròn Circle
 	local isBigSpike = filter.IsFirstBossBigSpike(part) or (part.Parent and filter.IsFirstBossBigSpike(part.Parent))
 	if isBigSpike then
@@ -202,6 +216,25 @@ local function analyzeHazardPartInternal(part, motionRecord)
 		local maxDim = math.max(dims[2], dims[3])
 		local rad = math.clamp(maxDim / 2, 10.0, 35.0)
 		if rad < 12.0 then rad = 14.0 end
+		return {
+			shape = "circle",
+			x = pos.X,
+			y = pos.Y,
+			z = pos.Z,
+			radius = rad,
+			color = hexColor,
+			transparency = part.Transparency,
+			part = part,
+		}
+	end
+
+	-- 0.9. Nhận diện Bouncing Orb (thirdBossBouncingOrb / bonusBossBouncingOrb): Vòng tròn Circle
+	local isBouncingOrb = filter.IsBouncingOrb(part) or (part.Parent and filter.IsBouncingOrb(part.Parent))
+	if isBouncingOrb then
+		local dims = { size.X, size.Y, size.Z }
+		table.sort(dims)
+		local rad = math.max(dims[2], dims[3]) / 2
+		if rad < 2.0 then rad = 4.0 end
 		return {
 			shape = "circle",
 			x = pos.X,

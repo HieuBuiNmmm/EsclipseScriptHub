@@ -172,6 +172,14 @@ function filter.IsMemoryModel(nameOrInstance)
 		or string.find(clean, "memorymodel", 1, true) ~= nil
 end
 
+-- Kiểm tra xem 1 tên hoặc instance có phải là chiêu Bouncing Orb (Boss 3 hoặc Bonus Boss) không
+function filter.IsBouncingOrb(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	return string.find(clean, "bouncingorb", 1, true) ~= nil
+end
+
 -- Kiểm tra xem một BasePart có phải là Hazard Part hợp lệ hay không
 function filter.IsHazardPart(part, hazardContext)
 	if not part or not part:IsA("BasePart") or not part.Parent then
@@ -193,9 +201,19 @@ function filter.IsHazardPart(part, hazardContext)
 		return false
 	end
 
-	-- NGOẠI LỆ 2: largeIceSpikes, mediumIceSpikes, smallIceSpikes (Material Plastic)
-	if filter.IsIceSpikes(part) or (part.Parent and filter.IsIceSpikes(part.Parent)) or (hazardContext and filter.IsIceSpikes(hazardContext)) then
-		return true
+	-- NGOẠI LỆ 2: largeIceSpikes, mediumIceSpikes, smallIceSpikes (Chỉ quét DUY NHẤT part 'precast')
+	local isIceSpikes = filter.IsIceSpikes(part)
+		or (part.Parent and filter.IsIceSpikes(part.Parent))
+		or (hazardContext and filter.IsIceSpikes(hazardContext))
+
+	if isIceSpikes then
+		local pLower = part.Name:lower()
+		-- CHỈ CHẤP NHẬN duy nhất part 'precast' (vùng cảnh báo hình tròn trên sàn)
+		if pLower == "precast" or pLower:find("precast") then
+			return true
+		end
+		-- Bỏ qua 100% tất cả các part gai nhọn, mesh phụ bên trong Model
+		return false
 	end
 
 	-- NGOẠI LỆ 3: bonusBossSweepingFlames (Chỉ quét các part 'precast' ĐANG THỰC SỰ HOẠT ĐỘNG)
@@ -255,6 +273,20 @@ function filter.IsHazardPart(part, hazardContext)
 		return true
 	end
 
+	-- NGOẠI LỆ 6: Bouncing Orb (thirdBossBouncingOrb / bonusBossBouncingOrb)
+	local isBouncingOrb = filter.IsBouncingOrb(part)
+		or (part.Parent and filter.IsBouncingOrb(part.Parent))
+		or (hazardContext and filter.IsBouncingOrb(hazardContext))
+
+	if isBouncingOrb then
+		local pLower = part.Name:lower()
+		if pLower == "primarypart" then return false end
+		if part.Transparency <= 0.85 then
+			return true
+		end
+		return false
+	end
+
 	-- Kiểm tra độ trong suốt (bỏ qua part tàng hình / đã tan biến)
 	if part.Transparency > 0.85 then
 		return false
@@ -298,6 +330,23 @@ function filter.FindHazardPartsInLevel1Child(level1Child)
 				table.insert(hazardParts, mainPart)
 				return hazardParts
 			end
+		end
+
+		-- largeIceSpikes, mediumIceSpikes, smallIceSpikes: CHỈ lấy đúng 1 part 'precast' đại diện cho toàn bộ bãi gai
+		if filter.IsIceSpikes(level1Child) then
+			local precastPart = level1Child:FindFirstChild("precast", true)
+			if precastPart and precastPart:IsA("BasePart") then
+				table.insert(hazardParts, precastPart)
+				return hazardParts
+			end
+			-- Fallback tìm part có tên chứa precast
+			for _, desc in ipairs(level1Child:GetDescendants()) do
+				if desc:IsA("BasePart") and desc.Name:lower():find("precast") then
+					table.insert(hazardParts, desc)
+					return hazardParts
+				end
+			end
+			return hazardParts
 		end
 
 		for _, desc in ipairs(level1Child:GetDescendants()) do

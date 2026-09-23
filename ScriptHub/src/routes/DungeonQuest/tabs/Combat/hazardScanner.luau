@@ -12,6 +12,88 @@ local shared = require("@routes/DungeonQuest/core/shared")
 local ui = require("@routes/DungeonQuest/core/ui")
 
 return function(window, tab)
+	--// V2 Controls Section
+	local v2Section = tab:Section({ Side = "Left" })
+	v2Section:Header({ Name = "Hazard Scanner V2" })
+
+	v2Section:Toggle({
+		Name = "Show Ground Visualizer V2 (2D Shadows)",
+		Default = hazardScannerV2.IsVisualizerEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetVisualizerEnabled(state)
+		end),
+	}, "Toggle_HazardGroundVisualizerV2")
+
+	v2Section:Toggle({
+		Name = "Show Threat Corridor V2 (Orange Paths)",
+		Default = hazardScannerV2.IsCorridorEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetCorridorEnabled(state)
+		end),
+	}, "Toggle_HazardThreatCorridorV2")
+
+	v2Section:Toggle({
+		Name = "Enable Danger Detection V2 (Player Hitbox)",
+		Default = hazardScannerV2.IsDangerDetectionEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetDangerDetectionEnabled(state)
+		end),
+	}, "Toggle_HazardDangerDetectionV2")
+
+	local hitboxShapes = { "Disc", "Rectangle" }
+	local function shapeToIndex(shape)
+		for i, s in ipairs(hitboxShapes) do
+			if s == shape then return i end
+		end
+		return 1
+	end
+
+	v2Section:Dropdown({
+		Name = "Player Hitbox Shape",
+		Options = hitboxShapes,
+		Default = shapeToIndex(hazardScannerV2.GetPlayerHitboxShape()),
+		Required = true,
+		Callback = autoSave.Wrap(function(opt)
+			hazardScannerV2.SetPlayerHitboxShape(opt)
+		end),
+	}, "Dropdown_HazardV2PlayerHitboxShape")
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Hitbox Radius (studs) [Disc]",
+		Default = hazardScannerV2.GetPlayerHitboxRadius(),
+		Minimum = 0.5,
+		Maximum = 8,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetPlayerHitboxRadius(val)
+		end),
+	}, "Slider_HazardV2PlayerHitboxRadius"))
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Hitbox Width (studs) [Rectangle]",
+		Default = hazardScannerV2.GetPlayerHitboxWidth(),
+		Minimum = 0.5,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetPlayerHitboxWidth(val)
+		end),
+	}, "Slider_HazardV2PlayerHitboxWidth"))
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Hitbox Length (studs) [Rectangle]",
+		Default = hazardScannerV2.GetPlayerHitboxLength(),
+		Minimum = 0.5,
+		Maximum = 10,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetPlayerHitboxLength(val)
+		end),
+	}, "Slider_HazardV2PlayerHitboxLength"))
+
 	local leftSection = tab:Section({ Side = "Left" })
 	leftSection:Header({ Name = "Hazard Scanner Controls" })
 
@@ -28,7 +110,7 @@ return function(window, tab)
 
 	local function updatePlayerDanger(inDanger, threatInfo, threatType)
 		if inDanger then
-			local threatName = threatInfo and threatInfo.Name or "Unknown Threat"
+			local threatName = threatInfo and (threatInfo.Name or threatInfo.name) or "Unknown Threat"
 			local typeStr = threatType and (" [" .. threatType .. "]") or ""
 			pcall(function()
 				playerDangerLabel:UpdateName(("Player: <font color='rgb(255,50,50)'><b>DANGER</b></font> (%s%s)"):format(
@@ -44,6 +126,12 @@ return function(window, tab)
 
 	hazardScanner.OnPlayerDangerChanged(function(inDanger, threatInfo, threatType)
 		updatePlayerDanger(inDanger, threatInfo, threatType)
+	end)
+
+	hazardScannerV2.OnDangerChanged(function(inDanger, threatInfo, threatType)
+		if hazardScannerV2.IsDangerDetectionEnabled() then
+			updatePlayerDanger(inDanger, threatInfo, threatType)
+		end
 	end)
 
 	hazardScanner.OnSafeSpotChanged(function(inDanger, spot, dist)
@@ -283,22 +371,6 @@ return function(window, tab)
 			hazardScanner.SetVisualizerEnabled(state)
 		end),
 	}, "Toggle_HazardGroundVisualizer")
-
-	leftSection:Toggle({
-		Name = "Show Ground Visualizer V2 (2D Shadows)",
-		Default = hazardScannerV2.IsVisualizerEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			hazardScannerV2.SetVisualizerEnabled(state)
-		end),
-	}, "Toggle_HazardGroundVisualizerV2")
-
-	leftSection:Toggle({
-		Name = "Show Threat Corridor V2 (Orange Paths)",
-		Default = hazardScannerV2.IsCorridorEnabled(),
-		Callback = autoSave.Wrap(function(state)
-			hazardScannerV2.SetCorridorEnabled(state)
-		end),
-	}, "Toggle_HazardThreatCorridorV2")
 
 	leftSection:Toggle({
 		Name = "Show Trajectory Paths (Orange)",

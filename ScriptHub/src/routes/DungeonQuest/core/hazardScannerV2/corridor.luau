@@ -27,6 +27,7 @@ end
 -- Boss 1: firstBossCrissCross, firstBossSeekingSpikes, firstBossBigSpike
 -- Boss 2: secondBossMovingBeam, secondBossGreenOrb, secondBossYellowOrb, secondBossRedOrb
 -- Boss 3: thirdBossMissile, thirdBossBouncingOrb
+-- Bonus Boss: bonusBossBouncingOrb
 local CORRIDOR_SKILLS = {
 	-- BOSS 1
 	["firstbossbigspike"] = {
@@ -83,6 +84,20 @@ local CORRIDOR_SKILLS = {
 	},
 	["thirdbossbouncingorb"] = {
 		name = "Boss 3 Bouncing Orb",
+		length = 30,
+		width = 10,
+		mode = "bouncing",
+	},
+
+	-- BONUS BOSS
+	["bonusbossbouncingorbbad"] = {
+		name = "Bonus Boss Bouncing Orb Bad",
+		length = 30,
+		width = 10,
+		mode = "bouncing",
+	},
+	["bonusbossbouncingorb"] = {
+		name = "Bonus Boss Bouncing Orb",
 		length = 30,
 		width = 10,
 		mode = "bouncing",
@@ -208,6 +223,43 @@ local function getMovingBeamRepresentativePart(model)
 	return model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
 end
 
+-- Lấy độ rộng trực tiếp từ Ground Visualizer (shapeData) để Threat Corridor đồng bộ hoàn hảo 1:1
+-- và triệt tiêu hoàn toàn hiện tượng dao động / rung lắc khi đạn xoay tròn trong không gian
+local function getGroundVisualizerWidth(shapeData, cfg, modelSize)
+	local baseWidth = (cfg and cfg.width) or 10
+	local gWidth = 0
+
+	if shapeData then
+		-- 1. Nếu Ground Visualizer là Circle AOE hoặc có bán kính (Orb, Ball, Big Spike...):
+		-- Đường kính Ground Visualizer = radius * 2
+		if shapeData.radius and shapeData.radius > 0 then
+			gWidth = shapeData.radius * 2
+		-- 2. Nếu Ground Visualizer là Planar Box OBB (Moving Beam, Missile, Spikes, CrissCross...):
+		-- Bề ngang Ground Visualizer = (halfWidth hoặc halfX) * 2
+		elseif shapeData.halfWidth and shapeData.halfWidth > 0 then
+			gWidth = shapeData.halfWidth * 2
+		elseif shapeData.halfX and shapeData.halfX > 0 then
+			gWidth = shapeData.halfX * 2
+		-- 3. Trường hợp MultiRing:
+		elseif shapeData.maxRadius and shapeData.maxRadius > 0 then
+			gWidth = shapeData.maxRadius * 2
+		elseif shapeData.coreRadius and shapeData.coreRadius > 0 then
+			gWidth = shapeData.coreRadius * 2
+		end
+	end
+
+	-- Đối với Model nhiều part (như secondBossMovingBeam)
+	if modelSize then
+		local mSpan = math.max(modelSize.X, modelSize.Z)
+		if mSpan > gWidth then
+			gWidth = mSpan
+		end
+	end
+
+	-- Đảm bảo không nhỏ hơn baseWidth cấu hình và trong giới hạn an toàn tối đa 120 studs
+	return math.clamp(math.max(baseWidth, gWidth), baseWidth, 120.0)
+end
+
 -- Tính toán hình học Threat Corridor cho Parent Model tổng thể (secondBossMovingBeam)
 local function computeMovingBeamModelCorridor(model, repPart, shapeData, motionRecord, cfg)
 	local ok, modelCF, modelSize = pcall(function()
@@ -220,11 +272,6 @@ local function computeMovingBeamModelCorridor(model, repPart, shapeData, motionR
 
 	local startX = modelCF.Position.X
 	local startZ = modelCF.Position.Z
-
-	-- Bề ngang bao quát toàn bộ Model của beam
-	local modelSpan = math.max(modelSize.X, math.max(modelSize.Y, modelSize.Z))
-	local baseWidth = cfg.width or 35
-	local width = math.max(baseWidth, modelSpan)
 
 	-- Hướng di chuyển và khóa hướng (tracked trên Model)
 	local tracked = trackedCorridors[model]
@@ -297,6 +344,9 @@ local function computeMovingBeamModelCorridor(model, repPart, shapeData, motionR
 
 		trackedCorridors[model] = tracked
 	end
+
+	-- Bề ngang bao quát toàn bộ Model của beam (Lấy trực tiếp từ Ground Visualizer / Model)
+	local width = getGroundVisualizerWidth(shapeData, cfg, modelSize)
 
 	local length = cfg.length or 80
 	local halfLen = length / 2
@@ -381,10 +431,7 @@ function corridor.ComputeCorridor(part, shapeData, motionRecord)
 		}
 
 		local length = cfg.length or 25
-		local width = cfg.width or 10
-		if shapeData.halfWidth and (shapeData.halfWidth * 2) > width then
-			width = shapeData.halfWidth * 2
-		end
+		local width = getGroundVisualizerWidth(shapeData, cfg)
 
 		local startX = shapeData.x
 		local startZ = shapeData.z
@@ -512,14 +559,9 @@ function corridor.ComputeCorridor(part, shapeData, motionRecord)
 		trackedCorridors[part] = tracked
 	end
 
-	-- Kích thước hành lang
+	-- Kích thước hành lang (Lấy trực tiếp từ Ground Visualizer, không rung lắc khi đạn xoay)
 	local length = cfg.length or 60
-	local width = cfg.width or 10
-
-	-- Nếu shapeData có kích thước thực tế lớn hơn config, ưu tiên kích thước thực tế
-	if shapeData.halfWidth and (shapeData.halfWidth * 2) > width then
-		width = shapeData.halfWidth * 2
-	end
+	local width = getGroundVisualizerWidth(shapeData, cfg)
 
 	local startX = shapeData.x
 	local startZ = shapeData.z
