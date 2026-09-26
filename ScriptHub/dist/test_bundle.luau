@@ -1,19 +1,3 @@
---!nocheck
---!nolint
-
---[[
-    @authors YOUR_NAME
-    @repository YOUR_REPOSITORY
-
-    This file was automatically generated with darklua, it is not intended for manual editing.
---]]
-
-_P = {
-    genDate = "2026-09-26T13:04:53.681629300+00:00",
-    cfg = "Debug",
-    vers = "v0.0.0"
-}
-
 type Zone__DARKLUA_TYPE_a = "Lobby" | "Dungeon" | "Global"
 
 type ZoneRegistration__DARKLUA_TYPE_b = {

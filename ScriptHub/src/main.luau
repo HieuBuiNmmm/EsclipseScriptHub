@@ -18,7 +18,16 @@ _G.ScriptHub_UI = nil
 local routes = {
 	{
 		Name = "DungeonQuest",
-		Load = require("@routes/DungeonQuest/main"),
+		Load = function(self)
+			local isRecorderMode = (_G.DQ_MODE == "Recorder") or (_G.FlightRecorder == true) or (_G.ScriptHub_Route == "Recorder")
+			if isRecorderMode then
+				local recorder = require("@routes/DungeonQuest_Recorder/main")
+				return recorder(self)
+			else
+				local dq = require("@routes/DungeonQuest/main")
+				return dq(self)
+			end
+		end,
 		UniverseId = 9931749389,
 		Places = {
 			77649408247578,
