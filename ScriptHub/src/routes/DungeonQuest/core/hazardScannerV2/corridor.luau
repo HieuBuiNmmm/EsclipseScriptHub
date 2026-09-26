@@ -588,6 +588,148 @@ function corridor.ComputeCorridor(part, shapeData, motionRecord)
 	}
 end
 
+-- Vận tốc mặc định (studs/s) cho các skill có Threat Corridor (nếu motion chưa kịp đo đạc)
+local DEFAULT_CORRIDOR_SPEEDS = {
+	["firstbossbigspike"] = 28.0,
+	["firstbossseekingspikes"] = 32.0,
+	["firstbosscrisscross"] = 30.0,
+	["secondbossmovingbeam"] = 18.0,
+	["secondbossgreenorb"] = 22.0,
+	["secondbossyelloworb"] = 22.0,
+	["secondbossredorb"] = 22.0,
+	["thirdbossmissile"] = 35.0,
+	["thirdbossbouncingorb"] = 25.0,
+	["bonusbossbouncingorb"] = 25.0,
+	["bonusbossbouncingorbbad"] = 25.0,
+}
+
+-- Lấy vận tốc bay thực tế hoặc mặc định của đạn trong hành lang
+function corridor.GetProjectileSpeed(corridorData, motionRecord)
+	if motionRecord and motionRecord.speed and motionRecord.speed >= 3.0 then
+		return motionRecord.speed
+	end
+	if corridorData and corridorData.skillKey then
+		for key, spd in pairs(DEFAULT_CORRIDOR_SPEEDS) do
+			if string.find(corridorData.skillKey, key, 1, true) then
+				return spd
+			end
+		end
+	end
+	return 28.0
+end
+
+-- Trích xuất các chỉ số thời gian & khoảng cách thực tế giữa một điểm (hoặc nhân vật) với đạn đang lao tới:
+-- Trả về:
+-- 1. isInsideGeom: có nằm trong hình học bao của hành lang không
+-- 2. projU: khoảng cách dọc (longitudinal) từ đạn tới điểm (>0: đạn đang lao tới, <0: đạn đã bay qua)
+-- 3. projN: khoảng cách ngang (lateral) từ tâm hành lang tới điểm (dương: lệch phải, âm: lệch trái)
+-- 4. timeToImpact: thời gian (giây) đạn sẽ chạm tới mặt phẳng của điểm
+-- 5. isImminent: mối nguy hiểm có CẬP KỀ không (đến ngưỡng khẩn cấp cần né, tránh "tàu cách 100km mà đã né")
+-- 6. lateralEscapeDir: vector đơn vị thoát ngang tối ưu ra khỏi hành lang (vuông góc với hướng bay)
+-- 7. lateralEscapeDist: cự ly cần bước ngang để thoát ra khỏi hành lang
+function corridor.GetThreatMetrics(point, corridorData, motionRecord, extraRadius)
+	if not point or not corridorData then
+		return false, 0, 0, 999.0, false, Vector3.zero, 0
+	end
+
+	extraRadius = extraRadius or 0
+	local px, pz = point.X, point.Z
+	local vx = px - corridorData.startX
+	local vz = pz - corridorData.startZ
+
+	local fwd = corridorData.fwd2D
+	local right = corridorData.right2D
+	local halfWidth = (corridorData.width / 2) + extraRadius
+
+	local projU = vx * fwd.X + vz * fwd.Z
+	local projN = vx * right.X + vz * right.Z
+
+	local minU = -2.5
+	local maxU = corridorData.length + extraRadius
+
+	local isInsideGeom = (projU >= minU and projU <= maxU and math.abs(projN) <= halfWidth)
+	if not isInsideGeom and extraRadius > 0 then
+		local dU = 0
+		if projU < minU then
+			dU = minU - projU
+		elseif projU > maxU then
+			dU = projU - maxU
+		end
+		local dN = math.max(0, math.abs(projN) - (corridorData.width / 2))
+		if (dU * dU + dN * dN) <= (extraRadius * extraRadius) then
+			isInsideGeom = true
+		end
+	end
+
+	local speed = corridor.GetProjectileSpeed(corridorData, motionRecord)
+	local distAhead = math.max(0, projU)
+	local timeToImpact = (speed > 0.1) and (distAhead / speed) or 999.0
+
+	-- Cự ly cần thoát ngang khỏi mép hành lang
+	local distToEdge = math.max(0, (corridorData.width / 2) - math.abs(projN))
+	local lateralEscapeDist = distToEdge + 2.5
+
+	-- Vector thoát ngang tối ưu (vuông góc với hướng bay của hành lang)
+	local lateralEscapeDir
+	if projN >= 0 then
+		lateralEscapeDir = right
+	else
+		lateralEscapeDir = -right
+	end
+
+	-- Ngưỡng thời gian / khoảng cách phản xạ khẩn cấp (Imminent Lead):
+	-- Ước tính với tốc độ chạy của Player ~18 studs/s
+	local escapeTime = lateralEscapeDist / 18.0
+	local leadTimeThreshold = math.clamp(escapeTime + 0.35, 0.85, 1.40)
+	local leadDistThreshold = math.max(22.0, speed * leadTimeThreshold)
+
+	-- Threat được coi là IMMINENT nếu:
+	-- 1. Điểm nằm trong hình học bao của hành lang
+	-- 2. Đạn chưa bay qua khỏi người chơi (projU >= minU)
+	-- 3. Thời gian chạm đích <= leadTimeThreshold HOẶC cự ly phía trước <= leadDistThreshold
+	local isImminent = isInsideGeom and (projU >= minU) and (timeToImpact <= leadTimeThreshold or projU <= leadDistThreshold)
+
+	return isInsideGeom, projU, projN, timeToImpact, isImminent, lateralEscapeDir, lateralEscapeDist
+end
+
+-- Kiểm tra xem điểm này có đang gặp nguy hiểm CẬP KỀ (Imminent Threat) từ Threat Corridor không
+function corridor.IsThreatImminent(point, corridorData, motionRecord, extraRadius)
+	local _, _, _, _, isImminent = corridor.GetThreatMetrics(point, corridorData, motionRecord, extraRadius)
+	return isImminent
+end
+
+-- Kiểm tra xem điểm này có nằm trên đường đạn sắp bay tới không (dùng để cấm Safe Spot trên đường ray)
+function corridor.IsPointInThreatPath(point, corridorData, extraRadius)
+	if not point or not corridorData then return false end
+	extraRadius = extraRadius or 0
+	local px, pz = point.X, point.Z
+	local vx = px - corridorData.startX
+	local vz = pz - corridorData.startZ
+	local fwd = corridorData.fwd2D
+	local right = corridorData.right2D
+	local halfWidth = (corridorData.width / 2) + extraRadius
+
+	local projU = vx * fwd.X + vz * fwd.Z
+	local projN = vx * right.X + vz * right.Z
+
+	-- Chỉ tính vùng PHÍA TRƯỚC đạn (từ đạn trở đi)
+	local minU = -2.5
+	local maxU = corridorData.length + extraRadius
+
+	if extraRadius <= 0 then
+		return (projU >= minU and projU <= maxU and math.abs(projN) <= halfWidth)
+	else
+		local dU = 0
+		if projU < minU then
+			dU = minU - projU
+		elseif projU > maxU then
+			dU = projU - maxU
+		end
+		local dN = math.max(0, math.abs(projN) - (corridorData.width / 2))
+		return (dU * dU + dN * dN) <= (extraRadius * extraRadius)
+	end
+end
+
 -- Kiểm tra xem 1 điểm (hoặc vòng tròn bán kính extraRadius) có nằm trong Threat Corridor hay không
 function corridor.IsPointInCorridor(point, corridorData, extraRadius)
 	if not point or not corridorData then return false end
@@ -605,8 +747,8 @@ function corridor.IsPointInCorridor(point, corridorData, extraRadius)
 	local projU = vx * fwd.X + vz * fwd.Z
 	local projN = vx * right.X + vz * right.Z
 
-	-- Phủ lùi nhẹ 2 studs về sau điểm gốc để bao trọn đuôi đạn
-	local minU = -2.0
+	-- Phủ lùi nhẹ 2.5 studs về sau điểm gốc để bao trọn đuôi đạn
+	local minU = -2.5
 	local maxU = corridorData.length
 
 	if extraRadius <= 0 then

@@ -19,6 +19,166 @@ local filter = {}
 --// State
 local ignoreTemplateNames = {}
 
+-- Danh sách TĨNH toàn bộ template chiêu thức & đạn của Player đã biết trong DungeonQuest
+local KNOWN_PLAYER_TEMPLATES = {
+	["groundaura"] = true,
+	["genericneonball"] = true,
+	["genericattachpart"] = true,
+	["berserk"] = true,
+	["demonspikeone"] = true,
+	["demonspiketwo"] = true,
+	["demonspikethree"] = true,
+	["groundslam"] = true,
+	["guardianblessingball"] = true,
+	["holybarrier"] = true,
+	["holycircle"] = true,
+	["innervate"] = true,
+	["lightningstrike"] = true,
+	["overcharge"] = true,
+	["overchargedeffects"] = true,
+	["pulsefire"] = true,
+	["pulsewaveswave"] = true,
+	["redemption"] = true,
+	["starfallstar"] = true,
+	["starbarrage"] = true,
+	["taunt"] = true,
+	["tsunami"] = true,
+	["voidspherespawn"] = true,
+	["vortex"] = true,
+	["whirlwind"] = true,
+	["chainedenergyblasts"] = true,
+	["orbofdestruction"] = true,
+	["orbofdestructionholder"] = true,
+	["explosivepunchcone"] = true,
+	["explosivepunchring"] = true,
+	["arrowrain"] = true,
+	["arrowrainarrow"] = true,
+	["phantomflames"] = true,
+	["infernalblastcylinder"] = true,
+	["chainlightning"] = true,
+	["mightyleapslamcircle"] = true,
+	["arrowbarrage"] = true,
+	["moltenball"] = true,
+	["smallmoltenball"] = true,
+	["electricgrinder"] = true,
+	["demoniccurse"] = true,
+	["twinslash"] = true,
+	["aquaticsmitecast"] = true,
+	["aquaticsmitehit"] = true,
+	["icecrash"] = true,
+	["fungalpoison"] = true,
+	["fungalpoisonparticles"] = true,
+	["agonyorbsmainorb"] = true,
+	["agonyorbssmall"] = true,
+	["agonyorbsstarexplosion"] = true,
+	["lightningburst"] = true,
+	["piercingroots"] = true,
+	["crystalinecannonblast"] = true,
+	["crystalinecannonspiral"] = true,
+	["concussiveblasttrail"] = true,
+	["concussiveblastexplosion"] = true,
+	["concussiveblastring"] = true,
+	["windblast"] = true,
+	["revitalize"] = true,
+	["flamestrike"] = true,
+	["frostcone"] = true,
+	["souldrain"] = true,
+	["souldrainparticles"] = true,
+	["geyser"] = true,
+	["flameshuriken"] = true,
+	["galebarrage"] = true,
+	["solarbeam"] = true,
+	["godspearmodel"] = true,
+	["godspearexplosioncylinder"] = true,
+	["godspeardebrisring"] = true,
+	["godspeardebris"] = true,
+	["bladebarragesword"] = true,
+	["bladefallsword"] = true,
+	["amethystbeamorb"] = true,
+	["amethystbeamgroundparticles"] = true,
+	["amethystbeambeam"] = true,
+	["amethystblast"] = true,
+	["jaderoller"] = true,
+	["jaderaincircle"] = true,
+	["jaderaincrystal"] = true,
+	["carrotbarrage"] = true,
+	["carrotbarragecarrot"] = true,
+	["eggbomb"] = true,
+	["phaseball"] = true,
+	["bigphaseball"] = true,
+	["phasering"] = true,
+	["phasebeammodel"] = true,
+	["moltenshard"] = true,
+	["lavabeam"] = true,
+	["lavabarrageslash"] = true,
+	["lavabarrageball"] = true,
+	["spearstrike"] = true,
+	["spearstriring"] = true,
+	["spearstrikerng"] = true,
+}
+
+-- Hàm làm sạch tên: loại bỏ khoảng trắng, số đếm, (clone), gạch dưới, gạch ngang
+local function sanitizeName(name)
+	if typeof(name) ~= "string" then return "" end
+	return name:lower():gsub("%s+", ""):gsub("%d+", ""):gsub("%(clone%)", ""):gsub("_", ""):gsub("%-", "")
+end
+
+local function addTemplateName(name)
+	local clean = sanitizeName(name)
+	if #clean > 0 then
+		ignoreTemplateNames[clean] = true
+	end
+end
+
+local function scanTemplateFolder(folder)
+	if not folder then return end
+	for _, item in ipairs(folder:GetChildren()) do
+		addTemplateName(item.Name)
+		for _, desc in ipairs(item:GetDescendants()) do
+			addTemplateName(desc.Name)
+		end
+	end
+end
+
+-- Đọc template abilities & projectiles của người chơi từ ReplicatedStorage
+local function loadPlayerIgnoreTemplates()
+	local folders = { "abilities", "projectiles" }
+	for _, fName in ipairs(folders) do
+		local folder = ReplicatedStorage:FindFirstChild(fName)
+		if folder then
+			scanTemplateFolder(folder)
+			folder.ChildAdded:Connect(function(child)
+				addTemplateName(child.Name)
+				child.DescendantAdded:Connect(function(desc)
+					addTemplateName(desc.Name)
+				end)
+			end)
+		end
+	end
+end
+
+loadPlayerIgnoreTemplates()
+
+-- Lắng nghe phòng trường hợp ReplicatedStorage nạp folder abilities / projectiles trễ
+task.spawn(function()
+	local folders = { "abilities", "projectiles" }
+	for _, fName in ipairs(folders) do
+		local folder = ReplicatedStorage:FindFirstChild(fName)
+		if not folder then
+			folder = ReplicatedStorage:WaitForChild(fName, 10)
+			if folder then
+				scanTemplateFolder(folder)
+				folder.ChildAdded:Connect(function(child)
+					addTemplateName(child.Name)
+					child.DescendantAdded:Connect(function(desc)
+						addTemplateName(desc.Name)
+					end)
+				end)
+			end
+		end
+	end
+end)
+
 -- Danh sách từ khóa ngoại lệ Ice Spikes (Material Plastic)
 local ICE_SPIKES_KEYWORDS = {
 	"largeicespikes",
@@ -26,22 +186,6 @@ local ICE_SPIKES_KEYWORDS = {
 	"smallicespikes",
 	"icespikes",
 }
-
--- Đọc template abilities & projectiles của người chơi từ ReplicatedStorage
-local function loadPlayerIgnoreTemplates()
-	table.clear(ignoreTemplateNames)
-	local folders = { "abilities", "projectiles" }
-	for _, fName in ipairs(folders) do
-		local folder = ReplicatedStorage:FindFirstChild(fName)
-		if folder then
-			for _, item in ipairs(folder:GetChildren()) do
-				local clean = item.Name:lower():gsub("%s+", "")
-				ignoreTemplateNames[clean] = true
-			end
-		end
-	end
-end
-loadPlayerIgnoreTemplates()
 
 -- Kiểm tra xem 1 tên hoặc instance có phải thuộc chuỗi Ice Spikes không
 function filter.IsIceSpikes(nameOrInstance)
@@ -70,10 +214,17 @@ end
 -- Kiểm tra xem 1 instance có thuộc nhân vật người chơi / party hay không
 function filter.IsPlayerCharacter(instance)
 	if not instance then return true end
+	if Players:GetPlayerFromCharacter(instance) then return true end
+	if Players:FindFirstChild(instance.Name) then return true end
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr.Character and (instance == plr.Character or instance:IsDescendantOf(plr.Character)) then
 			return true
 		end
+	end
+	local lp = services.player or Players.LocalPlayer
+	local lpChar = lp and lp.Character
+	if lpChar and (instance == lpChar or instance:IsDescendantOf(lpChar)) then
+		return true
 	end
 	return false
 end
@@ -90,19 +241,60 @@ function filter.IsEnemyModel(instance)
 	return false
 end
 
--- Kiểm tra xem instance có phải là chiêu của player bản thân
+-- Kiểm tra xem instance có phải là chiêu của player bản thân hoặc đồng đội
 function filter.IsPlayerAbility(instance)
 	if not instance then return false end
-	local cleanName = instance.Name:lower():gsub("%s+", "")
-	if ignoreTemplateNames[cleanName] then
+
+	-- Bỏ qua nhanh nếu là boss / bẫy đặc biệt đã biết
+	if filter.IsMultiRing(instance) 
+		or filter.IsIceSpikes(instance) 
+		or filter.IsSweepingFlames(instance) 
+		or filter.IsMemoryModel(instance) 
+		or filter.IsFirstBossBigSpike(instance) 
+		or filter.IsBouncingOrb(instance) then
+		return false
+	end
+
+	-- Kiểm tra nếu instance có tag / thuộc tính sở hữu người chơi
+	if instance:FindFirstChild("creator") or instance:FindFirstChild("owner") or instance:FindFirstChild("player") then
 		return true
 	end
-	if instance.Parent then
-		local parentClean = instance.Parent.Name:lower():gsub("%s+", "")
-		if ignoreTemplateNames[parentClean] then
-			return true
-		end
+	if instance:GetAttribute("Owner") or instance:GetAttribute("Creator") or instance:GetAttribute("Player") then
+		return true
 	end
+
+	-- Duyệt từ instance ngược lên các cấp cha (tới Workspace)
+	local cur = instance
+	while cur and cur ~= Workspace and cur ~= game do
+		local name = cur.Name
+		if typeof(name) == "string" then
+			local clean = sanitizeName(name)
+			if #clean > 0 then
+				if ignoreTemplateNames[clean] or KNOWN_PLAYER_TEMPLATES[clean] then
+					return true
+				end
+				-- Kiểm tra khớp mẫu substring với các skill player đã biết (độ dài >= 6 ký tự)
+				for tmpl, _ in pairs(KNOWN_PLAYER_TEMPLATES) do
+					if #tmpl >= 6 and string.find(clean, tmpl, 1, true) then
+						return true
+					end
+				end
+			end
+			-- Kiểm tra trực tiếp trong ReplicatedStorage.projectiles hoặc abilities
+			local projFolder = ReplicatedStorage:FindFirstChild("projectiles")
+			if projFolder and projFolder:FindFirstChild(name) then
+				addTemplateName(name)
+				return true
+			end
+			local abilFolder = ReplicatedStorage:FindFirstChild("abilities")
+			if abilFolder and abilFolder:FindFirstChild(name) then
+				addTemplateName(name)
+				return true
+			end
+		end
+		cur = cur.Parent
+	end
+
 	return false
 end
 
@@ -188,6 +380,14 @@ function filter.IsHazardPart(part, hazardContext)
 
 	-- Bỏ qua 100% PrimaryPart giả định/dummy
 	if part.Name == "PrimaryPart" then
+		return false
+	end
+
+	-- BỎ QUA 100% CHIÊU THỨC / HIỆU ỨNG CỦA PLAYER HOẶC PARTY
+	if filter.IsPlayerCharacter(part) or (hazardContext and filter.IsPlayerCharacter(hazardContext)) then
+		return false
+	end
+	if filter.IsPlayerAbility(part) or (hazardContext and filter.IsPlayerAbility(hazardContext)) then
 		return false
 	end
 
@@ -305,6 +505,9 @@ filter.IsNeonHazardPart = filter.IsHazardPart
 function filter.FindHazardPartsInLevel1Child(level1Child)
 	local hazardParts = {}
 	if not filter.IsValidLevel1WorkspaceChild(level1Child) then
+		return hazardParts
+	end
+	if filter.IsPlayerAbility(level1Child) or filter.IsPlayerCharacter(level1Child) then
 		return hazardParts
 	end
 

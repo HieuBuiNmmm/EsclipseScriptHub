@@ -276,31 +276,45 @@ local function isMultiRingHitObb(px, pz, hw, hl, fwd2D, right2D, shape, pad)
 	return false
 end
 
--- 4b. Kiểm tra OBB người chơi với Threat Corridor
-local function isCorridorHitObb(px, pz, hw, hl, fwd2D, right2D, corridorData, pad)
-	local boundR = math.sqrt(hw * hw + hl * hl)
+-- 4b. Kiểm tra OBB người chơi với Threat Corridor (Hỗ trợ phân biệt Imminent vs Threat Path)
+local function isCorridorHitObb(px, pz, hw, hl, fwd2D, right2D, corridorData, pad, isImminentOnly, motionRecord)
 	local centerPt = Vector3.new(px, 0, pz)
-	if not corridor.IsPointInCorridor(centerPt, corridorData, pad + boundR) then
-		return false
-	end
 
-	if corridor.IsPointInCorridor(centerPt, corridorData, pad) then
-		return true
-	end
-
-	local corners = {
-		Vector3.new(px + hl * fwd2D.X + hw * right2D.X, 0, pz + hl * fwd2D.Z + hw * right2D.Z),
-		Vector3.new(px + hl * fwd2D.X - hw * right2D.X, 0, pz + hl * fwd2D.Z - hw * right2D.Z),
-		Vector3.new(px - hl * fwd2D.X + hw * right2D.X, 0, pz - hl * fwd2D.Z + hw * right2D.Z),
-		Vector3.new(px - hl * fwd2D.X - hw * right2D.X, 0, pz - hl * fwd2D.Z - hw * right2D.Z),
-	}
-	for _, c in ipairs(corners) do
-		if corridor.IsPointInCorridor(c, corridorData, pad) then
+	if isImminentOnly then
+		if corridor.IsThreatImminent(centerPt, corridorData, motionRecord, pad) then
 			return true
 		end
-	end
 
-	return false
+		local corners = {
+			Vector3.new(px + hl * fwd2D.X + hw * right2D.X, 0, pz + hl * fwd2D.Z + hw * right2D.Z),
+			Vector3.new(px + hl * fwd2D.X - hw * right2D.X, 0, pz + hl * fwd2D.Z - hw * right2D.Z),
+			Vector3.new(px - hl * fwd2D.X + hw * right2D.X, 0, pz - hl * fwd2D.Z + hw * right2D.Z),
+			Vector3.new(px - hl * fwd2D.X - hw * right2D.X, 0, pz - hl * fwd2D.Z - hw * right2D.Z),
+		}
+		for _, c in ipairs(corners) do
+			if corridor.IsThreatImminent(c, corridorData, motionRecord, pad) then
+				return true
+			end
+		end
+		return false
+	else
+		if corridor.IsPointInThreatPath(centerPt, corridorData, pad) then
+			return true
+		end
+
+		local corners = {
+			Vector3.new(px + hl * fwd2D.X + hw * right2D.X, 0, pz + hl * fwd2D.Z + hw * right2D.Z),
+			Vector3.new(px + hl * fwd2D.X - hw * right2D.X, 0, pz + hl * fwd2D.Z - hw * right2D.Z),
+			Vector3.new(px - hl * fwd2D.X + hw * right2D.X, 0, pz - hl * fwd2D.Z + hw * right2D.Z),
+			Vector3.new(px - hl * fwd2D.X - hw * right2D.X, 0, pz - hl * fwd2D.Z - hw * right2D.Z),
+		}
+		for _, c in ipairs(corners) do
+			if corridor.IsPointInThreatPath(c, corridorData, pad) then
+				return true
+			end
+		end
+		return false
+	end
 end
 
 -- 5. Kiểm tra xem điểm có nằm trong ô Sanctuary / Vùng An Toàn Ưu Tiên (Memory Good Zone) không
@@ -339,8 +353,11 @@ function danger.GetActiveHazards()
 end
 
 -- Kiểm tra xem 1 toạ độ bất kỳ (hoặc vòng tròn bán kính extraPadding) có nằm trong vùng nguy hiểm không
+-- Tham số isImminentOnly:
+--   true  -> CHỈ báo nguy hiểm khi đạn ĐÃ ĐẾN GẦN (Lead Time / Lead Distance), dùng cho né Player ("tàu cách 100km thì không né")
+--   false -> Báo nguy hiểm toàn bộ dải hành lang phía trước đạn (threat path), dùng để cấm Safe Spot trên đường ray
 -- Trả về: inDanger (boolean), threatData (hazard đe dọa gần nhất), threatType ("Ground Zone" | "Threat Corridor" | nil)
-function danger.IsPointInDanger(point, extraPadding, ignoredHazard)
+function danger.IsPointInDanger(point, extraPadding, ignoredHazard, isImminentOnly)
 	if not point then return false, nil, nil end
 	local hazards = activeHazardsRef
 	if not hazards or next(hazards) == nil then
@@ -422,10 +439,22 @@ function danger.IsPointInDanger(point, extraPadding, ignoredHazard)
 		-- B. KIỂM TRA THREAT CORRIDOR (Hành lang cam)
 		if shape.corridor then
 			local isCorridorHit = false
-			if isRect then
-				isCorridorHit = isCorridorHitObb(px, pz, hw, hl, fwd2D, right2D, shape.corridor, extraPadding or 0)
+			local mot = data.motion
+
+			if isImminentOnly then
+				-- Chế độ CẬP KỀ: Chỉ nguy hiểm khi đạn đã bay gần tới (Lead Time / Lead Distance)
+				if isRect then
+					isCorridorHit = isCorridorHitObb(px, pz, hw, hl, fwd2D, right2D, shape.corridor, extraPadding or 0, true, mot)
+				else
+					isCorridorHit = corridor.IsThreatImminent(point, shape.corridor, mot, pad)
+				end
 			else
-				isCorridorHit = corridor.IsPointInCorridor(point, shape.corridor, pad)
+				-- Chế độ TOÀN VÙNG: Vùng phía trước đạn đang bay tới (dùng cấm đặt Safe Spot)
+				if isRect then
+					isCorridorHit = isCorridorHitObb(px, pz, hw, hl, fwd2D, right2D, shape.corridor, extraPadding or 0, false, mot)
+				else
+					isCorridorHit = corridor.IsPointInThreatPath(point, shape.corridor, pad)
+				end
 			end
 
 			if isCorridorHit then
@@ -447,17 +476,27 @@ function danger.IsPointSafe(point, extraPadding)
 	if not point then return false end
 	local p2D = Vector3.new(point.X, 0, point.Z)
 
-	-- 1. Kiểm tra Boss Area Constraint
-	local isBossAreaActive, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea()
+	-- 1. Kiểm tra Boss Area Constraint & Donut Inner Deadzone
+	local isBossAreaActive, bossAreaRadius, bossAreaCenter, isInnerDeadzoneActive, innerDeadzoneRadius = contextual.GetActiveBossArea()
 	if isBossAreaActive and bossAreaCenter and bossAreaRadius and bossAreaRadius > 0 then
 		local bCenter2D = Vector3.new(bossAreaCenter.X, 0, bossAreaCenter.Z)
-		if (p2D - bCenter2D).Magnitude > bossAreaRadius then
+		local distToCenter = (p2D - bCenter2D).Magnitude
+
+		-- A. Giới hạn ngoài: Không được vượt ra ngoài vòng tròn xanh (Outer boundary)
+		if distToCenter > bossAreaRadius then
 			return false
+		end
+
+		-- B. Giới hạn trong: Không được né chui vào lỗ donut (Inner deadzone / cấm né áp sát tâm Boss)
+		if isInnerDeadzoneActive and innerDeadzoneRadius and innerDeadzoneRadius > 0 then
+			if distToCenter < innerDeadzoneRadius then
+				return false
+			end
 		end
 	end
 
-	-- 2. Kiểm tra không bị dính bất kỳ Hazard hay Corridor nào
-	local inDanger = danger.IsPointInDanger(p2D, extraPadding)
+	-- 2. Kiểm tra không bị dính bất kỳ Hazard hay quỹ đạo đạn Threat Corridor nào (isImminentOnly = false)
+	local inDanger = danger.IsPointInDanger(p2D, extraPadding, nil, false)
 	return not inDanger
 end
 
@@ -481,7 +520,9 @@ function danger.IsPlayerInDanger()
 		return false, nil, nil
 	end
 
-	return danger.IsPointInDanger(root.Position, 0)
+	-- Đối với Player: CHỈ né khi nguy hiểm cập kề (isImminentOnly = true)
+	-- Nếu đạn còn cách xa trên đường ray -> hoàn toàn KHÔNG né, giữ nguyên chuyển động tự nhiên
+	return danger.IsPointInDanger(root.Position, 0, nil, true)
 end
 
 -- Lấy danh sách các hazard nằm gần điểm origin (Spatial Culling phục vụ Safe Spot Sampling nhanh)

@@ -12,10 +12,10 @@ local contextual = {}
 
 --// Default Values per Target Type
 local DEFAULT_DISTANCES = {
-	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
-	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
-	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
-	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, InnerDeadzone = false, InnerDeadzoneRadius = 25.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, InnerDeadzone = false, InnerDeadzoneRadius = 25.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, InnerDeadzone = false, InnerDeadzoneRadius = 25.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, InnerDeadzone = false, InnerDeadzoneRadius = 25.0, DisableDodge = false, EnableHazardScanner = true },
 }
 
 local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
@@ -176,7 +176,50 @@ function contextual.SetBossAreaRadius(dungeonName, targetKey, radius)
 	syncToMacLibAndSave()
 end
 
---// Lấy thông tin Boss Area đang hoạt động trong trận chiến hiện tại: (enabled, radius, centerPosition)
+--// Lấy thiết lập Inner Deadzone (Enabled, Radius) của 1 Dungeon x Target cụ thể (chỉ Boss)
+function contextual.GetInnerDeadzone(dungeonName, targetKey)
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then
+		return false, 25.0
+	end
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Boss1
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		local enabled = entry.InnerDeadzone == true
+		local radius = (type(entry.InnerDeadzoneRadius) == "number" and entry.InnerDeadzoneRadius > 0) and entry.InnerDeadzoneRadius or (def.InnerDeadzoneRadius or 25.0)
+		return enabled, radius
+	end
+	return def.InnerDeadzone or false, def.InnerDeadzoneRadius or 25.0
+end
+
+--// Cập nhật Inner Deadzone Enabled
+function contextual.SetInnerDeadzoneEnabled(dungeonName, targetKey, enabled)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Chỉ áp dụng cho Boss
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].InnerDeadzone = enabled and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Cập nhật Inner Deadzone Radius
+function contextual.SetInnerDeadzoneRadius(dungeonName, targetKey, radius)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Chỉ áp dụng cho Boss
+	if type(radius) ~= "number" or radius <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].InnerDeadzoneRadius = radius
+
+	syncToMacLibAndSave()
+end
+
+--// Lấy thông tin Boss Area đang hoạt động trong trận chiến hiện tại: (enabled, radius, centerPosition, innerDeadzoneEnabled, innerDeadzoneRadius)
 function contextual.GetActiveBossArea(target)
 	local dungeon = shared.GetCurrentDungeonName()
 	local targetKey = "Mob"
@@ -206,12 +249,12 @@ function contextual.GetActiveBossArea(target)
 	end
 
 	if not isBoss or targetKey == "Mob" then
-		return false, 0, nil
+		return false, 0, nil, false, 0
 	end
 
 	local enabled, radius = contextual.GetBossArea(dungeon, targetKey)
 	if not enabled then
-		return false, radius, nil
+		return false, radius, nil, false, 0
 	end
 
 	local center = shared.GetBossSpawnPosition and shared.GetBossSpawnPosition()
@@ -222,7 +265,8 @@ function contextual.GetActiveBossArea(target)
 		end
 	end
 
-	return enabled, radius, center
+	local innerEnabled, innerRadius = contextual.GetInnerDeadzone(dungeon, targetKey)
+	return enabled, radius, center, innerEnabled, innerRadius
 end
 
 --// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể

@@ -13,8 +13,29 @@ local selector = require("@routes/DungeonQuest/core/autoFarm/selector")
 local tracker = require("@routes/DungeonQuest/core/autoFarm/tracker")
 local movement = require("@routes/DungeonQuest/core/autoFarm/movement")
 local hazardScanner = require("@routes/DungeonQuest/core/hazardScanner")
+local hazardScannerV2 = require("@routes/DungeonQuest/core/hazardScannerV2")
 local autoSkill = require("@routes/DungeonQuest/core/autoFarm/autoSkill")
 local contextual = require("@routes/DungeonQuest/core/contextual")
+
+local function isDodgingActive()
+	if hazardScannerV2 and hazardScannerV2.IsCurrentlyDodging and hazardScannerV2.IsCurrentlyDodging() then
+		return true
+	end
+	if hazardScanner and hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+		return true
+	end
+	return false
+end
+
+local function isPointSafeCheck(point, radius)
+	if hazardScannerV2 and hazardScannerV2.IsEnabled and hazardScannerV2.IsEnabled() and hazardScannerV2.IsPointSafe then
+		return hazardScannerV2.IsPointSafe(point, radius)
+	end
+	if hazardScanner and hazardScanner.IsPointSafe then
+		return hazardScanner.IsPointSafe(point, radius)
+	end
+	return true
+end
 
 --// Services
 local RunService = services.RunService
@@ -28,6 +49,8 @@ local State = {
 	CHASE = "CHASE",
 	HOLD = "HOLD",
 	KITE = "KITE",
+	REPOSITION = "REPOSITION",
+	TACTICAL_FLOW = "TACTICAL_FLOW",
 	BLOCKED = "BLOCKED",
 	REPATHING = "REPATHING",
 }
@@ -85,6 +108,8 @@ local debugMinDistanceRing = nil
 local debugMaxDistanceFill = nil
 local debugMaxDistanceRing = nil
 local debugBossAreaRing = nil
+local debugInnerDeadzoneRing = nil
+local debugCenterDot = nil
 local debugPathCacheKey = nil
 
 --// Forward declarations
@@ -117,7 +142,7 @@ local function startMoveDriver()
 	moveDriverConnection = stepSignal:Connect(function()
 		if not running or isPaused then return end
 		-- Nếu Auto-Dodge đang hoạt động: nhường 100% quyền cho DodgeController, không can thiệp vào Move!
-		if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+		if isDodgingActive() then
 			return
 		end
 		local hum = shared.GetHumanoid()
@@ -275,7 +300,7 @@ local function stepMovementLoop(deltaTime)
 	if not playerPos then return end
 
 	-- Nếu Auto-Dodge đang chủ động né nguy hiểm -> tạm nhường quyền điều khiển di chuyển
-	if hazardScanner.IsCurrentlyDodging and hazardScanner.IsCurrentlyDodging() then
+	if isDodgingActive() then
 		activeMoveVector = Vector3.zero
 		return
 	end
@@ -290,7 +315,7 @@ local function stepMovementLoop(deltaTime)
 	local now = os.clock()
 	if now - lastScanTime >= scanInterval then
 		lastScanTime = now
-		if currentState ~= State.HOLD and currentState ~= State.KITE then
+		if currentState ~= State.HOLD and currentState ~= State.KITE and currentState ~= State.REPOSITION and currentState ~= State.TACTICAL_FLOW then
 			evaluateTarget()
 		end
 	end
@@ -386,8 +411,9 @@ local function stepMovementLoop(deltaTime)
 	local isInvulnerable = shared.IsInvulnerable and shared.IsInvulnerable()
 	local isDodgeDisabled = contextual.IsActiveDodgeDisabled and contextual.IsActiveDodgeDisabled(target)
 	local isHazardScannerEnabled = not (contextual.IsActiveHazardScannerEnabled and not contextual.IsActiveHazardScannerEnabled(target))
-	local isAutoDodgeEnabled = hazardScanner.IsAutoDodgeEnabled and hazardScanner.IsAutoDodgeEnabled()
-	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isHazardScannerEnabled and isAutoDodgeEnabled and hazardScanner and hazardScanner.IsPointSafe
+	local isAutoDodgeEnabled = (hazardScannerV2 and hazardScannerV2.IsAutoDodgeEnabled and hazardScannerV2.IsAutoDodgeEnabled())
+		or (hazardScanner and hazardScanner.IsAutoDodgeEnabled and hazardScanner.IsAutoDodgeEnabled())
+	local shouldCheckDanger = not isInvulnerable and not isDodgeDisabled and isHazardScannerEnabled and isAutoDodgeEnabled
 
 	if flatDist < minCombatDistance then
 		-- Case 1: Quá gần (< minCombatDistance) -> KITE / Lùi thẳng ra xa giữ cự ly
@@ -416,7 +442,7 @@ local function stepMovementLoop(deltaTime)
 		-- Kiểm tra xem điểm lùi về có an toàn không (bỏ qua nếu đang bất tử sau hồi sinh hoặc tắt Dodge)
 		local isBackSafe = true
 		if shouldCheckDanger then
-			isBackSafe = hazardScanner.IsPointSafe(backTarget, 0.5)
+			isBackSafe = isPointSafeCheck(backTarget, 0.5)
 		end
 
 		if not isBackSafe then
@@ -433,7 +459,41 @@ local function stepMovementLoop(deltaTime)
 			setMoveVector(awayDir)
 		end
 	elseif flatDist <= maxCombatDistance then
-		-- Case 2: Nằm trong khoảng lý tưởng [minCombatDistance, maxCombatDistance] -> HOLD
+		-- Case 2: Nằm trong khoảng lý tưởng [minCombatDistance, maxCombatDistance]
+		-- TÍCH HỢP DYNAMIC POTENTIAL FIELD & CONTINUOUS TACTICAL FLOW:
+		-- 1. Bot LUÔN LUÔN di chuyển: Giữ nhịp chân chiến thuật, hướng về bãi đất rộng ít skill.
+		-- 2. Nếu rơi vào "THẾ BÍ" (Pocket Trap: xung quanh bị lửa/đạn/tường vây kín):
+		--    ĐỨNG YÊN TUYỆT ĐỐI chờ chiêu nổ xong rồi mới tiếp tục di chuyển, không bao giờ bước bừa vào lửa!
+		local action, moveVec, targetPos, reason = nil, Vector3.zero, nil, nil
+		if shouldCheckDanger and hazardScannerV2 and hazardScannerV2.EvaluateTacticalFlow then
+			action, moveVec, targetPos, reason = hazardScannerV2.EvaluateTacticalFlow(
+				playerPos,
+				enemyPos,
+				target,
+				minCombatDistance,
+				maxCombatDistance
+			)
+		end
+
+		if action == "HOLD_WAIT" then
+			-- THẾ BÍ: Bị vây kín bởi bão chiêu/tường -> ĐỨNG YÊN CHỜ CHIÊU TẮT
+			currentState = State.HOLD
+			currentDestination = nil
+			currentDestMode = reason or "Pocket Trap (Wait)"
+			stuckTimer = 0
+			setMoveZero()
+			return
+		elseif action == "MOVE" and moveVec.Magnitude > 0.05 then
+			-- DÒNG CHẢY CHIẾN THUẬT: Luôn di chuyển dạt về vùng đất trống ít skill
+			currentState = State.TACTICAL_FLOW
+			currentDestMode = reason or "Tactical Flow"
+			currentDestination = targetPos
+			stuckTimer = 0
+			setMoveVector(moveVec)
+			return
+		end
+
+		-- Fallback bình thường nếu không chạy tactical field:
 		currentState = State.HOLD
 		currentDestination = nil
 		currentDestMode = "Hold"
@@ -456,9 +516,9 @@ local function stepMovementLoop(deltaTime)
 					local checkPointLeft = checkPointCenter + sideOffset
 					local checkPointRight = checkPointCenter - sideOffset
 
-					if not hazardScanner.IsPointSafe(checkPointCenter, 0.5)
-						or not hazardScanner.IsPointSafe(checkPointLeft, 0.5)
-						or not hazardScanner.IsPointSafe(checkPointRight, 0.5)
+					if not isPointSafeCheck(checkPointCenter, 0.5)
+						or not isPointSafeCheck(checkPointLeft, 0.5)
+						or not isPointSafeCheck(checkPointRight, 0.5)
 					then
 						dangerAhead = true
 						break
@@ -785,13 +845,14 @@ local function updateVisualDebugs()
 		debugMaxDistanceRing.CFrame = localCFrame
 		debugMaxDistanceRing.Visible = true
 
-		-- Boss Area Ring (Cyan outline showing the Boss Arena boundary locked at spawn position)
-		local isBossAreaActive, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea(curTarget)
+		-- Boss Area Ring & Donut Inner Deadzone Visuals
+		local isBossAreaActive, bossAreaRadius, bossAreaCenter, isInnerDeadzoneActive, innerDeadzoneRadius = contextual.GetActiveBossArea(curTarget)
 		if isBossAreaActive and bossAreaCenter and bossAreaRadius and bossAreaRadius > 0 then
 			local bCenterWorld = Vector3.new(bossAreaCenter.X, floorY, bossAreaCenter.Z)
 			local bCenterCFrame = CFrame.new(bCenterWorld) * CFrame.Angles(math.rad(90), 0, 0)
 			local bCenterLocal = targetRoot.CFrame:ToObjectSpace(bCenterCFrame)
 
+			-- 1. Outer Blue Ring (Boss Area Boundary - Vỏ ngoài Donut)
 			if not debugBossAreaRing or not debugBossAreaRing.Parent then
 				debugBossAreaRing = Instance.new("CylinderHandleAdornment")
 				debugBossAreaRing.Name = "TM_BossAreaRing_Debug"
@@ -807,8 +868,48 @@ local function updateVisualDebugs()
 			debugBossAreaRing.Transparency = 0.3
 			debugBossAreaRing.CFrame = bCenterLocal
 			debugBossAreaRing.Visible = true
+
+			-- 2. Inner Red Ring (Donut Inner Deadzone - Lỗ cấm né của Donut)
+			if isInnerDeadzoneActive and innerDeadzoneRadius and innerDeadzoneRadius > 0 then
+				if not debugInnerDeadzoneRing or not debugInnerDeadzoneRing.Parent then
+					debugInnerDeadzoneRing = Instance.new("CylinderHandleAdornment")
+					debugInnerDeadzoneRing.Name = "TM_InnerDeadzoneRing_Debug"
+					debugInnerDeadzoneRing.AlwaysOnTop = true
+					debugInnerDeadzoneRing.ZIndex = 5
+					debugInnerDeadzoneRing.Parent = services.CoreGui or game:GetService("CoreGui")
+				end
+				debugInnerDeadzoneRing.Adornee = targetRoot
+				debugInnerDeadzoneRing.Height = 0.05
+				debugInnerDeadzoneRing.InnerRadius = math.max(0.1, innerDeadzoneRadius - 0.45)
+				debugInnerDeadzoneRing.Radius = innerDeadzoneRadius
+				debugInnerDeadzoneRing.Color3 = Color3.fromRGB(255, 45, 65)
+				debugInnerDeadzoneRing.Transparency = 0.25
+				debugInnerDeadzoneRing.CFrame = bCenterLocal
+				debugInnerDeadzoneRing.Visible = true
+			else
+				if debugInnerDeadzoneRing then debugInnerDeadzoneRing.Visible = false end
+			end
+
+			-- 3. Center Red Dot (Tâm BossArea / Vị trí Boss)
+			if not debugCenterDot or not debugCenterDot.Parent then
+				debugCenterDot = Instance.new("CylinderHandleAdornment")
+				debugCenterDot.Name = "TM_CenterDot_Debug"
+				debugCenterDot.AlwaysOnTop = true
+				debugCenterDot.ZIndex = 6
+				debugCenterDot.Parent = services.CoreGui or game:GetService("CoreGui")
+			end
+			debugCenterDot.Adornee = targetRoot
+			debugCenterDot.Height = 0.08
+			debugCenterDot.InnerRadius = 0
+			debugCenterDot.Radius = 1.2
+			debugCenterDot.Color3 = Color3.fromRGB(255, 30, 50)
+			debugCenterDot.Transparency = 0.1
+			debugCenterDot.CFrame = bCenterLocal
+			debugCenterDot.Visible = true
 		else
 			if debugBossAreaRing then debugBossAreaRing.Visible = false end
+			if debugInnerDeadzoneRing then debugInnerDeadzoneRing.Visible = false end
+			if debugCenterDot then debugCenterDot.Visible = false end
 		end
 	end
 end
@@ -824,6 +925,8 @@ local function cleanupDebugVisuals()
 	if debugMaxDistanceFill then pcall(function() debugMaxDistanceFill:Destroy() end); debugMaxDistanceFill = nil end
 	if debugMaxDistanceRing then pcall(function() debugMaxDistanceRing:Destroy() end); debugMaxDistanceRing = nil end
 	if debugBossAreaRing then pcall(function() debugBossAreaRing:Destroy() end); debugBossAreaRing = nil end
+	if debugInnerDeadzoneRing then pcall(function() debugInnerDeadzoneRing:Destroy() end); debugInnerDeadzoneRing = nil end
+	if debugCenterDot then pcall(function() debugCenterDot:Destroy() end); debugCenterDot = nil end
 	destroyPathVisuals()
 end
 
@@ -1172,7 +1275,7 @@ function autoFarm.Toggle(state, bypassCoordinator)
 
 		if not enemyChangedConnection then
 			enemyChangedConnection = shared.OnEnemyChanged(function()
-				if enabled and running and currentState ~= State.HOLD then
+				if enabled and running and currentState ~= State.HOLD and currentState ~= State.REPOSITION and currentState ~= State.TACTICAL_FLOW then
 					evaluateTarget()
 				end
 			end)

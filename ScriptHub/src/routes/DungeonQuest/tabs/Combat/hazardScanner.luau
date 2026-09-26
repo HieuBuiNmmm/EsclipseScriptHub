@@ -40,6 +40,14 @@ return function(window, tab)
 		end),
 	}, "Toggle_HazardDangerDetectionV2")
 
+	v2Section:Toggle({
+		Name = "Show Screen Danger HUD (Dot Indicator)",
+		Default = hazardScannerV2.IsHudIndicatorEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetHudIndicatorEnabled(state)
+		end),
+	}, "Toggle_HazardV2HudIndicator")
+
 	local hitboxShapes = { "Disc", "Rectangle" }
 	local function shapeToIndex(shape)
 		for i, s in ipairs(hitboxShapes) do
@@ -94,6 +102,164 @@ return function(window, tab)
 		end),
 	}, "Slider_HazardV2PlayerHitboxLength"))
 
+	v2Section:Toggle({
+		Name = "Enable Safe Spot V2 (Radar & Marker)",
+		Default = hazardScannerV2.IsSafeSpotEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetSafeSpotEnabled(state)
+		end),
+	}, "Toggle_HazardSafeSpotV2")
+
+	v2Section:Toggle({
+		Name = "Show Escape Vectors V2 (Beams)",
+		Default = hazardScannerV2.IsSafeSpotVectorsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetSafeSpotVectorsEnabled(state)
+		end),
+	}, "Toggle_HazardSafeSpotVectorsV2")
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Safe Spot Search Range (studs)",
+		Default = hazardScannerV2.GetSafeSpotMaxRadius(),
+		Minimum = 20,
+		Maximum = 120,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetSafeSpotMaxRadius(val)
+		end),
+	}, "Slider_HazardSafeSpotMaxRadiusV2"))
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Safe Spot Escape Margin (studs)",
+		Default = hazardScannerV2.GetSafeSpotEscapeMargin(),
+		Minimum = 0.1,
+		Maximum = 3.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetSafeSpotEscapeMargin(val)
+		end),
+	}, "Slider_HazardSafeSpotEscapeMarginV2"))
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Safe Spot Ray Count (8 - 48)",
+		Default = hazardScannerV2.GetSafeSpotRayCount(),
+		Minimum = 8,
+		Maximum = 48,
+		DisplayMethod = "Value",
+		Precision = 0,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetSafeSpotRayCount(val)
+		end),
+	}, "Slider_HazardSafeSpotRayCountV2"))
+
+	v2Section:Toggle({
+		Name = "Tactical Scoring V2 (Anti-Corner / Open Space)",
+		Default = hazardScannerV2.IsSafeSpotScoringV2Enabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetSafeSpotScoringV2Enabled(state)
+		end),
+	}, "Toggle_HazardSafeSpotScoringV2")
+
+	v2Section:Toggle({
+		Name = "Temporal Awareness V2 (Kinematics & TTI)",
+		Default = hazardScannerV2.IsTemporalEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetTemporalEnabled(state)
+		end),
+	}, "Toggle_HazardTemporalV2")
+
+	v2Section:Toggle({
+		Name = "Phase-Through Mode (Step Through Fading Skills)",
+		Default = hazardScannerV2.IsTemporalPhaseThrough(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetTemporalPhaseThrough(state)
+		end),
+	}, "Toggle_HazardTemporalPhaseThroughV2")
+
+	v2Section:Toggle({
+		Name = "Enable Auto Dodge V2 (Pure Locomotion)",
+		Default = hazardScannerV2.IsAutoDodgeEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetAutoDodgeEnabled(state)
+		end),
+	}, "Toggle_HazardAutoDodgeV2")
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Dodge Arrival Distance (studs)",
+		Default = hazardScannerV2.GetDodgeSnapDistance(),
+		Minimum = 0.5,
+		Maximum = 3.0,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetDodgeSnapDistance(val)
+		end),
+	}, "Slider_HazardV2DodgeSnapDistance"))
+
+	v2Section:Toggle({
+		Name = "Instant Snap On Arrival",
+		Default = hazardScannerV2.IsDodgeEnableSnap(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetDodgeEnableSnap(state)
+		end),
+	}, "Toggle_HazardV2DodgeEnableSnap")
+
+	v2Section:Toggle({
+		Name = "Hold Position After Dodge (Anti Ping-Pong)",
+		Default = hazardScannerV2.IsDodgeEnableHolding(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetDodgeEnableHolding(state)
+		end),
+	}, "Toggle_HazardV2DodgeEnableHolding")
+
+	v2Section:Header({ Name = "Phase 3: Organic Steering & Strafing" })
+
+	v2Section:Toggle({
+		Name = "Momentum Blending (Vector Slerp)",
+		Default = hazardScannerV2.IsMomentumBlending(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetMomentumBlending(state)
+		end),
+	}, "Toggle_HazardV2MomentumBlending")
+
+	v2Section:Toggle({
+		Name = "Combat Facing (Strafe While Dodging)",
+		Default = hazardScannerV2.IsCombatFacing(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetCombatFacing(state)
+		end),
+	}, "Toggle_HazardV2CombatFacing")
+
+	v2Section:Toggle({
+		Name = "Arc Strafing (Tangential Contour)",
+		Default = hazardScannerV2.IsArcStrafing(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetArcStrafing(state)
+		end),
+	}, "Toggle_HazardV2ArcStrafing")
+
+	v2Section:Toggle({
+		Name = "Continuous Flow State (Multi-Dodge)",
+		Default = hazardScannerV2.IsFlowState(),
+		Callback = autoSave.Wrap(function(state)
+			hazardScannerV2.SetFlowState(state)
+		end),
+	}, "Toggle_HazardV2FlowState")
+
+	ui.PatchSliderLoadCallback(v2Section:Slider({
+		Name = "Turn Sharpness (Smooth Responsiveness)",
+		Default = hazardScannerV2.GetTurnSharpness(),
+		Minimum = 4,
+		Maximum = 30,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = autoSave.Wrap(function(val)
+			hazardScannerV2.SetTurnSharpness(val)
+		end),
+	}, "Slider_HazardV2TurnSharpness"))
+
 	local leftSection = tab:Section({ Side = "Left" })
 	leftSection:Header({ Name = "Hazard Scanner Controls" })
 
@@ -146,10 +312,41 @@ return function(window, tab)
 		end
 	end)
 
+	hazardScannerV2.OnSafeSpotChanged(function(hasSpot, spot, hazardName, dist, chosen, isEmergency)
+		if hazardScannerV2.IsSafeSpotEnabled() and hazardScannerV2.IsDangerDetectionEnabled() then
+			if hasSpot and spot then
+				local labelText = isEmergency
+					and ("Safe Spot V2: <font color='rgb(255,180,50)'><b>Escaping (%.1f studs)</b></font>"):format(dist)
+					or ("Safe Spot V2: <font color='rgb(0,255,140)'><b>Found (%.1f studs)</b></font>"):format(dist)
+				pcall(function()
+					safeSpotLabel:UpdateName(labelText)
+				end)
+			else
+				pcall(function()
+					safeSpotLabel:UpdateName("Safe Spot: <font color='rgb(160,160,160)'>None Needed</font>")
+				end)
+			end
+		end
+	end)
+
 	hazardScanner.OnDodgeStateChanged(function(isDodging, spot, dist)
 		if isDodging and spot then
 			pcall(function()
 				dodgeStatusLabel:UpdateName(("Auto Dodge: <font color='rgb(0,255,200)'><b>Dodging (%.1f studs)</b></font>"):format(dist))
+			end)
+		else
+			pcall(function()
+				dodgeStatusLabel:UpdateName("Auto Dodge: <font color='rgb(160,160,160)'>Idle</font>")
+			end)
+		end
+	end)
+
+	hazardScannerV2.OnDodgeStateChanged(function(isDodging, spot, dist, state)
+		if isDodging and spot then
+			local stateStr = state == "HOLDING_SAFE" and "Holding Safe" or "Dodging"
+			local colorStr = state == "HOLDING_SAFE" and "rgb(0,255,140)" or "rgb(0,255,200)"
+			pcall(function()
+				dodgeStatusLabel:UpdateName(("Auto Dodge V2: <font color='" .. colorStr .. "'><b>" .. stateStr .. " (%.1f studs)</b></font>"):format(dist))
 			end)
 		else
 			pcall(function()

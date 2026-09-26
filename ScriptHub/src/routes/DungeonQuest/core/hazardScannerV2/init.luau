@@ -17,6 +17,11 @@ local memoryWatcher = require("@routes/DungeonQuest/core/hazardScannerV2/memoryW
 local visualizerV2 = require("@routes/DungeonQuest/core/hazardScannerV2/visualizerV2")
 local corridor = require("@routes/DungeonQuest/core/hazardScannerV2/corridor")
 local danger = require("@routes/DungeonQuest/core/hazardScannerV2/danger")
+local safeSpotV2 = require("@routes/DungeonQuest/core/hazardScannerV2/safeSpotV2")
+local hudIndicator = require("@routes/DungeonQuest/core/hazardScannerV2/hudIndicator")
+local dodgeControllerV2 = require("@routes/DungeonQuest/core/hazardScannerV2/dodgeControllerV2")
+local temporal = require("@routes/DungeonQuest/core/hazardScannerV2/temporal")
+local tacticalField = require("@routes/DungeonQuest/core/hazardScannerV2/tacticalField")
 
 --// Table
 local hazardScannerV2 = {}
@@ -26,6 +31,12 @@ local enabled = false
 local dangerDetectionEnabled = false
 local activeHazards = {} -- [BasePart] = { part, level1Parent, name, spawnTime, shape, motion }
 danger.SetHazardsMap(activeHazards)
+
+-- Đồng bộ trạng thái Danger sang HUD Screen Dot
+danger.OnDangerChanged(function(inDanger, threatData, threatType)
+	local threatName = threatData and (threatData.name or threatData.Name) or nil
+	hudIndicator.UpdateStatus(inDanger, threatName)
+end)
 local childConnections = {} -- [Instance] = { conn1, conn2 }
 local connections = {}
 local heartbeatConn = nil
@@ -33,6 +44,8 @@ local heartbeatConn = nil
 -- Đăng ký 1 Hazard Part vào tập theo dõi
 local function registerHazardPart(part, level1Child)
 	if not part or not part:IsA("BasePart") then return end
+	if filter.IsPlayerCharacter(part) or (level1Child and filter.IsPlayerCharacter(level1Child)) then return end
+	if filter.IsPlayerAbility(part) or (level1Child and filter.IsPlayerAbility(level1Child)) then return end
 	if not filter.IsHazardPart(part, level1Child) then return end
 	if activeHazards[part] then return end
 
@@ -98,7 +111,9 @@ end
 
 -- Hủy đăng ký 1 Hazard Part
 local function unregisterHazardPart(part)
-	if activeHazards[part] then
+	local data = activeHazards[part]
+	if data then
+		temporal.OnHazardUnregistered(part, data)
 		visualizerV2.Detach(part)
 		activeHazards[part] = nil
 		motion.RemoveRecord(part)
@@ -114,6 +129,9 @@ local function onWorkspaceChildAdded(child)
 	if not filter.IsValidLevel1WorkspaceChild(child) then
 		return
 	end
+	if filter.IsPlayerAbility(child) or filter.IsPlayerCharacter(child) then
+		return
+	end
 
 	-- Tìm tất cả các Hazard Parts đang có trong đối tượng Level 1 này
 	local hazardParts = filter.FindHazardPartsInLevel1Child(child)
@@ -125,6 +143,12 @@ local function onWorkspaceChildAdded(child)
 	if child:IsA("Model") then
 		childConnections[child] = child.DescendantAdded:Connect(function(desc)
 			if desc:IsA("BasePart") then
+				if filter.IsPlayerAbility(desc) or filter.IsPlayerAbility(child) then
+					return
+				end
+				if filter.IsPlayerCharacter(desc) or filter.IsPlayerCharacter(child) then
+					return
+				end
 				if filter.IsMultiRing(child) or filter.IsIceSpikes(child) then
 					local alreadyRegistered = false
 					for p, data in pairs(activeHazards) do
@@ -408,6 +432,9 @@ function hazardScannerV2.StopScan()
 	memoryWatcher.Reset()
 	danger.SetEnabled(false)
 	danger.Clear()
+	safeSpotV2.ClearVisuals()
+	hudIndicator.Clear()
+	dodgeControllerV2.Clear()
 end
 
 function hazardScannerV2.IsEnabled()
@@ -461,6 +488,7 @@ function hazardScannerV2.SetDangerDetectionEnabled(state)
 		hazardScannerV2.StartScan()
 	end
 	danger.SetEnabled(dangerDetectionEnabled)
+	hudIndicator.SetEnabled(dangerDetectionEnabled)
 	if not visualizerV2.IsEnabled() and not corridor.IsEnabled() and not dangerDetectionEnabled then
 		hazardScannerV2.StopScan()
 	end
@@ -515,6 +543,87 @@ hazardScannerV2.GetPlayerHitboxWidth = danger.GetPlayerWidth
 hazardScannerV2.SetPlayerHitboxWidth = danger.SetPlayerWidth
 hazardScannerV2.GetPlayerHitboxLength = danger.GetPlayerLength
 hazardScannerV2.SetPlayerHitboxLength = danger.SetPlayerLength
+
+-- SafeSpot V2 Exports
+hazardScannerV2.SafeSpot = safeSpotV2
+hazardScannerV2.FindNearestSafeSpot = safeSpotV2.FindNearestSafeSpot
+hazardScannerV2.GetSafeSpot = safeSpotV2.GetSafeSpot
+hazardScannerV2.SetSafeSpotEnabled = safeSpotV2.SetEnabled
+hazardScannerV2.IsSafeSpotEnabled = safeSpotV2.IsEnabled
+hazardScannerV2.SetSafeSpotVisualEnabled = safeSpotV2.SetVisualEnabled
+hazardScannerV2.IsSafeSpotVisualEnabled = safeSpotV2.IsVisualEnabled
+hazardScannerV2.SetSafeSpotVectorsEnabled = safeSpotV2.SetShowVectors
+hazardScannerV2.IsSafeSpotVectorsEnabled = safeSpotV2.IsShowVectors
+hazardScannerV2.SetSafeSpotMarkerEnabled = safeSpotV2.SetShowMarker
+hazardScannerV2.IsSafeSpotMarkerEnabled = safeSpotV2.IsShowMarker
+hazardScannerV2.SetSafeSpotRayCount = safeSpotV2.SetRayCount
+hazardScannerV2.GetSafeSpotRayCount = safeSpotV2.GetRayCount
+hazardScannerV2.SetSafeSpotEscapeMargin = safeSpotV2.SetEscapeMargin
+hazardScannerV2.GetSafeSpotEscapeMargin = safeSpotV2.GetEscapeMargin
+hazardScannerV2.SetSafeSpotMaxRadius = safeSpotV2.SetMaxRadius
+hazardScannerV2.GetSafeSpotMaxRadius = safeSpotV2.GetMaxRadius
+hazardScannerV2.SetSafeSpotAdaptive = safeSpotV2.SetAdaptive
+hazardScannerV2.IsSafeSpotAdaptive = safeSpotV2.IsAdaptive
+hazardScannerV2.IsSafeSpotEmergency = safeSpotV2.IsEmergency
+hazardScannerV2.OnSafeSpotChanged = safeSpotV2.OnSafeSpotChanged
+hazardScannerV2.SetSafeSpotScoringV2Enabled = safeSpotV2.SetEnableScoringV2
+hazardScannerV2.IsSafeSpotScoringV2Enabled = safeSpotV2.IsEnableScoringV2
+
+-- Dodge Controller V2 Exports
+hazardScannerV2.Dodge = dodgeControllerV2
+function hazardScannerV2.SetAutoDodgeEnabled(state)
+	if state then
+		if not hazardScannerV2.IsEnabled() then
+			hazardScannerV2.StartScan()
+		end
+		if not hazardScannerV2.IsDangerDetectionEnabled() then
+			hazardScannerV2.SetDangerDetectionEnabled(true)
+		end
+		if not safeSpotV2.IsEnabled() then
+			safeSpotV2.SetEnabled(true)
+		end
+	end
+	dodgeControllerV2.SetEnabled(state)
+end
+hazardScannerV2.IsAutoDodgeEnabled = dodgeControllerV2.IsEnabled
+hazardScannerV2.IsCurrentlyDodging = dodgeControllerV2.IsDodging
+hazardScannerV2.GetDodgeTarget = dodgeControllerV2.GetTargetSpot
+hazardScannerV2.SetDodgeSnapDistance = dodgeControllerV2.SetSnapDistance
+hazardScannerV2.GetDodgeSnapDistance = dodgeControllerV2.GetSnapDistance
+hazardScannerV2.SetDodgeEnableSnap = dodgeControllerV2.SetEnableSnap
+hazardScannerV2.IsDodgeEnableSnap = dodgeControllerV2.IsEnableSnap
+hazardScannerV2.SetDodgeEnableHolding = dodgeControllerV2.SetEnableHolding
+hazardScannerV2.IsDodgeEnableHolding = dodgeControllerV2.IsEnableHolding
+hazardScannerV2.OnDodgeStateChanged = dodgeControllerV2.OnDodgeStateChanged
+
+-- HUD Screen Dot Indicator Exports
+hazardScannerV2.HudIndicator = hudIndicator
+hazardScannerV2.SetHudIndicatorEnabled = hudIndicator.SetEnabled
+hazardScannerV2.IsHudIndicatorEnabled = hudIndicator.IsEnabled
+
+-- Temporal Engine V2 Exports (Phase 2)
+hazardScannerV2.Temporal = temporal
+hazardScannerV2.SetTemporalEnabled = temporal.SetEnabled
+hazardScannerV2.IsTemporalEnabled = temporal.IsEnabled
+hazardScannerV2.SetTemporalFuturePrediction = temporal.SetFuturePrediction
+hazardScannerV2.IsTemporalFuturePrediction = temporal.IsFuturePrediction
+hazardScannerV2.SetTemporalPhaseThrough = temporal.SetPhaseThrough
+hazardScannerV2.IsTemporalPhaseThrough = temporal.IsPhaseThrough
+
+-- Phase 3: Organic Steering, Strafing & Proactive Repositioning
+hazardScannerV2.FindRepositionSpot = safeSpotV2.FindRepositionSpot
+hazardScannerV2.SetMomentumBlending = dodgeControllerV2.SetMomentumBlending
+hazardScannerV2.IsMomentumBlending = dodgeControllerV2.IsMomentumBlending
+hazardScannerV2.SetCombatFacing = dodgeControllerV2.SetCombatFacing
+hazardScannerV2.IsCombatFacing = dodgeControllerV2.IsCombatFacing
+hazardScannerV2.SetArcStrafing = dodgeControllerV2.SetArcStrafing
+hazardScannerV2.IsArcStrafing = dodgeControllerV2.IsArcStrafing
+hazardScannerV2.SetFlowState = dodgeControllerV2.SetFlowState
+hazardScannerV2.IsFlowState = dodgeControllerV2.IsFlowState
+hazardScannerV2.SetTurnSharpness = dodgeControllerV2.SetTurnSharpness
+hazardScannerV2.GetTurnSharpness = dodgeControllerV2.GetTurnSharpness
+hazardScannerV2.TacticalField = tacticalField
+hazardScannerV2.EvaluateTacticalFlow = tacticalField.EvaluateTacticalFlow
 
 -- Trích xuất Telemetry chuẩn hóa gửi qua WebSocket
 function hazardScannerV2.GetActiveHazardsTelemetry()

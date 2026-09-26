@@ -286,6 +286,8 @@ return function(window, tab)
 	local enableHazardScannerToggle = nil
 	local bossAreaToggle = nil
 	local bossAreaRadiusSlider = nil
+	local innerDeadzoneToggle = nil
+	local innerDeadzoneRadiusSlider = nil
 	local editInfoLabel = nil
 
 	local function updateActiveStatus()
@@ -299,7 +301,11 @@ return function(window, tab)
 		local extraText = ""
 		if curTargetKey ~= "Mob" then
 			local curBossArea, curRadius = contextual.GetBossArea(curDungeon, curTargetKey)
+			local curInner, curInnerR = contextual.GetInnerDeadzone(curDungeon, curTargetKey)
 			local baText = curBossArea and ("<font color='rgb(0,255,255)'>Area: %.0f studs</font>"):format(curRadius) or "<font color='rgb(160,160,160)'>Area: Off</font>"
+			if curBossArea and curInner then
+				baText = baText .. (" <font color='rgb(255,100,100)'>(Donut: %.0f)</font>"):format(curInnerR)
+			end
 			extraText = " | " .. baText
 		end
 
@@ -346,6 +352,12 @@ return function(window, tab)
 			if bossAreaRadiusSlider then
 				pcall(function() bossAreaRadiusSlider:UpdateValue(80) end)
 			end
+			if innerDeadzoneToggle then
+				pcall(function() innerDeadzoneToggle:UpdateState(false, true) end)
+			end
+			if innerDeadzoneRadiusSlider then
+				pcall(function() innerDeadzoneRadiusSlider:UpdateValue(25) end)
+			end
 		else
 			local baEnabled, baRadius = contextual.GetBossArea(selectedDungeon, selectedTargetKey)
 			if bossAreaToggle then
@@ -353,6 +365,14 @@ return function(window, tab)
 			end
 			if bossAreaRadiusSlider then
 				pcall(function() bossAreaRadiusSlider:UpdateValue(baRadius) end)
+			end
+
+			local idEnabled, idRadius = contextual.GetInnerDeadzone(selectedDungeon, selectedTargetKey)
+			if innerDeadzoneToggle then
+				pcall(function() innerDeadzoneToggle:UpdateState(idEnabled, true) end)
+			end
+			if innerDeadzoneRadiusSlider then
+				pcall(function() innerDeadzoneRadiusSlider:UpdateValue(idRadius) end)
 			end
 		end
 
@@ -478,6 +498,39 @@ return function(window, tab)
 			if isSyncingUI then return end
 			if selectedTargetKey == "Mob" then return end
 			contextual.SetBossAreaRadius(selectedDungeon, selectedTargetKey, val)
+			updateActiveStatus()
+		end,
+	}))
+
+	local initInnerDeadzoneEnabled, initInnerDeadzoneRadius = contextual.GetInnerDeadzone(selectedDungeon, selectedTargetKey)
+
+	innerDeadzoneToggle = ctxSection:Toggle({
+		Name = "Enable Inner Deadzone (Donut Hole)",
+		Default = initInnerDeadzoneEnabled,
+		Callback = function(state)
+			if isSyncingUI then return end
+			if selectedTargetKey == "Mob" then
+				if innerDeadzoneToggle then
+					pcall(function() innerDeadzoneToggle:UpdateState(false) end)
+				end
+				return
+			end
+			contextual.SetInnerDeadzoneEnabled(selectedDungeon, selectedTargetKey, state)
+			updateActiveStatus()
+		end,
+	})
+
+	innerDeadzoneRadiusSlider = ui.PatchSliderLoadCallback(ctxSection:Slider({
+		Name = "Inner Deadzone Radius (studs)",
+		Default = initInnerDeadzoneRadius,
+		Minimum = 5,
+		Maximum = 150,
+		DisplayMethod = "Value",
+		Precision = 1,
+		Callback = function(val)
+			if isSyncingUI then return end
+			if selectedTargetKey == "Mob" then return end
+			contextual.SetInnerDeadzoneRadius(selectedDungeon, selectedTargetKey, val)
 			updateActiveStatus()
 		end,
 	}))

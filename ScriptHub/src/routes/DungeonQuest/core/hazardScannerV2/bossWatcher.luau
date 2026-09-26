@@ -77,7 +77,7 @@ function bossWatcher.GetBossTelegraphData()
 	local model, humanoid, root = findBossModel()
 	local isBossActive = (shared.IsBossActive and shared.IsBossActive()) or (model ~= nil)
 	local bossIdx = (shared.GetCurrentBossIndex and shared.GetCurrentBossIndex()) or 0
-	local isBossAreaActive, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea()
+	local isBossAreaActive, bossAreaRadius, bossAreaCenter, isInnerDeadzoneActive, innerDeadzoneRadius = contextual.GetActiveBossArea()
 
 	if not model or not root or not humanoid then
 		return {
@@ -93,6 +93,8 @@ function bossWatcher.GetBossTelegraphData()
 			arenaCenterX = (bossAreaCenter and bossAreaCenter.X) or 0,
 			arenaCenterZ = (bossAreaCenter and bossAreaCenter.Z) or 0,
 			arenaRadius = bossAreaRadius or 80.0,
+			innerDeadzoneActive = isInnerDeadzoneActive or false,
+			innerDeadzoneRadius = innerDeadzoneRadius or 0,
 		}
 	end
 
@@ -118,7 +120,11 @@ function bossWatcher.GetBossTelegraphData()
 		arenaCenterX = (bossAreaCenter and bossAreaCenter.X) or 0,
 		arenaCenterZ = (bossAreaCenter and bossAreaCenter.Z) or 0,
 		arenaRadius = bossAreaRadius or 80.0,
+		innerDeadzoneActive = isInnerDeadzoneActive or false,
+		innerDeadzoneRadius = innerDeadzoneRadius or 0,
 	}
 end
+
+bossWatcher.FindBossModel = findBossModel
 
 return bossWatcher
