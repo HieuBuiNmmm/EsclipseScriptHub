@@ -1,20 +1,229 @@
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()-- Owns resources that must be released when the hub is unloaded or executed again.
+local lifecycle = {
+	cleaned = false,
+	callbacks = {},
+}
+
+function lifecycle.Register(callback)
+	if type(callback) ~= "function" then return function() end end
+	if lifecycle.cleaned then
+		pcall(callback)
+		return function() end
+	end
+
+	table.insert(lifecycle.callbacks, callback)
+	return function()
+		for index, registered in ipairs(lifecycle.callbacks) do
+			if registered == callback then
+				table.remove(lifecycle.callbacks, index)
+				break
+			end
+		end
+	end
+end
+
+function lifecycle.Cleanup()
+	if lifecycle.cleaned then return end
+	lifecycle.cleaned = true
+	for index = #lifecycle.callbacks, 1, -1 do
+		pcall(lifecycle.callbacks[index])
+	end
+	table.clear(lifecycle.callbacks)
+end
+
+function lifecycle.IsActive()
+	return not lifecycle.cleaned
+end
+
+lifecycle.OnCleanup = lifecycle.Register
+
+return lifecycle
+end function __DIST.b()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
+
+--// Services
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+--// Player
+local player = Players.LocalPlayer
+if not player then
+	local timeoutClock = os.clock() + 5
+	repeat
+		player = Players.LocalPlayer
+		if player then break end
+		task.wait(0.1)
+	until os.clock() > timeoutClock
+end
+
+return {
+	Players = Players,
+	UserInputService = UserInputService,
+	RunService = RunService,
+	VirtualInputManager = VirtualInputManager,
+	player = player,
+}
+end function __DIST.c()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
+-- Nhận Window tham chiếu qua SetWindow (vì Window được tạo sau khi require module).
+
+--// Variables
+
+local window
+
+--// Table
+local notifier = {}
+
+--// Methods
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title, desc, lifetime)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end function __DIST.d()-- Custom In-Game UI: sortBarFrame (DungeonQuest)
+-- Khởi tạo thanh Sort Bar đính kèm vào GUI kho đồ trong game với Responsive Layout.
+
+local function createSortBarFrame(parent)
+	local sortBarFrame = Instance.new("Frame")
+	sortBarFrame.Name = "sortBarFrame"
+	sortBarFrame.Size = UDim2.new(0, 50, 0, 0)
+	sortBarFrame.AutomaticSize = Enum.AutomaticSize.Y
+	sortBarFrame.AnchorPoint = Vector2.new(0, 1)
+	sortBarFrame.Position = UDim2.new(1, 30, 1, 15)
+	sortBarFrame.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+	sortBarFrame.BackgroundTransparency = 0.15
+	sortBarFrame.BorderSizePixel = 0
+	sortBarFrame.LayoutOrder = 0
+	sortBarFrame.ZIndex = 2
+	sortBarFrame.Visible = true
+	sortBarFrame.Parent = parent
+
+	local UICorner_SortBar = Instance.new("UICorner")
+	UICorner_SortBar.CornerRadius = UDim.new(0, 8)
+	UICorner_SortBar.Parent = sortBarFrame
+
+	local UIStroke_SortBar = Instance.new("UIStroke")
+	UIStroke_SortBar.Name = "DockStroke"
+	UIStroke_SortBar.Thickness = 1.2
+	UIStroke_SortBar.Color = Color3.fromRGB(65, 72, 90)
+	UIStroke_SortBar.Transparency = 0.3
+	UIStroke_SortBar.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	UIStroke_SortBar.Parent = sortBarFrame
+
+	local UIPadding_SortBar = Instance.new("UIPadding")
+	UIPadding_SortBar.PaddingTop = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingBottom = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingLeft = UDim.new(0, 5)
+	UIPadding_SortBar.PaddingRight = UDim.new(0, 5)
+	UIPadding_SortBar.Parent = sortBarFrame
+
+	local UIScale_SortBar = Instance.new("UIScale")
+	UIScale_SortBar.Name = "SortBarUIScale"
+	UIScale_SortBar.Scale = 0.75
+	UIScale_SortBar.Parent = sortBarFrame
+
+	local UIListLayout_SortBar = Instance.new("UIListLayout")
+	UIListLayout_SortBar.Name = "UIListLayout"
+	UIListLayout_SortBar.Padding = UDim.new(0, 6)
+	UIListLayout_SortBar.FillDirection = Enum.FillDirection.Vertical
+	UIListLayout_SortBar.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	UIListLayout_SortBar.VerticalAlignment = Enum.VerticalAlignment.Top
+	UIListLayout_SortBar.SortOrder = Enum.SortOrder.LayoutOrder
+	UIListLayout_SortBar.Parent = sortBarFrame
+
+	local function createButton(name: string, layoutOrder: number, iconName: string, iconAsset: string)
+		local btn = Instance.new("ImageButton")
+		btn.Name = name
+		btn.Size = UDim2.new(0, 40, 0, 40)
+		btn.Position = UDim2.new(0, 0, 0, 0)
+		btn.AnchorPoint = Vector2.new(0, 0)
+		btn.BackgroundColor3 = Color3.fromRGB(25, 28, 36)
+		btn.BackgroundTransparency = 0.65
+		btn.BorderSizePixel = 0
+		btn.LayoutOrder = layoutOrder
+		btn.ZIndex = 2
+		btn.Visible = true
+		btn.Image = ""
+		btn.AutoButtonColor = false
+		btn.Parent = sortBarFrame
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = btn
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.2
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Transparency = 0.85
+		stroke.Color = Color3.fromRGB(60, 66, 82)
+		stroke.Parent = btn
+
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 7)
+		pad.PaddingBottom = UDim.new(0, 7)
+		pad.PaddingLeft = UDim.new(0, 7)
+		pad.PaddingRight = UDim.new(0, 7)
+		pad.Parent = btn
+
+		local icon = Instance.new("ImageLabel")
+		icon.Name = iconName
+		icon.Size = UDim2.new(1, 0, 1, 0)
+		icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
+		icon.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		icon.BackgroundTransparency = 1
+		icon.BorderSizePixel = 0
+		icon.LayoutOrder = 0
+		icon.ZIndex = 2
+		icon.Visible = true
+		icon.Image = iconAsset
+		icon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+		icon.ImageTransparency = 0.35
+		icon.ScaleType = Enum.ScaleType.Fit
+		icon.Parent = btn
+
+		return btn
+	end
+
+	createButton("IBmainFilter", 1, "imageSort", "rbxassetid://73746166761985")
+	createButton("IBrarity", 2, "imageRarity", "rbxassetid://105634041692696")
+	createButton("IBphysic", 3, "imagePhysic", "rbxassetid://121406454377051")
+	createButton("IBspell", 4, "imageSpell", "rbxassetid://125012650497883")
+	createButton("IBhealth", 5, "imageHealth", "rbxassetid://88525382655929")
+	createButton("IBability", 6, "imageAbility", "rbxassetid://109718589733073")
+
+	return sortBarFrame
+end
+
+return createSortBarFrame end function __DIST.e()
 local MacLib = { 
 	Options = {}, 
-	OptionOrder = {},
 	Folder = "Maclib", 
 	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
 }
-
-local function registerOption(flag, obj)
-	if not flag then return end
-	MacLib.Options[flag] = obj
-	if not table.find(MacLib.OptionOrder, flag) then
-		table.insert(MacLib.OptionOrder, flag)
-	end
-end
 
 --// Services
 local TweenService = MacLib.GetService("TweenService")
@@ -1753,7 +1962,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ButtonFunctions)
+						MacLib.Options[Flag] = ButtonFunctions
 					end
 					return ButtonFunctions
 				end
@@ -1899,7 +2108,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ToggleFunctions)
+						MacLib.Options[Flag] = ToggleFunctions
 					end
 					return ToggleFunctions
 				end
@@ -2165,7 +2374,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SliderFunctions)
+						MacLib.Options[Flag] = SliderFunctions
 					end
 					return SliderFunctions
 				end
@@ -2341,7 +2550,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, InputFunctions)
+						MacLib.Options[Flag] = InputFunctions
 					end
 					return InputFunctions
 				end
@@ -2520,7 +2729,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, KeybindFunctions)
+						MacLib.Options[Flag] = KeybindFunctions
 					end
 
 					return KeybindFunctions
@@ -2937,13 +3146,10 @@ function MacLib:Window(Settings)
 							if DropdownFunctions.Settings.Multi then
 								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
 							else
-								isSelected = (DropdownFunctions.Settings.Default == i or DropdownFunctions.Settings.Default == v) and true or false
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
 							end
 						end
 						Toggle(v, isSelected)
-						if isSelected and not DropdownFunctions.Settings.Multi then
-							DropdownFunctions.Value = v
-						end
 
 						local option = OptionObjs[v].Button
 
@@ -3095,7 +3301,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, DropdownFunctions)
+						MacLib.Options[Flag] = DropdownFunctions
 					end
 
 					return DropdownFunctions
@@ -4380,7 +4586,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ColorpickerFunctions)
+						MacLib.Options[Flag] = ColorpickerFunctions
 					end
 					return ColorpickerFunctions
 				end
@@ -4434,7 +4640,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, HeaderFunctions)
+						MacLib.Options[Flag] = HeaderFunctions
 					end
 					return HeaderFunctions
 				end
@@ -4478,7 +4684,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, LabelFunctions)
+						MacLib.Options[Flag] = LabelFunctions
 					end
 					return LabelFunctions
 				end
@@ -4522,7 +4728,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SubLabelFunctions)
+						MacLib.Options[Flag] = SubLabelFunctions
 					end
 					return SubLabelFunctions
 				end
@@ -4598,7 +4804,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ParagraphFunctions)
+						MacLib.Options[Flag] = ParagraphFunctions
 					end
 					return ParagraphFunctions
 				end
@@ -5522,12 +5728,6 @@ function MacLib:Window(Settings)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
-					local opt = MacLib.Options[Flag]
-					if opt.Settings and opt.Settings.Callback then
-						task.spawn(function()
-							pcall(opt.Settings.Callback, tonumber(data.value) or opt.Value)
-						end)
-					end
 				end
 			end
 		},
@@ -5700,19 +5900,11 @@ function MacLib:Window(Settings)
 			contextData = MacLib.contextData or {},
 		}
 
-		local processed = {}
-		for _, flag in ipairs(MacLib.OptionOrder) do
-			local option = MacLib.Options[flag]
-			if option and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-				processed[flag] = true
-			end
-		end
-
 		for flag, option in next, MacLib.Options do
-			if not processed[flag] and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
 		end	
 
 		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
@@ -6077,4 +6269,1776 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib
+return MacLib end end-- Inventory Sort Module (DungeonQuest)
+-- Sắp xếp kho đồ game tức thì bằng cách thay đổi LayoutOrder trên UIGridLayout của ScrollingFrame
+-- Hỗ trợ cơ chế kết hợp:
+--   - Main filter (Tri-state): None (bỏ chọn) -> Descending (Power giảm dần) -> Ascending (Power tăng dần) -> None
+--   - Rarity filter: Có thể bật/tắt kết hợp cùng 1 trong Physic/Spell/Health
+--   - Stat filter: Chọn tối đa 1 trong Physic / Spell / Health
+--   - Ability: Độc lập riêng biệt (không có thông số)
+
+
+local lifecycle = __DIST.load('a')
+local services = __DIST.load('b')
+local notifier = __DIST.load('c')
+local createSortBarFrame = __DIST.load('d')
+local macLib = __DIST.load('e')
+
+local TweenService = services.TweenService or game:GetService("TweenService")
+local HttpService = services.HttpService or game:GetService("HttpService")
+
+local inventorySort = {}
+
+--// Các kiểu trạng thái
+export type MainFilterMode = "None" | "Descending" | "Ascending"
+export type StatFilterType = "Physical Damage" | "Spell Power" | "Health"
+
+local mainFilterMode: MainFilterMode = "None"
+local rarityEnabled: boolean = false
+local selectedStatFilter: StatFilterType? = nil
+local abilityEnabled: boolean = false
+local autoSortEnabled: boolean = true
+local SORT_BAR_SCALE: number = 1.25
+
+--// Persistence (Lưu/Tải trạng thái filter của người chơi vào file json)
+local saveDebounceThread: thread? = nil
+
+local function getBaseFolder(): string
+	local base = "EsclipseHub"
+	pcall(function()
+		if macLib and macLib.Folder then
+			base = macLib.Folder
+		end
+	end)
+	return base
+end
+
+local function getSettingsFilePath(): string
+	return getBaseFolder() .. "/settings/inventory_sort.json"
+end
+
+local function ensureSettingsFolder()
+	if not (makefolder and isfolder) then return end
+	pcall(function()
+		local base = getBaseFolder()
+		if not isfolder(base) then
+			makefolder(base)
+		end
+		local settingsDir = base .. "/settings"
+		if not isfolder(settingsDir) then
+			makefolder(settingsDir)
+		end
+	end)
+end
+
+local function loadSettings()
+	if not (isfile and readfile) then return end
+	local filePath = getSettingsFilePath()
+	if not isfile(filePath) then return end
+
+	local ok, decoded = pcall(function()
+		local content = readfile(filePath)
+		return HttpService:JSONDecode(content)
+	end)
+
+	if not (ok and type(decoded) == "table") then return end
+
+	if decoded.mainFilterMode == "Descending" or decoded.mainFilterMode == "Ascending" or decoded.mainFilterMode == "None" then
+		mainFilterMode = decoded.mainFilterMode
+	end
+
+	if type(decoded.rarityEnabled) == "boolean" then
+		rarityEnabled = decoded.rarityEnabled
+	end
+
+	if decoded.selectedStatFilter == "Physical Damage" or decoded.selectedStatFilter == "Spell Power" or decoded.selectedStatFilter == "Health" then
+		selectedStatFilter = decoded.selectedStatFilter
+	elseif decoded.selectedStatFilter == nil then
+		selectedStatFilter = nil
+	end
+
+	if type(decoded.abilityEnabled) == "boolean" then
+		abilityEnabled = decoded.abilityEnabled
+	end
+
+	if type(decoded.autoSortEnabled) == "boolean" then
+		autoSortEnabled = decoded.autoSortEnabled
+	end
+
+	if abilityEnabled then
+		rarityEnabled = false
+		selectedStatFilter = nil
+	elseif selectedStatFilter ~= nil then
+		rarityEnabled = false
+	end
+end
+
+local function saveSettings()
+	if not (isfile and writefile) then return end
+
+	if saveDebounceThread then
+		task.cancel(saveDebounceThread)
+		saveDebounceThread = nil
+	end
+
+	saveDebounceThread = task.delay(0.5, function()
+		saveDebounceThread = nil
+		pcall(function()
+			ensureSettingsFolder()
+			local filePath = getSettingsFilePath()
+			local payload = {
+				mainFilterMode = mainFilterMode,
+				rarityEnabled = rarityEnabled,
+				selectedStatFilter = selectedStatFilter,
+				abilityEnabled = abilityEnabled,
+				autoSortEnabled = autoSortEnabled,
+			}
+			writefile(filePath, HttpService:JSONEncode(payload))
+		end)
+	end)
+end
+
+--// Responsive Layout & Adaptive Viewport Guard cho SortBar
+local function updateSortBarResponsiveLayout(sortBar: GuiObject?)
+	if not sortBar or not sortBar.Parent then return end
+	local parentFrame = sortBar.Parent
+	if not parentFrame:IsA("GuiObject") then return end
+
+	local parentHeight = parentFrame.AbsoluteSize.Y
+	if parentHeight <= 10 then
+		-- Nếu frame chưa render kích thước thực tế, thử lại ở frame kế tiếp
+		task.defer(function()
+			if sortBar and sortBar.Parent then
+				updateSortBarResponsiveLayout(sortBar)
+			end
+		end)
+		return
+	end
+
+	local camera = workspace.CurrentCamera
+	local viewportSize = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+	local viewportWidth = viewportSize.X
+
+	-- 1. Tìm vị trí thực tế của khung "Boss Keys" (nếu có trên màn hình) để đo khoảng cách chính xác
+	local bossKeysBottomY: number? = nil
+	local player = services.player or services.Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	if playerGui then
+		for _, gui in ipairs(playerGui:GetChildren()) do
+			if gui:IsA("ScreenGui") and gui.Enabled then
+				for _, desc in ipairs(gui:GetDescendants()) do
+					if desc:IsA("GuiObject") and desc.Visible and desc.AbsoluteSize.Y > 20 then
+						local lowerName = string.lower(desc.Name)
+						if string.find(lowerName, "bosskey") or string.find(lowerName, "keyframe") or string.find(lowerName, "keysframe") or string.find(lowerName, "keysholder") or string.find(lowerName, "keyholder") then
+							local bY = desc.AbsolutePosition.Y + desc.AbsoluteSize.Y
+							if not bossKeysBottomY or bY > bossKeysBottomY then
+								bossKeysBottomY = bY
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- 2. Tính toán Dynamic Scale:
+	local parentTopY = parentFrame.AbsolutePosition.Y
+	local parentBottomY = parentTopY + parentHeight
+	local unscaledHeight = 280
+
+	local maxAllowedScale = 1.25
+
+	if bossKeysBottomY and bossKeysBottomY > parentTopY and bossKeysBottomY < parentBottomY then
+		-- Đo chính xác pixel khoảng cách từ đáy Boss Keys đến đáy kho đồ
+		local availableHeight = (parentBottomY - bossKeysBottomY) - 10
+		if availableHeight > 30 then
+			maxAllowedScale = math.min(maxAllowedScale, availableHeight / unscaledHeight)
+		end
+	else
+		-- Nếu không tìm thấy tên chính xác, dùng tỷ lệ thích ứng theo độ cao kho đồ:
+		-- Trên màn hình nhỏ (parentHeight < 440), Boss Keys chiếm ~55% nửa trên, SortBar chỉ được chiếm tối đa 38% - 42%
+		if parentHeight < 440 then
+			local smallRatio = math.clamp(parentHeight / 440, 0.35, 1.0)
+			local dynamicMaxRatio = 0.38 + (smallRatio * 0.32) -- từ 0.38 (khi siêu nhỏ) đến 0.70 (khi to)
+			maxAllowedScale = math.min(maxAllowedScale, (parentHeight * dynamicMaxRatio) / unscaledHeight)
+		end
+	end
+
+	-- Scale chuẩn theo tỷ lệ màn hình to, bị giới hạn bởi maxAllowedScale để không bao giờ chạm Boss Keys
+	local REFERENCE_HEIGHT = 440
+	local screenScale = (parentHeight / REFERENCE_HEIGHT) * 1.25
+	local targetScale = math.clamp(math.min(screenScale, maxAllowedScale), 0.28, 1.25)
+
+	local uiScale = sortBar:FindFirstChildOfClass("UIScale")
+	if not uiScale then
+		uiScale = Instance.new("UIScale")
+		uiScale.Name = "SortBarUIScale"
+		uiScale.Parent = sortBar
+	end
+	uiScale.Scale = targetScale
+
+	-- 3. Dynamic Offset tỷ lệ thuận theo Scale:
+	-- Màn hình to: Đạt chính xác {1, 30}, {1, 15}
+	-- Cửa sổ nhỏ: Tự động co gọn lại khoảng {1, 12-15}, {1, 6-8} để ôm sát mép kho đồ
+	local scaleFactor = targetScale / 1.25
+	local offsetX = math.clamp(math.round(30 * scaleFactor), 8, 30)
+	local offsetY = math.clamp(math.round(15 * scaleFactor), 0, 15)
+
+	-- 4. Adaptive Viewport Guard (Chống tràn màn hình & Tự động đảo mép Docking)
+	local parentLeft = parentFrame.AbsolutePosition.X
+	local parentRight = parentLeft + parentFrame.AbsoluteSize.X
+	local renderedWidth = 50 * targetScale + offsetX
+
+	local canFitRight = (parentRight + renderedWidth) <= (viewportWidth - 4)
+	local canFitLeft = (parentLeft - renderedWidth) >= 4
+
+	if not canFitRight and canFitLeft then
+		-- Không đủ chỗ bên phải, đảo sang neo mép trái dưới của kho đồ
+		sortBar.AnchorPoint = Vector2.new(1, 1)
+		sortBar.Position = UDim2.new(0, -offsetX, 1, offsetY)
+	else
+		-- Đủ chỗ bên phải (mặc định): Neo góc dưới bên phải (Bottom-Right) dưới bảng Boss Keys
+		sortBar.AnchorPoint = Vector2.new(0, 1)
+		sortBar.Position = UDim2.new(1, offsetX, 1, offsetY)
+	end
+end
+
+local function applySortBarScale(sortBar: GuiObject?)
+	updateSortBarResponsiveLayout(sortBar)
+end
+
+--// Cache dữ liệu inventory
+local cachedInventoryData: any = nil
+local cachedLookupMap: { [string]: any }? = nil
+local lastFetchTime = 0
+local CACHE_LIFETIME = 30.0 -- 30 giây cache tránh spam invoke server
+local FETCH_COOLDOWN = 6.0 -- Tối thiểu 6 giây giữa 2 lần InvokeServer
+local isFetchingData = false
+
+--// Thang điểm độ hiếm (càng cao càng hiếm)
+local RARITY_SCORES: { [string]: number } = {
+	common = 1,
+	uncommon = 2,
+	rare = 3,
+	epic = 4,
+	legendary = 5,
+	ultimate = 6,
+	mythic = 7,
+}
+
+local CATEGORY_PLURAL: { [string]: string } = {
+	weapon = "weapons",
+	chest = "chests",
+	helmet = "helmets",
+	ability = "abilities",
+}
+
+--// Icon tương ứng cho từng trạng thái Main Filter (Tri-state)
+local MAIN_FILTER_ICONS: { [MainFilterMode]: string } = {
+	None = "rbxassetid://73746166761985",
+	Descending = "rbxassetid://130494621181478", -- Từ cao đến thấp
+	Ascending = "rbxassetid://140381370510884", -- Từ thấp đến cao
+}
+
+--// Thiết lập giao diện tương tác (Sắc nét, viền rõ ràng, màu sắc Thematic sống động)
+local STYLE = {
+	TweenDuration = 0.16,
+	EasingStyle = Enum.EasingStyle.Quad,
+	EasingDirection = Enum.EasingDirection.Out,
+
+	-- State ban đầu (chưa được chọn): Nút có nền khối rõ ràng, viền định hình, icon sáng 100%
+	Inactive = {
+		BackgroundTransparency = 0.2,
+		BackgroundColor3 = Color3.fromRGB(28, 31, 40),
+		ElementTransparency = 0.0,
+		ElementColor3 = Color3.fromRGB(235, 240, 252),
+		StrokeTransparency = 0.4,
+		StrokeColor3 = Color3.fromRGB(65, 72, 90),
+	},
+
+	-- Khi hover: Tăng sáng nền và viền bắt mắt
+	Hovered = {
+		BackgroundTransparency = 0.1,
+		BackgroundColor3 = Color3.fromRGB(45, 52, 68),
+		ElementTransparency = 0.0,
+		ElementColor3 = Color3.fromRGB(255, 255, 255),
+		StrokeTransparency = 0.15,
+		StrokeColor3 = Color3.fromRGB(150, 165, 195),
+	},
+
+	-- Active mặc định (fallback nếu không có theme riêng)
+	Active = {
+		BackgroundTransparency = 0.1,
+		BackgroundColor3 = Color3.fromRGB(30, 55, 85),
+		ElementTransparency = 0.0,
+		ElementColor3 = Color3.fromRGB(255, 255, 255),
+		StrokeTransparency = 0.0,
+		StrokeColor3 = Color3.fromRGB(80, 180, 255),
+	},
+
+	-- Active + Hovered mặc định
+	ActiveHovered = {
+		BackgroundTransparency = 0.05,
+		BackgroundColor3 = Color3.fromRGB(40, 75, 115),
+		ElementTransparency = 0.0,
+		ElementColor3 = Color3.fromRGB(255, 255, 255),
+		StrokeTransparency = 0.0,
+		StrokeColor3 = Color3.fromRGB(120, 210, 255),
+	},
+}
+
+--// Bảng màu Thematic riêng biệt cho từng nút khi Active (Phong cách Thematic Accent)
+local THEMATIC_COLORS = {
+	IBmainFilter = {
+		ActiveBg = Color3.fromRGB(28, 55, 90),
+		ActiveStroke = Color3.fromRGB(80, 180, 255),
+		ActiveHoverBg = Color3.fromRGB(38, 75, 120),
+		ActiveHoverStroke = Color3.fromRGB(120, 210, 255),
+	},
+	IBphysic = {
+		ActiveBg = Color3.fromRGB(75, 30, 22),
+		ActiveStroke = Color3.fromRGB(245, 95, 55),
+		ActiveHoverBg = Color3.fromRGB(105, 42, 30),
+		ActiveHoverStroke = Color3.fromRGB(255, 130, 85),
+	},
+	IBspell = {
+		ActiveBg = Color3.fromRGB(25, 45, 95),
+		ActiveStroke = Color3.fromRGB(65, 150, 255),
+		ActiveHoverBg = Color3.fromRGB(38, 65, 130),
+		ActiveHoverStroke = Color3.fromRGB(105, 180, 255),
+	},
+	IBhealth = {
+		ActiveBg = Color3.fromRGB(20, 60, 32),
+		ActiveStroke = Color3.fromRGB(55, 210, 115),
+		ActiveHoverBg = Color3.fromRGB(28, 85, 45),
+		ActiveHoverStroke = Color3.fromRGB(90, 235, 145),
+	},
+	IBrarity = {
+		ActiveBg = Color3.fromRGB(75, 58, 16),
+		ActiveStroke = Color3.fromRGB(255, 205, 50),
+		ActiveHoverBg = Color3.fromRGB(105, 82, 22),
+		ActiveHoverStroke = Color3.fromRGB(255, 225, 95),
+	},
+	IBability = {
+		ActiveBg = Color3.fromRGB(60, 25, 85),
+		ActiveStroke = Color3.fromRGB(195, 90, 255),
+		ActiveHoverBg = Color3.fromRGB(85, 35, 120),
+		ActiveHoverStroke = Color3.fromRGB(215, 125, 255),
+	},
+}
+
+--// Danh sách connection lifecycle & state tracking
+local activeConnections: { RBXScriptConnection } = {}
+local isSorting = false
+
+local buttonHoverState: { [GuiObject]: boolean } = {}
+local hookedButtons: { [GuiObject]: boolean } = {}
+local hookedSortBars: { [GuiObject]: boolean } = {}
+local knownSortBarButtons: { GuiObject } = {}
+
+local criteriaCallbacks: { (string) -> () } = {}
+local directionCallbacks: { (string) -> () } = {}
+
+--// Forward declarations
+local injectedSortBar: GuiObject? = nil
+local ensureSortBar: () -> GuiObject?
+local hookSortBar: (GuiObject) -> ()
+
+--// Xây dựng bảng tra cứu O(1) từ inventoryData để không bao giờ bị lag khi duyệt 300 ô
+local function buildItemLookup(invyData: any): { [string]: any }
+	local lookup = {}
+	if type(invyData) ~= "table" then return lookup end
+	for catName, catTable in pairs(invyData) do
+		if type(catTable) == "table" then
+			local pluralCat = CATEGORY_PLURAL[catName] or catName
+			for k, item in pairs(catTable) do
+				local kStr = tostring(k)
+				lookup[kStr] = item
+				local num = string.match(kStr, "_(%d+)$")
+				if num then
+					lookup[catName .. "_" .. num] = item
+					lookup[pluralCat .. "_" .. num] = item
+					local sing = string.match(kStr, "^(.-)_")
+					if sing then
+						lookup[sing .. "_" .. num] = item
+					end
+				end
+			end
+		end
+	end
+	return lookup
+end
+
+--// Lấy dữ liệu kho đồ từ Remote reloadInvy (có cache và cooldown bảo vệ chống spam)
+local function fetchInventoryData(forceRefresh: boolean?): any
+	local now = os.clock()
+	-- 1. Nếu có cache và chưa quá 30s -> luôn dùng cache
+	if not forceRefresh and cachedInventoryData and (now - lastFetchTime) < CACHE_LIFETIME then
+		return cachedInventoryData
+	end
+
+	-- 2. Chống spam: Dù forceRefresh hay cache = nil, nếu vừa gọi server trong vòng FETCH_COOLDOWN (6s) -> dùng cache cũ
+	if cachedInventoryData and (now - lastFetchTime) < FETCH_COOLDOWN then
+		return cachedInventoryData
+	end
+
+	-- 3. Nếu chưa có cache nhưng vừa fetch thất bại/xong trong vòng 3.0 giây -> không flood
+	if (now - lastFetchTime) < 3.0 then
+		return cachedInventoryData
+	end
+
+	-- 4. Chống re-entrancy
+	if isFetchingData then
+		return cachedInventoryData
+	end
+
+	isFetchingData = true
+	local ok, result = pcall(function()
+		local rs = services.ReplicatedStorage or game:GetService("ReplicatedStorage")
+		local remotes = rs and rs:FindFirstChild("remotes")
+		if not remotes then return nil end
+		local reloadInvy = remotes:FindFirstChild("reloadInvy")
+		if not reloadInvy or not reloadInvy:IsA("RemoteFunction") then return nil end
+		return reloadInvy:InvokeServer()
+	end)
+	isFetchingData = false
+	lastFetchTime = os.clock()
+
+	if ok and result then
+		if type(result) == "table" and result["1"] and type(result["1"]) == "table" then
+			cachedInventoryData = result["1"]
+		else
+			cachedInventoryData = result
+		end
+		cachedLookupMap = nil
+		return cachedInventoryData
+	end
+
+	return cachedInventoryData
+end
+
+--// Tra cứu thông tin món đồ siêu tốc O(1)
+local function getItemData(invyData: any, itemType: string, uniqueNum: string): any?
+	if not invyData or type(invyData) ~= "table" then return nil end
+	if not cachedLookupMap then
+		cachedLookupMap = buildItemLookup(invyData)
+	end
+	return cachedLookupMap[itemType .. "_" .. uniqueNum]
+end
+
+local hasLoggedItemKeys = false
+
+local function parseUpgrades(upgradesStr: any): (number, number)
+	if not upgradesStr then return 0, 0 end
+	local clean = string.gsub(tostring(upgradesStr), ",", "")
+	local curStr, maxStr = string.match(clean, "(%d+)%s*/%s*(%d+)")
+	if curStr and maxStr then
+		return tonumber(curStr) or 0, tonumber(maxStr) or 0
+	end
+	local single = tonumber(string.match(clean, "^%s*([%d.-]+)"))
+	return 0, single or 0
+end
+
+local function extractItemUpgrades(item: any, slot: GuiObject?): (number, number)
+	if not item or type(item) ~= "table" then
+		return 0, 0
+	end
+
+	-- Debug dump 1 lần ra console F9 cấu trúc item thực tế từ server
+	if not hasLoggedItemKeys then
+		hasLoggedItemKeys = true
+		local parts = {}
+		for k, v in pairs(item) do
+			table.insert(parts, string.format("%s=%s", tostring(k), tostring(v)))
+		end
+		print(string.format("[InventorySort:ItemDump] %s (%s): %s", tostring(item.name or "Unknown"), tostring(item.rarity or "Common"), table.concat(parts, ", ")))
+	end
+
+	local curUpgrades: number? = nil
+	local maxUpgrades: number? = nil
+
+	-- 1. Tìm maxUpgrades / totalUpgrades từ các trường trong item data
+	local rawMax = item.totalUpgrades
+		or item.maxUpgrades
+		or item.totalUpgrade
+		or item.maxUpgrade
+		or item.upgradesTotal
+		or item.upgradesMax
+		or item.upgradeTotal
+		or item.upgradeLimit
+		or item.availableUpgrades
+
+	if rawMax ~= nil then
+		maxUpgrades = tonumber(rawMax)
+	end
+
+	-- 2. Tìm curUpgrades từ item
+	local rawCur = item.curUpgrades
+		or item.currentUpgrades
+		or item.currentUpgrade
+		or item.upgradesCur
+
+	if rawCur ~= nil then
+		curUpgrades = tonumber(rawCur)
+	end
+
+	-- 3. Xử lý trường item.upgrades (chuỗi, số hoặc bảng)
+	if item.upgrades ~= nil then
+		if type(item.upgrades) == "string" then
+			local c, m = parseUpgrades(item.upgrades)
+			curUpgrades = curUpgrades or c
+			maxUpgrades = maxUpgrades or m
+		elseif type(item.upgrades) == "number" then
+			curUpgrades = curUpgrades or item.upgrades
+		elseif type(item.upgrades) == "table" then
+			local c = item.upgrades.cur or item.upgrades.current or item.upgrades[1]
+			local m = item.upgrades.max or item.upgrades.total or item.upgrades.totalUpgrades or item.upgrades[2]
+			if c ~= nil then curUpgrades = curUpgrades or tonumber(c) end
+			if m ~= nil then maxUpgrades = maxUpgrades or tonumber(m) end
+		end
+	end
+
+	-- 4. Fallback kiểm tra slot GUI / ValueBase nếu item table thiếu
+	if (not maxUpgrades or maxUpgrades == 0) and slot and slot:IsA("GuiObject") then
+		for _, childName in ipairs({ "totalUpgrades", "maxUpgrades", "upgrades", "totalUpgrade" }) do
+			local valObj = slot:FindFirstChild(childName)
+			if not valObj then
+				local itVal = slot:FindFirstChild("itemType")
+				if itVal then valObj = itVal:FindFirstChild(childName) end
+			end
+			if valObj and valObj:IsA("ValueBase") then
+				local n = tonumber(valObj.Value)
+				if n and n > 0 then
+					maxUpgrades = n
+					break
+				end
+			end
+		end
+	end
+
+	return curUpgrades or 0, maxUpgrades or 0
+end
+
+local function calculateItemMaxPot(
+	item: any,
+	category: string,
+	physVal: number,
+	spellVal: number,
+	healthVal: number,
+	itemName: string,
+	slot: GuiObject?
+): (number, number, number, number)
+	if not item or type(item) ~= "table" then
+		local baseMax = math.max(physVal, spellVal, healthVal)
+		return physVal, spellVal, healthVal, baseMax
+	end
+
+	local curUpgrades, maxUpgrades = extractItemUpgrades(item, slot)
+	local remainingUpgrades = math.max(0, maxUpgrades - curUpgrades)
+	local bonus = remainingUpgrades * 10
+
+	local maxPhys = physVal
+	local maxSpell = spellVal
+	local maxHealth = healthVal
+
+	local cat = string.lower(category or "")
+	local isWeapon = (cat == "weapon" or cat == "weapons" or string.find(cat, "weapon") ~= nil)
+
+	if isWeapon then
+		if spellVal > physVal then
+			maxSpell = spellVal + bonus
+		else
+			maxPhys = physVal + bonus
+		end
+	else
+		local lowerName = string.lower(itemName or "")
+		if string.find(lowerName, "guardian") then
+			maxHealth = healthVal + bonus
+		elseif string.find(lowerName, "mage") then
+			maxSpell = spellVal + bonus
+		elseif string.find(lowerName, "warrior") then
+			maxPhys = physVal + bonus
+		else
+			if healthVal > 10000 and healthVal > (physVal * 10) then
+				maxHealth = healthVal + bonus
+			elseif spellVal > physVal then
+				maxSpell = spellVal + bonus
+			else
+				maxPhys = physVal + bonus
+			end
+		end
+	end
+
+	local overallMaxPot = math.max(maxPhys, maxSpell, maxHealth)
+	return maxPhys, maxSpell, maxHealth, overallMaxPot
+end
+
+--// Trích xuất chỉ số phục vụ sắp xếp
+type ParsedItemSlot = {
+	slot: GuiObject,
+	originalOrder: number,
+	category: string,
+	physical: number,
+	spell: number,
+	health: number,
+	maxPhysical: number,
+	maxSpell: number,
+	maxHealth: number,
+	maxPot: number,
+	rarityScore: number,
+	levelReq: number,
+	name: string
+}
+
+local function parseSlot(slot: GuiObject, invyData: any, defaultIndex: number): ParsedItemSlot?
+	if not slot:IsA("GuiObject") then return nil end
+
+	local itemTypeVal = slot:FindFirstChild("itemType")
+	if not itemTypeVal then return nil end
+
+	local cat = tostring(itemTypeVal.Value or "")
+	local uniqueNum = ""
+	local uniqueChild = itemTypeVal:FindFirstChild("uniqueItemNum")
+	if uniqueChild then
+		uniqueNum = tostring(uniqueChild.Value or "")
+	end
+
+	local item = getItemData(invyData, cat, uniqueNum)
+
+	local originalOrder = tonumber(slot.Name) or defaultIndex
+	local physVal = 0
+	local spellVal = 0
+	local healthVal = 0
+	local rarityVal = 0
+	local levelReqVal = 0
+	local itemName = ""
+
+	if item and type(item) == "table" then
+		physVal = tonumber(item.physicalDamage or item.physicalPower or 0) or 0
+		spellVal = tonumber(item.spellPower or 0) or 0
+		healthVal = tonumber(item.health or 0) or 0
+		local rarityStr = string.lower(tostring(item.rarity or "common"))
+		rarityVal = RARITY_SCORES[rarityStr] or 0
+		levelReqVal = tonumber(item.levelReq or 0) or 0
+		itemName = tostring(item.name or "")
+	end
+
+	local maxPhys, maxSpell, maxHealth, maxPot = calculateItemMaxPot(
+		item,
+		cat,
+		physVal,
+		spellVal,
+		healthVal,
+		itemName,
+		slot
+	)
+
+	return {
+		slot = slot,
+		originalOrder = originalOrder,
+		category = string.lower(cat),
+		physical = physVal,
+		spell = spellVal,
+		health = healthVal,
+		maxPhysical = maxPhys,
+		maxSpell = maxSpell,
+		maxHealth = maxHealth,
+		maxPot = maxPot,
+		rarityScore = rarityVal,
+		levelReq = levelReqVal,
+		name = itemName,
+	}
+end
+
+--// Xếp hạng phân loại trang bị: Weapon (1) > Armor (2) > Ability (3)
+local function getCategoryTier(category: string): number
+	local c = string.lower(category)
+	if c == "weapon" or c == "weapons" then
+		return 1
+	elseif c == "chest" or c == "chests" or c == "helmet" or c == "helmets" or c == "armor" then
+		return 2
+	elseif c == "ability" or c == "abilities" then
+		return 3
+	end
+	return 4 -- Khác
+end
+
+--// So sánh 2 item theo tiêu chí kết hợp
+local function compareItems(a: ParsedItemSlot, b: ParsedItemSlot): boolean
+	-- 1. Nếu MainFilter là "None" và không bật Ability: giữ nguyên thứ tự mặc định của game
+	if mainFilterMode == "None" and not abilityEnabled then
+		return a.originalOrder < b.originalOrder
+	end
+
+	-- 2. Nếu đang chọn nút Ability riêng (Đưa Ability lên đầu để dễ soi skill):
+	if abilityEnabled then
+		local aIsAbility = (a.category == "ability" or a.category == "abilities")
+		local bIsAbility = (b.category == "ability" or b.category == "abilities")
+		if aIsAbility ~= bIsAbility then
+			return aIsAbility -- Đưa toàn bộ Ability lên đầu
+		end
+
+		local isDesc = (mainFilterMode ~= "Ascending")
+
+		if aIsAbility and bIsAbility then
+			-- Cùng là ability: Sắp xếp theo Level Req trước tiên!
+			if a.levelReq ~= b.levelReq then
+				if isDesc then
+					return a.levelReq > b.levelReq
+				else
+					return a.levelReq < b.levelReq
+				end
+			end
+
+			-- Nếu cùng Level Req: Xét đến Độ hiếm (Rarity)
+			if a.rarityScore ~= b.rarityScore then
+				if isDesc then
+					return a.rarityScore > b.rarityScore
+				else
+					return a.rarityScore < b.rarityScore
+				end
+			end
+
+			-- Nếu cùng Độ hiếm: Xếp theo Tên (A-Z) để gom các skill giống nhau
+			if a.name ~= b.name then
+				return a.name < b.name
+			end
+
+			return a.originalOrder < b.originalOrder
+		end
+
+		-- Phía sau Ability: Weapons và Armors cũng tuân thủ Weapon > Armor
+		local tierA = getCategoryTier(a.category)
+		local tierB = getCategoryTier(b.category)
+		if tierA ~= tierB then
+			return tierA < tierB
+		end
+
+		-- Ưu tiên ẩn: Level Req cho trang bị phía sau Ability
+		if a.levelReq ~= b.levelReq then
+			if isDesc then
+				return a.levelReq > b.levelReq
+			else
+				return a.levelReq < b.levelReq
+			end
+		end
+
+		if a.name ~= b.name then
+			return a.name < b.name
+		end
+
+		return a.originalOrder < b.originalOrder
+	end
+
+	local isDesc = (mainFilterMode == "Descending")
+
+	-- 3. NGUYÊN TẮC CỐT LÕI: Weapon > Armor > Ability (luôn luôn ưu tiên hàng đầu)
+	local tierA = getCategoryTier(a.category)
+	local tierB = getCategoryTier(b.category)
+
+	if tierA ~= tierB then
+		return tierA < tierB -- Weapon (1) > Armor (2) > Ability (3)
+	end
+
+	-- 4. Nếu cả 2 đều là Ability (ở cuối kho đồ): Sắp xếp theo Level Req
+	if tierA == 3 then
+		if a.levelReq ~= b.levelReq then
+			if isDesc then
+				return a.levelReq > b.levelReq
+			else
+				return a.levelReq < b.levelReq
+			end
+		end
+
+		if a.rarityScore ~= b.rarityScore then
+			if isDesc then
+				return a.rarityScore > b.rarityScore
+			else
+				return a.rarityScore < b.rarityScore
+			end
+		end
+
+		if a.name ~= b.name then
+			return a.name < b.name
+		end
+
+		return a.originalOrder < b.originalOrder
+	end
+
+	-- 5. Cùng nhóm Weapon hoặc cùng nhóm Armor: Sắp xếp theo chế độ độc lập được chọn
+	-- CHẾ ĐỘ 1: Chọn 1 Stat cụ thể (Physic / Spell / Health) theo MaxPot:
+	if selectedStatFilter ~= nil then
+		local statA = 0
+		local statB = 0
+		if selectedStatFilter == "Physical Damage" then
+			statA = a.maxPhysical
+			statB = b.maxPhysical
+		elseif selectedStatFilter == "Spell Power" then
+			statA = a.maxSpell
+			statB = b.maxSpell
+		elseif selectedStatFilter == "Health" then
+			statA = a.maxHealth
+			statB = b.maxHealth
+		end
+
+		if statA ~= statB then
+			if isDesc then
+				return statA > statB
+			else
+				return statA < statB
+			end
+		end
+	end
+
+	-- CHẾ ĐỘ 2: Chọn Độ hiếm (Rarity):
+	if rarityEnabled then
+		if a.rarityScore ~= b.rarityScore then
+			if isDesc then
+				return a.rarityScore > b.rarityScore
+			else
+				return a.rarityScore < b.rarityScore
+			end
+		end
+	end
+
+	-- CHẾ ĐỘ 3: Không chọn Stat và không chọn Rarity -> Sắp xếp thuần túy theo MaxPot:
+	if selectedStatFilter == nil and not rarityEnabled then
+		local powerA = a.maxPot
+		local powerB = b.maxPot
+		if powerA ~= powerB then
+			if isDesc then
+				return powerA > powerB
+			else
+				return powerA < powerB
+			end
+		end
+	end
+
+	-- 6. ƯU TIÊN ẨN TOÀN DIỆN CHO TẤT CẢ TRANG BỊ: Level Req (Cấp độ yêu cầu của đồ)
+	if a.levelReq ~= b.levelReq then
+		if isDesc then
+			return a.levelReq > b.levelReq
+		else
+			return a.levelReq < b.levelReq
+		end
+	end
+
+	-- 7. Tie-breakers phụ sau Level Req:
+	-- Trong chế độ Rarity: xét tiếp MaxPot khi cùng Level Req
+	if rarityEnabled then
+		local powerA = a.maxPot
+		local powerB = b.maxPot
+		if powerA ~= powerB then
+			if isDesc then
+				return powerA > powerB
+			else
+				return powerA < powerB
+			end
+		end
+	end
+
+	-- Trong chế độ Stat: xét tiếp MaxPot tổng quát khi cùng Level Req
+	if selectedStatFilter ~= nil then
+		local maxStatA = a.maxPot
+		local maxStatB = b.maxPot
+		if maxStatA ~= maxStatB then
+			return maxStatA > maxStatB
+		end
+	end
+
+	-- Tên A-Z (Gom các món trùng tên nằm cạnh nhau)
+	if a.name ~= b.name then
+		return a.name < b.name
+	end
+
+	-- Nếu cùng nhóm Armor: ưu tiên chest trước helmet
+	if a.category ~= b.category then
+		local isChestA = (a.category == "chest" or a.category == "chests")
+		local isChestB = (b.category == "chest" or b.category == "chests")
+		if isChestA ~= isChestB then
+			return isChestA
+		end
+	end
+
+	return a.originalOrder < b.originalOrder
+end
+
+--// Lấy ScrollingFrame của Inventory trong PlayerGui (chỉ trả về khi inventory đang mở)
+local function getInventoryScrollingFrame(): (ScrollingFrame?, UIGridLayout?)
+	local player = services.player or services.Players.LocalPlayer
+	if not player then return nil, nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil, nil end
+	local inventory = playerGui:FindFirstChild("inventory")
+	if not inventory then return nil, nil end
+	local mainBackground = inventory:FindFirstChild("mainBackground")
+	if not mainBackground or not mainBackground.Visible then return nil, nil end
+	local innerBackground = mainBackground:FindFirstChild("innerBackground")
+	if not innerBackground then return nil, nil end
+	local rightSideFrame = innerBackground:FindFirstChild("rightSideFrame")
+	if not rightSideFrame then return nil, nil end
+	local scrollingFrame = rightSideFrame:FindFirstChild("ScrollingFrame")
+	if not scrollingFrame or not scrollingFrame:IsA("ScrollingFrame") then return nil, nil end
+	local gridLayout = scrollingFrame:FindFirstChildOfClass("UIGridLayout")
+
+	return scrollingFrame, gridLayout
+end
+
+local sortDebounceThread: thread? = nil
+
+--// Yêu cầu sắp xếp có Debounce (gom các trigger dồn dập thành 1 lần thực thi duy nhất)
+function inventorySort.RequestSort(delaySeconds: number?)
+	if not autoSortEnabled then return end
+	if mainFilterMode == "None" and not abilityEnabled then return end
+
+	if sortDebounceThread then
+		task.cancel(sortDebounceThread)
+		sortDebounceThread = nil
+	end
+
+	local delayTime = delaySeconds or 0.15
+	sortDebounceThread = task.delay(delayTime, function()
+		sortDebounceThread = nil
+		inventorySort.ApplySort()
+	end)
+end
+
+--// Thực thi sắp xếp kho đồ
+function inventorySort.ApplySort()
+	if isSorting then return end
+	local scrollingFrame, gridLayout = getInventoryScrollingFrame()
+	if not scrollingFrame then return end
+
+	isSorting = true
+	local success, err = pcall(function()
+		-- Đảm bảo SortOrder của GridLayout là LayoutOrder
+		if gridLayout and gridLayout.SortOrder ~= Enum.SortOrder.LayoutOrder then
+			gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		end
+
+		local invyData = fetchInventoryData()
+		local parsedList: { ParsedItemSlot } = {}
+		local counter = 0
+
+		for _, child in ipairs(scrollingFrame:GetChildren()) do
+			if child:IsA("GuiObject") and child.Name ~= "UIGridLayout" then
+				counter = counter + 1
+				local parsed = parseSlot(child, invyData, counter)
+				if parsed then
+					table.insert(parsedList, parsed)
+				end
+			end
+		end
+
+		if #parsedList == 0 then return end
+
+		table.sort(parsedList, function(a, b)
+			return compareItems(a, b)
+		end)
+
+		-- Gán LayoutOrder tăng dần từ 1 đến N (chỉ gán khi thay đổi để tránh lag engine C++)
+		for orderIndex, item in ipairs(parsedList) do
+			if item.slot.LayoutOrder ~= orderIndex then
+				item.slot.LayoutOrder = orderIndex
+			end
+		end
+	end)
+	isSorting = false
+
+	if not success and err then
+		warn("[InventorySort] Lỗi khi sắp xếp kho đồ:", err)
+	end
+end
+
+--// Hiệu ứng tương tác giao diện (Visual Styling Controller)
+local function applyButtonVisual(button: GuiObject, stateName: string, animate: boolean)
+	local style = STYLE[stateName] or STYLE.Inactive
+	local theme = THEMATIC_COLORS[button.Name]
+
+	local bgTransparency = style.BackgroundTransparency
+	local bgColor = style.BackgroundColor3
+	local elemTransparency = style.ElementTransparency
+	local elemColor = style.ElementColor3
+	local strokeTransparency = style.StrokeTransparency
+	local strokeColor = style.StrokeColor3
+
+	if stateName == "Active" and theme then
+		bgTransparency = 0.12
+		bgColor = theme.ActiveBg
+		strokeTransparency = 0.0
+		strokeColor = theme.ActiveStroke
+	elseif stateName == "ActiveHovered" and theme then
+		bgTransparency = 0.05
+		bgColor = theme.ActiveHoverBg
+		strokeTransparency = 0.0
+		strokeColor = theme.ActiveHoverStroke
+	end
+
+	local tweenInfo = TweenInfo.new(STYLE.TweenDuration, STYLE.EasingStyle, STYLE.EasingDirection)
+
+	pcall(function()
+		if animate then
+			TweenService:Create(button, tweenInfo, {
+				BackgroundTransparency = bgTransparency,
+				BackgroundColor3 = bgColor,
+			}):Play()
+		else
+			button.BackgroundTransparency = bgTransparency
+			button.BackgroundColor3 = bgColor
+		end
+	end)
+
+	for _, child in ipairs(button:GetDescendants()) do
+		pcall(function()
+			if child:IsA("ImageLabel") or child:IsA("ImageButton") then
+				if animate then
+					TweenService:Create(child, tweenInfo, {
+						ImageTransparency = elemTransparency,
+						ImageColor3 = elemColor,
+					}):Play()
+				else
+					child.ImageTransparency = elemTransparency
+					child.ImageColor3 = elemColor
+				end
+			elseif child:IsA("TextLabel") or child:IsA("TextButton") then
+				if animate then
+					TweenService:Create(child, tweenInfo, {
+						TextTransparency = elemTransparency,
+						TextColor3 = elemColor,
+					}):Play()
+				else
+					child.TextTransparency = elemTransparency
+					child.TextColor3 = elemColor
+				end
+			elseif child:IsA("UIStroke") then
+				if animate then
+					TweenService:Create(child, tweenInfo, {
+						Transparency = strokeTransparency,
+						Color = strokeColor,
+					}):Play()
+				else
+					child.Transparency = strokeTransparency
+					child.Color = strokeColor
+				end
+			end
+		end)
+	end
+end
+
+local function refreshButtonVisual(button: GuiObject, animate: boolean)
+	if not button or not button.Parent then return end
+	local isHovered = (buttonHoverState[button] == true)
+
+	if button.Name == "IBmainFilter" then
+		local isActive = (mainFilterMode ~= "None")
+		local targetImage = MAIN_FILTER_ICONS[mainFilterMode] or MAIN_FILTER_ICONS.None
+
+		if isActive then
+			applyButtonVisual(button, isHovered and "ActiveHovered" or "Active", animate)
+		else
+			applyButtonVisual(button, isHovered and "Hovered" or "Inactive", animate)
+		end
+
+		-- Đổi icon theo trạng thái (None: ảnh gốc, Descending: cao -> thấp, Ascending: thấp -> cao)
+		for _, child in ipairs(button:GetDescendants()) do
+			if child:IsA("ImageLabel") then
+				if child.Image ~= targetImage then
+					child.Image = targetImage
+				end
+				child.Rotation = 0
+			end
+		end
+
+	elseif button.Name == "IBrarity" then
+		local isActive = (rarityEnabled == true)
+		if isActive then
+			applyButtonVisual(button, isHovered and "ActiveHovered" or "Active", animate)
+		else
+			applyButtonVisual(button, isHovered and "Hovered" or "Inactive", animate)
+		end
+
+	elseif button.Name == "IBphysic" then
+		local isActive = (selectedStatFilter == "Physical Damage")
+		if isActive then
+			applyButtonVisual(button, isHovered and "ActiveHovered" or "Active", animate)
+		else
+			applyButtonVisual(button, isHovered and "Hovered" or "Inactive", animate)
+		end
+
+	elseif button.Name == "IBspell" then
+		local isActive = (selectedStatFilter == "Spell Power")
+		if isActive then
+			applyButtonVisual(button, isHovered and "ActiveHovered" or "Active", animate)
+		else
+			applyButtonVisual(button, isHovered and "Hovered" or "Inactive", animate)
+		end
+
+	elseif button.Name == "IBhealth" then
+		local isActive = (selectedStatFilter == "Health")
+		if isActive then
+			applyButtonVisual(button, isHovered and "ActiveHovered" or "Active", animate)
+		else
+			applyButtonVisual(button, isHovered and "Hovered" or "Inactive", animate)
+		end
+
+	elseif button.Name == "IBability" then
+		local isActive = (abilityEnabled == true)
+		if isActive then
+			applyButtonVisual(button, isHovered and "ActiveHovered" or "Active", animate)
+		else
+			applyButtonVisual(button, isHovered and "Hovered" or "Inactive", animate)
+		end
+	end
+end
+
+local function refreshAllSortBarButtons(animate: boolean)
+	for _, btn in ipairs(knownSortBarButtons) do
+		refreshButtonVisual(btn, animate)
+	end
+end
+
+local isNotifying = false
+
+local function notifyStateChanged()
+	if isNotifying then return end
+	isNotifying = true
+	local curCriteria = inventorySort.GetSortCriteria()
+	local curDirection = inventorySort.GetSortDirection()
+	for _, cb in ipairs(criteriaCallbacks) do
+		pcall(cb, curCriteria)
+	end
+	for _, cb in ipairs(directionCallbacks) do
+		pcall(cb, curDirection)
+	end
+	isNotifying = false
+end
+
+--// Gắn sự kiện và hiệu ứng cho từng nút trong sortBarFrame
+local function hookSortBarButton(button: GuiObject)
+	if hookedButtons[button] then return end
+	hookedButtons[button] = true
+	table.insert(knownSortBarButtons, button)
+
+	-- Tắt AutoButtonColor mặc định để hiệu ứng mượt mà, không bị flash đen
+	if button:IsA("ImageButton") or button:IsA("TextButton") then
+		button.AutoButtonColor = false
+	end
+
+	-- Bo góc nhẹ cho thẩm mỹ nếu chưa có
+	if not button:FindFirstChildOfClass("UICorner") then
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = button
+	end
+
+	-- Viền nổi bật cho nút nếu chưa có
+	if not button:FindFirstChildOfClass("UIStroke") then
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.2
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Transparency = STYLE.Inactive.StrokeTransparency
+		stroke.Color = STYLE.Inactive.StrokeColor3
+		stroke.Parent = button
+	end
+
+	-- Padding bên trong nút để icon không bị tràn sát viền
+	if not button:FindFirstChildOfClass("UIPadding") then
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 7)
+		pad.PaddingBottom = UDim.new(0, 7)
+		pad.PaddingLeft = UDim.new(0, 7)
+		pad.PaddingRight = UDim.new(0, 7)
+		pad.Parent = button
+	end
+
+	-- Căn chỉnh lại icon con bên trong nếu có
+	for _, child in ipairs(button:GetChildren()) do
+		if child:IsA("ImageLabel") then
+			child.AnchorPoint = Vector2.new(0.5, 0.5)
+			child.Position = UDim2.new(0.5, 0, 0.5, 0)
+			child.Size = UDim2.new(1, 0, 1, 0)
+			child.ScaleType = Enum.ScaleType.Fit
+		elseif child:IsA("UIListLayout") then
+			child:Destroy()
+		end
+	end
+
+	buttonHoverState[button] = false
+
+	-- Hover vào: Tăng độ đậm background và font/icon rõ ràng
+	local enterConn = button.MouseEnter:Connect(function()
+		buttonHoverState[button] = true
+		refreshButtonVisual(button, true)
+	end)
+	table.insert(activeConnections, enterConn)
+
+	-- Hover ra: Trở về mờ (hoặc active nếu đang chọn)
+	local leaveConn = button.MouseLeave:Connect(function()
+		buttonHoverState[button] = false
+		refreshButtonVisual(button, true)
+	end)
+	table.insert(activeConnections, leaveConn)
+
+	-- Click nút
+	if button:IsA("GuiButton") then
+		local clickConn = button.Activated:Connect(function()
+			if button.Name == "IBmainFilter" then
+				-- Tri-state: None -> Descending (Power giảm dần) -> Ascending (Power tăng dần) -> None (Bỏ chọn)
+				if mainFilterMode == "None" then
+					mainFilterMode = "Descending"
+					notifier.Notify("Main Filter", "Descending (Power High -> Low)", 1.5)
+				elseif mainFilterMode == "Descending" then
+					mainFilterMode = "Ascending"
+					notifier.Notify("Main Filter", "Ascending (Power Low -> High)", 1.5)
+				else
+					mainFilterMode = "None"
+					notifier.Notify("Main Filter", "Deselected (Restore Default Inventory)", 1.5)
+				end
+				refreshAllSortBarButtons(true)
+				notifyStateChanged()
+				if autoSortEnabled then inventorySort.RequestSort(0.05) end
+				saveSettings()
+
+			elseif button.Name == "IBrarity" then
+				rarityEnabled = not rarityEnabled
+				if rarityEnabled then
+					selectedStatFilter = nil
+					abilityEnabled = false
+					if mainFilterMode == "None" then
+						mainFilterMode = "Descending"
+					end
+					notifier.Notify("Filter", "Mode: Rarity", 1.5)
+				else
+					notifier.Notify("Filter", "Rarity Filter Disabled", 1.5)
+				end
+				refreshAllSortBarButtons(true)
+				notifyStateChanged()
+				if autoSortEnabled then inventorySort.RequestSort(0.05) end
+				saveSettings()
+
+			elseif button.Name == "IBphysic" or button.Name == "IBspell" or button.Name == "IBhealth" then
+				local statName: StatFilterType = (button.Name == "IBphysic" and "Physical Damage")
+					or (button.Name == "IBspell" and "Spell Power")
+					or "Health"
+
+				if selectedStatFilter == statName then
+					selectedStatFilter = nil
+					notifier.Notify("Filter", "Deselected " .. statName, 1.5)
+				else
+					selectedStatFilter = statName
+					rarityEnabled = false
+					abilityEnabled = false
+					if mainFilterMode == "None" then
+						mainFilterMode = "Descending"
+					end
+					notifier.Notify("Filter", "Selected Stat: " .. statName, 1.5)
+				end
+				refreshAllSortBarButtons(true)
+				notifyStateChanged()
+				if autoSortEnabled then inventorySort.RequestSort(0.05) end
+				saveSettings()
+
+			elseif button.Name == "IBability" then
+				abilityEnabled = not abilityEnabled
+				if abilityEnabled then
+					rarityEnabled = false
+					selectedStatFilter = nil
+					if mainFilterMode == "None" then
+						mainFilterMode = "Descending"
+					end
+					notifier.Notify("Filter", "Sort: Ability", 1.5)
+				else
+					notifier.Notify("Filter", "Deselected Ability", 1.5)
+				end
+				refreshAllSortBarButtons(true)
+				notifyStateChanged()
+				if autoSortEnabled then inventorySort.RequestSort(0.05) end
+				saveSettings()
+			end
+		end)
+		table.insert(activeConnections, clickConn)
+	end
+
+	-- Thiết lập trạng thái ban đầu mờ mờ
+	refreshButtonVisual(button, false)
+end
+
+--// Hook container sortBarFrame
+function hookSortBar(sortBar: GuiObject)
+	if hookedSortBars[sortBar] then return end
+	hookedSortBars[sortBar] = true
+
+	-- Thiết lập khung Dock Panel chuyên nghiệp cho sortBarFrame
+	pcall(function()
+		sortBar.BackgroundColor3 = Color3.fromRGB(18, 20, 26)
+		sortBar.BackgroundTransparency = 0.15
+		sortBar.BorderSizePixel = 0
+
+		if not sortBar:FindFirstChildOfClass("UICorner") then
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0, 8)
+			corner.Parent = sortBar
+		end
+
+		local dockStroke = sortBar:FindFirstChild("DockStroke") or sortBar:FindFirstChildOfClass("UIStroke")
+		if not dockStroke then
+			dockStroke = Instance.new("UIStroke")
+			dockStroke.Name = "DockStroke"
+			dockStroke.Thickness = 1.2
+			dockStroke.Color = Color3.fromRGB(65, 72, 90)
+			dockStroke.Transparency = 0.3
+			dockStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			dockStroke.Parent = sortBar
+		end
+
+		if not sortBar:FindFirstChildOfClass("UIPadding") then
+			local pad = Instance.new("UIPadding")
+			pad.PaddingTop = UDim.new(0, 5)
+			pad.PaddingBottom = UDim.new(0, 5)
+			pad.PaddingLeft = UDim.new(0, 5)
+			pad.PaddingRight = UDim.new(0, 5)
+			pad.Parent = sortBar
+		end
+	end)
+
+	-- Đảm bảo padding cách đều giữa các nút bấm
+	local listLayout = sortBar:FindFirstChildOfClass("UIListLayout")
+	if listLayout then
+		listLayout.Padding = UDim.new(0, 6)
+	end
+
+	local validNames = {
+		IBmainFilter = true,
+		IBrarity = true,
+		IBphysic = true,
+		IBspell = true,
+		IBhealth = true,
+		IBability = true,
+	}
+
+	for _, child in ipairs(sortBar:GetChildren()) do
+		if child:IsA("GuiObject") and validNames[child.Name] then
+			hookSortBarButton(child)
+		end
+	end
+
+	local childConn = sortBar.ChildAdded:Connect(function(child)
+		if child:IsA("GuiObject") and validNames[child.Name] then
+			hookSortBarButton(child)
+		end
+	end)
+	table.insert(activeConnections, childConn)
+
+	-- Gắn sự kiện cập nhật vị trí & tỷ lệ Responsive khi kích thước màn hình hoặc kho đồ thay đổi
+	local parentFrame = sortBar.Parent
+	if parentFrame and parentFrame:IsA("GuiObject") then
+		local pSizeConn = parentFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			updateSortBarResponsiveLayout(sortBar)
+		end)
+		table.insert(activeConnections, pSizeConn)
+
+		local pPosConn = parentFrame:GetPropertyChangedSignal("AbsolutePosition"):Connect(function()
+			updateSortBarResponsiveLayout(sortBar)
+		end)
+		table.insert(activeConnections, pPosConn)
+	end
+
+	local camera = workspace.CurrentCamera
+	if camera then
+		local camConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			updateSortBarResponsiveLayout(sortBar)
+		end)
+		table.insert(activeConnections, camConn)
+	end
+
+	updateSortBarResponsiveLayout(sortBar)
+	refreshAllSortBarButtons(false)
+end
+
+--// Lấy hoặc tự động tạo sortBarFrame trong PlayerGui nếu chưa có
+function ensureSortBar(): GuiObject?
+	local player = services.player or services.Players.LocalPlayer
+	if not player then return nil end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+	local inventory = playerGui:FindFirstChild("inventory")
+	if not inventory then return nil end
+	local mainBackground = inventory:FindFirstChild("mainBackground")
+	if not mainBackground then return nil end
+	local innerBackground = mainBackground:FindFirstChild("innerBackground")
+	if not innerBackground then return nil end
+
+	-- Đảm bảo không bị che khuất bởi ClipsDescendants
+	if innerBackground:IsA("GuiObject") then
+		innerBackground.ClipsDescendants = false
+	end
+	if mainBackground:IsA("GuiObject") then
+		mainBackground.ClipsDescendants = false
+	end
+
+	local sortBar = innerBackground:FindFirstChild("sortBarFrame") :: GuiObject?
+	if not sortBar and typeof(createSortBarFrame) == "function" then
+		local ok, newBar = pcall(createSortBarFrame, innerBackground)
+		if ok and newBar then
+			sortBar = newBar
+			injectedSortBar = newBar
+		end
+	end
+
+	if sortBar and typeof(hookSortBar) == "function" and not hookedSortBars[sortBar] then
+		hookSortBar(sortBar)
+	end
+
+	return sortBar
+end
+
+local function getSortBarFrame(): GuiObject?
+	return ensureSortBar()
+end
+
+--// Public APIs điều khiển Scale
+function inventorySort.GetScale(): number
+	return SORT_BAR_SCALE
+end
+
+--// Public APIs điều khiển trạng thái
+function inventorySort.GetMainFilterMode(): MainFilterMode
+	return mainFilterMode
+end
+
+function inventorySort.SetMainFilterMode(mode: MainFilterMode)
+	if mainFilterMode == mode then return end
+	mainFilterMode = mode
+	refreshAllSortBarButtons(true)
+	notifyStateChanged()
+	if autoSortEnabled then inventorySort.RequestSort(0.05) end
+	saveSettings()
+end
+
+function inventorySort.IsRarityEnabled(): boolean
+	return rarityEnabled
+end
+
+function inventorySort.SetRarityEnabled(state: boolean)
+	local newState = state and true or false
+	if rarityEnabled == newState then return end
+	rarityEnabled = newState
+	if rarityEnabled then
+		selectedStatFilter = nil
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	end
+	refreshAllSortBarButtons(true)
+	notifyStateChanged()
+	if autoSortEnabled then inventorySort.RequestSort(0.05) end
+	saveSettings()
+end
+
+function inventorySort.GetStatFilter(): StatFilterType?
+	return selectedStatFilter
+end
+
+function inventorySort.SetStatFilter(stat: StatFilterType?)
+	if selectedStatFilter == stat then return end
+	selectedStatFilter = stat
+	if selectedStatFilter then
+		rarityEnabled = false
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	end
+	refreshAllSortBarButtons(true)
+	notifyStateChanged()
+	if autoSortEnabled then inventorySort.RequestSort(0.05) end
+	saveSettings()
+end
+
+function inventorySort.IsAbilityEnabled(): boolean
+	return abilityEnabled
+end
+
+function inventorySort.SetAbilityEnabled(state: boolean)
+	local newState = state and true or false
+	if abilityEnabled == newState then return end
+	abilityEnabled = newState
+	if abilityEnabled then
+		rarityEnabled = false
+		selectedStatFilter = nil
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	end
+	refreshAllSortBarButtons(true)
+	notifyStateChanged()
+	if autoSortEnabled then inventorySort.RequestSort(0.05) end
+	saveSettings()
+end
+
+-- Tương thích ngược với UI dropdown cũ (có bảo vệ chống lặp đệ quy)
+function inventorySort.SetSortCriteria(criteria: string?)
+	if not criteria or type(criteria) ~= "string" then return end
+	local oldCriteria = inventorySort.GetSortCriteria()
+
+	if criteria == "None" then
+		if mainFilterMode == "None" and not rarityEnabled and not selectedStatFilter and not abilityEnabled then
+			return
+		end
+		mainFilterMode = "None"
+		rarityEnabled = false
+		selectedStatFilter = nil
+		abilityEnabled = false
+	elseif criteria == "Rarity" then
+		if rarityEnabled and not abilityEnabled and selectedStatFilter == nil then
+			return
+		end
+		rarityEnabled = true
+		selectedStatFilter = nil
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	elseif criteria == "Ability" then
+		if abilityEnabled then return end
+		abilityEnabled = true
+		rarityEnabled = false
+		selectedStatFilter = nil
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	elseif criteria == "Physical Damage" or criteria == "Spell Power" or criteria == "Health" then
+		if selectedStatFilter == criteria and not abilityEnabled and not rarityEnabled then return end
+		selectedStatFilter = criteria :: StatFilterType
+		rarityEnabled = false
+		abilityEnabled = false
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+	elseif criteria == "Power" then
+		if mainFilterMode ~= "None" and not rarityEnabled and selectedStatFilter == nil and not abilityEnabled then
+			return
+		end
+		if mainFilterMode == "None" then mainFilterMode = "Descending" end
+		rarityEnabled = false
+		selectedStatFilter = nil
+		abilityEnabled = false
+	else
+		-- Tiêu chí lạ hoặc chuỗi kết hợp -> không xử lý từ dropdown đơn
+		return
+	end
+
+	if inventorySort.GetSortCriteria() == oldCriteria then
+		return
+	end
+
+	refreshAllSortBarButtons(true)
+	notifyStateChanged()
+	if autoSortEnabled then inventorySort.RequestSort(0.05) end
+	saveSettings()
+end
+
+function inventorySort.GetSortCriteria(): string
+	if abilityEnabled then
+		return "Ability"
+	end
+	if rarityEnabled then
+		return "Rarity"
+	end
+	if selectedStatFilter then
+		return selectedStatFilter
+	end
+	if mainFilterMode ~= "None" then
+		return "Power"
+	end
+	return "None"
+end
+
+function inventorySort.SetSortDirection(direction: string?)
+	if not direction or type(direction) ~= "string" then return end
+	local newMode: MainFilterMode = "None"
+	if direction == "Ascending" or string.find(direction, "Ascending") then
+		newMode = "Ascending"
+	elseif direction == "Descending" or string.find(direction, "Descending") then
+		newMode = "Descending"
+	else
+		newMode = "None"
+	end
+
+	if mainFilterMode == newMode then return end
+	mainFilterMode = newMode
+
+	refreshAllSortBarButtons(true)
+	notifyStateChanged()
+	if autoSortEnabled then inventorySort.RequestSort(0.05) end
+	saveSettings()
+end
+
+function inventorySort.GetSortDirection(): string
+	if mainFilterMode == "Ascending" then
+		return "Ascending"
+	elseif mainFilterMode == "Descending" then
+		return "Descending"
+	else
+		return "None"
+	end
+end
+
+function inventorySort.OnCriteriaChanged(callback: (string) -> ())
+	if type(callback) == "function" then
+		table.insert(criteriaCallbacks, callback)
+	end
+end
+
+function inventorySort.OnDirectionChanged(callback: (string) -> ())
+	if type(callback) == "function" then
+		table.insert(directionCallbacks, callback)
+	end
+end
+
+function inventorySort.SetAutoSort(state: boolean)
+	local newState = state and true or false
+	if autoSortEnabled == newState then return end
+	autoSortEnabled = newState
+	saveSettings()
+end
+
+function inventorySort.IsAutoSort(): boolean
+	return autoSortEnabled
+end
+
+--// Gắn sự kiện theo dõi GUI và Remote game
+function inventorySort.Init()
+	for _, conn in ipairs(activeConnections) do
+		pcall(function() conn:Disconnect() end)
+	end
+	table.clear(activeConnections)
+	table.clear(hookedButtons)
+	table.clear(hookedSortBars)
+	table.clear(knownSortBarButtons)
+	table.clear(buttonHoverState)
+
+	-- Tải trạng thái filter đã lưu của người chơi
+	loadSettings()
+	notifyStateChanged()
+
+	-- 1. Lắng nghe Remote reloadInventory của game để cập nhật cache và auto-sort
+	local rs = services.ReplicatedStorage or game:GetService("ReplicatedStorage")
+	local remotes = rs and rs:FindFirstChild("remotes")
+	if remotes then
+		local reloadInvEvent = remotes:FindFirstChild("reloadInventory")
+		if reloadInvEvent and reloadInvEvent:IsA("RemoteEvent") then
+			local conn = reloadInvEvent.OnClientEvent:Connect(function()
+				local now = os.clock()
+				-- Chỉ invalidate cache nếu đã qua FETCH_COOLDOWN (6s) kể từ lần fetch gần nhất
+				-- Tránh triệt để vòng lặp ping-pong: invoke server -> server bắn reloadInventory -> client xóa cache -> invoke server tiếp
+				if (now - lastFetchTime) >= FETCH_COOLDOWN then
+					cachedInventoryData = nil
+				end
+				inventorySort.RequestSort(0.35)
+			end)
+			table.insert(activeConnections, conn)
+		end
+	end
+
+	-- 2. Khởi tạo theo dõi và Inject GUI (hỗ trợ cả khi script chạy trước khi GUI load hoặc khi respawn)
+	local function bindInventoryUI()
+		local player = services.player or services.Players.LocalPlayer
+		if not player then return end
+		local playerGui = player:WaitForChild("PlayerGui", 15)
+		if not playerGui then return end
+		local inventory = playerGui:WaitForChild("inventory", 15)
+		if not inventory then return end
+		local mainBackground = inventory:WaitForChild("mainBackground", 15)
+		if not mainBackground then return end
+		local innerBackground = mainBackground:WaitForChild("innerBackground", 15)
+		if not innerBackground then return end
+
+		ensureSortBar()
+
+		-- Nếu kho đồ đang mở sẵn thì sắp xếp ngay theo cấu hình vừa tải
+		if mainBackground.Visible and autoSortEnabled and (mainFilterMode ~= "None" or abilityEnabled) then
+			inventorySort.RequestSort(0.2)
+		end
+
+		local visConn = mainBackground:GetPropertyChangedSignal("Visible"):Connect(function()
+			if mainBackground.Visible then
+				local sb = ensureSortBar()
+				if sb then updateSortBarResponsiveLayout(sb) end
+				inventorySort.RequestSort(0.15)
+			end
+		end)
+		table.insert(activeConnections, visConn)
+
+		local innerConn = innerBackground.ChildAdded:Connect(function(child)
+			if child.Name == "sortBarFrame" and child:IsA("GuiObject") then
+				hookSortBar(child)
+			end
+		end)
+		table.insert(activeConnections, innerConn)
+
+		local rightSide = innerBackground:WaitForChild("rightSideFrame", 10)
+		local scrollingFrame = rightSide and rightSide:WaitForChild("ScrollingFrame", 10)
+		if scrollingFrame then
+			local childConn = scrollingFrame.ChildAdded:Connect(function(child)
+				if child:IsA("GuiObject") and autoSortEnabled and (mainFilterMode ~= "None" or abilityEnabled) then
+					-- Debounce 0.3s gom toàn bộ 200-300 slots item load dồn dập thành 1 lần sắp xếp duy nhất
+					inventorySort.RequestSort(0.3)
+				end
+			end)
+			table.insert(activeConnections, childConn)
+		end
+	end
+
+	task.spawn(bindInventoryUI)
+
+	local player = services.player or services.Players.LocalPlayer
+	if player then
+		local charConn = player.CharacterAdded:Connect(function()
+			task.delay(1.0, bindInventoryUI)
+		end)
+		table.insert(activeConnections, charConn)
+	end
+end
+
+lifecycle.Register(function()
+	if sortDebounceThread then
+		task.cancel(sortDebounceThread)
+		sortDebounceThread = nil
+	end
+
+	-- Nếu có tác vụ lưu đang chờ, flush ghi file ngay trước khi reset biến
+	if saveDebounceThread then
+		task.cancel(saveDebounceThread)
+		saveDebounceThread = nil
+		pcall(function()
+			ensureSettingsFolder()
+			local filePath = getSettingsFilePath()
+			local payload = {
+				mainFilterMode = mainFilterMode,
+				rarityEnabled = rarityEnabled,
+				selectedStatFilter = selectedStatFilter,
+				abilityEnabled = abilityEnabled,
+				autoSortEnabled = autoSortEnabled,
+			}
+			writefile(filePath, HttpService:JSONEncode(payload))
+		end)
+	end
+
+	for _, conn in ipairs(activeConnections) do
+		pcall(function() conn:Disconnect() end)
+	end
+	table.clear(activeConnections)
+	table.clear(hookedButtons)
+	table.clear(hookedSortBars)
+	table.clear(knownSortBarButtons)
+	table.clear(buttonHoverState)
+	table.clear(criteriaCallbacks)
+	table.clear(directionCallbacks)
+	cachedInventoryData = nil
+	mainFilterMode = "None"
+	rarityEnabled = false
+	selectedStatFilter = nil
+	abilityEnabled = false
+
+	if injectedSortBar and injectedSortBar.Parent then
+		pcall(function()
+			injectedSortBar:Destroy()
+		end)
+		injectedSortBar = nil
+	end
+end)
+
+-- Khởi tạo ngay khi module được nạp
+inventorySort.Init()
+
+return inventorySort

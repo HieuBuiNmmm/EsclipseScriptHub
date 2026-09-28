@@ -1,20 +1,85 @@
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()-- Lifecycle: Quản lý đăng ký và giải phóng tài nguyên (Connections, Tasks, Objects) khi script unload hoặc reload.
+
+local lifecycle = {
+	cleaned = false,
+	callbacks = {},
+}
+
+function lifecycle.Register(callback: () -> ()): () -> ()
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	if lifecycle.cleaned then
+		pcall(callback)
+		return function() end
+	end
+
+	table.insert(lifecycle.callbacks, callback)
+	return function()
+		for index, registered in ipairs(lifecycle.callbacks) do
+			if registered == callback then
+				table.remove(lifecycle.callbacks, index)
+				break
+			end
+		end
+	end
+end
+
+function lifecycle.Cleanup(): ()
+	if lifecycle.cleaned then return end
+	lifecycle.cleaned = true
+	for index = #lifecycle.callbacks, 1, -1 do
+		pcall(lifecycle.callbacks[index])
+	end
+	table.clear(lifecycle.callbacks)
+end
+
+function lifecycle.IsActive(): boolean
+	return not lifecycle.cleaned
+end
+
+lifecycle.OnCleanup = lifecycle.Register
+
+return lifecycle
+end function __DIST.b()-- Wrapper gửi thông báo an toàn (qua Maclib Window hoặc StarterGui fallback).
+
+
+local window = nil
+local notifier = {}
+
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title: string, desc: string, lifetime: number?)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end function __DIST.c()
 local MacLib = { 
 	Options = {}, 
-	OptionOrder = {},
 	Folder = "Maclib", 
 	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
 }
-
-local function registerOption(flag, obj)
-	if not flag then return end
-	MacLib.Options[flag] = obj
-	if not table.find(MacLib.OptionOrder, flag) then
-		table.insert(MacLib.OptionOrder, flag)
-	end
-end
 
 --// Services
 local TweenService = MacLib.GetService("TweenService")
@@ -1753,7 +1818,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ButtonFunctions)
+						MacLib.Options[Flag] = ButtonFunctions
 					end
 					return ButtonFunctions
 				end
@@ -1899,7 +1964,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ToggleFunctions)
+						MacLib.Options[Flag] = ToggleFunctions
 					end
 					return ToggleFunctions
 				end
@@ -2165,7 +2230,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SliderFunctions)
+						MacLib.Options[Flag] = SliderFunctions
 					end
 					return SliderFunctions
 				end
@@ -2341,7 +2406,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, InputFunctions)
+						MacLib.Options[Flag] = InputFunctions
 					end
 					return InputFunctions
 				end
@@ -2520,7 +2585,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, KeybindFunctions)
+						MacLib.Options[Flag] = KeybindFunctions
 					end
 
 					return KeybindFunctions
@@ -2937,13 +3002,10 @@ function MacLib:Window(Settings)
 							if DropdownFunctions.Settings.Multi then
 								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
 							else
-								isSelected = (DropdownFunctions.Settings.Default == i or DropdownFunctions.Settings.Default == v) and true or false
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
 							end
 						end
 						Toggle(v, isSelected)
-						if isSelected and not DropdownFunctions.Settings.Multi then
-							DropdownFunctions.Value = v
-						end
 
 						local option = OptionObjs[v].Button
 
@@ -3095,7 +3157,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, DropdownFunctions)
+						MacLib.Options[Flag] = DropdownFunctions
 					end
 
 					return DropdownFunctions
@@ -4380,7 +4442,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ColorpickerFunctions)
+						MacLib.Options[Flag] = ColorpickerFunctions
 					end
 					return ColorpickerFunctions
 				end
@@ -4434,7 +4496,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, HeaderFunctions)
+						MacLib.Options[Flag] = HeaderFunctions
 					end
 					return HeaderFunctions
 				end
@@ -4478,7 +4540,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, LabelFunctions)
+						MacLib.Options[Flag] = LabelFunctions
 					end
 					return LabelFunctions
 				end
@@ -4522,7 +4584,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SubLabelFunctions)
+						MacLib.Options[Flag] = SubLabelFunctions
 					end
 					return SubLabelFunctions
 				end
@@ -4598,7 +4660,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ParagraphFunctions)
+						MacLib.Options[Flag] = ParagraphFunctions
 					end
 					return ParagraphFunctions
 				end
@@ -5522,12 +5584,6 @@ function MacLib:Window(Settings)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
-					local opt = MacLib.Options[Flag]
-					if opt.Settings and opt.Settings.Callback then
-						task.spawn(function()
-							pcall(opt.Settings.Callback, tonumber(data.value) or opt.Value)
-						end)
-					end
 				end
 			end
 		},
@@ -5700,19 +5756,11 @@ function MacLib:Window(Settings)
 			contextData = MacLib.contextData or {},
 		}
 
-		local processed = {}
-		for _, flag in ipairs(MacLib.OptionOrder) do
-			local option = MacLib.Options[flag]
-			if option and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-				processed[flag] = true
-			end
-		end
-
 		for flag, option in next, MacLib.Options do
-			if not processed[flag] and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
 		end	
 
 		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
@@ -6077,4 +6125,112 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib
+return MacLib end function __DIST.d()-- Wrapper gửi thông báo an toàn (qua Maclib Window hoặc StarterGui fallback).
+
+
+local window = nil
+local notifier = {}
+
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title: string, desc: string, lifetime: number?)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end function __DIST.e()-- AutoSave: Quản lý tự động lưu config cho Slop Tower Defense.
+
+
+local macLib = __DIST.load('c')
+local notifier = __DIST.load('d')
+
+local autoSave = {}
+
+local activeConfig: string? = nil
+local saveQueued = false
+local suspended = false
+
+function autoSave.Suspend()
+	suspended = true
+	saveQueued = false
+end
+
+function autoSave.Resume()
+	suspended = false
+end
+
+function autoSave.IsSuspended(): boolean
+	return suspended or (macLib.LoadingConfig == true)
+end
+
+function autoSave.SetActive(name: string?)
+	activeConfig = (typeof(name) == "string" and #name > 0) and string.gsub(name, "[\r\n%s]+", "") or nil
+	if activeConfig and writefile then
+		pcall(function()
+			local folder = macLib.Folder
+			if isfolder and not isfolder(folder) then makefolder(folder) end
+			if isfolder and not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			writefile(folder .. "/settings/autoload.txt", activeConfig)
+		end)
+	end
+end
+
+function autoSave.GetActive(): string?
+	return activeConfig
+end
+
+function autoSave.QueueSave()
+	if autoSave.IsSuspended() or not activeConfig then return end
+	if saveQueued then return end
+	saveQueued = true
+
+	task.delay(0.5, function()
+		saveQueued = false
+		if autoSave.IsSuspended() or not activeConfig then return end
+
+		local configFolder = macLib.Folder .. "/configs"
+		local configPath = configFolder .. "/" .. activeConfig .. ".json"
+
+		local ok, err = pcall(function()
+			local data = macLib:SaveConfig(activeConfig)
+			if data and writefile then
+				writefile(configPath, data)
+			end
+		end)
+
+		if not ok then
+			warn("[SlopTD - AutoSave] Failed to save config:", err)
+		end
+	end)
+end
+
+return autoSave
+end end-- System Facade
+
+
+local lifecycle = __DIST.load('a')
+local notifier = __DIST.load('b')
+local autoSave = __DIST.load('e')
+
+return {
+	Lifecycle = lifecycle,
+	Notifier = notifier,
+	AutoSave = autoSave,
+}

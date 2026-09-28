@@ -1,20 +1,11 @@
-local MacLib = { 
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()local MacLib = { 
 	Options = {}, 
-	OptionOrder = {},
 	Folder = "Maclib", 
 	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
 }
-
-local function registerOption(flag, obj)
-	if not flag then return end
-	MacLib.Options[flag] = obj
-	if not table.find(MacLib.OptionOrder, flag) then
-		table.insert(MacLib.OptionOrder, flag)
-	end
-end
 
 --// Services
 local TweenService = MacLib.GetService("TweenService")
@@ -1753,7 +1744,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ButtonFunctions)
+						MacLib.Options[Flag] = ButtonFunctions
 					end
 					return ButtonFunctions
 				end
@@ -1899,7 +1890,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ToggleFunctions)
+						MacLib.Options[Flag] = ToggleFunctions
 					end
 					return ToggleFunctions
 				end
@@ -2165,7 +2156,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SliderFunctions)
+						MacLib.Options[Flag] = SliderFunctions
 					end
 					return SliderFunctions
 				end
@@ -2341,7 +2332,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, InputFunctions)
+						MacLib.Options[Flag] = InputFunctions
 					end
 					return InputFunctions
 				end
@@ -2520,7 +2511,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, KeybindFunctions)
+						MacLib.Options[Flag] = KeybindFunctions
 					end
 
 					return KeybindFunctions
@@ -2937,13 +2928,10 @@ function MacLib:Window(Settings)
 							if DropdownFunctions.Settings.Multi then
 								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
 							else
-								isSelected = (DropdownFunctions.Settings.Default == i or DropdownFunctions.Settings.Default == v) and true or false
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
 							end
 						end
 						Toggle(v, isSelected)
-						if isSelected and not DropdownFunctions.Settings.Multi then
-							DropdownFunctions.Value = v
-						end
 
 						local option = OptionObjs[v].Button
 
@@ -3095,7 +3083,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, DropdownFunctions)
+						MacLib.Options[Flag] = DropdownFunctions
 					end
 
 					return DropdownFunctions
@@ -4380,7 +4368,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ColorpickerFunctions)
+						MacLib.Options[Flag] = ColorpickerFunctions
 					end
 					return ColorpickerFunctions
 				end
@@ -4434,7 +4422,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, HeaderFunctions)
+						MacLib.Options[Flag] = HeaderFunctions
 					end
 					return HeaderFunctions
 				end
@@ -4478,7 +4466,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, LabelFunctions)
+						MacLib.Options[Flag] = LabelFunctions
 					end
 					return LabelFunctions
 				end
@@ -4522,7 +4510,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SubLabelFunctions)
+						MacLib.Options[Flag] = SubLabelFunctions
 					end
 					return SubLabelFunctions
 				end
@@ -4598,7 +4586,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ParagraphFunctions)
+						MacLib.Options[Flag] = ParagraphFunctions
 					end
 					return ParagraphFunctions
 				end
@@ -5522,12 +5510,6 @@ function MacLib:Window(Settings)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
-					local opt = MacLib.Options[Flag]
-					if opt.Settings and opt.Settings.Callback then
-						task.spawn(function()
-							pcall(opt.Settings.Callback, tonumber(data.value) or opt.Value)
-						end)
-					end
 				end
 			end
 		},
@@ -5700,19 +5682,11 @@ function MacLib:Window(Settings)
 			contextData = MacLib.contextData or {},
 		}
 
-		local processed = {}
-		for _, flag in ipairs(MacLib.OptionOrder) do
-			local option = MacLib.Options[flag]
-			if option and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-				processed[flag] = true
-			end
-		end
-
 		for flag, option in next, MacLib.Options do
-			if not processed[flag] and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
 		end	
 
 		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
@@ -6077,4 +6051,65 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib
+return MacLib end end-- Storage: Quản lý đọc và ghi file kịch bản Macro ra ổ đĩa executor.
+
+
+local macLib = __DIST.load('a')
+
+local storage = {}
+
+local MACRO_FOLDER = "EsclipseHub/SlopTowerDefense/macros"
+
+local function ensureFolder()
+	if not isfolder or not makefolder then return end
+	if not isfolder("EsclipseHub") then makefolder("EsclipseHub") end
+	if not isfolder("EsclipseHub/SlopTowerDefense") then makefolder("EsclipseHub/SlopTowerDefense") end
+	if not isfolder(MACRO_FOLDER) then makefolder(MACRO_FOLDER) end
+end
+
+function storage.ListMacros(): { string }
+	ensureFolder()
+	local list = {}
+	if listfiles then
+		local ok, files = pcall(listfiles, MACRO_FOLDER)
+		if ok and type(files) == "table" then
+			for _, filePath in ipairs(files) do
+				local name = string.match(filePath, "([^/\\]+)%.json$")
+				if name then
+					table.insert(list, name)
+				end
+			end
+		end
+	end
+	return list
+end
+
+function storage.SaveMacro(name: string, data: any): boolean
+	ensureFolder()
+	if not writefile then return false end
+	local HttpService = game:GetService("HttpService")
+	local ok, json = pcall(function()
+		return HttpService:JSONEncode(data)
+	end)
+	if not ok or not json then return false end
+
+	local path = MACRO_FOLDER .. "/" .. name .. ".json"
+	local writeOk = pcall(writefile, path, json)
+	return writeOk
+end
+
+function storage.LoadMacro(name: string): any?
+	ensureFolder()
+	if not readfile or not isfile then return nil end
+	local path = MACRO_FOLDER .. "/" .. name .. ".json"
+	if not isfile(path) then return nil end
+
+	local HttpService = game:GetService("HttpService")
+	local content = readfile(path)
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(content)
+	end)
+	return ok and data or nil
+end
+
+return storage

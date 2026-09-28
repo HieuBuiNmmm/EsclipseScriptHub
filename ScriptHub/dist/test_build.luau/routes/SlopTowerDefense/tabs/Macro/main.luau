@@ -1,20 +1,31 @@
+type MacroAction__DARKLUA_TYPE_a = {
+	ActionType: "Place" | "Upgrade" | "Sell" | "Ability",
+	Wave: number,
+	TimeOffset: number,
+	TowerName: string?,
+	Position: { number }?,
+	Rotation: number?,
+	TowerId: string?
+}
+
+type TowerInfo__DARKLUA_TYPE_b = {
+	Instance: Instance,
+	Id: string,
+	Name: string,
+	Level: number,
+	Position: Vector3,
+	Owner: Player?,
+	TargetMode: string?
+}
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()
 local MacLib = { 
 	Options = {}, 
-	OptionOrder = {},
 	Folder = "Maclib", 
 	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
 }
-
-local function registerOption(flag, obj)
-	if not flag then return end
-	MacLib.Options[flag] = obj
-	if not table.find(MacLib.OptionOrder, flag) then
-		table.insert(MacLib.OptionOrder, flag)
-	end
-end
 
 --// Services
 local TweenService = MacLib.GetService("TweenService")
@@ -1753,7 +1764,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ButtonFunctions)
+						MacLib.Options[Flag] = ButtonFunctions
 					end
 					return ButtonFunctions
 				end
@@ -1899,7 +1910,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ToggleFunctions)
+						MacLib.Options[Flag] = ToggleFunctions
 					end
 					return ToggleFunctions
 				end
@@ -2165,7 +2176,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SliderFunctions)
+						MacLib.Options[Flag] = SliderFunctions
 					end
 					return SliderFunctions
 				end
@@ -2341,7 +2352,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, InputFunctions)
+						MacLib.Options[Flag] = InputFunctions
 					end
 					return InputFunctions
 				end
@@ -2520,7 +2531,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, KeybindFunctions)
+						MacLib.Options[Flag] = KeybindFunctions
 					end
 
 					return KeybindFunctions
@@ -2937,13 +2948,10 @@ function MacLib:Window(Settings)
 							if DropdownFunctions.Settings.Multi then
 								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
 							else
-								isSelected = (DropdownFunctions.Settings.Default == i or DropdownFunctions.Settings.Default == v) and true or false
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
 							end
 						end
 						Toggle(v, isSelected)
-						if isSelected and not DropdownFunctions.Settings.Multi then
-							DropdownFunctions.Value = v
-						end
 
 						local option = OptionObjs[v].Button
 
@@ -3095,7 +3103,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, DropdownFunctions)
+						MacLib.Options[Flag] = DropdownFunctions
 					end
 
 					return DropdownFunctions
@@ -4380,7 +4388,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ColorpickerFunctions)
+						MacLib.Options[Flag] = ColorpickerFunctions
 					end
 					return ColorpickerFunctions
 				end
@@ -4434,7 +4442,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, HeaderFunctions)
+						MacLib.Options[Flag] = HeaderFunctions
 					end
 					return HeaderFunctions
 				end
@@ -4478,7 +4486,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, LabelFunctions)
+						MacLib.Options[Flag] = LabelFunctions
 					end
 					return LabelFunctions
 				end
@@ -4522,7 +4530,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SubLabelFunctions)
+						MacLib.Options[Flag] = SubLabelFunctions
 					end
 					return SubLabelFunctions
 				end
@@ -4598,7 +4606,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ParagraphFunctions)
+						MacLib.Options[Flag] = ParagraphFunctions
 					end
 					return ParagraphFunctions
 				end
@@ -5522,12 +5530,6 @@ function MacLib:Window(Settings)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
-					local opt = MacLib.Options[Flag]
-					if opt.Settings and opt.Settings.Callback then
-						task.spawn(function()
-							pcall(opt.Settings.Callback, tonumber(data.value) or opt.Value)
-						end)
-					end
 				end
 			end
 		},
@@ -5700,19 +5702,11 @@ function MacLib:Window(Settings)
 			contextData = MacLib.contextData or {},
 		}
 
-		local processed = {}
-		for _, flag in ipairs(MacLib.OptionOrder) do
-			local option = MacLib.Options[flag]
-			if option and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-				processed[flag] = true
-			end
-		end
-
 		for flag, option in next, MacLib.Options do
-			if not processed[flag] and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
 		end	
 
 		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
@@ -6077,4 +6071,423 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib
+return MacLib end function __DIST.b()-- Storage: Quản lý đọc và ghi file kịch bản Macro ra ổ đĩa executor.
+
+
+local macLib = __DIST.load('a')
+
+local storage = {}
+
+local MACRO_FOLDER = "EsclipseHub/SlopTowerDefense/macros"
+
+local function ensureFolder()
+	if not isfolder or not makefolder then return end
+	if not isfolder("EsclipseHub") then makefolder("EsclipseHub") end
+	if not isfolder("EsclipseHub/SlopTowerDefense") then makefolder("EsclipseHub/SlopTowerDefense") end
+	if not isfolder(MACRO_FOLDER) then makefolder(MACRO_FOLDER) end
+end
+
+function storage.ListMacros(): { string }
+	ensureFolder()
+	local list = {}
+	if listfiles then
+		local ok, files = pcall(listfiles, MACRO_FOLDER)
+		if ok and type(files) == "table" then
+			for _, filePath in ipairs(files) do
+				local name = string.match(filePath, "([^/\\]+)%.json$")
+				if name then
+					table.insert(list, name)
+				end
+			end
+		end
+	end
+	return list
+end
+
+function storage.SaveMacro(name: string, data: any): boolean
+	ensureFolder()
+	if not writefile then return false end
+	local HttpService = game:GetService("HttpService")
+	local ok, json = pcall(function()
+		return HttpService:JSONEncode(data)
+	end)
+	if not ok or not json then return false end
+
+	local path = MACRO_FOLDER .. "/" .. name .. ".json"
+	local writeOk = pcall(writefile, path, json)
+	return writeOk
+end
+
+function storage.LoadMacro(name: string): any?
+	ensureFolder()
+	if not readfile or not isfile then return nil end
+	local path = MACRO_FOLDER .. "/" .. name .. ".json"
+	if not isfile(path) then return nil end
+
+	local HttpService = game:GetService("HttpService")
+	local content = readfile(path)
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(content)
+	end)
+	return ok and data or nil
+end
+
+return storage
+end function __DIST.c()-- Recorder: Ghi nhận các hành động (Place, Upgrade, Sell) theo timeline và wave.
+
+
+local recorder = {
+	IsRecording = false,
+	Actions = {},
+	StartTime = 0,
+}
+
+
+
+
+
+
+
+
+
+
+
+function recorder.Start()
+	recorder.IsRecording = true
+	recorder.Actions = {}
+	recorder.StartTime = os.clock()
+end
+
+function recorder.Stop(): { MacroAction__DARKLUA_TYPE_a }
+	recorder.IsRecording = false
+	return recorder.Actions
+end
+
+function recorder.RecordAction(action: MacroAction__DARKLUA_TYPE_a)
+	if not recorder.IsRecording then return end
+	table.insert(recorder.Actions, action)
+end
+
+return recorder
+end function __DIST.d()-- Lifecycle: Quản lý đăng ký và giải phóng tài nguyên (Connections, Tasks, Objects) khi script unload hoặc reload.
+
+
+local lifecycle = {
+	cleaned = false,
+	callbacks = {},
+}
+
+function lifecycle.Register(callback: () -> ()): () -> ()
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	if lifecycle.cleaned then
+		pcall(callback)
+		return function() end
+	end
+
+	table.insert(lifecycle.callbacks, callback)
+	return function()
+		for index, registered in ipairs(lifecycle.callbacks) do
+			if registered == callback then
+				table.remove(lifecycle.callbacks, index)
+				break
+			end
+		end
+	end
+end
+
+function lifecycle.Cleanup(): ()
+	if lifecycle.cleaned then return end
+	lifecycle.cleaned = true
+	for index = #lifecycle.callbacks, 1, -1 do
+		pcall(lifecycle.callbacks[index])
+	end
+	table.clear(lifecycle.callbacks)
+end
+
+function lifecycle.IsActive(): boolean
+	return not lifecycle.cleaned
+end
+
+lifecycle.OnCleanup = lifecycle.Register
+
+return lifecycle
+end function __DIST.e()-- Remotes: Wrapper quản lý tương tác mạng và RemoteEvents/Functions trong game.
+
+
+local remotes = {
+	-- Placeholder các instance Remote tìm thấy trong game
+	Instances = {},
+}
+
+-- Gọi RemoteEvent an toàn
+function remotes.FireServer(remoteName: string, ...: any): boolean
+	local targetRemote = remotes.Instances[remoteName]
+	if not targetRemote then
+		-- Fallback tìm trong ReplicatedStorage nếu chưa cache
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		targetRemote = ReplicatedStorage:FindFirstChild(remoteName, true)
+		if targetRemote and targetRemote:IsA("RemoteEvent") then
+			remotes.Instances[remoteName] = targetRemote
+		end
+	end
+
+	if targetRemote and targetRemote:IsA("RemoteEvent") then
+		local ok, err = pcall(targetRemote.FireServer, targetRemote, ...)
+		if not ok then
+			warn("[SlopTD - Remotes] FireServer error on", remoteName, ":", err)
+		end
+		return ok
+	end
+
+	warn("[SlopTD - Remotes] RemoteEvent not found:", remoteName)
+	return false
+end
+
+-- Gọi RemoteFunction an toàn
+function remotes.InvokeServer(remoteName: string, ...: any): any
+	local targetRemote = remotes.Instances[remoteName]
+	if not targetRemote then
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		targetRemote = ReplicatedStorage:FindFirstChild(remoteName, true)
+		if targetRemote and targetRemote:IsA("RemoteFunction") then
+			remotes.Instances[remoteName] = targetRemote
+		end
+	end
+
+	if targetRemote and targetRemote:IsA("RemoteFunction") then
+		local ok, result = pcall(targetRemote.InvokeServer, targetRemote, ...)
+		if not ok then
+			warn("[SlopTD - Remotes] InvokeServer error on", remoteName, ":", result)
+			return nil
+		end
+		return result
+	end
+
+	warn("[SlopTD - Remotes] RemoteFunction not found:", remoteName)
+	return nil
+end
+
+return remotes
+end function __DIST.f()-- Placement: Logic đặt tháp (tính toạ độ, kiểm tra hợp lệ và gọi remote).
+
+
+local remotes = __DIST.load('e')
+
+local placement = {}
+
+function placement.PlaceTower(towerName: string, position: Vector3, rotation: number?): boolean
+	-- Gọi remote đặt tháp (sẽ gắn tên remote cụ thể)
+	return remotes.FireServer("PlaceTower", towerName, position, rotation or 0)
+end
+
+return placement
+end function __DIST.g()-- Scanner: Quét và quản lý danh sách tháp đang có trên bản đồ.
+
+
+local scanner = {
+	Towers = {},
+}
+
+
+
+
+
+
+
+
+
+
+
+function scanner.GetMyTowers(): { [string]: TowerInfo__DARKLUA_TYPE_b }
+	return scanner.Towers
+end
+
+function scanner.Clear()
+	table.clear(scanner.Towers)
+end
+
+function scanner.Refresh()
+	-- Quét thư mục chứa tower trong Workspace (cần điền đúng Folder name sau khi inspect game)
+end
+
+return scanner
+end function __DIST.h()-- Upgrader: Logic nâng cấp tháp theo thuật toán / độ ưu tiên.
+
+
+local remotes = __DIST.load('e')
+local scanner = __DIST.load('g')
+
+local upgrader = {
+	AutoUpgradeEnabled = false,
+	Strategy = "Balanced", -- "MaxFirst", "Balanced", "CheapestFirst"
+}
+
+function upgrader.Upgrade(towerInstance: Instance): boolean
+	return remotes.FireServer("UpgradeTower", towerInstance)
+end
+
+function upgrader.SetEnabled(state: boolean)
+	upgrader.AutoUpgradeEnabled = state
+end
+
+return upgrader
+end function __DIST.i()-- Player: Thực thi kịch bản macro đã ghi (chờ đúng wave hoặc thời gian để đặt/nâng tháp).
+
+
+local lifecycle = __DIST.load('d')
+local placement = __DIST.load('f')
+local upgrader = __DIST.load('h')
+
+local player = {
+	IsPlaying = false,
+	CurrentMacro = nil,
+	CurrentIndex = 1,
+}
+
+function player.Play(macroData: any)
+	player.CurrentMacro = macroData
+	player.CurrentIndex = 1
+	player.IsPlaying = true
+	-- Vòng lặp kiểm tra wave / time sẽ được kết nối ở đây
+end
+
+function player.Stop()
+	player.IsPlaying = false
+	player.CurrentMacro = nil
+end
+
+return player
+end function __DIST.j()-- Macro Facade
+
+
+local storage = __DIST.load('b')
+local recorder = __DIST.load('c')
+local player = __DIST.load('i')
+
+return {
+	Storage = storage,
+	Recorder = recorder,
+	Player = player,
+}
+end function __DIST.k()-- Wrapper gửi thông báo an toàn (qua Maclib Window hoặc StarterGui fallback).
+
+
+local window = nil
+local notifier = {}
+
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title: string, desc: string, lifetime: number?)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end end-- Tab Macro: Ghi và phát lại kịch bản đặt / nâng cấp tháp.
+
+
+local macro = __DIST.load('j')
+local notifier = __DIST.load('k')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Record Macro" })
+
+	local recordName = "MyMacro"
+	leftSection:Input({
+		Name = "Macro Name",
+		Placeholder = "Enter name...",
+		AcceptedCharacters = "All",
+		Default = recordName,
+		Callback = function(val)
+			if #val > 0 then recordName = val end
+		end,
+	}, "Input_RecordMacroName")
+
+	local statusLabel = leftSection:Label({
+		Text = "Status: Idle",
+	})
+
+	leftSection:Button({
+		Name = "Start Recording",
+		Callback = function()
+			macro.Recorder.Start()
+			pcall(function() statusLabel:UpdateText("Status: Recording...") end)
+			notifier.Notify("Macro", "Recording started!", 2)
+		end,
+	})
+
+	leftSection:Button({
+		Name = "Stop & Save Recording",
+		Callback = function()
+			local actions = macro.Recorder.Stop()
+			pcall(function() statusLabel:UpdateText("Status: Saved (" .. #actions .. " actions)") end)
+			macro.Storage.SaveMacro(recordName, actions)
+			notifier.Notify("Macro", "Saved " .. #actions .. " actions to " .. recordName, 3)
+		end,
+	})
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Play Macro" })
+
+	local macroList = macro.Storage.ListMacros()
+	local macroDropdown
+
+	macroDropdown = rightSection:Dropdown({
+		Name = "Select Macro",
+		Options = #macroList > 0 and macroList or { "None" },
+		Default = macroList[1] or "None",
+		Callback = function(selected)
+			-- Selected macro
+		end,
+	}, "Dropdown_PlayMacro")
+
+	rightSection:Button({
+		Name = "Refresh Macro List",
+		Callback = function()
+			local updated = macro.Storage.ListMacros()
+			macroDropdown:ClearOptions()
+			macroDropdown:InsertOptions(#updated > 0 and updated or { "None" })
+		end,
+	})
+
+	rightSection:Toggle({
+		Name = "Play Macro",
+		Default = false,
+		Callback = function(state)
+			if state then
+				local selected = macroDropdown.Value
+				if selected and selected ~= "None" then
+					local data = macro.Storage.LoadMacro(selected)
+					if data then
+						macro.Player.Play(data)
+						notifier.Notify("Macro", "Playing macro: " .. selected, 2)
+					else
+						notifier.Notify("Macro", "Failed to load macro: " .. selected, 3)
+					end
+				end
+			else
+				macro.Player.Stop()
+				notifier.Notify("Macro", "Macro playback stopped", 2)
+			end
+		end,
+	}, "Toggle_PlayMacro")
+end

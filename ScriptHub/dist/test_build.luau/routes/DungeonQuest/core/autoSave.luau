@@ -1,20 +1,11 @@
-local MacLib = { 
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()local MacLib = { 
 	Options = {}, 
-	OptionOrder = {},
 	Folder = "Maclib", 
 	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
 }
-
-local function registerOption(flag, obj)
-	if not flag then return end
-	MacLib.Options[flag] = obj
-	if not table.find(MacLib.OptionOrder, flag) then
-		table.insert(MacLib.OptionOrder, flag)
-	end
-end
 
 --// Services
 local TweenService = MacLib.GetService("TweenService")
@@ -1753,7 +1744,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ButtonFunctions)
+						MacLib.Options[Flag] = ButtonFunctions
 					end
 					return ButtonFunctions
 				end
@@ -1899,7 +1890,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ToggleFunctions)
+						MacLib.Options[Flag] = ToggleFunctions
 					end
 					return ToggleFunctions
 				end
@@ -2165,7 +2156,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SliderFunctions)
+						MacLib.Options[Flag] = SliderFunctions
 					end
 					return SliderFunctions
 				end
@@ -2341,7 +2332,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, InputFunctions)
+						MacLib.Options[Flag] = InputFunctions
 					end
 					return InputFunctions
 				end
@@ -2520,7 +2511,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, KeybindFunctions)
+						MacLib.Options[Flag] = KeybindFunctions
 					end
 
 					return KeybindFunctions
@@ -2937,13 +2928,10 @@ function MacLib:Window(Settings)
 							if DropdownFunctions.Settings.Multi then
 								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
 							else
-								isSelected = (DropdownFunctions.Settings.Default == i or DropdownFunctions.Settings.Default == v) and true or false
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
 							end
 						end
 						Toggle(v, isSelected)
-						if isSelected and not DropdownFunctions.Settings.Multi then
-							DropdownFunctions.Value = v
-						end
 
 						local option = OptionObjs[v].Button
 
@@ -3095,7 +3083,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, DropdownFunctions)
+						MacLib.Options[Flag] = DropdownFunctions
 					end
 
 					return DropdownFunctions
@@ -4380,7 +4368,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ColorpickerFunctions)
+						MacLib.Options[Flag] = ColorpickerFunctions
 					end
 					return ColorpickerFunctions
 				end
@@ -4434,7 +4422,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, HeaderFunctions)
+						MacLib.Options[Flag] = HeaderFunctions
 					end
 					return HeaderFunctions
 				end
@@ -4478,7 +4466,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, LabelFunctions)
+						MacLib.Options[Flag] = LabelFunctions
 					end
 					return LabelFunctions
 				end
@@ -4522,7 +4510,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SubLabelFunctions)
+						MacLib.Options[Flag] = SubLabelFunctions
 					end
 					return SubLabelFunctions
 				end
@@ -4598,7 +4586,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ParagraphFunctions)
+						MacLib.Options[Flag] = ParagraphFunctions
 					end
 					return ParagraphFunctions
 				end
@@ -5522,12 +5510,6 @@ function MacLib:Window(Settings)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
-					local opt = MacLib.Options[Flag]
-					if opt.Settings and opt.Settings.Callback then
-						task.spawn(function()
-							pcall(opt.Settings.Callback, tonumber(data.value) or opt.Value)
-						end)
-					end
 				end
 			end
 		},
@@ -5700,19 +5682,11 @@ function MacLib:Window(Settings)
 			contextData = MacLib.contextData or {},
 		}
 
-		local processed = {}
-		for _, flag in ipairs(MacLib.OptionOrder) do
-			local option = MacLib.Options[flag]
-			if option and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-				processed[flag] = true
-			end
-		end
-
 		for flag, option in next, MacLib.Options do
-			if not processed[flag] and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
 		end	
 
 		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
@@ -6077,4 +6051,171 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib
+return MacLib end function __DIST.b()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
+-- Nhận Window tham chiếu qua SetWindow (vì Window được tạo sau khi require module).
+
+--// Variables
+
+local window
+
+--// Table
+local notifier = {}
+
+--// Methods
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title, desc, lifetime)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end end-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
+-- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('b')
+
+--// Table
+local autoSave = {}
+
+--// Variables
+local activeConfig = nil
+local saveQueued = false
+local suspended = false
+
+local recordingActive = false
+
+function autoSave.Suspend()
+	suspended = true
+	saveQueued = false
+end
+
+function autoSave.Resume()
+	suspended = false
+end
+
+function autoSave.SetRecording(state)
+	recordingActive = state and true or false
+end
+
+function autoSave.IsRecording()
+	return recordingActive
+end
+
+function autoSave.IsSuspended()
+	if suspended or (macLib.LoadingConfig == true) or recordingActive then
+		return true
+	end
+	local ok, coordinator = pcall(require, "@routes/DungeonQuest/core/coordinator")
+	if ok and coordinator and coordinator.IsLocked and coordinator.IsLocked() then
+		return true
+	end
+	return false
+end
+
+-- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
+function autoSave.SetActive(name)
+	activeConfig = (typeof(name) == "string" and #name > 0) and string.gsub(name, "[\r\n%s]+", "") or nil
+	if activeConfig and writefile then
+		pcall(function()
+			local folder = macLib.Folder
+			if isfolder and not isfolder(folder) then makefolder(folder) end
+			if isfolder and not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			writefile(folder .. "/settings/autoload.txt", activeConfig)
+		end)
+	end
+end
+
+function autoSave.GetActive()
+	return activeConfig
+end
+
+-- Fallback: nếu chưa có config active (không bấm chọn trong tab Configs) nhưng có
+-- config autoload trong autoload.txt thì dùng luôn tên đó -> đảm bảo mọi slider/
+-- toggle đều được lưu mà không phụ thuộc thứ tự khởi tạo tab.
+local function resolveActiveConfig()
+	if activeConfig then return activeConfig end
+
+	local folder = macLib.Folder
+	local path = folder .. "/settings/autoload.txt"
+	if isfile and isfile(path) then
+		local ok, name = pcall(readfile, path)
+		if ok and typeof(name) == "string" then
+			name = string.gsub(name, "[\r\n%s]+", "")
+			if #name > 0 then
+				activeConfig = name
+				return activeConfig
+			end
+		end
+	end
+
+	-- Fallback tạo config "Default" để luôn lưu được dữ liệu cấu hình người dùng
+	activeConfig = "Default"
+	pcall(function()
+		if writefile and makefolder and isfolder then
+			if not isfolder(folder) then makefolder(folder) end
+			if not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			if not isfile(path) then
+				writefile(path, "Default")
+			end
+		end
+	end)
+	return activeConfig
+end
+
+-- Lưu ngay lập tức (gọi trực tiếp)
+function autoSave.SaveNow()
+	if autoSave.IsSuspended() then return end
+	local name = resolveActiveConfig()
+	if not name then return end
+
+	local success, err = macLib:SaveConfig(name)
+	if not success and err and err ~= "Please select a config file." then
+		notifier.Notify("AutoSave", "Failed to save config: " .. tostring(err), 3)
+	end
+end
+
+-- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
+function autoSave.Save()
+	if autoSave.IsSuspended() then return end
+	if not resolveActiveConfig() then return end
+	if saveQueued then return end
+	saveQueued = true
+
+	task.delay(0.5, function()
+		saveQueued = false
+		if not autoSave.IsSuspended() and autoSave.GetActive() then
+			autoSave.SaveNow()
+		end
+	end)
+end
+
+-- Bọc một callback control để tự lưu sau khi callback chạy
+function autoSave.Wrap(callback)
+	if type(callback) ~= "function" then return callback end
+	return function(...)
+		callback(...)
+		autoSave.Save()
+	end
+end
+
+return autoSave

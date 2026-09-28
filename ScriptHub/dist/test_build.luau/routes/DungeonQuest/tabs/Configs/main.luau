@@ -1,20 +1,20 @@
+type Zone__DARKLUA_TYPE_a = "Lobby" | "Dungeon" | "Global"
+
+type ZoneRegistration__DARKLUA_TYPE_b = {
+	Name: string,
+	Zone: Zone__DARKLUA_TYPE_a,
+	OnEnter: (() -> ())?,
+	OnLeave: (() -> ())?
+}
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()
 local MacLib = { 
 	Options = {}, 
-	OptionOrder = {},
 	Folder = "Maclib", 
 	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
 }
-
-local function registerOption(flag, obj)
-	if not flag then return end
-	MacLib.Options[flag] = obj
-	if not table.find(MacLib.OptionOrder, flag) then
-		table.insert(MacLib.OptionOrder, flag)
-	end
-end
 
 --// Services
 local TweenService = MacLib.GetService("TweenService")
@@ -1753,7 +1753,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ButtonFunctions)
+						MacLib.Options[Flag] = ButtonFunctions
 					end
 					return ButtonFunctions
 				end
@@ -1899,7 +1899,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ToggleFunctions)
+						MacLib.Options[Flag] = ToggleFunctions
 					end
 					return ToggleFunctions
 				end
@@ -2165,7 +2165,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SliderFunctions)
+						MacLib.Options[Flag] = SliderFunctions
 					end
 					return SliderFunctions
 				end
@@ -2341,7 +2341,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, InputFunctions)
+						MacLib.Options[Flag] = InputFunctions
 					end
 					return InputFunctions
 				end
@@ -2520,7 +2520,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, KeybindFunctions)
+						MacLib.Options[Flag] = KeybindFunctions
 					end
 
 					return KeybindFunctions
@@ -2937,13 +2937,10 @@ function MacLib:Window(Settings)
 							if DropdownFunctions.Settings.Multi then
 								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
 							else
-								isSelected = (DropdownFunctions.Settings.Default == i or DropdownFunctions.Settings.Default == v) and true or false
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
 							end
 						end
 						Toggle(v, isSelected)
-						if isSelected and not DropdownFunctions.Settings.Multi then
-							DropdownFunctions.Value = v
-						end
 
 						local option = OptionObjs[v].Button
 
@@ -3095,7 +3092,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, DropdownFunctions)
+						MacLib.Options[Flag] = DropdownFunctions
 					end
 
 					return DropdownFunctions
@@ -4380,7 +4377,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ColorpickerFunctions)
+						MacLib.Options[Flag] = ColorpickerFunctions
 					end
 					return ColorpickerFunctions
 				end
@@ -4434,7 +4431,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, HeaderFunctions)
+						MacLib.Options[Flag] = HeaderFunctions
 					end
 					return HeaderFunctions
 				end
@@ -4478,7 +4475,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, LabelFunctions)
+						MacLib.Options[Flag] = LabelFunctions
 					end
 					return LabelFunctions
 				end
@@ -4522,7 +4519,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SubLabelFunctions)
+						MacLib.Options[Flag] = SubLabelFunctions
 					end
 					return SubLabelFunctions
 				end
@@ -4598,7 +4595,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ParagraphFunctions)
+						MacLib.Options[Flag] = ParagraphFunctions
 					end
 					return ParagraphFunctions
 				end
@@ -5522,12 +5519,6 @@ function MacLib:Window(Settings)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
-					local opt = MacLib.Options[Flag]
-					if opt.Settings and opt.Settings.Callback then
-						task.spawn(function()
-							pcall(opt.Settings.Callback, tonumber(data.value) or opt.Value)
-						end)
-					end
 				end
 			end
 		},
@@ -5700,19 +5691,11 @@ function MacLib:Window(Settings)
 			contextData = MacLib.contextData or {},
 		}
 
-		local processed = {}
-		for _, flag in ipairs(MacLib.OptionOrder) do
-			local option = MacLib.Options[flag]
-			if option and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-				processed[flag] = true
-			end
-		end
-
 		for flag, option in next, MacLib.Options do
-			if not processed[flag] and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
 		end	
 
 		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
@@ -6077,4 +6060,2563 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib
+return MacLib end function __DIST.b()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
+-- Nhận Window tham chiếu qua SetWindow (vì Window được tạo sau khi require module).
+
+--// Variables
+
+local window
+
+--// Table
+local notifier = {}
+
+--// Methods
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title, desc, lifetime)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end function __DIST.c()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
+-- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('b')
+
+--// Table
+local autoSave = {}
+
+--// Variables
+local activeConfig = nil
+local saveQueued = false
+local suspended = false
+
+local recordingActive = false
+
+function autoSave.Suspend()
+	suspended = true
+	saveQueued = false
+end
+
+function autoSave.Resume()
+	suspended = false
+end
+
+function autoSave.SetRecording(state)
+	recordingActive = state and true or false
+end
+
+function autoSave.IsRecording()
+	return recordingActive
+end
+
+function autoSave.IsSuspended()
+	if suspended or (macLib.LoadingConfig == true) or recordingActive then
+		return true
+	end
+	local ok, coordinator = pcall(require, "@routes/DungeonQuest/core/coordinator")
+	if ok and coordinator and coordinator.IsLocked and coordinator.IsLocked() then
+		return true
+	end
+	return false
+end
+
+-- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
+function autoSave.SetActive(name)
+	activeConfig = (typeof(name) == "string" and #name > 0) and string.gsub(name, "[\r\n%s]+", "") or nil
+	if activeConfig and writefile then
+		pcall(function()
+			local folder = macLib.Folder
+			if isfolder and not isfolder(folder) then makefolder(folder) end
+			if isfolder and not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			writefile(folder .. "/settings/autoload.txt", activeConfig)
+		end)
+	end
+end
+
+function autoSave.GetActive()
+	return activeConfig
+end
+
+-- Fallback: nếu chưa có config active (không bấm chọn trong tab Configs) nhưng có
+-- config autoload trong autoload.txt thì dùng luôn tên đó -> đảm bảo mọi slider/
+-- toggle đều được lưu mà không phụ thuộc thứ tự khởi tạo tab.
+local function resolveActiveConfig()
+	if activeConfig then return activeConfig end
+
+	local folder = macLib.Folder
+	local path = folder .. "/settings/autoload.txt"
+	if isfile and isfile(path) then
+		local ok, name = pcall(readfile, path)
+		if ok and typeof(name) == "string" then
+			name = string.gsub(name, "[\r\n%s]+", "")
+			if #name > 0 then
+				activeConfig = name
+				return activeConfig
+			end
+		end
+	end
+
+	-- Fallback tạo config "Default" để luôn lưu được dữ liệu cấu hình người dùng
+	activeConfig = "Default"
+	pcall(function()
+		if writefile and makefolder and isfolder then
+			if not isfolder(folder) then makefolder(folder) end
+			if not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			if not isfile(path) then
+				writefile(path, "Default")
+			end
+		end
+	end)
+	return activeConfig
+end
+
+-- Lưu ngay lập tức (gọi trực tiếp)
+function autoSave.SaveNow()
+	if autoSave.IsSuspended() then return end
+	local name = resolveActiveConfig()
+	if not name then return end
+
+	local success, err = macLib:SaveConfig(name)
+	if not success and err and err ~= "Please select a config file." then
+		notifier.Notify("AutoSave", "Failed to save config: " .. tostring(err), 3)
+	end
+end
+
+-- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
+function autoSave.Save()
+	if autoSave.IsSuspended() then return end
+	if not resolveActiveConfig() then return end
+	if saveQueued then return end
+	saveQueued = true
+
+	task.delay(0.5, function()
+		saveQueued = false
+		if not autoSave.IsSuspended() and autoSave.GetActive() then
+			autoSave.SaveNow()
+		end
+	end)
+end
+
+-- Bọc một callback control để tự lưu sau khi callback chạy
+function autoSave.Wrap(callback)
+	if type(callback) ~= "function" then return callback end
+	return function(...)
+		callback(...)
+		autoSave.Save()
+	end
+end
+
+return autoSave
+end function __DIST.d()-- Auto Hide UI cho DungeonQuest: tự ẩn cửa sổ script hub ngay sau khi execute.
+-- Hiện lại bằng keybind mặc định (RightControl) mà Maclib đã cấu hình sẵn.
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('b')
+
+--// Services
+local HttpService = game:GetService("HttpService")
+
+--// Constants
+local SETTINGS_FILE = macLib.Folder .. "/settings/autohide.json"
+
+--// Table
+local autoHide = {}
+
+--// State
+local enabled = false
+local window = nil
+
+--// Persistence
+local function loadSettings()
+	if not (isfile and isfile(SETTINGS_FILE)) then return end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(readfile(SETTINGS_FILE))
+	end)
+	if ok and type(decoded) == "table" then
+		enabled = decoded.enabled == true
+	end
+end
+
+local function saveSettings()
+	if not (isfile and writefile) then return end
+	pcall(function()
+		writefile(SETTINGS_FILE, HttpService:JSONEncode({ enabled = enabled }))
+	end)
+end
+
+--// Methods
+function autoHide.SetWindow(newWindow)
+	window = newWindow
+end
+
+function autoHide.SetEnabled(state)
+	enabled = state == true
+	saveSettings()
+end
+
+function autoHide.IsEnabled()
+	return enabled
+end
+
+--// Ẩn cửa sổ ngay lập tức (dùng SetState(false) như Maclib minimize, hiện lại bằng keybind)
+function autoHide.Hide()
+	if not enabled or not window then return end
+	local ok = pcall(function()
+		window:SetState(false)
+	end)
+	if not ok then warn("[AutoHide] Không ẩn được window") end
+end
+
+--// Chạy sau khi init xong: ẩn ngay nếu được bật
+function autoHide.Execute()
+	if not enabled then return end
+	task.spawn(function()
+		task.wait(0.5)
+		autoHide.Hide()
+	end)
+end
+
+--// Load settings lúc require
+loadSettings()
+
+return autoHide
+end function __DIST.e()-- Coordinator (DungeonQuest): Điều phối loại trừ lẫn nhau giữa các hệ thống điều khiển nhân vật.
+-- Module lá — không require ai để tránh cycle import bị darklua (bundler) phát hiện.
+
+
+local coordinator = {}
+local features = {}
+local locked = false
+
+--// Khóa coordinator: dùng trong quá trình nạp config (LoadConfig) để tránh
+--// các toggle cũ / toggle thành phần đè chết toggle master hệ thống.
+function coordinator.SetLocked(state)
+	locked = state and true or false
+end
+
+function coordinator.IsLocked()
+	return locked
+end
+
+--// Đăng ký 1 hệ thống có thể bị tắt độc quyền. setEnabled(false) được gọi khi
+--// một hệ thống khác bật lên. isEnabled() trả về trạng thái đang chạy.
+function coordinator.Register(name, setEnabled, isEnabled)
+	if type(name) ~= "string" or type(setEnabled) ~= "function" or type(isEnabled) ~= "function" then return end
+	features[name] = {
+		setEnabled = setEnabled,
+		isEnabled = isEnabled,
+	}
+end
+
+--// Bật độc quyền 1 hệ thống: tự động TẮT toàn bộ hệ thống khác đang chạy trước đó.
+function coordinator.EnableExclusive(name)
+	if locked then return end
+	for otherName, feat in pairs(features) do
+		if otherName ~= name and feat.isEnabled() then
+			pcall(feat.setEnabled, false)
+		end
+	end
+end
+
+function coordinator.IsEnabled(name)
+	local feat = features[name]
+	return feat ~= nil and feat.isEnabled()
+end
+
+return coordinator end function __DIST.f()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
+
+--// Services
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+--// Player
+local player = Players.LocalPlayer
+if not player then
+	local timeoutClock = os.clock() + 5
+	repeat
+		player = Players.LocalPlayer
+		if player then break end
+		task.wait(0.1)
+	until os.clock() > timeoutClock
+end
+
+return {
+	Players = Players,
+	UserInputService = UserInputService,
+	RunService = RunService,
+	VirtualInputManager = VirtualInputManager,
+	player = player,
+}
+end function __DIST.g()-- Owns resources that must be released when the hub is unloaded or executed again.
+
+local lifecycle = {
+	cleaned = false,
+	callbacks = {},
+}
+
+function lifecycle.Register(callback)
+	if type(callback) ~= "function" then return function() end end
+	if lifecycle.cleaned then
+		pcall(callback)
+		return function() end
+	end
+
+	table.insert(lifecycle.callbacks, callback)
+	return function()
+		for index, registered in ipairs(lifecycle.callbacks) do
+			if registered == callback then
+				table.remove(lifecycle.callbacks, index)
+				break
+			end
+		end
+	end
+end
+
+function lifecycle.Cleanup()
+	if lifecycle.cleaned then return end
+	lifecycle.cleaned = true
+	for index = #lifecycle.callbacks, 1, -1 do
+		pcall(lifecycle.callbacks[index])
+	end
+	table.clear(lifecycle.callbacks)
+end
+
+function lifecycle.IsActive()
+	return not lifecycle.cleaned
+end
+
+lifecycle.OnCleanup = lifecycle.Register
+
+return lifecycle
+end function __DIST.h()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
+-- speed và các API cho module chuyên biệt (webhook, ESP...)
+-- thao tác lên module này để tránh circular dependency.
+
+--// Imports
+
+local services = __DIST.load('f')
+local lifecycle = __DIST.load('g')
+
+--// References
+local player = services.player
+
+--// Constants
+local AUTO_KEY_HOLD_TIME = 0.05
+
+--// Folder in ReplicatedStorage that contains enemy projectile models for ESP.
+local PROJECTILE_FOLDER = "enemyProjectiles"
+
+local GUI_UPDATE_INTERVAL = 0.5
+
+--// Table
+local shared = {}
+
+--// State
+local humanoid = nil
+local rootPart = nil
+
+local enabled = false
+local fastSpeed = 16
+local normalSpeed = 16
+local instantAccelEnabled = true
+local isSettingSpeed = false
+
+local dungeonStartTime = nil
+
+--// Boss state (dựa trên "boss room": room chỉ chứa đúng 1 enemy).
+--// Boss room = room có duy nhất 1 quái; bossActive = đang ở boss room.
+local bossActive = false
+local bossCallbacks = {}
+local bossRoomRef = nil --// room model của boss hiện tại (tránh đếm lại cùng room)
+
+--// Chỉ số boss hiện tại trong 1 dungeon (thường 1 dungeon có 3 boss).
+--// Tăng 1 mỗi lần bước vào boss room mới (boss 1 = 1); reset về 0 khi vào dungeon mới.
+local bossIndex = 0
+local bossIndexCallbacks = {}
+
+--// Room index: số room hiện tại, lấy từ TÊN room có quái ("room<so>").
+--// Reset khi vào dungeon mới.
+local roomIndex = 0
+local roomIndexCallbacks = {}
+
+local dungeon = nil
+local trackedRooms = {}
+local trackedEnemies = {}
+local roomConnections = {}
+local enemyConnections = {}
+local pendingModels = {}
+local enemyCount = 0
+--// Thông báo khi tập enemy track THAY ĐỔI (thêm/xoá). Dùng cho luồng event-driven:
+--// module pathfinder thay vì poll theo interval thì subscribe sự kiện này để recompute target tức thì.
+local enemyChangedCallbacks = {}
+local function fireEnemyChanged()
+	for i = #enemyChangedCallbacks, 1, -1 do
+		pcall(enemyChangedCallbacks[i])
+	end
+end
+
+--// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
+--// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
+--// dungeon thật; giá trị còn lại là placeholder ("unknown") hoặc rỗng khi ở lobby
+--// -> chỉ nhận chuỗi KHÁC placeholder (xem readDungeonName).
+local currentDungeonName = nil
+local dungeonNameCallbacks = {}
+
+--// Giá trị placeholder của workspace.dungeonName khi chưa vào dungeon (lobby).
+local DUNGEON_NAME_PLACEHOLDER = "unknown"
+
+--// Trạng thái LOBBY vs DUNGEON. Lobby = chưa có tên dungeon thật
+--// (workspace.dungeonName placeholder "unknown"/rỗng). Có tên thật -> trong dungeon.
+local inLobby = true
+local lobbyCallbacks = {}
+
+--// Forward declarations
+local cleanupEnemies
+local initializeRooms
+local resetDungeon
+local refreshRoomIndex
+local tryCaptureBossSpawnPosition
+local bossInitialSpawnPos = nil
+
+--// Respawn hooks & Invulnerability tracking
+local respawnCallbacks = {}
+local cleanupConnections = {}
+local speedConnection = nil
+local diedConnection = nil
+local lastRespawnTime = 0
+local respawnProtectionDuration = 4.0 -- Thời gian bất tử mặc định sau khi hồi sinh (giây)
+local wasDead = false
+
+local function trackCleanupConnection(connection)
+	if connection then table.insert(cleanupConnections, connection) end
+	return connection
+end
+
+function shared.OnRespawn(callback)
+	table.insert(respawnCallbacks, callback)
+end
+
+function shared.GetLastRespawnTime()
+	return lastRespawnTime
+end
+
+function shared.GetRespawnProtectionDuration()
+	return respawnProtectionDuration
+end
+
+function shared.SetRespawnProtectionDuration(seconds)
+	if type(seconds) == "number" and seconds >= 0 then
+		respawnProtectionDuration = seconds
+	end
+end
+
+function shared.GetRespawnProtectionRemaining()
+	if lastRespawnTime == 0 then return 0 end
+	local elapsed = os.clock() - lastRespawnTime
+	local remaining = respawnProtectionDuration - elapsed
+	return math.max(0, remaining)
+end
+
+function shared.IsJustRespawned(gracePeriodSeconds)
+	local period = gracePeriodSeconds or respawnProtectionDuration
+	if lastRespawnTime == 0 then return false end
+	return (os.clock() - lastRespawnTime) <= period
+end
+
+function shared.WasDead()
+	return wasDead
+end
+
+function shared.IsDead()
+	local char = player and player.Character
+	if not char or not char.Parent then return true end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return true end
+	return false
+end
+
+--// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
+--// Chỉ tính dựa trên Bộ đếm thời gian bảo vệ sau khi hồi sinh (Respawn Protection Duration)
+function shared.IsInvulnerable()
+	local char = player and player.Character
+	if not char or not char.Parent then return false, nil end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health <= 0 then
+		return false, nil -- Khi đã chết thì không tính là bất tử
+	end
+
+	-- Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
+	local remaining = shared.GetRespawnProtectionRemaining()
+	if remaining > 0 then
+		return true, ("Respawn Shield (%.1fs)"):format(remaining)
+	end
+
+	return false, nil
+end
+
+--// Enemy helpers
+local function getModelRoot(model)
+	if not model or not model:IsA("Model") then return nil end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then return root end
+	if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
+	for _, object in ipairs(model:GetDescendants()) do
+		if object:IsA("BasePart") then return object end
+	end
+	return nil
+end
+
+local function isValidEnemy(model)
+	if not model or not model:IsA("Model") or not model.Parent or model == player.Character then return false end
+	local enemyHumanoid = model:FindFirstChildOfClass("Humanoid")
+	if not enemyHumanoid or enemyHumanoid.Health <= 0 then return false end
+	return getModelRoot(model) ~= nil
+end
+
+local function disconnectEnemyConnections(enemy)
+	local connections = enemyConnections[enemy]
+	if not connections then return end
+	if connections.Died then connections.Died:Disconnect(); connections.Died = nil end
+	enemyConnections[enemy] = nil
+end
+
+local function untrackEnemy(enemy)
+	if not enemy or not trackedEnemies[enemy] then return end
+	pendingModels[enemy] = nil
+	trackedEnemies[enemy] = nil
+	enemyCount -= 1
+	disconnectEnemyConnections(enemy)
+	fireEnemyChanged()
+	refreshRoomIndex()
+end
+
+--// Tìm room (con trực tiếp của dungeon) chứa model.
+local function getEnemyRoom(model)
+	if not dungeon or not model then return nil end
+	local parent = model.Parent
+	while parent do
+		if parent == dungeon then return nil end
+		if parent.Parent == dungeon and (parent:IsA("Folder") or parent:IsA("Model")) then
+			return parent
+		end
+		parent = parent.Parent
+	end
+	return nil
+end
+
+local function trackEnemy(enemy)
+	if not isValidEnemy(enemy) or trackedEnemies[enemy] then return end
+	local root = getModelRoot(enemy)
+	local enemyHumanoid = enemy:FindFirstChildOfClass("Humanoid")
+	if not root or not enemyHumanoid then return end
+
+	trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid, Room = getEnemyRoom(enemy) }
+	enemyCount += 1
+	enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
+	if bossActive and not bossInitialSpawnPos then
+		if tryCaptureBossSpawnPosition then
+			tryCaptureBossSpawnPosition()
+		end
+	end
+	fireEnemyChanged()
+	refreshRoomIndex()
+end
+
+local function waitAndTrackModel(model)
+	if not model then return end
+	if isValidEnemy(model) then trackEnemy(model); return end
+	if pendingModels[model] then return end
+	pendingModels[model] = true
+	task.spawn(function()
+		local timeout = os.clock() + 2
+		while model.Parent and os.clock() < timeout do
+			if isValidEnemy(model) then
+				pendingModels[model] = nil
+				trackEnemy(model)
+				return
+			end
+			task.wait(0.03)
+		end
+		pendingModels[model] = nil
+		if model.Parent and isValidEnemy(model) then trackEnemy(model) end
+	end)
+end
+
+local function trackRoom(room)
+	if not room or trackedRooms[room] then return end
+	trackedRooms[room] = true
+	for _, object in ipairs(room:GetDescendants()) do
+		if object:IsA("Model") and isValidEnemy(object) then trackEnemy(object) end
+	end
+	roomConnections[room] = {
+		Added = room.DescendantAdded:Connect(function(object)
+			if object:IsA("Model") then
+				waitAndTrackModel(object)
+			elseif object:IsA("Humanoid") then
+				local possibleModel = object:FindFirstAncestorOfClass("Model")
+				if possibleModel then waitAndTrackModel(possibleModel) end
+			end
+		end),
+		Removed = room.DescendantRemoving:Connect(function(object)
+			if object:IsA("Model") then untrackEnemy(object) end
+		end),
+	}
+end
+
+initializeRooms = function()
+	if not dungeon then dungeon = workspace:WaitForChild("dungeon", 30) end
+	if not dungeon then return false end
+
+	bossIndex = 0
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
+
+	roomIndex = 0
+	for i = #roomIndexCallbacks, 1, -1 do
+		pcall(roomIndexCallbacks[i], roomIndex)
+	end
+
+	for _, room in ipairs(dungeon:GetChildren()) do
+		if room:IsA("Folder") or room:IsA("Model") then trackRoom(room) end
+	end
+
+	--// Theo dõi cấp DUNGEON (không chỉ từng room): bắt được kẻ địch/room được thêm
+	--// vào sau khi init (phòng sinh sau, respawn trong room chưa được track...).
+	--// Không dùng DescendantAdded riêng cho từng room để tránh phát hiện trùng.
+	roomConnections[dungeon] = {
+		Added = dungeon.DescendantAdded:Connect(function(object)
+			if object:IsA("Model") then
+				waitAndTrackModel(object)
+			elseif object:IsA("Humanoid") then
+				local possibleModel = object:FindFirstAncestorOfClass("Model")
+				if possibleModel then waitAndTrackModel(possibleModel) end
+			end
+		end),
+		Removed = dungeon.DescendantRemoving:Connect(function(object)
+			if object:IsA("Model") then untrackEnemy(object) end
+		end),
+	}
+	return true
+end
+
+resetDungeon = function()
+	if not dungeon then return end
+	for room, conns in pairs(roomConnections) do
+		if conns.Added then pcall(function() conns.Added:Disconnect() end) end
+		if conns.Removed then pcall(function() conns.Removed:Disconnect() end) end
+	end
+	roomConnections = {}
+	trackedRooms = {}
+	for enemy in pairs(trackedEnemies) do
+		disconnectEnemyConnections(enemy)
+	end
+	trackedEnemies = {}
+	enemyCount = 0
+	pendingModels = {}
+	shared.ResetBossIndex()
+	dungeon = nil
+end
+
+cleanupEnemies = function()
+	for enemy, data in pairs(trackedEnemies) do
+		if not enemy or not enemy.Parent then
+			untrackEnemy(enemy)
+		else
+			local enemyHumanoid = data.Humanoid or enemy:FindFirstChildOfClass("Humanoid")
+			data.Humanoid = enemyHumanoid
+			if not enemyHumanoid or enemyHumanoid.Health <= 0 then
+				untrackEnemy(enemy)
+			else
+				local root = data.Root
+				if not root or not root.Parent then
+					root = getModelRoot(enemy)
+					if root then data.Root = root else untrackEnemy(enemy) end
+				end
+			end
+		end
+	end
+end
+
+--// Speed state (Speed tab thao tác lên đây)
+function shared.SetFastSpeed(value)
+	fastSpeed = value
+	if enabled and humanoid and humanoid.Parent then
+		if humanoid.WalkSpeed < fastSpeed then
+			isSettingSpeed = true
+			humanoid.WalkSpeed = fastSpeed
+			isSettingSpeed = false
+		end
+	end
+end
+
+function shared.SetSpeedEnabled(state)
+	enabled = state
+	if humanoid and humanoid.Parent then
+		isSettingSpeed = true
+		if enabled then
+			if humanoid.WalkSpeed < fastSpeed then
+				humanoid.WalkSpeed = fastSpeed
+			end
+		else
+			humanoid.WalkSpeed = normalSpeed
+		end
+		isSettingSpeed = false
+	end
+end
+
+function shared.IsSpeedEnabled()
+	return enabled
+end
+
+function shared.GetFastSpeed()
+	return fastSpeed
+end
+
+function shared.SetInstantAccelEnabled(state)
+	instantAccelEnabled = state and true or false
+end
+
+function shared.IsInstantAccelEnabled()
+	return instantAccelEnabled
+end
+
+--// Humanoid setup
+local function connectSpeedListener()
+	if speedConnection then
+		speedConnection:Disconnect()
+		speedConnection = nil
+	end
+	if not humanoid or not humanoid.Parent then return end
+	speedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+		if isSettingSpeed then return end
+		if not humanoid or not humanoid.Parent then return end
+		local curSpeed = humanoid.WalkSpeed
+		if enabled then
+			-- Floor Speed / Anti-Slow: Nếu tốc độ hiện tại thấp hơn fastSpeed (ví dụ 16 hoặc bị làm chậm),
+			-- ta ép lên mức sàn fastSpeed. Nhưng nếu game buff tốc cao hơn (ví dụ skill buff lên 24),
+			-- ta giữ nguyên để người chơi được hưởng trọn vẹn buff của game mà không bị bóp nghẹt.
+			if curSpeed < fastSpeed then
+				isSettingSpeed = true
+				humanoid.WalkSpeed = fastSpeed
+				isSettingSpeed = false
+			end
+		else
+			normalSpeed = curSpeed
+		end
+	end)
+end
+
+function shared.SetHumanoid(character)
+	if not character then return end
+	local newHumanoid = character:WaitForChild("Humanoid", 10)
+	if not newHumanoid then return end
+
+	humanoid = newHumanoid
+	rootPart = character:WaitForChild("HumanoidRootPart", 10) or character.PrimaryPart
+	normalSpeed = humanoid.WalkSpeed
+	if enabled and humanoid.WalkSpeed < fastSpeed then
+		isSettingSpeed = true
+		humanoid.WalkSpeed = fastSpeed
+		isSettingSpeed = false
+	end
+
+	if diedConnection then
+		diedConnection:Disconnect()
+		diedConnection = nil
+	end
+	diedConnection = humanoid.Died:Connect(function()
+		wasDead = true
+	end)
+
+	trackCleanupConnection(humanoid.HealthChanged:Connect(function(health)
+		if health <= 0 then
+			wasDead = true
+		elseif wasDead and health > 0 then
+			wasDead = false
+		end
+	end))
+end
+
+--// Instant Movement (Acceleration)
+local function updateInstantMovement()
+	if not lifecycle.IsActive() then return end
+	if not instantAccelEnabled then return end
+	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 or humanoid.Sit then return end
+	if not rootPart or not rootPart.Parent then
+		local char = player and player.Character
+		rootPart = char and char:FindFirstChild("HumanoidRootPart")
+		if not rootPart then return end
+	end
+	if rootPart.Anchored then return end
+
+	local moveDir = humanoid.MoveDirection
+	local curVel = rootPart.AssemblyLinearVelocity
+
+	if moveDir.Magnitude > 0.05 then
+		local targetSpeed = enabled and math.max(fastSpeed, humanoid.WalkSpeed) or humanoid.WalkSpeed
+		rootPart.AssemblyLinearVelocity = Vector3.new(
+			moveDir.X * targetSpeed,
+			curVel.Y,
+			moveDir.Z * targetSpeed
+		)
+	end
+end
+
+if services.RunService then
+	local simEvent = services.RunService.PreSimulation or services.RunService.Heartbeat
+	if simEvent then
+		trackCleanupConnection(simEvent:Connect(updateInstantMovement))
+	end
+end
+
+function shared.GetDungeonStartTime()
+	return dungeonStartTime
+end
+
+function shared.SetDungeonStartTime(value)
+	dungeonStartTime = value
+end
+
+function shared.GetDungeonElapsed()
+	if not dungeonStartTime then return nil end
+	return os.clock() - dungeonStartTime
+end
+
+--// Ensures dungeon tracking is ready.
+function shared.ReadyDungeon()
+	if not dungeon and not initializeRooms() then return false end
+	return true
+end
+
+function shared.GetHumanoid()
+	return humanoid
+end
+
+--// Trả về danh sách tên các loại enemy có trong màn (dungeon + đang track)
+function shared.GetEnemyNames()
+	local names = {}
+	local function add(name)
+		if name and name ~= "" and name ~= player.Name then names[name] = true end
+	end
+	if dungeon then
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				for _, obj in ipairs(room:GetDescendants()) do
+					if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+						add(obj.Name)
+					end
+				end
+			end
+		end
+	end
+	for enemy in pairs(trackedEnemies) do
+		add(enemy.Name)
+	end
+	local out = {}
+	for name in pairs(names) do table.insert(out, name) end
+	table.sort(out)
+	return out
+end
+
+--// Số enemy còn sống đang track trong màn (cập nhật thời gian thực)
+function shared.GetEnemyCount()
+	return enemyCount
+end
+
+--// Trả về mảng dữ liệu enemy đang track (Model, Root, Humanoid) để ESP Enemy dùng.
+function shared.GetTrackedEnemyData()
+	local out = {}
+	for model, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			out[#out + 1] = data
+		end
+	end
+	return out
+end
+
+--// Event-driven: đăng ký callback chạy khi tập enemy track thay đổi (thêm/xoá).
+--// Trả về hàm huỷ callback.
+function shared.OnEnemyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(enemyChangedCallbacks, callback)
+	return function()
+		for i, cb in ipairs(enemyChangedCallbacks) do
+			if cb == callback then table.remove(enemyChangedCallbacks, i) break end
+		end
+	end
+end
+
+--// Returns enemy projectile names from ReplicatedStorage.enemyProjectiles for ESP.
+function shared.GetEnemyProjectileNames()
+	local names = {}
+	local rs = game:GetService("ReplicatedStorage")
+	local folder = rs:FindFirstChild(PROJECTILE_FOLDER)
+	if not folder then return names end
+	for _, obj in ipairs(folder:GetChildren()) do
+		local cls = obj.ClassName
+		if cls == "Model" or cls == "MeshPart" or cls == "Part" then
+			names[obj.Name] = true
+		end
+	end
+	return names
+end
+
+function shared.GetKeyHoldTime()
+	return AUTO_KEY_HOLD_TIME
+end
+
+--// Initialization: character hiện tại + listeners
+if player and player.Character and player.Character.Parent then
+	shared.SetHumanoid(player.Character)
+	connectSpeedListener()
+else
+	local character = player and player.CharacterAdded and task.spawn(function()
+		local char = player.CharacterAdded:Wait()
+		if char and lifecycle.IsActive() then shared.SetHumanoid(char); connectSpeedListener() end
+	end)
+end
+
+if player then
+	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
+		local ok, err = pcall(function()
+			if not character then return end
+			lastRespawnTime = os.clock()
+			shared.SetHumanoid(character)
+			connectSpeedListener()
+
+			for _, callback in ipairs(respawnCallbacks) do
+				pcall(callback)
+			end
+		end)
+		if not ok then warn("[Shared] respawn handler error:", tostring(err)) end
+	end))
+end
+
+--// Dungeon watcher
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local currentDungeon = workspace:FindFirstChild("dungeon")
+		if dungeon and currentDungeon ~= dungeon then
+			resetDungeon()
+		elseif not dungeon and currentDungeon then
+			initializeRooms()
+		end
+		--// Cập nhật room hiện tại khi dungeon/enemy thay đổi.
+		refreshRoomIndex()
+	end
+end)
+
+--// Dungeon name watcher: theo dõi tên dungeon thật. Ở lobby workspace.dungeonName
+--// mang placeholder "unknown" (hoặc rỗng) -> coi như CHƯA vào dungeon (trả nil).
+local function readDungeonName()
+	local Workspace = game:GetService("Workspace")
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj.Name == "dungeonName" and obj:IsA("ValueBase") then
+			local value = obj.Value
+			if type(value) == "string" then
+				local trimmed = string.gsub(value, "%s+", "")
+				if trimmed ~= "" and string.lower(trimmed) ~= DUNGEON_NAME_PLACEHOLDER then
+					return value
+				end
+			end
+		end
+	end
+	return nil
+end
+
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local name = readDungeonName()
+		if name ~= currentDungeonName then
+			currentDungeonName = name
+			if name then shared.ResetBossIndex() end
+			for i = #dungeonNameCallbacks, 1, -1 do
+				pcall(dungeonNameCallbacks[i], name)
+			end
+		end
+	end
+end)
+
+--// Xác định trạng thái lobby dựa trên tên dungeon: có tên dungeon thật = đang ở
+--// trong dungeon; chưa có (placeholder "unknown"/rỗng) = lobby. Không phụ thuộc
+--// nút start ngoài UI.
+local function determineLobbyState()
+	return not (currentDungeonName and #currentDungeonName > 0)
+end
+
+--// Lobby watcher: lobby = startButton hiện diện khi đang ở ngoài dungeon
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local lobby = determineLobbyState()
+		if lobby ~= inLobby then
+			inLobby = lobby
+			for i = #lobbyCallbacks, 1, -1 do
+				pcall(lobbyCallbacks[i], inLobby)
+			end
+		end
+	end
+end)
+
+task.spawn(function()
+	local success, errorMessage = pcall(function() return initializeRooms() end)
+	if not success then
+		warn("[EnemyTracker] Initialization error:", errorMessage)
+	end
+end)
+
+--// Quét trực tiếp toàn bộ dungeon để bắt kịp kẻ địch / boss mới xuất hiện
+local function scanDungeonEnemies()
+	if not dungeon then dungeon = workspace:FindFirstChild("dungeon") end
+	if not dungeon then return end
+	local ok = pcall(function()
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				if room:IsA("Model") and isValidEnemy(room) then
+					waitAndTrackModel(room)
+				end
+				for _, object in ipairs(room:GetDescendants()) do
+					if object:IsA("Model") then
+						waitAndTrackModel(object)
+					end
+				end
+			end
+		end
+		cleanupEnemies()
+	end)
+	if not ok then
+		warn("[EnemyTracker] scanDungeonEnemies error")
+	end
+end
+
+function shared.ForceRescan()
+	scanDungeonEnemies()
+end
+
+--// Re-scan định kỳ: reconcile trackedEnemies với nội dung dungeon hiện tại.
+--// Đảm bảo bắt được kẻ địch mà cơ chế event (DescendantAdded) bỏ lỡ do timing
+--// (Humanoid Health = 0 lúc sinh, room tạo sau init...) -> hết "không thấy kẻ địch".
+local lastRescan = 0
+local RESCAN_INTERVAL = 2
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(RESCAN_INTERVAL)
+		local now = os.clock()
+		if now - lastRescan < RESCAN_INTERVAL then continue end
+		lastRescan = now
+		scanDungeonEnemies()
+	end
+end)
+
+--// Boss state API
+function shared.IsBossActive()
+	return bossActive
+end
+
+function shared.OnBossActiveChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(bossCallbacks, callback)
+	return function()
+		for i, cb in ipairs(bossCallbacks) do
+			if cb == callback then table.remove(bossCallbacks, i) break end
+		end
+	end
+end
+
+function shared.GetCurrentBossIndex()
+	return bossIndex
+end
+
+--// Xác định loại mục tiêu đang đánh để áp setting theo context:
+--// "Mob" (quái thường) hoặc "Boss1"/"Boss2"/"Boss3" theo thứ tự boss hiện tại.
+function shared.GetCombatTargetKey()
+	if not bossActive then return "Mob" end
+	local idx = math.clamp(bossIndex, 1, 3)
+	return "Boss" .. tostring(idx)
+end
+
+function shared.ResetBossIndex()
+	local wasBoss = bossActive
+	bossIndex = 0
+	bossActive = false
+	bossInitialSpawnPos = nil
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
+	if wasBoss then
+		for i = #bossCallbacks, 1, -1 do
+			pcall(bossCallbacks[i], false)
+		end
+	end
+	refreshRoomIndex()
+end
+
+function shared.OnBossIndexChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(bossIndexCallbacks, callback)
+	return function()
+		for i, cb in ipairs(bossIndexCallbacks) do
+			if cb == callback then table.remove(bossIndexCallbacks, i) break end
+		end
+	end
+end
+
+--// Đọc số room từ tên (room1 -> 1, room12 -> 12...). Trả 0 nếu không khớp.
+local function parseRoomNumber(name)
+	if type(name) ~= "string" then return 0 end
+	local lower = string.lower(name)
+	local bossMatch = string.match(lower, "boss.*(%d+)")
+	if bossMatch then
+		return 100 + (tonumber(bossMatch) or 1)
+	end
+	if string.find(lower, "boss") then
+		return 100 + math.max(1, bossIndex)
+	end
+	local number = string.match(name, "^room(%d+)$")
+	if not number then return 0 end
+	return tonumber(number) or 0
+end
+
+--// Tính room hiện tại: room chứa enemy đang track còn sống.
+--// Game clear theo kiểu tuần tự: xong quái room này mới spawn quái room sau, nên
+--// tại 1 thời điểm chỉ có đúng 1 room có quái -> room của bất kỳ quái đang track
+--// chính là room hiện tại (không cần scan theo khoảng cách).
+--// Room nhận diện qua TÊN "room<so>" (room1, room2...). Không có enemy/dungeon -> 0.
+--// Fallback phòng Boss: nếu bossActive = true, trả về 100 + math.max(1, bossIndex) (101, 102...).
+local function computeRoomIndex()
+	if not dungeon then return 0 end
+	for model, data in pairs(trackedEnemies) do
+		if data and data.Room then
+			local idx = parseRoomNumber(data.Room.Name)
+			if idx > 0 then return idx end
+		end
+	end
+	if bossActive then
+		return 100 + math.max(1, bossIndex)
+	end
+	return 0
+end
+
+--// Đồng bộ roomIndex hiện tại, fire callback nếu đổi.
+refreshRoomIndex = function()
+	local newIndex = computeRoomIndex()
+	if newIndex == roomIndex then return end
+	roomIndex = newIndex
+	for i = #roomIndexCallbacks, 1, -1 do
+		pcall(roomIndexCallbacks[i], roomIndex)
+	end
+end
+
+function shared.GetCurrentRoomIndex()
+	return roomIndex
+end
+
+function shared.OnRoomIndexChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(roomIndexCallbacks, callback)
+	return function()
+		for i, cb in ipairs(roomIndexCallbacks) do
+			if cb == callback then table.remove(roomIndexCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Dungeon name ----
+function shared.GetCurrentDungeonName()
+	return currentDungeonName
+end
+
+function shared.OnDungeonNameChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(dungeonNameCallbacks, callback)
+	return function()
+		for i, cb in ipairs(dungeonNameCallbacks) do
+			if cb == callback then table.remove(dungeonNameCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Lobby / Dungeon state ----
+function shared.IsInLobby()
+	return inLobby
+end
+
+function shared.OnLobbyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(lobbyCallbacks, callback)
+	return function()
+		for i, cb in ipairs(lobbyCallbacks) do
+			if cb == callback then table.remove(lobbyCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Player Real Level (dùng cho Webhook, không bị ảnh hưởng bởi UI masking) ----
+local realPlayerLevel = nil
+
+function shared.SetRealPlayerLevel(level)
+	local num = tonumber(tostring(level or ""):match("%d+"))
+	if num and num > 0 then
+		realPlayerLevel = tostring(num)
+		_G.RealPlayerLevel = realPlayerLevel
+	end
+end
+
+function shared.GetRealPlayerLevel()
+	return realPlayerLevel or _G.RealPlayerLevel
+end
+
+--// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
+local bossHealthRef = nil
+
+tryCaptureBossSpawnPosition = function()
+	if not bossActive or bossInitialSpawnPos ~= nil then return end
+	for enemy, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			local isBossCandidate = false
+			if data.Room and type(data.Room.Name) == "string" and string.find(string.lower(data.Room.Name), "boss") then
+				isBossCandidate = true
+			elseif string.find(string.lower(enemy.Name), "boss") then
+				isBossCandidate = true
+			elseif enemy.Parent and string.find(string.lower(enemy.Parent.Name), "boss") then
+				isBossCandidate = true
+			end
+
+			if isBossCandidate then
+				bossInitialSpawnPos = data.Root.Position
+				return
+			end
+		end
+	end
+
+	for _, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			bossInitialSpawnPos = data.Root.Position
+			return
+		end
+	end
+end
+
+local function setBossActive(active)
+	if bossActive == active then return end
+	bossActive = active
+	if active then
+		bossIndex += 1
+		bossInitialSpawnPos = nil
+		scanDungeonEnemies()
+		tryCaptureBossSpawnPosition()
+		for i = #bossIndexCallbacks, 1, -1 do
+			pcall(bossIndexCallbacks[i], bossIndex)
+		end
+	else
+		bossInitialSpawnPos = nil
+	end
+	for i = #bossCallbacks, 1, -1 do
+		pcall(bossCallbacks[i], bossActive)
+	end
+	refreshRoomIndex()
+end
+
+function shared.GetBossSpawnPosition()
+	if bossInitialSpawnPos then
+		return bossInitialSpawnPos
+	end
+	tryCaptureBossSpawnPosition()
+	return bossInitialSpawnPos
+end
+
+function shared.SetBossSpawnPosition(pos)
+	bossInitialSpawnPos = pos
+end
+
+local function scanBossGui()
+	if not player then return end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then
+		bossHealthRef = nil
+		setBossActive(false)
+		return
+	end
+	local found = playerGui:FindFirstChild("bossHealth", true)
+	if found then
+		if found ~= bossHealthRef then
+			bossHealthRef = found
+			if bossHealthRef:IsA("ScreenGui") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui))
+			elseif bossHealthRef:IsA("GuiObject") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Visible"):Connect(scanBossGui))
+			end
+		end
+		local visible = if found:IsA("ScreenGui") then found.Enabled elseif found:IsA("GuiObject") then found.Visible else true
+		setBossActive(visible)
+	else
+		bossHealthRef = nil
+		setBossActive(false)
+	end
+end
+
+task.spawn(function()
+	if not player then return end
+	local playerGui = player:WaitForChild("PlayerGui", 30)
+	if not playerGui then return end
+
+	trackCleanupConnection(playerGui.DescendantAdded:Connect(scanBossGui))
+	trackCleanupConnection(playerGui.DescendantRemoving:Connect(scanBossGui))
+	scanBossGui()
+
+	--// Poll an toàn phòng trường hợp DescendantRemoving bỏ sót khi GUI bị xóa cục bộ
+	while lifecycle.IsActive() and task.wait(0.5) do
+		scanBossGui()
+	end
+end)
+
+--// ControlModule Management (ngăn Roblox ControlModule ghi đè Move(0,0,0) mỗi frame)
+local controlsModule = nil
+local activeControlClaims = {}
+
+local function getPlayerControls()
+	if controlsModule then return controlsModule end
+	pcall(function()
+		local lp = player or game:GetService("Players").LocalPlayer
+		local pScripts = lp and lp:FindFirstChild("PlayerScripts")
+		local pMod = pScripts and pScripts:FindFirstChild("PlayerModule")
+		if pMod then
+			controlsModule = require(pMod):GetControls()
+		end
+	end)
+	return controlsModule
+end
+
+function shared.DisableControls(tag)
+	tag = tag or "default"
+	activeControlClaims[tag] = true
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Disable) == "function" then
+		pcall(function() ctrl:Disable() end)
+	end
+end
+
+function shared.EnableControls(tag)
+	tag = tag or "default"
+	activeControlClaims[tag] = nil
+	if next(activeControlClaims) ~= nil then
+		return
+	end
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Enable) == "function" then
+		pcall(function() ctrl:Enable() end)
+	end
+end
+
+lifecycle.Register(function()
+	if speedConnection then speedConnection:Disconnect(); speedConnection = nil end
+	for _, connection in ipairs(cleanupConnections) do
+		pcall(function() connection:Disconnect() end)
+	end
+	table.clear(cleanupConnections)
+	table.clear(activeControlClaims)
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Enable) == "function" then
+		pcall(function() ctrl:Enable() end)
+	end
+	resetDungeon()
+end)
+
+--// Table
+return shared
+end function __DIST.i()-- Core Contextual cho DungeonQuest: Quản lý thiết lập khoảng cách chiến đấu (Min/Max Combat Distance)
+-- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
+-- Dữ liệu được nhúng và lưu trữ trực tiếp trong config MacLib (macLib.contextData).
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('c')
+local shared = __DIST.load('h')
+
+--// Table
+local contextual = {}
+
+--// Default Values per Target Type
+local DEFAULT_DISTANCES = {
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+}
+
+local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
+
+local DISPLAY_TO_KEY = {
+	["Normal"] = "Mob",
+	["Boss 1"] = "Boss1",
+	["Boss 2"] = "Boss2",
+	["Boss 3"] = "Boss3",
+}
+
+local KEY_TO_DISPLAY = {
+	["Mob"] = "Normal",
+	["Boss1"] = "Boss 1",
+	["Boss2"] = "Boss 2",
+	["Boss3"] = "Boss 3",
+}
+
+--// Storage: data[dungeonName][targetKey] = { Min = number, Max = number }
+local data = {}
+local dataChangedCallbacks = {}
+
+function contextual.GetTargetDisplay(key)
+	return KEY_TO_DISPLAY[key] or "Normal"
+end
+
+function contextual.GetTargetKey(display)
+	return DISPLAY_TO_KEY[display] or "Mob"
+end
+
+function contextual.GetTargetOptions()
+	return { "Normal", "Boss 1", "Boss 2", "Boss 3" }
+end
+
+--// Nạp và xuất dữ liệu config
+function contextual.GetSaveData()
+	return data
+end
+
+function contextual.LoadData(incomingData)
+	if type(incomingData) == "table" then
+		data = incomingData
+	else
+		data = {}
+	end
+	macLib.contextData = data
+
+	for _, cb in ipairs(dataChangedCallbacks) do
+		pcall(cb)
+	end
+end
+
+function contextual.OnDataChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(dataChangedCallbacks, callback)
+	return function()
+		for i, cb in ipairs(dataChangedCallbacks) do
+			if cb == callback then
+				table.remove(dataChangedCallbacks, i)
+				break
+			end
+		end
+	end
+end
+
+local function syncToMacLibAndSave()
+	macLib.contextData = data
+	autoSave.Save()
+end
+
+--// Lấy khoảng cách Min/Max của 1 Dungeon x Target cụ thể
+function contextual.GetCombatDistances(dungeonName, targetKey)
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		local minVal = (type(entry.Min) == "number" and entry.Min > 0) and entry.Min or def.Min
+		local maxVal = (type(entry.Max) == "number" and entry.Max > 0) and entry.Max or def.Max
+		return minVal, maxVal
+	end
+
+	return def.Min, def.Max
+end
+
+--// Lấy khoảng cách Min/Max hiện tại dựa trên Dungeon và Target đang chiến đấu
+function contextual.GetActiveCombatDistances(target)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetCombatDistances(dungeon, targetKey)
+end
+
+--// Lấy thiết lập Boss Area (Enabled, Radius) của 1 Dungeon x Target cụ thể (chỉ Boss)
+function contextual.GetBossArea(dungeonName, targetKey)
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then
+		return false, 80.0
+	end
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Boss1
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		local enabled = entry.BossArea == true
+		local radius = (type(entry.BossAreaRadius) == "number" and entry.BossAreaRadius > 0) and entry.BossAreaRadius or (def.BossAreaRadius or 80.0)
+		return enabled, radius
+	end
+	return def.BossArea or false, def.BossAreaRadius or 80.0
+end
+
+--// Cập nhật Boss Area Enabled
+function contextual.SetBossAreaEnabled(dungeonName, targetKey, enabled)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].BossArea = enabled and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Cập nhật Boss Area Radius
+function contextual.SetBossAreaRadius(dungeonName, targetKey, radius)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
+	if type(radius) ~= "number" or radius <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].BossAreaRadius = radius
+
+	syncToMacLibAndSave()
+end
+
+--// Lấy thông tin Boss Area đang hoạt động trong trận chiến hiện tại: (enabled, radius, centerPosition)
+function contextual.GetActiveBossArea(target)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	if not isBoss or targetKey == "Mob" then
+		return false, 0, nil
+	end
+
+	local enabled, radius = contextual.GetBossArea(dungeon, targetKey)
+	if not enabled then
+		return false, radius, nil
+	end
+
+	local center = shared.GetBossSpawnPosition and shared.GetBossSpawnPosition()
+	if not center and target and target.Root then
+		center = target.Root.Position
+		if shared.SetBossSpawnPosition then
+			shared.SetBossSpawnPosition(center)
+		end
+	end
+
+	return enabled, radius, center
+end
+
+--// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể
+function contextual.GetDisableDodge(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.DisableDodge ~= nil then
+			return entry.DisableDodge == true
+		end
+	end
+
+	return def.DisableDodge or false
+end
+
+--// Cập nhật trạng thái Disable Dodge
+function contextual.SetDisableDodge(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].DisableDodge = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Lấy trạng thái Enable Hazard Scanner của 1 Dungeon x Target cụ thể
+function contextual.GetEnableHazardScanner(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.EnableHazardScanner ~= nil then
+			return entry.EnableHazardScanner == true
+		end
+	end
+
+	return def.EnableHazardScanner ~= false
+end
+
+--// Cập nhật trạng thái Enable Hazard Scanner
+function contextual.SetEnableHazardScanner(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].EnableHazardScanner = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
+function contextual.IsActiveDodgeDisabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetDisableDodge(dungeon, targetKey)
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có được bật Hazard Scanner không
+function contextual.IsActiveHazardScannerEnabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	-- Nếu tắt Dodge trên mục tiêu này thì cũng tự động tắt Hazard Scanner
+	if contextual.GetDisableDodge(dungeon, targetKey) then
+		return false
+	end
+
+	return contextual.GetEnableHazardScanner(dungeon, targetKey)
+end
+
+--// Cập nhật Min Combat Distance
+function contextual.SetMinCombatDistance(dungeonName, targetKey, minVal)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if type(minVal) ~= "number" or minVal <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+
+	local currentMax = data[dungeonName][tKey].Max or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Max
+	data[dungeonName][tKey].Min = minVal
+
+	if minVal > currentMax then
+		data[dungeonName][tKey].Max = minVal + 5.0
+	end
+
+	syncToMacLibAndSave()
+end
+
+--// Cập nhật Max Combat Distance
+function contextual.SetMaxCombatDistance(dungeonName, targetKey, maxVal)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if type(maxVal) ~= "number" or maxVal <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+
+	local currentMin = data[dungeonName][tKey].Min or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Min
+	data[dungeonName][tKey].Max = maxVal
+
+	if maxVal < currentMin then
+		data[dungeonName][tKey].Min = math.max(1.0, maxVal - 5.0)
+	end
+
+	syncToMacLibAndSave()
+end
+
+--// Reset một target trong dungeon về mặc định
+function contextual.ResetTarget(dungeonName, targetKey)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if data[dungeonName] then
+		data[dungeonName][tKey] = nil
+		if next(data[dungeonName]) == nil then
+			data[dungeonName] = nil
+		end
+		syncToMacLibAndSave()
+	end
+end
+
+--// Reset toàn bộ các target của 1 dungeon về mặc định
+function contextual.ResetDungeon(dungeonName)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	if data[dungeonName] then
+		data[dungeonName] = nil
+		syncToMacLibAndSave()
+	end
+end
+
+return contextual
+end function __DIST.j()-- Module Config trong tab Configs (DungeonQuest): tự build config section dùng API Maclib
+-- (SaveConfig/LoadConfig/RefreshConfigList) và Dropdown (UpdateSelection/IsOption/Value...).
+-- Hỗ trợ auto-select config autoload + auto-save (xem core/autoSave).
+
+--// Imports
+
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('c')
+local autoHide = __DIST.load('d')
+local coordinator = __DIST.load('e')
+
+return function(window, tab)
+	local folder = macLib.Folder
+	local autoloadPath = folder .. "/settings/autoload.txt"
+
+	local function getAutoloadName()
+		if isfile and isfile(autoloadPath) then
+			local ok, name = pcall(readfile, autoloadPath)
+			if ok and type(name) == "string" then
+				name = string.gsub(name, "[\r\n%s]+", "")
+				if #name > 0 then
+					return name
+				end
+			end
+		end
+		return nil
+	end
+
+	local function activate(name)
+		autoSave.SetActive(name)
+		local contextual = __DIST.load('i')
+		contextual.LoadData(macLib.contextData)
+		if autoloadLabel then
+			pcall(function()
+				autoloadLabel:UpdateName("Autoload config: " .. name)
+			end)
+		end
+	end
+
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "Configs" })
+
+	local inputPath = nil
+	local configSelection
+	local autoloadLabel
+
+	local function refreshOptions(keep)
+		local options = macLib:RefreshConfigList()
+		configSelection:ClearOptions()
+		configSelection:InsertOptions(options)
+		if keep then
+			if not configSelection:IsOption(keep) then
+				configSelection:InsertOptions({ keep })
+			end
+			configSelection:UpdateSelection(keep)
+		end
+	end
+
+	section:Input({
+		Name = "Config Name",
+		Placeholder = "Name",
+		AcceptedCharacters = "All",
+		Callback = function(input)
+			inputPath = input
+		end,
+	})
+
+	configSelection = section:Dropdown({
+		Name = "Select Config",
+		Multi = false,
+		Required = false,
+		Options = macLib:RefreshConfigList(),
+		Callback = function(value)
+			-- Không gọi activate(value) ở đây.
+			-- Chỉ chọn tên config để thực hiện Load / Overwrite / Set as autoload.
+			-- Tránh autoSave lưu đè UI hiện tại vào config mới chọn trước khi người dùng kịp Load!
+		end,
+	})
+
+	--// Auto-select config autoload (nếu đã set) để dropdown luôn chỉ đúng config đang dùng
+	local autoloadName = getAutoloadName()
+	if autoloadName and autoloadName ~= "" then
+		if not configSelection:IsOption(autoloadName) then
+			configSelection:InsertOptions({ autoloadName })
+		end
+		configSelection:UpdateSelection(autoloadName)
+		activate(autoloadName)
+	end
+
+	section:Button({
+		Name = "Create Config",
+		Callback = function()
+			if not inputPath or string.gsub(inputPath, " ", "") == "" then
+				window:Notify({ Title = "Interface", Description = "Config name cannot be empty." })
+				return
+			end
+
+			local success, err = macLib:SaveConfig(inputPath)
+			if not success then
+				window:Notify({ Title = "Interface", Description = "Unable to save config: " .. tostring(err) })
+				return
+			end
+
+			window:Notify({ Title = "Interface", Description = string.format("Created config %q", inputPath) })
+			refreshOptions(inputPath)
+			activate(inputPath)
+		end,
+	})
+
+	section:Button({
+		Name = "Load Config",
+		Callback = function()
+			local name = configSelection.Value
+			if not name or name == "" then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
+			-- Suspend autoSave & Lock coordinator trong suốt quá trình LoadConfig
+			autoSave.Suspend()
+			coordinator.SetLocked(true)
+
+			local success, err = macLib:LoadConfig(name)
+			if not success then
+				coordinator.SetLocked(false)
+				autoSave.Resume()
+				window:Notify({ Title = "Interface", Description = "Unable to load config: " .. tostring(err) })
+				return
+			end
+
+			activate(name)
+
+			-- Mở lại coordinator và autoSave sau khi các toggle/slider đã đồng bộ xong
+			task.delay(0.5, function()
+				coordinator.SetLocked(false)
+			end)
+			task.delay(1.5, function()
+				autoSave.Resume()
+			end)
+
+			window:Notify({ Title = "Interface", Description = string.format("Loaded config %q", name) })
+		end,
+	})
+
+	section:Button({
+		Name = "Overwrite Config",
+		Callback = function()
+			local name = configSelection.Value
+			if not name or name == "" then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
+			local success, err = macLib:SaveConfig(name)
+			if not success then
+				window:Notify({ Title = "Interface", Description = "Unable to overwrite config: " .. tostring(err) })
+				return
+			end
+
+			activate(name)
+			window:Notify({ Title = "Interface", Description = string.format("Overwrote config %q", name) })
+		end,
+	})
+
+	section:Button({
+		Name = "Set as autoload",
+		Callback = function()
+			local name = configSelection.Value
+			if not name then
+				window:Notify({ Title = "Interface", Description = "Please select a config first." })
+				return
+			end
+
+			writefile(autoloadPath, name)
+			autoloadLabel:UpdateName("Autoload config: " .. name)
+			window:Notify({ Title = "Interface", Description = string.format("Set %q as autoload", name) })
+			activate(name)
+		end,
+	})
+
+	section:Button({
+		Name = "Refresh Config List",
+		Callback = function()
+			refreshOptions(configSelection.Value)
+		end,
+	})
+
+	autoloadLabel = section:Label({ Text = "Autoload config: None" })
+	local currentAuto = getAutoloadName()
+	if currentAuto and currentAuto ~= "" then
+		autoloadLabel:UpdateName("Autoload config: " .. currentAuto)
+	end
+
+	section:Header({ Name = "Auto Hide UI" })
+	section:Toggle({
+		Name = "Hide window after execute",
+		Default = autoHide.IsEnabled(),
+		Callback = function(state)
+			autoHide.SetEnabled(state)
+		end,
+	}, "Toggle_AutoHide")
+
+	section:Label({
+		Text = "Press RightControl to show the window again.",
+	})
+end
+end function __DIST.k()-- ZoneGuard (DungeonQuest): Bộ điều phối & bảo vệ không gian hoạt động (Lobby vs Dungeon).
+-- Đảm bảo 100% các tính năng chỉ chạy đúng trong không gian được chỉ định,
+-- tự động đóng băng tài nguyên khi ở sai môi trường và ngăn chặn các hành vi ngoài ý muốn.
+
+
+local lifecycle = __DIST.load('g')
+local shared = __DIST.load('h')
+
+local zoneGuard = {}
+
+--// State
+
+
+
+
+
+
+
+
+
+local registrations: { [string]: ZoneRegistration__DARKLUA_TYPE_b } = {}
+local zoneChangedCallbacks: { (Zone__DARKLUA_TYPE_a, Zone__DARKLUA_TYPE_a) -> () } = {}
+local currentZone: Zone__DARKLUA_TYPE_a = "Lobby"
+
+--// Lấy không gian hiện tại
+function zoneGuard.GetCurrentZone(): Zone__DARKLUA_TYPE_a
+	return shared.IsInLobby() and "Lobby" or "Dungeon"
+end
+
+--// Kiểm tra xem hiện tại có thuộc Zone mong muốn không
+function zoneGuard.IsInZone(expectedZone: Zone__DARKLUA_TYPE_a): boolean
+	if expectedZone == "Global" then return true end
+	return zoneGuard.GetCurrentZone() == expectedZone
+end
+
+function zoneGuard.IsLobby(): boolean
+	return zoneGuard.GetCurrentZone() == "Lobby"
+end
+
+function zoneGuard.IsDungeon(): boolean
+	return zoneGuard.GetCurrentZone() == "Dungeon"
+end
+
+--// Đăng ký 1 module với Zone cụ thể
+function zoneGuard.Register(reg: ZoneRegistration__DARKLUA_TYPE_b)
+	if not reg or type(reg.Name) ~= "string" or not reg.Zone then return end
+	registrations[reg.Name] = reg
+
+	-- Nếu đang ở đúng zone tại thời điểm đăng ký -> gọi OnEnter ngay lập tức
+	if zoneGuard.IsInZone(reg.Zone) and reg.OnEnter then
+		task.spawn(function()
+			pcall(reg.OnEnter)
+		end)
+	end
+end
+
+function zoneGuard.Unregister(name: string)
+	registrations[name] = nil
+end
+
+--// Lớp bọc bảo vệ (Guard Wrapper): Chỉ cho phép hàm thực thi khi ở đúng Zone
+function zoneGuard.Guard<T...>(zone: Zone__DARKLUA_TYPE_a, fn: (T...) -> any, fallbackValue: any?): (T...) -> any
+	return function(...)
+		if not zoneGuard.IsInZone(zone) then
+			return fallbackValue
+		end
+		return fn(...)
+	end
+end
+
+--// Lắng nghe sự kiện chuyển đổi Zone
+function zoneGuard.OnZoneChanged(callback: (newZone: Zone__DARKLUA_TYPE_a, oldZone: Zone__DARKLUA_TYPE_a) -> ())
+	if type(callback) == "function" then
+		table.insert(zoneChangedCallbacks, callback)
+	end
+end
+
+--// Xử lý chuyển đổi Zone tập trung
+local function handleZoneTransition(inLobby: boolean)
+	local newZone: Zone__DARKLUA_TYPE_a = inLobby and "Lobby" or "Dungeon"
+	if newZone == currentZone then return end
+
+	local oldZone = currentZone
+	currentZone = newZone
+
+	-- 1. Gọi OnLeave cho các hệ thống thuộc Zone cũ
+	for _, reg in pairs(registrations) do
+		if reg.Zone ~= "Global" and reg.Zone == oldZone and reg.OnLeave then
+			task.spawn(function()
+				pcall(reg.OnLeave)
+			end)
+		end
+	end
+
+	-- 2. Gọi OnEnter cho các hệ thống thuộc Zone mới
+	for _, reg in pairs(registrations) do
+		if reg.Zone ~= "Global" and reg.Zone == newZone and reg.OnEnter then
+			task.spawn(function()
+				pcall(reg.OnEnter)
+			end)
+		end
+	end
+
+	-- 3. Bắn sự kiện cho các listeners bên ngoài
+	for _, cb in ipairs(zoneChangedCallbacks) do
+		task.spawn(function()
+			pcall(cb, newZone, oldZone)
+		end)
+	end
+end
+
+-- Khởi tạo ban đầu
+currentZone = zoneGuard.GetCurrentZone()
+
+-- Lắng nghe từ shared
+shared.OnLobbyChanged(function(inLobby)
+	handleZoneTransition(inLobby)
+end)
+
+lifecycle.Register(function()
+	table.clear(registrations)
+	table.clear(zoneChangedCallbacks)
+end)
+
+return zoneGuard
+end function __DIST.l()-- Auto Retry Dungeon cho DungeonQuest: khi reward holder có >= 2 item thì fire replayDungeon.
+
+--// Imports
+
+local services = __DIST.load('f')
+local notifier = __DIST.load('b')
+local lifecycle = __DIST.load('g')
+local zoneGuard = __DIST.load('k')
+
+--// References
+local player = services.player
+
+--// State
+local AUTO_RETRY_MIN_ITEMS = 2
+local autoRetryEnabled = false
+local autoRetryRunning = false
+local autoRetryTriggered = false
+local timeRetryEnabled = false
+local timeRetryThreshold = 60
+local timeRetryTriggered = false
+local autoRetryCommand = [==[
+local ReplayDungeon = game:GetService("ReplicatedStorage"):WaitForChild("remotes"):WaitForChild("replayDungeon")
+
+local payload = {}
+local function collectValue(name)
+	local value = workspace:FindFirstChild(name)
+	if value and value:IsA("ValueBase") then
+		payload[name] = value.Value
+	end
+end
+
+collectValue("dungeonName")
+collectValue("dungeonProgress")
+collectValue("dungeonStarted")
+
+local hardcore = workspace:FindFirstChild("hardcore")
+if hardcore and hardcore:IsA("BoolValue") then
+	payload.hardcore = hardcore.Value
+	payload.isHardcore = hardcore.Value
+end
+
+local dungeon = workspace:FindFirstChild("dungeon")
+if dungeon then
+	for _, value in ipairs(dungeon:GetChildren()) do
+		if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+	end
+	local bossRoom = dungeon:FindFirstChild("bossRoom")
+	if bossRoom then
+		for _, value in ipairs(bossRoom:GetChildren()) do
+			if value:IsA("ValueBase") then payload[value.Name] = value.Value end
+		end
+	end
+end
+
+if not payload.dungeonName then return end
+ReplayDungeon:FireServer(payload)
+]==]
+local autoRetryHolderPath = 'game:GetService("Players").LocalPlayer.PlayerGui.rewardGuiHolder.holder'
+local autoRetryCommandFn = nil
+local autoRetryHolderFn = nil
+
+--// Helpers (validation dùng loadstring, giữ logic gốc)
+local function validateConditionText(text)
+	local s, fn = pcall(loadstring, "return " .. text)
+	if s and type(fn) == "function" then return fn end
+	return nil
+end
+
+local sRetryCmd, compiledRetryCmd = pcall(loadstring, autoRetryCommand)
+if sRetryCmd and type(compiledRetryCmd) == "function" then autoRetryCommandFn = compiledRetryCmd end
+
+autoRetryHolderFn = validateConditionText(autoRetryHolderPath)
+if not autoRetryHolderFn then
+	autoRetryHolderFn = function()
+		return player:FindFirstChild("PlayerGui") and player.PlayerGui:FindFirstChild("rewardGuiHolder") and player.PlayerGui.rewardGuiHolder:FindFirstChild("holder")
+	end
+end
+
+--// Đọc thẳng giá trị thời gian còn lại từ UI game: PlayerGui.timeLeftGui.Frame.time
+local function readTimeLeft()
+	local ok, inst = pcall(function()
+		local PlayerGui = player:FindFirstChild("PlayerGui")
+		local gui = PlayerGui and PlayerGui:FindFirstChild("timeLeftGui")
+		local frame = gui and gui:FindFirstChild("Frame")
+		return frame and frame:FindFirstChild("time")
+	end)
+	if not ok or typeof(inst) ~= "Instance" then return nil end
+
+	--// Ưu tiên ValueBase (NumberValue...), nếu không thì đọc Text của TextLabel
+	local raw
+	if inst:IsA("ValueBase") then
+		raw = inst.Value
+	else
+		raw = inst.Text
+	end
+	if type(raw) == "number" then return raw end
+	if type(raw) == "string" then
+		local cleaned = raw:gsub("%s+", ""):gsub("^%[", ""):gsub("%]$", "")
+		local m, s = cleaned:match("^(%d+):(%d+)$")
+		if m and s then return tonumber(m) * 60 + tonumber(s) end
+		local sec = tonumber(cleaned)
+		if sec then return sec end
+	end
+	return nil
+end
+
+--// Table
+local autoRetry = {}
+
+--// Fire remote retry, trả về true nếu thành công
+local function fireRetry()
+	if not zoneGuard.IsDungeon() then return false end
+	if not autoRetryCommandFn then
+		notifier.Notify("Auto Retry", "Remote command invalid", 3)
+		return false
+	end
+	local sCmd, err = pcall(autoRetryCommandFn)
+	if sCmd then
+		notifier.Notify("Auto Retry", "Retrying dungeon!", 3)
+		return true
+	end
+	notifier.Notify("Auto Retry", "Trigger failed: " .. tostring(err), 3)
+	return false
+end
+
+--// Methods
+function autoRetry.Start()
+	if autoRetryRunning then return end
+	autoRetryRunning = true
+	autoRetryTriggered = false
+	timeRetryTriggered = false
+	task.spawn(function()
+		while (autoRetryEnabled or timeRetryEnabled) and lifecycle.IsActive() do
+			if not zoneGuard.IsDungeon() then
+				task.wait(1)
+				continue
+			end
+
+			--// Điều kiện reward (>= 2 item) - chạy riêng theo master Auto Retry
+			if autoRetryEnabled then
+				local count = 0
+				if autoRetryHolderFn then
+					local sok, holder = pcall(autoRetryHolderFn)
+					if sok and typeof(holder) == "Instance" and holder.Parent then
+						count = #holder:GetChildren()
+					end
+				end
+				if count >= AUTO_RETRY_MIN_ITEMS and not autoRetryTriggered then
+					autoRetryTriggered = true
+					fireRetry()
+				elseif count < AUTO_RETRY_MIN_ITEMS then
+					autoRetryTriggered = false
+				end
+			end
+
+			--// Điều kiện hết giờ (chạy độc lập khi bật Retry on Time Low):
+			--// UI còn < X giây thì retry
+			if timeRetryEnabled then
+				local remaining = readTimeLeft()
+				if remaining and remaining < timeRetryThreshold and not timeRetryTriggered then
+					timeRetryTriggered = true
+					fireRetry()
+				elseif remaining and remaining >= timeRetryThreshold then
+					timeRetryTriggered = false
+				end
+			end
+
+			if not autoRetryEnabled and not timeRetryEnabled then break end
+			task.wait(0.75)
+		end
+		autoRetryRunning = false
+	end)
+end
+
+function autoRetry.Stop()
+	autoRetryEnabled = false
+end
+
+function autoRetry.Toggle(state)
+	autoRetryEnabled = state
+	if state then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching reward holder...", 2)
+	else
+		autoRetry.Stop()
+		notifier.Notify("Auto Retry", "Stopped", 2)
+	end
+end
+
+function autoRetry.SetTimeRetryEnabled(value)
+	timeRetryEnabled = value == true
+	if timeRetryEnabled then
+		timeRetryTriggered = false
+		autoRetry.Start()
+		notifier.Notify("Auto Retry", "Watching time left...", 2)
+	else
+		notifier.Notify("Auto Retry", "Time retry stopped", 2)
+	end
+end
+
+function autoRetry.GetTimeRetryEnabled()
+	return timeRetryEnabled
+end
+
+function autoRetry.SetTimeRetryThreshold(value)
+	timeRetryThreshold = value
+end
+
+function autoRetry.GetTimeRetryThreshold()
+	return timeRetryThreshold
+end
+
+--// Đọc thời gian còn lại (giây) như đúng logic time-low đang dùng (UI playerGui.timeLeftGui.Frame.<time>)
+function autoRetry.GetTimeLeft()
+	return readTimeLeft()
+end
+
+function autoRetry.RetryNow()
+	if not zoneGuard.IsDungeon() then
+		notifier.Notify("Auto Retry", "Only available in Dungeon!", 3)
+		return
+	end
+	task.spawn(function()
+		fireRetry()
+	end)
+end
+
+--// Register with ZoneGuard
+zoneGuard.Register({
+	Name = "AutoRetry",
+	Zone = "Dungeon",
+	OnLeave = function()
+		autoRetryTriggered = false
+		timeRetryTriggered = false
+	end,
+})
+
+lifecycle.Register(function()
+	autoRetry.Stop()
+	timeRetryEnabled = false
+end)
+
+return autoRetry
+end function __DIST.m()-- Module State trong tab Configs (DungeonQuest): hiển thị trạng thái thời gian thực.
+
+--// Imports
+
+local shared = __DIST.load('h')
+local autoRetry = __DIST.load('l')
+
+local BOSS_LABEL = "Boss Active"
+local BOSS_INDEX_LABEL = "Boss"
+local DUNGEON_LABEL = "Dungeon"
+local TIMER_LABEL = "Time Left"
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Right" })
+	section:Header({ Name = "Status" })
+
+	local bossLabel = section:Label({
+		Text = BOSS_LABEL .. ": " .. (shared.IsBossActive() and "Yes" or "No"),
+	})
+
+	local function updateBoss(active)
+		local color = active and "0, 255, 0" or "255, 80, 80"
+		bossLabel:UpdateName(BOSS_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. (active and "Yes" or "No") .. "</font>")
+	end
+
+	updateBoss(shared.IsBossActive())
+
+	shared.OnBossActiveChanged(function(active)
+		updateBoss(active)
+	end)
+
+	local bossIndexLabel = section:Label({
+		Text = BOSS_INDEX_LABEL .. ": 0",
+	})
+
+	local function updateBossIndex()
+		bossIndexLabel:UpdateName(BOSS_INDEX_LABEL .. ": " .. shared.GetCurrentBossIndex())
+	end
+
+	updateBossIndex()
+
+	shared.OnBossIndexChanged(function()
+		updateBossIndex()
+	end)
+
+	local roomLabel = section:Label({
+		Text = "Room: --",
+	})
+
+	local function updateRoom()
+		local room = shared.GetCurrentRoomIndex()
+		if room <= 0 then
+			roomLabel:UpdateName("Room: <font color='rgb(160, 160, 160)'>--</font>")
+			return
+		end
+		local isBoss = room >= 100
+		local color = isBoss and "255, 200, 80" or "0, 255, 0"
+		roomLabel:UpdateName("Room: <font color='rgb(" .. color .. ")'>" .. tostring(room) .. "</font>")
+	end
+
+	updateRoom()
+
+	shared.OnRoomIndexChanged(function()
+		updateRoom()
+	end)
+
+	local enemyCountLabel = section:Label({
+		Text = "Enemies: 0",
+	})
+
+	local function updateEnemyCount()
+		if not shared.IsInLobby() and not shared.GetCurrentDungeonName() then
+			enemyCountLabel:UpdateName("Enemies: <font color='rgb(160, 160, 160)'>--</font>")
+			return
+		end
+		local count = shared.GetEnemyCount()
+		local color = count > 0 and "0, 255, 0" or "255, 80, 80"
+		enemyCountLabel:UpdateName("Enemies: <font color='rgb(" .. color .. ")'>" .. count .. "</font>")
+	end
+
+	section:Header({ Name = "Timer" })
+
+	local timeLeftLabel = section:Label({
+		Text = TIMER_LABEL .. ": --",
+	})
+
+	local function updateTimeLeft()
+		local remaining = autoRetry.GetTimeLeft()
+		if not remaining then
+			timeLeftLabel:UpdateName(TIMER_LABEL .. ": <font color='rgb(160, 160, 160)'>--</font>")
+			return
+		end
+		local total = math.floor(remaining)
+		local formatted = string.format("%d:%02d", math.floor(total / 60), total % 60)
+		local low = autoRetry.GetTimeRetryEnabled() and remaining < autoRetry.GetTimeRetryThreshold()
+		local color = low and "255, 80, 80" or "0, 255, 0"
+		timeLeftLabel:UpdateName(TIMER_LABEL .. ": <font color='rgb(" .. color .. ")'>" .. formatted .. "</font>")
+	end
+
+	updateEnemyCount()
+
+	updateTimeLeft()
+
+	--// Forward declaration: updateLobby được định nghĩa phía dưới nhưng poll loop
+	--// ở đây chạy trước -> nếu không khai báo trước sẽ thành global nil.
+	local updateLobby
+
+	task.spawn(function()
+		while task.wait(0.5) do
+			updateBoss(shared.IsBossActive())
+			updateBossIndex()
+			updateRoom()
+			updateEnemyCount()
+			updateLobby()
+			updateTimeLeft()
+		end
+	end)
+
+	section:Header({ Name = "Level Info" })
+
+	local dungeonLabel = section:Label({
+		Text = DUNGEON_LABEL .. ": Unknown",
+	})
+
+	local function updateDungeon()
+		local name = shared.GetCurrentDungeonName()
+		if name then
+			dungeonLabel:UpdateName(DUNGEON_LABEL .. ": " .. name)
+		else
+			dungeonLabel:UpdateName(DUNGEON_LABEL .. ": <font color='rgb(255, 80, 80)'>Unknown</font>")
+		end
+	end
+
+	updateDungeon()
+
+	shared.OnDungeonNameChanged(function()
+		updateDungeon()
+	end)
+
+	section:Header({ Name = "Lobby / Dungeon" })
+
+	local lobbyLabel = section:Label({
+		Text = "Lobby: Unknown",
+	})
+
+	updateLobby = function()
+		local inLobby = shared.IsInLobby()
+		local color = inLobby and "0, 255, 0" or "255, 80, 80"
+		lobbyLabel:UpdateName("Lobby: <font color='rgb(" .. color .. ")'>" .. (inLobby and "Yes" or "No") .. "</font>")
+	end
+
+	updateLobby()
+
+	shared.OnLobbyChanged(function()
+		updateLobby()
+	end)
+
+	section:Button({
+		Name = "Log Enemy Types to Console",
+		Callback = function()
+			local names = shared.GetEnemyNames()
+			print("[DungeonQuest] Enemy types in map (" .. #names .. "):")
+			if #names == 0 then
+				print("  (no enemies found)")
+			else
+				for _, name in ipairs(names) do
+					print("  - " .. name)
+				end
+			end
+		end,
+	})
+end
+end end-- Tab Configs (DungeonQuest): gộp Config (quản lý config) + State (giám sát realtime).
+-- Mỗi module con render sections vào cùng 2 cột của tab này (gọi theo thứ tự).
+
+
+return function(window, tab)
+__DIST.load('j')(window, tab)
+__DIST.load('m')(window, tab)
+end

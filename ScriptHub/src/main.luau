@@ -28,6 +28,17 @@ local routes = {
 	},
 
 	{
+		Name = "SlopTowerDefense",
+		Load = require("@routes/SlopTowerDefense/main"),
+		UniverseId = 10529769390,
+		Places = {
+			134459712190924, -- Lobby
+			85247278545351,  -- The Game
+			119785202494667, -- AFK
+		},
+	},
+
+	{
 		Name = "Game 2",
 		Load = require("@routes/Game 2/main"),
 		Places = {

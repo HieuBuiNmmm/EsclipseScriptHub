@@ -1,20 +1,35 @@
+type LocationType__DARKLUA_TYPE_a = "Lobby" | "InGame"
+
+type TowerInfo__DARKLUA_TYPE_b = {
+	Instance: Instance,
+	Id: string,
+	Name: string,
+	Level: number,
+	Position: Vector3,
+	Owner: Player?,
+	TargetMode: string?
+}
+
+type TargetPriority__DARKLUA_TYPE_c = "First" | "Last" | "Strongest" | "Weakest"
+
+type MacroAction__DARKLUA_TYPE_d = {
+	ActionType: "Place" | "Upgrade" | "Sell" | "Ability",
+	Wave: number,
+	TimeOffset: number,
+	TowerName: string?,
+	Position: { number }?,
+	Rotation: number?,
+	TowerId: string?
+}
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()
 local MacLib = { 
 	Options = {}, 
-	OptionOrder = {},
 	Folder = "Maclib", 
 	contextData = {},
 	GetService = function(service)
 		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
 	end
 }
-
-local function registerOption(flag, obj)
-	if not flag then return end
-	MacLib.Options[flag] = obj
-	if not table.find(MacLib.OptionOrder, flag) then
-		table.insert(MacLib.OptionOrder, flag)
-	end
-end
 
 --// Services
 local TweenService = MacLib.GetService("TweenService")
@@ -1753,7 +1768,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ButtonFunctions)
+						MacLib.Options[Flag] = ButtonFunctions
 					end
 					return ButtonFunctions
 				end
@@ -1899,7 +1914,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ToggleFunctions)
+						MacLib.Options[Flag] = ToggleFunctions
 					end
 					return ToggleFunctions
 				end
@@ -2165,7 +2180,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SliderFunctions)
+						MacLib.Options[Flag] = SliderFunctions
 					end
 					return SliderFunctions
 				end
@@ -2341,7 +2356,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, InputFunctions)
+						MacLib.Options[Flag] = InputFunctions
 					end
 					return InputFunctions
 				end
@@ -2520,7 +2535,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, KeybindFunctions)
+						MacLib.Options[Flag] = KeybindFunctions
 					end
 
 					return KeybindFunctions
@@ -2937,13 +2952,10 @@ function MacLib:Window(Settings)
 							if DropdownFunctions.Settings.Multi then
 								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
 							else
-								isSelected = (DropdownFunctions.Settings.Default == i or DropdownFunctions.Settings.Default == v) and true or false
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
 							end
 						end
 						Toggle(v, isSelected)
-						if isSelected and not DropdownFunctions.Settings.Multi then
-							DropdownFunctions.Value = v
-						end
 
 						local option = OptionObjs[v].Button
 
@@ -3095,7 +3107,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, DropdownFunctions)
+						MacLib.Options[Flag] = DropdownFunctions
 					end
 
 					return DropdownFunctions
@@ -4380,7 +4392,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ColorpickerFunctions)
+						MacLib.Options[Flag] = ColorpickerFunctions
 					end
 					return ColorpickerFunctions
 				end
@@ -4434,7 +4446,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, HeaderFunctions)
+						MacLib.Options[Flag] = HeaderFunctions
 					end
 					return HeaderFunctions
 				end
@@ -4478,7 +4490,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, LabelFunctions)
+						MacLib.Options[Flag] = LabelFunctions
 					end
 					return LabelFunctions
 				end
@@ -4522,7 +4534,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, SubLabelFunctions)
+						MacLib.Options[Flag] = SubLabelFunctions
 					end
 					return SubLabelFunctions
 				end
@@ -4598,7 +4610,7 @@ function MacLib:Window(Settings)
 					end
 
 					if Flag then
-						registerOption(Flag, ParagraphFunctions)
+						MacLib.Options[Flag] = ParagraphFunctions
 					end
 					return ParagraphFunctions
 				end
@@ -5522,12 +5534,6 @@ function MacLib:Window(Settings)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
 					MacLib.Options[Flag]:UpdateValue(data.value)
-					local opt = MacLib.Options[Flag]
-					if opt.Settings and opt.Settings.Callback then
-						task.spawn(function()
-							pcall(opt.Settings.Callback, tonumber(data.value) or opt.Value)
-						end)
-					end
 				end
 			end
 		},
@@ -5700,19 +5706,11 @@ function MacLib:Window(Settings)
 			contextData = MacLib.contextData or {},
 		}
 
-		local processed = {}
-		for _, flag in ipairs(MacLib.OptionOrder) do
-			local option = MacLib.Options[flag]
-			if option and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-				processed[flag] = true
-			end
-		end
-
 		for flag, option in next, MacLib.Options do
-			if not processed[flag] and ClassParser[option.Class] and not option.IgnoreConfig then
-				table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
-			end
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
 		end	
 
 		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
@@ -6077,4 +6075,1124 @@ function MacLib:Demo()
 	MacLib:LoadAutoLoadConfig()
 end
 
-return MacLib
+return MacLib end function __DIST.b()-- Lifecycle: Quản lý đăng ký và giải phóng tài nguyên (Connections, Tasks, Objects) khi script unload hoặc reload.
+
+
+local lifecycle = {
+	cleaned = false,
+	callbacks = {},
+}
+
+function lifecycle.Register(callback: () -> ()): () -> ()
+	if type(callback) ~= "function" then
+		return function() end
+	end
+	if lifecycle.cleaned then
+		pcall(callback)
+		return function() end
+	end
+
+	table.insert(lifecycle.callbacks, callback)
+	return function()
+		for index, registered in ipairs(lifecycle.callbacks) do
+			if registered == callback then
+				table.remove(lifecycle.callbacks, index)
+				break
+			end
+		end
+	end
+end
+
+function lifecycle.Cleanup(): ()
+	if lifecycle.cleaned then return end
+	lifecycle.cleaned = true
+	for index = #lifecycle.callbacks, 1, -1 do
+		pcall(lifecycle.callbacks[index])
+	end
+	table.clear(lifecycle.callbacks)
+end
+
+function lifecycle.IsActive(): boolean
+	return not lifecycle.cleaned
+end
+
+lifecycle.OnCleanup = lifecycle.Register
+
+return lifecycle
+end function __DIST.c()-- Wrapper gửi thông báo an toàn (qua Maclib Window hoặc StarterGui fallback).
+
+
+local window = nil
+local notifier = {}
+
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title: string, desc: string, lifetime: number?)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end function __DIST.d()-- AutoSave: Quản lý tự động lưu config cho Slop Tower Defense.
+
+
+local macLib = __DIST.load('a')
+local notifier = __DIST.load('c')
+
+local autoSave = {}
+
+local activeConfig: string? = nil
+local saveQueued = false
+local suspended = false
+
+function autoSave.Suspend()
+	suspended = true
+	saveQueued = false
+end
+
+function autoSave.Resume()
+	suspended = false
+end
+
+function autoSave.IsSuspended(): boolean
+	return suspended or (macLib.LoadingConfig == true)
+end
+
+function autoSave.SetActive(name: string?)
+	activeConfig = (typeof(name) == "string" and #name > 0) and string.gsub(name, "[\r\n%s]+", "") or nil
+	if activeConfig and writefile then
+		pcall(function()
+			local folder = macLib.Folder
+			if isfolder and not isfolder(folder) then makefolder(folder) end
+			if isfolder and not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			writefile(folder .. "/settings/autoload.txt", activeConfig)
+		end)
+	end
+end
+
+function autoSave.GetActive(): string?
+	return activeConfig
+end
+
+function autoSave.QueueSave()
+	if autoSave.IsSuspended() or not activeConfig then return end
+	if saveQueued then return end
+	saveQueued = true
+
+	task.delay(0.5, function()
+		saveQueued = false
+		if autoSave.IsSuspended() or not activeConfig then return end
+
+		local configFolder = macLib.Folder .. "/configs"
+		local configPath = configFolder .. "/" .. activeConfig .. ".json"
+
+		local ok, err = pcall(function()
+			local data = macLib:SaveConfig(activeConfig)
+			if data and writefile then
+				writefile(configPath, data)
+			end
+		end)
+
+		if not ok then
+			warn("[SlopTD - AutoSave] Failed to save config:", err)
+		end
+	end)
+end
+
+return autoSave
+end function __DIST.e()-- Constants: Định danh và phân định môi trường (Lobby vs InGame) cho Slop Tower Defense.
+
+
+local constants = {
+	UNIVERSE_ID = 10529769390,
+	LOBBY_PLACE_ID = 134459712190924,
+}
+
+-- Kiểm tra xem Player có đang ở Lobby không
+
+
+function constants.IsLobby(): boolean
+	return game.PlaceId == constants.LOBBY_PLACE_ID
+end
+
+-- Ngoại trừ PlaceId của Lobby (134459712190924) ra, tất cả các place còn lại đều là InGame
+function constants.IsInGame(): boolean
+	return game.PlaceId ~= constants.LOBBY_PLACE_ID
+end
+
+-- Trả về loại môi trường hiện tại ("Lobby" hoặc "InGame")
+function constants.GetLocation(): LocationType__DARKLUA_TYPE_a
+	return constants.IsLobby() and "Lobby" or "InGame"
+end
+
+-- Chuỗi hiển thị thân thiện trên UI
+function constants.GetLocationName(): string
+	return constants.IsLobby() and "Lobby" or "In-Game"
+end
+
+return constants
+end function __DIST.f()-- Tracker: Giám sát trạng thái trận đấu (Wave, Máu Base, Trạng thái trận đấu)
+
+
+local lifecycle = __DIST.load('b')
+
+local tracker = {
+	Wave = 0,
+	MaxWave = 0,
+	BaseHealth = 100,
+	MaxBaseHealth = 100,
+	GameActive = false,
+	AutoSkipEnabled = false,
+}
+
+local callbacks = {}
+
+function tracker.OnWaveChanged(fn: (number) -> ()): () -> ()
+	table.insert(callbacks, fn)
+	return function()
+		local idx = table.find(callbacks, fn)
+		if idx then table.remove(callbacks, idx) end
+	end
+end
+
+function tracker.SetWave(wave: number)
+	if tracker.Wave ~= wave then
+		tracker.Wave = wave
+		for _, fn in ipairs(callbacks) do
+			pcall(fn, wave)
+		end
+	end
+end
+
+function tracker.Init()
+	-- Kết nối tự động phát hiện wave / match state khi vào game
+	-- (Sẽ được bổ sung path cụ thể sau khi kiểm tra hierarchy trong game)
+end
+
+return tracker
+end function __DIST.g()-- RangeVisual: Vẽ vòng tròn bán kính tầm bắn của tháp.
+
+
+local rangeVisual = {
+	Enabled = false,
+}
+
+function rangeVisual.SetEnabled(state: boolean)
+	rangeVisual.Enabled = state
+end
+
+return rangeVisual
+end function __DIST.h()-- Visuals Facade
+
+
+local rangeVisual = __DIST.load('g')
+
+return {
+	RangeVisual = rangeVisual,
+}
+end function __DIST.i()
+local binder = {}
+
+function binder.Apply(properties: { [string]: any }, object: any, excludes: { [number]: string }?): any
+	for property, value in pairs(properties) do
+		if excludes and table.find(excludes, property) then
+			continue
+		end
+
+		pcall(function()
+			object[property] = value
+		end)
+	end
+
+	return object
+end
+
+function binder.Wrap(
+	object: { [string]: any },
+	bindings: { [string]: (any) -> () },
+	excludes: { [number]: any }?,
+	instance: Instance?
+): any
+	local proxy = {}
+
+	setmetatable(proxy, {
+		__index = function(_, key)
+			if object[key] ~= nil then
+				return object[key]
+			elseif instance then
+				local ok, value = pcall(function()
+					return instance[key]
+				end)
+
+				if ok then
+					return value
+				end
+			end
+
+			return
+		end,
+
+		__newindex = function(_, key, value)
+			local handler = bindings[key]
+
+			if handler then
+				handler(value)
+
+				if not (excludes and table.find(excludes, key)) then
+					object[key] = value
+				end
+			elseif instance then
+				local ok, _ = pcall(function()
+					instance[key] = value
+				end)
+
+				if not ok then
+					object[key] = value
+				end
+			else
+				object[key] = value
+			end
+		end,
+	})
+
+	return proxy
+end
+
+return binder
+end function __DIST.j()--// Anti AFK Universal: ngăn bị kick vì idle (auto click qua VirtualUser).
+--// Có thể dùng ở bất kỳ route nào (Universal, Game 2, ...) mà không phụ thuộc game.
+
+--// Imports
+
+local binder = __DIST.load('i')
+
+--// Services
+local VirtualUser = game:GetService("VirtualUser")
+
+--// Table
+local antiAfk = {}
+
+--// State
+local enabled = false
+local interval = 60 -- giây giữa mỗi lần "hoạt động" giả lập
+local thread = nil
+
+--// Gửi 1 lần tín hiệu "đang hoạt động" (click chuột trái/phải)
+local function sendActivity()
+	pcall(function()
+		VirtualUser:CaptureController()
+		VirtualUser:Button1Down(Vector2.new(0, 0))
+		VirtualUser:Button1Up(Vector2.new(0, 0))
+		VirtualUser:Button2Down(Vector2.new(0, 0))
+		VirtualUser:Button2Up(Vector2.new(0, 0))
+	end)
+end
+
+--// Vòng lặp giữ session không bị kick
+local function kickLoop()
+	while enabled do
+		sendActivity()
+
+		local waitTime = interval
+		while waitTime > 0 and enabled do
+			local step = math.min(waitTime, 0.5)
+			task.wait(step)
+			waitTime -= step
+		end
+	end
+	thread = nil
+end
+
+--// Methods
+function antiAfk.Start()
+	if enabled or thread then return end
+	enabled = true
+
+	--// Gửi ngay tức thì để session hoạt động ngay khi bật
+	task.spawn(sendActivity)
+	thread = task.spawn(kickLoop)
+end
+
+function antiAfk.Stop()
+	enabled = false
+end
+
+function antiAfk.IsEnabled()
+	return enabled
+end
+
+function antiAfk.SetInterval(seconds)
+	seconds = tonumber(seconds)
+	if seconds and seconds > 0 then
+		interval = seconds
+	else
+		interval = 60
+	end
+end
+
+function antiAfk.GetInterval()
+	return interval
+end
+
+--// Wrap với binder để gán qua property (tương thích tab:Toggle/tab:Slider)
+return binder.Wrap(antiAfk, {
+	Enabled = function(value: boolean)
+		if value then
+			antiAfk.Start()
+		else
+			antiAfk.Stop()
+		end
+	end,
+
+	Interval = function(value: number)
+		antiAfk.SetInterval(value)
+	end,
+}) :: {
+	Enabled: boolean,
+	Interval: number,
+	Start: () -> (),
+	Stop: () -> (),
+	IsEnabled: () -> boolean,
+	SetInterval: (number) -> (),
+	GetInterval: () -> number
+}
+end function __DIST.k()-- Tab Main: Thông tin tổng quan, hiển thị trận đấu và các tiện ích hệ thống (Anti AFK, FPS, Camera).
+
+
+local constants = __DIST.load('e')
+local tracker = __DIST.load('f')
+local visuals = __DIST.load('h')
+local antiAfk = __DIST.load('j')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Status & Display" })
+
+	leftSection:Label({
+		Text = "Location: " .. constants.GetLocationName(),
+	})
+
+	local waveLabel = leftSection:Label({
+		Text = "Wave: 0 / 0",
+	})
+
+	local healthLabel = leftSection:Label({
+		Text = "Base Health: 100%",
+	})
+
+	tracker.OnWaveChanged(function(wave)
+		pcall(function()
+			waveLabel:UpdateText("Wave: " .. tostring(wave))
+		end)
+	end)
+
+	leftSection:Toggle({
+		Name = "Show Tower Attack Range",
+		Default = false,
+		Callback = function(state)
+			visuals.RangeVisual.SetEnabled(state)
+		end,
+	}, "Toggle_ShowTowerRange")
+
+	leftSection:Slider({
+		Name = "Field of View",
+		Default = 70,
+		Minimum = 70,
+		Maximum = 120,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = function(value)
+			local camera = workspace.CurrentCamera
+			if camera then
+				camera.FieldOfView = value
+			end
+		end,
+	}, "Slider_FieldOfView")
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Utilities & Performance" })
+
+	rightSection:Toggle({
+		Name = "Anti AFK",
+		Default = antiAfk.IsEnabled(),
+		Callback = function(state)
+			if state then
+				antiAfk.Start()
+			else
+				antiAfk.Stop()
+			end
+		end,
+	}, "Toggle_AntiAFK")
+
+	rightSection:Slider({
+		Name = "Anti AFK Interval (s)",
+		Default = antiAfk.GetInterval(),
+		Minimum = 5,
+		Maximum = 300,
+		DisplayMethod = "Round",
+		Precision = 0,
+		Callback = function(val)
+			antiAfk.SetInterval(val)
+		end,
+	}, "Slider_AntiAFKInterval")
+
+	rightSection:Toggle({
+		Name = "Disable 3D Rendering (GPU Saver)",
+		Default = false,
+		Callback = function(state)
+			local RunService = game:GetService("RunService")
+			pcall(function()
+				RunService:Set3dRenderingEnabled(not state)
+			end)
+		end,
+	}, "Toggle_Disable3DRendering")
+
+	rightSection:Button({
+		Name = "Unlock FPS (Cap 240)",
+		Callback = function()
+			pcall(function()
+				if setfpscap then
+					setfpscap(240)
+				end
+			end)
+		end,
+	})
+end
+end function __DIST.l()-- Scanner: Quét và quản lý danh sách tháp đang có trên bản đồ.
+
+
+local scanner = {
+	Towers = {},
+}
+
+
+
+
+
+
+
+
+
+
+
+function scanner.GetMyTowers(): { [string]: TowerInfo__DARKLUA_TYPE_b }
+	return scanner.Towers
+end
+
+function scanner.Clear()
+	table.clear(scanner.Towers)
+end
+
+function scanner.Refresh()
+	-- Quét thư mục chứa tower trong Workspace (cần điền đúng Folder name sau khi inspect game)
+end
+
+return scanner
+end function __DIST.m()-- Remotes: Wrapper quản lý tương tác mạng và RemoteEvents/Functions trong game.
+
+
+local remotes = {
+	-- Placeholder các instance Remote tìm thấy trong game
+	Instances = {},
+}
+
+-- Gọi RemoteEvent an toàn
+function remotes.FireServer(remoteName: string, ...: any): boolean
+	local targetRemote = remotes.Instances[remoteName]
+	if not targetRemote then
+		-- Fallback tìm trong ReplicatedStorage nếu chưa cache
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		targetRemote = ReplicatedStorage:FindFirstChild(remoteName, true)
+		if targetRemote and targetRemote:IsA("RemoteEvent") then
+			remotes.Instances[remoteName] = targetRemote
+		end
+	end
+
+	if targetRemote and targetRemote:IsA("RemoteEvent") then
+		local ok, err = pcall(targetRemote.FireServer, targetRemote, ...)
+		if not ok then
+			warn("[SlopTD - Remotes] FireServer error on", remoteName, ":", err)
+		end
+		return ok
+	end
+
+	warn("[SlopTD - Remotes] RemoteEvent not found:", remoteName)
+	return false
+end
+
+-- Gọi RemoteFunction an toàn
+function remotes.InvokeServer(remoteName: string, ...: any): any
+	local targetRemote = remotes.Instances[remoteName]
+	if not targetRemote then
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		targetRemote = ReplicatedStorage:FindFirstChild(remoteName, true)
+		if targetRemote and targetRemote:IsA("RemoteFunction") then
+			remotes.Instances[remoteName] = targetRemote
+		end
+	end
+
+	if targetRemote and targetRemote:IsA("RemoteFunction") then
+		local ok, result = pcall(targetRemote.InvokeServer, targetRemote, ...)
+		if not ok then
+			warn("[SlopTD - Remotes] InvokeServer error on", remoteName, ":", result)
+			return nil
+		end
+		return result
+	end
+
+	warn("[SlopTD - Remotes] RemoteFunction not found:", remoteName)
+	return nil
+end
+
+return remotes
+end function __DIST.n()-- Placement: Logic đặt tháp (tính toạ độ, kiểm tra hợp lệ và gọi remote).
+
+
+local remotes = __DIST.load('m')
+
+local placement = {}
+
+function placement.PlaceTower(towerName: string, position: Vector3, rotation: number?): boolean
+	-- Gọi remote đặt tháp (sẽ gắn tên remote cụ thể)
+	return remotes.FireServer("PlaceTower", towerName, position, rotation or 0)
+end
+
+return placement
+end function __DIST.o()-- Upgrader: Logic nâng cấp tháp theo thuật toán / độ ưu tiên.
+
+
+local remotes = __DIST.load('m')
+local scanner = __DIST.load('l')
+
+local upgrader = {
+	AutoUpgradeEnabled = false,
+	Strategy = "Balanced", -- "MaxFirst", "Balanced", "CheapestFirst"
+}
+
+function upgrader.Upgrade(towerInstance: Instance): boolean
+	return remotes.FireServer("UpgradeTower", towerInstance)
+end
+
+function upgrader.SetEnabled(state: boolean)
+	upgrader.AutoUpgradeEnabled = state
+end
+
+return upgrader
+end function __DIST.p()-- Targeting: Quản lý chế độ nhắm bắn của tháp (First, Last, Strongest, Weakest).
+
+
+local remotes = __DIST.load('m')
+
+local targeting = {}
+
+
+
+function targeting.SetTargetMode(towerInstance: Instance, mode: TargetPriority__DARKLUA_TYPE_c): boolean
+	return remotes.FireServer("SetTargetMode", towerInstance, mode)
+end
+
+return targeting
+end function __DIST.q()-- Towers Facade
+
+
+local scanner = __DIST.load('l')
+local placement = __DIST.load('n')
+local upgrader = __DIST.load('o')
+local targeting = __DIST.load('p')
+
+return {
+	Scanner = scanner,
+	Placement = placement,
+	Upgrader = upgrader,
+	Targeting = targeting,
+}
+end function __DIST.r()-- Tab Game: Tự động hóa trong trận đấu (Match Flow & Tower Management).
+
+
+local tracker = __DIST.load('f')
+local towers = __DIST.load('q')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Match Automation" })
+
+	leftSection:Toggle({
+		Name = "Auto Skip Wave",
+		Default = false,
+		Callback = function(state)
+			tracker.AutoSkipEnabled = state
+		end,
+	}, "Toggle_AutoSkipWave")
+
+	leftSection:Toggle({
+		Name = "Auto Vote Start",
+		Default = false,
+		Callback = function(state)
+			-- Toggle auto vote start
+		end,
+	}, "Toggle_AutoVoteStart")
+
+	leftSection:Toggle({
+		Name = "Auto Replay (On Win/Loss)",
+		Default = false,
+		Callback = function(state)
+			-- Toggle auto replay
+		end,
+	}, "Toggle_AutoReplay")
+
+	leftSection:Toggle({
+		Name = "Auto Return to Lobby (On Finish)",
+		Default = false,
+		Callback = function(state)
+			-- Toggle return to lobby
+		end,
+	}, "Toggle_AutoReturnLobby")
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Tower Management" })
+
+	rightSection:Toggle({
+		Name = "Auto Place Towers",
+		Default = false,
+		Callback = function(state)
+			-- Toggle auto place
+		end,
+	}, "Toggle_AutoPlaceTowers")
+
+	rightSection:Dropdown({
+		Name = "Placement Mode",
+		Options = { "Smart Auto", "Grid", "Macro" },
+		Default = "Smart Auto",
+		Callback = function(option)
+			-- Mode selection
+		end,
+	}, "Dropdown_PlacementMode")
+
+	rightSection:Toggle({
+		Name = "Auto Upgrade",
+		Default = false,
+		Callback = function(state)
+			towers.Upgrader.SetEnabled(state)
+		end,
+	}, "Toggle_AutoUpgrade")
+
+	rightSection:Dropdown({
+		Name = "Upgrade Priority",
+		Options = { "Balanced", "MaxFirst", "CheapestFirst" },
+		Default = "Balanced",
+		Callback = function(option)
+			towers.Upgrader.Strategy = option
+		end,
+	}, "Dropdown_UpgradePriority")
+
+	rightSection:Dropdown({
+		Name = "Default Target Priority",
+		Options = { "First", "Last", "Strongest", "Weakest" },
+		Default = "First",
+		Callback = function(option)
+			-- Set default target mode
+		end,
+	}, "Dropdown_TargetPriority")
+end
+end function __DIST.s()-- Storage: Quản lý đọc và ghi file kịch bản Macro ra ổ đĩa executor.
+
+
+local macLib = __DIST.load('a')
+
+local storage = {}
+
+local MACRO_FOLDER = "EsclipseHub/SlopTowerDefense/macros"
+
+local function ensureFolder()
+	if not isfolder or not makefolder then return end
+	if not isfolder("EsclipseHub") then makefolder("EsclipseHub") end
+	if not isfolder("EsclipseHub/SlopTowerDefense") then makefolder("EsclipseHub/SlopTowerDefense") end
+	if not isfolder(MACRO_FOLDER) then makefolder(MACRO_FOLDER) end
+end
+
+function storage.ListMacros(): { string }
+	ensureFolder()
+	local list = {}
+	if listfiles then
+		local ok, files = pcall(listfiles, MACRO_FOLDER)
+		if ok and type(files) == "table" then
+			for _, filePath in ipairs(files) do
+				local name = string.match(filePath, "([^/\\]+)%.json$")
+				if name then
+					table.insert(list, name)
+				end
+			end
+		end
+	end
+	return list
+end
+
+function storage.SaveMacro(name: string, data: any): boolean
+	ensureFolder()
+	if not writefile then return false end
+	local HttpService = game:GetService("HttpService")
+	local ok, json = pcall(function()
+		return HttpService:JSONEncode(data)
+	end)
+	if not ok or not json then return false end
+
+	local path = MACRO_FOLDER .. "/" .. name .. ".json"
+	local writeOk = pcall(writefile, path, json)
+	return writeOk
+end
+
+function storage.LoadMacro(name: string): any?
+	ensureFolder()
+	if not readfile or not isfile then return nil end
+	local path = MACRO_FOLDER .. "/" .. name .. ".json"
+	if not isfile(path) then return nil end
+
+	local HttpService = game:GetService("HttpService")
+	local content = readfile(path)
+	local ok, data = pcall(function()
+		return HttpService:JSONDecode(content)
+	end)
+	return ok and data or nil
+end
+
+return storage
+end function __DIST.t()-- Recorder: Ghi nhận các hành động (Place, Upgrade, Sell) theo timeline và wave.
+
+
+local recorder = {
+	IsRecording = false,
+	Actions = {},
+	StartTime = 0,
+}
+
+
+
+
+
+
+
+
+
+
+
+function recorder.Start()
+	recorder.IsRecording = true
+	recorder.Actions = {}
+	recorder.StartTime = os.clock()
+end
+
+function recorder.Stop(): { MacroAction__DARKLUA_TYPE_d }
+	recorder.IsRecording = false
+	return recorder.Actions
+end
+
+function recorder.RecordAction(action: MacroAction__DARKLUA_TYPE_d)
+	if not recorder.IsRecording then return end
+	table.insert(recorder.Actions, action)
+end
+
+return recorder
+end function __DIST.u()-- Player: Thực thi kịch bản macro đã ghi (chờ đúng wave hoặc thời gian để đặt/nâng tháp).
+
+
+local lifecycle = __DIST.load('b')
+local placement = __DIST.load('n')
+local upgrader = __DIST.load('o')
+
+local player = {
+	IsPlaying = false,
+	CurrentMacro = nil,
+	CurrentIndex = 1,
+}
+
+function player.Play(macroData: any)
+	player.CurrentMacro = macroData
+	player.CurrentIndex = 1
+	player.IsPlaying = true
+	-- Vòng lặp kiểm tra wave / time sẽ được kết nối ở đây
+end
+
+function player.Stop()
+	player.IsPlaying = false
+	player.CurrentMacro = nil
+end
+
+return player
+end function __DIST.v()-- Macro Facade
+
+
+local storage = __DIST.load('s')
+local recorder = __DIST.load('t')
+local player = __DIST.load('u')
+
+return {
+	Storage = storage,
+	Recorder = recorder,
+	Player = player,
+}
+end function __DIST.w()-- Tab Macro: Ghi và phát lại kịch bản đặt / nâng cấp tháp.
+
+
+local macro = __DIST.load('v')
+local notifier = __DIST.load('c')
+
+return function(window, tab)
+	local leftSection = tab:Section({ Side = "Left" })
+	leftSection:Header({ Name = "Record Macro" })
+
+	local recordName = "MyMacro"
+	leftSection:Input({
+		Name = "Macro Name",
+		Placeholder = "Enter name...",
+		AcceptedCharacters = "All",
+		Default = recordName,
+		Callback = function(val)
+			if #val > 0 then recordName = val end
+		end,
+	}, "Input_RecordMacroName")
+
+	local statusLabel = leftSection:Label({
+		Text = "Status: Idle",
+	})
+
+	leftSection:Button({
+		Name = "Start Recording",
+		Callback = function()
+			macro.Recorder.Start()
+			pcall(function() statusLabel:UpdateText("Status: Recording...") end)
+			notifier.Notify("Macro", "Recording started!", 2)
+		end,
+	})
+
+	leftSection:Button({
+		Name = "Stop & Save Recording",
+		Callback = function()
+			local actions = macro.Recorder.Stop()
+			pcall(function() statusLabel:UpdateText("Status: Saved (" .. #actions .. " actions)") end)
+			macro.Storage.SaveMacro(recordName, actions)
+			notifier.Notify("Macro", "Saved " .. #actions .. " actions to " .. recordName, 3)
+		end,
+	})
+
+	local rightSection = tab:Section({ Side = "Right" })
+	rightSection:Header({ Name = "Play Macro" })
+
+	local macroList = macro.Storage.ListMacros()
+	local macroDropdown
+
+	macroDropdown = rightSection:Dropdown({
+		Name = "Select Macro",
+		Options = #macroList > 0 and macroList or { "None" },
+		Default = macroList[1] or "None",
+		Callback = function(selected)
+			-- Selected macro
+		end,
+	}, "Dropdown_PlayMacro")
+
+	rightSection:Button({
+		Name = "Refresh Macro List",
+		Callback = function()
+			local updated = macro.Storage.ListMacros()
+			macroDropdown:ClearOptions()
+			macroDropdown:InsertOptions(#updated > 0 and updated or { "None" })
+		end,
+	})
+
+	rightSection:Toggle({
+		Name = "Play Macro",
+		Default = false,
+		Callback = function(state)
+			if state then
+				local selected = macroDropdown.Value
+				if selected and selected ~= "None" then
+					local data = macro.Storage.LoadMacro(selected)
+					if data then
+						macro.Player.Play(data)
+						notifier.Notify("Macro", "Playing macro: " .. selected, 2)
+					else
+						notifier.Notify("Macro", "Failed to load macro: " .. selected, 3)
+					end
+				end
+			else
+				macro.Player.Stop()
+				notifier.Notify("Macro", "Macro playback stopped", 2)
+			end
+		end,
+	}, "Toggle_PlayMacro")
+end
+end function __DIST.x()-- Tab Config: Quản lý cấu hình người dùng (Tạo, Lưu, Nạp, Xoá, Autoload).
+
+
+local macLib = __DIST.load('a')
+local autoSave = __DIST.load('d')
+local notifier = __DIST.load('c')
+
+return function(window, tab)
+	local section = tab:Section({ Side = "Left" })
+	section:Header({ Name = "Config Profiles" })
+
+	local inputName = ""
+	local configSelection
+
+	local function refreshOptions(keep: string?)
+		local options = macLib:RefreshConfigList()
+		configSelection:ClearOptions()
+		configSelection:InsertOptions(options)
+		if keep then
+			if not configSelection:IsOption(keep) then
+				configSelection:InsertOptions({ keep })
+			end
+			configSelection:UpdateSelection(keep)
+		end
+	end
+
+	section:Input({
+		Name = "Config Name",
+		Placeholder = "Enter config name...",
+		AcceptedCharacters = "All",
+		Callback = function(val)
+			inputName = string.gsub(val or "", "[\r\n%s]+", "")
+		end,
+	}, "Input_ConfigName")
+
+	configSelection = section:Dropdown({
+		Name = "Select Config",
+		Options = macLib:RefreshConfigList(),
+		Callback = function(selected)
+			-- Selected config
+		end,
+	}, "Dropdown_SelectConfig")
+
+	section:Button({
+		Name = "Save Config",
+		Callback = function()
+			local name = #inputName > 0 and inputName or configSelection.Value
+			if name and #name > 0 then
+				macLib:SaveConfig(name)
+				autoSave.SetActive(name)
+				refreshOptions(name)
+				notifier.Notify("Config", "Saved config: " .. name, 2)
+			else
+				notifier.Notify("Config", "Please enter a valid config name!", 2)
+			end
+		end,
+	})
+
+	section:Button({
+		Name = "Load Config",
+		Callback = function()
+			local name = configSelection.Value
+			if name and #name > 0 then
+				macLib:LoadConfig(name)
+				autoSave.SetActive(name)
+				notifier.Notify("Config", "Loaded config: " .. name, 2)
+			end
+		end,
+	})
+
+	section:Button({
+		Name = "Refresh List",
+		Callback = function()
+			refreshOptions()
+		end,
+	})
+end
+end end-- SlopTowerDefense: Khởi tạo giao diện Maclib và nạp 4 tabs: Main, Game, Macro, Config.
+
+
+return function(self)
+	pcall(function()
+		local fn = setthreadidentity or set_thread_identity or setidentity or (syn and syn.set_thread_identity)
+		if fn then
+			local ok = pcall(fn, 7)
+			if not ok then pcall(fn, 8) end
+		end
+	end)
+
+	-- Chờ LocalPlayer sẵn sàng trước khi require Maclib để tránh crash nil UserId
+	local Players = game:GetService("Players")
+	local timeout = os.clock() + 15
+	while not Players.LocalPlayer do
+		if os.clock() > timeout then break end
+		task.wait(0.1)
+	end
+	local localPlayer = Players.LocalPlayer
+	if not localPlayer then
+		return warn("[SlopTowerDefense] Failed to retrieve LocalPlayer, aborting initialization.")
+	end
+
+	-- Imports
+	local macLib = __DIST.load('a')
+	local lifecycle = __DIST.load('b')
+	local autoSave = __DIST.load('d')
+	local notifier = __DIST.load('c')
+
+	autoSave.Suspend()
+
+	-- Khởi tạo Maclib Window
+	local window = macLib:Window({
+		Title = "Slop Tower Defense",
+		Subtitle = "EsclipseHub",
+		Size = UDim2.fromOffset(920, 560),
+		SidebarWidth = 240,
+		DragStyle = 1,
+		DisabledWindowControls = {},
+		ShowUserInfo = true,
+		Keybind = Enum.KeyCode.RightControl,
+		AcrylicBlur = false,
+	})
+
+	notifier:SetWindow(window)
+
+	-- Đăng ký UI và cleanup vào _G
+	_G.ScriptHub_UI = window
+	_G.ScriptHub_Cleanup = function()
+		lifecycle.Cleanup()
+	end
+	window.onUnloaded(function()
+		lifecycle.Cleanup()
+		if _G.ScriptHub_UI == window then _G.ScriptHub_UI = nil end
+	end)
+
+	-- Folder config
+	macLib:SetFolder("EsclipseHub/SlopTowerDefense")
+
+	-- 4 Tabs theo thứ tự: Main, Game, Macro, Config
+	local tabGroup = window:TabGroup()
+	local tabs = {
+		Main = tabGroup:Tab({ Name = "Main", Image = "rbxassetid://10734886202" }),
+		Game = tabGroup:Tab({ Name = "Game", Image = "rbxassetid://10734975692" }),
+		Macro = tabGroup:Tab({ Name = "Macro", Image = "rbxassetid://10734950309" }),
+		Config = tabGroup:Tab({ Name = "Config", Image = "rbxassetid://10709769841" }),
+	}
+
+	-- Load UI Modules
+	local mainTab = __DIST.load('k')
+	local gameTab = __DIST.load('r')
+	local macroTab = __DIST.load('w')
+	local configTab = __DIST.load('x')
+
+	mainTab(window, tabs.Main)
+	gameTab(window, tabs.Game)
+	macroTab(window, tabs.Macro)
+	configTab(window, tabs.Config)
+
+	autoSave.Resume()
+	print("[SlopTowerDefense] Initialized successfully.")
+end

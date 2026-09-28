@@ -1,0 +1,9726 @@
+local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()-- Cache toàn bộ services + tham chiếu LocalPlayer dùng chung cho DungeonQuest.
+
+--// Services
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+--// Player
+local player = Players.LocalPlayer
+if not player then
+	local timeoutClock = os.clock() + 5
+	repeat
+		player = Players.LocalPlayer
+		if player then break end
+		task.wait(0.1)
+	until os.clock() > timeoutClock
+end
+
+return {
+	Players = Players,
+	UserInputService = UserInputService,
+	RunService = RunService,
+	VirtualInputManager = VirtualInputManager,
+	player = player,
+}
+end function __DIST.b()-- Owns resources that must be released when the hub is unloaded or executed again.
+
+local lifecycle = {
+	cleaned = false,
+	callbacks = {},
+}
+
+function lifecycle.Register(callback)
+	if type(callback) ~= "function" then return function() end end
+	if lifecycle.cleaned then
+		pcall(callback)
+		return function() end
+	end
+
+	table.insert(lifecycle.callbacks, callback)
+	return function()
+		for index, registered in ipairs(lifecycle.callbacks) do
+			if registered == callback then
+				table.remove(lifecycle.callbacks, index)
+				break
+			end
+		end
+	end
+end
+
+function lifecycle.Cleanup()
+	if lifecycle.cleaned then return end
+	lifecycle.cleaned = true
+	for index = #lifecycle.callbacks, 1, -1 do
+		pcall(lifecycle.callbacks[index])
+	end
+	table.clear(lifecycle.callbacks)
+end
+
+function lifecycle.IsActive()
+	return not lifecycle.cleaned
+end
+
+lifecycle.OnCleanup = lifecycle.Register
+
+return lifecycle
+end function __DIST.c()-- HazardScannerV2 - Neon-Based Hazard Filter (with Ice Spikes Exception)
+-- Nguyên tắc phát hiện:
+-- 1. CHỈ bắt các đối tượng là con trực tiếp (Level 1) của Workspace (child.Parent == Workspace).
+-- 2. LOẠI TRỪ 100% các Level 1 "Folder" (như workspace.dungeon, workspace.drops, workspace.sounds...).
+-- 3. LOẠI TRỪ nhân vật Player/Party, Enemy Models (có Humanoid) và chiêu Player (abilities/projectiles).
+-- 4. BÊN TRONG đối tượng Level 1 hợp lệ:
+--    - Mặc định: Chỉ lấy các BasePart có Material == Enum.Material.Neon.
+--    - NGOẠI LỆ: largeIceSpikes, mediumIceSpikes, smallIceSpikes sử dụng Material Plastic -> Cho phép quét!
+
+--// Imports
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local services = __DIST.load('a')
+
+--// Table
+local filter = {}
+
+--// State
+local ignoreTemplateNames = {}
+
+-- Danh sách từ khóa ngoại lệ Ice Spikes (Material Plastic)
+local ICE_SPIKES_KEYWORDS = {
+	"largeicespikes",
+	"mediumicespikes",
+	"smallicespikes",
+	"icespikes",
+}
+
+-- Đọc template abilities & projectiles của người chơi từ ReplicatedStorage
+local function loadPlayerIgnoreTemplates()
+	table.clear(ignoreTemplateNames)
+	local folders = { "abilities", "projectiles" }
+	for _, fName in ipairs(folders) do
+		local folder = ReplicatedStorage:FindFirstChild(fName)
+		if folder then
+			for _, item in ipairs(folder:GetChildren()) do
+				local clean = item.Name:lower():gsub("%s+", "")
+				ignoreTemplateNames[clean] = true
+			end
+		end
+	end
+end
+loadPlayerIgnoreTemplates()
+
+-- Kiểm tra xem 1 tên hoặc instance có phải thuộc chuỗi Ice Spikes không
+function filter.IsIceSpikes(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	if #clean == 0 then return false end
+	for _, kw in ipairs(ICE_SPIKES_KEYWORDS) do
+		if string.find(clean, kw, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Kiểm tra xem 1 tên hoặc instance có phải là chiêu firstBossBigSpike (Boss 1) không
+function filter.IsFirstBossBigSpike(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	if #clean == 0 or string.find(clean, "seekingspike", 1, true) then return false end
+	return string.find(clean, "firstbossbigspike", 1, true) ~= nil
+		or string.find(clean, "bigspike", 1, true) ~= nil
+end
+
+-- Kiểm tra xem 1 instance có thuộc nhân vật người chơi / party hay không
+function filter.IsPlayerCharacter(instance)
+	if not instance then return true end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr.Character and (instance == plr.Character or instance:IsDescendantOf(plr.Character)) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Kiểm tra xem 1 instance có phải là Model quái vật (có Humanoid) hay không
+function filter.IsEnemyModel(instance)
+	if not instance then return false end
+	if instance:IsA("Model") and instance:FindFirstChildOfClass("Humanoid") then
+		return true
+	end
+	if instance.Parent and instance.Parent:IsA("Model") and instance.Parent:FindFirstChildOfClass("Humanoid") then
+		return true
+	end
+	return false
+end
+
+-- Kiểm tra xem instance có phải là chiêu của player bản thân
+function filter.IsPlayerAbility(instance)
+	if not instance then return false end
+	local cleanName = instance.Name:lower():gsub("%s+", "")
+	if ignoreTemplateNames[cleanName] then
+		return true
+	end
+	if instance.Parent then
+		local parentClean = instance.Parent.Name:lower():gsub("%s+", "")
+		if ignoreTemplateNames[parentClean] then
+			return true
+		end
+	end
+	return false
+end
+
+-- KIỂM TRA ĐỐI TƯỢNG LEVEL 1 CỦA WORKSPACE:
+-- Chỉ chấp nhận BasePart hoặc Model sinh ra trực tiếp dưới Workspace.
+-- LOẠI BỎ hoàn toàn: Folder (workspace.dungeon...), Camera, Terrain, Player, Enemy, Player Skills.
+function filter.IsValidLevel1WorkspaceChild(child)
+	if not child or not child.Parent then return false end
+
+	-- 1. Bắt buộc phải là con trực tiếp (Level 1) của Workspace
+	if child.Parent ~= Workspace then
+		return false
+	end
+
+	-- 2. LOẠI TRỪ 100% các Level 1 Folder, Terrain, Camera
+	if child:IsA("Folder") or child:IsA("Terrain") or child:IsA("Camera") then
+		return false
+	end
+
+	-- 3. Chỉ chấp nhận BasePart hoặc Model
+	if not (child:IsA("BasePart") or child:IsA("Model")) then
+		return false
+	end
+
+	-- 4. Bỏ qua nếu là nhân vật người chơi / đồng đội
+	if filter.IsPlayerCharacter(child) then
+		return false
+	end
+
+	-- 5. Bỏ qua nếu là Model quái vật / Boss (có Humanoid)
+	if filter.IsEnemyModel(child) then
+		return false
+	end
+
+	-- 6. Bỏ qua nếu là chiêu thức người chơi
+	if filter.IsPlayerAbility(child) then
+		return false
+	end
+
+	return true
+end
+
+-- Kiểm tra xem 1 tên hoặc instance có phải là chiêu thirdBossMultiRings không
+function filter.IsMultiRing(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	return string.find(clean, "thirdbossmultirings", 1, true) ~= nil 
+		or string.find(clean, "multiring", 1, true) ~= nil
+end
+
+-- Kiểm tra xem 1 tên hoặc instance có phải là chiêu bonusBossSweepingFlames không
+function filter.IsSweepingFlames(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	return string.find(clean, "bonusbosssweepingflames", 1, true) ~= nil 
+		or string.find(clean, "sweepingflames", 1, true) ~= nil
+end
+
+-- Kiểm tra xem 1 tên hoặc instance có phải là chiêu bonusBossMemoryModel không
+function filter.IsMemoryModel(nameOrInstance)
+	if not nameOrInstance then return false end
+	local name = typeof(nameOrInstance) == "Instance" and nameOrInstance.Name or tostring(nameOrInstance)
+	local clean = name:lower():gsub("%s+", "")
+	return string.find(clean, "bonusbossmemorymodel", 1, true) ~= nil 
+		or string.find(clean, "memorymodel", 1, true) ~= nil
+end
+
+-- Kiểm tra xem một BasePart có phải là Hazard Part hợp lệ hay không
+function filter.IsHazardPart(part, hazardContext)
+	if not part or not part:IsA("BasePart") or not part.Parent then
+		return false
+	end
+
+	-- Bỏ qua 100% PrimaryPart giả định/dummy
+	if part.Name == "PrimaryPart" then
+		return false
+	end
+
+	-- NGOẠI LỆ 1: thirdBossMultiRings (Đại diện DUY NHẤT bằng Part 'center')
+	if filter.IsMultiRing(part) or (part.Parent and filter.IsMultiRing(part.Parent)) or (hazardContext and filter.IsMultiRing(hazardContext)) then
+		local pLower = part.Name:lower()
+		if pLower == "center" or pLower:find("multiring") then
+			return true
+		end
+		-- Chặn tuyệt đối tất cả các part con khác (ring1, ring2...) không đăng ký riêng lẻ
+		return false
+	end
+
+	-- NGOẠI LỆ 2: largeIceSpikes, mediumIceSpikes, smallIceSpikes (Material Plastic)
+	if filter.IsIceSpikes(part) or (part.Parent and filter.IsIceSpikes(part.Parent)) or (hazardContext and filter.IsIceSpikes(hazardContext)) then
+		return true
+	end
+
+	-- NGOẠI LỆ 3: bonusBossSweepingFlames (Chỉ quét các part 'precast' ĐANG THỰC SỰ HOẠT ĐỘNG)
+	local isSweepingFlames = filter.IsSweepingFlames(part)
+		or (part.Parent and filter.IsSweepingFlames(part.Parent))
+		or (part.Parent and part.Parent.Parent and filter.IsSweepingFlames(part.Parent.Parent))
+		or (hazardContext and filter.IsSweepingFlames(hazardContext))
+
+	if isSweepingFlames then
+		local pLower = part.Name:lower()
+		if pLower == "precast" then
+			-- 1. Nếu part đang hiển thị rõ (Transparency <= 0.85)
+			if part.Transparency <= 0.85 then
+				return true
+			end
+			-- 2. Nếu có ParticleEmitter đang bật lửa (Enabled == true)
+			local emitter = part:FindFirstChildWhichIsA("ParticleEmitter")
+			if emitter and emitter.Enabled then
+				return true
+			end
+			-- Chưa tới lượt quét -> Không đăng ký
+			return false
+		end
+		-- Bỏ qua hitBox, PrimaryPart và các part phụ khác
+		return false
+	end
+
+	-- NGOẠI LỆ 4: bonusBossMemoryModel (Quét các part Precast / PrecastGood / Hitbox khi active)
+	local isMemory = filter.IsMemoryModel(part)
+		or (part.Parent and filter.IsMemoryModel(part.Parent))
+		or (hazardContext and filter.IsMemoryModel(hazardContext))
+
+	if isMemory then
+		local pLower = part.Name:lower()
+		if pLower == "primarypart" then return false end
+		if pLower:find("precast") or pLower:find("hitbox") then
+			if part.Transparency <= 0.85 then
+				return true
+			end
+			local emitter = part:FindFirstChildWhichIsA("ParticleEmitter")
+			if emitter and emitter.Enabled then
+				return true
+			end
+			return false
+		end
+		return false
+	end
+
+	-- NGOẠI LỆ 5: firstBossBigSpike (Material Plastic / MeshPart)
+	local isBigSpike = filter.IsFirstBossBigSpike(part)
+		or (part.Parent and filter.IsFirstBossBigSpike(part.Parent))
+		or (hazardContext and filter.IsFirstBossBigSpike(hazardContext))
+
+	if isBigSpike then
+		local pLower = part.Name:lower()
+		if pLower == "primarypart" then return false end
+		return true
+	end
+
+	-- Kiểm tra độ trong suốt (bỏ qua part tàng hình / đã tan biến)
+	if part.Transparency > 0.85 then
+		return false
+	end
+
+	-- Mặc định: Vật liệu bắt buộc phải là NEON
+	if part.Material == Enum.Material.Neon then
+		return true
+	end
+
+	return false
+end
+filter.IsNeonHazardPart = filter.IsHazardPart
+
+-- Tìm tất cả các Hazard Parts hợp lệ bên trong 1 đối tượng Level 1 hợp lệ
+function filter.FindHazardPartsInLevel1Child(level1Child)
+	local hazardParts = {}
+	if not filter.IsValidLevel1WorkspaceChild(level1Child) then
+		return hazardParts
+	end
+
+	if level1Child:IsA("BasePart") then
+		if filter.IsHazardPart(level1Child, level1Child) then
+			table.insert(hazardParts, level1Child)
+		end
+	elseif level1Child:IsA("Model") then
+		-- thirdBossMultiRings: Chỉ lấy đúng 1 part 'center' đại diện cho toàn bộ 7 vòng mê cung
+		if filter.IsMultiRing(level1Child) then
+			local centerPart = level1Child:FindFirstChild("center", true) 
+				or level1Child:FindFirstChildWhichIsA("BasePart")
+			if centerPart and centerPart.Name ~= "PrimaryPart" then
+				table.insert(hazardParts, centerPart)
+				return hazardParts
+			end
+		end
+
+		-- firstBossBigSpike nếu là Model: Chỉ lấy 1 part chính duy nhất đại diện
+		if filter.IsFirstBossBigSpike(level1Child) then
+			local mainPart = level1Child.PrimaryPart or level1Child:FindFirstChildWhichIsA("BasePart")
+			if mainPart and filter.IsHazardPart(mainPart, level1Child) then
+				table.insert(hazardParts, mainPart)
+				return hazardParts
+			end
+		end
+
+		for _, desc in ipairs(level1Child:GetDescendants()) do
+			if desc:IsA("BasePart") and filter.IsHazardPart(desc, level1Child) then
+				table.insert(hazardParts, desc)
+			end
+		end
+	end
+
+	return hazardParts
+end
+filter.FindNeonPartsInLevel1Child = filter.FindHazardPartsInLevel1Child
+
+return filter
+end function __DIST.d()-- HazardScannerV2 - Shape & Color Analyzer
+-- Trích xuất hình học chính xác (Circle / Box OBB) và Màu sắc phát sáng Neon thực tế từ Part.
+
+--// Imports
+
+local filter = __DIST.load('c')
+
+--// Table
+local analyzer = {}
+
+-- Chuyển đổi Color3 sang mã màu Hex cho Web Canvas
+local function colorToHex(color)
+	if not color then return "#ff2a55" end
+	local r = math.clamp(math.floor(color.R * 255), 0, 255)
+	local g = math.clamp(math.floor(color.G * 255), 0, 255)
+	local b = math.clamp(math.floor(color.B * 255), 0, 255)
+	return string.format("#%02x%02x%02x", r, g, b)
+end
+
+-- Lấy góc hướng Yaw chuẩn (0° = North/-Z, +90° = East/+X, 180° = South/+Z, -90° = West/-X)
+local function getYawDegrees(cf)
+	if not cf then return 0 end
+	local lv = cf.LookVector
+	if not lv or lv.Magnitude < 0.001 then return 0 end
+	return math.deg(math.atan2(lv.X, -lv.Z))
+end
+
+-- Ground-Truth Data từ Dungeon Quest Studio (image2.png):
+-- Core: R = 12.5 studs (Diameter 25 studs)
+-- Ring 1: R_in = 12.5, R_out = 25.0, YawOffset = 180° (Side B)
+-- Ring 2: R_in = 25.0, R_out = 37.5, YawOffset = 0°   (Side A)
+-- Ring 3: R_in = 37.5, R_out = 50.0, YawOffset = 180° (Side B)
+-- Ring 4: R_in = 50.0, R_out = 62.5, YawOffset = 0°   (Side A)
+-- Ring 5: R_in = 62.5, R_out = 75.0, YawOffset = 180° (Side B)
+-- Ring 6: R_in = 75.0, R_out = 87.5, YawOffset = 0°   (Side A)
+-- Ring 7: R_in = 87.5, R_out = 105.0, YawOffset = 180° (Side B)
+local MULTI_RINGS_GROUND_TRUTH = {
+	coreRadius = 12.5,
+	maxRadius = 105.0,
+	rings = {
+		{ rIn = 12.5, rOut = 25.0, yawOffset = 180, side = 1 },
+		{ rIn = 25.0, rOut = 37.5, yawOffset = 0,   side = 0 },
+		{ rIn = 37.5, rOut = 50.0, yawOffset = 180, side = 1 },
+		{ rIn = 50.0, rOut = 62.5, yawOffset = 0,   side = 0 },
+		{ rIn = 62.5, rOut = 75.0, yawOffset = 180, side = 1 },
+		{ rIn = 75.0, rOut = 87.5, yawOffset = 0,   side = 0 },
+		{ rIn = 87.5, rOut = 105.0, yawOffset = 180, side = 1 },
+	}
+}
+
+-- Rời rạc hóa (tessellation) một cung tròn thành Đa giác Polygon (mảng đỉnh 2D x, z)
+local function generateArcPolygon(cx, cz, rIn, rOut, centerYaw, angleSpan, steps)
+	steps = steps or 12
+	local vertices = {}
+	local halfSpan = (angleSpan or 180) / 2
+	local startDeg = centerYaw - halfSpan
+	local endDeg = centerYaw + halfSpan
+	local startRad = math.rad(startDeg)
+	local endRad = math.rad(endDeg)
+	local span = endRad - startRad
+
+	-- Đi dọc theo cung ngoài (Outer Arc)
+	for i = 0, steps do
+		local a = startRad + (span * (i / steps))
+		local x = cx + math.sin(a) * rOut
+		local z = cz - math.cos(a) * rOut
+		table.insert(vertices, { x = x, z = z })
+	end
+
+	-- Đi ngược lại dọc theo cung trong (Inner Arc)
+	for i = steps, 0, -1 do
+		local a = startRad + (span * (i / steps))
+		local x = cx + math.sin(a) * rIn
+		local z = cz - math.cos(a) * rIn
+		table.insert(vertices, { x = x, z = z })
+	end
+
+	return vertices
+end
+
+-- Rời rạc hóa vòng tròn tâm thành Polygon
+local function generateCirclePolygon(cx, cz, radius, steps)
+	steps = steps or 16
+	local vertices = {}
+	for i = 0, steps - 1 do
+		local a = (math.pi * 2) * (i / steps)
+		local x = cx + math.sin(a) * radius
+		local z = cz - math.cos(a) * radius
+		table.insert(vertices, { x = x, z = z })
+	end
+	return vertices
+end
+
+-- Phân tích 1 Hazard Part đơn lẻ thành dạng hình học 2D chuẩn xác
+function analyzer.AnalyzeHazardPart(part, motionRecord)
+	if not part or not part:IsA("BasePart") or not part.Parent then
+		return nil
+	end
+
+	local size = part.Size
+	local cf = part.CFrame
+	local pos = cf.Position
+	local yaw = getYawDegrees(cf)
+	local hexColor = colorToHex(part.Color)
+
+	-- Xử lý màu riêng cho Ice Spikes (Material Plastic) thành màu xanh băng phát sáng
+	if filter.IsIceSpikes(part) or (part.Parent and filter.IsIceSpikes(part.Parent)) then
+		hexColor = "#38d9ff"
+	end
+
+	-- Xử lý màu riêng cho bonusBossSweepingFlames (Lửa cam neon rực rỡ)
+	if filter.IsSweepingFlames(part) or (part.Parent and filter.IsSweepingFlames(part.Parent)) or (part.Parent and part.Parent.Parent and filter.IsSweepingFlames(part.Parent.Parent)) then
+		hexColor = "#ff6b22"
+	end
+
+	-- Xử lý màu riêng cho bonusBossMemoryModel (Good = Xanh lá #22ff88, Danger/Hitbox = Đỏ #ff2a55)
+	if filter.IsMemoryModel(part) or (part.Parent and filter.IsMemoryModel(part.Parent)) then
+		local pLower = part.Name:lower()
+		if pLower:find("good") then
+			hexColor = "#22ff88"
+		else
+			hexColor = "#ff2a55"
+		end
+	end
+
+	-- Xử lý scale nếu có SpecialMesh
+	local mesh = part:FindFirstChildWhichIsA("SpecialMesh", true)
+	if mesh then
+		local sx = math.abs(mesh.Scale.X)
+		local sy = math.abs(mesh.Scale.Y)
+		local sz = math.abs(mesh.Scale.Z)
+		size = Vector3.new(size.X * sx, size.Y * sy, size.Z * sz)
+	end
+
+	-- 0. Nhận diện thirdBossMultiRings (Đại diện bằng Part 'center' hoặc Model)
+	local pName = part.Name:lower()
+	local parentName = (part.Parent and part.Parent.Name:lower()) or ""
+	local isMultiRingSkill = filter.IsMultiRing(part) or filter.IsMultiRing(part.Parent) or (pName == "center" and string.find(parentName, "ring") ~= nil)
+
+	if isMultiRingSkill then
+		local centerPos = pos
+		local centerPart = part
+		local model = (part.Parent and part.Parent:IsA("Model")) and part.Parent or nil
+
+		if model then
+			local cObj = model:FindFirstChild("center", true)
+			if cObj and cObj:IsA("BasePart") then
+				centerPos = cObj.Position
+				centerPart = cObj
+			end
+		end
+
+		local skillYaw = yaw
+		if centerPart and centerPart.CFrame then
+			skillYaw = (getYawDegrees(centerPart.CFrame) + 180) % 360
+		end
+
+		local ringsList = {}
+		local polygonsList = {}
+		
+		-- Core Polygon
+		table.insert(polygonsList, generateCirclePolygon(centerPos.X, centerPos.Z, MULTI_RINGS_GROUND_TRUTH.coreRadius, 16))
+
+		-- 7 Ground-Truth Semicircle Rings
+		for idx, rDef in ipairs(MULTI_RINGS_GROUND_TRUTH.rings) do
+			local ringYaw = (skillYaw + rDef.yawOffset) % 360
+			local poly = generateArcPolygon(centerPos.X, centerPos.Z, rDef.rIn, rDef.rOut, ringYaw, 180, 12)
+			
+			table.insert(ringsList, {
+				rIn = rDef.rIn,
+				rOut = rDef.rOut,
+				yaw = ringYaw,
+				yawOffset = rDef.yawOffset,
+				span = 180,
+				side = rDef.side,
+				polygon = poly,
+			})
+			table.insert(polygonsList, poly)
+		end
+
+		return {
+			shape = "compound_multiring",
+			x = centerPos.X,
+			y = centerPos.Y,
+			z = centerPos.Z,
+			yaw = skillYaw,
+			color = "#3cd0d0",
+			transparency = part.Transparency or 0.5,
+			coreRadius = MULTI_RINGS_GROUND_TRUTH.coreRadius,
+			maxRadius = MULTI_RINGS_GROUND_TRUTH.maxRadius,
+			rings = ringsList,
+			polygons = polygonsList,
+			part = part,
+		}
+	end
+
+	-- 0.8. Nhận diện firstBossBigSpike (Boss 1): Gai xoay tròn -> Đổ bóng Hình tròn Circle
+	local isBigSpike = filter.IsFirstBossBigSpike(part) or (part.Parent and filter.IsFirstBossBigSpike(part.Parent))
+	if isBigSpike then
+		local dims = { size.X, size.Y, size.Z }
+		table.sort(dims)
+		local maxDim = math.max(dims[2], dims[3])
+		local rad = math.clamp(maxDim / 2, 10.0, 35.0)
+		if rad < 12.0 then rad = 14.0 end
+		return {
+			shape = "circle",
+			x = pos.X,
+			y = pos.Y,
+			z = pos.Z,
+			radius = rad,
+			color = hexColor,
+			transparency = part.Transparency,
+			part = part,
+		}
+	end
+
+	-- 1. Nếu là Ball -> Hình tròn Circle
+	if part:IsA("Part") and part.Shape == Enum.PartType.Ball then
+		local rad = math.max(size.X, size.Y, size.Z) / 2
+		return {
+			shape = "circle",
+			x = pos.X,
+			y = pos.Y,
+			z = pos.Z,
+			radius = rad,
+			color = hexColor,
+			transparency = part.Transparency,
+			part = part,
+		}
+	end
+
+	-- 1.5. Nếu là Cylinder -> Chỉ là Circle nếu Cylinder ĐỨNG THẲNG
+	if part:IsA("Part") and part.Shape == Enum.PartType.Cylinder then
+		if math.abs(cf.RightVector.Y) > 0.75 then
+			local rad = math.max(size.Y, size.Z) / 2
+			return {
+				shape = "circle",
+				x = pos.X,
+				y = pos.Y,
+				z = pos.Z,
+				radius = rad,
+				color = hexColor,
+				transparency = part.Transparency,
+				part = part,
+			}
+		end
+		-- Nếu Cylinder nằm ngang (Laser / Beam) -> Xuống mục 3 thành Box OBB!
+	end
+
+	-- 2. Nếu đĩa tròn mỏng đứng trên sàn -> Hình tròn Circle
+	local maxXZ = math.max(size.X, size.Z)
+	local minXZ = math.min(size.X, size.Z)
+	if minXZ > 0 and (maxXZ / minXZ) <= 1.15 and not part:IsA("WedgePart") and size.Y <= math.min(size.X, size.Z) then
+		return {
+			shape = "circle",
+			x = pos.X,
+			y = pos.Y,
+			z = pos.Z,
+			radius = maxXZ / 2,
+			color = hexColor,
+			transparency = part.Transparency,
+			part = part,
+		}
+	end
+
+	-- 3. Hộp chữ nhật chuẩn hóa theo mặt phẳng 2D (Planar OBB Box)
+	local isHorizontalCylinder = (part:IsA("Part") and part.Shape == Enum.PartType.Cylinder)
+	local isMovingBeam = (pName:find("movingbeam") ~= nil) or (parentName:find("movingbeam") ~= nil)
+	local isMissile = (pName:find("missile") ~= nil) or (parentName:find("missile") ~= nil)
+
+	local fwd2D, right2D, halfWidth, halfLength
+
+	if isMovingBeam then
+		-- BOSS 2: Moving Beam (Sải ngang rộng dọc theo right2D, bề dày mỏng dọc theo fwd2D)
+		halfWidth = math.max(size.X, size.Z) / 2
+		halfLength = math.max(2.0, math.min(size.X, math.max(size.Y, size.Z)) / 2)
+
+		local horizRv = Vector3.new(cf.RightVector.X, 0, cf.RightVector.Z)
+		if horizRv.Magnitude > 0.01 then
+			right2D = horizRv.Unit
+		else
+			right2D = Vector3.new(1, 0, 0)
+		end
+		fwd2D = Vector3.new(-right2D.Z, 0, right2D.X)
+
+		if motionRecord and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			if fwd2D:Dot(motionRecord.headingDir) < 0 then
+				fwd2D = -fwd2D
+				right2D = -right2D
+			end
+		end
+	elseif isMissile then
+		-- BOSS 3: Missile (Chiều dài dọc theo fwd2D, tiết diện ngang dọc theo right2D)
+		local maxDim = math.max(size.X, math.max(size.Y, size.Z))
+		local minDim = math.min(size.X, math.min(size.Y, size.Z))
+		halfLength = math.max(0.5, maxDim / 2)
+		halfWidth = math.max(1.5, minDim / 2)
+
+		if motionRecord and motionRecord.speed and motionRecord.speed >= 1.0 and motionRecord.headingDir and motionRecord.headingDir.Magnitude > 0.1 then
+			fwd2D = Vector3.new(motionRecord.headingDir.X, 0, motionRecord.headingDir.Z).Unit
+			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		else
+			local lv = cf.LookVector
+			local horizLv = Vector3.new(-lv.X, 0, -lv.Z)
+			if horizLv.Magnitude > 0.01 then
+				fwd2D = horizLv.Unit
+			else
+				fwd2D = Vector3.new(0, 0, -1)
+			end
+			right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		end
+	elseif isHorizontalCylinder then
+		local rv = cf.RightVector
+		local horizRv = Vector3.new(rv.X, 0, rv.Z)
+		if horizRv.Magnitude > 0.01 then
+			fwd2D = horizRv.Unit
+		else
+			fwd2D = Vector3.new(0, 0, -1)
+		end
+		right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+		halfLength = math.max(0.5, size.X / 2)
+		halfWidth = math.max(0.5, math.max(size.Y, size.Z) / 2)
+	else
+		-- Hazard tĩnh thông thường: dùng trục chuẩn LookVector và RightVector
+		local halfX = math.max(0.5, size.X / 2)
+		local halfZ = math.max(0.5, size.Z / 2)
+		halfWidth = halfX
+		halfLength = halfZ
+
+		local lv = cf.LookVector
+		local horizLv = Vector3.new(lv.X, 0, lv.Z)
+		if horizLv.Magnitude > 0.01 then
+			fwd2D = horizLv.Unit
+		else
+			fwd2D = Vector3.new(0, 0, -1)
+		end
+		right2D = Vector3.new(-fwd2D.Z, 0, fwd2D.X)
+	end
+
+	local planarYaw = math.deg(math.atan2(fwd2D.X, -fwd2D.Z))
+
+	local cx, cz = pos.X, pos.Z
+	local c1 = Vector3.new(cx, pos.Y, cz) + right2D * halfWidth + fwd2D * halfLength
+	local c2 = Vector3.new(cx, pos.Y, cz) - right2D * halfWidth + fwd2D * halfLength
+	local c3 = Vector3.new(cx, pos.Y, cz) - right2D * halfWidth - fwd2D * halfLength
+	local c4 = Vector3.new(cx, pos.Y, cz) + right2D * halfWidth - fwd2D * halfLength
+
+	local boxVertices = {
+		{ x = c1.X, z = c1.Z },
+		{ x = c2.X, z = c2.Z },
+		{ x = c3.X, z = c3.Z },
+		{ x = c4.X, z = c4.Z },
+	}
+
+	return {
+		shape = "box",
+		x = pos.X,
+		y = pos.Y,
+		z = pos.Z,
+		halfX = halfWidth,
+		halfZ = halfLength,
+		halfWidth = halfWidth,
+		halfLength = halfLength,
+		fwd2D = fwd2D,
+		right2D = right2D,
+		yaw = planarYaw,
+		vertices = boxVertices,
+		color = hexColor,
+		transparency = part.Transparency,
+		part = part,
+	}
+end
+analyzer.AnalyzeNeonPart = analyzer.AnalyzeHazardPart
+
+return analyzer
+end function __DIST.e()-- HazardScannerV2 - Neon Kinematics & Motion Engine
+-- Đo lường vận tốc tịnh tiến, vận tốc góc xoay quanh trục và dự báo quỹ đạo cho các Neon Hazard Parts.
+
+--// Imports
+
+local services = __DIST.load('a')
+local Players = game:GetService("Players")
+
+--// Table
+local motion = {}
+
+--// State
+local trackedRecords = {} -- [BasePart] = { lastPos, lastYaw, lastTime, velocity, speed, angularVel, motionType }
+
+--// Constants
+local MIN_MOVING_SPEED = 2.0 -- studs/s
+local MIN_SPINNING_ANGULAR_VEL = 15.0 -- degrees/s
+
+local function getPlayerPos()
+	local lp = services.player or Players.LocalPlayer
+	local char = lp and lp.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	return root and root.Position or nil
+end
+
+function motion.UpdateRecord(part, currentPos, currentYaw)
+	if not part or not currentPos then return nil end
+
+	local now = os.clock()
+	local record = trackedRecords[part]
+
+	if not record then
+		record = {
+			part = part,
+			lastPos = currentPos,
+			lastYaw = currentYaw or 0,
+			lastTime = now,
+			velocity = Vector3.zero,
+			speed = 0,
+			angularVel = 0,
+			headingDir = Vector3.zero,
+			motionType = "STATIC",
+			spawnTime = now,
+		}
+		trackedRecords[part] = record
+		return record
+	end
+
+	local dt = now - record.lastTime
+	if dt >= 0.015 then
+		local deltaPos = currentPos - record.lastPos
+		local deltaPos2D = Vector3.new(deltaPos.X, 0, deltaPos.Z)
+		local currentSpeed = deltaPos2D.Magnitude / dt
+		local currentVel = deltaPos2D / dt
+
+		local deltaYaw = (currentYaw or 0) - record.lastYaw
+		while deltaYaw > 180 do deltaYaw -= 360 end
+		while deltaYaw < -180 do deltaYaw += 360 end
+		local currentAngularVel = deltaYaw / dt
+
+		record.speed = record.speed * 0.4 + currentSpeed * 0.6
+		record.velocity = record.velocity * 0.4 + currentVel * 0.6
+		record.angularVel = record.angularVel * 0.4 + currentAngularVel * 0.6
+
+		if record.speed > 0.1 then
+			record.headingDir = record.velocity.Unit
+		end
+
+		if record.speed >= MIN_MOVING_SPEED then
+			local pPos = getPlayerPos()
+			if pPos and (pPos - currentPos).Magnitude < 100 then
+				local toPlayer = (pPos - currentPos).Unit
+				local dot = record.headingDir:Dot(toPlayer)
+				if dot > 0.85 then
+					record.motionType = "HOMING"
+				else
+					record.motionType = "LINEAR"
+				end
+			else
+				record.motionType = "LINEAR"
+			end
+			record.angularVel = 0
+		elseif math.abs(record.angularVel) >= MIN_SPINNING_ANGULAR_VEL then
+			record.motionType = "SPINNING"
+		else
+			record.motionType = "STATIC"
+		end
+
+		record.lastPos = currentPos
+		record.lastYaw = currentYaw or 0
+		record.lastTime = now
+	end
+
+	return record
+end
+
+function motion.GetRecord(part)
+	return trackedRecords[part]
+end
+
+function motion.GetTrajectoryProjection(part, duration)
+	local rec = trackedRecords[part]
+	if not rec or rec.motionType == "STATIC" then
+		return nil
+	end
+
+	duration = duration or 1.5
+	local points = {}
+	local steps = 5
+	local stepTime = duration / steps
+
+	for i = 1, steps do
+		local t = i * stepTime
+		if rec.motionType == "SPINNING" then
+			local futureYaw = rec.lastYaw + (rec.angularVel * t)
+			table.insert(points, {
+				time = t,
+				x = rec.lastPos.X,
+				z = rec.lastPos.Z,
+				yaw = futureYaw,
+			})
+		else
+			local fPos = rec.lastPos + (rec.velocity * t)
+			table.insert(points, {
+				time = t,
+				x = fPos.X,
+				z = fPos.Z,
+				yaw = rec.lastYaw,
+			})
+		end
+	end
+
+	return {
+		motionType = rec.motionType,
+		speed = rec.speed,
+		angularVel = rec.angularVel,
+		dirX = rec.headingDir.X,
+		dirZ = rec.headingDir.Z,
+		futurePoints = points,
+	}
+end
+
+function motion.RemoveRecord(part)
+	trackedRecords[part] = nil
+end
+
+function motion.ClearAll()
+	table.clear(trackedRecords)
+end
+
+return motion
+end function __DIST.f()-- Engine dùng chung cho DungeonQuest: quản lý state, tracking dungeon/kẻ địch,
+-- speed và các API cho module chuyên biệt (webhook, ESP...)
+-- thao tác lên module này để tránh circular dependency.
+
+--// Imports
+
+local services = __DIST.load('a')
+local lifecycle = __DIST.load('b')
+
+--// References
+local player = services.player
+
+--// Constants
+local AUTO_KEY_HOLD_TIME = 0.05
+
+--// Folder in ReplicatedStorage that contains enemy projectile models for ESP.
+local PROJECTILE_FOLDER = "enemyProjectiles"
+
+local GUI_UPDATE_INTERVAL = 0.5
+
+--// Table
+local shared = {}
+
+--// State
+local humanoid = nil
+local rootPart = nil
+
+local enabled = false
+local fastSpeed = 16
+local normalSpeed = 16
+local instantAccelEnabled = true
+local isSettingSpeed = false
+
+local dungeonStartTime = nil
+
+--// Boss state (dựa trên "boss room": room chỉ chứa đúng 1 enemy).
+--// Boss room = room có duy nhất 1 quái; bossActive = đang ở boss room.
+local bossActive = false
+local bossCallbacks = {}
+local bossRoomRef = nil --// room model của boss hiện tại (tránh đếm lại cùng room)
+
+--// Chỉ số boss hiện tại trong 1 dungeon (thường 1 dungeon có 3 boss).
+--// Tăng 1 mỗi lần bước vào boss room mới (boss 1 = 1); reset về 0 khi vào dungeon mới.
+local bossIndex = 0
+local bossIndexCallbacks = {}
+
+--// Room index: số room hiện tại, lấy từ TÊN room có quái ("room<so>").
+--// Reset khi vào dungeon mới.
+local roomIndex = 0
+local roomIndexCallbacks = {}
+
+local dungeon = nil
+local trackedRooms = {}
+local trackedEnemies = {}
+local roomConnections = {}
+local enemyConnections = {}
+local pendingModels = {}
+local enemyCount = 0
+--// Thông báo khi tập enemy track THAY ĐỔI (thêm/xoá). Dùng cho luồng event-driven:
+--// module pathfinder thay vì poll theo interval thì subscribe sự kiện này để recompute target tức thì.
+local enemyChangedCallbacks = {}
+local function fireEnemyChanged()
+	for i = #enemyChangedCallbacks, 1, -1 do
+		pcall(enemyChangedCallbacks[i])
+	end
+end
+
+--// Tên dungeon đang chơi, đọc từ workspace.dungeonName.
+--// Lưu ý: trong Workspace có 2 instance tên "dungeonName", chỉ 1 cái mang giá trị
+--// dungeon thật; giá trị còn lại là placeholder ("unknown") hoặc rỗng khi ở lobby
+--// -> chỉ nhận chuỗi KHÁC placeholder (xem readDungeonName).
+local currentDungeonName = nil
+local dungeonNameCallbacks = {}
+
+--// Giá trị placeholder của workspace.dungeonName khi chưa vào dungeon (lobby).
+local DUNGEON_NAME_PLACEHOLDER = "unknown"
+
+--// Trạng thái LOBBY vs DUNGEON. Lobby = chưa có tên dungeon thật
+--// (workspace.dungeonName placeholder "unknown"/rỗng). Có tên thật -> trong dungeon.
+local inLobby = true
+local lobbyCallbacks = {}
+
+--// Forward declarations
+local cleanupEnemies
+local initializeRooms
+local resetDungeon
+local refreshRoomIndex
+local tryCaptureBossSpawnPosition
+local bossInitialSpawnPos = nil
+
+--// Respawn hooks & Invulnerability tracking
+local respawnCallbacks = {}
+local cleanupConnections = {}
+local speedConnection = nil
+local diedConnection = nil
+local lastRespawnTime = 0
+local respawnProtectionDuration = 4.0 -- Thời gian bất tử mặc định sau khi hồi sinh (giây)
+local wasDead = false
+
+local function trackCleanupConnection(connection)
+	if connection then table.insert(cleanupConnections, connection) end
+	return connection
+end
+
+function shared.OnRespawn(callback)
+	table.insert(respawnCallbacks, callback)
+end
+
+function shared.GetLastRespawnTime()
+	return lastRespawnTime
+end
+
+function shared.GetRespawnProtectionDuration()
+	return respawnProtectionDuration
+end
+
+function shared.SetRespawnProtectionDuration(seconds)
+	if type(seconds) == "number" and seconds >= 0 then
+		respawnProtectionDuration = seconds
+	end
+end
+
+function shared.GetRespawnProtectionRemaining()
+	if lastRespawnTime == 0 then return 0 end
+	local elapsed = os.clock() - lastRespawnTime
+	local remaining = respawnProtectionDuration - elapsed
+	return math.max(0, remaining)
+end
+
+function shared.IsJustRespawned(gracePeriodSeconds)
+	local period = gracePeriodSeconds or respawnProtectionDuration
+	if lastRespawnTime == 0 then return false end
+	return (os.clock() - lastRespawnTime) <= period
+end
+
+function shared.WasDead()
+	return wasDead
+end
+
+function shared.IsDead()
+	local char = player and player.Character
+	if not char or not char.Parent then return true end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then return true end
+	return false
+end
+
+--// Kiểm tra xem nhân vật hiện tại có đang trong trạng thái BẤT TỬ (Invulnerable) không
+--// Chỉ tính dựa trên Bộ đếm thời gian bảo vệ sau khi hồi sinh (Respawn Protection Duration)
+function shared.IsInvulnerable()
+	local char = player and player.Character
+	if not char or not char.Parent then return false, nil end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health <= 0 then
+		return false, nil -- Khi đã chết thì không tính là bất tử
+	end
+
+	-- Kiểm tra Thời gian bảo vệ sau khi hồi sinh thực sự (chỉ tính qua CharacterAdded)
+	local remaining = shared.GetRespawnProtectionRemaining()
+	if remaining > 0 then
+		return true, ("Respawn Shield (%.1fs)"):format(remaining)
+	end
+
+	return false, nil
+end
+
+--// Enemy helpers
+local function getModelRoot(model)
+	if not model or not model:IsA("Model") then return nil end
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then return root end
+	if model.PrimaryPart and model.PrimaryPart:IsA("BasePart") then return model.PrimaryPart end
+	for _, object in ipairs(model:GetDescendants()) do
+		if object:IsA("BasePart") then return object end
+	end
+	return nil
+end
+
+local function isValidEnemy(model)
+	if not model or not model:IsA("Model") or not model.Parent or model == player.Character then return false end
+	local enemyHumanoid = model:FindFirstChildOfClass("Humanoid")
+	if not enemyHumanoid or enemyHumanoid.Health <= 0 then return false end
+	return getModelRoot(model) ~= nil
+end
+
+local function disconnectEnemyConnections(enemy)
+	local connections = enemyConnections[enemy]
+	if not connections then return end
+	if connections.Died then connections.Died:Disconnect(); connections.Died = nil end
+	enemyConnections[enemy] = nil
+end
+
+local function untrackEnemy(enemy)
+	if not enemy or not trackedEnemies[enemy] then return end
+	pendingModels[enemy] = nil
+	trackedEnemies[enemy] = nil
+	enemyCount -= 1
+	disconnectEnemyConnections(enemy)
+	fireEnemyChanged()
+	refreshRoomIndex()
+end
+
+--// Tìm room (con trực tiếp của dungeon) chứa model.
+local function getEnemyRoom(model)
+	if not dungeon or not model then return nil end
+	local parent = model.Parent
+	while parent do
+		if parent == dungeon then return nil end
+		if parent.Parent == dungeon and (parent:IsA("Folder") or parent:IsA("Model")) then
+			return parent
+		end
+		parent = parent.Parent
+	end
+	return nil
+end
+
+local function trackEnemy(enemy)
+	if not isValidEnemy(enemy) or trackedEnemies[enemy] then return end
+	local root = getModelRoot(enemy)
+	local enemyHumanoid = enemy:FindFirstChildOfClass("Humanoid")
+	if not root or not enemyHumanoid then return end
+
+	trackedEnemies[enemy] = { Model = enemy, Root = root, Humanoid = enemyHumanoid, Room = getEnemyRoom(enemy) }
+	enemyCount += 1
+	enemyConnections[enemy] = { Died = enemyHumanoid.Died:Connect(function() untrackEnemy(enemy) end) }
+	if bossActive and not bossInitialSpawnPos then
+		if tryCaptureBossSpawnPosition then
+			tryCaptureBossSpawnPosition()
+		end
+	end
+	fireEnemyChanged()
+	refreshRoomIndex()
+end
+
+local function waitAndTrackModel(model)
+	if not model then return end
+	if isValidEnemy(model) then trackEnemy(model); return end
+	if pendingModels[model] then return end
+	pendingModels[model] = true
+	task.spawn(function()
+		local timeout = os.clock() + 2
+		while model.Parent and os.clock() < timeout do
+			if isValidEnemy(model) then
+				pendingModels[model] = nil
+				trackEnemy(model)
+				return
+			end
+			task.wait(0.03)
+		end
+		pendingModels[model] = nil
+		if model.Parent and isValidEnemy(model) then trackEnemy(model) end
+	end)
+end
+
+local function trackRoom(room)
+	if not room or trackedRooms[room] then return end
+	trackedRooms[room] = true
+	for _, object in ipairs(room:GetDescendants()) do
+		if object:IsA("Model") and isValidEnemy(object) then trackEnemy(object) end
+	end
+	roomConnections[room] = {
+		Added = room.DescendantAdded:Connect(function(object)
+			if object:IsA("Model") then
+				waitAndTrackModel(object)
+			elseif object:IsA("Humanoid") then
+				local possibleModel = object:FindFirstAncestorOfClass("Model")
+				if possibleModel then waitAndTrackModel(possibleModel) end
+			end
+		end),
+		Removed = room.DescendantRemoving:Connect(function(object)
+			if object:IsA("Model") then untrackEnemy(object) end
+		end),
+	}
+end
+
+initializeRooms = function()
+	if not dungeon then dungeon = workspace:WaitForChild("dungeon", 30) end
+	if not dungeon then return false end
+
+	bossIndex = 0
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
+
+	roomIndex = 0
+	for i = #roomIndexCallbacks, 1, -1 do
+		pcall(roomIndexCallbacks[i], roomIndex)
+	end
+
+	for _, room in ipairs(dungeon:GetChildren()) do
+		if room:IsA("Folder") or room:IsA("Model") then trackRoom(room) end
+	end
+
+	--// Theo dõi cấp DUNGEON (không chỉ từng room): bắt được kẻ địch/room được thêm
+	--// vào sau khi init (phòng sinh sau, respawn trong room chưa được track...).
+	--// Không dùng DescendantAdded riêng cho từng room để tránh phát hiện trùng.
+	roomConnections[dungeon] = {
+		Added = dungeon.DescendantAdded:Connect(function(object)
+			if object:IsA("Model") then
+				waitAndTrackModel(object)
+			elseif object:IsA("Humanoid") then
+				local possibleModel = object:FindFirstAncestorOfClass("Model")
+				if possibleModel then waitAndTrackModel(possibleModel) end
+			end
+		end),
+		Removed = dungeon.DescendantRemoving:Connect(function(object)
+			if object:IsA("Model") then untrackEnemy(object) end
+		end),
+	}
+	return true
+end
+
+resetDungeon = function()
+	if not dungeon then return end
+	for room, conns in pairs(roomConnections) do
+		if conns.Added then pcall(function() conns.Added:Disconnect() end) end
+		if conns.Removed then pcall(function() conns.Removed:Disconnect() end) end
+	end
+	roomConnections = {}
+	trackedRooms = {}
+	for enemy in pairs(trackedEnemies) do
+		disconnectEnemyConnections(enemy)
+	end
+	trackedEnemies = {}
+	enemyCount = 0
+	pendingModels = {}
+	shared.ResetBossIndex()
+	dungeon = nil
+end
+
+cleanupEnemies = function()
+	for enemy, data in pairs(trackedEnemies) do
+		if not enemy or not enemy.Parent then
+			untrackEnemy(enemy)
+		else
+			local enemyHumanoid = data.Humanoid or enemy:FindFirstChildOfClass("Humanoid")
+			data.Humanoid = enemyHumanoid
+			if not enemyHumanoid or enemyHumanoid.Health <= 0 then
+				untrackEnemy(enemy)
+			else
+				local root = data.Root
+				if not root or not root.Parent then
+					root = getModelRoot(enemy)
+					if root then data.Root = root else untrackEnemy(enemy) end
+				end
+			end
+		end
+	end
+end
+
+--// Speed state (Speed tab thao tác lên đây)
+function shared.SetFastSpeed(value)
+	fastSpeed = value
+	if enabled and humanoid and humanoid.Parent then
+		if humanoid.WalkSpeed < fastSpeed then
+			isSettingSpeed = true
+			humanoid.WalkSpeed = fastSpeed
+			isSettingSpeed = false
+		end
+	end
+end
+
+function shared.SetSpeedEnabled(state)
+	enabled = state
+	if humanoid and humanoid.Parent then
+		isSettingSpeed = true
+		if enabled then
+			if humanoid.WalkSpeed < fastSpeed then
+				humanoid.WalkSpeed = fastSpeed
+			end
+		else
+			humanoid.WalkSpeed = normalSpeed
+		end
+		isSettingSpeed = false
+	end
+end
+
+function shared.IsSpeedEnabled()
+	return enabled
+end
+
+function shared.GetFastSpeed()
+	return fastSpeed
+end
+
+function shared.SetInstantAccelEnabled(state)
+	instantAccelEnabled = state and true or false
+end
+
+function shared.IsInstantAccelEnabled()
+	return instantAccelEnabled
+end
+
+--// Humanoid setup
+local function connectSpeedListener()
+	if speedConnection then
+		speedConnection:Disconnect()
+		speedConnection = nil
+	end
+	if not humanoid or not humanoid.Parent then return end
+	speedConnection = humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+		if isSettingSpeed then return end
+		if not humanoid or not humanoid.Parent then return end
+		local curSpeed = humanoid.WalkSpeed
+		if enabled then
+			-- Floor Speed / Anti-Slow: Nếu tốc độ hiện tại thấp hơn fastSpeed (ví dụ 16 hoặc bị làm chậm),
+			-- ta ép lên mức sàn fastSpeed. Nhưng nếu game buff tốc cao hơn (ví dụ skill buff lên 24),
+			-- ta giữ nguyên để người chơi được hưởng trọn vẹn buff của game mà không bị bóp nghẹt.
+			if curSpeed < fastSpeed then
+				isSettingSpeed = true
+				humanoid.WalkSpeed = fastSpeed
+				isSettingSpeed = false
+			end
+		else
+			normalSpeed = curSpeed
+		end
+	end)
+end
+
+function shared.SetHumanoid(character)
+	if not character then return end
+	local newHumanoid = character:WaitForChild("Humanoid", 10)
+	if not newHumanoid then return end
+
+	humanoid = newHumanoid
+	rootPart = character:WaitForChild("HumanoidRootPart", 10) or character.PrimaryPart
+	normalSpeed = humanoid.WalkSpeed
+	if enabled and humanoid.WalkSpeed < fastSpeed then
+		isSettingSpeed = true
+		humanoid.WalkSpeed = fastSpeed
+		isSettingSpeed = false
+	end
+
+	if diedConnection then
+		diedConnection:Disconnect()
+		diedConnection = nil
+	end
+	diedConnection = humanoid.Died:Connect(function()
+		wasDead = true
+	end)
+
+	trackCleanupConnection(humanoid.HealthChanged:Connect(function(health)
+		if health <= 0 then
+			wasDead = true
+		elseif wasDead and health > 0 then
+			wasDead = false
+		end
+	end))
+end
+
+--// Instant Movement (Acceleration)
+local function updateInstantMovement()
+	if not lifecycle.IsActive() then return end
+	if not instantAccelEnabled then return end
+	if not humanoid or not humanoid.Parent or humanoid.Health <= 0 or humanoid.Sit then return end
+	if not rootPart or not rootPart.Parent then
+		local char = player and player.Character
+		rootPart = char and char:FindFirstChild("HumanoidRootPart")
+		if not rootPart then return end
+	end
+	if rootPart.Anchored then return end
+
+	local moveDir = humanoid.MoveDirection
+	local curVel = rootPart.AssemblyLinearVelocity
+
+	if moveDir.Magnitude > 0.05 then
+		local targetSpeed = enabled and math.max(fastSpeed, humanoid.WalkSpeed) or humanoid.WalkSpeed
+		rootPart.AssemblyLinearVelocity = Vector3.new(
+			moveDir.X * targetSpeed,
+			curVel.Y,
+			moveDir.Z * targetSpeed
+		)
+	end
+end
+
+if services.RunService then
+	local simEvent = services.RunService.PreSimulation or services.RunService.Heartbeat
+	if simEvent then
+		trackCleanupConnection(simEvent:Connect(updateInstantMovement))
+	end
+end
+
+function shared.GetDungeonStartTime()
+	return dungeonStartTime
+end
+
+function shared.SetDungeonStartTime(value)
+	dungeonStartTime = value
+end
+
+function shared.GetDungeonElapsed()
+	if not dungeonStartTime then return nil end
+	return os.clock() - dungeonStartTime
+end
+
+--// Ensures dungeon tracking is ready.
+function shared.ReadyDungeon()
+	if not dungeon and not initializeRooms() then return false end
+	return true
+end
+
+function shared.GetHumanoid()
+	return humanoid
+end
+
+--// Trả về danh sách tên các loại enemy có trong màn (dungeon + đang track)
+function shared.GetEnemyNames()
+	local names = {}
+	local function add(name)
+		if name and name ~= "" and name ~= player.Name then names[name] = true end
+	end
+	if dungeon then
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				for _, obj in ipairs(room:GetDescendants()) do
+					if obj:IsA("Model") and obj:FindFirstChildOfClass("Humanoid") then
+						add(obj.Name)
+					end
+				end
+			end
+		end
+	end
+	for enemy in pairs(trackedEnemies) do
+		add(enemy.Name)
+	end
+	local out = {}
+	for name in pairs(names) do table.insert(out, name) end
+	table.sort(out)
+	return out
+end
+
+--// Số enemy còn sống đang track trong màn (cập nhật thời gian thực)
+function shared.GetEnemyCount()
+	return enemyCount
+end
+
+--// Trả về mảng dữ liệu enemy đang track (Model, Root, Humanoid) để ESP Enemy dùng.
+function shared.GetTrackedEnemyData()
+	local out = {}
+	for model, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			out[#out + 1] = data
+		end
+	end
+	return out
+end
+
+--// Event-driven: đăng ký callback chạy khi tập enemy track thay đổi (thêm/xoá).
+--// Trả về hàm huỷ callback.
+function shared.OnEnemyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(enemyChangedCallbacks, callback)
+	return function()
+		for i, cb in ipairs(enemyChangedCallbacks) do
+			if cb == callback then table.remove(enemyChangedCallbacks, i) break end
+		end
+	end
+end
+
+--// Returns enemy projectile names from ReplicatedStorage.enemyProjectiles for ESP.
+function shared.GetEnemyProjectileNames()
+	local names = {}
+	local rs = game:GetService("ReplicatedStorage")
+	local folder = rs:FindFirstChild(PROJECTILE_FOLDER)
+	if not folder then return names end
+	for _, obj in ipairs(folder:GetChildren()) do
+		local cls = obj.ClassName
+		if cls == "Model" or cls == "MeshPart" or cls == "Part" then
+			names[obj.Name] = true
+		end
+	end
+	return names
+end
+
+function shared.GetKeyHoldTime()
+	return AUTO_KEY_HOLD_TIME
+end
+
+--// Initialization: character hiện tại + listeners
+if player and player.Character and player.Character.Parent then
+	shared.SetHumanoid(player.Character)
+	connectSpeedListener()
+else
+	local character = player and player.CharacterAdded and task.spawn(function()
+		local char = player.CharacterAdded:Wait()
+		if char and lifecycle.IsActive() then shared.SetHumanoid(char); connectSpeedListener() end
+	end)
+end
+
+if player then
+	trackCleanupConnection(player.CharacterAdded:Connect(function(character)
+		local ok, err = pcall(function()
+			if not character then return end
+			lastRespawnTime = os.clock()
+			shared.SetHumanoid(character)
+			connectSpeedListener()
+
+			for _, callback in ipairs(respawnCallbacks) do
+				pcall(callback)
+			end
+		end)
+		if not ok then warn("[Shared] respawn handler error:", tostring(err)) end
+	end))
+end
+
+--// Dungeon watcher
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local currentDungeon = workspace:FindFirstChild("dungeon")
+		if dungeon and currentDungeon ~= dungeon then
+			resetDungeon()
+		elseif not dungeon and currentDungeon then
+			initializeRooms()
+		end
+		--// Cập nhật room hiện tại khi dungeon/enemy thay đổi.
+		refreshRoomIndex()
+	end
+end)
+
+--// Dungeon name watcher: theo dõi tên dungeon thật. Ở lobby workspace.dungeonName
+--// mang placeholder "unknown" (hoặc rỗng) -> coi như CHƯA vào dungeon (trả nil).
+local function readDungeonName()
+	local Workspace = game:GetService("Workspace")
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj.Name == "dungeonName" and obj:IsA("ValueBase") then
+			local value = obj.Value
+			if type(value) == "string" then
+				local trimmed = string.gsub(value, "%s+", "")
+				if trimmed ~= "" and string.lower(trimmed) ~= DUNGEON_NAME_PLACEHOLDER then
+					return value
+				end
+			end
+		end
+	end
+	return nil
+end
+
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local name = readDungeonName()
+		if name ~= currentDungeonName then
+			currentDungeonName = name
+			if name then shared.ResetBossIndex() end
+			for i = #dungeonNameCallbacks, 1, -1 do
+				pcall(dungeonNameCallbacks[i], name)
+			end
+		end
+	end
+end)
+
+--// Xác định trạng thái lobby dựa trên tên dungeon: có tên dungeon thật = đang ở
+--// trong dungeon; chưa có (placeholder "unknown"/rỗng) = lobby. Không phụ thuộc
+--// nút start ngoài UI.
+local function determineLobbyState()
+	return not (currentDungeonName and #currentDungeonName > 0)
+end
+
+--// Lobby watcher: lobby = startButton hiện diện khi đang ở ngoài dungeon
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(GUI_UPDATE_INTERVAL)
+		local lobby = determineLobbyState()
+		if lobby ~= inLobby then
+			inLobby = lobby
+			for i = #lobbyCallbacks, 1, -1 do
+				pcall(lobbyCallbacks[i], inLobby)
+			end
+		end
+	end
+end)
+
+task.spawn(function()
+	local success, errorMessage = pcall(function() return initializeRooms() end)
+	if not success then
+		warn("[EnemyTracker] Initialization error:", errorMessage)
+	end
+end)
+
+--// Quét trực tiếp toàn bộ dungeon để bắt kịp kẻ địch / boss mới xuất hiện
+local function scanDungeonEnemies()
+	if not dungeon then dungeon = workspace:FindFirstChild("dungeon") end
+	if not dungeon then return end
+	local ok = pcall(function()
+		for _, room in ipairs(dungeon:GetChildren()) do
+			if room:IsA("Folder") or room:IsA("Model") then
+				if room:IsA("Model") and isValidEnemy(room) then
+					waitAndTrackModel(room)
+				end
+				for _, object in ipairs(room:GetDescendants()) do
+					if object:IsA("Model") then
+						waitAndTrackModel(object)
+					end
+				end
+			end
+		end
+		cleanupEnemies()
+	end)
+	if not ok then
+		warn("[EnemyTracker] scanDungeonEnemies error")
+	end
+end
+
+function shared.ForceRescan()
+	scanDungeonEnemies()
+end
+
+--// Re-scan định kỳ: reconcile trackedEnemies với nội dung dungeon hiện tại.
+--// Đảm bảo bắt được kẻ địch mà cơ chế event (DescendantAdded) bỏ lỡ do timing
+--// (Humanoid Health = 0 lúc sinh, room tạo sau init...) -> hết "không thấy kẻ địch".
+local lastRescan = 0
+local RESCAN_INTERVAL = 2
+task.spawn(function()
+	while lifecycle.IsActive() do
+		task.wait(RESCAN_INTERVAL)
+		local now = os.clock()
+		if now - lastRescan < RESCAN_INTERVAL then continue end
+		lastRescan = now
+		scanDungeonEnemies()
+	end
+end)
+
+--// Boss state API
+function shared.IsBossActive()
+	return bossActive
+end
+
+function shared.OnBossActiveChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(bossCallbacks, callback)
+	return function()
+		for i, cb in ipairs(bossCallbacks) do
+			if cb == callback then table.remove(bossCallbacks, i) break end
+		end
+	end
+end
+
+function shared.GetCurrentBossIndex()
+	return bossIndex
+end
+
+--// Xác định loại mục tiêu đang đánh để áp setting theo context:
+--// "Mob" (quái thường) hoặc "Boss1"/"Boss2"/"Boss3" theo thứ tự boss hiện tại.
+function shared.GetCombatTargetKey()
+	if not bossActive then return "Mob" end
+	local idx = math.clamp(bossIndex, 1, 3)
+	return "Boss" .. tostring(idx)
+end
+
+function shared.ResetBossIndex()
+	local wasBoss = bossActive
+	bossIndex = 0
+	bossActive = false
+	bossInitialSpawnPos = nil
+	for i = #bossIndexCallbacks, 1, -1 do
+		pcall(bossIndexCallbacks[i], bossIndex)
+	end
+	if wasBoss then
+		for i = #bossCallbacks, 1, -1 do
+			pcall(bossCallbacks[i], false)
+		end
+	end
+	refreshRoomIndex()
+end
+
+function shared.OnBossIndexChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(bossIndexCallbacks, callback)
+	return function()
+		for i, cb in ipairs(bossIndexCallbacks) do
+			if cb == callback then table.remove(bossIndexCallbacks, i) break end
+		end
+	end
+end
+
+--// Đọc số room từ tên (room1 -> 1, room12 -> 12...). Trả 0 nếu không khớp.
+local function parseRoomNumber(name)
+	if type(name) ~= "string" then return 0 end
+	local lower = string.lower(name)
+	local bossMatch = string.match(lower, "boss.*(%d+)")
+	if bossMatch then
+		return 100 + (tonumber(bossMatch) or 1)
+	end
+	if string.find(lower, "boss") then
+		return 100 + math.max(1, bossIndex)
+	end
+	local number = string.match(name, "^room(%d+)$")
+	if not number then return 0 end
+	return tonumber(number) or 0
+end
+
+--// Tính room hiện tại: room chứa enemy đang track còn sống.
+--// Game clear theo kiểu tuần tự: xong quái room này mới spawn quái room sau, nên
+--// tại 1 thời điểm chỉ có đúng 1 room có quái -> room của bất kỳ quái đang track
+--// chính là room hiện tại (không cần scan theo khoảng cách).
+--// Room nhận diện qua TÊN "room<so>" (room1, room2...). Không có enemy/dungeon -> 0.
+--// Fallback phòng Boss: nếu bossActive = true, trả về 100 + math.max(1, bossIndex) (101, 102...).
+local function computeRoomIndex()
+	if not dungeon then return 0 end
+	for model, data in pairs(trackedEnemies) do
+		if data and data.Room then
+			local idx = parseRoomNumber(data.Room.Name)
+			if idx > 0 then return idx end
+		end
+	end
+	if bossActive then
+		return 100 + math.max(1, bossIndex)
+	end
+	return 0
+end
+
+--// Đồng bộ roomIndex hiện tại, fire callback nếu đổi.
+refreshRoomIndex = function()
+	local newIndex = computeRoomIndex()
+	if newIndex == roomIndex then return end
+	roomIndex = newIndex
+	for i = #roomIndexCallbacks, 1, -1 do
+		pcall(roomIndexCallbacks[i], roomIndex)
+	end
+end
+
+function shared.GetCurrentRoomIndex()
+	return roomIndex
+end
+
+function shared.OnRoomIndexChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(roomIndexCallbacks, callback)
+	return function()
+		for i, cb in ipairs(roomIndexCallbacks) do
+			if cb == callback then table.remove(roomIndexCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Dungeon name ----
+function shared.GetCurrentDungeonName()
+	return currentDungeonName
+end
+
+function shared.OnDungeonNameChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(dungeonNameCallbacks, callback)
+	return function()
+		for i, cb in ipairs(dungeonNameCallbacks) do
+			if cb == callback then table.remove(dungeonNameCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Lobby / Dungeon state ----
+function shared.IsInLobby()
+	return inLobby
+end
+
+function shared.OnLobbyChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(lobbyCallbacks, callback)
+	return function()
+		for i, cb in ipairs(lobbyCallbacks) do
+			if cb == callback then table.remove(lobbyCallbacks, i) break end
+		end
+	end
+end
+
+--// ---- Player Real Level (dùng cho Webhook, không bị ảnh hưởng bởi UI masking) ----
+local realPlayerLevel = nil
+
+function shared.SetRealPlayerLevel(level)
+	local num = tonumber(tostring(level or ""):match("%d+"))
+	if num and num > 0 then
+		realPlayerLevel = tostring(num)
+		_G.RealPlayerLevel = realPlayerLevel
+	end
+end
+
+function shared.GetRealPlayerLevel()
+	return realPlayerLevel or _G.RealPlayerLevel
+end
+
+--// Boss GUI tracker: theo dõi PlayerGui để phát hiện bossHealth xuất hiện/biến mất
+local bossHealthRef = nil
+
+tryCaptureBossSpawnPosition = function()
+	if not bossActive or bossInitialSpawnPos ~= nil then return end
+	for enemy, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			local isBossCandidate = false
+			if data.Room and type(data.Room.Name) == "string" and string.find(string.lower(data.Room.Name), "boss") then
+				isBossCandidate = true
+			elseif string.find(string.lower(enemy.Name), "boss") then
+				isBossCandidate = true
+			elseif enemy.Parent and string.find(string.lower(enemy.Parent.Name), "boss") then
+				isBossCandidate = true
+			end
+
+			if isBossCandidate then
+				bossInitialSpawnPos = data.Root.Position
+				return
+			end
+		end
+	end
+
+	for _, data in pairs(trackedEnemies) do
+		if data and data.Root and data.Root.Parent then
+			bossInitialSpawnPos = data.Root.Position
+			return
+		end
+	end
+end
+
+local function setBossActive(active)
+	if bossActive == active then return end
+	bossActive = active
+	if active then
+		bossIndex += 1
+		bossInitialSpawnPos = nil
+		scanDungeonEnemies()
+		tryCaptureBossSpawnPosition()
+		for i = #bossIndexCallbacks, 1, -1 do
+			pcall(bossIndexCallbacks[i], bossIndex)
+		end
+	else
+		bossInitialSpawnPos = nil
+	end
+	for i = #bossCallbacks, 1, -1 do
+		pcall(bossCallbacks[i], bossActive)
+	end
+	refreshRoomIndex()
+end
+
+function shared.GetBossSpawnPosition()
+	if bossInitialSpawnPos then
+		return bossInitialSpawnPos
+	end
+	tryCaptureBossSpawnPosition()
+	return bossInitialSpawnPos
+end
+
+function shared.SetBossSpawnPosition(pos)
+	bossInitialSpawnPos = pos
+end
+
+local function scanBossGui()
+	if not player then return end
+	local playerGui = player:FindFirstChild("PlayerGui")
+	if not playerGui then
+		bossHealthRef = nil
+		setBossActive(false)
+		return
+	end
+	local found = playerGui:FindFirstChild("bossHealth", true)
+	if found then
+		if found ~= bossHealthRef then
+			bossHealthRef = found
+			if bossHealthRef:IsA("ScreenGui") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Enabled"):Connect(scanBossGui))
+			elseif bossHealthRef:IsA("GuiObject") then
+				trackCleanupConnection(bossHealthRef:GetPropertyChangedSignal("Visible"):Connect(scanBossGui))
+			end
+		end
+		local visible = if found:IsA("ScreenGui") then found.Enabled elseif found:IsA("GuiObject") then found.Visible else true
+		setBossActive(visible)
+	else
+		bossHealthRef = nil
+		setBossActive(false)
+	end
+end
+
+task.spawn(function()
+	if not player then return end
+	local playerGui = player:WaitForChild("PlayerGui", 30)
+	if not playerGui then return end
+
+	trackCleanupConnection(playerGui.DescendantAdded:Connect(scanBossGui))
+	trackCleanupConnection(playerGui.DescendantRemoving:Connect(scanBossGui))
+	scanBossGui()
+
+	--// Poll an toàn phòng trường hợp DescendantRemoving bỏ sót khi GUI bị xóa cục bộ
+	while lifecycle.IsActive() and task.wait(0.5) do
+		scanBossGui()
+	end
+end)
+
+--// ControlModule Management (ngăn Roblox ControlModule ghi đè Move(0,0,0) mỗi frame)
+local controlsModule = nil
+local activeControlClaims = {}
+
+local function getPlayerControls()
+	if controlsModule then return controlsModule end
+	pcall(function()
+		local lp = player or game:GetService("Players").LocalPlayer
+		local pScripts = lp and lp:FindFirstChild("PlayerScripts")
+		local pMod = pScripts and pScripts:FindFirstChild("PlayerModule")
+		if pMod then
+			controlsModule = require(pMod):GetControls()
+		end
+	end)
+	return controlsModule
+end
+
+function shared.DisableControls(tag)
+	tag = tag or "default"
+	activeControlClaims[tag] = true
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Disable) == "function" then
+		pcall(function() ctrl:Disable() end)
+	end
+end
+
+function shared.EnableControls(tag)
+	tag = tag or "default"
+	activeControlClaims[tag] = nil
+	if next(activeControlClaims) ~= nil then
+		return
+	end
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Enable) == "function" then
+		pcall(function() ctrl:Enable() end)
+	end
+end
+
+lifecycle.Register(function()
+	if speedConnection then speedConnection:Disconnect(); speedConnection = nil end
+	for _, connection in ipairs(cleanupConnections) do
+		pcall(function() connection:Disconnect() end)
+	end
+	table.clear(cleanupConnections)
+	table.clear(activeControlClaims)
+	local ctrl = getPlayerControls()
+	if ctrl and type(ctrl.Enable) == "function" then
+		pcall(function() ctrl:Enable() end)
+	end
+	resetDungeon()
+end)
+
+--// Table
+return shared
+end function __DIST.g()
+local MacLib = { 
+	Options = {}, 
+	Folder = "Maclib", 
+	contextData = {},
+	GetService = function(service)
+		return cloneref and cloneref(game:GetService(service)) or game:GetService(service)
+	end
+}
+
+--// Services
+local TweenService = MacLib.GetService("TweenService")
+local RunService = MacLib.GetService("RunService")
+local HttpService = MacLib.GetService("HttpService")
+local ContentProvider = MacLib.GetService("ContentProvider")
+local UserInputService = MacLib.GetService("UserInputService")
+local Lighting = MacLib.GetService("Lighting")
+local Players = MacLib.GetService("Players")
+
+--// Variables
+local isStudio = RunService:IsStudio()
+local LocalPlayer = Players.LocalPlayer
+
+local windowState
+local acrylicBlur
+local hasGlobalSetting
+
+local tabs = {}
+local currentTabInstance = nil
+local tabIndex = 0
+local unloaded = false
+
+local assets = {
+	interFont = "rbxassetid://12187365364",
+	userInfoBlurred = "rbxassetid://18824089198",
+	toggleBackground = "rbxassetid://18772190202",
+	togglerHead = "rbxassetid://18772309008",
+	buttonImage = "rbxassetid://10709791437",
+	searchIcon = "rbxassetid://86737463322606",
+	colorWheel = "rbxassetid://2849458409",
+	colorTarget = "rbxassetid://73265255323268",
+	grid = "rbxassetid://121484455191370",
+	globe = "rbxassetid://108952102602834",
+	transform = "rbxassetid://90336395745819",
+	dropdown = "rbxassetid://18865373378",
+	sliderbar = "rbxassetid://18772615246",
+	sliderhead = "rbxassetid://18772834246",
+}
+
+--// Functions
+local function elevateThreadIdentity()
+	pcall(function()
+		local fn = setthreadidentity or set_thread_identity or setidentity or (syn and syn.set_thread_identity)
+		if fn then
+			local ok = pcall(fn, 7)
+			if not ok then
+				pcall(fn, 8)
+			end
+		end
+	end)
+end
+MacLib.Elevate = elevateThreadIdentity
+
+local function GetGui()
+	elevateThreadIdentity()
+	local newGui = Instance.new("ScreenGui")
+	newGui.ScreenInsets = Enum.ScreenInsets.None
+	newGui.ResetOnSpawn = false
+	newGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	newGui.DisplayOrder = 2147483647
+
+	local parent = RunService:IsStudio() 
+		and LocalPlayer:FindFirstChild("PlayerGui")
+		or (gethui and gethui())
+		or (cloneref and cloneref(MacLib.GetService("CoreGui")) or MacLib.GetService("CoreGui"))
+
+	newGui.Parent = parent
+	return newGui
+end
+
+local function Tween(instance, tweeninfo, propertytable)
+	elevateThreadIdentity()
+	local ok, tw = pcall(TweenService.Create, TweenService, instance, tweeninfo, propertytable)
+	if ok and tw then
+		return tw
+	end
+	-- Fallback: nếu TweenService:Create bị chặn bởi Roblox capability (lacking capability Plugin),
+	-- gán thẳng các thuộc tính để UI cập nhật trạng thái mà không crash thread.
+	if propertytable and typeof(instance) == "Instance" then
+		for prop, val in pairs(propertytable) do
+			pcall(function()
+				instance[prop] = val
+			end)
+		end
+	end
+	return {
+		Play = function() end,
+		Cancel = function() end,
+		Pause = function() end,
+		Completed = { Wait = function() end }
+	}
+end
+
+--// Library Functions
+function MacLib:Window(Settings)
+	local WindowFunctions = {Settings = Settings}
+	if Settings.AcrylicBlur ~= nil then
+		acrylicBlur = Settings.AcrylicBlur
+	else
+		acrylicBlur = true
+	end
+
+	local macLib = GetGui()
+
+	local notifications = Instance.new("Frame")
+	notifications.Name = "Notifications"
+	notifications.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	notifications.BackgroundTransparency = 1
+	notifications.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	notifications.BorderSizePixel = 0
+	notifications.Size = UDim2.fromScale(1, 1)
+	notifications.Parent = macLib
+	notifications.ZIndex = 2
+
+	local notificationsUIListLayout = Instance.new("UIListLayout")
+	notificationsUIListLayout.Name = "NotificationsUIListLayout"
+	notificationsUIListLayout.Padding = UDim.new(0, 10)
+	notificationsUIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	notificationsUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	notificationsUIListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	notificationsUIListLayout.Parent = notifications
+
+	local notificationsUIPadding = Instance.new("UIPadding")
+	notificationsUIPadding.Name = "NotificationsUIPadding"
+	notificationsUIPadding.PaddingBottom = UDim.new(0, 10)
+	notificationsUIPadding.PaddingLeft = UDim.new(0, 10)
+	notificationsUIPadding.PaddingRight = UDim.new(0, 10)
+	notificationsUIPadding.PaddingTop = UDim.new(0, 10)
+	notificationsUIPadding.Parent = notifications
+
+	local base = Instance.new("Frame")
+	base.Name = "Base"
+	base.AnchorPoint = Vector2.new(0.5, 0.5)
+	base.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+	base.BackgroundTransparency = Settings.AcrylicBlur and 0.05 or 0
+	base.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	base.BorderSizePixel = 0
+	base.Position = UDim2.fromScale(0.5, 0.5)
+	base.Size = Settings.Size or UDim2.fromOffset(868, 650)
+
+	local baseUIScale = Instance.new("UIScale")
+	baseUIScale.Name = "BaseUIScale"
+	baseUIScale.Parent = base
+
+	local baseUICorner = Instance.new("UICorner")
+	baseUICorner.Name = "BaseUICorner"
+	baseUICorner.CornerRadius = UDim.new(0, 10)
+	baseUICorner.Parent = base
+
+	local baseUIStroke = Instance.new("UIStroke")
+	baseUIStroke.Name = "BaseUIStroke"
+	baseUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	baseUIStroke.Color = Color3.fromRGB(255, 255, 255)
+	baseUIStroke.Transparency = 0.9
+	baseUIStroke.Parent = base
+
+	local sidebar = Instance.new("Frame")
+	sidebar.Name = "Sidebar"
+	sidebar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	sidebar.BackgroundTransparency = 1
+	sidebar.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	sidebar.BorderSizePixel = 0
+	sidebar.Position = UDim2.fromScale(-3.52e-08, 4.69e-08)
+	sidebar.Size = Settings.SidebarWidth and UDim2.new(0, Settings.SidebarWidth, 1, 0) or UDim2.fromScale(0.325, 1)
+
+	local divider = Instance.new("Frame")
+	divider.Name = "Divider"
+	divider.AnchorPoint = Vector2.new(1, 0)
+	divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	divider.BackgroundTransparency = 0.9
+	divider.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	divider.BorderSizePixel = 0
+	divider.Position = UDim2.fromScale(1, 0)
+	divider.Size = UDim2.new(0, 1, 1, 0)
+	divider.Parent = sidebar
+
+	local dividerInteract = Instance.new("TextButton")
+	dividerInteract.Name = "DividerInteract"
+	dividerInteract.AnchorPoint = Vector2.new(0.5, 0)
+	dividerInteract.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	dividerInteract.BackgroundTransparency = 1
+	dividerInteract.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	dividerInteract.BorderSizePixel = 0
+	dividerInteract.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+	dividerInteract.Position = UDim2.fromScale(0.5, 0)
+	dividerInteract.Size = UDim2.new(1, 6, 1, 0)
+	dividerInteract.Text = ""
+	dividerInteract.TextColor3 = Color3.fromRGB(0, 0, 0)
+	dividerInteract.TextSize = 14
+	dividerInteract.Parent = divider
+
+	local windowControls = Instance.new("Frame")
+	windowControls.Name = "WindowControls"
+	windowControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	windowControls.BackgroundTransparency = 1
+	windowControls.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	windowControls.BorderSizePixel = 0
+	windowControls.Size = UDim2.new(1, 0, 0, 31)
+
+	local controls = Instance.new("Frame")
+	controls.Name = "Controls"
+	controls.BackgroundColor3 = Color3.fromRGB(119, 174, 94)
+	controls.BackgroundTransparency = 1
+	controls.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	controls.BorderSizePixel = 0
+	controls.Size = UDim2.fromScale(1, 1)
+
+	local uIListLayout = Instance.new("UIListLayout")
+	uIListLayout.Name = "UIListLayout"
+	uIListLayout.Padding = UDim.new(0, 5)
+	uIListLayout.FillDirection = Enum.FillDirection.Horizontal
+	uIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	uIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	uIListLayout.Parent = controls
+
+	local uIPadding = Instance.new("UIPadding")
+	uIPadding.Name = "UIPadding"
+	uIPadding.PaddingLeft = UDim.new(0, 11)
+	uIPadding.Parent = controls
+
+	local windowControlSettings = {
+		sizes = { enabled = UDim2.fromOffset(8, 8), disabled = UDim2.fromOffset(7, 7) },
+		transparencies = { enabled = 0, disabled = 1 },
+		strokeTransparency = 0.9,
+	}
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "BaseUIStroke"
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Color = Color3.fromRGB(255, 255, 255)
+	stroke.Transparency = windowControlSettings.strokeTransparency
+
+	local exit = Instance.new("TextButton")
+	exit.Name = "Exit"
+	exit.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+	exit.Text = ""
+	exit.TextColor3 = Color3.fromRGB(0, 0, 0)
+	exit.TextSize = 14
+	exit.AutoButtonColor = false
+	exit.BackgroundColor3 = Color3.fromRGB(250, 93, 86)
+	exit.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	exit.BorderSizePixel = 0
+
+	local uICorner = Instance.new("UICorner")
+	uICorner.Name = "UICorner"
+	uICorner.CornerRadius = UDim.new(1, 0)
+	uICorner.Parent = exit
+
+	exit.Parent = controls
+
+	local minimize = Instance.new("TextButton")
+	minimize.Name = "Minimize"
+	minimize.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+	minimize.Text = ""
+	minimize.TextColor3 = Color3.fromRGB(0, 0, 0)
+	minimize.TextSize = 14
+	minimize.AutoButtonColor = false
+	minimize.BackgroundColor3 = Color3.fromRGB(252, 190, 57)
+	minimize.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	minimize.BorderSizePixel = 0
+	minimize.LayoutOrder = 1
+
+	local uICorner1 = Instance.new("UICorner")
+	uICorner1.Name = "UICorner"
+	uICorner1.CornerRadius = UDim.new(1, 0)
+	uICorner1.Parent = minimize
+
+	minimize.Parent = controls
+
+	local maximize = Instance.new("TextButton")
+	maximize.Name = "Maximize"
+	maximize.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+	maximize.Text = ""
+	maximize.TextColor3 = Color3.fromRGB(0, 0, 0)
+	maximize.TextSize = 14
+	maximize.AutoButtonColor = false
+	maximize.BackgroundColor3 = Color3.fromRGB(119, 174, 94)
+	maximize.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	maximize.BorderSizePixel = 0
+	maximize.LayoutOrder = 1
+
+	local uICorner2 = Instance.new("UICorner")
+	uICorner2.Name = "UICorner"
+	uICorner2.CornerRadius = UDim.new(1, 0)
+	uICorner2.Parent = maximize
+
+	maximize.Parent = controls
+
+	local function applyState(button, enabled)
+		local size = enabled and windowControlSettings.sizes.enabled or windowControlSettings.sizes.disabled
+		local transparency = enabled and windowControlSettings.transparencies.enabled or windowControlSettings.transparencies.disabled
+
+		button.Size = size
+		button.BackgroundTransparency = transparency
+		button.Active = enabled
+		button.Interactable = enabled
+
+		for _, child in ipairs(button:GetChildren()) do
+			if child:IsA("UIStroke") then
+				child.Transparency = transparency
+			end
+		end
+		if not enabled then
+			stroke:Clone().Parent = button
+		end
+	end
+
+	applyState(maximize, false)
+
+	local controlsList = {exit, minimize}
+	for _, button in pairs(controlsList) do
+		local buttonName = button.Name
+		local isEnabled = true
+
+		if Settings.DisabledWindowControls and table.find(Settings.DisabledWindowControls, buttonName) then
+			isEnabled = false
+		end
+
+		applyState(button, isEnabled)
+	end
+
+	controls.Parent = windowControls
+
+	local divider1 = Instance.new("Frame")
+	divider1.Name = "Divider"
+	divider1.AnchorPoint = Vector2.new(0, 1)
+	divider1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	divider1.BackgroundTransparency = 0.9
+	divider1.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	divider1.BorderSizePixel = 0
+	divider1.Position = UDim2.fromScale(0, 1)
+	divider1.Size = UDim2.new(1, 0, 0, 1)
+	divider1.Parent = windowControls
+
+	windowControls.Parent = sidebar
+
+	local information = Instance.new("Frame")
+	information.Name = "Information"
+	information.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	information.BackgroundTransparency = 1
+	information.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	information.BorderSizePixel = 0
+	information.Position = UDim2.fromOffset(0, 31)
+	information.Size = UDim2.new(1, 0, 0, 60)
+
+	local divider2 = Instance.new("Frame")
+	divider2.Name = "Divider"
+	divider2.AnchorPoint = Vector2.new(0, 1)
+	divider2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	divider2.BackgroundTransparency = 0.9
+	divider2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	divider2.BorderSizePixel = 0
+	divider2.Position = UDim2.fromScale(0, 1)
+	divider2.Size = UDim2.new(1, 0, 0, 1)
+	divider2.Parent = information
+
+	local informationHolder = Instance.new("Frame")
+	informationHolder.Name = "InformationHolder"
+	informationHolder.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	informationHolder.BackgroundTransparency = 1
+	informationHolder.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	informationHolder.BorderSizePixel = 0
+	informationHolder.Size = UDim2.fromScale(1, 1)
+
+	local informationHolderUIPadding = Instance.new("UIPadding")
+	informationHolderUIPadding.Name = "InformationHolderUIPadding"
+	informationHolderUIPadding.PaddingBottom = UDim.new(0, 10)
+	informationHolderUIPadding.PaddingLeft = UDim.new(0, 23)
+	informationHolderUIPadding.PaddingRight = UDim.new(0, 22)
+	informationHolderUIPadding.PaddingTop = UDim.new(0, 10)
+	informationHolderUIPadding.Parent = informationHolder
+
+	local globalSettingsButton = Instance.new("ImageButton")
+	globalSettingsButton.Name = "GlobalSettingsButton"
+	globalSettingsButton.Image = assets.globe
+	globalSettingsButton.ImageTransparency = 0.5
+	globalSettingsButton.AnchorPoint = Vector2.new(1, 0.5)
+	globalSettingsButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	globalSettingsButton.BackgroundTransparency = 1
+	globalSettingsButton.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	globalSettingsButton.BorderSizePixel = 0
+	globalSettingsButton.Position = UDim2.fromScale(1, 0.5)
+	globalSettingsButton.Size = UDim2.fromOffset(16,16)
+	globalSettingsButton.Parent = informationHolder
+
+	local function ChangeGlobalSettingsButtonState(State)
+		if State == "Default" then
+			Tween(globalSettingsButton, TweenInfo.new(0.2, Enum.EasingStyle.Sine), {
+				ImageTransparency = 0.5
+			}):Play()
+		elseif State == "Hover" then
+			Tween(globalSettingsButton, TweenInfo.new(0.2, Enum.EasingStyle.Sine), {
+				ImageTransparency = 0.3
+			}):Play()
+		end
+	end
+
+	globalSettingsButton.MouseEnter:Connect(function()
+		ChangeGlobalSettingsButtonState("Hover")
+	end)
+	globalSettingsButton.MouseLeave:Connect(function()
+		ChangeGlobalSettingsButtonState("Default")
+	end)
+
+	local titleFrame = Instance.new("Frame")
+	titleFrame.Name = "TitleFrame"
+	titleFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	titleFrame.BackgroundTransparency = 1
+	titleFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	titleFrame.BorderSizePixel = 0
+	titleFrame.Size = UDim2.fromScale(1, 1)
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.FontFace = Font.new(
+		assets.interFont,
+		Enum.FontWeight.SemiBold,
+		Enum.FontStyle.Normal
+	)
+	title.Text = Settings.Title
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.RichText = true
+	title.TextSize = 18
+	title.TextTransparency = 0.1
+	title.TextTruncate = Enum.TextTruncate.SplitWord
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextYAlignment = Enum.TextYAlignment.Top
+	title.AutomaticSize = Enum.AutomaticSize.Y
+	title.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	title.BackgroundTransparency = 1
+	title.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	title.BorderSizePixel = 0
+	title.Size = UDim2.new(1, -20, 0, 0)
+	title.Parent = titleFrame
+
+	local subtitle = Instance.new("TextLabel")
+	subtitle.Name = "Subtitle"
+	subtitle.FontFace = Font.new(
+		assets.interFont,
+		Enum.FontWeight.Medium,
+		Enum.FontStyle.Normal
+	)
+	subtitle.RichText = true
+	subtitle.Text = Settings.Subtitle
+	subtitle.RichText = true
+	subtitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	subtitle.TextSize = 12
+	subtitle.TextTransparency = 0.7
+	subtitle.TextTruncate = Enum.TextTruncate.SplitWord
+	subtitle.TextXAlignment = Enum.TextXAlignment.Left
+	subtitle.TextYAlignment = Enum.TextYAlignment.Top
+	subtitle.AutomaticSize = Enum.AutomaticSize.Y
+	subtitle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	subtitle.BackgroundTransparency = 1
+	subtitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	subtitle.BorderSizePixel = 0
+	subtitle.LayoutOrder = 1
+	subtitle.Size = UDim2.new(1, -20, 0, 0)
+	subtitle.Parent = titleFrame
+
+	local titleFrameUIListLayout = Instance.new("UIListLayout")
+	titleFrameUIListLayout.Name = "TitleFrameUIListLayout"
+	titleFrameUIListLayout.Padding = UDim.new(0, 3)
+	titleFrameUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	titleFrameUIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	titleFrameUIListLayout.Parent = titleFrame
+
+	titleFrame.Parent = informationHolder
+
+	informationHolder.Parent = information
+
+	information.Parent = sidebar
+
+	local sidebarGroup = Instance.new("Frame")
+	sidebarGroup.Name = "SidebarGroup"
+	sidebarGroup.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	sidebarGroup.BackgroundTransparency = 1
+	sidebarGroup.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	sidebarGroup.BorderSizePixel = 0
+	sidebarGroup.Position = UDim2.fromOffset(0, 91)
+	sidebarGroup.Size = UDim2.new(1, 0, 1, -91)
+
+	local userInfo = Instance.new("Frame")
+	userInfo.Name = "UserInfo"
+	userInfo.AnchorPoint = Vector2.new(0, 1)
+	userInfo.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	userInfo.BackgroundTransparency = 1
+	userInfo.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	userInfo.BorderSizePixel = 0
+	userInfo.Position = UDim2.fromScale(0, 1)
+	userInfo.Size = UDim2.new(1, 0, 0, 107)
+
+	local informationGroup = Instance.new("Frame")
+	informationGroup.Name = "InformationGroup"
+	informationGroup.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	informationGroup.BackgroundTransparency = 1
+	informationGroup.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	informationGroup.BorderSizePixel = 0
+	informationGroup.Size = UDim2.fromScale(1, 1)
+
+	local informationGroupUIPadding = Instance.new("UIPadding")
+	informationGroupUIPadding.Name = "InformationGroupUIPadding"
+	informationGroupUIPadding.PaddingBottom = UDim.new(0, 17)
+	informationGroupUIPadding.PaddingLeft = UDim.new(0, 25)
+	informationGroupUIPadding.Parent = informationGroup
+
+	local informationGroupUIListLayout = Instance.new("UIListLayout")
+	informationGroupUIListLayout.Name = "InformationGroupUIListLayout"
+	informationGroupUIListLayout.FillDirection = Enum.FillDirection.Horizontal
+	informationGroupUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	informationGroupUIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	informationGroupUIListLayout.Parent = informationGroup
+
+	local userId = LocalPlayer.UserId
+	local thumbType = Enum.ThumbnailType.AvatarBust
+	local thumbSize = Enum.ThumbnailSize.Size48x48
+	local headshotImage, isReady = Players:GetUserThumbnailAsync(userId, thumbType, thumbSize)
+
+	local headshot = Instance.new("ImageLabel")
+	headshot.Name = "Headshot"
+	headshot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	headshot.BackgroundTransparency = 1
+	headshot.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	headshot.BorderSizePixel = 0
+	headshot.Size = UDim2.fromOffset(32, 32)
+	headshot.Image = (isReady and headshotImage) or "rbxassetid://0"
+
+	local uICorner3 = Instance.new("UICorner")
+	uICorner3.Name = "UICorner"
+	uICorner3.CornerRadius = UDim.new(1, 0)
+	uICorner3.Parent = headshot
+
+	local baseUIStroke2 = Instance.new("UIStroke")
+	baseUIStroke2.Name = "BaseUIStroke"
+	baseUIStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	baseUIStroke2.Color = Color3.fromRGB(255, 255, 255)
+	baseUIStroke2.Transparency = 0.9
+	baseUIStroke2.Parent = headshot
+
+	headshot.Parent = informationGroup
+
+	local userAndDisplayFrame = Instance.new("Frame")
+	userAndDisplayFrame.Name = "UserAndDisplayFrame"
+	userAndDisplayFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	userAndDisplayFrame.BackgroundTransparency = 1
+	userAndDisplayFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	userAndDisplayFrame.BorderSizePixel = 0
+	userAndDisplayFrame.LayoutOrder = 1
+	userAndDisplayFrame.Size = UDim2.new(1, -42, 0, 32)
+
+	local displayName = Instance.new("TextLabel")
+	displayName.Name = "DisplayName"
+	displayName.FontFace = Font.new(
+		assets.interFont,
+		Enum.FontWeight.SemiBold,
+		Enum.FontStyle.Normal
+	)
+	displayName.Text = LocalPlayer.DisplayName
+	displayName.TextColor3 = Color3.fromRGB(255, 255, 255)
+	displayName.TextSize = 13
+	displayName.TextTransparency = 0.1
+	displayName.TextTruncate = Enum.TextTruncate.SplitWord
+	displayName.TextXAlignment = Enum.TextXAlignment.Left
+	displayName.TextYAlignment = Enum.TextYAlignment.Top
+	displayName.AutomaticSize = Enum.AutomaticSize.XY
+	displayName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	displayName.BackgroundTransparency = 1
+	displayName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	displayName.BorderSizePixel = 0
+	displayName.Parent = userAndDisplayFrame
+	displayName.Size = UDim2.fromScale(1,0)
+
+	local userAndDisplayFrameUIPadding = Instance.new("UIPadding")
+	userAndDisplayFrameUIPadding.Name = "UserAndDisplayFrameUIPadding"
+	userAndDisplayFrameUIPadding.PaddingLeft = UDim.new(0, 8)
+	userAndDisplayFrameUIPadding.PaddingTop = UDim.new(0, 3)
+	userAndDisplayFrameUIPadding.Parent = userAndDisplayFrame
+
+	local userAndDisplayFrameUIListLayout = Instance.new("UIListLayout")
+	userAndDisplayFrameUIListLayout.Name = "UserAndDisplayFrameUIListLayout"
+	userAndDisplayFrameUIListLayout.Padding = UDim.new(0, 1)
+	userAndDisplayFrameUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	userAndDisplayFrameUIListLayout.Parent = userAndDisplayFrame
+
+	local username = Instance.new("TextLabel")
+	username.Name = "Username"
+	username.FontFace = Font.new(
+		assets.interFont,
+		Enum.FontWeight.SemiBold,
+		Enum.FontStyle.Normal
+	)
+	username.Text = "@" .. LocalPlayer.Name
+	username.TextColor3 = Color3.fromRGB(255, 255, 255)
+	username.TextSize = 12
+	username.TextTransparency = 0.7
+	username.TextTruncate = Enum.TextTruncate.SplitWord
+	username.TextXAlignment = Enum.TextXAlignment.Left
+	username.TextYAlignment = Enum.TextYAlignment.Top
+	username.AutomaticSize = Enum.AutomaticSize.XY
+	username.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	username.BackgroundTransparency = 1
+	username.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	username.BorderSizePixel = 0
+	username.LayoutOrder = 1
+	username.Parent = userAndDisplayFrame
+	username.Size = UDim2.fromScale(1,0)
+
+	userAndDisplayFrame.Parent = informationGroup
+
+	informationGroup.Parent = userInfo
+
+	local userInfoUIPadding = Instance.new("UIPadding")
+	userInfoUIPadding.Name = "UserInfoUIPadding"
+	userInfoUIPadding.PaddingLeft = UDim.new(0, 10)
+	userInfoUIPadding.PaddingRight = UDim.new(0, 10)
+	userInfoUIPadding.Parent = userInfo
+
+	userInfo.Parent = sidebarGroup
+
+	local sidebarGroupUIPadding = Instance.new("UIPadding")
+	sidebarGroupUIPadding.Name = "SidebarGroupUIPadding"
+	sidebarGroupUIPadding.PaddingLeft = UDim.new(0, 10)
+	sidebarGroupUIPadding.PaddingRight = UDim.new(0, 10)
+	sidebarGroupUIPadding.PaddingTop = UDim.new(0, 31)
+	sidebarGroupUIPadding.Parent = sidebarGroup
+
+	local tabSwitchers = Instance.new("Frame")
+	tabSwitchers.Name = "TabSwitchers"
+	tabSwitchers.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	tabSwitchers.BackgroundTransparency = 1
+	tabSwitchers.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	tabSwitchers.BorderSizePixel = 0
+	tabSwitchers.Size = UDim2.new(1, 0, 1, -107)
+
+	local tabSwitchersScrollingFrame = Instance.new("ScrollingFrame")
+	tabSwitchersScrollingFrame.Name = "TabSwitchersScrollingFrame"
+	tabSwitchersScrollingFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	tabSwitchersScrollingFrame.BottomImage = ""
+	tabSwitchersScrollingFrame.CanvasSize = UDim2.new()
+	tabSwitchersScrollingFrame.ScrollBarImageTransparency = 0.8
+	tabSwitchersScrollingFrame.ScrollBarThickness = 1
+	tabSwitchersScrollingFrame.TopImage = ""
+	tabSwitchersScrollingFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	tabSwitchersScrollingFrame.BackgroundTransparency = 1
+	tabSwitchersScrollingFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	tabSwitchersScrollingFrame.BorderSizePixel = 0
+	tabSwitchersScrollingFrame.Size = UDim2.fromScale(1, 1)
+
+	local tabSwitchersScrollingFrameUIListLayout = Instance.new("UIListLayout")
+	tabSwitchersScrollingFrameUIListLayout.Name = "TabSwitchersScrollingFrameUIListLayout"
+	tabSwitchersScrollingFrameUIListLayout.Padding = UDim.new(0, 17)
+	tabSwitchersScrollingFrameUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	tabSwitchersScrollingFrameUIListLayout.Parent = tabSwitchersScrollingFrame
+
+	local tabSwitchersScrollingFrameUIPadding = Instance.new("UIPadding")
+	tabSwitchersScrollingFrameUIPadding.Name = "TabSwitchersScrollingFrameUIPadding"
+	tabSwitchersScrollingFrameUIPadding.PaddingTop = UDim.new(0, 2)
+	tabSwitchersScrollingFrameUIPadding.Parent = tabSwitchersScrollingFrame
+
+	tabSwitchersScrollingFrame.Parent = tabSwitchers
+
+	tabSwitchers.Parent = sidebarGroup
+
+	sidebarGroup.Parent = sidebar
+
+	sidebar.Parent = base
+
+	local content = Instance.new("Frame")
+	content.Name = "Content"
+	content.AnchorPoint = Vector2.new(1, 0)
+	content.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	content.BackgroundTransparency = 1
+	content.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	content.BorderSizePixel = 0
+	content.Position = UDim2.fromScale(1, 4.69e-08)
+	content.Size = UDim2.new(0, (base.AbsoluteSize.X - sidebar.AbsoluteSize.X), 1, 0)
+
+	local resizingContent = false
+	local defaultSidebarWidth = sidebar.AbsoluteSize.X
+	local initialMouseX, initialSidebarWidth
+	local snapRange = 20
+	local minSidebarWidth = 107
+	local maxSidebarWidth = base.AbsoluteSize.X - minSidebarWidth
+
+	local TweenSettings = {
+		DefaultTransparency = 0.9,
+		HoverTransparency = 0.85,
+
+		EasingStyle = Enum.EasingStyle.Sine
+	}
+
+	local function ChangeState(State)
+		Tween(divider, TweenInfo.new(0.2, TweenSettings.EasingStyle), {
+			BackgroundTransparency = State == "Idle" and TweenSettings.DefaultTransparency or TweenSettings.HoverTransparency
+		}):Play()  
+	end
+
+	dividerInteract.MouseEnter:Connect(function()
+		ChangeState("Hover")
+	end)
+	dividerInteract.MouseLeave:Connect(function()
+		ChangeState("Idle")
+	end)
+
+	dividerInteract.MouseButton1Down:Connect(function()
+		resizingContent = true
+		initialMouseX = UserInputService:GetMouseLocation().X
+		initialSidebarWidth = sidebar.AbsoluteSize.X
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			resizingContent = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if resizingContent and input.UserInputType == Enum.UserInputType.MouseMovement then
+			local deltaX = UserInputService:GetMouseLocation().X - initialMouseX
+			local newSidebarWidth = initialSidebarWidth + deltaX
+
+			if math.abs(newSidebarWidth - defaultSidebarWidth) < snapRange then
+				newSidebarWidth = defaultSidebarWidth
+			else
+				newSidebarWidth = math.clamp(newSidebarWidth, minSidebarWidth, maxSidebarWidth)
+			end
+
+			sidebar.Size = UDim2.new(0, newSidebarWidth, 1, 0)
+			content.Size = UDim2.new(0, base.AbsoluteSize.X - newSidebarWidth, 1, 0)
+		end
+	end)
+
+	local topbar = Instance.new("Frame")
+	topbar.Name = "Topbar"
+	topbar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	topbar.BackgroundTransparency = 1
+	topbar.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	topbar.BorderSizePixel = 0
+	topbar.Size = UDim2.new(1, 0, 0, 63)
+
+	local divider4 = Instance.new("Frame")
+	divider4.Name = "Divider"
+	divider4.AnchorPoint = Vector2.new(0, 1)
+	divider4.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	divider4.BackgroundTransparency = 0.9
+	divider4.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	divider4.BorderSizePixel = 0
+	divider4.Position = UDim2.fromScale(0, 1)
+	divider4.Size = UDim2.new(1, 0, 0, 1)
+	divider4.Parent = topbar
+
+	local elements = Instance.new("Frame")
+	elements.Name = "Elements"
+	elements.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	elements.BackgroundTransparency = 1
+	elements.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	elements.BorderSizePixel = 0
+	elements.Size = UDim2.fromScale(1, 1)
+
+	local uIPadding2 = Instance.new("UIPadding")
+	uIPadding2.Name = "UIPadding"
+	uIPadding2.PaddingLeft = UDim.new(0, 20)
+	uIPadding2.PaddingRight = UDim.new(0, 20)
+	uIPadding2.Parent = elements
+
+	local moveIcon = Instance.new("ImageButton")
+	moveIcon.Name = "MoveIcon"
+	moveIcon.Image = assets.transform
+	moveIcon.ImageTransparency = 0.7
+	moveIcon.AnchorPoint = Vector2.new(1, 0.5)
+	moveIcon.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	moveIcon.BackgroundTransparency = 1
+	moveIcon.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	moveIcon.BorderSizePixel = 0
+	moveIcon.Position = UDim2.fromScale(1, 0.5)
+	moveIcon.Size = UDim2.fromOffset(15, 15)
+	moveIcon.Parent = elements
+	moveIcon.Visible = not Settings.DragStyle or Settings.DragStyle == 1
+
+	local interact = Instance.new("TextButton")
+	interact.Name = "Interact"
+	interact.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+	interact.Text = ""
+	interact.TextColor3 = Color3.fromRGB(0, 0, 0)
+	interact.TextSize = 14
+	interact.AnchorPoint = Vector2.new(0.5, 0.5)
+	interact.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	interact.BackgroundTransparency = 1
+	interact.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	interact.BorderSizePixel = 0
+	interact.Position = UDim2.fromScale(0.5, 0.5)
+	interact.Size = UDim2.fromOffset(40, 40)
+	interact.Parent = moveIcon
+
+	local function ChangemoveIconState(State)
+		if State == "Default" then
+			Tween(moveIcon, TweenInfo.new(0.2, Enum.EasingStyle.Sine), {
+				ImageTransparency = 0.7
+			}):Play()
+		elseif State == "Hover" then
+			Tween(moveIcon, TweenInfo.new(0.2, Enum.EasingStyle.Sine), {
+				ImageTransparency = 0.4
+			}):Play()
+		end
+	end
+
+	interact.MouseEnter:Connect(function()
+		ChangemoveIconState("Hover")
+	end)
+	interact.MouseLeave:Connect(function()
+		ChangemoveIconState("Default")
+	end)
+
+	local dragging_ = false
+	local dragInput
+	local dragStart
+	local startPos
+
+	local function update(input)
+		local delta = input.Position - dragStart
+		base.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
+
+	local function onDragStart(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging_ = true
+			dragStart = input.Position
+			startPos = base.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging_ = false
+				end
+			end)
+		end
+	end
+
+	local function onDragUpdate(input)
+		if dragging_ and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+			dragInput = input
+		end
+	end
+
+	if not Settings.DragStyle or Settings.DragStyle == 1 then
+		interact.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				onDragStart(input)
+			end
+		end)
+
+		interact.InputChanged:Connect(onDragUpdate)
+
+		UserInputService.InputChanged:Connect(function(input)
+			if input == dragInput and dragging_ then
+				update(input)
+			end
+		end)
+
+		interact.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging_ = false
+			end
+		end)
+	elseif Settings.DragStyle == 2 then
+		base.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				onDragStart(input)
+			end
+		end)
+
+		base.InputChanged:Connect(onDragUpdate)
+
+		UserInputService.InputChanged:Connect(function(input)
+			if input == dragInput and dragging_ then
+				update(input)
+			end
+		end)
+
+		base.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				dragging_ = false
+			end
+		end)
+	end
+
+	local currentTab = Instance.new("TextLabel")
+	currentTab.Name = "CurrentTab"
+	currentTab.FontFace = Font.new(assets.interFont)
+	currentTab.RichText = true
+	currentTab.Text = ""
+	currentTab.RichText = true
+	currentTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+	currentTab.TextSize = 15
+	currentTab.TextTransparency = 0.5
+	currentTab.TextTruncate = Enum.TextTruncate.SplitWord
+	currentTab.TextXAlignment = Enum.TextXAlignment.Left
+	currentTab.TextYAlignment = Enum.TextYAlignment.Top
+	currentTab.AnchorPoint = Vector2.new(0, 0.5)
+	currentTab.AutomaticSize = Enum.AutomaticSize.Y
+	currentTab.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	currentTab.BackgroundTransparency = 1
+	currentTab.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	currentTab.BorderSizePixel = 0
+	currentTab.Position = UDim2.fromScale(0, 0.5)
+	currentTab.Size = UDim2.fromScale(0.9, 0)
+	currentTab.Parent = elements
+
+	elements.Parent = topbar
+
+	topbar.Parent = content
+
+	content.Parent = base
+
+	local globalSettings = Instance.new("Frame")
+	globalSettings.Name = "GlobalSettings"
+	globalSettings.AutomaticSize = Enum.AutomaticSize.XY
+	globalSettings.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+	globalSettings.BorderColor3 = Color3.fromRGB(0, 0, 0)
+	globalSettings.BorderSizePixel = 0
+	globalSettings.Position = UDim2.fromScale(0.298, 0.104)
+
+	local globalSettingsUIStroke = Instance.new("UIStroke")
+	globalSettingsUIStroke.Name = "GlobalSettingsUIStroke"
+	globalSettingsUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	globalSettingsUIStroke.Color = Color3.fromRGB(255, 255, 255)
+	globalSettingsUIStroke.Transparency = 0.9
+	globalSettingsUIStroke.Parent = globalSettings
+
+	local globalSettingsUICorner = Instance.new("UICorner")
+	globalSettingsUICorner.Name = "GlobalSettingsUICorner"
+	globalSettingsUICorner.CornerRadius = UDim.new(0, 10)
+	globalSettingsUICorner.Parent = globalSettings
+
+	local globalSettingsUIPadding = Instance.new("UIPadding")
+	globalSettingsUIPadding.Name = "GlobalSettingsUIPadding"
+	globalSettingsUIPadding.PaddingBottom = UDim.new(0, 10)
+	globalSettingsUIPadding.PaddingTop = UDim.new(0, 10)
+	globalSettingsUIPadding.Parent = globalSettings
+
+	local globalSettingsUIListLayout = Instance.new("UIListLayout")
+	globalSettingsUIListLayout.Name = "GlobalSettingsUIListLayout"
+	globalSettingsUIListLayout.Padding = UDim.new(0, 5)
+	globalSettingsUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	globalSettingsUIListLayout.Parent = globalSettings
+
+	local globalSettingsUIScale = Instance.new("UIScale")
+	globalSettingsUIScale.Name = "GlobalSettingsUIScale"
+	globalSettingsUIScale.Scale = 1e-07
+	globalSettingsUIScale.Parent = globalSettings
+	globalSettings.Parent = base
+	base.Parent = macLib
+
+	function WindowFunctions:UpdateTitle(NewTitle)
+		title.Text = NewTitle
+	end
+
+	function WindowFunctions:UpdateSubtitle(NewSubtitle)
+		subtitle.Text = NewSubtitle
+	end
+
+	local hovering
+	local toggled = globalSettingsUIScale.Scale == 1 and true or false
+	local function toggle()
+		if not toggled then
+			local intween = Tween(globalSettingsUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Scale = 1
+			})
+			intween:Play()
+			intween.Completed:Wait()
+			toggled = true
+		elseif toggled then
+			local outtween = Tween(globalSettingsUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+				Scale = 0
+			})
+			outtween:Play()
+			outtween.Completed:Wait()
+			toggled = false
+		end
+	end
+	globalSettingsButton.MouseButton1Click:Connect(function()
+		if not hasGlobalSetting then return end
+		toggle()
+	end)
+	globalSettings.MouseEnter:Connect(function()
+		hovering = true
+	end)
+	globalSettings.MouseLeave:Connect(function()
+		hovering = false
+	end)
+	UserInputService.InputEnded:Connect(function(inp)
+		if inp.UserInputType == Enum.UserInputType.MouseButton1 and toggled and not hovering then
+			toggle()
+		end
+	end)
+
+	local BlurTarget = base
+
+	local HS = HttpService
+	local camera = workspace.CurrentCamera
+	local MTREL = "Glass"
+	local binds = {}
+	local wedgeguid = HS:GenerateGUID(true)
+
+	local DepthOfField
+
+	for _,v in pairs(Lighting:GetChildren()) do
+		if not v:IsA("DepthOfFieldEffect") and v:HasTag(".") then
+			DepthOfField = Instance.new('DepthOfFieldEffect')
+			DepthOfField.FarIntensity = 0
+			DepthOfField.FocusDistance = 51.6
+			DepthOfField.InFocusRadius = 50
+			DepthOfField.NearIntensity = 1
+			DepthOfField.Name = HS:GenerateGUID(true)
+			DepthOfField:AddTag(".")
+		elseif v:IsA("DepthOfFieldEffect") and v:HasTag(".") then
+			DepthOfField = v
+		end
+	end
+
+	if not DepthOfField then
+		DepthOfField = Instance.new('DepthOfFieldEffect')
+		DepthOfField.FarIntensity = 0
+		DepthOfField.FocusDistance = 51.6
+		DepthOfField.InFocusRadius = 50
+		DepthOfField.NearIntensity = 1
+		DepthOfField.Name = HS:GenerateGUID(true)
+		DepthOfField:AddTag(".")
+	end
+
+	local frame = Instance.new('Frame')
+	frame.Parent = BlurTarget
+	frame.Size = UDim2.new(0.97, 0, 0.97, 0)
+	frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.BackgroundTransparency = 1
+	frame.Name = HS:GenerateGUID(true)
+
+	do
+		local function IsNotNaN(x)
+			return x == x
+		end
+		local continue = IsNotNaN(camera:ScreenPointToRay(0,0).Origin.x)
+		while not continue do
+			RunService.RenderStepped:Wait()
+			continue = IsNotNaN(camera:ScreenPointToRay(0,0).Origin.x)
+		end
+	end
+
+	local DrawQuad; do
+		local acos, max, pi, sqrt = math.acos, math.max, math.pi, math.sqrt
+		local sz = 0.2
+
+		local function DrawTriangle(v1, v2, v3, p0, p1)
+			local s1 = (v1 - v2).magnitude
+			local s2 = (v2 - v3).magnitude
+			local s3 = (v3 - v1).magnitude
+			local smax = max(s1, s2, s3)
+			local A, B, C
+			if s1 == smax then
+				A, B, C = v1, v2, v3
+			elseif s2 == smax then
+				A, B, C = v2, v3, v1
+			elseif s3 == smax then
+				A, B, C = v3, v1, v2
+			end
+
+			local para = ( (B-A).x*(C-A).x + (B-A).y*(C-A).y + (B-A).z*(C-A).z ) / (A-B).magnitude
+			local perp = sqrt((C-A).magnitude^2 - para*para)
+			local dif_para = (A - B).magnitude - para
+
+			local st = CFrame.new(B, A)
+			local za = CFrame.Angles(pi/2,0,0)
+
+			local cf0 = st
+
+			local Top_Look = (cf0 * za).lookVector
+			local Mid_Point = A + CFrame.new(A, B).lookVector * para
+			local Needed_Look = CFrame.new(Mid_Point, C).lookVector
+			local dot = Top_Look.x*Needed_Look.x + Top_Look.y*Needed_Look.y + Top_Look.z*Needed_Look.z
+
+			local ac = CFrame.Angles(0, 0, acos(dot))
+
+			cf0 = cf0 * ac
+			if ((cf0 * za).lookVector - Needed_Look).magnitude > 0.01 then
+				cf0 = cf0 * CFrame.Angles(0, 0, -2*acos(dot))
+			end
+			cf0 = cf0 * CFrame.new(0, perp/2, -(dif_para + para/2))
+
+			local cf1 = st * ac * CFrame.Angles(0, pi, 0)
+			if ((cf1 * za).lookVector - Needed_Look).magnitude > 0.01 then
+				cf1 = cf1 * CFrame.Angles(0, 0, 2*acos(dot))
+			end
+			cf1 = cf1 * CFrame.new(0, perp/2, dif_para/2)
+
+			if not p0 then
+				p0 = Instance.new('Part')
+				p0.FormFactor = 'Custom'
+				p0.TopSurface = 0
+				p0.BottomSurface = 0
+				p0.Anchored = true
+				p0.CanCollide = false
+				p0.CastShadow = false
+				p0.Material = MTREL
+				p0.Size = Vector3.new(sz, sz, sz)
+				p0.Name = HS:GenerateGUID(true)
+				local mesh = Instance.new('SpecialMesh', p0)
+				mesh.MeshType = 2
+				mesh.Name = wedgeguid
+			end
+
+			local mesh0 = p0:FindFirstChild(wedgeguid) or p0:FindFirstChildOfClass("SpecialMesh")
+			if not mesh0 then
+				mesh0 = Instance.new('SpecialMesh')
+				mesh0.MeshType = 2
+				mesh0.Name = wedgeguid
+				mesh0.Parent = p0
+			end
+			mesh0.Scale = Vector3.new(0, perp/sz, para/sz)
+			p0.CFrame = cf0
+
+			if not p1 then
+				p1 = p0:clone()
+			end
+
+			local mesh1 = p1:FindFirstChild(wedgeguid) or p1:FindFirstChildOfClass("SpecialMesh")
+			if not mesh1 then
+				mesh1 = Instance.new('SpecialMesh')
+				mesh1.MeshType = 2
+				mesh1.Name = wedgeguid
+				mesh1.Parent = p1
+			end
+			mesh1.Scale = Vector3.new(0, perp/sz, dif_para/sz)
+			p1.CFrame = cf1
+
+			return p0, p1
+		end
+
+		function DrawQuad(v1, v2, v3, v4, parts)
+			parts[1], parts[2] = DrawTriangle(v1, v2, v3, parts[1], parts[2])
+			parts[3], parts[4] = DrawTriangle(v3, v2, v4, parts[3], parts[4])
+		end
+	end
+
+	if binds[frame] then
+		return binds[frame].parts
+	end
+
+	local parts = {}
+
+	local parents = {}
+	do
+		local function add(child)
+			if child:IsA'GuiObject' then
+				parents[#parents + 1] = child
+				add(child.Parent)
+			end
+		end
+		add(frame)
+	end
+
+	local function IsVisible(instance)
+		while instance do
+			if instance:IsA("GuiObject") then
+				if not instance.Visible then
+					return false
+				end
+			elseif instance:IsA("ScreenGui") then
+				if not instance.Enabled then
+					return false
+				end
+				break
+			end
+			instance = instance.Parent
+		end
+		return true
+	end
+
+	local function UpdateOrientation(fetchProps)
+		if not IsVisible(frame) or not acrylicBlur or unloaded then
+			for _, pt in pairs(parts) do
+				pt.Parent = nil
+				DepthOfField.Enabled = false
+				DepthOfField.Parent = nil
+			end
+			return
+		end
+		if not DepthOfField.Parent then
+			DepthOfField.Parent = Lighting
+		end
+		DepthOfField.Enabled = true
+		local properties = {
+			Transparency = 0.98;
+			BrickColor = BrickColor.new('Institutional white');
+		}
+		local zIndex = 1 - 0.05*frame.ZIndex
+
+		local tl, br = frame.AbsolutePosition, frame.AbsolutePosition + frame.AbsoluteSize
+		local tr, bl = Vector2.new(br.x, tl.y), Vector2.new(tl.x, br.y)
+		do
+			local rot = 0;
+			for _, v in ipairs(parents) do
+				rot = rot + v.Rotation
+			end
+			if rot ~= 0 and rot%180 ~= 0 then
+				local mid = tl:lerp(br, 0.5)
+				local s, c = math.sin(math.rad(rot)), math.cos(math.rad(rot))
+				local vec = tl
+				tl = Vector2.new(c*(tl.x - mid.x) - s*(tl.y - mid.y), s*(tl.x - mid.x) + c*(tl.y - mid.y)) + mid
+				tr = Vector2.new(c*(tr.x - mid.x) - s*(tr.y - mid.y), s*(tr.x - mid.x) + c*(tr.y - mid.y)) + mid
+				bl = Vector2.new(c*(bl.x - mid.x) - s*(bl.y - mid.y), s*(bl.x - mid.x) + c*(bl.y - mid.y)) + mid
+				br = Vector2.new(c*(br.x - mid.x) - s*(br.y - mid.y), s*(br.x - mid.x) + c*(br.y - mid.y)) + mid
+			end
+		end
+		DrawQuad(
+			camera:ScreenPointToRay(tl.x, tl.y, zIndex).Origin, 
+			camera:ScreenPointToRay(tr.x, tr.y, zIndex).Origin, 
+			camera:ScreenPointToRay(bl.x, bl.y, zIndex).Origin, 
+			camera:ScreenPointToRay(br.x, br.y, zIndex).Origin, 
+			parts
+		)
+		if fetchProps then
+			for _, pt in pairs(parts) do
+				pt.Parent = camera
+			end
+			for propName, propValue in pairs(properties) do
+				for _, pt in pairs(parts) do
+					pt[propName] = propValue
+				end
+			end
+		end
+	end
+
+	local renderSteppedConn
+	renderSteppedConn = RunService.RenderStepped:Connect(function(dt)
+		if unloaded then
+			if renderSteppedConn then
+				renderSteppedConn:Disconnect()
+				renderSteppedConn = nil
+			end
+			return
+		end
+		pcall(UpdateOrientation, dt)
+	end)
+
+	function WindowFunctions:GlobalSetting(Settings)
+		hasGlobalSetting = true
+		local GlobalSettingFunctions = {}
+		local globalSetting = Instance.new("TextButton")
+		globalSetting.Name = "GlobalSetting"
+		globalSetting.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+		globalSetting.Text = ""
+		globalSetting.TextColor3 = Color3.fromRGB(0, 0, 0)
+		globalSetting.TextSize = 14
+		globalSetting.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		globalSetting.BackgroundTransparency = 1
+		globalSetting.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		globalSetting.BorderSizePixel = 0
+		globalSetting.Size = UDim2.fromOffset(200, 30)
+
+		local globalSettingToggleUIPadding = Instance.new("UIPadding")
+		globalSettingToggleUIPadding.Name = "GlobalSettingToggleUIPadding"
+		globalSettingToggleUIPadding.PaddingLeft = UDim.new(0, 15)
+		globalSettingToggleUIPadding.Parent = globalSetting
+
+		local settingName = Instance.new("TextLabel")
+		settingName.Name = "SettingName"
+		settingName.FontFace = Font.new(assets.interFont)
+		settingName.Text = Settings.Name
+		settingName.RichText = true
+		settingName.TextColor3 = Color3.fromRGB(255, 255, 255)
+		settingName.TextSize = 13
+		settingName.TextTransparency = 0.5
+		settingName.TextTruncate = Enum.TextTruncate.SplitWord
+		settingName.TextXAlignment = Enum.TextXAlignment.Left
+		settingName.TextYAlignment = Enum.TextYAlignment.Top
+		settingName.AnchorPoint = Vector2.new(0, 0.5)
+		settingName.AutomaticSize = Enum.AutomaticSize.Y
+		settingName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		settingName.BackgroundTransparency = 1
+		settingName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		settingName.BorderSizePixel = 0
+		settingName.Position = UDim2.fromScale(1.3e-07, 0.5)
+		settingName.Size = UDim2.new(1,-40,0,0)
+		settingName.Parent = globalSetting
+
+		local globalSettingToggleUIListLayout = Instance.new("UIListLayout")
+		globalSettingToggleUIListLayout.Name = "GlobalSettingToggleUIListLayout"
+		globalSettingToggleUIListLayout.Padding = UDim.new(0, 10)
+		globalSettingToggleUIListLayout.FillDirection = Enum.FillDirection.Horizontal
+		globalSettingToggleUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		globalSettingToggleUIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+		globalSettingToggleUIListLayout.Parent = globalSetting
+
+		local checkmark = Instance.new("TextLabel")
+		checkmark.Name = "Checkmark"
+		checkmark.FontFace = Font.new(
+			assets.interFont,
+			Enum.FontWeight.Medium,
+			Enum.FontStyle.Normal
+		)
+		checkmark.Text = "✓"
+		checkmark.TextColor3 = Color3.fromRGB(255, 255, 255)
+		checkmark.TextSize = 13
+		checkmark.TextTransparency = 1
+		checkmark.TextXAlignment = Enum.TextXAlignment.Left
+		checkmark.TextYAlignment = Enum.TextYAlignment.Top
+		checkmark.AnchorPoint = Vector2.new(0, 0.5)
+		checkmark.AutomaticSize = Enum.AutomaticSize.Y
+		checkmark.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		checkmark.BackgroundTransparency = 1
+		checkmark.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		checkmark.BorderSizePixel = 0
+		checkmark.LayoutOrder = -1
+		checkmark.Position = UDim2.fromScale(1.3e-07, 0.5)
+		checkmark.Size = UDim2.fromOffset(-10, 0)
+		checkmark.Parent = globalSetting
+
+		globalSetting.Parent = globalSettings
+
+		local tweensettings = {
+			duration = 0.2,
+			easingStyle = Enum.EasingStyle.Quint,
+			transparencyIn = 0.2,
+			transparencyOut = 0.5,
+			checkSizeIncrease = 12,
+			checkSizeDecrease = -globalSettingToggleUIListLayout.Padding.Offset,
+			waitTime = 1
+		}
+
+		local tweens = {
+			checkIn = Tween(checkmark, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+				Size = UDim2.new(checkmark.Size.X.Scale, tweensettings.checkSizeIncrease, checkmark.Size.Y.Scale, checkmark.Size.Y.Offset)
+			}),
+			checkOut = Tween(checkmark, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle),{
+				Size = UDim2.new(checkmark.Size.X.Scale, tweensettings.checkSizeDecrease, checkmark.Size.Y.Scale, checkmark.Size.Y.Offset)
+			}),
+			nameIn = Tween(settingName, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle),{
+				TextTransparency = tweensettings.transparencyIn
+			}),
+			nameOut = Tween(settingName, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle),{
+				TextTransparency = tweensettings.transparencyOut
+			})
+		}
+
+		local function Toggle(State)
+			if not State then
+				tweens.checkOut:Play()
+				tweens.nameOut:Play()
+				checkmark:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+					if checkmark.AbsoluteSize.X <= 0 then
+						checkmark.TextTransparency = 1
+					end
+				end)
+			else
+				tweens.checkIn:Play()
+				tweens.nameIn:Play()
+				checkmark:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+					if checkmark.AbsoluteSize.X > 0 then
+						checkmark.TextTransparency = 0
+					end
+				end)
+			end
+		end
+
+		local toggled = Settings.Default
+		Toggle(toggled)
+
+		globalSetting.MouseButton1Click:Connect(function()
+			toggled = not toggled
+			Toggle(toggled)
+
+			task.spawn(function()
+				if Settings.Callback then
+					Settings.Callback(toggled)
+				end
+			end)
+		end)
+
+		function GlobalSettingFunctions:UpdateName(NewName)
+			settingName.Text = NewName
+		end
+
+		function GlobalSettingFunctions:UpdateState(NewState)
+			Toggle(NewState)
+			toggled = NewState
+		end
+
+		return GlobalSettingFunctions
+	end
+
+	function WindowFunctions:TabGroup()
+		local SectionFunctions = {}
+
+		local tabGroup = Instance.new("Frame")
+		tabGroup.Name = "Section"
+		tabGroup.AutomaticSize = Enum.AutomaticSize.Y
+		tabGroup.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		tabGroup.BackgroundTransparency = 1
+		tabGroup.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		tabGroup.BorderSizePixel = 0
+		tabGroup.Size = UDim2.fromScale(1, 0)
+
+		local divider3 = Instance.new("Frame")
+		divider3.Name = "Divider"
+		divider3.AnchorPoint = Vector2.new(0.5, 1)
+		divider3.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		divider3.BackgroundTransparency = 0.9
+		divider3.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		divider3.BorderSizePixel = 0
+		divider3.Position = UDim2.fromScale(0.5, 1)
+		divider3.Size = UDim2.new(1, -21, 0, 1)
+		divider3.Parent = tabGroup
+
+		local sectionTabSwitchers = Instance.new("Frame")
+		sectionTabSwitchers.Name = "SectionTabSwitchers"
+		sectionTabSwitchers.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		sectionTabSwitchers.BackgroundTransparency = 1
+		sectionTabSwitchers.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		sectionTabSwitchers.BorderSizePixel = 0
+		sectionTabSwitchers.Size = UDim2.fromScale(1, 1)
+
+		local uIListLayout1 = Instance.new("UIListLayout")
+		uIListLayout1.Name = "UIListLayout"
+		uIListLayout1.Padding = UDim.new(0, 15)
+		uIListLayout1.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		uIListLayout1.SortOrder = Enum.SortOrder.LayoutOrder
+		uIListLayout1.Parent = sectionTabSwitchers
+
+		local uIPadding1 = Instance.new("UIPadding")
+		uIPadding1.Name = "UIPadding"
+		uIPadding1.PaddingBottom = UDim.new(0, 15)
+		uIPadding1.Parent = sectionTabSwitchers
+
+		sectionTabSwitchers.Parent = tabGroup
+		tabGroup.Parent = tabSwitchersScrollingFrame
+
+		function SectionFunctions:Tab(Settings)
+			local TabFunctions = {Settings = Settings}
+			local tabSwitcher = Instance.new("TextButton")
+			tabSwitcher.Name = "TabSwitcher"
+			tabSwitcher.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+			tabSwitcher.Text = ""
+			tabSwitcher.TextColor3 = Color3.fromRGB(0, 0, 0)
+			tabSwitcher.TextSize = 14
+			tabSwitcher.AutoButtonColor = false
+			tabSwitcher.AnchorPoint = Vector2.new(0.5, 0)
+			tabSwitcher.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			tabSwitcher.BackgroundTransparency = 1
+			tabSwitcher.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			tabSwitcher.BorderSizePixel = 0
+			tabSwitcher.Position = UDim2.fromScale(0.5, 0)
+			tabSwitcher.Size = UDim2.new(1, -21, 0, 40)
+
+			tabIndex += 1
+			tabSwitcher.LayoutOrder = tabIndex
+
+			local tabSwitcherUICorner = Instance.new("UICorner")
+			tabSwitcherUICorner.Name = "TabSwitcherUICorner"
+			tabSwitcherUICorner.Parent = tabSwitcher
+
+			local tabSwitcherUIStroke = Instance.new("UIStroke")
+			tabSwitcherUIStroke.Name = "TabSwitcherUIStroke"
+			tabSwitcherUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			tabSwitcherUIStroke.Color = Color3.fromRGB(255, 255, 255)
+			tabSwitcherUIStroke.Transparency = 1
+			tabSwitcherUIStroke.Parent = tabSwitcher
+
+			local tabSwitcherUIListLayout = Instance.new("UIListLayout")
+			tabSwitcherUIListLayout.Name = "TabSwitcherUIListLayout"
+			tabSwitcherUIListLayout.Padding = UDim.new(0, 9)
+			tabSwitcherUIListLayout.FillDirection = Enum.FillDirection.Horizontal
+			tabSwitcherUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			tabSwitcherUIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+			tabSwitcherUIListLayout.Parent = tabSwitcher
+
+			local tabImage
+
+			if Settings.Image then
+				tabImage = Instance.new("ImageLabel")
+				tabImage.Name = "TabImage"
+				tabImage.Image = Settings.Image
+				tabImage.ImageTransparency = 0.5
+				tabImage.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				tabImage.BackgroundTransparency = 1
+				tabImage.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				tabImage.BorderSizePixel = 0
+				tabImage.Size = UDim2.fromOffset(18, 18)
+				tabImage.Parent = tabSwitcher
+			end
+
+			local tabSwitcherName = Instance.new("TextLabel")
+			tabSwitcherName.Name = "TabSwitcherName"
+			tabSwitcherName.FontFace = Font.new(
+				assets.interFont,
+				Enum.FontWeight.Medium,
+				Enum.FontStyle.Normal
+			)
+			tabSwitcherName.Text = Settings.Name
+			tabSwitcherName.RichText = true
+			tabSwitcherName.TextColor3 = Color3.fromRGB(255, 255, 255)
+			tabSwitcherName.TextSize = 16
+			tabSwitcherName.TextTransparency = 0.5
+			tabSwitcherName.TextTruncate = Enum.TextTruncate.SplitWord
+			tabSwitcherName.TextXAlignment = Enum.TextXAlignment.Left
+			tabSwitcherName.TextYAlignment = Enum.TextYAlignment.Top
+			tabSwitcherName.AutomaticSize = Enum.AutomaticSize.Y
+			tabSwitcherName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			tabSwitcherName.BackgroundTransparency = 1
+			tabSwitcherName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			tabSwitcherName.BorderSizePixel = 0
+			tabSwitcherName.Size = UDim2.fromScale(1, 0)
+			tabSwitcherName.Parent = tabSwitcher
+			tabSwitcherName.LayoutOrder = 1
+
+			local tabSwitcherUIPadding = Instance.new("UIPadding")
+			tabSwitcherUIPadding.Name = "TabSwitcherUIPadding"
+			tabSwitcherUIPadding.PaddingLeft = UDim.new(0, 24)
+			tabSwitcherUIPadding.PaddingRight = UDim.new(0, 35)
+			tabSwitcherUIPadding.PaddingTop = UDim.new(0, 1)
+			tabSwitcherUIPadding.Parent = tabSwitcher
+
+			tabSwitcher.Parent = sectionTabSwitchers
+
+			local elements1 = Instance.new("Frame")
+			elements1.Name = "Elements"
+			elements1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			elements1.BackgroundTransparency = 1
+			elements1.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			elements1.BorderSizePixel = 0
+			elements1.Position = UDim2.fromOffset(0, 63)
+			elements1.Size = UDim2.new(1, 0, 1, -63)
+			elements1.ClipsDescendants = true
+
+			local elementsUIPadding = Instance.new("UIPadding")
+			elementsUIPadding.Name = "ElementsUIPadding"
+			elementsUIPadding.PaddingRight = UDim.new(0, 5)
+			elementsUIPadding.PaddingTop = UDim.new(0, 10)
+			elementsUIPadding.PaddingBottom = UDim.new(0, 10)
+			elementsUIPadding.Parent = elements1
+
+			local elementsScrolling = Instance.new("ScrollingFrame")
+			elementsScrolling.Name = "ElementsScrolling"
+			elementsScrolling.AutomaticCanvasSize = Enum.AutomaticSize.Y
+			elementsScrolling.BottomImage = ""
+			elementsScrolling.CanvasSize = UDim2.new()
+			elementsScrolling.ScrollBarImageTransparency = 0.5
+			elementsScrolling.ScrollBarThickness = 1
+			elementsScrolling.TopImage = ""
+			elementsScrolling.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			elementsScrolling.BackgroundTransparency = 1
+			elementsScrolling.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			elementsScrolling.BorderSizePixel = 0
+			elementsScrolling.Size = UDim2.fromScale(1, 1)
+			elementsScrolling.ClipsDescendants = false
+
+			local elementsScrollingUIPadding = Instance.new("UIPadding")
+			elementsScrollingUIPadding.Name = "ElementsScrollingUIPadding"
+			elementsScrollingUIPadding.PaddingBottom = UDim.new(0, 5)
+			elementsScrollingUIPadding.PaddingLeft = UDim.new(0, 11)
+			elementsScrollingUIPadding.PaddingRight = UDim.new(0, 3)
+			elementsScrollingUIPadding.PaddingTop = UDim.new(0, 5)
+			elementsScrollingUIPadding.Parent = elementsScrolling
+
+			local elementsScrollingUIListLayout = Instance.new("UIListLayout")
+			elementsScrollingUIListLayout.Name = "ElementsScrollingUIListLayout"
+			elementsScrollingUIListLayout.Padding = UDim.new(0, 15)
+			elementsScrollingUIListLayout.FillDirection = Enum.FillDirection.Horizontal
+			elementsScrollingUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			elementsScrollingUIListLayout.Parent = elementsScrolling
+
+			local left = Instance.new("Frame")
+			left.Name = "Left"
+			left.AutomaticSize = Enum.AutomaticSize.Y
+			left.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+			left.BackgroundTransparency = 1
+			left.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			left.BorderSizePixel = 0
+			left.Position = UDim2.fromScale(0.512, 0)
+			left.Size = UDim2.new(0.5, -10, 0, 0)
+
+			local leftUIListLayout = Instance.new("UIListLayout")
+			leftUIListLayout.Name = "LeftUIListLayout"
+			leftUIListLayout.Padding = UDim.new(0, 15)
+			leftUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			leftUIListLayout.Parent = left
+
+			left.Parent = elementsScrolling
+
+			local right = Instance.new("Frame")
+			right.Name = "Right"
+			right.AutomaticSize = Enum.AutomaticSize.Y
+			right.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+			right.BackgroundTransparency = 1
+			right.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			right.BorderSizePixel = 0
+			right.LayoutOrder = 1
+			right.Position = UDim2.fromScale(0.512, 0)
+			right.Size = UDim2.new(0.5, -10, 0, 0)
+
+			local rightUIListLayout = Instance.new("UIListLayout")
+			rightUIListLayout.Name = "RightUIListLayout"
+			rightUIListLayout.Padding = UDim.new(0, 15)
+			rightUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+			rightUIListLayout.Parent = right
+
+			right.Parent = elementsScrolling
+
+			elementsScrolling.Parent = elements1
+
+			function TabFunctions:Section(Settings)
+				local SectionFunctions = {}
+				local section = Instance.new("Frame")
+				section.Name = "Section"
+				section.AutomaticSize = Enum.AutomaticSize.Y
+				section.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				section.BackgroundTransparency = 0.98
+				section.BorderColor3 = Color3.fromRGB(0, 0, 0)
+				section.BorderSizePixel = 0
+				section.Position = UDim2.fromScale(0, 6.78e-08)
+				section.Size = UDim2.fromScale(1, 0)
+				section.ClipsDescendants = true
+				section.Parent = Settings.Side == "Left" and left or right
+
+				local sectionUICorner = Instance.new("UICorner")
+				sectionUICorner.Name = "SectionUICorner"
+				sectionUICorner.Parent = section
+
+				local sectionUIStroke = Instance.new("UIStroke")
+				sectionUIStroke.Name = "SectionUIStroke"
+				sectionUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+				sectionUIStroke.Color = Color3.fromRGB(255, 255, 255)
+				sectionUIStroke.Transparency = 0.95
+				sectionUIStroke.Parent = section
+
+				local sectionUIListLayout = Instance.new("UIListLayout")
+				sectionUIListLayout.Name = "SectionUIListLayout"
+				sectionUIListLayout.Padding = UDim.new(0, 10)
+				sectionUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+				sectionUIListLayout.Parent = section
+
+				local sectionUIPadding = Instance.new("UIPadding")
+				sectionUIPadding.Name = "SectionUIPadding"
+				sectionUIPadding.PaddingBottom = UDim.new(0, 20)
+				sectionUIPadding.PaddingLeft = UDim.new(0, 20)
+				sectionUIPadding.PaddingRight = UDim.new(0, 18)
+				sectionUIPadding.PaddingTop = UDim.new(0, 22)
+				sectionUIPadding.Parent = section
+
+				function SectionFunctions:Button(Settings, Flag)
+					local ButtonFunctions = {Settings = Settings}
+					local button = Instance.new("Frame")
+					button.Name = "Button"
+					button.AutomaticSize = Enum.AutomaticSize.Y
+					button.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					button.BackgroundTransparency = 1
+					button.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					button.BorderSizePixel = 0
+					button.Size = UDim2.new(1, 0, 0, 38)
+					button.Parent = section
+
+					local buttonInteract = Instance.new("TextButton")
+					buttonInteract.Name = "ButtonInteract"
+					buttonInteract.FontFace = Font.new(assets.interFont)
+					buttonInteract.RichText = true
+					buttonInteract.TextColor3 = Color3.fromRGB(255, 255, 255)
+					buttonInteract.TextSize = 13
+					buttonInteract.TextTransparency = 0.5
+					buttonInteract.TextTruncate = Enum.TextTruncate.AtEnd
+					buttonInteract.TextXAlignment = Enum.TextXAlignment.Left
+					buttonInteract.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					buttonInteract.BackgroundTransparency = 1
+					buttonInteract.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					buttonInteract.BorderSizePixel = 0
+					buttonInteract.Size = UDim2.fromScale(1, 1)
+					buttonInteract.Parent = button
+					buttonInteract.Text = ButtonFunctions.Settings.Name
+
+					local buttonImage = Instance.new("ImageLabel")
+					buttonImage.Name = "ButtonImage"
+					buttonImage.Image = assets.buttonImage
+					buttonImage.ImageTransparency = 0.5
+					buttonImage.AnchorPoint = Vector2.new(1, 0.5)
+					buttonImage.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					buttonImage.BackgroundTransparency = 1
+					buttonImage.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					buttonImage.BorderSizePixel = 0
+					buttonImage.Position = UDim2.fromScale(1, 0.5)
+					buttonImage.Size = UDim2.fromOffset(15, 15)
+					buttonImage.Parent = button
+
+					local TweenSettings = {
+						DefaultTransparency = 0.5,
+						HoverTransparency = 0.3,
+
+						EasingStyle = Enum.EasingStyle.Sine
+					}
+
+					local function ChangeState(State)
+						if State == "Idle" then
+							Tween(buttonInteract, TweenInfo.new(0.2, TweenSettings.EasingStyle), {
+								TextTransparency = TweenSettings.DefaultTransparency
+							}):Play()
+							Tween(buttonImage, TweenInfo.new(0.2, TweenSettings.EasingStyle), {
+								ImageTransparency = TweenSettings.DefaultTransparency
+							}):Play()
+						elseif State == "Hover" then
+							Tween(buttonInteract, TweenInfo.new(0.2, TweenSettings.EasingStyle), {
+								TextTransparency = TweenSettings.HoverTransparency
+							}):Play()
+							Tween(buttonImage, TweenInfo.new(0.2, TweenSettings.EasingStyle), {
+								ImageTransparency = TweenSettings.HoverTransparency
+							}):Play()
+						end
+					end
+
+					local function Callback()
+						if ButtonFunctions.Settings.Callback then
+							ButtonFunctions.Settings.Callback()
+						end
+					end
+
+					buttonInteract.MouseEnter:Connect(function()
+						ChangeState("Hover")
+					end)
+					buttonInteract.MouseLeave:Connect(function()
+						ChangeState("Idle")
+					end)
+
+					buttonInteract.MouseButton1Click:Connect(Callback)
+					function ButtonFunctions:UpdateName(Name)
+						buttonInteract.Text = Name
+					end
+					function ButtonFunctions:SetVisibility(State)
+						button.Visible = State
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = ButtonFunctions
+					end
+					return ButtonFunctions
+				end
+
+				function SectionFunctions:Toggle(Settings, Flag)
+					local ToggleFunctions = { Settings = Settings, IgnoreConfig = false, Class = "Toggle" }
+					local toggle = Instance.new("Frame")
+					toggle.Name = "Toggle"
+					toggle.AutomaticSize = Enum.AutomaticSize.Y
+					toggle.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					toggle.BackgroundTransparency = 1
+					toggle.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					toggle.BorderSizePixel = 0
+					toggle.Size = UDim2.new(1, 0, 0, 38)
+					toggle.Parent = section
+
+					local toggleName = Instance.new("TextLabel")
+					toggleName.Name = "ToggleName"
+					toggleName.FontFace = Font.new(assets.interFont)
+					toggleName.Text = ToggleFunctions.Settings.Name
+					toggleName.RichText = true
+					toggleName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					toggleName.TextSize = 13
+					toggleName.TextTransparency = 0.5
+					toggleName.TextTruncate = Enum.TextTruncate.AtEnd
+					toggleName.TextXAlignment = Enum.TextXAlignment.Left
+					toggleName.TextYAlignment = Enum.TextYAlignment.Top
+					toggleName.AnchorPoint = Vector2.new(0, 0.5)
+					toggleName.AutomaticSize = Enum.AutomaticSize.Y
+					toggleName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					toggleName.BackgroundTransparency = 1
+					toggleName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					toggleName.BorderSizePixel = 0
+					toggleName.Position = UDim2.fromScale(0, 0.5)
+					toggleName.Size = UDim2.new(1, -50, 0, 0)
+					toggleName.Parent = toggle
+
+					local toggle1 = Instance.new("ImageButton")
+					toggle1.Name = "Toggle"
+					toggle1.Image = assets.toggleBackground
+					toggle1.ImageColor3 = Color3.fromRGB(87, 86, 86)
+					toggle1.AutoButtonColor = false
+					toggle1.AnchorPoint = Vector2.new(1, 0.5)
+					toggle1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					toggle1.BackgroundTransparency = 1
+					toggle1.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					toggle1.BorderSizePixel = 0
+					toggle1.Position = UDim2.fromScale(1, 0.5)
+					toggle1.Size = UDim2.fromOffset(41, 21)
+					toggle1.ImageTransparency = 0.5
+
+					local toggleUIPadding = Instance.new("UIPadding")
+					toggleUIPadding.Name = "ToggleUIPadding"
+					toggleUIPadding.PaddingBottom = UDim.new(0, 1)
+					toggleUIPadding.PaddingLeft = UDim.new(0, -2)
+					toggleUIPadding.PaddingRight = UDim.new(0, 3)
+					toggleUIPadding.PaddingTop = UDim.new(0, 1)
+					toggleUIPadding.Parent = toggle1
+
+					local togglerHead = Instance.new("ImageLabel")
+					togglerHead.Name = "TogglerHead"
+					togglerHead.Image = assets.togglerHead
+					togglerHead.ImageColor3 = Color3.fromRGB(255, 255, 255)
+					togglerHead.AnchorPoint = Vector2.new(1, 0.5)
+					togglerHead.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					togglerHead.BackgroundTransparency = 1
+					togglerHead.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					togglerHead.BorderSizePixel = 0
+					togglerHead.Position = UDim2.fromScale(0.5, 0.5)
+					togglerHead.Size = UDim2.fromOffset(15, 15)
+					togglerHead.ZIndex = 2
+					togglerHead.Parent = toggle1
+					togglerHead.ImageTransparency = 0.8
+
+					toggle1.Parent = toggle
+
+					local toggle1Transparency = {Enabled = 0, Disabled = 0.5}
+					local togglerHeadTransparency = {Enabled = 0, Disabled = 0.85}
+
+					local TweenSettings = {
+						Info = TweenInfo.new(0.15, Enum.EasingStyle.Quad),
+
+						EnabledPosition = UDim2.new(1, 0, 0.5, 0),
+						DisabledPosition = UDim2.new(0.5, 0, 0.5, 0),
+					}
+
+					local togglebool = ToggleFunctions.Settings.Default
+
+					local function NewState(State, callback)
+						elevateThreadIdentity()
+						local transparencyValues = State and {toggle1Transparency.Enabled, togglerHeadTransparency.Enabled}
+							or {toggle1Transparency.Disabled, togglerHeadTransparency.Disabled}
+						local position = State and TweenSettings.EnabledPosition or TweenSettings.DisabledPosition
+
+						pcall(function()
+							Tween(toggle1, TweenSettings.Info, {
+								ImageTransparency = transparencyValues[1]
+							}):Play()
+						end)
+
+						pcall(function()
+							Tween(togglerHead, TweenSettings.Info, {
+								ImageTransparency = transparencyValues[2]
+							}):Play()
+						end)
+
+						pcall(function()
+							Tween(togglerHead, TweenSettings.Info, {
+								Position = position
+							}):Play()
+						end)
+
+						ToggleFunctions.State = State
+						if callback then
+							pcall(callback, togglebool)
+						end
+					end
+
+					NewState(togglebool)
+
+					local function Toggle()
+						togglebool = not togglebool
+						NewState(togglebool, ToggleFunctions.Settings.Callback)
+					end
+
+					toggle1.MouseButton1Click:Connect(Toggle)
+
+					function ToggleFunctions:Toggle()
+						Toggle()
+					end
+					function ToggleFunctions:UpdateState(State, ignoreCallback)
+						togglebool = State
+						NewState(togglebool, not ignoreCallback and ToggleFunctions.Settings.Callback or nil)
+					end
+					function ToggleFunctions:GetState()
+						return togglebool
+					end
+					function ToggleFunctions:UpdateName(Name)
+						toggleName.Text = Name
+					end
+					function ToggleFunctions:SetVisibility(State)
+						toggle.Visible = State
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = ToggleFunctions
+					end
+					return ToggleFunctions
+				end
+
+				function SectionFunctions:Slider(Settings, Flag)
+					local SliderFunctions = { Settings = Settings, IgnoreConfig = false, Class = "Slider" }
+					local slider = Instance.new("Frame")
+					slider.Name = "Slider"
+					slider.AutomaticSize = Enum.AutomaticSize.Y
+					slider.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					slider.BackgroundTransparency = 1
+					slider.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					slider.BorderSizePixel = 0
+					slider.Size = UDim2.new(1, 0, 0, 38)
+					slider.Parent = section
+
+					local sliderName = Instance.new("TextLabel")
+					sliderName.Name = "SliderName"
+					sliderName.FontFace = Font.new(assets.interFont)
+					sliderName.Text = SliderFunctions.Settings.Name
+					sliderName.RichText = true
+					sliderName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					sliderName.TextSize = 13
+					sliderName.TextTransparency = 0.5
+					sliderName.TextTruncate = Enum.TextTruncate.AtEnd
+					sliderName.TextXAlignment = Enum.TextXAlignment.Left
+					sliderName.TextYAlignment = Enum.TextYAlignment.Top
+					sliderName.AnchorPoint = Vector2.new(0, 0.5)
+					sliderName.AutomaticSize = Enum.AutomaticSize.XY
+					sliderName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					sliderName.BackgroundTransparency = 1
+					sliderName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					sliderName.BorderSizePixel = 0
+					sliderName.Position = UDim2.fromScale(1.3e-07, 0.5)
+					sliderName.Parent = slider
+
+					local sliderElements = Instance.new("Frame")
+					sliderElements.Name = "SliderElements"
+					sliderElements.AnchorPoint = Vector2.new(1, 0)
+					sliderElements.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					sliderElements.BackgroundTransparency = 1
+					sliderElements.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					sliderElements.BorderSizePixel = 0
+					sliderElements.Position = UDim2.fromScale(1, 0)
+					sliderElements.Size = UDim2.fromScale(1, 1)
+
+					local sliderValue = Instance.new("TextBox")
+					sliderValue.Name = "SliderValue"
+					sliderValue.FontFace = Font.new(assets.interFont)
+					sliderValue.TextColor3 = Color3.fromRGB(255, 255, 255)
+					sliderValue.TextSize = 12
+					sliderValue.TextTransparency = 0.1
+					--sliderValue.TextTruncate = Enum.TextTruncate.AtEnd
+					sliderValue.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					sliderValue.BackgroundTransparency = 0.95
+					sliderValue.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					sliderValue.BorderSizePixel = 0
+					sliderValue.LayoutOrder = 1
+					sliderValue.Position = UDim2.fromScale(-0.0789, 0.171)
+					sliderValue.Size = UDim2.fromOffset(41, 21)
+					sliderValue.ClipsDescendants = true
+
+					local sliderValueUICorner = Instance.new("UICorner")
+					sliderValueUICorner.Name = "SliderValueUICorner"
+					sliderValueUICorner.CornerRadius = UDim.new(0, 4)
+					sliderValueUICorner.Parent = sliderValue
+
+					local sliderValueUIStroke = Instance.new("UIStroke")
+					sliderValueUIStroke.Name = "SliderValueUIStroke"
+					sliderValueUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					sliderValueUIStroke.Color = Color3.fromRGB(255, 255, 255)
+					sliderValueUIStroke.Transparency = 0.9
+					sliderValueUIStroke.Parent = sliderValue
+
+					local sliderValueUIPadding = Instance.new("UIPadding")
+					sliderValueUIPadding.Name = "SliderValueUIPadding"
+					sliderValueUIPadding.PaddingLeft = UDim.new(0, 2)
+					sliderValueUIPadding.PaddingRight = UDim.new(0, 2)
+					sliderValueUIPadding.Parent = sliderValue
+
+					sliderValue.Parent = sliderElements
+
+					local sliderElementsUIListLayout = Instance.new("UIListLayout")
+					sliderElementsUIListLayout.Name = "SliderElementsUIListLayout"
+					sliderElementsUIListLayout.Padding = UDim.new(0, 20)
+					sliderElementsUIListLayout.FillDirection = Enum.FillDirection.Horizontal
+					sliderElementsUIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+					sliderElementsUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+					sliderElementsUIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+					sliderElementsUIListLayout.Parent = sliderElements
+
+					local sliderBar = Instance.new("ImageLabel")
+					sliderBar.Name = "SliderBar"
+					sliderBar.Image = assets.sliderbar
+					sliderBar.ImageColor3 = Color3.fromRGB(87, 86, 86)
+					sliderBar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					sliderBar.BackgroundTransparency = 1
+					sliderBar.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					sliderBar.BorderSizePixel = 0
+					sliderBar.Position = UDim2.fromScale(0.219, 0.457)
+					sliderBar.Size = UDim2.fromOffset(123, 3)
+
+					local sliderHead = Instance.new("ImageButton")
+					sliderHead.Name = "SliderHead"
+					sliderHead.Image = assets.sliderhead
+					sliderHead.AnchorPoint = Vector2.new(0.5, 0.5)
+					sliderHead.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					sliderHead.BackgroundTransparency = 1
+					sliderHead.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					sliderHead.BorderSizePixel = 0
+					sliderHead.Position = UDim2.fromScale(1, 0.5)
+					sliderHead.Size = UDim2.fromOffset(12, 12)
+					sliderHead.Parent = sliderBar
+
+					sliderBar.Parent = sliderElements
+
+					local sliderElementsUIPadding = Instance.new("UIPadding")
+					sliderElementsUIPadding.Name = "SliderElementsUIPadding"
+					sliderElementsUIPadding.PaddingTop = UDim.new(0, 3)
+					sliderElementsUIPadding.Parent = sliderElements
+
+					sliderElements.Parent = slider
+
+					local dragging = false
+
+					local DisplayMethods = {
+						Hundredths = function(sliderValue) -- Deprecated use Settings.Precision
+							return string.format("%.2f", sliderValue)
+						end,
+						Tenths = function(sliderValue) -- Deprecated use Settings.Precision
+							return string.format("%.1f", sliderValue)
+						end,
+						Round = function(sliderValue, precision)
+							if precision then
+								return string.format("%." .. precision .. "f", sliderValue)
+							else
+								return tostring(math.round(sliderValue))
+							end
+						end,
+						Degrees = function(sliderValue, precision)
+							local formattedValue = precision and string.format("%." .. precision .. "f", sliderValue) or tostring(sliderValue)
+							return formattedValue .. "°"
+						end,
+						Percent = function(sliderValue, precision)
+							local percentage = (sliderValue - SliderFunctions.Settings.Minimum) / (SliderFunctions.Settings.Maximum - SliderFunctions.Settings.Minimum) * 100
+							return precision and string.format("%." .. precision .. "f", percentage) .. "%" or tostring(math.round(percentage)) .. "%"
+						end,
+						Value = function(sliderValue, precision)
+							return precision and string.format("%." .. precision .. "f", sliderValue) or tostring(sliderValue)
+						end
+					}
+
+					local ValueDisplayMethod = DisplayMethods[SliderFunctions.Settings.DisplayMethod] or DisplayMethods.Value
+					local finalValue
+
+					local function SetValue(val, ignorecallback)
+						elevateThreadIdentity()
+						local posXScale
+
+						if typeof(val) == "Instance" then
+							local input = val
+							posXScale = math.clamp((input.Position.X - sliderBar.AbsolutePosition.X) / sliderBar.AbsoluteSize.X, 0, 1)
+						else
+							local value = val
+							posXScale = (value - SliderFunctions.Settings.Minimum) / (SliderFunctions.Settings.Maximum - Settings.Minimum)
+						end
+
+						local pos = UDim2.new(posXScale, 0, 0.5, 0)
+						pcall(function()
+							sliderHead.Position = pos
+						end)
+
+						finalValue = posXScale * (SliderFunctions.Settings.Maximum - SliderFunctions.Settings.Minimum) + Settings.Minimum
+
+						pcall(function()
+							sliderValue.Text = (Settings.Prefix or "") .. ValueDisplayMethod(finalValue, SliderFunctions.Settings.Precision) .. (Settings.Suffix or "")
+						end)
+
+						if not ignorecallback then
+							task.spawn(function()
+								if SliderFunctions.Settings.Callback then
+									SliderFunctions.Settings.Callback(finalValue)
+								end
+							end)
+						end
+
+						SliderFunctions.Value = finalValue
+					end
+
+					SetValue(SliderFunctions.Settings.Default, true)
+
+					sliderHead.InputBegan:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+							dragging = true
+							SetValue(input)
+						end
+					end)
+
+					sliderHead.InputEnded:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+							dragging = false
+							if SliderFunctions.Settings.onInputComplete then
+								SliderFunctions.Settings.onInputComplete(finalValue)
+							end
+						end
+					end)
+
+					sliderValue.FocusLost:Connect(function(enterPressed)
+						local inputText = sliderValue.Text
+						local value, isPercent = inputText:match("^(%-?%d+%.?%d*)(%%?)$")
+
+						if value then
+							value = tonumber(value)
+							isPercent = isPercent == "%"
+
+							if isPercent then
+								value = SliderFunctions.Settings.Minimum + (value / 100) * (SliderFunctions.Settings.Maximum - SliderFunctions.Settings.Minimum)
+							end
+
+							local newValue = math.clamp(value, SliderFunctions.Settings.Minimum, SliderFunctions.Settings.Maximum)
+							SetValue(newValue)
+						else
+							sliderValue.Text = ValueDisplayMethod(finalValue)
+						end
+
+						if SliderFunctions.Settings.onInputComplete then
+							SliderFunctions.Settings.onInputComplete(finalValue)
+						end
+					end)
+
+					UserInputService.InputChanged:Connect(function(input)
+						if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+							SetValue(input)
+						end
+					end)
+
+					local function updateSliderBarSize()
+						local padding = sliderElementsUIListLayout.Padding.Offset
+						local sliderValueWidth = sliderValue.AbsoluteSize.X
+						local sliderNameWidth = sliderName.AbsoluteSize.X
+						local totalWidth = sliderElements.AbsoluteSize.X
+
+						local newBarWidth = (totalWidth - (padding + sliderValueWidth + sliderNameWidth + 20)) / baseUIScale.Scale
+						sliderBar.Size = UDim2.new(sliderBar.Size.X.Scale, newBarWidth, sliderBar.Size.Y.Scale, sliderBar.Size.Y.Offset)
+					end
+
+					updateSliderBarSize()
+
+					sliderName:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateSliderBarSize)
+					section:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateSliderBarSize)
+
+					function SliderFunctions:UpdateName(Name)
+						sliderName = Name
+					end
+					function SliderFunctions:SetVisibility(State)
+						slider.Visible = State
+					end
+					function SliderFunctions:UpdateValue(Value)
+						SetValue(tonumber(Value), true)
+					end
+					function SliderFunctions:GetValue()
+						return finalValue
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = SliderFunctions
+					end
+					return SliderFunctions
+				end
+
+				function SectionFunctions:Input(Settings, Flag)
+					local InputFunctions = { Settings = Settings, IgnoreConfig = false, Class = "Input" }
+					local input = Instance.new("Frame")
+					input.Name = "Input"
+					input.AutomaticSize = Enum.AutomaticSize.Y
+					input.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					input.BackgroundTransparency = 1
+					input.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					input.BorderSizePixel = 0
+					input.Size = UDim2.new(1, 0, 0, 38)
+					input.Parent = section
+
+					local inputName = Instance.new("TextLabel")
+					inputName.Name = "InputName"
+					inputName.FontFace = Font.new(assets.interFont)
+					inputName.Text = InputFunctions.Settings.Name
+					inputName.RichText = true
+					inputName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputName.TextSize = 13
+					inputName.TextTransparency = 0.5
+					inputName.TextTruncate = Enum.TextTruncate.AtEnd
+					inputName.TextXAlignment = Enum.TextXAlignment.Left
+					inputName.TextYAlignment = Enum.TextYAlignment.Top
+					inputName.AnchorPoint = Vector2.new(0, 0.5)
+					inputName.AutomaticSize = Enum.AutomaticSize.XY
+					inputName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputName.BackgroundTransparency = 1
+					inputName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputName.BorderSizePixel = 0
+					inputName.Position = UDim2.fromScale(0, 0.5)
+					inputName.Parent = input
+
+					local inputBox = Instance.new("TextBox")
+					inputBox.Name = "InputBox"
+					inputBox.FontFace = Font.new(assets.interFont)
+					inputBox.Text = "Hello world!"
+					inputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox.TextSize = 12
+					inputBox.TextTransparency = 0.1
+					inputBox.AnchorPoint = Vector2.new(1, 0.5)
+					inputBox.AutomaticSize = Enum.AutomaticSize.X
+					inputBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox.BackgroundTransparency = 0.95
+					inputBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputBox.BorderSizePixel = 0
+					inputBox.ClipsDescendants = true
+					inputBox.LayoutOrder = 1
+					inputBox.Position = UDim2.fromScale(1, 0.5)
+					inputBox.Size = UDim2.fromOffset(21, 21)
+					inputBox.TextXAlignment = Enum.TextXAlignment.Right
+
+					local inputBoxUICorner = Instance.new("UICorner")
+					inputBoxUICorner.Name = "InputBoxUICorner"
+					inputBoxUICorner.CornerRadius = UDim.new(0, 4)
+					inputBoxUICorner.Parent = inputBox
+
+					local inputBoxUIStroke = Instance.new("UIStroke")
+					inputBoxUIStroke.Name = "InputBoxUIStroke"
+					inputBoxUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					inputBoxUIStroke.Color = Color3.fromRGB(255, 255, 255)
+					inputBoxUIStroke.Transparency = 0.9
+					inputBoxUIStroke.Parent = inputBox
+
+					local inputBoxUIPadding = Instance.new("UIPadding")
+					inputBoxUIPadding.Name = "InputBoxUIPadding"
+					inputBoxUIPadding.PaddingLeft = UDim.new(0, 5)
+					inputBoxUIPadding.PaddingRight = UDim.new(0, 5)
+					inputBoxUIPadding.Parent = inputBox
+
+					local inputBoxUISizeConstraint = Instance.new("UISizeConstraint")
+					inputBoxUISizeConstraint.Name = "InputBoxUISizeConstraint"
+					inputBoxUISizeConstraint.Parent = inputBox
+
+					inputBox.Parent = input
+
+					local Input = input
+					local InputBox = inputBox
+					local InputName = inputName
+					local Constraint = inputBoxUISizeConstraint
+
+					local function applyCharacterLimit(value)
+						if InputFunctions.Settings.CharacterLimit then
+							return value:sub(1, InputFunctions.Settings.CharacterLimit)
+						end
+						return value
+					end
+
+					local CharacterSubs = {
+						All = function(value)
+							return applyCharacterLimit(value)
+						end,
+						Numeric = function(value)
+							local result = value:match("^%-?%d*$") and value or value:gsub("[^%d-]", ""):gsub("(%-)", function(match, pos)
+								return pos == 1 and match or ""
+							end)
+							return applyCharacterLimit(result)
+						end,
+						Alphabetic = function(value)
+							return applyCharacterLimit(value:gsub("[^a-zA-Z ]", ""))
+						end,
+						AlphaNumeric = function(value)
+							return applyCharacterLimit(value:gsub("[^a-zA-Z0-9]", ""))
+						end,
+					}
+
+					local AcceptedCharacters
+
+					if type(InputFunctions.Settings.AcceptedCharacters) == "function" then
+						AcceptedCharacters = InputFunctions.Settings.AcceptedCharacters
+					else
+						AcceptedCharacters = CharacterSubs[InputFunctions.Settings.AcceptedCharacters] or CharacterSubs.All
+					end
+
+					InputBox.AutomaticSize = Enum.AutomaticSize.X
+
+					local function checkSize()
+						local nameWidth = InputName.AbsoluteSize.X
+						local totalWidth = Input.AbsoluteSize.X
+
+						local maxWidth = (totalWidth - nameWidth - 20) / baseUIScale.Scale
+						Constraint.MaxSize = Vector2.new(maxWidth, 9e9)
+					end
+
+					checkSize()
+					InputName:GetPropertyChangedSignal("AbsoluteSize"):Connect(checkSize)
+
+					InputBox.FocusLost:Connect(function()
+						local inputText = InputBox.Text
+						local filteredText = AcceptedCharacters(inputText)
+						InputBox.Text = filteredText
+						task.spawn(function()
+							if InputFunctions.Settings.Callback then
+								InputFunctions.Settings.Callback(filteredText)
+							end
+						end)
+					end)
+					InputBox.Text = InputFunctions.Settings.Default or ""
+					InputBox.PlaceholderText = InputFunctions.Settings.Placeholder or ""
+
+					InputBox:GetPropertyChangedSignal("Text"):Connect(function()
+						InputBox.Text = AcceptedCharacters(InputBox.Text)
+						if InputFunctions.Settings.onChanged then
+							InputFunctions.Settings.onChanged(InputBox.Text)
+						end
+						InputFunctions.Text = InputBox.Text
+					end)
+
+					function InputFunctions:UpdateName(Name)
+						inputName.Text = Name
+					end
+					function InputFunctions:SetVisibility(State)
+						input.Visible = State
+					end
+					function InputFunctions:GetInput()
+						return InputBox.Text
+					end
+					function InputFunctions:UpdatePlaceholder(Placeholder)
+						inputBox.PlaceholderText = Placeholder
+					end
+					function InputFunctions:UpdateText(Text)
+						local filteredText = AcceptedCharacters(Text)
+						InputBox.Text = filteredText
+						InputFunctions.Text = filteredText
+						task.spawn(function()
+							if InputFunctions.Settings.Callback then
+								InputFunctions.Settings.Callback(filteredText)
+							end
+						end)
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = InputFunctions
+					end
+					return InputFunctions
+				end
+
+				function SectionFunctions:Keybind(Settings, Flag)
+					local KeybindFunctions = { Settings = Settings, IgnoreConfig = false, Class = "Keybind" }
+					local keybind = Instance.new("Frame")
+					keybind.Name = "Keybind"
+					keybind.AutomaticSize = Enum.AutomaticSize.Y
+					keybind.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					keybind.BackgroundTransparency = 1
+					keybind.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					keybind.BorderSizePixel = 0
+					keybind.Size = UDim2.new(1, 0, 0, 38)
+					keybind.Parent = section
+
+					local keybindName = Instance.new("TextLabel")
+					keybindName.Name = "KeybindName"
+					keybindName.FontFace = Font.new(assets.interFont)
+					keybindName.Text = KeybindFunctions.Settings.Name
+					keybindName.RichText = true
+					keybindName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					keybindName.TextSize = 13
+					keybindName.TextTransparency = 0.5
+					keybindName.TextTruncate = Enum.TextTruncate.AtEnd
+					keybindName.TextXAlignment = Enum.TextXAlignment.Left
+					keybindName.TextYAlignment = Enum.TextYAlignment.Top
+					keybindName.AnchorPoint = Vector2.new(0, 0.5)
+					keybindName.AutomaticSize = Enum.AutomaticSize.XY
+					keybindName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					keybindName.BackgroundTransparency = 1
+					keybindName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					keybindName.BorderSizePixel = 0
+					keybindName.Position = UDim2.fromScale(0, 0.5)
+					keybindName.Parent = keybind
+
+					local binderBox = Instance.new("TextBox")
+					binderBox.Name = "BinderBox"
+					binderBox.CursorPosition = -1
+					binderBox.FontFace = Font.new(assets.interFont)
+					binderBox.PlaceholderText = "..."
+					binderBox.Text = ""
+					binderBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+					binderBox.TextSize = 12
+					binderBox.TextTransparency = 0.1
+					binderBox.AnchorPoint = Vector2.new(1, 0.5)
+					binderBox.AutomaticSize = Enum.AutomaticSize.X
+					binderBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					binderBox.BackgroundTransparency = 0.95
+					binderBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					binderBox.BorderSizePixel = 0
+					binderBox.ClipsDescendants = true
+					binderBox.LayoutOrder = 1
+					binderBox.Position = UDim2.fromScale(1, 0.5)
+					binderBox.Size = UDim2.fromOffset(21, 21)
+
+					local binderBoxUICorner = Instance.new("UICorner")
+					binderBoxUICorner.Name = "BinderBoxUICorner"
+					binderBoxUICorner.CornerRadius = UDim.new(0, 4)
+					binderBoxUICorner.Parent = binderBox
+
+					local binderBoxUIStroke = Instance.new("UIStroke")
+					binderBoxUIStroke.Name = "BinderBoxUIStroke"
+					binderBoxUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					binderBoxUIStroke.Color = Color3.fromRGB(255, 255, 255)
+					binderBoxUIStroke.Transparency = 0.9
+					binderBoxUIStroke.Parent = binderBox
+
+					local binderBoxUIPadding = Instance.new("UIPadding")
+					binderBoxUIPadding.Name = "BinderBoxUIPadding"
+					binderBoxUIPadding.PaddingLeft = UDim.new(0, 5)
+					binderBoxUIPadding.PaddingRight = UDim.new(0, 5)
+					binderBoxUIPadding.Parent = binderBox
+
+					local binderBoxUISizeConstraint = Instance.new("UISizeConstraint")
+					binderBoxUISizeConstraint.Name = "BinderBoxUISizeConstraint"
+					binderBoxUISizeConstraint.Parent = binderBox
+
+					binderBox.Parent = keybind
+
+					local focused
+					local isBinding = false
+					local reset = false
+					local binded = KeybindFunctions.Settings.Default
+
+					local function resetFocusState()
+						focused = false
+						isBinding = false
+						binderBox:ReleaseFocus()
+					end
+
+					if binded then
+						binderBox.Text = binded.Name
+					end
+
+					binderBox.Focused:Connect(function()
+						focused = true
+					end)
+
+					binderBox.FocusLost:Connect(function()
+						focused = false
+					end)
+
+					UserInputService.InputBegan:Connect(function(inp)
+						if focused and not isBinding then
+							isBinding = true
+
+							local Event
+							Event = UserInputService.InputBegan:Connect(function(input)
+								if KeybindFunctions.Settings.Blacklist and (table.find(KeybindFunctions.KeybindFunctions.Settings.Blacklist, input.KeyCode) or table.find(KeybindFunctions.Settings.Blacklist, input.UserInputType)) then
+									binderBox:ReleaseFocus()
+									resetFocusState()
+									Event:Disconnect()
+									return
+								end
+
+								if input.UserInputType == Enum.UserInputType.Keyboard then
+									binded = input.KeyCode
+									binderBox.Text = input.KeyCode.Name
+								elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.MouseButton2 then
+									binded = input.UserInputType
+									binderBox.Text = input.UserInputType.Name
+								end
+
+								if KeybindFunctions.Settings.onBinded then
+									KeybindFunctions.Settings.onBinded(binded)
+								end
+								reset = true
+								resetFocusState()
+								Event:Disconnect()
+							end)
+						else
+							if not reset and (inp.KeyCode == binded or inp.UserInputType == binded) then
+								if KeybindFunctions.Settings.Callback then
+									KeybindFunctions.Settings.Callback(binded)
+								end
+								if KeybindFunctions.Settings.onBindHeld then
+									KeybindFunctions.Settings.onBindHeld(true, binded)
+								end
+							else
+								reset = false
+							end
+						end
+					end)
+
+					UserInputService.InputEnded:Connect(function(inp)
+						if not focused and not isBinding then
+							if inp.KeyCode == binded or inp.UserInputType == binded then
+								if Settings.onBindHeld then
+									Settings.onBindHeld(false, binded)
+								end
+							end
+						end
+					end)
+
+					function KeybindFunctions:Bind(Key)
+						binded = Key
+						binderBox.Text = Key.Name
+					end
+
+					function KeybindFunctions:Unbind()
+						binded = nil
+						binderBox.Text = ""
+					end
+
+					function KeybindFunctions:GetBind()
+						return binded
+					end
+
+					function KeybindFunctions:UpdateName(Name)
+						keybindName = Name
+					end
+
+					function KeybindFunctions:SetVisibility(State)
+						keybind.Visible = State
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = KeybindFunctions
+					end
+
+					return KeybindFunctions
+				end
+
+				function SectionFunctions:Dropdown(Settings, Flag)
+					local DropdownFunctions = { Settings = Settings, IgnoreConfig = false, Class = "Dropdown" }
+					local Selected = {}
+					local OptionObjs = {}
+
+					local dropdown = Instance.new("Frame")
+					dropdown.Name = "Dropdown"
+					dropdown.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					dropdown.BackgroundTransparency = 0.985
+					dropdown.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					dropdown.BorderSizePixel = 0
+					dropdown.Size = UDim2.new(1, 0, 0, 38)
+					dropdown.Parent = section
+					dropdown.ClipsDescendants = true
+
+					local dropdownUIPadding = Instance.new("UIPadding")
+					dropdownUIPadding.Name = "DropdownUIPadding"
+					dropdownUIPadding.PaddingLeft = UDim.new(0, 15)
+					dropdownUIPadding.PaddingRight = UDim.new(0, 15)
+					dropdownUIPadding.Parent = dropdown
+
+					local interact = Instance.new("TextButton")
+					interact.Name = "Interact"
+					interact.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+					interact.Text = ""
+					interact.TextColor3 = Color3.fromRGB(0, 0, 0)
+					interact.TextSize = 14
+					interact.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					interact.BackgroundTransparency = 1
+					interact.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					interact.BorderSizePixel = 0
+					interact.Size = UDim2.new(1, 0, 0, 38)
+					interact.Parent = dropdown
+
+					local dropdownName = Instance.new("TextLabel")
+					dropdownName.Name = "DropdownName"
+					dropdownName.FontFace = Font.new(assets.interFont)
+					dropdownName.Text = Settings.Default and (DropdownFunctions.Settings.Name .. " • " .. table.concat(Selected, ", ")) or (DropdownFunctions.Settings.Name .. "...")
+					dropdownName.RichText = true
+					dropdownName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					dropdownName.TextSize = 13
+					dropdownName.TextTransparency = 0.5
+					dropdownName.TextTruncate = Enum.TextTruncate.SplitWord
+					dropdownName.TextXAlignment = Enum.TextXAlignment.Left
+					dropdownName.AutomaticSize = Enum.AutomaticSize.Y
+					dropdownName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					dropdownName.BackgroundTransparency = 1
+					dropdownName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					dropdownName.BorderSizePixel = 0
+					dropdownName.Size = UDim2.new(1, -20, 0, 38)
+					dropdownName.Parent = dropdown
+
+					local dropdownUIStroke = Instance.new("UIStroke")
+					dropdownUIStroke.Name = "DropdownUIStroke"
+					dropdownUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					dropdownUIStroke.Color = Color3.fromRGB(255, 255, 255)
+					dropdownUIStroke.Transparency = 0.95
+					dropdownUIStroke.Parent = dropdown
+
+					local dropdownUICorner = Instance.new("UICorner")
+					dropdownUICorner.Name = "DropdownUICorner"
+					dropdownUICorner.CornerRadius = UDim.new(0, 6)
+					dropdownUICorner.Parent = dropdown
+
+					local dropdownImage = Instance.new("ImageLabel")
+					dropdownImage.Name = "DropdownImage"
+					dropdownImage.Image = assets.dropdown
+					dropdownImage.ImageTransparency = 0.5
+					dropdownImage.AnchorPoint = Vector2.new(1, 0)
+					dropdownImage.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					dropdownImage.BackgroundTransparency = 1
+					dropdownImage.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					dropdownImage.BorderSizePixel = 0
+					dropdownImage.Position = UDim2.new(1, 0, 0, 12)
+					dropdownImage.Size = UDim2.fromOffset(14, 14)
+					dropdownImage.Parent = dropdown
+
+					local dropdownFrame = Instance.new("Frame")
+					dropdownFrame.Name = "DropdownFrame"
+					dropdownFrame.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					dropdownFrame.BackgroundTransparency = 1
+					dropdownFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					dropdownFrame.BorderSizePixel = 0
+					dropdownFrame.ClipsDescendants = true
+					dropdownFrame.Size = UDim2.fromScale(1, 1)
+					dropdownFrame.Visible = false
+					dropdownFrame.AutomaticSize = Enum.AutomaticSize.Y
+
+					local dropdownFrameUIPadding = Instance.new("UIPadding")
+					dropdownFrameUIPadding.Name = "DropdownFrameUIPadding"
+					dropdownFrameUIPadding.PaddingTop = UDim.new(0, 38)
+					dropdownFrameUIPadding.PaddingBottom = UDim.new(0, 10)
+					dropdownFrameUIPadding.Parent = dropdownFrame
+
+					local dropdownFrameUIListLayout = Instance.new("UIListLayout")
+					dropdownFrameUIListLayout.Name = "DropdownFrameUIListLayout"
+					dropdownFrameUIListLayout.Padding = UDim.new(0, 5)
+					dropdownFrameUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+					dropdownFrameUIListLayout.Parent = dropdownFrame
+
+					local search = Instance.new("Frame")
+					search.Name = "Search"
+					search.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					search.BackgroundTransparency = 0.95
+					search.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					search.BorderSizePixel = 0
+					search.LayoutOrder = -1
+					search.Size = UDim2.new(1, 0, 0, 30)
+					search.Parent = dropdownFrame
+					search.Visible = DropdownFunctions.Settings.Search
+
+					local sectionUICorner = Instance.new("UICorner")
+					sectionUICorner.Name = "SectionUICorner"
+					sectionUICorner.Parent = search
+
+					local searchIcon = Instance.new("ImageLabel")
+					searchIcon.Name = "SearchIcon"
+					searchIcon.Image = assets.searchIcon
+					searchIcon.ImageColor3 = Color3.fromRGB(180, 180, 180)
+					searchIcon.AnchorPoint = Vector2.new(0, 0.5)
+					searchIcon.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					searchIcon.BackgroundTransparency = 1
+					searchIcon.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					searchIcon.BorderSizePixel = 0
+					searchIcon.Position = UDim2.fromScale(0, 0.5)
+					searchIcon.Size = UDim2.fromOffset(12, 12)
+					searchIcon.Parent = search
+
+					local uIPadding = Instance.new("UIPadding")
+					uIPadding.Name = "UIPadding"
+					uIPadding.PaddingLeft = UDim.new(0, 15)
+					uIPadding.Parent = search
+
+					local searchBox = Instance.new("TextBox")
+					searchBox.Name = "SearchBox"
+					searchBox.CursorPosition = -1
+					searchBox.FontFace = Font.new(
+						assets.interFont,
+						Enum.FontWeight.Medium,
+						Enum.FontStyle.Normal
+					)
+					searchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
+					searchBox.PlaceholderText = "Search..."
+					searchBox.Text = ""
+					searchBox.TextColor3 = Color3.fromRGB(200, 200, 200)
+					searchBox.TextSize = 14
+					searchBox.TextXAlignment = Enum.TextXAlignment.Left
+					searchBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					searchBox.BackgroundTransparency = 1
+					searchBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					searchBox.BorderSizePixel = 0
+					searchBox.Size = UDim2.fromScale(1, 1)
+
+					local function CalculateDropdownSize()
+						local totalHeight = 0
+						local visibleChildrenCount = 0
+						local padding = dropdownFrameUIPadding.PaddingTop.Offset + dropdownFrameUIPadding.PaddingBottom.Offset
+
+						for _, v in pairs(dropdownFrame:GetChildren()) do
+							if not v:IsA("UIComponent") and v.Visible then
+								totalHeight += v.AbsoluteSize.Y
+								visibleChildrenCount += 1
+							end
+						end
+
+						local spacing = dropdownFrameUIListLayout.Padding.Offset * (visibleChildrenCount - 1)
+
+						return totalHeight + spacing + padding
+					end
+
+					local function findOption()
+						local searchTerm = searchBox.Text:lower()
+
+						for _, v in pairs(OptionObjs) do
+							local optionText = v.NameLabel.Text:lower()
+							local isVisible = string.find(optionText, searchTerm) ~= nil
+
+							if v.Button.Visible ~= isVisible then
+								v.Button.Visible = isVisible
+							end
+						end
+
+						dropdown.Size = UDim2.new(1, 0, 0, CalculateDropdownSize())
+					end
+
+					searchBox:GetPropertyChangedSignal("Text"):Connect(findOption)
+
+					local uIPadding1 = Instance.new("UIPadding")
+					uIPadding1.Name = "UIPadding"
+					uIPadding1.PaddingLeft = UDim.new(0, 23)
+					uIPadding1.Parent = searchBox
+
+					searchBox.Parent = search
+
+					local tweensettings = {
+						duration = 0.2,
+						easingStyle = Enum.EasingStyle.Quint,
+						transparencyIn = 0.2,
+						transparencyOut = 0.5,
+						checkSizeIncrease = 12,
+						checkSizeDecrease = -13,
+						waitTime = 1
+					}
+
+					local function Toggle(optionName, State)
+						local option = OptionObjs[optionName]
+
+						if not option then return end
+
+						local checkmark = option.Checkmark
+						local optionNameLabel = option.NameLabel
+
+						if State then
+							if DropdownFunctions.Settings.Multi then
+								if not table.find(Selected, optionName) then
+									table.insert(Selected, optionName)
+									DropdownFunctions.Value = Selected
+								end
+							else
+								for name, opt in pairs(OptionObjs) do
+									if name ~= optionName then
+										Tween(opt.Checkmark, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+											Size = UDim2.new(opt.Checkmark.Size.X.Scale, tweensettings.checkSizeDecrease, opt.Checkmark.Size.Y.Scale, opt.Checkmark.Size.Y.Offset)
+										}):Play()
+										Tween(opt.NameLabel, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+											TextTransparency = tweensettings.transparencyOut
+										}):Play()
+										opt.Checkmark.TextTransparency = 1
+									end
+								end
+								Selected = {optionName}
+								DropdownFunctions.Value = Selected[1]
+							end
+							Tween(checkmark, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+								Size = UDim2.new(checkmark.Size.X.Scale, tweensettings.checkSizeIncrease, checkmark.Size.Y.Scale, checkmark.Size.Y.Offset)
+							}):Play()
+							Tween(optionNameLabel, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+								TextTransparency = tweensettings.transparencyIn
+							}):Play()
+							checkmark.TextTransparency = 0
+						else
+							if DropdownFunctions.Settings.Multi then
+								local idx = table.find(Selected, optionName)
+								if idx then
+									table.remove(Selected, idx)
+								end
+							else
+								Selected = {}
+							end
+							Tween(checkmark, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+								Size = UDim2.new(checkmark.Size.X.Scale, tweensettings.checkSizeDecrease, checkmark.Size.Y.Scale, checkmark.Size.Y.Offset)
+							}):Play()
+							Tween(optionNameLabel, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+								TextTransparency = tweensettings.transparencyOut
+							}):Play()
+							checkmark.TextTransparency = 1
+						end
+
+						if Settings.Required and #Selected == 0 and not State then
+							return
+						end
+
+						if #Selected > 0 then
+							dropdownName.Text = DropdownFunctions.Settings.Name .. " • " .. table.concat(Selected, ", ")
+						else
+							dropdownName.Text = DropdownFunctions.Settings.Name .. "..."
+						end
+					end
+
+					local dropped = false
+					local db = false
+
+					local function ToggleDropdown()
+						if db then return end
+						db = true
+						local defaultDropdownSize = 38
+						local isDropdownOpen = not dropped
+						local targetSize = isDropdownOpen and UDim2.new(1, 0, 0, CalculateDropdownSize()) or UDim2.new(1, 0, 0, defaultDropdownSize)
+
+						local dropTween = Tween(dropdown, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+							Size = targetSize
+						})
+						local iconTween = Tween(dropdownImage, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+							Rotation = isDropdownOpen and -90 or 0
+						})
+
+						dropTween:Play()
+						iconTween:Play()
+
+						if isDropdownOpen then
+							dropdownFrame.Visible = true
+							dropTween.Completed:Connect(function()
+								db = false
+							end)
+						else
+							dropTween.Completed:Connect(function()
+								dropdownFrame.Visible = false
+								db = false
+							end)
+						end
+
+						dropped = isDropdownOpen
+					end
+
+					interact.MouseButton1Click:Connect(ToggleDropdown)
+
+					local function addOption(i, v)
+						local option = Instance.new("TextButton")
+						option.Name = "Option"
+						option.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+						option.Text = ""
+						option.TextColor3 = Color3.fromRGB(0, 0, 0)
+						option.TextSize = 14
+						option.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+						option.BackgroundTransparency = 1
+						option.BorderColor3 = Color3.fromRGB(0, 0, 0)
+						option.BorderSizePixel = 0
+						option.Size = UDim2.new(1, 0, 0, 30)
+
+						local optionUIPadding = Instance.new("UIPadding")
+						optionUIPadding.Name = "OptionUIPadding"
+						optionUIPadding.PaddingLeft = UDim.new(0, 15)
+						optionUIPadding.Parent = option
+
+						local optionName = Instance.new("TextLabel")
+						optionName.Name = "OptionName"
+						optionName.FontFace = Font.new(assets.interFont)
+						optionName.Text = v
+						optionName.RichText = true
+						optionName.TextColor3 = Color3.fromRGB(255, 255, 255)
+						optionName.TextSize = 13
+						optionName.TextTransparency = 0.5
+						optionName.TextTruncate = Enum.TextTruncate.AtEnd
+						optionName.TextXAlignment = Enum.TextXAlignment.Left
+						optionName.TextYAlignment = Enum.TextYAlignment.Top
+						optionName.AnchorPoint = Vector2.new(0, 0.5)
+						optionName.AutomaticSize = Enum.AutomaticSize.XY
+						optionName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+						optionName.BackgroundTransparency = 1
+						optionName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+						optionName.BorderSizePixel = 0
+						optionName.Position = UDim2.fromScale(1.3e-07, 0.5)
+						optionName.Parent = option
+
+						local optionUIListLayout = Instance.new("UIListLayout")
+						optionUIListLayout.Name = "OptionUIListLayout"
+						optionUIListLayout.Padding = UDim.new(0, 10)
+						optionUIListLayout.FillDirection = Enum.FillDirection.Horizontal
+						optionUIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+						optionUIListLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+						optionUIListLayout.Parent = option
+
+						local checkmark = Instance.new("TextLabel")
+						checkmark.Name = "Checkmark"
+						checkmark.FontFace = Font.new(assets.interFont)
+						checkmark.Text = "✓"
+						checkmark.TextColor3 = Color3.fromRGB(255, 255, 255)
+						checkmark.TextSize = 13
+						checkmark.TextTransparency = 1
+						checkmark.TextXAlignment = Enum.TextXAlignment.Left
+						checkmark.TextYAlignment = Enum.TextYAlignment.Top
+						checkmark.AnchorPoint = Vector2.new(0, 0.5)
+						checkmark.AutomaticSize = Enum.AutomaticSize.Y
+						checkmark.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+						checkmark.BackgroundTransparency = 1
+						checkmark.BorderColor3 = Color3.fromRGB(0, 0, 0)
+						checkmark.BorderSizePixel = 0
+						checkmark.LayoutOrder = -1
+						checkmark.Position = UDim2.fromScale(1.3e-07, 0.5)
+						checkmark.Size = UDim2.fromOffset(-10, 0)
+						checkmark.Parent = option
+
+						option.Parent = dropdownFrame
+
+						dropdownFrame.Parent = dropdown
+						OptionObjs[v] = {
+							Index = i,
+							Button = option,
+							NameLabel = optionName,
+							Checkmark = checkmark
+						}
+
+						local tweensettings = {
+							duration = 0.2,
+							easingStyle = Enum.EasingStyle.Quint,
+							transparencyIn = 0.2,
+							transparencyOut = 0.5,
+							checkSizeIncrease = 12,
+							checkSizeDecrease = -optionUIListLayout.Padding.Offset,
+							waitTime = 1
+						}
+						local tweens = {
+							checkIn = Tween(checkmark, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle), {
+								Size = UDim2.new(checkmark.Size.X.Scale, tweensettings.checkSizeIncrease, checkmark.Size.Y.Scale, checkmark.Size.Y.Offset)
+							}),
+							checkOut = Tween(checkmark, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle),{
+								Size = UDim2.new(checkmark.Size.X.Scale, tweensettings.checkSizeDecrease, checkmark.Size.Y.Scale, checkmark.Size.Y.Offset)
+							}),
+							nameIn = Tween(optionName, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle),{
+								TextTransparency = tweensettings.transparencyIn
+							}),
+							nameOut = Tween(optionName, TweenInfo.new(tweensettings.duration, tweensettings.easingStyle),{
+								TextTransparency = tweensettings.transparencyOut
+							})
+						}
+
+						local isSelected = false
+						if DropdownFunctions.Settings.Default then
+							if DropdownFunctions.Settings.Multi then
+								isSelected = table.find(DropdownFunctions.Settings.Default, v) and true or false
+							else
+								isSelected = (DropdownFunctions.Settings.Default == i) and true or false
+							end
+						end
+						Toggle(v, isSelected)
+
+						local option = OptionObjs[v].Button
+
+						option.MouseButton1Click:Connect(function()
+							local isSelected = table.find(Selected, v) and true or false
+							local newSelected = not isSelected
+
+							if DropdownFunctions.Settings.Required and not newSelected and #Selected <= 1 then
+								return
+							end
+
+							Toggle(v, newSelected)
+
+							task.spawn(function()
+								if DropdownFunctions.Settings.Multi then
+									local Return = {}
+									for _, opt in ipairs(Selected) do
+										Return[opt] = true
+									end
+									if DropdownFunctions.Settings.Callback then
+										DropdownFunctions.Settings.Callback(Return)
+									end
+
+								else
+									if newSelected and DropdownFunctions.Settings.Callback then
+										DropdownFunctions.Settings.Callback(Selected[1] or nil)
+									end
+								end
+							end)
+						end)
+
+						if dropped then
+							dropdown.Size = UDim2.new(1, 0, 0, CalculateDropdownSize())
+						end
+					end
+
+					if DropdownFunctions.Settings.Options then
+						for i, v in pairs(DropdownFunctions.Settings.Options) do
+							addOption(i, v)
+						end
+					end
+
+					function DropdownFunctions:UpdateName(New)
+						dropdownName.Text = New
+					end
+					function DropdownFunctions:SetVisibility(State)
+						dropdown.Visible = State
+					end
+					function DropdownFunctions:UpdateSelection(newSelection)
+						if not newSelection then return end
+
+						for option, _ in pairs(OptionObjs) do
+							Toggle(option, false)
+						end
+
+						local selectedOptions = {}
+						if type(newSelection) == "number" then
+							for option, data in pairs(OptionObjs) do
+								local isSelected = data.Index == newSelection
+								Toggle(option, isSelected)
+								if isSelected then
+									table.insert(selectedOptions, option)
+								end
+							end
+						elseif type(newSelection) == "string" then
+							for option, data in pairs(OptionObjs) do
+								local isSelected = option == newSelection
+								Toggle(option, isSelected)
+								if isSelected then
+									table.insert(selectedOptions, option)
+								end
+							end
+						elseif type(newSelection) == "table" then
+							for option, _ in pairs(OptionObjs) do
+								local isSelected = table.find(newSelection, option) ~= nil
+								Toggle(option, isSelected)
+								if isSelected then
+									table.insert(selectedOptions, option)
+								end
+							end
+						end
+
+						if DropdownFunctions.Settings.Callback then
+							if DropdownFunctions.Settings.Multi then
+								local Return = {}
+								for _, opt in ipairs(selectedOptions) do
+									Return[opt] = true
+								end
+								DropdownFunctions.Settings.Callback(Return)
+							else
+								DropdownFunctions.Settings.Callback(selectedOptions[1] or nil)
+							end
+						end
+					end
+					function DropdownFunctions:InsertOptions(newOptions)
+						if not newOptions then return end
+						DropdownFunctions.Settings.Options = newOptions
+						for i, v in pairs(newOptions) do
+							addOption(i, v)
+						end
+					end
+					function DropdownFunctions:ClearOptions()
+						for _, optionData in pairs(OptionObjs) do
+							optionData.Button:Destroy()
+						end
+						OptionObjs = {}
+						Selected = {}
+
+						if dropped then
+							dropdown.Size = UDim2.new(1, 0, 0, CalculateDropdownSize())
+						end
+					end
+					function DropdownFunctions:GetOptions()
+						local optionsStatus = {}
+
+						for option, data in pairs(OptionObjs) do
+							local isSelected = table.find(Selected, option) and true or false
+							optionsStatus[option] = isSelected
+						end
+
+						return optionsStatus
+					end
+
+					function DropdownFunctions:RemoveOptions(remove)
+						if not remove then return end
+						for _, optionName in ipairs(remove) do
+							local optionData = OptionObjs[optionName]
+
+							if optionData then
+								for i = #Selected, 1, -1 do
+									if Selected[i] == optionName then
+										table.remove(Selected, i)
+									end
+								end
+
+								optionData.Button:Destroy()
+
+								OptionObjs[optionName] = nil
+							end
+						end
+
+						if dropped then
+							dropdown.Size = UDim2.new(1, 0, 0, CalculateDropdownSize())
+						end
+					end
+					function DropdownFunctions:IsOption(optionName)
+						if not optionName then return end
+						return OptionObjs[optionName] ~= nil
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = DropdownFunctions
+					end
+
+					return DropdownFunctions
+				end
+
+				function SectionFunctions:Colorpicker(Settings, Flag)
+					local ColorpickerFunctions = { Settings = Settings, IgnoreConfig = false, Class = "Colorpicker" }
+
+					local isAlpha = ColorpickerFunctions.Settings.Alpha and true or false
+					ColorpickerFunctions.Color = ColorpickerFunctions.Settings.Default
+					ColorpickerFunctions.Alpha = isAlpha and ColorpickerFunctions.Settings.Alpha
+
+					local colorpicker = Instance.new("Frame")
+					colorpicker.Name = "Colorpicker"
+					colorpicker.AutomaticSize = Enum.AutomaticSize.Y
+					colorpicker.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					colorpicker.BackgroundTransparency = 1
+					colorpicker.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					colorpicker.BorderSizePixel = 0
+					colorpicker.Size = UDim2.new(1, 0, 0, 38)
+					colorpicker.Parent = section
+
+					local colorpickerName = Instance.new("TextLabel")
+					colorpickerName.Name = "KeybindName"
+					colorpickerName.FontFace = Font.new(assets.interFont)
+					colorpickerName.Text = Settings.Name
+					colorpickerName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					colorpickerName.TextSize = 13
+					colorpickerName.TextTransparency = 0.5
+					colorpickerName.RichText = true
+					colorpickerName.TextTruncate = Enum.TextTruncate.AtEnd
+					colorpickerName.TextXAlignment = Enum.TextXAlignment.Left
+					colorpickerName.TextYAlignment = Enum.TextYAlignment.Top
+					colorpickerName.AnchorPoint = Vector2.new(0, 0.5)
+					colorpickerName.AutomaticSize = Enum.AutomaticSize.XY
+					colorpickerName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					colorpickerName.BackgroundTransparency = 1
+					colorpickerName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					colorpickerName.BorderSizePixel = 0
+					colorpickerName.Position = UDim2.fromScale(0, 0.5)
+					colorpickerName.Parent = colorpicker
+
+					local colorCbg = Instance.new("ImageLabel")
+					colorCbg.Name = "NewColor"
+					colorCbg.Image = assets.grid
+					colorCbg.ScaleType = Enum.ScaleType.Tile
+					colorCbg.TileSize = UDim2.fromOffset(500, 500)
+					colorCbg.AnchorPoint = Vector2.new(1, 0.5)
+					colorCbg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					colorCbg.BackgroundTransparency = 1
+					colorCbg.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					colorCbg.BorderSizePixel = 0
+					colorCbg.Position = UDim2.fromScale(1, 0.5)
+					colorCbg.Size = UDim2.fromOffset(21, 21)
+
+					local colorC = Instance.new("Frame")
+					colorC.Name = "Color"
+					colorC.AnchorPoint = Vector2.new(0.5, 0.5)
+					colorC.BackgroundColor3 = ColorpickerFunctions.Color
+					colorC.BorderSizePixel = 0
+					colorC.Position = UDim2.fromScale(0.5, 0.5)
+					colorC.Size = UDim2.fromScale(1, 1)
+					colorC.BackgroundTransparency = ColorpickerFunctions.Alpha or 0
+
+					local uICorner = Instance.new("UICorner")
+					uICorner.Name = "UICorner"
+					uICorner.CornerRadius = UDim.new(0, 6)
+					uICorner.Parent = colorC
+
+					local interact = Instance.new("TextButton")
+					interact.Name = "Interact"
+					interact.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+					interact.Text = ""
+					interact.TextColor3 = Color3.fromRGB(0, 0, 0)
+					interact.TextSize = 14
+					interact.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					interact.BackgroundTransparency = 1
+					interact.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					interact.BorderSizePixel = 0
+					interact.Size = UDim2.fromScale(1, 1)
+					interact.Parent = colorC
+
+					colorC.Parent = colorCbg
+
+					local uICorner1 = Instance.new("UICorner")
+					uICorner1.Name = "UICorner"
+					uICorner1.CornerRadius = UDim.new(0, 8)
+					uICorner1.Parent = colorCbg
+
+					colorCbg.Parent = colorpicker
+
+					local colorPicker = Instance.new("Frame")
+					colorPicker.Name = "ColorPicker"
+					colorPicker.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					colorPicker.BackgroundTransparency = 0.5
+					colorPicker.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					colorPicker.BorderSizePixel = 0
+					colorPicker.Size = UDim2.fromScale(1, 1)
+					colorPicker.Visible = false
+
+					local baseUICorner = Instance.new("UICorner")
+					baseUICorner.Name = "BaseUICorner"
+					baseUICorner.CornerRadius = UDim.new(0, 10)
+					baseUICorner.Parent = colorPicker
+
+					local prompt = Instance.new("Frame")
+					prompt.Name = "Prompt"
+					prompt.AnchorPoint = Vector2.new(0.5, 0.5)
+					prompt.AutomaticSize = Enum.AutomaticSize.Y
+					prompt.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+					prompt.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					prompt.BorderSizePixel = 0
+					prompt.Position = UDim2.fromScale(0.5, 0.5)
+					prompt.Size = UDim2.fromOffset(420, 0)
+
+					local promptUIScale = Instance.new("UIScale")
+					promptUIScale.Name = "BaseUIScale"
+					promptUIScale.Parent = prompt
+					promptUIScale.Scale = 0.95
+
+					local globalSettingsUIStroke = Instance.new("UIStroke")
+					globalSettingsUIStroke.Name = "GlobalSettingsUIStroke"
+					globalSettingsUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					globalSettingsUIStroke.Color = Color3.fromRGB(255, 255, 255)
+					globalSettingsUIStroke.Transparency = 0.9
+					globalSettingsUIStroke.Parent = prompt
+
+					local globalSettingsUICorner = Instance.new("UICorner")
+					globalSettingsUICorner.Name = "GlobalSettingsUICorner"
+					globalSettingsUICorner.CornerRadius = UDim.new(0, 10)
+					globalSettingsUICorner.Parent = prompt
+
+					local uIListLayout = Instance.new("UIListLayout")
+					uIListLayout.Name = "UIListLayout"
+					uIListLayout.Padding = UDim.new(0, 10)
+					uIListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+					uIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout.Parent = prompt
+
+					local colorOptions = Instance.new("Frame")
+					colorOptions.Name = "ColorOptions"
+					colorOptions.AutomaticSize = Enum.AutomaticSize.XY
+					colorOptions.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					colorOptions.BackgroundTransparency = 1
+					colorOptions.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					colorOptions.BorderSizePixel = 0
+					colorOptions.LayoutOrder = 1
+					colorOptions.Size = UDim2.fromScale(1, 0)
+
+					local value = Instance.new("TextButton")
+					value.Name = "Value"
+					value.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json")
+					value.Text = ""
+					value.TextColor3 = Color3.fromRGB(0, 0, 0)
+					value.TextSize = 14
+					value.AutoButtonColor = false
+					value.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					value.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					value.BorderSizePixel = 0
+					value.LayoutOrder = 1
+					value.Position = UDim2.fromScale(0.092, 0.886)
+					value.Size = UDim2.new(1, 0, 0, 15)
+
+					local uIGradient = Instance.new("UIGradient")
+					uIGradient.Name = "UIGradient"
+					uIGradient.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+						ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0)),
+					})
+					uIGradient.Parent = value
+
+					local slide = Instance.new("Frame")
+					slide.Name = "Slide"
+					slide.AnchorPoint = Vector2.new(0, 0.5)
+					slide.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					slide.BorderColor3 = Color3.fromRGB(27, 42, 53)
+					slide.BorderSizePixel = 0
+					slide.Position = UDim2.fromScale(0, 0.5)
+					slide.Size = UDim2.new(0, 13, 1, 8)
+
+					local uICorner = Instance.new("UICorner")
+					uICorner.Name = "UICorner"
+					uICorner.CornerRadius = UDim.new(1, 0)
+					uICorner.Parent = slide
+
+					local uIStroke = Instance.new("UIStroke")
+					uIStroke.Name = "UIStroke"
+					uIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					uIStroke.Transparency = 0.5
+					uIStroke.Parent = slide
+
+					slide.Parent = value
+
+					local uICorner1 = Instance.new("UICorner")
+					uICorner1.Name = "UICorner"
+					uICorner1.CornerRadius = UDim.new(0, 6)
+					uICorner1.Parent = value
+
+					local uIStroke1 = Instance.new("UIStroke")
+					uIStroke1.Name = "UIStroke"
+					uIStroke1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					uIStroke1.Color = Color3.fromRGB(255, 255, 255)
+					uIStroke1.Transparency = 0.9
+
+					local uIGradient1 = Instance.new("UIGradient")
+					uIGradient1.Name = "UIGradient"
+					uIGradient1.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+						ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 0, 0)),
+					})
+					uIGradient1.Rotation = 180
+					uIGradient1.Parent = uIStroke1
+
+					uIStroke1.Parent = value
+
+					value.Parent = colorOptions
+
+					local uIListLayout1 = Instance.new("UIListLayout")
+					uIListLayout1.Name = "UIListLayout"
+					uIListLayout1.Padding = UDim.new(0, 25)
+					uIListLayout1.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout1.Parent = colorOptions
+
+					local wheel = Instance.new("Frame")
+					wheel.Name = "Wheel"
+					wheel.AutomaticSize = Enum.AutomaticSize.Y
+					wheel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					wheel.BackgroundTransparency = 1
+					wheel.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					wheel.BorderSizePixel = 0
+					wheel.Size = UDim2.new(1, 0, 0, 100)
+
+					local wheel1 = Instance.new("ImageButton")
+					wheel1.Name = "Wheel"
+					wheel1.Image = assets.colorWheel
+					wheel1.AutoButtonColor = false
+					wheel1.Active = false
+					wheel1.BackgroundColor3 = Color3.fromRGB(248, 248, 248)
+					wheel1.BackgroundTransparency = 1
+					wheel1.BorderColor3 = Color3.fromRGB(27, 42, 53)
+					wheel1.Selectable = false
+					wheel1.Size = UDim2.fromOffset(220, 220)
+					wheel1.SizeConstraint = Enum.SizeConstraint.RelativeYY
+
+					local target = Instance.new("ImageLabel")
+					target.Name = "Target"
+					target.Image = assets.colorTarget
+					target.ImageColor3 = Color3.fromRGB(0, 0, 0)
+					target.AnchorPoint = Vector2.new(0.5, 0.5)
+					target.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					target.BackgroundTransparency = 1
+					target.BorderColor3 = Color3.fromRGB(27, 42, 53)
+					target.Position = UDim2.fromScale(0.5, 0.5)
+					target.Size = UDim2.fromOffset(22, 22)
+					target.SizeConstraint = Enum.SizeConstraint.RelativeYY
+					target.Parent = wheel1
+
+					wheel1.Parent = wheel
+
+					local inputs = Instance.new("Frame")
+					inputs.Name = "Inputs"
+					inputs.AnchorPoint = Vector2.new(1, 0.5)
+					inputs.AutomaticSize = Enum.AutomaticSize.XY
+					inputs.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputs.BackgroundTransparency = 1
+					inputs.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputs.BorderSizePixel = 0
+					inputs.LayoutOrder = 1
+					inputs.Position = UDim2.fromScale(1, 0.5)
+
+					local uIListLayout2 = Instance.new("UIListLayout")
+					uIListLayout2.Name = "UIListLayout"
+					uIListLayout2.Padding = UDim.new(0, 5)
+					uIListLayout2.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout2.Parent = inputs
+
+					local red = Instance.new("Frame")
+					red.Name = "Red"
+					red.AutomaticSize = Enum.AutomaticSize.XY
+					red.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					red.BackgroundTransparency = 1
+					red.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					red.BorderSizePixel = 0
+					red.LayoutOrder = 1
+					red.Size = UDim2.fromOffset(0, 38)
+
+					local inputName = Instance.new("TextLabel")
+					inputName.Name = "InputName"
+					inputName.FontFace = Font.new(assets.interFont)
+					inputName.Text = "Red"
+					inputName.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputName.TextSize = 13
+					inputName.TextTransparency = 0.5
+					inputName.TextTruncate = Enum.TextTruncate.AtEnd
+					inputName.TextXAlignment = Enum.TextXAlignment.Left
+					inputName.TextYAlignment = Enum.TextYAlignment.Top
+					inputName.AnchorPoint = Vector2.new(0, 0.5)
+					inputName.AutomaticSize = Enum.AutomaticSize.XY
+					inputName.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputName.BackgroundTransparency = 1
+					inputName.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputName.BorderSizePixel = 0
+					inputName.LayoutOrder = 2
+					inputName.Position = UDim2.fromScale(0, 0.5)
+					inputName.Parent = red
+
+					local uIListLayout3 = Instance.new("UIListLayout")
+					uIListLayout3.Name = "UIListLayout"
+					uIListLayout3.Padding = UDim.new(0, 15)
+					uIListLayout3.FillDirection = Enum.FillDirection.Horizontal
+					uIListLayout3.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout3.VerticalAlignment = Enum.VerticalAlignment.Center
+					uIListLayout3.Parent = red
+
+					local inputBox = Instance.new("TextBox")
+					inputBox.Name = "InputBox"
+					inputBox.ClearTextOnFocus = false
+					inputBox.CursorPosition = -1
+					inputBox.FontFace = Font.new(assets.interFont)
+					inputBox.Text = "255"
+					inputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox.TextSize = 12
+					inputBox.TextTransparency = 0.1
+					inputBox.TextXAlignment = Enum.TextXAlignment.Left
+					inputBox.AnchorPoint = Vector2.new(1, 0.5)
+					inputBox.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox.BackgroundTransparency = 0.95
+					inputBox.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputBox.BorderSizePixel = 0
+					inputBox.ClipsDescendants = true
+					inputBox.LayoutOrder = 1
+					inputBox.Position = UDim2.fromScale(1, 0.5)
+					inputBox.Size = UDim2.fromOffset(75, 25)
+
+					local inputBoxUICorner = Instance.new("UICorner")
+					inputBoxUICorner.Name = "InputBoxUICorner"
+					inputBoxUICorner.CornerRadius = UDim.new(0, 4)
+					inputBoxUICorner.Parent = inputBox
+
+					local inputBoxUIStroke = Instance.new("UIStroke")
+					inputBoxUIStroke.Name = "InputBoxUIStroke"
+					inputBoxUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					inputBoxUIStroke.Color = Color3.fromRGB(255, 255, 255)
+					inputBoxUIStroke.Transparency = 0.9
+					inputBoxUIStroke.Parent = inputBox
+
+					local inputBoxUISizeConstraint = Instance.new("UISizeConstraint")
+					inputBoxUISizeConstraint.Name = "InputBoxUISizeConstraint"
+					inputBoxUISizeConstraint.Parent = inputBox
+
+					local inputBoxUIPadding = Instance.new("UIPadding")
+					inputBoxUIPadding.Name = "InputBoxUIPadding"
+					inputBoxUIPadding.PaddingLeft = UDim.new(0, 8)
+					inputBoxUIPadding.PaddingRight = UDim.new(0, 10)
+					inputBoxUIPadding.Parent = inputBox
+
+					inputBox.Parent = red
+
+					red.Parent = inputs
+
+					local green = Instance.new("Frame")
+					green.Name = "Green"
+					green.AutomaticSize = Enum.AutomaticSize.XY
+					green.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					green.BackgroundTransparency = 1
+					green.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					green.BorderSizePixel = 0
+					green.LayoutOrder = 2
+					green.Size = UDim2.fromOffset(0, 38)
+
+					local inputName1 = Instance.new("TextLabel")
+					inputName1.Name = "InputName"
+					inputName1.FontFace = Font.new(assets.interFont)
+					inputName1.Text = "Green"
+					inputName1.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputName1.TextSize = 13
+					inputName1.TextTransparency = 0.5
+					inputName1.TextTruncate = Enum.TextTruncate.AtEnd
+					inputName1.TextXAlignment = Enum.TextXAlignment.Left
+					inputName1.TextYAlignment = Enum.TextYAlignment.Top
+					inputName1.AnchorPoint = Vector2.new(0, 0.5)
+					inputName1.AutomaticSize = Enum.AutomaticSize.XY
+					inputName1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputName1.BackgroundTransparency = 1
+					inputName1.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputName1.BorderSizePixel = 0
+					inputName1.LayoutOrder = 2
+					inputName1.Position = UDim2.fromScale(0, 0.5)
+					inputName1.Parent = green
+
+					local uIListLayout4 = Instance.new("UIListLayout")
+					uIListLayout4.Name = "UIListLayout"
+					uIListLayout4.Padding = UDim.new(0, 15)
+					uIListLayout4.FillDirection = Enum.FillDirection.Horizontal
+					uIListLayout4.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout4.VerticalAlignment = Enum.VerticalAlignment.Center
+					uIListLayout4.Parent = green
+
+					local inputBox1 = Instance.new("TextBox")
+					inputBox1.Name = "InputBox"
+					inputBox1.ClearTextOnFocus = false
+					inputBox1.FontFace = Font.new(assets.interFont)
+					inputBox1.Text = "255"
+					inputBox1.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox1.TextSize = 12
+					inputBox1.TextTransparency = 0.1
+					inputBox1.TextXAlignment = Enum.TextXAlignment.Left
+					inputBox1.AnchorPoint = Vector2.new(1, 0.5)
+					inputBox1.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox1.BackgroundTransparency = 0.95
+					inputBox1.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputBox1.BorderSizePixel = 0
+					inputBox1.ClipsDescendants = true
+					inputBox1.LayoutOrder = 1
+					inputBox1.Position = UDim2.fromScale(1, 0.5)
+					inputBox1.Size = UDim2.fromOffset(75, 25)
+
+					local inputBoxUICorner1 = Instance.new("UICorner")
+					inputBoxUICorner1.Name = "InputBoxUICorner"
+					inputBoxUICorner1.CornerRadius = UDim.new(0, 4)
+					inputBoxUICorner1.Parent = inputBox1
+
+					local inputBoxUIStroke1 = Instance.new("UIStroke")
+					inputBoxUIStroke1.Name = "InputBoxUIStroke"
+					inputBoxUIStroke1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					inputBoxUIStroke1.Color = Color3.fromRGB(255, 255, 255)
+					inputBoxUIStroke1.Transparency = 0.9
+					inputBoxUIStroke1.Parent = inputBox1
+
+					local inputBoxUISizeConstraint1 = Instance.new("UISizeConstraint")
+					inputBoxUISizeConstraint1.Name = "InputBoxUISizeConstraint"
+					inputBoxUISizeConstraint1.Parent = inputBox1
+
+					local inputBoxUIPadding1 = Instance.new("UIPadding")
+					inputBoxUIPadding1.Name = "InputBoxUIPadding"
+					inputBoxUIPadding1.PaddingLeft = UDim.new(0, 8)
+					inputBoxUIPadding1.PaddingRight = UDim.new(0, 10)
+					inputBoxUIPadding1.Parent = inputBox1
+
+					inputBox1.Parent = green
+
+					green.Parent = inputs
+
+					local blue = Instance.new("Frame")
+					blue.Name = "Blue"
+					blue.AutomaticSize = Enum.AutomaticSize.XY
+					blue.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					blue.BackgroundTransparency = 1
+					blue.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					blue.BorderSizePixel = 0
+					blue.LayoutOrder = 3
+					blue.Size = UDim2.fromOffset(0, 38)
+
+					local inputName2 = Instance.new("TextLabel")
+					inputName2.Name = "InputName"
+					inputName2.FontFace = Font.new(assets.interFont)
+					inputName2.Text = "Blue"
+					inputName2.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputName2.TextSize = 13
+					inputName2.TextTransparency = 0.5
+					inputName2.TextTruncate = Enum.TextTruncate.AtEnd
+					inputName2.TextXAlignment = Enum.TextXAlignment.Left
+					inputName2.TextYAlignment = Enum.TextYAlignment.Top
+					inputName2.AnchorPoint = Vector2.new(0, 0.5)
+					inputName2.AutomaticSize = Enum.AutomaticSize.XY
+					inputName2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputName2.BackgroundTransparency = 1
+					inputName2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputName2.BorderSizePixel = 0
+					inputName2.LayoutOrder = 2
+					inputName2.Position = UDim2.fromScale(0, 0.5)
+					inputName2.Parent = blue
+
+					local uIListLayout5 = Instance.new("UIListLayout")
+					uIListLayout5.Name = "UIListLayout"
+					uIListLayout5.Padding = UDim.new(0, 15)
+					uIListLayout5.FillDirection = Enum.FillDirection.Horizontal
+					uIListLayout5.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout5.VerticalAlignment = Enum.VerticalAlignment.Center
+					uIListLayout5.Parent = blue
+
+					local inputBox2 = Instance.new("TextBox")
+					inputBox2.Name = "InputBox"
+					inputBox2.ClearTextOnFocus = false
+					inputBox2.FontFace = Font.new(assets.interFont)
+					inputBox2.Text = "255"
+					inputBox2.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox2.TextSize = 12
+					inputBox2.TextTransparency = 0.1
+					inputBox2.TextXAlignment = Enum.TextXAlignment.Left
+					inputBox2.AnchorPoint = Vector2.new(1, 0.5)
+					inputBox2.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox2.BackgroundTransparency = 0.95
+					inputBox2.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputBox2.BorderSizePixel = 0
+					inputBox2.ClipsDescendants = true
+					inputBox2.LayoutOrder = 1
+					inputBox2.Position = UDim2.fromScale(1, 0.5)
+					inputBox2.Size = UDim2.fromOffset(75, 25)
+
+					local inputBoxUICorner2 = Instance.new("UICorner")
+					inputBoxUICorner2.Name = "InputBoxUICorner"
+					inputBoxUICorner2.CornerRadius = UDim.new(0, 4)
+					inputBoxUICorner2.Parent = inputBox2
+
+					local inputBoxUIStroke2 = Instance.new("UIStroke")
+					inputBoxUIStroke2.Name = "InputBoxUIStroke"
+					inputBoxUIStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					inputBoxUIStroke2.Color = Color3.fromRGB(255, 255, 255)
+					inputBoxUIStroke2.Transparency = 0.9
+					inputBoxUIStroke2.Parent = inputBox2
+
+					local inputBoxUISizeConstraint2 = Instance.new("UISizeConstraint")
+					inputBoxUISizeConstraint2.Name = "InputBoxUISizeConstraint"
+					inputBoxUISizeConstraint2.Parent = inputBox2
+
+					local inputBoxUIPadding2 = Instance.new("UIPadding")
+					inputBoxUIPadding2.Name = "InputBoxUIPadding"
+					inputBoxUIPadding2.PaddingLeft = UDim.new(0, 8)
+					inputBoxUIPadding2.PaddingRight = UDim.new(0, 10)
+					inputBoxUIPadding2.Parent = inputBox2
+
+					inputBox2.Parent = blue
+
+					blue.Parent = inputs
+
+					local alpha = Instance.new("Frame")
+					alpha.Name = "Alpha"
+					alpha.AutomaticSize = Enum.AutomaticSize.XY
+					alpha.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					alpha.BackgroundTransparency = 1
+					alpha.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					alpha.BorderSizePixel = 0
+					alpha.LayoutOrder = 4
+					alpha.Size = UDim2.fromOffset(0, 38)
+					alpha.Visible = isAlpha
+
+					local inputName3 = Instance.new("TextLabel")
+					inputName3.Name = "InputName"
+					inputName3.FontFace = Font.new(assets.interFont)
+					inputName3.Text = "Alpha"
+					inputName3.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputName3.TextSize = 13
+					inputName3.TextTransparency = 0.5
+					inputName3.TextTruncate = Enum.TextTruncate.AtEnd
+					inputName3.TextXAlignment = Enum.TextXAlignment.Left
+					inputName3.TextYAlignment = Enum.TextYAlignment.Top
+					inputName3.AnchorPoint = Vector2.new(0, 0.5)
+					inputName3.AutomaticSize = Enum.AutomaticSize.XY
+					inputName3.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputName3.BackgroundTransparency = 1
+					inputName3.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputName3.BorderSizePixel = 0
+					inputName3.LayoutOrder = 2
+					inputName3.Position = UDim2.fromScale(0, 0.5)
+					inputName3.Parent = alpha
+
+					local uIListLayout6 = Instance.new("UIListLayout")
+					uIListLayout6.Name = "UIListLayout"
+					uIListLayout6.Padding = UDim.new(0, 15)
+					uIListLayout6.FillDirection = Enum.FillDirection.Horizontal
+					uIListLayout6.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout6.VerticalAlignment = Enum.VerticalAlignment.Center
+					uIListLayout6.Parent = alpha
+
+					local inputBox3 = Instance.new("TextBox")
+					inputBox3.Name = "InputBox"
+					inputBox3.ClearTextOnFocus = false
+					inputBox3.FontFace = Font.new(assets.interFont)
+					inputBox3.Text = "0"
+					inputBox3.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox3.TextSize = 12
+					inputBox3.TextTransparency = 0.1
+					inputBox3.TextXAlignment = Enum.TextXAlignment.Left
+					inputBox3.AnchorPoint = Vector2.new(1, 0.5)
+					inputBox3.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox3.BackgroundTransparency = 0.95
+					inputBox3.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputBox3.BorderSizePixel = 0
+					inputBox3.ClipsDescendants = true
+					inputBox3.LayoutOrder = 1
+					inputBox3.Position = UDim2.fromScale(1, 0.5)
+					inputBox3.Size = UDim2.fromOffset(75, 25)
+
+					local inputBoxUICorner3 = Instance.new("UICorner")
+					inputBoxUICorner3.Name = "InputBoxUICorner"
+					inputBoxUICorner3.CornerRadius = UDim.new(0, 4)
+					inputBoxUICorner3.Parent = inputBox3
+
+					local inputBoxUIStroke3 = Instance.new("UIStroke")
+					inputBoxUIStroke3.Name = "InputBoxUIStroke"
+					inputBoxUIStroke3.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					inputBoxUIStroke3.Color = Color3.fromRGB(255, 255, 255)
+					inputBoxUIStroke3.Transparency = 0.9
+					inputBoxUIStroke3.Parent = inputBox3
+
+					local inputBoxUISizeConstraint3 = Instance.new("UISizeConstraint")
+					inputBoxUISizeConstraint3.Name = "InputBoxUISizeConstraint"
+					inputBoxUISizeConstraint3.Parent = inputBox3
+
+					local inputBoxUIPadding3 = Instance.new("UIPadding")
+					inputBoxUIPadding3.Name = "InputBoxUIPadding"
+					inputBoxUIPadding3.PaddingLeft = UDim.new(0, 8)
+					inputBoxUIPadding3.PaddingRight = UDim.new(0, 10)
+					inputBoxUIPadding3.Parent = inputBox3
+
+					inputBox3.Parent = alpha
+
+					alpha.Parent = inputs
+
+					local hex = Instance.new("Frame")
+					hex.Name = "Hex"
+					hex.AutomaticSize = Enum.AutomaticSize.XY
+					hex.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					hex.BackgroundTransparency = 1
+					hex.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					hex.BorderSizePixel = 0
+					hex.Size = UDim2.fromOffset(0, 38)
+
+					local inputName4 = Instance.new("TextLabel")
+					inputName4.Name = "InputName"
+					inputName4.FontFace = Font.new(assets.interFont)
+					inputName4.Text = "Hex"
+					inputName4.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputName4.TextSize = 13
+					inputName4.TextTransparency = 0.5
+					inputName4.TextTruncate = Enum.TextTruncate.AtEnd
+					inputName4.TextXAlignment = Enum.TextXAlignment.Left
+					inputName4.TextYAlignment = Enum.TextYAlignment.Top
+					inputName4.AnchorPoint = Vector2.new(0, 0.5)
+					inputName4.AutomaticSize = Enum.AutomaticSize.XY
+					inputName4.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputName4.BackgroundTransparency = 1
+					inputName4.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputName4.BorderSizePixel = 0
+					inputName4.LayoutOrder = 2
+					inputName4.Position = UDim2.fromScale(0, 0.5)
+					inputName4.Parent = hex
+
+					local uIListLayout7 = Instance.new("UIListLayout")
+					uIListLayout7.Name = "UIListLayout"
+					uIListLayout7.Padding = UDim.new(0, 15)
+					uIListLayout7.FillDirection = Enum.FillDirection.Horizontal
+					uIListLayout7.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout7.VerticalAlignment = Enum.VerticalAlignment.Center
+					uIListLayout7.Parent = hex
+
+					local inputBox4 = Instance.new("TextBox")
+					inputBox4.Name = "InputBox"
+					inputBox4.ClearTextOnFocus = false
+					inputBox4.CursorPosition = -1
+					inputBox4.FontFace = Font.new(assets.interFont)
+					inputBox4.Text = "255"
+					inputBox4.TextColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox4.TextSize = 12
+					inputBox4.TextTransparency = 0.1
+					inputBox4.TextXAlignment = Enum.TextXAlignment.Left
+					inputBox4.AnchorPoint = Vector2.new(1, 0.5)
+					inputBox4.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					inputBox4.BackgroundTransparency = 0.95
+					inputBox4.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					inputBox4.BorderSizePixel = 0
+					inputBox4.ClipsDescendants = true
+					inputBox4.LayoutOrder = 1
+					inputBox4.Position = UDim2.fromScale(1, 0.5)
+					inputBox4.Size = UDim2.fromOffset(75, 25)
+
+					local inputBoxUICorner4 = Instance.new("UICorner")
+					inputBoxUICorner4.Name = "InputBoxUICorner"
+					inputBoxUICorner4.CornerRadius = UDim.new(0, 4)
+					inputBoxUICorner4.Parent = inputBox4
+
+					local inputBoxUIStroke4 = Instance.new("UIStroke")
+					inputBoxUIStroke4.Name = "InputBoxUIStroke"
+					inputBoxUIStroke4.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+					inputBoxUIStroke4.Color = Color3.fromRGB(255, 255, 255)
+					inputBoxUIStroke4.Transparency = 0.9
+					inputBoxUIStroke4.Parent = inputBox4
+
+					local inputBoxUISizeConstraint4 = Instance.new("UISizeConstraint")
+					inputBoxUISizeConstraint4.Name = "InputBoxUISizeConstraint"
+					inputBoxUISizeConstraint4.Parent = inputBox4
+
+					local inputBoxUIPadding4 = Instance.new("UIPadding")
+					inputBoxUIPadding4.Name = "InputBoxUIPadding"
+					inputBoxUIPadding4.PaddingLeft = UDim.new(0, 8)
+					inputBoxUIPadding4.PaddingRight = UDim.new(0, 10)
+					inputBoxUIPadding4.Parent = inputBox4
+
+					inputBox4.Parent = hex
+
+					hex.Parent = inputs
+
+					inputs.Parent = wheel
+
+					local uIPadding = Instance.new("UIPadding")
+					uIPadding.Name = "UIPadding"
+					uIPadding.PaddingRight = UDim.new(0, 5)
+					uIPadding.Parent = wheel
+
+					wheel.Parent = colorOptions
+
+					local colorWells = Instance.new("Frame")
+					colorWells.Name = "ColorWells"
+					colorWells.AutomaticSize = Enum.AutomaticSize.Y
+					colorWells.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					colorWells.BackgroundTransparency = 1
+					colorWells.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					colorWells.BorderSizePixel = 0
+					colorWells.LayoutOrder = 2
+					colorWells.Size = UDim2.fromScale(1, 0)
+
+					local uIGridLayout = Instance.new("UIGridLayout")
+					uIGridLayout.Name = "UIGridLayout"
+					uIGridLayout.CellPadding = UDim2.fromOffset(10, 0)
+					uIGridLayout.CellSize = UDim2.new(0.5, -5, 0, 30)
+					uIGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+					uIGridLayout.Parent = colorWells
+
+					local newColor = Instance.new("ImageLabel")
+					newColor.Name = "NewColor"
+					newColor.Image = assets.grid
+					newColor.ScaleType = Enum.ScaleType.Tile
+					newColor.TileSize = UDim2.fromOffset(500, 500)
+					newColor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					newColor.BackgroundTransparency = 1
+					newColor.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					newColor.BorderSizePixel = 0
+					newColor.Size = UDim2.fromOffset(100, 100)
+
+					local uICorner2 = Instance.new("UICorner")
+					uICorner2.Name = "UICorner"
+					uICorner2.Parent = newColor
+
+					local color = Instance.new("Frame")
+					color.Name = "Color"
+					color.AnchorPoint = Vector2.new(0.5, 0.5)
+					color.BorderColor3 = Color3.fromRGB(27, 42, 53)
+					color.BorderSizePixel = 0
+					color.Position = UDim2.fromScale(0.5, 0.5)
+					color.Size = UDim2.new(1, 1, 1, 1)
+
+					local uICorner3 = Instance.new("UICorner")
+					uICorner3.Name = "UICorner"
+					uICorner3.Parent = color
+
+					color.Parent = newColor
+
+					newColor.Parent = colorWells
+
+					local oldColor = Instance.new("ImageLabel")
+					oldColor.Name = "OldColor"
+					oldColor.Image = assets.grid
+					oldColor.ScaleType = Enum.ScaleType.Tile
+					oldColor.TileSize = UDim2.fromOffset(500, 500)
+					oldColor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					oldColor.BackgroundTransparency = 1
+					oldColor.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					oldColor.BorderSizePixel = 0
+					oldColor.LayoutOrder = 1
+					oldColor.Size = UDim2.fromOffset(100, 100)
+
+					local uICorner4 = Instance.new("UICorner")
+					uICorner4.Name = "UICorner"
+					uICorner4.Parent = oldColor
+
+					local color1 = Instance.new("Frame")
+					color1.Name = "Color"
+					color1.AnchorPoint = Vector2.new(0.5, 0.5)
+					color1.BorderColor3 = Color3.fromRGB(27, 42, 53)
+					color1.BorderSizePixel = 0
+					color1.Position = UDim2.fromScale(0.5, 0.5)
+					color1.Size = UDim2.new(1, 1, 1, 1)
+
+					local uICorner5 = Instance.new("UICorner")
+					uICorner5.Name = "UICorner"
+					uICorner5.Parent = color1
+
+					color1.Parent = oldColor
+
+					oldColor.Parent = colorWells
+
+					colorWells.Parent = colorOptions
+
+					colorOptions.Parent = prompt
+
+					local interactions = Instance.new("Frame")
+					interactions.Name = "Interactions"
+					interactions.AutomaticSize = Enum.AutomaticSize.Y
+					interactions.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					interactions.BackgroundTransparency = 1
+					interactions.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					interactions.BorderSizePixel = 0
+					interactions.LayoutOrder = 2
+					interactions.Size = UDim2.fromScale(1, 0)
+
+					local uIListLayout8 = Instance.new("UIListLayout")
+					uIListLayout8.Name = "UIListLayout"
+					uIListLayout8.Padding = UDim.new(0, 10)
+					uIListLayout8.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout8.Parent = interactions
+
+					local confirm = Instance.new("TextButton")
+					confirm.Name = "Confirm"
+					confirm.FontFace = Font.new(
+						"rbxassetid://12187365364",
+						Enum.FontWeight.Medium,
+						Enum.FontStyle.Normal
+					)
+					confirm.Text = "Confirm"
+					confirm.TextColor3 = Color3.fromRGB(255, 255, 255)
+					confirm.TextSize = 15
+					confirm.TextTransparency = 0.5
+					confirm.TextTruncate = Enum.TextTruncate.AtEnd
+					confirm.AutoButtonColor = false
+					confirm.AutomaticSize = Enum.AutomaticSize.Y
+					confirm.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+					confirm.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					confirm.BorderSizePixel = 0
+					confirm.Size = UDim2.fromScale(1, 0)
+
+					local uIPadding1 = Instance.new("UIPadding")
+					uIPadding1.Name = "UIPadding"
+					uIPadding1.PaddingBottom = UDim.new(0, 9)
+					uIPadding1.PaddingLeft = UDim.new(0, 10)
+					uIPadding1.PaddingRight = UDim.new(0, 10)
+					uIPadding1.PaddingTop = UDim.new(0, 9)
+					uIPadding1.Parent = confirm
+
+					local baseUICorner = Instance.new("UICorner")
+					baseUICorner.Name = "BaseUICorner"
+					baseUICorner.CornerRadius = UDim.new(0, 10)
+					baseUICorner.Parent = confirm
+
+					confirm.Parent = interactions
+
+					local cancel = Instance.new("TextButton")
+					cancel.Name = "Cancel"
+					cancel.FontFace = Font.new(
+						"rbxassetid://12187365364",
+						Enum.FontWeight.Medium,
+						Enum.FontStyle.Normal
+					)
+					cancel.Text = "Cancel"
+					cancel.TextColor3 = Color3.fromRGB(255, 255, 255)
+					cancel.TextSize = 15
+					cancel.TextTransparency = 0.5
+					cancel.TextTruncate = Enum.TextTruncate.AtEnd
+					cancel.AutoButtonColor = false
+					cancel.AutomaticSize = Enum.AutomaticSize.Y
+					cancel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+					cancel.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					cancel.BorderSizePixel = 0
+					cancel.Size = UDim2.fromScale(1, 0)
+
+					local baseUICorner1 = Instance.new("UICorner")
+					baseUICorner1.Name = "BaseUICorner"
+					baseUICorner1.CornerRadius = UDim.new(0, 10)
+					baseUICorner1.Parent = cancel
+
+					local uIPadding2 = Instance.new("UIPadding")
+					uIPadding2.Name = "UIPadding"
+					uIPadding2.PaddingBottom = UDim.new(0, 9)
+					uIPadding2.PaddingLeft = UDim.new(0, 10)
+					uIPadding2.PaddingRight = UDim.new(0, 10)
+					uIPadding2.PaddingTop = UDim.new(0, 9)
+					uIPadding2.Parent = cancel
+
+					cancel.Parent = interactions
+
+					local uIPadding3 = Instance.new("UIPadding")
+					uIPadding3.Name = "UIPadding"
+					uIPadding3.PaddingTop = UDim.new(0, 10)
+					uIPadding3.Parent = interactions
+
+					interactions.Parent = prompt
+
+					local globalSettingsUIPadding = Instance.new("UIPadding")
+					globalSettingsUIPadding.Name = "GlobalSettingsUIPadding"
+					globalSettingsUIPadding.PaddingBottom = UDim.new(0, 20)
+					globalSettingsUIPadding.PaddingLeft = UDim.new(0, 20)
+					globalSettingsUIPadding.PaddingRight = UDim.new(0, 20)
+					globalSettingsUIPadding.PaddingTop = UDim.new(0, 20)
+					globalSettingsUIPadding.Parent = prompt
+
+					local paragraph = Instance.new("Frame")
+					paragraph.Name = "Paragraph"
+					paragraph.AutomaticSize = Enum.AutomaticSize.Y
+					paragraph.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					paragraph.BackgroundTransparency = 1
+					paragraph.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					paragraph.BorderSizePixel = 0
+					paragraph.Size = UDim2.fromScale(1, 0)
+
+					local paragraphHeader = Instance.new("TextLabel")
+					paragraphHeader.Name = "ParagraphHeader"
+					paragraphHeader.FontFace = Font.new(
+						"rbxassetid://12187365364",
+						Enum.FontWeight.SemiBold,
+						Enum.FontStyle.Normal
+					)
+					paragraphHeader.RichText = true
+					paragraphHeader.Text = ColorpickerFunctions.Settings.Name
+					paragraphHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+					paragraphHeader.TextSize = 18
+					paragraphHeader.TextTransparency = 0.4
+					paragraphHeader.TextWrapped = true
+					paragraphHeader.TextYAlignment = Enum.TextYAlignment.Top
+					paragraphHeader.AutomaticSize = Enum.AutomaticSize.XY
+					paragraphHeader.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					paragraphHeader.BackgroundTransparency = 1
+					paragraphHeader.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					paragraphHeader.BorderSizePixel = 0
+					paragraphHeader.Size = UDim2.fromScale(1, 0)
+					paragraphHeader.Parent = paragraph
+
+					local uIListLayout9 = Instance.new("UIListLayout")
+					uIListLayout9.Name = "UIListLayout"
+					uIListLayout9.Padding = UDim.new(0, 15)
+					uIListLayout9.HorizontalAlignment = Enum.HorizontalAlignment.Center
+					uIListLayout9.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout9.Parent = paragraph
+
+					local uIPadding4 = Instance.new("UIPadding")
+					uIPadding4.Name = "UIPadding"
+					uIPadding4.PaddingBottom = UDim.new(0, 15)
+					uIPadding4.Parent = paragraph
+
+					local line = Instance.new("Frame")
+					line.Name = "Line"
+					line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					line.BackgroundTransparency = 0.9
+					line.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					line.BorderSizePixel = 0
+					line.LayoutOrder = 1
+					line.Size = UDim2.new(1, 0, 0, 1)
+					line.Parent = paragraph
+
+					paragraph.Parent = prompt
+
+					prompt.Parent = colorPicker
+
+					colorPicker.Parent = base
+
+					local fromHSV, fromRGB, v2, udim2 = Color3.fromHSV, Color3.fromRGB, Vector2.new, UDim2.new
+
+					local wheel = wheel1
+					local ring = target
+					local slider = value
+					local colour = color
+
+					local modifierInputs = {
+						Hex = hex.InputBox,
+						Red = red.InputBox,
+						Green = green.InputBox,
+						Blue = blue.InputBox,
+						Alpha = alpha.InputBox
+					}
+
+					local Mouse = LocalPlayer:GetMouse()
+
+					local WheelDown, SlideDown = false, false
+					local hue, saturation, value = 0, 0, 1
+
+					local function toPolar(v)
+						return math.atan2(v.y, v.x), v.magnitude
+					end
+
+					local function radToDeg(x)
+						return ((x + math.pi) / (2 * math.pi)) * 360
+					end
+
+					local function degToRad(degrees)
+						return degrees * (math.pi / 180)
+					end
+
+					local function hexToRGB(hex)
+						hex = hex:gsub("#","")
+						if #hex ~= 6 then return 0, 0, 0 end
+						local r = tonumber(hex:sub(1, 2), 16) or 0
+						local g = tonumber(hex:sub(3, 4), 16) or 0
+						local b = tonumber(hex:sub(5, 6), 16) or 0
+						return r, g, b
+					end
+
+					local function clampInput(value, min, max)
+						local num = tonumber(value)
+						if num then
+							return math.clamp(num, min, max)
+						end
+						return min
+					end
+
+					local function update()
+						local c = fromHSV(hue, saturation, value)
+						colour.BackgroundColor3 = c
+						colour.BackgroundTransparency = clampInput(modifierInputs.Alpha.Text, 0, 1)
+
+						modifierInputs.Red.Text = tostring(math.floor(c.r * 255 + 0.5))
+						modifierInputs.Green.Text = tostring(math.floor(c.g * 255 + 0.5))
+						modifierInputs.Blue.Text = tostring(math.floor(c.b * 255 + 0.5))
+						modifierInputs.Alpha.Text = clampInput(modifierInputs.Alpha.Text, 0, 1)
+
+						local hexColor = string.format("#%02X%02X%02X", 
+							math.floor(c.r * 255 + 0.5),
+							math.floor(c.g * 255 + 0.5),
+							math.floor(c.b * 255 + 0.5))
+						modifierInputs.Hex.Text = hexColor
+					end
+
+					local function UpdateSlide(iX)
+						local rY = iX - slider.AbsolutePosition.X
+						local cY = math.clamp(rY, 0, slider.AbsoluteSize.X - slide.AbsoluteSize.X)
+						slide.Position = udim2(0, cY, 0.5, 0)
+						value = 1 - (cY / (slider.AbsoluteSize.X - slide.AbsoluteSize.X))
+						update()
+					end
+
+					local function UpdateRing(iX, iY)
+						local r = wheel.AbsoluteSize.x / 2
+						local d = v2(iX, iY) - wheel.AbsolutePosition - wheel.AbsoluteSize / 2
+
+						if d:Dot(d) > r * r then
+							d = d.unit * r
+						end
+
+						ring.Position = udim2(0.5, d.x, 0.5, d.y)
+						local phi, len = toPolar(d * v2(1, -1))
+						hue, saturation = radToDeg(phi) / 360, math.clamp(len / r, 0, 1)
+						slider.BackgroundColor3 = fromHSV(hue, saturation, 1)
+						update()
+					end
+
+					local function UpdateSlideFromValue(value)
+						local cY = (1 - value) * (slider.AbsoluteSize.X - slide.AbsoluteSize.X)
+						slide.Position = UDim2.new(0, cY, 0.5, 0)
+					end
+
+					local function UpdateRingFromHSV(hue, saturation)
+						local r = wheel.AbsoluteSize.X / 2
+						local phi = degToRad(hue * 360)
+						local len = saturation * r
+						local x = len * math.cos(phi)
+						local y = len * math.sin(phi)
+
+						ring.Position = UDim2.new(0.5, -x, 0.5, y)
+						slider.BackgroundColor3 = fromHSV(hue, saturation, 1)
+					end
+
+					local function updateFromRGB()
+						local r = clampInput(modifierInputs.Red.Text, 0, 255)
+						local g = clampInput(modifierInputs.Green.Text, 0, 255)
+						local b = clampInput(modifierInputs.Blue.Text, 0, 255)
+						modifierInputs.Red.Text = r
+						modifierInputs.Green.Text = g
+						modifierInputs.Blue.Text = b
+
+						hue, saturation, value = Color3.fromRGB(r, g, b):ToHSV()
+
+						UpdateSlideFromValue(value)
+						UpdateRingFromHSV(hue, saturation)
+						update()
+					end
+
+					local function updateFromHex()
+						local hex = modifierInputs.Hex.Text
+						local r, g, b = hexToRGB(hex)
+
+						r = clampInput(r, 0, 255)
+						g = clampInput(g, 0, 255)
+						b = clampInput(b, 0, 255)
+
+						modifierInputs.Red.Text = r
+						modifierInputs.Green.Text = g
+						modifierInputs.Blue.Text = b
+
+						hue, saturation, value = Color3.fromRGB(r, g, b):ToHSV()
+						UpdateSlideFromValue(value)
+						UpdateRingFromHSV(hue, saturation)
+						update()
+					end
+
+					local function updateFromSettings()
+						local r = math.floor(ColorpickerFunctions.Color.R * 255 + 0.5)
+						local g = math.floor(ColorpickerFunctions.Color.G * 255 + 0.5)
+						local b = math.floor(ColorpickerFunctions.Color.B * 255 + 0.5)
+						modifierInputs.Red.Text = r
+						modifierInputs.Green.Text = g
+						modifierInputs.Blue.Text = b
+						modifierInputs.Alpha.Text = isAlpha and ColorpickerFunctions.Alpha or 0
+
+						local hexColor = string.format("#%02X%02X%02X", r,g,b)
+						modifierInputs.Hex.Text = hexColor
+
+						hue, saturation, value = Color3.fromRGB(r, g, b):ToHSV()
+
+						color1.BackgroundColor3 = ColorpickerFunctions.Color
+						color1.BackgroundTransparency = isAlpha and ColorpickerFunctions.Alpha or 0
+
+						colour.BackgroundColor3 = Color3.fromRGB(r,g,b)
+						colour.BackgroundTransparency = isAlpha and ColorpickerFunctions.Alpha or 0
+
+						UpdateSlideFromValue(value)
+						UpdateRingFromHSV(hue, saturation)
+					end
+
+					wheel.InputBegan:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+							WheelDown = true
+							UpdateRing(Mouse.X, Mouse.Y)
+						end
+					end)
+
+					slider.InputBegan:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+							SlideDown = true
+							UpdateSlide(Mouse.X)
+						end
+					end)
+
+					slider.InputEnded:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+							SlideDown = false
+						end
+					end)
+
+					wheel.InputEnded:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+							WheelDown = false
+						end
+					end)
+
+					UserInputService.InputChanged:Connect(function(input)
+						if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+							if SlideDown then
+								UpdateSlide(Mouse.X)
+							elseif WheelDown then
+								UpdateRing(Mouse.X, Mouse.Y)
+							end
+						end
+					end)
+
+					local function onFocusEnter(instance)
+						local placeholder = instance.Text
+						instance.Text = ""
+						instance.PlaceholderText = placeholder
+					end
+
+					modifierInputs.Hex.FocusLost:Connect(updateFromHex)
+					modifierInputs.Red.FocusLost:Connect(updateFromRGB)
+					modifierInputs.Green.FocusLost:Connect(updateFromRGB)
+					modifierInputs.Blue.FocusLost:Connect(updateFromRGB)
+					modifierInputs.Alpha.FocusLost:Connect(update)
+
+					modifierInputs.Hex.Focused:Connect(function()
+						onFocusEnter(modifierInputs.Hex)
+					end)
+					modifierInputs.Red.Focused:Connect(function()
+						onFocusEnter(modifierInputs.Red)
+					end)
+					modifierInputs.Green.Focused:Connect(function()
+						onFocusEnter(modifierInputs.Green)
+					end)
+					modifierInputs.Blue.Focused:Connect(function()
+						onFocusEnter(modifierInputs.Blue)
+					end)
+					modifierInputs.Alpha.Focused:Connect(function()
+						onFocusEnter(modifierInputs.Alpha)
+					end)
+
+					local function makeCanvas()
+						local ColorPickerCanvas = Instance.new("CanvasGroup")
+						ColorPickerCanvas.Name = "ColorPickerCanvas"
+						ColorPickerCanvas.BackgroundTransparency = 1
+						ColorPickerCanvas.BorderSizePixel = 0
+						ColorPickerCanvas.Size = UDim2.fromScale(1, 1)
+						ColorPickerCanvas.ZIndex = 5
+						ColorPickerCanvas.GroupTransparency = 1
+						ColorPickerCanvas.Parent = base
+						ColorPickerCanvas.Visible = false
+						return ColorPickerCanvas
+					end
+
+					local function transition(isIn)
+						local canvas = makeCanvas()
+						local tweenTransparency = isIn and 0 or 1
+						local tweenScale = isIn and 1 or 0.95
+						local stateTransparency = isIn and 1 or 0
+						local tweenInfo = TweenInfo.new(0.1, Enum.EasingStyle.Sine)
+						local canvasTween = Tween(canvas, tweenInfo, { GroupTransparency = tweenTransparency })
+						local scaleTween = Tween(promptUIScale, tweenInfo, { Scale = tweenScale })
+
+						colorPicker.Visible = true
+						colorPicker.Parent = canvas
+						canvas.Visible = true
+						canvas.GroupTransparency = stateTransparency
+						canvasTween:Play()
+						scaleTween:Play()
+						canvasTween.Completed:Wait()
+
+						if not isIn then
+							colorPicker.Visible = false
+							canvas.Visible = false
+						end
+
+						colorPicker.Parent = base
+						canvas:Destroy()
+					end
+
+					local function colorpickerIn()
+						transition(true)
+					end
+
+					local function colorpickerOut()
+						transition(false)
+					end
+
+					interact.MouseButton1Click:Connect(colorpickerIn)
+
+					cancel.MouseButton1Click:Connect(colorpickerOut)
+					confirm.MouseButton1Click:Connect(function()
+						colorpickerOut()
+						local c = fromHSV(hue, saturation, value)
+						ColorpickerFunctions.Color = Color3.fromRGB(c.r * 255, c.g * 255, c.b * 255)
+						ColorpickerFunctions.Alpha = isAlpha and clampInput(modifierInputs.Alpha.Text, 0, 1)
+
+						color1.BackgroundColor3 = ColorpickerFunctions.Color
+						color1.BackgroundTransparency = isAlpha and ColorpickerFunctions.Alpha or 0
+
+						colorC.BackgroundColor3 = ColorpickerFunctions.Color
+						colorC.BackgroundTransparency = isAlpha and ColorpickerFunctions.Alpha or 0
+
+						if ColorpickerFunctions.Settings.Callback then
+							task.spawn(function()
+								ColorpickerFunctions.Settings.Callback(ColorpickerFunctions.Color, isAlpha and ColorpickerFunctions.Alpha)
+							end)
+						end
+					end)
+
+					updateFromSettings()
+
+					function ColorpickerFunctions:UpdateName(New)
+						colorpickerName.Text = New
+					end
+					function ColorpickerFunctions:SetVisibility(State)
+						colorpicker.Visible = State
+					end
+
+					function ColorpickerFunctions:SetColor(color3)
+						ColorpickerFunctions.Color = color3
+						colorC.BackgroundColor3 = color3
+
+						local r = math.floor(ColorpickerFunctions.Color.R * 255 + 0.5)
+						local g = math.floor(ColorpickerFunctions.Color.G * 255 + 0.5)
+						local b = math.floor(ColorpickerFunctions.Color.B * 255 + 0.5)
+						modifierInputs.Red.Text = r
+						modifierInputs.Green.Text = g
+						modifierInputs.Blue.Text = b
+
+						local hexColor = string.format("#%02X%02X%02X", r,g,b)
+						modifierInputs.Hex.Text = hexColor
+
+						hue, saturation, value = Color3.fromRGB(r, g, b):ToHSV()
+
+						color1.BackgroundColor3 = ColorpickerFunctions.Color
+						colour.BackgroundColor3 = Color3.fromRGB(r,g,b)
+
+						UpdateSlideFromValue(value)
+						UpdateRingFromHSV(hue, saturation)
+
+						if ColorpickerFunctions.Settings.Callback then
+							task.spawn(function()
+								ColorpickerFunctions.Settings.Callback(ColorpickerFunctions.Color, isAlpha and ColorpickerFunctions.Alpha)
+							end)
+						end
+					end
+
+					function ColorpickerFunctions:SetAlpha(alpha)
+						ColorpickerFunctions.Alpha = alpha
+						colorC.Transparency = alpha
+						updateFromSettings()
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = ColorpickerFunctions
+					end
+					return ColorpickerFunctions
+				end
+
+				function SectionFunctions:Header(Settings, Flag)
+					local HeaderFunctions = {Settings = Settings}
+
+					local header = Instance.new("Frame")
+					header.Name = "Header"
+					header.AutomaticSize = Enum.AutomaticSize.Y
+					header.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					header.BackgroundTransparency = 1
+					header.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					header.BorderSizePixel = 0
+					header.LayoutOrder = 0
+					header.Size = UDim2.fromScale(1, 0)
+					header.Parent = section
+
+					local uIPadding = Instance.new("UIPadding")
+					uIPadding.Name = "UIPadding"
+					uIPadding.PaddingBottom = UDim.new(0, 5)
+					uIPadding.Parent = header
+
+					local headerText = Instance.new("TextLabel")
+					headerText.Name = "HeaderText"
+					headerText.FontFace = Font.new(
+						assets.interFont,
+						Enum.FontWeight.Medium,
+						Enum.FontStyle.Normal
+					)
+					headerText.RichText = true
+					headerText.Text = HeaderFunctions.Settings.Text or HeaderFunctions.Settings.Name
+					headerText.TextColor3 = Color3.fromRGB(255, 255, 255)
+					headerText.TextSize = 16
+					headerText.TextTransparency = 0.3
+					headerText.TextWrapped = true
+					headerText.TextXAlignment = Enum.TextXAlignment.Left
+					headerText.AutomaticSize = Enum.AutomaticSize.Y
+					headerText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					headerText.BackgroundTransparency = 1
+					headerText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					headerText.BorderSizePixel = 0
+					headerText.Size = UDim2.fromScale(1, 0)
+					headerText.Parent = header
+
+					function HeaderFunctions:UpdateName(New)
+						headerText.Text = New
+					end
+					function HeaderFunctions:SetVisibility(State)
+						header.Visible = State
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = HeaderFunctions
+					end
+					return HeaderFunctions
+				end
+
+				function SectionFunctions:Label(Settings, Flag)
+					local LabelFunctions = {Settings = Settings}
+
+					local label = Instance.new("Frame")
+					label.Name = "Label"
+					label.AutomaticSize = Enum.AutomaticSize.Y
+					label.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					label.BackgroundTransparency = 1
+					label.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					label.BorderSizePixel = 0
+					label.Size = UDim2.new(1, 0, 0, 38)
+					label.Parent = section
+
+					local labelText = Instance.new("TextLabel")
+					labelText.Name = "LabelText"
+					labelText.FontFace = Font.new(assets.interFont)
+					labelText.RichText = true
+					labelText.Text = LabelFunctions.Settings.Text or LabelFunctions.Settings.Name -- Settings.Name Deprecated use Settings.Text
+					labelText.TextColor3 = Color3.fromRGB(255, 255, 255)
+					labelText.TextSize = 13
+					labelText.TextTransparency = 0.5
+					labelText.TextWrapped = true
+					labelText.TextXAlignment = Enum.TextXAlignment.Left
+					labelText.AutomaticSize = Enum.AutomaticSize.Y
+					labelText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					labelText.BackgroundTransparency = 1
+					labelText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					labelText.BorderSizePixel = 0
+					labelText.Size = UDim2.fromScale(1, 1)
+					labelText.Parent = label
+
+					function LabelFunctions:UpdateName(New)
+						labelText.Text = New
+					end
+					function LabelFunctions:SetVisibility(State)
+						label.Visible = State
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = LabelFunctions
+					end
+					return LabelFunctions
+				end
+
+				function SectionFunctions:SubLabel(Settings, Flag)
+					local SubLabelFunctions = {Settings = Settings}
+
+					local subLabel = Instance.new("Frame")
+					subLabel.Name = "SubLabel"
+					subLabel.AutomaticSize = Enum.AutomaticSize.Y
+					subLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					subLabel.BackgroundTransparency = 1
+					subLabel.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					subLabel.BorderSizePixel = 0
+					subLabel.Size = UDim2.new(1, 0, 0, 0)
+					subLabel.Parent = section
+
+					local subLabelText = Instance.new("TextLabel")
+					subLabelText.Name = "SubLabelText"
+					subLabelText.FontFace = Font.new(assets.interFont)
+					subLabelText.RichText = true
+					subLabelText.Text = SubLabelFunctions.Settings.Text or SubLabelFunctions.Settings.Name -- Settings.Name Deprecated use Settings.Text
+					subLabelText.TextColor3 = Color3.fromRGB(255, 255, 255)
+					subLabelText.TextSize = 12
+					subLabelText.TextTransparency = 0.7
+					subLabelText.TextWrapped = true
+					subLabelText.TextXAlignment = Enum.TextXAlignment.Left
+					subLabelText.AutomaticSize = Enum.AutomaticSize.Y
+					subLabelText.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					subLabelText.BackgroundTransparency = 1
+					subLabelText.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					subLabelText.BorderSizePixel = 0
+					subLabelText.Size = UDim2.fromScale(1, 1)
+					subLabelText.Parent = subLabel
+
+					function SubLabelFunctions:UpdateName(New)
+						subLabelText.Text = New
+					end
+					function SubLabelFunctions:SetVisibility(State)
+						subLabel.Visible = State
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = SubLabelFunctions
+					end
+					return SubLabelFunctions
+				end
+
+				function SectionFunctions:Paragraph(Settings, Flag)
+					local ParagraphFunctions = {Settings = Settings}
+
+					local paragraph = Instance.new("Frame")
+					paragraph.Name = "Paragraph"
+					paragraph.AutomaticSize = Enum.AutomaticSize.Y
+					paragraph.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+					paragraph.BackgroundTransparency = 1
+					paragraph.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					paragraph.BorderSizePixel = 0
+					paragraph.Size = UDim2.new(1, 0, 0, 38)
+					paragraph.Parent = section
+
+					local paragraphHeader = Instance.new("TextLabel")
+					paragraphHeader.Name = "ParagraphHeader"
+					paragraphHeader.FontFace = Font.new(
+						assets.interFont,
+						Enum.FontWeight.Medium,
+						Enum.FontStyle.Normal
+					)
+					paragraphHeader.RichText = true
+					paragraphHeader.Text = ParagraphFunctions.Settings.Header
+					paragraphHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+					paragraphHeader.TextSize = 15
+					paragraphHeader.TextTransparency = 0.4
+					paragraphHeader.TextWrapped = true
+					paragraphHeader.TextXAlignment = Enum.TextXAlignment.Left
+					paragraphHeader.AutomaticSize = Enum.AutomaticSize.Y
+					paragraphHeader.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					paragraphHeader.BackgroundTransparency = 1
+					paragraphHeader.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					paragraphHeader.BorderSizePixel = 0
+					paragraphHeader.Size = UDim2.fromScale(1, 0)
+					paragraphHeader.Parent = paragraph
+
+					local uIListLayout = Instance.new("UIListLayout")
+					uIListLayout.Name = "UIListLayout"
+					uIListLayout.Padding = UDim.new(0, 5)
+					uIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout.Parent = paragraph
+
+					local paragraphBody = Instance.new("TextLabel")
+					paragraphBody.Name = "ParagraphBody"
+					paragraphBody.FontFace = Font.new(assets.interFont)
+					paragraphBody.RichText = true
+					paragraphBody.Text = ParagraphFunctions.Settings.Body
+					paragraphBody.TextColor3 = Color3.fromRGB(255, 255, 255)
+					paragraphBody.TextSize = 13
+					paragraphBody.TextTransparency = 0.5
+					paragraphBody.TextWrapped = true
+					paragraphBody.TextXAlignment = Enum.TextXAlignment.Left
+					paragraphBody.AutomaticSize = Enum.AutomaticSize.Y
+					paragraphBody.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					paragraphBody.BackgroundTransparency = 1
+					paragraphBody.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					paragraphBody.BorderSizePixel = 0
+					paragraphBody.LayoutOrder = 1
+					paragraphBody.Size = UDim2.fromScale(1, 0)
+					paragraphBody.Parent = paragraph
+
+					function ParagraphFunctions:UpdateHeader(New)
+						paragraphHeader.Text = New
+					end
+					function ParagraphFunctions:UpdateBody(New)
+						paragraphBody.Text = New
+					end
+					function ParagraphFunctions:SetVisibility(State)
+						paragraph.Visible = State
+					end
+
+					if Flag then
+						MacLib.Options[Flag] = ParagraphFunctions
+					end
+					return ParagraphFunctions
+				end
+
+				function SectionFunctions:Divider()
+					local DividerFunctions = {}
+
+					local divider = Instance.new("Frame")
+					divider.Name = "Divider"
+					divider.AnchorPoint = Vector2.new(0, 1)
+					divider.AutomaticSize = Enum.AutomaticSize.Y
+					divider.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					divider.BackgroundTransparency = 1
+					divider.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					divider.BorderSizePixel = 0
+					divider.Position = UDim2.fromScale(0, 1)
+					divider.Size = UDim2.new(1, 0, 0, 1)
+					divider.Parent = section
+
+					local uIPadding = Instance.new("UIPadding")
+					uIPadding.Name = "UIPadding"
+					uIPadding.PaddingBottom = UDim.new(0, 8)
+					uIPadding.PaddingTop = UDim.new(0, 8)
+					uIPadding.Parent = divider
+
+					local uIListLayout = Instance.new("UIListLayout")
+					uIListLayout.Name = "UIListLayout"
+					uIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+					uIListLayout.Parent = divider
+
+					local line = Instance.new("Frame")
+					line.Name = "Line"
+					line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					line.BackgroundTransparency = 0.9
+					line.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					line.BorderSizePixel = 0
+					line.Size = UDim2.new(1, 0, 0, 1)
+					line.Parent = divider
+
+					function DividerFunctions:Remove()
+						divider:Destroy()
+					end
+					function DividerFunctions:SetVisibility(State)
+						divider.Visible = State
+					end
+
+					return DividerFunctions
+				end
+
+				function SectionFunctions:Spacer()
+					local SpacerFunctions = {}
+
+					local spacer = Instance.new("Frame")
+					spacer.Name = "Spacer"
+					spacer.AnchorPoint = Vector2.new(0, 1)
+					spacer.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+					spacer.BackgroundTransparency = 1
+					spacer.BorderColor3 = Color3.fromRGB(0, 0, 0)
+					spacer.BorderSizePixel = 0
+					spacer.Position = UDim2.fromScale(0, 1)
+					spacer.Parent = section
+
+					function SpacerFunctions:Remove()
+						spacer:Destroy()
+					end
+					function SpacerFunctions:SetVisibility(State)
+						spacer.Visible = State
+					end
+
+					return SpacerFunctions
+				end
+
+				return SectionFunctions
+			end
+
+			local function SelectCurrentTab()
+				local easetime = 0.15
+
+				if currentTabInstance then
+					currentTabInstance.Parent = nil
+				end
+
+				for i, tabInfo in pairs(tabs) do
+					Tween(i, TweenInfo.new(easetime, Enum.EasingStyle.Sine), {
+						BackgroundTransparency = (i == tabSwitcher and 0.98 or 1)
+					}):Play()
+
+					if tabInfo.tabStroke then
+						Tween(tabInfo.tabStroke, TweenInfo.new(easetime, Enum.EasingStyle.Sine), {
+							Transparency = (i == tabSwitcher and 0.95 or 1)
+						}):Play()
+					end
+					if tabInfo.switcherImage then
+						Tween(tabInfo.switcherImage, TweenInfo.new(easetime, Enum.EasingStyle.Sine), {
+							ImageTransparency = (i == tabSwitcher and 0.1 or 0.5)
+						}):Play()
+					end
+					if tabInfo.switcherName then
+						Tween(tabInfo.switcherName, TweenInfo.new(easetime, Enum.EasingStyle.Sine), {
+							TextTransparency = (i == tabSwitcher and 0.1 or 0.5)
+						}):Play()
+					end
+				end
+
+				tabs[tabSwitcher].tabContent.Parent = content
+				currentTabInstance = tabs[tabSwitcher].tabContent
+				currentTab.Text = Settings.Name
+			end
+
+			tabSwitcher.MouseButton1Click:Connect(function()
+				SelectCurrentTab()
+			end)
+
+			function TabFunctions:Select()
+				SelectCurrentTab()
+			end
+
+			function TabFunctions:InsertConfigSection(Side)
+				local configSection = TabFunctions:Section({ Side = "Left" })
+
+				if isStudio then
+					configSection:Label({Text = "Config system unavailable. (Environment isStudio)"})
+					return "Config system unavailable." 
+				end
+
+				local inputPath = nil
+				local selectedConfig = nil
+
+				configSection:Input({
+					Name = "Config Name",
+					Placeholder = "Name",
+					AcceptedCharacters = "All",
+					Callback = function(input)
+						inputPath = input
+					end,
+				})
+
+				local configSelection = configSection:Dropdown({
+					Name = "Select Config",
+					Multi = false,
+					Required = false,
+					Options = MacLib:RefreshConfigList(),
+					Callback = function(Value)
+						selectedConfig = Value
+					end,
+				})
+
+				configSection:Button({
+					Name = "Create Config",
+					Callback = function()
+						if not inputPath or string.gsub(inputPath, " ", "") == "" then
+							WindowFunctions:Notify({
+								Title = "Interface",
+								Description = "Config name cannot be empty."
+							})
+							return
+						end
+
+						local success, returned = MacLib:SaveConfig(inputPath)
+						if not success then
+							WindowFunctions:Notify({
+								Title = "Interface",
+								Description = "Unable to save config, return error: " .. returned
+							})
+						end
+
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = string.format("Created config %q", inputPath),
+						})
+
+						configSelection:ClearOptions()
+						configSelection:InsertOptions(MacLib:RefreshConfigList())
+					end,
+				})
+
+				configSection:Button({
+					Name = "Load Config",
+					Callback = function()
+						local success, returned = MacLib:LoadConfig(configSelection.Value)
+						if not success then
+							WindowFunctions:Notify({
+								Title = "Interface",
+								Description = "Unable to load config, return error: " .. returned
+							})
+							return
+						end
+
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = string.format("Loaded config %q", configSelection.Value),
+						})
+					end,
+				})
+
+				configSection:Button({
+					Name = "Overwrite Config",
+					Callback = function()
+						local success, returned = MacLib:SaveConfig(configSelection.Value)
+						if not success then
+							WindowFunctions:Notify({
+								Title = "Interface",
+								Description = "Unable to overwrite config, return error: " .. returned
+							})
+							return
+						end
+
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = string.format("Overwrote config %q", configSelection.Value),
+						})
+					end,
+				})
+
+				configSection:Button({
+					Name = "Refresh Config List",
+					Callback = function()
+						configSelection:ClearOptions()
+						configSelection:InsertOptions(MacLib:RefreshConfigList())
+					end,
+				})
+
+				local autoloadLabel
+
+				configSection:Button({
+					Name = "Set as autoload",
+					Callback = function()
+						local name = configSelection.Value
+						writefile(MacLib.Folder .. "/settings/autoload.txt", name)
+						autoloadLabel:UpdateName("Autoload config: " .. name)
+						WindowFunctions:Notify({
+							Title = "Interface",
+							Description = string.format("Set %q as autoload", name),
+						})
+					end,
+				})
+
+				autoloadLabel = configSection:Label({Text = "Autoload config: None"})
+
+				if isfile(MacLib.Folder .. "/settings/autoload.txt") then
+					local name = readfile(MacLib.Folder .. "/settings/autoload.txt")
+					autoloadLabel:UpdateName("Autoload config: " .. name)
+				end
+			end
+
+			tabs[tabSwitcher] = {
+				tabContent = elements1,
+				tabStroke = tabSwitcherUIStroke,
+				switcherImage = tabImage,
+				switcherName = tabSwitcherName,
+			}
+
+			return TabFunctions
+		end
+
+		return SectionFunctions
+	end
+
+	local function elevateThreadIdentity()
+		if setthreadidentity then
+			pcall(setthreadidentity, 7)
+		elseif set_thread_identity then
+			pcall(set_thread_identity, 7)
+		elseif setidentity then
+			pcall(setidentity, 7)
+		elseif syn and syn.set_thread_identity then
+			pcall(syn.set_thread_identity, 7)
+		end
+	end
+
+	function WindowFunctions:Notify(Settings)
+		elevateThreadIdentity()
+
+		local NotificationFunctions = {}
+		local buildSuccess, buildErr = pcall(function()
+			local notification = Instance.new("Frame")
+			notification.Name = "Notification"
+			notification.AnchorPoint = Vector2.new(0.5, 0.5)
+			notification.AutomaticSize = Enum.AutomaticSize.Y
+			notification.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+			notification.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notification.BorderSizePixel = 0
+			notification.Position = UDim2.fromScale(0.5, 0.5)
+			notification.Size = UDim2.fromOffset(Settings.SizeX or 250, 0)
+
+			notification.Parent = notifications
+
+			local notificationUIStroke = Instance.new("UIStroke")
+			notificationUIStroke.Name = "NotificationUIStroke"
+			notificationUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			notificationUIStroke.Color = Color3.fromRGB(255, 255, 255)
+			notificationUIStroke.Transparency = 0.9
+			notificationUIStroke.Parent = notification
+
+			local notificationUICorner = Instance.new("UICorner")
+			notificationUICorner.Name = "NotificationUICorner"
+			notificationUICorner.CornerRadius = UDim.new(0, 10)
+			notificationUICorner.Parent = notification
+
+			local notificationUIScale = Instance.new("UIScale")
+			notificationUIScale.Name = "NotificationUIScale"
+			notificationUIScale.Parent = notification
+			notificationUIScale.Scale = 0
+
+			local notificationInformation = Instance.new("Frame")
+			notificationInformation.Name = "NotificationInformation"
+			notificationInformation.AutomaticSize = Enum.AutomaticSize.Y
+			notificationInformation.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationInformation.BackgroundTransparency = 1
+			notificationInformation.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationInformation.BorderSizePixel = 0
+			notificationInformation.Size = UDim2.fromScale(1, 1)
+
+			local notificationTitle = Instance.new("TextLabel")
+			notificationTitle.Name = "NotificationTitle"
+			notificationTitle.FontFace = Font.new(
+				assets.interFont,
+				Enum.FontWeight.SemiBold,
+				Enum.FontStyle.Normal
+			)
+			notificationTitle.RichText = true
+			notificationTitle.Text = Settings.Title
+			notificationTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+			notificationTitle.TextSize = 13
+			notificationTitle.TextTransparency = 0.2
+			notificationTitle.TextTruncate = Enum.TextTruncate.SplitWord
+			notificationTitle.TextXAlignment = Enum.TextXAlignment.Left
+			notificationTitle.TextYAlignment = Enum.TextYAlignment.Top
+			notificationTitle.AutomaticSize = Enum.AutomaticSize.XY
+			notificationTitle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationTitle.BackgroundTransparency = 1
+			notificationTitle.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationTitle.BorderSizePixel = 0
+			notificationTitle.Size = UDim2.new(1, -12, 0, 0)
+
+			local notificationTitleUIPadding = Instance.new("UIPadding")
+			notificationTitleUIPadding.Name = "NotificationTitleUIPadding"
+			notificationTitleUIPadding.PaddingRight = UDim.new(0, 25)
+			notificationTitleUIPadding.Parent = notificationTitle
+
+			notificationTitle.Parent = notificationInformation
+
+			local notificationDescription = Instance.new("TextLabel")
+			notificationDescription.Name = "NotificationDescription"
+			notificationDescription.FontFace = Font.new(
+				assets.interFont,
+				Enum.FontWeight.Medium,
+				Enum.FontStyle.Normal
+			)
+			notificationDescription.Text = Settings.Description
+			notificationDescription.TextColor3 = Color3.fromRGB(255, 255, 255)
+			notificationDescription.TextSize = 11
+			notificationDescription.TextTransparency = 0.5
+			notificationDescription.TextWrapped = true
+			notificationDescription.RichText = true
+			notificationDescription.TextXAlignment = Enum.TextXAlignment.Left
+			notificationDescription.TextYAlignment = Enum.TextYAlignment.Top
+			notificationDescription.AutomaticSize = Enum.AutomaticSize.XY
+			notificationDescription.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationDescription.BackgroundTransparency = 1
+			notificationDescription.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationDescription.BorderSizePixel = 0
+			notificationDescription.Size = UDim2.new(1, -12, 0, 0)
+
+			local notificationDescriptionUIPadding = Instance.new("UIPadding")
+			notificationDescriptionUIPadding.Name = "NotificationDescriptionUIPadding"
+			notificationDescriptionUIPadding.PaddingRight = UDim.new(0, 25)
+			notificationDescriptionUIPadding.PaddingTop = UDim.new(0, 17)
+			notificationDescriptionUIPadding.Parent = notificationDescription
+
+			notificationDescription.Parent = notificationInformation
+
+			local notificationUIPadding = Instance.new("UIPadding")
+			notificationUIPadding.Name = "NotificationUIPadding"
+			notificationUIPadding.PaddingBottom = UDim.new(0, 12)
+			notificationUIPadding.PaddingLeft = UDim.new(0, 10)
+			notificationUIPadding.PaddingRight = UDim.new(0, 10)
+			notificationUIPadding.PaddingTop = UDim.new(0, 10)
+			notificationUIPadding.Parent = notificationInformation
+
+			notificationInformation.Parent = notification
+
+			local notificationControls = Instance.new("Frame")
+			notificationControls.Name = "NotificationControls"
+			notificationControls.AutomaticSize = Enum.AutomaticSize.Y
+			notificationControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			notificationControls.BackgroundTransparency = 1
+			notificationControls.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			notificationControls.BorderSizePixel = 0
+			notificationControls.Size = UDim2.fromScale(1, 1)
+
+			local interactable = Instance.new("TextButton")
+			interactable.Name = "Interactable"
+			interactable.FontFace = Font.new(assets.interFont)
+			interactable.Text = "✓"
+			interactable.TextColor3 = Color3.fromRGB(255, 255, 255)
+			interactable.TextSize = 17
+			interactable.TextTransparency = 0.2
+			interactable.AnchorPoint = Vector2.new(1, 0.5)
+			interactable.AutomaticSize = Enum.AutomaticSize.XY
+			interactable.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			interactable.BackgroundTransparency = 1
+			interactable.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			interactable.BorderSizePixel = 0
+			interactable.LayoutOrder = 1
+			interactable.Position = UDim2.fromScale(1, 0.5)
+			interactable.Parent = notificationControls
+
+			local uIPadding = Instance.new("UIPadding")
+			uIPadding.Name = "UIPadding"
+			uIPadding.PaddingBottom = UDim.new(0, 6)
+			uIPadding.PaddingRight = UDim.new(0, 13)
+			uIPadding.PaddingTop = UDim.new(0, 6)
+			uIPadding.Parent = notificationControls
+
+			notificationControls.Parent = notification
+
+			local tweens = {
+				In = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+					Scale = Settings.Scale or 1
+				}),
+				Out = Tween(notificationUIScale, TweenInfo.new(0.2, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {
+					Scale = 0
+				}),
+			}
+
+			local styles = {
+				None = function() interactable:Destroy() end,
+				Confirm = function() interactable.Text = "✓" end,
+				Cancel = function() interactable.Text = "✗" end
+			}
+
+			local style = styles[Settings.Style] or function() interactable:Destroy() end
+			style()
+
+			if interactable then
+				interactable.MouseButton1Click:Connect(function()
+					NotificationFunctions:Cancel()
+					if Settings.Callback then
+						task.spawn(Settings.Callback)
+					end
+				end)
+			end
+
+			local AnimateNotification = task.spawn(function()
+				elevateThreadIdentity()
+				tweens.In:Play()
+
+				Settings.Lifetime = Settings.Lifetime or 3
+
+				if Settings.Lifetime ~= 0 then
+					task.wait(Settings.Lifetime)
+
+					local out = tweens.Out
+					out:Play()
+					out.Completed:Wait()
+					elevateThreadIdentity()
+					pcall(function() notification:Destroy() end)
+				end
+			end)
+
+			function NotificationFunctions:UpdateTitle(New)
+				notificationTitle.Text = New
+			end
+
+			function NotificationFunctions:UpdateDescription(New)
+				notificationDescription.Text = New
+			end
+
+			function NotificationFunctions:Resize(X)
+				local targ = X or 250
+				notification.Size = UDim2.fromOffset(targ, 0)
+			end
+
+			function NotificationFunctions:Cancel()
+				elevateThreadIdentity()
+				task.cancel(AnimateNotification)
+
+				local out = tweens.Out
+				out:Play()
+				out.Completed:Wait()
+				pcall(function() notification:Destroy() end)
+			end
+		end)
+
+		if not buildSuccess then
+			pcall(function()
+				local StarterGui = MacLib.GetService("StarterGui") or game:GetService("StarterGui")
+				StarterGui:SetCore("SendNotification", {
+					Title = Settings.Title or "Interface",
+					Text = Settings.Description or "",
+					Duration = Settings.Lifetime or 3,
+				})
+			end)
+			return {
+				UpdateTitle = function() end,
+				UpdateDescription = function() end,
+				Resize = function() end,
+				Cancel = function() end,
+			}
+		end
+
+		return NotificationFunctions
+	end
+
+	function WindowFunctions:Dialog(Settings)
+		local DialogFunctions = {}
+
+		local dialogCanvas = Instance.new("CanvasGroup")
+		dialogCanvas.Name = "DialogCanvas"
+		dialogCanvas.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		dialogCanvas.BackgroundTransparency = 1
+		dialogCanvas.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		dialogCanvas.BorderSizePixel = 0
+		dialogCanvas.Size = UDim2.fromScale(1, 1)
+		dialogCanvas.GroupTransparency = 1
+		dialogCanvas.Parent = base
+
+		local dialog = Instance.new("Frame")
+		dialog.Name = "Dialog"
+		dialog.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		dialog.BackgroundTransparency = 0.5
+		dialog.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		dialog.BorderSizePixel = 0
+		dialog.Size = UDim2.fromScale(1, 1)
+
+		local dialogUICorner = Instance.new("UICorner")
+		dialogUICorner.Name = "BaseUICorner"
+		dialogUICorner.CornerRadius = UDim.new(0, 10)
+		dialogUICorner.Parent = dialog
+
+		local prompt = Instance.new("Frame")
+		prompt.Name = "Prompt"
+		prompt.AnchorPoint = Vector2.new(0.5, 0.5)
+		prompt.AutomaticSize = Enum.AutomaticSize.Y
+		prompt.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+		prompt.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		prompt.BorderSizePixel = 0
+		prompt.Position = UDim2.fromScale(0.5, 0.5)
+		prompt.Size = UDim2.fromOffset(280, 0)
+
+		local promptUIScale = Instance.new("UIScale")
+		promptUIScale.Name = "BaseUIScale"
+		promptUIScale.Parent = prompt
+		promptUIScale.Scale = 0.95
+
+		local globalSettingsUIStroke = Instance.new("UIStroke")
+		globalSettingsUIStroke.Name = "GlobalSettingsUIStroke"
+		globalSettingsUIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		globalSettingsUIStroke.Color = Color3.fromRGB(255, 255, 255)
+		globalSettingsUIStroke.Transparency = 0.9
+		globalSettingsUIStroke.Parent = prompt
+
+		local globalSettingsUICorner = Instance.new("UICorner")
+		globalSettingsUICorner.Name = "GlobalSettingsUICorner"
+		globalSettingsUICorner.CornerRadius = UDim.new(0, 10)
+		globalSettingsUICorner.Parent = prompt
+
+		local globalSettingsUIPadding = Instance.new("UIPadding")
+		globalSettingsUIPadding.Name = "GlobalSettingsUIPadding"
+		globalSettingsUIPadding.PaddingBottom = UDim.new(0, 20)
+		globalSettingsUIPadding.PaddingLeft = UDim.new(0, 20)
+		globalSettingsUIPadding.PaddingRight = UDim.new(0, 20)
+		globalSettingsUIPadding.PaddingTop = UDim.new(0, 20)
+		globalSettingsUIPadding.Parent = prompt
+
+		local paragraph = Instance.new("Frame")
+		paragraph.Name = "Paragraph"
+		paragraph.AutomaticSize = Enum.AutomaticSize.Y
+		paragraph.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		paragraph.BackgroundTransparency = 1
+		paragraph.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		paragraph.BorderSizePixel = 0
+		paragraph.Size = UDim2.new(1, 0, 0, 38)
+
+		local paragraphHeader = Instance.new("TextLabel")
+		paragraphHeader.Name = "ParagraphHeader"
+		paragraphHeader.FontFace = Font.new(
+			assets.interFont,
+			Enum.FontWeight.Medium,
+			Enum.FontStyle.Normal
+		)
+		paragraphHeader.RichText = true
+		paragraphHeader.Text = Settings.Title
+		paragraphHeader.TextColor3 = Color3.fromRGB(255, 255, 255)
+		paragraphHeader.TextSize = 18
+		paragraphHeader.TextTransparency = 0.4
+		paragraphHeader.TextWrapped = true
+		paragraphHeader.AutomaticSize = Enum.AutomaticSize.Y
+		paragraphHeader.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		paragraphHeader.BackgroundTransparency = 1
+		paragraphHeader.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		paragraphHeader.BorderSizePixel = 0
+		paragraphHeader.Size = UDim2.fromScale(1, 0)
+		paragraphHeader.Parent = paragraph
+
+		local uIListLayout = Instance.new("UIListLayout")
+		uIListLayout.Name = "UIListLayout"
+		uIListLayout.Padding = UDim.new(0, 15)
+		uIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		uIListLayout.Parent = paragraph
+
+		local paragraphBody = Instance.new("TextLabel")
+		paragraphBody.Name = "ParagraphBody"
+		paragraphBody.FontFace = Font.new(assets.interFont)
+		paragraphBody.RichText = true
+		paragraphBody.Text = Settings.Description
+		paragraphBody.TextColor3 = Color3.fromRGB(255, 255, 255)
+		paragraphBody.TextSize = 14
+		paragraphBody.TextTransparency = 0.5
+		paragraphBody.TextWrapped = true
+		paragraphBody.AutomaticSize = Enum.AutomaticSize.Y
+		paragraphBody.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		paragraphBody.BackgroundTransparency = 1
+		paragraphBody.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		paragraphBody.BorderSizePixel = 0
+		paragraphBody.LayoutOrder = 1
+		paragraphBody.Size = UDim2.fromScale(1, 0)
+		paragraphBody.Parent = paragraph
+
+		paragraph.Parent = prompt
+
+		local interactions = Instance.new("Frame")
+		interactions.Name = "Interactions"
+		interactions.AutomaticSize = Enum.AutomaticSize.Y
+		interactions.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		interactions.BackgroundTransparency = 1
+		interactions.BorderColor3 = Color3.fromRGB(0, 0, 0)
+		interactions.BorderSizePixel = 0
+		interactions.LayoutOrder = 1
+		interactions.Size = UDim2.fromScale(1, 0)
+
+		local uIListLayout1 = Instance.new("UIListLayout")
+		uIListLayout1.Name = "UIListLayout"
+		uIListLayout1.Padding = UDim.new(0, 10)
+		uIListLayout1.SortOrder = Enum.SortOrder.LayoutOrder
+		uIListLayout1.Parent = interactions
+
+		local uIPadding = Instance.new("UIPadding")
+		uIPadding.Name = "UIPadding"
+		uIPadding.PaddingTop = UDim.new(0, 20)
+		uIPadding.Parent = interactions
+
+		interactions.Parent = prompt
+
+		local uIListLayout2 = Instance.new("UIListLayout")
+		uIListLayout2.Name = "UIListLayout"
+		uIListLayout2.SortOrder = Enum.SortOrder.LayoutOrder
+		uIListLayout2.Parent = prompt
+
+		prompt.Parent = dialog
+
+		dialog.Parent = dialogCanvas
+
+		local canvasIn = Tween(dialogCanvas, TweenInfo.new(0.1, Enum.EasingStyle.Sine), { GroupTransparency = 0 })
+		local canvasOut = Tween(dialogCanvas, TweenInfo.new(0.1, Enum.EasingStyle.Sine), { GroupTransparency = 1 })
+
+		local scaleIn = Tween(promptUIScale, TweenInfo.new(0.1, Enum.EasingStyle.Sine), { Scale = 1 })
+		local scaleOut = Tween(promptUIScale, TweenInfo.new(0.1, Enum.EasingStyle.Sine), { Scale = 0.95 })
+
+		local function dialogIn()
+			canvasIn:Play()
+			scaleIn:Play()
+			canvasIn.Completed:Wait()
+			dialog.Parent = base
+		end
+
+		local function dialogOut()
+			if not dialog.Parent then return end
+			dialog.Parent = dialogCanvas
+			canvasOut:Play()
+			scaleOut:Play()
+			canvasOut.Completed:Wait()
+			dialogCanvas:Destroy()
+		end
+
+		for _, v in pairs(Settings.Buttons) do
+			local button = Instance.new("TextButton")
+			button.Name = "Button"
+			button.FontFace = Font.new(assets.interFont)
+			button.Text = v.Name
+			button.TextColor3 = Color3.fromRGB(255, 255, 255)
+			button.TextSize = 15
+			button.TextTransparency = 0.5
+			button.TextTruncate = Enum.TextTruncate.AtEnd
+			button.AutoButtonColor = false
+			button.AutomaticSize = Enum.AutomaticSize.Y
+			button.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+			button.BorderColor3 = Color3.fromRGB(0, 0, 0)
+			button.BorderSizePixel = 0
+			button.Size = UDim2.fromScale(1, 0)
+
+			local uIPadding1 = Instance.new("UIPadding")
+			uIPadding1.Name = "UIPadding"
+			uIPadding1.PaddingBottom = UDim.new(0, 9)
+			uIPadding1.PaddingLeft = UDim.new(0, 10)
+			uIPadding1.PaddingRight = UDim.new(0, 10)
+			uIPadding1.PaddingTop = UDim.new(0, 9)
+			uIPadding1.Parent = button
+
+			local baseUICorner1 = Instance.new("UICorner")
+			baseUICorner1.Name = "BaseUICorner"
+			baseUICorner1.CornerRadius = UDim.new(0, 10)
+			baseUICorner1.Parent = button
+
+			button.Parent = interactions
+
+			local TweenSettings = {
+				DefaultTransparency = 0,
+				DefaultTransparency2 = 0.5,
+				HoverTransparency = 0.3,
+				HoverTransparency2 = 0.6,
+
+				EasingStyle = Enum.EasingStyle.Sine
+			}
+
+			local function ChangeState(State)
+				if State == "Idle" then
+					Tween(button, TweenInfo.new(0.2, TweenSettings.EasingStyle), {
+						BackgroundTransparency = TweenSettings.DefaultTransparency,
+						TextTransparency = TweenSettings.DefaultTransparency2
+					}):Play()
+				elseif State == "Hover" then
+					Tween(button, TweenInfo.new(0.2, TweenSettings.EasingStyle), {
+						BackgroundTransparency = TweenSettings.HoverTransparency,
+						TextTransparency = TweenSettings.HoverTransparency2
+					}):Play()
+				end
+			end
+
+			button.MouseButton1Click:Connect(function()
+				if dialogCanvas.GroupTransparency ~= 0 then return end
+				local ok, err = pcall(function()
+					if v.Callback then
+						v.Callback()
+					end
+				end)
+
+				dialogOut()
+
+				if not ok then
+					warn("[Dialog] Button callback error: " .. tostring(err))
+				end
+			end)
+
+			button.MouseEnter:Connect(function()
+				ChangeState("Hover")
+			end)
+			button.MouseLeave:Connect(function()
+				ChangeState("Idle")
+			end)
+		end
+
+		dialogIn()
+
+		function DialogFunctions:UpdateTitle(New)
+			paragraphHeader.Text = New
+		end
+		function DialogFunctions:UpdateDescription(New)
+			paragraphBody.Text = New
+		end
+
+		function DialogFunctions:Cancel()
+			dialogOut()
+		end
+
+		return DialogFunctions
+	end
+
+	function WindowFunctions:SetNotificationsState(State)
+		notifications.Visible = State
+	end
+
+	function WindowFunctions:GetNotificationsState(State)
+		return notifications.Visible
+	end
+
+	function WindowFunctions:SetState(State)
+		windowState = State
+		base.Visible = State
+	end
+
+	function WindowFunctions:GetState()
+		return windowState
+	end
+
+	local onUnloadCallback
+
+	function WindowFunctions:Unload()
+		if onUnloadCallback then
+			onUnloadCallback()  
+		end
+		macLib:Destroy()
+		unloaded = true
+	end
+
+	function WindowFunctions.onUnloaded(callback)
+		onUnloadCallback = callback
+	end
+
+	local MenuKeybind = Settings.Keybind or Enum.KeyCode.RightControl
+
+	local function ToggleMenu()
+		local state = not WindowFunctions:GetState()
+		WindowFunctions:SetState(state)
+		WindowFunctions:Notify({
+			Title = Settings.Title,
+			Description = (state and "Maximized " or "Minimized ") .. "the menu. Use " .. tostring(MenuKeybind.Name) .. " to toggle it.",
+			Lifetime = 5
+		})
+	end
+
+	UserInputService.InputEnded:Connect(function(inp, gpe)
+		if gpe then return end
+		if inp.KeyCode == MenuKeybind then
+			ToggleMenu()
+		end
+	end)
+
+	minimize.MouseButton1Click:Connect(ToggleMenu)
+	exit.MouseButton1Click:Connect(function()
+		WindowFunctions:Dialog({
+			Title = Settings.Title,
+			Description = "Are you sure you want to exit the menu? You will lose any unsaved configurations.",
+			Buttons = {
+				{
+					Name = "Confirm",
+					Callback = function()
+						WindowFunctions:Unload()
+					end,
+				},
+				{
+					Name = "Cancel"
+				}
+			}
+		})
+	end)
+
+	function WindowFunctions:SetKeybind(Keycode)
+		MenuKeybind = Keycode
+	end
+
+	function WindowFunctions:SetAcrylicBlurState(State)
+		acrylicBlur = State
+		base.BackgroundTransparency = State and 0.05 or 0
+	end
+
+	function WindowFunctions:GetAcrylicBlurState()
+		return acrylicBlur
+	end
+
+	local function _SetUserInfoState(State)
+		if State then
+			headshot.Image = (isReady and headshotImage) or "rbxassetid://0"
+			username.Text = "@" .. LocalPlayer.Name
+			displayName.Text = LocalPlayer.DisplayName
+		else
+			headshot.Image = assets.userInfoBlurred
+			local nameLength = #LocalPlayer.Name
+			local displayNameLength = #LocalPlayer.DisplayName
+			username.Text = "@" .. string.rep(".", nameLength)
+			displayName.Text = string.rep(".", displayNameLength)
+		end
+	end
+
+	local showUserInfo
+	if Settings.ShowUserInfo ~= nil then
+		showUserInfo = Settings.ShowUserInfo
+	else
+		showUserInfo = true
+	end
+
+	_SetUserInfoState(showUserInfo)
+
+	function WindowFunctions:SetUserInfoState(State)
+		_SetUserInfoState(State)
+	end
+	function WindowFunctions:GetUserInfoState(State)
+		return showUserInfo
+	end
+
+	function WindowFunctions:SetSize(Size)
+		base.Size = Size
+	end
+	function WindowFunctions:GetSize(Size)
+		return base.Size
+	end
+
+	function WindowFunctions:SetScale(Scale)
+		baseUIScale.Scale = Scale
+	end
+	function WindowFunctions:GetScale()
+		return baseUIScale.Scale
+	end
+
+	local ClassParser = {
+		["Toggle"] = {
+			Save = function(Flag, data)
+				return {
+					type = "Toggle", 
+					flag = Flag, 
+					state = data.State or false
+				}
+			end,
+			Load = function(Flag, data)
+				elevateThreadIdentity()
+				if MacLib.Options[Flag] and data.state ~= nil then
+					MacLib.Options[Flag]:UpdateState(data.state)
+				end
+			end
+		},
+		["Slider"] = {
+			Save = function(Flag, data)
+				return {
+					type = "Slider", 
+					flag = Flag, 
+					value = (data.Value and tostring(data.Value)) or false
+				}
+			end,
+			Load = function(Flag, data)
+				elevateThreadIdentity()
+				if MacLib.Options[Flag] and data.value ~= nil and data.value ~= false then
+					MacLib.Options[Flag]:UpdateValue(data.value)
+				end
+			end
+		},
+		["Input"] = {
+			Save = function(Flag, data)
+				return {
+					type = "Input", 
+					flag = Flag, 
+					text = data.Text
+				}
+			end,
+			Load = function(Flag, data)
+				elevateThreadIdentity()
+				if MacLib.Options[Flag] and data.text and type(data.text) == "string" then
+					MacLib.Options[Flag]:UpdateText(data.text)
+				end
+			end
+		},
+		["Keybind"] = {
+			Save = function(Flag, data)
+				return {
+					type = "Keybind", 
+					flag = Flag, 
+					bind = (typeof(data.Bind) == "EnumItem" and data.Bind.Name) or nil
+				}
+			end,
+			Load = function(Flag, data)
+				elevateThreadIdentity()
+				if MacLib.Options[Flag] and data.bind then
+					MacLib.Options[Flag]:Bind(Enum.KeyCode[data.bind])
+				end
+			end
+		},
+		["Dropdown"] = {
+			Save = function(Flag, data)
+				return {
+					type = "Dropdown", 
+					flag = Flag, 
+					value = data.Value
+				}
+			end,
+			Load = function(Flag, data)
+				elevateThreadIdentity()
+				if MacLib.Options[Flag] and data.value then
+					MacLib.Options[Flag]:UpdateSelection(data.value)
+				end
+			end
+		},
+		["Colorpicker"] = {
+			Save = function(Flag, data)
+				local function Color3ToHex(color)
+					return string.format("#%02X%02X%02X", math.floor(color.R * 255), math.floor(color.G * 255), math.floor(color.B * 255))
+				end
+
+				return {
+					type = "Colorpicker", 
+					flag = Flag, 
+					color = Color3ToHex(data.Color) or nil,
+					alpha = data.Alpha
+				}
+			end,
+			Load = function(Flag, data)
+				elevateThreadIdentity()
+				local function HexToColor3(hex)
+					local r = tonumber(hex:sub(2, 3), 16) / 255
+					local g = tonumber(hex:sub(4, 5), 16) / 255
+					local b = tonumber(hex:sub(6, 7), 16) / 255
+					return Color3.new(r, g, b)
+				end
+
+				if MacLib.Options[Flag] and data.color then
+					MacLib.Options[Flag]:SetColor(HexToColor3(data.color)) 
+					if data.alpha then
+						MacLib.Options[Flag]:SetAlpha(data.alpha)
+					end
+				end
+			end
+		}
+	}
+
+	local function BuildFolderTree()
+		if isStudio or not (isfolder and makefolder) then return "Config system unavailable." end
+
+		local paths = {
+			MacLib.Folder,
+			MacLib.Folder .. "/settings"
+		}
+
+		for i = 1, #paths do
+			local str = paths[i]
+			if not isfolder(str) then
+				makefolder(str)
+			end
+		end
+	end
+
+	function MacLib:LoadAutoLoadConfig()
+		elevateThreadIdentity()
+		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
+
+		local autoloadPath = MacLib.Folder .. "/settings/autoload.txt"
+		local name = nil
+
+		if isfile(autoloadPath) then
+			local ok, content = pcall(readfile, autoloadPath)
+			if ok and type(content) == "string" then
+				content = string.gsub(content, "[\r\n%s]+", "")
+				if #content > 0 then
+					name = content
+				end
+			end
+		end
+
+		-- Fallback: nếu autoload.txt chưa tồn tại hoặc rỗng, thử nạp Default.json
+		if not name then
+			local defaultFile = MacLib.Folder .. "/settings/Default.json"
+			if isfile(defaultFile) then
+				name = "Default"
+				if writefile then
+					pcall(writefile, autoloadPath, "Default")
+				end
+			end
+		end
+
+		if not name then
+			print("[MacLib] Không tìm thấy autoload config nào trong " .. autoloadPath)
+			return
+		end
+
+		print(string.format("[MacLib] Khởi động nạp autoload config: %q", name))
+		local suc, err = MacLib:LoadConfig(name)
+		if not suc then
+			pcall(function()
+				WindowFunctions:Notify({
+					Title = "Interface",
+					Description = "Error loading autoload config: " .. tostring(err)
+				})
+			end)
+			warn(string.format("[MacLib] Lỗi khi nạp autoload config %q: %s", name, tostring(err)))
+			return
+		end
+
+		print(string.format("[MacLib] Nạp autoload config thành công: %q", name))
+		pcall(function()
+			WindowFunctions:Notify({
+				Title = "Interface",
+				Description = string.format("Autoloaded config: %q", name),
+			})
+		end)
+	end
+
+	function MacLib:SetFolder(Folder)
+		if isStudio then return "Config system unavailable." end
+
+		MacLib.Folder = Folder;
+		BuildFolderTree()
+	end
+
+	function MacLib:SaveConfig(Path)
+		if isStudio or not writefile then return "Config system unavailable." end
+
+		if (not Path) then
+			return false, "Please select a config file."
+		end
+
+		local fullPath = MacLib.Folder .. "/settings/" .. Path .. ".json"
+
+		local data = {
+			objects = {},
+			contextData = MacLib.contextData or {},
+		}
+
+		for flag, option in next, MacLib.Options do
+			if not ClassParser[option.Class] then continue end
+			if option.IgnoreConfig then continue end
+
+			table.insert(data.objects, ClassParser[option.Class].Save(flag, option))
+		end	
+
+		local success, encoded = pcall(HttpService.JSONEncode, HttpService, data)
+		if not success then
+			return false, "Unable to encode into JSON data"
+		end
+
+		writefile(fullPath, encoded)
+		return true
+	end
+
+	function MacLib:LoadConfig(Path)
+		elevateThreadIdentity()
+		if isStudio or not (isfile and readfile) then return "Config system unavailable." end
+
+		if (not Path) then
+			return false, "Please select a config file."
+		end
+
+		Path = string.gsub(tostring(Path), "[\r\n%s]+", "")
+		if #Path == 0 then
+			return false, "Please select a config file."
+		end
+
+		local file = MacLib.Folder .. "/settings/" .. Path .. ".json"
+		if not isfile(file) then return false, "Invalid file: " .. tostring(file) end
+
+		local success, decoded = pcall(HttpService.JSONDecode, HttpService, readfile(file))
+		if not success or type(decoded) ~= "table" then return false, "Unable to decode JSON data." end
+
+		MacLib.LoadingConfig = true
+		MacLib.contextData = decoded.contextData or {}
+
+		local objects = decoded.objects or {}
+		local loadedCount = 0
+		for _, option in next, objects do
+			if option and option.type and ClassParser[option.type] then
+				local ok, err = pcall(function() 
+					ClassParser[option.type].Load(option.flag, option) 
+				end)
+				if ok then
+					loadedCount = loadedCount + 1
+				else
+					warn(string.format("[MacLib:LoadConfig] Lỗi khi nạp option %s (%s): %s", tostring(option.flag), tostring(option.type), tostring(err)))
+				end
+			end
+		end
+
+		print(string.format("[MacLib:LoadConfig] Đã nạp config %q (%d/%d options thành công)", Path, loadedCount, #objects))
+
+		task.delay(1, function()
+			MacLib.LoadingConfig = false
+		end)
+
+		return true
+	end
+
+	function MacLib:RefreshConfigList()
+		if isStudio or not (isfolder and listfiles) then return "Config system unavailable." end
+
+		local list = (isfolder(MacLib.Folder) and isfolder(MacLib.Folder .. "/settings")) and listfiles(MacLib.Folder .. "/settings") or {}
+
+		local out = {}
+		for i = 1, #list do
+			local file = list[i]
+			if file:sub(-5) == ".json" then
+				local pos = file:find(".json", 1, true)
+				local start = pos
+
+				local char = file:sub(pos, pos)
+				while char ~= "/" and char ~= "\\" and char ~= "" do
+					pos = pos - 1
+					char = file:sub(pos, pos)
+				end
+
+				if char == "/" or char == "\\" then
+					local name = file:sub(pos + 1, start - 1)
+					if name ~= "options" then
+						table.insert(out, name)
+					end
+				end
+			end
+		end
+
+		return out
+	end
+
+	macLib.Enabled = false
+
+	local assetList = {}
+	for _, assetId in pairs(assets) do
+		table.insert(assetList, assetId)
+	end
+
+	ContentProvider:PreloadAsync(assetList)
+	macLib.Enabled = true
+	windowState = true
+
+	return WindowFunctions
+end
+
+function MacLib:Demo()
+	local Window = MacLib:Window({
+		Title = "Maclib Demo",
+		Subtitle = "This is a subtitle.",
+		Size = UDim2.fromOffset(868, 650),
+		DragStyle = 1,
+		DisabledWindowControls = {},
+		ShowUserInfo = true,
+		Keybind = Enum.KeyCode.RightControl,
+		AcrylicBlur = true,
+	})
+
+	local globalSettings = {
+		UIBlurToggle = Window:GlobalSetting({
+			Name = "UI Blur",
+			Default = Window:GetAcrylicBlurState(),
+			Callback = function(bool)
+				Window:SetAcrylicBlurState(bool)
+				Window:Notify({
+					Title = Window.Settings.Title,
+					Description = (bool and "Enabled" or "Disabled") .. " UI Blur",
+					Lifetime = 5
+				})
+			end,
+		}),
+		NotificationToggler = Window:GlobalSetting({
+			Name = "Notifications",
+			Default = Window:GetNotificationsState(),
+			Callback = function(bool)
+				Window:SetNotificationsState(bool)
+				Window:Notify({
+					Title = Window.Settings.Title,
+					Description = (bool and "Enabled" or "Disabled") .. " Notifications",
+					Lifetime = 5
+				})
+			end,
+		}),
+		ShowUserInfo = Window:GlobalSetting({
+			Name = "Show User Info",
+			Default = Window:GetUserInfoState(),
+			Callback = function(bool)
+				Window:SetUserInfoState(bool)
+				Window:Notify({
+					Title = Window.Settings.Title,
+					Description = (bool and "Showing" or "Redacted") .. " User Info",
+					Lifetime = 5
+				})
+			end,
+		})
+	}
+
+	local tabGroups = {
+		TabGroup1 = Window:TabGroup()
+	}
+
+	local tabs = {
+		Main = tabGroups.TabGroup1:Tab({ Name = "Demo", Image = "rbxassetid://18821914323" }),
+		Settings = tabGroups.TabGroup1:Tab({ Name = "Settings", Image = "rbxassetid://10734950309" })
+	}
+
+	local sections = {
+		MainSection1 = tabs.Main:Section({ Side = "Left" }),
+	}
+
+	sections.MainSection1:Header({
+		Name = "Header #1"
+	})
+
+	sections.MainSection1:Button({
+		Name = "Button",
+		Callback = function()
+			Window:Dialog({
+				Title = Window.Settings.Title,
+				Description = "Lorem ipsum odor amet, consectetuer adipiscing elit. Eros vestibulum aliquet mattis, ex platea nunc.",
+				Buttons = {
+					{
+						Name = "Confirm",
+						Callback = function()
+							print("Confirmed!")
+						end,
+					},
+					{
+						Name = "Cancel"
+					}
+				}
+			})
+		end,
+	})
+
+	sections.MainSection1:Input({
+		Name = "Input",
+		Placeholder = "Input",
+		AcceptedCharacters = "All",
+		Callback = function(input)
+			Window:Notify({
+				Title = Window.Settings.Title,
+				Description = "Successfully set input to " .. input
+			})
+		end,
+		onChanged = function(input)
+			print("Input is now " .. input)
+		end,
+	}, "Input")
+
+	sections.MainSection1:Slider({
+		Name = "Slider",
+		Default = 50,
+		Minimum = 0,
+		Maximum = 100,
+		DisplayMethod = "Percent",
+		Precision = 0,
+		Callback = function(Value)
+			print("Changed to ".. Value)
+		end
+	}, "Slider")
+
+	sections.MainSection1:Toggle({
+		Name = "Toggle",
+		Default = false,
+		Callback = function(value)
+			Window:Notify({
+				Title = Window.Settings.Title,
+				Description = (value and "Enabled " or "Disabled ") .. "Toggle"
+			})
+		end,
+	}, "Toggle")
+
+	sections.MainSection1:Keybind({
+		Name = "Keybind",
+		Blacklist = false,
+		Callback = function(binded)
+			Window:Notify({
+				Title = "Demo Window",
+				Description = "Pressed keybind - "..tostring(binded.Name),
+				Lifetime = 3
+			})
+		end,
+		onBinded = function(bind)
+			Window:Notify({
+				Title = "Demo Window",
+				Description = "Successfully Binded Keybind to - "..tostring(bind.Name),
+				Lifetime = 3
+			})
+		end,
+	}, "Keybind")
+
+	sections.MainSection1:Colorpicker({
+		Name = "Colorpicker",
+		Default = Color3.fromRGB(0, 255, 255),
+		Callback = function(color)
+			print("Color: ", color)
+		end,
+	}, "Colorpicker")
+
+	local alphaColorPicker = sections.MainSection1:Colorpicker({
+		Name = "Transparency Colorpicker",
+		Default = Color3.fromRGB(255,0,0),
+		Alpha = 0,
+		Callback = function(color, alpha)
+			print("Color: ", color, " Alpha: ", alpha)
+		end,
+	}, "TransparencyColorpicker")
+
+	local rainbowActive
+	local rainbowConnection
+	local hue = 0
+
+	sections.MainSection1:Toggle({
+		Name = "Rainbow",
+		Default = false,
+		Callback = function(value)
+			rainbowActive = value
+
+			if rainbowActive then
+				rainbowConnection = game:GetService("RunService").RenderStepped:Connect(function(deltaTime)
+					hue = (hue + deltaTime * 0.1) % 1
+					alphaColorPicker:SetColor(Color3.fromHSV(hue, 1, 1))
+				end)
+			elseif rainbowConnection then
+				rainbowConnection:Disconnect()
+				rainbowConnection = nil
+			end
+		end,
+	}, "RainbowToggle")
+
+	local optionTable = {
+		"Apple",
+		"Banana",
+		"Orange",
+		"Grapes",
+		"Pineapple",
+		"Mango",
+		"Strawberry",
+		"Blueberry",
+		"Watermelon",
+		"Peach"
+	}
+
+	local Dropdown = sections.MainSection1:Dropdown({
+		Name = "Dropdown",
+		Multi = false,
+		Required = true,
+		Options = optionTable,
+		Default = 1,
+		Callback = function(Value)
+			print("Dropdown changed: ".. Value)
+		end,
+	}, "Dropdown")
+
+	local MultiDropdown = sections.MainSection1:Dropdown({
+		Name = "Multi Dropdown",
+		Search = true,
+		Multi = true,
+		Required = false,
+		Options = optionTable,
+		Default = {"Apple", "Orange"},
+		Callback = function(Value)
+			local Values = {}
+			for Value, State in next, Value do
+				table.insert(Values, Value)
+			end
+			print("Mutlidropdown changed:", table.concat(Values, ", "))
+		end,
+	}, "MultiDropdown")
+
+	sections.MainSection1:Button({
+		Name = "Update Selection",
+		Callback = function()
+			Dropdown:UpdateSelection("Grapes")
+			MultiDropdown:UpdateSelection({"Banana", "Pineapple"})
+		end,
+	})
+
+	sections.MainSection1:Divider()
+
+	sections.MainSection1:Header({
+		Text = "Header #2"
+	})
+
+	sections.MainSection1:Paragraph({
+		Header = "Paragraph",
+		Body = "Paragraph body. Lorem ipsum odor amet, consectetuer adipiscing elit. Morbi tempus netus aliquet per velit est gravida."
+	})
+
+	sections.MainSection1:Label({
+		Text = "Label. Lorem ipsum odor amet, consectetuer adipiscing elit."
+	})
+
+	sections.MainSection1:SubLabel({
+		Text = "Sub-Label. Lorem ipsum odor amet, consectetuer adipiscing elit."
+	})
+
+	MacLib:SetFolder("Maclib")
+	tabs.Settings:InsertConfigSection("Left")
+
+	Window.onUnloaded(function()
+		print("Unloaded!")
+	end)
+
+	tabs.Main:Select()
+	MacLib:LoadAutoLoadConfig()
+end
+
+return MacLib end function __DIST.h()-- Hàm thông báo an toàn dùng chung cho DungeonQuest.
+-- Nhận Window tham chiếu qua SetWindow (vì Window được tạo sau khi require module).
+
+--// Variables
+
+local window
+
+--// Table
+local notifier = {}
+
+--// Methods
+function notifier:SetWindow(newWindow)
+	window = newWindow
+end
+
+function notifier.Notify(title, desc, lifetime)
+	lifetime = lifetime or 3
+
+	if window then
+		local ok = pcall(function()
+			window:Notify({ Title = title, Description = desc, Lifetime = lifetime })
+		end)
+		if ok then return end
+	end
+
+	pcall(function()
+		game:GetService("StarterGui"):SetCore("SendNotification", {
+			Title = title,
+			Text = desc,
+			Duration = lifetime,
+		})
+	end)
+end
+
+return notifier
+end function __DIST.i()-- Auto-save config cho DungeonQuest: tự động lưu mỗi khi control thay đổi,
+-- không cần bấm "Overwrite" thủ công. Chỉ lưu khi có config active đang chọn.
+
+--// Imports
+
+local macLib = __DIST.load('g')
+local notifier = __DIST.load('h')
+
+--// Table
+local autoSave = {}
+
+--// Variables
+local activeConfig = nil
+local saveQueued = false
+local suspended = false
+
+local recordingActive = false
+
+function autoSave.Suspend()
+	suspended = true
+	saveQueued = false
+end
+
+function autoSave.Resume()
+	suspended = false
+end
+
+function autoSave.SetRecording(state)
+	recordingActive = state and true or false
+end
+
+function autoSave.IsRecording()
+	return recordingActive
+end
+
+function autoSave.IsSuspended()
+	if suspended or (macLib.LoadingConfig == true) or recordingActive then
+		return true
+	end
+	local ok, coordinator = pcall(require, "@routes/DungeonQuest/core/coordinator")
+	if ok and coordinator and coordinator.IsLocked and coordinator.IsLocked() then
+		return true
+	end
+	return false
+end
+
+-- Cập nhật tên config đang active (gọi từ Config tab khi chọn/tạo/tải config)
+function autoSave.SetActive(name)
+	activeConfig = (typeof(name) == "string" and #name > 0) and string.gsub(name, "[\r\n%s]+", "") or nil
+	if activeConfig and writefile then
+		pcall(function()
+			local folder = macLib.Folder
+			if isfolder and not isfolder(folder) then makefolder(folder) end
+			if isfolder and not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			writefile(folder .. "/settings/autoload.txt", activeConfig)
+		end)
+	end
+end
+
+function autoSave.GetActive()
+	return activeConfig
+end
+
+-- Fallback: nếu chưa có config active (không bấm chọn trong tab Configs) nhưng có
+-- config autoload trong autoload.txt thì dùng luôn tên đó -> đảm bảo mọi slider/
+-- toggle đều được lưu mà không phụ thuộc thứ tự khởi tạo tab.
+local function resolveActiveConfig()
+	if activeConfig then return activeConfig end
+
+	local folder = macLib.Folder
+	local path = folder .. "/settings/autoload.txt"
+	if isfile and isfile(path) then
+		local ok, name = pcall(readfile, path)
+		if ok and typeof(name) == "string" then
+			name = string.gsub(name, "[\r\n%s]+", "")
+			if #name > 0 then
+				activeConfig = name
+				return activeConfig
+			end
+		end
+	end
+
+	-- Fallback tạo config "Default" để luôn lưu được dữ liệu cấu hình người dùng
+	activeConfig = "Default"
+	pcall(function()
+		if writefile and makefolder and isfolder then
+			if not isfolder(folder) then makefolder(folder) end
+			if not isfolder(folder .. "/settings") then makefolder(folder .. "/settings") end
+			if not isfile(path) then
+				writefile(path, "Default")
+			end
+		end
+	end)
+	return activeConfig
+end
+
+-- Lưu ngay lập tức (gọi trực tiếp)
+function autoSave.SaveNow()
+	if autoSave.IsSuspended() then return end
+	local name = resolveActiveConfig()
+	if not name then return end
+
+	local success, err = macLib:SaveConfig(name)
+	if not success and err and err ~= "Please select a config file." then
+		notifier.Notify("AutoSave", "Failed to save config: " .. tostring(err), 3)
+	end
+end
+
+-- Lưu có debounce: dồn nhiều thay đổi (vd kéo slider) thành 1 lần lưu
+function autoSave.Save()
+	if autoSave.IsSuspended() then return end
+	if not resolveActiveConfig() then return end
+	if saveQueued then return end
+	saveQueued = true
+
+	task.delay(0.5, function()
+		saveQueued = false
+		if not autoSave.IsSuspended() and autoSave.GetActive() then
+			autoSave.SaveNow()
+		end
+	end)
+end
+
+-- Bọc một callback control để tự lưu sau khi callback chạy
+function autoSave.Wrap(callback)
+	if type(callback) ~= "function" then return callback end
+	return function(...)
+		callback(...)
+		autoSave.Save()
+	end
+end
+
+return autoSave
+end function __DIST.j()-- Core Contextual cho DungeonQuest: Quản lý thiết lập khoảng cách chiến đấu (Min/Max Combat Distance)
+-- riêng biệt theo từng DUNGEON x LOẠI MỤC TIÊU (Normal, Boss 1, Boss 2, Boss 3).
+-- Dữ liệu được nhúng và lưu trữ trực tiếp trong config MacLib (macLib.contextData).
+
+--// Imports
+
+local macLib = __DIST.load('g')
+local autoSave = __DIST.load('i')
+local shared = __DIST.load('f')
+
+--// Table
+local contextual = {}
+
+--// Default Values per Target Type
+local DEFAULT_DISTANCES = {
+	Mob = { Min = 15.0, Max = 35.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss1 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss2 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+	Boss3 = { Min = 25.0, Max = 50.0, BossArea = false, BossAreaRadius = 80.0, DisableDodge = false, EnableHazardScanner = true },
+}
+
+local TARGET_KEYS = { "Mob", "Boss1", "Boss2", "Boss3" }
+
+local DISPLAY_TO_KEY = {
+	["Normal"] = "Mob",
+	["Boss 1"] = "Boss1",
+	["Boss 2"] = "Boss2",
+	["Boss 3"] = "Boss3",
+}
+
+local KEY_TO_DISPLAY = {
+	["Mob"] = "Normal",
+	["Boss1"] = "Boss 1",
+	["Boss2"] = "Boss 2",
+	["Boss3"] = "Boss 3",
+}
+
+--// Storage: data[dungeonName][targetKey] = { Min = number, Max = number }
+local data = {}
+local dataChangedCallbacks = {}
+
+function contextual.GetTargetDisplay(key)
+	return KEY_TO_DISPLAY[key] or "Normal"
+end
+
+function contextual.GetTargetKey(display)
+	return DISPLAY_TO_KEY[display] or "Mob"
+end
+
+function contextual.GetTargetOptions()
+	return { "Normal", "Boss 1", "Boss 2", "Boss 3" }
+end
+
+--// Nạp và xuất dữ liệu config
+function contextual.GetSaveData()
+	return data
+end
+
+function contextual.LoadData(incomingData)
+	if type(incomingData) == "table" then
+		data = incomingData
+	else
+		data = {}
+	end
+	macLib.contextData = data
+
+	for _, cb in ipairs(dataChangedCallbacks) do
+		pcall(cb)
+	end
+end
+
+function contextual.OnDataChanged(callback)
+	if type(callback) ~= "function" then return function() end end
+	table.insert(dataChangedCallbacks, callback)
+	return function()
+		for i, cb in ipairs(dataChangedCallbacks) do
+			if cb == callback then
+				table.remove(dataChangedCallbacks, i)
+				break
+			end
+		end
+	end
+end
+
+local function syncToMacLibAndSave()
+	macLib.contextData = data
+	autoSave.Save()
+end
+
+--// Lấy khoảng cách Min/Max của 1 Dungeon x Target cụ thể
+function contextual.GetCombatDistances(dungeonName, targetKey)
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		local minVal = (type(entry.Min) == "number" and entry.Min > 0) and entry.Min or def.Min
+		local maxVal = (type(entry.Max) == "number" and entry.Max > 0) and entry.Max or def.Max
+		return minVal, maxVal
+	end
+
+	return def.Min, def.Max
+end
+
+--// Lấy khoảng cách Min/Max hiện tại dựa trên Dungeon và Target đang chiến đấu
+function contextual.GetActiveCombatDistances(target)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetCombatDistances(dungeon, targetKey)
+end
+
+--// Lấy thiết lập Boss Area (Enabled, Radius) của 1 Dungeon x Target cụ thể (chỉ Boss)
+function contextual.GetBossArea(dungeonName, targetKey)
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then
+		return false, 80.0
+	end
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Boss1
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		local enabled = entry.BossArea == true
+		local radius = (type(entry.BossAreaRadius) == "number" and entry.BossAreaRadius > 0) and entry.BossAreaRadius or (def.BossAreaRadius or 80.0)
+		return enabled, radius
+	end
+	return def.BossArea or false, def.BossAreaRadius or 80.0
+end
+
+--// Cập nhật Boss Area Enabled
+function contextual.SetBossAreaEnabled(dungeonName, targetKey, enabled)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].BossArea = enabled and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Cập nhật Boss Area Radius
+function contextual.SetBossAreaRadius(dungeonName, targetKey, radius)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if tKey == "Mob" then return end -- Boss Area chỉ áp dụng cho Boss
+	if type(radius) ~= "number" or radius <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].BossAreaRadius = radius
+
+	syncToMacLibAndSave()
+end
+
+--// Lấy thông tin Boss Area đang hoạt động trong trận chiến hiện tại: (enabled, radius, centerPosition)
+function contextual.GetActiveBossArea(target)
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	if not isBoss or targetKey == "Mob" then
+		return false, 0, nil
+	end
+
+	local enabled, radius = contextual.GetBossArea(dungeon, targetKey)
+	if not enabled then
+		return false, radius, nil
+	end
+
+	local center = shared.GetBossSpawnPosition and shared.GetBossSpawnPosition()
+	if not center and target and target.Root then
+		center = target.Root.Position
+		if shared.SetBossSpawnPosition then
+			shared.SetBossSpawnPosition(center)
+		end
+	end
+
+	return enabled, radius, center
+end
+
+--// Lấy trạng thái Disable Dodge của 1 Dungeon x Target cụ thể
+function contextual.GetDisableDodge(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.DisableDodge ~= nil then
+			return entry.DisableDodge == true
+		end
+	end
+
+	return def.DisableDodge or false
+end
+
+--// Cập nhật trạng thái Disable Dodge
+function contextual.SetDisableDodge(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].DisableDodge = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Lấy trạng thái Enable Hazard Scanner của 1 Dungeon x Target cụ thể
+function contextual.GetEnableHazardScanner(dungeonName, targetKey): boolean
+	local tKey = targetKey or "Mob"
+	local def = DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob
+
+	if type(dungeonName) == "string" and #dungeonName > 0 and data[dungeonName] and data[dungeonName][tKey] then
+		local entry = data[dungeonName][tKey]
+		if entry.EnableHazardScanner ~= nil then
+			return entry.EnableHazardScanner == true
+		end
+	end
+
+	return def.EnableHazardScanner ~= false
+end
+
+--// Cập nhật trạng thái Enable Hazard Scanner
+function contextual.SetEnableHazardScanner(dungeonName, targetKey, state)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+	data[dungeonName][tKey].EnableHazardScanner = state and true or false
+
+	syncToMacLibAndSave()
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có bị tắt né đòn (Disable Dodge) không
+function contextual.IsActiveDodgeDisabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	return contextual.GetDisableDodge(dungeon, targetKey)
+end
+
+--// Kiểm tra xem mục tiêu đang giao chiến hiện tại có được bật Hazard Scanner không
+function contextual.IsActiveHazardScannerEnabled(target): boolean
+	local dungeon = shared.GetCurrentDungeonName()
+	local targetKey = "Mob"
+
+	local isBoss = false
+	if shared.IsBossActive and shared.IsBossActive() then
+		isBoss = true
+		targetKey = shared.GetCombatTargetKey()
+	elseif target then
+		if target.Room and type(target.Room.Name) == "string" and string.find(string.lower(target.Room.Name), "boss") then
+			isBoss = true
+		elseif target.Model then
+			local mName = string.lower(target.Model.Name)
+			if string.find(mName, "boss") then
+				isBoss = true
+			else
+				local parent = target.Model.Parent
+				if parent and string.find(string.lower(parent.Name), "boss") then
+					isBoss = true
+				end
+			end
+		end
+		if isBoss then
+			local bIdx = shared.GetCurrentBossIndex and shared.GetCurrentBossIndex() or 1
+			targetKey = "Boss" .. tostring(math.clamp(bIdx, 1, 3))
+		end
+	end
+
+	-- Nếu tắt Dodge trên mục tiêu này thì cũng tự động tắt Hazard Scanner
+	if contextual.GetDisableDodge(dungeon, targetKey) then
+		return false
+	end
+
+	return contextual.GetEnableHazardScanner(dungeon, targetKey)
+end
+
+--// Cập nhật Min Combat Distance
+function contextual.SetMinCombatDistance(dungeonName, targetKey, minVal)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if type(minVal) ~= "number" or minVal <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+
+	local currentMax = data[dungeonName][tKey].Max or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Max
+	data[dungeonName][tKey].Min = minVal
+
+	if minVal > currentMax then
+		data[dungeonName][tKey].Max = minVal + 5.0
+	end
+
+	syncToMacLibAndSave()
+end
+
+--// Cập nhật Max Combat Distance
+function contextual.SetMaxCombatDistance(dungeonName, targetKey, maxVal)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if type(maxVal) ~= "number" or maxVal <= 0 then return end
+
+	data[dungeonName] = data[dungeonName] or {}
+	data[dungeonName][tKey] = data[dungeonName][tKey] or {}
+
+	local currentMin = data[dungeonName][tKey].Min or (DEFAULT_DISTANCES[tKey] or DEFAULT_DISTANCES.Mob).Min
+	data[dungeonName][tKey].Max = maxVal
+
+	if maxVal < currentMin then
+		data[dungeonName][tKey].Min = math.max(1.0, maxVal - 5.0)
+	end
+
+	syncToMacLibAndSave()
+end
+
+--// Reset một target trong dungeon về mặc định
+function contextual.ResetTarget(dungeonName, targetKey)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	local tKey = targetKey or "Mob"
+	if data[dungeonName] then
+		data[dungeonName][tKey] = nil
+		if next(data[dungeonName]) == nil then
+			data[dungeonName] = nil
+		end
+		syncToMacLibAndSave()
+	end
+end
+
+--// Reset toàn bộ các target của 1 dungeon về mặc định
+function contextual.ResetDungeon(dungeonName)
+	if not (type(dungeonName) == "string" and #dungeonName > 0) then return end
+	if data[dungeonName] then
+		data[dungeonName] = nil
+		syncToMacLibAndSave()
+	end
+end
+
+return contextual
+end function __DIST.k()-- HazardScannerV2 - Boss Telegraph & Animation Tracker
+-- Theo dõi Boss: Bắt Animation Track đang chạy (Cast animation),
+-- Tiến độ niệm chiêu (TimePosition / Length), Góc nhìn và Trạng thái chiến đấu.
+
+--// Imports
+
+local shared = __DIST.load('f')
+local contextual = __DIST.load('j')
+
+--// Table
+local bossWatcher = {}
+
+--// State
+local currentBossModel = nil
+local lastPlayingTracks = {}
+
+-- Tìm Model của Boss hiện tại trong tập enemy đang track
+local function findBossModel()
+	if not shared.GetTrackedEnemyData then return nil end
+	local enemies = shared.GetTrackedEnemyData()
+	for _, enemy in ipairs(enemies) do
+		if enemy and enemy.Model and enemy.Humanoid and enemy.Humanoid.Health > 0 then
+			local mName = enemy.Model.Name:lower()
+			local isBoss = string.find(mName, "boss") ~= nil
+				or (enemy.Room and string.find(enemy.Room.Name:lower(), "boss") ~= nil)
+				or (enemy.Model.Parent and string.find(enemy.Model.Parent.Name:lower(), "boss") ~= nil)
+			if isBoss or (shared.IsBossActive and shared.IsBossActive()) then
+				return enemy.Model, enemy.Humanoid, enemy.Root
+			end
+		end
+	end
+	return nil, nil, nil
+end
+
+-- Trích xuất danh sách Animation Tracks đang phát trên Boss
+local function getBossAnimationTracks(humanoid)
+	local activeTracks = {}
+	if not humanoid then return activeTracks end
+
+	local animator = humanoid:FindFirstChildOfClass("Animator") or humanoid
+	local tracks = {}
+	pcall(function()
+		tracks = animator:GetPlayingAnimationTracks()
+	end)
+
+	for _, track in ipairs(tracks) do
+		if track and track.IsPlaying and track.WeightCurrent > 0.1 then
+			local animId = ""
+			if track.Animation then
+				animId = track.Animation.AnimationId or ""
+			end
+			local length = math.max(0.1, track.Length)
+			local progress = math.clamp(track.TimePosition / length, 0, 1)
+
+			table.insert(activeTracks, {
+				name = track.Name or "Anim",
+				animId = animId,
+				speed = track.Speed,
+				length = length,
+				timePos = track.TimePosition,
+				progress = progress,
+				weight = track.WeightCurrent,
+			})
+		end
+	end
+
+	return activeTracks
+end
+
+-- Trích xuất góc quay Yaw (degrees)
+local function getYawDegrees(lookVector)
+	if not lookVector or lookVector.Magnitude < 0.001 then return 0 end
+	return math.deg(math.atan2(lookVector.X, -lookVector.Z))
+end
+
+-- Lấy dữ liệu Boss Telegraph toàn diện cho Telemetry
+function bossWatcher.GetBossTelegraphData()
+	local model, humanoid, root = findBossModel()
+	local isBossActive = (shared.IsBossActive and shared.IsBossActive()) or (model ~= nil)
+	local bossIdx = (shared.GetCurrentBossIndex and shared.GetCurrentBossIndex()) or 0
+	local isBossAreaActive, bossAreaRadius, bossAreaCenter = contextual.GetActiveBossArea()
+
+	if not model or not root or not humanoid then
+		return {
+			active = false,
+			bossIndex = bossIdx,
+			name = "None",
+			x = 0, y = 0, z = 0,
+			health = 0, maxHealth = 100, healthPercent = 100,
+			yaw = 0,
+			isCasting = false,
+			activeAnimations = {},
+			arenaActive = isBossAreaActive or false,
+			arenaCenterX = (bossAreaCenter and bossAreaCenter.X) or 0,
+			arenaCenterZ = (bossAreaCenter and bossAreaCenter.Z) or 0,
+			arenaRadius = bossAreaRadius or 80.0,
+		}
+	end
+
+	local animTracks = getBossAnimationTracks(humanoid)
+	local isCasting = #animTracks > 0
+	local primaryAnim = animTracks[1] or nil
+
+	return {
+		active = true,
+		bossIndex = bossIdx,
+		name = model.Name,
+		x = root.Position.X,
+		y = root.Position.Y,
+		z = root.Position.Z,
+		health = math.max(0, humanoid.Health),
+		maxHealth = math.max(1, humanoid.MaxHealth),
+		healthPercent = math.clamp((humanoid.Health / humanoid.MaxHealth) * 100, 0, 100),
+		yaw = getYawDegrees(root.CFrame.LookVector),
+		isCasting = isCasting,
+		activeAnimations = animTracks,
+		primaryAnimation = primaryAnim,
+		arenaActive = isBossAreaActive or false,
+		arenaCenterX = (bossAreaCenter and bossAreaCenter.X) or 0,
+		arenaCenterZ = (bossAreaCenter and bossAreaCenter.Z) or 0,
+		arenaRadius = bossAreaRadius or 80.0,
+	}
+end
+
+return bossWatcher
+end function __DIST.l()-- HazardScannerV2 - Bonus Boss Memory Game (Simon Says) Watcher
+-- Tự động theo dõi, ghi nhớ chuỗi gợi ý (Left/Right) và hiển thị vùng an toàn thời gian thực.
+
+--// Imports
+
+local Workspace = game:GetService("Workspace")
+local filter = __DIST.load('c')
+
+--// Table
+local memoryWatcher = {}
+
+--// State
+local isModelActive = false
+local recordedSequence = {} -- Array of strings: "LEFT" or "RIGHT"
+local currentStep = 0
+local phase = "IDLE" -- "IDLE" | "HINT" | "EXECUTION"
+local lastActiveSide = nil
+local lastPulseTime = 0
+local modelSpawnTime = 0
+local currentAttackSide = nil
+local currentSafeSide = nil
+
+-- Debounce timer giữa các nhịp flash
+local FLASH_DEBOUNCE_SEC = 0.25
+
+-- Helper kiểm tra part có đang active không
+local function isPartActive(part)
+	if not part or not part:IsA("BasePart") or not part:IsDescendantOf(Workspace) then
+		return false
+	end
+	if part.Transparency <= 0.85 then
+		return true
+	end
+	local emitter = part:FindFirstChildWhichIsA("ParticleEmitter")
+	if emitter and emitter.Enabled then
+		return true
+	end
+	return false
+end
+
+-- Tìm Model bonusBossMemoryModel trong Workspace
+local function findMemoryModel()
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if filter.IsMemoryModel(child) and child:IsA("Model") then
+			return child
+		end
+	end
+	return nil
+end
+
+-- Reset toàn bộ trạng thái
+function memoryWatcher.Reset()
+	isModelActive = false
+	table.clear(recordedSequence)
+	currentStep = 0
+	phase = "IDLE"
+	lastActiveSide = nil
+	lastPulseTime = 0
+	modelSpawnTime = 0
+	currentAttackSide = nil
+	currentSafeSide = nil
+end
+
+-- Cập nhật trạng thái theo từng nhịp Heartbeat
+function memoryWatcher.Update(now)
+	local model = findMemoryModel()
+	if not model then
+		if isModelActive then
+			memoryWatcher.Reset()
+		end
+		return
+	end
+
+	if not isModelActive then
+		isModelActive = true
+		modelSpawnTime = now
+		table.clear(recordedSequence)
+		currentStep = 0
+		phase = "HINT"
+	end
+
+	-- Lấy các part đại diện cho 2 bên
+	local leftPrecast = model:FindFirstChild("leftPrecast")
+	local rightPrecast = model:FindFirstChild("rightPrecast")
+	local leftHitbox = model:FindFirstChild("leftHitbox")
+	local rightHitbox = model:FindFirstChild("rightHitbox")
+	local leftGood = model:FindFirstChild("leftPrecastGood")
+	local rightGood = model:FindFirstChild("rightPrecastGood")
+
+	local isLeftPrecastActive = isPartActive(leftPrecast) or isPartActive(leftGood)
+	local isRightPrecastActive = isPartActive(rightPrecast) or isPartActive(rightGood)
+	local isLeftHitboxActive = isPartActive(leftHitbox)
+	local isRightHitboxActive = isPartActive(rightHitbox)
+
+	-- 1. Kiểm tra xem có đang trong Giai đoạn Xả đòn thật (Execution Phase) không
+	local isHitboxActive = isLeftHitboxActive or isRightHitboxActive
+
+	if isHitboxActive and phase ~= "EXECUTION" then
+		phase = "EXECUTION"
+		currentStep = 1
+		lastActiveSide = nil
+		lastPulseTime = 0
+	end
+
+	if phase == "HINT" then
+		-- Giai đoạn 1: Ghi nhận chuỗi Flash gợi ý (Safe Side sequence)
+		local activeSide = nil
+		if isLeftPrecastActive and not isRightPrecastActive then
+			activeSide = "LEFT"
+		elseif isRightPrecastActive and not isLeftPrecastActive then
+			activeSide = "RIGHT"
+		end
+
+		if activeSide and activeSide ~= lastActiveSide and (now - lastPulseTime > FLASH_DEBOUNCE_SEC) then
+			table.insert(recordedSequence, activeSide)
+			lastActiveSide = activeSide
+			lastPulseTime = now
+		elseif not activeSide and lastActiveSide and (now - lastPulseTime > FLASH_DEBOUNCE_SEC) then
+			-- Kết thúc nhịp flash hiện tại
+			lastActiveSide = nil
+		end
+	elseif phase == "EXECUTION" then
+		-- Giai đoạn 2: Đang xả đòn thật theo chuỗi
+		local activeAttack = nil
+		if isLeftHitboxActive then
+			activeAttack = "LEFT"
+		elseif isRightHitboxActive then
+			activeAttack = "RIGHT"
+		end
+
+		currentAttackSide = activeAttack
+
+		-- Tính toán Safe Side:
+		-- Ưu tiên 1: Dựa trên Hitbox thực tế đang xuất hiện (Ngược lại với Hitbox)
+		-- Ưu tiên 2 (Pre-emptive): Dựa trên chuỗi đã ghi nhớ ở Phase 1 theo currentStep
+		if activeAttack == "LEFT" then
+			currentSafeSide = "RIGHT"
+		elseif activeAttack == "RIGHT" then
+			currentSafeSide = "LEFT"
+		else
+			-- Khi đòn đánh chưa chạm hoặc giữa 2 nhịp đòn: dự đoán trước vị trí an toàn từ bộ nhớ
+			local stepIdx = math.clamp(currentStep, 1, math.max(1, #recordedSequence))
+			currentSafeSide = recordedSequence[stepIdx] or nil
+		end
+
+		-- Đếm bước hiện tại dựa trên số nhịp đòn hitbox xuất hiện
+		if activeAttack and activeAttack ~= lastActiveSide and (now - lastPulseTime > FLASH_DEBOUNCE_SEC) then
+			lastActiveSide = activeAttack
+			lastPulseTime = now
+		elseif not activeAttack and lastActiveSide and (now - lastPulseTime > FLASH_DEBOUNCE_SEC) then
+			-- Vừa kết thúc 1 nhịp đánh -> Chuyển sang bước kế tiếp
+			currentStep = math.min(#recordedSequence, currentStep + 1)
+			lastActiveSide = nil
+		end
+	end
+end
+
+-- Trích xuất dữ liệu Telemetry gửi lên Web Live Radar
+function memoryWatcher.GetMemoryTelemetry()
+	if not isModelActive and #recordedSequence == 0 then
+		return nil
+	end
+
+	local hintText = "Waiting..."
+	if phase == "HINT" then
+		hintText = string.format("🧠 Phase 1: Recorded %d steps", #recordedSequence)
+	elseif phase == "EXECUTION" then
+		local step = math.clamp(currentStep, 1, math.max(1, #recordedSequence))
+		local total = math.max(1, #recordedSequence)
+		if currentSafeSide then
+			local expectedDanger = (currentSafeSide == "LEFT") and "RIGHT" or "LEFT"
+			hintText = string.format("🟢 SAFE: %s | 🔴 DANGER: %s (Step %d/%d)", currentSafeSide, expectedDanger, step, total)
+		else
+			hintText = string.format("⚡ Preparing Strike (Step %d/%d)", step, total)
+		end
+	end
+
+	return {
+		active = isModelActive,
+		phase = phase,
+		sequence = recordedSequence,
+		currentStep = math.clamp(currentStep, 1, math.max(1, #recordedSequence)),
+		totalSteps = #recordedSequence,
+		currentAttackSide = currentAttackSide,
+		safeSide = currentSafeSide,
+		hintText = hintText,
+	}
+end
+
+return memoryWatcher
+end function __DIST.m()-- HazardScannerV2 - In-Game Ground Visualizer V2
+-- Trực quan hóa các vùng nguy hiểm (Ground Shadows) của HazardScannerV2 trực tiếp trong Roblox 3D Viewport.
+-- Khóa 100% phẳng sát mặt sàn (2D Ground Shadows), triệt tiêu hoàn toàn rung lắc và xoay tròn 3D.
+
+--// Imports
+
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local services = __DIST.load('a')
+
+--// Table
+local visualizerV2 = {}
+
+--// State
+local enabled = false
+local activeVisuals = {} -- [BasePart] = { adornments = {}, part = part, lastFloorY = number }
+local heartbeatConn = nil
+local visualFolder = nil
+
+--// Constants
+local GROUND_THICKNESS = 0.22 -- studs
+local FADE_THRESHOLD = 0.85
+local DEFAULT_TRANSPARENCY = 0.48
+local COLOR_YELLOW = Color3.fromRGB(255, 220, 20)
+local COLOR_SAFE_GREEN = Color3.fromRGB(34, 255, 136)
+
+-- Xác định màu sắc hiển thị (Mặc định màu vàng sáng nổi bật cho toàn bộ hazard)
+local function getVisualColor(shape)
+	if shape and shape.color == "#22ff88" then
+		return COLOR_SAFE_GREEN
+	end
+	return COLOR_YELLOW
+end
+
+-- Lấy điểm Y mặt sàn theo chân của Player (đơn giản, ổn định)
+local function getFloorY(pos)
+	local lp = services.player or Players.LocalPlayer
+	local char = lp and lp.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+	if root then
+		local halfY = (root.Size and root.Size.Y > 0) and (root.Size.Y / 2) or 1.0
+		local hip = (hum and hum.HipHeight and hum.HipHeight > 0) and hum.HipHeight or 1.8
+		return root.Position.Y - (hip + halfY) + 0.10
+	end
+
+	return (pos and (pos.Y - 1.5) or 0) + 0.10
+end
+
+-- Lấy Folder chứa Adornment
+local function getVisualFolder()
+	if visualFolder and visualFolder.Parent then
+		return visualFolder
+	end
+	local existing = Workspace.Terrain:FindFirstChild("HazardVisualizerV2")
+	if existing then
+		visualFolder = existing
+		return visualFolder
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "HazardVisualizerV2"
+	folder.Parent = Workspace.Terrain
+	visualFolder = folder
+	return folder
+end
+
+-- Xóa visual của một Hazard Part
+function visualizerV2.Detach(part)
+	if not part then return end
+	local record = activeVisuals[part]
+	if not record then return end
+
+	if record.adornments then
+		for _, ad in ipairs(record.adornments) do
+			pcall(function() ad:Destroy() end)
+		end
+		table.clear(record.adornments)
+	end
+
+	activeVisuals[part] = nil
+end
+
+-- Xóa toàn bộ visual đang có
+function visualizerV2.ClearAll()
+	for part, _ in pairs(activeVisuals) do
+		visualizerV2.Detach(part)
+	end
+	table.clear(activeVisuals)
+	if visualFolder then
+		pcall(function() visualFolder:ClearAllChildren() end)
+	end
+end
+
+-- Vẽ hoặc cập nhật Visual Ground Shadow cho 1 Hazard Part
+function visualizerV2.Update(part, data)
+	if not enabled or not part or not part.Parent or not data then return end
+	if part.Transparency > FADE_THRESHOLD then
+		visualizerV2.Detach(part)
+		return
+	end
+
+	local shape = data.shape
+	if not shape then return end
+
+	local pos = Vector3.new(shape.x, shape.y, shape.z)
+	local floorY = getFloorY(pos)
+	local color = getVisualColor(shape)
+	local folder = getVisualFolder()
+
+	local record = activeVisuals[part]
+	if not record then
+		record = {
+			part = part,
+			adornments = {},
+			shapeType = shape.shape,
+			lastFloorY = floorY,
+		}
+		activeVisuals[part] = record
+	else
+		record.lastFloorY = floorY
+		if record.shapeType ~= shape.shape then
+			for _, ad in ipairs(record.adornments) do
+				pcall(function() ad:Destroy() end)
+			end
+			table.clear(record.adornments)
+			record.shapeType = shape.shape
+		end
+	end
+
+	-- 1. HÌNH TRÒN (CIRCLE AOE)
+	if shape.shape == "circle" then
+		local cyl = record.adornments[1]
+		if not cyl or not cyl.Parent or not cyl:IsA("CylinderHandleAdornment") then
+			if cyl then
+				pcall(function() cyl:Destroy() end)
+			end
+			cyl = Instance.new("CylinderHandleAdornment")
+			cyl.Name = "GroundCircle_" .. part.Name
+			cyl.Adornee = Workspace.Terrain
+			cyl.AlwaysOnTop = true
+			cyl.ZIndex = 2
+			cyl.Transparency = DEFAULT_TRANSPARENCY
+			cyl.Parent = folder
+			record.adornments[1] = cyl
+		end
+
+		cyl.Radius = shape.radius or 5
+		cyl.Height = GROUND_THICKNESS
+		cyl.Color3 = color
+		cyl.CFrame = CFrame.new(shape.x, floorY, shape.z) * CFrame.Angles(math.rad(90), 0, 0)
+
+	-- 2. HỘP CHỮ NHẬT KHÓA MẶT SÀN (PLANAR OBB BOX - Moving Beam, Missiles, Static Boxes)
+	elseif shape.shape == "box" then
+		local box = record.adornments[1]
+		if not box or not box.Parent or not box:IsA("BoxHandleAdornment") then
+			if box then
+				pcall(function() box:Destroy() end)
+			end
+			box = Instance.new("BoxHandleAdornment")
+			box.Name = "GroundBox_" .. part.Name
+			box.Adornee = Workspace.Terrain
+			box.AlwaysOnTop = true
+			box.ZIndex = 2
+			box.Transparency = DEFAULT_TRANSPARENCY
+			box.Parent = folder
+			record.adornments[1] = box
+		end
+
+		local hw = shape.halfWidth or shape.halfX or 2
+		local hl = shape.halfLength or shape.halfZ or 2
+		local fwd = shape.fwd2D or Vector3.new(0, 0, -1)
+		if fwd.Magnitude < 0.001 then
+			fwd = Vector3.new(0, 0, -1)
+		else
+			fwd = fwd.Unit
+		end
+		local right = shape.right2D
+		if not right or right.Magnitude < 0.001 then
+			right = Vector3.new(-fwd.Z, 0, fwd.X)
+		else
+			right = right.Unit
+		end
+
+		box.Size = Vector3.new(hw * 2, GROUND_THICKNESS, hl * 2)
+		box.Color3 = color
+		local ok, cf = pcall(function()
+			return CFrame.fromMatrix(Vector3.new(shape.x, floorY, shape.z), right, Vector3.yAxis, -fwd)
+		end)
+		if ok and cf then
+			box.CFrame = cf
+		else
+			box.CFrame = CFrame.new(shape.x, floorY, shape.z)
+		end
+
+	-- 3. 7 VÒNG BÁN NGUYỆT CỦA BOSS 3 (COMPOUND MULTI-RINGS)
+	elseif shape.shape == "compound_multiring" then
+		-- Lõi tâm (Core Circle)
+		local coreCyl = record.adornments[1]
+		if not coreCyl or not coreCyl.Parent or not coreCyl:IsA("CylinderHandleAdornment") then
+			if coreCyl then
+				pcall(function() coreCyl:Destroy() end)
+			end
+			coreCyl = Instance.new("CylinderHandleAdornment")
+			coreCyl.Name = "MultiRingCore"
+			coreCyl.Adornee = Workspace.Terrain
+			coreCyl.AlwaysOnTop = true
+			coreCyl.ZIndex = 3
+			coreCyl.Transparency = 0.45
+			coreCyl.Color3 = Color3.fromRGB(255, 235, 60)
+			coreCyl.Parent = folder
+			record.adornments[1] = coreCyl
+		end
+		coreCyl.Radius = shape.coreRadius or 12.5
+		coreCyl.Height = GROUND_THICKNESS
+		coreCyl.CFrame = CFrame.new(shape.x, floorY, shape.z) * CFrame.Angles(math.rad(90), 0, 0)
+
+		-- 7 Vành bán nguyệt (Mỗi vành tạo 5 cung cong tiếp tuyến BoxHandleAdornment)
+		local rings = shape.rings or {}
+		local adIndex = 2
+		local segmentsPerRing = 5
+
+		for _, ring in ipairs(rings) do
+			local rIn = ring.rIn or 12.5
+			local rOut = ring.rOut or 25.0
+			local rMid = (rIn + rOut) / 2
+			local bandThick = rOut - rIn
+			local ringYaw = ring.yaw or 0
+
+			local angleSpan = math.pi -- 180 độ
+			local angleStep = angleSpan / segmentsPerRing
+			local startAngle = math.rad(ringYaw - 90)
+			local segLen = rMid * angleStep * 1.08 -- Hơi chồng mép nhẹ để khép kín vòng cung
+
+			for s = 1, segmentsPerRing do
+				local a = startAngle + (s - 0.5) * angleStep
+				local segX = shape.x + math.sin(a) * rMid
+				local segZ = shape.z - math.cos(a) * rMid
+				local tangent = Vector3.new(math.cos(a), 0, math.sin(a))
+				local normal = Vector3.new(math.sin(a), 0, -math.cos(a))
+
+				local segBox = record.adornments[adIndex]
+				if not segBox or not segBox.Parent or not segBox:IsA("BoxHandleAdornment") then
+					if segBox then
+						pcall(function() segBox:Destroy() end)
+					end
+					segBox = Instance.new("BoxHandleAdornment")
+					segBox.Name = "RingArcSeg"
+					segBox.Adornee = Workspace.Terrain
+					segBox.AlwaysOnTop = true
+					segBox.ZIndex = 2
+					segBox.Transparency = 0.55
+					segBox.Color3 = COLOR_YELLOW
+					segBox.Parent = folder
+					record.adornments[adIndex] = segBox
+				end
+
+				segBox.Size = Vector3.new(bandThick, GROUND_THICKNESS, segLen)
+				local ok, cf = pcall(function()
+					return CFrame.fromMatrix(Vector3.new(segX, floorY, segZ), normal, Vector3.yAxis, -tangent)
+				end)
+				if ok and cf then
+					segBox.CFrame = cf
+				else
+					segBox.CFrame = CFrame.new(segX, floorY, segZ)
+				end
+				adIndex += 1
+			end
+		end
+
+		-- Xóa các adornment thừa nếu số lượng giảm
+		for i = adIndex, #record.adornments do
+			if record.adornments[i] then
+				pcall(function() record.adornments[i]:Destroy() end)
+				record.adornments[i] = nil
+			end
+		end
+	end
+end
+
+-- Vòng lặp cập nhật liên tục mỗi frame
+local function onHeartbeat()
+	if not enabled then return end
+
+	local deadParts = {}
+	for part, record in pairs(activeVisuals) do
+		if not part or not part:IsDescendantOf(Workspace) or part.Transparency > FADE_THRESHOLD then
+			table.insert(deadParts, part)
+		end
+	end
+
+	for _, dead in ipairs(deadParts) do
+		visualizerV2.Detach(dead)
+	end
+end
+
+-- Bật / tắt Ground Visualizer V2
+function visualizerV2.SetEnabled(state)
+	if enabled == state then return end
+	enabled = state
+
+	if enabled then
+		visualizerV2.ClearAll()
+		if not heartbeatConn then
+			heartbeatConn = RunService.Heartbeat:Connect(onHeartbeat)
+		end
+	else
+		if heartbeatConn then
+			heartbeatConn:Disconnect()
+			heartbeatConn = nil
+		end
+		visualizerV2.ClearAll()
+	end
+end
+
+function visualizerV2.IsEnabled()
+	return enabled
+end
+
+return visualizerV2
+end end-- HazardScannerV2 - Core Hazard Detection & Telemetry Manager
+-- Quy tắc:
+-- 1. CHỈ bắt các đối tượng Level 1 trong Workspace qua Workspace.ChildAdded/ChildRemoved.
+-- 2. LOẠI TRỪ 100% các Level 1 Folder (workspace.dungeon, workspace.drops, effects...).
+-- 3. Mặc định: Theo dõi các BasePart mang Material = Enum.Material.Neon.
+-- 4. NGOẠI LỆ: largeIceSpikes, mediumIceSpikes, smallIceSpikes (Material Plastic).
+
+--// Imports
+
+local Workspace = game:GetService("Workspace")
+local services = __DIST.load('a')
+local lifecycle = __DIST.load('b')
+local filter = __DIST.load('c')
+local analyzer = __DIST.load('d')
+local motion = __DIST.load('e')
+local bossWatcher = __DIST.load('k')
+local memoryWatcher = __DIST.load('l')
+local visualizerV2 = __DIST.load('m')
+
+--// Table
+local hazardScannerV2 = {}
+
+--// State
+local enabled = false
+local activeHazards = {} -- [BasePart] = { part, level1Parent, name, spawnTime, shape, motion }
+local childConnections = {} -- [Instance] = { conn1, conn2 }
+local connections = {}
+local heartbeatConn = nil
+
+-- Đăng ký 1 Hazard Part vào tập theo dõi
+local function registerHazardPart(part, level1Child)
+	if not part or not part:IsA("BasePart") then return end
+	if not filter.IsHazardPart(part, level1Child) then return end
+	if activeHazards[part] then return end
+
+	local rootName = level1Child and level1Child.Name or (part.Parent and part.Parent.Name) or part.Name
+	local isMultiRing = filter.IsMultiRing(rootName) 
+		or filter.IsMultiRing(part) 
+		or (part.Parent and filter.IsMultiRing(part.Parent.Name))
+		or (level1Child and filter.IsMultiRing(level1Child))
+
+	-- Đảm bảo mỗi đối tượng MultiRing chỉ có DUY NHẤT 1 Hazard trong activeHazards
+	if isMultiRing then
+		for p, data in pairs(activeHazards) do
+			if data.level1Parent == level1Child or (level1Child and p:IsDescendantOf(level1Child)) or p == part then
+				return
+			end
+		end
+	end
+
+	local shapeData = analyzer.AnalyzeHazardPart(part)
+	if not shapeData then return end
+
+	local now = os.clock()
+	local pos = Vector3.new(shapeData.x, shapeData.y, shapeData.z)
+	local motionRec = motion.UpdateRecord(part, pos, shapeData.yaw or 0)
+
+	local displayName = (part.Name == rootName) and rootName or (rootName .. "/" .. part.Name)
+	if isMultiRing then
+		displayName = rootName
+	elseif filter.IsSweepingFlames(rootName) and part.Parent and part.Parent ~= level1Child then
+		displayName = rootName .. "/" .. part.Parent.Name
+	elseif filter.IsMemoryModel(rootName) then
+		displayName = rootName .. "/" .. part.Name
+	end
+
+	local hazardData = {
+		part = part,
+		level1Parent = level1Child or part,
+		name = displayName,
+		spawnTime = now,
+		shape = shapeData,
+		motion = motionRec,
+	}
+	activeHazards[part] = hazardData
+
+	if visualizerV2.IsEnabled() then
+		visualizerV2.Update(part, hazardData)
+	end
+end
+
+-- Hủy đăng ký 1 Hazard Part
+local function unregisterHazardPart(part)
+	if activeHazards[part] then
+		visualizerV2.Detach(part)
+		activeHazards[part] = nil
+		motion.RemoveRecord(part)
+	end
+end
+
+-- Xử lý khi một Level 1 Child được thêm vào Workspace
+local function onWorkspaceChildAdded(child)
+	if not filter.IsValidLevel1WorkspaceChild(child) then
+		return
+	end
+
+	-- Tìm tất cả các Hazard Parts đang có trong đối tượng Level 1 này
+	local hazardParts = filter.FindHazardPartsInLevel1Child(child)
+	for _, p in ipairs(hazardParts) do
+		registerHazardPart(p, child)
+	end
+
+	-- Nếu là Model, lắng nghe thêm DescendantAdded để bắt kịp các Part xuất hiện trễ
+	if child:IsA("Model") then
+		childConnections[child] = child.DescendantAdded:Connect(function(desc)
+			if desc:IsA("BasePart") then
+				if filter.IsMultiRing(child) then
+					local alreadyRegistered = false
+					for p, data in pairs(activeHazards) do
+						if data.level1Parent == child or p:IsDescendantOf(child) or p == child then
+							alreadyRegistered = true
+							break
+						end
+					end
+					if not alreadyRegistered and filter.IsHazardPart(desc, child) then
+						registerHazardPart(desc, child)
+					end
+				elseif filter.IsHazardPart(desc, child) then
+					registerHazardPart(desc, child)
+				end
+			end
+		end)
+	end
+end
+
+-- Xử lý khi một Level 1 Child bị xóa khỏi Workspace
+local function onWorkspaceChildRemoved(child)
+	if childConnections[child] then
+		childConnections[child]:Disconnect()
+		childConnections[child] = nil
+	end
+
+	local toRemove = {}
+	for part, data in pairs(activeHazards) do
+		if data.level1Parent == child or part == child or (child:IsA("Instance") and part:IsDescendantOf(child)) then
+			table.insert(toRemove, part)
+		end
+	end
+
+	for _, p in ipairs(toRemove) do
+		unregisterHazardPart(p)
+	end
+end
+
+-- Quét toàn bộ các đối tượng Level 1 đang có trong Workspace
+local function scanExistingWorkspaceChildren()
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if filter.IsValidLevel1WorkspaceChild(child) then
+			local parts = filter.FindHazardPartsInLevel1Child(child)
+			for _, p in ipairs(parts) do
+				registerHazardPart(p, child)
+			end
+		end
+	end
+end
+
+-- Cập nhật động học thời gian thực & Dọn dẹp hazard đã biến mất/hết hạn
+local function onHeartbeat()
+	if not enabled then return end
+
+	local deadList = {}
+	local now = os.clock()
+
+	-- Cập nhật bộ theo dõi Memory Game của Bonus Boss
+	memoryWatcher.Update(now)
+
+	for part, data in pairs(activeHazards) do
+		-- 1. Kiểm tra tồn tại trong Workspace Hierarchy
+		if not part or not part:IsDescendantOf(Workspace) then
+			table.insert(deadList, part)
+			continue
+		end
+
+		if data.level1Parent and not data.level1Parent:IsDescendantOf(Workspace) then
+			table.insert(deadList, part)
+			continue
+		end
+
+		local isMultiRing = filter.IsMultiRing(data.name) 
+			or filter.IsMultiRing(part) 
+			or (data.level1Parent and filter.IsMultiRing(data.level1Parent))
+
+		local isSweepingFlames = filter.IsSweepingFlames(data.name)
+			or filter.IsSweepingFlames(part)
+			or (data.level1Parent and filter.IsSweepingFlames(data.level1Parent))
+
+		local isMemoryModel = filter.IsMemoryModel(data.name)
+			or filter.IsMemoryModel(part)
+			or (data.level1Parent and filter.IsMemoryModel(data.level1Parent))
+
+		local isBigSpike = filter.IsFirstBossBigSpike(data.name)
+			or filter.IsFirstBossBigSpike(part)
+			or (data.level1Parent and filter.IsFirstBossBigSpike(data.level1Parent))
+
+		-- 2. Kiểm tra sống/chết cho MultiRing
+		if isMultiRing then
+			local age = now - data.spawnTime
+			-- MultiRing trong Dungeon Quest từ lúc xuất hiện đến lúc nổ/hit chỉ kéo dài tối đa 4.5s
+			if age > 4.5 then
+				table.insert(deadList, part)
+				continue
+			end
+
+			-- Kiểm tra Model có còn part nào đang hiển thị không (khi hit xong game sẽ làm mờ/xóa ring)
+			local model = (data.level1Parent and data.level1Parent:IsA("Model") and data.level1Parent) 
+				or (part.Parent and part.Parent:IsA("Model") and part.Parent)
+
+			if model then
+				local hasVisiblePart = false
+				for _, desc in ipairs(model:GetDescendants()) do
+					if desc:IsA("BasePart") and desc.Name ~= "PrimaryPart" then
+						if desc.Transparency <= 0.85 then
+							hasVisiblePart = true
+							break
+						end
+					end
+				end
+				if not hasVisiblePart then
+					table.insert(deadList, part)
+					continue
+				end
+			elseif part.Transparency > 0.85 then
+				table.insert(deadList, part)
+				continue
+			end
+		elseif isSweepingFlames then
+			-- Kiểm tra xem tia precast này còn đang phun lửa (active) hay không
+			local isStillActive = false
+			if part.Transparency <= 0.85 then
+				isStillActive = true
+			else
+				local emitter = part:FindFirstChildWhichIsA("ParticleEmitter")
+				if emitter and emitter.Enabled then
+					isStillActive = true
+				end
+			end
+
+			local age = now - data.spawnTime
+			-- Nếu đã tắt lửa hoặc đã qua thời gian của 1 tia (2.0s) -> Hủy đăng ký tia này
+			if not isStillActive or age > 2.0 then
+				table.insert(deadList, part)
+				continue
+			end
+		elseif isMemoryModel then
+			-- Kiểm tra part của bonusBossMemoryModel còn active không
+			local isStillActive = false
+			if part.Transparency <= 0.85 then
+				isStillActive = true
+			else
+				local emitter = part:FindFirstChildWhichIsA("ParticleEmitter")
+				if emitter and emitter.Enabled then
+					isStillActive = true
+				end
+			end
+
+			local age = now - data.spawnTime
+			if not isStillActive or age > 2.5 then
+				table.insert(deadList, part)
+				continue
+			end
+		elseif isBigSpike then
+			-- Kiểm tra firstBossBigSpike còn active hay không (precast qua beamPart hoặc đang bay)
+			local isStillActive = false
+			if part.Transparency <= 0.85 then
+				isStillActive = true
+			else
+				local beamPart = Workspace:FindFirstChild("firstBossBeamPart")
+				if beamPart then
+					isStillActive = true
+				end
+			end
+
+			local age = now - data.spawnTime
+			if not isStillActive or age > 5.0 then
+				table.insert(deadList, part)
+				continue
+			end
+		else
+			-- 3. Hazard thông thường: Bỏ nếu độ trong suốt > 0.85
+			if part.Transparency > 0.85 then
+				table.insert(deadList, part)
+				continue
+			end
+		end
+
+		-- 4. Cập nhật phân tích hình học & chuyển động
+		local existingRec = motion.GetRecord(part)
+		local shapeData = analyzer.AnalyzeHazardPart(part, existingRec)
+		if shapeData then
+			data.shape = shapeData
+			local pos = Vector3.new(shapeData.x, shapeData.y, shapeData.z)
+			data.motion = motion.UpdateRecord(part, pos, shapeData.yaw or 0)
+			if visualizerV2.IsEnabled() then
+				visualizerV2.Update(part, data)
+			end
+		else
+			table.insert(deadList, part)
+		end
+	end
+
+	for _, dead in ipairs(deadList) do
+		unregisterHazardPart(dead)
+	end
+
+	-- 5. Quét bổ sung các tia mới kích hoạt theo tuần tự bên trong các Model Sweeping Flames & Memory Model
+	for _, child in ipairs(Workspace:GetChildren()) do
+		if filter.IsSweepingFlames(child) and child:IsA("Model") then
+			for _, desc in ipairs(child:GetDescendants()) do
+				if desc:IsA("BasePart") and desc.Name:lower() == "precast" and not activeHazards[desc] then
+					if filter.IsHazardPart(desc, child) then
+						registerHazardPart(desc, child)
+					end
+				end
+			end
+		elseif filter.IsMemoryModel(child) and child:IsA("Model") then
+			for _, desc in ipairs(child:GetDescendants()) do
+				if desc:IsA("BasePart") and not activeHazards[desc] then
+					if filter.IsHazardPart(desc, child) then
+						registerHazardPart(desc, child)
+					end
+				end
+			end
+		elseif filter.IsFirstBossBigSpike(child) then
+			local parts = filter.FindHazardPartsInLevel1Child(child)
+			for _, p in ipairs(parts) do
+				if not activeHazards[p] and filter.IsHazardPart(p, child) then
+					registerHazardPart(p, child)
+				end
+			end
+		end
+	end
+end
+
+-- Khởi động bộ quét V2
+function hazardScannerV2.StartScan()
+	if enabled then return end
+	enabled = true
+
+	table.clear(activeHazards)
+	table.clear(childConnections)
+	motion.ClearAll()
+	memoryWatcher.Reset()
+
+	-- CHỈ lắng nghe sự kiện Level 1 trên Workspace
+	table.insert(connections, Workspace.ChildAdded:Connect(onWorkspaceChildAdded))
+	table.insert(connections, Workspace.ChildRemoved:Connect(onWorkspaceChildRemoved))
+
+	local RunService = services.RunService or game:GetService("RunService")
+	heartbeatConn = RunService.Heartbeat:Connect(onHeartbeat)
+
+	scanExistingWorkspaceChildren()
+end
+
+-- Dừng bộ quét V2
+function hazardScannerV2.StopScan()
+	if not enabled then return end
+	enabled = false
+
+	if heartbeatConn then
+		heartbeatConn:Disconnect()
+		heartbeatConn = nil
+	end
+
+	for _, conn in ipairs(connections) do
+		if conn and conn.Disconnect then
+			conn:Disconnect()
+		end
+	end
+	table.clear(connections)
+
+	for _, conn in pairs(childConnections) do
+		if conn and conn.Disconnect then
+			conn:Disconnect()
+		end
+	end
+	table.clear(childConnections)
+
+	visualizerV2.ClearAll()
+	table.clear(activeHazards)
+	motion.ClearAll()
+	memoryWatcher.Reset()
+end
+
+function hazardScannerV2.IsEnabled()
+	return enabled
+end
+
+function hazardScannerV2.SetVisualizerEnabled(state)
+	if state then
+		hazardScannerV2.StartScan()
+		visualizerV2.SetEnabled(true)
+		for part, data in pairs(activeHazards) do
+			visualizerV2.Update(part, data)
+		end
+	else
+		visualizerV2.SetEnabled(false)
+	end
+end
+
+function hazardScannerV2.IsVisualizerEnabled()
+	return visualizerV2.IsEnabled()
+end
+
+-- Trích xuất Telemetry chuẩn hóa gửi qua WebSocket
+function hazardScannerV2.GetActiveHazardsTelemetry()
+	local list = {}
+	local now = os.clock()
+
+	for part, data in pairs(activeHazards) do
+		local shape = data.shape
+		if not shape then continue end
+
+		local trajProj = motion.GetTrajectoryProjection(part, 1.5)
+		local age = now - data.spawnTime
+
+		if shape.shape == "compound_multiring" then
+			table.insert(list, {
+				id = tostring(part),
+				name = data.name,
+				shape = "compound_multiring",
+				x = shape.x,
+				y = shape.y,
+				z = shape.z,
+				yaw = shape.yaw or 0,
+				coreRadius = shape.coreRadius or 12.5,
+				maxRadius = shape.maxRadius or 105.0,
+				rings = shape.rings,
+				polygons = shape.polygons,
+				color = shape.color or "#3cd0d0",
+				transparency = shape.transparency or 0.5,
+				age = age,
+				motionType = data.motion and data.motion.motionType or "STATIC",
+				speed = data.motion and data.motion.speed or 0,
+				angularVel = data.motion and data.motion.angularVel or 0,
+				trajectory = trajProj,
+			})
+		elseif shape.shape == "circle" then
+			table.insert(list, {
+				id = tostring(part),
+				name = data.name,
+				shape = "circle",
+				x = shape.x,
+				y = shape.y,
+				z = shape.z,
+				radius = shape.radius,
+				color = shape.color or "#ff2a55",
+				age = age,
+				motionType = data.motion and data.motion.motionType or "STATIC",
+				speed = data.motion and data.motion.speed or 0,
+				angularVel = data.motion and data.motion.angularVel or 0,
+				trajectory = trajProj,
+			})
+		elseif shape.shape == "box" then
+			table.insert(list, {
+				id = tostring(part),
+				name = data.name,
+				shape = "box",
+				x = shape.x,
+				y = shape.y,
+				z = shape.z,
+				halfX = shape.halfX,
+				halfZ = shape.halfZ,
+				yaw = shape.yaw,
+				vertices = shape.vertices,
+				color = shape.color or "#ff2a55",
+				age = age,
+				motionType = data.motion and data.motion.motionType or "STATIC",
+				speed = data.motion and data.motion.speed or 0,
+				angularVel = data.motion and data.motion.angularVel or 0,
+				trajectory = trajProj,
+			})
+		elseif shape.shape == "polygon" then
+			table.insert(list, {
+				id = tostring(part),
+				name = data.name,
+				shape = "polygon",
+				x = shape.x,
+				y = shape.y,
+				z = shape.z,
+				vertices = shape.vertices,
+				color = shape.color or "#ff2a55",
+				age = age,
+				motionType = data.motion and data.motion.motionType or "STATIC",
+				speed = data.motion and data.motion.speed or 0,
+				angularVel = data.motion and data.motion.angularVel or 0,
+				trajectory = trajProj,
+			})
+		end
+	end
+
+	return list
+end
+
+-- Lấy Boss & Animation Telegraph Telemetry
+function hazardScannerV2.GetBossTelegraphTelemetry()
+	return bossWatcher.GetBossTelegraphData()
+end
+
+-- Lấy Dữ liệu Simon-Says Memory Dance Telemetry
+function hazardScannerV2.GetMemoryGameTelemetry()
+	return memoryWatcher.GetMemoryTelemetry()
+end
+
+-- Dọn dẹp khi shutdown
+lifecycle.Register(function()
+	hazardScannerV2.StopScan()
+end)
+
+return hazardScannerV2
