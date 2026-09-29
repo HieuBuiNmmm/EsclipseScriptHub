@@ -1,0 +1,70 @@
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+-- Đợi chắc chắn LocalPlayer tồn tại
+local player = Players.LocalPlayer
+while not player do
+    task.wait()
+    player = Players.LocalPlayer
+end
+
+-- Đợi PlayerGui tồn tại
+local playerGui = player:WaitForChild("PlayerGui")
+
+local function clickButton(btn)
+    -- Cách 1: Dùng firesignal (chuẩn nhất cho executor)
+    if typeof(firesignal) == "function" then
+        pcall(function() firesignal(btn.MouseButton1Click) end)
+        pcall(function() firesignal(btn.Activated) end)
+        return true
+    end
+
+    -- Cách 2: Dùng getconnections
+    if typeof(getconnections) == "function" then
+        for _, connection in ipairs(getconnections(btn.MouseButton1Click)) do
+            pcall(function() connection:Fire() end)
+        end
+        for _, connection in ipairs(getconnections(btn.Activated)) do
+            pcall(function() connection:Fire() end)
+        end
+        return true
+    end
+
+    -- Cách 3: Bấm bằng chuột ảo VIM theo tọa độ
+    local pos = btn.AbsolutePosition
+    local size = btn.AbsoluteSize
+    local inset = GuiService:GetGuiInset()
+    local clickX = pos.X + (size.X / 2)
+    local clickY = pos.Y + (size.Y / 2) + inset.Y
+
+    VirtualInputManager:SendMouseMoveEvent(clickX, clickY, game)
+    task.wait(0.05)
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
+    task.wait(0.05)
+    VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
+    return true
+end
+
+print("Đang quét UI...")
+
+-- Dùng vòng lặp kiểm tra liên tục
+while true do
+    -- Tìm đệ quy trong PlayerGui để không lo sai tên ACZ hay ACX
+    local gui = playerGui:FindFirstChild("AntiMacroCheck") or playerGui:FindFirstChild("ACX")
+
+    if gui then
+        local frame = gui:FindFirstChild("Frame")
+        local button = frame and frame:FindFirstChild("TextButton")
+
+        -- Kiểm tra nếu nút nằm trong phạm vi hiển thị trên màn hình
+        if button and button.AbsolutePosition.X > 0 and button.AbsolutePosition.Y > 0 then
+            task.wait(0.1)
+            clickButton(button)
+            print("Đã bấm TextButton thành công!")
+            break
+        end
+    end
+
+    task.wait(0.2)
+end

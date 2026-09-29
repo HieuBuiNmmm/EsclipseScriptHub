@@ -6978,78 +6978,144 @@ IsSuspended()then return end if not af()then return end if ad then return end ad
 =true task.delay(0.5,function()ad=false if not ac.IsSuspended()and ac.GetActive(
 )then ac.SaveNow()end end)end function ac.Wrap(ag)if type(ag)~='function'then
 return ag end return function(...)local ah={ag(...)}ac.Save()return table.
-unpack(ah)end end return ac end function a.aA()local aa={UNIVERSE_ID=10529769390
-,LOBBY_PLACE_ID=134459712190924}function aa.IsLobby()return game.PlaceId==aa.
-LOBBY_PLACE_ID end function aa.IsInGame()return game.PlaceId~=aa.LOBBY_PLACE_ID
-end function aa.GetLocation()return aa.IsLobby()and'Lobby'or'InGame'end function
-aa.GetLocationName()return aa.IsLobby()and'Lobby'or'In-Game'end return aa end
-function a.aB()local aa,ab,ac,ad=a.load'aA',a.load'ax',{},{}function ac.
-GetCurrentZone()return aa.IsLobby()and'Lobby'or'InGame'end function ac.IsInZone(
-ae)if ae=='Global'then return true end return ac.GetCurrentZone()==ae end
-function ac.IsLobby()return aa.IsLobby()end function ac.IsInGame()return aa.
-IsInGame()end function ac.Guard(ae,af,ag)return function(...)if not ac.IsInZone(
-ae)then return ag end return af(...)end end function ac.Register(ae)if not ae or
-type(ae.Name)~='string'or not ae.Zone then return end ad[ae.Name]=ae if ac.
-IsInZone(ae.Zone)and ae.OnEnter then task.spawn(function()pcall(ae.OnEnter)end)
-end end function ac.Unregister(ae)ad[ae]=nil end ab.Register(function()table.
-clear(ad)end)return ac end function a.aC()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak
-,al=game:GetService'Players',a.load'aB',a.load'ax',{},false,{Cash=0,
-CashFormatted='$0',Wave=0,MaxWave=0,WaveFormatted='0/0',ElapsedTime=0,
-ElapsedTimeFormatted='00:00.00',IsMatchActive=false,WaveTimerSeconds=0,
-WaveTimerFormatted='0:00',BaseHp=100,BaseMaxHp=100,BaseHealthFormatted='100/100'
-,Message=''},{},{},false,function(aa)aa=math.max(0,aa)local ab,ac=math.floor(aa/
-60),aa%60 if ab>=60 then local ad=math.floor(ab/60)ab=ab%60 return string.
-format('%02d:%02d:%05.2f',ad,ab,ac)end return string.format('%02d:%05.2f',ab,ac)
-end local am=function()local am=aa.LocalPlayer if not am then return nil end
-local an=am:FindFirstChild'PlayerGui'if not an then return nil end local ao=an:
-FindFirstChild'GameGui'if not ao then return nil end local ap=ao:FindFirstChild(
-'Info',true)if ap and ap:IsA'Frame'then return ap end return nil end local an,ao
-,ap,aq,ar,as=function()local an=am()if not an then return nil,nil,nil,nil,nil
-end local ao=an:FindFirstChild'Stats'local ap,aq,ar,as=ao and(ao:FindFirstChild
-'Gold'),ao and(ao:FindFirstChild'Wave'),ao and(ao:FindFirstChild'Timer'),an:
-FindFirstChild'Health'local at,au=as and(as:FindFirstChild'Title'),(an:
-FindFirstChild'Message')return ap,aq,ar,at,au end,function(an)if not an or an==
-''then return 0,'$0'end local ao=an:gsub('[^%d]','')local ap=tonumber(ao)or 0
-local aq=an:match'%$[0-9,]+'or string.format('$%d',ap)return ap,aq end,function(
-an)if not an or an==''then return 0,0,'0/0'end local ao,ap=an:match
-'Wave:%s*(%d+)%s*/%s*(.+)'if not ao then ao,ap=an:match'(%d+)%s*/%s*(.+)'end
-local aq,ar=tonumber(ao)or 0,ap or'?'if ap and ap:find'\u{221e}'then ar=
-'\u{221e}'else ar=tonumber(ap)or(ap or'?')end local as=string.format('%d/%s',aq,
-tostring(ar))return aq,ar,as end,function(an)if not an or an==''then return 0,
-'0:00'end local ao,ap=an:match'(%d+):(%d+)'if ao and ap then local aq=(tonumber(
-ao)or 0)*60+(tonumber(ap)or 0)return aq,an end return 0,an end,function(an)if
-not an or an==''then return 100,100,'100/100'end local ao,ap=an:match
-'(%d+)%s*/%s*(%d+)'local aq,ar=tonumber(ao)or 100,tonumber(ap)or 100 return aq,
-ar,string.format('%d/%d',aq,ar)end,function()local an=aa.LocalPlayer local ao=an
-and an:FindFirstChild'PlayerGui'local ap=ao and ao:FindFirstChild'GameGui'if not
-ap then return nil end local aq=ap:FindFirstChild('EndScreen',true)if aq and aq:
-IsA'GuiObject'then return aq end return nil end local at=function()local at=as()
-return at~=nil and at.Visible==true end local ay=function()if not ab.IsInGame()
-then ak=nil al=nil ae=false af.ElapsedTime=0 af.ElapsedTimeFormatted='00:00.00'
-af.IsMatchActive=false return end local au,av,ax,ay,az=an()local aA=am()local aB
-,aC,aF=aA and aA.Visible~=false,az and az.Visible~=false and az.TextTransparency
-<1,af.Message:lower()local aG=tonumber(aF:match'starting in[^%d]*(%d+)')local aH
-,aI=aB and aC and(aG~=nil and aG>0),(af.Wave>=1 and af.Message=='')or af.Wave>=2
-if aH and al then al=nil ak=nil ae=false end if not ae and not al then if aH or
-aI then ak=os.clock()ae=true af.IsMatchActive=true end end if ae then if(af.
-BaseHp<=0 and af.Wave>=1)or at()then al=os.clock()ae=false af.IsMatchActive=
-false end end local aJ=0 if ak then if ae then aJ=os.clock()-ak elseif al then
-aJ=al-ak end end af.ElapsedTime=math.round(aJ*100)/100 af.ElapsedTimeFormatted=
-aj(aJ)af.IsMatchActive=ae end local az,aA=function()local az,aA,aB,aC,aF=an()if
-not az and not aA and not aB and not aC then return false end local aG=false if
-az then local aH,aI=ao(az.Text)if af.Cash~=aH or af.CashFormatted~=aI then af.
-Cash=aH af.CashFormatted=aI aG=true end end if aA then local aH,aI,aJ=ap(aA.Text
-)if af.Wave~=aH or af.WaveFormatted~=aJ then af.Wave=aH af.MaxWave=aI af.
-WaveFormatted=aJ aG=true end end if aB then local aH,aI=aq(aB.Text)if af.
-WaveTimerSeconds~=aH or af.WaveTimerFormatted~=aI then af.WaveTimerSeconds=aH af
-.WaveTimerFormatted=aI aG=true end end if aC then local aH,aI,aJ=ar(aC.Text)if
-af.BaseHp~=aH or af.BaseHealthFormatted~=aJ then af.BaseHp=aH af.BaseMaxHp=aI af
-.BaseHealthFormatted=aJ aG=true end end if aF then local aH=aF.Text or''if af.
-Message~=aH then af.Message=aH aG=true end end local aH=af.ElapsedTimeFormatted
-ay()if aH~=af.ElapsedTimeFormatted then aG=true end if aG then for aI,aJ in
-ipairs(ag)do task.spawn(aJ,af)end end return true end,function()for az,aA in
-pairs(ah)do pcall(function()aA:Disconnect()end)ah[az]=nil end end local aB=
-function()aA()local aB,aC,aF,aG,aH=an()if aB then ah.Gold=aB:
+unpack(ah)end end return ac end function a.aA()local aa,ab,ac,ad,ae,af,ag,ah,ai,
+aj,ak,al,am=game:GetService'Players',game:GetService'VirtualInputManager',game:
+GetService'GuiService',a.load'ax',a.load'ay',{Enabled=false},0,false,function(aa
+)if not aa then return false end local ab=aa.Name if ab=='AntiMacroCheck'or ab==
+'ACX'or string.find(string.lower(ab),'antimacro')or string.find(string.lower(ab)
+,'afkcheck')then return true end return false end,function(aa)local ab=aa:
+FindFirstChild'Frame'if ab then local ac=ab:FindFirstChild'TextButton'if ac and
+ac:IsA'GuiButton'and ac.Visible and ac.AbsolutePosition.X>0 and ac.
+AbsolutePosition.Y>0 then return ac end local ad=ab:FindFirstChildWhichIsA(
+'GuiButton',true)if ad and ad.Visible and ad.AbsolutePosition.X>0 and ad.
+AbsolutePosition.Y>0 and ad.AbsoluteSize.X>0 and ad.AbsoluteSize.Y>0 then return
+ad end end for ac,ad in ipairs(aa:GetDescendants())do if ad:IsA'GuiButton'and ad
+.Visible and ad.AbsolutePosition.X>0 and ad.AbsolutePosition.Y>0 and ad.
+AbsoluteSize.X>0 and ad.AbsoluteSize.Y>0 then local ae=string.lower(ad.Name)if
+ae=='textbutton'or string.find(ae,'confirm')or string.find(ae,'verify')or string
+.find(ae,'click')then return ad end end end for ac,ad in ipairs(aa:
+GetDescendants())do if ad:IsA'GuiButton'and ad.Visible and ad.AbsolutePosition.X
+>0 and ad.AbsolutePosition.Y>0 and ad.AbsoluteSize.X>0 and ad.AbsoluteSize.Y>0
+then return ad end end return nil end local an=function(an)if not an or not an:
+IsA'GuiButton'then return false end pcall(function()local ao=(firesignal or(syn
+and syn.firesignal)or(getgenv and getgenv().firesignal))if ao then ao(an.
+MouseButton1Click)ao(an.Activated)ao(an.MouseButton1Up)end end)pcall(function()
+local ao=(getconnections or(syn and syn.getconnections)or(getgenv and getgenv().
+getconnections))if ao then for ap,aq in ipairs(ao(an.MouseButton1Click))do if aq
+.Fire then aq:Fire()elseif aq.fire then aq:fire()end end for ap,aq in ipairs(ao(
+an.Activated))do if aq.Fire then aq:Fire()elseif aq.fire then aq:fire()end end
+for ap,aq in ipairs(ao(an.MouseButton1Up))do if aq.Fire then aq:Fire()elseif aq.
+fire then aq:fire()end end end end)pcall(function()local ao,ap=an.
+AbsolutePosition,an.AbsoluteSize if ap.X>0 and ap.Y>0 then local aq,ar=ac:
+GetGuiInset(),ao.X+(ap.X/2)local as=ao.Y+(ap.Y/2)+aq.Y ab:SendMouseMoveEvent(ar,
+as,game)task.wait(0.05)ab:SendMouseButtonEvent(ar,as,0,true,game,1)task.wait(
+0.05)ab:SendMouseButtonEvent(ar,as,0,false,game,1)end end)pcall(function()ac.
+SelectedObject=an task.wait(0.05)ab:SendKeyEvent(true,Enum.KeyCode.Return,false,
+game)task.wait(0.05)ab:SendKeyEvent(false,Enum.KeyCode.Return,false,game)task.
+wait(0.05)ac.SelectedObject=nil end)return true end local ao,ap=function(ao)if
+not af.Enabled then return false end if ah then return false end if(os.clock()-
+ag)<1.5 then return false end local ap=aj(ao)if not ap then return false end ah=
+true task.spawn(function()task.wait(0.1)if not af.Enabled then ah=false return
+end local aq=an(ap)if aq then ag=os.clock()print(string.format(
+'[SlopTD - AntiMacro] \u{110}\u{e3} t\u{1ef1} \u{111}\u{1ed9}ng v\u{1b0}\u{1ee3}t qua %s (N\u{fa}t: %s) th\u{e0}nh c\u{f4}ng!'
+,ao.Name,ap.Name))ae.Notify('Anti Macro',
+'\u{110}\u{e3} t\u{1ef1} \u{111}\u{1ed9}ng x\u{e1}c nh\u{1ead}n Anti-Macro th\u{e0}nh c\u{f4}ng!'
+,3)end task.wait(0.5)ah=false end)return true end,function()local ao=aa.
+LocalPlayer if not ao then return nil end return ao:FindFirstChild'PlayerGui'end
+local aq,ar=function()if not af.Enabled or ah then return end local aq=ap()if
+not aq then return end for ar,as in ipairs(aq:GetChildren())do if ai(as)then ao(
+as)break end end end,function()if ak then ak:Disconnect()ak=nil end local aq=ap(
+)if not aq then return end ak=aq.ChildAdded:Connect(function(ar)if not af.
+Enabled then return end if ai(ar)then task.delay(0.1,function()if not af.Enabled
+then return end ao(ar)end)end end)end local as,at=function()ar()local as=aa.
+LocalPlayer if as and not al then al=as.CharacterAdded:Connect(function()task.
+wait(0.5)if af.Enabled then ar()aq()end end)end if not am then am=task.spawn(
+function()while af.Enabled and ad.IsActive()do aq()task.wait(0.3)end am=nil end)
+end end,function()if ak then ak:Disconnect()ak=nil end if al then al:Disconnect(
+)al=nil end am=nil end function af.SetEnabled(au)if af.Enabled==au then return
+end af.Enabled=(au==true)if af.Enabled then as()aq()print
+'[SlopTD - AntiMacro] Auto Anti Macro \u{111}\u{e3} \u{111}\u{1b0}\u{1ee3}c b\u{1ead}t.'
+else at()print'[SlopTD - AntiMacro] Auto Anti Macro \u{111}\u{e3} t\u{1eaf}t.'
+end end function af.IsEnabled()return af.Enabled end ad.Register(function()af.
+Enabled=false at()end)return af end function a.aB()local aa,ab,ac=a.load'ax',a.
+load'aA',{AutoHideEnabled=false,AutoAntiMacroEnabled=false}function ac.
+SetAutoHide(ad)ac.AutoHideEnabled=(ad==true)end function ac.IsAutoHideEnabled()
+return ac.AutoHideEnabled end function ac.SetAutoAntiMacro(ad)ac.
+AutoAntiMacroEnabled=(ad==true)ab.SetEnabled(ac.AutoAntiMacroEnabled)end
+function ac.IsAutoAntiMacroEnabled()return ac.AutoAntiMacroEnabled end function
+ac.Reset()ac.AutoHideEnabled=false ac.AutoAntiMacroEnabled=false ab.SetEnabled(
+false)end aa.Register(function()ac.Reset()end)return ac end function a.aC()local
+aa={UNIVERSE_ID=10529769390,LOBBY_PLACE_ID=134459712190924}function aa.IsLobby()
+return game.PlaceId==aa.LOBBY_PLACE_ID end function aa.IsInGame()return game.
+PlaceId~=aa.LOBBY_PLACE_ID end function aa.GetLocation()return aa.IsLobby()and
+'Lobby'or'InGame'end function aa.GetLocationName()return aa.IsLobby()and'Lobby'
+or'In-Game'end return aa end function a.aD()local aa,ab,ac,ad=a.load'aC',a.load
+'ax',{},{}function ac.GetCurrentZone()return aa.IsLobby()and'Lobby'or'InGame'end
+function ac.IsInZone(ae)if ae=='Global'then return true end return ac.
+GetCurrentZone()==ae end function ac.IsLobby()return aa.IsLobby()end function ac
+.IsInGame()return aa.IsInGame()end function ac.Guard(ae,af,ag)return function(
+...)if not ac.IsInZone(ae)then return ag end return af(...)end end function ac.
+Register(ae)if not ae or type(ae.Name)~='string'or not ae.Zone then return end
+ad[ae.Name]=ae if ac.IsInZone(ae.Zone)and ae.OnEnter then task.spawn(function()
+pcall(ae.OnEnter)end)end end function ac.Unregister(ae)ad[ae]=nil end ab.
+Register(function()table.clear(ad)end)return ac end function a.aE()local aa,ab,
+ac,ad,ae,af,ag,ah,ai,aj,ak,al=game:GetService'Players',a.load'aD',a.load'ax',{},
+false,{Cash=0,CashFormatted='$0',Wave=0,MaxWave=0,WaveFormatted='0/0',
+ElapsedTime=0,ElapsedTimeFormatted='00:00.00',IsMatchActive=false,
+WaveTimerSeconds=0,WaveTimerFormatted='0:00',BaseHp=100,BaseMaxHp=100,
+BaseHealthFormatted='100/100',Message=''},{},{},false,function(aa)aa=math.max(0,
+aa)local ab,ac=math.floor(aa/60),aa%60 if ab>=60 then local ad=math.floor(ab/60)
+ab=ab%60 return string.format('%02d:%02d:%05.2f',ad,ab,ac)end return string.
+format('%02d:%05.2f',ab,ac)end local am=function()local am=aa.LocalPlayer if not
+am then return nil end local an=am:FindFirstChild'PlayerGui'if not an then
+return nil end local ao=an:FindFirstChild'GameGui'if not ao then return nil end
+local ap=ao:FindFirstChild('Info',true)if ap and ap:IsA'Frame'then return ap end
+return nil end local an,ao,ap,aq,ar,as=function()local an=am()if not an then
+return nil,nil,nil,nil,nil end local ao=an:FindFirstChild'Stats'local ap,aq,ar,
+as=ao and(ao:FindFirstChild'Gold'),ao and(ao:FindFirstChild'Wave'),ao and(ao:
+FindFirstChild'Timer'),an:FindFirstChild'Health'local at,au=as and(as:
+FindFirstChild'Title'),(an:FindFirstChild'Message')return ap,aq,ar,at,au end,
+function(an)if not an or an==''then return 0,'$0'end local ao=an:gsub('[^%d]',''
+)local ap=tonumber(ao)or 0 local aq=an:match'%$[0-9,]+'or string.format('$%d',ap
+)return ap,aq end,function(an)if not an or an==''then return 0,0,'0/0'end local
+ao,ap=an:match'Wave:%s*(%d+)%s*/%s*(.+)'if not ao then ao,ap=an:match
+'(%d+)%s*/%s*(.+)'end local aq,ar=tonumber(ao)or 0,ap or'?'if ap and ap:find
+'\u{221e}'then ar='\u{221e}'else ar=tonumber(ap)or(ap or'?')end local as=string.
+format('%d/%s',aq,tostring(ar))return aq,ar,as end,function(an)if not an or an==
+''then return 0,'0:00'end local ao,ap=an:match'(%d+):(%d+)'if ao and ap then
+local aq=(tonumber(ao)or 0)*60+(tonumber(ap)or 0)return aq,an end return 0,an
+end,function(an)if not an or an==''then return 100,100,'100/100'end local ao,ap=
+an:match'(%d+)%s*/%s*(%d+)'local aq,ar=tonumber(ao)or 100,tonumber(ap)or 100
+return aq,ar,string.format('%d/%d',aq,ar)end,function()local an=aa.LocalPlayer
+local ao=an and an:FindFirstChild'PlayerGui'local ap=ao and ao:FindFirstChild
+'GameGui'if not ap then return nil end local aq=ap:FindFirstChild('EndScreen',
+true)if aq and aq:IsA'GuiObject'then return aq end return nil end local at=
+function()local at=as()return at~=nil and at.Visible==true end local ay=function
+()if not ab.IsInGame()then ak=nil al=nil ae=false af.ElapsedTime=0 af.
+ElapsedTimeFormatted='00:00.00'af.IsMatchActive=false return end local au,av,ax,
+ay,az=an()local aA=am()local aB,aC,aF=aA and aA.Visible~=false,az and az.Visible
+~=false and az.TextTransparency<1,af.Message:lower()local aG=tonumber(aF:match
+'starting in[^%d]*(%d+)')local aH,aI=aB and aC and(aG~=nil and aG>0),(af.Wave>=1
+and af.Message=='')or af.Wave>=2 if aH and al then al=nil ak=nil ae=false end if
+not ae and not al then if aH or aI then ak=os.clock()ae=true af.IsMatchActive=
+true end end if ae then if(af.BaseHp<=0 and af.Wave>=1)or at()then al=os.clock()
+ae=false af.IsMatchActive=false end end local aJ=0 if ak then if ae then aJ=os.
+clock()-ak elseif al then aJ=al-ak end end af.ElapsedTime=math.round(aJ*100)/100
+af.ElapsedTimeFormatted=aj(aJ)af.IsMatchActive=ae end local az,aA=function()
+local az,aA,aB,aC,aF=an()if not az and not aA and not aB and not aC then return
+false end local aG=false if az then local aH,aI=ao(az.Text)if af.Cash~=aH or af.
+CashFormatted~=aI then af.Cash=aH af.CashFormatted=aI aG=true end end if aA then
+local aH,aI,aJ=ap(aA.Text)if af.Wave~=aH or af.WaveFormatted~=aJ then af.Wave=aH
+af.MaxWave=aI af.WaveFormatted=aJ aG=true end end if aB then local aH,aI=aq(aB.
+Text)if af.WaveTimerSeconds~=aH or af.WaveTimerFormatted~=aI then af.
+WaveTimerSeconds=aH af.WaveTimerFormatted=aI aG=true end end if aC then local aH
+,aI,aJ=ar(aC.Text)if af.BaseHp~=aH or af.BaseHealthFormatted~=aJ then af.BaseHp=
+aH af.BaseMaxHp=aI af.BaseHealthFormatted=aJ aG=true end end if aF then local aH
+=aF.Text or''if af.Message~=aH then af.Message=aH aG=true end end local aH=af.
+ElapsedTimeFormatted ay()if aH~=af.ElapsedTimeFormatted then aG=true end if aG
+then for aI,aJ in ipairs(ag)do task.spawn(aJ,af)end end return true end,function
+()for az,aA in pairs(ah)do pcall(function()aA:Disconnect()end)ah[az]=nil end end
+local aB=function()aA()local aB,aC,aF,aG,aH=an()if aB then ah.Gold=aB:
 GetPropertyChangedSignal'Text':Connect(function()az()end)end if aC then ah.Wave=
 aC:GetPropertyChangedSignal'Text':Connect(function()az()end)end if aF then ah.
 Timer=aF:GetPropertyChangedSignal'Text':Connect(function()az()end)end if aG then
@@ -7082,8 +7148,8 @@ BaseHp=af.BaseHp,BaseMaxHp=af.BaseMaxHp,BaseHealthFormatted=af.
 BaseHealthFormatted,Message=af.Message}end function ad.Subscribe(aF)table.
 insert(ag,aF)task.spawn(aF,ad.GetAll())return function()local aG=table.find(ag,
 aF)if aG then table.remove(ag,aG)end end end ac.Register(function()ai=false aA()
-table.clear(ag)end)return ad end function a.aD()return{}end function a.aE()local
-aa,ab,ac,ad,ae,af,ag=game:GetService'HttpService',a.load'aD',a.load'a',{},(
+table.clear(ag)end)return ad end function a.aF()return{}end function a.aG()local
+aa,ab,ac,ad,ae,af,ag=game:GetService'HttpService',a.load'aF',a.load'a',{},(
 isfile~=nil and writefile~=nil and makefolder~=nil and isfolder~=nil),{},false
 local ah=function()local ah=ac.Folder or'EsclipseHub/SlopTowerDefense'if not ah:
 find'SlopTowerDefense'then ah=ah..'/SlopTowerDefense'end return ah..'/Macros'end
@@ -7106,150 +7172,178 @@ ae then aj()local an,ao,ap=ai(al),pcall(function()return aa:JSONEncode(am)end)if
 ao and ap then local aq=pcall(function()writefile(an,ap)end)return aq end end
 return true end function ad.DeleteMacro(al)ak()af[al]=nil if ae and delfile then
 local am=ai(al)if isfile(am)then pcall(function()delfile(am)end)end end return
-true end return ad end function a.aF()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,
-am,an,ao,ap,aq,ar=a.load'aD',a.load'aE',a.load'aC',a.load'aB',a.load'ay',a.load
-'ax',game:GetService'ReplicatedStorage',{},false,false,0,0,'Hybrid',0.1,true,{},
-{IsEnabled=false,IsPlaying=false,MacroName=nil,CurrentStep=0,TotalSteps=0,
-NextAction='None',StatusText='Idle',TimingMode='Hybrid',StepDelay=0.1,ApplySpeed
-=true},{}local as=function()aq.IsEnabled=ai aq.IsPlaying=aj aq.MacroName=
-activeMacroName aq.CurrentStep=ak aq.TotalSteps=al aq.TimingMode=am aq.StepDelay
-=an aq.ApplySpeed=ao for as,at in ipairs(ar)do pcall(at,aq)end end local at,ay,
-az=function(at,ay)aq.StatusText=at if ay then aq.NextAction=ay end as()end,
-function()if not spawnRemote or not sellRemote or not upgradeRemote or not
-changeModeRemote or not changeSpeedRemote then local at=ag:FindFirstChild
-'Functions'if at then spawnRemote=(at:FindFirstChild'SpawnTower')sellRemote=(at:
-FindFirstChild'SellTower')upgradeRemote=(at:FindFirstChild'UpgradeTower')
-changeModeRemote=(at:FindFirstChild'ChangeTowerMode')changeSpeedRemote=(at:
-FindFirstChild'ChangeSpeed')end end return spawnRemote,sellRemote,upgradeRemote,
-changeModeRemote,changeSpeedRemote end,function(at,ay,az)az=az or 3.5 local aA,
-aB,aC=az,{workspace:FindFirstChild'Towers',workspace:FindFirstChild
-'PlacedTowers',workspace:FindFirstChild'Units',workspace}for aF,aG in ipairs(aB)
-do if aG then for aH,aI in ipairs(aG:GetChildren())do if aI:IsA'Model'then local
-aJ if aI.PrimaryPart then aJ=aI.PrimaryPart.Position else pcall(function()aJ=aI:
-GetPivot().Position end)end if aJ then local aK=(aJ-ay).Magnitude if aK<aA then
-if not at or aI.Name:lower():find(at:lower())then aA=aK aC=aI end end end end
-end end if aC then break end end return aC end function ah.PlaceTower(aA,aB,aC,
-aF,aG)local aH,aI=ay()if not aH then warn
+true end return ad end function a.aH()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak,al,
+am,an,ao,ap,aq,ar,as=a.load'aF',a.load'aG',a.load'aE',a.load'aD',a.load'ay',a.
+load'ax',game:GetService'Players',game:GetService'ReplicatedStorage',{},false,
+false,0,0,'Hybrid',0.1,true,{},{IsEnabled=false,IsPlaying=false,MacroName=nil,
+CurrentStep=0,TotalSteps=0,NextAction='None',StatusText='Idle',TimingMode=
+'Hybrid',StepDelay=0.1,ApplySpeed=true},{}local at=function()ar.IsEnabled=aj ar.
+IsPlaying=ak ar.MacroName=activeMacroName ar.CurrentStep=al ar.TotalSteps=am ar.
+TimingMode=an ar.StepDelay=ao ar.ApplySpeed=ap for at,ay in ipairs(as)do pcall(
+ay,ar)end end local ay,az,aA,aB=function(ay,az)ar.StatusText=ay if az then ar.
+NextAction=az end at()end,function()if not spawnRemote or not sellRemote or not
+upgradeRemote or not changeModeRemote or not changeSpeedRemote then local ay=ah:
+FindFirstChild'Functions'if ay then spawnRemote=(ay:FindFirstChild'SpawnTower')
+sellRemote=(ay:FindFirstChild'SellTower')upgradeRemote=(ay:FindFirstChild
+'UpgradeTower')changeModeRemote=(ay:FindFirstChild'ChangeTowerMode')
+changeSpeedRemote=(ay:FindFirstChild'ChangeSpeed')end end return spawnRemote,
+sellRemote,upgradeRemote,changeModeRemote,changeSpeedRemote end,function()local
+ay=ag.LocalPlayer local az=ay and ay:FindFirstChild'PlayerGui'local aA=az and az
+:FindFirstChild'GameGui'if not aA then return 1 end local aB=aA:FindFirstChild
+'SpeedUp'local aC=aB and aB:FindFirstChild'Message'if aC and aC:IsA'TextLabel'
+then local aF=tonumber(aC.Text:match'%d+')if aF and aF>=1 and aF<=5 then return
+aF end end local aF=aA:FindFirstChild('SpeedUp',true)if aF then local aG=aF:
+FindFirstChild'Message'if aG and aG:IsA'TextLabel'then local aH=tonumber(aG.Text
+:match'%d+')if aH and aH>=1 and aH<=5 then return aH end end end return 1 end,
+function(ay)for az,aA in pairs(aq)do if aA==ay then return true end end return
+false end local aC=function(aC,aF,aG,aH)aG=aG or 3.5 local aI,aJ,aK=aG,{
+workspace:FindFirstChild'Towers',workspace:FindFirstChild'PlacedTowers',
+workspace:FindFirstChild'Units',workspace}for aL,aM in ipairs(aJ)do if aM then
+for aN,aO in ipairs(aM:GetChildren())do if aO:IsA'Model'and aO.Parent~=nil then
+if aH and aB(aO)then continue end local aP if aO.PrimaryPart then aP=aO.
+PrimaryPart.Position else pcall(function()aP=aO:GetPivot().Position end)end if
+aP then local aQ=(aP-aF).Magnitude if aQ<aI then if not aC or aO.Name:lower():
+find(aC:lower())then aI=aQ aK=aO end end end end end end if aK then break end
+end return aK end function ai.PlaceTower(aF,aG,aH,aI,aJ)local aK,aL=az()if not
+aK then warn
 '[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y RemoteFunction: Functions.SpawnTower'
-return false,nil end aC=aC==true aF=aF or aA aG=aG or{}local aJ,aK=pcall(
-function()return aH:InvokeServer(aA,aB,aC,aF,aG)end)if not aJ then warn(
-'[Macro Player] L\u{1ed7}i g\u{1ecd}i SpawnTower:',tostring(aK))return false,nil
-end if aK==false then return false,nil end local aL if typeof(aK)=='Instance'
-then aL=aK else for aM=1,8 do task.wait(0.15)aL=az(aA,aB.Position)if aL then
-break end end end return true,aL end function ah.SellTower(aA)local aB,aC=ay()if
-not aC then warn
+return false,nil end aH=aH==true aI=aI or aF aJ=aJ or{}local aM,aN,aO=ac.
+GetCash(),pcall(function()return aK:InvokeServer(aF,aG,aH,aI,aJ)end)if not aN
+then warn('[Macro Player] L\u{1ed7}i g\u{1ecd}i SpawnTower:',tostring(aO))return
+false,nil end if aO==false then return false,nil end if typeof(aO)=='Instance'
+and aO:IsA'Model'and aO.Parent~=nil then return true,aO end for aP=1,10 do task.
+wait(0.15)local aQ=aC(aF,aG.Position,3.5,true)if aQ then return true,aQ end end
+local aP=ac.GetCash()if aP<aM then for aQ=1,8 do task.wait(0.2)local aS=aC(aF,aG
+.Position,4,true)if aS then return true,aS end end end warn(string.format(
+'[Macro Player] X\u{e1}c th\u{1ef1}c Spawn th\u{1ea5}t b\u{1ea1}i cho %s t\u{1ea1}i v\u{1ecb} tr\u{ed} (%.1f, %.1f, %.1f) - kh\u{f4}ng t\u{ec}m th\u{1ea5}y Model!'
+,aF,aG.Position.X,aG.Position.Y,aG.Position.Z))return false,nil end function ai.
+SellTower(aF)local aG,aH=az()if not aH then warn
 '[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y RemoteFunction: Functions.SellTower'
-return false end if not aA or not aA.Parent then warn
+return false end if not aF or not aF.Parent then warn
 '[Macro Player] Th\u{e1}p m\u{1ee5}c ti\u{ea}u \u{111}\u{1ec3} b\u{e1}n kh\u{f4}ng t\u{1ed3}n t\u{1ea1}i ho\u{1eb7}c \u{111}\u{e3} b\u{1ecb} h\u{1ee7}y!'
-return false end local aF,aG=pcall(function()return aC:InvokeServer(aA)end)if
-not aF then warn('[Macro Player] L\u{1ed7}i g\u{1ecd}i SellTower:',tostring(aG))
-return false end return true end function ah.UpgradeTower(aA,aB)local aC,aF,aG=
-ay()if not aG then warn
+return false end local aI,aJ=pcall(function()return aH:InvokeServer(aF)end)if
+not aI then warn('[Macro Player] L\u{1ed7}i g\u{1ecd}i SellTower:',tostring(aJ))
+return false end return true end function ai.UpgradeTower(aF,aG)local aH,aI,aJ=
+az()if not aJ then warn
 '[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y RemoteFunction: Functions.UpgradeTower'
-return false end if not aA or not aA.Parent then warn
+return false end if not aF or not aF.Parent then warn
 '[Macro Player] Th\u{e1}p m\u{1ee5}c ti\u{ea}u \u{111}\u{1ec3} n\u{e2}ng c\u{1ea5}p kh\u{f4}ng t\u{1ed3}n t\u{1ea1}i ho\u{1eb7}c \u{111}\u{e3} b\u{1ecb} h\u{1ee7}y!'
-return false end aB=aB or aA.Name local aH,aI=pcall(function()return aG:
-InvokeServer(aA,aB)end)if not aH then warn(
-'[Macro Player] L\u{1ed7}i g\u{1ecd}i UpgradeTower:',tostring(aI))return false
-end if aI==false then return false end return true end function ah.
-ChangeTowerMode(aA)local aB,aF,aG,aH=ay()if not aH then warn
+return false end aG=aG or aF.Name local aK,aL=pcall(function()return aJ:
+InvokeServer(aF,aG)end)if not aK then warn(
+'[Macro Player] L\u{1ed7}i g\u{1ecd}i UpgradeTower:',tostring(aL))return false
+end if aL==false then return false end return true end function ai.
+ChangeTowerMode(aF)local aG,aI,aJ,aK=az()if not aK then warn
 '[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y RemoteFunction: Functions.ChangeTowerMode'
-return false end if not aA or not aA.Parent then warn
+return false end if not aF or not aF.Parent then warn
 '[Macro Player] Th\u{e1}p m\u{1ee5}c ti\u{ea}u \u{111}\u{1ec3} \u{111}\u{1ed5}i Target kh\u{f4}ng t\u{1ed3}n t\u{1ea1}i ho\u{1eb7}c \u{111}\u{e3} b\u{1ecb} h\u{1ee7}y!'
-return false end local aI,aJ=pcall(function()return aH:InvokeServer(aA)end)if
-not aI then warn('[Macro Player] L\u{1ed7}i g\u{1ecd}i ChangeTowerMode:',
-tostring(aJ))return false end if aJ==false then return false end return true end
-function ah.ChangeSpeed(aA)local aG,aH,aI,aJ,aK=ay()if not aK then aK=(ag:
-FindFirstChild('ChangeSpeed',true))end if not aK then warn
+return false end local aL,aM=pcall(function()return aK:InvokeServer(aF)end)if
+not aL then warn('[Macro Player] L\u{1ed7}i g\u{1ecd}i ChangeTowerMode:',
+tostring(aM))return false end if aM==false then return false end return true end
+function ai.ChangeSpeed(aF)local aJ,aK,aL,aM,aN=az()if not aN then aN=(ah:
+FindFirstChild('ChangeSpeed',true))end if not aN then warn
 '[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y RemoteFunction: Functions.ChangeSpeed'
-return false end local aL,aM=pcall(function()return aK:InvokeServer(aA)end)if
-not aL then warn('[Macro Player] L\u{1ed7}i g\u{1ecd}i ChangeSpeed:',tostring(aM
-))return false end if aM==false then return false end return true end function
-ah.ExecuteStep(aA)if aA.Type=='Place'then if not aA.CFrame then warn
+return false end local aO,aP=pcall(function()return aN:InvokeServer(aF)end)if
+not aO then warn('[Macro Player] L\u{1ed7}i g\u{1ecd}i ChangeSpeed:',tostring(aP
+))return false end if aP==false then return false end return true end function
+ai.ExecuteStep(aF)if aF.Type=='Place'then if not aF.CFrame then warn
 '[Macro Player] B\u{1b0}\u{1edb}c Place thi\u{1ebf}u d\u{1eef} li\u{1ec7}u CFrame!'
-return false end local aJ=CFrame.new(table.unpack(aA.CFrame))local aK,aL=ah.
-PlaceTower(aA.TowerName,aJ,aA.Arg3,aA.Arg4,aA.Arg5)if aK then if aL then ap[aA.
-TowerId]=aL end ae.Notify('Macro Play',string.format('Placed %s (%s) [%.2fs]',aA
-.TowerName,aA.TowerId,aA.Time),1.5)return true end elseif aA.Type=='Sell'then
-local aJ=ap[aA.TowerId]if not aJ or not aJ.Parent then if aA.Position then local
-aK=Vector3.new(aA.Position[1],aA.Position[2],aA.Position[3])aJ=az(aA.TowerName,
-aK)end end if aJ then local aK=ah.SellTower(aJ)if aK then ap[aA.TowerId]=nil ae.
-Notify('Macro Play',string.format('Sold %s (%s) [%.2fs]',aA.TowerName,aA.TowerId
-,aA.Time),1.5)return true end else warn(string.format(
+return false end local aM=CFrame.new(table.unpack(aF.CFrame))local aN,aO=ai.
+PlaceTower(aF.TowerName,aM,aF.Arg3,aF.Arg4,aF.Arg5)if aN and aO and aO.Parent
+then aq[aF.TowerId]=aO ae.Notify('Macro Play',string.format(
+'Placed %s (%s) [%.2fs]',aF.TowerName,aF.TowerId,aF.Time),1.5)return true end
+return false elseif aF.Type=='Sell'then local aM=aq[aF.TowerId]if not aM or not
+aM.Parent then if aF.Position then local aN=Vector3.new(aF.Position[1],aF.
+Position[2],aF.Position[3])aM=aC(aF.TowerName,aN)end end if aM then local aN=ai.
+SellTower(aM)if aN then aq[aF.TowerId]=nil ae.Notify('Macro Play',string.format(
+'Sold %s (%s) [%.2fs]',aF.TowerName,aF.TowerId,aF.Time),1.5)return true end else
+warn(string.format(
 "[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y th\u{e1}p '%s' \u{111}\u{1ec3} b\u{e1}n!"
-,aA.TowerId))end elseif aA.Type=='Upgrade'then local aJ=ap[aA.TowerId]if not aJ
-or not aJ.Parent then if aA.Position then local aK=Vector3.new(aA.Position[1],aA
-.Position[2],aA.Position[3])aJ=az(aA.TowerName,aK)end end if aJ then local aK=aA
-.Arg4 or aJ.Name local aL=ah.UpgradeTower(aJ,aK)if aL then ae.Notify(
-'Macro Play',string.format('Upgraded %s (%s) [%.2fs]',aA.TowerName,aA.TowerId,aA
+,aF.TowerId))end elseif aF.Type=='Upgrade'then local aM=aq[aF.TowerId]if not aM
+or not aM.Parent then if aF.Position then local aN=Vector3.new(aF.Position[1],aF
+.Position[2],aF.Position[3])aM=aC(aF.TowerName,aN)end end if aM then local aN=aF
+.Arg4 or aM.Name local aO=ai.UpgradeTower(aM,aN)if aO then ae.Notify(
+'Macro Play',string.format('Upgraded %s (%s) [%.2fs]',aF.TowerName,aF.TowerId,aF
 .Time),1.5)return true end else warn(string.format(
 "[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y th\u{e1}p '%s' \u{111}\u{1ec3} n\u{e2}ng c\u{1ea5}p!"
-,aA.TowerId))end elseif aA.Type=='Target'then local aJ=ap[aA.TowerId]if not aJ
-or not aJ.Parent then if aA.Position then local aK=Vector3.new(aA.Position[1],aA
-.Position[2],aA.Position[3])aJ=az(aA.TowerName,aK)end end if aJ then local aK=ah
-.ChangeTowerMode(aJ)if aK then ae.Notify('Macro Play',string.format(
-'Changed Target: %s (%s) [%.2fs]',aA.TowerName,aA.TowerId,aA.Time),1.5)return
+,aF.TowerId))end elseif aF.Type=='Target'then local aM=aq[aF.TowerId]if not aM
+or not aM.Parent then if aF.Position then local aN=Vector3.new(aF.Position[1],aF
+.Position[2],aF.Position[3])aM=aC(aF.TowerName,aN)end end if aM then local aN=ai
+.ChangeTowerMode(aM)if aN then ae.Notify('Macro Play',string.format(
+'Changed Target: %s (%s) [%.2fs]',aF.TowerName,aF.TowerId,aF.Time),1.5)return
 true end else warn(string.format(
 "[Macro Player] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y th\u{e1}p '%s' \u{111}\u{1ec3} \u{111}\u{1ed5}i Target!"
-,aA.TowerId))end elseif aA.Type=='Speed'then if not ao then return true end
-local aJ=aA.Speed or 1 local aK=ah.ChangeSpeed(aJ)if aK then ae.Notify(
+,aF.TowerId))end elseif aF.Type=='Speed'then if not ap then return true end
+local aM=aF.Speed or 1 local aN=ai.ChangeSpeed(aM)if aN then ae.Notify(
 'Macro Play',string.format(
-'\u{110}\u{e3} \u{111}\u{1ed5}i Speed sang: x%d [%.2fs]',aJ,aA.Time),1.5)return
-true end end return false end local aA=function()if activePlaybackThread then
+'\u{110}\u{e3} \u{111}\u{1ed5}i Speed sang: x%d [%.2fs]',aM,aF.Time),1.5)return
+true end end return false end local aF=function()if activePlaybackThread then
 pcall(task.cancel,activePlaybackThread)activePlaybackThread=nil end
-activePlaybackThread=task.spawn(function()while ai do if not ad.IsInGame()then
-aj=false at('Waiting for in-game...','None')task.wait(1)continue end if not ac.
-IsMatchActive()then aj=false at('Waiting for match to start...','None')task.
-wait(0.5)continue end local aA=activeMacroName if not aA or aA==''or aA=='None'
-then aj=false at('No macro selected!','None')task.wait(1)continue end local aJ=
-ab.GetMacro(aA)if not aJ or not aJ.Steps or#aJ.Steps==0 then aj=false at(
-'Macro is empty!','None')task.wait(1)continue end aj=true ak=0 al=#aJ.Steps
-table.clear(ap)if ao then local aK=(aJ.Metadata and aJ.Metadata.InitialSpeed)or
-1 ah.ChangeSpeed(aK)ae.Notify('Macro Player',string.format(
+activePlaybackThread=task.spawn(function()while aj do if not ad.IsInGame()then
+ak=false ay('Waiting for in-game...','None')task.wait(1)continue end if not ac.
+IsMatchActive()then ak=false ay('Waiting for match to start...','None')task.
+wait(0.5)continue end local aF=activeMacroName if not aF or aF==''or aF=='None'
+then ak=false ay('No macro selected!','None')task.wait(1)continue end local aM=
+ab.GetMacro(aF)if not aM or not aM.Steps or#aM.Steps==0 then ak=false ay(
+'Macro is empty!','None')task.wait(1)continue end ak=true al=0 am=#aM.Steps
+table.clear(aq)if ap then local aN=(aM.Metadata and aM.Metadata.InitialSpeed)or
+1 ai.ChangeSpeed(aN)ae.Notify('Macro Player',string.format(
 'B\u{1eaf}t \u{111}\u{1ea7}u Play: %s (Speed ban \u{111}\u{1ea7}u: x%d, %d b\u{1b0}\u{1edb}c)'
-,aA,aK,al),2.5)else ae.Notify('Macro Player',string.format(
+,aF,aN,am),2.5)else ae.Notify('Macro Player',string.format(
 'B\u{1eaf}t \u{111}\u{1ea7}u Play: %s (%d b\u{1b0}\u{1edb}c, b\u{1ecf} qua Speed)'
-,aA,al),2.5)end for aK,aL in ipairs(aJ.Steps)do if not ai or not aj then break
-end if not ac.IsMatchActive()then at('Match ended early','None')break end if aL.
-Type=='Speed'and not ao then continue end ak=aK-1 local aM=string.format(
-'%s %s (%s) [W%d - %.2fs]',aL.Type,aL.TowerName,aL.TowerId,aL.Wave,aL.Time)at(
-string.format('Waiting for Step %d/%d (Wave %d)',aK,al,aL.Wave),aM)local aN=
-false while ai and aj and ac.IsMatchActive()do local aO,aP=ac.GetWave()local aQ,
-aS,aT,aU=ac.GetCash(),ac.GetElapsedTime(),aO>=aL.Wave,false if am==
-'Cash (Timed Sell)'then if aL.Type=='Sell'then aU=aT and aS>=aL.Time elseif aL.
-Type=='Target'then aU=aT elseif aL.Type=='Speed'then aU=aT and(aO>aL.Wave or aS
->=aL.Time)else local aV=aL.Cost or 0 aU=aT and aQ>=aV end elseif aL.Type=='Sell'
-or aL.Type=='Target'or aL.Type=='Speed'then aU=aT and(aO>aL.Wave or aS>=aL.Time)
-else local aV=aL.Cost or 0 if am=='Timer'then aU=aT and aS>=aL.Time elseif am==
-'Wave & Cash'then aU=aT and aQ>=aV else local aW,aX=aV==0 or aQ>=aV,aS>=aL.Time
-aU=aT and(aW or aX)end end if aU then aN=true break end task.wait(0.05)end if
-not aN or not ai or not aj or not ac.IsMatchActive()then break end at(string.
-format('Executing Step %d/%d...',aK,al),aM)local aO=false for aP=1,3 do if not
-ai or not ac.IsMatchActive()then break end aO=ah.ExecuteStep(aL)if aO then break
-end task.wait(0.3)end ak=aK task.wait(math.max(0.02,an))end if ai and ak>=al
-then at(string.format('Completed (%d/%d steps)',al,al),'All done')ae.Notify(
-'Macro Player',string.format('Ho\u{e0}n th\u{e0}nh Macro: %s!',aA),3)end aj=
-false while ai and ac.IsMatchActive()do task.wait(1)end at(
-'Match finished. Waiting for next match...','None')task.wait(2)end aj=false ak=0
-at('Idle','None')end)end function ah.IsEnabled()return ai end function ah.
-SetEnabled(aJ)if ai==aJ then return end ai=aJ if ai then aA()else ah.Stop()end
-end function ah.IsPlaying()return aj end function ah.GetActiveMacro()return
-activeMacroName end function ah.SetActiveMacro(aJ)activeMacroName=aJ aq.
-MacroName=aJ as()end function ah.GetTimingMode()return am end function ah.
-SetTimingMode(aJ)am=aJ aq.TimingMode=aJ as()end function ah.GetStepDelay()return
-an end function ah.SetStepDelay(aJ)an=math.clamp(aJ,0,5)aq.StepDelay=an as()end
-function ah.IsSpeedSyncEnabled()return ao end function ah.SetSpeedSync(aJ)ao=aJ
-aq.ApplySpeed=aJ as()end function ah.GetCurrentStepIndex()return ak end function
-ah.GetTotalSteps()return al end function ah.GetStatus()return aq end function ah
-.Restart()if not ai then return end table.clear(ap)ak=0 aj=false aA()end
-function ah.Stop()ai=false aj=false ak=0 table.clear(ap)if activePlaybackThread
-then pcall(task.cancel,activePlaybackThread)activePlaybackThread=nil end at(
-'Idle','None')end function ah.Subscribe(aJ)table.insert(ar,aJ)pcall(aJ,aq)return
-function()local aK=table.find(ar,aJ)if aK then table.remove(ar,aK)end end end af
-.Register(function()ah.Stop()end)return ah end function a.aG()local aa,ab,ac,ad,
+,aF,am),2.5)end local aN=(aM.Metadata and aM.Metadata.InitialSpeed)or 1 if aN<=0
+then aN=1 end local aO=aA()if aO<=0 then aO=1 end local aP,aQ=os.clock(),ac.
+GetElapsedTime()local aS=aQ*(aO/aN)for aT,aU in ipairs(aM.Steps)do if not aj or
+not ak then break end if not ac.IsMatchActive()then ay('Match ended early',
+'None')break end if aU.Type=='Speed'and not ap then continue end al=aT-1 local
+aV=string.format('%s %s (%s) [W%d - %.2fs]',aU.Type,aU.TowerName,aU.TowerId,aU.
+Wave,aU.Time)ay(string.format('Waiting for Step %d/%d (Wave %d)',aT,am,aU.Wave),
+aV)local aW=false while aj and ak and ac.IsMatchActive()do local aX=os.clock()
+local aY=aX-aP aP=aX local aZ=aA()if aZ<=0 then aZ=1 end local a_=aU.RecordSpeed
+or aN if a_<=0 then a_=1 end aS+=aY*(aZ/a_)local a0,a1=ac.GetWave()local a2,a3,
+a4=ac.GetCash(),a0>=aU.Wave,aU.Cost or 0 local a5,a6=(a4==0 or a2>=a4),false if
+an=='Cash (Timed Sell)'then if aU.Type=='Sell'then a6=a3 and aS>=aU.Time elseif
+aU.Type=='Target'then a6=a3 elseif aU.Type=='Speed'then a6=a3 and(a0>aU.Wave or
+aS>=aU.Time)else a6=a3 and a5 end elseif aU.Type=='Sell'or aU.Type=='Target'or
+aU.Type=='Speed'then a6=a3 and(a0>aU.Wave or aS>=aU.Time)else local a7=aS>=aU.
+Time if an=='Timer'then if aU.Type=='Place'or aU.Type=='Upgrade'then a6=a3 and
+a5 and a7 else a6=a3 and a7 end elseif an=='Wave & Cash'then a6=a3 and a5 else
+if aU.Type=='Place'or aU.Type=='Upgrade'then a6=a3 and a5 and(a7 or(a4>0 and a2
+>=a4))else a6=a3 and(a5 or a7)end end end if a6 then aW=true break end task.
+wait(0.05)end if not aW or not aj or not ak or not ac.IsMatchActive()then break
+end ay(string.format('Executing Step %d/%d...',aT,am),aV)local aX,aY=false,(aU.
+Type=='Place')and 5 or 3 for aZ=1,aY do if not aj or not ac.IsMatchActive()then
+break end if aZ>1 then ay(string.format('Retrying %s %s (l\u{1ea7}n %d/%d)...',
+aU.Type,aU.TowerName,aZ,aY),aV)end aX=ai.ExecuteStep(aU)if aX then break end if
+aU.Type=='Place'and aU.Cost and ac.GetCash()<aU.Cost then task.wait(0.5)else
+task.wait(0.35)end end if not aX then warn(string.format(
+'[Macro Player] Th\u{1ea5}t b\u{1ea1}i th\u{1ef1}c thi Step %d (%s %s) sau %d l\u{1ea7}n th\u{1eed}!'
+,aT,aU.Type,aU.TowerName,aY))if aU.Type=='Place'then ae.Notify('Macro Player',
+string.format(
+'\u{26a0}\u{fe0f} Kh\u{f4}ng th\u{1ec3} \u{111}\u{1eb7}t %s (%s) sau %d l\u{1ea7}n th\u{1eed}!'
+,aU.TowerName,aU.TowerId,aY),3)end end al=aT task.wait(math.max(0.02,ao))end if
+aj and al>=am then ay(string.format('Completed (%d/%d steps)',am,am),'All done')
+ae.Notify('Macro Player',string.format('Ho\u{e0}n th\u{e0}nh Macro: %s!',aF),3)
+end ak=false while aj and ac.IsMatchActive()do task.wait(1)end ay(
+'Match finished. Waiting for next match...','None')task.wait(2)end ak=false al=0
+ay('Idle','None')end)end function ai.IsEnabled()return aj end function ai.
+SetEnabled(aM)if aj==aM then return end aj=aM if aj then aF()else ai.Stop()end
+end function ai.IsPlaying()return ak end function ai.GetActiveMacro()return
+activeMacroName end function ai.SetActiveMacro(aM)activeMacroName=aM ar.
+MacroName=aM at()end function ai.GetTimingMode()return an end function ai.
+SetTimingMode(aM)an=aM ar.TimingMode=aM at()end function ai.GetStepDelay()return
+ao end function ai.SetStepDelay(aM)ao=math.clamp(aM,0,5)ar.StepDelay=ao at()end
+function ai.IsSpeedSyncEnabled()return ap end function ai.SetSpeedSync(aM)ap=aM
+ar.ApplySpeed=aM at()end function ai.GetCurrentStepIndex()return al end function
+ai.GetTotalSteps()return am end function ai.GetStatus()return ar end function ai
+.Restart()if not aj then return end table.clear(aq)al=0 ak=false aF()end
+function ai.Stop()aj=false ak=false al=0 table.clear(aq)if activePlaybackThread
+then pcall(task.cancel,activePlaybackThread)activePlaybackThread=nil end ay(
+'Idle','None')end function ai.Subscribe(aM)table.insert(as,aM)pcall(aM,ar)return
+function()local aN=table.find(as,aM)if aN then table.remove(as,aN)end end end af
+.Register(function()ai.Stop()end)return ai end function a.aI()local aa,ab,ac,ad,
 ae,af,ag,ah,ai=game:GetService'Players',game:GetService'ReplicatedStorage',game:
-GetService'VirtualInputManager',game:GetService'GuiService',a.load'aB',a.load
-'aC',a.load'ay',a.load'ax',{}ai.AutoReplayEnabled=false ai.AutoSpeedEnabled=
+GetService'VirtualInputManager',game:GetService'GuiService',a.load'aD',a.load
+'aE',a.load'ay',a.load'ax',{}ai.AutoReplayEnabled=false ai.AutoSpeedEnabled=
 false ai.SelectedSpeed='x2'ai.Speeds={'x1','x2','x3','x4','x5'}local aj,ak,al,am
 ,an,ao=true,0,function(aj)if not aj or not aj:IsA'GuiButton'then return false
 end pcall(function()local ak=(getconnections or(syn and syn.getconnections)or(
@@ -7292,12 +7386,12 @@ function ai.ApplySpeed(as)local at=as or tonumber(ai.SelectedSpeed:match'%d+')or
 2 ar(at)end function ai.GetCurrentSpeed()local as=aa.LocalPlayer local at=as and
 as:FindFirstChild'PlayerGui'local ay=at and at:FindFirstChild'GameGui'if not ay
 then return 1 end local az=ay:FindFirstChild'SpeedUp'local aA=az and az:
-FindFirstChild'Message'if aA and aA:IsA'TextLabel'then local aJ=tonumber(aA.Text
-:match'%d+')if aJ and aJ>=1 and aJ<=5 then return aJ end end local aJ=ay:
-FindFirstChild('SpeedUp',true)if aJ then local aK=aJ:FindFirstChild'Message'if
-aK and aK:IsA'TextLabel'then local aL=tonumber(aK.Text:match'%d+')if aL and aL>=
-1 and aL<=5 then return aL end end end return 1 end local as,at,ay=function()
-local as,at=pcall(function()return a.load'aF'end)if as and at then if at.
+FindFirstChild'Message'if aA and aA:IsA'TextLabel'then local aB=tonumber(aA.Text
+:match'%d+')if aB and aB>=1 and aB<=5 then return aB end end local aB=ay:
+FindFirstChild('SpeedUp',true)if aB then local aC=aB:FindFirstChild'Message'if
+aC and aC:IsA'TextLabel'then local aF=tonumber(aC.Text:match'%d+')if aF and aF>=
+1 and aF<=5 then return aF end end end return 1 end local as,at,ay=function()
+local as,at=pcall(function()return a.load'aH'end)if as and at then if at.
 IsEnabled and at.IsEnabled()then if at.IsSpeedSyncEnabled and at.
 IsSpeedSyncEnabled()then return true end end end return false end,false,0 local
 az=function(az)if not ai.AutoSpeedEnabled or as()then at=az.IsMatchActive return
@@ -7311,79 +7405,119 @@ IsMatchActive then at=false ay=0 end if az.IsMatchActive and az.Wave==1 and ay~=
 as()and ae.IsInGame()then ar(aA)end end)end end local aA=af.Subscribe(az)task.
 spawn(function()while aj and ah.IsActive()do aq()if ai.AutoReplayEnabled then
 ap()end if ai.AutoSpeedEnabled and not as()and ae.IsInGame()and af.
-IsMatchActive()and not at then at=true local aJ=tonumber(ai.SelectedSpeed:match
-'%d+')or 2 ar(aJ)end task.wait(0.25)end end)function ai.SetAutoReplay(aJ)ai.
-AutoReplayEnabled=aJ if aJ then ak=0 aq()ap()end end function ai.SetAutoSpeed(aJ
-)ai.AutoSpeedEnabled=aJ if aJ and not as()and ae.IsInGame()and af.IsMatchActive(
-)then local aK=tonumber(ai.SelectedSpeed:match'%d+')or 2 ar(aK)ag.Notify(
-'Auto Speed',string.format('\u{110}\u{e3} g\u{1eed}i Remote ChangeSpeed: x%d',aK
-),2)end end function ai.SetSpeed(aJ)if table.find(ai.Speeds,aJ)then ai.
-SelectedSpeed=aJ if ai.AutoSpeedEnabled and not as()and ae.IsInGame()and af.
-IsMatchActive()then local aK=tonumber(aJ:match'%d+')or 2 ar(aK)ag.Notify(
-'Auto Speed',string.format('\u{110}\u{e3} g\u{1eed}i Remote ChangeSpeed: x%d',aK
+IsMatchActive()and not at then at=true local aB=tonumber(ai.SelectedSpeed:match
+'%d+')or 2 ar(aB)end task.wait(0.25)end end)function ai.SetAutoReplay(aB)ai.
+AutoReplayEnabled=aB if aB then ak=0 aq()ap()end end function ai.SetAutoSpeed(aB
+)ai.AutoSpeedEnabled=aB if aB and not as()and ae.IsInGame()and af.IsMatchActive(
+)then local aC=tonumber(ai.SelectedSpeed:match'%d+')or 2 ar(aC)ag.Notify(
+'Auto Speed',string.format('\u{110}\u{e3} g\u{1eed}i Remote ChangeSpeed: x%d',aC
+),2)end end function ai.SetSpeed(aB)if table.find(ai.Speeds,aB)then ai.
+SelectedSpeed=aB if ai.AutoSpeedEnabled and not as()and ae.IsInGame()and af.
+IsMatchActive()then local aC=tonumber(aB:match'%d+')or 2 ar(aC)ag.Notify(
+'Auto Speed',string.format('\u{110}\u{e3} g\u{1eed}i Remote ChangeSpeed: x%d',aC
 ),2)end end end ah.Register(function()aj=false if endScreenConn then
 endScreenConn:Disconnect()endScreenConn=nil end if aA then aA()end end)return ai
-end function a.aH()local aa,ab,ac,ad,ae,af=a.load'aA',a.load'aC',a.load'aB',a.
-load'aG',a.load'az',a.load'ax'return function(ag,ah)local ai=ah:Section{Side=
-'Left'}ai:Header{Name='Status & Display'}ai:Label{Text='<b>Location:</b> '..aa.
-GetLocationName()}local aj,ak,al,am=ai:Label{Text=
+end function a.aJ()local aa,ab,ac,ad,ae,af,ag=game:GetService'ReplicatedStorage'
+,a.load'aC',a.load'ax',a.load'ay',{Enabled=false,SelectedBanner='Basic',Banners=
+{'Basic','Premium'},SummonAmount='x10',Amounts={'x1','x10','x50'},SummonDelay=
+0.5},0 local ah,ai=function(ah)local ai=aa:FindFirstChild'Remotes'local aj=ai
+and ai:FindFirstChild'Summon'if not aj then aj=aa:FindFirstChild('Summon',true)
+end local ak=(ah=='Premium')and'SummonPremium'or'Summon'if aj then local al=aj:
+FindFirstChild(ak)if al and al:IsA'RemoteFunction'then return al end end local
+al=aa:FindFirstChild(ak,true)if al and al:IsA'RemoteFunction'then return al end
+return nil end,function()if ae.SummonAmount=='x50'then return 50 elseif ae.
+SummonAmount=='x10'then return 10 end return 1 end function ae.ExecuteSummon()
+local aj,ak=ah(ae.SelectedBanner),ai()if not aj then warn(string.format(
+'[Auto Summon] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y RemoteFunction: Remotes.Summon.%s'
+,(ae.SelectedBanner=='Premium')and'SummonPremium'or'Summon'))return false end
+local al,am=pcall(function()return aj:InvokeServer(ak)end)if not al then warn(
+'[Auto Summon] L\u{1ed7}i g\u{1ecd}i Remote:',tostring(am))return false end if
+am==false then return false end return true end local aj=function()while ae.
+Enabled and ac.IsActive()do if ab.IsLobby()then local aj=os.clock()if aj-af>=ae.
+SummonDelay then af=aj local ak=ae.ExecuteSummon()if not ak then task.wait(1)end
+end else task.wait(1)end task.wait(0.05)end ag=nil end function ae.SetEnabled(ak
+)if ae.Enabled==ak then return end ae.Enabled=(ak==true)if ae.Enabled then if
+not ag then ag=task.spawn(aj)end ad.Notify('Auto Summon',string.format(
+'\u{110}\u{e3} b\u{1ead}t Auto Summon (%s - %s).',ae.SelectedBanner,ae.
+SummonAmount),2)else ag=nil ad.Notify('Auto Summon',
+'\u{110}\u{e3} t\u{1eaf}t Auto Summon.',2)end end function ae.IsEnabled()return
+ae.Enabled end function ae.SetBanner(ak)if ak=='Basic'or ak=='Premium'then ae.
+SelectedBanner=ak end end function ae.GetBanner()return ae.SelectedBanner end
+function ae.SetAmount(ak)if ak=='x1'or ak=='x10'or ak=='x50'then ae.SummonAmount
+=ak end end function ae.GetAmount()return ae.SummonAmount end function ae.
+SetDelay(ak)ae.SummonDelay=math.clamp(tonumber(ak)or 0.5,0.1,5)end function ae.
+GetDelay()return ae.SummonDelay end ac.Register(function()ae.Enabled=false ag=
+nil end)return ae end function a.aK()local aa,ab,ac,ad,ae,af,ag=a.load'aC',a.
+load'aE',a.load'aD',a.load'aI',a.load'aJ',a.load'az',a.load'ax'return function(
+ah,ai)local aj=ai:Section{Side='Left'}aj:Header{Name='Status & Display'}aj:Label
+{Text='<b>Location:</b> '..aa.GetLocationName()}local ak,al,am,an=aj:Label{Text=
 "\u{23f1}\u{fe0f} <b>Timer:</b> <font color='rgb(255,220,100)'>00:00.00</font>"}
-,ai:Label{Text="\u{1f4b0} <b>Cash:</b> <font color='rgb(85,255,120)'>$0</font>"}
-,ai:Label{Text=
+,aj:Label{Text="\u{1f4b0} <b>Cash:</b> <font color='rgb(85,255,120)'>$0</font>"}
+,aj:Label{Text=
 "\u{2764}\u{fe0f} <b>Base HP:</b> <font color='rgb(255,100,100)'>100/100</font>"
-},ai:Label{Text=
-"\u{1f30a} <b>Wave:</b> <font color='rgb(100,200,255)'>0/0</font>"}local an=
-function(an)if not ac.IsInGame()then aj:UpdateName
+},aj:Label{Text=
+"\u{1f30a} <b>Wave:</b> <font color='rgb(100,200,255)'>0/0</font>"}local ao=
+function(ao)if not ac.IsInGame()then ak:UpdateName
 "\u{23f1}\u{fe0f} <b>Timer:</b> <font color='rgb(150,150,150)'>In Lobby</font>"
-ak:UpdateName
-"\u{1f4b0} <b>Cash:</b> <font color='rgb(150,150,150)'>In Lobby</font>"al:
+al:UpdateName
+"\u{1f4b0} <b>Cash:</b> <font color='rgb(150,150,150)'>In Lobby</font>"am:
 UpdateName
 "\u{2764}\u{fe0f} <b>Base HP:</b> <font color='rgb(150,150,150)'>In Lobby</font>"
-am:UpdateName
+an:UpdateName
 "\u{1f30a} <b>Wave:</b> <font color='rgb(150,150,150)'>In Lobby</font>"return
-end local ao=an.IsMatchActive and'rgb(255,220,100)'or'rgb(150,220,255)'aj:
+end local ap=ao.IsMatchActive and'rgb(255,220,100)'or'rgb(150,220,255)'ak:
 UpdateName(string.format(
-"\u{23f1}\u{fe0f} <b>Timer:</b> <font color='%s'>%s</font>",ao,an.
-ElapsedTimeFormatted))ak:UpdateName(string.format(
-"\u{1f4b0} <b>Cash:</b> <font color='rgb(85,255,120)'>%s</font>",an.
-CashFormatted))al:UpdateName(string.format(
-"\u{2764}\u{fe0f} <b>Base HP:</b> <font color='rgb(255,100,100)'>%s</font>",an.
-BaseHealthFormatted))am:UpdateName(string.format(
-"\u{1f30a} <b>Wave:</b> <font color='rgb(100,200,255)'>Wave %s</font>",an.
-WaveFormatted))end local ao=ab.Subscribe(an)af.Register(ao)local ap=ah:Section{
-Side='Right'}ap:Header{Name='Match Automation'}ap:Toggle({Name='Auto Replay',
-Default=ad.AutoReplayEnabled,Callback=ae.Wrap(function(aq)ad.SetAutoReplay(aq)
-end)},'Toggle_AutoReplay')ap:Toggle({Name='Auto Speed',Default=ad.
-AutoSpeedEnabled,Callback=ae.Wrap(function(aq)ad.SetAutoSpeed(aq)end)},
-'Toggle_AutoSpeed')ap:Dropdown({Name='Game Speed',Options=ad.Speeds,Default=ad.
-SelectedSpeed,Required=true,Callback=ae.Wrap(function(aq)if not aq or aq==''then
-return end ad.SetSpeed(aq)end)},'Dropdown_GameSpeed')end end function a.aI()
-local aa,ab,ac,ad,ae,af,ag,ah=game:GetService'Players',game:GetService
-'GuiService',game:GetService'VirtualInputManager',a.load'aB',a.load'ax',a.load
-'ay',{Enabled=false,Mode='Normal',StartDelay=2}local ai,aj,ak,al,am,an=function(
-ai)if not ai then return end pcall(function()local aj=(firesignal or(syn and syn
-.firesignal))if aj then aj(ai.MouseButton1Click)aj(ai.Activated)aj(ai.
-MouseButton1Up)end end)pcall(function()local aj,ak=ai.AbsolutePosition,ai.
-AbsoluteSize local al,am=aj.X+ak.X/2,aj.Y+ak.Y/2 ac:SendMouseButtonEvent(al,am,0
-,true,game,1)task.wait(0.05)ac:SendMouseButtonEvent(al,am,0,false,game,1)end)
-pcall(function()ab.SelectedObject=ai task.wait(0.05)ac:SendKeyEvent(true,Enum.
-KeyCode.Return,false,game)task.wait(0.05)ac:SendKeyEvent(false,Enum.KeyCode.
-Return,false,game)task.wait(0.05)ab.SelectedObject=nil end)end,function(ai)if ai
-=='Raid'then return{'Elevator1','Elevator2','Elevator3','Elevator4'}else return{
-'Elevator5','Elevator6','Elevator7','Elevator8'}end end,function(ai)if not ai
-then return nil,Vector3.zero end local aj for ak,al in ipairs{'Hitbox','Floor',
-'Zone','Trigger','Pad','Base','Primary'}do local am=ai:FindFirstChild(al,true)if
-am and am:IsA'BasePart'then aj=am break end end if not aj and ai:IsA'Model'and
-ai.PrimaryPart then aj=ai.PrimaryPart end if not aj then aj=ai:
-FindFirstChildWhichIsA('BasePart',true)end if not aj then return nil,Vector3.
-zero end local ak=aj.Position+Vector3.new(0,3,0)return aj,ak end,function(ai,aj,
-ak)local al,am=Vector3.new(0,0,1),workspace:FindFirstChildOfClass'SpawnLocation'
-if am then local an=am.Position.Z-ak.Z if an<-5 then al=Vector3.new(0,0,-1)
-elseif an>5 then al=Vector3.new(0,0,1)end else pcall(function()local an=
-RaycastParams.new()an.FilterType=RaycastFilterType.Exclude local ao,ap=aa.
-LocalPlayer and aa.LocalPlayer.Character,{ai}if ao then table.insert(ap,ao)end
-an.FilterDescendantsInstances=ap local aq,ar=ak+Vector3.new(0,5,11.5),ak+Vector3
-.new(0,5,-11.5)local as,at=workspace:Raycast(aq,Vector3.new(0,-15,0),an),
+"\u{23f1}\u{fe0f} <b>Timer:</b> <font color='%s'>%s</font>",ap,ao.
+ElapsedTimeFormatted))al:UpdateName(string.format(
+"\u{1f4b0} <b>Cash:</b> <font color='rgb(85,255,120)'>%s</font>",ao.
+CashFormatted))am:UpdateName(string.format(
+"\u{2764}\u{fe0f} <b>Base HP:</b> <font color='rgb(255,100,100)'>%s</font>",ao.
+BaseHealthFormatted))an:UpdateName(string.format(
+"\u{1f30a} <b>Wave:</b> <font color='rgb(100,200,255)'>Wave %s</font>",ao.
+WaveFormatted))end local ap=ab.Subscribe(ao)ag.Register(ap)local aq=ai:Section{
+Side='Left'}aq:Header{Name='Auto Summon'}aq:Toggle({Name='Auto Summon',Default=
+ae.IsEnabled(),Callback=af.Wrap(function(ar)ae.SetEnabled(ar)end)},
+'Toggle_AutoSummon')aq:Dropdown({Name='Select Banner',Options=ae.Banners,Default
+=ae.GetBanner(),Required=true,Callback=af.Wrap(function(ar)if ar and ar~=''then
+ae.SetBanner(ar)end end)},'Dropdown_SummonBanner')aq:Dropdown({Name=
+'Summon Amount',Options=ae.Amounts,Default=ae.GetAmount(),Required=true,Callback
+=af.Wrap(function(ar)if ar and ar~=''then ae.SetAmount(ar)end end)},
+'Dropdown_SummonAmount')aq:Slider({Name='Summon Delay (s)',Minimum=0.1,Maximum=3
+,Default=ae.GetDelay(),Precision=1,DisplayMethod='Value',Callback=af.Wrap(
+function(ar)ae.SetDelay(ar)end)},'Slider_SummonDelay')local ar=ai:Section{Side=
+'Right'}ar:Header{Name='Match Automation'}ar:Toggle({Name='Auto Replay',Default=
+ad.AutoReplayEnabled,Callback=af.Wrap(function(as)ad.SetAutoReplay(as)end)},
+'Toggle_AutoReplay')ar:Toggle({Name='Auto Speed',Default=ad.AutoSpeedEnabled,
+Callback=af.Wrap(function(as)ad.SetAutoSpeed(as)end)},'Toggle_AutoSpeed')ar:
+Dropdown({Name='Game Speed',Options=ad.Speeds,Default=ad.SelectedSpeed,Required=
+true,Callback=af.Wrap(function(as)if not as or as==''then return end ad.
+SetSpeed(as)end)},'Dropdown_GameSpeed')end end function a.aL()local aa,ab,ac,ad,
+ae,af,ag,ah=game:GetService'Players',game:GetService'GuiService',game:GetService
+'VirtualInputManager',a.load'aD',a.load'ax',a.load'ay',{Enabled=false,Mode=
+'Normal',StartDelay=2}local ai,aj,ak,al,am,an=function(ai)if not ai then return
+end pcall(function()local aj=(firesignal or(syn and syn.firesignal))if aj then
+aj(ai.MouseButton1Click)aj(ai.Activated)aj(ai.MouseButton1Up)end end)pcall(
+function()local aj,ak=ai.AbsolutePosition,ai.AbsoluteSize local al,am=aj.X+ak.X/
+2,aj.Y+ak.Y/2 ac:SendMouseButtonEvent(al,am,0,true,game,1)task.wait(0.05)ac:
+SendMouseButtonEvent(al,am,0,false,game,1)end)pcall(function()ab.SelectedObject=
+ai task.wait(0.05)ac:SendKeyEvent(true,Enum.KeyCode.Return,false,game)task.wait(
+0.05)ac:SendKeyEvent(false,Enum.KeyCode.Return,false,game)task.wait(0.05)ab.
+SelectedObject=nil end)end,function(ai)if ai=='Raid'then return{'Elevator1',
+'Elevator2','Elevator3','Elevator4'}else return{'Elevator5','Elevator6',
+'Elevator7','Elevator8'}end end,function(ai)if not ai then return nil,Vector3.
+zero end local aj for ak,al in ipairs{'Hitbox','Floor','Zone','Trigger','Pad',
+'Base','Primary'}do local am=ai:FindFirstChild(al,true)if am and am:IsA
+'BasePart'then aj=am break end end if not aj and ai:IsA'Model'and ai.PrimaryPart
+then aj=ai.PrimaryPart end if not aj then aj=ai:FindFirstChildWhichIsA(
+'BasePart',true)end if not aj then return nil,Vector3.zero end local ak=aj.
+Position+Vector3.new(0,3,0)return aj,ak end,function(ai,aj,ak)local al,am=
+Vector3.new(0,0,1),workspace:FindFirstChildOfClass'SpawnLocation'if am then
+local an=am.Position.Z-ak.Z if an<-5 then al=Vector3.new(0,0,-1)elseif an>5 then
+al=Vector3.new(0,0,1)end else pcall(function()local an=RaycastParams.new()an.
+FilterType=RaycastFilterType.Exclude local ao,ap=aa.LocalPlayer and aa.
+LocalPlayer.Character,{ai}if ao then table.insert(ap,ao)end an.
+FilterDescendantsInstances=ap local aq,ar=ak+Vector3.new(0,5,11.5),ak+Vector3.
+new(0,5,-11.5)local as,at=workspace:Raycast(aq,Vector3.new(0,-15,0),an),
 workspace:Raycast(ar,Vector3.new(0,-15,0),an)if at and not as then al=Vector3.
 new(0,0,-1)elseif as and not at then al=Vector3.new(0,0,1)end end)end local an=
 Vector3.new(ak.X,ak.Y,ak.Z+al.Z*11.5)return al,an end,function()local ai=aa.
@@ -7397,9 +7531,9 @@ pcall(function()for am,an in ipairs(aj:GetDescendants())do if an:IsA'BasePart'
 then al(ak,an,0)task.wait()al(ak,an,1)end end end)end local ao=function(ao,ap,aq
 ,ar)local as,at=(ao:FindFirstChild'HumanoidRootPart'),ao:FindFirstChildOfClass
 'Humanoid'if not as or not at then return false end local ay,az=al(ap,aq,ar)
-local aA={az,Vector3.new(ar.X,ar.Y,ar.Z-ay.Z*11.5)}for aJ,aK in ipairs(aA)do if
-not ag.Enabled or not ad.IsLobby()then return false end local aL=Vector3.new(ar.
-X,aK.Y,ar.Z)as.CFrame=CFrame.lookAt(aK,aL)pcall(function()as.
+local aA={az,Vector3.new(ar.X,ar.Y,ar.Z-ay.Z*11.5)}for aB,aC in ipairs(aA)do if
+not ag.Enabled or not ad.IsLobby()then return false end local aF=Vector3.new(ar.
+X,aC.Y,ar.Z)as.CFrame=CFrame.lookAt(aC,aF)pcall(function()as.
 AssemblyLinearVelocity=Vector3.zero as.AssemblyAngularVelocity=Vector3.zero end)
 at.PlatformStand=false at.Sit=false if at.WalkSpeed<16 then at.WalkSpeed=16 end
 pcall(at.ChangeState,at,Enum.HumanoidStateType.GettingUp)task.wait(0.05)at:
@@ -7416,17 +7550,17 @@ ag.StartDelay)end at=am()if at and ag.Enabled and ad.IsLobby()then local ay=at:
 FindFirstChild('Start',true)if ay and ay:IsA'GuiButton'then ai(ay)af.Notify(
 'Elevator','Pressed Start button!',2)task.wait(3)end end task.wait(1)continue
 end local ay=workspace:FindFirstChild'Elevators'if ay then local az=aj(ag.Mode)
-for aA,aJ in ipairs(az)do if not ag.Enabled or not ad.IsLobby()then break end if
-am()then break end local aK=ay:FindFirstChild(aJ)if aK then local aL,aM=ak(aK)if
-aL and ar then local aN=ao(aq,aK,aL,aM)if aN then break end end end end end task
+for aA,aB in ipairs(az)do if not ag.Enabled or not ad.IsLobby()then break end if
+am()then break end local aC=ay:FindFirstChild(aB)if aC then local aF,aM=ak(aC)if
+aF and ar then local aN=ao(aq,aC,aF,aM)if aN then break end end end end end task
 .wait(0.5)end ah=nil end function ag.SetEnabled(aq)if ag.Enabled==aq then return
 end ag.Enabled=aq if aq then if not ah then ah=task.spawn(ap)end end end
 function ag.SetMode(aq)if aq=='Raid'or aq=='Normal'then ag.Mode=aq end end
 function ag.SetStartDelay(aq)aq=tonumber(aq)or 0 ag.StartDelay=math.clamp(aq,0,
 30)end function ag.GetStartDelay()return ag.StartDelay end ae.Register(function(
-)ag.Enabled=false end)return ag end function a.aJ()local aa,ab,ac,ad,ae,af,ag,ah
+)ag.Enabled=false end)return ag end function a.aM()local aa,ab,ac,ad,ae,af,ag,ah
 ,ai,aj=game:GetService'Players',game:GetService'GuiService',game:GetService
-'VirtualInputManager',a.load'aB',a.load'ax',a.load'ay',{AutoPickMapEnabled=false
+'VirtualInputManager',a.load'aD',a.load'ax',a.load'ay',{AutoPickMapEnabled=false
 ,SelectedUniverse='Brainrot Bases',Universes={'Brainrot Bases',
 'Toilet Territory','Retro Revival','Garden','Backrooms'},UniverseMaps={[
 'Brainrot Bases']={'Night Base','Base','Gold Base','BrainrotEndless'},[
@@ -7481,14 +7615,14 @@ ag.SelectedUniverse)if aA then ak(aA)print(
 '[MatchSetup] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y n\u{fa}t Universe:',ag.
 SelectedUniverse)end end task.wait(0.4)if az then print(
 '[MatchSetup] \u{110}ang ch\u{1edd} v\u{e0} t\u{ec}m n\u{fa}t Map:',ag.
-SelectedMap)local aA,aJ=(ag.SelectedMap)for aK=1,40 do aJ=al(az,aA)if aJ and aJ.
-Visible then break end task.wait(0.1)end if aJ then ak(aJ)ah=true print(
+SelectedMap)local aA,aB=(ag.SelectedMap)for aC=1,40 do aB=al(az,aA)if aB and aB.
+Visible then break end task.wait(0.1)end if aB then ak(aB)ah=true print(
 '[MatchSetup] -> \u{110}\u{e3} click Map th\u{e0}nh c\u{f4}ng:',aA)af.Notify(
 'Match Setup',string.format('\u{110}\u{e3} ch\u{1ecd}n: %s - %s',ag.
-SelectedUniverse,aA),3)else for aK,aL in ipairs(az:GetChildren())do if(aL:IsA
-'GuiButton'or aL:IsA'ImageButton')and aL.Visible then ak(aL)ah=true print(
-'[MatchSetup] -> \u{110}\u{e3} click Map fallback:',aL.Name)af.Notify(
-'Match Setup',string.format('\u{110}\u{e3} ch\u{1ecd}n Map fallback: %s',aL.Name
+SelectedUniverse,aA),3)else for aC,aF in ipairs(az:GetChildren())do if(aF:IsA
+'GuiButton'or aF:IsA'ImageButton')and aF.Visible then ak(aF)ah=true print(
+'[MatchSetup] -> \u{110}\u{e3} click Map fallback:',aF.Name)af.Notify(
+'Match Setup',string.format('\u{110}\u{e3} ch\u{1ecd}n Map fallback: %s',aF.Name
 ),3)break end end if not ah then warn
 '[MatchSetup] Kh\u{f4}ng t\u{ec}m th\u{1ea5}y n\u{fa}t Map n\u{e0}o \u{111}ang hi\u{1ec3}n th\u{1ecb} trong Voting.Maps!'
 end end end end end if ap and as then local at=as:FindFirstChild
@@ -7499,12 +7633,12 @@ ay=at:FindFirstChild'Modes'if ay then local az=ag.SelectedDifficulty print(
 task.wait(0.2)ak(aA)ai=true print(
 '[MatchSetup] -> \u{110}\u{e3} click Difficulty th\u{e0}nh c\u{f4}ng:',az)af.
 Notify('Match Setup',string.format(
-'\u{110}\u{e3} ch\u{1ecd}n \u{111}\u{1ed9} kh\u{f3}: %s',az),3)else for aJ,aK in
-ipairs(ay:GetChildren())do if(aK:IsA'GuiButton'or aK:IsA'ImageButton')and aK.
-Visible then ak(aK)ai=true print(
-'[MatchSetup] -> \u{110}\u{e3} click Difficulty fallback:',aK.Name)af.Notify(
+'\u{110}\u{e3} ch\u{1ecd}n \u{111}\u{1ed9} kh\u{f3}: %s',az),3)else for aB,aC in
+ipairs(ay:GetChildren())do if(aC:IsA'GuiButton'or aC:IsA'ImageButton')and aC.
+Visible then ak(aC)ai=true print(
+'[MatchSetup] -> \u{110}\u{e3} click Difficulty fallback:',aC.Name)af.Notify(
 'Match Setup',string.format(
-'\u{110}\u{e3} ch\u{1ecd}n \u{111}\u{1ed9} kh\u{f3} fallback: %s',aK.Name),3)
+'\u{110}\u{e3} ch\u{1ecd}n \u{111}\u{1ed9} kh\u{f3} fallback: %s',aC.Name),3)
 break end end end end end end task.wait(0.5)end aj=false print
 '[MatchSetup] Tr\u{ec}nh theo d\u{f5}i Match Setup \u{111}\u{e3} k\u{1ebf}t th\u{fa}c v\u{f2}ng l\u{1eb7}p.'
 end function ag.StartVotingWatcher()ah=false ai=false if not aj then task.spawn(
@@ -7529,9 +7663,9 @@ Zone='InGame',OnEnter=function()print
 StartVotingWatcher()end,OnLeave=function()print
 '[MatchSetup] R\u{1edd}i In-Game -> Reset tr\u{1ea1}ng th\u{e1}i Match Setup.'ag
 .StopVotingWatcher()end}ae.Register(function()ag.StopVotingWatcher()end)return
-ag end function a.aK()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak=game:GetService
+ag end function a.aN()local aa,ab,ac,ad,ae,af,ag,ah,ai,aj,ak=game:GetService
 'ReplicatedStorage',game:GetService'Players',game:GetService'GuiService',game:
-GetService'VirtualInputManager',a.load'aB',a.load'ax',a.load'ay',{Enabled=false,
+GetService'VirtualInputManager',a.load'aD',a.load'ax',a.load'ay',{Enabled=false,
 VoteDelay=1,Catalog={{Id='None',Name='No Mutator',DefaultPriority=100,
 Description='B\u{ec}nh th\u{1b0}\u{1edd}ng (Kh\u{f4}ng bonus)'},{Id='Brainrot',
 Name='Brainrot',DefaultPriority=80,Description=
@@ -7599,8 +7733,8 @@ tonumber(ar)or 0,0,100)end function ah.GetPriority(aq)return ah.Priorities[aq]or
 50 end function ah.Reset()ai=false if aj then aj:Disconnect()aj=nil end ak=nil
 end ae.Register{Name='SlopMutator',Zone='InGame',OnEnter=function()ai=false if
 ah.Enabled then ao()ap()end end,OnLeave=function()ah.Reset()end}af.Register(
-function()ah.Reset()end)return ah end function a.aL()local aa,ab,ac,ad=a.load
-'aI',a.load'aJ',a.load'aK',a.load'az'return function(ae,af)local ag=af:Section{
+function()ah.Reset()end)return ah end function a.aO()local aa,ab,ac,ad=a.load
+'aL',a.load'aM',a.load'aN',a.load'az'return function(ae,af)local ag=af:Section{
 Side='Left'}ag:Header{Name='Auto Joiner'}ag:Toggle({Name='Game Joiner',Default=
 aa.Enabled,Callback=ad.Wrap(function(ah)aa.SetEnabled(ah)end)},
 'Toggle_GameJoiner')ag:Dropdown({Name='Game Mode',Options={'Normal','Raid'},
@@ -7640,8 +7774,8 @@ Callback=ad.Wrap(function(ak)ac.SetVoteDelay(ak)end)},'Slider_MutatorVoteDelay')
 aj:Header{Name='Mutator Priority (100 = Cao nh\u{1ea5}t)'}for ak,al in ipairs(ac
 .Catalog)do aj:Slider({Name=al.Name,Default=al.DefaultPriority,Minimum=0,Maximum
 =100,DisplayMethod='Round',Precision=0,Callback=ad.Wrap(function(am)ac.
-SetPriority(al.Id,am)end)},'Slider_Mutator_'..al.Id)end end end function a.aM()
-local aa,ab,ac,ad,ae,af,ag,ah=a.load'aD',a.load'aE',a.load'aC',a.load'ay',a.load
+SetPriority(al.Id,am)end)},'Slider_Mutator_'..al.Id)end end end function a.aP()
+local aa,ab,ac,ad,ae,af,ag,ah=a.load'aF',a.load'aG',a.load'aE',a.load'ay',a.load
 'ax',game:GetService'Players',game:GetService'ReplicatedStorage',{}ah.
 InitialSpeed=1 local ai,aj,ak,al,am,an,ao,ap,aq,ar,as,at=false,{},0,{},{},{}
 local ay,az,aA=function()if not ap or not aq or not ar or not as or not at then
@@ -7650,103 +7784,104 @@ local ay=ag:FindFirstChild'Functions'if ay then ap=(ay:FindFirstChild
 'UpgradeTower')as=(ay:FindFirstChild'ChangeTowerMode')at=(ay:FindFirstChild
 'ChangeSpeed')end end return ap,aq,ar,as,at end,function()local ay=af.
 LocalPlayer local az=ay and ay:FindFirstChild'PlayerGui'local aA=az and az:
-FindFirstChild'GameGui'if not aA then return 1 end local aJ=aA:FindFirstChild
-'SpeedUp'local aK=aJ and aJ:FindFirstChild'Message'if aK and aK:IsA'TextLabel'
-then local aL=tonumber(aK.Text:match'%d+')if aL and aL>=1 and aL<=5 then return
-aL end end local aL=aA:FindFirstChild('SpeedUp',true)if aL then local aM=aL:
+FindFirstChild'GameGui'if not aA then return 1 end local aB=aA:FindFirstChild
+'SpeedUp'local aC=aB and aB:FindFirstChild'Message'if aC and aC:IsA'TextLabel'
+then local aF=tonumber(aC.Text:match'%d+')if aF and aF>=1 and aF<=5 then return
+aF end end local aF=aA:FindFirstChild('SpeedUp',true)if aF then local aM=aF:
 FindFirstChild'Message'if aM and aM:IsA'TextLabel'then local aN=tonumber(aM.Text
 :match'%d+')if aN and aN>=1 and aN<=5 then return aN end end end return 1 end,
-function(ay,az,aA)aA=aA or 3.5 local aJ,aK,aL=aA,{workspace:FindFirstChild
+function(ay,az,aA)aA=aA or 3.5 local aB,aC,aF=aA,{workspace:FindFirstChild
 'Towers',workspace:FindFirstChild'PlacedTowers',workspace:FindFirstChild'Units',
-workspace}for aM,aN in ipairs(aK)do if aN then for aO,aP in ipairs(aN:
+workspace}for aM,aN in ipairs(aC)do if aN then for aO,aP in ipairs(aN:
 GetChildren())do if aP:IsA'Model'then local aQ if aP.PrimaryPart then aQ=aP.
 PrimaryPart.Position else pcall(function()aQ=aP:GetPivot().Position end)end if
-aQ then local aS=(aQ-az).Magnitude if aS<aJ then if not ay or aP.Name:lower():
-find(ay:lower())then aJ=aS aL=aP end end end end end end if aL then break end
-end return aL end function ah.AddStep(aJ,aK)if not ai then return end local aL,
-aM=ac.GetWave()local aN,aO,aP=ac.GetElapsedTime(),ac.GetCash(),#aj+1 local aQ={
-Index=aP,Type=aJ,TowerId=aK.TowerId or('T'..tostring(aP)),TowerName=aK.TowerName
-or'Unknown',CFrame=aK.CFrame,Position=aK.Position,Arg3=aK.Arg3,Arg4=aK.Arg4,Arg5
-=aK.Arg5,Wave=aL,Time=aN,Cost=aK.Cost or aO,TargetMode=aK.TargetMode,RawData=aK.
-RawData}table.insert(aj,aQ)if aJ=='Place'then ad.Notify('Macro Record',string.
-format('Recorded Place: %s (%s) [%.2fs]',aQ.TowerName,aQ.TowerId,aQ.Time),1.5)
-elseif aJ=='Sell'then ad.Notify('Macro Record',string.format(
-'Recorded Sell: %s (%s) [%.2fs]',aQ.TowerName,aQ.TowerId,aQ.Time),1.5)elseif aJ
+aQ then local aS=(aQ-az).Magnitude if aS<aB then if not ay or aP.Name:lower():
+find(ay:lower())then aB=aS aF=aP end end end end end end if aF then break end
+end return aF end function ah.AddStep(aB,aC)if not ai then return end local aF,
+aM=ac.GetWave()local aN,aO,aP,aQ=ac.GetElapsedTime(),ac.GetCash(),#aj+1,az()
+local aS={Index=aP,Type=aB,TowerId=aC.TowerId or('T'..tostring(aP)),TowerName=aC
+.TowerName or'Unknown',Speed=aC.Speed,RecordSpeed=aQ,CFrame=aC.CFrame,Position=
+aC.Position,Arg3=aC.Arg3,Arg4=aC.Arg4,Arg5=aC.Arg5,Wave=aF,Time=aN,Cost=aC.Cost
+or aO,TargetMode=aC.TargetMode,RawData=aC.RawData}table.insert(aj,aS)if aB==
+'Place'then ad.Notify('Macro Record',string.format(
+'Recorded Place: %s (%s) [%.2fs]',aS.TowerName,aS.TowerId,aS.Time),1.5)elseif aB
+=='Sell'then ad.Notify('Macro Record',string.format(
+'Recorded Sell: %s (%s) [%.2fs]',aS.TowerName,aS.TowerId,aS.Time),1.5)elseif aB
 =='Upgrade'then ad.Notify('Macro Record',string.format(
-'Recorded Upgrade: %s (%s) [%.2fs]',aQ.TowerName,aQ.TowerId,aQ.Time),1.5)elseif
-aJ=='Target'then ad.Notify('Macro Record',string.format(
-'Recorded Target: %s (%s) [%.2fs]',aQ.TowerName,aQ.TowerId,aQ.Time),1.5)end end
-local aJ,aK,aL,aM,aN,aO,aP=function(aJ)local aK,aL=pcall(function()local aK,aL,
-aM=type(aJ[1])=='string'and aJ[1]or'Unknown',typeof(aJ[2])=='CFrame'and aJ[2]or
-nil if aL then aM=aL.Position elseif typeof(aJ[2])=='Vector3'then aM=aJ[2]aL=
-CFrame.new(aM)end local aN,aO,aP,aQ,aS=aJ[3]==true,type(aJ[4])=='string'and aJ[4
-]or nil,type(aJ[5])=='table'and aJ[5]or nil,aL and{aL:GetComponents()}or nil,aM
+'Recorded Upgrade: %s (%s) [%.2fs]',aS.TowerName,aS.TowerId,aS.Time),1.5)elseif
+aB=='Target'then ad.Notify('Macro Record',string.format(
+'Recorded Target: %s (%s) [%.2fs]',aS.TowerName,aS.TowerId,aS.Time),1.5)end end
+local aB,aC,aF,aM,aN,aO,aP=function(aB)local aC,aF=pcall(function()local aC,aF,
+aM=type(aB[1])=='string'and aB[1]or'Unknown',typeof(aB[2])=='CFrame'and aB[2]or
+nil if aF then aM=aF.Position elseif typeof(aB[2])=='Vector3'then aM=aB[2]aF=
+CFrame.new(aM)end local aN,aO,aP,aQ,aS=aB[3]==true,type(aB[4])=='string'and aB[4
+]or nil,type(aB[5])=='table'and aB[5]or nil,aF and{aF:GetComponents()}or nil,aM
 and{aM.X,aM.Y,aM.Z}or nil ak+=1 local aT='T'..tostring(ak)if aM then an[aT]={
-TowerName=aK,Position=aM}end ah.AddStep('Place',{TowerId=aT,TowerName=aK,CFrame=
-aQ,Position=aS,Arg3=aN,Arg4=aO,Arg5=aP,RawData={Arg1=aJ[1],Arg2=tostring(aJ[2]),
-Arg3=aJ[3],Arg4=aJ[4],Arg5=aJ[5]}})if aM then task.spawn(function()for aU=1,15
-do task.wait(0.2)if not ai then break end local aV=aA(aK,aM)if aV then al[aV]=aT
-am[aT]=aV break end end end)end end)if not aK then warn(
-'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n SpawnTower:',tostring(aL))end end,
-function(aJ)local aK,aL=pcall(function()local aK,aL,aM,aN=typeof(aJ[1])==
-'Instance'and aJ[1]or nil,'Unknown'if aK then aL=aK.Name if al[aK]then aM=al[aK]
-else pcall(function()aN=aK:GetPivot().Position end)if not aN and aK:IsA'Model'
-and aK.PrimaryPart then aN=aK.PrimaryPart.Position end if aN then local aO=5 for
+TowerName=aC,Position=aM}end ah.AddStep('Place',{TowerId=aT,TowerName=aC,CFrame=
+aQ,Position=aS,Arg3=aN,Arg4=aO,Arg5=aP,RawData={Arg1=aB[1],Arg2=tostring(aB[2]),
+Arg3=aB[3],Arg4=aB[4],Arg5=aB[5]}})if aM then task.spawn(function()for aU=1,15
+do task.wait(0.2)if not ai then break end local aV=aA(aC,aM)if aV then al[aV]=aT
+am[aT]=aV break end end end)end end)if not aC then warn(
+'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n SpawnTower:',tostring(aF))end end,
+function(aB)local aC,aF=pcall(function()local aC,aF,aM,aN=typeof(aB[1])==
+'Instance'and aB[1]or nil,'Unknown'if aC then aF=aC.Name if al[aC]then aM=al[aC]
+else pcall(function()aN=aC:GetPivot().Position end)if not aN and aC:IsA'Model'
+and aC.PrimaryPart then aN=aC.PrimaryPart.Position end if aN then local aO=5 for
 aP,aQ in pairs(an)do local aS=(aQ.Position-aN).Magnitude if aS<aO then aO=aS aM=
-aP aL=aQ.TowerName end end end end end if not aM then aM='T_Sold_'..tostring(#aj
+aP aF=aQ.TowerName end end end end end if not aM then aM='T_Sold_'..tostring(#aj
 +1)end local aO if aM and an[aM]then local aP=an[aM].Position aO={aP.X,aP.Y,aP.Z
 }elseif aN then aO={aN.X,aN.Y,aN.Z}end ah.AddStep('Sell',{TowerId=aM,TowerName=
-aL,Position=aO,RawData={InstanceName=aK and aK.Name}})if aK then al[aK]=nil end
-if aM then am[aM]=nil an[aM]=nil end end)if not aK then warn(
-'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n SellTower:',tostring(aL))end end,function
-(aJ)local aK,aL=pcall(function()local aK,aL,aM,aN,aO=typeof(aJ[1])=='Instance'
-and aJ[1]or nil,type(aJ[2])=='string'and aJ[2]or nil,'Unknown'if aK then aM=aK.
-Name if al[aK]then aN=al[aK]else pcall(function()aO=aK:GetPivot().Position end)
-if not aO and aK:IsA'Model'and aK.PrimaryPart then aO=aK.PrimaryPart.Position
+aF,Position=aO,RawData={InstanceName=aC and aC.Name}})if aC then al[aC]=nil end
+if aM then am[aM]=nil an[aM]=nil end end)if not aC then warn(
+'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n SellTower:',tostring(aF))end end,function
+(aB)local aC,aF=pcall(function()local aC,aF,aM,aN,aO=typeof(aB[1])=='Instance'
+and aB[1]or nil,type(aB[2])=='string'and aB[2]or nil,'Unknown'if aC then aM=aC.
+Name if al[aC]then aN=al[aC]else pcall(function()aO=aC:GetPivot().Position end)
+if not aO and aC:IsA'Model'and aC.PrimaryPart then aO=aC.PrimaryPart.Position
 end if aO then local aP=5 for aQ,aS in pairs(an)do local aT=(aS.Position-aO).
 Magnitude if aT<aP then aP=aT aN=aQ aM=aS.TowerName end end end end end if not
 aN then aN='T_Upgraded_'..tostring(#aj+1)end local aP if aN and an[aN]then local
 aQ=an[aN].Position aP={aQ.X,aQ.Y,aQ.Z}elseif aO then aP={aO.X,aO.Y,aO.Z}end ah.
-AddStep('Upgrade',{TowerId=aN,TowerName=aM,Arg4=aL,Position=aP,RawData={
-InstanceName=aK and aK.Name,Variant=aL}})end)if not aK then warn(
-'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n UpgradeTower:',tostring(aL))end end,
-function(aJ)local aK,aL=pcall(function()local aK,aL,aM,aN=typeof(aJ[1])==
-'Instance'and aJ[1]or nil,'Unknown'if aK then aL=aK.Name if al[aK]then aM=al[aK]
-else pcall(function()aN=aK:GetPivot().Position end)if not aN and aK:IsA'Model'
-and aK.PrimaryPart then aN=aK.PrimaryPart.Position end if aN then local aO=5 for
+AddStep('Upgrade',{TowerId=aN,TowerName=aM,Arg4=aF,Position=aP,RawData={
+InstanceName=aC and aC.Name,Variant=aF}})end)if not aC then warn(
+'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n UpgradeTower:',tostring(aF))end end,
+function(aB)local aC,aF=pcall(function()local aC,aF,aM,aN=typeof(aB[1])==
+'Instance'and aB[1]or nil,'Unknown'if aC then aF=aC.Name if al[aC]then aM=al[aC]
+else pcall(function()aN=aC:GetPivot().Position end)if not aN and aC:IsA'Model'
+and aC.PrimaryPart then aN=aC.PrimaryPart.Position end if aN then local aO=5 for
 aP,aQ in pairs(an)do local aS=(aQ.Position-aN).Magnitude if aS<aO then aO=aS aM=
-aP aL=aQ.TowerName end end end end end if not aM then aM='T_Target_'..tostring(#
+aP aF=aQ.TowerName end end end end end if not aM then aM='T_Target_'..tostring(#
 aj+1)end local aO if aM and an[aM]then local aP=an[aM].Position aO={aP.X,aP.Y,aP
-.Z}elseif aN then aO={aN.X,aN.Y,aN.Z}end local aP if aK then pcall(function()aP=
-aK:GetAttribute'TargetMode'or aK:GetAttribute'Target'or aK:GetAttribute'Mode'end
-)end ah.AddStep('Target',{TowerId=aM,TowerName=aL,TargetMode=aP,Position=aO,
-RawData={InstanceName=aK and aK.Name,TargetMode=aP}})end)if not aK then warn(
-'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n ChangeTowerMode:',tostring(aL))end end,
-function(aJ)local aK,aL=pcall(function()local aK=aJ[1]local aL=tonumber(aK)if
-not aL then return end if#aj>0 then local aM=aj[#aj]if aM.Type=='Speed'and aM.
-Speed==aL then return end end ah.AddStep('Speed',{TowerId='SPEED',TowerName=
-'GameSpeed',Speed=aL,Cost=0,RawData={Speed=aL}})ad.Notify('Macro Recorder',
+.Z}elseif aN then aO={aN.X,aN.Y,aN.Z}end local aP if aC then pcall(function()aP=
+aC:GetAttribute'TargetMode'or aC:GetAttribute'Target'or aC:GetAttribute'Mode'end
+)end ah.AddStep('Target',{TowerId=aM,TowerName=aF,TargetMode=aP,Position=aO,
+RawData={InstanceName=aC and aC.Name,TargetMode=aP}})end)if not aC then warn(
+'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n ChangeTowerMode:',tostring(aF))end end,
+function(aB)local aC,aF=pcall(function()local aC=aB[1]local aF=tonumber(aC)if
+not aF then return end if#aj>0 then local aM=aj[#aj]if aM.Type=='Speed'and aM.
+Speed==aF then return end end ah.AddStep('Speed',{TowerId='SPEED',TowerName=
+'GameSpeed',Speed=aF,Cost=0,RawData={Speed=aF}})ad.Notify('Macro Recorder',
 string.format('Ghi nh\u{1ead}n \u{111}\u{1ed5}i t\u{1ed1}c \u{111}\u{1ed9}: x%d'
-,aL),1.5)end)if not aK then warn(
-'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n ChangeSpeed:',tostring(aL))end end,false
+,aF),1.5)end)if not aC then warn(
+'[Recorder] L\u{1ed7}i ghi nh\u{1ead}n ChangeSpeed:',tostring(aF))end end,false
 local aQ=function()if aO then return end ay()local aQ,aS=newcclosure or function
 (aQ)return aQ end,setnamecallmethod or function(...)end if hookmetamethod then
 aO=true aP=hookmetamethod(game,'__namecall',aQ(function(aT,...)local aU=
 getnamecallmethod and getnamecallmethod()if ai and typeof(aT)=='Instance'and aU
 =='InvokeServer'then local aV pcall(function()aV=aT.Name end)if aV=='SpawnTower'
-or(ap and aT==ap)then if not ap then ap=aT end local aW={...}task.spawn(aJ,aW)
+or(ap and aT==ap)then if not ap then ap=aT end local aW={...}task.spawn(aB,aW)
 elseif aV=='SellTower'or(aq and aT==aq)then if not aq then aq=aT end local aW={
-...}task.spawn(aK,aW)elseif aV=='UpgradeTower'or(ar and aT==ar)then if not ar
-then ar=aT end local aW={...}task.spawn(aL,aW)elseif aV=='ChangeTowerMode'or(as
+...}task.spawn(aC,aW)elseif aV=='UpgradeTower'or(ar and aT==ar)then if not ar
+then ar=aT end local aW={...}task.spawn(aF,aW)elseif aV=='ChangeTowerMode'or(as
 and aT==as)then if not as then as=aT end local aW={...}task.spawn(aM,aW)elseif
 aV=='ChangeSpeed'or(at and aT==at)then if not at then at=aT end local aW={...}
 task.spawn(aN,aW)end end if aS and aU then aS(aU)end return aP(aT,...)end))
 elseif hookfunction and ap and aq then aO=true local aT aT=hookfunction(ap.
-InvokeServer,aQ(function(aU,...)if ai then local aV={...}task.spawn(aJ,aV)end
+InvokeServer,aQ(function(aU,...)if ai then local aV={...}task.spawn(aB,aV)end
 return aT(aU,...)end))local aU aU=hookfunction(aq.InvokeServer,aQ(function(aV,
-...)if ai then local aW={...}task.spawn(aK,aW)end return aU(aV,...)end))if ar
+...)if ai then local aW={...}task.spawn(aC,aW)end return aU(aV,...)end))if ar
 then local aV aV=hookfunction(ar.InvokeServer,aQ(function(aW,...)if ai then
-local aX={...}task.spawn(aL,aX)end return aV(aW,...)end))end if as then local aV
+local aX={...}task.spawn(aF,aX)end return aV(aW,...)end))end if as then local aV
 aV=hookfunction(as.InvokeServer,aQ(function(aW,...)if ai then local aX={...}task
 .spawn(aM,aX)end return aV(aW,...)end))end if at then local aV aV=hookfunction(
 at.InvokeServer,aQ(function(aW,...)if ai then local aX={...}task.spawn(aN,aX)end
@@ -7770,8 +7905,8 @@ ab.SaveMacro(ao,aT)ad.Notify('Macro',string.format(
 aT.Metadata.InitialSpeed or 1),2.5)else ad.Notify('Macro',
 '\u{110}\u{e3} d\u{1eeb}ng Record (0 b\u{1b0}\u{1edb}c)',2)end return aS end ae.
 Register(function()if ai then ah.StopRecording()end end)return ah end function a
-.aN()local aa,ab,ac,ad,ae,af,ag,ah=a.load'aC',a.load'aB',a.load'aE',a.load'aM',a
-.load'aF',a.load'az',a.load'ay',a.load'ax'return function(ai,aj)local ak=aj:
+.aQ()local aa,ab,ac,ad,ae,af,ag,ah=a.load'aE',a.load'aD',a.load'aG',a.load'aP',a
+.load'aH',a.load'az',a.load'ay',a.load'ax'return function(ai,aj)local ak=aj:
 Section{Side='Left'}ak:Header{Name='Match Status'}local al,am,an,ao,ap=ak:Label{
 Text=
 "\u{23f1}\u{fe0f} <b>Timer:</b> <font color='rgb(255,220,100)'>00:00</font>"},ak
@@ -7804,121 +7939,130 @@ WaveFormatted))local at=(aq.Message and aq.Message~='')and aq.Message or(aq.
 IsMatchActive and'Match in progress'or'Finished')ap:UpdateName(string.format(
 "\u{1f4e2} <b>Status:</b> <font color='rgb(200,200,200)'>%s</font>",at))end
 local ar=aa.Subscribe(aq)ah.Register(ar)local as=aj:Section{Side='Left'}as:
-Header{Name='Macro Player'}local at,ay,az,aA,aJ=as:Label{Text=
-"\u{1f4c1} <b>Macro:</b> <font color='rgb(100,200,255)'>None</font>"},as:Label{
+Header{Name='Macro Recorder'}local at,ay,az=''local aA=as:Input({Name=
+'Macro Name',Placeholder='Enter macro name...',AcceptedCharacters='AlphaNumeric'
+,Callback=af.Wrap(function(aA)at=aA or''end)},'Input_MacroName')as:Button{Name=
+'Create Macro',Callback=function()local aB=at if not aB or aB==''then if aA and
+type(aA.GetInput)=='function'then aB=aA:GetInput()end end local aC=(aB or''):
+gsub('^%s+',''):gsub('%s+$','')if#aC==0 then ag.Notify('Macro',
+'T\u{ea}n Macro kh\u{f4}ng \u{111}\u{1b0}\u{1ee3}c \u{111}\u{1ec3} tr\u{1ed1}ng!'
+,2)return end ac.CreateMacro(aC)ad.SetActiveMacro(aC)ae.SetActiveMacro(aC)if ay
+then pcall(function()local aF=ay:GetOptions()or{}if not table.find(aF,aC)then ay
+:InsertOptions{aC}end ay:UpdateSelection(aC)end)end ag.Notify('Macro',
+'\u{110}\u{e3} t\u{1ea1}o Macro: '..aC,2)end}local aB=ac.ListMacros()if#aB==0
+then aB={'None'}end local aC=aB[1]or'None'if aC~='None'then ad.SetActiveMacro(aC
+)ae.SetActiveMacro(aC)end ay=as:Dropdown({Name='Select Macro',Options=aB,Default
+=aC,Required=true,Callback=af.Wrap(function(aF)if not aF or aF==''or aF=='None'
+then return end ad.SetActiveMacro(aF)ae.SetActiveMacro(aF)end)},
+'Dropdown_SelectMacro')local aF=false az=as:Toggle({Name='Record Macro',Default=
+ad.IsRecording(),Callback=af.Wrap(function(aM)if aF then return end if aM then
+if ae.IsEnabled()then aF=true pcall(function()az:UpdateState(false,true)end)aF=
+false ag.Notify('Macro',
+'Vui l\u{f2}ng t\u{1eaf}t Play Macro tr\u{1b0}\u{1edb}c khi Record!',2)return
+end local aN=ad.GetActiveMacro()if not aN or aN==''or aN=='None'then aF=true
+pcall(function()az:UpdateState(false,true)end)aF=false ag.Notify('Macro',
+'Vui l\u{f2}ng ch\u{1ecd}n ho\u{1eb7}c t\u{1ea1}o Macro tr\u{1b0}\u{1edb}c khi Record!'
+,2)return end local aO=ad.StartRecording(aN)if not aO then aF=true pcall(
+function()az:UpdateState(false,true)end)aF=false end else ad.StopRecording()
+local aN=ad.GetActiveMacro()if aN then ae.SetActiveMacro(aN)end end end)},
+'Toggle_RecordMacro')local aM=aj:Section{Side='Right'}aM:Header{Name=
+'Macro Player'}local aN,aO,aP,aQ,aS=aM:Label{Text=
+"\u{1f4c1} <b>Macro:</b> <font color='rgb(100,200,255)'>None</font>"},aM:Label{
 Text=
-"\u{25b6}\u{fe0f} <b>Status:</b> <font color='rgb(180,180,180)'>Idle</font>"},as
+"\u{25b6}\u{fe0f} <b>Status:</b> <font color='rgb(180,180,180)'>Idle</font>"},aM
 :Label{Text="\u{1f4cb} <b>Step:</b> <font color='rgb(150,150,150)'>0 / 0</font>"
-},as:Label{Text=
+},aM:Label{Text=
 "\u{1f3af} <b>Next Action:</b> <font color='rgb(150,150,150)'>None</font>"},
-false as:Toggle({Name='Play Macro',Default=ae.IsEnabled(),Callback=af.Wrap(
-function(aK)if aJ then return end if aK then if ad.IsRecording()then aJ=true
-pcall(function()playToggle:UpdateState(false,true)end)aJ=false ag.Notify('Macro'
+false aM:Toggle({Name='Play Macro',Default=ae.IsEnabled(),Callback=af.Wrap(
+function(aT)if aS then return end if aT then if ad.IsRecording()then aS=true
+pcall(function()playToggle:UpdateState(false,true)end)aS=false ag.Notify('Macro'
 ,'Vui l\u{f2}ng t\u{1eaf}t Record Macro tr\u{1b0}\u{1edb}c khi Play!',2)return
-end local aL=ae.GetActiveMacro()or ad.GetActiveMacro()if not aL or aL==''or aL==
-'None'then aJ=true pcall(function()playToggle:UpdateState(false,true)end)aJ=
+end local aU=ae.GetActiveMacro()or ad.GetActiveMacro()if not aU or aU==''or aU==
+'None'then aS=true pcall(function()playToggle:UpdateState(false,true)end)aS=
 false ag.Notify('Macro',
 'Vui l\u{f2}ng ch\u{1ecd}n ho\u{1eb7}c t\u{1ea1}o Macro tr\u{1b0}\u{1edb}c khi Play!'
-,2)return end local aM=ac.GetMacro(aL)if not aM or not aM.Steps or#aM.Steps==0
-then aJ=true pcall(function()playToggle:UpdateState(false,true)end)aJ=false ag.
+,2)return end local aV=ac.GetMacro(aU)if not aV or not aV.Steps or#aV.Steps==0
+then aS=true pcall(function()playToggle:UpdateState(false,true)end)aS=false ag.
 Notify('Macro',string.format(
 "Macro '%s' ch\u{1b0}a c\u{f3} b\u{1b0}\u{1edb}c n\u{e0}o \u{111}\u{1ec3} ch\u{1ea1}y!"
-,aL),2.5)return end ae.SetActiveMacro(aL)ae.SetEnabled(true)else ae.SetEnabled(
-false)end end)},'Toggle_PlayMacro')as:Toggle({Name='Apply Macro Speed',Default=
-ae.IsSpeedSyncEnabled(),Callback=af.Wrap(function(aK)ae.SetSpeedSync(aK)end)},
-'Toggle_ApplyMacroSpeed')as:Dropdown({Name='Timing Mode',Options={'Hybrid',
+,aU),2.5)return end ae.SetActiveMacro(aU)ae.SetEnabled(true)else ae.SetEnabled(
+false)end end)},'Toggle_PlayMacro')aM:Toggle({Name='Apply Macro Speed',Default=
+ae.IsSpeedSyncEnabled(),Callback=af.Wrap(function(aT)ae.SetSpeedSync(aT)end)},
+'Toggle_ApplyMacroSpeed')aM:Dropdown({Name='Timing Mode',Options={'Hybrid',
 'Timer','Wave & Cash','Cash (Timed Sell)'},Default=ae.GetTimingMode(),Required=
-true,Callback=af.Wrap(function(aK)if not aK or aK==''then return end ae.
-SetTimingMode(aK)end)},'Dropdown_MacroTimingMode')as:Slider({Name=
+true,Callback=af.Wrap(function(aT)if not aT or aT==''then return end ae.
+SetTimingMode(aT)end)},'Dropdown_MacroTimingMode')aM:Slider({Name=
 'Step Delay (s)',Minimum=0,Maximum=2,Default=ae.GetStepDelay(),Precision=2,
-DisplayMethod='Value',Callback=af.Wrap(function(aK)ae.SetStepDelay(aK)end)},
-'Slider_MacroStepDelay')as:Button{Name='Restart Playback',Callback=function()if
+DisplayMethod='Value',Callback=af.Wrap(function(aT)ae.SetStepDelay(aT)end)},
+'Slider_MacroStepDelay')aM:Button{Name='Restart Playback',Callback=function()if
 not ae.IsEnabled()then ag.Notify('Macro Player',
 "Vui l\u{f2}ng b\u{1ead}t 'Play Macro' tr\u{1b0}\u{1edb}c khi Restart!",2)return
 end ae.Restart()ag.Notify('Macro Player',
 '\u{110}ang kh\u{1edf}i \u{111}\u{1ed9}ng l\u{1ea1}i ti\u{1ebf}n tr\u{ec}nh Macro...'
-,1.5)end}local aK=function(aK)local aL,aM=aK.MacroName or'None',aK.TotalSteps if
-aM==0 and aL~='None'then local aN=ac.GetMacro(aL)if aN and aN.Steps then aM=#aN.
-Steps end end at:UpdateName(string.format(
+,1.5)end}local aT=function(aT)local aU,aV=aT.MacroName or'None',aT.TotalSteps if
+aV==0 and aU~='None'then local aW=ac.GetMacro(aU)if aW and aW.Steps then aV=#aW.
+Steps end end aN:UpdateName(string.format(
 "\u{1f4c1} <b>Macro:</b> <font color='rgb(100,200,255)'>%s</font> <font color='rgb(150,150,150)'>(%d steps)</font>"
-,aL,aM))local aN=aK.IsPlaying and'rgb(85,255,120)'or(aK.IsEnabled and
-'rgb(255,220,100)'or'rgb(180,180,180)')ay:UpdateName(string.format(
-"\u{25b6}\u{fe0f} <b>Status:</b> <font color='%s'>%s</font>",aN,aK.StatusText))
-az:UpdateName(string.format(
-"\u{1f4cb} <b>Step:</b> <font color='rgb(200,200,255)'>%d / %d</font>",aK.
-CurrentStep,aM))aA:UpdateName(string.format(
-"\u{1f3af} <b>Next Action:</b> <font color='rgb(220,220,220)'>%s</font>",aK.
-NextAction or'None'))end local aL=ae.Subscribe(aK)ah.Register(aL)local aM=aj:
-Section{Side='Right'}aM:Header{Name='Macro Recorder'}local aN,aO,aP=''local aQ=
-aM:Input({Name='Macro Name',Placeholder='Enter macro name...',AcceptedCharacters
-='AlphaNumeric',Callback=af.Wrap(function(aQ)aN=aQ or''end)},'Input_MacroName')
-aM:Button{Name='Create Macro',Callback=function()local aS=aN if not aS or aS==''
-then if aQ and type(aQ.GetInput)=='function'then aS=aQ:GetInput()end end local
-aT=(aS or''):gsub('^%s+',''):gsub('%s+$','')if#aT==0 then ag.Notify('Macro',
-'T\u{ea}n Macro kh\u{f4}ng \u{111}\u{1b0}\u{1ee3}c \u{111}\u{1ec3} tr\u{1ed1}ng!'
-,2)return end ac.CreateMacro(aT)ad.SetActiveMacro(aT)ae.SetActiveMacro(aT)if aO
-then pcall(function()local aU=aO:GetOptions()or{}if not table.find(aU,aT)then aO
-:InsertOptions{aT}end aO:UpdateSelection(aT)end)end ag.Notify('Macro',
-'\u{110}\u{e3} t\u{1ea1}o Macro: '..aT,2)end}local aS=ac.ListMacros()if#aS==0
-then aS={'None'}end local aT=aS[1]or'None'if aT~='None'then ad.SetActiveMacro(aT
-)ae.SetActiveMacro(aT)end aO=aM:Dropdown({Name='Select Macro',Options=aS,Default
-=aT,Required=true,Callback=af.Wrap(function(aU)if not aU or aU==''or aU=='None'
-then return end ad.SetActiveMacro(aU)ae.SetActiveMacro(aU)end)},
-'Dropdown_SelectMacro')local aU=false aP=aM:Toggle({Name='Record Macro',Default=
-ad.IsRecording(),Callback=af.Wrap(function(aV)if aU then return end if aV then
-if ae.IsEnabled()then aU=true pcall(function()aP:UpdateState(false,true)end)aU=
-false ag.Notify('Macro',
-'Vui l\u{f2}ng t\u{1eaf}t Play Macro tr\u{1b0}\u{1edb}c khi Record!',2)return
-end local aW=ad.GetActiveMacro()if not aW or aW==''or aW=='None'then aU=true
-pcall(function()aP:UpdateState(false,true)end)aU=false ag.Notify('Macro',
-'Vui l\u{f2}ng ch\u{1ecd}n ho\u{1eb7}c t\u{1ea1}o Macro tr\u{1b0}\u{1edb}c khi Record!'
-,2)return end local aX=ad.StartRecording(aW)if not aX then aU=true pcall(
-function()aP:UpdateState(false,true)end)aU=false end else ad.StopRecording()
-local aW=ad.GetActiveMacro()if aW then ae.SetActiveMacro(aW)end end end)},
-'Toggle_RecordMacro')end end function a.aO()return function(aa,ab)ab:
-InsertConfigSection'Left'end end function a.aP()return function(aa)pcall(
-function()local ab=setthreadidentity or set_thread_identity or setidentity or(
-syn and syn.set_thread_identity)if ab then local ac=pcall(ab,7)if not ac then
-pcall(ab,8)end end end)local ab,ac=game:GetService'Players',os.clock()+15 while
-not ab.LocalPlayer do if os.clock()>ac then break end task.wait(0.1)end local ad
-=ab.LocalPlayer if not ad then return warn
+,aU,aV))local aW=aT.IsPlaying and'rgb(85,255,120)'or(aT.IsEnabled and
+'rgb(255,220,100)'or'rgb(180,180,180)')aO:UpdateName(string.format(
+"\u{25b6}\u{fe0f} <b>Status:</b> <font color='%s'>%s</font>",aW,aT.StatusText))
+aP:UpdateName(string.format(
+"\u{1f4cb} <b>Step:</b> <font color='rgb(200,200,255)'>%d / %d</font>",aT.
+CurrentStep,aV))aQ:UpdateName(string.format(
+"\u{1f3af} <b>Next Action:</b> <font color='rgb(220,220,220)'>%s</font>",aT.
+NextAction or'None'))end local aU=ae.Subscribe(aT)ah.Register(aU)end end
+function a.aR()local aa,ab=a.load'aB',a.load'az'return function(ac,ad)ad:
+InsertConfigSection'Left'local ae=ad:Section{Side='Right'}ae:Header{Name=
+'Utility'}ae:Toggle({Name='Auto Hide',Default=aa.IsAutoHideEnabled(),Callback=ab
+.Wrap(function(af)aa.SetAutoHide(af)end)},'Toggle_AutoHide')ae:Toggle({Name=
+'Auto Anti Macro',Default=aa.IsAutoAntiMacroEnabled(),Callback=ab.Wrap(function(
+af)aa.SetAutoAntiMacro(af)end)},'Toggle_AutoAntiMacro')end end function a.aS()
+return function(aa)pcall(function()local ab=setthreadidentity or
+set_thread_identity or setidentity or(syn and syn.set_thread_identity)if ab then
+local ac=pcall(ab,7)if not ac then pcall(ab,8)end end end)local ab,ac=game:
+GetService'Players',os.clock()+15 while not ab.LocalPlayer do if os.clock()>ac
+then break end task.wait(0.1)end local ad=ab.LocalPlayer if not ad then return
+warn
 [[[SlopTowerDefense] Failed to retrieve LocalPlayer, aborting initialization.]]
-end local ae,af,ag,ah=a.load'a',a.load'ax',a.load'az',a.load'ay'ag.Suspend()
-local ai=ae:Window{Title='Slop Tower Defense',Subtitle='EsclipseHub',Size=UDim2.
-fromOffset(920,560),SidebarWidth=240,DragStyle=1,DisabledWindowControls={},
-ShowUserInfo=true,Keybind=Enum.KeyCode.RightControl,AcrylicBlur=false}ah:
-SetWindow(ai)_G.ScriptHub_UI=ai _G.ScriptHub_Cleanup=function()af.Cleanup()end
-ai.onUnloaded(function()af.Cleanup()if _G.ScriptHub_UI==ai then _G.ScriptHub_UI=
-nil end end)ae:SetFolder'EsclipseHub/SlopTowerDefense'local aj=ai:TabGroup()
-local ak,al,am,an,ao={Main=aj:Tab{Name='Main',Image='rbxassetid://10734886202'},
-Game=aj:Tab{Name='Game',Image='rbxassetid://10734975692'},Macro=aj:Tab{Name=
-'Macro',Image='rbxassetid://10734950309'},Config=aj:Tab{Name='Config',Image=
-'rbxassetid://10709769841'}},a.load'aH',a.load'aL',a.load'aN',a.load'aO'al(ai,ak
-.Main)am(ai,ak.Game)an(ai,ak.Macro)ao(ai,ak.Config)ak.Main:Select()pcall(
-function()ae:LoadAutoLoadConfig()end)ag.Resume()print
-'[SlopTowerDefense] Initialized successfully.'end end function a.aQ()local aa={}
-function aa:Export()local ab={}for ac,ad in pairs(self)do if typeof(ad)==
-'Instance'or type(ad)=='table'then local ae,af=pcall(function()end)if ae and af
-~=nil then ab[ac]=af end end end return ab end function aa:Import(ab)for ac,ad
-in pairs(ab)do local ae=self[ac]if ae and ae.Value~=nil then local af=pcall(
-function()end)if not af then warn(`Failed to import value for flag "{ac}"`)end
-end end end function aa:Reset()for ab in pairs(self)do self[ab]=nil end end
-return aa end function a.aR()local aa,ab=a.load'ad',{}function ab:Window(ac)ac=
+end local ae,af,ag,ah,ai=a.load'a',a.load'ax',a.load'az',a.load'ay',a.load'aB'ag
+.Suspend()local aj=ae:Window{Title='Slop Tower Defense',Subtitle='EsclipseHub',
+Size=UDim2.fromOffset(920,560),SidebarWidth=240,DragStyle=1,
+DisabledWindowControls={},ShowUserInfo=true,Keybind=Enum.KeyCode.RightControl,
+AcrylicBlur=false}ah:SetWindow(aj)_G.ScriptHub_UI=aj _G.ScriptHub_Cleanup=
+function()af.Cleanup()end aj.onUnloaded(function()af.Cleanup()if _G.ScriptHub_UI
+==aj then _G.ScriptHub_UI=nil end end)ae:SetFolder'EsclipseHub/SlopTowerDefense'
+local ak=aj:TabGroup()local al,am,an,ao,ap={Main=ak:Tab{Name='Main',Image=
+'rbxassetid://10734886202'},Game=ak:Tab{Name='Game',Image=
+'rbxassetid://10734975692'},Macro=ak:Tab{Name='Macro',Image=
+'rbxassetid://10734950309'},Config=ak:Tab{Name='Config',Image=
+'rbxassetid://10709769841'}},a.load'aK',a.load'aO',a.load'aQ',a.load'aR'am(aj,al
+.Main)an(aj,al.Game)ao(aj,al.Macro)ap(aj,al.Config)al.Main:Select()pcall(
+function()ae:LoadAutoLoadConfig()end)ag.Resume()if ai.IsAutoHideEnabled()then
+task.defer(function()aj:SetState(false)ah.Notify('Slop Tower Defense',
+'UI \u{111}\u{e3} t\u{1ef1} \u{111}\u{1ed9}ng \u{1ea9}n. Nh\u{1ea5}n RightControl \u{111}\u{1ec3} m\u{1edf} l\u{1ea1}i.'
+,5)end)end print'[SlopTowerDefense] Initialized successfully.'end end function a
+.aT()local aa={}function aa:Export()local ab={}for ac,ad in pairs(self)do if
+typeof(ad)=='Instance'or type(ad)=='table'then local ae,af=pcall(function()end)
+if ae and af~=nil then ab[ac]=af end end end return ab end function aa:Import(ab
+)for ac,ad in pairs(ab)do local ae=self[ac]if ae and ae.Value~=nil then local af
+=pcall(function()end)if not af then warn(`Failed to import value for flag "{ac}"`
+)end end end end function aa:Reset()for ab in pairs(self)do self[ab]=nil end end
+return aa end function a.aU()local aa,ab=a.load'ad',{}function ab:Window(ac)ac=
 ac or{}print'Made a window'local ad=aa.Wrap(ac,{Visible=function(ad)print(
 'Set window visibility to:',ad)end})return aa.Apply(ac,ad)end return ab end
-function a.aS()local aa,ab=a.load'ad',{}return(aa.Wrap(ab,{Enabled=function(ac)
-print(`{ac and'Enabled'or'Disabled'} ESP.`)end}))end function a.aT()local aa,ab,
-ac=a.load'aQ',a.load'aR',a.load'aS'local ad=ab:Window{Visible=true}return{Flags=
+function a.aV()local aa,ab=a.load'ad',{}return(aa.Wrap(ab,{Enabled=function(ac)
+print(`{ac and'Enabled'or'Disabled'} ESP.`)end}))end function a.aW()local aa,ab,
+ac=a.load'aT',a.load'aU',a.load'aV'local ad=ab:Window{Visible=true}return{Flags=
 aa,Esp=ac,Interface=ab,Window=ad,Tabs={Home=function(ae)end,Visuals=function(ae)
-end,Settings=function(ae)end,Config=function(ae)end}}end function a.aU()local aa
+end,Settings=function(ae)end,Config=function(ae)end}}end function a.aX()local aa
 ={}function aa.GetPlayer()local ab,ac=pcall(function()return game:GetService
 'Players'end)return ab and(ac).LocalPlayer end function aa.GetCharacter(ab)local
 ac,ad=pcall(function()return ab and ab.Character end)return ac and ad end
 function aa.GetHumanoid(ab)local ac,ad=pcall(function()local ac=aa.GetCharacter(
 ab)return ac and ac:FindFirstChildOfClass'Humanoid'end)return ac and ad end
-return aa end function a.aV()local aa=function(aa)return game:GetService(aa)end
-return{Players=(aa'Players')}end function a.aW()return function(aa)local ab,ac,
-ad=a.load'aT',a.load'aU',a.load'aV'local ae,af,ag,ah,ai,aj,ak=ab.Flags,ab.Esp,ab
+return aa end function a.aY()local aa=function(aa)return game:GetService(aa)end
+return{Players=(aa'Players')}end function a.aZ()return function(aa)local ab,ac,
+ad=a.load'aW',a.load'aX',a.load'aY'local ae,af,ag,ah,ai,aj,ak=ab.Flags,ab.Esp,ab
 .Interface,ab.Window,ab.Tabs,ac.GetPlayer(),ad.Players do ai.Home(aa)end do
 local al=ah:Tab{Name='Exploits'}al:Toggle{Name='Flight'}end do ai.Visuals(aa)end
 do local al=ai.Settings(aa)al:Toggle{Name='Dark Mode'}end do ai.Config(aa)end ah
@@ -7927,8 +8071,8 @@ do local al=ai.Settings(aa)al:Toggle{Name='Dark Mode'}end do ai.Config(aa)end ah
 typeof(ab)=='table'and typeof(ab.Unload)=='function'then pcall(ab.Unload,ab)end
 _G.ScriptHub_UI=nil local ac={{Name='DungeonQuest',Load=a.load'aw',UniverseId=
 9931749389,Places={77649408247578,3220968688,2414851778}},{Name=
-'SlopTowerDefense',Load=a.load'aP',UniverseId=10529769390,Places={
-134459712190924,85247278545351,119785202494667}},{Name='Game 2',Load=a.load'aW',
+'SlopTowerDefense',Load=a.load'aS',UniverseId=10529769390,Places={
+134459712190924,85247278545351,119785202494667}},{Name='Game 2',Load=a.load'aZ',
 Places={123456789,987654321}}}for ad=1,300 do if game.GameId~=0 and game.PlaceId
 ~=0 then break end task.wait(0.1)end for ad,ae in pairs(ac)do if ae.Places then
 for af,ag in ipairs(ae.Places)do if ag==game.PlaceId then return ae:Load()end

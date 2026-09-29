@@ -8,6 +8,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local zoneGuard = require("./zoneGuard")
 local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
 local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
+local logger = require("@routes/SlopTowerDefense/core/system/logger")
 
 type MutatorInfo = {
 	Id: string,
@@ -160,7 +161,7 @@ local function performVote(candidates: { { Id: string, Title: string?, Good: str
 		end)
 
 		local displayTitle = bestCandidate.Title or bestCandidate.Id
-		print(string.format("[SlopMutator] Đã vote Mutator: %q (%s) với điểm ưu tiên: %d", bestCandidate.Id, displayTitle, bestScore))
+		logger.Log(string.format("[SlopMutator] Đã vote Mutator: %q (%s) với điểm ưu tiên: %d", bestCandidate.Id, displayTitle, bestScore))
 		notifier.Notify("Slop Mutator", string.format("Đã vote: %s (Ưu tiên: %d)", displayTitle, bestScore), 3)
 	end)
 end
@@ -179,7 +180,7 @@ local function hookRemote()
 		if not slopMutator.Enabled or not zoneGuard.IsInGame() then return end
 
 		if action == "Vote" and typeof(data) == "table" then
-			print("[SlopMutator] Nhận được danh sách bình chọn Mutator từ Server...")
+			logger.Log("[SlopMutator] Nhận được danh sách bình chọn Mutator từ Server...")
 			performVote(data)
 		elseif action == "Active" then
 			-- Khi Mutator đã được chốt và vòng vote kết thúc
@@ -212,7 +213,7 @@ local function startGuiWatcher()
 					end
 
 					if #candidates > 0 then
-						print("[SlopMutator] Phát hiện bảng MutatorVoting trên GUI, chuẩn bị vote...")
+						logger.Log("[SlopMutator] Phát hiện bảng MutatorVoting trên GUI, chuẩn bị vote...")
 						performVote(candidates)
 					end
 				end
@@ -225,7 +226,7 @@ end
 
 function slopMutator.SetEnabled(state: boolean)
 	slopMutator.Enabled = state
-	print("[SlopMutator] Cập nhật Auto Slop Mutator:", state)
+	logger.Log("[SlopMutator] Cập nhật Auto Slop Mutator:", state)
 	if state and zoneGuard.IsInGame() then
 		hookRemote()
 		startGuiWatcher()

@@ -7,6 +7,7 @@ local VirtualInputManager = game:GetService("VirtualInputManager")
 local zoneGuard = require("./zoneGuard")
 local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
 local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
+local logger = require("@routes/SlopTowerDefense/core/system/logger")
 
 local matchSetup = {
 	AutoPickMapEnabled = false,
@@ -74,7 +75,7 @@ local watcherRunning = false
 local function clickButton(button: Instance)
 	if not button then return end
 
-	print("[MatchSetup] Đang thực hiện click vào nút:", button.Name)
+	logger.Log("[MatchSetup] Đang thực hiện click vào nút:", button.Name)
 
 	-- Cách 1: firesignal MouseButton1Click, Activated, MouseButton1Up
 	pcall(function()
@@ -196,7 +197,7 @@ end
 local function runVotingWatcher()
 	if watcherRunning then return end
 	watcherRunning = true
-	print("[MatchSetup] Trình theo dõi Match Setup đã khởi động.")
+	logger.Log("[MatchSetup] Trình theo dõi Match Setup đã khởi động.")
 
 	while lifecycle.IsActive() and zoneGuard.IsInGame() do
 		local needMap = matchSetup.AutoPickMapEnabled and not hasVotedUniverseMap
@@ -216,7 +217,7 @@ local function runVotingWatcher()
 		if needMap and gameGui then
 			local voting = gameGui:FindFirstChild("Voting")
 			if voting and isVotingActive(voting) then
-				print(string.format("[MatchSetup] Phát hiện giao diện Voting! Chờ Vote Delay %d giây...", matchSetup.VoteDelay))
+				logger.Log(string.format("[MatchSetup] Phát hiện giao diện Voting! Chờ Vote Delay %d giây...", matchSetup.VoteDelay))
 				if matchSetup.VoteDelay > 0 then
 					task.wait(matchSetup.VoteDelay)
 				end
@@ -228,13 +229,13 @@ local function runVotingWatcher()
 
 				-- 1. Click chọn Universe
 				if universes then
-					print("[MatchSetup] Đang tìm Universe:", matchSetup.SelectedUniverse)
+					logger.Log("[MatchSetup] Đang tìm Universe:", matchSetup.SelectedUniverse)
 					local uBtn = findButton(universes, matchSetup.SelectedUniverse)
 					if uBtn then
 						clickButton(uBtn)
-						print("[MatchSetup] -> Đã click Universe:", matchSetup.SelectedUniverse)
+						logger.Log("[MatchSetup] -> Đã click Universe:", matchSetup.SelectedUniverse)
 					else
-						warn("[MatchSetup] Không tìm thấy nút Universe:", matchSetup.SelectedUniverse)
+						logger.Warn("[MatchSetup] Không tìm thấy nút Universe:", matchSetup.SelectedUniverse)
 					end
 				end
 
@@ -242,7 +243,7 @@ local function runVotingWatcher()
 
 				-- 2. Click chọn Map trong mapsFolder
 				if mapsFolder then
-					print("[MatchSetup] Đang chờ và tìm nút Map:", matchSetup.SelectedMap)
+					logger.Log("[MatchSetup] Đang chờ và tìm nút Map:", matchSetup.SelectedMap)
 					local targetMap = matchSetup.SelectedMap
 					local mapBtn = nil
 
@@ -257,7 +258,7 @@ local function runVotingWatcher()
 					if mapBtn then
 						clickButton(mapBtn)
 						hasVotedUniverseMap = true
-						print("[MatchSetup] -> Đã click Map thành công:", targetMap)
+						logger.Log("[MatchSetup] -> Đã click Map thành công:", targetMap)
 						notifier.Notify("Match Setup", string.format("Đã chọn: %s - %s", matchSetup.SelectedUniverse, targetMap), 3)
 					else
 						-- Fallback: bấm nút visible đầu tiên trong Maps
@@ -265,13 +266,13 @@ local function runVotingWatcher()
 							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
 								clickButton(btn)
 								hasVotedUniverseMap = true
-								print("[MatchSetup] -> Đã click Map fallback:", btn.Name)
+								logger.Log("[MatchSetup] -> Đã click Map fallback:", btn.Name)
 								notifier.Notify("Match Setup", string.format("Đã chọn Map fallback: %s", btn.Name), 3)
 								break
 							end
 						end
 						if not hasVotedUniverseMap then
-							warn("[MatchSetup] Không tìm thấy nút Map nào đang hiển thị trong Voting.Maps!")
+							logger.Warn("[MatchSetup] Không tìm thấy nút Map nào đang hiển thị trong Voting.Maps!")
 						end
 					end
 				end
@@ -282,18 +283,18 @@ local function runVotingWatcher()
 		if needDiff and gameGui then
 			local compVoting = gameGui:FindFirstChild("ComplicationVoting")
 			if compVoting and isComplicationVotingActive(compVoting) then
-				print("[MatchSetup] Phát hiện giao diện ComplicationVoting!")
+				logger.Log("[MatchSetup] Phát hiện giao diện ComplicationVoting!")
 				local modes = compVoting:FindFirstChild("Modes")
 				if modes then
 					local targetDiff = matchSetup.SelectedDifficulty
-					print("[MatchSetup] Đang tìm Difficulty:", targetDiff)
+					logger.Log("[MatchSetup] Đang tìm Difficulty:", targetDiff)
 					local diffBtn = findButton(modes, targetDiff)
 
 					if diffBtn then
 						task.wait(0.2)
 						clickButton(diffBtn)
 						hasVotedDifficulty = true
-						print("[MatchSetup] -> Đã click Difficulty thành công:", targetDiff)
+						logger.Log("[MatchSetup] -> Đã click Difficulty thành công:", targetDiff)
 						notifier.Notify("Match Setup", string.format("Đã chọn độ khó: %s", targetDiff), 3)
 					else
 						-- Fallback
@@ -301,7 +302,7 @@ local function runVotingWatcher()
 							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
 								clickButton(btn)
 								hasVotedDifficulty = true
-								print("[MatchSetup] -> Đã click Difficulty fallback:", btn.Name)
+								logger.Log("[MatchSetup] -> Đã click Difficulty fallback:", btn.Name)
 								notifier.Notify("Match Setup", string.format("Đã chọn độ khó fallback: %s", btn.Name), 3)
 								break
 							end
@@ -315,7 +316,7 @@ local function runVotingWatcher()
 	end
 
 	watcherRunning = false
-	print("[MatchSetup] Trình theo dõi Match Setup đã kết thúc vòng lặp.")
+	logger.Log("[MatchSetup] Trình theo dõi Match Setup đã kết thúc vòng lặp.")
 end
 
 function matchSetup.StartVotingWatcher()
@@ -337,7 +338,7 @@ end
 
 function matchSetup.SetAutoPickMap(state: boolean)
 	matchSetup.AutoPickMapEnabled = state
-	print("[MatchSetup] Cập nhật Auto Pick Map:", state)
+	logger.Log("[MatchSetup] Cập nhật Auto Pick Map:", state)
 	if state and zoneGuard.IsInGame() then
 		matchSetup.StartVotingWatcher()
 	end
@@ -345,17 +346,17 @@ end
 
 function matchSetup.SetUniverse(universeName: string)
 	matchSetup.SelectedUniverse = universeName
-	print("[MatchSetup] Đã chọn Universe mục tiêu:", universeName)
+	logger.Log("[MatchSetup] Đã chọn Universe mục tiêu:", universeName)
 end
 
 function matchSetup.SetMap(mapName: string)
 	matchSetup.SelectedMap = mapName
-	print("[MatchSetup] Đã chọn Map mục tiêu:", mapName)
+	logger.Log("[MatchSetup] Đã chọn Map mục tiêu:", mapName)
 end
 
 function matchSetup.SetAutoDifficulty(state: boolean)
 	matchSetup.AutoDifficultyEnabled = state
-	print("[MatchSetup] Cập nhật Auto Select Difficulty:", state)
+	logger.Log("[MatchSetup] Cập nhật Auto Select Difficulty:", state)
 	if state and zoneGuard.IsInGame() then
 		matchSetup.StartVotingWatcher()
 	end
@@ -363,7 +364,7 @@ end
 
 function matchSetup.SetDifficulty(diff: string)
 	matchSetup.SelectedDifficulty = diff
-	print("[MatchSetup] Đã chọn Difficulty mục tiêu:", diff)
+	logger.Log("[MatchSetup] Đã chọn Difficulty mục tiêu:", diff)
 end
 
 function matchSetup.SetVoteDelay(seconds: number)
@@ -379,11 +380,11 @@ zoneGuard.Register({
 	Name = "MatchSetup",
 	Zone = "InGame",
 	OnEnter = function()
-		print("[MatchSetup] Vào In-Game -> Khởi động Match Setup.")
+		logger.Log("[MatchSetup] Vào In-Game -> Khởi động Match Setup.")
 		matchSetup.StartVotingWatcher()
 	end,
 	OnLeave = function()
-		print("[MatchSetup] Rời In-Game -> Reset trạng thái Match Setup.")
+		logger.Log("[MatchSetup] Rời In-Game -> Reset trạng thái Match Setup.")
 		matchSetup.StopVotingWatcher()
 	end,
 })

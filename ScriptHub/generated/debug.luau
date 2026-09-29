@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-28T15:08:49.040524+00:00",
+    genDate = "2026-09-29T10:13:56.634645500+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -96,7 +96,7 @@ type GameStatsSnapshot__DARKLUA_TYPE_l = {
 	Message: string
 }
 
-type ActionType__DARKLUA_TYPE_m = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed"
+type ActionType__DARKLUA_TYPE_m = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip"
 
 type MacroStep__DARKLUA_TYPE_n = {
 	Index: number,
@@ -104,6 +104,7 @@ type MacroStep__DARKLUA_TYPE_n = {
 	TowerId: string, -- Định danh tháp (vd: "T1", "T2" hoặc "SPEED")
 	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan" hoặc "ChangeSpeed")
 	Speed: number?, -- Tốc độ game (1, 2, 3, 4, 5) nếu Type == "Speed"
+	RecordSpeed: number?, -- Tốc độ game lúc thực hiện ghi bước này (1, 2, 3, 4, 5)
 	CFrame: { number }?, -- Tọa độ CFrame [X, Y, Z, R00, R01, ...] (12 components)
 	Position: { number }?, -- [X, Y, Z] để dễ hiển thị và so khớp
 	Arg3: boolean?, -- Tham số thứ 3 của SpawnTower (thường là false)
@@ -111,7 +112,8 @@ type MacroStep__DARKLUA_TYPE_n = {
 	Arg5: { any }?, -- Danh sách Modifier / Traits (vd: {"Gold"})
 	Wave: number, -- Wave lúc thực hiện
 	Time: number, -- Giây Match Timer lúc thực hiện (số thập phân 2 chữ số, vd: 14.35)
-	Cost: number?, -- Tiền lúc thực hiện
+	Cost: number?, -- Tiền trong ví lúc thực hiện
+	TowerCost: number?, -- Giá tiền thực tế của tháp/nâng cấp
 	TargetMode: string?, -- Chế độ ngắm bắn ("First", "Last", ...)
 	RawData: { [string]: any }?
 }
@@ -5570,7 +5572,7 @@ function MacLib:Window(Settings)
 
 	UserInputService.InputEnded:Connect(function(inp, gpe)
 		if gpe then return end
-		if inp.KeyCode == MenuKeybind then
+		if inp.KeyCode == MenuKeybind or inp.UserInputType == MenuKeybind then
 			ToggleMenu()
 		end
 	end)
@@ -5596,6 +5598,10 @@ function MacLib:Window(Settings)
 
 	function WindowFunctions:SetKeybind(Keycode)
 		MenuKeybind = Keycode
+	end
+
+	function WindowFunctions:GetKeybind()
+		return MenuKeybind
 	end
 
 	function WindowFunctions:SetAcrylicBlurState(State)
@@ -5705,16 +5711,23 @@ function MacLib:Window(Settings)
 		},
 		["Keybind"] = {
 			Save = function(Flag, data)
+				local bindObj = (typeof(data.GetBind) == "function" and data:GetBind()) or (typeof(data.Bind) == "EnumItem" and data.Bind) or nil
 				return {
 					type = "Keybind", 
 					flag = Flag, 
-					bind = (typeof(data.Bind) == "EnumItem" and data.Bind.Name) or nil
+					bind = (typeof(bindObj) == "EnumItem" and bindObj.Name) or nil
 				}
 			end,
 			Load = function(Flag, data)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.bind then
-					MacLib.Options[Flag]:Bind(Enum.KeyCode[data.bind])
+					local key = Enum.KeyCode[data.bind] or Enum.UserInputType[data.bind]
+					if key then
+						MacLib.Options[Flag]:Bind(key)
+						if MacLib.Options[Flag].Settings and MacLib.Options[Flag].Settings.onBinded then
+							task.spawn(MacLib.Options[Flag].Settings.onBinded, key)
+						end
+					end
 				end
 			end
 		},
@@ -33044,7 +33057,363 @@ function autoSave.Wrap(callback)
 end
 
 return autoSave
-end function __DIST.aA()-- Constants: Định danh và phân định môi trường (Lobby vs InGame) cho Slop Tower Defense.
+end function __DIST.aA()-- Logger: Quản lý việc xuất debug log và warn ra console thông qua toggle.
+
+local lifecycle = __DIST.load('ax')
+
+local logger = {
+	DebugEnabled = false,
+}
+
+function logger.SetDebugEnabled(enabled: boolean)
+	logger.DebugEnabled = (enabled == true)
+end
+
+function logger.IsDebugEnabled(): boolean
+	return logger.DebugEnabled
+end
+
+function logger.Log(...)
+	if logger.DebugEnabled then
+		print(...)
+	end
+end
+
+function logger.Warn(...)
+	if logger.DebugEnabled then
+		warn(...)
+	end
+end
+
+function logger.Error(...)
+	if logger.DebugEnabled then
+		warn(...)
+	end
+end
+
+function logger.Reset()
+	logger.DebugEnabled = false
+end
+
+lifecycle.Register(function()
+	logger.Reset()
+end)
+
+return logger
+end function __DIST.aB()-- AntiMacro: Tự động phát hiện và giải quyết popup kiểm tra Anti-Macro / AFK Check trong game.
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+local lifecycle = __DIST.load('ax')
+local notifier = __DIST.load('ay')
+local logger = __DIST.load('aA')
+
+local antiMacro = {
+	Enabled = false,
+}
+
+local childAddedConn: RBXScriptConnection? = nil
+local charConn: RBXScriptConnection? = nil
+local loopThread: thread? = nil
+local lastSolvedTime = 0
+local isSolving = false
+
+-- Kiểm tra xem ScreenGui / Frame có phải là hộp thoại Anti Macro không
+local function isAntiMacroGui(gui: Instance): boolean
+	if not gui then return false end
+	local name = gui.Name
+	if name == "AntiMacroCheck" or name == "ACX" or string.find(string.lower(name), "antimacro") or string.find(string.lower(name), "afkcheck") then
+		return true
+	end
+	return false
+end
+
+-- Tìm nút bấm xác nhận trong GUI
+local function findClickableButton(gui: Instance): GuiButton?
+	-- 1. Ưu tiên cấu trúc chuẩn trong game: gui.Frame.TextButton
+	local frame = gui:FindFirstChild("Frame")
+	if frame then
+		local directBtn = frame:FindFirstChild("TextButton")
+		if directBtn and directBtn:IsA("GuiButton") and directBtn.Visible and directBtn.AbsolutePosition.X > 0 and directBtn.AbsolutePosition.Y > 0 then
+			return directBtn
+		end
+		local anyFrameBtn = frame:FindFirstChildWhichIsA("GuiButton", true)
+		if anyFrameBtn and anyFrameBtn.Visible and anyFrameBtn.AbsolutePosition.X > 0 and anyFrameBtn.AbsolutePosition.Y > 0 and anyFrameBtn.AbsoluteSize.X > 0 and anyFrameBtn.AbsoluteSize.Y > 0 then
+			return anyFrameBtn
+		end
+	end
+
+	-- 2. Tìm theo tên gợi ý phổ biến
+	for _, desc in ipairs(gui:GetDescendants()) do
+		if desc:IsA("GuiButton") and desc.Visible and desc.AbsolutePosition.X > 0 and desc.AbsolutePosition.Y > 0 and desc.AbsoluteSize.X > 0 and desc.AbsoluteSize.Y > 0 then
+			local lowerName = string.lower(desc.Name)
+			if lowerName == "textbutton" or string.find(lowerName, "confirm") or string.find(lowerName, "verify") or string.find(lowerName, "click") then
+				return desc
+			end
+		end
+	end
+
+	-- 3. Fallback: GuiButton đầu tiên hiển thị trên màn hình
+	for _, desc in ipairs(gui:GetDescendants()) do
+		if desc:IsA("GuiButton") and desc.Visible and desc.AbsolutePosition.X > 0 and desc.AbsolutePosition.Y > 0 and desc.AbsoluteSize.X > 0 and desc.AbsoluteSize.Y > 0 then
+			return desc
+		end
+	end
+
+	return nil
+end
+
+-- Hàm click button an toàn với 4 tầng fallback
+local function clickButton(button: GuiButton): boolean
+	if not button or not button:IsA("GuiButton") then return false end
+
+	-- Cách 1: firesignal (nhanh và chuẩn nhất cho executor)
+	pcall(function()
+		local fs = (firesignal or (syn and syn.firesignal) or (getgenv and getgenv().firesignal))
+		if fs then
+			fs(button.MouseButton1Click)
+			fs(button.Activated)
+			fs(button.MouseButton1Up)
+		end
+	end)
+
+	-- Cách 2: getconnections (kích hoạt callback trực tiếp)
+	pcall(function()
+		local gc = (getconnections or (syn and syn.getconnections) or (getgenv and getgenv().getconnections))
+		if gc then
+			for _, conn in ipairs(gc(button.MouseButton1Click)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+			for _, conn in ipairs(gc(button.Activated)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+			for _, conn in ipairs(gc(button.MouseButton1Up)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+		end
+	end)
+
+	-- Cách 3: VirtualInputManager click tại tâm nút (bù trừ GuiInset)
+	pcall(function()
+		local absPos = button.AbsolutePosition
+		local absSize = button.AbsoluteSize
+		if absSize.X > 0 and absSize.Y > 0 then
+			local inset = GuiService:GetGuiInset()
+			local clickX = absPos.X + (absSize.X / 2)
+			local clickY = absPos.Y + (absSize.Y / 2) + inset.Y
+
+			VirtualInputManager:SendMouseMoveEvent(clickX, clickY, game)
+			task.wait(0.05)
+			VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, true, game, 1)
+			task.wait(0.05)
+			VirtualInputManager:SendMouseButtonEvent(clickX, clickY, 0, false, game, 1)
+		end
+	end)
+
+	-- Cách 4: GuiService SelectedObject + phím Enter
+	pcall(function()
+		GuiService.SelectedObject = button
+		task.wait(0.05)
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+		task.wait(0.05)
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+		task.wait(0.05)
+		GuiService.SelectedObject = nil
+	end)
+
+	return true
+end
+
+-- Xử lý bấm nút giải Anti-Macro
+local function trySolveGui(gui: Instance): boolean
+	if not antiMacro.Enabled then return false end
+	if isSolving then return false end
+	if (os.clock() - lastSolvedTime) < 1.5 then return false end
+
+	local button = findClickableButton(gui)
+	if not button then return false end
+
+	isSolving = true
+
+	task.spawn(function()
+		task.wait(0.1) -- Độ trễ tự nhiên
+		if not antiMacro.Enabled then
+			isSolving = false
+			return
+		end
+
+		local clicked = clickButton(button)
+		if clicked then
+			lastSolvedTime = os.clock()
+			logger.Log(string.format("[SlopTD - AntiMacro] Đã tự động vượt qua %s (Nút: %s) thành công!", gui.Name, button.Name))
+			notifier.Notify("Anti Macro", "Đã tự động xác nhận Anti-Macro thành công!", 3)
+		end
+
+		task.wait(0.5)
+		isSolving = false
+	end)
+
+	return true
+end
+
+-- Lấy PlayerGui an toàn
+local function getPlayerGui(): PlayerGui?
+	local player = Players.LocalPlayer
+	if not player then return nil end
+	return player:FindFirstChild("PlayerGui")
+end
+
+-- Quét toàn bộ PlayerGui hiện tại
+local function scanAndSolve()
+	if not antiMacro.Enabled or isSolving then return end
+	local playerGui = getPlayerGui()
+	if not playerGui then return end
+
+	for _, child in ipairs(playerGui:GetChildren()) do
+		if isAntiMacroGui(child) then
+			trySolveGui(child)
+			break
+		end
+	end
+end
+
+-- Lắng nghe sự kiện thêm UI mới
+local function hookPlayerGui()
+	if childAddedConn then
+		childAddedConn:Disconnect()
+		childAddedConn = nil
+	end
+
+	local playerGui = getPlayerGui()
+	if not playerGui then return end
+
+	childAddedConn = playerGui.ChildAdded:Connect(function(child)
+		if not antiMacro.Enabled then return end
+		if isAntiMacroGui(child) then
+			task.delay(0.1, function()
+				if not antiMacro.Enabled then return end
+				trySolveGui(child)
+			end)
+		end
+	end)
+end
+
+-- Bắt đầu hệ thống giám sát Anti-Macro
+local function startMonitoring()
+	hookPlayerGui()
+
+	local player = Players.LocalPlayer
+	if player and not charConn then
+		charConn = player.CharacterAdded:Connect(function()
+			task.wait(0.5)
+			if antiMacro.Enabled then
+				hookPlayerGui()
+				scanAndSolve()
+			end
+		end)
+	end
+
+	if not loopThread then
+		loopThread = task.spawn(function()
+			while antiMacro.Enabled and lifecycle.IsActive() do
+				scanAndSolve()
+				task.wait(0.3)
+			end
+			loopThread = nil
+		end)
+	end
+end
+
+-- Dừng hệ thống giám sát
+local function stopMonitoring()
+	if childAddedConn then
+		childAddedConn:Disconnect()
+		childAddedConn = nil
+	end
+	if charConn then
+		charConn:Disconnect()
+		charConn = nil
+	end
+	loopThread = nil
+end
+
+function antiMacro.SetEnabled(state: boolean)
+	if antiMacro.Enabled == state then return end
+	antiMacro.Enabled = (state == true)
+
+	if antiMacro.Enabled then
+		startMonitoring()
+		scanAndSolve()
+		logger.Log("[SlopTD - AntiMacro] Auto Anti Macro đã được bật.")
+	else
+		stopMonitoring()
+		logger.Log("[SlopTD - AntiMacro] Auto Anti Macro đã tắt.")
+	end
+end
+
+function antiMacro.IsEnabled(): boolean
+	return antiMacro.Enabled
+end
+
+-- Tự động dọn dẹp khi reload script
+lifecycle.Register(function()
+	antiMacro.Enabled = false
+	stopMonitoring()
+end)
+
+return antiMacro
+end function __DIST.aC()-- Utility: Quản lý các tùy chọn tiện ích hệ thống (Auto Hide, Auto Anti Macro).
+
+
+local lifecycle = __DIST.load('ax')
+local antiMacro = __DIST.load('aB')
+local logger = __DIST.load('aA')
+
+local utility = {
+	AutoHideEnabled = false,
+	AutoAntiMacroEnabled = false,
+}
+
+function utility.SetAutoHide(enabled: boolean)
+	utility.AutoHideEnabled = (enabled == true)
+end
+
+function utility.IsAutoHideEnabled(): boolean
+	return utility.AutoHideEnabled
+end
+
+function utility.SetAutoAntiMacro(enabled: boolean)
+	utility.AutoAntiMacroEnabled = (enabled == true)
+	antiMacro.SetEnabled(utility.AutoAntiMacroEnabled)
+end
+
+function utility.IsAutoAntiMacroEnabled(): boolean
+	return utility.AutoAntiMacroEnabled
+end
+
+function utility.SetDebugLogs(enabled: boolean)
+	logger.SetDebugEnabled(enabled)
+end
+
+function utility.IsDebugLogsEnabled(): boolean
+	return logger.IsDebugEnabled()
+end
+
+function utility.Reset()
+	utility.AutoHideEnabled = false
+	utility.AutoAntiMacroEnabled = false
+	antiMacro.SetEnabled(false)
+	logger.SetDebugEnabled(false)
+end
+
+lifecycle.Register(function()
+	utility.Reset()
+end)
+
+return utility
+end function __DIST.aD()-- Constants: Định danh và phân định môi trường (Lobby vs InGame) cho Slop Tower Defense.
 
 
 local constants = {
@@ -33075,11 +33444,11 @@ function constants.GetLocationName(): string
 end
 
 return constants
-end function __DIST.aB()-- ZoneGuard: Bộ điều phối và bảo vệ logic giữa Lobby và InGame cho Slop Tower Defense.
+end function __DIST.aE()-- ZoneGuard: Bộ điều phối và bảo vệ logic giữa Lobby và InGame cho Slop Tower Defense.
 -- Đảm bảo các logic In-Game (Place, Upgrade, Skip Wave) không chạy bừa bãi ở Lobby và ngược lại.
 
 
-local constants = __DIST.load('aA')
+local constants = __DIST.load('aD')
 local lifecycle = __DIST.load('ax')
 
 local zoneGuard = {}
@@ -33143,7 +33512,7 @@ lifecycle.Register(function()
 end)
 
 return zoneGuard
-end function __DIST.aC()-- GameStats: Module đọc và chuẩn hóa dữ liệu trận đấu thời gian thực.
+end function __DIST.aF()-- GameStats: Module đọc và chuẩn hóa dữ liệu trận đấu thời gian thực.
 -- Hỗ trợ:
 --   • Match Elapsed Time (Thời gian tăng dần từ khi Start đến khi End)
 --   • Wave Countdown Timer (Đếm ngược của từng wave từ game)
@@ -33151,7 +33520,7 @@ end function __DIST.aC()-- GameStats: Module đọc và chuẩn hóa dữ liệu
 
 
 local Players = game:GetService("Players")
-local zoneGuard = __DIST.load('aB')
+local zoneGuard = __DIST.load('aE')
 local lifecycle = __DIST.load('ax')
 
 
@@ -33667,7 +34036,9 @@ lifecycle.Register(function()
 end)
 
 return gameStats
-end function __DIST.aD()
+end function __DIST.aG()
+
+
 
 
 
@@ -33708,10 +34079,10 @@ end function __DIST.aD()
 
 
 return {}
-end function __DIST.aE()-- Storage: Quản lý đọc, ghi và lưu trữ file Macro dưới dạng JSON trong executor.
+end function __DIST.aH()-- Storage: Quản lý đọc, ghi và lưu trữ file Macro dưới dạng JSON trong executor.
 
 local HttpService = game:GetService("HttpService")
-local types = __DIST.load('aD')
+local types = __DIST.load('aG')
 local macLib = __DIST.load('a')
 
 local storage = {}
@@ -33872,15 +34243,771 @@ function storage.DeleteMacro(name: string): boolean
 end
 
 return storage
-end function __DIST.aF()-- Player: Module tái hiện (Playback) các thao tác SpawnTower và SellTower từ file Macro đã ghi.
+end function __DIST.aI()-- MatchSetup: Tự động chọn Universe, Map và Difficulty khi vào In-Game sau n(s).
 
-local types = __DIST.load('aD')
-local storage = __DIST.load('aE')
-local gameStats = __DIST.load('aC')
-local zoneGuard = __DIST.load('aB')
+
+local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+local zoneGuard = __DIST.load('aE')
+local lifecycle = __DIST.load('ax')
 local notifier = __DIST.load('ay')
+local logger = __DIST.load('aA')
+
+local matchSetup = {
+	AutoPickMapEnabled = false,
+	SelectedUniverse = "Brainrot Bases",
+	Universes = {
+		"Brainrot Bases",
+		"Toilet Territory",
+		"Retro Revival",
+		"Garden",
+		"Backrooms",
+	},
+
+	UniverseMaps = {
+		["Brainrot Bases"] = {
+			"Night Base",
+			"Base",
+			"Gold Base",
+			"BrainrotEndless",
+		},
+		["Toilet Territory"] = {
+			"Desert",
+			"Toilet City",
+			"Ruined City",
+			"ToiletEndless",
+		},
+		["Retro Revival"] = {
+			"Happy Home",
+			"Crossroads",
+			"Doomspire",
+			"RetroEndless",
+		},
+		["Garden"] = {
+			"Plot",
+			"NightPlot",
+			"RichPlot",
+			"GardenEndless",
+		},
+		["Backrooms"] = {
+			"Level0",
+			"Poolrooms",
+			"Level94",
+			"BackroomsEndless",
+		},
+	},
+
+	SelectedMap = "Night Base",
+
+	AutoDifficultyEnabled = false,
+	SelectedDifficulty = "Normal",
+	Difficulties = {
+		"Normal",
+		"Hard",
+		"Nightmare",
+		"Chaos",
+	},
+
+	VoteDelay = 2, -- Giây chờ trước khi bắt đầu chọn Universe & Map
+}
+
+local hasVotedUniverseMap = false
+local hasVotedDifficulty = false
+local watcherRunning = false
+
+-- Hàm click button an toàn, kết hợp cả 3 phương thức để đảm bảo 100% ăn lệnh
+local function clickButton(button: Instance)
+	if not button then return end
+
+	logger.Log("[MatchSetup] Đang thực hiện click vào nút:", button.Name)
+
+	-- Cách 1: firesignal MouseButton1Click, Activated, MouseButton1Up
+	pcall(function()
+		local fs = (firesignal or (syn and syn.firesignal))
+		if fs and button:IsA("GuiButton") then
+			fs(button.MouseButton1Click)
+			fs(button.Activated)
+			fs(button.MouseButton1Up)
+		end
+	end)
+
+	-- Cách 2: VirtualInputManager click trực tiếp tại tọa độ tâm nút
+	pcall(function()
+		if button:IsA("GuiObject") then
+			local absPos = button.AbsolutePosition
+			local absSize = button.AbsoluteSize
+			local centerX = absPos.X + absSize.X / 2
+			local centerY = absPos.Y + absSize.Y / 2
+			VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+			task.wait(0.05)
+			VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+		end
+	end)
+
+	-- Cách 3: GuiService SelectedObject + phím Enter
+	pcall(function()
+		if button:IsA("GuiButton") then
+			GuiService.SelectedObject = button
+			task.wait(0.05)
+			VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+			task.wait(0.05)
+			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+			task.wait(0.05)
+			GuiService.SelectedObject = nil
+		end
+	end)
+end
+
+-- Tìm nút chính xác hoặc theo tên không phân biệt hoa thường / Title
+local function findButton(parent: Instance, targetName: string): GuiButton?
+	if not parent then return nil end
+
+	-- 1. Tìm trực tiếp theo Name
+	local direct = parent:FindFirstChild(targetName)
+	if direct and (direct:IsA("GuiButton") or direct:IsA("ImageButton") or direct:IsA("TextButton")) then
+		return direct
+	end
+
+	-- 2. Tìm không phân biệt hoa thường
+	local lowerTarget = string.lower(targetName)
+	for _, child in ipairs(parent:GetChildren()) do
+		if child:IsA("GuiButton") or child:IsA("ImageButton") or child:IsA("TextButton") then
+			if string.lower(child.Name) == lowerTarget then
+				return child
+			end
+		end
+	end
+
+	-- 3. Tìm theo TextLabel (Title) bên trong child
+	for _, child in ipairs(parent:GetChildren()) do
+		if child:IsA("GuiButton") or child:IsA("ImageButton") or child:IsA("TextButton") then
+			local title = child:FindFirstChild("Title") or child:FindFirstChildWhichIsA("TextLabel", true)
+			if title and string.lower(title.Text) == lowerTarget then
+				return child
+			end
+		end
+	end
+
+	return nil
+end
+
+-- Kiểm tra xem Voting GUI có đang hiển thị trên màn hình không
+local function isVotingActive(voting: Instance): boolean
+	if not voting then return false end
+	if voting:IsA("GuiObject") and not voting.Visible then
+		return false
+	end
+
+	local universes = voting:FindFirstChild("Universes")
+	if universes then
+		for _, child in ipairs(universes:GetChildren()) do
+			if (child:IsA("GuiButton") or child:IsA("ImageButton")) and child.Visible then
+				return true
+			end
+		end
+	end
+
+	local maps = voting:FindFirstChild("Maps")
+	if maps then
+		for _, child in ipairs(maps:GetChildren()) do
+			if (child:IsA("GuiButton") or child:IsA("ImageButton")) and child.Visible then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+-- Kiểm tra xem bảng chọn độ khó ComplicationVoting có đang hiển thị không
+local function isComplicationVotingActive(compVoting: Instance): boolean
+	if not compVoting then return false end
+	if compVoting:IsA("GuiObject") and not compVoting.Visible then
+		return false
+	end
+
+	local modes = compVoting:FindFirstChild("Modes")
+	if modes then
+		for _, child in ipairs(modes:GetChildren()) do
+			if (child:IsA("GuiButton") or child:IsA("ImageButton")) and child.Visible then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+local function runVotingWatcher()
+	if watcherRunning then return end
+	watcherRunning = true
+	logger.Log("[MatchSetup] Trình theo dõi Match Setup đã khởi động.")
+
+	while lifecycle.IsActive() and zoneGuard.IsInGame() do
+		local needMap = matchSetup.AutoPickMapEnabled and not hasVotedUniverseMap
+		local needDiff = matchSetup.AutoDifficultyEnabled and not hasVotedDifficulty
+
+		-- Nếu không cần làm gì ở vòng lặp này -> nghỉ 1 giây rồi kiểm tra tiếp (tuyệt đối không break!)
+		if not needMap and not needDiff then
+			task.wait(1)
+			continue
+		end
+
+		local player = Players.LocalPlayer
+		local playerGui = player and player:FindFirstChild("PlayerGui")
+		local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+
+		-- Phase 1: Universe & Map Voting
+		if needMap and gameGui then
+			local voting = gameGui:FindFirstChild("Voting")
+			if voting and isVotingActive(voting) then
+				logger.Log(string.format("[MatchSetup] Phát hiện giao diện Voting! Chờ Vote Delay %d giây...", matchSetup.VoteDelay))
+				if matchSetup.VoteDelay > 0 then
+					task.wait(matchSetup.VoteDelay)
+				end
+
+				if not lifecycle.IsActive() or not zoneGuard.IsInGame() then break end
+
+				local universes = voting:FindFirstChild("Universes")
+				local mapsFolder = voting:FindFirstChild("Maps")
+
+				-- 1. Click chọn Universe
+				if universes then
+					logger.Log("[MatchSetup] Đang tìm Universe:", matchSetup.SelectedUniverse)
+					local uBtn = findButton(universes, matchSetup.SelectedUniverse)
+					if uBtn then
+						clickButton(uBtn)
+						logger.Log("[MatchSetup] -> Đã click Universe:", matchSetup.SelectedUniverse)
+					else
+						logger.Warn("[MatchSetup] Không tìm thấy nút Universe:", matchSetup.SelectedUniverse)
+					end
+				end
+
+				task.wait(0.4)
+
+				-- 2. Click chọn Map trong mapsFolder
+				if mapsFolder then
+					logger.Log("[MatchSetup] Đang chờ và tìm nút Map:", matchSetup.SelectedMap)
+					local targetMap = matchSetup.SelectedMap
+					local mapBtn = nil
+
+					for _ = 1, 40 do
+						mapBtn = findButton(mapsFolder, targetMap)
+						if mapBtn and mapBtn.Visible then
+							break
+						end
+						task.wait(0.1)
+					end
+
+					if mapBtn then
+						clickButton(mapBtn)
+						hasVotedUniverseMap = true
+						logger.Log("[MatchSetup] -> Đã click Map thành công:", targetMap)
+						notifier.Notify("Match Setup", string.format("Đã chọn: %s - %s", matchSetup.SelectedUniverse, targetMap), 3)
+					else
+						-- Fallback: bấm nút visible đầu tiên trong Maps
+						for _, btn in ipairs(mapsFolder:GetChildren()) do
+							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
+								clickButton(btn)
+								hasVotedUniverseMap = true
+								logger.Log("[MatchSetup] -> Đã click Map fallback:", btn.Name)
+								notifier.Notify("Match Setup", string.format("Đã chọn Map fallback: %s", btn.Name), 3)
+								break
+							end
+						end
+						if not hasVotedUniverseMap then
+							logger.Warn("[MatchSetup] Không tìm thấy nút Map nào đang hiển thị trong Voting.Maps!")
+						end
+					end
+				end
+			end
+		end
+
+		-- Phase 2: Difficulty Voting (ComplicationVoting)
+		if needDiff and gameGui then
+			local compVoting = gameGui:FindFirstChild("ComplicationVoting")
+			if compVoting and isComplicationVotingActive(compVoting) then
+				logger.Log("[MatchSetup] Phát hiện giao diện ComplicationVoting!")
+				local modes = compVoting:FindFirstChild("Modes")
+				if modes then
+					local targetDiff = matchSetup.SelectedDifficulty
+					logger.Log("[MatchSetup] Đang tìm Difficulty:", targetDiff)
+					local diffBtn = findButton(modes, targetDiff)
+
+					if diffBtn then
+						task.wait(0.2)
+						clickButton(diffBtn)
+						hasVotedDifficulty = true
+						logger.Log("[MatchSetup] -> Đã click Difficulty thành công:", targetDiff)
+						notifier.Notify("Match Setup", string.format("Đã chọn độ khó: %s", targetDiff), 3)
+					else
+						-- Fallback
+						for _, btn in ipairs(modes:GetChildren()) do
+							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
+								clickButton(btn)
+								hasVotedDifficulty = true
+								logger.Log("[MatchSetup] -> Đã click Difficulty fallback:", btn.Name)
+								notifier.Notify("Match Setup", string.format("Đã chọn độ khó fallback: %s", btn.Name), 3)
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+
+		task.wait(0.5)
+	end
+
+	watcherRunning = false
+	logger.Log("[MatchSetup] Trình theo dõi Match Setup đã kết thúc vòng lặp.")
+end
+
+function matchSetup.StartVotingWatcher()
+	hasVotedUniverseMap = false
+	hasVotedDifficulty = false
+	if not watcherRunning then
+		task.spawn(runVotingWatcher)
+	end
+end
+
+function matchSetup.StopVotingWatcher()
+	hasVotedUniverseMap = false
+	hasVotedDifficulty = false
+end
+
+function matchSetup.GetMapsForUniverse(universeName: string): { string }
+	return matchSetup.UniverseMaps[universeName] or {}
+end
+
+function matchSetup.SetAutoPickMap(state: boolean)
+	matchSetup.AutoPickMapEnabled = state
+	logger.Log("[MatchSetup] Cập nhật Auto Pick Map:", state)
+	if state and zoneGuard.IsInGame() then
+		matchSetup.StartVotingWatcher()
+	end
+end
+
+function matchSetup.SetUniverse(universeName: string)
+	matchSetup.SelectedUniverse = universeName
+	logger.Log("[MatchSetup] Đã chọn Universe mục tiêu:", universeName)
+end
+
+function matchSetup.SetMap(mapName: string)
+	matchSetup.SelectedMap = mapName
+	logger.Log("[MatchSetup] Đã chọn Map mục tiêu:", mapName)
+end
+
+function matchSetup.SetAutoDifficulty(state: boolean)
+	matchSetup.AutoDifficultyEnabled = state
+	logger.Log("[MatchSetup] Cập nhật Auto Select Difficulty:", state)
+	if state and zoneGuard.IsInGame() then
+		matchSetup.StartVotingWatcher()
+	end
+end
+
+function matchSetup.SetDifficulty(diff: string)
+	matchSetup.SelectedDifficulty = diff
+	logger.Log("[MatchSetup] Đã chọn Difficulty mục tiêu:", diff)
+end
+
+function matchSetup.SetVoteDelay(seconds: number)
+	matchSetup.VoteDelay = math.clamp(tonumber(seconds) or 0, 0, 30)
+end
+
+function matchSetup.GetVoteDelay(): number
+	return matchSetup.VoteDelay
+end
+
+-- Tự động kích hoạt khi ở InGame
+zoneGuard.Register({
+	Name = "MatchSetup",
+	Zone = "InGame",
+	OnEnter = function()
+		logger.Log("[MatchSetup] Vào In-Game -> Khởi động Match Setup.")
+		matchSetup.StartVotingWatcher()
+	end,
+	OnLeave = function()
+		logger.Log("[MatchSetup] Rời In-Game -> Reset trạng thái Match Setup.")
+		matchSetup.StopVotingWatcher()
+	end,
+})
+
+-- Dọn dẹp khi script unload
+lifecycle.Register(function()
+	matchSetup.StopVotingWatcher()
+end)
+
+return matchSetup
+end function __DIST.aJ()-- Webhook: Quản lý và gửi thông báo Discord Webhook cho Slop Tower Defense
+-- Hỗ trợ: Kết quả trận đấu (Win/Loss), Auto Summon, Hoàn thành Macro, và Test Webhook.
+
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+local constants = __DIST.load('aD')
+local gameStats = __DIST.load('aF')
+local matchSetup = __DIST.load('aI')
 local lifecycle = __DIST.load('ax')
 
+local webhook = {
+	Url = "",
+	Enabled = false,
+	NotifyMatchEnd = true,
+	NotifySummon = true,
+	NotifyMacro = true,
+	PingUserId = "",
+}
+
+-- Hàm gửi HTTP Request an toàn hỗ trợ đa số các executor
+local function sendHttpRequest(url: string, payload: any): (boolean, string?)
+	if not url or url == "" or not url:find("^https://") then
+		return false, "URL Webhook không hợp lệ!"
+	end
+
+	local httpReq = (request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request))
+	if not httpReq then
+		return false, "Executor không hỗ trợ hàm gửi HTTP request (request / http_request)"
+	end
+
+	local ok, body = pcall(function()
+		return HttpService:JSONEncode(payload)
+	end)
+	if not ok then
+		return false, "Không thể mã hóa dữ liệu JSON: " .. tostring(body)
+	end
+
+	local reqOk, response = pcall(function()
+		return httpReq({
+			Url = url,
+			Method = "POST",
+			Headers = {
+				["Content-Type"] = "application/json",
+			},
+			Body = body,
+		})
+	end)
+
+	if not reqOk then
+		return false, "Lỗi gửi request: " .. tostring(response)
+	end
+
+	local status = response and (response.StatusCode or response.Status)
+	if status and status >= 200 and status < 300 then
+		return true, nil
+	end
+
+	return false, "Mã phản hồi HTTP: " .. tostring(status)
+end
+
+-- Lấy chuỗi mention ping user nếu có cấu hình
+local function getPingMention(): string?
+	if webhook.PingUserId and webhook.PingUserId ~= "" then
+		local cleanId = webhook.PingUserId:gsub("%D", "")
+		if #cleanId > 0 then
+			return string.format("<@%s>", cleanId)
+		end
+	end
+	return nil
+end
+
+-- 1. Gửi tin nhắn Test kiểm tra kết nối
+function webhook.SendTest(): (boolean, string?)
+	local player = Players.LocalPlayer
+	local playerName = player and player.Name or "Unknown"
+
+	local payload = {
+		content = getPingMention(),
+		embeds = {
+			{
+				title = "🧪 Slop Tower Defense • Test Webhook",
+				description = "Kết nối Discord Webhook từ **EsclipseScriptHub** hoạt động thành công!",
+				color = 15844367, -- Gold
+				fields = {
+					{
+						name = "👤 Người chơi",
+						value = string.format("`%s`", playerName),
+						inline = true,
+					},
+					{
+						name = "📍 Vị trí",
+						value = string.format("`%s`", constants.GetLocationName()),
+						inline = true,
+					},
+					{
+						name = "⚡ Trạng thái",
+						value = "🟢 Hoạt động tốt",
+						inline = true,
+					},
+				},
+				footer = {
+					text = "EsclipseScriptHub • Slop Tower Defense",
+				},
+				timestamp = DateTime.now():ToIsoDate(),
+			},
+		},
+	}
+
+	return sendHttpRequest(webhook.Url, payload)
+end
+
+-- 2. Gửi thông báo kết quả trận đấu (Match End)
+function webhook.SendMatchEnd(stats: GameStatsSnapshot__DARKLUA_TYPE_l?): (boolean, string?)
+	if not webhook.Enabled or not webhook.NotifyMatchEnd or webhook.Url == "" then
+		return false, "Webhook chưa bật hoặc URL rỗng"
+	end
+
+	local player = Players.LocalPlayer
+	local playerName = player and player.Name or "Unknown"
+	stats = stats or gameStats.GetSnapshot()
+
+	local isVictory = (stats.BaseHp or 0) > 0
+	local resultTitle = isVictory and "🏆 TRẬN ĐẤU KẾT THÚC • CHIẾN THẮNG" or "💀 TRẬN ĐẤU KẾT THÚC • THẤT BẠI"
+	local resultColor = isVictory and 3066993 or 15158332 -- Xanh lá (Win) / Đỏ (Loss)
+
+	local payload = {
+		content = getPingMention(),
+		embeds = {
+			{
+				title = resultTitle,
+				color = resultColor,
+				fields = {
+					{
+						name = "👤 Người chơi",
+						value = string.format("`%s`", playerName),
+						inline = true,
+					},
+					{
+						name = "🗺️ Bản đồ",
+						value = string.format("`%s`", matchSetup.SelectedMap or "Unknown"),
+						inline = true,
+					},
+					{
+						name = "⚙️ Độ khó",
+						value = string.format("`%s`", matchSetup.SelectedDifficulty or "Normal"),
+						inline = true,
+					},
+					{
+						name = "🌊 Wave đạt được",
+						value = string.format("`%s`", stats.WaveFormatted or "0/0"),
+						inline = true,
+					},
+					{
+						name = "⏱️ Thời gian trận",
+						value = string.format("`%s`", stats.ElapsedTimeFormatted or "00:00"),
+						inline = true,
+					},
+					{
+						name = "💰 Tiền cuối trận",
+						value = string.format("`%s`", stats.CashFormatted or "$0"),
+						inline = true,
+					},
+					{
+						name = "❤️ Máu căn cứ",
+						value = string.format("`%s`", stats.BaseHealthFormatted or "0/100"),
+						inline = true,
+					},
+				},
+				footer = {
+					text = "EsclipseScriptHub • Slop Tower Defense",
+				},
+				timestamp = DateTime.now():ToIsoDate(),
+			},
+		},
+	}
+
+	return sendHttpRequest(webhook.Url, payload)
+end
+
+-- 3. Gửi thông báo Auto Summon
+function webhook.SendSummon(banner: string, amount: string): (boolean, string?)
+	if not webhook.Enabled or not webhook.NotifySummon or webhook.Url == "" then
+		return false, "Webhook chưa bật hoặc URL rỗng"
+	end
+
+	local player = Players.LocalPlayer
+	local playerName = player and player.Name or "Unknown"
+
+	local payload = {
+		content = getPingMention(),
+		embeds = {
+			{
+				title = "✨ AUTO SUMMON • TRIỆU HỒI UNIT",
+				color = 10181046, -- Tím
+				fields = {
+					{
+						name = "👤 Người chơi",
+						value = string.format("`%s`", playerName),
+						inline = true,
+					},
+					{
+						name = "🎁 Banner",
+						value = string.format("`%s`", banner),
+						inline = true,
+					},
+					{
+						name = "🔢 Số lượng",
+						value = string.format("`%s`", amount),
+						inline = true,
+					},
+				},
+				footer = {
+					text = "EsclipseScriptHub • Slop Tower Defense",
+				},
+				timestamp = DateTime.now():ToIsoDate(),
+			},
+		},
+	}
+
+	return sendHttpRequest(webhook.Url, payload)
+end
+
+-- 4. Gửi thông báo Macro
+function webhook.SendMacro(macroName: string, totalSteps: number, status: string): (boolean, string?)
+	if not webhook.Enabled or not webhook.NotifyMacro or webhook.Url == "" then
+		return false, "Webhook chưa bật hoặc URL rỗng"
+	end
+
+	local player = Players.LocalPlayer
+	local playerName = player and player.Name or "Unknown"
+
+	local isSuccess = status == "Completed"
+	local color = isSuccess and 3066993 or 15158332
+
+	local payload = {
+		content = getPingMention(),
+		embeds = {
+			{
+				title = isSuccess and "📋 MACRO HOÀN THÀNH" or "⚠️ MACRO DỪNG LẠI",
+				color = color,
+				fields = {
+					{
+						name = "👤 Người chơi",
+						value = string.format("`%s`", playerName),
+						inline = true,
+					},
+					{
+						name = "📁 Macro",
+						value = string.format("`%s`", macroName),
+						inline = true,
+					},
+					{
+						name = "🔢 Tổng số bước",
+						value = string.format("`%d bước`", totalSteps),
+						inline = true,
+					},
+					{
+						name = "⚡ Trạng thái",
+						value = string.format("`%s`", status),
+						inline = true,
+					},
+				},
+				footer = {
+					text = "EsclipseScriptHub • Slop Tower Defense",
+				},
+				timestamp = DateTime.now():ToIsoDate(),
+			},
+		},
+	}
+
+	return sendHttpRequest(webhook.Url, payload)
+end
+
+-- Giám sát tự động trận đấu để gửi kết quả khi kết thúc
+local wasMatchActive = false
+local lastMatchStats: GameStatsSnapshot__DARKLUA_TYPE_l? = nil
+
+local function onGameStatsUpdate(data: GameStatsSnapshot__DARKLUA_TYPE_l)
+	if wasMatchActive and not data.IsMatchActive then
+		-- Vừa kết thúc trận đấu
+		local statsToSend = lastMatchStats or data
+		if webhook.Enabled and webhook.NotifyMatchEnd and webhook.Url ~= "" then
+			task.spawn(function()
+				task.wait(1.0)
+				webhook.SendMatchEnd(statsToSend)
+			end)
+		end
+	end
+
+	wasMatchActive = data.IsMatchActive
+	lastMatchStats = data
+end
+
+local unsubscribeStats = gameStats.Subscribe(onGameStatsUpdate)
+lifecycle.Register(unsubscribeStats)
+
+-- Getters & Setters
+function webhook.SetUrl(url: string)
+	webhook.Url = url or ""
+end
+
+function webhook.GetUrl(): string
+	return webhook.Url
+end
+
+function webhook.SetEnabled(state: boolean)
+	webhook.Enabled = (state == true)
+end
+
+function webhook.IsEnabled(): boolean
+	return webhook.Enabled
+end
+
+function webhook.SetNotifyMatchEnd(state: boolean)
+	webhook.NotifyMatchEnd = (state == true)
+end
+
+function webhook.IsNotifyMatchEnd(): boolean
+	return webhook.NotifyMatchEnd
+end
+
+function webhook.SetNotifySummon(state: boolean)
+	webhook.NotifySummon = (state == true)
+end
+
+function webhook.IsNotifySummon(): boolean
+	return webhook.NotifySummon
+end
+
+function webhook.SetNotifyMacro(state: boolean)
+	webhook.NotifyMacro = (state == true)
+end
+
+function webhook.IsNotifyMacro(): boolean
+	return webhook.NotifyMacro
+end
+
+function webhook.SetPingUserId(id: string)
+	webhook.PingUserId = id or ""
+end
+
+function webhook.GetPingUserId(): string
+	return webhook.PingUserId
+end
+
+function webhook.Reset()
+	webhook.Enabled = false
+end
+
+lifecycle.Register(function()
+	webhook.Reset()
+end)
+
+return webhook
+end function __DIST.aK()-- Player: Module tái hiện (Playback) các thao tác SpawnTower và SellTower từ file Macro đã ghi.
+
+local types = __DIST.load('aG')
+local storage = __DIST.load('aH')
+local gameStats = __DIST.load('aF')
+local zoneGuard = __DIST.load('aE')
+local notifier = __DIST.load('ay')
+local lifecycle = __DIST.load('ax')
+local logger = __DIST.load('aA')
+
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 
@@ -33917,6 +35044,7 @@ local sellRemote: RemoteFunction? = nil
 local upgradeRemote: RemoteFunction? = nil
 local changeModeRemote: RemoteFunction? = nil
 local changeSpeedRemote: RemoteFunction? = nil
+local voteSkipRemote: RemoteFunction? = nil
 
 local currentSnapshot: PlaybackSnapshot__DARKLUA_TYPE_q = {
 	IsEnabled = false,
@@ -33957,7 +35085,7 @@ local function updateStatus(statusText: string, nextAction: string?)
 end
 
 local function getRemotes()
-	if not spawnRemote or not sellRemote or not upgradeRemote or not changeModeRemote or not changeSpeedRemote then
+	if not spawnRemote or not sellRemote or not upgradeRemote or not changeModeRemote or not changeSpeedRemote or not voteSkipRemote then
 		local functions = ReplicatedStorage:FindFirstChild("Functions")
 		if functions then
 			spawnRemote = functions:FindFirstChild("SpawnTower") :: RemoteFunction?
@@ -33965,16 +35093,60 @@ local function getRemotes()
 			upgradeRemote = functions:FindFirstChild("UpgradeTower") :: RemoteFunction?
 			changeModeRemote = functions:FindFirstChild("ChangeTowerMode") :: RemoteFunction?
 			changeSpeedRemote = functions:FindFirstChild("ChangeSpeed") :: RemoteFunction?
+			voteSkipRemote = functions:FindFirstChild("VoteSkip") :: RemoteFunction?
 		end
 	end
-	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote
+	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
 end
 
--- Tìm Model tháp trong workspace gần tọa độ
-local function findTowerNearPosition(name: string?, targetPos: Vector3, maxDist: number?): Model?
-	maxDist = maxDist or 3.5
+-- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
+local function getCurrentGameSpeed(): number
+	local playerInstance = Players.LocalPlayer
+	local playerGui = playerInstance and playerInstance:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	if not gameGui then return 1 end
+
+	local speedUp = gameGui:FindFirstChild("SpeedUp")
+	local messageLabel = speedUp and speedUp:FindFirstChild("Message")
+	if messageLabel and messageLabel:IsA("TextLabel") then
+		local num = tonumber(messageLabel.Text:match("%d+"))
+		if num and num >= 1 and num <= 5 then
+			return num
+		end
+	end
+
+	-- Fallback nếu SpeedUp nằm sâu hơn
+	local deepSpeedUp = gameGui:FindFirstChild("SpeedUp", true)
+	if deepSpeedUp then
+		local deepMsg = deepSpeedUp:FindFirstChild("Message")
+		if deepMsg and deepMsg:IsA("TextLabel") then
+			local num = tonumber(deepMsg.Text:match("%d+"))
+			if num and num >= 1 and num <= 5 then
+				return num
+			end
+		end
+	end
+
+	return 1
+end
+
+-- Kiểm tra xem Model tháp đã được gán cho bất kỳ TowerId nào chưa
+local function isInstanceClaimed(inst: Instance): boolean
+	for _, mapped in pairs(idToTowerInstance) do
+		if mapped == inst then
+			return true
+		end
+	end
+	return false
+end
+
+-- Tìm Model tháp trong workspace gần tọa độ (ưu tiên khoảng cách ngang XZ và hỗ trợ variant/skin)
+local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHorizontalDist: number?, excludeClaimed: boolean?, variantName: string?): Model?
+	maxHorizontalDist = maxHorizontalDist or 3.8
+	local maxVerticalDist = 12.0
 	local bestModel: Model? = nil
-	local bestDist = maxDist
+	local bestDist = maxHorizontalDist
+	local bestMatchScore = -1
 
 	local searchContainers = {
 		workspace:FindFirstChild("Towers"),
@@ -33984,41 +35156,69 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxDist:
 	}
 
 	for _, container in ipairs(searchContainers) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Model") then
-					local pos: Vector3? = nil
-					if child.PrimaryPart then
-						pos = child.PrimaryPart.Position
-					else
-						pcall(function()
-							pos = child:GetPivot().Position
-						end)
-					end
+		if not container then continue end
 
-					if pos then
-						local dist = (pos - targetPos).Magnitude
-						if dist < bestDist then
-							if not name or child.Name:lower():find(name:lower()) then
-								bestDist = dist
-								bestModel = child
-							end
-						end
-					end
+		local function checkCandidate(child: Instance)
+			if not child:IsA("Model") or child.Parent == nil then return end
+			if excludeClaimed and isInstanceClaimed(child) then return end
+
+			local pos: Vector3? = nil
+			if child.PrimaryPart then
+				pos = child.PrimaryPart.Position
+			else
+				pcall(function()
+					pos = child:GetPivot().Position
+				end)
+			end
+
+			if not pos then return end
+
+			local xzDist = math.sqrt((pos.X - targetPos.X)^2 + (pos.Z - targetPos.Z)^2)
+			local yDist = math.abs(pos.Y - targetPos.Y)
+
+			if xzDist <= maxHorizontalDist and yDist <= maxVerticalDist then
+				local childNameLower = child.Name:lower()
+				local matchScore = 0
+
+				if name and (childNameLower:find(name:lower(), 1, true) or name:lower():find(childNameLower, 1, true)) then
+					matchScore = 100
+				elseif variantName and (childNameLower:find(variantName:lower(), 1, true) or variantName:lower():find(childNameLower, 1, true)) then
+					matchScore = 90
+				elseif not name then
+					matchScore = 50
+				else
+					-- Khác tên nhưng nằm cực gần vị trí đặt và chưa bị tháp nào nhận
+					matchScore = (xzDist <= 2.5) and 40 or 10
+				end
+
+				if matchScore > bestMatchScore or (matchScore == bestMatchScore and xzDist < bestDist) then
+					bestMatchScore = matchScore
+					bestDist = xzDist
+					bestModel = child
 				end
 			end
 		end
-		if bestModel then break end
+
+		for _, child in ipairs(container:GetChildren()) do
+			checkCandidate(child)
+			if child:IsA("Folder") or child:IsA("Configuration") then
+				for _, subChild in ipairs(child:GetChildren()) do
+					checkCandidate(subChild)
+				end
+			end
+		end
+
+		if bestModel and bestMatchScore >= 50 then break end
 	end
 
 	return bestModel
 end
 
--- Thực thi lệnh đặt tháp (SpawnTower)
+-- Thực thi lệnh đặt tháp (SpawnTower) với cơ chế xác thực đa tầng thông minh
 function player.PlaceTower(towerName: string, cf: CFrame, arg3: boolean?, arg4: string?, arg5: { any }?): (boolean, Instance?)
 	local sRemote, _ = getRemotes()
 	if not sRemote then
-		warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.SpawnTower")
+		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.SpawnTower")
 		return false, nil
 	end
 
@@ -34026,44 +35226,95 @@ function player.PlaceTower(towerName: string, cf: CFrame, arg3: boolean?, arg4: 
 	arg4 = arg4 or towerName
 	arg5 = arg5 or {}
 
+	-- 1. Tiền kiểm tra (Pre-check): Nếu đã có tháp tại vị trí này (từ lần gọi trước hoặc lag), nhận luôn!
+	local existing = findTowerNearPosition(towerName, cf.Position, 3.5, true, arg4)
+	if existing then
+		logger.Log(string.format("[Macro Player] Tháp %s đã tồn tại sẵn tại vị trí (%.1f, %.1f), nhận diện ngay lập tức.",
+			towerName, cf.Position.X, cf.Position.Z))
+		return true, existing
+	end
+
+	local oldCash = gameStats.GetCash()
+
 	local success, result = pcall(function()
 		return sRemote:InvokeServer(towerName, cf, arg3, arg4, arg5)
 	end)
 
 	if not success then
-		warn("[Macro Player] Lỗi gọi SpawnTower:", tostring(result))
+		logger.Warn("[Macro Player] Lỗi gọi SpawnTower:", tostring(result))
 		return false, nil
 	end
 
+	-- Nếu server trả về false, kiểm tra xem có phải do tháp đã xuất hiện khiến server báo trùng chỗ không
 	if result == false then
+		task.wait(0.1)
+		local checkAgain = findTowerNearPosition(towerName, cf.Position, 3.5, true, arg4)
+		if checkAgain then
+			return true, checkAgain
+		end
 		return false, nil
 	end
 
-	local spawnedInstance: Instance? = nil
+	-- 2. Xác thực cấp 1: Remote trả về trực tiếp Instance Model hợp lệ (như trích xuất Cobalt xác nhận)
 	if typeof(result) == "Instance" then
-		spawnedInstance = result
-	else
-		-- Chờ ngắn và tìm model vừa xuất hiện ở vị trí đặt (thử tối đa 8 lần)
-		for _ = 1, 8 do
-			task.wait(0.15)
-			spawnedInstance = findTowerNearPosition(towerName, cf.Position)
-			if spawnedInstance then break end
+		local modelInst: Model? = result:IsA("Model") and result or result:FindFirstAncestorOfClass("Model")
+		if modelInst then
+			-- Chờ tối đa 0.4s nếu Parent chưa kịp replicate vào workspace.Towers
+			if not modelInst.Parent then
+				local tEnd = os.clock() + 0.4
+				while not modelInst.Parent and os.clock() < tEnd do
+					task.wait(0.05)
+				end
+			end
+			return true, modelInst
 		end
 	end
 
-	return true, spawnedInstance
+	-- 3. Xác thực cấp 2: Quét Workspace tìm Model mới xuất hiện tại vị trí đặt
+	for _ = 1, 8 do
+		task.wait(0.15)
+		local spawnedInstance = findTowerNearPosition(towerName, cf.Position, 4.0, true, arg4)
+		if spawnedInstance then
+			return true, spawnedInstance
+		end
+	end
+
+	-- 4. Xác thực cấp 3: Kiểm tra biến động tiền (Cash Deduction Guard)
+	local currentCash = gameStats.GetCash()
+	local cashDecreased = (currentCash < oldCash)
+
+	if cashDecreased or result == true then
+		-- Chờ thêm chút để Model kịp replicate sang client
+		for _ = 1, 6 do
+			task.wait(0.2)
+			local spawnedInstance = findTowerNearPosition(towerName, cf.Position, 4.5, true, arg4)
+			if spawnedInstance then
+				return true, spawnedInstance
+			end
+		end
+
+		-- Dù Model replicate chậm, nhưng tiền ĐÃ TRỪ hoặc Remote ĐÃ TRẢ VỀ TRUE -> Chắc chắn server đã tạo tháp!
+		-- Trả về true để không retry đè vị trí, để background thread tiếp tục dò Model
+		logger.Log(string.format("[Macro Player] SpawnTower %s thành công (tiền giảm: %d -> %d), đang đợi Model hiển thị.",
+			towerName, oldCash, currentCash))
+		return true, nil
+	end
+
+	logger.Warn(string.format("[Macro Player] Xác thực Spawn thất bại cho %s tại vị trí (%.1f, %.1f, %.1f) - không tìm thấy Model và không trừ tiền!",
+		towerName, cf.Position.X, cf.Position.Y, cf.Position.Z))
+	return false, nil
 end
 
 -- Thực thi lệnh bán tháp (SellTower)
 function player.SellTower(target: Instance): boolean
 	local _, selRemote = getRemotes()
 	if not selRemote then
-		warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.SellTower")
+		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.SellTower")
 		return false
 	end
 
 	if not target or not target.Parent then
-		warn("[Macro Player] Tháp mục tiêu để bán không tồn tại hoặc đã bị hủy!")
+		logger.Warn("[Macro Player] Tháp mục tiêu để bán không tồn tại hoặc đã bị hủy!")
 		return false
 	end
 
@@ -34072,7 +35323,7 @@ function player.SellTower(target: Instance): boolean
 	end)
 
 	if not success then
-		warn("[Macro Player] Lỗi gọi SellTower:", tostring(err))
+		logger.Warn("[Macro Player] Lỗi gọi SellTower:", tostring(err))
 		return false
 	end
 
@@ -34080,16 +35331,16 @@ function player.SellTower(target: Instance): boolean
 end
 
 -- Thực thi lệnh nâng cấp tháp (UpgradeTower)
-function player.UpgradeTower(target: Instance, variantName: string?): boolean
+function player.UpgradeTower(target: Instance, variantName: string?): (boolean, Instance?)
 	local _, _, upRemote = getRemotes()
 	if not upRemote then
-		warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.UpgradeTower")
-		return false
+		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.UpgradeTower")
+		return false, nil
 	end
 
 	if not target or not target.Parent then
-		warn("[Macro Player] Tháp mục tiêu để nâng cấp không tồn tại hoặc đã bị hủy!")
-		return false
+		logger.Warn("[Macro Player] Tháp mục tiêu để nâng cấp không tồn tại hoặc đã bị hủy!")
+		return false, nil
 	end
 
 	variantName = variantName or target.Name
@@ -34099,27 +35350,32 @@ function player.UpgradeTower(target: Instance, variantName: string?): boolean
 	end)
 
 	if not success then
-		warn("[Macro Player] Lỗi gọi UpgradeTower:", tostring(result))
-		return false
+		logger.Warn("[Macro Player] Lỗi gọi UpgradeTower:", tostring(result))
+		return false, nil
 	end
 
-	if result == false then
-		return false
+	if result == false or result == nil then
+		return false, nil
 	end
 
-	return true
+	local updatedModel: Instance? = nil
+	if typeof(result) == "Instance" then
+		updatedModel = result:IsA("Model") and result or result:FindFirstAncestorOfClass("Model")
+	end
+
+	return true, updatedModel or target
 end
 
 -- Thực thi lệnh đổi chế độ ngắm bắn của tháp (ChangeTowerMode)
 function player.ChangeTowerMode(target: Instance): boolean
 	local _, _, _, modeRemote = getRemotes()
 	if not modeRemote then
-		warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.ChangeTowerMode")
+		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.ChangeTowerMode")
 		return false
 	end
 
 	if not target or not target.Parent then
-		warn("[Macro Player] Tháp mục tiêu để đổi Target không tồn tại hoặc đã bị hủy!")
+		logger.Warn("[Macro Player] Tháp mục tiêu để đổi Target không tồn tại hoặc đã bị hủy!")
 		return false
 	end
 
@@ -34128,7 +35384,7 @@ function player.ChangeTowerMode(target: Instance): boolean
 	end)
 
 	if not success then
-		warn("[Macro Player] Lỗi gọi ChangeTowerMode:", tostring(result))
+		logger.Warn("[Macro Player] Lỗi gọi ChangeTowerMode:", tostring(result))
 		return false
 	end
 
@@ -34147,7 +35403,7 @@ function player.ChangeSpeed(speedNum: number): boolean
 	end
 
 	if not csRemote then
-		warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.ChangeSpeed")
+		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.ChangeSpeed")
 		return false
 	end
 
@@ -34156,7 +35412,7 @@ function player.ChangeSpeed(speedNum: number): boolean
 	end)
 
 	if not success then
-		warn("[Macro Player] Lỗi gọi ChangeSpeed:", tostring(result))
+		logger.Warn("[Macro Player] Lỗi gọi ChangeSpeed:", tostring(result))
 		return false
 	end
 
@@ -34167,31 +35423,77 @@ function player.ChangeSpeed(speedNum: number): boolean
 	return true
 end
 
+-- Bỏ phiếu Skip Wave (VoteSkip)
+function player.VoteSkip(): boolean
+	local _, _, _, _, _, vsRemote = getRemotes()
+	if not vsRemote then
+		vsRemote = ReplicatedStorage:FindFirstChild("VoteSkip", true) :: RemoteFunction?
+	end
+
+	if not vsRemote then
+		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.VoteSkip")
+		return false
+	end
+
+	local success, result = pcall(function()
+		return vsRemote:InvokeServer()
+	end)
+
+	if not success then
+		logger.Warn("[Macro Player] Lỗi gọi VoteSkip:", tostring(result))
+		return false
+	end
+
+	return true
+end
+
 -- Thực thi 1 bước cụ thể
 function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_n): boolean
 	if step.Type == "Place" then
 		if not step.CFrame then
-			warn("[Macro Player] Bước Place thiếu dữ liệu CFrame!")
+			logger.Warn("[Macro Player] Bước Place thiếu dữ liệu CFrame!")
 			return false
 		end
 
 		local cf = CFrame.new(table.unpack(step.CFrame))
 		local ok, inst = player.PlaceTower(step.TowerName, cf, step.Arg3, step.Arg4, step.Arg5)
 		if ok then
-			if inst then
+			if inst and inst.Parent then
 				idToTowerInstance[step.TowerId] = inst
+			else
+				-- Nếu Model chưa kịp replicate, task nền sẽ tự động tìm và bind ngay khi xuất hiện
+				task.spawn(function()
+					for _ = 1, 30 do
+						task.wait(0.3)
+						if not isEnabled or not isPlaying then break end
+						local found = findTowerNearPosition(step.TowerName, cf.Position, 4.5, true, step.Arg4)
+						if found then
+							idToTowerInstance[step.TowerId] = found
+							break
+						end
+					end
+				end)
 			end
 			notifier.Notify("Macro Play", string.format("Placed %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 			return true
 		end
 
+		return false
+
 	elseif step.Type == "Sell" then
 		local inst = idToTowerInstance[step.TowerId]
 		if not inst or not inst.Parent then
-			-- Thử tìm lại theo vị trí nếu có
-			if step.Position then
-				local pos = Vector3.new(step.Position[1], step.Position[2], step.Position[3])
-				inst = findTowerNearPosition(step.TowerName, pos)
+			local pos = step.Position and Vector3.new(step.Position[1], step.Position[2], step.Position[3])
+			for _ = 1, 5 do
+				inst = idToTowerInstance[step.TowerId]
+				if (not inst or not inst.Parent) and pos then
+					inst = findTowerNearPosition(step.TowerName, pos, 4.5, false, step.Arg4)
+				end
+				if inst and inst.Parent then
+					idToTowerInstance[step.TowerId] = inst
+					break
+				end
+				task.wait(0.15)
 			end
 		end
 
@@ -34203,37 +35505,54 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_n): boolean
 				return true
 			end
 		else
-			warn(string.format("[Macro Player] Không tìm thấy tháp '%s' để bán!", step.TowerId))
+			logger.Warn(string.format("[Macro Player] Không tìm thấy tháp '%s' để bán!", step.TowerId))
 		end
 
 	elseif step.Type == "Upgrade" then
 		local inst = idToTowerInstance[step.TowerId]
 		if not inst or not inst.Parent then
-			-- Thử tìm lại theo vị trí nếu có
-			if step.Position then
-				local pos = Vector3.new(step.Position[1], step.Position[2], step.Position[3])
-				inst = findTowerNearPosition(step.TowerName, pos)
+			local pos = step.Position and Vector3.new(step.Position[1], step.Position[2], step.Position[3])
+			for _ = 1, 5 do
+				inst = idToTowerInstance[step.TowerId]
+				if (not inst or not inst.Parent) and pos then
+					inst = findTowerNearPosition(step.TowerName, pos, 4.5, false, step.Arg4)
+				end
+				if inst and inst.Parent then
+					idToTowerInstance[step.TowerId] = inst
+					break
+				end
+				task.wait(0.15)
 			end
 		end
 
 		if inst then
 			local variant = step.Arg4 or inst.Name
-			local ok = player.UpgradeTower(inst, variant)
+			local ok, updatedInst = player.UpgradeTower(inst, variant)
 			if ok then
+				if updatedInst and updatedInst:IsA("Model") and updatedInst.Parent ~= nil then
+					idToTowerInstance[step.TowerId] = updatedInst
+				end
 				notifier.Notify("Macro Play", string.format("Upgraded %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 				return true
 			end
 		else
-			warn(string.format("[Macro Player] Không tìm thấy tháp '%s' để nâng cấp!", step.TowerId))
+			logger.Warn(string.format("[Macro Player] Không tìm thấy tháp '%s' để nâng cấp!", step.TowerId))
 		end
 
 	elseif step.Type == "Target" then
 		local inst = idToTowerInstance[step.TowerId]
 		if not inst or not inst.Parent then
-			-- Thử tìm lại theo vị trí nếu có
-			if step.Position then
-				local pos = Vector3.new(step.Position[1], step.Position[2], step.Position[3])
-				inst = findTowerNearPosition(step.TowerName, pos)
+			local pos = step.Position and Vector3.new(step.Position[1], step.Position[2], step.Position[3])
+			for _ = 1, 5 do
+				inst = idToTowerInstance[step.TowerId]
+				if (not inst or not inst.Parent) and pos then
+					inst = findTowerNearPosition(step.TowerName, pos, 4.5, false, step.Arg4)
+				end
+				if inst and inst.Parent then
+					idToTowerInstance[step.TowerId] = inst
+					break
+				end
+				task.wait(0.15)
 			end
 		end
 
@@ -34244,7 +35563,7 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_n): boolean
 				return true
 			end
 		else
-			warn(string.format("[Macro Player] Không tìm thấy tháp '%s' để đổi Target!", step.TowerId))
+			logger.Warn(string.format("[Macro Player] Không tìm thấy tháp '%s' để đổi Target!", step.TowerId))
 		end
 
 	elseif step.Type == "Speed" then
@@ -34255,6 +35574,13 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_n): boolean
 		local ok = player.ChangeSpeed(speedNum)
 		if ok then
 			notifier.Notify("Macro Play", string.format("Đã đổi Speed sang: x%d [%.2fs]", speedNum, step.Time), 1.5)
+			return true
+		end
+
+	elseif step.Type == "VoteSkip" then
+		local ok = player.VoteSkip()
+		if ok then
+			notifier.Notify("Macro Play", string.format("Vote Skip Wave [%.2fs]", step.Time), 1.5)
 			return true
 		end
 	end
@@ -34319,6 +35645,17 @@ local function startRunnerLoop()
 				notifier.Notify("Macro Player", string.format("Bắt đầu Play: %s (%d bước, bỏ qua Speed)", macroName, totalSteps), 2.5)
 			end
 
+			-- Khởi tạo đồng hồ thời gian ảo (Virtual Elapsed Time) tự động co giãn theo tốc độ trận đấu
+			local macroBaseSpeed = (macroData.Metadata and macroData.Metadata.InitialSpeed) or 1
+			if macroBaseSpeed <= 0 then macroBaseSpeed = 1 end
+
+			local startPlaySpeed = getCurrentGameSpeed()
+			if startPlaySpeed <= 0 then startPlaySpeed = 1 end
+
+			local lastTickClock = os.clock()
+			local realElapsedOnStart = gameStats.GetElapsedTime()
+			local virtualElapsedTime = realElapsedOnStart * (startPlaySpeed / macroBaseSpeed)
+
 			for i, step in ipairs(macroData.Steps) do
 				if not isEnabled or not isPlaying then break end
 				if not gameStats.IsMatchActive() then
@@ -34338,40 +35675,61 @@ local function startRunnerLoop()
 				-- Chờ điều kiện thực thi bước i
 				local canExecute = false
 				while isEnabled and isPlaying and gameStats.IsMatchActive() do
+					-- Tích lũy Virtual Elapsed Time theo nhịp thực tế và tốc độ game hiện tại
+					local now = os.clock()
+					local dt = now - lastTickClock
+					lastTickClock = now
+
+					local curPlaySpeed = getCurrentGameSpeed()
+					if curPlaySpeed <= 0 then curPlaySpeed = 1 end
+
+					local stepRecordSpeed = step.RecordSpeed or macroBaseSpeed
+					if stepRecordSpeed <= 0 then stepRecordSpeed = 1 end
+
+					-- Co giãn thời gian: Tốc độ hiện tại càng cao thì đồng hồ ảo chạy càng nhanh tương ứng
+					virtualElapsedTime += dt * (curPlaySpeed / stepRecordSpeed)
+
 					local curWave, _ = gameStats.GetWave()
 					local curCash = gameStats.GetCash()
-					local curTime = gameStats.GetElapsedTime()
 
 					local waveMet = curWave >= step.Wave
+					local timePassed = virtualElapsedTime >= step.Time
+
+					-- Giá tiền thực tế (ưu tiên TowerCost nếu có, nếu không thì dùng Cost làm mốc tham khảo)
+					local cost = step.TowerCost or step.Cost or 0
+					local hasCash = (cost == 0 or curCash >= cost)
 
 					local requirementMet = false
 					if timingMode == "Cash (Timed Sell)" then
 						if step.Type == "Sell" then
-							-- Sell: Bắt buộc đúng thời gian ghi nhận (không bán sớm trước giờ)
-							requirementMet = waveMet and curTime >= step.Time
+							-- Sell: Bắt buộc đúng thời gian co giãn tương đương
+							requirementMet = waveMet and timePassed
 						elseif step.Type == "Target" then
 							-- Target: Thuần theo nhịp trận, đổi ngay khi đạt Wave
 							requirementMet = waveMet
-						elseif step.Type == "Speed" then
-							requirementMet = waveMet and (curWave > step.Wave or curTime >= step.Time)
+						elseif step.Type == "Speed" or step.Type == "VoteSkip" then
+							requirementMet = waveMet and (curWave > step.Wave or timePassed)
 						else
-							-- Place / Upgrade: Thuần theo CASH (đủ tiền là đặt/nâng ngay)
-							local cost = step.Cost or 0
-							requirementMet = waveMet and curCash >= cost
+							-- Place / Upgrade: Đủ tiền là đặt/nâng ngay
+							requirementMet = waveMet and hasCash
 						end
-					elseif step.Type == "Sell" or step.Type == "Target" or step.Type == "Speed" then
-						requirementMet = waveMet and (curWave > step.Wave or curTime >= step.Time)
+					elseif step.Type == "Sell" or step.Type == "Target" or step.Type == "Speed" or step.Type == "VoteSkip" then
+						requirementMet = waveMet and (curWave > step.Wave or timePassed)
 					else
-						local cost = step.Cost or 0
 						if timingMode == "Timer" then
-							requirementMet = waveMet and curTime >= step.Time
+							-- Chế độ Timer: Thực thi chuẩn xác theo nhịp thời gian
+							requirementMet = waveMet and timePassed
 						elseif timingMode == "Wave & Cash" then
-							requirementMet = waveMet and curCash >= cost
+							requirementMet = waveMet and hasCash
 						else
-							-- Hybrid (Mặc định): Đủ tiền HOẶC đã chạm mốc thời gian ghi nhận
-							local hasCash = cost == 0 or curCash >= cost
-							local timePassed = curTime >= step.Time
-							requirementMet = waveMet and (hasCash or timePassed)
+							-- Hybrid (Mặc định):
+							-- Đạt Wave VÀ (Đã tới mốc thời gian HOẶC tiền hiện tại đã đạt mốc ghi nhận)
+							-- Không bao giờ để mốc tiền làm nghẽn nếu thời gian đã trôi qua!
+							if step.Type == "Place" or step.Type == "Upgrade" then
+								requirementMet = waveMet and (timePassed or (cost > 0 and curCash >= cost))
+							else
+								requirementMet = waveMet and (hasCash or timePassed)
+							end
 						end
 					end
 
@@ -34387,15 +35745,30 @@ local function startRunnerLoop()
 					break
 				end
 
-				-- Thực thi bước i
+				-- Thực thi bước i với cơ chế Smart Retry
 				updateStatus(string.format("Executing Step %d/%d...", i, totalSteps), nextDesc)
 
 				local execOk = false
-				for attempt = 1, 3 do
+				local maxAttempts = (step.Type == "Place") and 5 or 3
+
+				for attempt = 1, maxAttempts do
 					if not isEnabled or not gameStats.IsMatchActive() then break end
+
+					if attempt > 1 then
+						updateStatus(string.format("Retrying %s %s (lần %d/%d)...", step.Type, step.TowerName, attempt, maxAttempts), nextDesc)
+					end
+
 					execOk = player.ExecuteStep(step)
 					if execOk then break end
-					task.wait(0.3)
+
+					task.wait(0.35)
+				end
+
+				if not execOk then
+					logger.Warn(string.format("[Macro Player] Thất bại thực thi Step %d (%s %s) sau %d lần thử!", i, step.Type, step.TowerName, maxAttempts))
+					if step.Type == "Place" then
+						notifier.Notify("Macro Player", string.format("⚠️ Không thể đặt %s (%s) sau %d lần thử!", step.TowerName, step.TowerId, maxAttempts), 3)
+					end
 				end
 
 				currentStepIndex = i
@@ -34405,6 +35778,10 @@ local function startRunnerLoop()
 			if isEnabled and currentStepIndex >= totalSteps then
 				updateStatus(string.format("Completed (%d/%d steps)", totalSteps, totalSteps), "All done")
 				notifier.Notify("Macro Player", string.format("Hoàn thành Macro: %s!", macroName), 3)
+				pcall(function()
+					local webhook = __DIST.load('aJ')
+					webhook.SendMacro(macroName, totalSteps, "Completed")
+				end)
 			end
 
 			isPlaying = false
@@ -34532,29 +35909,33 @@ lifecycle.Register(function()
 end)
 
 return player
-end function __DIST.aG()-- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed)
+end function __DIST.aL()-- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed, Auto Skip)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local GuiService = game:GetService("GuiService")
 
-local zoneGuard = __DIST.load('aB')
-local gameStats = __DIST.load('aC')
+local zoneGuard = __DIST.load('aE')
+local gameStats = __DIST.load('aF')
 local notifier = __DIST.load('ay')
 local lifecycle = __DIST.load('ax')
+local logger = __DIST.load('aA')
 
 local matchAutomation = {}
 
 matchAutomation.AutoReplayEnabled = false
 matchAutomation.AutoSpeedEnabled = false
+matchAutomation.AutoSkipEnabled = false
 matchAutomation.SelectedSpeed = "x2"
 matchAutomation.Speeds = { "x1", "x2", "x3", "x4", "x5" }
 
 local isRunning = true
 local lastReplayTriggerTime = 0
 local lastSpeedCheckTime = 0
+local lastSkipTriggerTime = 0
 local endScreenConn: RBXScriptConnection? = nil
+local waveSkipConn: RBXScriptConnection? = nil
 
 -- Hàm click button an toàn, kết hợp đa phương thức (getconnections, firesignal, VirtualInputManager, GuiService)
 local function clickButton(button: GuiButton): boolean
@@ -34693,6 +36074,85 @@ local function hookEndScreenListener()
 	end
 end
 
+-- Lấy WaveSkipGui trong PlayerGui.GameGui
+-- Đường dẫn: game:GetService("Players").LocalPlayer.PlayerGui.GameGui.WaveSkipGui
+local function getWaveSkipGui(): Instance?
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	if not gameGui then return nil end
+
+	local skipGui = gameGui:FindFirstChild("WaveSkipGui")
+	if skipGui then
+		return skipGui
+	end
+	return nil
+end
+
+-- Kiểm tra xem WaveSkipGui có đang hiển thị hay không (Visible == true)
+local function isWaveSkipGuiVisible(skipGui: Instance?): boolean
+	if not skipGui then return false end
+	if skipGui:IsA("GuiObject") then
+		return skipGui.Visible == true
+	elseif skipGui:IsA("ScreenGui") then
+		return skipGui.Enabled == true
+	end
+	local ok, vis = pcall(function() return (skipGui :: any).Visible end)
+	return ok and vis == true
+end
+
+-- Gửi Remote VoteSkip đến server
+-- Remote: game:GetService("ReplicatedStorage").Functions.VoteSkip:InvokeServer()
+local function sendVoteSkip(): boolean
+	local functions = ReplicatedStorage:FindFirstChild("Functions")
+	local voteSkip = functions and functions:FindFirstChild("VoteSkip")
+	if not voteSkip then
+		voteSkip = ReplicatedStorage:FindFirstChild("VoteSkip", true)
+	end
+
+	if voteSkip and voteSkip:IsA("RemoteFunction") then
+		task.spawn(function()
+			pcall(function()
+				voteSkip:InvokeServer()
+			end)
+		end)
+		return true
+	end
+	return false
+end
+
+-- Kiểm tra và kích hoạt VoteSkip nếu WaveSkipGui visible
+local function checkAndTriggerVoteSkip(): boolean
+	if not matchAutomation.AutoSkipEnabled then return false end
+	if not zoneGuard.IsInGame() then return false end
+
+	local skipGui = getWaveSkipGui()
+	if not skipGui or not isWaveSkipGuiVisible(skipGui) then return false end
+
+	local now = os.clock()
+	if now - lastSkipTriggerTime < 1.5 then return false end -- Debounce 1.5s tránh spam server
+	lastSkipTriggerTime = now
+
+	logger.Log("[Auto Skip] Phát hiện WaveSkipGui đang hiển thị -> Gửi RemoteFunction VoteSkip:InvokeServer()")
+	sendVoteSkip()
+	notifier.Notify("Auto Skip", "Đã tự động gửi Vote Skip Wave!", 2)
+	return true
+end
+
+-- Lắng nghe sự kiện Visible của WaveSkipGui để kích hoạt tức thì không cần chờ vòng lặp
+local function hookWaveSkipListener()
+	if waveSkipConn and waveSkipConn.Connected then return end
+
+	local skipGui = getWaveSkipGui()
+	if skipGui then
+		waveSkipConn = skipGui:GetPropertyChangedSignal("Visible"):Connect(function()
+			if matchAutomation.AutoSkipEnabled and isWaveSkipGuiVisible(skipGui) then
+				checkAndTriggerVoteSkip()
+			end
+		end)
+	end
+end
+
 -- Gửi Remote ChangeSpeed đến server
 -- Remote: game:GetService("ReplicatedStorage").Functions.ChangeSpeed:InvokeServer(speedNumber)
 local function sendChangeSpeed(speedNum: number?): boolean
@@ -34756,7 +36216,7 @@ end
 -- Kiểm tra xem Macro Player có đang kiểm soát Speed của trận đấu không
 local function isMacroControllingSpeed(): boolean
 	local ok, playerModule = pcall(function()
-		return __DIST.load('aF')
+		return __DIST.load('aK')
 	end)
 	if ok and playerModule then
 		if playerModule.IsEnabled and playerModule.IsEnabled() then
@@ -34821,6 +36281,14 @@ task.spawn(function()
 		-- Hook listener khi EndScreen xuất hiện
 		hookEndScreenListener()
 
+		-- Hook listener khi WaveSkipGui xuất hiện
+		hookWaveSkipListener()
+
+		-- Xử lý Auto Skip nếu WaveSkipGui visible
+		if matchAutomation.AutoSkipEnabled then
+			checkAndTriggerVoteSkip()
+		end
+
 		-- Xử lý Auto Replay (kiểm tra liên tục qua EndScreen.Replay)
 		if matchAutomation.AutoReplayEnabled then
 			checkAndTriggerReplay()
@@ -34856,6 +36324,19 @@ function matchAutomation.SetAutoSpeed(enabled: boolean)
 	end
 end
 
+function matchAutomation.SetAutoSkip(enabled: boolean)
+	matchAutomation.AutoSkipEnabled = (enabled == true)
+	if matchAutomation.AutoSkipEnabled then
+		lastSkipTriggerTime = 0
+		hookWaveSkipListener()
+		checkAndTriggerVoteSkip()
+	end
+end
+
+function matchAutomation.IsAutoSkipEnabled(): boolean
+	return matchAutomation.AutoSkipEnabled
+end
+
 function matchAutomation.SetSpeed(speed: string)
 	if table.find(matchAutomation.Speeds, speed) then
 		matchAutomation.SelectedSpeed = speed
@@ -34873,26 +36354,200 @@ lifecycle.Register(function()
 		endScreenConn:Disconnect()
 		endScreenConn = nil
 	end
+	if waveSkipConn then
+		waveSkipConn:Disconnect()
+		waveSkipConn = nil
+	end
 	if unsubGameStats then
 		unsubGameStats()
 	end
 end)
 
 return matchAutomation
-end function __DIST.aH()-- Tab Main: Hiển thị trạng thái môi trường và thống kê trận đấu thời gian thực.
+end function __DIST.aM()-- AutoSummon: Tự động triệu hồi (Summon/Roll) Unit trong Lobby cho Slop Tower Defense
+-- Hỗ trợ 2 Banner: Basic (Remotes.Summon.Summon) và Premium (Remotes.Summon.SummonPremium) với các mốc x1, x10, x50.
+
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local constants = __DIST.load('aD')
+local lifecycle = __DIST.load('ax')
+local notifier = __DIST.load('ay')
+local logger = __DIST.load('aA')
+
+local autoSummon = {
+	Enabled = false,
+	SelectedBanner = "Basic",
+	Banners = { "Basic", "Premium" },
+	SummonAmount = "x10",
+	Amounts = { "x1", "x10", "x50" },
+	SummonDelay = 0.5,
+}
+
+local activeThread: thread? = nil
+local lastSummonTime = 0
+
+-- Tìm RemoteFunction Summon chính xác trong ReplicatedStorage.Remotes.Summon
+local function getSummonRemote(banner: string): RemoteFunction?
+	local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+	local summonFolder = remotesFolder and remotesFolder:FindFirstChild("Summon")
+	if not summonFolder then
+		summonFolder = ReplicatedStorage:FindFirstChild("Summon", true)
+	end
+
+	local remoteName = (banner == "Premium") and "SummonPremium" or "Summon"
+
+	if summonFolder then
+		local r = summonFolder:FindFirstChild(remoteName)
+		if r and r:IsA("RemoteFunction") then
+			return r
+		end
+	end
+
+	-- Fallback tìm đệ quy trong toàn bộ ReplicatedStorage
+	local fallback = ReplicatedStorage:FindFirstChild(remoteName, true)
+	if fallback and fallback:IsA("RemoteFunction") then
+		return fallback
+	end
+
+	return nil
+end
+
+-- Chuyển đổi định dạng mốc số lượng từ chuỗi ("x1", "x10", "x50") sang số
+local function getAmountNumber(): number
+	if autoSummon.SummonAmount == "x50" then
+		return 50
+	elseif autoSummon.SummonAmount == "x10" then
+		return 10
+	end
+	return 1
+end
+
+-- Thực hiện 1 lượt triệu hồi
+function autoSummon.ExecuteSummon(): boolean
+	local remote = getSummonRemote(autoSummon.SelectedBanner)
+	local amountNum = getAmountNumber()
+
+	if not remote then
+		logger.Warn(string.format("[Auto Summon] Không tìm thấy RemoteFunction: Remotes.Summon.%s",
+			(autoSummon.SelectedBanner == "Premium") and "SummonPremium" or "Summon"))
+		return false
+	end
+
+	local success, result = pcall(function()
+		return remote:InvokeServer(amountNum)
+	end)
+
+	if not success then
+		logger.Warn("[Auto Summon] Lỗi gọi Remote:", tostring(result))
+		return false
+	end
+
+	if result == false then
+		return false
+	end
+
+	pcall(function()
+		local webhook = __DIST.load('aJ')
+		webhook.SendSummon(autoSummon.SelectedBanner, autoSummon.SummonAmount)
+	end)
+
+	return true
+end
+
+-- Vòng lặp Auto Summon
+local function runLoop()
+	while autoSummon.Enabled and lifecycle.IsActive() do
+		-- Chỉ triệu hồi khi đang ở sảnh (Lobby)
+		if constants.IsLobby() then
+			local now = os.clock()
+			if now - lastSummonTime >= autoSummon.SummonDelay then
+				lastSummonTime = now
+				local ok = autoSummon.ExecuteSummon()
+				if not ok then
+					-- Nếu thất bại (hết tiền, kho đầy hoặc remote bận), chờ 1 giây trước khi thử lại
+					task.wait(1.0)
+				end
+			end
+		else
+			-- Nếu vào trận thì tạm ngừng kiểm tra
+			task.wait(1.0)
+		end
+		task.wait(0.05)
+	end
+	activeThread = nil
+end
+
+function autoSummon.SetEnabled(state: boolean)
+	if autoSummon.Enabled == state then return end
+	autoSummon.Enabled = (state == true)
+
+	if autoSummon.Enabled then
+		if not activeThread then
+			activeThread = task.spawn(runLoop)
+		end
+		notifier.Notify("Auto Summon", string.format("Đã bật Auto Summon (%s - %s).", autoSummon.SelectedBanner, autoSummon.SummonAmount), 2)
+	else
+		activeThread = nil
+		notifier.Notify("Auto Summon", "Đã tắt Auto Summon.", 2)
+	end
+end
+
+function autoSummon.IsEnabled(): boolean
+	return autoSummon.Enabled
+end
+
+function autoSummon.SetBanner(banner: string)
+	if banner == "Basic" or banner == "Premium" then
+		autoSummon.SelectedBanner = banner
+	end
+end
+
+function autoSummon.GetBanner(): string
+	return autoSummon.SelectedBanner
+end
+
+function autoSummon.SetAmount(amount: string)
+	if amount == "x1" or amount == "x10" or amount == "x50" then
+		autoSummon.SummonAmount = amount
+	end
+end
+
+function autoSummon.GetAmount(): string
+	return autoSummon.SummonAmount
+end
+
+function autoSummon.SetDelay(sec: number)
+	autoSummon.SummonDelay = math.clamp(tonumber(sec) or 0.5, 0.1, 5)
+end
+
+function autoSummon.GetDelay(): number
+	return autoSummon.SummonDelay
+end
+
+-- Tự động dọn dẹp khi reload script
+lifecycle.Register(function()
+	autoSummon.Enabled = false
+	activeThread = nil
+end)
+
+return autoSummon
+end function __DIST.aN()-- Tab Main: Hiển thị trạng thái môi trường và thống kê trận đấu thời gian thực.
+-- Cột trái: Live Status & Display, Auto Summon (Lobby)
 -- Cột phải: Match Automation (Auto Replay, Auto Speed + Dropdown)
 
 
-local constants = __DIST.load('aA')
-local gameStats = __DIST.load('aC')
-local zoneGuard = __DIST.load('aB')
-local matchAutomation = __DIST.load('aG')
+local constants = __DIST.load('aD')
+local gameStats = __DIST.load('aF')
+local zoneGuard = __DIST.load('aE')
+local matchAutomation = __DIST.load('aL')
+local autoSummon = __DIST.load('aM')
 local autoSave = __DIST.load('az')
 local lifecycle = __DIST.load('ax')
 
 return function(window, tab)
 	--// ====================================================================
-	--// CỘT TRÁI: Live Status & Display
+	--// CỘT TRÁI: Section 1 - Live Status & Display
 	--// ====================================================================
 	local leftSection = tab:Section({ Side = "Left" })
 	leftSection:Header({ Name = "Status & Display" })
@@ -34937,6 +36592,56 @@ return function(window, tab)
 	lifecycle.Register(unsubscribe)
 
 	--// ====================================================================
+	--// CỘT TRÁI: Section 2 - Auto Summon (Lobby)
+	--// ====================================================================
+	local summonSection = tab:Section({ Side = "Left" })
+	summonSection:Header({ Name = "Auto Summon" })
+
+	summonSection:Toggle({
+		Name = "Auto Summon",
+		Default = autoSummon.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSummon.SetEnabled(state)
+		end),
+	}, "Toggle_AutoSummon")
+
+	summonSection:Dropdown({
+		Name = "Select Banner",
+		Options = autoSummon.Banners,
+		Default = autoSummon.GetBanner(),
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if selected and selected ~= "" then
+				autoSummon.SetBanner(selected)
+			end
+		end),
+	}, "Dropdown_SummonBanner")
+
+	summonSection:Dropdown({
+		Name = "Summon Amount",
+		Options = autoSummon.Amounts,
+		Default = autoSummon.GetAmount(),
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if selected and selected ~= "" then
+				autoSummon.SetAmount(selected)
+			end
+		end),
+	}, "Dropdown_SummonAmount")
+
+	summonSection:Slider({
+		Name = "Summon Delay (s)",
+		Minimum = 0.1,
+		Maximum = 3,
+		Default = autoSummon.GetDelay(),
+		Precision = 1,
+		DisplayMethod = "Value",
+		Callback = autoSave.Wrap(function(val)
+			autoSummon.SetDelay(val)
+		end),
+	}, "Slider_SummonDelay")
+
+	--// ====================================================================
 	--// CỘT PHẢI: Match Automation (Auto Replay, Auto Speed + Dropdown)
 	--// ====================================================================
 	local rightSection = tab:Section({ Side = "Right" })
@@ -34949,6 +36654,14 @@ return function(window, tab)
 			matchAutomation.SetAutoReplay(state)
 		end),
 	}, "Toggle_AutoReplay")
+
+	rightSection:Toggle({
+		Name = "Auto Skip",
+		Default = matchAutomation.AutoSkipEnabled,
+		Callback = autoSave.Wrap(function(state)
+			matchAutomation.SetAutoSkip(state)
+		end),
+	}, "Toggle_AutoSkip")
 
 	rightSection:Toggle({
 		Name = "Auto Speed",
@@ -34969,14 +36682,14 @@ return function(window, tab)
 		end),
 	}, "Dropdown_GameSpeed")
 end
-end function __DIST.aI()-- ElevatorJoiner: Tự động tìm thang máy (Raid: 1-4, Normal: 5-8), dịch chuyển ra trước cửa và bước vào bấm Start.
+end function __DIST.aO()-- ElevatorJoiner: Tự động tìm thang máy (Raid: 1-4, Normal: 5-8), dịch chuyển ra trước cửa và bước vào bấm Start.
 
 
 local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
-local zoneGuard = __DIST.load('aB')
+local zoneGuard = __DIST.load('aE')
 local lifecycle = __DIST.load('ax')
 local notifier = __DIST.load('ay')
 
@@ -35322,404 +37035,7 @@ lifecycle.Register(function()
 end)
 
 return elevatorJoiner
-end function __DIST.aJ()-- MatchSetup: Tự động chọn Universe, Map và Difficulty khi vào In-Game sau n(s).
-
-
-local Players = game:GetService("Players")
-local GuiService = game:GetService("GuiService")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-
-local zoneGuard = __DIST.load('aB')
-local lifecycle = __DIST.load('ax')
-local notifier = __DIST.load('ay')
-
-local matchSetup = {
-	AutoPickMapEnabled = false,
-	SelectedUniverse = "Brainrot Bases",
-	Universes = {
-		"Brainrot Bases",
-		"Toilet Territory",
-		"Retro Revival",
-		"Garden",
-		"Backrooms",
-	},
-
-	UniverseMaps = {
-		["Brainrot Bases"] = {
-			"Night Base",
-			"Base",
-			"Gold Base",
-			"BrainrotEndless",
-		},
-		["Toilet Territory"] = {
-			"Desert",
-			"Toilet City",
-			"Ruined City",
-			"ToiletEndless",
-		},
-		["Retro Revival"] = {
-			"Happy Home",
-			"Crossroads",
-			"Doomspire",
-			"RetroEndless",
-		},
-		["Garden"] = {
-			"Plot",
-			"NightPlot",
-			"RichPlot",
-			"GardenEndless",
-		},
-		["Backrooms"] = {
-			"Level0",
-			"Poolrooms",
-			"Level94",
-			"BackroomsEndless",
-		},
-	},
-
-	SelectedMap = "Night Base",
-
-	AutoDifficultyEnabled = false,
-	SelectedDifficulty = "Normal",
-	Difficulties = {
-		"Normal",
-		"Hard",
-		"Nightmare",
-		"Chaos",
-	},
-
-	VoteDelay = 2, -- Giây chờ trước khi bắt đầu chọn Universe & Map
-}
-
-local hasVotedUniverseMap = false
-local hasVotedDifficulty = false
-local watcherRunning = false
-
--- Hàm click button an toàn, kết hợp cả 3 phương thức để đảm bảo 100% ăn lệnh
-local function clickButton(button: Instance)
-	if not button then return end
-
-	print("[MatchSetup] Đang thực hiện click vào nút:", button.Name)
-
-	-- Cách 1: firesignal MouseButton1Click, Activated, MouseButton1Up
-	pcall(function()
-		local fs = (firesignal or (syn and syn.firesignal))
-		if fs and button:IsA("GuiButton") then
-			fs(button.MouseButton1Click)
-			fs(button.Activated)
-			fs(button.MouseButton1Up)
-		end
-	end)
-
-	-- Cách 2: VirtualInputManager click trực tiếp tại tọa độ tâm nút
-	pcall(function()
-		if button:IsA("GuiObject") then
-			local absPos = button.AbsolutePosition
-			local absSize = button.AbsoluteSize
-			local centerX = absPos.X + absSize.X / 2
-			local centerY = absPos.Y + absSize.Y / 2
-			VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-			task.wait(0.05)
-			VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
-		end
-	end)
-
-	-- Cách 3: GuiService SelectedObject + phím Enter
-	pcall(function()
-		if button:IsA("GuiButton") then
-			GuiService.SelectedObject = button
-			task.wait(0.05)
-			VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
-			task.wait(0.05)
-			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
-			task.wait(0.05)
-			GuiService.SelectedObject = nil
-		end
-	end)
-end
-
--- Tìm nút chính xác hoặc theo tên không phân biệt hoa thường / Title
-local function findButton(parent: Instance, targetName: string): GuiButton?
-	if not parent then return nil end
-
-	-- 1. Tìm trực tiếp theo Name
-	local direct = parent:FindFirstChild(targetName)
-	if direct and (direct:IsA("GuiButton") or direct:IsA("ImageButton") or direct:IsA("TextButton")) then
-		return direct
-	end
-
-	-- 2. Tìm không phân biệt hoa thường
-	local lowerTarget = string.lower(targetName)
-	for _, child in ipairs(parent:GetChildren()) do
-		if child:IsA("GuiButton") or child:IsA("ImageButton") or child:IsA("TextButton") then
-			if string.lower(child.Name) == lowerTarget then
-				return child
-			end
-		end
-	end
-
-	-- 3. Tìm theo TextLabel (Title) bên trong child
-	for _, child in ipairs(parent:GetChildren()) do
-		if child:IsA("GuiButton") or child:IsA("ImageButton") or child:IsA("TextButton") then
-			local title = child:FindFirstChild("Title") or child:FindFirstChildWhichIsA("TextLabel", true)
-			if title and string.lower(title.Text) == lowerTarget then
-				return child
-			end
-		end
-	end
-
-	return nil
-end
-
--- Kiểm tra xem Voting GUI có đang hiển thị trên màn hình không
-local function isVotingActive(voting: Instance): boolean
-	if not voting then return false end
-	if voting:IsA("GuiObject") and not voting.Visible then
-		return false
-	end
-
-	local universes = voting:FindFirstChild("Universes")
-	if universes then
-		for _, child in ipairs(universes:GetChildren()) do
-			if (child:IsA("GuiButton") or child:IsA("ImageButton")) and child.Visible then
-				return true
-			end
-		end
-	end
-
-	local maps = voting:FindFirstChild("Maps")
-	if maps then
-		for _, child in ipairs(maps:GetChildren()) do
-			if (child:IsA("GuiButton") or child:IsA("ImageButton")) and child.Visible then
-				return true
-			end
-		end
-	end
-
-	return false
-end
-
--- Kiểm tra xem bảng chọn độ khó ComplicationVoting có đang hiển thị không
-local function isComplicationVotingActive(compVoting: Instance): boolean
-	if not compVoting then return false end
-	if compVoting:IsA("GuiObject") and not compVoting.Visible then
-		return false
-	end
-
-	local modes = compVoting:FindFirstChild("Modes")
-	if modes then
-		for _, child in ipairs(modes:GetChildren()) do
-			if (child:IsA("GuiButton") or child:IsA("ImageButton")) and child.Visible then
-				return true
-			end
-		end
-	end
-
-	return false
-end
-
-local function runVotingWatcher()
-	if watcherRunning then return end
-	watcherRunning = true
-	print("[MatchSetup] Trình theo dõi Match Setup đã khởi động.")
-
-	while lifecycle.IsActive() and zoneGuard.IsInGame() do
-		local needMap = matchSetup.AutoPickMapEnabled and not hasVotedUniverseMap
-		local needDiff = matchSetup.AutoDifficultyEnabled and not hasVotedDifficulty
-
-		-- Nếu không cần làm gì ở vòng lặp này -> nghỉ 1 giây rồi kiểm tra tiếp (tuyệt đối không break!)
-		if not needMap and not needDiff then
-			task.wait(1)
-			continue
-		end
-
-		local player = Players.LocalPlayer
-		local playerGui = player and player:FindFirstChild("PlayerGui")
-		local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
-
-		-- Phase 1: Universe & Map Voting
-		if needMap and gameGui then
-			local voting = gameGui:FindFirstChild("Voting")
-			if voting and isVotingActive(voting) then
-				print(string.format("[MatchSetup] Phát hiện giao diện Voting! Chờ Vote Delay %d giây...", matchSetup.VoteDelay))
-				if matchSetup.VoteDelay > 0 then
-					task.wait(matchSetup.VoteDelay)
-				end
-
-				if not lifecycle.IsActive() or not zoneGuard.IsInGame() then break end
-
-				local universes = voting:FindFirstChild("Universes")
-				local mapsFolder = voting:FindFirstChild("Maps")
-
-				-- 1. Click chọn Universe
-				if universes then
-					print("[MatchSetup] Đang tìm Universe:", matchSetup.SelectedUniverse)
-					local uBtn = findButton(universes, matchSetup.SelectedUniverse)
-					if uBtn then
-						clickButton(uBtn)
-						print("[MatchSetup] -> Đã click Universe:", matchSetup.SelectedUniverse)
-					else
-						warn("[MatchSetup] Không tìm thấy nút Universe:", matchSetup.SelectedUniverse)
-					end
-				end
-
-				task.wait(0.4)
-
-				-- 2. Click chọn Map trong mapsFolder
-				if mapsFolder then
-					print("[MatchSetup] Đang chờ và tìm nút Map:", matchSetup.SelectedMap)
-					local targetMap = matchSetup.SelectedMap
-					local mapBtn = nil
-
-					for _ = 1, 40 do
-						mapBtn = findButton(mapsFolder, targetMap)
-						if mapBtn and mapBtn.Visible then
-							break
-						end
-						task.wait(0.1)
-					end
-
-					if mapBtn then
-						clickButton(mapBtn)
-						hasVotedUniverseMap = true
-						print("[MatchSetup] -> Đã click Map thành công:", targetMap)
-						notifier.Notify("Match Setup", string.format("Đã chọn: %s - %s", matchSetup.SelectedUniverse, targetMap), 3)
-					else
-						-- Fallback: bấm nút visible đầu tiên trong Maps
-						for _, btn in ipairs(mapsFolder:GetChildren()) do
-							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
-								clickButton(btn)
-								hasVotedUniverseMap = true
-								print("[MatchSetup] -> Đã click Map fallback:", btn.Name)
-								notifier.Notify("Match Setup", string.format("Đã chọn Map fallback: %s", btn.Name), 3)
-								break
-							end
-						end
-						if not hasVotedUniverseMap then
-							warn("[MatchSetup] Không tìm thấy nút Map nào đang hiển thị trong Voting.Maps!")
-						end
-					end
-				end
-			end
-		end
-
-		-- Phase 2: Difficulty Voting (ComplicationVoting)
-		if needDiff and gameGui then
-			local compVoting = gameGui:FindFirstChild("ComplicationVoting")
-			if compVoting and isComplicationVotingActive(compVoting) then
-				print("[MatchSetup] Phát hiện giao diện ComplicationVoting!")
-				local modes = compVoting:FindFirstChild("Modes")
-				if modes then
-					local targetDiff = matchSetup.SelectedDifficulty
-					print("[MatchSetup] Đang tìm Difficulty:", targetDiff)
-					local diffBtn = findButton(modes, targetDiff)
-
-					if diffBtn then
-						task.wait(0.2)
-						clickButton(diffBtn)
-						hasVotedDifficulty = true
-						print("[MatchSetup] -> Đã click Difficulty thành công:", targetDiff)
-						notifier.Notify("Match Setup", string.format("Đã chọn độ khó: %s", targetDiff), 3)
-					else
-						-- Fallback
-						for _, btn in ipairs(modes:GetChildren()) do
-							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
-								clickButton(btn)
-								hasVotedDifficulty = true
-								print("[MatchSetup] -> Đã click Difficulty fallback:", btn.Name)
-								notifier.Notify("Match Setup", string.format("Đã chọn độ khó fallback: %s", btn.Name), 3)
-								break
-							end
-						end
-					end
-				end
-			end
-		end
-
-		task.wait(0.5)
-	end
-
-	watcherRunning = false
-	print("[MatchSetup] Trình theo dõi Match Setup đã kết thúc vòng lặp.")
-end
-
-function matchSetup.StartVotingWatcher()
-	hasVotedUniverseMap = false
-	hasVotedDifficulty = false
-	if not watcherRunning then
-		task.spawn(runVotingWatcher)
-	end
-end
-
-function matchSetup.StopVotingWatcher()
-	hasVotedUniverseMap = false
-	hasVotedDifficulty = false
-end
-
-function matchSetup.GetMapsForUniverse(universeName: string): { string }
-	return matchSetup.UniverseMaps[universeName] or {}
-end
-
-function matchSetup.SetAutoPickMap(state: boolean)
-	matchSetup.AutoPickMapEnabled = state
-	print("[MatchSetup] Cập nhật Auto Pick Map:", state)
-	if state and zoneGuard.IsInGame() then
-		matchSetup.StartVotingWatcher()
-	end
-end
-
-function matchSetup.SetUniverse(universeName: string)
-	matchSetup.SelectedUniverse = universeName
-	print("[MatchSetup] Đã chọn Universe mục tiêu:", universeName)
-end
-
-function matchSetup.SetMap(mapName: string)
-	matchSetup.SelectedMap = mapName
-	print("[MatchSetup] Đã chọn Map mục tiêu:", mapName)
-end
-
-function matchSetup.SetAutoDifficulty(state: boolean)
-	matchSetup.AutoDifficultyEnabled = state
-	print("[MatchSetup] Cập nhật Auto Select Difficulty:", state)
-	if state and zoneGuard.IsInGame() then
-		matchSetup.StartVotingWatcher()
-	end
-end
-
-function matchSetup.SetDifficulty(diff: string)
-	matchSetup.SelectedDifficulty = diff
-	print("[MatchSetup] Đã chọn Difficulty mục tiêu:", diff)
-end
-
-function matchSetup.SetVoteDelay(seconds: number)
-	matchSetup.VoteDelay = math.clamp(tonumber(seconds) or 0, 0, 30)
-end
-
-function matchSetup.GetVoteDelay(): number
-	return matchSetup.VoteDelay
-end
-
--- Tự động kích hoạt khi ở InGame
-zoneGuard.Register({
-	Name = "MatchSetup",
-	Zone = "InGame",
-	OnEnter = function()
-		print("[MatchSetup] Vào In-Game -> Khởi động Match Setup.")
-		matchSetup.StartVotingWatcher()
-	end,
-	OnLeave = function()
-		print("[MatchSetup] Rời In-Game -> Reset trạng thái Match Setup.")
-		matchSetup.StopVotingWatcher()
-	end,
-})
-
--- Dọn dẹp khi script unload
-lifecycle.Register(function()
-	matchSetup.StopVotingWatcher()
-end)
-
-return matchSetup
-end function __DIST.aK()-- SlopMutator: Tự động bình chọn Slop Mutator theo độ ưu tiên (Priority Sliders)
+end function __DIST.aP()-- SlopMutator: Tự động bình chọn Slop Mutator theo độ ưu tiên (Priority Sliders)
 
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -35727,9 +37043,10 @@ local Players = game:GetService("Players")
 local GuiService = game:GetService("GuiService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 
-local zoneGuard = __DIST.load('aB')
+local zoneGuard = __DIST.load('aE')
 local lifecycle = __DIST.load('ax')
 local notifier = __DIST.load('ay')
+local logger = __DIST.load('aA')
 
 
 
@@ -35882,7 +37199,7 @@ local function performVote(candidates: { { Id: string, Title: string?, Good: str
 		end)
 
 		local displayTitle = bestCandidate.Title or bestCandidate.Id
-		print(string.format("[SlopMutator] Đã vote Mutator: %q (%s) với điểm ưu tiên: %d", bestCandidate.Id, displayTitle, bestScore))
+		logger.Log(string.format("[SlopMutator] Đã vote Mutator: %q (%s) với điểm ưu tiên: %d", bestCandidate.Id, displayTitle, bestScore))
 		notifier.Notify("Slop Mutator", string.format("Đã vote: %s (Ưu tiên: %d)", displayTitle, bestScore), 3)
 	end)
 end
@@ -35901,7 +37218,7 @@ local function hookRemote()
 		if not slopMutator.Enabled or not zoneGuard.IsInGame() then return end
 
 		if action == "Vote" and typeof(data) == "table" then
-			print("[SlopMutator] Nhận được danh sách bình chọn Mutator từ Server...")
+			logger.Log("[SlopMutator] Nhận được danh sách bình chọn Mutator từ Server...")
 			performVote(data)
 		elseif action == "Active" then
 			-- Khi Mutator đã được chốt và vòng vote kết thúc
@@ -35934,7 +37251,7 @@ local function startGuiWatcher()
 					end
 
 					if #candidates > 0 then
-						print("[SlopMutator] Phát hiện bảng MutatorVoting trên GUI, chuẩn bị vote...")
+						logger.Log("[SlopMutator] Phát hiện bảng MutatorVoting trên GUI, chuẩn bị vote...")
 						performVote(candidates)
 					end
 				end
@@ -35947,7 +37264,7 @@ end
 
 function slopMutator.SetEnabled(state: boolean)
 	slopMutator.Enabled = state
-	print("[SlopMutator] Cập nhật Auto Slop Mutator:", state)
+	logger.Log("[SlopMutator] Cập nhật Auto Slop Mutator:", state)
 	if state and zoneGuard.IsInGame() then
 		hookRemote()
 		startGuiWatcher()
@@ -36002,12 +37319,12 @@ lifecycle.Register(function()
 end)
 
 return slopMutator
-end function __DIST.aL()-- Tab Game: Auto Joiner, Auto Pick Map, Auto Difficult, Auto Slop Mutator
+end function __DIST.aQ()-- Tab Game: Auto Joiner, Auto Pick Map, Auto Difficult, Auto Slop Mutator
 
 
-local elevatorJoiner = __DIST.load('aI')
-local matchSetup = __DIST.load('aJ')
-local slopMutator = __DIST.load('aK')
+local elevatorJoiner = __DIST.load('aO')
+local matchSetup = __DIST.load('aI')
+local slopMutator = __DIST.load('aP')
 local autoSave = __DIST.load('az')
 
 return function(window, tab)
@@ -36196,13 +37513,14 @@ return function(window, tab)
 		}, "Slider_Mutator_" .. item.Id)
 	end
 end
-end function __DIST.aM()-- Recorder: Ghi lại các thao tác SpawnTower và SellTower của người chơi khi bật Record.
+end function __DIST.aR()-- Recorder: Ghi lại các thao tác SpawnTower và SellTower của người chơi khi bật Record.
 
-local types = __DIST.load('aD')
-local storage = __DIST.load('aE')
-local gameStats = __DIST.load('aC')
+local types = __DIST.load('aG')
+local storage = __DIST.load('aH')
+local gameStats = __DIST.load('aF')
 local notifier = __DIST.load('ay')
 local lifecycle = __DIST.load('ax')
+local logger = __DIST.load('aA')
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -36227,9 +37545,10 @@ local sellRemote: RemoteFunction? = nil
 local upgradeRemote: RemoteFunction? = nil
 local changeModeRemote: RemoteFunction? = nil
 local changeSpeedRemote: RemoteFunction? = nil
+local voteSkipRemote: RemoteFunction? = nil
 
 local function getRemotes()
-	if not spawnRemote or not sellRemote or not upgradeRemote or not changeModeRemote or not changeSpeedRemote then
+	if not spawnRemote or not sellRemote or not upgradeRemote or not changeModeRemote or not changeSpeedRemote or not voteSkipRemote then
 		local functions = ReplicatedStorage:FindFirstChild("Functions")
 		if functions then
 			spawnRemote = functions:FindFirstChild("SpawnTower") :: RemoteFunction?
@@ -36237,9 +37556,10 @@ local function getRemotes()
 			upgradeRemote = functions:FindFirstChild("UpgradeTower") :: RemoteFunction?
 			changeModeRemote = functions:FindFirstChild("ChangeTowerMode") :: RemoteFunction?
 			changeSpeedRemote = functions:FindFirstChild("ChangeSpeed") :: RemoteFunction?
+			voteSkipRemote = functions:FindFirstChild("VoteSkip") :: RemoteFunction?
 		end
 	end
-	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote
+	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
 end
 
 -- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
@@ -36273,11 +37593,13 @@ local function getCurrentGameSpeed(): number
 	return 1
 end
 
--- Tìm Model tháp trong workspace gần tọa độ đặt
-local function findTowerNearPosition(name: string?, targetPos: Vector3, maxDist: number?): Model?
-	maxDist = maxDist or 3.5
+-- Tìm Model tháp trong workspace gần tọa độ đặt (ưu tiên khoảng cách ngang XZ và hỗ trợ variant/skin)
+local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHorizontalDist: number?, variantName: string?): Model?
+	maxHorizontalDist = maxHorizontalDist or 3.8
+	local maxVerticalDist = 12.0
 	local bestModel: Model? = nil
-	local bestDist = maxDist
+	local bestDist = maxHorizontalDist
+	local bestMatchScore = -1
 
 	local searchContainers = {
 		workspace:FindFirstChild("Towers"),
@@ -36287,31 +37609,57 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxDist:
 	}
 
 	for _, container in ipairs(searchContainers) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Model") then
-					local pos: Vector3? = nil
-					if child.PrimaryPart then
-						pos = child.PrimaryPart.Position
-					else
-						pcall(function()
-							pos = child:GetPivot().Position
-						end)
-					end
+		if not container then continue end
 
-					if pos then
-						local dist = (pos - targetPos).Magnitude
-						if dist < bestDist then
-							if not name or child.Name:lower():find(name:lower()) then
-								bestDist = dist
-								bestModel = child
-							end
-						end
-					end
+		local function checkCandidate(child: Instance)
+			if not child:IsA("Model") or child.Parent == nil then return end
+
+			local pos: Vector3? = nil
+			if child.PrimaryPart then
+				pos = child.PrimaryPart.Position
+			else
+				pcall(function()
+					pos = child:GetPivot().Position
+				end)
+			end
+
+			if not pos then return end
+
+			local xzDist = math.sqrt((pos.X - targetPos.X)^2 + (pos.Z - targetPos.Z)^2)
+			local yDist = math.abs(pos.Y - targetPos.Y)
+
+			if xzDist <= maxHorizontalDist and yDist <= maxVerticalDist then
+				local childNameLower = child.Name:lower()
+				local matchScore = 0
+
+				if name and (childNameLower:find(name:lower(), 1, true) or name:lower():find(childNameLower, 1, true)) then
+					matchScore = 100
+				elseif variantName and (childNameLower:find(variantName:lower(), 1, true) or variantName:lower():find(childNameLower, 1, true)) then
+					matchScore = 90
+				elseif not name then
+					matchScore = 50
+				else
+					matchScore = (xzDist <= 2.5) and 40 or 10
+				end
+
+				if matchScore > bestMatchScore or (matchScore == bestMatchScore and xzDist < bestDist) then
+					bestMatchScore = matchScore
+					bestDist = xzDist
+					bestModel = child
 				end
 			end
 		end
-		if bestModel then break end
+
+		for _, child in ipairs(container:GetChildren()) do
+			checkCandidate(child)
+			if child:IsA("Folder") or child:IsA("Configuration") then
+				for _, subChild in ipairs(child:GetChildren()) do
+					checkCandidate(subChild)
+				end
+			end
+		end
+
+		if bestModel and bestMatchScore >= 50 then break end
 	end
 
 	return bestModel
@@ -36326,11 +37674,14 @@ function recorder.AddStep(actionType: ActionType__DARKLUA_TYPE_m, details: { [st
 	local cash = gameStats.GetCash()
 
 	local stepIndex = #recordedSteps + 1
+	local currentSpeed = getCurrentGameSpeed()
 	local step: MacroStep__DARKLUA_TYPE_n= {
 		Index = stepIndex,
 		Type = actionType,
 		TowerId = details.TowerId or ("T" .. tostring(stepIndex)),
 		TowerName = details.TowerName or "Unknown",
+		Speed = details.Speed,
+		RecordSpeed = currentSpeed,
 		CFrame = details.CFrame,
 		Position = details.Position,
 		Arg3 = details.Arg3,
@@ -36339,6 +37690,7 @@ function recorder.AddStep(actionType: ActionType__DARKLUA_TYPE_m, details: { [st
 		Wave = wave,
 		Time = elapsedTime,
 		Cost = details.Cost or cash,
+		TowerCost = details.TowerCost,
 		TargetMode = details.TargetMode,
 		RawData = details.RawData,
 	}
@@ -36353,11 +37705,13 @@ function recorder.AddStep(actionType: ActionType__DARKLUA_TYPE_m, details: { [st
 		notifier.Notify("Macro Record", string.format("Recorded Upgrade: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 	elseif actionType == "Target" then
 		notifier.Notify("Macro Record", string.format("Recorded Target: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
+	elseif actionType == "VoteSkip" then
+		notifier.Notify("Macro Record", string.format("Recorded VoteSkip [%.2fs]", step.Time), 1.5)
 	end
 end
 
 -- Xử lý ghi nhận SpawnTower khi Remote được gọi
-local function handleSpawnTower(args: { any })
+local function handleSpawnTower(args: { any }, returnedModel: any)
 	local ok, err = pcall(function()
 		local towerName = type(args[1]) == "string" and args[1] or "Unknown"
 		local cf = typeof(args[2]) == "CFrame" and args[2] or nil
@@ -36386,6 +37740,9 @@ local function handleSpawnTower(args: { any })
 			}
 		end
 
+		local initialCash = gameStats.GetCash()
+		local stepIndex = #recordedSteps + 1
+
 		recorder.AddStep("Place", {
 			TowerId = towerId,
 			TowerName = towerName,
@@ -36403,17 +37760,36 @@ local function handleSpawnTower(args: { any })
 			},
 		})
 
-		-- Tìm và liên kết Instance tháp trong Workspace sau khi server spawn thành công
+		-- 1. Nếu server trả về trực tiếp Instance Model, gán định danh ngay lập tức!
+		if typeof(returnedModel) == "Instance" then
+			local m = returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")
+			if m then
+				instanceToId[m] = towerId
+				idToInstance[towerId] = m
+			end
+		end
+
+		-- 2. Theo dõi biến động tiền và liên kết Model dự phòng nếu chưa có
 		if pos then
 			task.spawn(function()
-				for _ = 1, 15 do
+				for _ = 1, 20 do
 					task.wait(0.2)
 					if not isRecording then break end
-					local model = findTowerNearPosition(towerName, pos)
-					if model then
-						instanceToId[model] = towerId
-						idToInstance[towerId] = model
-						break
+
+					local curCash = gameStats.GetCash()
+					if curCash < initialCash and recordedSteps[stepIndex] then
+						local exactPrice = initialCash - curCash
+						if exactPrice > 0 and not recordedSteps[stepIndex].TowerCost then
+							recordedSteps[stepIndex].TowerCost = exactPrice
+						end
+					end
+
+					if not idToInstance[towerId] then
+						local model = findTowerNearPosition(towerName, pos, 4.0, arg4)
+						if model then
+							instanceToId[model] = towerId
+							idToInstance[towerId] = model
+						end
 					end
 				end
 			end)
@@ -36421,7 +37797,7 @@ local function handleSpawnTower(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận SpawnTower:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận SpawnTower:", tostring(err))
 	end
 end
 
@@ -36449,9 +37825,10 @@ local function handleSellTower(args: { any })
 				if targetPos then
 					local bestDist = 5.0
 					for id, info in pairs(idToInfo) do
-						local dist = (info.Position - targetPos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
+						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+						local yDist = math.abs(info.Position.Y - targetPos.Y)
+						if xzDist < bestDist and yDist <= 12.0 then
+							bestDist = xzDist
 							matchedId = id
 							towerName = info.TowerName
 						end
@@ -36491,12 +37868,12 @@ local function handleSellTower(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận SellTower:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận SellTower:", tostring(err))
 	end
 end
 
 -- Xử lý ghi nhận UpgradeTower khi Remote được gọi
-local function handleUpgradeTower(args: { any })
+local function handleUpgradeTower(args: { any }, returnedModel: any)
 	local ok, err = pcall(function()
 		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
 		local variantName = type(args[2]) == "string" and args[2] or nil
@@ -36520,9 +37897,10 @@ local function handleUpgradeTower(args: { any })
 				if targetPos then
 					local bestDist = 5.0
 					for id, info in pairs(idToInfo) do
-						local dist = (info.Position - targetPos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
+						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+						local yDist = math.abs(info.Position.Y - targetPos.Y)
+						if xzDist < bestDist and yDist <= 12.0 then
+							bestDist = xzDist
 							matchedId = id
 							towerName = info.TowerName
 						end
@@ -36533,6 +37911,15 @@ local function handleUpgradeTower(args: { any })
 
 		if not matchedId then
 			matchedId = "T_Upgraded_" .. tostring(#recordedSteps + 1)
+		end
+
+		-- Nếu server trả về Model mới của tháp sau nâng cấp, cập nhật ngay mapping
+		if typeof(returnedModel) == "Instance" then
+			local m = returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")
+			if m and matchedId then
+				instanceToId[m] = matchedId
+				idToInstance[matchedId] = m
+			end
 		end
 
 		local posTable: { number }? = nil
@@ -36556,7 +37943,22 @@ local function handleUpgradeTower(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận UpgradeTower:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận UpgradeTower:", tostring(err))
+	end
+end
+
+-- Xử lý ghi nhận VoteSkip khi Remote được gọi
+local function handleVoteSkip()
+	local ok, err = pcall(function()
+		recorder.AddStep("VoteSkip", {
+			TowerId = "SKIP",
+			TowerName = "VoteSkip",
+			Cost = 0,
+		})
+	end)
+
+	if not ok then
+		logger.Warn("[Recorder] Lỗi ghi nhận VoteSkip:", tostring(err))
 	end
 end
 
@@ -36584,9 +37986,10 @@ local function handleChangeTowerMode(args: { any })
 				if targetPos then
 					local bestDist = 5.0
 					for id, info in pairs(idToInfo) do
-						local dist = (info.Position - targetPos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
+						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+						local yDist = math.abs(info.Position.Y - targetPos.Y)
+						if xzDist < bestDist and yDist <= 12.0 then
+							bestDist = xzDist
 							matchedId = id
 							towerName = info.TowerName
 						end
@@ -36630,7 +38033,7 @@ local function handleChangeTowerMode(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận ChangeTowerMode:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận ChangeTowerMode:", tostring(err))
 	end
 end
 
@@ -36662,7 +38065,7 @@ local function handleChangeSpeed(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận ChangeSpeed:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận ChangeSpeed:", tostring(err))
 	end
 end
 
@@ -36691,7 +38094,10 @@ local function setupRemoteHook()
 				if remoteName == "SpawnTower" or (spawnRemote and self == spawnRemote) then
 					if not spawnRemote then spawnRemote = self end
 					local args = { ... }
-					task.spawn(handleSpawnTower, args)
+					if setnc and method then setnc(method) end
+					local res = table.pack(oldNamecall(self, ...))
+					task.spawn(handleSpawnTower, args, res[1])
+					return table.unpack(res, 1, res.n)
 				elseif remoteName == "SellTower" or (sellRemote and self == sellRemote) then
 					if not sellRemote then sellRemote = self end
 					local args = { ... }
@@ -36699,7 +38105,10 @@ local function setupRemoteHook()
 				elseif remoteName == "UpgradeTower" or (upgradeRemote and self == upgradeRemote) then
 					if not upgradeRemote then upgradeRemote = self end
 					local args = { ... }
-					task.spawn(handleUpgradeTower, args)
+					if setnc and method then setnc(method) end
+					local res = table.pack(oldNamecall(self, ...))
+					task.spawn(handleUpgradeTower, args, res[1])
+					return table.unpack(res, 1, res.n)
 				elseif remoteName == "ChangeTowerMode" or (changeModeRemote and self == changeModeRemote) then
 					if not changeModeRemote then changeModeRemote = self end
 					local args = { ... }
@@ -36708,6 +38117,9 @@ local function setupRemoteHook()
 					if not changeSpeedRemote then changeSpeedRemote = self end
 					local args = { ... }
 					task.spawn(handleChangeSpeed, args)
+				elseif remoteName == "VoteSkip" or (voteSkipRemote and self == voteSkipRemote) then
+					if not voteSkipRemote then voteSkipRemote = self end
+					task.spawn(handleVoteSkip)
 				end
 			end
 
@@ -36722,7 +38134,9 @@ local function setupRemoteHook()
 		oldSpawnInvoke = hookfunction(spawnRemote.InvokeServer, wrapC(function(self, ...)
 			if isRecording then
 				local args = { ... }
-				task.spawn(handleSpawnTower, args)
+				local res = table.pack(oldSpawnInvoke(self, ...))
+				task.spawn(handleSpawnTower, args, res[1])
+				return table.unpack(res, 1, res.n)
 			end
 			return oldSpawnInvoke(self, ...)
 		end))
@@ -36741,7 +38155,9 @@ local function setupRemoteHook()
 			oldUpgradeInvoke = hookfunction(upgradeRemote.InvokeServer, wrapC(function(self, ...)
 				if isRecording then
 					local args = { ... }
-					task.spawn(handleUpgradeTower, args)
+					local res = table.pack(oldUpgradeInvoke(self, ...))
+					task.spawn(handleUpgradeTower, args, res[1])
+					return table.unpack(res, 1, res.n)
 				end
 				return oldUpgradeInvoke(self, ...)
 			end))
@@ -36768,8 +38184,18 @@ local function setupRemoteHook()
 				return oldChangeSpeedInvoke(self, ...)
 			end))
 		end
+
+		if voteSkipRemote then
+			local oldVoteSkipInvoke
+			oldVoteSkipInvoke = hookfunction(voteSkipRemote.InvokeServer, wrapC(function(self, ...)
+				if isRecording then
+					task.spawn(handleVoteSkip)
+				end
+				return oldVoteSkipInvoke(self, ...)
+			end))
+		end
 	else
-		warn("[Recorder] Executor không hỗ trợ hookmetamethod hoặc hookfunction!")
+		logger.Warn("[Recorder] Executor không hỗ trợ hookmetamethod hoặc hookfunction!")
 	end
 end
 
@@ -36843,13 +38269,13 @@ lifecycle.Register(function()
 end)
 
 return recorder
-end function __DIST.aN()-- Tab Macro: Live Game Stats, Macro Recorder & Macro Player (Playback)
+end function __DIST.aS()-- Tab Macro: Live Game Stats, Macro Recorder & Macro Player (Playback)
 
-local gameStats = __DIST.load('aC')
-local zoneGuard = __DIST.load('aB')
-local storage = __DIST.load('aE')
-local recorder = __DIST.load('aM')
-local player = __DIST.load('aF')
+local gameStats = __DIST.load('aF')
+local zoneGuard = __DIST.load('aE')
+local storage = __DIST.load('aH')
+local recorder = __DIST.load('aR')
+local player = __DIST.load('aK')
 local autoSave = __DIST.load('az')
 local notifier = __DIST.load('ay')
 local lifecycle = __DIST.load('ax')
@@ -36910,9 +38336,140 @@ return function(window, tab)
 	lifecycle.Register(unsubscribeMatch)
 
 	--// ====================================================================
-	--// CỘT TRÁI: Section 2 - Macro Player (Tính năng Play Macro)
+	--// CỘT TRÁI: Section 2 - Macro Recorder (1 Input, 1 Button, 1 Dropdown, 1 Toggle)
 	--// ====================================================================
-	local playerSection = tab:Section({ Side = "Left" })
+	local recorderSection = tab:Section({ Side = "Left" })
+	recorderSection:Header({ Name = "Macro Recorder" })
+
+	local currentInputText = ""
+	local macroDropdown
+	local recordToggle
+
+	-- 1. Input: Nhập tên Macro mới
+	local nameInput = recorderSection:Input({
+		Name = "Macro Name",
+		Placeholder = "Enter macro name...",
+		AcceptedCharacters = "AlphaNumeric",
+		Callback = autoSave.Wrap(function(text)
+			currentInputText = text or ""
+		end),
+	}, "Input_MacroName")
+
+	-- 2. Button: Tạo mới Macro
+	recorderSection:Button({
+		Name = "Create Macro",
+		Callback = function()
+			local rawName = currentInputText
+			if not rawName or rawName == "" then
+				if nameInput and type(nameInput.GetInput) == "function" then
+					rawName = nameInput:GetInput()
+				end
+			end
+
+			local trimmed = (rawName or ""):gsub("^%s+", ""):gsub("%s+$", "")
+			if #trimmed == 0 then
+				notifier.Notify("Macro", "Tên Macro không được để trống!", 2)
+				return
+			end
+
+			-- Tạo macro mới trong storage
+			storage.CreateMacro(trimmed)
+			recorder.SetActiveMacro(trimmed)
+			player.SetActiveMacro(trimmed)
+
+			-- Cập nhật danh sách vào Dropdown
+			if macroDropdown then
+				pcall(function()
+					local currentOptions = macroDropdown:GetOptions() or {}
+					if not table.find(currentOptions, trimmed) then
+						macroDropdown:InsertOptions({ trimmed })
+					end
+					macroDropdown:UpdateSelection(trimmed)
+				end)
+			end
+
+			notifier.Notify("Macro", "Đã tạo Macro: " .. trimmed, 2)
+		end,
+	})
+
+	-- Danh sách macro ban đầu
+	local initialMacros = storage.ListMacros()
+	if #initialMacros == 0 then
+		initialMacros = { "None" }
+	end
+
+	local defaultSelected = initialMacros[1] or "None"
+	if defaultSelected ~= "None" then
+		recorder.SetActiveMacro(defaultSelected)
+		player.SetActiveMacro(defaultSelected)
+	end
+
+	-- 3. Dropdown: Chọn Macro
+	macroDropdown = recorderSection:Dropdown({
+		Name = "Select Macro",
+		Options = initialMacros,
+		Default = defaultSelected,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if not selected or selected == "" or selected == "None" then return end
+			recorder.SetActiveMacro(selected)
+			player.SetActiveMacro(selected)
+		end),
+	}, "Dropdown_SelectMacro")
+
+	-- 4. Toggle: Bật / Tắt ghi lại Macro (Record)
+	local isTogglingInternally = false
+	recordToggle = recorderSection:Toggle({
+		Name = "Record Macro",
+		Default = recorder.IsRecording(),
+		Callback = autoSave.Wrap(function(state)
+			if isTogglingInternally then return end
+
+			if state then
+				if player.IsEnabled() then
+					isTogglingInternally = true
+					pcall(function()
+						recordToggle:UpdateState(false, true)
+					end)
+					isTogglingInternally = false
+					notifier.Notify("Macro", "Vui lòng tắt Play Macro trước khi Record!", 2)
+					return
+				end
+
+				local activeName = recorder.GetActiveMacro()
+				if not activeName or activeName == "" or activeName == "None" then
+					isTogglingInternally = true
+					pcall(function()
+						recordToggle:UpdateState(false, true)
+					end)
+					isTogglingInternally = false
+					notifier.Notify("Macro", "Vui lòng chọn hoặc tạo Macro trước khi Record!", 2)
+					return
+				end
+
+				local started = recorder.StartRecording(activeName)
+				if not started then
+					isTogglingInternally = true
+					pcall(function()
+						recordToggle:UpdateState(false, true)
+					end)
+					isTogglingInternally = false
+				end
+			else
+				recorder.StopRecording()
+				-- Cập nhật lại số bước trong UI Player sau khi dừng record
+				local activeName = recorder.GetActiveMacro()
+				if activeName then
+					player.SetActiveMacro(activeName)
+				end
+			end
+		end),
+	}, "Toggle_RecordMacro")
+
+	--// ====================================================================
+	--// CỘT PHẢI: Macro Player (Tính năng Play Macro)
+	--// ====================================================================
+	local playerSection = tab:Section({ Side = "Right" })
 	playerSection:Header({ Name = "Macro Player" })
 
 	local playerMacroLabel = playerSection:Label({
@@ -37045,145 +38602,132 @@ return function(window, tab)
 
 	local unsubscribePlayer = player.Subscribe(updatePlayerUi)
 	lifecycle.Register(unsubscribePlayer)
-
-	--// ====================================================================
-	--// CỘT PHẢI: Macro Recorder (1 Input, 1 Button, 1 Dropdown, 1 Toggle)
-	--// ====================================================================
-	local rightSection = tab:Section({ Side = "Right" })
-	rightSection:Header({ Name = "Macro Recorder" })
-
-	local currentInputText = ""
-	local macroDropdown
-	local recordToggle
-
-	-- 1. Input: Nhập tên Macro mới
-	local nameInput = rightSection:Input({
-		Name = "Macro Name",
-		Placeholder = "Enter macro name...",
-		AcceptedCharacters = "AlphaNumeric",
-		Callback = autoSave.Wrap(function(text)
-			currentInputText = text or ""
-		end),
-	}, "Input_MacroName")
-
-	-- 2. Button: Tạo mới Macro
-	rightSection:Button({
-		Name = "Create Macro",
-		Callback = function()
-			local rawName = currentInputText
-			if not rawName or rawName == "" then
-				if nameInput and type(nameInput.GetInput) == "function" then
-					rawName = nameInput:GetInput()
-				end
-			end
-
-			local trimmed = (rawName or ""):gsub("^%s+", ""):gsub("%s+$", "")
-			if #trimmed == 0 then
-				notifier.Notify("Macro", "Tên Macro không được để trống!", 2)
-				return
-			end
-
-			-- Tạo macro mới trong storage
-			storage.CreateMacro(trimmed)
-			recorder.SetActiveMacro(trimmed)
-			player.SetActiveMacro(trimmed)
-
-			-- Cập nhật danh sách vào Dropdown
-			if macroDropdown then
-				pcall(function()
-					local currentOptions = macroDropdown:GetOptions() or {}
-					if not table.find(currentOptions, trimmed) then
-						macroDropdown:InsertOptions({ trimmed })
-					end
-					macroDropdown:UpdateSelection(trimmed)
-				end)
-			end
-
-			notifier.Notify("Macro", "Đã tạo Macro: " .. trimmed, 2)
-		end,
-	})
-
-	-- Danh sách macro ban đầu
-	local initialMacros = storage.ListMacros()
-	if #initialMacros == 0 then
-		initialMacros = { "None" }
-	end
-
-	local defaultSelected = initialMacros[1] or "None"
-	if defaultSelected ~= "None" then
-		recorder.SetActiveMacro(defaultSelected)
-		player.SetActiveMacro(defaultSelected)
-	end
-
-	-- 3. Dropdown: Chọn Macro
-	macroDropdown = rightSection:Dropdown({
-		Name = "Select Macro",
-		Options = initialMacros,
-		Default = defaultSelected,
-		Required = true,
-		Callback = autoSave.Wrap(function(selected)
-			if not selected or selected == "" or selected == "None" then return end
-			recorder.SetActiveMacro(selected)
-			player.SetActiveMacro(selected)
-		end),
-	}, "Dropdown_SelectMacro")
-
-	-- 4. Toggle: Bật / Tắt ghi lại Macro (Record)
-	local isTogglingInternally = false
-	recordToggle = rightSection:Toggle({
-		Name = "Record Macro",
-		Default = recorder.IsRecording(),
-		Callback = autoSave.Wrap(function(state)
-			if isTogglingInternally then return end
-
-			if state then
-				if player.IsEnabled() then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng tắt Play Macro trước khi Record!", 2)
-					return
-				end
-
-				local activeName = recorder.GetActiveMacro()
-				if not activeName or activeName == "" or activeName == "None" then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng chọn hoặc tạo Macro trước khi Record!", 2)
-					return
-				end
-
-				local started = recorder.StartRecording(activeName)
-				if not started then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-				end
-			else
-				recorder.StopRecording()
-				-- Cập nhật lại số bước trong UI Player sau khi dừng record
-				local activeName = recorder.GetActiveMacro()
-				if activeName then
-					player.SetActiveMacro(activeName)
-				end
-			end
-		end),
-	}, "Toggle_RecordMacro")
 end
-end function __DIST.aO()-- Tab Config: Quản lý cấu hình (Create, Save, Load, Overwrite, Autoload) qua Maclib built-in.
+end function __DIST.aT()-- Tab Config: Quản lý cấu hình (Create, Save, Load, Overwrite, Autoload) qua Maclib built-in.
+-- Cột phải: Section 1 - Utility (Auto Hide, Auto Anti Macro), Section 2 - Discord Webhook.
 
+
+local utility = __DIST.load('aC')
+local webhook = __DIST.load('aJ')
+local autoSave = __DIST.load('az')
+local notifier = __DIST.load('ay')
 
 return function(window, tab)
+	--// ====================================================================
+	--// CỘT TRÁI: Quản lý Config Maclib built-in
+	--// ====================================================================
 	tab:InsertConfigSection("Left")
+
+	--// ====================================================================
+	--// CỘT PHẢI: Section 1 - Utility
+	--// ====================================================================
+	local utilitySection = tab:Section({ Side = "Right" })
+	utilitySection:Header({ Name = "Utility" })
+
+	utilitySection:Keybind({
+		Name = "Menu Keybind",
+		Default = Enum.KeyCode.RightShift,
+		onBinded = autoSave.Wrap(function(key)
+			if key and typeof(key) == "EnumItem" then
+				window:SetKeybind(key)
+				notifier.Notify("Menu Keybind", "Phím mở Menu đã đổi thành: " .. key.Name, 2)
+			end
+		end),
+	}, "Keybind_MenuToggle")
+
+	utilitySection:Toggle({
+		Name = "Auto Hide",
+		Default = utility.IsAutoHideEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			utility.SetAutoHide(state)
+		end),
+	}, "Toggle_AutoHide")
+
+	utilitySection:Toggle({
+		Name = "Auto Anti Macro",
+		Default = utility.IsAutoAntiMacroEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			utility.SetAutoAntiMacro(state)
+		end),
+	}, "Toggle_AutoAntiMacro")
+
+	utilitySection:Toggle({
+		Name = "Debug Logs",
+		Default = utility.IsDebugLogsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			utility.SetDebugLogs(state)
+		end),
+	}, "Toggle_DebugLogs")
+
+	--// ====================================================================
+	--// CỘT PHẢI: Section 2 - Discord Webhook
+	--// ====================================================================
+	local webhookSection = tab:Section({ Side = "Right" })
+	webhookSection:Header({ Name = "Discord Webhook" })
+
+	webhookSection:Input({
+		Name = "Webhook URL",
+		Placeholder = "Enter Discord Webhook URL...",
+		AcceptedCharacters = "All",
+		Callback = autoSave.Wrap(function(text)
+			webhook.SetUrl(text)
+		end),
+	}, "Input_WebhookUrl")
+
+	webhookSection:Toggle({
+		Name = "Enable Webhook",
+		Default = webhook.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			webhook.SetEnabled(state)
+		end),
+	}, "Toggle_WebhookEnabled")
+
+	webhookSection:Toggle({
+		Name = "Notify Match End",
+		Default = webhook.IsNotifyMatchEnd(),
+		Callback = autoSave.Wrap(function(state)
+			webhook.SetNotifyMatchEnd(state)
+		end),
+	}, "Toggle_WebhookNotifyMatchEnd")
+
+	webhookSection:Toggle({
+		Name = "Notify Auto Summon",
+		Default = webhook.IsNotifySummon(),
+		Callback = autoSave.Wrap(function(state)
+			webhook.SetNotifySummon(state)
+		end),
+	}, "Toggle_WebhookNotifySummon")
+
+	webhookSection:Toggle({
+		Name = "Notify Macro",
+		Default = webhook.IsNotifyMacro(),
+		Callback = autoSave.Wrap(function(state)
+			webhook.SetNotifyMacro(state)
+		end),
+	}, "Toggle_WebhookNotifyMacro")
+
+	webhookSection:Input({
+		Name = "Discord User ID (Ping)",
+		Placeholder = "Optional: 123456789...",
+		AcceptedCharacters = "Numeric",
+		Callback = autoSave.Wrap(function(text)
+			webhook.SetPingUserId(text)
+		end),
+	}, "Input_WebhookPingUserId")
+
+	webhookSection:Button({
+		Name = "Test Webhook",
+		Callback = function()
+			local ok, err = webhook.SendTest()
+			if ok then
+				notifier.Notify("Webhook", "Gửi tin nhắn thử nghiệm thành công!", 2.5)
+			else
+				notifier.Notify("Webhook", "Gửi thất bại: " .. tostring(err), 3)
+			end
+		end,
+	})
 end
-end function __DIST.aP()-- SlopTowerDefense: Khởi tạo giao diện Maclib và nạp 4 tabs: Main, Game, Macro, Config.
+end function __DIST.aU()-- SlopTowerDefense: Khởi tạo giao diện Maclib và nạp 4 tabs: Main, Game, Macro, Config.
 
 
 return function(self)
@@ -37212,6 +38756,7 @@ return function(self)
 	local lifecycle = __DIST.load('ax')
 	local autoSave = __DIST.load('az')
 	local notifier = __DIST.load('ay')
+	local utility = __DIST.load('aC')
 
 	autoSave.Suspend()
 
@@ -37224,7 +38769,7 @@ return function(self)
 		DragStyle = 1,
 		DisabledWindowControls = {},
 		ShowUserInfo = true,
-		Keybind = Enum.KeyCode.RightControl,
+		Keybind = Enum.KeyCode.RightShift,
 		AcrylicBlur = false,
 	})
 
@@ -37253,10 +38798,10 @@ return function(self)
 	}
 
 	-- Load UI Modules
-	local mainTab = __DIST.load('aH')
-	local gameTab = __DIST.load('aL')
-	local macroTab = __DIST.load('aN')
-	local configTab = __DIST.load('aO')
+	local mainTab = __DIST.load('aN')
+	local gameTab = __DIST.load('aQ')
+	local macroTab = __DIST.load('aS')
+	local configTab = __DIST.load('aT')
 
 	mainTab(window, tabs.Main)
 	gameTab(window, tabs.Game)
@@ -37271,10 +38816,39 @@ return function(self)
 		macLib:LoadAutoLoadConfig()
 	end)
 
+	-- Đồng bộ MenuKeybind từ cấu hình vừa nạp (nếu có)
+	pcall(function()
+		local menuBindOption = macLib.Options["Keybind_MenuToggle"]
+		if menuBindOption and typeof(menuBindOption.GetBind) == "function" then
+			local savedBind = menuBindOption:GetBind()
+			if savedBind and typeof(savedBind) == "EnumItem" then
+				window:SetKeybind(savedBind)
+			end
+		end
+	end)
+
 	autoSave.Resume()
+
+	-- Tự động ẩn UI khi script được thực thi nếu tính năng Auto Hide được bật
+	if utility.IsAutoHideEnabled() then
+		task.defer(function()
+			window:SetState(false)
+			local keyName = "RightShift"
+			pcall(function()
+				if typeof(window.GetKeybind) == "function" then
+					local b = window:GetKeybind()
+					if b and b.Name then
+						keyName = b.Name
+					end
+				end
+			end)
+			notifier.Notify("Slop Tower Defense", "UI đã tự động ẩn. Nhấn " .. keyName .. " để mở lại.", 5)
+		end)
+	end
+
 	print("[SlopTowerDefense] Initialized successfully.")
 end
-end function __DIST.aQ()
+end function __DIST.aV()
 local flags = {}
 
 function flags:Export()
@@ -37317,7 +38891,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.aR()
+return flags end function __DIST.aW()
 --// Imports
 
 
@@ -37342,7 +38916,7 @@ function interface:Window(properties: Window__DARKLUA_TYPE_s): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.aS()--// Imports
+end function __DIST.aX()--// Imports
 
 local binder = __DIST.load('ad')
 
@@ -37355,11 +38929,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.aT()--// Imports
+end function __DIST.aY()--// Imports
 
-local flags = __DIST.load('aQ')
-local interface = __DIST.load('aR')
-local esp = __DIST.load('aS')
+local flags = __DIST.load('aV')
+local interface = __DIST.load('aW')
+local esp = __DIST.load('aX')
 
 --// Initialize
 local window = interface:Window({
@@ -37398,7 +38972,7 @@ return {
 		end,
 	},
 }
-end function __DIST.aU()--// Variables
+end function __DIST.aZ()--// Variables
 
 local utility = {}
 
@@ -37430,7 +39004,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.aV()--// Functions
+end function __DIST.a_()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -37440,14 +39014,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.aW()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.a0()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('aT')
-	local utility = __DIST.load('aU')
-	local services = __DIST.load('aV')
+	local base = __DIST.load('aY')
+	local utility = __DIST.load('aZ')
+	local services = __DIST.load('a_')
 
 	--// References
 	local flags = base.Flags
@@ -37524,7 +39098,7 @@ local routes = {
 
 	{
 		Name = "SlopTowerDefense",
-		Load = __DIST.load('aP'),
+		Load = __DIST.load('aU'),
 		UniverseId = 10529769390,
 		Places = {
 			134459712190924, -- Lobby
@@ -37535,7 +39109,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('aW'),
+		Load = __DIST.load('a0'),
 		Places = {
 			123456789,
 			987654321,

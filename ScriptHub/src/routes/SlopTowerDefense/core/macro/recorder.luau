@@ -4,6 +4,7 @@ local storage = require("./storage")
 local gameStats = require("@routes/SlopTowerDefense/core/game/gameStats")
 local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
 local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
+local logger = require("@routes/SlopTowerDefense/core/system/logger")
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -28,9 +29,10 @@ local sellRemote: RemoteFunction? = nil
 local upgradeRemote: RemoteFunction? = nil
 local changeModeRemote: RemoteFunction? = nil
 local changeSpeedRemote: RemoteFunction? = nil
+local voteSkipRemote: RemoteFunction? = nil
 
 local function getRemotes()
-	if not spawnRemote or not sellRemote or not upgradeRemote or not changeModeRemote or not changeSpeedRemote then
+	if not spawnRemote or not sellRemote or not upgradeRemote or not changeModeRemote or not changeSpeedRemote or not voteSkipRemote then
 		local functions = ReplicatedStorage:FindFirstChild("Functions")
 		if functions then
 			spawnRemote = functions:FindFirstChild("SpawnTower") :: RemoteFunction?
@@ -38,9 +40,10 @@ local function getRemotes()
 			upgradeRemote = functions:FindFirstChild("UpgradeTower") :: RemoteFunction?
 			changeModeRemote = functions:FindFirstChild("ChangeTowerMode") :: RemoteFunction?
 			changeSpeedRemote = functions:FindFirstChild("ChangeSpeed") :: RemoteFunction?
+			voteSkipRemote = functions:FindFirstChild("VoteSkip") :: RemoteFunction?
 		end
 	end
-	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote
+	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
 end
 
 -- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
@@ -74,11 +77,13 @@ local function getCurrentGameSpeed(): number
 	return 1
 end
 
--- Tìm Model tháp trong workspace gần tọa độ đặt
-local function findTowerNearPosition(name: string?, targetPos: Vector3, maxDist: number?): Model?
-	maxDist = maxDist or 3.5
+-- Tìm Model tháp trong workspace gần tọa độ đặt (ưu tiên khoảng cách ngang XZ và hỗ trợ variant/skin)
+local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHorizontalDist: number?, variantName: string?): Model?
+	maxHorizontalDist = maxHorizontalDist or 3.8
+	local maxVerticalDist = 12.0
 	local bestModel: Model? = nil
-	local bestDist = maxDist
+	local bestDist = maxHorizontalDist
+	local bestMatchScore = -1
 
 	local searchContainers = {
 		workspace:FindFirstChild("Towers"),
@@ -88,31 +93,57 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxDist:
 	}
 
 	for _, container in ipairs(searchContainers) do
-		if container then
-			for _, child in ipairs(container:GetChildren()) do
-				if child:IsA("Model") then
-					local pos: Vector3? = nil
-					if child.PrimaryPart then
-						pos = child.PrimaryPart.Position
-					else
-						pcall(function()
-							pos = child:GetPivot().Position
-						end)
-					end
+		if not container then continue end
 
-					if pos then
-						local dist = (pos - targetPos).Magnitude
-						if dist < bestDist then
-							if not name or child.Name:lower():find(name:lower()) then
-								bestDist = dist
-								bestModel = child
-							end
-						end
-					end
+		local function checkCandidate(child: Instance)
+			if not child:IsA("Model") or child.Parent == nil then return end
+
+			local pos: Vector3? = nil
+			if child.PrimaryPart then
+				pos = child.PrimaryPart.Position
+			else
+				pcall(function()
+					pos = child:GetPivot().Position
+				end)
+			end
+
+			if not pos then return end
+
+			local xzDist = math.sqrt((pos.X - targetPos.X)^2 + (pos.Z - targetPos.Z)^2)
+			local yDist = math.abs(pos.Y - targetPos.Y)
+
+			if xzDist <= maxHorizontalDist and yDist <= maxVerticalDist then
+				local childNameLower = child.Name:lower()
+				local matchScore = 0
+
+				if name and (childNameLower:find(name:lower(), 1, true) or name:lower():find(childNameLower, 1, true)) then
+					matchScore = 100
+				elseif variantName and (childNameLower:find(variantName:lower(), 1, true) or variantName:lower():find(childNameLower, 1, true)) then
+					matchScore = 90
+				elseif not name then
+					matchScore = 50
+				else
+					matchScore = (xzDist <= 2.5) and 40 or 10
+				end
+
+				if matchScore > bestMatchScore or (matchScore == bestMatchScore and xzDist < bestDist) then
+					bestMatchScore = matchScore
+					bestDist = xzDist
+					bestModel = child
 				end
 			end
 		end
-		if bestModel then break end
+
+		for _, child in ipairs(container:GetChildren()) do
+			checkCandidate(child)
+			if child:IsA("Folder") or child:IsA("Configuration") then
+				for _, subChild in ipairs(child:GetChildren()) do
+					checkCandidate(subChild)
+				end
+			end
+		end
+
+		if bestModel and bestMatchScore >= 50 then break end
 	end
 
 	return bestModel
@@ -127,11 +158,14 @@ function recorder.AddStep(actionType: types.ActionType, details: { [string]: any
 	local cash = gameStats.GetCash()
 
 	local stepIndex = #recordedSteps + 1
+	local currentSpeed = getCurrentGameSpeed()
 	local step: types.MacroStep = {
 		Index = stepIndex,
 		Type = actionType,
 		TowerId = details.TowerId or ("T" .. tostring(stepIndex)),
 		TowerName = details.TowerName or "Unknown",
+		Speed = details.Speed,
+		RecordSpeed = currentSpeed,
 		CFrame = details.CFrame,
 		Position = details.Position,
 		Arg3 = details.Arg3,
@@ -140,6 +174,7 @@ function recorder.AddStep(actionType: types.ActionType, details: { [string]: any
 		Wave = wave,
 		Time = elapsedTime,
 		Cost = details.Cost or cash,
+		TowerCost = details.TowerCost,
 		TargetMode = details.TargetMode,
 		RawData = details.RawData,
 	}
@@ -154,11 +189,13 @@ function recorder.AddStep(actionType: types.ActionType, details: { [string]: any
 		notifier.Notify("Macro Record", string.format("Recorded Upgrade: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 	elseif actionType == "Target" then
 		notifier.Notify("Macro Record", string.format("Recorded Target: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
+	elseif actionType == "VoteSkip" then
+		notifier.Notify("Macro Record", string.format("Recorded VoteSkip [%.2fs]", step.Time), 1.5)
 	end
 end
 
 -- Xử lý ghi nhận SpawnTower khi Remote được gọi
-local function handleSpawnTower(args: { any })
+local function handleSpawnTower(args: { any }, returnedModel: any)
 	local ok, err = pcall(function()
 		local towerName = type(args[1]) == "string" and args[1] or "Unknown"
 		local cf = typeof(args[2]) == "CFrame" and args[2] or nil
@@ -187,6 +224,9 @@ local function handleSpawnTower(args: { any })
 			}
 		end
 
+		local initialCash = gameStats.GetCash()
+		local stepIndex = #recordedSteps + 1
+
 		recorder.AddStep("Place", {
 			TowerId = towerId,
 			TowerName = towerName,
@@ -204,17 +244,36 @@ local function handleSpawnTower(args: { any })
 			},
 		})
 
-		-- Tìm và liên kết Instance tháp trong Workspace sau khi server spawn thành công
+		-- 1. Nếu server trả về trực tiếp Instance Model, gán định danh ngay lập tức!
+		if typeof(returnedModel) == "Instance" then
+			local m = returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")
+			if m then
+				instanceToId[m] = towerId
+				idToInstance[towerId] = m
+			end
+		end
+
+		-- 2. Theo dõi biến động tiền và liên kết Model dự phòng nếu chưa có
 		if pos then
 			task.spawn(function()
-				for _ = 1, 15 do
+				for _ = 1, 20 do
 					task.wait(0.2)
 					if not isRecording then break end
-					local model = findTowerNearPosition(towerName, pos)
-					if model then
-						instanceToId[model] = towerId
-						idToInstance[towerId] = model
-						break
+
+					local curCash = gameStats.GetCash()
+					if curCash < initialCash and recordedSteps[stepIndex] then
+						local exactPrice = initialCash - curCash
+						if exactPrice > 0 and not recordedSteps[stepIndex].TowerCost then
+							recordedSteps[stepIndex].TowerCost = exactPrice
+						end
+					end
+
+					if not idToInstance[towerId] then
+						local model = findTowerNearPosition(towerName, pos, 4.0, arg4)
+						if model then
+							instanceToId[model] = towerId
+							idToInstance[towerId] = model
+						end
 					end
 				end
 			end)
@@ -222,7 +281,7 @@ local function handleSpawnTower(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận SpawnTower:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận SpawnTower:", tostring(err))
 	end
 end
 
@@ -250,9 +309,10 @@ local function handleSellTower(args: { any })
 				if targetPos then
 					local bestDist = 5.0
 					for id, info in pairs(idToInfo) do
-						local dist = (info.Position - targetPos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
+						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+						local yDist = math.abs(info.Position.Y - targetPos.Y)
+						if xzDist < bestDist and yDist <= 12.0 then
+							bestDist = xzDist
 							matchedId = id
 							towerName = info.TowerName
 						end
@@ -292,12 +352,12 @@ local function handleSellTower(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận SellTower:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận SellTower:", tostring(err))
 	end
 end
 
 -- Xử lý ghi nhận UpgradeTower khi Remote được gọi
-local function handleUpgradeTower(args: { any })
+local function handleUpgradeTower(args: { any }, returnedModel: any)
 	local ok, err = pcall(function()
 		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
 		local variantName = type(args[2]) == "string" and args[2] or nil
@@ -321,9 +381,10 @@ local function handleUpgradeTower(args: { any })
 				if targetPos then
 					local bestDist = 5.0
 					for id, info in pairs(idToInfo) do
-						local dist = (info.Position - targetPos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
+						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+						local yDist = math.abs(info.Position.Y - targetPos.Y)
+						if xzDist < bestDist and yDist <= 12.0 then
+							bestDist = xzDist
 							matchedId = id
 							towerName = info.TowerName
 						end
@@ -334,6 +395,15 @@ local function handleUpgradeTower(args: { any })
 
 		if not matchedId then
 			matchedId = "T_Upgraded_" .. tostring(#recordedSteps + 1)
+		end
+
+		-- Nếu server trả về Model mới của tháp sau nâng cấp, cập nhật ngay mapping
+		if typeof(returnedModel) == "Instance" then
+			local m = returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")
+			if m and matchedId then
+				instanceToId[m] = matchedId
+				idToInstance[matchedId] = m
+			end
 		end
 
 		local posTable: { number }? = nil
@@ -357,7 +427,22 @@ local function handleUpgradeTower(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận UpgradeTower:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận UpgradeTower:", tostring(err))
+	end
+end
+
+-- Xử lý ghi nhận VoteSkip khi Remote được gọi
+local function handleVoteSkip()
+	local ok, err = pcall(function()
+		recorder.AddStep("VoteSkip", {
+			TowerId = "SKIP",
+			TowerName = "VoteSkip",
+			Cost = 0,
+		})
+	end)
+
+	if not ok then
+		logger.Warn("[Recorder] Lỗi ghi nhận VoteSkip:", tostring(err))
 	end
 end
 
@@ -385,9 +470,10 @@ local function handleChangeTowerMode(args: { any })
 				if targetPos then
 					local bestDist = 5.0
 					for id, info in pairs(idToInfo) do
-						local dist = (info.Position - targetPos).Magnitude
-						if dist < bestDist then
-							bestDist = dist
+						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+						local yDist = math.abs(info.Position.Y - targetPos.Y)
+						if xzDist < bestDist and yDist <= 12.0 then
+							bestDist = xzDist
 							matchedId = id
 							towerName = info.TowerName
 						end
@@ -431,7 +517,7 @@ local function handleChangeTowerMode(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận ChangeTowerMode:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận ChangeTowerMode:", tostring(err))
 	end
 end
 
@@ -463,7 +549,7 @@ local function handleChangeSpeed(args: { any })
 	end)
 
 	if not ok then
-		warn("[Recorder] Lỗi ghi nhận ChangeSpeed:", tostring(err))
+		logger.Warn("[Recorder] Lỗi ghi nhận ChangeSpeed:", tostring(err))
 	end
 end
 
@@ -492,7 +578,10 @@ local function setupRemoteHook()
 				if remoteName == "SpawnTower" or (spawnRemote and self == spawnRemote) then
 					if not spawnRemote then spawnRemote = self end
 					local args = { ... }
-					task.spawn(handleSpawnTower, args)
+					if setnc and method then setnc(method) end
+					local res = table.pack(oldNamecall(self, ...))
+					task.spawn(handleSpawnTower, args, res[1])
+					return table.unpack(res, 1, res.n)
 				elseif remoteName == "SellTower" or (sellRemote and self == sellRemote) then
 					if not sellRemote then sellRemote = self end
 					local args = { ... }
@@ -500,7 +589,10 @@ local function setupRemoteHook()
 				elseif remoteName == "UpgradeTower" or (upgradeRemote and self == upgradeRemote) then
 					if not upgradeRemote then upgradeRemote = self end
 					local args = { ... }
-					task.spawn(handleUpgradeTower, args)
+					if setnc and method then setnc(method) end
+					local res = table.pack(oldNamecall(self, ...))
+					task.spawn(handleUpgradeTower, args, res[1])
+					return table.unpack(res, 1, res.n)
 				elseif remoteName == "ChangeTowerMode" or (changeModeRemote and self == changeModeRemote) then
 					if not changeModeRemote then changeModeRemote = self end
 					local args = { ... }
@@ -509,6 +601,9 @@ local function setupRemoteHook()
 					if not changeSpeedRemote then changeSpeedRemote = self end
 					local args = { ... }
 					task.spawn(handleChangeSpeed, args)
+				elseif remoteName == "VoteSkip" or (voteSkipRemote and self == voteSkipRemote) then
+					if not voteSkipRemote then voteSkipRemote = self end
+					task.spawn(handleVoteSkip)
 				end
 			end
 
@@ -523,7 +618,9 @@ local function setupRemoteHook()
 		oldSpawnInvoke = hookfunction(spawnRemote.InvokeServer, wrapC(function(self, ...)
 			if isRecording then
 				local args = { ... }
-				task.spawn(handleSpawnTower, args)
+				local res = table.pack(oldSpawnInvoke(self, ...))
+				task.spawn(handleSpawnTower, args, res[1])
+				return table.unpack(res, 1, res.n)
 			end
 			return oldSpawnInvoke(self, ...)
 		end))
@@ -542,7 +639,9 @@ local function setupRemoteHook()
 			oldUpgradeInvoke = hookfunction(upgradeRemote.InvokeServer, wrapC(function(self, ...)
 				if isRecording then
 					local args = { ... }
-					task.spawn(handleUpgradeTower, args)
+					local res = table.pack(oldUpgradeInvoke(self, ...))
+					task.spawn(handleUpgradeTower, args, res[1])
+					return table.unpack(res, 1, res.n)
 				end
 				return oldUpgradeInvoke(self, ...)
 			end))
@@ -569,8 +668,18 @@ local function setupRemoteHook()
 				return oldChangeSpeedInvoke(self, ...)
 			end))
 		end
+
+		if voteSkipRemote then
+			local oldVoteSkipInvoke
+			oldVoteSkipInvoke = hookfunction(voteSkipRemote.InvokeServer, wrapC(function(self, ...)
+				if isRecording then
+					task.spawn(handleVoteSkip)
+				end
+				return oldVoteSkipInvoke(self, ...)
+			end))
+		end
 	else
-		warn("[Recorder] Executor không hỗ trợ hookmetamethod hoặc hookfunction!")
+		logger.Warn("[Recorder] Executor không hỗ trợ hookmetamethod hoặc hookfunction!")
 	end
 end
 

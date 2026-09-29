@@ -5413,7 +5413,7 @@ function MacLib:Window(Settings)
 
 	UserInputService.InputEnded:Connect(function(inp, gpe)
 		if gpe then return end
-		if inp.KeyCode == MenuKeybind then
+		if inp.KeyCode == MenuKeybind or inp.UserInputType == MenuKeybind then
 			ToggleMenu()
 		end
 	end)
@@ -5439,6 +5439,10 @@ function MacLib:Window(Settings)
 
 	function WindowFunctions:SetKeybind(Keycode)
 		MenuKeybind = Keycode
+	end
+
+	function WindowFunctions:GetKeybind()
+		return MenuKeybind
 	end
 
 	function WindowFunctions:SetAcrylicBlurState(State)
@@ -5548,16 +5552,23 @@ function MacLib:Window(Settings)
 		},
 		["Keybind"] = {
 			Save = function(Flag, data)
+				local bindObj = (typeof(data.GetBind) == "function" and data:GetBind()) or (typeof(data.Bind) == "EnumItem" and data.Bind) or nil
 				return {
 					type = "Keybind", 
 					flag = Flag, 
-					bind = (typeof(data.Bind) == "EnumItem" and data.Bind.Name) or nil
+					bind = (typeof(bindObj) == "EnumItem" and bindObj.Name) or nil
 				}
 			end,
 			Load = function(Flag, data)
 				elevateThreadIdentity()
 				if MacLib.Options[Flag] and data.bind then
-					MacLib.Options[Flag]:Bind(Enum.KeyCode[data.bind])
+					local key = Enum.KeyCode[data.bind] or Enum.UserInputType[data.bind]
+					if key then
+						MacLib.Options[Flag]:Bind(key)
+						if MacLib.Options[Flag].Settings and MacLib.Options[Flag].Settings.onBinded then
+							task.spawn(MacLib.Options[Flag].Settings.onBinded, key)
+						end
+					end
 				end
 			end
 		},

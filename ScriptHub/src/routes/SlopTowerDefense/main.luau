@@ -26,6 +26,7 @@ return function(self)
 	local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
 	local autoSave = require("@routes/SlopTowerDefense/core/system/autoSave")
 	local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
+	local utility = require("@routes/SlopTowerDefense/core/system/utility")
 
 	autoSave.Suspend()
 
@@ -38,7 +39,7 @@ return function(self)
 		DragStyle = 1,
 		DisabledWindowControls = {},
 		ShowUserInfo = true,
-		Keybind = Enum.KeyCode.RightControl,
+		Keybind = Enum.KeyCode.RightShift,
 		AcrylicBlur = false,
 	})
 
@@ -85,6 +86,35 @@ return function(self)
 		macLib:LoadAutoLoadConfig()
 	end)
 
+	-- Đồng bộ MenuKeybind từ cấu hình vừa nạp (nếu có)
+	pcall(function()
+		local menuBindOption = macLib.Options["Keybind_MenuToggle"]
+		if menuBindOption and typeof(menuBindOption.GetBind) == "function" then
+			local savedBind = menuBindOption:GetBind()
+			if savedBind and typeof(savedBind) == "EnumItem" then
+				window:SetKeybind(savedBind)
+			end
+		end
+	end)
+
 	autoSave.Resume()
+
+	-- Tự động ẩn UI khi script được thực thi nếu tính năng Auto Hide được bật
+	if utility.IsAutoHideEnabled() then
+		task.defer(function()
+			window:SetState(false)
+			local keyName = "RightShift"
+			pcall(function()
+				if typeof(window.GetKeybind) == "function" then
+					local b = window:GetKeybind()
+					if b and b.Name then
+						keyName = b.Name
+					end
+				end
+			end)
+			notifier.Notify("Slop Tower Defense", "UI đã tự động ẩn. Nhấn " .. keyName .. " để mở lại.", 5)
+		end)
+	end
+
 	print("[SlopTowerDefense] Initialized successfully.")
 end

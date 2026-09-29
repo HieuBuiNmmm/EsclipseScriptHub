@@ -1,6 +1,6 @@
 -- Types: Định nghĩa kiểu dữ liệu chuẩn cho hệ thống Macro Slop Tower Defense.
 
-export type ActionType = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed"
+export type ActionType = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip"
 
 export type MacroStep = {
 	Index: number,
@@ -8,6 +8,7 @@ export type MacroStep = {
 	TowerId: string, -- Định danh tháp (vd: "T1", "T2" hoặc "SPEED")
 	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan" hoặc "ChangeSpeed")
 	Speed: number?, -- Tốc độ game (1, 2, 3, 4, 5) nếu Type == "Speed"
+	RecordSpeed: number?, -- Tốc độ game lúc thực hiện ghi bước này (1, 2, 3, 4, 5)
 	CFrame: { number }?, -- Tọa độ CFrame [X, Y, Z, R00, R01, ...] (12 components)
 	Position: { number }?, -- [X, Y, Z] để dễ hiển thị và so khớp
 	Arg3: boolean?, -- Tham số thứ 3 của SpawnTower (thường là false)
@@ -15,7 +16,8 @@ export type MacroStep = {
 	Arg5: { any }?, -- Danh sách Modifier / Traits (vd: {"Gold"})
 	Wave: number, -- Wave lúc thực hiện
 	Time: number, -- Giây Match Timer lúc thực hiện (số thập phân 2 chữ số, vd: 14.35)
-	Cost: number?, -- Tiền lúc thực hiện
+	Cost: number?, -- Tiền trong ví lúc thực hiện
+	TowerCost: number?, -- Giá tiền thực tế của tháp/nâng cấp
 	TargetMode: string?, -- Chế độ ngắm bắn ("First", "Last", ...)
 	RawData: { [string]: any }?, -- Dữ liệu thô dự phòng
 }

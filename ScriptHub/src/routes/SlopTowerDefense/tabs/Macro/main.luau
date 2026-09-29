@@ -64,9 +64,140 @@ return function(window, tab)
 	lifecycle.Register(unsubscribeMatch)
 
 	--// ====================================================================
-	--// CỘT TRÁI: Section 2 - Macro Player (Tính năng Play Macro)
+	--// CỘT TRÁI: Section 2 - Macro Recorder (1 Input, 1 Button, 1 Dropdown, 1 Toggle)
 	--// ====================================================================
-	local playerSection = tab:Section({ Side = "Left" })
+	local recorderSection = tab:Section({ Side = "Left" })
+	recorderSection:Header({ Name = "Macro Recorder" })
+
+	local currentInputText = ""
+	local macroDropdown
+	local recordToggle
+
+	-- 1. Input: Nhập tên Macro mới
+	local nameInput = recorderSection:Input({
+		Name = "Macro Name",
+		Placeholder = "Enter macro name...",
+		AcceptedCharacters = "AlphaNumeric",
+		Callback = autoSave.Wrap(function(text)
+			currentInputText = text or ""
+		end),
+	}, "Input_MacroName")
+
+	-- 2. Button: Tạo mới Macro
+	recorderSection:Button({
+		Name = "Create Macro",
+		Callback = function()
+			local rawName = currentInputText
+			if not rawName or rawName == "" then
+				if nameInput and type(nameInput.GetInput) == "function" then
+					rawName = nameInput:GetInput()
+				end
+			end
+
+			local trimmed = (rawName or ""):gsub("^%s+", ""):gsub("%s+$", "")
+			if #trimmed == 0 then
+				notifier.Notify("Macro", "Tên Macro không được để trống!", 2)
+				return
+			end
+
+			-- Tạo macro mới trong storage
+			storage.CreateMacro(trimmed)
+			recorder.SetActiveMacro(trimmed)
+			player.SetActiveMacro(trimmed)
+
+			-- Cập nhật danh sách vào Dropdown
+			if macroDropdown then
+				pcall(function()
+					local currentOptions = macroDropdown:GetOptions() or {}
+					if not table.find(currentOptions, trimmed) then
+						macroDropdown:InsertOptions({ trimmed })
+					end
+					macroDropdown:UpdateSelection(trimmed)
+				end)
+			end
+
+			notifier.Notify("Macro", "Đã tạo Macro: " .. trimmed, 2)
+		end,
+	})
+
+	-- Danh sách macro ban đầu
+	local initialMacros = storage.ListMacros()
+	if #initialMacros == 0 then
+		initialMacros = { "None" }
+	end
+
+	local defaultSelected = initialMacros[1] or "None"
+	if defaultSelected ~= "None" then
+		recorder.SetActiveMacro(defaultSelected)
+		player.SetActiveMacro(defaultSelected)
+	end
+
+	-- 3. Dropdown: Chọn Macro
+	macroDropdown = recorderSection:Dropdown({
+		Name = "Select Macro",
+		Options = initialMacros,
+		Default = defaultSelected,
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if not selected or selected == "" or selected == "None" then return end
+			recorder.SetActiveMacro(selected)
+			player.SetActiveMacro(selected)
+		end),
+	}, "Dropdown_SelectMacro")
+
+	-- 4. Toggle: Bật / Tắt ghi lại Macro (Record)
+	local isTogglingInternally = false
+	recordToggle = recorderSection:Toggle({
+		Name = "Record Macro",
+		Default = recorder.IsRecording(),
+		Callback = autoSave.Wrap(function(state)
+			if isTogglingInternally then return end
+
+			if state then
+				if player.IsEnabled() then
+					isTogglingInternally = true
+					pcall(function()
+						recordToggle:UpdateState(false, true)
+					end)
+					isTogglingInternally = false
+					notifier.Notify("Macro", "Vui lòng tắt Play Macro trước khi Record!", 2)
+					return
+				end
+
+				local activeName = recorder.GetActiveMacro()
+				if not activeName or activeName == "" or activeName == "None" then
+					isTogglingInternally = true
+					pcall(function()
+						recordToggle:UpdateState(false, true)
+					end)
+					isTogglingInternally = false
+					notifier.Notify("Macro", "Vui lòng chọn hoặc tạo Macro trước khi Record!", 2)
+					return
+				end
+
+				local started = recorder.StartRecording(activeName)
+				if not started then
+					isTogglingInternally = true
+					pcall(function()
+						recordToggle:UpdateState(false, true)
+					end)
+					isTogglingInternally = false
+				end
+			else
+				recorder.StopRecording()
+				-- Cập nhật lại số bước trong UI Player sau khi dừng record
+				local activeName = recorder.GetActiveMacro()
+				if activeName then
+					player.SetActiveMacro(activeName)
+				end
+			end
+		end),
+	}, "Toggle_RecordMacro")
+
+	--// ====================================================================
+	--// CỘT PHẢI: Macro Player (Tính năng Play Macro)
+	--// ====================================================================
+	local playerSection = tab:Section({ Side = "Right" })
 	playerSection:Header({ Name = "Macro Player" })
 
 	local playerMacroLabel = playerSection:Label({
@@ -199,135 +330,4 @@ return function(window, tab)
 
 	local unsubscribePlayer = player.Subscribe(updatePlayerUi)
 	lifecycle.Register(unsubscribePlayer)
-
-	--// ====================================================================
-	--// CỘT PHẢI: Macro Recorder (1 Input, 1 Button, 1 Dropdown, 1 Toggle)
-	--// ====================================================================
-	local rightSection = tab:Section({ Side = "Right" })
-	rightSection:Header({ Name = "Macro Recorder" })
-
-	local currentInputText = ""
-	local macroDropdown
-	local recordToggle
-
-	-- 1. Input: Nhập tên Macro mới
-	local nameInput = rightSection:Input({
-		Name = "Macro Name",
-		Placeholder = "Enter macro name...",
-		AcceptedCharacters = "AlphaNumeric",
-		Callback = autoSave.Wrap(function(text)
-			currentInputText = text or ""
-		end),
-	}, "Input_MacroName")
-
-	-- 2. Button: Tạo mới Macro
-	rightSection:Button({
-		Name = "Create Macro",
-		Callback = function()
-			local rawName = currentInputText
-			if not rawName or rawName == "" then
-				if nameInput and type(nameInput.GetInput) == "function" then
-					rawName = nameInput:GetInput()
-				end
-			end
-
-			local trimmed = (rawName or ""):gsub("^%s+", ""):gsub("%s+$", "")
-			if #trimmed == 0 then
-				notifier.Notify("Macro", "Tên Macro không được để trống!", 2)
-				return
-			end
-
-			-- Tạo macro mới trong storage
-			storage.CreateMacro(trimmed)
-			recorder.SetActiveMacro(trimmed)
-			player.SetActiveMacro(trimmed)
-
-			-- Cập nhật danh sách vào Dropdown
-			if macroDropdown then
-				pcall(function()
-					local currentOptions = macroDropdown:GetOptions() or {}
-					if not table.find(currentOptions, trimmed) then
-						macroDropdown:InsertOptions({ trimmed })
-					end
-					macroDropdown:UpdateSelection(trimmed)
-				end)
-			end
-
-			notifier.Notify("Macro", "Đã tạo Macro: " .. trimmed, 2)
-		end,
-	})
-
-	-- Danh sách macro ban đầu
-	local initialMacros = storage.ListMacros()
-	if #initialMacros == 0 then
-		initialMacros = { "None" }
-	end
-
-	local defaultSelected = initialMacros[1] or "None"
-	if defaultSelected ~= "None" then
-		recorder.SetActiveMacro(defaultSelected)
-		player.SetActiveMacro(defaultSelected)
-	end
-
-	-- 3. Dropdown: Chọn Macro
-	macroDropdown = rightSection:Dropdown({
-		Name = "Select Macro",
-		Options = initialMacros,
-		Default = defaultSelected,
-		Required = true,
-		Callback = autoSave.Wrap(function(selected)
-			if not selected or selected == "" or selected == "None" then return end
-			recorder.SetActiveMacro(selected)
-			player.SetActiveMacro(selected)
-		end),
-	}, "Dropdown_SelectMacro")
-
-	-- 4. Toggle: Bật / Tắt ghi lại Macro (Record)
-	local isTogglingInternally = false
-	recordToggle = rightSection:Toggle({
-		Name = "Record Macro",
-		Default = recorder.IsRecording(),
-		Callback = autoSave.Wrap(function(state)
-			if isTogglingInternally then return end
-
-			if state then
-				if player.IsEnabled() then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng tắt Play Macro trước khi Record!", 2)
-					return
-				end
-
-				local activeName = recorder.GetActiveMacro()
-				if not activeName or activeName == "" or activeName == "None" then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng chọn hoặc tạo Macro trước khi Record!", 2)
-					return
-				end
-
-				local started = recorder.StartRecording(activeName)
-				if not started then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-				end
-			else
-				recorder.StopRecording()
-				-- Cập nhật lại số bước trong UI Player sau khi dừng record
-				local activeName = recorder.GetActiveMacro()
-				if activeName then
-					player.SetActiveMacro(activeName)
-				end
-			end
-		end),
-	}, "Toggle_RecordMacro")
 end

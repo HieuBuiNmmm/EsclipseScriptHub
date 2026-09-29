@@ -1,4 +1,4 @@
--- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed)
+-- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed, Auto Skip)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -8,18 +8,22 @@ local zoneGuard = require("./zoneGuard")
 local gameStats = require("./gameStats")
 local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
 local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
+local logger = require("@routes/SlopTowerDefense/core/system/logger")
 
 local matchAutomation = {}
 
 matchAutomation.AutoReplayEnabled = false
 matchAutomation.AutoSpeedEnabled = false
+matchAutomation.AutoSkipEnabled = false
 matchAutomation.SelectedSpeed = "x2"
 matchAutomation.Speeds = { "x1", "x2", "x3", "x4", "x5" }
 
 local isRunning = true
 local lastReplayTriggerTime = 0
 local lastSpeedCheckTime = 0
+local lastSkipTriggerTime = 0
 local endScreenConn: RBXScriptConnection? = nil
+local waveSkipConn: RBXScriptConnection? = nil
 
 -- Hàm click button an toàn, kết hợp đa phương thức (getconnections, firesignal, VirtualInputManager, GuiService)
 local function clickButton(button: GuiButton): boolean
@@ -158,6 +162,85 @@ local function hookEndScreenListener()
 	end
 end
 
+-- Lấy WaveSkipGui trong PlayerGui.GameGui
+-- Đường dẫn: game:GetService("Players").LocalPlayer.PlayerGui.GameGui.WaveSkipGui
+local function getWaveSkipGui(): Instance?
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	if not gameGui then return nil end
+
+	local skipGui = gameGui:FindFirstChild("WaveSkipGui")
+	if skipGui then
+		return skipGui
+	end
+	return nil
+end
+
+-- Kiểm tra xem WaveSkipGui có đang hiển thị hay không (Visible == true)
+local function isWaveSkipGuiVisible(skipGui: Instance?): boolean
+	if not skipGui then return false end
+	if skipGui:IsA("GuiObject") then
+		return skipGui.Visible == true
+	elseif skipGui:IsA("ScreenGui") then
+		return skipGui.Enabled == true
+	end
+	local ok, vis = pcall(function() return (skipGui :: any).Visible end)
+	return ok and vis == true
+end
+
+-- Gửi Remote VoteSkip đến server
+-- Remote: game:GetService("ReplicatedStorage").Functions.VoteSkip:InvokeServer()
+local function sendVoteSkip(): boolean
+	local functions = ReplicatedStorage:FindFirstChild("Functions")
+	local voteSkip = functions and functions:FindFirstChild("VoteSkip")
+	if not voteSkip then
+		voteSkip = ReplicatedStorage:FindFirstChild("VoteSkip", true)
+	end
+
+	if voteSkip and voteSkip:IsA("RemoteFunction") then
+		task.spawn(function()
+			pcall(function()
+				voteSkip:InvokeServer()
+			end)
+		end)
+		return true
+	end
+	return false
+end
+
+-- Kiểm tra và kích hoạt VoteSkip nếu WaveSkipGui visible
+local function checkAndTriggerVoteSkip(): boolean
+	if not matchAutomation.AutoSkipEnabled then return false end
+	if not zoneGuard.IsInGame() then return false end
+
+	local skipGui = getWaveSkipGui()
+	if not skipGui or not isWaveSkipGuiVisible(skipGui) then return false end
+
+	local now = os.clock()
+	if now - lastSkipTriggerTime < 1.5 then return false end -- Debounce 1.5s tránh spam server
+	lastSkipTriggerTime = now
+
+	logger.Log("[Auto Skip] Phát hiện WaveSkipGui đang hiển thị -> Gửi RemoteFunction VoteSkip:InvokeServer()")
+	sendVoteSkip()
+	notifier.Notify("Auto Skip", "Đã tự động gửi Vote Skip Wave!", 2)
+	return true
+end
+
+-- Lắng nghe sự kiện Visible của WaveSkipGui để kích hoạt tức thì không cần chờ vòng lặp
+local function hookWaveSkipListener()
+	if waveSkipConn and waveSkipConn.Connected then return end
+
+	local skipGui = getWaveSkipGui()
+	if skipGui then
+		waveSkipConn = skipGui:GetPropertyChangedSignal("Visible"):Connect(function()
+			if matchAutomation.AutoSkipEnabled and isWaveSkipGuiVisible(skipGui) then
+				checkAndTriggerVoteSkip()
+			end
+		end)
+	end
+end
+
 -- Gửi Remote ChangeSpeed đến server
 -- Remote: game:GetService("ReplicatedStorage").Functions.ChangeSpeed:InvokeServer(speedNumber)
 local function sendChangeSpeed(speedNum: number?): boolean
@@ -286,6 +369,14 @@ task.spawn(function()
 		-- Hook listener khi EndScreen xuất hiện
 		hookEndScreenListener()
 
+		-- Hook listener khi WaveSkipGui xuất hiện
+		hookWaveSkipListener()
+
+		-- Xử lý Auto Skip nếu WaveSkipGui visible
+		if matchAutomation.AutoSkipEnabled then
+			checkAndTriggerVoteSkip()
+		end
+
 		-- Xử lý Auto Replay (kiểm tra liên tục qua EndScreen.Replay)
 		if matchAutomation.AutoReplayEnabled then
 			checkAndTriggerReplay()
@@ -321,6 +412,19 @@ function matchAutomation.SetAutoSpeed(enabled: boolean)
 	end
 end
 
+function matchAutomation.SetAutoSkip(enabled: boolean)
+	matchAutomation.AutoSkipEnabled = (enabled == true)
+	if matchAutomation.AutoSkipEnabled then
+		lastSkipTriggerTime = 0
+		hookWaveSkipListener()
+		checkAndTriggerVoteSkip()
+	end
+end
+
+function matchAutomation.IsAutoSkipEnabled(): boolean
+	return matchAutomation.AutoSkipEnabled
+end
+
 function matchAutomation.SetSpeed(speed: string)
 	if table.find(matchAutomation.Speeds, speed) then
 		matchAutomation.SelectedSpeed = speed
@@ -337,6 +441,10 @@ lifecycle.Register(function()
 	if endScreenConn then
 		endScreenConn:Disconnect()
 		endScreenConn = nil
+	end
+	if waveSkipConn then
+		waveSkipConn:Disconnect()
+		waveSkipConn = nil
 	end
 	if unsubGameStats then
 		unsubGameStats()

@@ -1,16 +1,18 @@
 -- Tab Main: Hiển thị trạng thái môi trường và thống kê trận đấu thời gian thực.
+-- Cột trái: Live Status & Display, Auto Summon (Lobby)
 -- Cột phải: Match Automation (Auto Replay, Auto Speed + Dropdown)
 
 local constants = require("@routes/SlopTowerDefense/core/game/constants")
 local gameStats = require("@routes/SlopTowerDefense/core/game/gameStats")
 local zoneGuard = require("@routes/SlopTowerDefense/core/game/zoneGuard")
 local matchAutomation = require("@routes/SlopTowerDefense/core/game/matchAutomation")
+local autoSummon = require("@routes/SlopTowerDefense/core/game/autoSummon")
 local autoSave = require("@routes/SlopTowerDefense/core/system/autoSave")
 local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
 
 return function(window, tab)
 	--// ====================================================================
-	--// CỘT TRÁI: Live Status & Display
+	--// CỘT TRÁI: Section 1 - Live Status & Display
 	--// ====================================================================
 	local leftSection = tab:Section({ Side = "Left" })
 	leftSection:Header({ Name = "Status & Display" })
@@ -55,6 +57,56 @@ return function(window, tab)
 	lifecycle.Register(unsubscribe)
 
 	--// ====================================================================
+	--// CỘT TRÁI: Section 2 - Auto Summon (Lobby)
+	--// ====================================================================
+	local summonSection = tab:Section({ Side = "Left" })
+	summonSection:Header({ Name = "Auto Summon" })
+
+	summonSection:Toggle({
+		Name = "Auto Summon",
+		Default = autoSummon.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoSummon.SetEnabled(state)
+		end),
+	}, "Toggle_AutoSummon")
+
+	summonSection:Dropdown({
+		Name = "Select Banner",
+		Options = autoSummon.Banners,
+		Default = autoSummon.GetBanner(),
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if selected and selected ~= "" then
+				autoSummon.SetBanner(selected)
+			end
+		end),
+	}, "Dropdown_SummonBanner")
+
+	summonSection:Dropdown({
+		Name = "Summon Amount",
+		Options = autoSummon.Amounts,
+		Default = autoSummon.GetAmount(),
+		Required = true,
+		Callback = autoSave.Wrap(function(selected)
+			if selected and selected ~= "" then
+				autoSummon.SetAmount(selected)
+			end
+		end),
+	}, "Dropdown_SummonAmount")
+
+	summonSection:Slider({
+		Name = "Summon Delay (s)",
+		Minimum = 0.1,
+		Maximum = 3,
+		Default = autoSummon.GetDelay(),
+		Precision = 1,
+		DisplayMethod = "Value",
+		Callback = autoSave.Wrap(function(val)
+			autoSummon.SetDelay(val)
+		end),
+	}, "Slider_SummonDelay")
+
+	--// ====================================================================
 	--// CỘT PHẢI: Match Automation (Auto Replay, Auto Speed + Dropdown)
 	--// ====================================================================
 	local rightSection = tab:Section({ Side = "Right" })
@@ -67,6 +119,14 @@ return function(window, tab)
 			matchAutomation.SetAutoReplay(state)
 		end),
 	}, "Toggle_AutoReplay")
+
+	rightSection:Toggle({
+		Name = "Auto Skip",
+		Default = matchAutomation.AutoSkipEnabled,
+		Callback = autoSave.Wrap(function(state)
+			matchAutomation.SetAutoSkip(state)
+		end),
+	}, "Toggle_AutoSkip")
 
 	rightSection:Toggle({
 		Name = "Auto Speed",
