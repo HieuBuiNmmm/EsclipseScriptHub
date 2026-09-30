@@ -21,6 +21,7 @@ export type PlaybackSnapshot = {
 	TimingMode: string,
 	StepDelay: number,
 	ApplySpeed: boolean,
+	ApplyVoteSkip: boolean,
 }
 
 local player = {}
@@ -33,6 +34,7 @@ local totalSteps = 0
 local timingMode = "Hybrid" -- "Hybrid" | "Timer" | "Wave & Cash"
 local stepDelay = 0.1 -- Khoảng trễ (giây) sau khi thực hiện mỗi bước
 local applyMacroSpeed = true -- Bật/Tắt đồng bộ hóa Speed theo Macro
+local applyMacroVoteSkip = true -- Bật/Tắt thực thi bước VoteSkip theo Macro
 local activePlaybackThread: thread? = nil
 
 -- Ánh xạ giữa TowerId ("T1", "T2") và Instance tháp trong ván đấu hiện tại
@@ -57,6 +59,7 @@ local currentSnapshot: PlaybackSnapshot = {
 	TimingMode = "Hybrid",
 	StepDelay = 0.1,
 	ApplySpeed = true,
+	ApplyVoteSkip = true,
 }
 
 local subscribers: { (PlaybackSnapshot) -> () } = {}
@@ -70,6 +73,7 @@ local function notifySubscribers()
 	currentSnapshot.TimingMode = timingMode
 	currentSnapshot.StepDelay = stepDelay
 	currentSnapshot.ApplySpeed = applyMacroSpeed
+	currentSnapshot.ApplyVoteSkip = applyMacroVoteSkip
 
 	for _, sub in ipairs(subscribers) do
 		pcall(sub, currentSnapshot)
@@ -97,6 +101,89 @@ local function getRemotes()
 		end
 	end
 	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
+end
+
+-- Tham chiếu Modules.TowersConfig để tra cứu giá đặt tháp chuẩn xác
+local towersConfigModule: any = nil
+
+local function getTowersConfig(): any
+	if not towersConfigModule then
+		pcall(function()
+			local modules = ReplicatedStorage:FindFirstChild("Modules")
+			local cfg = (modules and modules:FindFirstChild("TowersConfig")) or ReplicatedStorage:FindFirstChild("TowersConfig", true)
+			if cfg and cfg:IsA("ModuleScript") then
+				towersConfigModule = require(cfg)
+			end
+		end)
+	end
+	return towersConfigModule
+end
+
+local function getPlacePrice(towerName: string): number?
+	if not towerName or towerName == "" then return nil end
+	local cfg = getTowersConfig()
+	if cfg then
+		if type(cfg.GetTowerConfig) == "function" then
+			local data = nil
+			pcall(function() data = cfg.GetTowerConfig(towerName) end)
+			if data and type(data.PlacePrice) == "number" then
+				return data.PlacePrice
+			end
+		end
+		local configTable = cfg.Config or cfg
+		if type(configTable) == "table" then
+			if configTable[towerName] and type(configTable[towerName].PlacePrice) == "number" then
+				return configTable[towerName].PlacePrice
+			end
+			-- Tìm theo tên không phân biệt hoa thường hoặc loại bỏ variant name
+			local nameLower = towerName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+			for k, v in pairs(configTable) do
+				if type(k) == "string" and type(v) == "table" and type(v.PlacePrice) == "number" then
+					local kLower = k:lower()
+					if kLower == nameLower or nameLower:find(kLower, 1, true) or kLower:find(nameLower, 1, true) then
+						return v.PlacePrice
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local function getUpgradePrice(towerName: string, upgradeIndex: number?): number?
+	local cfg = getTowersConfig()
+	if not cfg then return nil end
+
+	local data = nil
+	if type(cfg.GetTowerConfig) == "function" then
+		pcall(function() data = cfg.GetTowerConfig(towerName) end)
+	end
+	if not data and type(cfg.Config) == "table" then
+		data = cfg.Config[towerName]
+	end
+	if type(data) ~= "table" then return nil end
+
+	upgradeIndex = upgradeIndex or 1
+
+	-- 1. Kiểm tra data.Upgrades (danh sách từng cấp nâng cấp)
+	if type(data.Upgrades) == "table" then
+		local upg = data.Upgrades[upgradeIndex] or data.Upgrades[tostring(upgradeIndex)]
+		if type(upg) == "table" then
+			local price = tonumber(upg.Cost or upg.Price or upg.UpgradeCost or upg.UpgradePrice)
+			if price and price > 0 then return price end
+		elseif type(upg) == "number" and upg > 0 then
+			return upg
+		end
+	end
+
+	-- 2. Kiểm tra data.UpgradePrices hoặc data.UpgradeCosts hoặc data.Prices
+	local priceList = data.UpgradePrices or data.UpgradeCosts or data.Prices or data.UpgradeCost
+	if type(priceList) == "table" then
+		local p = tonumber(priceList[upgradeIndex] or priceList[tostring(upgradeIndex)])
+		if p and p > 0 then return p end
+	end
+
+	return nil
 end
 
 -- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
@@ -344,6 +431,7 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 	end
 
 	variantName = variantName or target.Name
+	local initialCash = gameStats.GetCash()
 
 	local success, result = pcall(function()
 		return upRemote:InvokeServer(target, variantName)
@@ -354,13 +442,35 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 		return false, nil
 	end
 
-	if result == false or result == nil then
+	if result == false then
 		return false, nil
 	end
 
+	local isOk = false
 	local updatedModel: Instance? = nil
+
 	if typeof(result) == "Instance" then
+		isOk = true
 		updatedModel = result:IsA("Model") and result or result:FindFirstAncestorOfClass("Model")
+	elseif result == true then
+		isOk = true
+	else
+		-- result == nil: Một số remote server không return giá trị khi thực thi thành công
+		for _ = 1, 3 do
+			task.wait(0.08)
+			if gameStats.GetCash() < initialCash then
+				isOk = true
+				break
+			end
+		end
+		-- Nếu server không trừ tiền ngay trên UI nhưng pcall không lỗi và không return false
+		if not isOk and target and target.Parent then
+			isOk = true
+		end
+	end
+
+	if not isOk then
+		return false, nil
 	end
 
 	return true, updatedModel or target
@@ -578,6 +688,9 @@ function player.ExecuteStep(step: types.MacroStep): boolean
 		end
 
 	elseif step.Type == "VoteSkip" then
+		if not applyMacroVoteSkip then
+			return true
+		end
 		local ok = player.VoteSkip()
 		if ok then
 			notifier.Notify("Macro Play", string.format("Vote Skip Wave [%.2fs]", step.Time), 1.5)
@@ -668,9 +781,45 @@ local function startRunnerLoop()
 					continue
 				end
 
+				-- Nếu step là VoteSkip nhưng người dùng tắt Apply Macro Skip Wave -> Bỏ qua
+				if step.Type == "VoteSkip" and not applyMacroVoteSkip then
+					continue
+				end
+
 				currentStepIndex = i - 1
+				local actualPrice = step.TowerCost
+				if not actualPrice or actualPrice <= 0 then
+					if step.Type == "Place" then
+						actualPrice = getPlacePrice(step.TowerName)
+					elseif step.Type == "Upgrade" then
+						local upgIdx = 1
+						for prev = 1, i - 1 do
+							local prevStep = macroData.Steps[prev]
+							if prevStep and prevStep.Type == "Upgrade" and prevStep.TowerId == step.TowerId then
+								upgIdx += 1
+							end
+						end
+						actualPrice = getUpgradePrice(step.TowerName, upgIdx)
+					end
+				end
+
+				-- stepCost hiển thị trên giao diện status:
+				-- Ưu tiên actualPrice (giá thực tế của tháp/nâng cấp).
+				-- Tuyệt đối không dùng step.Cost cho Upgrade (vì step.Cost là số dư ví của người chơi lúc record).
+				local displayCost = actualPrice
+				if not displayCost or displayCost <= 0 then
+					if step.Type == "Place" then
+						displayCost = step.Cost
+					end
+				end
+				displayCost = displayCost or 0
+
 				local nextDesc = string.format("%s %s (%s) [W%d - %.2fs]", step.Type, step.TowerName, step.TowerId, step.Wave, step.Time)
-				updateStatus(string.format("Waiting for Step %d/%d (Wave %d)", i, totalSteps, step.Wave), nextDesc)
+				if timingMode == "Cash (Timed Sell)" and (step.Type == "Place" or step.Type == "Upgrade") and displayCost > 0 then
+					updateStatus(string.format("Waiting for Step %d/%d (Need $%d)", i, totalSteps, displayCost), nextDesc)
+				else
+					updateStatus(string.format("Waiting for Step %d/%d (Wave %d)", i, totalSteps, step.Wave), nextDesc)
+				end
 
 				-- Chờ điều kiện thực thi bước i
 				local canExecute = false
@@ -695,9 +844,29 @@ local function startRunnerLoop()
 					local waveMet = curWave >= step.Wave
 					local timePassed = virtualElapsedTime >= step.Time
 
-					-- Giá tiền thực tế (ưu tiên TowerCost nếu có, nếu không thì dùng Cost làm mốc tham khảo)
-					local cost = step.TowerCost or step.Cost or 0
-					local hasCash = (cost == 0 or curCash >= cost)
+					-- Kiểm tra điều kiện tiền thực tế:
+					-- 1. Nếu biết actualPrice (giá thực của Place hoặc Upgrade): kiểm tra curCash >= actualPrice
+					-- 2. Nếu không biết actualPrice: kiểm tra theo step.Cost (nếu > 0)
+					local hasCash = false
+					if actualPrice and actualPrice > 0 then
+						hasCash = (curCash >= actualPrice)
+					elseif step.Type == "Place" then
+						local placeCost = (step.Cost and step.Cost > 0 and step.Cost) or 0
+						if placeCost > 0 then
+							hasCash = (curCash >= placeCost)
+						else
+							hasCash = (curCash > 0)
+						end
+					elseif step.Type == "Upgrade" then
+						local upgCost = (step.Cost and step.Cost > 0 and step.Cost) or 0
+						if upgCost > 0 then
+							hasCash = (curCash >= upgCost)
+						else
+							hasCash = (curCash > 0)
+						end
+					else
+						hasCash = (curCash > 0)
+					end
 
 					local requirementMet = false
 					if timingMode == "Cash (Timed Sell)" then
@@ -710,8 +879,9 @@ local function startRunnerLoop()
 						elseif step.Type == "Speed" or step.Type == "VoteSkip" then
 							requirementMet = waveMet and (curWave > step.Wave or timePassed)
 						else
-							-- Place / Upgrade: Đủ tiền là đặt/nâng ngay
-							requirementMet = waveMet and hasCash
+							-- Place / Upgrade:
+							-- Thuần theo tiền (Cash): Đủ tiền là thực thi ngay!
+							requirementMet = hasCash
 						end
 					elseif step.Type == "Sell" or step.Type == "Target" or step.Type == "Speed" or step.Type == "VoteSkip" then
 						requirementMet = waveMet and (curWave > step.Wave or timePassed)
@@ -723,10 +893,8 @@ local function startRunnerLoop()
 							requirementMet = waveMet and hasCash
 						else
 							-- Hybrid (Mặc định):
-							-- Đạt Wave VÀ (Đã tới mốc thời gian HOẶC tiền hiện tại đã đạt mốc ghi nhận)
-							-- Không bao giờ để mốc tiền làm nghẽn nếu thời gian đã trôi qua!
 							if step.Type == "Place" or step.Type == "Upgrade" then
-								requirementMet = waveMet and (timePassed or (cost > 0 and curCash >= cost))
+								requirementMet = waveMet and hasCash
 							else
 								requirementMet = waveMet and (hasCash or timePassed)
 							end
@@ -859,6 +1027,19 @@ function player.SetSpeedSync(enabled: boolean)
 	currentSnapshot.ApplySpeed = enabled
 	notifySubscribers()
 end
+
+function player.IsVoteSkipEnabled(): boolean
+	return applyMacroVoteSkip
+end
+
+function player.SetVoteSkipEnabled(enabled: boolean)
+	applyMacroVoteSkip = enabled
+	currentSnapshot.ApplyVoteSkip = enabled
+	notifySubscribers()
+end
+
+player.IsSkipWaveEnabled = player.IsVoteSkipEnabled
+player.SetSkipWaveEnabled = player.SetVoteSkipEnabled
 
 function player.GetCurrentStepIndex(): number
 	return currentStepIndex

@@ -85,6 +85,14 @@ function autoSummon.ExecuteSummon(): boolean
 		webhook.SendSummon(autoSummon.SelectedBanner, autoSummon.SummonAmount)
 	end)
 
+	pcall(function()
+		local playerProfile = require("./playerProfile")
+		task.spawn(function()
+			task.wait(0.2)
+			playerProfile.Fetch(true)
+		end)
+	end)
+
 	return true
 end
 

@@ -194,6 +194,25 @@ return function(window, tab)
 		end),
 	}, "Toggle_RecordMacro")
 
+	-- Lắng nghe trạng thái Record thay đổi (ví dụ: tự động dừng khi xuất hiện EndScreen)
+	local unsubscribeRecord = recorder.OnRecordingStateChanged(function(recording)
+		if recordToggle then
+			isTogglingInternally = true
+			pcall(function()
+				recordToggle:UpdateState(recording, true)
+			end)
+			isTogglingInternally = false
+		end
+
+		if not recording then
+			local activeName = recorder.GetActiveMacro()
+			if activeName then
+				player.SetActiveMacro(activeName)
+			end
+		end
+	end)
+	lifecycle.Register(unsubscribeRecord)
+
 	--// ====================================================================
 	--// CỘT PHẢI: Macro Player (Tính năng Play Macro)
 	--// ====================================================================
@@ -271,6 +290,14 @@ return function(window, tab)
 			player.SetSpeedSync(state)
 		end),
 	}, "Toggle_ApplyMacroSpeed")
+
+	playerSection:Toggle({
+		Name = "Apply Skip Wave",
+		Default = player.IsVoteSkipEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			player.SetVoteSkipEnabled(state)
+		end),
+	}, "Toggle_ApplyMacroSkipWave")
 
 	playerSection:Dropdown({
 		Name = "Timing Mode",

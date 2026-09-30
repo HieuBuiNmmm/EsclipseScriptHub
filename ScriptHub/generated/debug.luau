@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-09-29T10:13:56.634645500+00:00",
+    genDate = "2026-09-30T09:12:06.503691600+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -135,7 +135,37 @@ type MacroData__DARKLUA_TYPE_p = {
 	Steps: { MacroStep__DARKLUA_TYPE_n }
 }
 
-type PlaybackSnapshot__DARKLUA_TYPE_q = {
+type PityStats__DARKLUA_TYPE_q = {
+	Godly: number,
+	Mythical: number,
+	Celestial: number,
+	Sloppy: number,
+	Secret: number
+}
+
+type PlayerProfileData__DARKLUA_TYPE_r = {
+	Loaded: boolean,
+	LastUpdated: number,
+	Gems: number,
+	Crystals: number,
+	Stars: number,
+	Slopbux: number,
+	Tokens: number,
+	Cash: number,
+	Sheckles: number,
+	Cogs: number,
+	Wins: number,
+	TotalPlayTime: number,
+	TotalPlayTimeFormatted: string,
+	TowersCount: number,
+	InventorySpace: number,
+	PityBasic: PityStats__DARKLUA_TYPE_q,
+	PityPremium: PityStats__DARKLUA_TYPE_q,
+	ActiveLoadout: { [string]: string },
+	RawData: { [string]: any }?
+}
+
+type PlaybackSnapshot__DARKLUA_TYPE_s = {
 	IsEnabled: boolean,
 	IsPlaying: boolean,
 	MacroName: string?,
@@ -145,17 +175,18 @@ type PlaybackSnapshot__DARKLUA_TYPE_q = {
 	StatusText: string,
 	TimingMode: string,
 	StepDelay: number,
-	ApplySpeed: boolean
+	ApplySpeed: boolean,
+	ApplyVoteSkip: boolean
 }
 
-type MutatorInfo__DARKLUA_TYPE_r = {
+type MutatorInfo__DARKLUA_TYPE_t = {
 	Id: string,
 	Name: string,
 	DefaultPriority: number,
 	Description: string?
 }
 --// Types
-type Window__DARKLUA_TYPE_s = { Visible: boolean? }
+type Window__DARKLUA_TYPE_u = { Visible: boolean? }
 local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()
 local MacLib = { 
 	Options = {}, 
@@ -34641,7 +34672,309 @@ lifecycle.Register(function()
 end)
 
 return matchSetup
-end function __DIST.aJ()-- Webhook: Quản lý và gửi thông báo Discord Webhook cho Slop Tower Defense
+end function __DIST.aJ()-- PlayerProfile: Quản lý và cache dữ liệu người chơi từ Remotes.PlayerData.GetData
+-- Cung cấp Pity đếm ngược cho Auto Summon và thông tin ví/thống kê cho Player Dashboard.
+
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local lifecycle = __DIST.load('ax')
+local logger = __DIST.load('aA')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local playerProfile = {}
+
+local cachedData: PlayerProfileData__DARKLUA_TYPE_r = {
+	Loaded = false,
+	LastUpdated = 0,
+	Gems = 0,
+	Crystals = 0,
+	Stars = 0,
+	Slopbux = 0,
+	Tokens = 0,
+	Cash = 0,
+	Sheckles = 0,
+	Cogs = 0,
+	Wins = 0,
+	TotalPlayTime = 0,
+	TotalPlayTimeFormatted = "0m",
+	TowersCount = 0,
+	InventorySpace = 500,
+	PityBasic = {
+		Godly = 0,
+		Mythical = 0,
+		Celestial = 0,
+		Sloppy = 0,
+		Secret = 0,
+	},
+	PityPremium = {
+		Godly = 0,
+		Mythical = 0,
+		Celestial = 0,
+		Sloppy = 0,
+		Secret = 0,
+	},
+	ActiveLoadout = {},
+	RawData = nil,
+}
+
+local subscribers: { (PlayerProfileData__DARKLUA_TYPE_r) -> () } = {}
+local isFetching = false
+local lastFetchTime = 0
+local getDataRemote: RemoteFunction? = nil
+
+-- Định dạng số có dấu phẩy (vd: 12154 -> "12,154")
+function playerProfile.FormatNumber(val: number?): string
+	local n = tonumber(val) or 0
+	local formatted = tostring(math.floor(n))
+	local k
+	while true do
+		formatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+		if k == 0 then break end
+	end
+	return formatted
+end
+
+-- Định dạng thời gian chơi (vd: 31985 giây -> "8h 53m")
+local function formatPlayTime(seconds: number?): string
+	local sec = tonumber(seconds) or 0
+	local hours = math.floor(sec / 3600)
+	local mins = math.floor((sec % 3600) / 60)
+	if hours > 0 then
+		return string.format("%dh %dm", hours, mins)
+	end
+	return string.format("%dm", mins)
+end
+
+-- Tìm RemoteFunction GetData chính xác
+local function getRemote(): RemoteFunction?
+	if getDataRemote and getDataRemote.Parent then
+		return getDataRemote
+	end
+
+	local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+	local playerDataFolder = remotesFolder and remotesFolder:FindFirstChild("PlayerData")
+	if playerDataFolder then
+		local r = playerDataFolder:FindFirstChild("GetData")
+		if r and r:IsA("RemoteFunction") then
+			getDataRemote = r
+			return r
+		end
+	end
+
+	local fallback = ReplicatedStorage:FindFirstChild("GetData", true)
+	if fallback and fallback:IsA("RemoteFunction") then
+		getDataRemote = fallback
+		return fallback
+	end
+
+	return nil
+end
+
+local function notifySubscribers()
+	for _, sub in ipairs(subscribers) do
+		pcall(sub, cachedData)
+	end
+end
+
+-- Lấy và cập nhật dữ liệu từ server
+function playerProfile.Fetch(force: boolean?): boolean
+	local now = os.clock()
+	if not force and (now - lastFetchTime < 1.5 or isFetching) then
+		return false
+	end
+
+	local remote = getRemote()
+	if not remote then
+		logger.Warn("[PlayerProfile] Không tìm thấy RemoteFunction: Remotes.PlayerData.GetData")
+		return false
+	end
+
+	isFetching = true
+	local ok, raw = pcall(function()
+		return remote:InvokeServer()
+	end)
+	isFetching = false
+	lastFetchTime = os.clock()
+
+	if not ok or type(raw) ~= "table" then
+		logger.Warn("[PlayerProfile] Lỗi gọi GetData:", tostring(raw))
+		return false
+	end
+
+	-- Cập nhật dữ liệu vào cache
+	cachedData.Loaded = true
+	cachedData.LastUpdated = lastFetchTime
+	cachedData.RawData = raw
+
+	-- Tiền tệ
+	cachedData.Gems = tonumber(raw.Gems) or 0
+	cachedData.Crystals = tonumber(raw.Crystals) or 0
+	cachedData.Stars = tonumber(raw.Stars) or 0
+	cachedData.Slopbux = tonumber(raw.Slopbux) or 0
+	cachedData.Tokens = tonumber(raw.Tokens) or 0
+	cachedData.Cash = tonumber(raw.Cash) or 0
+	cachedData.Sheckles = tonumber(raw.Sheckles) or 0
+	cachedData.Cogs = tonumber(raw.Cogs) or 0
+
+	-- Thống kê
+	cachedData.Wins = tonumber(raw.Wins) or 0
+	cachedData.TotalPlayTime = tonumber(raw.TotalPlayTime) or 0
+	cachedData.TotalPlayTimeFormatted = formatPlayTime(cachedData.TotalPlayTime)
+	cachedData.InventorySpace = tonumber(raw.InventorySpace) or 500
+
+	-- Đếm số lượng tháp sở hữu
+	local count = 0
+	if type(raw.Towers) == "table" then
+		for _ in pairs(raw.Towers) do
+			count += 1
+		end
+	end
+	cachedData.TowersCount = count
+
+	-- Pity
+	if type(raw.Pity) == "table" then
+		local b = raw.Pity.Basic or {}
+		cachedData.PityBasic.Godly = tonumber(b.Godly) or 0
+		cachedData.PityBasic.Mythical = tonumber(b.Mythical) or 0
+		cachedData.PityBasic.Celestial = tonumber(b.Celestial) or 0
+		cachedData.PityBasic.Sloppy = tonumber(b.Sloppy) or 0
+		cachedData.PityBasic.Secret = tonumber(b.Secret) or 0
+
+		local p = raw.Pity.Premium or {}
+		cachedData.PityPremium.Godly = tonumber(p.Godly) or 0
+		cachedData.PityPremium.Mythical = tonumber(p.Mythical) or 0
+		cachedData.PityPremium.Celestial = tonumber(p.Celestial) or 0
+		cachedData.PityPremium.Sloppy = tonumber(p.Sloppy) or 0
+		cachedData.PityPremium.Secret = tonumber(p.Secret) or 0
+	end
+
+	-- Đội hình (Active Loadout)
+	table.clear(cachedData.ActiveLoadout)
+	if type(raw.Loadouts) == "table" then
+		local deck = raw.Loadouts["1"] or raw.Loadouts[1]
+		if type(deck) == "table" then
+			for slot, towerName in pairs(deck) do
+				cachedData.ActiveLoadout[tostring(slot)] = tostring(towerName)
+			end
+		end
+	end
+
+	notifySubscribers()
+	return true
+end
+
+function playerProfile.GetData(): PlayerProfileData__DARKLUA_TYPE_r
+	return cachedData
+end
+
+-- Lấy bản sao snapshot tĩnh của hồ sơ tại một thời điểm
+function playerProfile.GetSnapshot(): PlayerProfileData__DARKLUA_TYPE_r
+	return {
+		Loaded = cachedData.Loaded,
+		LastUpdated = cachedData.LastUpdated,
+		Gems = cachedData.Gems,
+		Crystals = cachedData.Crystals,
+		Stars = cachedData.Stars,
+		Slopbux = cachedData.Slopbux,
+		Tokens = cachedData.Tokens,
+		Cash = cachedData.Cash,
+		Sheckles = cachedData.Sheckles,
+		Cogs = cachedData.Cogs,
+		Wins = cachedData.Wins,
+		TotalPlayTime = cachedData.TotalPlayTime,
+		TotalPlayTimeFormatted = cachedData.TotalPlayTimeFormatted,
+		TowersCount = cachedData.TowersCount,
+		InventorySpace = cachedData.InventorySpace,
+		PityBasic = {
+			Godly = cachedData.PityBasic.Godly,
+			Mythical = cachedData.PityBasic.Mythical,
+			Celestial = cachedData.PityBasic.Celestial,
+			Sloppy = cachedData.PityBasic.Sloppy,
+			Secret = cachedData.PityBasic.Secret,
+		},
+		PityPremium = {
+			Godly = cachedData.PityPremium.Godly,
+			Mythical = cachedData.PityPremium.Mythical,
+			Celestial = cachedData.PityPremium.Celestial,
+			Sloppy = cachedData.PityPremium.Sloppy,
+			Secret = cachedData.PityPremium.Secret,
+		},
+		ActiveLoadout = table.clone(cachedData.ActiveLoadout),
+		RawData = nil,
+	}
+end
+
+function playerProfile.GetPity(banner: string?): PityStats__DARKLUA_TYPE_q
+	if banner == "Premium" then
+		return cachedData.PityPremium
+	end
+	return cachedData.PityBasic
+end
+
+-- Đăng ký lắng nghe thay đổi hồ sơ người chơi
+function playerProfile.Subscribe(callback: (PlayerProfileData__DARKLUA_TYPE_r) -> ()): () -> ()
+	table.insert(subscribers, callback)
+	task.spawn(callback, cachedData)
+
+	return function()
+		local idx = table.find(subscribers, callback)
+		if idx then
+			table.remove(subscribers, idx)
+		end
+	end
+end
+
+-- Vòng lặp định kỳ tự động làm mới dữ liệu
+local isWatcherRunning = true
+task.spawn(function()
+	task.wait(1.0)
+	playerProfile.Fetch(true)
+
+	while isWatcherRunning and lifecycle.IsActive() do
+		task.wait(10.0)
+		if isWatcherRunning and lifecycle.IsActive() then
+			playerProfile.Fetch()
+		end
+	end
+end)
+
+lifecycle.Register(function()
+	isWatcherRunning = false
+	table.clear(subscribers)
+end)
+
+return playerProfile
+end function __DIST.aK()-- Webhook: Quản lý và gửi thông báo Discord Webhook cho Slop Tower Defense
 -- Hỗ trợ: Kết quả trận đấu (Win/Loss), Auto Summon, Hoàn thành Macro, và Test Webhook.
 
 
@@ -34651,7 +34984,11 @@ local Players = game:GetService("Players")
 local constants = __DIST.load('aD')
 local gameStats = __DIST.load('aF')
 local matchSetup = __DIST.load('aI')
+local playerProfile = __DIST.load('aJ')
 local lifecycle = __DIST.load('ax')
+local logger = __DIST.load('aA')
+
+local matchStartProfile: PlayerProfileData__DARKLUA_TYPE_r? = nil
 
 local webhook = {
 	Url = "",
@@ -34665,19 +35002,19 @@ local webhook = {
 -- Hàm gửi HTTP Request an toàn hỗ trợ đa số các executor
 local function sendHttpRequest(url: string, payload: any): (boolean, string?)
 	if not url or url == "" or not url:find("^https://") then
-		return false, "URL Webhook không hợp lệ!"
+		return false, "Invalid Webhook URL!"
 	end
 
 	local httpReq = (request or http_request or (syn and syn.request) or (http and http.request) or (fluxus and fluxus.request))
 	if not httpReq then
-		return false, "Executor không hỗ trợ hàm gửi HTTP request (request / http_request)"
+		return false, "Executor does not support HTTP requests (request / http_request)"
 	end
 
 	local ok, body = pcall(function()
 		return HttpService:JSONEncode(payload)
 	end)
 	if not ok then
-		return false, "Không thể mã hóa dữ liệu JSON: " .. tostring(body)
+		return false, "Unable to encode JSON payload: " .. tostring(body)
 	end
 
 	local reqOk, response = pcall(function()
@@ -34692,7 +35029,7 @@ local function sendHttpRequest(url: string, payload: any): (boolean, string?)
 	end)
 
 	if not reqOk then
-		return false, "Lỗi gửi request: " .. tostring(response)
+		return false, "Error sending request: " .. tostring(response)
 	end
 
 	local status = response and (response.StatusCode or response.Status)
@@ -34700,7 +35037,7 @@ local function sendHttpRequest(url: string, payload: any): (boolean, string?)
 		return true, nil
 	end
 
-	return false, "Mã phản hồi HTTP: " .. tostring(status)
+	return false, "HTTP response code: " .. tostring(status)
 end
 
 -- Lấy chuỗi mention ping user nếu có cấu hình
@@ -34718,28 +35055,49 @@ end
 function webhook.SendTest(): (boolean, string?)
 	local player = Players.LocalPlayer
 	local playerName = player and player.Name or "Unknown"
+	local profile = playerProfile.GetData()
 
 	local payload = {
 		content = getPingMention(),
 		embeds = {
 			{
 				title = "🧪 Slop Tower Defense • Test Webhook",
-				description = "Kết nối Discord Webhook từ **EsclipseScriptHub** hoạt động thành công!",
+				description = "Discord Webhook connection from **EsclipseScriptHub** is working successfully!",
 				color = 15844367, -- Gold
 				fields = {
 					{
-						name = "👤 Người chơi",
+						name = "👤 Player",
 						value = string.format("`%s`", playerName),
 						inline = true,
 					},
 					{
-						name = "📍 Vị trí",
+						name = "📍 Location",
 						value = string.format("`%s`", constants.GetLocationName()),
 						inline = true,
 					},
 					{
-						name = "⚡ Trạng thái",
-						value = "🟢 Hoạt động tốt",
+						name = "⚡ Status",
+						value = "🟢 Operational",
+						inline = true,
+					},
+					{
+						name = "💎 Gems",
+						value = string.format("`%s`", playerProfile.FormatNumber(profile.Gems)),
+						inline = true,
+					},
+					{
+						name = "⭐ Stars",
+						value = string.format("`%s`", playerProfile.FormatNumber(profile.Stars)),
+						inline = true,
+					},
+					{
+						name = "💰 Sheckles",
+						value = string.format("`%s`", playerProfile.FormatNumber(profile.Sheckles)),
+						inline = true,
+					},
+					{
+						name = "🏆 Total Wins",
+						value = string.format("`%s`", playerProfile.FormatNumber(profile.Wins)),
 						inline = true,
 					},
 				},
@@ -34754,19 +35112,121 @@ function webhook.SendTest(): (boolean, string?)
 	return sendHttpRequest(webhook.Url, payload)
 end
 
--- 2. Gửi thông báo kết quả trận đấu (Match End)
-function webhook.SendMatchEnd(stats: GameStatsSnapshot__DARKLUA_TYPE_l?): (boolean, string?)
+-- Đọc tiêu đề EndScreen từ đường dẫn:
+-- game:GetService("Players").LocalPlayer.PlayerGui.GameGui.EndScreen.Content.Title
+local function getEndScreenTitleText(): string?
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	if not gameGui then return nil end
+
+	local endScreen = gameGui:FindFirstChild("EndScreen")
+	if not endScreen then return nil end
+
+	-- 1. Đường dẫn chính xác từ người dùng: EndScreen.Content.Title
+	local content = endScreen:FindFirstChild("Content")
+	local title = content and content:FindFirstChild("Title")
+	if title and title:IsA("TextLabel") and title.Text ~= "" then
+		return title.Text
+	end
+
+	-- 2. Fallback tìm kiếm linh hoạt bên trong EndScreen
+	local deepTitle = endScreen:FindFirstChild("Title", true)
+	if deepTitle and deepTitle:IsA("TextLabel") and deepTitle.Text ~= "" then
+		return deepTitle.Text
+	end
+
+	return nil
+end
+
+-- Phân biệt Thắng / Thua:
+-- Nếu là "Defeat" -> Thua
+-- Ngược lại nếu là một chữ khác -> Thắng (Win)
+local function determineVictory(deltaWins: number?, preReadTitle: string?): (boolean, string)
+	local rawTitle = preReadTitle or getEndScreenTitleText()
+	if rawTitle and #rawTitle > 0 then
+		local cleanTitle = rawTitle:match("^%s*(.-)%s*$") or rawTitle
+		local lower = cleanTitle:lower()
+		if lower:find("defeat") then
+			return false, cleanTitle
+		else
+			return true, cleanTitle
+		end
+	end
+
+	-- Fallback phụ nếu Title chưa render xong
+	if deltaWins and deltaWins > 0 then
+		return true, "Victory"
+	end
+
+	return false, "Defeat"
+end
+
+-- 2. Gửi thông báo kết quả trận đấu (Match End - Phương án B Đầy đủ & Chi tiết)
+function webhook.SendMatchEnd(
+	stats: GameStatsSnapshot__DARKLUA_TYPE_l?,
+	startSnapshot: PlayerProfileData__DARKLUA_TYPE_r?,
+	preReadTitle: string?
+): (boolean, string?)
 	if not webhook.Enabled or not webhook.NotifyMatchEnd or webhook.Url == "" then
-		return false, "Webhook chưa bật hoặc URL rỗng"
+		return false, "Webhook is disabled or URL is empty"
 	end
 
 	local player = Players.LocalPlayer
 	local playerName = player and player.Name or "Unknown"
 	stats = stats or gameStats.GetSnapshot()
 
-	local isVictory = (stats.BaseHp or 0) > 0
-	local resultTitle = isVictory and "🏆 TRẬN ĐẤU KẾT THÚC • CHIẾN THẮNG" or "💀 TRẬN ĐẤU KẾT THÚC • THẤT BẠI"
-	local resultColor = isVictory and 3066993 or 15158332 -- Xanh lá (Win) / Đỏ (Loss)
+	-- Lấy hồ sơ tài khoản sau trận
+	local postProfile = playerProfile.GetData()
+	local start = startSnapshot or matchStartProfile or postProfile
+
+	-- Tính chênh lệch từng loại tài nguyên trong trận (Delta)
+	local deltaGems = postProfile.Gems - start.Gems
+	local deltaStars = postProfile.Stars - start.Stars
+	local deltaWins = postProfile.Wins - start.Wins
+	local deltaCrystals = postProfile.Crystals - start.Crystals
+	local deltaSheckles = postProfile.Sheckles - start.Sheckles
+	local deltaTokens = postProfile.Tokens - start.Tokens
+	local deltaSlopbux = postProfile.Slopbux - start.Slopbux
+	local deltaCogs = postProfile.Cogs - start.Cogs
+
+	logger.Log(string.format("[Webhook] Delta tính toán: Crystals: %d -> %d (+%d) | Sheckles: %d -> %d (+%d) | Gems: %d -> %d (+%d) | Wins: %d -> %d (+%d)",
+		start.Crystals, postProfile.Crystals, deltaCrystals,
+		start.Sheckles, postProfile.Sheckles, deltaSheckles,
+		start.Gems, postProfile.Gems, deltaGems,
+		start.Wins, postProfile.Wins, deltaWins))
+
+	-- Xác định kết quả dựa trên EndScreen.Content.Title (ưu tiên preReadTitle chụp trước khi AutoReplay đóng UI)
+	local isVictory, outcomeTitle = determineVictory(deltaWins, preReadTitle)
+	local resultTitle = isVictory and "🏆 MATCH ENDED • VICTORY" or "💀 MATCH ENDED • DEFEAT"
+	local resultColor = isVictory and 3066993 or 15158332 -- Green (Win) / Red (Loss)
+
+	-- Format chuỗi Delta hiển thị
+	local function formatDeltaText(currentVal: number, delta: number): string
+		local formatted = playerProfile.FormatNumber(currentVal)
+		if delta > 0 then
+			return string.format("%s `(+%s)`", formatted, playerProfile.FormatNumber(delta))
+		elseif delta < 0 then
+			return string.format("%s `(-%s)`", formatted, playerProfile.FormatNumber(math.abs(delta)))
+		end
+		return string.format("%s `(+0)`", formatted)
+	end
+
+	-- Danh sách tài nguyên chi tiết (Phương án B)
+	local rewardsLines = {
+		string.format("💎 **Gems:** %s", formatDeltaText(postProfile.Gems, deltaGems)),
+		string.format("⭐ **Stars:** %s", formatDeltaText(postProfile.Stars, deltaStars)),
+		string.format("💰 **Sheckles:** %s", formatDeltaText(postProfile.Sheckles, deltaSheckles)),
+		string.format("🏆 **Total Wins:** %s", formatDeltaText(postProfile.Wins, deltaWins)),
+		string.format("🔮 **Crystals:** %s", formatDeltaText(postProfile.Crystals, deltaCrystals)),
+		string.format("🪙 **Tokens:** %s", formatDeltaText(postProfile.Tokens, deltaTokens)),
+		string.format("🍔 **Slopbux:** %s", formatDeltaText(postProfile.Slopbux, deltaSlopbux)),
+		string.format("⚙️ **Cogs:** %s", formatDeltaText(postProfile.Cogs, deltaCogs)),
+	}
+	local rewardsText = table.concat(rewardsLines, "\n")
+
+	-- Cập nhật lại snapshot cho ván tiếp theo
+	matchStartProfile = playerProfile.GetSnapshot()
 
 	local payload = {
 		content = getPingMention(),
@@ -34776,39 +35236,44 @@ function webhook.SendMatchEnd(stats: GameStatsSnapshot__DARKLUA_TYPE_l?): (boole
 				color = resultColor,
 				fields = {
 					{
-						name = "👤 Người chơi",
+						name = "👤 Player",
 						value = string.format("`%s`", playerName),
 						inline = true,
 					},
 					{
-						name = "🗺️ Bản đồ",
+						name = "🎯 Result",
+						value = isVictory and string.format("🟢 **%s**", outcomeTitle) or string.format("🔴 **%s**", outcomeTitle),
+						inline = true,
+					},
+					{
+						name = "🗺️ Map",
 						value = string.format("`%s`", matchSetup.SelectedMap or "Unknown"),
 						inline = true,
 					},
 					{
-						name = "⚙️ Độ khó",
+						name = "⚙️ Difficulty",
 						value = string.format("`%s`", matchSetup.SelectedDifficulty or "Normal"),
 						inline = true,
 					},
 					{
-						name = "🌊 Wave đạt được",
+						name = "🌊 Wave Reached",
 						value = string.format("`%s`", stats.WaveFormatted or "0/0"),
 						inline = true,
 					},
 					{
-						name = "⏱️ Thời gian trận",
+						name = "⏱️ Match Duration",
 						value = string.format("`%s`", stats.ElapsedTimeFormatted or "00:00"),
 						inline = true,
 					},
 					{
-						name = "💰 Tiền cuối trận",
-						value = string.format("`%s`", stats.CashFormatted or "$0"),
+						name = "🎒 Inventory",
+						value = string.format("`%d / %d`", postProfile.TowersCount, postProfile.InventorySpace),
 						inline = true,
 					},
 					{
-						name = "❤️ Máu căn cứ",
-						value = string.format("`%s`", stats.BaseHealthFormatted or "0/100"),
-						inline = true,
+						name = "🎁 Rewards & Currency",
+						value = rewardsText,
+						inline = false,
 					},
 				},
 				footer = {
@@ -34825,7 +35290,7 @@ end
 -- 3. Gửi thông báo Auto Summon
 function webhook.SendSummon(banner: string, amount: string): (boolean, string?)
 	if not webhook.Enabled or not webhook.NotifySummon or webhook.Url == "" then
-		return false, "Webhook chưa bật hoặc URL rỗng"
+		return false, "Webhook is disabled or URL is empty"
 	end
 
 	local player = Players.LocalPlayer
@@ -34835,11 +35300,11 @@ function webhook.SendSummon(banner: string, amount: string): (boolean, string?)
 		content = getPingMention(),
 		embeds = {
 			{
-				title = "✨ AUTO SUMMON • TRIỆU HỒI UNIT",
-				color = 10181046, -- Tím
+				title = "✨ AUTO SUMMON • SUMMON UNIT",
+				color = 10181046, -- Purple
 				fields = {
 					{
-						name = "👤 Người chơi",
+						name = "👤 Player",
 						value = string.format("`%s`", playerName),
 						inline = true,
 					},
@@ -34849,7 +35314,7 @@ function webhook.SendSummon(banner: string, amount: string): (boolean, string?)
 						inline = true,
 					},
 					{
-						name = "🔢 Số lượng",
+						name = "🔢 Amount",
 						value = string.format("`%s`", amount),
 						inline = true,
 					},
@@ -34868,7 +35333,7 @@ end
 -- 4. Gửi thông báo Macro
 function webhook.SendMacro(macroName: string, totalSteps: number, status: string): (boolean, string?)
 	if not webhook.Enabled or not webhook.NotifyMacro or webhook.Url == "" then
-		return false, "Webhook chưa bật hoặc URL rỗng"
+		return false, "Webhook is disabled or URL is empty"
 	end
 
 	local player = Players.LocalPlayer
@@ -34881,11 +35346,11 @@ function webhook.SendMacro(macroName: string, totalSteps: number, status: string
 		content = getPingMention(),
 		embeds = {
 			{
-				title = isSuccess and "📋 MACRO HOÀN THÀNH" or "⚠️ MACRO DỪNG LẠI",
+				title = isSuccess and "📋 MACRO COMPLETED" or "⚠️ MACRO STOPPED",
 				color = color,
 				fields = {
 					{
-						name = "👤 Người chơi",
+						name = "👤 Player",
 						value = string.format("`%s`", playerName),
 						inline = true,
 					},
@@ -34895,12 +35360,12 @@ function webhook.SendMacro(macroName: string, totalSteps: number, status: string
 						inline = true,
 					},
 					{
-						name = "🔢 Tổng số bước",
-						value = string.format("`%d bước`", totalSteps),
+						name = "🔢 Total Steps",
+						value = string.format("`%d steps`", totalSteps),
 						inline = true,
 					},
 					{
-						name = "⚡ Trạng thái",
+						name = "⚡ Status",
 						value = string.format("`%s`", status),
 						inline = true,
 					},
@@ -34921,13 +35386,37 @@ local wasMatchActive = false
 local lastMatchStats: GameStatsSnapshot__DARKLUA_TYPE_l? = nil
 
 local function onGameStatsUpdate(data: GameStatsSnapshot__DARKLUA_TYPE_l)
+	-- 1. Khi trận đấu BẮT ĐẦU: Chụp snapshot profile trước trận
+	if not wasMatchActive and data.IsMatchActive then
+		task.spawn(function()
+			if not playerProfile.GetData().Loaded then
+				playerProfile.Fetch(true)
+			end
+			matchStartProfile = playerProfile.GetSnapshot()
+			logger.Log(string.format("[Webhook] Match BẮT ĐẦU -> Lưu snapshot trước trận (Crystals: %d, Sheckles: %d, Gems: %d, Wins: %d)",
+				matchStartProfile.Crystals, matchStartProfile.Sheckles, matchStartProfile.Gems, matchStartProfile.Wins))
+		end)
+	end
+
+	-- 2. Khi trận đấu KẾT THÚC:
 	if wasMatchActive and not data.IsMatchActive then
-		-- Vừa kết thúc trận đấu
 		local statsToSend = lastMatchStats or data
+		-- LƯU NGAY snapshot trước trận của ván này vào biến cục bộ (closure)
+		-- để nếu ván tiếp theo bắt đầu ngay lập tức (AutoReplay) thì ván này vẫn dùng đúng dữ liệu trước trận của nó!
+		local startSnapshot = matchStartProfile or playerProfile.GetSnapshot()
+		local endTitle = getEndScreenTitleText()
+
+		logger.Log(string.format("[Webhook] Match KẾT THÚC -> Bắt đầu gửi Webhook (Start Crystals: %d, Title: %s)",
+			startSnapshot.Crystals, tostring(endTitle)))
+
 		if webhook.Enabled and webhook.NotifyMatchEnd and webhook.Url ~= "" then
 			task.spawn(function()
+				-- Chờ 1.0s để server Roblox ghi nhận và cộng thưởng vào tài khoản
 				task.wait(1.0)
-				webhook.SendMatchEnd(statsToSend)
+				-- Refresh lại profile từ server để lấy dữ liệu sau trận
+				playerProfile.Fetch(true)
+				-- Gửi thông báo kèm chính xác snapshot trước trận và title của ván này
+				webhook.SendMatchEnd(statsToSend, startSnapshot, endTitle)
 			end)
 		end
 	end
@@ -34938,6 +35427,24 @@ end
 
 local unsubscribeStats = gameStats.Subscribe(onGameStatsUpdate)
 lifecycle.Register(unsubscribeStats)
+
+-- Khởi tạo snapshot ban đầu ngay khi script load hoặc khi profile sẵn sàng
+local function initStartProfile()
+	if playerProfile.GetData().Loaded then
+		matchStartProfile = playerProfile.GetSnapshot()
+		logger.Log(string.format("[Webhook] Đã khởi tạo snapshot ban đầu (Crystals: %d, Gems: %d)",
+			matchStartProfile.Crystals, matchStartProfile.Gems))
+	end
+end
+
+initStartProfile()
+playerProfile.Subscribe(function(data)
+	if data.Loaded and not matchStartProfile then
+		matchStartProfile = playerProfile.GetSnapshot()
+		logger.Log(string.format("[Webhook] Đã khởi tạo snapshot ban đầu qua Subscribe (Crystals: %d, Gems: %d)",
+			matchStartProfile.Crystals, matchStartProfile.Gems))
+	end
+end)
 
 -- Getters & Setters
 function webhook.SetUrl(url: string)
@@ -34997,7 +35504,7 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.aK()-- Player: Module tái hiện (Playback) các thao tác SpawnTower và SellTower từ file Macro đã ghi.
+end function __DIST.aL()-- Player: Module tái hiện (Playback) các thao tác SpawnTower và SellTower từ file Macro đã ghi.
 
 local types = __DIST.load('aG')
 local storage = __DIST.load('aH')
@@ -35023,6 +35530,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 
 
+
 local player = {}
 
 local isEnabled = false
@@ -35033,6 +35541,7 @@ local totalSteps = 0
 local timingMode = "Hybrid" -- "Hybrid" | "Timer" | "Wave & Cash"
 local stepDelay = 0.1 -- Khoảng trễ (giây) sau khi thực hiện mỗi bước
 local applyMacroSpeed = true -- Bật/Tắt đồng bộ hóa Speed theo Macro
+local applyMacroVoteSkip = true -- Bật/Tắt thực thi bước VoteSkip theo Macro
 local activePlaybackThread: thread? = nil
 
 -- Ánh xạ giữa TowerId ("T1", "T2") và Instance tháp trong ván đấu hiện tại
@@ -35046,7 +35555,7 @@ local changeModeRemote: RemoteFunction? = nil
 local changeSpeedRemote: RemoteFunction? = nil
 local voteSkipRemote: RemoteFunction? = nil
 
-local currentSnapshot: PlaybackSnapshot__DARKLUA_TYPE_q = {
+local currentSnapshot: PlaybackSnapshot__DARKLUA_TYPE_s = {
 	IsEnabled = false,
 	IsPlaying = false,
 	MacroName = nil,
@@ -35057,9 +35566,10 @@ local currentSnapshot: PlaybackSnapshot__DARKLUA_TYPE_q = {
 	TimingMode = "Hybrid",
 	StepDelay = 0.1,
 	ApplySpeed = true,
+	ApplyVoteSkip = true,
 }
 
-local subscribers: { (PlaybackSnapshot__DARKLUA_TYPE_q) -> () } = {}
+local subscribers: { (PlaybackSnapshot__DARKLUA_TYPE_s) -> () } = {}
 
 local function notifySubscribers()
 	currentSnapshot.IsEnabled = isEnabled
@@ -35070,6 +35580,7 @@ local function notifySubscribers()
 	currentSnapshot.TimingMode = timingMode
 	currentSnapshot.StepDelay = stepDelay
 	currentSnapshot.ApplySpeed = applyMacroSpeed
+	currentSnapshot.ApplyVoteSkip = applyMacroVoteSkip
 
 	for _, sub in ipairs(subscribers) do
 		pcall(sub, currentSnapshot)
@@ -35097,6 +35608,89 @@ local function getRemotes()
 		end
 	end
 	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
+end
+
+-- Tham chiếu Modules.TowersConfig để tra cứu giá đặt tháp chuẩn xác
+local towersConfigModule: any = nil
+
+local function getTowersConfig(): any
+	if not towersConfigModule then
+		pcall(function()
+			local modules = ReplicatedStorage:FindFirstChild("Modules")
+			local cfg = (modules and modules:FindFirstChild("TowersConfig")) or ReplicatedStorage:FindFirstChild("TowersConfig", true)
+			if cfg and cfg:IsA("ModuleScript") then
+				towersConfigModule = require(cfg)
+			end
+		end)
+	end
+	return towersConfigModule
+end
+
+local function getPlacePrice(towerName: string): number?
+	if not towerName or towerName == "" then return nil end
+	local cfg = getTowersConfig()
+	if cfg then
+		if type(cfg.GetTowerConfig) == "function" then
+			local data = nil
+			pcall(function() data = cfg.GetTowerConfig(towerName) end)
+			if data and type(data.PlacePrice) == "number" then
+				return data.PlacePrice
+			end
+		end
+		local configTable = cfg.Config or cfg
+		if type(configTable) == "table" then
+			if configTable[towerName] and type(configTable[towerName].PlacePrice) == "number" then
+				return configTable[towerName].PlacePrice
+			end
+			-- Tìm theo tên không phân biệt hoa thường hoặc loại bỏ variant name
+			local nameLower = towerName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+			for k, v in pairs(configTable) do
+				if type(k) == "string" and type(v) == "table" and type(v.PlacePrice) == "number" then
+					local kLower = k:lower()
+					if kLower == nameLower or nameLower:find(kLower, 1, true) or kLower:find(nameLower, 1, true) then
+						return v.PlacePrice
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local function getUpgradePrice(towerName: string, upgradeIndex: number?): number?
+	local cfg = getTowersConfig()
+	if not cfg then return nil end
+
+	local data = nil
+	if type(cfg.GetTowerConfig) == "function" then
+		pcall(function() data = cfg.GetTowerConfig(towerName) end)
+	end
+	if not data and type(cfg.Config) == "table" then
+		data = cfg.Config[towerName]
+	end
+	if type(data) ~= "table" then return nil end
+
+	upgradeIndex = upgradeIndex or 1
+
+	-- 1. Kiểm tra data.Upgrades (danh sách từng cấp nâng cấp)
+	if type(data.Upgrades) == "table" then
+		local upg = data.Upgrades[upgradeIndex] or data.Upgrades[tostring(upgradeIndex)]
+		if type(upg) == "table" then
+			local price = tonumber(upg.Cost or upg.Price or upg.UpgradeCost or upg.UpgradePrice)
+			if price and price > 0 then return price end
+		elseif type(upg) == "number" and upg > 0 then
+			return upg
+		end
+	end
+
+	-- 2. Kiểm tra data.UpgradePrices hoặc data.UpgradeCosts hoặc data.Prices
+	local priceList = data.UpgradePrices or data.UpgradeCosts or data.Prices or data.UpgradeCost
+	if type(priceList) == "table" then
+		local p = tonumber(priceList[upgradeIndex] or priceList[tostring(upgradeIndex)])
+		if p and p > 0 then return p end
+	end
+
+	return nil
 end
 
 -- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
@@ -35344,6 +35938,7 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 	end
 
 	variantName = variantName or target.Name
+	local initialCash = gameStats.GetCash()
 
 	local success, result = pcall(function()
 		return upRemote:InvokeServer(target, variantName)
@@ -35354,13 +35949,35 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 		return false, nil
 	end
 
-	if result == false or result == nil then
+	if result == false then
 		return false, nil
 	end
 
+	local isOk = false
 	local updatedModel: Instance? = nil
+
 	if typeof(result) == "Instance" then
+		isOk = true
 		updatedModel = result:IsA("Model") and result or result:FindFirstAncestorOfClass("Model")
+	elseif result == true then
+		isOk = true
+	else
+		-- result == nil: Một số remote server không return giá trị khi thực thi thành công
+		for _ = 1, 3 do
+			task.wait(0.08)
+			if gameStats.GetCash() < initialCash then
+				isOk = true
+				break
+			end
+		end
+		-- Nếu server không trừ tiền ngay trên UI nhưng pcall không lỗi và không return false
+		if not isOk and target and target.Parent then
+			isOk = true
+		end
+	end
+
+	if not isOk then
+		return false, nil
 	end
 
 	return true, updatedModel or target
@@ -35578,6 +36195,9 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_n): boolean
 		end
 
 	elseif step.Type == "VoteSkip" then
+		if not applyMacroVoteSkip then
+			return true
+		end
 		local ok = player.VoteSkip()
 		if ok then
 			notifier.Notify("Macro Play", string.format("Vote Skip Wave [%.2fs]", step.Time), 1.5)
@@ -35668,9 +36288,45 @@ local function startRunnerLoop()
 					continue
 				end
 
+				-- Nếu step là VoteSkip nhưng người dùng tắt Apply Macro Skip Wave -> Bỏ qua
+				if step.Type == "VoteSkip" and not applyMacroVoteSkip then
+					continue
+				end
+
 				currentStepIndex = i - 1
+				local actualPrice = step.TowerCost
+				if not actualPrice or actualPrice <= 0 then
+					if step.Type == "Place" then
+						actualPrice = getPlacePrice(step.TowerName)
+					elseif step.Type == "Upgrade" then
+						local upgIdx = 1
+						for prev = 1, i - 1 do
+							local prevStep = macroData.Steps[prev]
+							if prevStep and prevStep.Type == "Upgrade" and prevStep.TowerId == step.TowerId then
+								upgIdx += 1
+							end
+						end
+						actualPrice = getUpgradePrice(step.TowerName, upgIdx)
+					end
+				end
+
+				-- stepCost hiển thị trên giao diện status:
+				-- Ưu tiên actualPrice (giá thực tế của tháp/nâng cấp).
+				-- Tuyệt đối không dùng step.Cost cho Upgrade (vì step.Cost là số dư ví của người chơi lúc record).
+				local displayCost = actualPrice
+				if not displayCost or displayCost <= 0 then
+					if step.Type == "Place" then
+						displayCost = step.Cost
+					end
+				end
+				displayCost = displayCost or 0
+
 				local nextDesc = string.format("%s %s (%s) [W%d - %.2fs]", step.Type, step.TowerName, step.TowerId, step.Wave, step.Time)
-				updateStatus(string.format("Waiting for Step %d/%d (Wave %d)", i, totalSteps, step.Wave), nextDesc)
+				if timingMode == "Cash (Timed Sell)" and (step.Type == "Place" or step.Type == "Upgrade") and displayCost > 0 then
+					updateStatus(string.format("Waiting for Step %d/%d (Need $%d)", i, totalSteps, displayCost), nextDesc)
+				else
+					updateStatus(string.format("Waiting for Step %d/%d (Wave %d)", i, totalSteps, step.Wave), nextDesc)
+				end
 
 				-- Chờ điều kiện thực thi bước i
 				local canExecute = false
@@ -35695,9 +36351,29 @@ local function startRunnerLoop()
 					local waveMet = curWave >= step.Wave
 					local timePassed = virtualElapsedTime >= step.Time
 
-					-- Giá tiền thực tế (ưu tiên TowerCost nếu có, nếu không thì dùng Cost làm mốc tham khảo)
-					local cost = step.TowerCost or step.Cost or 0
-					local hasCash = (cost == 0 or curCash >= cost)
+					-- Kiểm tra điều kiện tiền thực tế:
+					-- 1. Nếu biết actualPrice (giá thực của Place hoặc Upgrade): kiểm tra curCash >= actualPrice
+					-- 2. Nếu không biết actualPrice: kiểm tra theo step.Cost (nếu > 0)
+					local hasCash = false
+					if actualPrice and actualPrice > 0 then
+						hasCash = (curCash >= actualPrice)
+					elseif step.Type == "Place" then
+						local placeCost = (step.Cost and step.Cost > 0 and step.Cost) or 0
+						if placeCost > 0 then
+							hasCash = (curCash >= placeCost)
+						else
+							hasCash = (curCash > 0)
+						end
+					elseif step.Type == "Upgrade" then
+						local upgCost = (step.Cost and step.Cost > 0 and step.Cost) or 0
+						if upgCost > 0 then
+							hasCash = (curCash >= upgCost)
+						else
+							hasCash = (curCash > 0)
+						end
+					else
+						hasCash = (curCash > 0)
+					end
 
 					local requirementMet = false
 					if timingMode == "Cash (Timed Sell)" then
@@ -35710,8 +36386,9 @@ local function startRunnerLoop()
 						elseif step.Type == "Speed" or step.Type == "VoteSkip" then
 							requirementMet = waveMet and (curWave > step.Wave or timePassed)
 						else
-							-- Place / Upgrade: Đủ tiền là đặt/nâng ngay
-							requirementMet = waveMet and hasCash
+							-- Place / Upgrade:
+							-- Thuần theo tiền (Cash): Đủ tiền là thực thi ngay!
+							requirementMet = hasCash
 						end
 					elseif step.Type == "Sell" or step.Type == "Target" or step.Type == "Speed" or step.Type == "VoteSkip" then
 						requirementMet = waveMet and (curWave > step.Wave or timePassed)
@@ -35723,10 +36400,8 @@ local function startRunnerLoop()
 							requirementMet = waveMet and hasCash
 						else
 							-- Hybrid (Mặc định):
-							-- Đạt Wave VÀ (Đã tới mốc thời gian HOẶC tiền hiện tại đã đạt mốc ghi nhận)
-							-- Không bao giờ để mốc tiền làm nghẽn nếu thời gian đã trôi qua!
 							if step.Type == "Place" or step.Type == "Upgrade" then
-								requirementMet = waveMet and (timePassed or (cost > 0 and curCash >= cost))
+								requirementMet = waveMet and hasCash
 							else
 								requirementMet = waveMet and (hasCash or timePassed)
 							end
@@ -35779,7 +36454,7 @@ local function startRunnerLoop()
 				updateStatus(string.format("Completed (%d/%d steps)", totalSteps, totalSteps), "All done")
 				notifier.Notify("Macro Player", string.format("Hoàn thành Macro: %s!", macroName), 3)
 				pcall(function()
-					local webhook = __DIST.load('aJ')
+					local webhook = __DIST.load('aK')
 					webhook.SendMacro(macroName, totalSteps, "Completed")
 				end)
 			end
@@ -35860,6 +36535,19 @@ function player.SetSpeedSync(enabled: boolean)
 	notifySubscribers()
 end
 
+function player.IsVoteSkipEnabled(): boolean
+	return applyMacroVoteSkip
+end
+
+function player.SetVoteSkipEnabled(enabled: boolean)
+	applyMacroVoteSkip = enabled
+	currentSnapshot.ApplyVoteSkip = enabled
+	notifySubscribers()
+end
+
+player.IsSkipWaveEnabled = player.IsVoteSkipEnabled
+player.SetSkipWaveEnabled = player.SetVoteSkipEnabled
+
 function player.GetCurrentStepIndex(): number
 	return currentStepIndex
 end
@@ -35868,7 +36556,7 @@ function player.GetTotalSteps(): number
 	return totalSteps
 end
 
-function player.GetStatus(): PlaybackSnapshot__DARKLUA_TYPE_q
+function player.GetStatus(): PlaybackSnapshot__DARKLUA_TYPE_s
 	return currentSnapshot
 end
 
@@ -35892,7 +36580,7 @@ function player.Stop()
 	updateStatus("Idle", "None")
 end
 
-function player.Subscribe(callback: (PlaybackSnapshot__DARKLUA_TYPE_q) -> ()): () -> ()
+function player.Subscribe(callback: (PlaybackSnapshot__DARKLUA_TYPE_s) -> ()): () -> ()
 	table.insert(subscribers, callback)
 	pcall(callback, currentSnapshot)
 
@@ -35909,7 +36597,7 @@ lifecycle.Register(function()
 end)
 
 return player
-end function __DIST.aL()-- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed, Auto Skip)
+end function __DIST.aM()-- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed, Auto Skip)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -36216,7 +36904,7 @@ end
 -- Kiểm tra xem Macro Player có đang kiểm soát Speed của trận đấu không
 local function isMacroControllingSpeed(): boolean
 	local ok, playerModule = pcall(function()
-		return __DIST.load('aK')
+		return __DIST.load('aL')
 	end)
 	if ok and playerModule then
 		if playerModule.IsEnabled and playerModule.IsEnabled() then
@@ -36364,7 +37052,7 @@ lifecycle.Register(function()
 end)
 
 return matchAutomation
-end function __DIST.aM()-- AutoSummon: Tự động triệu hồi (Summon/Roll) Unit trong Lobby cho Slop Tower Defense
+end function __DIST.aN()-- AutoSummon: Tự động triệu hồi (Summon/Roll) Unit trong Lobby cho Slop Tower Defense
 -- Hỗ trợ 2 Banner: Basic (Remotes.Summon.Summon) và Premium (Remotes.Summon.SummonPremium) với các mốc x1, x10, x50.
 
 
@@ -36448,8 +37136,16 @@ function autoSummon.ExecuteSummon(): boolean
 	end
 
 	pcall(function()
-		local webhook = __DIST.load('aJ')
+		local webhook = __DIST.load('aK')
 		webhook.SendSummon(autoSummon.SelectedBanner, autoSummon.SummonAmount)
+	end)
+
+	pcall(function()
+		local playerProfile = __DIST.load('aJ')
+		task.spawn(function()
+			task.wait(0.2)
+			playerProfile.Fetch(true)
+		end)
 	end)
 
 	return true
@@ -36532,17 +37228,18 @@ lifecycle.Register(function()
 end)
 
 return autoSummon
-end function __DIST.aN()-- Tab Main: Hiển thị trạng thái môi trường và thống kê trận đấu thời gian thực.
--- Cột trái: Live Status & Display, Auto Summon (Lobby)
--- Cột phải: Match Automation (Auto Replay, Auto Speed + Dropdown)
+end function __DIST.aO()-- Tab Main: Hiển thị trạng thái môi trường, thống kê trận đấu thời gian thực,
+-- Auto Summon (kèm Bảng đếm Pity trực quan), Match Automation và Player Dashboard.
 
 
 local constants = __DIST.load('aD')
 local gameStats = __DIST.load('aF')
 local zoneGuard = __DIST.load('aE')
-local matchAutomation = __DIST.load('aL')
-local autoSummon = __DIST.load('aM')
+local matchAutomation = __DIST.load('aM')
+local autoSummon = __DIST.load('aN')
+local playerProfile = __DIST.load('aJ')
 local autoSave = __DIST.load('az')
+local notifier = __DIST.load('ay')
 local lifecycle = __DIST.load('ax')
 
 return function(window, tab)
@@ -36592,7 +37289,7 @@ return function(window, tab)
 	lifecycle.Register(unsubscribe)
 
 	--// ====================================================================
-	--// CỘT TRÁI: Section 2 - Auto Summon (Lobby)
+	--// CỘT TRÁI: Section 2 - Auto Summon (Lobby) & Visual Pity Tracker
 	--// ====================================================================
 	local summonSection = tab:Section({ Side = "Left" })
 	summonSection:Header({ Name = "Auto Summon" })
@@ -36605,6 +37302,8 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoSummon")
 
+	local updateProfileUi: ((PlayerProfileData__DARKLUA_TYPE_r) -> ())? = nil
+
 	summonSection:Dropdown({
 		Name = "Select Banner",
 		Options = autoSummon.Banners,
@@ -36613,6 +37312,11 @@ return function(window, tab)
 		Callback = autoSave.Wrap(function(selected)
 			if selected and selected ~= "" then
 				autoSummon.SetBanner(selected)
+				pcall(function()
+					if updateProfileUi then
+						updateProfileUi(playerProfile.GetData())
+					end
+				end)
 			end
 		end),
 	}, "Dropdown_SummonBanner")
@@ -36641,8 +37345,29 @@ return function(window, tab)
 		end),
 	}, "Slider_SummonDelay")
 
+	-- Bảng đếm Pity trực quan
+	local pityTitleLabel = summonSection:Label({
+		Text = "<b>🎯 Pity Counter:</b> <font color='rgb(255,220,100)'>Basic</font>",
+	})
+
+	local pityGodlyLabel = summonSection:Label({
+		Text = "🌟 <b>Godly:</b> <font color='rgb(255,200,80)'>--</font>",
+	})
+
+	local pityMythicalLabel = summonSection:Label({
+		Text = "🔮 <b>Mythical:</b> <font color='rgb(200,100,255)'>--</font>",
+	})
+
+	local pitySecretLabel = summonSection:Label({
+		Text = "❓ <b>Secret:</b> <font color='rgb(255,100,100)'>--</font>",
+	})
+
+	local pitySloppyLabel = summonSection:Label({
+		Text = "👾 <b>Sloppy / Celestial:</b> <font color='rgb(100,220,255)'>-- / --</font>",
+	})
+
 	--// ====================================================================
-	--// CỘT PHẢI: Match Automation (Auto Replay, Auto Speed + Dropdown)
+	--// CỘT PHẢI: Section 1 - Match Automation
 	--// ====================================================================
 	local rightSection = tab:Section({ Side = "Right" })
 	rightSection:Header({ Name = "Match Automation" })
@@ -36681,8 +37406,84 @@ return function(window, tab)
 			matchAutomation.SetSpeed(selected)
 		end),
 	}, "Dropdown_GameSpeed")
+
+	--// ====================================================================
+	--// CỘT PHẢI: Section 2 - Player Dashboard
+	--// ====================================================================
+	local profileSection = tab:Section({ Side = "Right" })
+	profileSection:Header({ Name = "Player Dashboard" })
+
+	local gemsLabel = profileSection:Label({
+		Text = "💎 <b>Gems:</b> <font color='rgb(100,220,255)'>--</font>",
+	})
+
+	local crystalsLabel = profileSection:Label({
+		Text = "🔮 <b>Crystals:</b> <font color='rgb(220,100,255)'>--</font>",
+	})
+
+	local starsLabel = profileSection:Label({
+		Text = "⭐ <b>Stars:</b> <font color='rgb(255,220,100)'>--</font>",
+	})
+
+	local otherCurrencyLabel = profileSection:Label({
+		Text = "🪙 <b>Slopbux / Tokens:</b> <font color='rgb(200,200,200)'>-- / --</font>",
+	})
+
+	local winsLabel = profileSection:Label({
+		Text = "🏆 <b>Total Wins:</b> <font color='rgb(85,255,120)'>--</font>",
+	})
+
+	local inventoryLabel = profileSection:Label({
+		Text = "🎒 <b>Towers:</b> <font color='rgb(255,150,100)'>-- / 500</font>",
+	})
+
+	local playtimeLabel = profileSection:Label({
+		Text = "⏱️ <b>Playtime:</b> <font color='rgb(180,180,180)'>--</font>",
+	})
+
+	profileSection:Button({
+		Name = "Refresh Profile & Pity",
+		Callback = function()
+			local ok = playerProfile.Fetch(true)
+			if ok then
+				notifier.Notify("Dashboard", "Đã yêu cầu đồng bộ hồ sơ từ server!", 1.5)
+			else
+				notifier.Notify("Dashboard", "Đang tải dữ liệu hoặc gửi yêu cầu quá nhanh!", 1.5)
+			end
+		end,
+	})
+
+	--// ====================================================================
+	--// HÀM ĐỒNG BỘ DỮ LIỆU PROFILE & PITY THỜI GIAN THỰC
+	--// ====================================================================
+	updateProfileUi = function(data: PlayerProfileData__DARKLUA_TYPE_r)
+		if not data.Loaded then return end
+
+		-- 1. Cập nhật Player Dashboard
+		gemsLabel:UpdateName(string.format("💎 <b>Gems:</b> <font color='rgb(100,220,255)'>%s</font>", playerProfile.FormatNumber(data.Gems)))
+		crystalsLabel:UpdateName(string.format("🔮 <b>Crystals:</b> <font color='rgb(220,100,255)'>%s</font>", playerProfile.FormatNumber(data.Crystals)))
+		starsLabel:UpdateName(string.format("⭐ <b>Stars:</b> <font color='rgb(255,220,100)'>%s</font>", playerProfile.FormatNumber(data.Stars)))
+		otherCurrencyLabel:UpdateName(string.format("🪙 <b>Slopbux / Tokens:</b> <font color='rgb(200,200,200)'>%s / %s</font>", playerProfile.FormatNumber(data.Slopbux), playerProfile.FormatNumber(data.Tokens)))
+		winsLabel:UpdateName(string.format("🏆 <b>Total Wins:</b> <font color='rgb(85,255,120)'>%s</font>", playerProfile.FormatNumber(data.Wins)))
+		inventoryLabel:UpdateName(string.format("🎒 <b>Towers:</b> <font color='rgb(255,150,100)'>%d / %d</font>", data.TowersCount, data.InventorySpace))
+		playtimeLabel:UpdateName(string.format("⏱️ <b>Playtime:</b> <font color='rgb(180,180,180)'>%s</font>", data.TotalPlayTimeFormatted))
+
+		-- 2. Cập nhật Bảng đếm Pity theo Banner đang chọn
+		local currentBanner = autoSummon.GetBanner()
+		local pity = (currentBanner == "Premium") and data.PityPremium or data.PityBasic
+		local bannerColor = (currentBanner == "Premium") and "rgb(255,150,220)" or "rgb(255,220,100)"
+
+		pityTitleLabel:UpdateName(string.format("<b>🎯 Pity Counter:</b> <font color='%s'>%s Banner</font>", bannerColor, currentBanner))
+		pityGodlyLabel:UpdateName(string.format("🌟 <b>Godly:</b> <font color='rgb(255,200,80)'>%s</font>", playerProfile.FormatNumber(pity.Godly)))
+		pityMythicalLabel:UpdateName(string.format("🔮 <b>Mythical:</b> <font color='rgb(200,100,255)'>%s</font>", playerProfile.FormatNumber(pity.Mythical)))
+		pitySecretLabel:UpdateName(string.format("❓ <b>Secret:</b> <font color='rgb(255,100,100)'>%s</font>", playerProfile.FormatNumber(pity.Secret)))
+		pitySloppyLabel:UpdateName(string.format("👾 <b>Sloppy / Celestial:</b> <font color='rgb(100,220,255)'>%s / %s</font>", playerProfile.FormatNumber(pity.Sloppy), playerProfile.FormatNumber(pity.Celestial)))
+	end
+
+	local unsubscribeProfile = playerProfile.Subscribe(updateProfileUi)
+	lifecycle.Register(unsubscribeProfile)
 end
-end function __DIST.aO()-- ElevatorJoiner: Tự động tìm thang máy (Raid: 1-4, Normal: 5-8), dịch chuyển ra trước cửa và bước vào bấm Start.
+end function __DIST.aP()-- ElevatorJoiner: Tự động tìm thang máy (Raid: 1-4, Normal: 5-8), dịch chuyển ra trước cửa và bước vào bấm Start.
 
 
 local Players = game:GetService("Players")
@@ -37035,7 +37836,7 @@ lifecycle.Register(function()
 end)
 
 return elevatorJoiner
-end function __DIST.aP()-- SlopMutator: Tự động bình chọn Slop Mutator theo độ ưu tiên (Priority Sliders)
+end function __DIST.aQ()-- SlopMutator: Tự động bình chọn Slop Mutator theo độ ưu tiên (Priority Sliders)
 
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -37069,7 +37870,7 @@ local slopMutator = {
 		{ Id = "Regeneration", Name = "Regeneration", DefaultPriority = 30, Description = "Quái hồi 2% máu mỗi giây" },
 		{ Id = "BossRush", Name = "Boss Rush", DefaultPriority = 20, Description = "Boss x2 máu, quái thường +25% máu" },
 		{ Id = "TinySlop", Name = "Tiny Slop", DefaultPriority = 10, Description = "Quái tí hon, +20% tốc độ chạy" },
-	} :: { MutatorInfo__DARKLUA_TYPE_r },
+	} :: { MutatorInfo__DARKLUA_TYPE_t },
 
 	Priorities = {
 		None = 100,
@@ -37319,12 +38120,12 @@ lifecycle.Register(function()
 end)
 
 return slopMutator
-end function __DIST.aQ()-- Tab Game: Auto Joiner, Auto Pick Map, Auto Difficult, Auto Slop Mutator
+end function __DIST.aR()-- Tab Game: Auto Joiner, Auto Pick Map, Auto Difficult, Auto Slop Mutator
 
 
-local elevatorJoiner = __DIST.load('aO')
+local elevatorJoiner = __DIST.load('aP')
 local matchSetup = __DIST.load('aI')
-local slopMutator = __DIST.load('aP')
+local slopMutator = __DIST.load('aQ')
 local autoSave = __DIST.load('az')
 
 return function(window, tab)
@@ -37513,11 +38314,12 @@ return function(window, tab)
 		}, "Slider_Mutator_" .. item.Id)
 	end
 end
-end function __DIST.aR()-- Recorder: Ghi lại các thao tác SpawnTower và SellTower của người chơi khi bật Record.
+end function __DIST.aS()-- Recorder: Ghi lại các thao tác SpawnTower và SellTower của người chơi khi bật Record.
 
 local types = __DIST.load('aG')
 local storage = __DIST.load('aH')
 local gameStats = __DIST.load('aF')
+local zoneGuard = __DIST.load('aE')
 local notifier = __DIST.load('ay')
 local lifecycle = __DIST.load('ax')
 local logger = __DIST.load('aA')
@@ -37560,6 +38362,87 @@ local function getRemotes()
 		end
 	end
 	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
+end
+
+-- Tham chiếu Modules.TowersConfig để tra cứu giá đặt tháp chuẩn xác
+local towersConfigModule: any = nil
+
+local function getTowersConfig(): any
+	if not towersConfigModule then
+		pcall(function()
+			local modules = ReplicatedStorage:FindFirstChild("Modules")
+			local cfg = (modules and modules:FindFirstChild("TowersConfig")) or ReplicatedStorage:FindFirstChild("TowersConfig", true)
+			if cfg and cfg:IsA("ModuleScript") then
+				towersConfigModule = require(cfg)
+			end
+		end)
+	end
+	return towersConfigModule
+end
+
+local function getPlacePrice(towerName: string): number?
+	if not towerName or towerName == "" then return nil end
+	local cfg = getTowersConfig()
+	if cfg then
+		if type(cfg.GetTowerConfig) == "function" then
+			local data = nil
+			pcall(function() data = cfg.GetTowerConfig(towerName) end)
+			if data and type(data.PlacePrice) == "number" then
+				return data.PlacePrice
+			end
+		end
+		local configTable = cfg.Config or cfg
+		if type(configTable) == "table" then
+			if configTable[towerName] and type(configTable[towerName].PlacePrice) == "number" then
+				return configTable[towerName].PlacePrice
+			end
+			-- Tìm theo tên không phân biệt hoa thường hoặc loại bỏ variant name
+			local nameLower = towerName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+			for k, v in pairs(configTable) do
+				if type(k) == "string" and type(v) == "table" and type(v.PlacePrice) == "number" then
+					local kLower = k:lower()
+					if kLower == nameLower or nameLower:find(kLower, 1, true) or kLower:find(nameLower, 1, true) then
+						return v.PlacePrice
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+
+local function getUpgradePrice(towerName: string, upgradeIndex: number?): number?
+	local cfg = getTowersConfig()
+	if not cfg then return nil end
+
+	local data = nil
+	if type(cfg.GetTowerConfig) == "function" then
+		pcall(function() data = cfg.GetTowerConfig(towerName) end)
+	end
+	if not data and type(cfg.Config) == "table" then
+		data = cfg.Config[towerName]
+	end
+	if type(data) ~= "table" then return nil end
+
+	upgradeIndex = upgradeIndex or 1
+
+	if type(data.Upgrades) == "table" then
+		local upg = data.Upgrades[upgradeIndex] or data.Upgrades[tostring(upgradeIndex)]
+		if type(upg) == "table" then
+			local price = tonumber(upg.Cost or upg.Price or upg.UpgradeCost or upg.UpgradePrice)
+			if price and price > 0 then return price end
+		elseif type(upg) == "number" and upg > 0 then
+			return upg
+		end
+	end
+
+	local priceList = data.UpgradePrices or data.UpgradeCosts or data.Prices or data.UpgradeCost
+	if type(priceList) == "table" then
+		local p = tonumber(priceList[upgradeIndex] or priceList[tostring(upgradeIndex)])
+		if p and p > 0 then return p end
+	end
+
+	return nil
 end
 
 -- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
@@ -37729,6 +38612,35 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 
 		local cfComponents = cf and { cf:GetComponents() } or nil
 		local posTable = pos and { pos.X, pos.Y, pos.Z } or nil
+		local initialCash = gameStats.GetCash()
+
+		-- Xác thực thành công:
+		-- 1. Server trả về Instance Model trực tiếp
+		-- 2. Hoặc tìm thấy Model mới xuất hiện gần vị trí đặt trong vòng 0.6s
+		-- 3. Hoặc tiền bị trừ (curCash < initialCash)
+		local spawnedModel: Model? = nil
+		if typeof(returnedModel) == "Instance" then
+			spawnedModel = (returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")) :: Model?
+		end
+
+		if not spawnedModel and pos then
+			for _ = 1, 6 do
+				task.wait(0.1)
+				if not isRecording then return end
+				spawnedModel = findTowerNearPosition(towerName, pos, 4.0, arg4)
+				if spawnedModel then break end
+				if gameStats.GetCash() < initialCash then break end
+			end
+		end
+
+		local curCash = gameStats.GetCash()
+		local cashDeducted = curCash < initialCash
+		local isSuccess = (spawnedModel ~= nil) or cashDeducted or (returnedModel == true)
+
+		if not isSuccess then
+			-- Thao tác đặt tháp thất bại (thiếu tiền, vị trí không hợp lệ, v.v.), bỏ qua không ghi nhận!
+			return
+		end
 
 		towerIndexCounter += 1
 		local towerId = "T" .. tostring(towerIndexCounter)
@@ -37740,7 +38652,13 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 			}
 		end
 
-		local initialCash = gameStats.GetCash()
+		if spawnedModel then
+			instanceToId[spawnedModel] = towerId
+			idToInstance[towerId] = spawnedModel
+		end
+
+		local configPrice = getPlacePrice(towerName)
+		local exactTowerCost = configPrice or (cashDeducted and (initialCash - curCash) or nil)
 		local stepIndex = #recordedSteps + 1
 
 		recorder.AddStep("Place", {
@@ -37751,6 +38669,8 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 			Arg3 = arg3,
 			Arg4 = arg4,
 			Arg5 = arg5,
+			Cost = exactTowerCost,
+			TowerCost = exactTowerCost,
 			RawData = {
 				Arg1 = args[1],
 				Arg2 = tostring(args[2]),
@@ -37760,27 +38680,23 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 			},
 		})
 
-		-- 1. Nếu server trả về trực tiếp Instance Model, gán định danh ngay lập tức!
-		if typeof(returnedModel) == "Instance" then
-			local m = returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")
-			if m then
-				instanceToId[m] = towerId
-				idToInstance[towerId] = m
-			end
-		end
-
-		-- 2. Theo dõi biến động tiền và liên kết Model dự phòng nếu chưa có
-		if pos then
+		-- Theo dõi thêm biến động tiền và liên kết Model nếu lúc đặt chưa kịp lấy
+		if pos and (not exactTowerCost or not idToInstance[towerId]) then
 			task.spawn(function()
-				for _ = 1, 20 do
+				for _ = 1, 15 do
 					task.wait(0.2)
 					if not isRecording then break end
 
-					local curCash = gameStats.GetCash()
-					if curCash < initialCash and recordedSteps[stepIndex] then
-						local exactPrice = initialCash - curCash
-						if exactPrice > 0 and not recordedSteps[stepIndex].TowerCost then
-							recordedSteps[stepIndex].TowerCost = exactPrice
+					local nowCash = gameStats.GetCash()
+					if nowCash < initialCash and recordedSteps[stepIndex] then
+						local exactPrice = initialCash - nowCash
+						if exactPrice > 0 then
+							if not recordedSteps[stepIndex].TowerCost then
+								recordedSteps[stepIndex].TowerCost = exactPrice
+							end
+							if not recordedSteps[stepIndex].Cost or recordedSteps[stepIndex].Cost == initialCash then
+								recordedSteps[stepIndex].Cost = exactPrice
+							end
 						end
 					end
 
@@ -37790,6 +38706,10 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 							instanceToId[model] = towerId
 							idToInstance[towerId] = model
 						end
+					end
+
+					if recordedSteps[stepIndex] and recordedSteps[stepIndex].TowerCost and idToInstance[towerId] then
+						break
 					end
 				end
 			end)
@@ -37802,36 +38722,62 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 end
 
 -- Xử lý ghi nhận SellTower khi Remote được gọi
-local function handleSellTower(args: { any })
+local function handleSellTower(args: { any }, returnedResult: any)
 	local ok, err = pcall(function()
 		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
+		if not towerInstance then return end
+
+		local initialCash = gameStats.GetCash()
+
+		-- Xác thực thành công:
+		-- 1. Server trả về kết quả hợp lệ (không phải false/nil)
+		-- 2. Tháp bị gỡ khỏi workspace (towerInstance.Parent == nil) trong vòng 0.6s
+		-- 3. Hoặc tiền tăng lên (nhận lại tiền bán tháp)
+		local isSuccess = false
+		if returnedResult == true or (returnedResult ~= nil and returnedResult ~= false) then
+			isSuccess = true
+		end
+
+		if not isSuccess then
+			for _ = 1, 6 do
+				task.wait(0.1)
+				if not isRecording then return end
+				if towerInstance.Parent == nil or gameStats.GetCash() > initialCash then
+					isSuccess = true
+					break
+				end
+			end
+		end
+
+		if not isSuccess then
+			-- Thao tác bán tháp thất bại, bỏ qua không ghi nhận!
+			return
+		end
+
 		local matchedId: string? = nil
-		local towerName = "Unknown"
+		local towerName = towerInstance.Name
 		local targetPos: Vector3? = nil
 
-		if towerInstance then
-			towerName = towerInstance.Name
-			if instanceToId[towerInstance] then
-				matchedId = instanceToId[towerInstance]
-			else
-				-- Thử tìm theo khoảng cách gần nhất với các tháp đã lưu
-				pcall(function()
-					targetPos = towerInstance:GetPivot().Position
-				end)
-				if not targetPos and towerInstance:IsA("Model") and towerInstance.PrimaryPart then
-					targetPos = towerInstance.PrimaryPart.Position
-				end
+		if instanceToId[towerInstance] then
+			matchedId = instanceToId[towerInstance]
+		else
+			-- Thử tìm theo khoảng cách gần nhất với các tháp đã lưu
+			pcall(function()
+				targetPos = towerInstance:GetPivot().Position
+			end)
+			if not targetPos and towerInstance:IsA("Model") and towerInstance.PrimaryPart then
+				targetPos = towerInstance.PrimaryPart.Position
+			end
 
-				if targetPos then
-					local bestDist = 5.0
-					for id, info in pairs(idToInfo) do
-						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
-						local yDist = math.abs(info.Position.Y - targetPos.Y)
-						if xzDist < bestDist and yDist <= 12.0 then
-							bestDist = xzDist
-							matchedId = id
-							towerName = info.TowerName
-						end
+			if targetPos then
+				local bestDist = 5.0
+				for id, info in pairs(idToInfo) do
+					local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+					local yDist = math.abs(info.Position.Y - targetPos.Y)
+					if xzDist < bestDist and yDist <= 12.0 then
+						bestDist = xzDist
+						matchedId = id
+						towerName = info.TowerName
 					end
 				end
 			end
@@ -37877,6 +38823,38 @@ local function handleUpgradeTower(args: { any }, returnedModel: any)
 	local ok, err = pcall(function()
 		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
 		local variantName = type(args[2]) == "string" and args[2] or nil
+		local initialCash = gameStats.GetCash()
+
+		-- Xác thực thành công:
+		-- 1. Server trả về Instance Model mới hoặc true
+		-- 2. Hoặc tiền bị trừ trong cửa sổ chờ 0.4s
+		local isSuccess = false
+		local updatedModel: Instance? = nil
+
+		if typeof(returnedModel) == "Instance" then
+			isSuccess = true
+			updatedModel = (returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")) :: Instance?
+		elseif returnedModel == true then
+			isSuccess = true
+		end
+
+		if not isSuccess then
+			-- Thử kiểm tra biến động tiền nếu server trả về nil/replicate trễ
+			for _ = 1, 4 do
+				task.wait(0.1)
+				if not isRecording then return end
+				if gameStats.GetCash() < initialCash then
+					isSuccess = true
+					break
+				end
+			end
+		end
+
+		if not isSuccess then
+			-- Nâng cấp thất bại (không đủ tiền, max level...), bỏ qua không ghi nhận!
+			return
+		end
+
 		local matchedId: string? = nil
 		local towerName = "Unknown"
 		local targetPos: Vector3? = nil
@@ -37914,12 +38892,9 @@ local function handleUpgradeTower(args: { any }, returnedModel: any)
 		end
 
 		-- Nếu server trả về Model mới của tháp sau nâng cấp, cập nhật ngay mapping
-		if typeof(returnedModel) == "Instance" then
-			local m = returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")
-			if m and matchedId then
-				instanceToId[m] = matchedId
-				idToInstance[matchedId] = m
-			end
+		if updatedModel and matchedId then
+			instanceToId[updatedModel] = matchedId
+			idToInstance[matchedId] = updatedModel
 		end
 
 		local posTable: { number }? = nil
@@ -37930,16 +38905,57 @@ local function handleUpgradeTower(args: { any }, returnedModel: any)
 			posTable = { targetPos.X, targetPos.Y, targetPos.Z }
 		end
 
+		local curCash = gameStats.GetCash()
+		local exactCost = (curCash < initialCash) and (initialCash - curCash) or nil
+
+		-- Nếu chưa tính được qua biến động tiền, tra từ TowersConfig
+		if not exactCost or exactCost <= 0 then
+			local upgIdx = 1
+			for _, st in ipairs(recordedSteps) do
+				if st.Type == "Upgrade" and st.TowerId == matchedId then
+					upgIdx += 1
+				end
+			end
+			exactCost = getUpgradePrice(towerName, upgIdx)
+		end
+
+		local stepIndex = #recordedSteps + 1
+
 		recorder.AddStep("Upgrade", {
 			TowerId = matchedId,
 			TowerName = towerName,
 			Arg4 = variantName,
 			Position = posTable,
+			Cost = exactCost,
+			TowerCost = exactCost,
 			RawData = {
 				InstanceName = towerInstance and towerInstance.Name,
 				Variant = variantName,
 			},
 		})
+
+		-- Theo dõi thêm để ghi nhận chính xác chi phí nâng cấp nếu chưa có
+		if not exactCost then
+			task.spawn(function()
+				for _ = 1, 10 do
+					task.wait(0.15)
+					if not isRecording then break end
+					local nowCash = gameStats.GetCash()
+					if nowCash < initialCash and recordedSteps[stepIndex] then
+						local diff = initialCash - nowCash
+						if diff > 0 then
+							if not recordedSteps[stepIndex].TowerCost then
+								recordedSteps[stepIndex].TowerCost = diff
+							end
+							if not recordedSteps[stepIndex].Cost or recordedSteps[stepIndex].Cost == initialCash then
+								recordedSteps[stepIndex].Cost = diff
+							end
+							break
+						end
+					end
+				end
+			end)
+		end
 	end)
 
 	if not ok then
@@ -37963,8 +38979,9 @@ local function handleVoteSkip()
 end
 
 -- Xử lý ghi nhận ChangeTowerMode khi Remote được gọi
-local function handleChangeTowerMode(args: { any })
+local function handleChangeTowerMode(args: { any }, returnedResult: any)
 	local ok, err = pcall(function()
+		if returnedResult == false then return end
 		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
 		local matchedId: string? = nil
 		local towerName = "Unknown"
@@ -38101,7 +39118,10 @@ local function setupRemoteHook()
 				elseif remoteName == "SellTower" or (sellRemote and self == sellRemote) then
 					if not sellRemote then sellRemote = self end
 					local args = { ... }
-					task.spawn(handleSellTower, args)
+					if setnc and method then setnc(method) end
+					local res = table.pack(oldNamecall(self, ...))
+					task.spawn(handleSellTower, args, res[1])
+					return table.unpack(res, 1, res.n)
 				elseif remoteName == "UpgradeTower" or (upgradeRemote and self == upgradeRemote) then
 					if not upgradeRemote then upgradeRemote = self end
 					local args = { ... }
@@ -38112,7 +39132,10 @@ local function setupRemoteHook()
 				elseif remoteName == "ChangeTowerMode" or (changeModeRemote and self == changeModeRemote) then
 					if not changeModeRemote then changeModeRemote = self end
 					local args = { ... }
-					task.spawn(handleChangeTowerMode, args)
+					if setnc and method then setnc(method) end
+					local res = table.pack(oldNamecall(self, ...))
+					task.spawn(handleChangeTowerMode, args, res[1])
+					return table.unpack(res, 1, res.n)
 				elseif remoteName == "ChangeSpeed" or (changeSpeedRemote and self == changeSpeedRemote) then
 					if not changeSpeedRemote then changeSpeedRemote = self end
 					local args = { ... }
@@ -38145,7 +39168,9 @@ local function setupRemoteHook()
 		oldSellInvoke = hookfunction(sellRemote.InvokeServer, wrapC(function(self, ...)
 			if isRecording then
 				local args = { ... }
-				task.spawn(handleSellTower, args)
+				local res = table.pack(oldSellInvoke(self, ...))
+				task.spawn(handleSellTower, args, res[1])
+				return table.unpack(res, 1, res.n)
 			end
 			return oldSellInvoke(self, ...)
 		end))
@@ -38168,7 +39193,9 @@ local function setupRemoteHook()
 			oldChangeModeInvoke = hookfunction(changeModeRemote.InvokeServer, wrapC(function(self, ...)
 				if isRecording then
 					local args = { ... }
-					task.spawn(handleChangeTowerMode, args)
+					local res = table.pack(oldChangeModeInvoke(self, ...))
+					task.spawn(handleChangeTowerMode, args, res[1])
+					return table.unpack(res, 1, res.n)
 				end
 				return oldChangeModeInvoke(self, ...)
 			end))
@@ -38223,6 +39250,97 @@ function recorder.ClearSteps()
 	towerIndexCounter = 0
 end
 
+local stateListeners: { (boolean) -> () } = {}
+
+local function notifyState(recording: boolean)
+	for _, cb in ipairs(stateListeners) do
+		pcall(cb, recording)
+	end
+end
+
+-- Đăng ký lắng nghe thay đổi trạng thái Record (ví dụ: tự động dừng khi xuất hiện EndScreen)
+function recorder.OnRecordingStateChanged(callback: (boolean) -> ()): () -> ()
+	table.insert(stateListeners, callback)
+	return function()
+		local idx = table.find(stateListeners, callback)
+		if idx then
+			table.remove(stateListeners, idx)
+		end
+	end
+end
+
+-- Giám sát EndScreen để tự động ngừng Record khi ván đấu kết thúc
+local activeWatcherThread: thread? = nil
+local activeEndScreenConn: RBXScriptConnection? = nil
+
+local function getEndScreen(): GuiObject?
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	if not gameGui then return nil end
+
+	local endScreen = gameGui:FindFirstChild("EndScreen", true)
+	if endScreen and endScreen:IsA("GuiObject") then
+		return endScreen
+	end
+	return nil
+end
+
+local function isEndScreenVisible(): boolean
+	local endScreen = getEndScreen()
+	return endScreen ~= nil and endScreen.Visible == true
+end
+
+local function cleanupEndScreenWatcher()
+	if activeEndScreenConn then
+		pcall(function()
+			activeEndScreenConn:Disconnect()
+		end)
+		activeEndScreenConn = nil
+	end
+	if activeWatcherThread then
+		pcall(task.cancel, activeWatcherThread)
+		activeWatcherThread = nil
+	end
+end
+
+local function startEndScreenWatcher()
+	cleanupEndScreenWatcher()
+
+	-- 1. Lắng nghe trực tiếp qua PropertyChangedSignal của EndScreen nếu đã có
+	local endScreen = getEndScreen()
+	if endScreen then
+		activeEndScreenConn = endScreen:GetPropertyChangedSignal("Visible"):Connect(function()
+			if isRecording and endScreen.Visible == true then
+				logger.Log("[Recorder] Phát hiện EndScreen (Signal)! Tự động dừng Record...")
+				task.spawn(function()
+					recorder.StopRecording("EndScreen")
+				end)
+			end
+		end)
+	end
+
+	-- 2. Vòng lặp định kỳ: quét EndScreen và kiểm tra trạng thái còn trong trận
+	activeWatcherThread = task.spawn(function()
+		while isRecording and lifecycle.IsActive() do
+			task.wait(0.5)
+			if not isRecording then break end
+
+			if isEndScreenVisible() then
+				logger.Log("[Recorder] Phát hiện EndScreen (Polling)! Tự động dừng Record...")
+				recorder.StopRecording("EndScreen")
+				break
+			end
+
+			if not zoneGuard.IsInGame() then
+				logger.Log("[Recorder] Người chơi đã rời ván đấu! Tự động dừng Record...")
+				recorder.StopRecording("LeftGame")
+				break
+			end
+		end
+	end)
+end
+
 -- Bắt đầu ghi lại hành động
 function recorder.StartRecording(macroName: string?): boolean
 	local targetName = macroName or activeMacroName
@@ -38236,15 +39354,19 @@ function recorder.StartRecording(macroName: string?): boolean
 	recorder.InitialSpeed = getCurrentGameSpeed()
 	isRecording = true
 	setupRemoteHook()
+	startEndScreenWatcher()
+	notifyState(true)
 
 	notifier.Notify("Macro", string.format("Bắt đầu Record: %s (Speed ban đầu: x%d)", targetName, recorder.InitialSpeed), 2)
 	return true
 end
 
 -- Dừng ghi và tự động lưu vào storage
-function recorder.StopRecording(): number
+function recorder.StopRecording(reason: string?): number
 	if not isRecording then return 0 end
 	isRecording = false
+	cleanupEndScreenWatcher()
+	notifyState(false)
 
 	local count = #recordedSteps
 	if activeMacroName and count > 0 then
@@ -38254,7 +39376,14 @@ function recorder.StopRecording(): number
 		existing.Metadata.TotalDuration = gameStats.GetElapsedTime()
 		existing.Metadata.InitialSpeed = recorder.InitialSpeed or 1
 		storage.SaveMacro(activeMacroName, existing)
-		notifier.Notify("Macro", string.format("Đã lưu %d bước vào '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 2.5)
+
+		if reason == "EndScreen" then
+			notifier.Notify("Macro", string.format("🏁 Trận đấu kết thúc! Đã lưu %d bước vào '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 3)
+		elseif reason == "LeftGame" then
+			notifier.Notify("Macro", string.format("Đã rời ván! Đã lưu %d bước vào '%s'", count, activeMacroName), 2.5)
+		else
+			notifier.Notify("Macro", string.format("Đã lưu %d bước vào '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 2.5)
+		end
 	else
 		notifier.Notify("Macro", "Đã dừng Record (0 bước)", 2)
 	end
@@ -38266,16 +39395,18 @@ lifecycle.Register(function()
 	if isRecording then
 		recorder.StopRecording()
 	end
+	cleanupEndScreenWatcher()
+	table.clear(stateListeners)
 end)
 
 return recorder
-end function __DIST.aS()-- Tab Macro: Live Game Stats, Macro Recorder & Macro Player (Playback)
+end function __DIST.aT()-- Tab Macro: Live Game Stats, Macro Recorder & Macro Player (Playback)
 
 local gameStats = __DIST.load('aF')
 local zoneGuard = __DIST.load('aE')
 local storage = __DIST.load('aH')
-local recorder = __DIST.load('aR')
-local player = __DIST.load('aK')
+local recorder = __DIST.load('aS')
+local player = __DIST.load('aL')
 local autoSave = __DIST.load('az')
 local notifier = __DIST.load('ay')
 local lifecycle = __DIST.load('ax')
@@ -38466,6 +39597,25 @@ return function(window, tab)
 		end),
 	}, "Toggle_RecordMacro")
 
+	-- Lắng nghe trạng thái Record thay đổi (ví dụ: tự động dừng khi xuất hiện EndScreen)
+	local unsubscribeRecord = recorder.OnRecordingStateChanged(function(recording)
+		if recordToggle then
+			isTogglingInternally = true
+			pcall(function()
+				recordToggle:UpdateState(recording, true)
+			end)
+			isTogglingInternally = false
+		end
+
+		if not recording then
+			local activeName = recorder.GetActiveMacro()
+			if activeName then
+				player.SetActiveMacro(activeName)
+			end
+		end
+	end)
+	lifecycle.Register(unsubscribeRecord)
+
 	--// ====================================================================
 	--// CỘT PHẢI: Macro Player (Tính năng Play Macro)
 	--// ====================================================================
@@ -38544,6 +39694,14 @@ return function(window, tab)
 		end),
 	}, "Toggle_ApplyMacroSpeed")
 
+	playerSection:Toggle({
+		Name = "Apply Skip Wave",
+		Default = player.IsVoteSkipEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			player.SetVoteSkipEnabled(state)
+		end),
+	}, "Toggle_ApplyMacroSkipWave")
+
 	playerSection:Dropdown({
 		Name = "Timing Mode",
 		Options = { "Hybrid", "Timer", "Wave & Cash", "Cash (Timed Sell)" },
@@ -38580,7 +39738,7 @@ return function(window, tab)
 	})
 
 	-- Hàm cập nhật UI Player thời gian thực
-	local function updatePlayerUi(data: PlaybackSnapshot__DARKLUA_TYPE_q)
+	local function updatePlayerUi(data: PlaybackSnapshot__DARKLUA_TYPE_s)
 		local macroName = data.MacroName or "None"
 		local totalStepsCount = data.TotalSteps
 		if totalStepsCount == 0 and macroName ~= "None" then
@@ -38603,12 +39761,12 @@ return function(window, tab)
 	local unsubscribePlayer = player.Subscribe(updatePlayerUi)
 	lifecycle.Register(unsubscribePlayer)
 end
-end function __DIST.aT()-- Tab Config: Quản lý cấu hình (Create, Save, Load, Overwrite, Autoload) qua Maclib built-in.
+end function __DIST.aU()-- Tab Config: Quản lý cấu hình (Create, Save, Load, Overwrite, Autoload) qua Maclib built-in.
 -- Cột phải: Section 1 - Utility (Auto Hide, Auto Anti Macro), Section 2 - Discord Webhook.
 
 
 local utility = __DIST.load('aC')
-local webhook = __DIST.load('aJ')
+local webhook = __DIST.load('aK')
 local autoSave = __DIST.load('az')
 local notifier = __DIST.load('ay')
 
@@ -38727,7 +39885,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.aU()-- SlopTowerDefense: Khởi tạo giao diện Maclib và nạp 4 tabs: Main, Game, Macro, Config.
+end function __DIST.aV()-- SlopTowerDefense: Khởi tạo giao diện Maclib và nạp 4 tabs: Main, Game, Macro, Config.
 
 
 return function(self)
@@ -38798,10 +39956,10 @@ return function(self)
 	}
 
 	-- Load UI Modules
-	local mainTab = __DIST.load('aN')
-	local gameTab = __DIST.load('aQ')
-	local macroTab = __DIST.load('aS')
-	local configTab = __DIST.load('aT')
+	local mainTab = __DIST.load('aO')
+	local gameTab = __DIST.load('aR')
+	local macroTab = __DIST.load('aT')
+	local configTab = __DIST.load('aU')
 
 	mainTab(window, tabs.Main)
 	gameTab(window, tabs.Game)
@@ -38848,7 +40006,7 @@ return function(self)
 
 	print("[SlopTowerDefense] Initialized successfully.")
 end
-end function __DIST.aV()
+end function __DIST.aW()
 local flags = {}
 
 function flags:Export()
@@ -38891,7 +40049,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.aW()
+return flags end function __DIST.aX()
 --// Imports
 
 
@@ -38902,7 +40060,7 @@ local binder = __DIST.load('ad')
 local interface = {}
 
 --// Initialize
-function interface:Window(properties: Window__DARKLUA_TYPE_s): Window__DARKLUA_TYPE_s
+function interface:Window(properties: Window__DARKLUA_TYPE_u): Window__DARKLUA_TYPE_u
 	properties = properties or {}
 	print("Made a window")
 
@@ -38916,7 +40074,7 @@ function interface:Window(properties: Window__DARKLUA_TYPE_s): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.aX()--// Imports
+end function __DIST.aY()--// Imports
 
 local binder = __DIST.load('ad')
 
@@ -38929,11 +40087,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.aY()--// Imports
+end function __DIST.aZ()--// Imports
 
-local flags = __DIST.load('aV')
-local interface = __DIST.load('aW')
-local esp = __DIST.load('aX')
+local flags = __DIST.load('aW')
+local interface = __DIST.load('aX')
+local esp = __DIST.load('aY')
 
 --// Initialize
 local window = interface:Window({
@@ -38972,7 +40130,7 @@ return {
 		end,
 	},
 }
-end function __DIST.aZ()--// Variables
+end function __DIST.a_()--// Variables
 
 local utility = {}
 
@@ -39004,7 +40162,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.a_()--// Functions
+end function __DIST.a0()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -39014,14 +40172,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.a0()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.a1()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('aY')
-	local utility = __DIST.load('aZ')
-	local services = __DIST.load('a_')
+	local base = __DIST.load('aZ')
+	local utility = __DIST.load('a_')
+	local services = __DIST.load('a0')
 
 	--// References
 	local flags = base.Flags
@@ -39098,7 +40256,7 @@ local routes = {
 
 	{
 		Name = "SlopTowerDefense",
-		Load = __DIST.load('aU'),
+		Load = __DIST.load('aV'),
 		UniverseId = 10529769390,
 		Places = {
 			134459712190924, -- Lobby
@@ -39109,7 +40267,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('a0'),
+		Load = __DIST.load('a1'),
 		Places = {
 			123456789,
 			987654321,
