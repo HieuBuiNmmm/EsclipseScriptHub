@@ -1,22 +1,23 @@
---// Logger: Flight Data Recorder (Ghi chép hộp đen) & WebSocket Streamer
---// Quản lý buffer dữ liệu, xuất file JSON, và truyền dữ liệu thời gian thực lên Web Radar.
+--// Logger: Flight Data Recorder & WebSocket Telemetry Streamer
+--// Sử dụng trực tiếp Scanner tinh gọn. Tuyệt đối KHÔNG nạp SafeSpot hay Danger HUD Indicator.
 
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
-local sensor = require("@routes/DungeonQuest_Recorder/sensor")
+local scanner = require("@routes/DungeonQuest_Recorder/scanner")
 local observer = require("@routes/DungeonQuest_Recorder/observer")
 
 local logger = {}
 
 --// State
+local isInitialized = false
 local isRecording = false
 local recordingStartTime = 0
 local frameIndex = 0
-local buffer = {} -- Mảng chứa toàn bộ các frame
-local targetFps = 30 -- 30 hoặc 60 FPS
+local buffer = {}
+local targetFps = 30
 local lastSampleTime = 0
 local heartbeatConn = nil
 local wsConn = nil
@@ -66,10 +67,12 @@ function logger.ConnectWebSocket()
 	local connectFn = getWebSocketConnectFunction()
 	if not connectFn then
 		wsStatus = "Unsupported"
+		notifyStatsChanged()
 		return
 	end
 
 	wsStatus = "Connecting"
+	notifyStatsChanged()
 	task.spawn(function()
 		local success, socket = pcall(connectFn, wsUrl)
 		if success and socket then
@@ -109,17 +112,47 @@ function logger.DisconnectWebSocket()
 	end
 end
 
--- Lấy tên Dungeon hiện tại từ Workspace
+local function getYawDegrees(lookVector)
+	if not lookVector or lookVector.Magnitude < 0.001 then return 0 end
+	return math.deg(math.atan2(lookVector.X, -lookVector.Z))
+end
+
+local function getEnemiesTelemetry()
+	local list = {}
+	local dungeon = Workspace:FindFirstChild("dungeon")
+	if dungeon then
+		for _, child in ipairs(dungeon:GetChildren()) do
+			if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+				local hum = child:FindFirstChildOfClass("Humanoid")
+				local root = child:FindFirstChild("HumanoidRootPart") or child.PrimaryPart
+				if hum and hum.Health > 0 and root then
+					local mName = child.Name
+					table.insert(list, {
+						name = mName,
+						x = math.round(root.Position.X * 10) / 10,
+						y = math.round(root.Position.Y * 10) / 10,
+						z = math.round(root.Position.Z * 10) / 10,
+						yaw = math.round(getYawDegrees(root.CFrame.LookVector) * 10) / 10,
+						health = math.round(hum.Health),
+						maxHealth = math.round(hum.MaxHealth),
+						isBoss = string.find(mName:lower(), "boss") ~= nil,
+					})
+				end
+			end
+		end
+	end
+	return list
+end
+
 local function getCurrentDungeonName()
 	local dungeon = Workspace:FindFirstChild("dungeon")
 	if dungeon and dungeon:FindFirstChild("dungeonName") then
 		local val = dungeon.dungeonName.Value
 		if typeof(val) == "string" and #val > 0 then return val end
 	end
-	return "UnknownDungeon"
+	return "DungeonQuest"
 end
 
--- Lấy số phòng hiện tại
 local function getCurrentRoomIndex()
 	local dungeon = Workspace:FindFirstChild("dungeon")
 	if dungeon and dungeon:FindFirstChild("currentRoom") then
@@ -129,84 +162,126 @@ local function getCurrentRoomIndex()
 	return 0
 end
 
--- Frame sampling loop
 local function onHeartbeat()
-	local now = os.clock()
-	local interval = 1 / targetFps
-	if (now - lastSampleTime) < interval then
-		return
-	end
-	lastSampleTime = now
-
-	-- Cập nhật sensor
-	sensor.UpdateEntities()
-	local hazards = sensor.GetActiveHazards()
-	local boss = sensor.GetBossData()
-	local mobs = sensor.GetMobsData()
-
-	-- Observer lấy mẫu player
-	local sample = observer.Sample(hazards, boss)
-	if not sample then return end
-
-	frameIndex = frameIndex + 1
-
-	local frameData = {
-		f = frameIndex,
-		t = math.round((now - recordingStartTime) * 1000) / 1000,
-		player = sample.player,
-		danger = sample.danger,
-		boss = sample.boss,
-		hazards = hazards,
-		mobsCount = #mobs,
-	}
-
-	-- Nếu đang trong phiên ghi REC thì lưu vào buffer
-	if isRecording then
-		-- Giới hạn an toàn bộ nhớ (tối đa 40,000 frames ~ 22 phút)
-		if #buffer < 40000 then
-			table.insert(buffer, frameData)
+	pcall(function()
+		local now = os.clock()
+		local interval = 1 / targetFps
+		if (now - lastSampleTime) < interval then
+			return
 		end
-	end
+		lastSampleTime = now
 
-	-- Nếu có mở WebSocket stream -> gửi frame trực tiếp lên Live 2D Radar
-	if wsConn and wsStatus == "Connected" then
-		local telemetryPacket = {
-			type = "TELEMETRY",
-			version = "Recorder_V1",
-			timestamp = now,
-			dungeon = getCurrentDungeonName(),
-			room = getCurrentRoomIndex(),
-			player = sample.player,
-			boss = boss,
-			hazards = hazards,
-			enemies = mobs,
-			danger = sample.danger,
-		}
-		pcall(function()
-			safeWsSend(wsConn, HttpService:JSONEncode(telemetryPacket))
-		end)
-	end
+		-- Cập nhật dữ liệu từ Scanner
+		local hazards = scanner.GetActiveHazardsTelemetry()
+		local boss = scanner.GetBossTelegraphTelemetry()
+		local mobs = getEnemiesTelemetry()
+		local memory = scanner.GetMemoryGameTelemetry and scanner.GetMemoryGameTelemetry() or nil
 
-	if frameIndex % 30 == 0 then
-		notifyStatsChanged()
+		-- Lấy mẫu hành vi nhân vật
+		local sample = observer.Sample(hazards, boss)
+		if not sample then
+			local lp = Players.LocalPlayer
+			sample = {
+				player = {
+					name = lp and lp.Name or "Player",
+					x = 0, y = 0, z = 0, yaw = 0,
+					moveX = 0, moveZ = 0, moveMagnitude = 0,
+					velX = 0, velY = 0, velZ = 0, speed = 0,
+					walkSpeed = 16, health = 100, maxHealth = 100, isJumping = false,
+				},
+				danger = { inDanger = false, nearestHazard = nil },
+				boss = nil,
+			}
+		end
+
+		if isRecording then
+			frameIndex = frameIndex + 1
+			local frameData = {
+				f = frameIndex,
+				t = math.round((now - recordingStartTime) * 1000) / 1000,
+				player = sample.player,
+				danger = sample.danger,
+				boss = boss,
+				hazards = hazards,
+				memory = memory,
+				mobsCount = #mobs,
+			}
+			if #buffer < 40000 then
+				table.insert(buffer, frameData)
+			end
+		end
+
+		-- Stream gói Telemetry chuẩn V2 sang Web 2D Radar liên tục
+		if wsConn and wsStatus == "Connected" then
+			local isInvuln, invulnReason = false, nil
+			local lp = Players.LocalPlayer
+			if lp and lp.Character and lp.Character:FindFirstChildOfClass("ForceField") then
+				isInvuln = true
+				invulnReason = "ForceField"
+			end
+
+			local telemetryPacket = {
+				type = "TELEMETRY",
+				version = "V2",
+				timestamp = now,
+				dungeon = getCurrentDungeonName(),
+				inLobby = (Workspace:FindFirstChild("dungeon") == nil),
+				room = getCurrentRoomIndex(),
+				player = {
+					name = sample.player.name,
+					x = sample.player.x,
+					y = sample.player.y,
+					z = sample.player.z,
+					yaw = sample.player.yaw,
+					moveX = sample.player.moveX,
+					moveZ = sample.player.moveZ,
+					health = sample.player.health,
+					maxHealth = sample.player.maxHealth,
+					healthPercent = math.clamp((sample.player.health / math.max(1, sample.player.maxHealth)) * 100, 0, 100),
+					isInvulnerable = isInvuln,
+					invulnReason = invulnReason,
+					isDead = sample.player.health <= 0,
+				},
+				boss = boss,
+				enemies = mobs,
+				hazards = hazards,
+				memory = memory,
+			}
+
+			pcall(function()
+				safeWsSend(wsConn, HttpService:JSONEncode(telemetryPacket))
+			end)
+		end
+
+		local ticker = isRecording and frameIndex or math.floor(now * 4)
+		if ticker % 6 == 0 then
+			notifyStatsChanged()
+		end
+	end)
+end
+
+-- Khởi tạo Engine (quét & stream ngầm)
+function logger.Init()
+	if isInitialized then return end
+	isInitialized = true
+
+	scanner.Start()
+	logger.ConnectWebSocket()
+
+	if not heartbeatConn then
+		heartbeatConn = RunService.Heartbeat:Connect(onHeartbeat)
 	end
 end
 
--- API
+-- API Ghi chép (Record)
 function logger.Start()
+	logger.Init()
 	if isRecording then return end
 	isRecording = true
 	recordingStartTime = os.clock()
 	frameIndex = 0
 	table.clear(buffer)
 	lastSavedFilePath = nil
-
-	sensor.Start()
-	logger.ConnectWebSocket()
-
-	if not heartbeatConn then
-		heartbeatConn = RunService.Heartbeat:Connect(onHeartbeat)
-	end
 	notifyStatsChanged()
 end
 
@@ -234,7 +309,6 @@ function logger.SaveToFile(customName)
 	local fileName = customName or string.format("DQ_FlightLog_%s_%s.json", mapName, timeStr)
 	local folderName = "DQ_FlightLogs"
 
-	-- Tạo folder nếu executor hỗ trợ
 	pcall(function()
 		if typeof(makefolder) == "function" then
 			makefolder(folderName)
@@ -284,11 +358,12 @@ end
 
 function logger.GetStats()
 	local duration = isRecording and (os.clock() - recordingStartTime) or (#buffer > 0 and (buffer[#buffer].t or 0) or 0)
+	local hazardsList = scanner.GetActiveHazardsTelemetry()
 	return {
 		isRecording = isRecording,
 		frameCount = #buffer,
 		duration = math.round(duration * 10) / 10,
-		activeHazards = #sensor.GetActiveHazards(),
+		activeHazards = #hazardsList,
 		wsStatus = wsStatus,
 		lastSavedFilePath = lastSavedFilePath,
 	}
@@ -329,7 +404,7 @@ end
 
 function logger.Cleanup()
 	logger.Stop()
-	sensor.Stop()
+	scanner.Stop()
 	logger.DisconnectWebSocket()
 	if heartbeatConn then
 		pcall(function() heartbeatConn:Disconnect() end)
@@ -337,6 +412,7 @@ function logger.Cleanup()
 	end
 	table.clear(buffer)
 	table.clear(statsChangedCallbacks)
+	isInitialized = false
 end
 
 return logger

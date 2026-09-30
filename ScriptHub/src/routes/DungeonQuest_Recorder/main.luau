@@ -17,22 +17,34 @@ return function(self)
 	end)
 
 	-- Chờ LocalPlayer sẵn sàng
-	local timeout = os.clock() + 10
-	while not Players.LocalPlayer do
-		if os.clock() > timeout then break end
-		task.wait(0.1)
+	local localPlayer = Players.LocalPlayer
+	if not localPlayer then
+		local timeout = os.clock() + 5
+		while not Players.LocalPlayer and os.clock() < timeout do
+			task.wait(0.1)
+		end
+		localPlayer = Players.LocalPlayer
 	end
 
-	local localPlayer = Players.LocalPlayer
 	if not localPlayer then
 		return warn("[DQ_Recorder] Failed to retrieve LocalPlayer, aborting.")
 	end
 
-	-- Khởi tạo HUD nổi
-	hud.Create()
+	-- Khởi tạo HUD nổi TRƯỚC
+	local okHud, errHud = pcall(function()
+		hud.Create()
+	end)
+	if not okHud then
+		warn("[DQ_Recorder] HUD Create Error:", tostring(errHud))
+	end
 
-	-- Tự động kết nối WebSocket Live Radar
-	logger.ConnectWebSocket()
+	-- Khởi tạo Scanner & Telemetry loop
+	local okInit, errInit = pcall(function()
+		logger.Init()
+	end)
+	if not okInit then
+		warn("[DQ_Recorder] Logger Init Error:", tostring(errInit))
+	end
 
 	-- Đăng ký Cleanup hook
 	_G.ScriptHub_Cleanup = function()

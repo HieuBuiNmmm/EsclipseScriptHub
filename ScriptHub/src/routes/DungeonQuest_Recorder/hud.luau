@@ -1,34 +1,33 @@
 --// HUD: Giao diện nổi siêu nhỏ gọn (Mini Floating HUD) điều khiển ghi chép Flight Log
---// Không chiếm diện tích màn hình, kéo thả được, tương thích mọi Executor.
+--// Hỗ trợ bật/tắt In-Game Visuals, WebSocket Radar, kéo thả và thu gọn.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
-local TweenService = game:GetService("TweenService")
 
 local logger = require("@routes/DungeonQuest_Recorder/logger")
+local scanner = require("@routes/DungeonQuest_Recorder/scanner")
 
 local hud = {}
 local screenGui = nil
 local isMinimized = false
 
--- Lấy container GUI an toàn trên mọi Executor
 local function getGuiContainer()
 	if typeof(gethui) == "function" then
 		local ok, hui = pcall(gethui)
 		if ok and hui then return hui end
 	end
-	local ok, coreGui = pcall(function() return game:GetService("CoreGui") end)
-	if ok and coreGui then
-		local testOk = pcall(function()
-			local test = Instance.new("Folder")
-			test.Parent = coreGui
-			test:Destroy()
-		end)
-		if testOk then return coreGui end
-	end
 	local lp = Players.LocalPlayer
 	if lp then
-		return lp:FindFirstChild("PlayerGui") or lp:WaitForChild("PlayerGui", 5)
+		local pgui = lp:FindFirstChild("PlayerGui")
+		if pgui then return pgui end
+	end
+	local ok, coreGui = pcall(function() return game:GetService("CoreGui") end)
+	if ok and coreGui then
+		return coreGui
+	end
+	if lp then
+		local ok, waitPgui = pcall(function() return lp:WaitForChild("PlayerGui", 3) end)
+		if ok and waitPgui then return waitPgui end
 	end
 	return nil
 end
@@ -56,7 +55,7 @@ function hud.Create()
 	-- Main Container Frame
 	local mainFrame = Instance.new("Frame")
 	mainFrame.Name = "MainCard"
-	mainFrame.Size = UDim2.fromOffset(260, 220)
+	mainFrame.Size = UDim2.fromOffset(260, 245)
 	mainFrame.Position = UDim2.new(0, 20, 0, 100)
 	mainFrame.BackgroundColor3 = Color3.fromRGB(12, 18, 28)
 	mainFrame.BorderSizePixel = 0
@@ -210,7 +209,7 @@ function hud.Create()
 	-- Buttons Container
 	local btnRec = Instance.new("TextButton")
 	btnRec.Size = UDim2.new(1, 0, 0, 28)
-	btnRec.Position = UDim2.new(0, 0, 0, 64)
+	btnRec.Position = UDim2.new(0, 0, 0, 62)
 	btnRec.BackgroundColor3 = Color3.fromRGB(0, 160, 90)
 	btnRec.Text = "🔴 START RECORDING"
 	btnRec.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -223,8 +222,8 @@ function hud.Create()
 	btnRecCorner.Parent = btnRec
 
 	local btnSave = Instance.new("TextButton")
-	btnSave.Size = UDim2.new(0.48, 0, 0, 26)
-	btnSave.Position = UDim2.new(0, 0, 0, 98)
+	btnSave.Size = UDim2.new(0.48, 0, 0, 24)
+	btnSave.Position = UDim2.new(0, 0, 0, 94)
 	btnSave.BackgroundColor3 = Color3.fromRGB(30, 60, 100)
 	btnSave.Text = "💾 Save JSON"
 	btnSave.TextColor3 = Color3.fromRGB(200, 230, 255)
@@ -237,8 +236,8 @@ function hud.Create()
 	btnSaveCorner.Parent = btnSave
 
 	local btnClear = Instance.new("TextButton")
-	btnClear.Size = UDim2.new(0.48, 0, 0, 26)
-	btnClear.Position = UDim2.new(0.52, 0, 0, 98)
+	btnClear.Size = UDim2.new(0.48, 0, 0, 24)
+	btnClear.Position = UDim2.new(0.52, 0, 0, 94)
 	btnClear.BackgroundColor3 = Color3.fromRGB(50, 30, 40)
 	btnClear.Text = "🗑 Clear Buffer"
 	btnClear.TextColor3 = Color3.fromRGB(255, 180, 180)
@@ -250,9 +249,23 @@ function hud.Create()
 	btnClearCorner.CornerRadius = UDim.new(0, 6)
 	btnClearCorner.Parent = btnClear
 
+	local btnVisuals = Instance.new("TextButton")
+	btnVisuals.Size = UDim2.new(1, 0, 0, 22)
+	btnVisuals.Position = UDim2.new(0, 0, 0, 122)
+	btnVisuals.BackgroundColor3 = Color3.fromRGB(40, 50, 30)
+	btnVisuals.Text = "👁 In-Game 3D Visuals: OFF"
+	btnVisuals.TextColor3 = Color3.fromRGB(200, 230, 150)
+	btnVisuals.Font = Enum.Font.Gotham
+	btnVisuals.TextSize = 10
+	btnVisuals.Parent = content
+
+	local btnVisualsCorner = Instance.new("UICorner")
+	btnVisualsCorner.CornerRadius = UDim.new(0, 6)
+	btnVisualsCorner.Parent = btnVisuals
+
 	local btnWs = Instance.new("TextButton")
-	btnWs.Size = UDim2.new(1, 0, 0, 24)
-	btnWs.Position = UDim2.new(0, 0, 0, 130)
+	btnWs.Size = UDim2.new(1, 0, 0, 22)
+	btnWs.Position = UDim2.new(0, 0, 0, 148)
 	btnWs.BackgroundColor3 = Color3.fromRGB(25, 35, 55)
 	btnWs.Text = "📡 Live Radar: ws://localhost:8765"
 	btnWs.TextColor3 = Color3.fromRGB(150, 180, 220)
@@ -266,7 +279,7 @@ function hud.Create()
 
 	local logPathLabel = Instance.new("TextLabel")
 	logPathLabel.Size = UDim2.new(1, 0, 0, 16)
-	logPathLabel.Position = UDim2.new(0, 0, 0, 158)
+	logPathLabel.Position = UDim2.new(0, 0, 0, 174)
 	logPathLabel.BackgroundTransparency = 1
 	logPathLabel.Text = "Ready to record."
 	logPathLabel.TextColor3 = Color3.fromRGB(100, 220, 150)
@@ -329,6 +342,13 @@ function hud.Create()
 		logPathLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 	end)
 
+	btnVisuals.MouseButton1Click:Connect(function()
+		local newState = not scanner.IsVisualizerEnabled()
+		scanner.SetVisualizerEnabled(newState)
+		btnVisuals.Text = newState and "👁 In-Game 3D Visuals: ON (Shadows)" or "👁 In-Game 3D Visuals: OFF"
+		btnVisuals.BackgroundColor3 = newState and Color3.fromRGB(0, 140, 70) or Color3.fromRGB(40, 50, 30)
+	end)
+
 	btnWs.MouseButton1Click:Connect(function()
 		local newState = not logger.IsWsStreamEnabled()
 		logger.ToggleWsStream(newState)
@@ -343,7 +363,7 @@ function hud.Create()
 			minBtn.Text = "□"
 		else
 			content.Visible = true
-			mainFrame.Size = UDim2.fromOffset(260, 220)
+			mainFrame.Size = UDim2.fromOffset(260, 245)
 			minBtn.Text = "—"
 		end
 	end)

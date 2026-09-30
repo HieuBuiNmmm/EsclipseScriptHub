@@ -12,14 +12,24 @@ end
 
 -- Tính toán xem điểm P có nằm trong vùng nguy hiểm không và khoảng cách tới tâm/mép
 local function evaluateHazardOverlap(playerX, playerZ, hazard)
+	if not hazard or not hazard.x or not hazard.z then
+		return false, 99999, 99999
+	end
+
 	local dx = playerX - hazard.x
 	local dz = playerZ - hazard.z
 	local distCenter = math.sqrt(dx * dx + dz * dz)
+	local shapeName = tostring(hazard.shape):lower()
 
-	if hazard.shape == "Circle" then
+	if shapeName == "circle" then
 		local rad = hazard.radius or 10
 		local inHazard = distCenter <= rad
 		local distEdge = distCenter - rad -- âm nếu ở trong, dương nếu ở ngoài
+		return inHazard, distCenter, distEdge
+	elseif shapeName == "compound_multiring" then
+		local maxRad = hazard.maxRadius or 105
+		local inHazard = distCenter <= maxRad
+		local distEdge = distCenter - maxRad
 		return inHazard, distCenter, distEdge
 	else
 		-- Dạng Box OBB xoay theo Yaw
@@ -29,8 +39,8 @@ local function evaluateHazardOverlap(playerX, playerZ, hazard)
 		local localX = math.abs(dx * cosY - dz * sinY)
 		local localZ = math.abs(dx * sinY + dz * cosY)
 
-		local halfW = (hazard.width or 10) / 2
-		local halfL = (hazard.length or 10) / 2
+		local halfW = (hazard.halfWidth or hazard.halfX or (hazard.width and hazard.width / 2) or 5)
+		local halfL = (hazard.halfLength or hazard.halfZ or (hazard.length and hazard.length / 2) or 5)
 
 		local inHazard = (localX <= halfW) and (localZ <= halfL)
 		local edgeDx = math.max(0, localX - halfW)
@@ -41,7 +51,7 @@ local function evaluateHazardOverlap(playerX, playerZ, hazard)
 	end
 end
 
--- Lấy mẫu toàn diện của Player tại thời điểm t
+-- Lấy mẫu toàn diện của Player tại thời điểm t (được bọc an toàn tuyệt đối)
 function observer.Sample(activeHazards, bossData)
 	local lp = Players.LocalPlayer
 	local char = lp and lp.Character
@@ -55,8 +65,11 @@ function observer.Sample(activeHazards, bossData)
 	local pos = root.Position
 	local lookVec = root.CFrame.LookVector
 	local yaw = getYawDegrees(lookVec)
-	local moveDir = hum.MoveDirection
-	local vel = root.AssemblyLinearVelocity
+	local moveDir = hum.MoveDirection or Vector3.zero
+	local vel = Vector3.zero
+	pcall(function()
+		vel = root.AssemblyLinearVelocity or root.Velocity or Vector3.zero
+	end)
 
 	-- Đánh giá tương quan với tất cả các hazards
 	local inDanger = false
@@ -74,8 +87,8 @@ function observer.Sample(activeHazards, bossData)
 				minEdgeDist = dEdge
 				minCenterDist = dCenter
 				nearestHazard = {
-					name = h.name,
-					shape = h.shape,
+					name = h.name or "Hazard",
+					shape = h.shape or "box",
 					distEdge = math.round(dEdge * 10) / 10,
 					distCenter = math.round(dCenter * 10) / 10,
 				}
@@ -83,9 +96,9 @@ function observer.Sample(activeHazards, bossData)
 		end
 	end
 
-	-- Đánh giá tương quan với Boss
+	-- Đánh giá tương quan với Boss (chỉ khi có Boss active)
 	local bossRelation = nil
-	if bossData then
+	if bossData and bossData.active and bossData.x and bossData.z then
 		local bdx = bossData.x - pos.X
 		local bdz = bossData.z - pos.Z
 		local bossDist = math.sqrt(bdx * bdx + bdz * bdz)
@@ -94,32 +107,32 @@ function observer.Sample(activeHazards, bossData)
 		if deltaYaw > 180 then deltaYaw = deltaYaw - 360 elseif deltaYaw < -180 then deltaYaw = deltaYaw + 360 end
 
 		bossRelation = {
-			name = bossData.name,
+			name = bossData.name or "Boss",
 			distance = math.round(bossDist * 10) / 10,
 			angleToBoss = math.round(deltaYaw * 10) / 10, -- 0° = đang nhìn thẳng Boss
-			bossHp = bossData.hp,
-			bossMaxHp = bossData.maxHp,
+			bossHp = bossData.health or bossData.hp or 0,
+			bossMaxHp = bossData.maxHealth or bossData.maxHp or 100,
 		}
 	end
 
 	return {
 		player = {
-			name = lp.Name,
+			name = lp.Name or "Player",
 			x = math.round(pos.X * 10) / 10,
 			y = math.round(pos.Y * 10) / 10,
 			z = math.round(pos.Z * 10) / 10,
 			yaw = math.round(yaw * 10) / 10,
-			moveX = math.round(moveDir.X * 1000) / 1000,
-			moveZ = math.round(moveDir.Z * 1000) / 1000,
-			moveMagnitude = math.round(Vector3.new(moveDir.X, 0, moveDir.Z).Magnitude * 1000) / 1000,
-			velX = math.round(vel.X * 10) / 10,
-			velY = math.round(vel.Y * 10) / 10,
-			velZ = math.round(vel.Z * 10) / 10,
-			speed = math.round(Vector3.new(vel.X, 0, vel.Z).Magnitude * 10) / 10,
-			walkSpeed = hum.WalkSpeed,
-			health = math.round(hum.Health),
-			maxHealth = math.round(hum.MaxHealth),
-			isJumping = hum.Jump or (vel.Y > 5),
+			moveX = math.round((moveDir.X or 0) * 1000) / 1000,
+			moveZ = math.round((moveDir.Z or 0) * 1000) / 1000,
+			moveMagnitude = math.round(Vector3.new(moveDir.X or 0, 0, moveDir.Z or 0).Magnitude * 1000) / 1000,
+			velX = math.round((vel.X or 0) * 10) / 10,
+			velY = math.round((vel.Y or 0) * 10) / 10,
+			velZ = math.round((vel.Z or 0) * 10) / 10,
+			speed = math.round(Vector3.new(vel.X or 0, 0, vel.Z or 0).Magnitude * 10) / 10,
+			walkSpeed = hum.WalkSpeed or 16,
+			health = math.round(hum.Health or 100),
+			maxHealth = math.round(hum.MaxHealth or 100),
+			isJumping = hum.Jump or ((vel.Y or 0) > 5),
 		},
 		danger = {
 			inDanger = inDanger,

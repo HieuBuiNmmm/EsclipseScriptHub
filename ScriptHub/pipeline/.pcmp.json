@@ -13,7 +13,7 @@
 
     "buildConfigs": [
         {
-            "name": "Debug",
+            "name": "Full_Debug",
 
             "promptVersion": false,
             "promptDeploy": false,
@@ -25,28 +25,39 @@
         },
 
         {
-            "name": "Beta",
-
-            "promptVersion": true,
-            "promptDeploy": true,
-            "prerelease": true,
-
-            "frame": "pipeline/frame.luau",
-            "darkluaConfig": "pipeline/.darklua.json",
-            "input": "src/main.luau",
-            "output": "generated/beta.luau"
-        },
-
-        {
-            "name": "Release",
+            "name": "Full_Release",
             
-            "promptVersion": true,
-            "promptDeploy": true,
+            "promptVersion": false,
+            "promptDeploy": false,
 
             "frame": "pipeline/frame.luau",
             "darkluaConfig": "pipeline/.darklua.json",
             "input": "src/main.luau",
             "output": "generated/release.luau"
+        },
+
+        {
+            "name": "Recorder_Debug",
+
+            "promptVersion": false,
+            "promptDeploy": false,
+
+            "frame": "pipeline/frame.luau",
+            "darkluaConfig": "pipeline/.darklua_debug.json",
+            "input": "src/recorder_main.luau",
+            "output": "generated/recorder_debug.luau"
+        },
+
+        {
+            "name": "Recorder_Release",
+
+            "promptVersion": false,
+            "promptDeploy": false,
+
+            "frame": "pipeline/frame.luau",
+            "darkluaConfig": "pipeline/.darklua.json",
+            "input": "src/recorder_main.luau",
+            "output": "generated/recorder_release.luau"
         }
     ]
 }
