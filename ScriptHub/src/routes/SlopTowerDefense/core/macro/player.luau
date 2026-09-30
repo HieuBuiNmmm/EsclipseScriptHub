@@ -40,6 +40,9 @@ local activePlaybackThread: thread? = nil
 -- Ánh xạ giữa TowerId ("T1", "T2") và Instance tháp trong ván đấu hiện tại
 local idToTowerInstance: { [string]: Instance } = {}
 
+-- Bảng mô phỏng danh sách tháp đang hiện diện trên sân để tính toán LayoutOrder trong UnitManager.Units
+local activeTowers: { string } = {}
+
 -- Tham chiếu RemoteFunction
 local spawnRemote: RemoteFunction? = nil
 local sellRemote: RemoteFunction? = nil
@@ -181,6 +184,123 @@ local function getUpgradePrice(towerName: string, upgradeIndex: number?): number
 	if type(priceList) == "table" then
 		local p = tonumber(priceList[upgradeIndex] or priceList[tostring(upgradeIndex)])
 		if p and p > 0 then return p end
+	end
+
+	return nil
+end
+
+-- Chuyển đổi text giá tiền trên UI (ví dụ "$500,000", "$1.5k", "500000") thành số nguyên
+local function parsePriceText(text: string?): number?
+	if not text or type(text) ~= "string" then return nil end
+	local lower = text:lower()
+	if lower:find("max") then return nil end
+
+	local clean = text:gsub("%$", ""):gsub(",", ""):gsub("%s+", "")
+
+	local numK = clean:match("(%d+%.?%d*)[kK]")
+	if numK then
+		local n = tonumber(numK)
+		if n and n > 0 then return math.round(n * 1000) end
+	end
+
+	local numM = clean:match("(%d+%.?%d*)[mM]")
+	if numM then
+		local n = tonumber(numM)
+		if n and n > 0 then return math.round(n * 1000000) end
+	end
+
+	local numPlain = clean:match("(%d+%.?%d*)")
+	if numPlain then
+		local n = tonumber(numPlain)
+		if n and n > 0 then return math.round(n) end
+	end
+
+	return nil
+end
+
+-- Tự động làm tròn số tiền ghi nhận về các mốc chuẩn nếu bị hao hụt nhẹ do nhận bounty quái cùng tick
+local function snapToCleanPrice(cost: number?): number?
+	if not cost or cost <= 0 then return cost end
+
+	local milestones = {
+		500000, 450000, 400000, 350000, 300000, 250000, 200000, 150000, 100000,
+		75000, 50000, 40000, 30000, 25000, 20000, 15000, 10000,
+		7500, 5000, 4000, 3000, 2500, 2000, 1500, 1000,
+		750, 500, 400, 350, 300, 250, 200, 150, 100, 50
+	}
+
+	for _, milestone in ipairs(milestones) do
+		local diff = milestone - cost
+		-- Với các mốc lớn (>= 100k) ở Speed cao (x4, x5), bounty có thể lên tới 8k - 15k trong 0.2s
+		local maxAllowedDiff = (milestone >= 100000) and math.max(6500, milestone * 0.05) or math.max(30, milestone * 0.04)
+		if diff > 0 and diff <= maxAllowedDiff then
+			return milestone
+		end
+	end
+
+	return cost
+end
+
+-- Trích xuất giá Upgrade trực tiếp từ giao diện UnitManager.Units theo LayoutOrder
+local function getUpgradePriceFromUnitManager(targetLayoutOrder: number?, towerName: string?): number?
+	local playerInstance = Players.LocalPlayer
+	local playerGui = playerInstance and playerInstance:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	if not gameGui then return nil end
+
+	local unitManager = gameGui:FindFirstChild("UnitManager", true)
+	local units = unitManager and unitManager:FindFirstChild("Units", true)
+	if not units then return nil end
+
+	local targetCard: GuiObject? = nil
+
+	-- 1. Ưu tiên khớp chính xác theo LayoutOrder của card
+	if targetLayoutOrder and targetLayoutOrder > 0 then
+		for _, child in ipairs(units:GetChildren()) do
+			if child:IsA("GuiObject") and not child:IsA("UILayout") and not child:IsA("UIPadding") then
+				if child.LayoutOrder == targetLayoutOrder then
+					targetCard = child
+					break
+				end
+			end
+		end
+	end
+
+	-- 2. Fallback: Nếu không tìm thấy bằng LayoutOrder nhưng biết towerName
+	if not targetCard and towerName and towerName ~= "" and towerName ~= "Unknown" then
+		local nameLower = towerName:lower()
+		for _, child in ipairs(units:GetChildren()) do
+			if child:IsA("GuiObject") and not child:IsA("UILayout") and not child:IsA("UIPadding") then
+				local cName = child.Name:lower()
+				if cName == nameLower or cName:find(nameLower, 1, true) or nameLower:find(cName, 1, true) then
+					targetCard = child
+					break
+				end
+			end
+		end
+	end
+
+	if not targetCard then return nil end
+
+	-- Trong card: Tìm Upgrade -> Price
+	local upgradeObj = targetCard:FindFirstChild("Upgrade", true)
+	local priceLabel: TextLabel? = nil
+	if upgradeObj then
+		priceLabel = upgradeObj:FindFirstChild("Price", true) :: TextLabel?
+		if not priceLabel and upgradeObj:IsA("TextLabel") then
+			priceLabel = upgradeObj
+		end
+	end
+
+	if not priceLabel then
+		priceLabel = targetCard:FindFirstChild("Price", true) :: TextLabel?
+	end
+
+	if priceLabel and priceLabel:IsA("TextLabel") then
+		local price = parsePriceText(priceLabel.Text)
+		if price and price > 0 then
+			return price
+		end
 	end
 
 	return nil
@@ -568,6 +688,7 @@ function player.ExecuteStep(step: types.MacroStep): boolean
 		local cf = CFrame.new(table.unpack(step.CFrame))
 		local ok, inst = player.PlaceTower(step.TowerName, cf, step.Arg3, step.Arg4, step.Arg5)
 		if ok then
+			table.insert(activeTowers, step.TowerId)
 			if inst and inst.Parent then
 				idToTowerInstance[step.TowerId] = inst
 			else
@@ -611,6 +732,10 @@ function player.ExecuteStep(step: types.MacroStep): boolean
 			local ok = player.SellTower(inst)
 			if ok then
 				idToTowerInstance[step.TowerId] = nil
+				local actIdx = table.find(activeTowers, step.TowerId)
+				if actIdx then
+					table.remove(activeTowers, actIdx)
+				end
 				notifier.Notify("Macro Play", string.format("Sold %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 				return true
 			end
@@ -748,6 +873,7 @@ local function startRunnerLoop()
 			currentStepIndex = 0
 			totalSteps = #macroData.Steps
 			table.clear(idToTowerInstance)
+			table.clear(activeTowers)
 
 			-- Khôi phục tốc độ ban đầu của Macro nếu bật đồng bộ Speed
 			if applyMacroSpeed then
@@ -787,11 +913,20 @@ local function startRunnerLoop()
 				end
 
 				currentStepIndex = i - 1
-				local actualPrice = step.TowerCost
-				if not actualPrice or actualPrice <= 0 then
-					if step.Type == "Place" then
-						actualPrice = getPlacePrice(step.TowerName)
-					elseif step.Type == "Upgrade" then
+				local actualPrice: number? = nil
+
+				if step.Type == "Place" then
+					actualPrice = step.TowerCost or getPlacePrice(step.TowerName) or step.Cost
+				elseif step.Type == "Upgrade" then
+					-- 1. Ưu tiên đọc trực tiếp từ UnitManager.Units theo step.LayoutOrder hoặc LayoutOrder đã mô phỏng
+					local layoutOrder = step.LayoutOrder or table.find(activeTowers, step.TowerId)
+					local livePrice = getUpgradePriceFromUnitManager(layoutOrder, step.TowerName)
+					if livePrice and livePrice > 0 then
+						actualPrice = livePrice
+					end
+
+					-- 2. Nếu không đọc được từ UI, tra cứu TowersConfig
+					if not actualPrice or actualPrice <= 0 then
 						local upgIdx = 1
 						for prev = 1, i - 1 do
 							local prevStep = macroData.Steps[prev]
@@ -800,6 +935,14 @@ local function startRunnerLoop()
 							end
 						end
 						actualPrice = getUpgradePrice(step.TowerName, upgIdx)
+					end
+
+					-- 3. Nếu vẫn chưa có, dùng TowerCost hoặc Cost và làm tròn theo mốc chuẩn (snapToCleanPrice)
+					if not actualPrice or actualPrice <= 0 then
+						local recordedCost = step.TowerCost or step.Cost
+						if recordedCost and recordedCost > 0 then
+							actualPrice = snapToCleanPrice(recordedCost) or recordedCost
+						end
 					end
 				end
 
@@ -843,6 +986,19 @@ local function startRunnerLoop()
 
 					local waveMet = curWave >= step.Wave
 					local timePassed = virtualElapsedTime >= step.Time
+
+					-- Nếu là bước Upgrade mà chưa có actualPrice, định kỳ cập nhật từ UnitManager
+					if step.Type == "Upgrade" and (not actualPrice or actualPrice <= 0) then
+						local layoutOrder = step.LayoutOrder or table.find(activeTowers, step.TowerId)
+						local livePrice = getUpgradePriceFromUnitManager(layoutOrder, step.TowerName)
+						if livePrice and livePrice > 0 then
+							actualPrice = livePrice
+							displayCost = actualPrice
+							if timingMode == "Cash (Timed Sell)" and displayCost > 0 then
+								updateStatus(string.format("Waiting for Step %d/%d (Need $%d)", i, totalSteps, displayCost), nextDesc)
+							end
+						end
+					end
 
 					-- Kiểm tra điều kiện tiền thực tế:
 					-- 1. Nếu biết actualPrice (giá thực của Place hoặc Upgrade): kiểm tra curCash >= actualPrice
@@ -1056,6 +1212,7 @@ end
 function player.Restart()
 	if not isEnabled then return end
 	table.clear(idToTowerInstance)
+	table.clear(activeTowers)
 	currentStepIndex = 0
 	isPlaying = false
 	startRunnerLoop()
@@ -1066,6 +1223,7 @@ function player.Stop()
 	isPlaying = false
 	currentStepIndex = 0
 	table.clear(idToTowerInstance)
+	table.clear(activeTowers)
 	if activePlaybackThread then
 		pcall(task.cancel, activePlaybackThread)
 		activePlaybackThread = nil

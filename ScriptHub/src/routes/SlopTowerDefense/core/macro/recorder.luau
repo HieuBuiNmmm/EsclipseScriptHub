@@ -24,6 +24,9 @@ local instanceToId: { [Instance]: string } = {}
 local idToInstance: { [string]: Instance } = {}
 local idToInfo: { [string]: { TowerName: string, Position: Vector3 } } = {}
 
+-- Bảng mô phỏng danh sách tháp đang hiện diện trên sân để tính toán LayoutOrder trong UnitManager.Units
+local activeTowers: { string } = {}
+
 -- Tham chiếu RemoteFunction từ ReplicatedStorage.Functions
 local spawnRemote: RemoteFunction? = nil
 local sellRemote: RemoteFunction? = nil
@@ -126,6 +129,157 @@ local function getUpgradePrice(towerName: string, upgradeIndex: number?): number
 	end
 
 	return nil
+end
+
+-- Chuyển đổi text giá tiền trên UI (ví dụ "$500,000", "$1.5k", "500000") thành số nguyên
+local function parsePriceText(text: string?): number?
+	if not text or type(text) ~= "string" then return nil end
+	local lower = text:lower()
+	if lower:find("max") then return nil end
+
+	local clean = text:gsub("%$", ""):gsub(",", ""):gsub("%s+", "")
+
+	local numK = clean:match("(%d+%.?%d*)[kK]")
+	if numK then
+		local n = tonumber(numK)
+		if n and n > 0 then return math.round(n * 1000) end
+	end
+
+	local numM = clean:match("(%d+%.?%d*)[mM]")
+	if numM then
+		local n = tonumber(numM)
+		if n and n > 0 then return math.round(n * 1000000) end
+	end
+
+	local numPlain = clean:match("(%d+%.?%d*)")
+	if numPlain then
+		local n = tonumber(numPlain)
+		if n and n > 0 then return math.round(n) end
+	end
+
+	return nil
+end
+
+-- Tự động làm tròn số tiền ghi nhận về các mốc chuẩn nếu bị hao hụt nhẹ do nhận bounty quái cùng tick
+local function snapToCleanPrice(cost: number?): number?
+	if not cost or cost <= 0 then return cost end
+
+	local milestones = {
+		500000, 450000, 400000, 350000, 300000, 250000, 200000, 150000, 100000,
+		75000, 50000, 40000, 30000, 25000, 20000, 15000, 10000,
+		7500, 5000, 4000, 3000, 2500, 2000, 1500, 1000,
+		750, 500, 400, 350, 300, 250, 200, 150, 100, 50
+	}
+
+	for _, milestone in ipairs(milestones) do
+		local diff = milestone - cost
+		-- Với các mốc lớn (>= 100k) ở Speed cao (x4, x5), bounty có thể lên tới 8k - 15k trong 0.2s
+		local maxAllowedDiff = (milestone >= 100000) and math.max(6500, milestone * 0.05) or math.max(30, milestone * 0.04)
+		if diff > 0 and diff <= maxAllowedDiff then
+			return milestone
+		end
+	end
+
+	return cost
+end
+
+-- Trích xuất giá Upgrade trực tiếp từ giao diện UnitManager.Units theo LayoutOrder
+local function getUpgradePriceFromUnitManager(targetLayoutOrder: number?, towerName: string?): number?
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	if not gameGui then return nil end
+
+	local unitManager = gameGui:FindFirstChild("UnitManager", true)
+	local units = unitManager and unitManager:FindFirstChild("Units", true)
+	if not units then return nil end
+
+	local targetCard: GuiObject? = nil
+
+	-- 1. Ưu tiên khớp chính xác theo LayoutOrder của card
+	if targetLayoutOrder and targetLayoutOrder > 0 then
+		for _, child in ipairs(units:GetChildren()) do
+			if child:IsA("GuiObject") and not child:IsA("UILayout") and not child:IsA("UIPadding") then
+				if child.LayoutOrder == targetLayoutOrder then
+					targetCard = child
+					break
+				end
+			end
+		end
+	end
+
+	-- 2. Fallback: Nếu không tìm thấy bằng LayoutOrder nhưng biết towerName
+	if not targetCard and towerName and towerName ~= "" and towerName ~= "Unknown" then
+		local nameLower = towerName:lower()
+		for _, child in ipairs(units:GetChildren()) do
+			if child:IsA("GuiObject") and not child:IsA("UILayout") and not child:IsA("UIPadding") then
+				local cName = child.Name:lower()
+				if cName == nameLower or cName:find(nameLower, 1, true) or nameLower:find(cName, 1, true) then
+					targetCard = child
+					break
+				end
+			end
+		end
+	end
+
+	if not targetCard then return nil end
+
+	-- Trong card: Tìm Upgrade -> Price
+	local upgradeObj = targetCard:FindFirstChild("Upgrade", true)
+	local priceLabel: TextLabel? = nil
+	if upgradeObj then
+		priceLabel = upgradeObj:FindFirstChild("Price", true) :: TextLabel?
+		if not priceLabel and upgradeObj:IsA("TextLabel") then
+			priceLabel = upgradeObj
+		end
+	end
+
+	if not priceLabel then
+		priceLabel = targetCard:FindFirstChild("Price", true) :: TextLabel?
+	end
+
+	if priceLabel and priceLabel:IsA("TextLabel") then
+		local price = parsePriceText(priceLabel.Text)
+		if price and price > 0 then
+			return price
+		end
+	end
+
+	return nil
+end
+
+-- Lấy giá Upgrade từ UnitManager trước khi gọi Remote cho một tower instance
+local function getUpgradePriceForTowerInstance(towerInstance: any): number?
+	if typeof(towerInstance) ~= "Instance" then return nil end
+	local matchedId = instanceToId[towerInstance]
+	local towerName = towerInstance.Name
+
+	if not matchedId then
+		local targetPos: Vector3? = nil
+		pcall(function() targetPos = towerInstance:GetPivot().Position end)
+		if not targetPos and towerInstance:IsA("Model") and towerInstance.PrimaryPart then
+			targetPos = towerInstance.PrimaryPart.Position
+		end
+		if targetPos then
+			local bestDist = 5.0
+			for id, info in pairs(idToInfo) do
+				local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+				local yDist = math.abs(info.Position.Y - targetPos.Y)
+				if xzDist < bestDist and yDist <= 12.0 then
+					bestDist = xzDist
+					matchedId = id
+					towerName = info.TowerName
+				end
+			end
+		end
+	end
+
+	local targetLayoutOrder: number? = nil
+	if matchedId then
+		targetLayoutOrder = table.find(activeTowers, matchedId)
+	end
+
+	return getUpgradePriceFromUnitManager(targetLayoutOrder, towerName)
 end
 
 -- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
@@ -257,6 +411,7 @@ function recorder.AddStep(actionType: types.ActionType, details: { [string]: any
 		Time = elapsedTime,
 		Cost = details.Cost or cash,
 		TowerCost = details.TowerCost,
+		LayoutOrder = details.LayoutOrder,
 		TargetMode = details.TargetMode,
 		RawData = details.RawData,
 	}
@@ -327,6 +482,7 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 
 		towerIndexCounter += 1
 		local towerId = "T" .. tostring(towerIndexCounter)
+		table.insert(activeTowers, towerId)
 
 		if pos then
 			idToInfo[towerId] = {
@@ -347,6 +503,7 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 		recorder.AddStep("Place", {
 			TowerId = towerId,
 			TowerName = towerName,
+			LayoutOrder = #activeTowers,
 			CFrame = cfComponents,
 			Position = posTable,
 			Arg3 = arg3,
@@ -478,9 +635,15 @@ local function handleSellTower(args: { any }, returnedResult: any)
 			posTable = { targetPos.X, targetPos.Y, targetPos.Z }
 		end
 
+		local currentLayoutOrder: number? = nil
+		if matchedId then
+			currentLayoutOrder = table.find(activeTowers, matchedId)
+		end
+
 		recorder.AddStep("Sell", {
 			TowerId = matchedId,
 			TowerName = towerName,
+			LayoutOrder = currentLayoutOrder,
 			Position = posTable,
 			RawData = {
 				InstanceName = towerInstance and towerInstance.Name,
@@ -491,6 +654,10 @@ local function handleSellTower(args: { any }, returnedResult: any)
 			instanceToId[towerInstance] = nil
 		end
 		if matchedId then
+			local actIdx = table.find(activeTowers, matchedId)
+			if actIdx then
+				table.remove(activeTowers, actIdx)
+			end
 			idToInstance[matchedId] = nil
 			idToInfo[matchedId] = nil
 		end
@@ -502,7 +669,7 @@ local function handleSellTower(args: { any }, returnedResult: any)
 end
 
 -- Xử lý ghi nhận UpgradeTower khi Remote được gọi
-local function handleUpgradeTower(args: { any }, returnedModel: any)
+local function handleUpgradeTower(args: { any }, returnedModel: any, preUpgPrice: number?)
 	local ok, err = pcall(function()
 		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
 		local variantName = type(args[2]) == "string" and args[2] or nil
@@ -589,9 +756,19 @@ local function handleUpgradeTower(args: { any }, returnedModel: any)
 		end
 
 		local curCash = gameStats.GetCash()
-		local exactCost = (curCash < initialCash) and (initialCash - curCash) or nil
+		local exactCost = preUpgPrice
 
-		-- Nếu chưa tính được qua biến động tiền, tra từ TowersConfig
+		local targetLayoutOrder: number? = nil
+		if matchedId then
+			targetLayoutOrder = table.find(activeTowers, matchedId)
+		end
+
+		-- 1. Nếu chưa có giá từ trước khi bấm remote, tra cứu từ giao diện UnitManager theo LayoutOrder đã mô phỏng
+		if not exactCost or exactCost <= 0 then
+			exactCost = getUpgradePriceFromUnitManager(targetLayoutOrder, towerName)
+		end
+
+		-- 2. Tra cứu từ TowersConfig nếu chưa có từ UI
 		if not exactCost or exactCost <= 0 then
 			local upgIdx = 1
 			for _, st in ipairs(recordedSteps) do
@@ -602,11 +779,20 @@ local function handleUpgradeTower(args: { any }, returnedModel: any)
 			exactCost = getUpgradePrice(towerName, upgIdx)
 		end
 
+		-- 3. Nếu vẫn chưa có, tính qua biến động ví tiền và làm tròn theo mốc chuẩn (snapToCleanPrice)
+		if not exactCost or exactCost <= 0 then
+			if curCash < initialCash then
+				local diff = initialCash - curCash
+				exactCost = snapToCleanPrice(diff) or diff
+			end
+		end
+
 		local stepIndex = #recordedSteps + 1
 
 		recorder.AddStep("Upgrade", {
 			TowerId = matchedId,
 			TowerName = towerName,
+			LayoutOrder = targetLayoutOrder,
 			Arg4 = variantName,
 			Position = posTable,
 			Cost = exactCost,
@@ -627,6 +813,7 @@ local function handleUpgradeTower(args: { any }, returnedModel: any)
 					if nowCash < initialCash and recordedSteps[stepIndex] then
 						local diff = initialCash - nowCash
 						if diff > 0 then
+							diff = snapToCleanPrice(diff) or diff
 							if not recordedSteps[stepIndex].TowerCost then
 								recordedSteps[stepIndex].TowerCost = diff
 							end
@@ -720,9 +907,15 @@ local function handleChangeTowerMode(args: { any }, returnedResult: any)
 			end)
 		end
 
+		local targetLayoutOrder: number? = nil
+		if matchedId then
+			targetLayoutOrder = table.find(activeTowers, matchedId)
+		end
+
 		recorder.AddStep("Target", {
 			TowerId = matchedId,
 			TowerName = towerName,
+			LayoutOrder = targetLayoutOrder,
 			TargetMode = targetModeStr,
 			Position = posTable,
 			RawData = {
@@ -808,9 +1001,10 @@ local function setupRemoteHook()
 				elseif remoteName == "UpgradeTower" or (upgradeRemote and self == upgradeRemote) then
 					if not upgradeRemote then upgradeRemote = self end
 					local args = { ... }
+					local preUpgPrice = getUpgradePriceForTowerInstance(args[1])
 					if setnc and method then setnc(method) end
 					local res = table.pack(oldNamecall(self, ...))
-					task.spawn(handleUpgradeTower, args, res[1])
+					task.spawn(handleUpgradeTower, args, res[1], preUpgPrice)
 					return table.unpack(res, 1, res.n)
 				elseif remoteName == "ChangeTowerMode" or (changeModeRemote and self == changeModeRemote) then
 					if not changeModeRemote then changeModeRemote = self end
@@ -863,8 +1057,9 @@ local function setupRemoteHook()
 			oldUpgradeInvoke = hookfunction(upgradeRemote.InvokeServer, wrapC(function(self, ...)
 				if isRecording then
 					local args = { ... }
+					local preUpgPrice = getUpgradePriceForTowerInstance(args[1])
 					local res = table.pack(oldUpgradeInvoke(self, ...))
-					task.spawn(handleUpgradeTower, args, res[1])
+					task.spawn(handleUpgradeTower, args, res[1], preUpgPrice)
 					return table.unpack(res, 1, res.n)
 				end
 				return oldUpgradeInvoke(self, ...)
@@ -927,6 +1122,7 @@ end
 
 function recorder.ClearSteps()
 	table.clear(recordedSteps)
+	table.clear(activeTowers)
 	table.clear(instanceToId)
 	table.clear(idToInstance)
 	table.clear(idToInfo)

@@ -18,6 +18,7 @@ export type MacroStep = {
 	Time: number, -- Giây Match Timer lúc thực hiện (số thập phân 2 chữ số, vd: 14.35)
 	Cost: number?, -- Tiền trong ví lúc thực hiện
 	TowerCost: number?, -- Giá tiền thực tế của tháp/nâng cấp
+	LayoutOrder: number?, -- Thứ tự hiển thị trong UI UnitManager.Units
 	TargetMode: string?, -- Chế độ ngắm bắn ("First", "Last", ...)
 	RawData: { [string]: any }?, -- Dữ liệu thô dự phòng
 }

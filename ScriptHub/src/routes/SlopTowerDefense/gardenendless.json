@@ -1,11 +1,12 @@
 {
   "Steps": [
     {
+      "LayoutOrder": 1,
       "TowerCost": 400,
       "Index": 1,
-      "Cost": 700,
+      "Cost": 400,
       "CFrame": [
-        -18.05883026123047, -45.817970275878909, 0.7098350524902344, 1, 0, 0, 0,
+        -7.695971488952637, -45.817970275878909, -17.45026397705078, 1, 0, 0, 0,
         1, 0, 0, 0, 1
       ],
       "Arg3": false,
@@ -15,23 +16,24 @@
       "Arg5": ["Gold"],
       "Wave": 0,
       "RawData": {
-        "Arg2": "-18.0588303, -45.8179703, 0.709835052, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg2": "-7.69597149, -45.8179703, -17.450264, 1, 0, 0, 0, 1, 0, 0, 0, 1",
         "Arg1": "Freddy Trashcan",
         "Arg4": "Freddy Trashcan Gold",
         "Arg3": false,
         "Arg5": ["Gold"]
       },
-      "Position": [-18.05883026123047, -45.817970275878909, 0.7098350524902344],
+      "Position": [-7.695971488952637, -45.817970275878909, -17.45026397705078],
       "RecordSpeed": 1,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 0.07
+      "Time": 0.92
     },
     {
+      "LayoutOrder": 2,
       "TowerCost": 400,
       "Index": 2,
-      "Cost": 870,
+      "Cost": 400,
       "CFrame": [
-        -20.64508628845215, -45.81797409057617, -7.1709489822387699, 1, 0, 0, 0,
+        -3.562932014465332, -45.81796646118164, -9.212635040283204, 1, 0, 0, 0,
         1, 0, 0, 0, 1
       ],
       "Arg3": false,
@@ -41,23 +43,24 @@
       "Arg5": ["Gold"],
       "Wave": 1,
       "RawData": {
-        "Arg2": "-20.6450863, -45.8179741, -7.17094898, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg2": "-3.56293201, -45.8179665, -9.21263504, 1, 0, 0, 0, 1, 0, 0, 0, 1",
         "Arg1": "Freddy Trashcan",
         "Arg4": "Freddy Trashcan Gold",
         "Arg3": false,
         "Arg5": ["Gold"]
       },
-      "Position": [-20.64508628845215, -45.81797409057617, -7.1709489822387699],
+      "Position": [-3.562932014465332, -45.81796646118164, -9.212635040283204],
       "RecordSpeed": 1,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 6.96
+      "Time": 7.17
     },
     {
+      "LayoutOrder": 3,
       "TowerCost": 400,
       "Index": 3,
-      "Cost": 470,
+      "Cost": 400,
       "CFrame": [
-        -11.602035522460938, -45.81797409057617, -8.57151985168457, 1, 0, 0, 0,
+        -10.08126449584961, -45.817970275878909, -9.695259094238282, 1, 0, 0, 0,
         1, 0, 0, 0, 1
       ],
       "Arg3": false,
@@ -67,16 +70,16 @@
       "Arg5": ["Gold"],
       "Wave": 1,
       "RawData": {
-        "Arg2": "-11.6020355, -45.8179741, -8.57151985, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg2": "-10.0812645, -45.8179703, -9.69525909, 1, 0, 0, 0, 1, 0, 0, 0, 1",
         "Arg1": "Freddy Trashcan",
         "Arg4": "Freddy Trashcan Gold",
         "Arg3": false,
         "Arg5": ["Gold"]
       },
-      "Position": [-11.602035522460938, -45.81797409057617, -8.57151985168457],
+      "Position": [-10.08126449584961, -45.817970275878909, -9.695259094238282],
       "RecordSpeed": 1,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 7.99
+      "Time": 8.16
     },
     {
       "Index": 4,
@@ -86,14 +89,15 @@
       "Type": "VoteSkip",
       "Wave": 1,
       "RecordSpeed": 1,
-      "Time": 11.31
+      "Time": 11.47
     },
     {
+      "LayoutOrder": 4,
       "TowerCost": 400,
       "Index": 5,
-      "Cost": 1835,
+      "Cost": 400,
       "CFrame": [
-        -20.352338790893556, -45.817970275878909, -14.895242691040039, 1, 0, 0,
+        -9.197532653808594, -45.817970275878909, -3.3751184940338136, 1, 0, 0,
         0, 1, 0, 0, 0, 1
       ],
       "Arg3": false,
@@ -103,23 +107,24 @@
       "Arg5": ["Gold"],
       "Wave": 2,
       "RawData": {
-        "Arg2": "-20.3523388, -45.8179703, -14.8952427, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg2": "-9.19753265, -45.8179703, -3.37511849, 1, 0, 0, 0, 1, 0, 0, 0, 1",
         "Arg1": "Freddy Trashcan",
         "Arg4": "Freddy Trashcan Gold",
         "Arg3": false,
         "Arg5": ["Gold"]
       },
       "Position": [
-        -20.352338790893556, -45.817970275878909, -14.895242691040039
+        -9.197532653808594, -45.817970275878909, -3.3751184940338136
       ],
       "RecordSpeed": 1,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 13.69
+      "Time": 15.2
     },
     {
+      "LayoutOrder": 4,
       "TowerCost": 800,
       "Index": 6,
-      "Cost": 1435,
+      "Cost": 800,
       "TowerName": "Freddy Trashcan",
       "TowerId": "T4",
       "Type": "Upgrade",
@@ -129,11 +134,11 @@
         "Variant": "Freddy Trashcan Gold"
       },
       "Position": [
-        -20.352338790893556, -45.817970275878909, -14.895242691040039
+        -9.197532653808594, -45.817970275878909, -3.3751184940338136
       ],
       "RecordSpeed": 1,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 14.57
+      "Time": 15.88
     },
     {
       "Index": 7,
@@ -143,14 +148,15 @@
       "Type": "VoteSkip",
       "Wave": 2,
       "RecordSpeed": 1,
-      "Time": 18.43
+      "Time": 18.09
     },
     {
+      "LayoutOrder": 5,
       "TowerCost": 3000,
       "Index": 8,
-      "Cost": 3139,
+      "Cost": 3000,
       "CFrame": [
-        -6.207370758056641, -46.04132080078125, 13.618965148925782, 1, 0, 0, 0,
+        -1.6446971893310547, -45.96867370605469, 13.07305908203125, 1, 0, 0, 0,
         1, 0, 0, 0, 1
       ],
       "Arg3": false,
@@ -160,193 +166,201 @@
       "Arg5": ["Rainbow"],
       "Wave": 3,
       "RawData": {
-        "Arg2": "-6.20737076, -46.0413208, 13.6189651, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg2": "-1.64469719, -45.9686737, 13.0730591, 1, 0, 0, 0, 1, 0, 0, 0, 1",
         "Arg1": "Partygoer",
         "Arg4": "Partygoer Rainbow",
         "Arg3": false,
         "Arg5": ["Rainbow"]
       },
-      "Position": [-6.207370758056641, -46.04132080078125, 13.618965148925782],
+      "Position": [-1.6446971893310547, -45.96867370605469, 13.07305908203125],
       "RecordSpeed": 1,
       "Arg4": "Partygoer Rainbow",
-      "Time": 20.59
+      "Time": 20.13
     },
     {
       "Index": 9,
+      "Cost": 0,
+      "TowerName": "VoteSkip",
+      "TowerId": "SKIP",
+      "Type": "VoteSkip",
+      "Wave": 3,
+      "RecordSpeed": 1,
+      "Time": 24.71
+    },
+    {
+      "LayoutOrder": 6,
+      "TowerCost": 3000,
+      "Index": 10,
+      "Cost": 3000,
+      "CFrame": [
+        2.8377809524536135, -46.451873779296878, 13.997312545776368, 1, 0, 0, 0,
+        1, 0, 0, 0, 1
+      ],
+      "Arg3": false,
+      "TowerName": "Partygoer",
+      "TowerId": "T6",
+      "Type": "Place",
+      "Arg5": ["Rainbow"],
+      "Wave": 4,
+      "RawData": {
+        "Arg2": "2.83778095, -46.4518738, 13.9973125, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg1": "Partygoer",
+        "Arg4": "Partygoer Rainbow",
+        "Arg3": false,
+        "Arg5": ["Rainbow"]
+      },
+      "Position": [2.8377809524536135, -46.451873779296878, 13.997312545776368],
+      "RecordSpeed": 1,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 27.24
+    },
+    {
+      "Index": 11,
       "Cost": 0,
       "TowerName": "GameSpeed",
       "TowerId": "SPEED",
       "Speed": 4,
       "Type": "Speed",
-      "Wave": 3,
+      "Wave": 4,
       "RawData": { "Speed": 4 },
       "RecordSpeed": 1,
-      "Time": 24.32
+      "Time": 30.9
     },
     {
-      "Index": 10,
+      "Index": 12,
       "Cost": 0,
       "TowerName": "VoteSkip",
       "TowerId": "SKIP",
       "Type": "VoteSkip",
-      "Wave": 3,
-      "RecordSpeed": 4,
-      "Time": 25.04
-    },
-    {
-      "TowerCost": 800,
-      "Index": 11,
-      "Cost": 3251,
-      "TowerName": "Freddy Trashcan",
-      "TowerId": "T1",
-      "Type": "Upgrade",
       "Wave": 4,
-      "RawData": {
-        "InstanceName": "Freddy Trashcan",
-        "Variant": "Freddy Trashcan Gold"
-      },
-      "Position": [-18.05883026123047, -45.817970275878909, 0.7098350524902344],
       "RecordSpeed": 4,
-      "Arg4": "Freddy Trashcan Gold",
-      "Time": 27.52
+      "Time": 33.34
     },
     {
-      "TowerCost": 1600,
-      "Index": 12,
-      "Cost": 2451,
-      "TowerName": "Freddy Trashcan",
-      "TowerId": "T3",
-      "Type": "Upgrade",
-      "Wave": 4,
-      "RawData": {
-        "InstanceName": "Freddy Trashcan",
-        "Variant": "Freddy Trashcan Gold"
-      },
-      "Position": [-11.602035522460938, -45.81797409057617, -8.57151985168457],
-      "RecordSpeed": 4,
-      "Arg4": "Freddy Trashcan Gold",
-      "Time": 27.72
-    },
-    {
+      "LayoutOrder": 3,
       "TowerCost": 800,
       "Index": 13,
-      "Cost": 1651,
+      "Cost": 800,
       "TowerName": "Freddy Trashcan",
-      "TowerId": "T2",
+      "TowerId": "T3",
       "Type": "Upgrade",
       "Wave": 4,
       "RawData": {
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-20.64508628845215, -45.81797409057617, -7.1709489822387699],
+      "Position": [-10.08126449584961, -45.817970275878909, -9.695259094238282],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 27.8
+      "Time": 34.25
     },
     {
+      "LayoutOrder": 2,
+      "TowerCost": 800,
       "Index": 14,
-      "Cost": 0,
-      "TowerName": "VoteSkip",
-      "TowerId": "SKIP",
-      "Type": "VoteSkip",
+      "Cost": 800,
+      "TowerName": "Freddy Trashcan",
+      "TowerId": "T2",
+      "Type": "Upgrade",
       "Wave": 4,
+      "RawData": {
+        "InstanceName": "Freddy Trashcan",
+        "Variant": "Freddy Trashcan Gold"
+      },
+      "Position": [-3.562932014465332, -45.81796646118164, -9.212635040283204],
       "RecordSpeed": 4,
-      "Time": 29.14
+      "Arg4": "Freddy Trashcan Gold",
+      "Time": 34.33
     },
     {
-      "TowerCost": 3600,
+      "LayoutOrder": 1,
+      "TowerCost": 800,
       "Index": 15,
-      "Cost": 4530,
+      "Cost": 800,
       "TowerName": "Freddy Trashcan",
-      "TowerId": "T4",
+      "TowerId": "T1",
       "Type": "Upgrade",
       "Wave": 5,
       "RawData": {
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [
-        -20.352338790893556, -45.817970275878909, -14.895242691040039
-      ],
+      "Position": [-7.695971488952637, -45.817970275878909, -17.45026397705078],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 32.23
+      "Time": 34.42
     },
     {
-      "TowerCost": 2400,
-      "Index": 16,
-      "Cost": 3330,
-      "TowerName": "Freddy Trashcan",
-      "TowerId": "T2",
-      "Type": "Upgrade",
-      "Wave": 5,
-      "RawData": {
-        "InstanceName": "Freddy Trashcan",
-        "Variant": "Freddy Trashcan Gold"
-      },
-      "Position": [-20.64508628845215, -45.81797409057617, -7.1709489822387699],
-      "RecordSpeed": 4,
-      "Arg4": "Freddy Trashcan Gold",
-      "Time": 32.3
-    },
-    {
+      "LayoutOrder": 4,
       "TowerCost": 1200,
+      "Index": 16,
+      "Cost": 1200,
+      "TowerName": "Freddy Trashcan",
+      "TowerId": "T4",
+      "Type": "Upgrade",
+      "Wave": 5,
+      "RawData": {
+        "InstanceName": "Freddy Trashcan",
+        "Variant": "Freddy Trashcan Gold"
+      },
+      "Position": [
+        -9.197532653808594, -45.817970275878909, -3.3751184940338136
+      ],
+      "RecordSpeed": 4,
+      "Arg4": "Freddy Trashcan Gold",
+      "Time": 34.5
+    },
+    {
+      "LayoutOrder": 5,
+      "TowerCost": 1500,
       "Index": 17,
-      "Cost": 2130,
-      "TowerName": "Freddy Trashcan",
-      "TowerId": "T1",
+      "Cost": 1500,
+      "TowerName": "Partygoer",
+      "TowerId": "T5",
       "Type": "Upgrade",
       "Wave": 5,
       "RawData": {
-        "InstanceName": "Freddy Trashcan",
-        "Variant": "Freddy Trashcan Gold"
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
       },
-      "Position": [-18.05883026123047, -45.817970275878909, 0.7098350524902344],
+      "Position": [-1.6446971893310547, -45.96867370605469, 13.07305908203125],
       "RecordSpeed": 4,
-      "Arg4": "Freddy Trashcan Gold",
-      "Time": 32.37
+      "Arg4": "Partygoer Rainbow",
+      "Time": 34.6
     },
     {
+      "LayoutOrder": 6,
+      "TowerCost": 1500,
       "Index": 18,
+      "Cost": 1500,
+      "TowerName": "Partygoer",
+      "TowerId": "T6",
+      "Type": "Upgrade",
+      "Wave": 5,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [2.8377809524536135, -46.451873779296878, 13.997312545776368],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 34.68
+    },
+    {
+      "Index": 19,
       "Cost": 0,
       "TowerName": "VoteSkip",
       "TowerId": "SKIP",
       "Type": "VoteSkip",
       "Wave": 5,
       "RecordSpeed": 4,
-      "Time": 33.24
+      "Time": 37.44
     },
     {
-      "TowerCost": 3000,
-      "Index": 19,
-      "Cost": 7661,
-      "CFrame": [
-        -1.2796545028686524, -45.93383026123047, 14.417972564697266, 1, 0, 0, 0,
-        1, 0, 0, 0, 1
-      ],
-      "Arg3": false,
-      "TowerName": "Partygoer",
-      "TowerId": "T6",
-      "Type": "Place",
-      "Arg5": ["Rainbow"],
-      "Wave": 6,
-      "RawData": {
-        "Arg2": "-1.2796545, -45.9338303, 14.4179726, 1, 0, 0, 0, 1, 0, 0, 0, 1",
-        "Arg1": "Partygoer",
-        "Arg4": "Partygoer Rainbow",
-        "Arg3": false,
-        "Arg5": ["Rainbow"]
-      },
-      "Position": [-1.2796545028686524, -45.93383026123047, 14.417972564697266],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 35.59
-    },
-    {
-      "TowerCost": 2550,
+      "LayoutOrder": 3,
+      "TowerCost": 1200,
       "Index": 20,
-      "Cost": 5009,
+      "Cost": 1200,
       "TowerName": "Freddy Trashcan",
       "TowerId": "T3",
       "Type": "Upgrade",
@@ -355,78 +369,118 @@
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-11.602035522460938, -45.81797409057617, -8.57151985168457],
+      "Position": [-10.08126449584961, -45.817970275878909, -9.695259094238282],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 37.67
+      "Time": 41.28
     },
     {
-      "TowerCost": 1350,
+      "LayoutOrder": 2,
+      "TowerCost": 1200,
       "Index": 21,
-      "Cost": 3809,
+      "Cost": 1200,
       "TowerName": "Freddy Trashcan",
-      "TowerId": "T1",
+      "TowerId": "T2",
       "Type": "Upgrade",
       "Wave": 6,
       "RawData": {
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-18.05883026123047, -45.817970275878909, 0.7098350524902344],
+      "Position": [-3.562932014465332, -45.81796646118164, -9.212635040283204],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 37.75
+      "Time": 41.37
     },
     {
-      "TowerCost": 1176,
+      "LayoutOrder": 1,
+      "TowerCost": 1200,
       "Index": 22,
-      "Cost": 2459,
+      "Cost": 1200,
       "TowerName": "Freddy Trashcan",
-      "TowerId": "T2",
+      "TowerId": "T1",
       "Type": "Upgrade",
       "Wave": 6,
       "RawData": {
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-20.64508628845215, -45.81797409057617, -7.1709489822387699],
+      "Position": [-7.695971488952637, -45.817970275878909, -17.45026397705078],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 37.94
+      "Time": 41.45
     },
     {
+      "LayoutOrder": 4,
+      "TowerCost": 1350,
       "Index": 23,
+      "Cost": 1350,
+      "TowerName": "Freddy Trashcan",
+      "TowerId": "T4",
+      "Type": "Upgrade",
+      "Wave": 6,
+      "RawData": {
+        "InstanceName": "Freddy Trashcan",
+        "Variant": "Freddy Trashcan Gold"
+      },
+      "Position": [
+        -9.197532653808594, -45.817970275878909, -3.3751184940338136
+      ],
+      "RecordSpeed": 4,
+      "Arg4": "Freddy Trashcan Gold",
+      "Time": 41.53
+    },
+    {
+      "LayoutOrder": 5,
+      "TowerCost": 2000,
+      "Index": 24,
+      "Cost": 2000,
+      "TowerName": "Partygoer",
+      "TowerId": "T5",
+      "Type": "Upgrade",
+      "Wave": 6,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [-1.6446971893310547, -45.96867370605469, 13.07305908203125],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 41.63
+    },
+    {
+      "LayoutOrder": 6,
+      "TowerCost": 2000,
+      "Index": 25,
+      "Cost": 2000,
+      "TowerName": "Partygoer",
+      "TowerId": "T6",
+      "Type": "Upgrade",
+      "Wave": 6,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [2.8377809524536135, -46.451873779296878, 13.997312545776368],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 41.73
+    },
+    {
+      "Index": 26,
       "Cost": 0,
       "TowerName": "VoteSkip",
       "TowerId": "SKIP",
       "Type": "VoteSkip",
       "Wave": 6,
       "RecordSpeed": 4,
-      "Time": 38.84
+      "Time": 43.05
     },
     {
-      "TowerCost": 2700,
-      "Index": 24,
-      "Cost": 14313,
-      "TowerName": "Freddy Trashcan",
-      "TowerId": "T4",
-      "Type": "Upgrade",
-      "Wave": 7,
-      "RawData": {
-        "InstanceName": "Freddy Trashcan",
-        "Variant": "Freddy Trashcan Gold"
-      },
-      "Position": [
-        -20.352338790893556, -45.817970275878909, -14.895242691040039
-      ],
-      "RecordSpeed": 4,
-      "Arg4": "Freddy Trashcan Gold",
-      "Time": 40.35
-    },
-    {
-      "TowerCost": 4350,
-      "Index": 25,
-      "Cost": 12963,
+      "LayoutOrder": 3,
+      "TowerCost": 1350,
+      "Index": 27,
+      "Cost": 1350,
       "TowerName": "Freddy Trashcan",
       "TowerId": "T3",
       "Type": "Upgrade",
@@ -435,49 +489,34 @@
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-11.602035522460938, -45.81797409057617, -8.57151985168457],
+      "Position": [-10.08126449584961, -45.817970275878909, -9.695259094238282],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 40.44
+      "Time": 44.93
     },
     {
-      "TowerCost": 3000,
-      "Index": 26,
-      "Cost": 11613,
-      "TowerName": "Partygoer",
-      "TowerId": "T6",
-      "Type": "Upgrade",
-      "Wave": 7,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [-1.2796545028686524, -45.93383026123047, 14.417972564697266],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 40.52
-    },
-    {
-      "TowerCost": 3200,
-      "Index": 27,
-      "Cost": 10113,
-      "TowerName": "Partygoer",
-      "TowerId": "T5",
-      "Type": "Upgrade",
-      "Wave": 7,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [-6.207370758056641, -46.04132080078125, 13.618965148925782],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 40.6
-    },
-    {
-      "TowerCost": 3400,
+      "LayoutOrder": 2,
+      "TowerCost": 1350,
       "Index": 28,
-      "Cost": 8613,
+      "Cost": 1350,
+      "TowerName": "Freddy Trashcan",
+      "TowerId": "T2",
+      "Type": "Upgrade",
+      "Wave": 7,
+      "RawData": {
+        "InstanceName": "Freddy Trashcan",
+        "Variant": "Freddy Trashcan Gold"
+      },
+      "Position": [-3.562932014465332, -45.81796646118164, -9.212635040283204],
+      "RecordSpeed": 4,
+      "Arg4": "Freddy Trashcan Gold",
+      "Time": 45.01
+    },
+    {
+      "LayoutOrder": 1,
+      "TowerCost": 1350,
+      "Index": 29,
+      "Cost": 1350,
       "TowerName": "Freddy Trashcan",
       "TowerId": "T1",
       "Type": "Upgrade",
@@ -486,61 +525,82 @@
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-18.05883026123047, -45.817970275878909, 0.7098350524902344],
+      "Position": [-7.695971488952637, -45.817970275878909, -17.45026397705078],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 40.69
+      "Time": 45.11
     },
     {
+      "LayoutOrder": 4,
       "TowerCost": 1700,
-      "Index": 29,
-      "Cost": 6913,
+      "Index": 30,
+      "Cost": 1700,
       "TowerName": "Freddy Trashcan",
-      "TowerId": "T2",
+      "TowerId": "T4",
       "Type": "Upgrade",
       "Wave": 7,
       "RawData": {
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-20.64508628845215, -45.81797409057617, -7.1709489822387699],
+      "Position": [
+        -9.197532653808594, -45.817970275878909, -3.3751184940338136
+      ],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 40.77
+      "Time": 45.19
     },
     {
-      "Index": 30,
+      "LayoutOrder": 5,
+      "TowerCost": 3000,
+      "Index": 31,
+      "Cost": 3000,
+      "TowerName": "Partygoer",
+      "TowerId": "T5",
+      "Type": "Upgrade",
+      "Wave": 7,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [-1.6446971893310547, -45.96867370605469, 13.07305908203125],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 45.27
+    },
+    {
+      "LayoutOrder": 6,
+      "TowerCost": 3000,
+      "Index": 32,
+      "Cost": 3000,
+      "TowerName": "Partygoer",
+      "TowerId": "T6",
+      "Type": "Upgrade",
+      "Wave": 7,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [2.8377809524536135, -46.451873779296878, 13.997312545776368],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 45.36
+    },
+    {
+      "Index": 33,
       "Cost": 0,
       "TowerName": "VoteSkip",
       "TowerId": "SKIP",
       "Type": "VoteSkip",
       "Wave": 7,
       "RecordSpeed": 4,
-      "Time": 44.45
+      "Time": 48.15
     },
     {
-      "TowerCost": 5400,
-      "Index": 31,
-      "Cost": 17114,
-      "TowerName": "Freddy Trashcan",
-      "TowerId": "T4",
-      "Type": "Upgrade",
-      "Wave": 8,
-      "RawData": {
-        "InstanceName": "Freddy Trashcan",
-        "Variant": "Freddy Trashcan Gold"
-      },
-      "Position": [
-        -20.352338790893556, -45.817970275878909, -14.895242691040039
-      ],
-      "RecordSpeed": 4,
-      "Arg4": "Freddy Trashcan Gold",
-      "Time": 45.76
-    },
-    {
-      "TowerCost": 5700,
-      "Index": 32,
-      "Cost": 15414,
+      "LayoutOrder": 3,
+      "TowerCost": 1700,
+      "Index": 34,
+      "Cost": 1700,
       "TowerName": "Freddy Trashcan",
       "TowerId": "T3",
       "Type": "Upgrade",
@@ -549,15 +609,52 @@
         "InstanceName": "Freddy Trashcan",
         "Variant": "Freddy Trashcan Gold"
       },
-      "Position": [-11.602035522460938, -45.81797409057617, -8.57151985168457],
+      "Position": [-10.08126449584961, -45.817970275878909, -9.695259094238282],
       "RecordSpeed": 4,
       "Arg4": "Freddy Trashcan Gold",
-      "Time": 45.83
+      "Time": 50.63
     },
     {
-      "TowerCost": 4000,
-      "Index": 33,
-      "Cost": 13714,
+      "LayoutOrder": 2,
+      "TowerCost": 1700,
+      "Index": 35,
+      "Cost": 1700,
+      "TowerName": "Freddy Trashcan",
+      "TowerId": "T2",
+      "Type": "Upgrade",
+      "Wave": 8,
+      "RawData": {
+        "InstanceName": "Freddy Trashcan",
+        "Variant": "Freddy Trashcan Gold"
+      },
+      "Position": [-3.562932014465332, -45.81796646118164, -9.212635040283204],
+      "RecordSpeed": 4,
+      "Arg4": "Freddy Trashcan Gold",
+      "Time": 50.71
+    },
+    {
+      "LayoutOrder": 1,
+      "TowerCost": 1700,
+      "Index": 36,
+      "Cost": 1700,
+      "TowerName": "Freddy Trashcan",
+      "TowerId": "T1",
+      "Type": "Upgrade",
+      "Wave": 8,
+      "RawData": {
+        "InstanceName": "Freddy Trashcan",
+        "Variant": "Freddy Trashcan Gold"
+      },
+      "Position": [-7.695971488952637, -45.817970275878909, -17.45026397705078],
+      "RecordSpeed": 4,
+      "Arg4": "Freddy Trashcan Gold",
+      "Time": 50.81
+    },
+    {
+      "LayoutOrder": 5,
+      "TowerCost": 5000,
+      "Index": 37,
+      "Cost": 5000,
       "TowerName": "Partygoer",
       "TowerId": "T5",
       "Type": "Upgrade",
@@ -566,15 +663,16 @@
         "InstanceName": "Partygoer",
         "Variant": "Partygoer Rainbow"
       },
-      "Position": [-6.207370758056641, -46.04132080078125, 13.618965148925782],
+      "Position": [-1.6446971893310547, -45.96867370605469, 13.07305908203125],
       "RecordSpeed": 4,
       "Arg4": "Partygoer Rainbow",
-      "Time": 45.9
+      "Time": 50.9
     },
     {
-      "TowerCost": 2000,
-      "Index": 34,
-      "Cost": 11714,
+      "LayoutOrder": 6,
+      "TowerCost": 5000,
+      "Index": 38,
+      "Cost": 5000,
       "TowerName": "Partygoer",
       "TowerId": "T6",
       "Type": "Upgrade",
@@ -583,82 +681,10 @@
         "InstanceName": "Partygoer",
         "Variant": "Partygoer Rainbow"
       },
-      "Position": [-1.2796545028686524, -45.93383026123047, 14.417972564697266],
+      "Position": [2.8377809524536135, -46.451873779296878, 13.997312545776368],
       "RecordSpeed": 4,
       "Arg4": "Partygoer Rainbow",
-      "Time": 45.98
-    },
-    {
-      "Index": 35,
-      "Cost": 0,
-      "TowerName": "VoteSkip",
-      "TowerId": "SKIP",
-      "Type": "VoteSkip",
-      "Wave": 8,
-      "RecordSpeed": 4,
-      "Time": 50.05
-    },
-    {
-      "Index": 36,
-      "Cost": 0,
-      "TowerName": "VoteSkip",
-      "TowerId": "SKIP",
-      "Type": "VoteSkip",
-      "Wave": 9,
-      "RecordSpeed": 4,
-      "Time": 56.66
-    },
-    {
-      "TowerCost": 23750,
-      "Index": 37,
-      "Cost": 36185,
-      "CFrame": [
-        18.203672409057618, -46.49776840209961, 1.5426807403564454, 1, 0, 0, 0,
-        1, 0, 0, 0, 1
-      ],
-      "Arg3": false,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T7",
-      "Type": "Place",
-      "Arg5": [],
-      "Wave": 9,
-      "RawData": {
-        "Arg2": "18.2036724, -46.4977684, 1.54268074, 1, 0, 0, 0, 1, 0, 0, 0, 1",
-        "Arg1": "Caine Still Life",
-        "Arg4": "Caine Still Life",
-        "Arg3": false,
-        "Arg5": []
-      },
-      "Position": [18.203672409057618, -46.49776840209961, 1.5426807403564454],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 57.47
-    },
-    {
-      "TowerCost": 30000,
-      "Index": 38,
-      "Cost": 63071,
-      "CFrame": [
-        14.427057266235352, -43.79795455932617, 1.217132568359375, 1, 0, 0, 0,
-        1, 0, 0, 0, 1
-      ],
-      "Arg3": false,
-      "TowerName": "Bacteria",
-      "TowerId": "T8",
-      "Type": "Place",
-      "Arg5": ["Rainbow"],
-      "Wave": 11,
-      "RawData": {
-        "Arg2": "14.4270573, -43.7979546, 1.21713257, 1, 0, 0, 0, 1, 0, 0, 0, 1",
-        "Arg1": "Bacteria",
-        "Arg4": "Bacteria Rainbow",
-        "Arg3": false,
-        "Arg5": ["Rainbow"]
-      },
-      "Position": [14.427057266235352, -43.79795455932617, 1.217132568359375],
-      "RecordSpeed": 4,
-      "Arg4": "Bacteria Rainbow",
-      "Time": 64.05
+      "Time": 50.98
     },
     {
       "Index": 39,
@@ -666,456 +692,178 @@
       "TowerName": "VoteSkip",
       "TowerId": "SKIP",
       "Type": "VoteSkip",
-      "Wave": 11,
+      "Wave": 8,
       "RecordSpeed": 4,
-      "Time": 67.3
+      "Time": 53.76
     },
     {
+      "LayoutOrder": 7,
+      "TowerCost": 30000,
       "Index": 40,
-      "Cost": 55498,
-      "TowerName": "Partygoer",
-      "TowerId": "T5",
-      "Type": "Sell",
-      "Wave": 11,
-      "RawData": { "InstanceName": "Partygoer" },
-      "Position": [-6.207370758056641, -46.04132080078125, 13.618965148925782],
-      "RecordSpeed": 4,
-      "Time": 67.97
-    },
-    {
-      "Index": 41,
-      "Cost": 63298,
-      "TowerName": "Partygoer",
-      "TowerId": "T6",
-      "Type": "Sell",
-      "Wave": 12,
-      "RawData": { "InstanceName": "Partygoer" },
-      "Position": [-1.2796545028686524, -45.93383026123047, 14.417972564697266],
-      "RecordSpeed": 4,
-      "Time": 68.9
-    },
-    {
-      "TowerCost": 3000,
-      "Index": 42,
-      "Cost": 68664,
+      "Cost": 30000,
       "CFrame": [
-        16.573284149169923, -45.93207550048828, -0.648066520690918, 1, 0, 0, 0,
+        17.61794662475586, -43.79795455932617, 0.7002682685852051, 1, 0, 0, 0,
         1, 0, 0, 0, 1
       ],
       "Arg3": false,
-      "TowerName": "Partygoer",
-      "TowerId": "T9",
+      "TowerName": "Bacteria",
+      "TowerId": "T7",
       "Type": "Place",
       "Arg5": ["Rainbow"],
-      "Wave": 12,
+      "Wave": 9,
       "RawData": {
-        "Arg2": "16.5732841, -45.9320755, -0.648066521, 1, 0, 0, 0, 1, 0, 0, 0, 1",
-        "Arg1": "Partygoer",
-        "Arg4": "Partygoer Rainbow",
+        "Arg2": "17.6179466, -43.7979546, 0.700268269, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg1": "Bacteria",
+        "Arg4": "Bacteria Rainbow",
         "Arg3": false,
         "Arg5": ["Rainbow"]
       },
-      "Position": [16.573284149169923, -45.93207550048828, -0.648066520690918],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 71.14
-    },
-    {
-      "TowerCost": 3000,
-      "Index": 43,
-      "Cost": 87804,
-      "CFrame": [
-        20.313386917114259, -45.95136260986328, -1.3184223175048829, 1, 0, 0, 0,
-        1, 0, 0, 0, 1
-      ],
-      "Arg3": false,
-      "TowerName": "Partygoer",
-      "TowerId": "T10",
-      "Type": "Place",
-      "Arg5": ["Rainbow"],
-      "Wave": 12,
-      "RawData": {
-        "Arg2": "20.3133869, -45.9513626, -1.31842232, 1, 0, 0, 0, 1, 0, 0, 0, 1",
-        "Arg1": "Partygoer",
-        "Arg4": "Partygoer Rainbow",
-        "Arg3": false,
-        "Arg5": ["Rainbow"]
-      },
-      "Position": [20.313386917114259, -45.95136260986328, -1.3184223175048829],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 72.61
-    },
-    {
-      "Index": 44,
-      "Cost": 0,
-      "TowerName": "VoteSkip",
-      "TowerId": "SKIP",
-      "Type": "VoteSkip",
-      "Wave": 12,
-      "RecordSpeed": 4,
-      "Time": 73.93
-    },
-    {
-      "TowerCost": 3000,
-      "Index": 45,
-      "Cost": 93791,
-      "TowerName": "Partygoer",
-      "TowerId": "T9",
-      "Type": "Upgrade",
-      "Wave": 12,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [16.573284149169923, -45.93207550048828, -0.648066520690918],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 74.19
-    },
-    {
-      "TowerCost": 5500,
-      "Index": 46,
-      "Cost": 92291,
-      "TowerName": "Partygoer",
-      "TowerId": "T10",
-      "Type": "Upgrade",
-      "Wave": 12,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [20.313386917114259, -45.95136260986328, -1.3184223175048829],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 74.27
-    },
-    {
-      "TowerCost": 39000,
-      "Index": 47,
-      "Cost": 90791,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T7",
-      "Type": "Upgrade",
-      "Wave": 12,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [18.203672409057618, -46.49776840209961, 1.5426807403564454],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 74.36
-    },
-    {
-      "TowerCost": 35000,
-      "Index": 48,
-      "Cost": 86791,
-      "TowerName": "Bacteria",
-      "TowerId": "T8",
-      "Type": "Upgrade",
-      "Wave": 12,
-      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
-      "Position": [14.427057266235352, -43.79795455932617, 1.217132568359375],
+      "Position": [17.61794662475586, -43.79795455932617, 0.7002682685852051],
       "RecordSpeed": 4,
       "Arg4": "Bacteria Rainbow",
-      "Time": 74.44
+      "Time": 57.32
     },
     {
-      "TowerCost": 2788,
-      "Index": 49,
-      "Cost": 64273,
-      "TowerName": "Partygoer",
-      "TowerId": "T9",
-      "Type": "Upgrade",
-      "Wave": 13,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [16.573284149169923, -45.93207550048828, -0.648066520690918],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 78.09
-    },
-    {
-      "TowerCost": 8625,
-      "Index": 50,
-      "Cost": 63110,
-      "TowerName": "Partygoer",
-      "TowerId": "T10",
-      "Type": "Upgrade",
-      "Wave": 13,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [20.313386917114259, -45.95136260986328, -1.3184223175048829],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 78.17
-    },
-    {
-      "TowerCost": 35446,
-      "Index": 51,
-      "Cost": 61485,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T7",
-      "Type": "Upgrade",
-      "Wave": 13,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [18.203672409057618, -46.49776840209961, 1.5426807403564454],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 78.26
-    },
-    {
-      "TowerCost": 28446,
-      "Index": 52,
-      "Cost": 54485,
-      "TowerName": "Bacteria",
-      "TowerId": "T8",
-      "Type": "Upgrade",
-      "Wave": 13,
-      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
-      "Position": [14.427057266235352, -43.79795455932617, 1.217132568359375],
-      "RecordSpeed": 4,
-      "Arg4": "Bacteria Rainbow",
-      "Time": 78.36
-    },
-    {
+      "LayoutOrder": 8,
       "TowerCost": 23750,
-      "Index": 53,
-      "Cost": 54808,
+      "Index": 41,
+      "Cost": 23750,
       "CFrame": [
-        14.096920013427735, -46.42741012573242, -0.2367410659790039, 1, 0, 0, 0,
+        18.002241134643556, -46.30830764770508, 4.3057169914245609, 1, 0, 0, 0,
         1, 0, 0, 0, 1
       ],
       "Arg3": false,
       "TowerName": "Caine Still Life",
-      "TowerId": "T11",
+      "TowerId": "T8",
       "Type": "Place",
       "Arg5": [],
-      "Wave": 15,
+      "Wave": 10,
       "RawData": {
-        "Arg2": "14.09692, -46.4274101, -0.236741066, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg2": "18.0022411, -46.3083076, 4.30571699, 1, 0, 0, 0, 1, 0, 0, 0, 1",
         "Arg1": "Caine Still Life",
         "Arg4": "Caine Still Life",
         "Arg3": false,
         "Arg5": []
       },
-      "Position": [14.096920013427735, -46.42741012573242, -0.2367410659790039],
+      "Position": [18.002241134643556, -46.30830764770508, 4.3057169914245609],
       "RecordSpeed": 4,
       "Arg4": "Caine Still Life",
-      "Time": 85.26
+      "Time": 62.15
     },
     {
-      "TowerCost": 13641,
-      "Index": 54,
-      "Cost": 88135,
-      "TowerName": "Partygoer",
-      "TowerId": "T9",
-      "Type": "Upgrade",
-      "Wave": 16,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [16.573284149169923, -45.93207550048828, -0.648066520690918],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 93.43
-    },
-    {
-      "TowerCost": 6120,
-      "Index": 55,
-      "Cost": 90614,
-      "TowerName": "Partygoer",
-      "TowerId": "T10",
-      "Type": "Upgrade",
-      "Wave": 16,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [20.313386917114259, -45.95136260986328, -1.3184223175048829],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 93.52
-    },
-    {
-      "TowerCost": 14000,
-      "Index": 56,
-      "Cost": 88494,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T11",
-      "Type": "Upgrade",
-      "Wave": 16,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [14.096920013427735, -46.42741012573242, -0.2367410659790039],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 93.61
-    },
-    {
-      "TowerCost": 55000,
-      "Index": 57,
-      "Cost": 84494,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T7",
-      "Type": "Upgrade",
-      "Wave": 16,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [18.203672409057618, -46.49776840209961, 1.5426807403564454],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 93.69
-    },
-    {
-      "TowerCost": 45000,
-      "Index": 58,
-      "Cost": 74494,
-      "TowerName": "Bacteria",
-      "TowerId": "T8",
-      "Type": "Upgrade",
-      "Wave": 16,
-      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
-      "Position": [14.427057266235352, -43.79795455932617, 1.217132568359375],
-      "RecordSpeed": 4,
-      "Arg4": "Bacteria Rainbow",
-      "Time": 93.8
-    },
-    {
-      "TowerCost": 10000,
-      "Index": 59,
-      "Cost": 141152,
-      "TowerName": "Partygoer",
-      "TowerId": "T9",
-      "Type": "Upgrade",
-      "Wave": 18,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [16.573284149169923, -45.93207550048828, -0.648066520690918],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 99.66
-    },
-    {
-      "TowerCost": 8986,
-      "Index": 60,
-      "Cost": 136152,
-      "TowerName": "Partygoer",
-      "TowerId": "T10",
-      "Type": "Upgrade",
-      "Wave": 18,
-      "RawData": {
-        "InstanceName": "Partygoer",
-        "Variant": "Partygoer Rainbow"
-      },
-      "Position": [20.313386917114259, -45.95136260986328, -1.3184223175048829],
-      "RecordSpeed": 4,
-      "Arg4": "Partygoer Rainbow",
-      "Time": 99.75
-    },
-    {
-      "TowerCost": 18986,
-      "Index": 61,
-      "Cost": 131152,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T11",
-      "Type": "Upgrade",
-      "Wave": 18,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [14.096920013427735, -46.42741012573242, -0.2367410659790039],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 99.85
-    },
-    {
-      "TowerCost": 65000,
-      "Index": 62,
-      "Cost": 127166,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T7",
-      "Type": "Upgrade",
-      "Wave": 18,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [18.203672409057618, -46.49776840209961, 1.5426807403564454],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 99.94
-    },
-    {
-      "TowerCost": 50000,
-      "Index": 63,
-      "Cost": 112166,
-      "TowerName": "Bacteria",
-      "TowerId": "T8",
-      "Type": "Upgrade",
-      "Wave": 18,
-      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
-      "Position": [14.427057266235352, -43.79795455932617, 1.217132568359375],
-      "RecordSpeed": 4,
-      "Arg4": "Bacteria Rainbow",
-      "Time": 100.02
-    },
-    {
-      "TowerCost": 2800,
-      "Index": 64,
-      "Cost": 190774,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T11",
-      "Type": "Upgrade",
-      "Wave": 18,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [14.096920013427735, -46.42741012573242, -0.2367410659790039],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 103.3
-    },
-    {
-      "TowerCost": 1028,
-      "Index": 65,
-      "Cost": 208004,
-      "TowerName": "Caine Still Life",
-      "TowerId": "T11",
-      "Type": "Upgrade",
-      "Wave": 19,
-      "RawData": {
-        "InstanceName": "Caine Still Life",
-        "Variant": "Caine Still Life"
-      },
-      "Position": [14.096920013427735, -46.42741012573242, -0.2367410659790039],
-      "RecordSpeed": 4,
-      "Arg4": "Caine Still Life",
-      "Time": 104.52
-    },
-    {
-      "TowerCost": 175000,
-      "Index": 66,
-      "Cost": 530156,
+      "LayoutOrder": 9,
+      "TowerCost": 23750,
+      "Index": 42,
+      "Cost": 23750,
       "CFrame": [
-        16.59328842163086, -45.425838470458987, 4.001442909240723, 1, 0, 0, 0,
+        15.464863777160645, -46.311561584472659, 1.5627293586730958, 1, 0, 0, 0,
+        1, 0, 0, 0, 1
+      ],
+      "Arg3": false,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T9",
+      "Type": "Place",
+      "Arg5": [],
+      "Wave": 11,
+      "RawData": {
+        "Arg2": "15.4648638, -46.3115616, 1.56272936, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg1": "Caine Still Life",
+        "Arg4": "Caine Still Life",
+        "Arg3": false,
+        "Arg5": []
+      },
+      "Position": [15.464863777160645, -46.311561584472659, 1.5627293586730958],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 65.86
+    },
+    {
+      "LayoutOrder": 5,
+      "Index": 43,
+      "Cost": 66784,
+      "TowerName": "Partygoer",
+      "TowerId": "T5",
+      "Type": "Sell",
+      "Wave": 11,
+      "RawData": { "InstanceName": "Partygoer" },
+      "Position": [-1.6446971893310547, -45.96867370605469, 13.07305908203125],
+      "RecordSpeed": 4,
+      "Time": 69.1
+    },
+    {
+      "LayoutOrder": 5,
+      "Index": 44,
+      "Cost": 74584,
+      "TowerName": "Partygoer",
+      "TowerId": "T6",
+      "Type": "Sell",
+      "Wave": 12,
+      "RawData": { "InstanceName": "Partygoer" },
+      "Position": [2.8377809524536135, -46.451873779296878, 13.997312545776368],
+      "RecordSpeed": 4,
+      "Time": 69.83
+    },
+    {
+      "LayoutOrder": 8,
+      "TowerCost": 3000,
+      "Index": 45,
+      "Cost": 3000,
+      "CFrame": [
+        14.438003540039063, -46.07701110839844, -2.349215507507324, 1, 0, 0, 0,
+        1, 0, 0, 0, 1
+      ],
+      "Arg3": false,
+      "TowerName": "Partygoer",
+      "TowerId": "T10",
+      "Type": "Place",
+      "Arg5": ["Rainbow"],
+      "Wave": 14,
+      "RawData": {
+        "Arg2": "14.4380035, -46.0770111, -2.34921551, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg1": "Partygoer",
+        "Arg4": "Partygoer Rainbow",
+        "Arg3": false,
+        "Arg5": ["Rainbow"]
+      },
+      "Position": [14.438003540039063, -46.07701110839844, -2.349215507507324],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 79.64
+    },
+    {
+      "LayoutOrder": 9,
+      "TowerCost": 3000,
+      "Index": 46,
+      "Cost": 3000,
+      "CFrame": [
+        18.448623657226564, -45.80906677246094, -3.666156768798828, 1, 0, 0, 0,
+        1, 0, 0, 0, 1
+      ],
+      "Arg3": false,
+      "TowerName": "Partygoer",
+      "TowerId": "T11",
+      "Type": "Place",
+      "Arg5": ["Rainbow"],
+      "Wave": 14,
+      "RawData": {
+        "Arg2": "18.4486237, -45.8090668, -3.66615677, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg1": "Partygoer",
+        "Arg4": "Partygoer Rainbow",
+        "Arg3": false,
+        "Arg5": ["Rainbow"]
+      },
+      "Position": [18.448623657226564, -45.80906677246094, -3.666156768798828],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 81.28
+    },
+    {
+      "LayoutOrder": 10,
+      "TowerCost": 175000,
+      "Index": 47,
+      "Cost": 175000,
+      "CFrame": [
+        13.348821640014649, -45.42565155029297, -2.715270757675171, 1, 0, 0, 0,
         1, 0, 0, 0, 1
       ],
       "Arg3": false,
@@ -1123,82 +871,434 @@
       "TowerId": "T12",
       "Type": "Place",
       "Arg5": [],
-      "Wave": 20,
+      "Wave": 15,
       "RawData": {
-        "Arg2": "16.5932884, -45.4258385, 4.00144291, 1, 0, 0, 0, 1, 0, 0, 0, 1",
+        "Arg2": "13.3488216, -45.4256516, -2.71527076, 1, 0, 0, 0, 1, 0, 0, 0, 1",
         "Arg1": "Lord Verity",
         "Arg4": "Lord Verity",
         "Arg3": false,
         "Arg5": []
       },
-      "Position": [16.59328842163086, -45.425838470458987, 4.001442909240723],
+      "Position": [13.348821640014649, -45.42565155029297, -2.715270757675171],
       "RecordSpeed": 4,
       "Arg4": "Lord Verity",
-      "Time": 113.34
+      "Time": 85.67
     },
     {
-      "TowerCost": 216911,
+      "LayoutOrder": 9,
+      "TowerCost": 4000,
+      "Index": 48,
+      "Cost": 4000,
+      "TowerName": "Partygoer",
+      "TowerId": "T11",
+      "Type": "Upgrade",
+      "Wave": 16,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [18.448623657226564, -45.80906677246094, -3.666156768798828],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 91.36
+    },
+    {
+      "LayoutOrder": 8,
+      "TowerCost": 4000,
+      "Index": 49,
+      "Cost": 4000,
+      "TowerName": "Partygoer",
+      "TowerId": "T10",
+      "Type": "Upgrade",
+      "Wave": 16,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [14.438003540039063, -46.07701110839844, -2.349215507507324],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 91.45
+    },
+    {
+      "LayoutOrder": 7,
+      "TowerCost": 35000,
+      "Index": 50,
+      "Cost": 35000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T9",
+      "Type": "Upgrade",
+      "Wave": 16,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [15.464863777160645, -46.311561584472659, 1.5627293586730958],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 91.54
+    },
+    {
+      "LayoutOrder": 6,
+      "TowerCost": 4000,
+      "Index": 51,
+      "Cost": 4000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T8",
+      "Type": "Upgrade",
+      "Wave": 16,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [18.002241134643556, -46.30830764770508, 4.3057169914245609],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 91.65
+    },
+    {
+      "LayoutOrder": 5,
+      "TowerCost": 35000,
+      "Index": 52,
+      "Cost": 35000,
+      "TowerName": "Bacteria",
+      "TowerId": "T7",
+      "Type": "Upgrade",
+      "Wave": 16,
+      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
+      "Position": [17.61794662475586, -43.79795455932617, 0.7002682685852051],
+      "RecordSpeed": 4,
+      "Arg4": "Bacteria Rainbow",
+      "Time": 91.76
+    },
+    {
+      "LayoutOrder": 9,
+      "TowerCost": 7000,
+      "Index": 53,
+      "Cost": 7000,
+      "TowerName": "Partygoer",
+      "TowerId": "T11",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [18.448623657226564, -45.80906677246094, -3.666156768798828],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 96.97
+    },
+    {
+      "LayoutOrder": 8,
+      "TowerCost": 7000,
+      "Index": 54,
+      "Cost": 7000,
+      "TowerName": "Partygoer",
+      "TowerId": "T10",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [14.438003540039063, -46.07701110839844, -2.349215507507324],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 97.05
+    },
+    {
+      "LayoutOrder": 7,
+      "TowerCost": 40000,
+      "Index": 55,
+      "Cost": 40000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T9",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [15.464863777160645, -46.311561584472659, 1.5627293586730958],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 97.15
+    },
+    {
+      "LayoutOrder": 6,
+      "TowerCost": 7000,
+      "Index": 56,
+      "Cost": 7000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T8",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [18.002241134643556, -46.30830764770508, 4.3057169914245609],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 97.24
+    },
+    {
+      "LayoutOrder": 5,
+      "TowerCost": 40000,
+      "Index": 57,
+      "Cost": 40000,
+      "TowerName": "Bacteria",
+      "TowerId": "T7",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
+      "Position": [17.61794662475586, -43.79795455932617, 0.7002682685852051],
+      "RecordSpeed": 4,
+      "Arg4": "Bacteria Rainbow",
+      "Time": 97.32
+    },
+    {
+      "LayoutOrder": 9,
+      "TowerCost": 10000,
+      "Index": 58,
+      "Cost": 10000,
+      "TowerName": "Partygoer",
+      "TowerId": "T11",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [18.448623657226564, -45.80906677246094, -3.666156768798828],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 101.55
+    },
+    {
+      "LayoutOrder": 8,
+      "TowerCost": 10000,
+      "Index": 59,
+      "Cost": 10000,
+      "TowerName": "Partygoer",
+      "TowerId": "T10",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [14.438003540039063, -46.07701110839844, -2.349215507507324],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 101.63
+    },
+    {
+      "LayoutOrder": 7,
+      "TowerCost": 45000,
+      "Index": 60,
+      "Cost": 45000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T9",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [15.464863777160645, -46.311561584472659, 1.5627293586730958],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 101.72
+    },
+    {
+      "LayoutOrder": 6,
+      "TowerCost": 10000,
+      "Index": 61,
+      "Cost": 10000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T8",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [18.002241134643556, -46.30830764770508, 4.3057169914245609],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 101.82
+    },
+    {
+      "LayoutOrder": 5,
+      "TowerCost": 45000,
+      "Index": 62,
+      "Cost": 45000,
+      "TowerName": "Bacteria",
+      "TowerId": "T7",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
+      "Position": [17.61794662475586, -43.79795455932617, 0.7002682685852051],
+      "RecordSpeed": 4,
+      "Arg4": "Bacteria Rainbow",
+      "Time": 101.9
+    },
+    {
+      "LayoutOrder": 10,
+      "TowerCost": 5000,
+      "Index": 63,
+      "Cost": 5000,
+      "TowerName": "Lord Verity",
+      "TowerId": "T12",
+      "Type": "Upgrade",
+      "Wave": 18,
+      "RawData": { "InstanceName": "Lord Verity", "Variant": "Lord Verity" },
+      "Position": [13.348821640014649, -45.42565155029297, -2.715270757675171],
+      "RecordSpeed": 4,
+      "Arg4": "Lord Verity",
+      "Time": 101.99
+    },
+    {
+      "LayoutOrder": 9,
+      "TowerCost": 15000,
+      "Index": 64,
+      "Cost": 15000,
+      "TowerName": "Partygoer",
+      "TowerId": "T11",
+      "Type": "Upgrade",
+      "Wave": 21,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [18.448623657226564, -45.80906677246094, -3.666156768798828],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 113.78
+    },
+    {
+      "LayoutOrder": 8,
+      "TowerCost": 15000,
+      "Index": 65,
+      "Cost": 15000,
+      "TowerName": "Partygoer",
+      "TowerId": "T10",
+      "Type": "Upgrade",
+      "Wave": 21,
+      "RawData": {
+        "InstanceName": "Partygoer",
+        "Variant": "Partygoer Rainbow"
+      },
+      "Position": [14.438003540039063, -46.07701110839844, -2.349215507507324],
+      "RecordSpeed": 4,
+      "Arg4": "Partygoer Rainbow",
+      "Time": 113.87
+    },
+    {
+      "LayoutOrder": 7,
+      "TowerCost": 50000,
+      "Index": 66,
+      "Cost": 50000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T9",
+      "Type": "Upgrade",
+      "Wave": 21,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [15.464863777160645, -46.311561584472659, 1.5627293586730958],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 113.96
+    },
+    {
+      "LayoutOrder": 6,
+      "TowerCost": 15000,
       "Index": 67,
-      "Cost": 465558,
+      "Cost": 15000,
+      "TowerName": "Caine Still Life",
+      "TowerId": "T8",
+      "Type": "Upgrade",
+      "Wave": 21,
+      "RawData": {
+        "InstanceName": "Caine Still Life",
+        "Variant": "Caine Still Life"
+      },
+      "Position": [18.002241134643556, -46.30830764770508, 4.3057169914245609],
+      "RecordSpeed": 4,
+      "Arg4": "Caine Still Life",
+      "Time": 114.05
+    },
+    {
+      "LayoutOrder": 5,
+      "TowerCost": 50000,
+      "Index": 68,
+      "Cost": 50000,
+      "TowerName": "Bacteria",
+      "TowerId": "T7",
+      "Type": "Upgrade",
+      "Wave": 21,
+      "RawData": { "InstanceName": "Bacteria", "Variant": "Bacteria Rainbow" },
+      "Position": [17.61794662475586, -43.79795455932617, 0.7002682685852051],
+      "RecordSpeed": 4,
+      "Arg4": "Bacteria Rainbow",
+      "Time": 114.14
+    },
+    {
+      "LayoutOrder": 10,
+      "TowerCost": 250000,
+      "Index": 69,
+      "Cost": 250000,
       "TowerName": "Lord Verity",
       "TowerId": "T12",
       "Type": "Upgrade",
       "Wave": 21,
       "RawData": { "InstanceName": "Lord Verity", "Variant": "Lord Verity" },
-      "Position": [16.59328842163086, -45.425838470458987, 4.001442909240723],
+      "Position": [13.348821640014649, -45.42565155029297, -2.715270757675171],
       "RecordSpeed": 4,
       "Arg4": "Lord Verity",
-      "Time": 115.33
+      "Time": 114.27
     },
     {
-      "TowerCost": 300000,
-      "Index": 68,
-      "Cost": 486411,
-      "TowerName": "Lord Verity",
-      "TowerId": "T12",
-      "Type": "Upgrade",
-      "Wave": 22,
-      "RawData": { "InstanceName": "Lord Verity", "Variant": "Lord Verity" },
-      "Position": [16.59328842163086, -45.425838470458987, 4.001442909240723],
-      "RecordSpeed": 4,
-      "Arg4": "Lord Verity",
-      "Time": 119.05
-    },
-    {
+      "LayoutOrder": 10,
       "TowerCost": 375000,
-      "Index": 69,
-      "Cost": 460312,
+      "Index": 70,
+      "Cost": 375000,
       "TowerName": "Lord Verity",
       "TowerId": "T12",
       "Type": "Upgrade",
       "Wave": 24,
       "RawData": { "InstanceName": "Lord Verity", "Variant": "Lord Verity" },
-      "Position": [16.59328842163086, -45.425838470458987, 4.001442909240723],
+      "Position": [13.348821640014649, -45.42565155029297, -2.715270757675171],
       "RecordSpeed": 4,
       "Arg4": "Lord Verity",
-      "Time": 124.81
+      "Time": 122.33
     },
     {
-      "TowerCost": 498515,
-      "Index": 70,
-      "Cost": 717395,
+      "LayoutOrder": 10,
+      "TowerCost": 500000,
+      "Index": 71,
+      "Cost": 500000,
       "TowerName": "Lord Verity",
       "TowerId": "T12",
       "Type": "Upgrade",
-      "Wave": 27,
+      "Wave": 24,
       "RawData": { "InstanceName": "Lord Verity", "Variant": "Lord Verity" },
-      "Position": [16.59328842163086, -45.425838470458987, 4.001442909240723],
+      "Position": [13.348821640014649, -45.42565155029297, -2.715270757675171],
       "RecordSpeed": 4,
       "Arg4": "Lord Verity",
-      "Time": 133.36
+      "Time": 125.08
     }
   ],
   "Metadata": {
-    "TotalDuration": 142.03,
+    "TotalDuration": 128.57,
     "CreatedAt": 1790756557,
     "Name": "GardenEndless",
-    "UpdatedAt": 1790756735,
-    "TotalSteps": 70,
+    "UpdatedAt": 1790765993,
+    "TotalSteps": 71,
     "InitialSpeed": 1
   }
 }
