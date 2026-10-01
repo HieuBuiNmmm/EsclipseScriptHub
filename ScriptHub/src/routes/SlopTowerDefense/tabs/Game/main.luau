@@ -18,13 +18,55 @@ return function(window, tab)
 		end),
 	}, "Toggle_GameJoiner")
 
+	local universeDropdown
+	local mapDropdown
+	local isUpdatingInternally = false
+
+	local function updateDropdownsForMode(mode: string)
+		if isUpdatingInternally then return end
+		isUpdatingInternally = true
+
+		local newUniverses = matchSetup.GetUniversesForMode(mode)
+		if universeDropdown then
+			pcall(function()
+				universeDropdown:ClearOptions()
+				universeDropdown:InsertOptions(newUniverses)
+				local targetUni = (mode == "Raid") and "Raid" or matchSetup.SelectedUniverse
+				if not table.find(newUniverses, targetUni) then
+					targetUni = newUniverses[1] or ""
+				end
+				matchSetup.SetUniverse(targetUni)
+				universeDropdown:UpdateSelection(targetUni)
+			end)
+		end
+
+		if mapDropdown then
+			pcall(function()
+				local currentUni = matchSetup.SelectedUniverse
+				local newMaps = matchSetup.GetMapsForUniverse(currentUni)
+				mapDropdown:ClearOptions()
+				mapDropdown:InsertOptions(newMaps)
+				local targetMap = (mode == "Raid") and "Raid" or matchSetup.SelectedMap
+				if not table.find(newMaps, targetMap) then
+					targetMap = newMaps[1] or ""
+				end
+				matchSetup.SetMap(targetMap)
+				mapDropdown:UpdateSelection(targetMap)
+			end)
+		end
+
+		isUpdatingInternally = false
+	end
+
 	joinerSection:Dropdown({
 		Name = "Game Mode",
 		Options = { "Normal", "Raid" },
 		Default = elevatorJoiner.Mode,
 		Required = true,
 		Callback = autoSave.Wrap(function(selected)
+			if not selected or selected == "" then return end
 			elevatorJoiner.SetMode(selected)
+			updateDropdownsForMode(selected)
 		end),
 	}, "Dropdown_GameMode")
 
@@ -43,8 +85,6 @@ return function(window, tab)
 	-- Match Setup: Universes -> Maps -> Difficulty
 	joinerSection:Header({ Name = "Match Setup" })
 
-	local mapDropdown
-
 	-- Auto Pick Map
 	joinerSection:Toggle({
 		Name = "Auto Pick Map",
@@ -54,16 +94,26 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoPickMap")
 
-	joinerSection:Dropdown({
+	local currentMode = elevatorJoiner.Mode or "Normal"
+	local initialUniverses = matchSetup.GetUniversesForMode(currentMode)
+	local initialUniverse = (currentMode == "Raid") and "Raid" or matchSetup.SelectedUniverse
+	if not table.find(initialUniverses, initialUniverse) then
+		initialUniverse = initialUniverses[1] or "Brainrot Bases"
+	end
+	matchSetup.SetUniverse(initialUniverse)
+
+	universeDropdown = joinerSection:Dropdown({
 		Name = "Select Universe",
-		Options = matchSetup.Universes,
-		Default = matchSetup.SelectedUniverse,
+		Options = initialUniverses,
+		Default = initialUniverse,
 		Required = true,
 		Callback = autoSave.Wrap(function(selected)
+			if isUpdatingInternally then return end
 			if not selected or #selected == 0 then return end
 			matchSetup.SetUniverse(selected)
 			if mapDropdown then
 				local newMaps = matchSetup.GetMapsForUniverse(selected)
+				isUpdatingInternally = true
 				pcall(function()
 					mapDropdown:ClearOptions()
 					mapDropdown:InsertOptions(newMaps)
@@ -74,23 +124,32 @@ return function(window, tab)
 					matchSetup.SetMap(targetMap)
 					mapDropdown:UpdateSelection(targetMap)
 				end)
+				isUpdatingInternally = false
 			end
 		end),
 	}, "Dropdown_SelectUniverse")
 
-	local initialMaps = matchSetup.GetMapsForUniverse(matchSetup.SelectedUniverse)
+	local initialMaps = matchSetup.GetMapsForUniverse(initialUniverse)
+	local initialMap = (currentMode == "Raid") and "Raid" or matchSetup.SelectedMap
+	if not table.find(initialMaps, initialMap) then
+		initialMap = initialMaps[1] or "Night Base"
+	end
+	matchSetup.SetMap(initialMap)
+
 	mapDropdown = joinerSection:Dropdown({
 		Name = "Select Map",
 		Options = initialMaps,
-		Default = matchSetup.SelectedMap,
+		Default = initialMap,
 		Required = true,
 		Callback = autoSave.Wrap(function(selected)
+			if isUpdatingInternally then return end
 			if not selected or #selected == 0 then return end
 			-- Khắc phục trường hợp config cũ lưu tên Universe vào Dropdown_SelectMap (ví dụ "Backrooms")
-			if table.find(matchSetup.Universes, selected) then
+			if table.find(matchSetup.NormalUniverses, selected) then
 				matchSetup.SetUniverse(selected)
 				local newMaps = matchSetup.GetMapsForUniverse(selected)
 				if mapDropdown then
+					isUpdatingInternally = true
 					pcall(function()
 						mapDropdown:ClearOptions()
 						mapDropdown:InsertOptions(newMaps)
@@ -98,6 +157,7 @@ return function(window, tab)
 						matchSetup.SetMap(defaultMap)
 						mapDropdown:UpdateSelection(defaultMap)
 					end)
+					isUpdatingInternally = false
 				end
 				return
 			end
@@ -106,6 +166,18 @@ return function(window, tab)
 	}, "Dropdown_SelectMap")
 
 	-- Vá Dropdown UpdateSelection để không bị miss khi nạp autoload config
+	if universeDropdown and type(universeDropdown.UpdateSelection) == "function" then
+		local origUniUpdate = universeDropdown.UpdateSelection
+		universeDropdown.UpdateSelection = function(self, newSelection)
+			if type(newSelection) == "string" and newSelection ~= "" and not self:IsOption(newSelection) then
+				pcall(function()
+					self:InsertOptions({ newSelection })
+				end)
+			end
+			origUniUpdate(self, newSelection)
+		end
+	end
+
 	if mapDropdown and type(mapDropdown.UpdateSelection) == "function" then
 		local origUpdate = mapDropdown.UpdateSelection
 		mapDropdown.UpdateSelection = function(self, newSelection)
@@ -175,7 +247,7 @@ return function(window, tab)
 		end),
 	}, "Slider_MutatorVoteDelay")
 
-	mutatorSection:Header({ Name = "Mutator Priority (100 = Cao nhất)" })
+	mutatorSection:Header({ Name = "Mutator Priority (100 = Highest)" })
 
 	for _, item in ipairs(slopMutator.Catalog) do
 		mutatorSection:Slider({

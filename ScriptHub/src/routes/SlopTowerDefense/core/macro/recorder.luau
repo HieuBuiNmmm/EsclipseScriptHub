@@ -18,6 +18,7 @@ local isRecording = false
 local activeMacroName: string? = nil
 local recordedSteps: { types.MacroStep } = {}
 local towerIndexCounter = 0
+local lastRecordedStage = 1
 
 -- Bảng tra cứu định danh tháp giữa Instance và TowerId ("T1", "T2")
 local instanceToId: { [Instance]: string } = {}
@@ -400,6 +401,7 @@ function recorder.AddStep(actionType: types.ActionType, details: { [string]: any
 		Type = actionType,
 		TowerId = details.TowerId or ("T" .. tostring(stepIndex)),
 		TowerName = details.TowerName or "Unknown",
+		Stage = details.Stage or lastRecordedStage,
 		Speed = details.Speed,
 		RecordSpeed = currentSpeed,
 		CFrame = details.CFrame,
@@ -428,7 +430,35 @@ function recorder.AddStep(actionType: types.ActionType, details: { [string]: any
 		notifier.Notify("Macro Record", string.format("Recorded Target: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 	elseif actionType == "VoteSkip" then
 		notifier.Notify("Macro Record", string.format("Recorded VoteSkip [%.2fs]", step.Time), 1.5)
+	elseif actionType == "StageTransition" then
+		notifier.Notify("Macro Record", string.format("Recorded Stage Transition: Raid %s [W%d - %.2fs]", tostring(step.Stage or 2), step.Wave, step.Time), 2.5)
 	end
+end
+
+-- Ghi nhận chuyển sang giai đoạn Raid mới (Raid Stage) và dọn sạch bộ nhớ tháp cũ
+function recorder.MarkStageTransition(customStage: number?): boolean
+	if not isRecording then return false end
+	local curWave, _ = gameStats.GetWave()
+	local stageNum = customStage or (lastRecordedStage + 1)
+	lastRecordedStage = stageNum
+
+	recorder.AddStep("StageTransition", {
+		Stage = stageNum,
+		Wave = curWave,
+		TowerId = "STAGE",
+		TowerName = string.format("Raid Stage %d", stageNum),
+		Cost = 0,
+	})
+
+	table.clear(activeTowers)
+	table.clear(idToInstance)
+	table.clear(instanceToId)
+	table.clear(idToInfo)
+	towerIndexCounter = 0
+
+	logger.Log(string.format("[Recorder] Ghi nhận chuyển sang Raid Stage %d (Wave %d)!", stageNum, curWave))
+	notifier.Notify("Macro Record", string.format("🌀 Recorded transition to Raid Stage %d (Wave %d)!", stageNum, curWave), 3)
+	return true
 end
 
 -- Xử lý ghi nhận SpawnTower khi Remote được gọi
@@ -478,6 +508,16 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 		if not isSuccess then
 			-- Thao tác đặt tháp thất bại (thiếu tiền, vị trí không hợp lệ, v.v.), bỏ qua không ghi nhận!
 			return
+		end
+
+		-- Tự động đánh dấu chuyển Raid Stage nếu người chơi đặt tháp ở Map mới mà watcher chưa kịp ghi nhận
+		local curWave, _ = gameStats.GetWave()
+		if curWave >= 76 and lastRecordedStage < 4 then
+			recorder.MarkStageTransition(4)
+		elseif curWave >= 51 and lastRecordedStage < 3 then
+			recorder.MarkStageTransition(3)
+		elseif curWave >= 26 and lastRecordedStage < 2 then
+			recorder.MarkStageTransition(2)
 		end
 
 		towerIndexCounter += 1
@@ -954,7 +994,7 @@ local function handleChangeSpeed(args: { any })
 				Speed = speedNum,
 			},
 		})
-		notifier.Notify("Macro Recorder", string.format("Ghi nhận đổi tốc độ: x%d", speedNum), 1.5)
+		notifier.Notify("Macro Recorder", string.format("Recorded speed change: x%d", speedNum), 1.5)
 	end)
 
 	if not ok then
@@ -1127,6 +1167,7 @@ function recorder.ClearSteps()
 	table.clear(idToInstance)
 	table.clear(idToInfo)
 	towerIndexCounter = 0
+	lastRecordedStage = 1
 end
 
 local stateListeners: { (boolean) -> () } = {}
@@ -1151,6 +1192,7 @@ end
 -- Giám sát EndScreen để tự động ngừng Record khi ván đấu kết thúc
 local activeWatcherThread: thread? = nil
 local activeEndScreenConn: RBXScriptConnection? = nil
+local activeNotifConn: RBXScriptConnection? = nil
 
 local function getEndScreen(): GuiObject?
 	local player = Players.LocalPlayer
@@ -1177,6 +1219,12 @@ local function cleanupEndScreenWatcher()
 		end)
 		activeEndScreenConn = nil
 	end
+	if activeNotifConn then
+		pcall(function()
+			activeNotifConn:Disconnect()
+		end)
+		activeNotifConn = nil
+	end
 	if activeWatcherThread then
 		pcall(task.cancel, activeWatcherThread)
 		activeWatcherThread = nil
@@ -1199,23 +1247,110 @@ local function startEndScreenWatcher()
 		end)
 	end
 
-	-- 2. Vòng lặp định kỳ: quét EndScreen và kiểm tra trạng thái còn trong trận
+	-- 2. Lắng nghe trực tiếp Landmark 'New raid map!' trong Notifications UI (Real-time 0ms delay)
+	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	local notifs = gameGui and gameGui:FindFirstChild("Notifications", true)
+	if notifs then
+		activeNotifConn = notifs.DescendantAdded:Connect(function(desc)
+			if not isRecording then return end
+			if desc:IsA("TextLabel") then
+				local cText = desc.Text:lower():gsub("%s+", "")
+				if cText:find("newraidmap") or cText:find("towersrefunded") then
+					local curWave, _ = gameStats.GetWave()
+					local targetStage = (curWave >= 75 and 4) or (curWave >= 50 and 3) or (curWave >= 25 and 2) or (lastRecordedStage + 1)
+					if targetStage > lastRecordedStage then
+						logger.Log(string.format("[Recorder] 🔔 Phát hiện landmark 'New raid map!' qua Signal -> Kích hoạt Stage %d!", targetStage))
+						recorder.MarkStageTransition(targetStage)
+					end
+				end
+			end
+		end)
+	end
+
+	-- 2. Vòng lặp định kỳ: quét EndScreen, kiểm tra trạng thái trong trận, và tự động bắt chuyển Raid Stage
 	activeWatcherThread = task.spawn(function()
 		while isRecording and lifecycle.IsActive() do
-			task.wait(0.5)
+			task.wait(0.35)
 			if not isRecording then break end
 
-			if isEndScreenVisible() then
-				logger.Log("[Recorder] Phát hiện EndScreen (Polling)! Tự động dừng Record...")
-				recorder.StopRecording("EndScreen")
-				break
-			end
+			pcall(function()
+				if isEndScreenVisible() then
+					logger.Log("[Recorder] Phát hiện EndScreen (Polling)! Tự động dừng Record...")
+					recorder.StopRecording("EndScreen")
+					return
+				end
 
-			if not zoneGuard.IsInGame() then
-				logger.Log("[Recorder] Người chơi đã rời ván đấu! Tự động dừng Record...")
-				recorder.StopRecording("LeftGame")
-				break
-			end
+				if not zoneGuard.IsInGame() then
+					logger.Log("[Recorder] Người chơi đã rời ván đấu! Tự động dừng Record...")
+					recorder.StopRecording("LeftGame")
+					return
+				end
+
+				-- Tự động nhận diện chuyển đổi Raid Stage (Map 1 -> Map 2 -> Map 3 -> Map 4)
+				local curWave, _ = gameStats.GetWave()
+				local stats = gameStats.GetSnapshot()
+				local msgLower = stats.Message and stats.Message:lower() or ""
+
+				-- Kiểm tra trực tiếp GameGui.Info.Message (từ log scanner người dùng xác nhận)
+				local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+				local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+				local directInfo = gameGui and gameGui:FindFirstChild("Info")
+				local directMsg = directInfo and directInfo:FindFirstChild("Message")
+				local directMsgText = (directMsg and directMsg:IsA("TextLabel") and directMsg.Text:lower()) or ""
+
+				local combinedMsg = (msgLower .. " " .. directMsgText):lower()
+				local compactMsg = combinedMsg:gsub("%s+", "")
+
+				local targetStage: number? = nil
+				local matchMoves = compactMsg:match("movestoraid(%d+)")
+				local matchMoving = compactMsg:match("movingtoraid(%d+)")
+				local matchStarting = compactMsg:match("raid(%d+)starting")
+				if matchMoves then
+					targetStage = tonumber(matchMoves)
+				elseif matchMoving then
+					targetStage = tonumber(matchMoving)
+				elseif matchStarting then
+					targetStage = tonumber(matchStarting)
+				end
+
+				-- Fallback 1: Kiểm tra thông báo 'New raid map!' trong Notifications UI
+				if not targetStage and gameGui then
+					local notifs = gameGui:FindFirstChild("Notifications", true)
+					if notifs then
+						for _, desc in ipairs(notifs:GetDescendants()) do
+							if desc:IsA("TextLabel") and desc.Visible then
+								local cText = desc.Text:lower():gsub("%s+", "")
+								if cText:find("newraidmap") or cText:find("towersrefunded") then
+									if curWave >= 25 and lastRecordedStage < 2 then
+										targetStage = 2
+									elseif curWave >= 50 and lastRecordedStage < 3 then
+										targetStage = 3
+									elseif curWave >= 75 and lastRecordedStage < 4 then
+										targetStage = 4
+									end
+									break
+								end
+							end
+						end
+					end
+				end
+
+				-- Fallback 2: Kiểm tra theo mốc Wave
+				if not targetStage then
+					if curWave >= 76 and lastRecordedStage < 4 then
+						targetStage = 4
+					elseif curWave >= 51 and lastRecordedStage < 3 then
+						targetStage = 3
+					elseif curWave >= 26 and lastRecordedStage < 2 then
+						targetStage = 2
+					end
+				end
+
+				if targetStage and targetStage > lastRecordedStage then
+					recorder.MarkStageTransition(targetStage)
+				end
+			end)
 		end
 	end)
 end
@@ -1224,19 +1359,20 @@ end
 function recorder.StartRecording(macroName: string?): boolean
 	local targetName = macroName or activeMacroName
 	if not targetName or targetName == "" or targetName == "None" then
-		notifier.Notify("Macro", "Vui lòng chọn hoặc tạo Macro trước!", 2)
+		notifier.Notify("Macro", "Please select or create a Macro first!", 2)
 		return false
 	end
 
 	activeMacroName = targetName
 	recorder.ClearSteps()
 	recorder.InitialSpeed = getCurrentGameSpeed()
+	lastRecordedStage = 1
 	isRecording = true
 	setupRemoteHook()
 	startEndScreenWatcher()
 	notifyState(true)
 
-	notifier.Notify("Macro", string.format("Bắt đầu Record: %s (Speed ban đầu: x%d)", targetName, recorder.InitialSpeed), 2)
+	notifier.Notify("Macro", string.format("Started Recording: %s (Initial Speed: x%d)", targetName, recorder.InitialSpeed), 2)
 	return true
 end
 
@@ -1257,14 +1393,14 @@ function recorder.StopRecording(reason: string?): number
 		storage.SaveMacro(activeMacroName, existing)
 
 		if reason == "EndScreen" then
-			notifier.Notify("Macro", string.format("🏁 Trận đấu kết thúc! Đã lưu %d bước vào '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 3)
+			notifier.Notify("Macro", string.format("🏁 Match ended! Saved %d steps to '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 3)
 		elseif reason == "LeftGame" then
-			notifier.Notify("Macro", string.format("Đã rời ván! Đã lưu %d bước vào '%s'", count, activeMacroName), 2.5)
+			notifier.Notify("Macro", string.format("Left match! Saved %d steps to '%s'", count, activeMacroName), 2.5)
 		else
-			notifier.Notify("Macro", string.format("Đã lưu %d bước vào '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 2.5)
+			notifier.Notify("Macro", string.format("Saved %d steps to '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 2.5)
 		end
 	else
-		notifier.Notify("Macro", "Đã dừng Record (0 bước)", 2)
+		notifier.Notify("Macro", "Stopped Recording (0 steps)", 2)
 	end
 
 	return count

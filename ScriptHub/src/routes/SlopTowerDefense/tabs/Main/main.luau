@@ -176,68 +176,24 @@ return function(window, tab)
 		end),
 	}, "Dropdown_GameSpeed")
 
-	--// ====================================================================
-	--// CỘT PHẢI: Section 2 - Player Dashboard
-	--// ====================================================================
-	local profileSection = tab:Section({ Side = "Right" })
-	profileSection:Header({ Name = "Player Dashboard" })
-
-	local gemsLabel = profileSection:Label({
-		Text = "💎 <b>Gems:</b> <font color='rgb(100,220,255)'>--</font>",
-	})
-
-	local crystalsLabel = profileSection:Label({
-		Text = "🔮 <b>Crystals:</b> <font color='rgb(220,100,255)'>--</font>",
-	})
-
-	local starsLabel = profileSection:Label({
-		Text = "⭐ <b>Stars:</b> <font color='rgb(255,220,100)'>--</font>",
-	})
-
-	local otherCurrencyLabel = profileSection:Label({
-		Text = "🪙 <b>Slopbux / Tokens:</b> <font color='rgb(200,200,200)'>-- / --</font>",
-	})
-
-	local winsLabel = profileSection:Label({
-		Text = "🏆 <b>Total Wins:</b> <font color='rgb(85,255,120)'>--</font>",
-	})
-
-	local inventoryLabel = profileSection:Label({
-		Text = "🎒 <b>Towers:</b> <font color='rgb(255,150,100)'>-- / 500</font>",
-	})
-
-	local playtimeLabel = profileSection:Label({
-		Text = "⏱️ <b>Playtime:</b> <font color='rgb(180,180,180)'>--</font>",
-	})
-
-	profileSection:Button({
-		Name = "Refresh Profile & Pity",
+	summonSection:Button({
+		Name = "Refresh Pity",
 		Callback = function()
 			local ok = playerProfile.Fetch(true)
 			if ok then
-				notifier.Notify("Dashboard", "Đã yêu cầu đồng bộ hồ sơ từ server!", 1.5)
+				notifier.Notify("Pity", "Requested profile sync from server!", 1.5)
 			else
-				notifier.Notify("Dashboard", "Đang tải dữ liệu hoặc gửi yêu cầu quá nhanh!", 1.5)
+				notifier.Notify("Pity", "Loading data or requesting too fast!", 1.5)
 			end
 		end,
 	})
 
 	--// ====================================================================
-	--// HÀM ĐỒNG BỘ DỮ LIỆU PROFILE & PITY THỜI GIAN THỰC
+	--// Real-time Pity Counter sync
 	--// ====================================================================
 	updateProfileUi = function(data: playerProfile.PlayerProfileData)
 		if not data.Loaded then return end
 
-		-- 1. Cập nhật Player Dashboard
-		gemsLabel:UpdateName(string.format("💎 <b>Gems:</b> <font color='rgb(100,220,255)'>%s</font>", playerProfile.FormatNumber(data.Gems)))
-		crystalsLabel:UpdateName(string.format("🔮 <b>Crystals:</b> <font color='rgb(220,100,255)'>%s</font>", playerProfile.FormatNumber(data.Crystals)))
-		starsLabel:UpdateName(string.format("⭐ <b>Stars:</b> <font color='rgb(255,220,100)'>%s</font>", playerProfile.FormatNumber(data.Stars)))
-		otherCurrencyLabel:UpdateName(string.format("🪙 <b>Slopbux / Tokens:</b> <font color='rgb(200,200,200)'>%s / %s</font>", playerProfile.FormatNumber(data.Slopbux), playerProfile.FormatNumber(data.Tokens)))
-		winsLabel:UpdateName(string.format("🏆 <b>Total Wins:</b> <font color='rgb(85,255,120)'>%s</font>", playerProfile.FormatNumber(data.Wins)))
-		inventoryLabel:UpdateName(string.format("🎒 <b>Towers:</b> <font color='rgb(255,150,100)'>%d / %d</font>", data.TowersCount, data.InventorySpace))
-		playtimeLabel:UpdateName(string.format("⏱️ <b>Playtime:</b> <font color='rgb(180,180,180)'>%s</font>", data.TotalPlayTimeFormatted))
-
-		-- 2. Cập nhật Bảng đếm Pity theo Banner đang chọn
 		local currentBanner = autoSummon.GetBanner()
 		local pity = (currentBanner == "Premium") and data.PityPremium or data.PityBasic
 		local bannerColor = (currentBanner == "Premium") and "rgb(255,150,220)" or "rgb(255,220,100)"

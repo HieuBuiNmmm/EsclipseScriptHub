@@ -134,14 +134,14 @@ local function checkAndTriggerReplay(): boolean
 	if not replayBtn then return false end
 
 	local now = os.clock()
-	if now - lastReplayTriggerTime < 2.0 then return false end -- Debounce 2 giây
+	if now - lastReplayTriggerTime < 3.0 then return false end -- Debounce 3 giây
 	lastReplayTriggerTime = now
 
 	task.spawn(function()
-		task.wait(0.1)
+		task.wait(1.8) -- Chờ 1.8s để server kịp ghi nhận DataStore và Webhook sync đủ phần thưởng
 		if matchAutomation.AutoReplayEnabled and isEndScreenVisible(endScreen) and replayBtn and replayBtn.Parent then
 			clickButton(replayBtn)
-			notifier.Notify("Auto Replay", "Đã tự động nhấn nút Replay!", 2.5)
+			notifier.Notify("Auto Replay", "Automatically clicked Replay!", 2.5)
 		end
 	end)
 
@@ -223,7 +223,7 @@ local function checkAndTriggerVoteSkip(): boolean
 
 	logger.Log("[Auto Skip] Phát hiện WaveSkipGui đang hiển thị -> Gửi RemoteFunction VoteSkip:InvokeServer()")
 	sendVoteSkip()
-	notifier.Notify("Auto Skip", "Đã tự động gửi Vote Skip Wave!", 2)
+	notifier.Notify("Auto Skip", "Sent Vote Skip Wave!", 2)
 	return true
 end
 
@@ -341,7 +341,7 @@ local function onGameStatsUpdate(snapshot: gameStats.GameStatsSnapshot)
 			task.wait(0.2) -- Chờ nhẹ 0.2s để server nạp xong môi trường trận
 			if matchAutomation.AutoSpeedEnabled and not isMacroControllingSpeed() and zoneGuard.IsInGame() then
 				sendChangeSpeed(speedNum)
-				notifier.Notify("Auto Speed", string.format("Đã gửi Remote ChangeSpeed: x%d", speedNum), 2)
+				notifier.Notify("Auto Speed", string.format("Changed game speed to: x%d", speedNum), 2)
 			end
 		end)
 	elseif not snapshot.IsMatchActive then
@@ -408,7 +408,7 @@ function matchAutomation.SetAutoSpeed(enabled: boolean)
 	if enabled and not isMacroControllingSpeed() and zoneGuard.IsInGame() and gameStats.IsMatchActive() then
 		local speedNum = tonumber(matchAutomation.SelectedSpeed:match("%d+")) or 2
 		sendChangeSpeed(speedNum)
-		notifier.Notify("Auto Speed", string.format("Đã gửi Remote ChangeSpeed: x%d", speedNum), 2)
+		notifier.Notify("Auto Speed", string.format("Changed game speed to: x%d", speedNum), 2)
 	end
 end
 
@@ -431,7 +431,7 @@ function matchAutomation.SetSpeed(speed: string)
 		if matchAutomation.AutoSpeedEnabled and not isMacroControllingSpeed() and zoneGuard.IsInGame() and gameStats.IsMatchActive() then
 			local speedNum = tonumber(speed:match("%d+")) or 2
 			sendChangeSpeed(speedNum)
-			notifier.Notify("Auto Speed", string.format("Đã gửi Remote ChangeSpeed: x%d", speedNum), 2)
+			notifier.Notify("Auto Speed", string.format("Changed game speed to: x%d", speedNum), 2)
 		end
 	end
 end

@@ -22,15 +22,15 @@ local slopMutator = {
 	VoteDelay = 1, -- Giây chờ trước khi vote Mutator
 
 	Catalog = {
-		{ Id = "None", Name = "No Mutator", DefaultPriority = 100, Description = "Bình thường (Không bonus)" },
-		{ Id = "Brainrot", Name = "Brainrot", DefaultPriority = 80, Description = "Random tốc độ quái (+20% Rewards)" },
-		{ Id = "Blackout", Name = "Blackout", DefaultPriority = 70, Description = "Tắt đèn, chỉ sáng mắt quái (+25% Rewards)" },
-		{ Id = "Gigantism", Name = "Gigantism", DefaultPriority = 60, Description = "Quái x1.5 kích thước & máu (+30% Rewards)" },
-		{ Id = "Speedrun", Name = "Speedrun", DefaultPriority = 50, Description = "Quái chạy nhanh +40%" },
-		{ Id = "ArmoredSlop", Name = "Armored Slop", DefaultPriority = 40, Description = "Quái x2.5 máu, -20% tốc độ" },
-		{ Id = "Regeneration", Name = "Regeneration", DefaultPriority = 30, Description = "Quái hồi 2% máu mỗi giây" },
-		{ Id = "BossRush", Name = "Boss Rush", DefaultPriority = 20, Description = "Boss x2 máu, quái thường +25% máu" },
-		{ Id = "TinySlop", Name = "Tiny Slop", DefaultPriority = 10, Description = "Quái tí hon, +20% tốc độ chạy" },
+		{ Id = "None", Name = "No Mutator", DefaultPriority = 100, Description = "Normal (No bonus)" },
+		{ Id = "Brainrot", Name = "Brainrot", DefaultPriority = 80, Description = "Random enemy speed (+20% Rewards)" },
+		{ Id = "Blackout", Name = "Blackout", DefaultPriority = 70, Description = "Lights out, glowing eyes (+25% Rewards)" },
+		{ Id = "Gigantism", Name = "Gigantism", DefaultPriority = 60, Description = "Enemies x1.5 size & HP (+30% Rewards)" },
+		{ Id = "Speedrun", Name = "Speedrun", DefaultPriority = 50, Description = "Enemies run +40% faster" },
+		{ Id = "ArmoredSlop", Name = "Armored Slop", DefaultPriority = 40, Description = "Enemies x2.5 HP, -20% speed" },
+		{ Id = "Regeneration", Name = "Regeneration", DefaultPriority = 30, Description = "Enemies regenerate 2% HP per second" },
+		{ Id = "BossRush", Name = "Boss Rush", DefaultPriority = 20, Description = "Boss x2 HP, normal enemies +25% HP" },
+		{ Id = "TinySlop", Name = "Tiny Slop", DefaultPriority = 10, Description = "Tiny enemies, +20% run speed" },
 	} :: { MutatorInfo },
 
 	Priorities = {
@@ -162,7 +162,7 @@ local function performVote(candidates: { { Id: string, Title: string?, Good: str
 
 		local displayTitle = bestCandidate.Title or bestCandidate.Id
 		logger.Log(string.format("[SlopMutator] Đã vote Mutator: %q (%s) với điểm ưu tiên: %d", bestCandidate.Id, displayTitle, bestScore))
-		notifier.Notify("Slop Mutator", string.format("Đã vote: %s (Ưu tiên: %d)", displayTitle, bestScore), 3)
+		notifier.Notify("Slop Mutator", string.format("Voted: %s (Priority: %d)", displayTitle, bestScore), 3)
 	end)
 end
 

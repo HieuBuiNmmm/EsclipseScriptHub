@@ -96,7 +96,7 @@ return function(window, tab)
 
 			local trimmed = (rawName or ""):gsub("^%s+", ""):gsub("%s+$", "")
 			if #trimmed == 0 then
-				notifier.Notify("Macro", "Tên Macro không được để trống!", 2)
+				notifier.Notify("Macro", "Macro name cannot be empty!", 2)
 				return
 			end
 
@@ -116,7 +116,7 @@ return function(window, tab)
 				end)
 			end
 
-			notifier.Notify("Macro", "Đã tạo Macro: " .. trimmed, 2)
+			notifier.Notify("Macro", "Created Macro: " .. trimmed, 2)
 		end,
 	})
 
@@ -149,8 +149,8 @@ return function(window, tab)
 	local isTogglingInternally = false
 	recordToggle = recorderSection:Toggle({
 		Name = "Record Macro",
-		Default = recorder.IsRecording(),
-		Callback = autoSave.Wrap(function(state)
+		Default = false,
+		Callback = function(state)
 			if isTogglingInternally then return end
 
 			if state then
@@ -160,7 +160,7 @@ return function(window, tab)
 						recordToggle:UpdateState(false, true)
 					end)
 					isTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng tắt Play Macro trước khi Record!", 2)
+					notifier.Notify("Macro", "Please disable Play Macro before recording!", 2)
 					return
 				end
 
@@ -171,7 +171,7 @@ return function(window, tab)
 						recordToggle:UpdateState(false, true)
 					end)
 					isTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng chọn hoặc tạo Macro trước khi Record!", 2)
+					notifier.Notify("Macro", "Please select or create a Macro before recording!", 2)
 					return
 				end
 
@@ -191,8 +191,20 @@ return function(window, tab)
 					player.SetActiveMacro(activeName)
 				end
 			end
-		end),
-	}, "Toggle_RecordMacro")
+		end,
+	})
+
+	-- 5. Button: Đánh dấu thủ công chuyển Stage trong Raid (phòng khi muốn chủ động tách Map)
+	recorderSection:Button({
+		Name = "Mark Raid Transition (Next Stage)",
+		Callback = function()
+			if not recorder.IsRecording() then
+				notifier.Notify("Macro", "Please enable Record Macro before marking a stage!", 2)
+				return
+			end
+			recorder.MarkStageTransition()
+		end,
+	})
 
 	-- Lắng nghe trạng thái Record thay đổi (ví dụ: tự động dừng khi xuất hiện EndScreen)
 	local unsubscribeRecord = recorder.OnRecordingStateChanged(function(recording)
@@ -249,7 +261,7 @@ return function(window, tab)
 						playToggle:UpdateState(false, true)
 					end)
 					isPlayTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng tắt Record Macro trước khi Play!", 2)
+					notifier.Notify("Macro", "Please disable Record Macro before playing!", 2)
 					return
 				end
 
@@ -260,7 +272,7 @@ return function(window, tab)
 						playToggle:UpdateState(false, true)
 					end)
 					isPlayTogglingInternally = false
-					notifier.Notify("Macro", "Vui lòng chọn hoặc tạo Macro trước khi Play!", 2)
+					notifier.Notify("Macro", "Please select or create a Macro before playing!", 2)
 					return
 				end
 
@@ -271,7 +283,7 @@ return function(window, tab)
 						playToggle:UpdateState(false, true)
 					end)
 					isPlayTogglingInternally = false
-					notifier.Notify("Macro", string.format("Macro '%s' chưa có bước nào để chạy!", targetName), 2.5)
+					notifier.Notify("Macro", string.format("Macro '%s' has no steps to play!", targetName), 2.5)
 					return
 				end
 
@@ -312,8 +324,8 @@ return function(window, tab)
 
 	playerSection:Slider({
 		Name = "Step Delay (s)",
-		Minimum = 0,
-		Maximum = 2,
+		Minimum = 0.2,
+		Maximum = 1,
 		Default = player.GetStepDelay(),
 		Precision = 2,
 		DisplayMethod = "Value",
@@ -326,11 +338,11 @@ return function(window, tab)
 		Name = "Restart Playback",
 		Callback = function()
 			if not player.IsEnabled() then
-				notifier.Notify("Macro Player", "Vui lòng bật 'Play Macro' trước khi Restart!", 2)
+				notifier.Notify("Macro Player", "Please enable 'Play Macro' before restarting!", 2)
 				return
 			end
 			player.Restart()
-			notifier.Notify("Macro Player", "Đang khởi động lại tiến trình Macro...", 1.5)
+			notifier.Notify("Macro Player", "Restarting macro playback...", 1.5)
 		end,
 	})
 

@@ -1,5 +1,5 @@
--- Webhook: Quản lý và gửi thông báo Discord Webhook cho Slop Tower Defense
--- Hỗ trợ: Kết quả trận đấu (Win/Loss), Auto Summon, Hoàn thành Macro, và Test Webhook.
+-- Webhook: Discord Webhook notification management for Slop Tower Defense
+-- Supports: Match results (Win/Loss) and Connection Test.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -17,8 +17,8 @@ local webhook = {
 	Url = "",
 	Enabled = false,
 	NotifyMatchEnd = true,
-	NotifySummon = true,
-	NotifyMacro = true,
+	NotifySummon = false,
+	NotifyMacro = false,
 	PingUserId = "",
 }
 
@@ -251,6 +251,31 @@ function webhook.SendMatchEnd(
 	-- Cập nhật lại snapshot cho ván tiếp theo
 	matchStartProfile = playerProfile.GetSnapshot()
 
+	-- Lấy thông tin Universe / Map / Difficulty thực tế từ lượt vote in-game
+	local liveUni, liveMap, liveDiff = matchSetup.GetLiveMatchInfo()
+	local maxWave = stats.MaxWave
+	local isRaidMatch = (maxWave == 100 or maxWave == "100" or liveUni == "Raid" or liveMap == "Raid")
+
+	local finalMap: string
+	local finalDiff: string
+
+	if isRaidMatch then
+		finalMap = "Raid"
+		finalDiff = "Raid"
+	else
+		finalMap = liveMap or matchSetup.SelectedMap or "Unknown"
+		finalDiff = liveDiff or matchSetup.SelectedDifficulty or "Normal"
+	end
+
+	local mapDisplayValue: string
+	if isRaidMatch then
+		mapDisplayValue = "`Raid`"
+	elseif liveUni and liveUni ~= finalMap and liveUni ~= "Raid" then
+		mapDisplayValue = string.format("`%s` *(%s)*", finalMap, liveUni)
+	else
+		mapDisplayValue = string.format("`%s`", finalMap)
+	end
+
 	local payload = {
 		content = getPingMention(),
 		embeds = {
@@ -270,12 +295,12 @@ function webhook.SendMatchEnd(
 					},
 					{
 						name = "🗺️ Map",
-						value = string.format("`%s`", matchSetup.SelectedMap or "Unknown"),
+						value = mapDisplayValue,
 						inline = true,
 					},
 					{
 						name = "⚙️ Difficulty",
-						value = string.format("`%s`", matchSetup.SelectedDifficulty or "Normal"),
+						value = string.format("`%s`", finalDiff),
 						inline = true,
 					},
 					{
@@ -409,12 +434,10 @@ local wasMatchActive = false
 local lastMatchStats: gameStats.GameStatsSnapshot? = nil
 
 local function onGameStatsUpdate(data: gameStats.GameStatsSnapshot)
-	-- 1. Khi trận đấu BẮT ĐẦU: Chụp snapshot profile trước trận
+	-- 1. Khi trận đấu BẮT ĐẦU: Chụp snapshot profile trước trận tươi mới từ server
 	if not wasMatchActive and data.IsMatchActive then
 		task.spawn(function()
-			if not playerProfile.GetData().Loaded then
-				playerProfile.Fetch(true)
-			end
+			playerProfile.Fetch(true)
 			matchStartProfile = playerProfile.GetSnapshot()
 			logger.Log(string.format("[Webhook] Match BẮT ĐẦU -> Lưu snapshot trước trận (Crystals: %d, Sheckles: %d, Gems: %d, Wins: %d)",
 				matchStartProfile.Crystals, matchStartProfile.Sheckles, matchStartProfile.Gems, matchStartProfile.Wins))
@@ -429,15 +452,44 @@ local function onGameStatsUpdate(data: gameStats.GameStatsSnapshot)
 		local startSnapshot = matchStartProfile or playerProfile.GetSnapshot()
 		local endTitle = getEndScreenTitleText()
 
-		logger.Log(string.format("[Webhook] Match KẾT THÚC -> Bắt đầu gửi Webhook (Start Crystals: %d, Title: %s)",
-			startSnapshot.Crystals, tostring(endTitle)))
+		logger.Log(string.format("[Webhook] Match KẾT THÚC -> Bắt đầu chuẩn bị gửi Webhook (Start Crystals: %d, Gems: %d, Title: %s)",
+			startSnapshot.Crystals, startSnapshot.Gems, tostring(endTitle)))
 
 		if webhook.Enabled and webhook.NotifyMatchEnd and webhook.Url ~= "" then
 			task.spawn(function()
-				-- Chờ 1.0s để server Roblox ghi nhận và cộng thưởng vào tài khoản
-				task.wait(1.0)
-				-- Refresh lại profile từ server để lấy dữ liệu sau trận
-				playerProfile.Fetch(true)
+				-- Smart Polling: Thăm dò server để chờ cộng thưởng (Crystals / Gems / Wins)
+				local startTime = os.clock()
+				local maxTimeout = 2.8 -- Chờ tối đa 2.8s
+				local rewardSynced = false
+
+				-- Chờ ban đầu 0.8s để server game kịp ghi nhận kết thúc ván và tính toán thưởng
+				task.wait(0.8)
+
+				while os.clock() - startTime < maxTimeout do
+					playerProfile.Fetch(true)
+					local current = playerProfile.GetData()
+					if current.Loaded then
+						-- Nếu phát hiện Crystals hoặc Gems hoặc Wins đã tăng so với trước trận -> Đã có thưởng!
+						local hasReward = (current.Crystals > startSnapshot.Crystals)
+							or (current.Gems > startSnapshot.Gems)
+							or (current.Wins > startSnapshot.Wins)
+
+						if hasReward then
+							rewardSynced = true
+							-- Chờ thêm 0.3s ngắn để đảm bảo nếu Crystals được cộng ngay sát sau Gems thì cũng bắt trọn
+							task.wait(0.3)
+							playerProfile.Fetch(true)
+							break
+						end
+					end
+					task.wait(0.4)
+				end
+
+				if not rewardSynced then
+					-- Đảm bảo có lần fetch cuối cùng nếu không có thưởng tăng
+					playerProfile.Fetch(true)
+				end
+
 				-- Gửi thông báo kèm chính xác snapshot trước trận và title của ván này
 				webhook.SendMatchEnd(statsToSend, startSnapshot, endTitle)
 			end)

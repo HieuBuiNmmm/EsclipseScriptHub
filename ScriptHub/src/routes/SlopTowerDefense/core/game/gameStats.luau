@@ -289,7 +289,8 @@ local function updateSnapshot(): boolean
 	end
 
 	if messageLabel then
-		local msg = messageLabel.Text or ""
+		local isVisible = (messageLabel.Visible ~= false) and (messageLabel.TextTransparency < 0.9)
+		local msg = isVisible and (messageLabel.Text or "") or ""
 		if currentSnapshot.Message ~= msg then
 			currentSnapshot.Message = msg
 			changed = true
@@ -356,6 +357,9 @@ local function bindListeners()
 			updateSnapshot()
 		end)
 		activeConnections["MessageVisible"] = messageLabel:GetPropertyChangedSignal("Visible"):Connect(function()
+			updateSnapshot()
+		end)
+		activeConnections["MessageTransparency"] = messageLabel:GetPropertyChangedSignal("TextTransparency"):Connect(function()
 			updateSnapshot()
 		end)
 	end

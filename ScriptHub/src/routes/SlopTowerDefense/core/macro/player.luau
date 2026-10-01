@@ -32,7 +32,7 @@ local activeMacroName: string? = nil
 local currentStepIndex = 0
 local totalSteps = 0
 local timingMode = "Hybrid" -- "Hybrid" | "Timer" | "Wave & Cash"
-local stepDelay = 0.1 -- Khoảng trễ (giây) sau khi thực hiện mỗi bước
+local stepDelay = 0.2 -- Khoảng trễ (giây) sau khi thực hiện mỗi bước
 local applyMacroSpeed = true -- Bật/Tắt đồng bộ hóa Speed theo Macro
 local applyMacroVoteSkip = true -- Bật/Tắt thực thi bước VoteSkip theo Macro
 local activePlaybackThread: thread? = nil
@@ -42,6 +42,12 @@ local idToTowerInstance: { [string]: Instance } = {}
 
 -- Bảng mô phỏng danh sách tháp đang hiện diện trên sân để tính toán LayoutOrder trong UnitManager.Units
 local activeTowers: { string } = {}
+
+-- Quản lý Stage hiện tại trong trận đấu (Raid Landmark: 'New raid map!')
+local currentActiveStage = 1
+local reachedStages: { [number]: boolean } = { [1] = true }
+local activeStageWatcherThread: thread? = nil
+local activeNotifConn: RBXScriptConnection? = nil
 
 -- Tham chiếu RemoteFunction
 local spawnRemote: RemoteFunction? = nil
@@ -60,7 +66,7 @@ local currentSnapshot: PlaybackSnapshot = {
 	NextAction = "None",
 	StatusText = "Idle",
 	TimingMode = "Hybrid",
-	StepDelay = 0.1,
+	StepDelay = 0.2,
 	ApplySpeed = true,
 	ApplyVoteSkip = true,
 }
@@ -89,6 +95,106 @@ local function updateStatus(statusText: string, nextAction: string?)
 		currentSnapshot.NextAction = nextAction
 	end
 	notifySubscribers()
+end
+
+local function cleanupStageWatcher()
+	if activeStageWatcherThread then
+		pcall(task.cancel, activeStageWatcherThread)
+		activeStageWatcherThread = nil
+	end
+	if activeNotifConn then
+		pcall(function() activeNotifConn:Disconnect() end)
+		activeNotifConn = nil
+	end
+end
+
+local function onRaidStageLandmarkTriggered(newStage: number, sourceMsg: string?)
+	if newStage <= currentActiveStage then return end
+	currentActiveStage = newStage
+	reachedStages[newStage] = true
+	table.clear(activeTowers)
+	table.clear(idToTowerInstance)
+	logger.Log(string.format("[Macro Player] 🔔 Landmark detected: 'New raid map!' (%s) -> Bắt đầu Stage %d! Đã dọn sạch bộ nhớ tháp cũ.", tostring(sourceMsg or ""), newStage))
+	notifier.Notify("Macro Player", string.format("🔔 New raid map! Starting Stage %d", newStage), 3)
+end
+
+local function startStageWatcher()
+	cleanupStageWatcher()
+	currentActiveStage = 1
+	reachedStages = { [1] = true }
+
+	local curWave, _ = gameStats.GetWave()
+	if curWave >= 76 then
+		reachedStages[4] = true; reachedStages[3] = true; reachedStages[2] = true; currentActiveStage = 4
+	elseif curWave >= 51 then
+		reachedStages[3] = true; reachedStages[2] = true; currentActiveStage = 3
+	elseif curWave >= 26 then
+		reachedStages[2] = true; currentActiveStage = 2
+	end
+
+	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	local notifs = gameGui and gameGui:FindFirstChild("Notifications", true)
+
+	-- 1. Lắng nghe trực tiếp khi có Notification mới xuất hiện (0ms delay)
+	if notifs then
+		activeNotifConn = notifs.DescendantAdded:Connect(function(desc)
+			if not isPlaying then return end
+			if desc:IsA("TextLabel") then
+				local clean = desc.Text:lower():gsub("%s+", "")
+				if clean:find("newraidmap") or clean:find("towersrefunded") then
+					local wave, _ = gameStats.GetWave()
+					local targetStage = (wave >= 75 and 4) or (wave >= 50 and 3) or (wave >= 25 and 2) or (currentActiveStage + 1)
+					onRaidStageLandmarkTriggered(targetStage, desc.Text)
+				end
+			end
+		end)
+	end
+
+	-- 2. Vòng lặp kiểm tra định kỳ (0.2s) đề phòng DescendantAdded bị lỡ hoặc UI đã xuất hiện trước đó
+	activeStageWatcherThread = task.spawn(function()
+		while isPlaying and lifecycle.IsActive() do
+			task.wait(0.2)
+			if not isPlaying then break end
+
+			pcall(function()
+				local wave, _ = gameStats.GetWave()
+				local pGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+				local gGui = pGui and pGui:FindFirstChild("GameGui")
+				local nContainer = gGui and gGui:FindFirstChild("Notifications", true)
+
+				local foundLandmark = false
+				local landmarkText = ""
+
+				if nContainer then
+					for _, desc in ipairs(nContainer:GetDescendants()) do
+						if desc:IsA("TextLabel") and desc.Visible then
+							local clean = desc.Text:lower():gsub("%s+", "")
+							if clean:find("newraidmap") or clean:find("towersrefunded") then
+								foundLandmark = true
+								landmarkText = desc.Text
+								break
+							end
+						end
+					end
+				end
+
+				if foundLandmark then
+					local targetStage = (wave >= 75 and 4) or (wave >= 50 and 3) or (wave >= 25 and 2) or (currentActiveStage + 1)
+					onRaidStageLandmarkTriggered(targetStage, landmarkText)
+				else
+					-- Fallback an toàn theo Wave
+					if wave >= 76 and currentActiveStage < 4 then
+						onRaidStageLandmarkTriggered(4, "Wave 76 Fallback")
+					elseif wave >= 51 and currentActiveStage < 3 then
+						onRaidStageLandmarkTriggered(3, "Wave 51 Fallback")
+					elseif wave >= 26 and currentActiveStage < 2 then
+						onRaidStageLandmarkTriggered(2, "Wave 26 Fallback")
+					end
+				end
+			end)
+		end
+	end)
 end
 
 local function getRemotes()
@@ -421,6 +527,32 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHoriz
 	return bestModel
 end
 
+-- Gọi RemoteFunction an toàn có bảo vệ timeout chống treo vĩnh viễn thread
+local function safeInvoke(remote: RemoteFunction, timeoutSec: number, ...): (boolean, any)
+	local hasReturned = false
+	local success = false
+	local result = nil
+
+	local t = task.spawn(function(...)
+		local ok, res = pcall(remote.InvokeServer, remote, ...)
+		success = ok
+		result = res
+		hasReturned = true
+	end, ...)
+
+	local tStart = os.clock()
+	while not hasReturned and os.clock() - tStart < timeoutSec do
+		task.wait(0.04)
+	end
+
+	if not hasReturned then
+		pcall(task.cancel, t)
+		return false, "Timeout"
+	end
+
+	return success, result
+end
+
 -- Thực thi lệnh đặt tháp (SpawnTower) với cơ chế xác thực đa tầng thông minh
 function player.PlaceTower(towerName: string, cf: CFrame, arg3: boolean?, arg4: string?, arg5: { any }?): (boolean, Instance?)
 	local sRemote, _ = getRemotes()
@@ -442,12 +574,9 @@ function player.PlaceTower(towerName: string, cf: CFrame, arg3: boolean?, arg4: 
 	end
 
 	local oldCash = gameStats.GetCash()
+	local success, result = safeInvoke(sRemote, 2.0, towerName, cf, arg3, arg4, arg5)
 
-	local success, result = pcall(function()
-		return sRemote:InvokeServer(towerName, cf, arg3, arg4, arg5)
-	end)
-
-	if not success then
+	if not success and result ~= "Timeout" then
 		logger.Warn("[Macro Player] Lỗi gọi SpawnTower:", tostring(result))
 		return false, nil
 	end
@@ -525,11 +654,10 @@ function player.SellTower(target: Instance): boolean
 		return false
 	end
 
-	local success, err = pcall(function()
-		return selRemote:InvokeServer(target)
-	end)
+	local initialCash = gameStats.GetCash()
+	local success, err = safeInvoke(selRemote, 1.8, target)
 
-	if not success then
+	if not success and err ~= "Timeout" then
 		logger.Warn("[Macro Player] Lỗi gọi SellTower:", tostring(err))
 		return false
 	end
@@ -553,11 +681,21 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 	variantName = variantName or target.Name
 	local initialCash = gameStats.GetCash()
 
-	local success, result = pcall(function()
-		return upRemote:InvokeServer(target, variantName)
-	end)
+	local success, result = safeInvoke(upRemote, 1.8, target, variantName)
 
-	if not success then
+	-- Nếu timeout nhưng tiền đã bị trừ trong khi chờ -> chắc chắn server đã upgrade thành công!
+	if not success and result == "Timeout" and gameStats.GetCash() < initialCash then
+		success = true
+		result = true
+	end
+
+	-- Hoặc nếu server trả về false nhưng tiền đã trừ -> cũng coi là thành công!
+	if result == false and gameStats.GetCash() < initialCash then
+		result = true
+		success = true
+	end
+
+	if not success and result ~= "Timeout" then
 		logger.Warn("[Macro Player] Lỗi gọi UpgradeTower:", tostring(result))
 		return false, nil
 	end
@@ -575,7 +713,7 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 	elseif result == true then
 		isOk = true
 	else
-		-- result == nil: Một số remote server không return giá trị khi thực thi thành công
+		-- result == nil hoặc Timeout: Kiểm tra xem tiền có trừ không
 		for _ = 1, 3 do
 			task.wait(0.08)
 			if gameStats.GetCash() < initialCash then
@@ -583,7 +721,7 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 				break
 			end
 		end
-		-- Nếu server không trừ tiền ngay trên UI nhưng pcall không lỗi và không return false
+		-- Nếu server không trừ tiền ngay trên UI nhưng tháp vẫn còn tồn tại
 		if not isOk and target and target.Parent then
 			isOk = true
 		end
@@ -609,11 +747,9 @@ function player.ChangeTowerMode(target: Instance): boolean
 		return false
 	end
 
-	local success, result = pcall(function()
-		return modeRemote:InvokeServer(target)
-	end)
+	local success, result = safeInvoke(modeRemote, 1.8, target)
 
-	if not success then
+	if not success and result ~= "Timeout" then
 		logger.Warn("[Macro Player] Lỗi gọi ChangeTowerMode:", tostring(result))
 		return false
 	end
@@ -625,32 +761,24 @@ function player.ChangeTowerMode(target: Instance): boolean
 	return true
 end
 
--- Thay đổi tốc độ trận đấu
+-- Thay đổi tốc độ trận đấu (chỉ gửi trực tiếp qua RemoteFunction)
 function player.ChangeSpeed(speedNum: number): boolean
 	local _, _, _, _, csRemote = getRemotes()
 	if not csRemote then
 		csRemote = ReplicatedStorage:FindFirstChild("ChangeSpeed", true) :: RemoteFunction?
 	end
 
-	if not csRemote then
-		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.ChangeSpeed")
-		return false
+	if csRemote and csRemote:IsA("RemoteFunction") then
+		task.spawn(function()
+			pcall(function()
+				csRemote:InvokeServer(speedNum)
+			end)
+		end)
+		return true
 	end
 
-	local success, result = pcall(function()
-		return csRemote:InvokeServer(speedNum)
-	end)
-
-	if not success then
-		logger.Warn("[Macro Player] Lỗi gọi ChangeSpeed:", tostring(result))
-		return false
-	end
-
-	if result == false then
-		return false
-	end
-
-	return true
+	logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.ChangeSpeed")
+	return false
 end
 
 -- Bỏ phiếu Skip Wave (VoteSkip)
@@ -660,18 +788,12 @@ function player.VoteSkip(): boolean
 		vsRemote = ReplicatedStorage:FindFirstChild("VoteSkip", true) :: RemoteFunction?
 	end
 
-	if not vsRemote then
-		logger.Warn("[Macro Player] Không tìm thấy RemoteFunction: Functions.VoteSkip")
-		return false
-	end
-
-	local success, result = pcall(function()
-		return vsRemote:InvokeServer()
-	end)
-
-	if not success then
-		logger.Warn("[Macro Player] Lỗi gọi VoteSkip:", tostring(result))
-		return false
+	if vsRemote and vsRemote:IsA("RemoteFunction") then
+		task.spawn(function()
+			pcall(function()
+				vsRemote:InvokeServer()
+			end)
+		end)
 	end
 
 	return true
@@ -808,7 +930,7 @@ function player.ExecuteStep(step: types.MacroStep): boolean
 		local speedNum = step.Speed or 1
 		local ok = player.ChangeSpeed(speedNum)
 		if ok then
-			notifier.Notify("Macro Play", string.format("Đã đổi Speed sang: x%d [%.2fs]", speedNum, step.Time), 1.5)
+			notifier.Notify("Macro Play", string.format("Changed Speed to: x%d [%.2fs]", speedNum, step.Time), 1.5)
 			return true
 		end
 
@@ -821,6 +943,28 @@ function player.ExecuteStep(step: types.MacroStep): boolean
 			notifier.Notify("Macro Play", string.format("Vote Skip Wave [%.2fs]", step.Time), 1.5)
 			return true
 		end
+
+	elseif step.Type == "StageTransition" then
+		local stageNum = step.Stage or 2
+		logger.Log(string.format("[Macro Player] ✅ Landmark 'New raid map!' xác nhận -> Kích hoạt Raid Stage %s (Wave %d)!", tostring(stageNum), step.Wave))
+		table.clear(activeTowers)
+		table.clear(idToTowerInstance)
+		notifier.Notify("Macro Play", string.format("🌀 Raid Stage %s started! Preparing towers for new map.", tostring(stageNum)), 2.5)
+
+		-- Chờ ngắn nếu mốc chưa kịp kích hoạt (tối đa 15s)
+		local waitStart = os.clock()
+		while isEnabled and isPlaying and gameStats.IsMatchActive() and not reachedStages[stageNum] do
+			updateStatus(string.format("Waiting for New raid map (Stage %s)...", tostring(stageNum)), "Waiting for 'New raid map!'")
+			task.wait(0.2)
+			if os.clock() - waitStart >= 15.0 then
+				break
+			end
+		end
+
+		-- Đệm thêm 1.2s an toàn để Roblox load xong sàn đấu mới và xóa sạch tháp cũ
+		task.wait(1.2)
+		logger.Log(string.format("[Macro Player] Raid Stage %s đã sẵn sàng! Tiếp tục thực thi các bước của Map mới.", tostring(stageNum)))
+		return true
 	end
 
 	return false
@@ -879,9 +1023,9 @@ local function startRunnerLoop()
 			if applyMacroSpeed then
 				local initialSpeed = (macroData.Metadata and macroData.Metadata.InitialSpeed) or 1
 				player.ChangeSpeed(initialSpeed)
-				notifier.Notify("Macro Player", string.format("Bắt đầu Play: %s (Speed ban đầu: x%d, %d bước)", macroName, initialSpeed, totalSteps), 2.5)
+				notifier.Notify("Macro Player", string.format("Started Play: %s (Initial Speed: x%d, %d steps)", macroName, initialSpeed, totalSteps), 2.5)
 			else
-				notifier.Notify("Macro Player", string.format("Bắt đầu Play: %s (%d bước, bỏ qua Speed)", macroName, totalSteps), 2.5)
+				notifier.Notify("Macro Player", string.format("Started Play: %s (%d steps, skipping Speed)", macroName, totalSteps), 2.5)
 			end
 
 			-- Khởi tạo đồng hồ thời gian ảo (Virtual Elapsed Time) tự động co giãn theo tốc độ trận đấu
@@ -895,6 +1039,8 @@ local function startRunnerLoop()
 			local realElapsedOnStart = gameStats.GetElapsedTime()
 			local virtualElapsedTime = realElapsedOnStart * (startPlaySpeed / macroBaseSpeed)
 
+			startStageWatcher()
+
 			for i, step in ipairs(macroData.Steps) do
 				if not isEnabled or not isPlaying then break end
 				if not gameStats.IsMatchActive() then
@@ -904,15 +1050,17 @@ local function startRunnerLoop()
 
 				-- Nếu step là Speed nhưng người dùng tắt Apply Macro Speed -> Bỏ qua
 				if step.Type == "Speed" and not applyMacroSpeed then
+					currentStepIndex = i
 					continue
 				end
 
 				-- Nếu step là VoteSkip nhưng người dùng tắt Apply Macro Skip Wave -> Bỏ qua
 				if step.Type == "VoteSkip" and not applyMacroVoteSkip then
+					currentStepIndex = i
 					continue
 				end
 
-				currentStepIndex = i - 1
+				currentStepIndex = i
 				local actualPrice: number? = nil
 
 				if step.Type == "Place" then
@@ -957,7 +1105,18 @@ local function startRunnerLoop()
 				end
 				displayCost = displayCost or 0
 
-				local nextDesc = string.format("%s %s (%s) [W%d - %.2fs]", step.Type, step.TowerName, step.TowerId, step.Wave, step.Time)
+				local nextDesc: string
+				if step.Type == "Speed" then
+					nextDesc = string.format("Speed x%d [W%d - %.2fs]", step.Speed or 1, step.Wave, step.Time)
+				elseif step.Type == "VoteSkip" then
+					nextDesc = string.format("VoteSkip [W%d - %.2fs]", step.Wave, step.Time)
+				elseif step.Type == "StageTransition" then
+					nextDesc = string.format("Raid Stage %s [W%d - %.2fs]", tostring(step.Stage or 2), step.Wave, step.Time)
+				else
+					local tName = step.TowerName or "Unknown"
+					local tId = step.TowerId or "N/A"
+					nextDesc = string.format("%s %s (%s) [W%d - %.2fs]", step.Type, tName, tId, step.Wave, step.Time)
+				end
 				if timingMode == "Cash (Timed Sell)" and (step.Type == "Place" or step.Type == "Upgrade") and displayCost > 0 then
 					updateStatus(string.format("Waiting for Step %d/%d (Need $%d)", i, totalSteps, displayCost), nextDesc)
 				else
@@ -967,6 +1126,15 @@ local function startRunnerLoop()
 				-- Chờ điều kiện thực thi bước i
 				local canExecute = false
 				while isEnabled and isPlaying and gameStats.IsMatchActive() do
+					-- Landmark Check: Nếu step thuộc Stage >= 2, bắt buộc phải đợi mốc 'New raid map!'
+					local stepRequiredStage = step.Stage or (step.Type == "StageTransition" and (step.Stage or 2)) or 1
+					local stageMet = (stepRequiredStage <= 1) or (reachedStages[stepRequiredStage] == true)
+					if not stageMet then
+						updateStatus(string.format("Waiting for New raid map (Stage %d)...", stepRequiredStage), nextDesc)
+						task.wait(0.2)
+						continue
+					end
+
 					-- Tích lũy Virtual Elapsed Time theo nhịp thực tế và tốc độ game hiện tại
 					local now = os.clock()
 					local dt = now - lastTickClock
@@ -1032,14 +1200,24 @@ local function startRunnerLoop()
 						elseif step.Type == "Target" then
 							-- Target: Thuần theo nhịp trận, đổi ngay khi đạt Wave
 							requirementMet = waveMet
-						elseif step.Type == "Speed" or step.Type == "VoteSkip" then
+						elseif step.Type == "Speed" then
+							-- Speed: Đổi ngay khi đạt Wave tương ứng
+							requirementMet = waveMet
+						elseif step.Type == "StageTransition" then
+							requirementMet = stageMet
+						elseif step.Type == "VoteSkip" then
 							requirementMet = waveMet and (curWave > step.Wave or timePassed)
 						else
 							-- Place / Upgrade:
 							-- Thuần theo tiền (Cash): Đủ tiền là thực thi ngay!
 							requirementMet = hasCash
 						end
-					elseif step.Type == "Sell" or step.Type == "Target" or step.Type == "Speed" or step.Type == "VoteSkip" then
+					elseif step.Type == "Speed" then
+						-- Speed ở các chế độ: đổi ngay khi đạt Wave tương ứng
+						requirementMet = waveMet
+					elseif step.Type == "StageTransition" then
+						requirementMet = stageMet
+					elseif step.Type == "Sell" or step.Type == "Target" or step.Type == "VoteSkip" then
 						requirementMet = waveMet and (curWave > step.Wave or timePassed)
 					else
 						if timingMode == "Timer" then
@@ -1079,7 +1257,11 @@ local function startRunnerLoop()
 					if not isEnabled or not gameStats.IsMatchActive() then break end
 
 					if attempt > 1 then
-						updateStatus(string.format("Retrying %s %s (lần %d/%d)...", step.Type, step.TowerName, attempt, maxAttempts), nextDesc)
+						local retryName = (step.Type == "Speed" and string.format("x%d", step.Speed or 1))
+							or (step.Type == "StageTransition" and string.format("Stage %s", tostring(step.Stage or 2)))
+							or (step.Type == "VoteSkip" and "")
+							or (step.TowerName or "")
+						updateStatus(string.format("Retrying %s %s (attempt %d/%d)...", step.Type, retryName, attempt, maxAttempts), nextDesc)
 					end
 
 					execOk = player.ExecuteStep(step)
@@ -1089,19 +1271,24 @@ local function startRunnerLoop()
 				end
 
 				if not execOk then
-					logger.Warn(string.format("[Macro Player] Thất bại thực thi Step %d (%s %s) sau %d lần thử!", i, step.Type, step.TowerName, maxAttempts))
+					local failName = (step.Type == "Speed" and string.format("x%d", step.Speed or 1))
+						or (step.Type == "StageTransition" and string.format("Stage %s", tostring(step.Stage or 2)))
+						or (step.Type == "VoteSkip" and "")
+						or (step.TowerName or "")
+					logger.Warn(string.format("[Macro Player] Thất bại thực thi Step %d (%s %s) sau %d lần thử!", i, step.Type, failName, maxAttempts))
 					if step.Type == "Place" then
-						notifier.Notify("Macro Player", string.format("⚠️ Không thể đặt %s (%s) sau %d lần thử!", step.TowerName, step.TowerId, maxAttempts), 3)
+						notifier.Notify("Macro Player", string.format("⚠️ Failed to place %s (%s) after %d attempts!", step.TowerName or "Unknown", step.TowerId or "N/A", maxAttempts), 3)
 					end
 				end
 
 				currentStepIndex = i
-				task.wait(math.max(0.02, stepDelay))
+				notifySubscribers()
+				task.wait(math.max(0.2, stepDelay))
 			end
 
 			if isEnabled and currentStepIndex >= totalSteps then
 				updateStatus(string.format("Completed (%d/%d steps)", totalSteps, totalSteps), "All done")
-				notifier.Notify("Macro Player", string.format("Hoàn thành Macro: %s!", macroName), 3)
+				notifier.Notify("Macro Player", string.format("Macro completed: %s!", macroName), 3)
 				pcall(function()
 					local webhook = require("@routes/SlopTowerDefense/core/system/webhook")
 					webhook.SendMacro(macroName, totalSteps, "Completed")
@@ -1109,6 +1296,7 @@ local function startRunnerLoop()
 			end
 
 			isPlaying = false
+			notifySubscribers()
 
 			-- Chờ trận đấu hiện tại kết thúc hẳn trước khi lặp lại ở ván tiếp theo
 			while isEnabled and gameStats.IsMatchActive() do
@@ -1169,7 +1357,7 @@ function player.GetStepDelay(): number
 end
 
 function player.SetStepDelay(delaySec: number)
-	stepDelay = math.clamp(delaySec, 0, 5)
+	stepDelay = math.clamp(delaySec, 0.2, 1)
 	currentSnapshot.StepDelay = stepDelay
 	notifySubscribers()
 end
@@ -1222,6 +1410,7 @@ function player.Stop()
 	isEnabled = false
 	isPlaying = false
 	currentStepIndex = 0
+	cleanupStageWatcher()
 	table.clear(idToTowerInstance)
 	table.clear(activeTowers)
 	if activePlaybackThread then

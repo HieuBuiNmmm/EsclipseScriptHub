@@ -12,7 +12,19 @@ local oldUI = _G.ScriptHub_UI
 if typeof(oldUI) == "table" and typeof(oldUI.Unload) == "function" then
 	pcall(oldUI.Unload, oldUI)
 end
-_G.ScriptHub_UI = nil
+local keySystem = require("@core/keySystem")
+
+--// Key System Configuration (Luarmor-style)
+local KEY_SYSTEM_CONFIG = {
+	Title = "ESCLIPSE SCRIPT HUB",
+	Subtitle = "Key Authentication System",
+	ApiUrl = "https://your-worker.your-subdomain.workers.dev", -- Thay thế bằng URL Cloudflare Worker của bạn
+	GetKeyUrl = "https://your-worker.your-subdomain.workers.dev/getkey", -- Link lấy key (LootLabs / Linkvertise / Checkpoint)
+	DiscordUrl = "https://discord.gg/your-invite", -- Link Discord của bạn
+	SaveFolder = "EsclipseHub",
+	SaveFileName = "key.json", -- Lưu tại: EsclipseHub/key.json
+	BypassKey = false, -- Đổi thành true nếu muốn tạm thời bỏ qua Key System để test
+}
 
 --// Variables
 local routes = {
@@ -54,7 +66,13 @@ for _ = 1, 300 do
 	task.wait(0.1)
 end
 
---// Initialize
+--// 1. Xác thực bản quyền qua Key System trước khi nạp Route
+local authSuccess = keySystem.Authenticate(KEY_SYSTEM_CONFIG)
+if not authSuccess then
+	return
+end
+
+--// 2. Khởi tạo Route tương ứng với Place/Universe hiện tại
 for _, route in pairs(routes) do
 	if route.Places then
 		for _, placeId in ipairs(route.Places) do

@@ -1,12 +1,13 @@
 -- Types: Định nghĩa kiểu dữ liệu chuẩn cho hệ thống Macro Slop Tower Defense.
 
-export type ActionType = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip"
+export type ActionType = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip" | "StageTransition"
 
 export type MacroStep = {
 	Index: number,
 	Type: ActionType,
-	TowerId: string, -- Định danh tháp (vd: "T1", "T2" hoặc "SPEED")
-	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan" hoặc "ChangeSpeed")
+	TowerId: string, -- Định danh tháp (vd: "T1", "T2", "SPEED", "STAGE")
+	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan", "Raid Stage 2")
+	Stage: number?, -- Giai đoạn Raid (vd: 1, 2, 3, 4) nếu Type == "StageTransition"
 	Speed: number?, -- Tốc độ game (1, 2, 3, 4, 5) nếu Type == "Speed"
 	RecordSpeed: number?, -- Tốc độ game lúc thực hiện ghi bước này (1, 2, 3, 4, 5)
 	CFrame: { number }?, -- Tọa độ CFrame [X, Y, Z, R00, R01, ...] (12 components)

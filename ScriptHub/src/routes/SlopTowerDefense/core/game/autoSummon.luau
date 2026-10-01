@@ -127,10 +127,10 @@ function autoSummon.SetEnabled(state: boolean)
 		if not activeThread then
 			activeThread = task.spawn(runLoop)
 		end
-		notifier.Notify("Auto Summon", string.format("Đã bật Auto Summon (%s - %s).", autoSummon.SelectedBanner, autoSummon.SummonAmount), 2)
+		notifier.Notify("Auto Summon", string.format("Auto Summon enabled (%s - %s).", autoSummon.SelectedBanner, autoSummon.SummonAmount), 2)
 	else
 		activeThread = nil
-		notifier.Notify("Auto Summon", "Đã tắt Auto Summon.", 2)
+		notifier.Notify("Auto Summon", "Auto Summon disabled.", 2)
 	end
 end
 

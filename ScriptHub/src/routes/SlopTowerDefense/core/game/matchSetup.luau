@@ -12,6 +12,16 @@ local logger = require("@routes/SlopTowerDefense/core/system/logger")
 local matchSetup = {
 	AutoPickMapEnabled = false,
 	SelectedUniverse = "Brainrot Bases",
+	NormalUniverses = {
+		"Brainrot Bases",
+		"Toilet Territory",
+		"Retro Revival",
+		"Garden",
+		"Backrooms",
+	},
+	RaidUniverses = {
+		"Raid",
+	},
 	Universes = {
 		"Brainrot Bases",
 		"Toilet Territory",
@@ -51,6 +61,9 @@ local matchSetup = {
 			"Level94",
 			"BackroomsEndless",
 		},
+		["Raid"] = {
+			"Raid",
+		},
 	},
 
 	SelectedMap = "Night Base",
@@ -70,6 +83,97 @@ local matchSetup = {
 local hasVotedUniverseMap = false
 local hasVotedDifficulty = false
 local watcherRunning = false
+
+-- Live Match Info: Ghi nhận trực tiếp từ lượt click UI của Player trong game
+local liveUniverse: string? = nil
+local liveMap: string? = nil
+local liveDifficulty: string? = nil
+local hookedButtons: { [Instance]: boolean } = {}
+
+function matchSetup.RecordLiveUniverse(name: string)
+	if not name or name == "" then return end
+	liveUniverse = name
+	logger.Log("[MatchSetup] 🎯 Ghi nhận Live Universe:", name)
+end
+
+function matchSetup.RecordLiveMap(name: string)
+	if not name or name == "" then return end
+	liveMap = name
+	logger.Log("[MatchSetup] 🎯 Ghi nhận Live Map:", name)
+end
+
+function matchSetup.RecordLiveDifficulty(diff: string)
+	if not diff or diff == "" then return end
+	liveDifficulty = diff
+	logger.Log("[MatchSetup] 🎯 Ghi nhận Live Difficulty:", diff)
+end
+
+function matchSetup.GetLiveUniverse(): string?
+	return liveUniverse
+end
+
+function matchSetup.GetLiveMap(): string?
+	return liveMap
+end
+
+function matchSetup.GetLiveDifficulty(): string?
+	return liveDifficulty
+end
+
+function matchSetup.GetLiveMatchInfo(): (string?, string?, string?)
+	-- Nếu max wave là 100 hoặc có dấu hiệu Raid -> tự động xác nhận Raid
+	local p = Players.LocalPlayer
+	local playerGui = p and p:FindFirstChild("PlayerGui")
+	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
+	local info = gameGui and gameGui:FindFirstChild("Info", true)
+	local stats = info and info:FindFirstChild("Stats")
+	local waveLabel = stats and stats:FindFirstChild("Wave") :: TextLabel?
+	if waveLabel and waveLabel.Text:find("/%s*100") then
+		liveUniverse = "Raid"
+		liveMap = "Raid"
+		liveDifficulty = "Raid"
+	end
+
+	return liveUniverse, liveMap, liveDifficulty
+end
+
+function matchSetup.ResetLiveMatchInfo()
+	liveUniverse = nil
+	liveMap = nil
+	liveDifficulty = nil
+	table.clear(hookedButtons)
+end
+
+-- Lắng nghe trực tiếp sự kiện click trên các nút của game GUI (Voting / ComplicationVoting)
+local function hookVotingButtons(container: Instance?, category: "Universe" | "Map" | "Difficulty")
+	if not container then return end
+
+	local function hookButton(child: Instance)
+		if hookedButtons[child] then return end
+		if not (child:IsA("GuiButton") or child:IsA("ImageButton") or child:IsA("TextButton")) then return end
+		hookedButtons[child] = true
+
+		local btnName = child.Name
+		local function onTriggered()
+			if category == "Universe" then
+				matchSetup.RecordLiveUniverse(btnName)
+			elseif category == "Map" then
+				matchSetup.RecordLiveMap(btnName)
+			elseif category == "Difficulty" then
+				matchSetup.RecordLiveDifficulty(btnName)
+			end
+		end
+
+		child.Activated:Connect(onTriggered)
+		child.MouseButton1Click:Connect(onTriggered)
+	end
+
+	for _, child in ipairs(container:GetChildren()) do
+		hookButton(child)
+	end
+
+	container.ChildAdded:Connect(hookButton)
+end
 
 -- Hàm click button an toàn, kết hợp cả 3 phương thức để đảm bảo 100% ăn lệnh
 local function clickButton(button: Instance)
@@ -199,24 +303,48 @@ local function runVotingWatcher()
 	watcherRunning = true
 	logger.Log("[MatchSetup] Trình theo dõi Match Setup đã khởi động.")
 
+	local wasVotingActive = false
+	local wasCompVotingActive = false
+
 	while lifecycle.IsActive() and zoneGuard.IsInGame() do
-		local needMap = matchSetup.AutoPickMapEnabled and not hasVotedUniverseMap
-		local needDiff = matchSetup.AutoDifficultyEnabled and not hasVotedDifficulty
-
-		-- Nếu không cần làm gì ở vòng lặp này -> nghỉ 1 giây rồi kiểm tra tiếp (tuyệt đối không break!)
-		if not needMap and not needDiff then
-			task.wait(1)
-			continue
-		end
-
 		local player = Players.LocalPlayer
 		local playerGui = player and player:FindFirstChild("PlayerGui")
 		local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
 
-		-- Phase 1: Universe & Map Voting
-		if needMap and gameGui then
+		if gameGui then
 			local voting = gameGui:FindFirstChild("Voting")
-			if voting and isVotingActive(voting) then
+			local compVoting = gameGui:FindFirstChild("ComplicationVoting")
+
+			-- 1. Lắng nghe trực tiếp các nút trong Voting & ComplicationVoting để bắt mọi lượt click của Player
+			if voting then
+				local universes = voting:FindFirstChild("Universes")
+				local maps = voting:FindFirstChild("Maps")
+				if universes then hookVotingButtons(universes, "Universe") end
+				if maps then hookVotingButtons(maps, "Map") end
+			end
+			if compVoting then
+				local modes = compVoting:FindFirstChild("Modes")
+				if modes then hookVotingButtons(modes, "Difficulty") end
+			end
+
+			-- 2. Quản lý trạng thái chuyển đổi giữa các ván Replay
+			local votingActive = voting and isVotingActive(voting) or false
+			if votingActive and not wasVotingActive then
+				-- Bảng chọn Universe/Map xuất hiện lại -> cho phép vote lại
+				hasVotedUniverseMap = false
+			end
+			wasVotingActive = votingActive
+
+			local compActive = compVoting and isComplicationVotingActive(compVoting) or false
+			if compActive and not wasCompVotingActive then
+				-- Bảng chọn độ khó xuất hiện lại (ví dụ sau khi Replay) -> cho phép vote lại độ khó
+				hasVotedDifficulty = false
+			end
+			wasCompVotingActive = compActive
+
+			-- 3. Tự động vote Universe & Map (nếu bật Auto Pick Map)
+			local needMap = matchSetup.AutoPickMapEnabled and not hasVotedUniverseMap
+			if needMap and votingActive then
 				logger.Log(string.format("[MatchSetup] Phát hiện giao diện Voting! Chờ Vote Delay %d giây...", matchSetup.VoteDelay))
 				if matchSetup.VoteDelay > 0 then
 					task.wait(matchSetup.VoteDelay)
@@ -233,6 +361,7 @@ local function runVotingWatcher()
 					local uBtn = findButton(universes, matchSetup.SelectedUniverse)
 					if uBtn then
 						clickButton(uBtn)
+						matchSetup.RecordLiveUniverse(matchSetup.SelectedUniverse)
 						logger.Log("[MatchSetup] -> Đã click Universe:", matchSetup.SelectedUniverse)
 					else
 						logger.Warn("[MatchSetup] Không tìm thấy nút Universe:", matchSetup.SelectedUniverse)
@@ -258,16 +387,18 @@ local function runVotingWatcher()
 					if mapBtn then
 						clickButton(mapBtn)
 						hasVotedUniverseMap = true
+						matchSetup.RecordLiveMap(targetMap)
 						logger.Log("[MatchSetup] -> Đã click Map thành công:", targetMap)
-						notifier.Notify("Match Setup", string.format("Đã chọn: %s - %s", matchSetup.SelectedUniverse, targetMap), 3)
+						notifier.Notify("Match Setup", string.format("Selected: %s - %s", matchSetup.SelectedUniverse, targetMap), 3)
 					else
 						-- Fallback: bấm nút visible đầu tiên trong Maps
 						for _, btn in ipairs(mapsFolder:GetChildren()) do
 							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
 								clickButton(btn)
 								hasVotedUniverseMap = true
+								matchSetup.RecordLiveMap(btn.Name)
 								logger.Log("[MatchSetup] -> Đã click Map fallback:", btn.Name)
-								notifier.Notify("Match Setup", string.format("Đã chọn Map fallback: %s", btn.Name), 3)
+								notifier.Notify("Match Setup", string.format("Selected fallback Map: %s", btn.Name), 3)
 								break
 							end
 						end
@@ -277,12 +408,10 @@ local function runVotingWatcher()
 					end
 				end
 			end
-		end
 
-		-- Phase 2: Difficulty Voting (ComplicationVoting)
-		if needDiff and gameGui then
-			local compVoting = gameGui:FindFirstChild("ComplicationVoting")
-			if compVoting and isComplicationVotingActive(compVoting) then
+			-- 4. Tự động vote Difficulty (nếu bật Auto Select Difficulty)
+			local needDiff = matchSetup.AutoDifficultyEnabled and not hasVotedDifficulty
+			if needDiff and compActive then
 				logger.Log("[MatchSetup] Phát hiện giao diện ComplicationVoting!")
 				local modes = compVoting:FindFirstChild("Modes")
 				if modes then
@@ -294,16 +423,18 @@ local function runVotingWatcher()
 						task.wait(0.2)
 						clickButton(diffBtn)
 						hasVotedDifficulty = true
+						matchSetup.RecordLiveDifficulty(targetDiff)
 						logger.Log("[MatchSetup] -> Đã click Difficulty thành công:", targetDiff)
-						notifier.Notify("Match Setup", string.format("Đã chọn độ khó: %s", targetDiff), 3)
+						notifier.Notify("Match Setup", string.format("Selected Difficulty: %s", targetDiff), 3)
 					else
 						-- Fallback
 						for _, btn in ipairs(modes:GetChildren()) do
 							if (btn:IsA("GuiButton") or btn:IsA("ImageButton")) and btn.Visible then
 								clickButton(btn)
 								hasVotedDifficulty = true
+								matchSetup.RecordLiveDifficulty(btn.Name)
 								logger.Log("[MatchSetup] -> Đã click Difficulty fallback:", btn.Name)
-								notifier.Notify("Match Setup", string.format("Đã chọn độ khó fallback: %s", btn.Name), 3)
+								notifier.Notify("Match Setup", string.format("Selected fallback Difficulty: %s", btn.Name), 3)
 								break
 							end
 						end
@@ -330,6 +461,13 @@ end
 function matchSetup.StopVotingWatcher()
 	hasVotedUniverseMap = false
 	hasVotedDifficulty = false
+end
+
+function matchSetup.GetUniversesForMode(mode: string?): { string }
+	if mode == "Raid" then
+		return matchSetup.RaidUniverses
+	end
+	return matchSetup.NormalUniverses
 end
 
 function matchSetup.GetMapsForUniverse(universeName: string): { string }
@@ -386,6 +524,7 @@ zoneGuard.Register({
 	OnLeave = function()
 		logger.Log("[MatchSetup] Rời In-Game -> Reset trạng thái Match Setup.")
 		matchSetup.StopVotingWatcher()
+		matchSetup.ResetLiveMatchInfo()
 	end,
 })
 

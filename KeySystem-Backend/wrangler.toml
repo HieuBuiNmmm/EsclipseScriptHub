@@ -1,0 +1,13 @@
+name = "esclipse-keysystem"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# KV Namespace Binding
+# Run: npx wrangler kv:namespace create "KEYS_KV"
+# Then replace id below with your generated namespace id:
+[[kv_namespaces]]
+binding = "KEYS_KV"
+id = "YOUR_KV_NAMESPACE_ID_HERE"
+
+[vars]
+ADMIN_SECRET = "CHANGE_THIS_ADMIN_SECRET_123456"

@@ -39,6 +39,205 @@ local function ensureFolder()
 	end)
 end
 
+-- Chuẩn hóa dữ liệu macro khi nạp từ file: hỗ trợ cả dạng Dictionary {"1": {...}} lẫn Array [{...}]
+local function normalizeMacroData(data: any): types.MacroData?
+	if type(data) ~= "table" then return nil end
+	data.Metadata = data.Metadata or {
+		Name = "Unknown",
+		CreatedAt = os.time(),
+		UpdatedAt = os.time(),
+		TotalSteps = 0,
+		TotalDuration = 0,
+	}
+
+	local rawSteps = data.Steps
+	local arraySteps: { types.MacroStep } = {}
+
+	if type(rawSteps) == "table" then
+		-- Kiểm tra xem Steps đang ở dạng Array hay Dictionary
+		local isArray = (#rawSteps > 0 and rawSteps[1] ~= nil)
+		local function sanitizeStep(step: any, idx: number)
+			if type(step) ~= "table" then return end
+			step.Index = step.Index or idx
+			if step.Type == "Speed" then
+				step.TowerId = step.TowerId or "SPEED"
+				step.TowerName = step.TowerName or "GameSpeed"
+			elseif step.Type == "VoteSkip" then
+				step.TowerId = step.TowerId or "SKIP"
+				step.TowerName = step.TowerName or "VoteSkip"
+			elseif step.Type == "StageTransition" then
+				step.TowerId = step.TowerId or "STAGE"
+				step.TowerName = step.TowerName or string.format("Raid Stage %d", step.Stage or 2)
+			end
+			return step
+		end
+
+		if isArray then
+			for idx, step in ipairs(rawSteps) do
+				local s = sanitizeStep(step, idx)
+				if s then
+					table.insert(arraySteps, s)
+				end
+			end
+		else
+			-- Dạng Dictionary: {"1": {...}, "2": {...}}
+			local indices = {}
+			for k in pairs(rawSteps) do
+				local idx = tonumber(k)
+				if idx then
+					table.insert(indices, idx)
+				end
+			end
+			table.sort(indices)
+			for _, idx in ipairs(indices) do
+				local step = rawSteps[tostring(idx)] or rawSteps[idx]
+				local s = sanitizeStep(step, idx)
+				if s then
+					table.insert(arraySteps, s)
+				end
+			end
+		end
+	end
+
+	data.Steps = arraySteps
+	data.Metadata.TotalSteps = #arraySteps
+	return data :: types.MacroData
+end
+
+-- Xuất dữ liệu macro thành chuỗi JSON đẹp mắt, chuẩn RFC 8259, giữ nguyên tuyệt đối số thực của Position và CFrame
+local function serializeMacro(data: types.MacroData): string
+	local lines = {}
+	table.insert(lines, "{")
+
+	-- 1. Metadata đặt ở đầu file
+	table.insert(lines, '  "Metadata": {')
+	local meta = data.Metadata or {}
+	local metaLines = {}
+	if meta.Name then
+		table.insert(metaLines, string.format('    "Name": %s', HttpService:JSONEncode(meta.Name)))
+	end
+	if meta.TotalSteps then
+		table.insert(metaLines, string.format('    "TotalSteps": %d', meta.TotalSteps))
+	end
+	if meta.TotalDuration then
+		table.insert(metaLines, string.format('    "TotalDuration": %s', tostring(meta.TotalDuration)))
+	end
+	if meta.InitialSpeed then
+		table.insert(metaLines, string.format('    "InitialSpeed": %d', meta.InitialSpeed))
+	end
+	if meta.CreatedAt then
+		table.insert(metaLines, string.format('    "CreatedAt": %s', tostring(meta.CreatedAt)))
+	end
+	if meta.UpdatedAt then
+		table.insert(metaLines, string.format('    "UpdatedAt": %s', tostring(meta.UpdatedAt)))
+	end
+	if meta.Universe then
+		table.insert(metaLines, string.format('    "Universe": %s', HttpService:JSONEncode(meta.Universe)))
+	end
+	if meta.Map then
+		table.insert(metaLines, string.format('    "Map": %s', HttpService:JSONEncode(meta.Map)))
+	end
+	if meta.Difficulty then
+		table.insert(metaLines, string.format('    "Difficulty": %s', HttpService:JSONEncode(meta.Difficulty)))
+	end
+	table.insert(lines, table.concat(metaLines, ",\n"))
+	table.insert(lines, "  },")
+
+	-- 2. Steps dạng Dictionary {"1": { ... }, "2": { ... }}
+	local stepCount = #data.Steps
+	if stepCount == 0 then
+		table.insert(lines, '  "Steps": {}')
+	else
+		table.insert(lines, '  "Steps": {')
+		for i, step in ipairs(data.Steps) do
+			local stepKey = tostring(step.Index or i)
+			table.insert(lines, string.format('    %q: {', stepKey))
+
+			local fields = {}
+			-- Nhóm 1: Định danh bước
+			if step.Type then
+				table.insert(fields, string.format('      "Type": %s', HttpService:JSONEncode(step.Type)))
+			end
+			if step.TowerId and step.TowerId ~= "SKIP" and step.TowerId ~= "SPEED" and step.TowerId ~= "STAGE" then
+				table.insert(fields, string.format('      "TowerId": %s', HttpService:JSONEncode(step.TowerId)))
+			end
+			if step.TowerName and step.TowerName ~= "VoteSkip" and step.TowerName ~= "GameSpeed" and step.TowerName ~= "Unknown" and not step.TowerName:find("^Raid Stage") then
+				table.insert(fields, string.format('      "TowerName": %s', HttpService:JSONEncode(step.TowerName)))
+			end
+			if step.LayoutOrder ~= nil then
+				table.insert(fields, string.format('      "LayoutOrder": %d', step.LayoutOrder))
+			end
+
+			-- Nhóm 2: Thời điểm & Tốc độ
+			if step.Wave ~= nil then
+				table.insert(fields, string.format('      "Wave": %d', step.Wave))
+			end
+			if step.Time ~= nil then
+				table.insert(fields, string.format('      "Time": %s', tostring(step.Time)))
+			end
+			if step.RecordSpeed ~= nil then
+				table.insert(fields, string.format('      "RecordSpeed": %d', step.RecordSpeed))
+			end
+
+			-- Nhóm 3: Chi phí
+			if step.TowerCost ~= nil then
+				table.insert(fields, string.format('      "TowerCost": %s', tostring(step.TowerCost)))
+			end
+			if step.Cost ~= nil then
+				table.insert(fields, string.format('      "Cost": %s', tostring(step.Cost)))
+			end
+
+			-- Nhóm 4: Tọa độ & CFrame (Giữ nguyên số thực gốc 100%, format gọn gàng 1 dòng)
+			if step.Position and #step.Position > 0 then
+				local posVals = {}
+				for _, p in ipairs(step.Position) do
+					table.insert(posVals, tostring(p))
+				end
+				table.insert(fields, string.format('      "Position": [%s]', table.concat(posVals, ", ")))
+			end
+			if step.CFrame and #step.CFrame > 0 then
+				local cfVals = {}
+				for _, c in ipairs(step.CFrame) do
+					table.insert(cfVals, tostring(c))
+				end
+				table.insert(fields, string.format('      "CFrame": [%s]', table.concat(cfVals, ", ")))
+			end
+
+			-- Nhóm 5: Thuộc tính riêng từng loại hành động
+			if step.Stage ~= nil then
+				table.insert(fields, string.format('      "Stage": %d', step.Stage))
+			end
+			if step.TargetMode then
+				table.insert(fields, string.format('      "TargetMode": %s', HttpService:JSONEncode(step.TargetMode)))
+			end
+			if step.Speed ~= nil then
+				table.insert(fields, string.format('      "Speed": %d', step.Speed))
+			end
+			if step.Arg3 ~= nil and step.Arg3 ~= false then
+				table.insert(fields, string.format('      "Arg3": %s', tostring(step.Arg3)))
+			end
+			if step.Arg4 then
+				table.insert(fields, string.format('      "Arg4": %s', HttpService:JSONEncode(step.Arg4)))
+			end
+			if step.Arg5 and #step.Arg5 > 0 then
+				local modVals = {}
+				for _, m in ipairs(step.Arg5) do
+					table.insert(modVals, HttpService:JSONEncode(m))
+				end
+				table.insert(fields, string.format('      "Arg5": [%s]', table.concat(modVals, ", ")))
+			end
+
+			local comma = (i < stepCount) and "    }," or "    }"
+			table.insert(lines, table.concat(fields, ",\n"))
+			table.insert(lines, comma)
+		end
+		table.insert(lines, "  }")
+	end
+	table.insert(lines, "}")
+
+	return table.concat(lines, "\n")
+end
+
 -- Khởi tạo và nạp danh sách macro từ ổ đĩa
 local function initialize()
 	if isInitialized then return end
@@ -57,7 +256,8 @@ local function initialize()
 						if fileName and #fileName > 0 then
 							pcall(function()
 								local content = readfile(filePath)
-								local data = HttpService:JSONDecode(content) :: types.MacroData
+								local rawData = HttpService:JSONDecode(content)
+								local data = normalizeMacroData(rawData)
 								if data and data.Metadata then
 									memoryCache[fileName] = data
 								end
@@ -129,8 +329,13 @@ function storage.SaveMacro(name: string, data: types.MacroData): boolean
 		ensureFolder()
 		local path = getFilePath(name)
 		local ok, encoded = pcall(function()
-			return HttpService:JSONEncode(data)
+			return serializeMacro(data)
 		end)
+		if not ok or not encoded then
+			ok, encoded = pcall(function()
+				return HttpService:JSONEncode(data)
+			end)
+		end
 		if ok and encoded then
 			local writeOk = pcall(function()
 				writefile(path, encoded)

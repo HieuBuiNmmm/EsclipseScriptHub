@@ -24,7 +24,7 @@ return function(window, tab)
 		onBinded = autoSave.Wrap(function(key)
 			if key and typeof(key) == "EnumItem" then
 				window:SetKeybind(key)
-				notifier.Notify("Menu Keybind", "Phím mở Menu đã đổi thành: " .. key.Name, 2)
+				notifier.Notify("Menu Keybind", "Menu keybind changed to: " .. key.Name, 2)
 			end
 		end),
 	}, "Keybind_MenuToggle")
@@ -84,22 +84,6 @@ return function(window, tab)
 		end),
 	}, "Toggle_WebhookNotifyMatchEnd")
 
-	webhookSection:Toggle({
-		Name = "Notify Auto Summon",
-		Default = webhook.IsNotifySummon(),
-		Callback = autoSave.Wrap(function(state)
-			webhook.SetNotifySummon(state)
-		end),
-	}, "Toggle_WebhookNotifySummon")
-
-	webhookSection:Toggle({
-		Name = "Notify Macro",
-		Default = webhook.IsNotifyMacro(),
-		Callback = autoSave.Wrap(function(state)
-			webhook.SetNotifyMacro(state)
-		end),
-	}, "Toggle_WebhookNotifyMacro")
-
 	webhookSection:Input({
 		Name = "Discord User ID (Ping)",
 		Placeholder = "Optional: 123456789...",
@@ -114,9 +98,9 @@ return function(window, tab)
 		Callback = function()
 			local ok, err = webhook.SendTest()
 			if ok then
-				notifier.Notify("Webhook", "Gửi tin nhắn thử nghiệm thành công!", 2.5)
+				notifier.Notify("Webhook", "Test message sent successfully!", 2.5)
 			else
-				notifier.Notify("Webhook", "Gửi thất bại: " .. tostring(err), 3)
+				notifier.Notify("Webhook", "Failed to send: " .. tostring(err), 3)
 			end
 		end,
 	})

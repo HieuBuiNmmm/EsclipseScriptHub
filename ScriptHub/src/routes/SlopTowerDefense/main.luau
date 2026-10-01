@@ -112,7 +112,7 @@ return function(self)
 					end
 				end
 			end)
-			notifier.Notify("Slop Tower Defense", "UI đã tự động ẩn. Nhấn " .. keyName .. " để mở lại.", 5)
+			notifier.Notify("Slop Tower Defense", "UI is hidden. Press " .. keyName .. " to toggle.", 5)
 		end)
 	end
 

@@ -145,7 +145,7 @@ local function trySolveGui(gui: Instance): boolean
 		if clicked then
 			lastSolvedTime = os.clock()
 			logger.Log(string.format("[SlopTD - AntiMacro] Đã tự động vượt qua %s (Nút: %s) thành công!", gui.Name, button.Name))
-			notifier.Notify("Anti Macro", "Đã tự động xác nhận Anti-Macro thành công!", 3)
+			notifier.Notify("Anti Macro", "Successfully solved Anti-Macro check!", 3)
 		end
 
 		task.wait(0.5)
