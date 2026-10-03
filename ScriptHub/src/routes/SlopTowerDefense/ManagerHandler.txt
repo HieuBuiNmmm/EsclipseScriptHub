@@ -1,0 +1,483 @@
+-- Script Path: game:GetService("StarterGui").GameGui.UnitManager.ManagerHandler
+-- Took 0.01s to decompile.
+-- Executor: Real (2.7.4)
+
+-- Script path: StarterGui.GameGui.UnitManager.ManagerHandler
+-- Decompile time: 13.64 ms
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Functions = ReplicatedStorage:WaitForChild("Functions")
+local SellTower = Functions:WaitForChild("SellTower")
+local UpgradeTower = Functions:WaitForChild("UpgradeTower")
+local toggleClient = (ReplicatedStorage:WaitForChild("Events")):WaitForChild("toggleClient")
+local LocalPlayer = Players.LocalPlayer
+local Cash = LocalPlayer:WaitForChild("Cash")
+local LVLs = require(ReplicatedStorage.LVLs)
+local TowersConfig = require(ReplicatedStorage.Modules.TowersConfig)
+local Parent = script.Parent
+local Units = Parent.Units
+local All = Parent.All
+local Placeholder = script.Placeholder
+Units.ScrollingDirection = Enum.ScrollingDirection.Y
+local BackgroundColor3 = Placeholder.Upgrade.BackgroundColor3
+local BackgroundColor3_2 = Placeholder.Sell.BackgroundColor3
+local BackgroundColor3_3 = All.Upgrade.BackgroundColor3
+local u59 = Color3.fromRGB(84, 84, 84)
+local u64 = Color3.fromRGB(140, 60, 60)
+local u65 = {}
+u65.Silver = Color3.fromRGB(200, 200, 200)
+u65.Gold = Color3.fromRGB(255, 200, 60)
+u65.Rainbow = Color3.fromRGB(200, 120, 255)
+local SFX = ReplicatedStorage:FindFirstChild("SFX")
+
+local function PlaySFX(a1) -- Line: 35 -- upvalues: SFX (val)
+    local v1 = SFX and SFX:FindFirstChild(a1)
+    if v1 then
+        v1:Play()
+    end
+end
+
+local function FormatNumber(a1) -- Line: 42
+    return (tostring((math.floor((tonumber(a1)) or 0))):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", ""))
+end
+
+local function GetTowerImage(a1) -- Line: 51 -- upvalues: TowersConfig (val)
+    local success, result = pcall(TowersConfig.GetTowerConfig, a1.Name)
+    if success and result and result.Image and result.Image ~= "" then
+        return result.Image
+    end
+    local Config = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("Image")
+    if not Config then
+        return ""
+    end
+    if not Config:IsA("Decal") and not Config:IsA("Texture") then
+        return ""
+    end
+    return Config.Texture
+end
+
+local function IsOwnTower(a1) -- Line: 63 -- upvalues: LocalPlayer (val)
+    local v1 = false
+    if typeof(a1) == "Instance" then
+        v1 = a1:IsA("Model")
+        if v1 then
+            v1 = false
+            if a1.Parent == workspace:FindFirstChild("Towers") then
+                v1 = false
+                if a1:FindFirstChild("Config") ~= nil then
+                    v1 = false
+                    if a1.Config:FindFirstChild("Owner") ~= nil then
+                        v1 = a1.Config.Owner.Value == LocalPlayer.Name
+                    end
+                end
+            end
+        end
+    end
+    return v1
+end
+
+local function GetLevel(a1) -- Line: 72
+    local Config = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("LVL")
+    return Config and Config.Value or 0
+end
+
+local function GetMaxLevel(a1) -- Line: 77 -- upvalues: LVLs (val)
+    local v1 = LVLs[a1.Name]
+    return v1 and #v1 or 0
+end
+
+local function GetUpgradePrice(a1) -- Line: 82 -- upvalues: LVLs (val)
+    local v1 = LVLs[a1.Name]
+    if v1 then
+        local Config = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("LVL")
+        local v2 = v1[(Config and Config.Value or 0) + 1]
+        if v2 then
+            return v2.Price
+        end
+    end
+    return nil
+end
+
+local function GetSellPrice(a1) -- Line: 93
+    local Config = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("Price")
+    return (math.floor((Config and Config.Value or 0) / 5))
+end
+
+local u93 = {}
+local u94 = 0
+
+local function CountCards() -- Line: 104 -- upvalues: u93 (val)
+    local v1 = 0
+    for k in pairs(u93) do
+        v1 = v1 + 1
+    end
+    return v1
+end
+
+local function UpdateTitle() -- Line: 112 -- upvalues: Parent (val), u93 (val)
+    local Title = Parent.Title
+    local v1 = 0
+    for k in pairs(u93) do
+        v1 = v1 + 1
+    end
+    Title.Text = "Unit Manager (" .. v1 .. ")"
+end
+
+local function UpdateAllButtons() -- Line: 116
+    -- upvalues: u93 (val), LVLs (val), All (val), u59 (val), BackgroundColor3_3 (val)
+    local Config, Config_2, Price, v1, v2
+    local v3 = 0
+    local v4 = 0
+    local v5 = 0
+    for k in pairs(u93) do
+        if k.Parent then
+            v2 = LVLs[k.Name]
+            if not v2 then
+                Price = nil
+            else
+                Config = k:FindFirstChild("Config") and k.Config:FindFirstChild("LVL")
+                v1 = v2[(Config and Config.Value or 0) + 1]
+                Price = if not v1 then nil else v1.Price
+            end
+            if Price then
+                v3 = v3 + Price
+                v4 = v4 + 1
+            end
+            Config_2 = k:FindFirstChild("Config") and k.Config:FindFirstChild("Price")
+            v5 = v5 + math.floor((Config_2 and Config_2.Value or 0) / 5)
+        end
+    end
+    local Upgrade = All.Upgrade
+    if v4 ~= 0 then
+        Upgrade.Title.Text = "Upgrade All ($" .. tostring((math.floor((tonumber(v3)) or 0))):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "") .. ")"
+        Upgrade.BackgroundColor3 = BackgroundColor3_3
+    else
+        Upgrade.Title.Text = "Upgrade All (Max)"
+        Upgrade.BackgroundColor3 = u59
+    end
+    local Sell = All.Sell
+    if not Sell:GetAttribute("Confirming") then
+        Sell.Title.Text = "Sell All (+$" .. tostring((math.floor((tonumber(v5)) or 0))):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "") .. ")"
+    end
+end
+
+local function RefreshCard(a1) -- Line: 145
+    -- upvalues: u93 (val), LVLs (val), Cash (val), BackgroundColor3 (val), u64 (val), u59 (val)
+    -- upvalues: BackgroundColor3_2 (val), u65 (val)
+    local v1 = u93[a1]
+    if v1 and a1.Parent then
+        local Price
+        local card = v1.card
+        local Config = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("LVL")
+        local Value = Config and Config.Value or 0
+        local v2 = LVLs[a1.Name]
+        local v3 = v2 and #v2 or 0
+        local Level = card.Level
+        local v4 = v3 > 0 and "LVL " .. Value .. "/" .. v3 or tostring(Value)
+        Level.Text = v4
+        v4 = LVLs[a1.Name]
+        if not v4 then
+            Price = nil
+        else
+            local Config_2 = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("LVL")
+            local v5 = v4[(Config_2 and Config_2.Value or 0) + 1]
+            Price = if not v5 then nil else v5.Price
+        end
+        if not Price then
+            card.Upgrade.Price.Text = "Max"
+            card.Upgrade.BackgroundColor3 = u59
+        else
+            card.Upgrade.Price.Text = "$" .. tostring((math.floor((tonumber(Price)) or 0))):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")
+            card.Upgrade.BackgroundColor3 = Price <= Cash.Value and BackgroundColor3 or u64
+        end
+        local Title = card.Sell.Title
+        local Config_3 = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("Price")
+        Title.Text = "+$" .. tostring((math.floor((tonumber((math.floor((Config_3 and Config_3.Value or 0) / 5)))) or 0))):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub(
+            "^,",
+            ""
+        )
+        card.Sell.BackgroundColor3 = BackgroundColor3_2
+        card.Enchant.Text = a1:GetAttribute("TraitName") or ""
+        v4 = if not a1:FindFirstChild("Rainbow") then if not a1:FindFirstChild("Gold") then if not a1:FindFirstChild("Silver") then nil else "Silver" else "Gold" else "Rainbow"
+        local ShinyIcon = card:FindFirstChild("ShinyIcon")
+        if ShinyIcon then
+            ShinyIcon.Visible = v4 ~= nil
+            local Star = ShinyIcon:FindFirstChild("Star")
+            if Star and v4 then
+                Star.ImageColor3 = u65[v4]
+            end
+        end
+        return
+    end
+end
+
+local function RefreshAll() -- Line: 181 -- upvalues: u93 (val), RefreshCard (val), UpdateAllButtons (val)
+    for k in pairs(u93) do
+        RefreshCard(k)
+    end
+    UpdateAllButtons()
+end
+
+local function Remove(a1) -- Line: 188 -- upvalues: u93 (val), Parent (val), UpdateAllButtons (val)
+    local v1 = u93[a1]
+    if not v1 then
+        return
+    end
+    for i, v in ipairs(v1.connections) do
+        v:Disconnect()
+    end
+    v1.card:Destroy()
+    u93[a1] = nil
+    local Title = Parent.Title
+    local v2 = 0
+    for k in pairs(u93) do
+        v2 = v2 + 1
+    end
+    Title.Text = "Unit Manager (" .. v2 .. ")"
+    UpdateAllButtons()
+end
+
+local function UpgradeUnit(a1) -- Line: 202
+    -- upvalues: IsOwnTower (val), LVLs (val), Cash (val), UpgradeTower (val), SFX (val), toggleClient (val)
+    local Price
+    if not IsOwnTower(a1) then
+        return false
+    end
+    local v1 = LVLs[a1.Name]
+    if not v1 then
+        Price = nil
+    else
+        local Config = a1:FindFirstChild("Config") and a1.Config:FindFirstChild("LVL")
+        local v2 = v1[(Config and Config.Value or 0) + 1]
+        Price = if not v2 then nil else v2.Price
+    end
+    if Price and not (Cash.Value < Price) then
+        local success, result = pcall(function() -- Line: 210 -- upvalues: UpgradeTower (upval), a1 (val)
+            return UpgradeTower:InvokeServer(a1, (a1:GetAttribute("ID")))
+        end)
+        if success and result then
+            local Purchase = SFX and SFX:FindFirstChild("Purchase")
+            if Purchase then
+                Purchase:Play()
+            end
+            toggleClient:Fire(not (typeof(result) ~= "Instance") and result or a1)
+            return true
+        end
+        return false
+    end
+    return false
+end
+
+local function SellUnit(a1) -- Line: 222 -- upvalues: IsOwnTower (val), SellTower (val), SFX (val), toggleClient (val)
+    if not IsOwnTower(a1) then
+        return false
+    end
+    local success, result = pcall(function() -- Line: 226 -- upvalues: SellTower (upval), a1 (val)
+        return SellTower:InvokeServer(a1)
+    end)
+    if success and result then
+        local Cash = SFX and SFX:FindFirstChild("Cash")
+        if Cash then
+            Cash:Play()
+        end
+        toggleClient:Fire()
+        return true
+    end
+    return false
+end
+
+local function AddUnit(a1) -- Line: 237
+    -- upvalues: IsOwnTower (val), u93 (val), Placeholder (val), u94 (ref), RefreshCard (val), UpdateAllButtons (val)
+    -- upvalues: Remove (val), UpgradeUnit (val), SellUnit (val), toggleClient (val), GetTowerImage (val), Units (val)
+    -- upvalues: Parent (val)
+    if IsOwnTower(a1) and not u93[a1] then
+        local v1 = Placeholder:Clone()
+        v1.Name = a1.Name
+        u94 = u94 + 1
+        v1.LayoutOrder = u94
+        local UnitName = v1:FindFirstChild("UnitName")
+        if UnitName then
+            UnitName.Text = a1.Name
+        end
+        local StringValue = Instance.new("StringValue")
+        StringValue.Name = "UnitID"
+        StringValue.Value = tostring((a1:GetAttribute("ID")) or "")
+        StringValue.Parent = v1
+        local v2 = {}
+        u93[a1] = {card = v1, connections = v2}
+        local LVL = a1.Config:FindFirstChild("LVL")
+        if LVL then
+            table.insert(v2, (LVL.Changed:Connect(function() -- Line: 263 -- upvalues: RefreshCard (upval), a1 (val), UpdateAllButtons (upval)
+                RefreshCard(a1)
+                UpdateAllButtons()
+            end)))
+        end
+        local Price = a1.Config:FindFirstChild("Price")
+        if Price then
+            table.insert(v2, (Price.Changed:Connect(function() -- Line: 270 -- upvalues: RefreshCard (upval), a1 (val), UpdateAllButtons (upval)
+                RefreshCard(a1)
+                UpdateAllButtons()
+            end)))
+        end
+        table.insert(v2, ((a1:GetAttributeChangedSignal("TraitName")):Connect(function() -- Line: 275 -- upvalues: RefreshCard (upval), a1 (val)
+            RefreshCard(a1)
+        end)))
+        table.insert(v2, (a1.AncestryChanged:Connect(function() -- Line: 278 -- upvalues: a1 (val), Remove (upval)
+            if not a1:IsDescendantOf(workspace) then
+                Remove(a1)
+            end
+        end)))
+        local u84 = false
+        table.insert(v2, (v1.Upgrade.Activated:Connect(function() -- Line: 286 -- upvalues: u84 (ref), UpgradeUnit (upval), a1 (val)
+            if u84 then
+                return
+            end
+            u84 = true
+            UpgradeUnit(a1)
+            u84 = false
+        end)))
+        table.insert(v2, (v1.Sell.Activated:Connect(function() -- Line: 292 -- upvalues: u84 (ref), SellUnit (upval), a1 (val)
+            if u84 then
+                return
+            end
+            u84 = true
+            SellUnit(a1)
+            u84 = false
+        end)))
+        table.insert(v2, (v1.Activated:Connect(function() -- Line: 299 -- upvalues: a1 (val), toggleClient (upval)
+            if a1.Parent then
+                toggleClient:Fire(a1)
+            end
+        end)))
+        v1.Image = GetTowerImage(a1)
+        RefreshCard(a1)
+        v1.Parent = Units
+        local Title = Parent.Title
+        local v3 = 0
+        for k in pairs(u93) do
+            v3 = v3 + 1
+        end
+        Title.Text = "Unit Manager (" .. v3 .. ")"
+        UpdateAllButtons()
+        return
+    end
+end
+
+local u104 = false
+All.Upgrade.Activated:Connect(function() -- Line: 315
+    -- upvalues: u104 (ref), u93 (val), LVLs (val), Cash (val), UpgradeUnit (val), RefreshCard (val)
+    -- upvalues: UpdateAllButtons (val)
+    local Config, Price, v1, v2
+    if u104 then
+        return
+    end
+    u104 = true
+    local v3 = {}
+    for k in pairs(u93) do
+        v1 = LVLs[k.Name]
+        if not v1 then
+            Price = nil
+        else
+            Config = k:FindFirstChild("Config") and k.Config:FindFirstChild("LVL")
+            v2 = v1[(Config and Config.Value or 0) + 1]
+            Price = if not v2 then nil else v2.Price
+        end
+        if Price and k.Parent then
+            table.insert(v3, {unit = k, price = Price})
+        end
+    end
+    table.sort(v3, function(a1, a2) -- Line: 326
+        return a1.price < a2.price
+    end)
+    for i, v in ipairs(v3) do
+        if v.unit.Parent then
+            if Cash.Value < v.price then
+                break
+            end
+            UpgradeUnit(v.unit)
+        end
+    end
+    u104 = false
+    for k2 in pairs(u93) do
+        RefreshCard(k2)
+    end
+    UpdateAllButtons()
+end)
+local u111 = 0
+All.Sell.Activated:Connect(function() -- Line: 346 -- upvalues: All (val), u93 (val), u111 (ref), UpdateAllButtons (val), SellUnit (val)
+    local Sell = All.Sell
+    local v1 = 0
+    for k in pairs(u93) do
+        v1 = v1 + 1
+    end
+    if v1 == 0 then
+        return
+    end
+    if not Sell:GetAttribute("Confirming") then
+        u111 = u111 + 1
+        local u22 = u111
+        Sell:SetAttribute("Confirming", true)
+        Sell.Title.Text = "Sell ALL? Click again"
+        task.delay(3, function() -- Line: 357 -- upvalues: u22 (val), u111 (upval), Sell (val), UpdateAllButtons (upval)
+            if u22 == u111 and Sell:GetAttribute("Confirming") then
+                Sell:SetAttribute("Confirming", nil)
+                UpdateAllButtons()
+            end
+        end)
+        return
+    end
+    u111 = u111 + 1
+    Sell:SetAttribute("Confirming", nil)
+    v1 = {}
+    for k2 in pairs(u93) do
+        table.insert(v1, k2)
+    end
+    for i, v in ipairs(v1) do
+        if v.Parent then
+            SellUnit(v)
+        end
+    end
+    UpdateAllButtons()
+end)
+Cash.Changed:Connect(function() -- Line: 382
+    -- upvalues: u93 (val), LVLs (val), Cash (val), BackgroundColor3 (val), u64 (val), UpdateAllButtons (val)
+    local Config, Price, v1, v2
+    for k, v in pairs(u93) do
+        if k.Parent then
+            v1 = LVLs[k.Name]
+            if not v1 then
+                Price = nil
+            else
+                Config = k:FindFirstChild("Config") and k.Config:FindFirstChild("LVL")
+                v2 = v1[(Config and Config.Value or 0) + 1]
+                Price = if not v2 then nil else v2.Price
+            end
+            if Price then
+                v.card.Upgrade.BackgroundColor3 = Price <= Cash.Value and BackgroundColor3 or u64
+            end
+        end
+    end
+    UpdateAllButtons()
+end)
+local Towers = workspace:WaitForChild("Towers")
+for i, v in ipairs(Towers:GetChildren()) do
+    AddUnit(v)
+end
+Towers.ChildAdded:Connect(function(a1) -- Line: 400 -- upvalues: IsOwnTower (val), AddUnit (val)
+    if not IsOwnTower(a1) then
+        local Config = a1:WaitForChild("Config", 5)
+        if Config then
+            Config:WaitForChild("Owner", 5)
+        end
+    end
+    AddUnit(a1)
+end)
+Towers.ChildRemoved:Connect(Remove)
+local Title = Parent.Title
+local v1 = 0
+for k in pairs(u93) do
+    v1 = v1 + 1
+end
+Title.Text = "Unit Manager (" .. v1 .. ")"
+UpdateAllButtons()

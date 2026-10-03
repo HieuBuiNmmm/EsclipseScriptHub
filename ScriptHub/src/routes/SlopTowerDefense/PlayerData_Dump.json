@@ -1,0 +1,2138 @@
+{
+  "Flytrap": { "CollectedQuests": [], "CurrentQuests": 1 },
+  "Stars": 5466,
+  "OwnedGamepasses": { "BulkActions": true },
+  "RedeemedCodes": {
+    "SLOP": true,
+    "5MVISITS!": true,
+    "eden_delay": true,
+    "DATA WIPE 3": true,
+    "20KCCU": true
+  },
+  "FirstJoin": false,
+  "Strike": { "Max": 1469, "Current": 148 },
+  "TraitPity": 0,
+  "ClanBP": { "65d096dc3d2f4f01": 24 },
+  "IndexTraded": [],
+  "Plunger": 0,
+  "InGroup": true,
+  "Quests": {
+    "Plant 6 Corn Seeds": { "Amount": 0 },
+    "Harvest 25 Carrots": { "Amount": 0 },
+    "Harvest 10 Blueberries": { "Amount": 0 },
+    "Harvest 25 Strawberries": { "Amount": 0 },
+    "Harvest 1 Dragon Fruit": { "Amount": 0 },
+    "Harvest 3 Pumpkins": { "Amount": 0 },
+    "Harvest 10 Orange Tulips": { "Amount": 0 },
+    "Harvest 6 Tomatos": { "Amount": 0 },
+    "NumberCompletedQuests": 0,
+    "Harvest 1 Coconut": { "Amount": 0 },
+    "Harvest 1 Mango": { "Amount": 0 },
+    "Plant 10 Blueberrie Seeds": { "Amount": 0 },
+    "Completed": false,
+    "Harvest 3 Bamboos": { "Amount": 0 },
+    "Harvest 3 Watermelons": { "Amount": 0 },
+    "Harvest 6 Corns": { "Amount": 0 },
+    "Harvest 3 Apples": { "Amount": 0 },
+    "Harvest 1 Cactus": { "Amount": 0 },
+    "Plant 6 Tomato Seeds": { "Amount": 0 },
+    "Plant 10 Orange Tulip Seeds": { "Amount": 0 }
+  },
+  "Stats": {
+    "Void": 376,
+    "Best": { "N": "Lord Verity", "R": "Sloppy" },
+    "Summons": 63340,
+    "Shiny": 2754,
+    "Crafts": 19,
+    "Crates": 6320,
+    "TraitRolls": 174
+  },
+  "FirstWinDay": 20723,
+  "SpendRobux": 0,
+  "IndexOwn": {
+    "Isaac2": true,
+    "Glistening Freddy": true,
+    "Noli": true,
+    "Vova2bb_t": true,
+    "Scout Egg": true,
+    "Milestone Guest1337": true,
+    "Sword Hazmat": true,
+    "Tung Tung Midas": true,
+    "Retro Toilet": true,
+    "Caine Still Life": true,
+    "Shedletsky": true,
+    "Two Time": true,
+    "Squid Kid": true,
+    "Lovity": true,
+    "Guest": true,
+    "Freddy Trashcan": true,
+    "Pot Hotspot": true,
+    "Happy Computer": true,
+    "Titan TV Man": true,
+    "Afterwind": true,
+    "Mafia Toilet": true,
+    "Shelly": true,
+    "Bubble": true,
+    "Alien Noob": true,
+    "Pepper": true,
+    "Vee": true,
+    "Kraken Kid": true,
+    "Slop Man": true,
+    "Troll Slap": true,
+    "IsaacE9": true,
+    "DJ Toilet": true,
+    "Secret Lucky Block": true,
+    "Dragon Cannelloni": true,
+    "Carrot Still Life": true,
+    "Carrot": true,
+    "Zooble": true,
+    "1x1x1x1": true,
+    "Guest1337": true,
+    "Cat Magician": true,
+    "Noobini Pizzanini": true,
+    "Glistening Tung Tung": true,
+    "Elliot": true,
+    "Astro": true,
+    "Mythic Lucky Block": true,
+    "Dino Kid": true,
+    "Taph": true,
+    "Upgraded Large Camera Man": true,
+    "Gubby Still Life": true,
+    "Lazy Isaac": true,
+    "Maxwell": true,
+    "Partygoer": true,
+    "Lord Verity": true,
+    "Buff Mutant Toilet": true,
+    "Godly Sprinkler": true,
+    "Tung Tung Tung Sahur": true,
+    "Diamond Cat": true,
+    "The Watchman Of Doom": true,
+    "Onest": true,
+    "Large Camera Man": true,
+    "Astronaut Cat": true,
+    "Skibidi Toilet": true,
+    "Gubby": true,
+    "Camera Man": true,
+    "Dog": true,
+    "Shrimpo": true,
+    "Ember Lily": true,
+    "Toilet Still Life": true,
+    "Astro Large TV Man": true,
+    "Mango Trollface": true,
+    "Banana": true,
+    "Pog Cat": true,
+    "TV Woman": true,
+    "Glistening Skibidi": true,
+    "Cyborg Cat": true,
+    "Alien Chance": true,
+    "Astral Axolotl": true,
+    "Hazmat": true,
+    "Alien Elliot": true,
+    "Dragon": true,
+    "Titan Camera Man": true,
+    "Cat": true,
+    "Corn": true,
+    "Greenbean": true,
+    "Steampunk Crocodile": true,
+    "Secret Agent": true,
+    "Glistening Noob": true,
+    "Greenbean Still Life": true,
+    "John Doe": true,
+    "Sotp Sign Hazmat": true,
+    "Noob": true,
+    "Bacteria": true,
+    "Verity": true,
+    "Scout Egg Noob": true,
+    "Rocket Toilet": true,
+    "NULL": true,
+    "Aether Fruit": true,
+    "Retro Builderman": true,
+    "Falsity": true,
+    "Azure": true,
+    "Pomni": true,
+    "Upgraded Titan Speakerman": true,
+    "Cargo Toilet": true
+  },
+  "HeroQuests": {
+    "GToilet": {
+      "SellToiletTowers": 104,
+      "RewardClaimed": false,
+      "CompleteRuinedCity": 0,
+      "ToiletWaves": 0,
+      "SpendCash": 150000
+    },
+    "RetroWaves": 56,
+    "ToiletWaves": 76,
+    "BrainrotWaves": 162,
+    "CompleteDoomspire": 3,
+    "KingNoobini": {
+      "CompleteGoldMap": 0,
+      "MerchantBuy": 25,
+      "SellTowers": 500,
+      "BrainrotWaves": 0,
+      "RewardClaimed": false
+    },
+    "SellTowers": 272,
+    "CompleteRuinedCity": 4,
+    "SpendCash": 150000,
+    "Drakobloxxer": {
+      "SpendGems": 4000,
+      "RewardClaimed": false,
+      "RetroWaves": 0,
+      "CraftTowers": 5,
+      "CompleteDoomspire": 0
+    }
+  },
+  "RewardsToGive": [],
+  "ClanBPEpoch": 1790919644,
+  "ReferredBy": 1726786487,
+  "XPMultiplier": 1,
+  "CompletedModes": [],
+  "Wins": 2489,
+  "Items": {
+    "Silver Chest": { "Name": "Silver Chest", "Stacks": 136 },
+    "Admin Chest 2": { "Name": "Admin Chest 2", "Stacks": 15 },
+    "Golden Chest": { "Name": "Golden Chest", "Stacks": 1 },
+    "Raid Crate 2": { "Name": "Raid Crate 2", "Stacks": 3 },
+    "Flower": { "Name": "Flower", "Stacks": 1 },
+    "Brick": { "Name": "Brick", "Stacks": 276 },
+    "Laser": { "Name": "Laser", "Stacks": 3 },
+    "Retro Chest": { "Name": "Retro Chest", "Stacks": 4 },
+    "Clock": { "Name": "Clock", "Stacks": 5 },
+    "Crown": { "Name": "Crown", "Stacks": 11 },
+    "RPG": { "Name": "RPG", "Stacks": 97 },
+    "Astro Claw": { "Name": "Astro Claw", "Stacks": 23 },
+    "Hammer And Wrench": { "Name": "Hammer And Wrench", "Stacks": 5 },
+    "Garden Chest": { "Name": "Garden Chest", "Stacks": 236 },
+    "Coin": { "Name": "Coin", "Stacks": 10 },
+    "Admin Chest": { "Name": "Admin Chest", "Stacks": 10 },
+    "Pizza": { "Name": "Pizza", "Stacks": 5 },
+    "Retro Crate": { "Name": "Retro Crate", "Stacks": 5 },
+    "Slopbux Crate 2": { "Name": "Slopbux Crate 2", "Stacks": 18 },
+    "Garden Crate": { "Name": "Garden Crate", "Stacks": 207 },
+    "Clan Crate 1": { "Name": "Clan Crate 1", "Stacks": 12 },
+    "Quest Crate": { "Name": "Quest Crate", "Stacks": 1 },
+    "Clock Crate": { "Name": "Clock Crate", "Stacks": 1 },
+    "Symbol Of Greed": { "Name": "Symbol Of Greed", "Stacks": 1 },
+    "Illumina": { "Name": "Illumina", "Stacks": 18 },
+    "Scythe": { "Name": "Scythe", "Stacks": 17 },
+    "Steampunk Crate": { "Name": "Steampunk Crate", "Stacks": 22 },
+    "Metal": { "Name": "Metal", "Stacks": 343 }
+  },
+  "Pity": {
+    "Premium": {
+      "Godly": 2136,
+      "Mythical": 55,
+      "Sloppy": 6090,
+      "Celestial": 6090,
+      "Secret": 6090
+    },
+    "Basic": {
+      "Godly": 2463,
+      "Mythical": 58,
+      "Sloppy": 21956,
+      "Celestial": 57250,
+      "Secret": 2587
+    }
+  },
+  "MagicDust": 0,
+  "Sheckles": 62892,
+  "Chapters": {
+    "Crossroads": 0,
+    "GardenEndless": 0,
+    "ToiletEndless": 0,
+    "Desert": 0,
+    "Level 3": 0,
+    "Day": 0,
+    "Level 1": 0,
+    "Raid": 0,
+    "Gold Base": 0,
+    "Night": 0,
+    "Happy Home": 2,
+    "Base": 1,
+    "Blood Moon": 0,
+    "RichPlot": 0,
+    "Night Base": 1,
+    "BackroomsEndless": 0,
+    "Ruined City": 4,
+    "Toilet City": 1,
+    "Level0": 0,
+    "Poolrooms": 0,
+    "SpaceEndless": 0,
+    "Doomspire": 3,
+    "BrainrotEndless": 0,
+    "Level94": 1,
+    "Level 2": 0,
+    "RetroEndless": 0
+  },
+  "Contracts": {
+    "Rerolled": false,
+    "Period": 41457,
+    "List": [
+      {
+        "Claimed": false,
+        "Progress": 0,
+        "Kind": "Waves",
+        "Need": 25,
+        "Tower": "Caine Still Life"
+      },
+      {
+        "Claimed": false,
+        "Progress": 0,
+        "Kind": "Kills",
+        "Need": 1000,
+        "Tower": "Astro Upgraded Titan Speaker Man"
+      },
+      {
+        "Claimed": false,
+        "Progress": 0,
+        "Kind": "Wins",
+        "Need": 5,
+        "Tower": "Partygoer"
+      }
+    ]
+  },
+  "Trades": [],
+  "Loadouts": {
+    "1": {
+      "1": "Freddy Trashcan Gold",
+      "3": "Lovity",
+      "2": "Partygoer Rainbow",
+      "5": "Azure Gold",
+      "4": "Scout Egg Rainbow"
+    },
+    "2": {
+      "1": "Freddy Trashcan Gold",
+      "3": "Lovity",
+      "2": "Partygoer Rainbow",
+      "5": "Azure Gold",
+      "4": "Bacteria Rainbow"
+    }
+  },
+  "Settings": {
+    "AutoLockVariants": true,
+    "damageIndicator": true,
+    "Effects": false,
+    "Sounds": true,
+    "Trade": false,
+    "NoAntiMacro": false,
+    "Music": true,
+    "MusicCustom": 0.5,
+    "Requests": true
+  },
+  "Clan": "65d096dc3d2f4f01",
+  "GemsMultiplier": 1,
+  "Toilet": { "CollectedQuests": [], "CurrentQuests": 1 },
+  "EndlessWaves": { "Kithcen": 0, "Owl": 0, "Bee": 0, "Insects": 0 },
+  "IndexOwnSeeded": true,
+  "BattlePass": {
+    "Season_2": {
+      "RequiredEXP": 0,
+      "ClaimedTiers": [],
+      "PremNextTier": 1,
+      "CurrentTier": 0,
+      "NextTier": 1,
+      "PremCurrentTier": 0,
+      "PremClaimedTiers": [],
+      "PremUnclaimedTiers": [],
+      "PremiumPass": false,
+      "PremEXP": 0,
+      "bpData": [],
+      "EXP": 0,
+      "PremRequiredEXP": 0,
+      "UnclaimedTiers": []
+    },
+    "Season_Backrooms": {
+      "RequiredEXP": 0,
+      "ClaimedTiers": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "Resets": 0,
+      "NextTier": 51,
+      "PremCurrentTier": 50,
+      "PremClaimedTiers": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "PremiumPass": true,
+      "PremEXP": 27685,
+      "CurrentTier": 50,
+      "EXP": 27685,
+      "PremRequiredEXP": 0,
+      "PremNextTier": 51
+    }
+  },
+  "Cooldowns": { "OpenCrateCD": 0 },
+  "AchivsNotified": {
+    "ShinyFirst": true,
+    "Void5": true,
+    "VoidFirst": true,
+    "Shiny10": true
+  },
+  "CashMultiplier": 1,
+  "UpdatesGift": {
+    "UPD4": false,
+    "UPD2": false,
+    "UPD9": false,
+    "UPD10": false,
+    "UPD7": false,
+    "UPD3": false,
+    "UPD12": false,
+    "UPD8": false,
+    "UPD6": false,
+    "UPD14": false,
+    "UPD13": false,
+    "UPD11": false,
+    "UPD16": false,
+    "UPD1": false,
+    "UPD5": false,
+    "UPD15": false
+  },
+  "Index": {
+    "Isaac2": true,
+    "Taph": true,
+    "Dragon Gold": true,
+    "Sword Hazmat": true,
+    "Tung Tung Midas": true,
+    "Caine Still Life": true,
+    "Large Camera Man Rainbow": true,
+    "TV Woman Gold": true,
+    "Lovity": true,
+    "Guest": true,
+    "Azure Gold": true,
+    "Maxwell Gold": true,
+    "Afterwind": true,
+    "Elliot Gold": true,
+    "Shelly": true,
+    "Bubble": true,
+    "Sotp Sign Hazmat Gold": true,
+    "Camera Man Rainbow": true,
+    "Slop Man": true,
+    "Troll Slap": true,
+    "Alien Elliot": true,
+    "Mango Trollface Gold": true,
+    "Secret Lucky Block": true,
+    "Dog Rainbow": true,
+    "Gubby Rainbow": true,
+    "Carrot Still Life": true,
+    "Carrot": true,
+    "Guest1337": true,
+    "Partygoer Rainbow": true,
+    "Alien Elliot Gold": true,
+    "Godly Sprinkler Gold": true,
+    "Pog Cat Gold": true,
+    "Upgraded Large Camera Man": true,
+    "Pog Cat Rainbow": true,
+    "Cyborg Cat": true,
+    "Shrimpo Rainbow": true,
+    "Greenbean": true,
+    "Onest Rainbow": true,
+    "Astro Large TV Man": true,
+    "Mango Trollface": true,
+    "Shelly Gold": true,
+    "TV Woman": true,
+    "Vova2bb_t Gold": true,
+    "Skibidi Toilet Gold": true,
+    "Rocket Toilet Gold": true,
+    "Dragon": true,
+    "Retro Toilet Gold": true,
+    "Gubby": true,
+    "Carrot Still Life Gold": true,
+    "Bacteria": true,
+    "Squid Kid Gold": true,
+    "Tung Tung Tung Sahur Gold": true,
+    "Aether Fruit": true,
+    "Large Camera Man Gold": true,
+    "Vee Rainbow": true,
+    "Pomni": true,
+    "Cargo Toilet": true,
+    "Glistening Freddy": true,
+    "Noli": true,
+    "Vova2bb_t": true,
+    "Scout Egg": true,
+    "Milestone Guest1337": true,
+    "Alien Elliot Rainbow": true,
+    "Tung Tung Tung Sahur Rainbow": true,
+    "Lord Verity": true,
+    "Elliot": true,
+    "Retro Toilet": true,
+    "Greenbean Rainbow": true,
+    "Astro": true,
+    "Shedletsky": true,
+    "Two Time": true,
+    "Scout Egg Gold": true,
+    "Steampunk Crocodile": true,
+    "Glistening Noob": true,
+    "Titan TV Man Gold": true,
+    "Verity": true,
+    "Happy Computer Gold": true,
+    "Troll Slap Rainbow": true,
+    "Skibidi Toilet Rainbow": true,
+    "Dino Kid": true,
+    "Guest Gold": true,
+    "Tung Tung Tung Sahur": true,
+    "Freddy Trashcan": true,
+    "Guest Rainbow": true,
+    "Pot Hotspot": true,
+    "Happy Computer": true,
+    "Dragon Cannelloni": true,
+    "Titan TV Man": true,
+    "Guest1337 Rainbow": true,
+    "Mafia Toilet": true,
+    "Bacteria Rainbow": true,
+    "Corn": true,
+    "Noobini Pizzanini Gold": true,
+    "Pepper Gold": true,
+    "Pepper": true,
+    "Onest Gold": true,
+    "Kraken Kid": true,
+    "Elliot Rainbow": true,
+    "Mango Trollface Rainbow": true,
+    "Verity Gold": true,
+    "Dog Gold": true,
+    "IsaacE9": true,
+    "DJ Toilet": true,
+    "Shrimpo Gold": true,
+    "Gubby Gold": true,
+    "Onest": true,
+    "Freddy Trashcan Rainbow": true,
+    "Astronaut Cat": true,
+    "Freddy Trashcan Gold": true,
+    "Buff Mutant Toilet": true,
+    "Zooble": true,
+    "Lazy Isaac": true,
+    "1x1x1x1": true,
+    "Azure": true,
+    "Cat Magician": true,
+    "Guest1337 Gold": true,
+    "Toilet Still Life": true,
+    "Banana Rainbow": true,
+    "Noobini Pizzanini": true,
+    "Scout Egg Rainbow": true,
+    "Shedletsky Gold": true,
+    "Noobini Pizzanini Rainbow": true,
+    "Gubby Still Life": true,
+    "Dino Kid Gold": true,
+    "Godly Sprinkler Rainbow": true,
+    "Toilet Still Life Gold": true,
+    "Pog Cat": true,
+    "Alien Noob": true,
+    "Alien Chance": true,
+    "Noob": true,
+    "Cat Gold": true,
+    "Summer Maxwell": true,
+    "Maxwell": true,
+    "Dragon Rainbow": true,
+    "Diamond Cat": true,
+    "The Watchman Of Doom": true,
+    "Titan Camera Man Gold": true,
+    "Large Camera Man": true,
+    "Greenbean Gold": true,
+    "Greenbean Still Life": true,
+    "Lazy Isaac Gold": true,
+    "Camera Man": true,
+    "Dog": true,
+    "Shrimpo": true,
+    "Mythic Lucky Block Rainbow": true,
+    "Carrot Rainbow": true,
+    "Cyborg Cat Gold": true,
+    "Ember Lily": true,
+    "Banana": true,
+    "Banana Gold": true,
+    "Rocket Toilet": true,
+    "Glistening Skibidi": true,
+    "Astro Upgraded Titan Speaker Man": true,
+    "Glistening Tung Tung": true,
+    "Astral Axolotl": true,
+    "Squid Kid": true,
+    "Carrot Gold": true,
+    "Hazmat": true,
+    "Titan Camera Man": true,
+    "Cat": true,
+    "Buff Mutant Toilet Gold": true,
+    "Steampunk Crocodile Gold": true,
+    "Mythic Lucky Block": true,
+    "Secret Agent": true,
+    "Afterwind Gold": true,
+    "Cat Rainbow": true,
+    "John Doe": true,
+    "Sotp Sign Hazmat": true,
+    "Troll Slap Gold": true,
+    "Godly Sprinkler": true,
+    "Skibidi Toilet": true,
+    "Corn Rainbow": true,
+    "Rocket Toilet Rainbow": true,
+    "NULL": true,
+    "Partygoer": true,
+    "Retro Builderman": true,
+    "Falsity": true,
+    "Camera Man Gold": true,
+    "Corn Gold": true,
+    "Upgraded Titan Speakerman": true,
+    "Scout Egg Noob": true
+  },
+  "AutoSell": [],
+  "ExistsAdded": false,
+  "AutoRestore": { "At": 1790395898, "Pass": 1 },
+  "GardensPlacer": [],
+  "InventorySpace": 500,
+  "Luck": 1,
+  "Crystals": 22354,
+  "DropLog": [
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Carrot" },
+    { "S": "Premium summon", "T": 1790934717, "C": 2, "N": "Pog Cat" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Shrimpo" },
+    { "S": "Premium summon", "T": 1790934717, "C": 2, "N": "Carrot" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Pog Cat" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Shedletsky" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Pog Cat" },
+    {
+      "C": 1,
+      "M": "Gold",
+      "T": 1790934717,
+      "S": "Premium summon",
+      "N": "Corn"
+    },
+    { "S": "Premium summon", "T": 1790934717, "C": 2, "N": "Pog Cat" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Corn" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Troll Slap" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Greenbean" },
+    { "S": "Premium summon", "T": 1790934717, "C": 3, "N": "Pog Cat" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Corn" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Shrimpo" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Corn" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Pog Cat" },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Shrimpo" },
+    {
+      "C": 1,
+      "M": "Gold",
+      "T": 1790934717,
+      "S": "Premium summon",
+      "N": "Pog Cat"
+    },
+    { "S": "Premium summon", "T": 1790934717, "C": 1, "N": "Pog Cat" }
+  ],
+  "ClaimedStarter": false,
+  "DailyRunPaid": {
+    "20726": 0,
+    "20718": 0,
+    "20727": 0,
+    "20717": 0,
+    "20719": 0,
+    "20715": 0,
+    "20721": 0,
+    "20723": 0,
+    "20725": 0,
+    "20716": 0,
+    "20724": 0,
+    "20722": 0,
+    "20720": 0
+  },
+  "Suns": 0,
+  "Achivs": {
+    "ShinyFirst": { "Progress": 2755, "Done": false, "Equipped": false },
+    "Void5": { "Progress": 379, "Done": false, "Equipped": false },
+    "VoidFirst": { "Progress": 379, "Done": false, "Equipped": false },
+    "Shiny10": { "Progress": 2755, "Done": false, "Equipped": false }
+  },
+  "Seeds": [],
+  "TotalPlayTime": 54353,
+  "Cash": 23655,
+  "EndlessWavesLeaderboard2025": {
+    "Toilet": 76,
+    "Backrooms": 57,
+    "Summer": 0,
+    "Fairy": 0,
+    "Retro": 56,
+    "Space": 31,
+    "Brainrot": 162,
+    "Garden": 332,
+    "Kitchen": 0
+  },
+  "CreatorCodeUsed": "DASTERTOP",
+  "Gems": 23033,
+  "ToiletStock": { "Stock": [] },
+  "Bones": 0,
+  "IndexRewards": { "Common": true },
+  "Mastery": {
+    "Rocket Toilet": 4,
+    "Astro Upgraded Titan Speaker Man": 8554,
+    "Scout Egg": 7843,
+    "Milestone Guest1337": 8679,
+    "Dragon": 82,
+    "Partygoer": 84045,
+    "IsaacE9": 3689,
+    "Gubby": 1,
+    "Sotp Sign Hazmat": 460,
+    "Secret Lucky Block": 17,
+    "Skibidi Toilet": 32,
+    "Dragon Cannelloni": 12709,
+    "Afterwind": 15709,
+    "Camera Man": 1,
+    "Azure": 44703,
+    "Onest": 608,
+    "Bacteria": 109476,
+    "Guest1337": 93,
+    "Lovity": 29504,
+    "Caine Still Life": 23964,
+    "Lord Verity": 31109
+  },
+  "Tokens": 2490,
+  "Slopbux": 190,
+  "CraftPityByTower": {
+    "Secret Lucky Block": 1,
+    "Cyborg Cat": 3,
+    "Tung Tung Midas": 1,
+    "Milestone Guest1337": 1
+  },
+  "Towers": {
+    "Isaac2": {
+      "Stacks": 1,
+      "Name": "Isaac2",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Taph": {
+      "Stacks": 1,
+      "Name": "Taph",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Dragon Gold": {
+      "Stacks": 38,
+      "Name": "Dragon",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Sword Hazmat": {
+      "Stacks": 1,
+      "Name": "Sword Hazmat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Tung Tung Midas": {
+      "Stacks": 1,
+      "Name": "Tung Tung Midas",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Caine Still Life": {
+      "Stacks": 1,
+      "Name": "Caine Still Life",
+      "Trait": "Glitched",
+      "Equipped": 5,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Large Camera Man Rainbow": {
+      "Stacks": 26,
+      "Name": "Large Camera Man",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "TV Woman Gold": {
+      "Stacks": 1,
+      "Name": "TV Woman",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Lovity": {
+      "Stacks": 1,
+      "Name": "Lovity",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Guest": {
+      "Stacks": 311,
+      "Name": "Guest",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Azure Gold": {
+      "Stacks": 1,
+      "Name": "Azure",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Maxwell Gold": {
+      "Stacks": 1,
+      "Name": "Maxwell",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Afterwind": {
+      "Stacks": 52,
+      "Name": "Afterwind",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Elliot Gold": {
+      "Stacks": 154,
+      "Name": "Elliot",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Shelly": {
+      "Stacks": 170,
+      "Name": "Shelly",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Bubble": {
+      "Stacks": 3,
+      "Name": "Bubble",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Sotp Sign Hazmat Gold": {
+      "Stacks": 1,
+      "Name": "Sotp Sign Hazmat",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Camera Man Rainbow": {
+      "Stacks": 19,
+      "Name": "Camera Man",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Slop Man": {
+      "Stacks": 3,
+      "Name": "Slop Man",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Troll Slap": {
+      "Stacks": 201,
+      "Name": "Troll Slap",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Alien Elliot": {
+      "Stacks": 9,
+      "Name": "Alien Elliot",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Mango Trollface Gold": {
+      "Stacks": 4,
+      "Name": "Mango Trollface",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Secret Lucky Block": {
+      "Stacks": 1,
+      "Name": "Secret Lucky Block",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Dog Rainbow": {
+      "Stacks": 24,
+      "Name": "Dog",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Gubby Rainbow": {
+      "Stacks": 29,
+      "Name": "Gubby",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Carrot Still Life": {
+      "Stacks": 89,
+      "Name": "Carrot Still Life",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Carrot": {
+      "Stacks": 2220,
+      "Name": "Carrot",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Guest1337": {
+      "Stacks": 913,
+      "Name": "Guest1337",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Partygoer Rainbow": {
+      "Stacks": 1,
+      "Name": "Partygoer",
+      "Trait": "Overlord",
+      "Locked": true,
+      "Equipped": 2,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Alien Elliot Gold": {
+      "Stacks": 1,
+      "Name": "Alien Elliot",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Godly Sprinkler Gold": {
+      "Stacks": 12,
+      "Name": "Godly Sprinkler",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Pog Cat Gold": {
+      "Stacks": 129,
+      "Name": "Pog Cat",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Upgraded Large Camera Man": {
+      "Stacks": 6,
+      "Name": "Upgraded Large Camera Man",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Pog Cat Rainbow": {
+      "Stacks": 13,
+      "Name": "Pog Cat",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Cyborg Cat": {
+      "Stacks": 11,
+      "Name": "Cyborg Cat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Shrimpo Rainbow": {
+      "Stacks": 1,
+      "Name": "Shrimpo",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Greenbean": {
+      "Stacks": 755,
+      "Name": "Greenbean",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Onest Rainbow": {
+      "Stacks": 1,
+      "Name": "Onest",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Astro Large TV Man": {
+      "Stacks": 3,
+      "Name": "Astro Large TV Man",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Mango Trollface": {
+      "Stacks": 58,
+      "Name": "Mango Trollface",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Shelly Gold": {
+      "Stacks": 10,
+      "Name": "Shelly",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "TV Woman": {
+      "Stacks": 4,
+      "Name": "TV Woman",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Vova2bb_t Gold": {
+      "Stacks": 1,
+      "Name": "Vova2bb_t",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Skibidi Toilet Gold": {
+      "Stacks": 522,
+      "Name": "Skibidi Toilet",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Rocket Toilet Gold": {
+      "Stacks": 39,
+      "Name": "Rocket Toilet",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Dragon": {
+      "Stacks": 936,
+      "Name": "Dragon",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Retro Toilet Gold": {
+      "Stacks": 1,
+      "Name": "Retro Toilet",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Gubby": {
+      "Stacks": 3120,
+      "Name": "Gubby",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Carrot Still Life Gold": {
+      "Stacks": 8,
+      "Name": "Carrot Still Life",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Bacteria": {
+      "Stacks": 1,
+      "Name": "Bacteria",
+      "Trait": "Boss Killer",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Squid Kid Gold": {
+      "Stacks": 1,
+      "Name": "Squid Kid",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Tung Tung Tung Sahur Gold": {
+      "Stacks": 120,
+      "Name": "Tung Tung Tung Sahur",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Aether Fruit": {
+      "Stacks": 1,
+      "Name": "Aether Fruit",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Large Camera Man Gold": {
+      "Stacks": 122,
+      "Name": "Large Camera Man",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Vee Rainbow": {
+      "Stacks": 2,
+      "Name": "Vee",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Pomni": {
+      "Stacks": 24,
+      "Name": "Pomni",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Cargo Toilet": {
+      "Stacks": 2,
+      "Name": "Cargo Toilet",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Glistening Freddy": {
+      "Stacks": 9,
+      "Name": "Glistening Freddy",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Noli": {
+      "Stacks": 3,
+      "Name": "Noli",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Vova2bb_t": {
+      "Stacks": 20,
+      "Name": "Vova2bb_t",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Scout Egg": {
+      "Stacks": 1398,
+      "Name": "Scout Egg",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Milestone Guest1337": {
+      "Stacks": 1,
+      "Name": "Milestone Guest1337",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Alien Elliot Rainbow": {
+      "Stacks": 1,
+      "Name": "Alien Elliot",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Tung Tung Tung Sahur Rainbow": {
+      "Stacks": 19,
+      "Name": "Tung Tung Tung Sahur",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Lord Verity": {
+      "Stacks": 1,
+      "Name": "Lord Verity",
+      "Trait": "Overlord",
+      "Locked": true,
+      "Equipped": 3,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Retro Toilet": {
+      "Stacks": 1,
+      "Name": "Retro Toilet",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Greenbean Rainbow": {
+      "Stacks": 3,
+      "Name": "Greenbean",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Elliot": {
+      "Stacks": 3649,
+      "Name": "Elliot",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Shedletsky": {
+      "Stacks": 172,
+      "Name": "Shedletsky",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Two Time": {
+      "Stacks": 1,
+      "Name": "Two Time",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Astro": {
+      "Stacks": 8,
+      "Name": "Astro",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Scout Egg Gold": {
+      "Stacks": 50,
+      "Name": "Scout Egg",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Steampunk Crocodile": {
+      "Stacks": 80,
+      "Name": "Steampunk Crocodile",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Dog Gold": {
+      "Stacks": 163,
+      "Name": "Dog",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Mango Trollface Rainbow": {
+      "Stacks": 1,
+      "Name": "Mango Trollface",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Verity": {
+      "Stacks": 26,
+      "Name": "Verity",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Troll Slap Rainbow": {
+      "Stacks": 2,
+      "Name": "Troll Slap",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Skibidi Toilet Rainbow": {
+      "Stacks": 64,
+      "Name": "Skibidi Toilet",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Happy Computer Gold": {
+      "Stacks": 1,
+      "Name": "Happy Computer",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Dino Kid": {
+      "Stacks": 44,
+      "Name": "Dino Kid",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Guest Gold": {
+      "Stacks": 14,
+      "Name": "Guest",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Freddy Trashcan": {
+      "Stacks": 1210,
+      "Name": "Freddy Trashcan",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Guest Rainbow": {
+      "Stacks": 2,
+      "Name": "Guest",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Mythic Lucky Block Rainbow": {
+      "Stacks": 1,
+      "Name": "Mythic Lucky Block",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Happy Computer": {
+      "Stacks": 1,
+      "Name": "Happy Computer",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Pot Hotspot": {
+      "Stacks": 1,
+      "Name": "Pot Hotspot",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Titan TV Man": {
+      "Stacks": 41,
+      "Name": "Titan TV Man",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Dragon Cannelloni": {
+      "Stacks": 1,
+      "Name": "Dragon Cannelloni",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Mafia Toilet": {
+      "Stacks": 5,
+      "Name": "Mafia Toilet",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Guest1337 Rainbow": {
+      "Stacks": 6,
+      "Name": "Guest1337",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Buff Mutant Toilet Gold": {
+      "Stacks": 1,
+      "Name": "Buff Mutant Toilet",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Noobini Pizzanini Gold": {
+      "Stacks": 168,
+      "Name": "Noobini Pizzanini",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Pepper Gold": {
+      "Stacks": 1,
+      "Name": "Pepper",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Pepper": {
+      "Stacks": 3,
+      "Name": "Pepper",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Partygoer": {
+      "Stacks": 1,
+      "Name": "Partygoer",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Kraken Kid": {
+      "Stacks": 30,
+      "Name": "Kraken Kid",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Onest Gold": {
+      "Stacks": 1,
+      "Name": "Onest",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Elliot Rainbow": {
+      "Stacks": 24,
+      "Name": "Elliot",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Verity Gold": {
+      "Stacks": 1,
+      "Name": "Verity",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Freddy Trashcan Rainbow": {
+      "Stacks": 7,
+      "Name": "Freddy Trashcan",
+      "Locked": true,
+      "Equipped": 1,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "IsaacE9": {
+      "Stacks": 3,
+      "Name": "IsaacE9",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "DJ Toilet": {
+      "Stacks": 1,
+      "Name": "DJ Toilet",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Shrimpo Gold": {
+      "Stacks": 7,
+      "Name": "Shrimpo",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Gubby Gold": {
+      "Stacks": 132,
+      "Name": "Gubby",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Onest": {
+      "Stacks": 51,
+      "Name": "Onest",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Titan Camera Man Gold": {
+      "Stacks": 2,
+      "Name": "Titan Camera Man",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Corn Gold": {
+      "Stacks": 52,
+      "Name": "Corn",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Toilet Still Life": {
+      "Stacks": 142,
+      "Name": "Toilet Still Life",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Lazy Isaac": {
+      "Stacks": 25,
+      "Name": "Lazy Isaac",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Zooble": {
+      "Stacks": 4,
+      "Name": "Zooble",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Bacteria Rainbow": {
+      "Stacks": 1,
+      "Name": "Bacteria",
+      "Trait": "Executioner",
+      "Locked": true,
+      "Equipped": 4,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "1x1x1x1": {
+      "Stacks": 1,
+      "Name": "1x1x1x1",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Glistening Noob": {
+      "Stacks": 1,
+      "Name": "Glistening Noob",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Cat Magician": {
+      "Stacks": 8,
+      "Name": "Cat Magician",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Guest1337 Gold": {
+      "Stacks": 48,
+      "Name": "Guest1337",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Banana Rainbow": {
+      "Stacks": 1,
+      "Name": "Banana",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Gubby Still Life": {
+      "Stacks": 10,
+      "Name": "Gubby Still Life",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Noobini Pizzanini": {
+      "Stacks": 3184,
+      "Name": "Noobini Pizzanini",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Steampunk Crocodile Gold": {
+      "Stacks": 5,
+      "Name": "Steampunk Crocodile",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Cat Rainbow": {
+      "Stacks": 65,
+      "Name": "Cat",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Noobini Pizzanini Rainbow": {
+      "Stacks": 22,
+      "Name": "Noobini Pizzanini",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Dino Kid Gold": {
+      "Stacks": 4,
+      "Name": "Dino Kid",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Godly Sprinkler Rainbow": {
+      "Stacks": 3,
+      "Name": "Godly Sprinkler",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Shedletsky Gold": {
+      "Stacks": 5,
+      "Name": "Shedletsky",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Corn": {
+      "Stacks": 1111,
+      "Name": "Corn",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Pog Cat": {
+      "Stacks": 2564,
+      "Name": "Pog Cat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Alien Noob": {
+      "Stacks": 1,
+      "Name": "Alien Noob",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Alien Chance": {
+      "Stacks": 3,
+      "Name": "Alien Chance",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Noob": {
+      "Stacks": 16,
+      "Name": "Noob",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Cat Gold": {
+      "Stacks": 579,
+      "Name": "Cat",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Summer Maxwell": {
+      "Stacks": 1,
+      "Name": "Summer Maxwell",
+      "Locked": false,
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Maxwell": {
+      "Stacks": 64,
+      "Name": "Maxwell",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Dragon Rainbow": {
+      "Stacks": 8,
+      "Name": "Dragon",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Diamond Cat": {
+      "Stacks": 1,
+      "Name": "Diamond Cat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "The Watchman Of Doom": {
+      "Stacks": 1,
+      "Name": "The Watchman Of Doom",
+      "Trait": "Executioner",
+      "Locked": false,
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Greenbean Gold": {
+      "Stacks": 32,
+      "Name": "Greenbean",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Large Camera Man": {
+      "Stacks": 3158,
+      "Name": "Large Camera Man",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Greenbean Still Life": {
+      "Stacks": 1,
+      "Name": "Greenbean Still Life",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Lazy Isaac Gold": {
+      "Stacks": 1,
+      "Name": "Lazy Isaac",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Astronaut Cat": {
+      "Stacks": 7,
+      "Name": "Astronaut Cat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Camera Man": {
+      "Stacks": 3743,
+      "Name": "Camera Man",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Dog": {
+      "Stacks": 3282,
+      "Name": "Dog",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Shrimpo": {
+      "Stacks": 351,
+      "Name": "Shrimpo",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Cyborg Cat Gold": {
+      "Stacks": 3,
+      "Name": "Cyborg Cat",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Ember Lily": {
+      "Stacks": 1,
+      "Name": "Ember Lily",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Carrot Rainbow": {
+      "Stacks": 11,
+      "Name": "Carrot",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Titan TV Man Gold": {
+      "Stacks": 2,
+      "Name": "Titan TV Man",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Banana": {
+      "Stacks": 49,
+      "Name": "Banana",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Corn Rainbow": {
+      "Stacks": 9,
+      "Name": "Corn",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Rocket Toilet": {
+      "Stacks": 919,
+      "Name": "Rocket Toilet",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Glistening Skibidi": {
+      "Stacks": 3,
+      "Name": "Glistening Skibidi",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Astro Upgraded Titan Speaker Man": {
+      "Stacks": 1,
+      "Name": "Astro Upgraded Titan Speaker Man",
+      "Trait": "Super",
+      "Locked": false,
+      "Equipped": 6,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Buff Mutant Toilet": {
+      "Stacks": 5,
+      "Name": "Buff Mutant Toilet",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Astral Axolotl": {
+      "Stacks": 1,
+      "Name": "Astral Axolotl",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Squid Kid": {
+      "Stacks": 19,
+      "Name": "Squid Kid",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Carrot Gold": {
+      "Stacks": 82,
+      "Name": "Carrot",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Hazmat": {
+      "Stacks": 18,
+      "Name": "Hazmat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Titan Camera Man": {
+      "Stacks": 63,
+      "Name": "Titan Camera Man",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Cat": {
+      "Stacks": 11170,
+      "Name": "Cat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Freddy Trashcan Gold": {
+      "Stacks": 60,
+      "Name": "Freddy Trashcan",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Banana Gold": {
+      "Stacks": 2,
+      "Name": "Banana",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Mythic Lucky Block": {
+      "Stacks": 36,
+      "Name": "Mythic Lucky Block",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Secret Agent": {
+      "Stacks": 7,
+      "Name": "Secret Agent",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Afterwind Gold": {
+      "Stacks": 2,
+      "Name": "Afterwind",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Godly Sprinkler": {
+      "Stacks": 232,
+      "Name": "Godly Sprinkler",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "John Doe": {
+      "Stacks": 7,
+      "Name": "John Doe",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Sotp Sign Hazmat": {
+      "Stacks": 5,
+      "Name": "Sotp Sign Hazmat",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Troll Slap Gold": {
+      "Stacks": 10,
+      "Name": "Troll Slap",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Azure": {
+      "Stars": 1,
+      "Stacks": 7,
+      "Name": "Azure",
+      "Modifiers": [],
+      "Equipped": false,
+      "Exist": "v3"
+    },
+    "Skibidi Toilet": {
+      "Stacks": 6967,
+      "Name": "Skibidi Toilet",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Toilet Still Life Gold": {
+      "Stacks": 5,
+      "Name": "Toilet Still Life",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Rocket Toilet Rainbow": {
+      "Stacks": 6,
+      "Name": "Rocket Toilet",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "NULL": {
+      "Stacks": 2,
+      "Name": "NULL",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Scout Egg Rainbow": {
+      "Stacks": 7,
+      "Name": "Scout Egg",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Rainbow"],
+      "Exist": "v3"
+    },
+    "Retro Builderman": {
+      "Stacks": 28,
+      "Name": "Retro Builderman",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Falsity": {
+      "Stacks": 4,
+      "Name": "Falsity",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Camera Man Gold": {
+      "Stacks": 156,
+      "Name": "Camera Man",
+      "Locked": true,
+      "Equipped": false,
+      "Modifiers": ["Gold"],
+      "Exist": "v3"
+    },
+    "Tung Tung Tung Sahur": {
+      "Stacks": 2831,
+      "Name": "Tung Tung Tung Sahur",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Upgraded Titan Speakerman": {
+      "Stacks": 7,
+      "Name": "Upgraded Titan Speakerman",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    },
+    "Scout Egg Noob": {
+      "Stacks": 1,
+      "Name": "Scout Egg Noob",
+      "Equipped": false,
+      "Modifiers": [],
+      "Exist": "v3"
+    }
+  },
+  "Cogs": 36
+}

@@ -3,6 +3,11 @@
 
     "deployment": {
         "enabled": true,
+        "cloudflare": {
+            "enabled": true,
+            "apiUrl": "https://esclipse-keysystem.bhieu4225.workers.dev/api/admin/upload-script",
+            "adminSecret": "EsclipseSecret2026"
+        },
         "github": {
             "enabled": false,
             "apiKey": "API_KEY_HERE",
@@ -47,6 +52,18 @@
             "darkluaConfig": "pipeline/.darklua.json",
             "input": "src/main.luau",
             "output": "generated/release.luau"
+        },
+
+        {
+            "name": "Loader",
+            
+            "promptVersion": false,
+            "promptDeploy": false,
+
+            "frame": "pipeline/frame.luau",
+            "darkluaConfig": "pipeline/.darklua.json",
+            "input": "src/loader.luau",
+            "output": "generated/loader.luau"
         }
     ]
 }

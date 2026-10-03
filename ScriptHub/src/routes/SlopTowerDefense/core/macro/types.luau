@@ -1,13 +1,15 @@
 -- Types: Định nghĩa kiểu dữ liệu chuẩn cho hệ thống Macro Slop Tower Defense.
 
-export type ActionType = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip" | "StageTransition"
+export type ActionType = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip"
 
 export type MacroStep = {
 	Index: number,
 	Type: ActionType,
-	TowerId: string, -- Định danh tháp (vd: "T1", "T2", "SPEED", "STAGE")
-	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan", "Raid Stage 2")
-	Stage: number?, -- Giai đoạn Raid (vd: 1, 2, 3, 4) nếu Type == "StageTransition"
+	TowerId: string, -- Định danh tháp (vd: "T1", "T2", "SPEED")
+	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan")
+	Level: number?, -- Cấp độ sau khi thực hiện thao tác (Place = 0, Upgrade = 1, 2, 3...)
+	Stage: number?, -- [Deprecated] Đã chuyển sang cơ chế Map Macro (mỗi map một kịch bản)
+	MapName: string?, -- [Deprecated] Đã chuyển sang Metadata.Map
 	Speed: number?, -- Tốc độ game (1, 2, 3, 4, 5) nếu Type == "Speed"
 	RecordSpeed: number?, -- Tốc độ game lúc thực hiện ghi bước này (1, 2, 3, 4, 5)
 	CFrame: { number }?, -- Tọa độ CFrame [X, Y, Z, R00, R01, ...] (12 components)
@@ -17,8 +19,8 @@ export type MacroStep = {
 	Arg5: { any }?, -- Danh sách Modifier / Traits (vd: {"Gold"})
 	Wave: number, -- Wave lúc thực hiện
 	Time: number, -- Giây Match Timer lúc thực hiện (số thập phân 2 chữ số, vd: 14.35)
-	Cost: number?, -- Tiền trong ví lúc thực hiện
-	TowerCost: number?, -- Giá tiền thực tế của tháp/nâng cấp
+	Cost: number?, -- Chi phí thực tế của tháp/nâng cấp (gộp từ TowerCost)
+	TowerCost: number?, -- [Deprecated] Đã gộp vào Cost, giữ lại để tương thích ngược với macro cũ
 	LayoutOrder: number?, -- Thứ tự hiển thị trong UI UnitManager.Units
 	TargetMode: string?, -- Chế độ ngắm bắn ("First", "Last", ...)
 	RawData: { [string]: any }?, -- Dữ liệu thô dự phòng

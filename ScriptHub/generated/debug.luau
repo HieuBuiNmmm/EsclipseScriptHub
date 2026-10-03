@@ -9,7 +9,7 @@
 --]]
 
 _P = {
-    genDate = "2026-10-01T12:52:38.593527200+00:00",
+    genDate = "2026-10-02T23:47:59.596173400+00:00",
     cfg = "Debug",
     vers = "v0.0.0"
 }
@@ -113,14 +113,26 @@ type GameStatsSnapshot__DARKLUA_TYPE_n = {
 	Message: string
 }
 
-type ActionType__DARKLUA_TYPE_o = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip" | "StageTransition"
+type RaidSnapshot__DARKLUA_TYPE_o = {
+	IsRaid: boolean,
+	CurrentMap: string?,
+	IsIntermission: boolean,
+	RemainingSeconds: number,
+	ReadyCount: number,
+	TotalPlayers: number,
+	StatusFormatted: string
+}
 
-type MacroStep__DARKLUA_TYPE_p = {
+type ActionType__DARKLUA_TYPE_p = "Place" | "Upgrade" | "Sell" | "Target" | "Ability" | "Speed" | "VoteSkip"
+
+type MacroStep__DARKLUA_TYPE_q = {
 	Index: number,
-	Type: ActionType__DARKLUA_TYPE_o,
-	TowerId: string, -- Định danh tháp (vd: "T1", "T2", "SPEED", "STAGE")
-	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan", "Raid Stage 2")
-	Stage: number?, -- Giai đoạn Raid (vd: 1, 2, 3, 4) nếu Type == "StageTransition"
+	Type: ActionType__DARKLUA_TYPE_p,
+	TowerId: string, -- Định danh tháp (vd: "T1", "T2", "SPEED")
+	TowerName: string, -- Tên loại tháp (vd: "Freddy Trashcan")
+	Level: number?, -- Cấp độ sau khi thực hiện thao tác (Place = 0, Upgrade = 1, 2, 3...)
+	Stage: number?, -- [Deprecated] Đã chuyển sang cơ chế Map Macro (mỗi map một kịch bản)
+	MapName: string?, -- [Deprecated] Đã chuyển sang Metadata.Map
 	Speed: number?, -- Tốc độ game (1, 2, 3, 4, 5) nếu Type == "Speed"
 	RecordSpeed: number?, -- Tốc độ game lúc thực hiện ghi bước này (1, 2, 3, 4, 5)
 	CFrame: { number }?, -- Tọa độ CFrame [X, Y, Z, R00, R01, ...] (12 components)
@@ -130,14 +142,14 @@ type MacroStep__DARKLUA_TYPE_p = {
 	Arg5: { any }?, -- Danh sách Modifier / Traits (vd: {"Gold"})
 	Wave: number, -- Wave lúc thực hiện
 	Time: number, -- Giây Match Timer lúc thực hiện (số thập phân 2 chữ số, vd: 14.35)
-	Cost: number?, -- Tiền trong ví lúc thực hiện
-	TowerCost: number?, -- Giá tiền thực tế của tháp/nâng cấp
+	Cost: number?, -- Chi phí thực tế của tháp/nâng cấp (gộp từ TowerCost)
+	TowerCost: number?, -- [Deprecated] Đã gộp vào Cost, giữ lại để tương thích ngược với macro cũ
 	LayoutOrder: number?, -- Thứ tự hiển thị trong UI UnitManager.Units
 	TargetMode: string?, -- Chế độ ngắm bắn ("First", "Last", ...)
 	RawData: { [string]: any }?
 }
 
-type MacroMetadata__DARKLUA_TYPE_q = {
+type MacroMetadata__DARKLUA_TYPE_r = {
 	Name: string,
 	CreatedAt: number,
 	UpdatedAt: number,
@@ -149,12 +161,25 @@ type MacroMetadata__DARKLUA_TYPE_q = {
 	Difficulty: string?
 }
 
-type MacroData__DARKLUA_TYPE_r = {
-	Metadata: MacroMetadata__DARKLUA_TYPE_q,
-	Steps: { MacroStep__DARKLUA_TYPE_p }
+type MacroData__DARKLUA_TYPE_s = {
+	Metadata: MacroMetadata__DARKLUA_TYPE_r,
+	Steps: { MacroStep__DARKLUA_TYPE_q }
 }
 
-type PityStats__DARKLUA_TYPE_s = {
+type MapEntry__DARKLUA_TYPE_t = {
+	Key: string,
+	DisplayName: string
+}
+
+type UniverseDef__DARKLUA_TYPE_u = {
+	Name: string,
+	Side: "Left" | "Right",
+	IsRaid: boolean?,
+	Description: string?,
+	Maps: { MapEntry__DARKLUA_TYPE_t }
+}
+
+type PityStats__DARKLUA_TYPE_v = {
 	Godly: number,
 	Mythical: number,
 	Celestial: number,
@@ -162,7 +187,7 @@ type PityStats__DARKLUA_TYPE_s = {
 	Secret: number
 }
 
-type PlayerProfileData__DARKLUA_TYPE_t = {
+type PlayerProfileData__DARKLUA_TYPE_w = {
 	Loaded: boolean,
 	LastUpdated: number,
 	Gems: number,
@@ -178,13 +203,13 @@ type PlayerProfileData__DARKLUA_TYPE_t = {
 	TotalPlayTimeFormatted: string,
 	TowersCount: number,
 	InventorySpace: number,
-	PityBasic: PityStats__DARKLUA_TYPE_s,
-	PityPremium: PityStats__DARKLUA_TYPE_s,
+	PityBasic: PityStats__DARKLUA_TYPE_v,
+	PityPremium: PityStats__DARKLUA_TYPE_v,
 	ActiveLoadout: { [string]: string },
 	RawData: { [string]: any }?
 }
 
-type PlaybackSnapshot__DARKLUA_TYPE_u = {
+type PlaybackSnapshot__DARKLUA_TYPE_x = {
 	IsEnabled: boolean,
 	IsPlaying: boolean,
 	MacroName: string?,
@@ -195,17 +220,86 @@ type PlaybackSnapshot__DARKLUA_TYPE_u = {
 	TimingMode: string,
 	StepDelay: number,
 	ApplySpeed: boolean,
-	ApplyVoteSkip: boolean
+	ApplyVoteSkip: boolean,
+	AutoMapSwitch: boolean,
+	AutoCatchUp: boolean?
 }
 
-type MutatorInfo__DARKLUA_TYPE_v = {
+type ContractItem__DARKLUA_TYPE_y = {
+	Index: number,
+	Kind: string,
+	Tower: string,
+	Progress: number,
+	Need: number,
+	Claimed: boolean,
+	IsCompleted: boolean
+}
+
+type ContractsSnapshot__DARKLUA_TYPE_z = {
+	List: { ContractItem__DARKLUA_TYPE_y },
+	Period: number,
+	Rerolled: boolean,
+	EligibleCount: number,
+	ClaimedCountSession: number,
+	LastChecked: number
+}
+
+type QuestItem__DARKLUA_TYPE_A = {
+	Id: string,
+	Category: "Daily" | "Weekly",
+	IsReady: boolean,
+	IsClaimed: boolean
+}
+
+type QuestsSnapshot__DARKLUA_TYPE_B = {
+	DailyClaimed: number,
+	DailyTotal: number,
+	DailyBonusClaimed: boolean,
+	WeeklyClaimed: number,
+	WeeklyTotal: number,
+	WeeklyBonusClaimed: boolean,
+	ReadyQuestsCount: number,
+	ClaimedCountSession: number,
+	LastChecked: number
+}
+
+type GiftReward__DARKLUA_TYPE_C = {
+	Currency: string,
+	Amount: number,
+	Type: string?
+}
+
+type GiftItem__DARKLUA_TYPE_D = {
+	GiftNumber: number,
+	Time: number,
+	Reward: GiftReward__DARKLUA_TYPE_C,
+	IsClaimed: boolean,
+	IsReady: boolean,
+	RemainingSeconds: number
+}
+
+type GiftsSnapshot__DARKLUA_TYPE_E = {
+	Playtime: number,
+	FormattedPlaytime: string,
+	ClaimedCount: number,
+	TotalGifts: number,
+	ReadyCount: number,
+	NextGiftNumber: number?,
+	NextGiftRemaining: number?,
+	NextGiftFormatted: string?,
+	Gifts: { [number]: GiftItem__DARKLUA_TYPE_D },
+	ClaimedCountSession: number,
+	LastChecked: number
+}
+
+type MutatorInfo__DARKLUA_TYPE_F = {
 	Id: string,
 	Name: string,
 	DefaultPriority: number,
 	Description: string?
 }
 --// Types
-type Window__DARKLUA_TYPE_w = { Visible: boolean? }
+type Window__DARKLUA_TYPE_G = { Visible: boolean? }
 local __DIST __DIST={cache={}, load=function(m)if not __DIST.cache[m]then __DIST.cache[m]={c=__DIST[m]()}end return __DIST.cache[m].c end}do function __DIST.a()--// KeySystem: Luarmor-style Key Authentication System for EsclipseScriptHub
 --// Features: HWID Binding, Silent Login via Local Cache, Modern Sleek UI, Cloudflare Worker Backend Support
 
@@ -1001,7 +1095,9 @@ local function createKeyGui(config: KeySystemConfig__DARKLUA_TYPE_a, onVerified:
 
 	-- Button Actions
 	getKeyBtn.MouseButton1Click:Connect(function()
-		local url = config.GetKeyUrl or (config.ApiUrl .. "/getkey?hwid=" .. hwid)
+		local baseUrl = config.GetKeyUrl or (config.ApiUrl .. "/getkey")
+		local sep = baseUrl:find("%?") and "&" or "?"
+		local url = baseUrl:find("hwid=") and baseUrl or (baseUrl .. sep .. "hwid=" .. hwid)
 		local copied = copyToClipboard(url)
 		if copied then
 			setStatus("✅ Key link copied to clipboard!", Color3.fromRGB(34, 197, 94))
@@ -33892,6 +33988,11 @@ local lifecycle = {
 	callbacks = {},
 }
 
+function lifecycle.Init(): ()
+	lifecycle.cleaned = false
+	table.clear(lifecycle.callbacks)
+end
+
 function lifecycle.Register(callback: () -> ()): () -> ()
 	if type(callback) ~= "function" then
 		return function() end
@@ -35052,7 +35153,473 @@ lifecycle.Register(function()
 end)
 
 return gameStats
-end function __DIST.aH()
+end function __DIST.aH()-- RaidManager: Quản lý toàn diện chế độ Raid trong Slop Tower Defense.
+-- Hỗ trợ:
+--   • Theo dõi Model Map ngẫu nhiên trong workspace.Map ("Raid 1", "Raid 2", "Raid 3"...)
+--   • Lắng nghe giao diện Intermission (PlayerGui.RaidReady.Frame)
+--   • Trích xuất số người sẵn sàng và đếm ngược 120s ("0/1 ready  -  16s")
+--   • Click nút READY an toàn đa kênh (PlayerGui.RaidReady.Frame.TextButton)
+--   • Cung cấp sự kiện đổi Map và đổi trạng thái Intermission cho Macro Player & UI
+
+
+local Players = game:GetService("Players")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local GuiService = game:GetService("GuiService")
+
+local zoneGuard = __DIST.load('aF')
+local lifecycle = __DIST.load('ay')
+local logger = __DIST.load('aB')
+local notifier = __DIST.load('az')
+
+
+
+
+
+
+
+
+
+
+
+local raidManager = {}
+
+local currentSnapshot: RaidSnapshot__DARKLUA_TYPE_o = {
+	IsRaid = false,
+	CurrentMap = nil,
+	IsIntermission = false,
+	RemainingSeconds = 0,
+	ReadyCount = 0,
+	TotalPlayers = 1,
+	StatusFormatted = "Waiting",
+}
+
+local subscribers: { (RaidSnapshot__DARKLUA_TYPE_o) -> () } = {}
+local mapChangeListeners: { (newMap: string?, oldMap: string?) -> () } = {}
+local intermissionListeners: { (isActive: boolean, currentMap: string?) -> () } = {}
+
+local activeConnections: { [string]: RBXScriptConnection } = {}
+local isRunning = true
+local lastMapName: string? = nil
+local lastIntermissionState = false
+local lastReadyClickTime = 0
+
+--// ====================================================================
+--// HELPER: Click Button Đa Kênh An Toàn (4 Tầng Fallback)
+--// ====================================================================
+local function clickButton(button: GuiButton): boolean
+	if not button or not button:IsA("GuiButton") then return false end
+
+	-- Cách 1: getconnections
+	pcall(function()
+		local gc = (getconnections or (syn and syn.getconnections) or (getgenv and getgenv().getconnections))
+		if gc then
+			for _, conn in ipairs(gc(button.MouseButton1Click)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+			for _, conn in ipairs(gc(button.Activated)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+			for _, conn in ipairs(gc(button.MouseButton1Up)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+		end
+	end)
+
+	-- Cách 2: firesignal
+	pcall(function()
+		local fs = (firesignal or (syn and syn.firesignal) or (getgenv and getgenv().firesignal))
+		if fs then
+			fs(button.MouseButton1Click)
+			fs(button.Activated)
+			fs(button.MouseButton1Down)
+			fs(button.MouseButton1Up)
+		end
+	end)
+
+	-- Cách 3: VirtualInputManager tại tâm nút
+	pcall(function()
+		local absPos = button.AbsolutePosition
+		local absSize = button.AbsoluteSize
+		if absSize.X > 0 and absSize.Y > 0 then
+			local centerX = absPos.X + absSize.X / 2
+			local centerY = absPos.Y + absSize.Y / 2
+			VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
+			task.wait(0.05)
+			VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
+		end
+	end)
+
+	-- Cách 4: GuiService SelectedObject + Enter Key
+	pcall(function()
+		GuiService.SelectedObject = button
+		task.wait(0.05)
+		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Return, false, game)
+		task.wait(0.05)
+		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Return, false, game)
+		GuiService.SelectedObject = nil
+	end)
+
+	return true
+end
+
+--// ====================================================================
+--// GUI LOOKUP: Lấy các thành phần của PlayerGui.RaidReady
+--// ====================================================================
+local function getRaidReadyGui(): (ScreenGui?, Frame?, GuiButton?, TextLabel?)
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	if not playerGui then return nil, nil, nil, nil end
+
+	local raidReady = playerGui:FindFirstChild("RaidReady")
+	if not raidReady then
+		raidReady = playerGui:FindFirstChild("RaidReady", true)
+	end
+	if not raidReady or not raidReady:IsA("ScreenGui") then
+		return nil, nil, nil, nil
+	end
+
+	local frame = raidReady:FindFirstChild("Frame")
+	if not frame and raidReady:FindFirstChildWhichIsA("Frame", true) then
+		frame = raidReady:FindFirstChildWhichIsA("Frame", true)
+	end
+
+	local button: GuiButton? = nil
+	local timerLabel: TextLabel? = nil
+
+	if frame and frame:IsA("Frame") then
+		-- 1. Tìm nút READY (Ưu tiên TextButton trực tiếp)
+		local btn = frame:FindFirstChild("TextButton")
+		if btn and btn:IsA("GuiButton") then
+			button = btn
+		else
+			local deepBtn = frame:FindFirstChildWhichIsA("GuiButton", true)
+			if deepBtn then
+				button = deepBtn
+			end
+		end
+
+		-- 2. Tìm nhãn thời gian ("0/1 ready  -  16s")
+		-- Ưu tiên Frame:GetChildren()[6] theo cấu trúc của người dùng
+		local children = frame:GetChildren()
+		if #children >= 6 then
+			local candidate = children[6]
+			if candidate and candidate:IsA("TextLabel") and candidate.Text:find("ready") then
+				timerLabel = candidate
+			end
+		end
+
+		-- Fallback: Quét đệ quy trong Frame tìm TextLabel khớp cú pháp ready/seconds
+		if not timerLabel then
+			for _, desc in ipairs(frame:GetDescendants()) do
+				if desc:IsA("TextLabel") then
+					local textLower = desc.Text:lower()
+					if textLower:find("ready") and (textLower:find("s") or textLower:find("%d+")) then
+						timerLabel = desc
+						break
+					end
+				end
+			end
+		end
+	end
+
+	return raidReady, frame, button, timerLabel
+end
+
+--// ====================================================================
+--// MAP LOOKUP: Lấy tên Map từ workspace.Map
+--// ====================================================================
+local function queryCurrentMap(): string?
+	local mapFolder = workspace:FindFirstChild("Map")
+	if not mapFolder then return nil end
+
+	for _, child in ipairs(mapFolder:GetChildren()) do
+		if child:IsA("Model") or child:IsA("Folder") then
+			return child.Name
+		end
+	end
+
+	return nil
+end
+
+-- Parse chuỗi "0/1 ready  -  16s" -> readyCount, totalPlayers, seconds
+local function parseStatusText(rawText: string?): (number, number, number)
+	if not rawText or rawText == "" then
+		return 0, 1, 0
+	end
+
+	-- Chuẩn hóa: "0/1 ready  -  16s"
+	local r, t, s = rawText:match("(%d+)%s*/%s*(%d+)%s*ready%s*-%s*(%d+)s")
+	if r and t and s then
+		return tonumber(r) or 0, tonumber(t) or 1, tonumber(s) or 0
+	end
+
+	-- Fallback trích xuất từng thành phần
+	local seconds = tonumber(rawText:match("(%d+)%s*s")) or 0
+	local readyC, totalP = rawText:match("(%d+)%s*/%s*(%d+)")
+	local rc = tonumber(readyC) or 0
+	local tp = tonumber(totalP) or 1
+
+	return rc, tp, seconds
+end
+
+local function notifySubscribers()
+	for _, sub in ipairs(subscribers) do
+		task.spawn(pcall, sub, currentSnapshot)
+	end
+end
+
+-- Cập nhật dữ liệu Snapshot thời gian thực
+local function updateSnapshot()
+	if not zoneGuard.IsInGame() then
+		currentSnapshot.IsRaid = false
+		currentSnapshot.CurrentMap = nil
+		currentSnapshot.IsIntermission = false
+		currentSnapshot.RemainingSeconds = 0
+		currentSnapshot.ReadyCount = 0
+		currentSnapshot.TotalPlayers = 1
+		currentSnapshot.StatusFormatted = "In Lobby"
+		return
+	end
+
+	local mapName = queryCurrentMap()
+	local raidReady, frame, _, timerLabel = getRaidReadyGui()
+
+	local isIntermission = false
+	if raidReady and frame then
+		-- Intermission được coi là active khi ScreenGui Enabled và Frame Visible
+		local screenEnabled = (raidReady.Enabled == true)
+		local frameVisible = (frame.Visible == true)
+		isIntermission = screenEnabled and frameVisible
+	end
+
+	local isRaidMatch = false
+	if mapName and mapName:lower():find("raid") then
+		isRaidMatch = true
+	elseif raidReady ~= nil then
+		isRaidMatch = true
+	end
+
+	local readyCount = 0
+	local totalPlayers = 1
+	local remainingSeconds = 0
+	local statusFormatted = "Active Match"
+
+	if isIntermission then
+		local labelText = timerLabel and timerLabel.Text or ""
+		readyCount, totalPlayers, remainingSeconds = parseStatusText(labelText)
+		statusFormatted = string.format("%d/%d Ready (%ds)", readyCount, totalPlayers, remainingSeconds)
+	elseif isRaidMatch then
+		statusFormatted = "Raid Wave in progress"
+	end
+
+	-- Phát hiện đổi Map
+	if mapName ~= lastMapName then
+		local oldMap = lastMapName
+		lastMapName = mapName
+		currentSnapshot.CurrentMap = mapName
+		if mapName then
+			logger.Log(string.format("[RaidManager] 🗺️ Phát hiện Map mới: '%s' (Map cũ: '%s')", mapName, tostring(oldMap or "None")))
+			for _, listener in ipairs(mapChangeListeners) do
+				task.spawn(pcall, listener, mapName, oldMap)
+			end
+		end
+	end
+
+	-- Phát hiện đổi trạng thái Intermission
+	if isIntermission ~= lastIntermissionState then
+		lastIntermissionState = isIntermission
+		currentSnapshot.IsIntermission = isIntermission
+		logger.Log(string.format("[RaidManager] ⏳ Trạng thái Intermission: %s (Map: %s)", isIntermission and "BẮT ĐẦU (120s Setup)" or "KẾT THÚC (Vào Wave)", tostring(mapName or "Unknown")))
+		for _, listener in ipairs(intermissionListeners) do
+			task.spawn(pcall, listener, isIntermission, mapName)
+		end
+	end
+
+	currentSnapshot.IsRaid = isRaidMatch
+	currentSnapshot.CurrentMap = mapName
+	currentSnapshot.IsIntermission = isIntermission
+	currentSnapshot.RemainingSeconds = remainingSeconds
+	currentSnapshot.ReadyCount = readyCount
+	currentSnapshot.TotalPlayers = totalPlayers
+	currentSnapshot.StatusFormatted = statusFormatted
+
+	notifySubscribers()
+end
+
+--// ====================================================================
+--// EVENT HOOKS: Lắng nghe workspace.Map và PlayerGui.RaidReady tức thì
+--// ====================================================================
+local function setupHooks()
+	-- 1. Lắng nghe workspace.Map (ChildAdded & ChildRemoved)
+	local function hookMapFolder(mapFolder: Instance)
+		if activeConnections["Map_ChildAdded"] then
+			activeConnections["Map_ChildAdded"]:Disconnect()
+		end
+		if activeConnections["Map_ChildRemoved"] then
+			activeConnections["Map_ChildRemoved"]:Disconnect()
+		end
+
+		activeConnections["Map_ChildAdded"] = mapFolder.ChildAdded:Connect(function(child)
+			task.wait(0.1) -- Đệm 100ms để model map nạp đầy đủ Part
+			updateSnapshot()
+		end)
+
+		activeConnections["Map_ChildRemoved"] = mapFolder.ChildRemoved:Connect(function()
+			task.wait(0.05)
+			updateSnapshot()
+		end)
+	end
+
+	local mapFolder = workspace:FindFirstChild("Map")
+	if mapFolder then
+		hookMapFolder(mapFolder)
+	else
+		activeConnections["Workspace_ChildAdded"] = workspace.ChildAdded:Connect(function(child)
+			if child.Name == "Map" then
+				hookMapFolder(child)
+				updateSnapshot()
+			end
+		end)
+	end
+
+	-- 2. Lắng nghe PlayerGui.RaidReady
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	if playerGui then
+		local function hookRaidReady(gui: ScreenGui)
+			if activeConnections["RaidReady_Enabled"] then
+				activeConnections["RaidReady_Enabled"]:Disconnect()
+			end
+			activeConnections["RaidReady_Enabled"] = gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+				updateSnapshot()
+			end)
+
+			local frame = gui:FindFirstChild("Frame") or gui:FindFirstChildWhichIsA("Frame", true)
+			if frame then
+				if activeConnections["RaidReady_Frame_Visible"] then
+					activeConnections["RaidReady_Frame_Visible"]:Disconnect()
+				end
+				activeConnections["RaidReady_Frame_Visible"] = frame:GetPropertyChangedSignal("Visible"):Connect(function()
+					updateSnapshot()
+				end)
+			end
+		end
+
+		local existingRaidReady = playerGui:FindFirstChild("RaidReady")
+		if existingRaidReady and existingRaidReady:IsA("ScreenGui") then
+			hookRaidReady(existingRaidReady)
+		else
+			activeConnections["PlayerGui_ChildAdded"] = playerGui.ChildAdded:Connect(function(child)
+				if child.Name == "RaidReady" and child:IsA("ScreenGui") then
+					hookRaidReady(child)
+					updateSnapshot()
+				end
+			end)
+		end
+	end
+end
+
+-- Vòng lặp kiểm tra định kỳ (0.3s) đề phòng event bị lỡ
+task.spawn(function()
+	setupHooks()
+	while isRunning do
+		updateSnapshot()
+		task.wait(0.3)
+	end
+end)
+
+--// ====================================================================
+--// PUBLIC API
+--// ====================================================================
+function raidManager.IsRaid(): boolean
+	return currentSnapshot.IsRaid
+end
+
+function raidManager.GetCurrentMap(): string?
+	return currentSnapshot.CurrentMap or queryCurrentMap()
+end
+
+function raidManager.IsIntermissionActive(): boolean
+	return currentSnapshot.IsIntermission
+end
+
+function raidManager.GetRemainingSeconds(): number
+	return currentSnapshot.RemainingSeconds
+end
+
+function raidManager.GetReadyStatus(): (number, number, number)
+	return currentSnapshot.ReadyCount, currentSnapshot.TotalPlayers, currentSnapshot.RemainingSeconds
+end
+
+function raidManager.GetSnapshot(): RaidSnapshot__DARKLUA_TYPE_o
+	return currentSnapshot
+end
+
+-- Bấm nút READY đa kênh
+function raidManager.ClickReady(): boolean
+	local _, frame, button = getRaidReadyGui()
+	if not frame or not frame.Visible then
+		return false
+	end
+	if not button then
+		return false
+	end
+
+	local now = os.clock()
+	if now - lastReadyClickTime < 1.0 then
+		return false -- Debounce 1.0s
+	end
+	lastReadyClickTime = now
+
+	logger.Log("[RaidManager] 🚀 Bắt đầu bấm nút READY (PlayerGui.RaidReady.Frame.TextButton)...")
+	local ok = clickButton(button)
+	if ok then
+		notifier.Notify("Raid", "Clicked READY button!", 2)
+		logger.Log("[RaidManager] ✅ Đã gửi tín hiệu Click READY thành công!")
+	end
+	return ok
+end
+
+function raidManager.OnMapChanged(listener: (newMap: string?, oldMap: string?) -> ()): () -> ()
+	table.insert(mapChangeListeners, listener)
+	return function()
+		local idx = table.find(mapChangeListeners, listener)
+		if idx then table.remove(mapChangeListeners, idx) end
+	end
+end
+
+function raidManager.OnIntermissionChanged(listener: (isActive: boolean, currentMap: string?) -> ()): () -> ()
+	table.insert(intermissionListeners, listener)
+	return function()
+		local idx = table.find(intermissionListeners, listener)
+		if idx then table.remove(intermissionListeners, idx) end
+	end
+end
+
+function raidManager.Subscribe(callback: (RaidSnapshot__DARKLUA_TYPE_o) -> ()): () -> ()
+	table.insert(subscribers, callback)
+	task.spawn(pcall, callback, currentSnapshot)
+	return function()
+		local idx = table.find(subscribers, callback)
+		if idx then table.remove(subscribers, idx) end
+	end
+end
+
+lifecycle.Register(function()
+	isRunning = false
+	for _, conn in pairs(activeConnections) do
+		pcall(function() conn:Disconnect() end)
+	end
+	table.clear(activeConnections)
+	table.clear(subscribers)
+	table.clear(mapChangeListeners)
+	table.clear(intermissionListeners)
+end)
+
+return raidManager
+end function __DIST.aI()
+
+
 
 
 
@@ -35097,10 +35664,10 @@ end function __DIST.aH()
 
 
 return {}
-end function __DIST.aI()-- Storage: Quản lý đọc, ghi và lưu trữ file Macro dưới dạng JSON trong executor.
+end function __DIST.aJ()-- Storage: Quản lý đọc, ghi và lưu trữ file Macro dưới dạng JSON trong executor.
 
 local HttpService = game:GetService("HttpService")
-local types = __DIST.load('aH')
+local types = __DIST.load('aI')
 local macLib = __DIST.load('b')
 
 local storage = {}
@@ -35108,7 +35675,7 @@ local storage = {}
 local BASE_DIR = "EsclipseHub/SlopTowerDefense/Macros"
 local hasFileSystem = (isfile ~= nil and writefile ~= nil and makefolder ~= nil and isfolder ~= nil)
 
-local memoryCache: { [string]: MacroData__DARKLUA_TYPE_r} = {}
+local memoryCache: { [string]: MacroData__DARKLUA_TYPE_s} = {}
 local isInitialized = false
 
 local function getMacroDir(): string
@@ -35140,7 +35707,7 @@ local function ensureFolder()
 end
 
 -- Chuẩn hóa dữ liệu macro khi nạp từ file: hỗ trợ cả dạng Dictionary {"1": {...}} lẫn Array [{...}]
-local function normalizeMacroData(data: any): MacroData__DARKLUA_TYPE_r?
+local function normalizeMacroData(data: any): MacroData__DARKLUA_TYPE_s?
 	if type(data) ~= "table" then return nil end
 	data.Metadata = data.Metadata or {
 		Name = "Unknown",
@@ -35151,7 +35718,7 @@ local function normalizeMacroData(data: any): MacroData__DARKLUA_TYPE_r?
 	}
 
 	local rawSteps = data.Steps
-	local arraySteps: { MacroStep__DARKLUA_TYPE_p} = {}
+	local arraySteps: { MacroStep__DARKLUA_TYPE_q} = {}
 
 	if type(rawSteps) == "table" then
 		-- Kiểm tra xem Steps đang ở dạng Array hay Dictionary
@@ -35168,6 +35735,12 @@ local function normalizeMacroData(data: any): MacroData__DARKLUA_TYPE_r?
 			elseif step.Type == "StageTransition" then
 				step.TowerId = step.TowerId or "STAGE"
 				step.TowerName = step.TowerName or string.format("Raid Stage %d", step.Stage or 2)
+			end
+			-- Đồng bộ trường Cost và TowerCost (gộp 2 trường)
+			if step.Cost == nil and step.TowerCost ~= nil then
+				step.Cost = step.TowerCost
+			elseif step.TowerCost == nil and step.Cost ~= nil then
+				step.TowerCost = step.Cost
 			end
 			return step
 		end
@@ -35201,11 +35774,11 @@ local function normalizeMacroData(data: any): MacroData__DARKLUA_TYPE_r?
 
 	data.Steps = arraySteps
 	data.Metadata.TotalSteps = #arraySteps
-	return data :: MacroData__DARKLUA_TYPE_r
+	return data :: MacroData__DARKLUA_TYPE_s
 end
 
 -- Xuất dữ liệu macro thành chuỗi JSON đẹp mắt, chuẩn RFC 8259, giữ nguyên tuyệt đối số thực của Position và CFrame
-local function serializeMacro(data: MacroData__DARKLUA_TYPE_r): string
+local function serializeMacro(data: MacroData__DARKLUA_TYPE_s): string
 	local lines = {}
 	table.insert(lines, "{")
 
@@ -35264,6 +35837,9 @@ local function serializeMacro(data: MacroData__DARKLUA_TYPE_r): string
 			if step.TowerName and step.TowerName ~= "VoteSkip" and step.TowerName ~= "GameSpeed" and step.TowerName ~= "Unknown" and not step.TowerName:find("^Raid Stage") then
 				table.insert(fields, string.format('      "TowerName": %s', HttpService:JSONEncode(step.TowerName)))
 			end
+			if step.Level ~= nil then
+				table.insert(fields, string.format('      "Level": %d', step.Level))
+			end
 			if step.LayoutOrder ~= nil then
 				table.insert(fields, string.format('      "LayoutOrder": %d', step.LayoutOrder))
 			end
@@ -35279,12 +35855,10 @@ local function serializeMacro(data: MacroData__DARKLUA_TYPE_r): string
 				table.insert(fields, string.format('      "RecordSpeed": %d', step.RecordSpeed))
 			end
 
-			-- Nhóm 3: Chi phí
-			if step.TowerCost ~= nil then
-				table.insert(fields, string.format('      "TowerCost": %s', tostring(step.TowerCost)))
-			end
-			if step.Cost ~= nil then
-				table.insert(fields, string.format('      "Cost": %s', tostring(step.Cost)))
+			-- Nhóm 3: Chi phí (gộp TowerCost và Cost thành trường Cost duy nhất)
+			local costVal = step.Cost or step.TowerCost
+			if costVal ~= nil then
+				table.insert(fields, string.format('      "Cost": %s', tostring(costVal)))
 			end
 
 			-- Nhóm 4: Tọa độ & CFrame (Giữ nguyên số thực gốc 100%, format gọn gàng 1 dòng)
@@ -35304,9 +35878,6 @@ local function serializeMacro(data: MacroData__DARKLUA_TYPE_r): string
 			end
 
 			-- Nhóm 5: Thuộc tính riêng từng loại hành động
-			if step.Stage ~= nil then
-				table.insert(fields, string.format('      "Stage": %d', step.Stage))
-			end
 			if step.TargetMode then
 				table.insert(fields, string.format('      "TargetMode": %s', HttpService:JSONEncode(step.TargetMode)))
 			end
@@ -35388,19 +35959,67 @@ function storage.HasMacro(name: string): boolean
 	return memoryCache[name] ~= nil
 end
 
+-- Tìm kiếm tên Macro phù hợp nhất với tên Map hiện tại (hỗ trợ "Raid", "Raid 1", "Raid_1", "Raid1", v.v.)
+function storage.FindMacroForMap(mapName: string?): string?
+	if not mapName or mapName == "" then return nil end
+	initialize()
+
+	-- 1. Ưu tiên 1: Khớp chính xác tuyệt đối tên (kể cả không phân biệt hoa thường)
+	if memoryCache[mapName] then
+		return mapName
+	end
+	for name in pairs(memoryCache) do
+		if name:lower() == mapName:lower() then
+			return name
+		end
+	end
+
+	-- Chuẩn hóa tên map (chữ thường, loại bỏ khoảng trắng, gạch dưới, gạch ngang, từ khóa 'stage')
+	local cleanMap = mapName:lower():gsub("[%s_%-]+", ""):gsub("stage", "")
+	local mapNum = cleanMap:match("%d+$") -- Số hiệu của map nếu có (vd: "2" cho "Raid2" hoặc "Stage 2")
+
+	-- 2. Ưu tiên 2: Khớp sau khi chuẩn hóa đầy đủ (ví dụ "Raid Stage 2" hoặc "Raid_2" khớp với "Raid2")
+	for name in pairs(memoryCache) do
+		local cleanName = name:lower():gsub("[%s_%-]+", ""):gsub("stage", "")
+		if cleanName == cleanMap then
+			return name
+		end
+	end
+
+	-- 3. Ưu tiên 3: Khớp tiền tố/hậu tố nhưng đảm bảo ràng buộc số hiệu map
+	for name in pairs(memoryCache) do
+		local cleanName = name:lower():gsub("[%s_%-]+", ""):gsub("stage", "")
+		local nameNum = cleanName:match("%d+$")
+
+		-- Nếu map không có số (ví dụ: map "Raid"): tuyệt đối không khớp với macro có số ("Raid 2", "Raid 3")
+		if not mapNum then
+			if not nameNum and (cleanName:find(cleanMap, 1, true) or cleanMap:find(cleanName, 1, true)) then
+				return name
+			end
+		else
+			-- Nếu map có số (ví dụ: map "Raid2"): bắt buộc macro cũng phải có cùng số hiệu (nameNum == mapNum)
+			if nameNum == mapNum and (cleanName:find(cleanMap, 1, true) or cleanMap:find(cleanName, 1, true)) then
+				return name
+			end
+		end
+	end
+
+	return nil
+end
+
 -- Lấy dữ liệu của 1 macro
-function storage.GetMacro(name: string): MacroData__DARKLUA_TYPE_r?
+function storage.GetMacro(name: string): MacroData__DARKLUA_TYPE_s?
 	initialize()
 	return memoryCache[name]
 end
 
 -- Tạo mới 1 macro rỗng
-function storage.CreateMacro(name: string): MacroData__DARKLUA_TYPE_r	
+function storage.CreateMacro(name: string): MacroData__DARKLUA_TYPE_s	
 initialize()
 
 	name = name:gsub("[%s/\\]+", "_")
 
-	local newMacro: MacroData__DARKLUA_TYPE_r= {
+	local newMacro: MacroData__DARKLUA_TYPE_s= {
 		Metadata = {
 			Name = name,
 			CreatedAt = os.time(),
@@ -35418,7 +36037,7 @@ initialize()
 end
 
 -- Lưu dữ liệu macro vào file JSON
-function storage.SaveMacro(name: string, data: MacroData__DARKLUA_TYPE_r): boolean
+function storage.SaveMacro(name: string, data: MacroData__DARKLUA_TYPE_s): boolean
 	initialize()
 
 	data.Metadata.UpdatedAt = os.time()
@@ -35440,8 +36059,13 @@ function storage.SaveMacro(name: string, data: MacroData__DARKLUA_TYPE_r): boole
 			local writeOk = pcall(function()
 				writefile(path, encoded)
 			end)
+			if writeOk then
+				storage.NotifyListChanged()
+			end
 			return writeOk
 		end
+	else
+		storage.NotifyListChanged()
 	end
 
 	return true
@@ -35453,20 +36077,273 @@ function storage.DeleteMacro(name: string): boolean
 
 	memoryCache[name] = nil
 
-	if hasFileSystem and delfile then
-		local path = getFilePath(name)
-		if isfile(path) then
-			pcall(function()
-				delfile(path)
-			end)
+	if hasFileSystem then
+		local delFn = delfile or (syn and syn.delfile)
+		if delFn then
+			local path = getFilePath(name)
+			if isfile(path) then
+				pcall(function()
+					delFn(path)
+				end)
+			end
 		end
 	end
 
+	storage.NotifyListChanged()
 	return true
 end
 
+local listListeners: { () -> () } = {}
+
+function storage.OnMacroListChanged(callback: () -> ()): () -> ()
+	table.insert(listListeners, callback)
+	return function()
+		local idx = table.find(listListeners, callback)
+		if idx then table.remove(listListeners, idx) end
+	end
+end
+
+function storage.NotifyListChanged()
+	for _, cb in ipairs(listListeners) do
+		task.spawn(pcall, cb)
+	end
+end
+
 return storage
-end function __DIST.aJ()-- MatchSetup: Tự động chọn Universe, Map và Difficulty khi vào In-Game sau n(s).
+end function __DIST.aK()-- MapMacroManager: Quản lý cấu hình gán Macro riêng cho từng Map & Universe.
+-- Cho phép Macro Player tự động ưu tiên kịch bản được chỉ định khi vào ván.
+
+
+local HttpService = game:GetService("HttpService")
+local storage = __DIST.load('aJ')
+local logger = __DIST.load('aB')
+local lifecycle = __DIST.load('ay')
+
+local mapMacroManager = {}
+
+-- Danh mục Universe & Map chuẩn trong Slop Tower Defense
+
+
+
+
+
+
+
+
+
+
+
+
+
+mapMacroManager.Universes = {
+	{
+		Name = "Brainrot Bases",
+		Side = "Left",
+		Maps = {
+			{ Key = "Night Base", DisplayName = "Night Base" },
+			{ Key = "Base", DisplayName = "Base" },
+			{ Key = "Gold Base", DisplayName = "Gold Base" },
+			{ Key = "BrainrotEndless", DisplayName = "BrainrotEndless" },
+		},
+	},
+	{
+		Name = "Toilet Territory",
+		Side = "Left",
+		Maps = {
+			{ Key = "Desert", DisplayName = "Desert" },
+			{ Key = "Toilet City", DisplayName = "Toilet City" },
+			{ Key = "Ruined City", DisplayName = "Ruined City" },
+			{ Key = "ToiletEndless", DisplayName = "ToiletEndless" },
+		},
+	},
+	{
+		Name = "Retro Revival",
+		Side = "Left",
+		Maps = {
+			{ Key = "Happy Home", DisplayName = "Happy Home" },
+			{ Key = "Crossroads", DisplayName = "Crossroads" },
+			{ Key = "Doomspire", DisplayName = "Doomspire" },
+			{ Key = "RetroEndless", DisplayName = "RetroEndless" },
+		},
+	},
+	{
+		Name = "Garden",
+		Side = "Right",
+		Maps = {
+			{ Key = "Plot", DisplayName = "Plot" },
+			{ Key = "NightPlot", DisplayName = "NightPlot" },
+			{ Key = "RichPlot", DisplayName = "RichPlot" },
+			{ Key = "GardenEndless", DisplayName = "GardenEndless" },
+		},
+	},
+	{
+		Name = "Backrooms",
+		Side = "Right",
+		Maps = {
+			{ Key = "Level0", DisplayName = "Level0" },
+			{ Key = "Poolrooms", DisplayName = "Poolrooms" },
+			{ Key = "Level94", DisplayName = "Level94" },
+			{ Key = "BackroomsEndless", DisplayName = "BackroomsEndless" },
+		},
+	},
+	{
+		Name = "Raid Progression (Stages)",
+		Side = "Right",
+		IsRaid = true,
+		Description = "⚔️ <b>Raid Stages:</b> Raid consists of 4 sequential stages in one match (Raid ➜ Raid2 ➜ Raid3 ➜ Raid4). Assign a macro for each stage to automatically transition as the raid advances.",
+		Maps = {
+			{ Key = "Raid", DisplayName = "Stage 1: Raid" },
+			{ Key = "Raid2", DisplayName = "Stage 2: Raid2" },
+			{ Key = "Raid3", DisplayName = "Stage 3: Raid3" },
+			{ Key = "Raid4", DisplayName = "Stage 4: Raid4" },
+		},
+	},
+} :: { UniverseDef__DARKLUA_TYPE_u }
+
+-- Bảng ánh xạ trong bộ nhớ: MapName -> MacroName
+local mappings: { [string]: string } = {}
+local listeners: { (mapName: string, macroName: string?) -> () } = {}
+local listChangeListeners: { () -> () } = {}
+
+local CONFIG_FILE = "EsclipseHub/SlopTowerDefense/map_macros.json"
+
+local function hasFileSystemSupport(): boolean
+	return (isfile ~= nil and readfile ~= nil and writefile ~= nil)
+end
+
+-- Tải cấu hình từ file JSON (nếu có)
+function mapMacroManager.Load()
+	if not hasFileSystemSupport() then return end
+	pcall(function()
+		if isfile(CONFIG_FILE) then
+			local content = readfile(CONFIG_FILE)
+			if content and content ~= "" then
+				local decoded = HttpService:JSONDecode(content)
+				if type(decoded) == "table" then
+					for map, macro in pairs(decoded) do
+						if type(map) == "string" and type(macro) == "string" then
+							mappings[map] = macro
+						end
+					end
+
+					-- Tự động di chuyển / chuẩn hóa các key Raid cũ (vd: "Raid 1", "Raid 2") sang key chuẩn
+					if mappings["Raid 1"] and not mappings["Raid"] then
+						mappings["Raid"] = mappings["Raid 1"]
+						mappings["Raid 1"] = nil
+					end
+					for i = 2, 4 do
+						local oldKey = "Raid " .. i
+						local newKey = "Raid" .. i
+						if mappings[oldKey] and not mappings[newKey] then
+							mappings[newKey] = mappings[oldKey]
+							mappings[oldKey] = nil
+						end
+					end
+				end
+			end
+		end
+	end)
+end
+
+-- Lưu cấu hình ra file JSON
+function mapMacroManager.Save()
+	if not hasFileSystemSupport() then return end
+	pcall(function()
+		local folder = "EsclipseHub/SlopTowerDefense"
+		if isfolder and not isfolder(folder) then
+			makefolder(folder)
+		end
+		local encoded = HttpService:JSONEncode(mappings)
+		writefile(CONFIG_FILE, encoded)
+	end)
+end
+
+-- Gán Macro cho Map (hoặc gỡ bỏ nếu truyền nil/"None")
+function mapMacroManager.SetMapMacro(mapName: string, macroName: string?)
+	if not mapName or mapName == "" then return end
+
+	local cleanMacro = (macroName and macroName ~= "" and macroName ~= "None") and macroName or nil
+	if mappings[mapName] == cleanMacro then return end
+
+	mappings[mapName] = cleanMacro
+	mapMacroManager.Save()
+
+	for _, cb in ipairs(listeners) do
+		task.spawn(pcall, cb, mapName, cleanMacro)
+	end
+end
+
+-- Lấy Macro đã gán cho Map
+function mapMacroManager.GetMapMacro(mapName: string?): string?
+	if not mapName or mapName == "" then return nil end
+
+	-- 1. Khớp chính xác tên map
+	if mappings[mapName] and mappings[mapName] ~= "None" then
+		return mappings[mapName]
+	end
+
+	-- 2. Khớp case-insensitive
+	local mapLower = mapName:lower()
+	for mName, macro in pairs(mappings) do
+		if mName:lower() == mapLower and macro ~= "None" then
+			return macro
+		end
+	end
+
+	return nil
+end
+
+function mapMacroManager.GetAllMappings(): { [string]: string }
+	return table.clone(mappings)
+end
+
+function mapMacroManager.ClearAll()
+	table.clear(mappings)
+	mapMacroManager.Save()
+	for _, cb in ipairs(listeners) do
+		task.spawn(pcall, cb, "*", nil)
+	end
+end
+
+function mapMacroManager.OnMappingChanged(callback: (mapName: string, macroName: string?) -> ()): () -> ()
+	table.insert(listeners, callback)
+	return function()
+		local idx = table.find(listeners, callback)
+		if idx then table.remove(listeners, idx) end
+	end
+end
+
+function mapMacroManager.OnMacroListChanged(callback: () -> ()): () -> ()
+	table.insert(listChangeListeners, callback)
+	return function()
+		local idx = table.find(listChangeListeners, callback)
+		if idx then table.remove(listChangeListeners, idx) end
+	end
+end
+
+function mapMacroManager.NotifyMacroListChanged()
+	for _, cb in ipairs(listChangeListeners) do
+		task.spawn(pcall, cb)
+	end
+end
+
+-- Tự động nạp khi module khởi tạo
+mapMacroManager.Load()
+
+local unsubStorage = storage.OnMacroListChanged(function()
+	mapMacroManager.NotifyMacroListChanged()
+end)
+
+lifecycle.Register(function()
+	if unsubStorage then
+		pcall(unsubStorage)
+	end
+	table.clear(listeners)
+	table.clear(listChangeListeners)
+end)
+
+return mapMacroManager
+end function __DIST.aL()-- MatchSetup: Tự động chọn Universe, Map và Difficulty khi vào In-Game sau n(s).
 
 
 local Players = game:GetService("Players")
@@ -36003,7 +36880,7 @@ lifecycle.Register(function()
 end)
 
 return matchSetup
-end function __DIST.aK()-- PlayerProfile: Quản lý và cache dữ liệu người chơi từ Remotes.PlayerData.GetData
+end function __DIST.aM()-- PlayerProfile: Quản lý và cache dữ liệu người chơi từ Remotes.PlayerData.GetData
 -- Cung cấp Pity đếm ngược cho Auto Summon và thông tin ví/thống kê cho Player Dashboard.
 
 
@@ -36044,7 +36921,7 @@ local logger = __DIST.load('aB')
 
 local playerProfile = {}
 
-local cachedData: PlayerProfileData__DARKLUA_TYPE_t = {
+local cachedData: PlayerProfileData__DARKLUA_TYPE_w = {
 	Loaded = false,
 	LastUpdated = 0,
 	Gems = 0,
@@ -36078,7 +36955,7 @@ local cachedData: PlayerProfileData__DARKLUA_TYPE_t = {
 	RawData = nil,
 }
 
-local subscribers: { (PlayerProfileData__DARKLUA_TYPE_t) -> () } = {}
+local subscribers: { (PlayerProfileData__DARKLUA_TYPE_w) -> () } = {}
 local isFetching = false
 local lastFetchTime = 0
 local getDataRemote: RemoteFunction? = nil
@@ -36224,12 +37101,12 @@ function playerProfile.Fetch(force: boolean?): boolean
 	return true
 end
 
-function playerProfile.GetData(): PlayerProfileData__DARKLUA_TYPE_t
+function playerProfile.GetData(): PlayerProfileData__DARKLUA_TYPE_w
 	return cachedData
 end
 
 -- Lấy bản sao snapshot tĩnh của hồ sơ tại một thời điểm
-function playerProfile.GetSnapshot(): PlayerProfileData__DARKLUA_TYPE_t
+function playerProfile.GetSnapshot(): PlayerProfileData__DARKLUA_TYPE_w
 	return {
 		Loaded = cachedData.Loaded,
 		LastUpdated = cachedData.LastUpdated,
@@ -36265,7 +37142,7 @@ function playerProfile.GetSnapshot(): PlayerProfileData__DARKLUA_TYPE_t
 	}
 end
 
-function playerProfile.GetPity(banner: string?): PityStats__DARKLUA_TYPE_s
+function playerProfile.GetPity(banner: string?): PityStats__DARKLUA_TYPE_v
 	if banner == "Premium" then
 		return cachedData.PityPremium
 	end
@@ -36273,7 +37150,7 @@ function playerProfile.GetPity(banner: string?): PityStats__DARKLUA_TYPE_s
 end
 
 -- Đăng ký lắng nghe thay đổi hồ sơ người chơi
-function playerProfile.Subscribe(callback: (PlayerProfileData__DARKLUA_TYPE_t) -> ()): () -> ()
+function playerProfile.Subscribe(callback: (PlayerProfileData__DARKLUA_TYPE_w) -> ()): () -> ()
 	table.insert(subscribers, callback)
 	task.spawn(callback, cachedData)
 
@@ -36305,7 +37182,7 @@ lifecycle.Register(function()
 end)
 
 return playerProfile
-end function __DIST.aL()-- Webhook: Discord Webhook notification management for Slop Tower Defense
+end function __DIST.aN()-- Webhook: Discord Webhook notification management for Slop Tower Defense
 -- Supports: Match results (Win/Loss) and Connection Test.
 
 
@@ -36314,12 +37191,12 @@ local Players = game:GetService("Players")
 
 local constants = __DIST.load('aE')
 local gameStats = __DIST.load('aG')
-local matchSetup = __DIST.load('aJ')
-local playerProfile = __DIST.load('aK')
+local matchSetup = __DIST.load('aL')
+local playerProfile = __DIST.load('aM')
 local lifecycle = __DIST.load('ay')
 local logger = __DIST.load('aB')
 
-local matchStartProfile: PlayerProfileData__DARKLUA_TYPE_t? = nil
+local matchStartProfile: PlayerProfileData__DARKLUA_TYPE_w? = nil
 
 local webhook = {
 	Url = "",
@@ -36496,7 +37373,7 @@ end
 -- 2. Gửi thông báo kết quả trận đấu (Match End - Phương án B Đầy đủ & Chi tiết)
 function webhook.SendMatchEnd(
 	stats: GameStatsSnapshot__DARKLUA_TYPE_n?,
-	startSnapshot: PlayerProfileData__DARKLUA_TYPE_t?,
+	startSnapshot: PlayerProfileData__DARKLUA_TYPE_w?,
 	preReadTitle: string?
 ): (boolean, string?)
 	if not webhook.Enabled or not webhook.NotifyMatchEnd or webhook.Url == "" then
@@ -36887,18 +37764,22 @@ lifecycle.Register(function()
 end)
 
 return webhook
-end function __DIST.aM()-- Player: Module tái hiện (Playback) các thao tác SpawnTower và SellTower từ file Macro đã ghi.
+end function __DIST.aO()-- Player: Module tái hiện (Playback) các thao tác SpawnTower và SellTower từ file Macro đã ghi.
 
-local types = __DIST.load('aH')
-local storage = __DIST.load('aI')
+local types = __DIST.load('aI')
+local storage = __DIST.load('aJ')
 local gameStats = __DIST.load('aG')
 local zoneGuard = __DIST.load('aF')
+local raidManager = __DIST.load('aH')
 local notifier = __DIST.load('az')
 local lifecycle = __DIST.load('ay')
 local logger = __DIST.load('aB')
+local mapMacroManager = __DIST.load('aK')
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+
 
 
 
@@ -36925,19 +37806,18 @@ local timingMode = "Hybrid" -- "Hybrid" | "Timer" | "Wave & Cash"
 local stepDelay = 0.2 -- Khoảng trễ (giây) sau khi thực hiện mỗi bước
 local applyMacroSpeed = true -- Bật/Tắt đồng bộ hóa Speed theo Macro
 local applyMacroVoteSkip = true -- Bật/Tắt thực thi bước VoteSkip theo Macro
+local autoMapSwitch = true -- Bật/Tắt tự động đổi sang Macro tương ứng với Map hiện tại trong Raid
+local autoCatchUp = true -- Bật/Tắt tự động nâng bù cấp cho tháp chưa đạt level sau khi hoàn tất macro
 local activePlaybackThread: thread? = nil
 
 -- Ánh xạ giữa TowerId ("T1", "T2") và Instance tháp trong ván đấu hiện tại
 local idToTowerInstance: { [string]: Instance } = {}
 
+-- Ánh xạ giữa TowerId ("T1", "T2") và Attribute("ID") từ server game
+local idToTowerAttrId: { [string]: string } = {}
+
 -- Bảng mô phỏng danh sách tháp đang hiện diện trên sân để tính toán LayoutOrder trong UnitManager.Units
 local activeTowers: { string } = {}
-
--- Quản lý Stage hiện tại trong trận đấu (Raid Landmark: 'New raid map!')
-local currentActiveStage = 1
-local reachedStages: { [number]: boolean } = { [1] = true }
-local activeStageWatcherThread: thread? = nil
-local activeNotifConn: RBXScriptConnection? = nil
 
 -- Tham chiếu RemoteFunction
 local spawnRemote: RemoteFunction? = nil
@@ -36947,7 +37827,7 @@ local changeModeRemote: RemoteFunction? = nil
 local changeSpeedRemote: RemoteFunction? = nil
 local voteSkipRemote: RemoteFunction? = nil
 
-local currentSnapshot: PlaybackSnapshot__DARKLUA_TYPE_u = {
+local currentSnapshot: PlaybackSnapshot__DARKLUA_TYPE_x = {
 	IsEnabled = false,
 	IsPlaying = false,
 	MacroName = nil,
@@ -36959,9 +37839,11 @@ local currentSnapshot: PlaybackSnapshot__DARKLUA_TYPE_u = {
 	StepDelay = 0.2,
 	ApplySpeed = true,
 	ApplyVoteSkip = true,
+	AutoMapSwitch = true,
+	AutoCatchUp = true,
 }
 
-local subscribers: { (PlaybackSnapshot__DARKLUA_TYPE_u) -> () } = {}
+local subscribers: { (PlaybackSnapshot__DARKLUA_TYPE_x) -> () } = {}
 
 local function notifySubscribers()
 	currentSnapshot.IsEnabled = isEnabled
@@ -36973,9 +37855,11 @@ local function notifySubscribers()
 	currentSnapshot.StepDelay = stepDelay
 	currentSnapshot.ApplySpeed = applyMacroSpeed
 	currentSnapshot.ApplyVoteSkip = applyMacroVoteSkip
+	currentSnapshot.AutoMapSwitch = autoMapSwitch
+	currentSnapshot.AutoCatchUp = autoCatchUp
 
 	for _, sub in ipairs(subscribers) do
-		pcall(sub, currentSnapshot)
+		task.spawn(pcall, sub, currentSnapshot)
 	end
 end
 
@@ -36985,106 +37869,6 @@ local function updateStatus(statusText: string, nextAction: string?)
 		currentSnapshot.NextAction = nextAction
 	end
 	notifySubscribers()
-end
-
-local function cleanupStageWatcher()
-	if activeStageWatcherThread then
-		pcall(task.cancel, activeStageWatcherThread)
-		activeStageWatcherThread = nil
-	end
-	if activeNotifConn then
-		pcall(function() activeNotifConn:Disconnect() end)
-		activeNotifConn = nil
-	end
-end
-
-local function onRaidStageLandmarkTriggered(newStage: number, sourceMsg: string?)
-	if newStage <= currentActiveStage then return end
-	currentActiveStage = newStage
-	reachedStages[newStage] = true
-	table.clear(activeTowers)
-	table.clear(idToTowerInstance)
-	logger.Log(string.format("[Macro Player] 🔔 Landmark detected: 'New raid map!' (%s) -> Bắt đầu Stage %d! Đã dọn sạch bộ nhớ tháp cũ.", tostring(sourceMsg or ""), newStage))
-	notifier.Notify("Macro Player", string.format("🔔 New raid map! Starting Stage %d", newStage), 3)
-end
-
-local function startStageWatcher()
-	cleanupStageWatcher()
-	currentActiveStage = 1
-	reachedStages = { [1] = true }
-
-	local curWave, _ = gameStats.GetWave()
-	if curWave >= 76 then
-		reachedStages[4] = true; reachedStages[3] = true; reachedStages[2] = true; currentActiveStage = 4
-	elseif curWave >= 51 then
-		reachedStages[3] = true; reachedStages[2] = true; currentActiveStage = 3
-	elseif curWave >= 26 then
-		reachedStages[2] = true; currentActiveStage = 2
-	end
-
-	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
-	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
-	local notifs = gameGui and gameGui:FindFirstChild("Notifications", true)
-
-	-- 1. Lắng nghe trực tiếp khi có Notification mới xuất hiện (0ms delay)
-	if notifs then
-		activeNotifConn = notifs.DescendantAdded:Connect(function(desc)
-			if not isPlaying then return end
-			if desc:IsA("TextLabel") then
-				local clean = desc.Text:lower():gsub("%s+", "")
-				if clean:find("newraidmap") or clean:find("towersrefunded") then
-					local wave, _ = gameStats.GetWave()
-					local targetStage = (wave >= 75 and 4) or (wave >= 50 and 3) or (wave >= 25 and 2) or (currentActiveStage + 1)
-					onRaidStageLandmarkTriggered(targetStage, desc.Text)
-				end
-			end
-		end)
-	end
-
-	-- 2. Vòng lặp kiểm tra định kỳ (0.2s) đề phòng DescendantAdded bị lỡ hoặc UI đã xuất hiện trước đó
-	activeStageWatcherThread = task.spawn(function()
-		while isPlaying and lifecycle.IsActive() do
-			task.wait(0.2)
-			if not isPlaying then break end
-
-			pcall(function()
-				local wave, _ = gameStats.GetWave()
-				local pGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
-				local gGui = pGui and pGui:FindFirstChild("GameGui")
-				local nContainer = gGui and gGui:FindFirstChild("Notifications", true)
-
-				local foundLandmark = false
-				local landmarkText = ""
-
-				if nContainer then
-					for _, desc in ipairs(nContainer:GetDescendants()) do
-						if desc:IsA("TextLabel") and desc.Visible then
-							local clean = desc.Text:lower():gsub("%s+", "")
-							if clean:find("newraidmap") or clean:find("towersrefunded") then
-								foundLandmark = true
-								landmarkText = desc.Text
-								break
-							end
-						end
-					end
-				end
-
-				if foundLandmark then
-					local targetStage = (wave >= 75 and 4) or (wave >= 50 and 3) or (wave >= 25 and 2) or (currentActiveStage + 1)
-					onRaidStageLandmarkTriggered(targetStage, landmarkText)
-				else
-					-- Fallback an toàn theo Wave
-					if wave >= 76 and currentActiveStage < 4 then
-						onRaidStageLandmarkTriggered(4, "Wave 76 Fallback")
-					elseif wave >= 51 and currentActiveStage < 3 then
-						onRaidStageLandmarkTriggered(3, "Wave 51 Fallback")
-					elseif wave >= 26 and currentActiveStage < 2 then
-						onRaidStageLandmarkTriggered(2, "Wave 26 Fallback")
-					end
-				end
-			end)
-		end
-	end)
 end
 
 local function getRemotes()
@@ -37100,6 +37884,133 @@ local function getRemotes()
 		end
 	end
 	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
+end
+
+-- Kiểm tra xem Model tháp có thuộc quyền sở hữu của LocalPlayer không (ManagerHandler: IsOwnTower)
+local function isOwnTower(a1: Instance?): boolean
+	if typeof(a1) ~= "Instance" then return false end
+	local model: Model? = (a1:IsA("Model") and a1) or a1:FindFirstAncestorOfClass("Model")
+	if not model then return false end
+
+	for _, inst in pairs(idToTowerInstance) do
+		if inst == model then
+			return true
+		end
+	end
+
+	local config = model:FindFirstChild("Config")
+	if config then
+		local owner = config:FindFirstChild("Owner")
+		if owner and (owner:IsA("StringValue") or owner:IsA("ValueBase")) then
+			local localPlayer = Players.LocalPlayer
+			local localName = localPlayer and localPlayer.Name
+			if localName and owner.Value == localName then
+				return true
+			elseif owner.Value ~= "" and owner.Value ~= localName then
+				return false
+			end
+		end
+	end
+
+	local towersFolder = workspace:FindFirstChild("Towers")
+	if towersFolder and model.Parent == towersFolder then
+		return true
+	end
+
+	return false
+end
+
+-- Tham chiếu Module ReplicatedStorage.LVLs để tra cứu giá nâng cấp chuẩn xác 100%
+local lvlsModule: any = nil
+
+local function getLVLs(): any
+	if not lvlsModule then
+		pcall(function()
+			local mod = ReplicatedStorage:FindFirstChild("LVLs")
+			if mod and mod:IsA("ModuleScript") then
+				lvlsModule = require(mod)
+			end
+		end)
+	end
+	return lvlsModule
+end
+
+-- Lấy cấp độ hiện tại của tháp từ model.Config.LVL.Value (mặc định 0 khi vừa đặt)
+local function getTowerLevel(towerInst: Instance?): number
+	if not towerInst or typeof(towerInst) ~= "Instance" then return 0 end
+	local model: Model? = (towerInst:IsA("Model") and towerInst) or towerInst:FindFirstAncestorOfClass("Model")
+	if not model then return 0 end
+	local config = model:FindFirstChild("Config")
+	local lvlObj = config and config:FindFirstChild("LVL")
+	if lvlObj and lvlObj:IsA("ValueBase") then
+		return tonumber(lvlObj.Value) or 0
+	end
+	return 0
+end
+
+-- Lấy cấp độ tối đa của loại tháp từ ReplicatedStorage.LVLs
+local function getTowerMaxLevel(towerName: string): number
+	if not towerName or towerName == "" then return 0 end
+	local lvls = getLVLs()
+	if lvls and type(lvls) == "table" then
+		local data = lvls[towerName]
+		if not data then
+			local nameLower = towerName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+			for k, v in pairs(lvls) do
+				if type(k) == "string" and k:lower() == nameLower then
+					data = v
+					break
+				end
+			end
+		end
+		if data and type(data) == "table" then
+			return #data
+		end
+	end
+	return 0
+end
+
+-- Tra cứu giá nâng cấp chuẩn xác tuyệt đối từ ReplicatedStorage.LVLs theo cấp độ mục tiêu
+local function getUpgradePriceFromLVLs(towerName: string, targetLevel: number): number?
+	if not towerName or towerName == "" or targetLevel <= 0 then return nil end
+	local lvls = getLVLs()
+	if not lvls or type(lvls) ~= "table" then return nil end
+
+	local data = lvls[towerName]
+	if not data then
+		local nameLower = towerName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+		for k, v in pairs(lvls) do
+			if type(k) == "string" and k:lower() == nameLower then
+				data = v
+				break
+			end
+		end
+	end
+
+	if data and type(data) == "table" then
+		local entry = data[targetLevel]
+		if entry and type(entry) == "table" and type(entry.Price) == "number" and entry.Price > 0 then
+			return entry.Price
+		end
+	end
+	return nil
+end
+
+-- Tìm Model tháp trong workspace dựa trên Attribute("ID")
+local function findTowerByAttributeId(attrId: string?): Model?
+	if not attrId or attrId == "" then return nil end
+	local towersFolder = workspace:FindFirstChild("Towers")
+	if not towersFolder then return nil end
+
+	for _, child in ipairs(towersFolder:GetChildren()) do
+		if child:IsA("Model") and isOwnTower(child) then
+			local cId = child:GetAttribute("ID")
+			if cId and tostring(cId) == tostring(attrId) then
+				return child
+			end
+		end
+	end
+	return nil
 end
 
 -- Tham chiếu Modules.TowersConfig để tra cứu giá đặt tháp chuẩn xác
@@ -37365,6 +38276,20 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHoriz
 			if not child:IsA("Model") or child.Parent == nil then return end
 			if excludeClaimed and isInstanceClaimed(child) then return end
 
+			-- Bỏ qua tháp của người chơi khác nếu đã có Owner
+			local cfg = child:FindFirstChild("Config")
+			local owner = cfg and cfg:FindFirstChild("Owner")
+			local isOwnedByMe = false
+			if owner and (owner:IsA("StringValue") or owner:IsA("ValueBase")) then
+				local localPlayer = Players.LocalPlayer
+				local localName = localPlayer and localPlayer.Name
+				if localName and owner.Value ~= "" and owner.Value ~= localName then
+					return
+				elseif localName and owner.Value == localName then
+					isOwnedByMe = true
+				end
+			end
+
 			local pos: Vector3? = nil
 			if child.PrimaryPart then
 				pos = child.PrimaryPart.Position
@@ -37392,6 +38317,11 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHoriz
 				else
 					-- Khác tên nhưng nằm cực gần vị trí đặt và chưa bị tháp nào nhận
 					matchScore = (xzDist <= 2.5) and 40 or 10
+				end
+
+				-- Ưu tiên cao hơn nếu tháp đã xác nhận quyền sở hữu của LocalPlayer
+				if isOwnedByMe then
+					matchScore += 25
 				end
 
 				if matchScore > bestMatchScore or (matchScore == bestMatchScore and xzDist < bestDist) then
@@ -37570,17 +38500,37 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 
 	variantName = variantName or target.Name
 	local initialCash = gameStats.GetCash()
+	local initialLvl = 0
+	local cfg = target:FindFirstChild("Config")
+	local lvlVal = cfg and cfg:FindFirstChild("LVL")
+	if lvlVal and lvlVal:IsA("ValueBase") then
+		initialLvl = tonumber(lvlVal.Value) or 0
+	end
 
-	local success, result = safeInvoke(upRemote, 1.8, target, variantName)
+	-- Sử dụng Attribute "ID" của tháp (chuẩn theo ManagerHandler), fallback variantName
+	local towerAttrId: any = nil
+	pcall(function()
+		towerAttrId = target:GetAttribute("ID")
+	end)
+	towerAttrId = towerAttrId or variantName or target.Name
 
-	-- Nếu timeout nhưng tiền đã bị trừ trong khi chờ -> chắc chắn server đã upgrade thành công!
-	if not success and result == "Timeout" and gameStats.GetCash() < initialCash then
+	local success, result = safeInvoke(upRemote, 1.8, target, towerAttrId)
+
+	-- 1. Kiểm tra Level tăng
+	local currentLvl = (lvlVal and tonumber(lvlVal.Value)) or initialLvl
+	if currentLvl > initialLvl then
 		success = true
 		result = true
 	end
 
-	-- Hoặc nếu server trả về false nhưng tiền đã trừ -> cũng coi là thành công!
-	if result == false and gameStats.GetCash() < initialCash then
+	-- 2. Nếu timeout nhưng tiền đã bị trừ hoặc Level tăng trong khi chờ -> chắc chắn server đã upgrade thành công!
+	if not success and result == "Timeout" and (gameStats.GetCash() < initialCash or currentLvl > initialLvl) then
+		success = true
+		result = true
+	end
+
+	-- 3. Hoặc nếu server trả về false nhưng tiền đã trừ hoặc Level tăng -> cũng coi là thành công!
+	if result == false and (gameStats.GetCash() < initialCash or currentLvl > initialLvl) then
 		result = true
 		success = true
 	end
@@ -37603,10 +38553,11 @@ function player.UpgradeTower(target: Instance, variantName: string?): (boolean, 
 	elseif result == true then
 		isOk = true
 	else
-		-- result == nil hoặc Timeout: Kiểm tra xem tiền có trừ không
-		for _ = 1, 3 do
-			task.wait(0.08)
-			if gameStats.GetCash() < initialCash then
+		-- result == nil hoặc Timeout: Chờ kiểm tra Level tăng hoặc tiền có trừ không
+		for _ = 1, 4 do
+			task.wait(0.06)
+			currentLvl = (lvlVal and tonumber(lvlVal.Value)) or initialLvl
+			if currentLvl > initialLvl or gameStats.GetCash() < initialCash then
 				isOk = true
 				break
 			end
@@ -37690,7 +38641,7 @@ function player.VoteSkip(): boolean
 end
 
 -- Thực thi 1 bước cụ thể
-function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
+function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_q): boolean
 	if step.Type == "Place" then
 		if not step.CFrame then
 			logger.Warn("[Macro Player] Bước Place thiếu dữ liệu CFrame!")
@@ -37703,6 +38654,10 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
 			table.insert(activeTowers, step.TowerId)
 			if inst and inst.Parent then
 				idToTowerInstance[step.TowerId] = inst
+				local attrId = inst:GetAttribute("ID") or (step.RawData and step.RawData.AttributeID)
+				if attrId then
+					idToTowerAttrId[step.TowerId] = tostring(attrId)
+				end
 			else
 				-- Nếu Model chưa kịp replicate, task nền sẽ tự động tìm và bind ngay khi xuất hiện
 				task.spawn(function()
@@ -37712,6 +38667,10 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
 						local found = findTowerNearPosition(step.TowerName, cf.Position, 4.5, true, step.Arg4)
 						if found then
 							idToTowerInstance[step.TowerId] = found
+							local attrId = found:GetAttribute("ID") or (step.RawData and step.RawData.AttributeID)
+							if attrId then
+								idToTowerAttrId[step.TowerId] = tostring(attrId)
+							end
 							break
 						end
 					end
@@ -37725,6 +38684,14 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
 
 	elseif step.Type == "Sell" then
 		local inst = idToTowerInstance[step.TowerId]
+		if not inst or not inst.Parent then
+			local savedAttr = idToTowerAttrId[step.TowerId] or (step.RawData and step.RawData.AttributeID)
+			if savedAttr then
+				inst = findTowerByAttributeId(savedAttr)
+				if inst then idToTowerInstance[step.TowerId] = inst end
+			end
+		end
+
 		if not inst or not inst.Parent then
 			local pos = step.Position and Vector3.new(step.Position[1], step.Position[2], step.Position[3])
 			for _ = 1, 5 do
@@ -37744,6 +38711,7 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
 			local ok = player.SellTower(inst)
 			if ok then
 				idToTowerInstance[step.TowerId] = nil
+				idToTowerAttrId[step.TowerId] = nil
 				local actIdx = table.find(activeTowers, step.TowerId)
 				if actIdx then
 					table.remove(activeTowers, actIdx)
@@ -37757,6 +38725,15 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
 
 	elseif step.Type == "Upgrade" then
 		local inst = idToTowerInstance[step.TowerId]
+		if not inst or not inst.Parent then
+			-- 1. Ưu tiên tìm lại qua Attribute("ID")
+			local savedAttr = idToTowerAttrId[step.TowerId] or (step.RawData and step.RawData.AttributeID) or (step.Arg4)
+			if savedAttr then
+				inst = findTowerByAttributeId(savedAttr)
+				if inst then idToTowerInstance[step.TowerId] = inst end
+			end
+		end
+
 		if not inst or not inst.Parent then
 			local pos = step.Position and Vector3.new(step.Position[1], step.Position[2], step.Position[3])
 			for _ = 1, 5 do
@@ -37773,13 +38750,25 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
 		end
 
 		if inst then
+			-- 2. Smart Skip: Nếu tháp đã đạt hoặc vượt cấp độ yêu cầu của bước này
+			local curLvl = getTowerLevel(inst)
+			if step.Level and curLvl >= step.Level then
+				logger.Log(string.format("[Macro Player] Tháp %s (%s) đã đạt LVL %d (hiện tại %d) -> Bỏ qua nâng cấp.", step.TowerName, step.TowerId, step.Level, curLvl))
+				return true
+			end
+
 			local variant = step.Arg4 or inst.Name
 			local ok, updatedInst = player.UpgradeTower(inst, variant)
 			if ok then
-				if updatedInst and updatedInst:IsA("Model") and updatedInst.Parent ~= nil then
-					idToTowerInstance[step.TowerId] = updatedInst
+				local finalInst = (updatedInst and updatedInst:IsA("Model") and updatedInst.Parent ~= nil) and updatedInst or inst
+				idToTowerInstance[step.TowerId] = finalInst
+				local newAttr = finalInst:GetAttribute("ID")
+				if newAttr then
+					idToTowerAttrId[step.TowerId] = tostring(newAttr)
 				end
-				notifier.Notify("Macro Play", string.format("Upgraded %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
+				local newLvl = getTowerLevel(finalInst)
+				local lvlStr = newLvl > 0 and string.format(" -> LVL %d", newLvl) or ""
+				notifier.Notify("Macro Play", string.format("Upgraded %s (%s)%s [%.2fs]", step.TowerName, step.TowerId, lvlStr, step.Time), 1.5)
 				return true
 			end
 		else
@@ -37833,31 +38822,116 @@ function player.ExecuteStep(step: MacroStep__DARKLUA_TYPE_p): boolean
 			notifier.Notify("Macro Play", string.format("Vote Skip Wave [%.2fs]", step.Time), 1.5)
 			return true
 		end
-
-	elseif step.Type == "StageTransition" then
-		local stageNum = step.Stage or 2
-		logger.Log(string.format("[Macro Player] ✅ Landmark 'New raid map!' xác nhận -> Kích hoạt Raid Stage %s (Wave %d)!", tostring(stageNum), step.Wave))
-		table.clear(activeTowers)
-		table.clear(idToTowerInstance)
-		notifier.Notify("Macro Play", string.format("🌀 Raid Stage %s started! Preparing towers for new map.", tostring(stageNum)), 2.5)
-
-		-- Chờ ngắn nếu mốc chưa kịp kích hoạt (tối đa 15s)
-		local waitStart = os.clock()
-		while isEnabled and isPlaying and gameStats.IsMatchActive() and not reachedStages[stageNum] do
-			updateStatus(string.format("Waiting for New raid map (Stage %s)...", tostring(stageNum)), "Waiting for 'New raid map!'")
-			task.wait(0.2)
-			if os.clock() - waitStart >= 15.0 then
-				break
-			end
-		end
-
-		-- Đệm thêm 1.2s an toàn để Roblox load xong sàn đấu mới và xóa sạch tháp cũ
-		task.wait(1.2)
-		logger.Log(string.format("[Macro Player] Raid Stage %s đã sẵn sàng! Tiếp tục thực thi các bước của Map mới.", tostring(stageNum)))
-		return true
 	end
 
 	return false
+end
+
+-- Kiểm tra và tự động nâng bù cấp cho các tháp chưa đạt level tối đa của Macro sau khi hoàn tất các bước
+function player.PerformPostPlaybackCatchUp(macroData: MacroData__DARKLUA_TYPE_s)
+	if not macroData or not macroData.Steps then return end
+
+	-- 1. Tính toán cấp độ mục tiêu tối đa của từng TowerId trong macro
+	local targetLevels: { [string]: { TowerName: string, Level: number } } = {}
+
+	for _, step in ipairs(macroData.Steps) do
+		if step.Type == "Place" then
+			if not targetLevels[step.TowerId] then
+				targetLevels[step.TowerId] = { TowerName = step.TowerName, Level = 0 }
+			end
+		elseif step.Type == "Upgrade" then
+			if not targetLevels[step.TowerId] then
+				targetLevels[step.TowerId] = { TowerName = step.TowerName, Level = 1 }
+			else
+				local expectedLvl = step.Level or (targetLevels[step.TowerId].Level + 1)
+				targetLevels[step.TowerId].Level = math.max(targetLevels[step.TowerId].Level, expectedLvl)
+			end
+		elseif step.Type == "Sell" then
+			-- Tháp đã bị bán thì không cần catch-up
+			targetLevels[step.TowerId] = nil
+		end
+	end
+
+	local hasAnyTarget = false
+	for _, _ in pairs(targetLevels) do
+		hasAnyTarget = true
+		break
+	end
+	if not hasAnyTarget then return end
+
+	logger.Log("[Macro Player] 🔍 Bắt đầu quét kiểm tra cấp độ tháp (Post-Playback Catch-up)...")
+	updateStatus("Catch-up: Checking tower levels...", "Verifying full levels")
+
+	local upgradedCount = 0
+	local maxCatchUpRounds = 40
+	local round = 0
+
+	while isEnabled and gameStats.IsMatchActive() and round < maxCatchUpRounds do
+		round += 1
+		local hasPendingUpgrades = false
+		local anyUpgradedThisPass = false
+
+		for towerId, info in pairs(targetLevels) do
+			if not isEnabled or not gameStats.IsMatchActive() then break end
+
+			local inst = idToTowerInstance[towerId]
+			if not inst or not inst.Parent then
+				local savedAttr = idToTowerAttrId[towerId]
+				if savedAttr then
+					inst = findTowerByAttributeId(savedAttr)
+					if inst then
+						idToTowerInstance[towerId] = inst
+					end
+				end
+			end
+
+			if inst and inst.Parent then
+				local curLvl = getTowerLevel(inst)
+				local maxAllowed = getTowerMaxLevel(info.TowerName)
+				local goalLvl = info.Level
+				if maxAllowed > 0 then
+					goalLvl = math.min(goalLvl, maxAllowed)
+				end
+
+				if curLvl < goalLvl then
+					hasPendingUpgrades = true
+					local nextLvl = curLvl + 1
+					local cost = getUpgradePriceFromLVLs(info.TowerName, nextLvl) or getUpgradePrice(info.TowerName, nextLvl)
+					local curCash = gameStats.GetCash()
+
+					if cost and curCash >= cost then
+						local ok, updatedInst = player.UpgradeTower(inst)
+						if ok then
+							local finalInst = (updatedInst and updatedInst:IsA("Model") and updatedInst.Parent ~= nil) and updatedInst or inst
+							idToTowerInstance[towerId] = finalInst
+							local newLvl = getTowerLevel(finalInst)
+							upgradedCount += 1
+							anyUpgradedThisPass = true
+							logger.Log(string.format("[Macro Player] 🛠️ Catch-up: Đã nâng cấp %s (%s) từ LVL %d lên LVL %d (Mục tiêu: %d)!",
+								info.TowerName, towerId, curLvl, newLvl, goalLvl))
+							notifier.Notify("Macro Player", string.format("🛠️ Catch-up: %s (%s) -> LVL %d", info.TowerName, towerId, newLvl), 1.5)
+							task.wait(0.2)
+						end
+					end
+				end
+			end
+		end
+
+		if not hasPendingUpgrades then
+			-- Tất cả tháp đã đạt đủ cấp độ mong muốn!
+			break
+		end
+
+		-- Chờ quái sinh thêm tiền rồi quét lại
+		task.wait(0.5)
+	end
+
+	if upgradedCount > 0 then
+		logger.Log(string.format("[Macro Player] ✅ Hoàn thành Catch-up: Đã nâng cấp bù tổng cộng %d lần!", upgradedCount))
+		notifier.Notify("Macro Player", string.format("✅ Catch-up completed: %d upgrades applied!", upgradedCount), 3)
+	else
+		logger.Log("[Macro Player] ✅ Kiểm tra hoàn tất: Tất cả tháp đều đã đạt cấp độ yêu cầu!")
+	end
 end
 
 -- Vòng lặp quản lý Playback tự động xuyên suốt các ván đấu
@@ -37885,7 +38959,21 @@ local function startRunnerLoop()
 				continue
 			end
 
-			-- 3. Kiểm tra macro được chọn
+			-- 3. Xác định Macro cần chạy theo thứ tự ưu tiên:
+			-- Ưu tiên số 1: Cấu hình gán cụ thể trong tab Map Macro
+			local currentMap = raidManager.GetCurrentMap()
+			local mappedMacro = mapMacroManager.GetMapMacro(currentMap)
+			if mappedMacro and mappedMacro ~= "None" and storage.HasMacro(mappedMacro) then
+				if mappedMacro ~= activeMacroName then
+					logger.Log(string.format("[Macro Player] 🎯 Sử dụng Map Macro '%s' cho Map '%s'!", mappedMacro, currentMap))
+					notifier.Notify("Macro Player", string.format("Map Macro: %s (Map: %s)", mappedMacro, currentMap), 2.5)
+					activeMacroName = mappedMacro
+					currentSnapshot.MacroName = mappedMacro
+					notifySubscribers()
+				end
+			end
+
+			-- 4. Kiểm tra macro được chọn
 			local macroName = activeMacroName
 			if not macroName or macroName == "" or macroName == "None" then
 				isPlaying = false
@@ -37902,11 +38990,13 @@ local function startRunnerLoop()
 				continue
 			end
 
-			-- 4. Bắt đầu phiên Playback cho ván đấu này
+			-- 5. Bắt đầu phiên Playback cho ván đấu này
+			local currentSessionMap = raidManager.GetCurrentMap()
 			isPlaying = true
 			currentStepIndex = 0
 			totalSteps = #macroData.Steps
 			table.clear(idToTowerInstance)
+			table.clear(idToTowerAttrId)
 			table.clear(activeTowers)
 
 			-- Khôi phục tốc độ ban đầu của Macro nếu bật đồng bộ Speed
@@ -37928,8 +39018,6 @@ local function startRunnerLoop()
 			local lastTickClock = os.clock()
 			local realElapsedOnStart = gameStats.GetElapsedTime()
 			local virtualElapsedTime = realElapsedOnStart * (startPlaySpeed / macroBaseSpeed)
-
-			startStageWatcher()
 
 			for i, step in ipairs(macroData.Steps) do
 				if not isEnabled or not isPlaying then break end
@@ -37954,17 +39042,10 @@ local function startRunnerLoop()
 				local actualPrice: number? = nil
 
 				if step.Type == "Place" then
-					actualPrice = step.TowerCost or getPlacePrice(step.TowerName) or step.Cost
+					actualPrice = step.Cost or step.TowerCost or getPlacePrice(step.TowerName)
 				elseif step.Type == "Upgrade" then
-					-- 1. Ưu tiên đọc trực tiếp từ UnitManager.Units theo step.LayoutOrder hoặc LayoutOrder đã mô phỏng
-					local layoutOrder = step.LayoutOrder or table.find(activeTowers, step.TowerId)
-					local livePrice = getUpgradePriceFromUnitManager(layoutOrder, step.TowerName)
-					if livePrice and livePrice > 0 then
-						actualPrice = livePrice
-					end
-
-					-- 2. Nếu không đọc được từ UI, tra cứu TowersConfig
-					if not actualPrice or actualPrice <= 0 then
+					local targetLvl = step.Level
+					if not targetLvl or targetLvl <= 0 then
 						local upgIdx = 1
 						for prev = 1, i - 1 do
 							local prevStep = macroData.Steps[prev]
@@ -37972,12 +39053,40 @@ local function startRunnerLoop()
 								upgIdx += 1
 							end
 						end
-						actualPrice = getUpgradePrice(step.TowerName, upgIdx)
+						targetLvl = upgIdx
 					end
 
-					-- 3. Nếu vẫn chưa có, dùng TowerCost hoặc Cost và làm tròn theo mốc chuẩn (snapToCleanPrice)
+					-- 1. Ưu tiên 1: Tra cứu chính xác tuyệt đối từ ReplicatedStorage.LVLs
+					local lvlsPrice = getUpgradePriceFromLVLs(step.TowerName, targetLvl)
+					if lvlsPrice and lvlsPrice > 0 then
+						actualPrice = lvlsPrice
+					end
+
+					-- 2. Ưu tiên 2: Cost (hoặc TowerCost) đã ghi nhận trong macro step
 					if not actualPrice or actualPrice <= 0 then
-						local recordedCost = step.TowerCost or step.Cost
+						local stepCost = step.Cost or step.TowerCost
+						if stepCost and stepCost > 0 then
+							actualPrice = stepCost
+						end
+					end
+
+					-- 3. Ưu tiên 3: UnitManager UI theo LayoutOrder
+					if not actualPrice or actualPrice <= 0 then
+						local layoutOrder = step.LayoutOrder or table.find(activeTowers, step.TowerId)
+						local livePrice = getUpgradePriceFromUnitManager(layoutOrder, step.TowerName)
+						if livePrice and livePrice > 0 then
+							actualPrice = livePrice
+						end
+					end
+
+					-- 4. Ưu tiên 4: Modules.TowersConfig
+					if not actualPrice or actualPrice <= 0 then
+						actualPrice = getUpgradePrice(step.TowerName, targetLvl)
+					end
+
+					-- 5. Ưu tiên 5: snapToCleanPrice
+					if not actualPrice or actualPrice <= 0 then
+						local recordedCost = step.Cost or step.TowerCost
 						if recordedCost and recordedCost > 0 then
 							actualPrice = snapToCleanPrice(recordedCost) or recordedCost
 						end
@@ -37985,23 +39094,13 @@ local function startRunnerLoop()
 				end
 
 				-- stepCost hiển thị trên giao diện status:
-				-- Ưu tiên actualPrice (giá thực tế của tháp/nâng cấp).
-				-- Tuyệt đối không dùng step.Cost cho Upgrade (vì step.Cost là số dư ví của người chơi lúc record).
-				local displayCost = actualPrice
-				if not displayCost or displayCost <= 0 then
-					if step.Type == "Place" then
-						displayCost = step.Cost
-					end
-				end
-				displayCost = displayCost or 0
+				local displayCost = actualPrice or step.Cost or step.TowerCost or 0
 
 				local nextDesc: string
 				if step.Type == "Speed" then
 					nextDesc = string.format("Speed x%d [W%d - %.2fs]", step.Speed or 1, step.Wave, step.Time)
 				elseif step.Type == "VoteSkip" then
 					nextDesc = string.format("VoteSkip [W%d - %.2fs]", step.Wave, step.Time)
-				elseif step.Type == "StageTransition" then
-					nextDesc = string.format("Raid Stage %s [W%d - %.2fs]", tostring(step.Stage or 2), step.Wave, step.Time)
 				else
 					local tName = step.TowerName or "Unknown"
 					local tId = step.TowerId or "N/A"
@@ -38016,13 +39115,10 @@ local function startRunnerLoop()
 				-- Chờ điều kiện thực thi bước i
 				local canExecute = false
 				while isEnabled and isPlaying and gameStats.IsMatchActive() do
-					-- Landmark Check: Nếu step thuộc Stage >= 2, bắt buộc phải đợi mốc 'New raid map!'
-					local stepRequiredStage = step.Stage or (step.Type == "StageTransition" and (step.Stage or 2)) or 1
-					local stageMet = (stepRequiredStage <= 1) or (reachedStages[stepRequiredStage] == true)
-					if not stageMet then
-						updateStatus(string.format("Waiting for New raid map (Stage %d)...", stepRequiredStage), nextDesc)
-						task.wait(0.2)
-						continue
+					-- Phát hiện đổi Map giữa chừng (hỗ trợ Map Macro tự động đổi map)
+					local liveMap = raidManager.GetCurrentMap()
+					if liveMap and currentSessionMap and liveMap ~= currentSessionMap then
+						break
 					end
 
 					-- Tích lũy Virtual Elapsed Time theo nhịp thực tế và tốc độ game hiện tại
@@ -38045,12 +39141,15 @@ local function startRunnerLoop()
 					local waveMet = curWave >= step.Wave
 					local timePassed = virtualElapsedTime >= step.Time
 
-					-- Nếu là bước Upgrade mà chưa có actualPrice, định kỳ cập nhật từ UnitManager
+					-- Nếu là bước Upgrade mà chưa có actualPrice, định kỳ cập nhật từ LVLs hoặc UnitManager
 					if step.Type == "Upgrade" and (not actualPrice or actualPrice <= 0) then
-						local layoutOrder = step.LayoutOrder or table.find(activeTowers, step.TowerId)
-						local livePrice = getUpgradePriceFromUnitManager(layoutOrder, step.TowerName)
-						if livePrice and livePrice > 0 then
-							actualPrice = livePrice
+						local targetLvl = step.Level or 1
+						actualPrice = getUpgradePriceFromLVLs(step.TowerName, targetLvl)
+						if not actualPrice or actualPrice <= 0 then
+							local layoutOrder = step.LayoutOrder or table.find(activeTowers, step.TowerId)
+							actualPrice = getUpgradePriceFromUnitManager(layoutOrder, step.TowerName)
+						end
+						if actualPrice and actualPrice > 0 then
 							displayCost = actualPrice
 							if timingMode == "Cash (Timed Sell)" and displayCost > 0 then
 								updateStatus(string.format("Waiting for Step %d/%d (Need $%d)", i, totalSteps, displayCost), nextDesc)
@@ -38087,14 +39186,8 @@ local function startRunnerLoop()
 						if step.Type == "Sell" then
 							-- Sell: Bắt buộc đúng thời gian co giãn tương đương
 							requirementMet = waveMet and timePassed
-						elseif step.Type == "Target" then
-							-- Target: Thuần theo nhịp trận, đổi ngay khi đạt Wave
+						elseif step.Type == "Target" or step.Type == "Speed" then
 							requirementMet = waveMet
-						elseif step.Type == "Speed" then
-							-- Speed: Đổi ngay khi đạt Wave tương ứng
-							requirementMet = waveMet
-						elseif step.Type == "StageTransition" then
-							requirementMet = stageMet
 						elseif step.Type == "VoteSkip" then
 							requirementMet = waveMet and (curWave > step.Wave or timePassed)
 						else
@@ -38105,8 +39198,6 @@ local function startRunnerLoop()
 					elseif step.Type == "Speed" then
 						-- Speed ở các chế độ: đổi ngay khi đạt Wave tương ứng
 						requirementMet = waveMet
-					elseif step.Type == "StageTransition" then
-						requirementMet = stageMet
 					elseif step.Type == "Sell" or step.Type == "Target" or step.Type == "VoteSkip" then
 						requirementMet = waveMet and (curWave > step.Wave or timePassed)
 					else
@@ -38148,7 +39239,6 @@ local function startRunnerLoop()
 
 					if attempt > 1 then
 						local retryName = (step.Type == "Speed" and string.format("x%d", step.Speed or 1))
-							or (step.Type == "StageTransition" and string.format("Stage %s", tostring(step.Stage or 2)))
 							or (step.Type == "VoteSkip" and "")
 							or (step.TowerName or "")
 						updateStatus(string.format("Retrying %s %s (attempt %d/%d)...", step.Type, retryName, attempt, maxAttempts), nextDesc)
@@ -38162,7 +39252,6 @@ local function startRunnerLoop()
 
 				if not execOk then
 					local failName = (step.Type == "Speed" and string.format("x%d", step.Speed or 1))
-						or (step.Type == "StageTransition" and string.format("Stage %s", tostring(step.Stage or 2)))
 						or (step.Type == "VoteSkip" and "")
 						or (step.TowerName or "")
 					logger.Warn(string.format("[Macro Player] Thất bại thực thi Step %d (%s %s) sau %d lần thử!", i, step.Type, failName, maxAttempts))
@@ -38180,17 +39269,30 @@ local function startRunnerLoop()
 				updateStatus(string.format("Completed (%d/%d steps)", totalSteps, totalSteps), "All done")
 				notifier.Notify("Macro Player", string.format("Macro completed: %s!", macroName), 3)
 				pcall(function()
-					local webhook = __DIST.load('aL')
+					local webhook = __DIST.load('aN')
 					webhook.SendMacro(macroName, totalSteps, "Completed")
 				end)
+
+				-- Tự động kiểm tra và nâng bù các tháp chưa đạt level tối đa
+				if autoCatchUp then
+					player.PerformPostPlaybackCatchUp(macroData)
+				end
 			end
 
 			isPlaying = false
 			notifySubscribers()
 
-			-- Chờ trận đấu hiện tại kết thúc hẳn trước khi lặp lại ở ván tiếp theo
+			-- Chờ trận đấu hiện tại kết thúc hoặc đổi sang Map/Stage mới trước khi lặp lại ở ván tiếp theo
 			while isEnabled and gameStats.IsMatchActive() do
-				task.wait(1.0)
+				local liveMap = raidManager.GetCurrentMap()
+				if liveMap and liveMap ~= currentSessionMap then
+					local hasMapped = mapMacroManager.GetMapMacro(liveMap)
+					if hasMapped and hasMapped ~= "None" then
+						logger.Log(string.format("[Macro Player] 🔄 Phát hiện đổi Map từ '%s' sang '%s'! Chuẩn bị sang kịch bản mới...", tostring(currentSessionMap or "None"), liveMap))
+						break
+					end
+				end
+				task.wait(0.5)
 			end
 
 			updateStatus("Match finished. Waiting for next match...", "None")
@@ -38227,6 +39329,9 @@ function player.GetActiveMacro(): string?
 end
 
 function player.SetActiveMacro(name: string)
+	if activeMacroName == name and currentSnapshot.MacroName == name then
+		return
+	end
 	activeMacroName = name
 	currentSnapshot.MacroName = name
 	notifySubscribers()
@@ -38275,6 +39380,25 @@ end
 player.IsSkipWaveEnabled = player.IsVoteSkipEnabled
 player.SetSkipWaveEnabled = player.SetVoteSkipEnabled
 
+function player.IsAutoCatchUp(): boolean
+	return autoCatchUp
+end
+
+function player.SetAutoCatchUp(state: boolean)
+	autoCatchUp = state
+	currentSnapshot.AutoCatchUp = state
+	notifySubscribers()
+end
+
+-- Tương thích ngược: Tính năng Auto Map Switch cũ đã được thay thế hoàn toàn bởi Map Macro
+function player.IsAutoMapSwitchEnabled(): boolean
+	return true
+end
+
+function player.SetAutoMapSwitch(enabled: boolean)
+	-- No-op: Map Macro quản lý trực tiếp
+end
+
 function player.GetCurrentStepIndex(): number
 	return currentStepIndex
 end
@@ -38283,13 +39407,14 @@ function player.GetTotalSteps(): number
 	return totalSteps
 end
 
-function player.GetStatus(): PlaybackSnapshot__DARKLUA_TYPE_u
+function player.GetStatus(): PlaybackSnapshot__DARKLUA_TYPE_x
 	return currentSnapshot
 end
 
 function player.Restart()
 	if not isEnabled then return end
 	table.clear(idToTowerInstance)
+	table.clear(idToTowerAttrId)
 	table.clear(activeTowers)
 	currentStepIndex = 0
 	isPlaying = false
@@ -38300,8 +39425,8 @@ function player.Stop()
 	isEnabled = false
 	isPlaying = false
 	currentStepIndex = 0
-	cleanupStageWatcher()
 	table.clear(idToTowerInstance)
+	table.clear(idToTowerAttrId)
 	table.clear(activeTowers)
 	if activePlaybackThread then
 		pcall(task.cancel, activePlaybackThread)
@@ -38310,9 +39435,9 @@ function player.Stop()
 	updateStatus("Idle", "None")
 end
 
-function player.Subscribe(callback: (PlaybackSnapshot__DARKLUA_TYPE_u) -> ()): () -> ()
+function player.Subscribe(callback: (PlaybackSnapshot__DARKLUA_TYPE_x) -> ()): () -> ()
 	table.insert(subscribers, callback)
-	pcall(callback, currentSnapshot)
+	task.spawn(pcall, callback, currentSnapshot)
 
 	return function()
 		local idx = table.find(subscribers, callback)
@@ -38322,12 +39447,76 @@ function player.Subscribe(callback: (PlaybackSnapshot__DARKLUA_TYPE_u) -> ()): (
 	end
 end
 
+-- Bộ giám sát đổi Map toàn cục: Tự động đổi Selected Macro tương ứng kể cả khi Player đang chạy hoặc chờ
+local unsubGlobalMap: (() -> ())? = nil
+local unsubMapMacroChanged: (() -> ())? = nil
+
+local function setupGlobalAutoMapWatcher()
+	if unsubGlobalMap then
+		pcall(unsubGlobalMap)
+		unsubGlobalMap = nil
+	end
+
+	unsubGlobalMap = raidManager.OnMapChanged(function(newMap, oldMap)
+		if not newMap or newMap == "" or newMap == oldMap then return end
+
+		-- Kiểm tra cấu hình trong tab Map Macro
+		local mapped = mapMacroManager.GetMapMacro(newMap)
+
+		if mapped and mapped ~= "None" and storage.HasMacro(mapped) then
+			if mapped ~= activeMacroName then
+				logger.Log(string.format("[Macro Player] 🔄 Chuyển sang Macro '%s' cho Map/Stage mới '%s'!", mapped, newMap))
+				notifier.Notify("Macro Player", string.format("Switched to Macro: %s (Map: %s)", mapped, newMap), 3)
+				player.SetActiveMacro(mapped)
+			end
+
+			-- Nếu đang bật Play Macro, tự động khởi động lại playback cho Map/Stage mới
+			if isEnabled then
+				task.spawn(function()
+					task.wait(0.2)
+					player.Restart()
+				end)
+			end
+		end
+	end)
+
+	if unsubMapMacroChanged then
+		pcall(unsubMapMacroChanged)
+		unsubMapMacroChanged = nil
+	end
+
+	unsubMapMacroChanged = mapMacroManager.OnMappingChanged(function(mapName, macroName)
+		if not isEnabled then return end
+		local curMap = raidManager.GetCurrentMap()
+		if curMap and (curMap == mapName or mapName == "*") then
+			local newTarget = mapMacroManager.GetMapMacro(curMap)
+			if newTarget and newTarget ~= "None" and storage.HasMacro(newTarget) and newTarget ~= activeMacroName then
+				player.SetActiveMacro(newTarget)
+				task.spawn(function()
+					task.wait(0.2)
+					player.Restart()
+				end)
+			end
+		end
+	end)
+end
+
+setupGlobalAutoMapWatcher()
+
 lifecycle.Register(function()
 	player.Stop()
+	if unsubGlobalMap then
+		pcall(unsubGlobalMap)
+		unsubGlobalMap = nil
+	end
+	if unsubMapMacroChanged then
+		pcall(unsubMapMacroChanged)
+		unsubMapMacroChanged = nil
+	end
 end)
 
 return player
-end function __DIST.aN()-- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed, Auto Skip)
+end function __DIST.aP()-- MatchAutomation: Module tự động hóa các tính năng trong trận (Auto Replay, Auto Speed, Auto Skip)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -38336,6 +39525,7 @@ local GuiService = game:GetService("GuiService")
 
 local zoneGuard = __DIST.load('aF')
 local gameStats = __DIST.load('aG')
+local raidManager = __DIST.load('aH')
 local notifier = __DIST.load('az')
 local lifecycle = __DIST.load('ay')
 local logger = __DIST.load('aB')
@@ -38345,6 +39535,8 @@ local matchAutomation = {}
 matchAutomation.AutoReplayEnabled = false
 matchAutomation.AutoSpeedEnabled = false
 matchAutomation.AutoSkipEnabled = false
+matchAutomation.AutoReadyEnabled = false
+matchAutomation.AutoReadyDelay = 2
 matchAutomation.SelectedSpeed = "x2"
 matchAutomation.Speeds = { "x1", "x2", "x3", "x4", "x5" }
 
@@ -38352,8 +39544,10 @@ local isRunning = true
 local lastReplayTriggerTime = 0
 local lastSpeedCheckTime = 0
 local lastSkipTriggerTime = 0
+local lastReadyTriggerTime = 0
 local endScreenConn: RBXScriptConnection? = nil
 local waveSkipConn: RBXScriptConnection? = nil
+local unsubRaidIntermission: (() -> ())? = nil
 
 -- Hàm click button an toàn, kết hợp đa phương thức (getconnections, firesignal, VirtualInputManager, GuiService)
 local function clickButton(button: GuiButton): boolean
@@ -38571,6 +39765,34 @@ local function hookWaveSkipListener()
 	end
 end
 
+-- Kích hoạt Auto Ready trong Raid (Bấm PlayerGui.RaidReady.Frame.TextButton)
+local function checkAndTriggerAutoReady(): boolean
+	if not matchAutomation.AutoReadyEnabled then return false end
+	if not zoneGuard.IsInGame() then return false end
+	if not raidManager.IsIntermissionActive() then return false end
+
+	local now = os.clock()
+	if now - lastReadyTriggerTime < 2.5 then return false end -- Debounce 2.5s
+	lastReadyTriggerTime = now
+
+	local delaySec = math.max(0, matchAutomation.AutoReadyDelay or 0)
+	logger.Log(string.format("[Auto Ready] Phát hiện Intermission trong Raid -> Sẽ bấm READY sau %.1fs", delaySec))
+
+	task.spawn(function()
+		if delaySec > 0 then
+			task.wait(delaySec)
+		end
+		if matchAutomation.AutoReadyEnabled and zoneGuard.IsInGame() and raidManager.IsIntermissionActive() then
+			local ok = raidManager.ClickReady()
+			if ok then
+				logger.Log("[Auto Ready] ✅ Đã tự động bấm READY thành công!")
+			end
+		end
+	end)
+
+	return true
+end
+
 -- Gửi Remote ChangeSpeed đến server
 -- Remote: game:GetService("ReplicatedStorage").Functions.ChangeSpeed:InvokeServer(speedNumber)
 local function sendChangeSpeed(speedNum: number?): boolean
@@ -38634,7 +39856,7 @@ end
 -- Kiểm tra xem Macro Player có đang kiểm soát Speed của trận đấu không
 local function isMacroControllingSpeed(): boolean
 	local ok, playerModule = pcall(function()
-		return __DIST.load('aM')
+		return __DIST.load('aO')
 	end)
 	if ok and playerModule then
 		if playerModule.IsEnabled and playerModule.IsEnabled() then
@@ -38694,6 +39916,13 @@ end
 local unsubGameStats = gameStats.Subscribe(onGameStatsUpdate)
 
 -- Vòng lặp giám sát Match Automation
+-- Lắng nghe sự kiện Intermission của Raid để kích hoạt Auto Ready tức thì
+unsubRaidIntermission = raidManager.OnIntermissionChanged(function(isActive, mapName)
+	if isActive and matchAutomation.AutoReadyEnabled then
+		checkAndTriggerAutoReady()
+	end
+end)
+
 task.spawn(function()
 	while isRunning and lifecycle.IsActive() do
 		-- Hook listener khi EndScreen xuất hiện
@@ -38710,6 +39939,11 @@ task.spawn(function()
 		-- Xử lý Auto Replay (kiểm tra liên tục qua EndScreen.Replay)
 		if matchAutomation.AutoReplayEnabled then
 			checkAndTriggerReplay()
+		end
+
+		-- Xử lý Auto Ready nếu đang trong Intermission của Raid
+		if matchAutomation.AutoReadyEnabled and raidManager.IsIntermissionActive() then
+			checkAndTriggerAutoReady()
 		end
 
 		-- Xử lý Auto Speed dự phòng nếu sự kiện snapshot bị bỏ lỡ
@@ -38755,6 +39989,25 @@ function matchAutomation.IsAutoSkipEnabled(): boolean
 	return matchAutomation.AutoSkipEnabled
 end
 
+function matchAutomation.SetAutoReady(enabled: boolean)
+	matchAutomation.AutoReadyEnabled = (enabled == true)
+	if matchAutomation.AutoReadyEnabled and raidManager.IsIntermissionActive() then
+		checkAndTriggerAutoReady()
+	end
+end
+
+function matchAutomation.IsAutoReadyEnabled(): boolean
+	return matchAutomation.AutoReadyEnabled
+end
+
+function matchAutomation.SetAutoReadyDelay(delay: number)
+	matchAutomation.AutoReadyDelay = math.clamp(delay or 2, 0, 10)
+end
+
+function matchAutomation.GetAutoReadyDelay(): number
+	return matchAutomation.AutoReadyDelay
+end
+
 function matchAutomation.SetSpeed(speed: string)
 	if table.find(matchAutomation.Speeds, speed) then
 		matchAutomation.SelectedSpeed = speed
@@ -38779,10 +40032,14 @@ lifecycle.Register(function()
 	if unsubGameStats then
 		unsubGameStats()
 	end
+	if unsubRaidIntermission then
+		unsubRaidIntermission()
+		unsubRaidIntermission = nil
+	end
 end)
 
 return matchAutomation
-end function __DIST.aO()-- AutoSummon: Tự động triệu hồi (Summon/Roll) Unit trong Lobby cho Slop Tower Defense
+end function __DIST.aQ()-- AutoSummon: Tự động triệu hồi (Summon/Roll) Unit trong Lobby cho Slop Tower Defense
 -- Hỗ trợ 2 Banner: Basic (Remotes.Summon.Summon) và Premium (Remotes.Summon.SummonPremium) với các mốc x1, x10, x50.
 
 
@@ -38866,12 +40123,12 @@ function autoSummon.ExecuteSummon(): boolean
 	end
 
 	pcall(function()
-		local webhook = __DIST.load('aL')
+		local webhook = __DIST.load('aN')
 		webhook.SendSummon(autoSummon.SelectedBanner, autoSummon.SummonAmount)
 	end)
 
 	pcall(function()
-		local playerProfile = __DIST.load('aK')
+		local playerProfile = __DIST.load('aM')
 		task.spawn(function()
 			task.wait(0.2)
 			playerProfile.Fetch(true)
@@ -38958,65 +40215,1325 @@ lifecycle.Register(function()
 end)
 
 return autoSummon
-end function __DIST.aP()-- Tab Main: Hiển thị trạng thái môi trường, thống kê trận đấu thời gian thực,
+end function __DIST.aR()-- AutoContracts: Tự động kiểm tra và nhận thưởng Hợp đồng (Contracts) cho Slop Tower Defense
+-- Remotes sử dụng: ReplicatedStorage.Remotes.Misc.Contracts:InvokeServer("Get") và ("Claim", index)
+
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local HttpService = game:GetService("HttpService")
+
+local lifecycle = __DIST.load('ay')
+local logger = __DIST.load('aB')
+local notifier = __DIST.load('az')
+local playerProfile = __DIST.load('aM')
+local gameStats = __DIST.load('aG')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local autoContracts = {
+	Enabled = false,
+	CheckInterval = 20,
+	ClaimCountSession = 0,
+	Contracts = {} :: { ContractItem__DARKLUA_TYPE_y },
+	Period = 0,
+	Rerolled = false,
+	LastChecked = 0,
+}
+
+local activeThread: thread? = nil
+local contractsRemote: RemoteFunction? = nil
+local subscribers: { (ContractsSnapshot__DARKLUA_TYPE_z) -> () } = {}
+local isChecking = false
+local wasMatchActive = false
+
+-- Tìm RemoteFunction Contracts chính xác trong ReplicatedStorage.Remotes.Misc.Contracts
+local function getContractsRemote(): RemoteFunction?
+	if contractsRemote and contractsRemote.Parent then
+		return contractsRemote
+	end
+
+	local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+	local miscFolder = remotesFolder and remotesFolder:FindFirstChild("Misc")
+	if miscFolder then
+		local r = miscFolder:FindFirstChild("Contracts")
+		if r and (r:IsA("RemoteFunction") or type((r :: any).InvokeServer) == "function") then
+			contractsRemote = r :: RemoteFunction
+			return contractsRemote
+		end
+	end
+
+	-- Fallback tìm đệ quy trong toàn bộ ReplicatedStorage
+	local fallback = ReplicatedStorage:FindFirstChild("Contracts", true)
+	if fallback and (fallback:IsA("RemoteFunction") or type((fallback :: any).InvokeServer) == "function") then
+		contractsRemote = fallback :: RemoteFunction
+		return fallback :: RemoteFunction
+	end
+
+	return nil
+end
+
+-- Chuyển đổi dữ liệu thô từ server sang danh sách ContractItem chuẩn hóa
+local function parseContractsData(raw: any): ({ ContractItem__DARKLUA_TYPE_y }, number?, boolean?)
+	if type(raw) ~= "table" then
+		return {}, nil, nil
+	end
+
+	local period = tonumber(raw.Period)
+	local rerolled = raw.Rerolled == true
+
+	local rawList: { any }? = nil
+	if type(raw.List) == "table" then
+		rawList = raw.List
+	elseif type(raw.Contracts) == "table" then
+		if type(raw.Contracts.List) == "table" then
+			rawList = raw.Contracts.List
+			period = period or tonumber(raw.Contracts.Period)
+			if rerolled == nil and raw.Contracts.Rerolled ~= nil then
+				rerolled = raw.Contracts.Rerolled == true
+			end
+		else
+			rawList = raw.Contracts
+		end
+	elseif raw[1] and type(raw[1]) == "table" then
+		rawList = raw
+	end
+
+	if not rawList then
+		return {}, period, rerolled
+	end
+
+	local parsed: { ContractItem__DARKLUA_TYPE_y } = {}
+	if rawList[1] ~= nil then
+		for indexNum, item in ipairs(rawList) do
+			if type(item) == "table" then
+				local progress = tonumber(item.Progress) or 0
+				local need = tonumber(item.Need) or 0
+				local claimed = (item.Claimed == true)
+				local kind = tostring(item.Kind or "Unknown")
+				local tower = tostring(item.Tower or "Unknown")
+				local isCompleted = (not claimed) and (need > 0) and (progress >= need)
+
+				table.insert(parsed, {
+					Index = indexNum,
+					Kind = kind,
+					Tower = tower,
+					Progress = progress,
+					Need = need,
+					Claimed = claimed,
+					IsCompleted = isCompleted,
+				})
+			end
+		end
+	else
+		for idx, item in pairs(rawList) do
+			local indexNum = tonumber(idx) or (#parsed + 1)
+			if type(item) == "table" then
+				local progress = tonumber(item.Progress) or 0
+				local need = tonumber(item.Need) or 0
+				local claimed = (item.Claimed == true)
+				local kind = tostring(item.Kind or "Unknown")
+				local tower = tostring(item.Tower or "Unknown")
+				local isCompleted = (not claimed) and (need > 0) and (progress >= need)
+
+				table.insert(parsed, {
+					Index = indexNum,
+					Kind = kind,
+					Tower = tower,
+					Progress = progress,
+					Need = need,
+					Claimed = claimed,
+					IsCompleted = isCompleted,
+				})
+			end
+		end
+	end
+
+	table.sort(parsed, function(a, b)
+		return a.Index < b.Index
+	end)
+
+	return parsed, period, rerolled
+end
+
+-- Lấy snapshot dữ liệu hợp đồng hiện tại
+function autoContracts.GetSnapshot(): ContractsSnapshot__DARKLUA_TYPE_z
+	local eligible = 0
+	for _, item in ipairs(autoContracts.Contracts) do
+		if item.IsCompleted then
+			eligible += 1
+		end
+	end
+
+	return {
+		List = table.clone(autoContracts.Contracts),
+		Period = autoContracts.Period,
+		Rerolled = autoContracts.Rerolled,
+		EligibleCount = eligible,
+		ClaimedCountSession = autoContracts.ClaimCountSession,
+		LastChecked = autoContracts.LastChecked,
+	}
+end
+
+-- Thông báo cho các UI subscribers khi dữ liệu thay đổi
+local function notifySubscribers()
+	local snapshot = autoContracts.GetSnapshot()
+	for _, sub in ipairs(subscribers) do
+		pcall(sub, snapshot)
+	end
+end
+
+local lastRemoteInvokeTime = 0
+local REMOTE_COOLDOWN = 1.2 -- Giãn cách tối thiểu giữa các lệnh gọi Remotes.Misc.Contracts
+
+-- Hàm gọi RemoteFunction Contracts an toàn, kiểm soát tốc độ gọi tránh bị 'Slow down'
+local function invokeContractsSafe(action: string, ...): (boolean, any)
+	local remote = getContractsRemote()
+	if not remote then
+		return false, "No remote found"
+	end
+
+	local elapsed = os.clock() - lastRemoteInvokeTime
+	if elapsed < REMOTE_COOLDOWN then
+		task.wait(REMOTE_COOLDOWN - elapsed)
+	end
+
+	lastRemoteInvokeTime = os.clock()
+	local ok, res = pcall(function(...)
+		return remote:InvokeServer(action, ...)
+	end, ...)
+
+	-- Cơ chế chống throttle tự động: Nếu server vẫn báo 'Slow down', chờ 1.5s và thử lại 1 lần
+	if ok and type(res) == "table" and res.message == "Slow down" then
+		print(string.format("[Auto Contracts] Server báo 'Slow down' khi gọi '%s', đang giãn cách 1.5s rồi thử lại...", action))
+		task.wait(1.5)
+		lastRemoteInvokeTime = os.clock()
+		ok, res = pcall(function(...)
+			return remote:InvokeServer(action, ...)
+		end, ...)
+	end
+
+	return ok, res
+end
+
+-- Lấy danh sách hợp đồng mới nhất từ RemoteFunction "Get" hoặc fallback từ PlayerProfile
+function autoContracts.FetchContracts(): { ContractItem__DARKLUA_TYPE_y }
+	local rawData = nil
+	local ok, res = invokeContractsSafe("Get")
+	if ok then
+		if type(res) == "table" then
+			rawData = res
+		end
+	else
+		warn("[Auto Contracts] Lỗi gọi Remote Contracts:Get:", tostring(res))
+	end
+
+	-- Nếu Get không trả về table chứa danh sách trực tiếp, fallback sang PlayerProfile
+	if not rawData or (type(rawData) == "table" and not rawData.List and not rawData[1]) then
+		local profileData = playerProfile.GetData()
+		if profileData and profileData.RawData and profileData.RawData.Contracts then
+			rawData = profileData.RawData.Contracts
+		end
+	end
+
+	local list, period, rerolled = parseContractsData(rawData)
+	if #list > 0 then
+		autoContracts.Contracts = list
+		if period then autoContracts.Period = period end
+		if rerolled ~= nil then autoContracts.Rerolled = rerolled end
+	end
+	autoContracts.LastChecked = os.clock()
+
+	notifySubscribers()
+	return autoContracts.Contracts
+end
+
+-- Kiểm tra và nhận các hợp đồng đã hoàn thành
+function autoContracts.CheckAndClaim(): (number, number)
+	if isChecking then
+		return 0, 0
+	end
+
+	local remote = getContractsRemote()
+	if not remote then
+		warn("[Auto Contracts] Không tìm thấy RemoteFunction: Remotes.Misc.Contracts")
+		return 0, 0
+	end
+
+	isChecking = true
+	local claimedCount = 0
+	local eligibleCount = 0
+
+	-- 1. Đồng bộ dữ liệu hợp đồng mới nhất
+	autoContracts.FetchContracts()
+
+	-- 2. Đếm số hợp đồng hoàn thành hợp lệ
+	for _, item in ipairs(autoContracts.Contracts) do
+		if item.IsCompleted then
+			eligibleCount += 1
+		end
+	end
+
+	print(string.format("[Auto Contracts] Kiểm tra: %d hợp đồng nạp được, %d đủ điều kiện nhận.",
+		#autoContracts.Contracts, eligibleCount))
+
+	-- 3. Nhận từng hợp đồng hoàn thành
+	if eligibleCount > 0 then
+		for _, item in ipairs(autoContracts.Contracts) do
+			if item.IsCompleted and not item.Claimed then
+				print(string.format("[Auto Contracts] Gửi Claim hợp đồng #%d: [%s] %s (%d/%d)...",
+					item.Index, item.Kind, item.Tower, item.Progress, item.Need))
+
+				local claimOk, claimRes = invokeContractsSafe("Claim", item.Index)
+
+				local resStr = tostring(claimRes)
+				if type(claimRes) == "table" then
+					local encOk, encStr = pcall(function()
+						return HttpService:JSONEncode(claimRes)
+					end)
+					if encOk then resStr = encStr end
+				end
+
+				print(string.format("[Auto Contracts] Kết quả Claim #%d: ok=%s, res=%s",
+					item.Index, tostring(claimOk), resStr))
+
+				local isSuccess = false
+				if claimOk then
+					if type(claimRes) == "table" then
+						if claimRes.success ~= nil then
+							isSuccess = (claimRes.success == true)
+						elseif claimRes.Success ~= nil then
+							isSuccess = (claimRes.Success == true)
+						else
+							isSuccess = true
+						end
+					elseif claimRes == true then
+						isSuccess = true
+					end
+				end
+
+				if isSuccess then
+					claimedCount += 1
+					item.Claimed = true
+					item.IsCompleted = false
+					autoContracts.ClaimCountSession += 1
+
+					notifier.Notify("Contracts Claimed", string.format("Claimed [%s] %s (#%d)!",
+						item.Kind, item.Tower, item.Index), 3)
+				else
+					local errReason = (type(claimRes) == "table" and (claimRes.error or claimRes.message or claimRes.reason)) or resStr
+					warn(string.format("[Auto Contracts] Nhận thất bại hợp đồng #%d: %s",
+						item.Index, tostring(errReason)))
+					notifier.Notify("Claim Failed", string.format("Contract #%d: %s",
+						item.Index, tostring(errReason)), 3)
+				end
+
+				task.wait(0.3) -- Delay an toàn tránh spam remote
+			end
+		end
+
+		if claimedCount > 0 then
+			notifySubscribers()
+			task.spawn(function()
+				task.wait(1.5)
+				autoContracts.FetchContracts()
+				playerProfile.Fetch(true)
+			end)
+		end
+	end
+
+	isChecking = false
+	return claimedCount, eligibleCount
+end
+
+-- Vòng lặp chạy nền định kỳ
+local function runLoop()
+	while autoContracts.Enabled and lifecycle.IsActive() do
+		local now = os.clock()
+		if now - autoContracts.LastChecked >= autoContracts.CheckInterval then
+			autoContracts.CheckAndClaim()
+		end
+		task.wait(1.0)
+	end
+	activeThread = nil
+end
+
+function autoContracts.SetEnabled(state: boolean)
+	if autoContracts.Enabled == state then return end
+	autoContracts.Enabled = (state == true)
+
+	if autoContracts.Enabled then
+		if not activeThread then
+			activeThread = task.spawn(runLoop)
+		end
+		notifier.Notify("Auto Contracts", "Auto Claim Contracts enabled.", 2)
+
+		-- Chạy kiểm tra ngay khi vừa bật
+		task.spawn(function()
+			task.wait(0.5)
+			if autoContracts.Enabled and lifecycle.IsActive() then
+				autoContracts.CheckAndClaim()
+			end
+		end)
+	else
+		activeThread = nil
+		notifier.Notify("Auto Contracts", "Auto Claim Contracts disabled.", 2)
+	end
+end
+
+function autoContracts.IsEnabled(): boolean
+	return autoContracts.Enabled
+end
+
+function autoContracts.SetInterval(sec: number)
+	autoContracts.CheckInterval = math.clamp(tonumber(sec) or 20, 5, 120)
+end
+
+function autoContracts.GetInterval(): number
+	return autoContracts.CheckInterval
+end
+
+-- Đăng ký nhận cập nhật trạng thái hợp đồng (cho UI)
+function autoContracts.Subscribe(callback: (ContractsSnapshot__DARKLUA_TYPE_z) -> ()): () -> ()
+	table.insert(subscribers, callback)
+	task.spawn(callback, autoContracts.GetSnapshot())
+
+	return function()
+		local idx = table.find(subscribers, callback)
+		if idx then
+			table.remove(subscribers, idx)
+		end
+	end
+end
+
+-- Lắng nghe PlayerProfile để tự động cập nhật hợp đồng khi có dữ liệu mới
+local unsubProfile = playerProfile.Subscribe(function(profileData: PlayerProfileData__DARKLUA_TYPE_w)
+	if profileData.Loaded and profileData.RawData and profileData.RawData.Contracts then
+		local list, period, rerolled = parseContractsData(profileData.RawData.Contracts)
+		if #list > 0 then
+			autoContracts.Contracts = list
+			if period then autoContracts.Period = period end
+			if rerolled ~= nil then autoContracts.Rerolled = rerolled end
+			notifySubscribers()
+		end
+	end
+end)
+lifecycle.Register(unsubProfile)
+
+-- Lắng nghe GameStats để tự động kiểm tra nhận thưởng khi kết thúc trận
+local unsubStats = gameStats.Subscribe(function(snapshot: GameStatsSnapshot__DARKLUA_TYPE_n)
+	if autoContracts.Enabled and wasMatchActive and not snapshot.IsMatchActive then
+		task.spawn(function()
+			task.wait(1.5)
+			if autoContracts.Enabled and lifecycle.IsActive() then
+				autoContracts.CheckAndClaim()
+			end
+		end)
+	end
+	wasMatchActive = snapshot.IsMatchActive
+end)
+lifecycle.Register(unsubStats)
+
+-- Khởi tạo ban đầu: nạp dữ liệu hợp đồng lần đầu
+task.spawn(function()
+	task.wait(1.5)
+	if lifecycle.IsActive() then
+		autoContracts.FetchContracts()
+	end
+end)
+
+-- Tự động dọn dẹp khi reload script
+lifecycle.Register(function()
+	autoContracts.Enabled = false
+	activeThread = nil
+	table.clear(subscribers)
+end)
+
+return autoContracts
+end function __DIST.aS()-- AutoQuests: Tự động kiểm tra và nhận thưởng Nhiệm vụ Daily & Weekly cho Slop Tower Defense
+-- Remotes sử dụng: ReplicatedStorage.Network.RemoteEvents.CollectQuest:FireServer(questId, category)
+-- Theo dõi trạng thái mốc thưởng qua LocalPlayer Attributes (DailyQuestsClaimed, DailyBonusClaimed,...)
+
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+local lifecycle = __DIST.load('ay')
+local notifier = __DIST.load('az')
+local gameStats = __DIST.load('aG')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local autoQuests = {
+	Enabled = false,
+	CheckInterval = 20,
+	ClaimCountSession = 0,
+	LastChecked = 0,
+}
+
+local activeThread: thread? = nil
+local collectRemote: RemoteEvent? = nil
+local subscribers: { (QuestsSnapshot__DARKLUA_TYPE_B) -> () } = {}
+local isChecking = false
+local wasMatchActive = false
+
+-- Tìm RemoteEvent CollectQuest chính xác trong ReplicatedStorage
+local function getCollectRemote(): RemoteEvent?
+	if collectRemote and collectRemote.Parent then
+		return collectRemote
+	end
+
+	local network = ReplicatedStorage:FindFirstChild("Network")
+	local remoteEvents = network and network:FindFirstChild("RemoteEvents")
+	if remoteEvents then
+		local r = remoteEvents:FindFirstChild("CollectQuest")
+		if r and r:IsA("RemoteEvent") then
+			collectRemote = r
+			return r
+		end
+	end
+
+	local fallback = ReplicatedStorage:FindFirstChild("CollectQuest", true)
+	if fallback and fallback:IsA("RemoteEvent") then
+		collectRemote = fallback
+		return fallback
+	end
+
+	return nil
+end
+
+-- Hàm kích hoạt nút an toàn
+local function clickButton(button: GuiButton)
+	if not button or not button:IsA("GuiButton") then return end
+
+	pcall(function()
+		local gc = (getconnections or (syn and syn.getconnections) or (getgenv and getgenv().getconnections))
+		if gc then
+			for _, conn in ipairs(gc(button.MouseButton1Click)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+			for _, conn in ipairs(gc(button.Activated)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+		end
+	end)
+
+	pcall(function()
+		local fs = (firesignal or (syn and syn.firesignal) or (getgenv and getgenv().firesignal))
+		if fs then
+			fs(button.MouseButton1Click)
+			fs(button.Activated)
+		end
+	end)
+end
+
+-- Lấy thư mục chứa danh sách nhiệm vụ trong PlayerGui
+local function getAllQuestsFolder(): Instance?
+	local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+	if not playerGui then return nil end
+
+	local mainGui = playerGui:FindFirstChild("Main")
+	if not mainGui then return nil end
+
+	local questsFrame = mainGui:FindFirstChild("QuestsFrame", true)
+	if not questsFrame then return nil end
+
+	return questsFrame:FindFirstChild("AllQuests", true)
+end
+
+-- Lấy snapshot dữ liệu tiến độ nhiệm vụ và bonus hiện tại
+function autoQuests.GetSnapshot(): QuestsSnapshot__DARKLUA_TYPE_B
+	local dailyClaimed = tonumber(LocalPlayer:GetAttribute("DailyQuestsClaimed")) or 0
+	local dailyTotal = tonumber(LocalPlayer:GetAttribute("DailyQuestsTotal")) or 4
+	local dailyBonus = LocalPlayer:GetAttribute("DailyBonusClaimed") == true
+
+	local weeklyClaimed = tonumber(LocalPlayer:GetAttribute("WeeklyQuestsClaimed")) or 0
+	local weeklyTotal = tonumber(LocalPlayer:GetAttribute("WeeklyQuestsTotal")) or 4
+	local weeklyBonus = LocalPlayer:GetAttribute("WeeklyBonusClaimed") == true
+
+	local readyCount = 0
+	local allQuests = getAllQuestsFolder()
+	if allQuests then
+		for _, cat in ipairs({ "Daily", "Weekly" }) do
+			local catFolder = allQuests:FindFirstChild(cat)
+			if catFolder then
+				for _, questObj in ipairs(catFolder:GetChildren()) do
+					if questObj:IsA("GuiObject") then
+						local btn = questObj:FindFirstChild("ClaimButton", true)
+						if btn and btn:IsA("GuiButton") and btn.Visible then
+							readyCount += 1
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return {
+		DailyClaimed = dailyClaimed,
+		DailyTotal = dailyTotal,
+		DailyBonusClaimed = dailyBonus,
+		WeeklyClaimed = weeklyClaimed,
+		WeeklyTotal = weeklyTotal,
+		WeeklyBonusClaimed = weeklyBonus,
+		ReadyQuestsCount = readyCount,
+		ClaimedCountSession = autoQuests.ClaimCountSession,
+		LastChecked = autoQuests.LastChecked,
+	}
+end
+
+-- Thông báo cho UI subscribers
+local function notifySubscribers()
+	local snapshot = autoQuests.GetSnapshot()
+	for _, sub in ipairs(subscribers) do
+		pcall(sub, snapshot)
+	end
+end
+
+-- Quét và nhận tất cả nhiệm vụ đã hoàn thành
+function autoQuests.CheckAndClaim(): (number, number)
+	if isChecking then
+		return 0, 0
+	end
+
+	local remote = getCollectRemote()
+	local allQuests = getAllQuestsFolder()
+
+	if not allQuests then
+		return 0, 0
+	end
+
+	isChecking = true
+	local claimedCount = 0
+	local eligibleCount = 0
+
+	for _, category in ipairs({ "Daily", "Weekly" }) do
+		local catFolder = allQuests:FindFirstChild(category)
+		if catFolder then
+			for _, questFrame in ipairs(catFolder:GetChildren()) do
+				if questFrame:IsA("GuiObject") then
+					local claimBtn = questFrame:FindFirstChild("ClaimButton", true)
+					if claimBtn and claimBtn:IsA("GuiButton") and claimBtn.Visible then
+						eligibleCount += 1
+						local questId = questFrame.Name
+
+						print(string.format("[Auto Quests] Phát hiện quest hoàn thành: [%s] %s -> Đang nhận...", category, questId))
+
+						-- Cách 1: Gửi trực tiếp RemoteEvent CollectQuest
+						if remote then
+							pcall(function()
+								remote:FireServer(questId, category)
+							end)
+						end
+
+						-- Cách 2: Kích hoạt click trực tiếp nút ClaimButton (hỗ trợ dual trigger)
+						clickButton(claimBtn)
+
+						claimedCount += 1
+						autoQuests.ClaimCountSession += 1
+
+						notifier.Notify("Quest Claimed", string.format("Claimed [%s] %s!", category, questId), 3)
+						print(string.format("[Auto Quests] Đã nhận thành công quest: [%s] %s", category, questId))
+
+						task.wait(0.5) -- Giãn cách an toàn
+					end
+				end
+			end
+		end
+	end
+
+	autoQuests.LastChecked = os.clock()
+	notifySubscribers()
+
+	isChecking = false
+	return claimedCount, eligibleCount
+end
+
+-- Vòng lặp chạy nền định kỳ
+local function runLoop()
+	while autoQuests.Enabled and lifecycle.IsActive() do
+		local now = os.clock()
+		if now - autoQuests.LastChecked >= autoQuests.CheckInterval then
+			autoQuests.CheckAndClaim()
+		end
+		task.wait(1.0)
+	end
+	activeThread = nil
+end
+
+function autoQuests.SetEnabled(state: boolean)
+	if autoQuests.Enabled == state then return end
+	autoQuests.Enabled = (state == true)
+
+	if autoQuests.Enabled then
+		if not activeThread then
+			activeThread = task.spawn(runLoop)
+		end
+		notifier.Notify("Auto Quests", "Auto Claim Quests enabled.", 2)
+
+		task.spawn(function()
+			task.wait(0.5)
+			if autoQuests.Enabled and lifecycle.IsActive() then
+				autoQuests.CheckAndClaim()
+			end
+		end)
+	else
+		activeThread = nil
+		notifier.Notify("Auto Quests", "Auto Claim Quests disabled.", 2)
+	end
+end
+
+function autoQuests.IsEnabled(): boolean
+	return autoQuests.Enabled
+end
+
+function autoQuests.SetInterval(sec: number)
+	autoQuests.CheckInterval = math.clamp(tonumber(sec) or 20, 5, 120)
+end
+
+function autoQuests.GetInterval(): number
+	return autoQuests.CheckInterval
+end
+
+function autoQuests.Subscribe(callback: (QuestsSnapshot__DARKLUA_TYPE_B) -> ()): () -> ()
+	table.insert(subscribers, callback)
+	task.spawn(callback, autoQuests.GetSnapshot())
+
+	return function()
+		local idx = table.find(subscribers, callback)
+		if idx then
+			table.remove(subscribers, idx)
+		end
+	end
+end
+
+-- Lắng nghe thay đổi Attributes của LocalPlayer để cập nhật ngay lập tức
+for _, attrName in ipairs({
+	"DailyQuestsClaimed", "DailyQuestsTotal", "DailyBonusClaimed",
+	"WeeklyQuestsClaimed", "WeeklyQuestsTotal", "WeeklyBonusClaimed",
+}) do
+	local conn = LocalPlayer:GetAttributeChangedSignal(attrName):Connect(function()
+		notifySubscribers()
+	end)
+	lifecycle.Register(function()
+		pcall(function() conn:Disconnect() end)
+	end)
+end
+
+-- Lắng nghe GameStats để tự động kiểm tra nhận thưởng khi kết thúc trận
+local unsubStats = gameStats.Subscribe(function(snapshot: GameStatsSnapshot__DARKLUA_TYPE_n)
+	if autoQuests.Enabled and wasMatchActive and not snapshot.IsMatchActive then
+		task.spawn(function()
+			task.wait(1.5)
+			if autoQuests.Enabled and lifecycle.IsActive() then
+				autoQuests.CheckAndClaim()
+			end
+		end)
+	end
+	wasMatchActive = snapshot.IsMatchActive
+end)
+lifecycle.Register(unsubStats)
+
+-- Khởi tạo ban đầu
+task.spawn(function()
+	task.wait(1.5)
+	if lifecycle.IsActive() then
+		notifySubscribers()
+	end
+end)
+
+-- Dọn dẹp khi reload script
+lifecycle.Register(function()
+	autoQuests.Enabled = false
+	activeThread = nil
+	table.clear(subscribers)
+end)
+
+return autoQuests
+end function __DIST.aT()-- AutoGifts: Tự động kiểm tra và nhận thưởng Quà Thời Gian Chơi (Playtime Gifts / Rewards) cho Slop Tower Defense
+-- Bao gồm 9 mốc quà thời gian (từ 5 phút đến 180 phút)
+-- Remotes sử dụng:
+--   ReplicatedStorage.GiftFolder.GetData (RemoteFunction) -> Trả về base playtime (giây)
+--   ReplicatedStorage.GiftFolder.ClaimGift (RemoteFunction) -> Nhận quà số 1..9 (trả về true nếu thành công)
+--   ReplicatedStorage.GiftFolder.GiftsReset (RemoteEvent) -> Server báo reset mốc quà
+-- Data client:
+--   LocalPlayer.ClaimedGifts -> Folder chứa các child có tên "1".."9" khi đã nhận
+--   LocalPlayer.CurrentSession -> IntValue/NumberValue đếm số giây chơi phiên hiện tại
+
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+
+local lifecycle = __DIST.load('ay')
+local notifier = __DIST.load('az')
+local gameStats = __DIST.load('aG')
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+local DEFAULT_GIFT_DATA = {
+	{ GiftNumber = 1, Time = 300,   Reward = { Currency = "Cash", Amount = 300 } },
+	{ GiftNumber = 2, Time = 600,   Reward = { Currency = "Slopbux", Amount = 3 } },
+	{ GiftNumber = 3, Time = 900,   Reward = { Currency = "Crate", Type = "Steampunk Crate", Amount = 1 } },
+	{ GiftNumber = 4, Time = 1500,  Reward = { Currency = "Cash", Amount = 900 } },
+	{ GiftNumber = 5, Time = 2100,  Reward = { Currency = "Slopbux", Amount = 5 } },
+	{ GiftNumber = 6, Time = 2700,  Reward = { Currency = "Crate", Type = "Steampunk Crate", Amount = 3 } },
+	{ GiftNumber = 7, Time = 3600,  Reward = { Currency = "Cash", Amount = 3000 } },
+	{ GiftNumber = 8, Time = 7200,  Reward = { Currency = "Slopbux", Amount = 10 } },
+	{ GiftNumber = 9, Time = 10800, Reward = { Currency = "Crate", Type = "Steampunk Crate", Amount = 10 } },
+}
+
+local autoGifts = {
+	Enabled = false,
+	CheckInterval = 15,
+	ClaimCountSession = 0,
+	LastChecked = 0,
+}
+
+local activeThread: thread? = nil
+local basePlaytime = 0
+local subscribers: { (GiftsSnapshot__DARKLUA_TYPE_E) -> () } = {}
+local isChecking = false
+local wasMatchActive = false
+local giftDataList = DEFAULT_GIFT_DATA
+
+-- Helper: Format giây thành HH:MM:SS hoặc MM:SS
+local function formatSeconds(sec: number): string
+	local s = math.max(0, math.floor(sec))
+	local hrs = math.floor(s / 3600)
+	local mins = math.floor((s % 3600) / 60)
+	local remSecs = s % 60
+	if hrs > 0 then
+		return string.format("%02d:%02d:%02d", hrs, mins, remSecs)
+	else
+		return string.format("%02d:%02d", mins, remSecs)
+	end
+end
+
+-- Lấy GiftFolder an toàn
+local function getGiftFolder(): Instance?
+	return ReplicatedStorage:FindFirstChild("GiftFolder")
+end
+
+-- Lấy RemoteFunction ClaimGift
+local function getClaimRemote(): RemoteFunction?
+	local folder = getGiftFolder()
+	if folder then
+		local remote = folder:FindFirstChild("ClaimGift")
+		if remote and remote:IsA("RemoteFunction") then
+			return remote
+		end
+	end
+	return nil
+end
+
+-- Lấy RemoteFunction GetData
+local function getGetDataRemote(): RemoteFunction?
+	local folder = getGiftFolder()
+	if folder then
+		local remote = folder:FindFirstChild("GetData")
+		if remote and remote:IsA("RemoteFunction") then
+			return remote
+		end
+	end
+	return nil
+end
+
+-- Cập nhật base playtime từ GetData remote
+local function fetchBasePlaytime()
+	local remote = getGetDataRemote()
+	if remote then
+		local ok, result = pcall(function()
+			return remote:InvokeServer()
+		end)
+		if ok and type(result) == "number" then
+			basePlaytime = result
+		end
+	end
+end
+
+-- Load SharedGiftData từ GiftFolder nếu có
+local function loadSharedGiftData()
+	local folder = getGiftFolder()
+	if folder then
+		local sharedModule = folder:FindFirstChild("SharedGiftData")
+		if sharedModule and sharedModule:IsA("ModuleScript") then
+			local ok, data = pcall(function()
+				return require(sharedModule)
+			end)
+			if ok and type(data) == "table" and #data > 0 then
+				giftDataList = data
+			end
+		end
+	end
+end
+
+-- Lấy tổng thời gian chơi hiện tại (base + CurrentSession.Value)
+function autoGifts.GetPlaytime(): number
+	local sessionVal = 0
+	local currentSession = LocalPlayer:FindFirstChild("CurrentSession")
+	if currentSession and (currentSession:IsA("IntValue") or currentSession:IsA("NumberValue")) then
+		sessionVal = currentSession.Value
+	end
+	return basePlaytime + sessionVal
+end
+
+-- Kiểm tra xem mốc quà đã nhận hay chưa
+function autoGifts.IsGiftClaimed(giftNumber: number): boolean
+	local claimedFolder = LocalPlayer:FindFirstChild("ClaimedGifts")
+	if claimedFolder then
+		return claimedFolder:FindFirstChild(tostring(giftNumber)) ~= nil
+	end
+	return false
+end
+
+-- Click nút GUI trong PlayerGui.Main.Gifts.List (nếu có)
+local function clickGuiGiftButton(giftNumber: number)
+	local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+	if not playerGui then return end
+	local mainGui = playerGui:FindFirstChild("Main")
+	if not mainGui then return end
+	local giftsFrame = mainGui:FindFirstChild("Gifts")
+	if not giftsFrame then return end
+	local list = giftsFrame:FindFirstChild("List")
+	if not list then return end
+	local itemFrame = list:FindFirstChild(tostring(giftNumber))
+	if not itemFrame then return end
+	local button = itemFrame:FindFirstChild("Button")
+	if not button or not button:IsA("GuiButton") then return end
+
+	pcall(function()
+		local gc = (getconnections or (syn and syn.getconnections) or (getgenv and getgenv().getconnections))
+		if gc then
+			for _, conn in ipairs(gc(button.MouseButton1Click)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+			for _, conn in ipairs(gc(button.Activated)) do
+				if conn.Fire then conn:Fire() elseif conn.fire then conn:fire() end
+			end
+		end
+	end)
+
+	pcall(function()
+		local fs = (firesignal or (syn and syn.firesignal) or (getgenv and getgenv().firesignal))
+		if fs then
+			fs(button.MouseButton1Click)
+			fs(button.Activated)
+		end
+	end)
+end
+
+-- Định dạng mô tả phần thưởng
+local function formatRewardText(reward: GiftReward__DARKLUA_TYPE_C?): string
+	if not reward then return "Reward" end
+	if reward.Currency == "Crate" then
+		local crateType = reward.Type or "Crate"
+		return string.format("%s x%d", crateType, reward.Amount or 1)
+	else
+		return string.format("%s %s", tostring(reward.Amount or 0), reward.Currency or "")
+	end
+end
+
+-- Lấy snapshot dữ liệu quà tặng
+function autoGifts.GetSnapshot(): GiftsSnapshot__DARKLUA_TYPE_E
+	local playtime = autoGifts.GetPlaytime()
+	local claimedCount = 0
+	local readyCount = 0
+	local nextGiftNum: number? = nil
+	local nextGiftRemaining: number? = nil
+	local giftsTable: { [number]: GiftItem__DARKLUA_TYPE_D } = {}
+
+	for _, giftDef in ipairs(giftDataList) do
+		local num = giftDef.GiftNumber
+		local reqTime = giftDef.Time
+		local claimed = autoGifts.IsGiftClaimed(num)
+		local remaining = math.max(0, reqTime - playtime)
+		local ready = not claimed and (remaining <= 0)
+
+		if claimed then
+			claimedCount += 1
+		elseif ready then
+			readyCount += 1
+		end
+
+		if not claimed and nextGiftNum == nil then
+			nextGiftNum = num
+			nextGiftRemaining = remaining
+		end
+
+		giftsTable[num] = {
+			GiftNumber = num,
+			Time = reqTime,
+			Reward = giftDef.Reward,
+			IsClaimed = claimed,
+			IsReady = ready,
+			RemainingSeconds = remaining,
+		}
+	end
+
+	local nextFormatted: string? = nil
+	if nextGiftRemaining ~= nil then
+		nextFormatted = formatSeconds(nextGiftRemaining)
+	end
+
+	return {
+		Playtime = playtime,
+		FormattedPlaytime = formatSeconds(playtime),
+		ClaimedCount = claimedCount,
+		TotalGifts = #giftDataList,
+		ReadyCount = readyCount,
+		NextGiftNumber = nextGiftNum,
+		NextGiftRemaining = nextGiftRemaining,
+		NextGiftFormatted = nextFormatted,
+		Gifts = giftsTable,
+		ClaimedCountSession = autoGifts.ClaimCountSession,
+		LastChecked = autoGifts.LastChecked,
+	}
+end
+
+-- Thông báo cho UI subscribers
+local function notifySubscribers()
+	local snapshot = autoGifts.GetSnapshot()
+	for _, sub in ipairs(subscribers) do
+		pcall(sub, snapshot)
+	end
+end
+
+-- Quét và nhận tất cả mốc quà đã đạt điều kiện thời gian
+function autoGifts.CheckAndClaim(): (number, number)
+	if isChecking then
+		return 0, 0
+	end
+
+	local claimRemote = getClaimRemote()
+	if not claimRemote then
+		return 0, 0
+	end
+
+	isChecking = true
+	local playtime = autoGifts.GetPlaytime()
+	local claimedCount = 0
+	local eligibleCount = 0
+
+	for _, giftDef in ipairs(giftDataList) do
+		local num = giftDef.GiftNumber
+		local reqTime = giftDef.Time
+		local claimed = autoGifts.IsGiftClaimed(num)
+
+		if not claimed and playtime >= reqTime then
+			eligibleCount += 1
+			local rewardDesc = formatRewardText(giftDef.Reward)
+			print(string.format("[Auto Gifts] Quà #%d (%s) đủ điều kiện -> Đang nhận...", num, rewardDesc))
+
+			local success, result = pcall(function()
+				return claimRemote:InvokeServer(num)
+			end)
+
+			-- Dual-trigger click GUI button nếu có
+			clickGuiGiftButton(num)
+
+			if success and result == true then
+				claimedCount += 1
+				autoGifts.ClaimCountSession += 1
+				notifier.Notify("Playtime Gift", string.format("Claimed Gift #%d (%s)!", num, rewardDesc), 3)
+				print(string.format("[Auto Gifts] Nhận thành công Quà #%d: %s", num, rewardDesc))
+			elseif not success then
+				print(string.format("[Auto Gifts] Lỗi khi nhận Quà #%d: %s", num, tostring(result)))
+			end
+
+			task.wait(0.4)
+		end
+	end
+
+	autoGifts.LastChecked = os.clock()
+	notifySubscribers()
+
+	isChecking = false
+	return claimedCount, eligibleCount
+end
+
+-- Vòng lặp chạy nền định kỳ
+local function runLoop()
+	while autoGifts.Enabled and lifecycle.IsActive() do
+		local now = os.clock()
+		if now - autoGifts.LastChecked >= autoGifts.CheckInterval then
+			autoGifts.CheckAndClaim()
+		end
+		task.wait(1.0)
+	end
+	activeThread = nil
+end
+
+function autoGifts.SetEnabled(state: boolean)
+	if autoGifts.Enabled == state then return end
+	autoGifts.Enabled = (state == true)
+
+	if autoGifts.Enabled then
+		if not activeThread then
+			activeThread = task.spawn(runLoop)
+		end
+		notifier.Notify("Playtime Gifts", "Auto Claim Playtime Gifts enabled.", 2)
+
+		task.spawn(function()
+			task.wait(0.5)
+			if autoGifts.Enabled and lifecycle.IsActive() then
+				autoGifts.CheckAndClaim()
+			end
+		end)
+	else
+		activeThread = nil
+		notifier.Notify("Playtime Gifts", "Auto Claim Playtime Gifts disabled.", 2)
+	end
+end
+
+function autoGifts.IsEnabled(): boolean
+	return autoGifts.Enabled
+end
+
+function autoGifts.SetInterval(sec: number)
+	autoGifts.CheckInterval = math.clamp(tonumber(sec) or 15, 5, 120)
+end
+
+function autoGifts.GetInterval(): number
+	return autoGifts.CheckInterval
+end
+
+function autoGifts.Subscribe(callback: (GiftsSnapshot__DARKLUA_TYPE_E) -> ()): () -> ()
+	table.insert(subscribers, callback)
+	task.spawn(callback, autoGifts.GetSnapshot())
+
+	return function()
+		local idx = table.find(subscribers, callback)
+		if idx then
+			table.remove(subscribers, idx)
+		end
+	end
+end
+
+-- Lắng nghe CurrentSession thay đổi giá trị để cập nhật snapshot realtime
+local function hookCurrentSession()
+	local currentSession = LocalPlayer:FindFirstChild("CurrentSession")
+	if currentSession and (currentSession:IsA("IntValue") or currentSession:IsA("NumberValue")) then
+		local conn = currentSession:GetPropertyChangedSignal("Value"):Connect(function()
+			notifySubscribers()
+		end)
+		lifecycle.Register(function()
+			pcall(function() conn:Disconnect() end)
+		end)
+	end
+end
+
+-- Lắng nghe ClaimedGifts có item mới
+local function hookClaimedGifts()
+	local claimedFolder = LocalPlayer:FindFirstChild("ClaimedGifts")
+	if claimedFolder then
+		local cAdd = claimedFolder.ChildAdded:Connect(function()
+			notifySubscribers()
+		end)
+		local cRem = claimedFolder.ChildRemoved:Connect(function()
+			notifySubscribers()
+		end)
+		lifecycle.Register(function()
+			pcall(function() cAdd:Disconnect() end)
+			pcall(function() cRem:Disconnect() end)
+		end)
+	else
+		local cHook = LocalPlayer.ChildAdded:Connect(function(child)
+			if child.Name == "ClaimedGifts" then
+				hookClaimedGifts()
+				notifySubscribers()
+			elseif child.Name == "CurrentSession" then
+				hookCurrentSession()
+				notifySubscribers()
+			end
+		end)
+		lifecycle.Register(function()
+			pcall(function() cHook:Disconnect() end)
+		end)
+	end
+end
+
+-- Lắng nghe server reset quà tặng
+local function hookGiftsReset()
+	local folder = getGiftFolder()
+	if folder then
+		local giftsReset = folder:FindFirstChild("GiftsReset")
+		if giftsReset and giftsReset:IsA("RemoteEvent") then
+			local conn = giftsReset.OnClientEvent:Connect(function()
+				print("[Auto Gifts] Server GiftsReset đã kích hoạt -> Cập nhật lại thời gian & trạng thái quà...")
+				task.wait(0.5)
+				fetchBasePlaytime()
+				notifySubscribers()
+				if autoGifts.Enabled then
+					autoGifts.CheckAndClaim()
+				end
+			end)
+			lifecycle.Register(function()
+				pcall(function() conn:Disconnect() end)
+			end)
+		end
+	end
+end
+
+-- Lắng nghe GameStats để tự động nhận quà khi kết thúc trận
+local unsubStats = gameStats.Subscribe(function(snapshot: GameStatsSnapshot__DARKLUA_TYPE_n)
+	if autoGifts.Enabled and wasMatchActive and not snapshot.IsMatchActive then
+		task.spawn(function()
+			task.wait(1.5)
+			if autoGifts.Enabled and lifecycle.IsActive() then
+				autoGifts.CheckAndClaim()
+			end
+		end)
+	end
+	wasMatchActive = snapshot.IsMatchActive
+end)
+lifecycle.Register(unsubStats)
+
+-- Khởi tạo ban đầu
+task.spawn(function()
+	loadSharedGiftData()
+	fetchBasePlaytime()
+	hookCurrentSession()
+	hookClaimedGifts()
+	hookGiftsReset()
+
+	task.wait(1.0)
+	if lifecycle.IsActive() then
+		notifySubscribers()
+	end
+end)
+
+-- Dọn dẹp khi reload script
+lifecycle.Register(function()
+	autoGifts.Enabled = false
+	activeThread = nil
+	table.clear(subscribers)
+end)
+
+return autoGifts
+end function __DIST.aU()-- Tab Main: Hiển thị trạng thái môi trường, thống kê trận đấu thời gian thực,
 -- Auto Summon (kèm Bảng đếm Pity trực quan), Match Automation và Player Dashboard.
 
 
 local constants = __DIST.load('aE')
 local gameStats = __DIST.load('aG')
 local zoneGuard = __DIST.load('aF')
-local matchAutomation = __DIST.load('aN')
-local autoSummon = __DIST.load('aO')
-local playerProfile = __DIST.load('aK')
+local matchAutomation = __DIST.load('aP')
+local raidManager = __DIST.load('aH')
+local autoSummon = __DIST.load('aQ')
+local autoContracts = __DIST.load('aR')
+local autoQuests = __DIST.load('aS')
+local autoGifts = __DIST.load('aT')
+local playerProfile = __DIST.load('aM')
 local autoSave = __DIST.load('aA')
 local notifier = __DIST.load('az')
 local lifecycle = __DIST.load('ay')
 
 return function(window, tab)
 	--// ====================================================================
-	--// CỘT TRÁI: Section 1 - Live Status & Display
+	--// CỘT TRÁI: Section 1 - Session Info
 	--// ====================================================================
-	local leftSection = tab:Section({ Side = "Left" })
-	leftSection:Header({ Name = "Status & Display" })
+	local sessionSection = tab:Section({ Side = "Left" })
+	sessionSection:Header({ Name = "Session Info" })
 
-	leftSection:Label({
-		Text = "<b>Location:</b> " .. constants.GetLocationName(),
+	local locationLabel = sessionSection:Label({
+		Text = string.format("📍 <b>Location:</b> <font color='rgb(200,200,255)'>%s</font>", constants.GetLocationName()),
 	})
 
-	local timeLabel = leftSection:Label({
-		Text = "⏱️ <b>Timer:</b> <font color='rgb(255,220,100)'>00:00.00</font>",
+	local mapLabel = sessionSection:Label({
+		Text = "🗺️ <b>Map:</b> <font color='rgb(150,150,150)'>In Lobby</font>",
 	})
 
-	local goldLabel = leftSection:Label({
-		Text = "💰 <b>Cash:</b> <font color='rgb(85,255,120)'>$0</font>",
-	})
-
-	local healthLabel = leftSection:Label({
-		Text = "❤️ <b>Base HP:</b> <font color='rgb(255,100,100)'>100/100</font>",
-	})
-
-	local waveLabel = leftSection:Label({
-		Text = "🌊 <b>Wave:</b> <font color='rgb(100,200,255)'>0/0</font>",
+	local waveLabel = sessionSection:Label({
+		Text = "🌊 <b>Wave:</b> <font color='rgb(150,150,150)'>In Lobby</font>",
 	})
 
 	local function updateUi(data: GameStatsSnapshot__DARKLUA_TYPE_n)
 		if not zoneGuard.IsInGame() then
-			timeLabel:UpdateName("⏱️ <b>Timer:</b> <font color='rgb(150,150,150)'>In Lobby</font>")
-			goldLabel:UpdateName("💰 <b>Cash:</b> <font color='rgb(150,150,150)'>In Lobby</font>")
-			healthLabel:UpdateName("❤️ <b>Base HP:</b> <font color='rgb(150,150,150)'>In Lobby</font>")
 			waveLabel:UpdateName("🌊 <b>Wave:</b> <font color='rgb(150,150,150)'>In Lobby</font>")
 			return
 		end
 
-		local timeColor = data.IsMatchActive and "rgb(255,220,100)" or "rgb(150,220,255)"
-		timeLabel:UpdateName(string.format("⏱️ <b>Timer:</b> <font color='%s'>%s</font>", timeColor, data.ElapsedTimeFormatted))
-		goldLabel:UpdateName(string.format("💰 <b>Cash:</b> <font color='rgb(85,255,120)'>%s</font>", data.CashFormatted))
-		healthLabel:UpdateName(string.format("❤️ <b>Base HP:</b> <font color='rgb(255,100,100)'>%s</font>", data.BaseHealthFormatted))
 		waveLabel:UpdateName(string.format("🌊 <b>Wave:</b> <font color='rgb(100,200,255)'>Wave %s</font>", data.WaveFormatted))
 	end
 
 	local unsubscribe = gameStats.Subscribe(updateUi)
 	lifecycle.Register(unsubscribe)
+
+	local function updateRaidUi(data: RaidSnapshot__DARKLUA_TYPE_o)
+		if not zoneGuard.IsInGame() then
+			mapLabel:UpdateName("🗺️ <b>Map:</b> <font color='rgb(150,150,150)'>In Lobby</font>")
+			return
+		end
+
+		local curMap = data.CurrentMap or raidManager.GetCurrentMap()
+		local mapColor = curMap and "rgb(255,180,80)" or "rgb(150,150,150)"
+		mapLabel:UpdateName(string.format("🗺️ <b>Map:</b> <font color='%s'>%s</font>", mapColor, tostring(curMap or "Standard")))
+	end
+
+	local unsubRaid = raidManager.Subscribe(updateRaidUi)
+	lifecycle.Register(unsubRaid)
 
 	--// ====================================================================
 	--// CỘT TRÁI: Section 2 - Auto Summon (Lobby) & Visual Pity Tracker
@@ -39032,7 +41549,7 @@ return function(window, tab)
 		end),
 	}, "Toggle_AutoSummon")
 
-	local updateProfileUi: ((PlayerProfileData__DARKLUA_TYPE_t) -> ())? = nil
+	local updateProfileUi: ((PlayerProfileData__DARKLUA_TYPE_w) -> ())? = nil
 
 	summonSection:Dropdown({
 		Name = "Select Banner",
@@ -39137,6 +41654,212 @@ return function(window, tab)
 		end),
 	}, "Dropdown_GameSpeed")
 
+	rightSection:Toggle({
+		Name = "Auto Ready (Raid)",
+		Default = matchAutomation.AutoReadyEnabled,
+		Callback = autoSave.Wrap(function(state)
+			matchAutomation.SetAutoReady(state)
+		end),
+	}, "Toggle_AutoReadyRaid")
+
+	rightSection:Slider({
+		Name = "Ready Delay (s)",
+		Minimum = 0,
+		Maximum = 10,
+		Default = matchAutomation.GetAutoReadyDelay(),
+		Precision = 1,
+		DisplayMethod = "Value",
+		Callback = autoSave.Wrap(function(val)
+			matchAutomation.SetAutoReadyDelay(val)
+		end),
+	}, "Slider_AutoReadyDelay")
+
+	--// ====================================================================
+	--// CỘT PHẢI: Section 2 - Auto Claim Rewards (Contracts)
+	--// ====================================================================
+	local rewardsSection = tab:Section({ Side = "Right" })
+	rewardsSection:Header({ Name = "Auto Claim Rewards" })
+
+	rewardsSection:Toggle({
+		Name = "Auto Claim Contracts",
+		Default = autoContracts.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoContracts.SetEnabled(state)
+		end),
+	}, "Toggle_AutoContracts")
+
+	rewardsSection:Slider({
+		Name = "Check Interval (s)",
+		Minimum = 5,
+		Maximum = 60,
+		Default = autoContracts.GetInterval(),
+		Precision = 0,
+		DisplayMethod = "Round",
+		Callback = autoSave.Wrap(function(val)
+			autoContracts.SetInterval(val)
+		end),
+	}, "Slider_ContractsInterval")
+
+	rewardsSection:Button({
+		Name = "Claim Completed Contracts",
+		Callback = function()
+			local claimed, eligible = autoContracts.CheckAndClaim()
+			if claimed > 0 then
+				notifier.Notify("Contracts", string.format("Claimed %d completed contract(s)!", claimed), 2.5)
+			elseif eligible > 0 then
+				notifier.Notify("Contracts", "Could not claim completed contract(s).", 2.5)
+			else
+				notifier.Notify("Contracts", "No completed contracts to claim.", 2.5)
+			end
+		end,
+	})
+
+	rewardsSection:Header({ Name = "Active Contracts" })
+
+	local contract1Label = rewardsSection:Label({
+		Text = "1. <font color='rgb(150,150,150)'>Loading...</font>",
+	})
+
+	local contract2Label = rewardsSection:Label({
+		Text = "2. <font color='rgb(150,150,150)'>Loading...</font>",
+	})
+
+	local contract3Label = rewardsSection:Label({
+		Text = "3. <font color='rgb(150,150,150)'>Loading...</font>",
+	})
+
+	local function formatContractLine(index: number, item: ContractItem__DARKLUA_TYPE_y?): string
+		if not item then
+			return string.format("%d. <font color='rgb(150,150,150)'>None</font>", index)
+		end
+
+		if item.Claimed then
+			return string.format("%d. ✅ <font color='rgb(120,220,120)'>[%s] %s</font> <font color='rgb(160,160,160)'>(Claimed)</font>",
+				index, item.Kind, item.Tower)
+		elseif item.IsCompleted then
+			return string.format("%d. 🎁 <font color='rgb(255,220,100)'><b>[%s] %s</b></font> <font color='rgb(100,255,100)'>(Ready: %d/%d)</font>",
+				index, item.Kind, item.Tower, item.Progress, item.Need)
+		else
+			return string.format("%d. ⏳ <font color='rgb(220,220,220)'>[%s] %s</font> <font color='rgb(180,180,255)'>(%d/%d)</font>",
+				index, item.Kind, item.Tower, item.Progress, item.Need)
+		end
+	end
+
+	local function updateContractsUi(snapshot: ContractsSnapshot__DARKLUA_TYPE_z)
+		local c1 = snapshot.List[1]
+		local c2 = snapshot.List[2]
+		local c3 = snapshot.List[3]
+
+		contract1Label:UpdateName(formatContractLine(1, c1))
+		contract2Label:UpdateName(formatContractLine(2, c2))
+		contract3Label:UpdateName(formatContractLine(3, c3))
+	end
+
+	local unsubContracts = autoContracts.Subscribe(updateContractsUi)
+	lifecycle.Register(unsubContracts)
+
+	rewardsSection:Header({ Name = "Quests (Daily / Weekly)" })
+
+	rewardsSection:Toggle({
+		Name = "Auto Claim Quests",
+		Default = autoQuests.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoQuests.SetEnabled(state)
+		end),
+	}, "Toggle_AutoQuests")
+
+	rewardsSection:Button({
+		Name = "Claim Completed Quests",
+		Callback = function()
+			local claimed, eligible = autoQuests.CheckAndClaim()
+			if claimed > 0 then
+				notifier.Notify("Quests", string.format("Claimed %d completed quest(s)!", claimed), 2.5)
+			elseif eligible > 0 then
+				notifier.Notify("Quests", "Could not claim completed quest(s).", 2.5)
+			else
+				notifier.Notify("Quests", "No completed quests to claim.", 2.5)
+			end
+		end,
+	})
+
+	local dailyQuestLabel = rewardsSection:Label({
+		Text = "📅 <b>Daily:</b> <font color='rgb(150,150,150)'>0/4</font>",
+	})
+
+	local weeklyQuestLabel = rewardsSection:Label({
+		Text = "📆 <b>Weekly:</b> <font color='rgb(150,150,150)'>0/4</font>",
+	})
+
+	local function updateQuestsUi(snapshot: QuestsSnapshot__DARKLUA_TYPE_B)
+		local dailyColor = (snapshot.DailyClaimed >= snapshot.DailyTotal) and "rgb(120,255,140)" or "rgb(255,220,100)"
+		local dailyBonusText = snapshot.DailyBonusClaimed and " <font color='rgb(255,215,0)'>(Bonus Claimed)</font>" or ""
+		dailyQuestLabel:UpdateName(string.format("📅 <b>Daily:</b> <font color='%s'>%d/%d Claimed</font>%s",
+			dailyColor, snapshot.DailyClaimed, snapshot.DailyTotal, dailyBonusText))
+
+		local weeklyColor = (snapshot.WeeklyClaimed >= snapshot.WeeklyTotal) and "rgb(120,255,140)" or "rgb(255,220,100)"
+		local weeklyBonusText = snapshot.WeeklyBonusClaimed and " <font color='rgb(255,215,0)'>(Bonus Claimed)</font>" or ""
+		weeklyQuestLabel:UpdateName(string.format("📆 <b>Weekly:</b> <font color='%s'>%d/%d Claimed</font>%s",
+			weeklyColor, snapshot.WeeklyClaimed, snapshot.WeeklyTotal, weeklyBonusText))
+	end
+
+	local unsubQuests = autoQuests.Subscribe(updateQuestsUi)
+	lifecycle.Register(unsubQuests)
+
+	rewardsSection:Header({ Name = "Playtime Gifts (9 Boxes)" })
+
+	rewardsSection:Toggle({
+		Name = "Auto Claim Gifts",
+		Default = autoGifts.IsEnabled(),
+		Callback = autoSave.Wrap(function(state)
+			autoGifts.SetEnabled(state)
+		end),
+	}, "Toggle_AutoGifts")
+
+	rewardsSection:Button({
+		Name = "Claim Available Gifts",
+		Callback = function()
+			local claimed, eligible = autoGifts.CheckAndClaim()
+			if claimed > 0 then
+				notifier.Notify("Playtime Gifts", string.format("Claimed %d gift(s)!", claimed), 2.5)
+			elseif eligible > 0 then
+				notifier.Notify("Playtime Gifts", "Could not claim eligible gift(s).", 2.5)
+			else
+				notifier.Notify("Playtime Gifts", "No gifts ready to claim yet.", 2.5)
+			end
+		end,
+	})
+
+	local playtimeLabel = rewardsSection:Label({
+		Text = "⏳ <b>Playtime:</b> <font color='rgb(150,150,150)'>00:00</font>",
+	})
+
+	local giftsProgressLabel = rewardsSection:Label({
+		Text = "🎁 <b>Progress:</b> <font color='rgb(150,150,150)'>0/9 Claimed</font>",
+	})
+
+	local function updateGiftsUi(snapshot: GiftsSnapshot__DARKLUA_TYPE_E)
+		local nextText
+		if snapshot.ClaimedCount >= snapshot.TotalGifts then
+			nextText = "<font color='rgb(120,255,140)'>All Claimed!</font>"
+		elseif snapshot.ReadyCount > 0 then
+			nextText = string.format("<font color='rgb(100,255,100)'>%d Ready to claim!</font>", snapshot.ReadyCount)
+		elseif snapshot.NextGiftNumber and snapshot.NextGiftFormatted then
+			nextText = string.format("<font color='rgb(255,220,100)'>Next: Box #%d in %s</font>", snapshot.NextGiftNumber, snapshot.NextGiftFormatted)
+		else
+			nextText = "<font color='rgb(150,150,150)'>Waiting...</font>"
+		end
+
+		playtimeLabel:UpdateName(string.format("⏳ <b>Playtime:</b> <font color='rgb(200,200,255)'>%s</font> (%s)",
+			snapshot.FormattedPlaytime, nextText))
+
+		local progressColor = (snapshot.ClaimedCount >= snapshot.TotalGifts) and "rgb(120,255,140)" or "rgb(255,220,100)"
+		giftsProgressLabel:UpdateName(string.format("🎁 <b>Progress:</b> <font color='%s'>%d/%d Claimed</font>",
+			progressColor, snapshot.ClaimedCount, snapshot.TotalGifts))
+	end
+
+	local unsubGifts = autoGifts.Subscribe(updateGiftsUi)
+	lifecycle.Register(unsubGifts)
+
 	summonSection:Button({
 		Name = "Refresh Pity",
 		Callback = function()
@@ -39152,7 +41875,7 @@ return function(window, tab)
 	--// ====================================================================
 	--// Real-time Pity Counter sync
 	--// ====================================================================
-	updateProfileUi = function(data: PlayerProfileData__DARKLUA_TYPE_t)
+	updateProfileUi = function(data: PlayerProfileData__DARKLUA_TYPE_w)
 		if not data.Loaded then return end
 
 		local currentBanner = autoSummon.GetBanner()
@@ -39169,7 +41892,7 @@ return function(window, tab)
 	local unsubscribeProfile = playerProfile.Subscribe(updateProfileUi)
 	lifecycle.Register(unsubscribeProfile)
 end
-end function __DIST.aQ()-- ElevatorJoiner: Tự động tìm thang máy (Raid: 1-4, Normal: 5-8), dịch chuyển ra trước cửa và bước vào bấm Start.
+end function __DIST.aV()-- ElevatorJoiner: Tự động tìm thang máy (Raid: 1-4, Normal: 5-8), dịch chuyển ra trước cửa và bước vào bấm Start.
 
 
 local Players = game:GetService("Players")
@@ -39522,7 +42245,7 @@ lifecycle.Register(function()
 end)
 
 return elevatorJoiner
-end function __DIST.aR()-- SlopMutator: Tự động bình chọn Slop Mutator theo độ ưu tiên (Priority Sliders)
+end function __DIST.aW()-- SlopMutator: Tự động bình chọn Slop Mutator theo độ ưu tiên (Priority Sliders)
 
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -39556,7 +42279,7 @@ local slopMutator = {
 		{ Id = "Regeneration", Name = "Regeneration", DefaultPriority = 30, Description = "Enemies regenerate 2% HP per second" },
 		{ Id = "BossRush", Name = "Boss Rush", DefaultPriority = 20, Description = "Boss x2 HP, normal enemies +25% HP" },
 		{ Id = "TinySlop", Name = "Tiny Slop", DefaultPriority = 10, Description = "Tiny enemies, +20% run speed" },
-	} :: { MutatorInfo__DARKLUA_TYPE_v },
+	} :: { MutatorInfo__DARKLUA_TYPE_F },
 
 	Priorities = {
 		None = 100,
@@ -39806,12 +42529,12 @@ lifecycle.Register(function()
 end)
 
 return slopMutator
-end function __DIST.aS()-- Tab Game: Auto Joiner, Auto Pick Map, Auto Difficult, Auto Slop Mutator
+end function __DIST.aX()-- Tab Game: Auto Joiner, Auto Pick Map, Auto Difficult, Auto Slop Mutator
 
 
-local elevatorJoiner = __DIST.load('aQ')
-local matchSetup = __DIST.load('aJ')
-local slopMutator = __DIST.load('aR')
+local elevatorJoiner = __DIST.load('aV')
+local matchSetup = __DIST.load('aL')
+local slopMutator = __DIST.load('aW')
 local autoSave = __DIST.load('aA')
 
 return function(window, tab)
@@ -40072,12 +42795,13 @@ return function(window, tab)
 		}, "Slider_Mutator_" .. item.Id)
 	end
 end
-end function __DIST.aT()-- Recorder: Ghi lại các thao tác SpawnTower và SellTower của người chơi khi bật Record.
+end function __DIST.aY()-- Recorder: Ghi lại các thao tác SpawnTower và SellTower của người chơi khi bật Record.
 
-local types = __DIST.load('aH')
-local storage = __DIST.load('aI')
+local types = __DIST.load('aI')
+local storage = __DIST.load('aJ')
 local gameStats = __DIST.load('aG')
 local zoneGuard = __DIST.load('aF')
+local raidManager = __DIST.load('aH')
 local notifier = __DIST.load('az')
 local lifecycle = __DIST.load('ay')
 local logger = __DIST.load('aB')
@@ -40091,9 +42815,10 @@ recorder.InitialSpeed = 1
 
 local isRecording = false
 local activeMacroName: string? = nil
-local recordedSteps: { MacroStep__DARKLUA_TYPE_p} = {}
+local recordedSteps: { MacroStep__DARKLUA_TYPE_q} = {}
 local towerIndexCounter = 0
-local lastRecordedStage = 1
+local recordingStartedAtWave = 0
+local recordingStartedDuringIntermission = false
 
 -- Bảng tra cứu định danh tháp giữa Instance và TowerId ("T1", "T2")
 local instanceToId: { [Instance]: string } = {}
@@ -40124,6 +42849,117 @@ local function getRemotes()
 		end
 	end
 	return spawnRemote, sellRemote, upgradeRemote, changeModeRemote, changeSpeedRemote, voteSkipRemote
+end
+
+-- Kiểm tra xem Model tháp có thuộc quyền sở hữu của LocalPlayer không (ManagerHandler: IsOwnTower)
+local function isOwnTower(a1: Instance?): boolean
+	if typeof(a1) ~= "Instance" then return false end
+	local model: Model? = (a1:IsA("Model") and a1) or a1:FindFirstAncestorOfClass("Model")
+	if not model then return false end
+
+	-- 1. Đã ghi nhận trong bảng tracking của Recorder
+	if instanceToId[model] then
+		return true
+	end
+
+	-- 2. Kiểm tra theo logic chuẩn của game (ManagerHandler: IsOwnTower)
+	local config = model:FindFirstChild("Config")
+	if config then
+		local owner = config:FindFirstChild("Owner")
+		if owner and (owner:IsA("StringValue") or owner:IsA("ValueBase")) then
+			local localPlayer = Players.LocalPlayer
+			local localName = localPlayer and localPlayer.Name
+			if localName and owner.Value == localName then
+				return true
+			elseif owner.Value ~= "" and owner.Value ~= localName then
+				return false
+			end
+		end
+	end
+
+	-- 3. Fallback: Nếu nằm trong workspace.Towers và không có Owner của người khác
+	local towersFolder = workspace:FindFirstChild("Towers")
+	if towersFolder and model.Parent == towersFolder then
+		return true
+	end
+
+	return false
+end
+
+-- Tham chiếu Module ReplicatedStorage.LVLs để tra cứu giá nâng cấp chuẩn xác 100%
+local lvlsModule: any = nil
+
+local function getLVLs(): any
+	if not lvlsModule then
+		pcall(function()
+			local mod = ReplicatedStorage:FindFirstChild("LVLs")
+			if mod and mod:IsA("ModuleScript") then
+				lvlsModule = require(mod)
+			end
+		end)
+	end
+	return lvlsModule
+end
+
+-- Lấy cấp độ hiện tại của tháp từ model.Config.LVL.Value (mặc định 0 khi vừa đặt)
+local function getTowerLevel(towerInst: Instance?): number
+	if not towerInst or typeof(towerInst) ~= "Instance" then return 0 end
+	local model: Model? = (towerInst:IsA("Model") and towerInst) or towerInst:FindFirstAncestorOfClass("Model")
+	if not model then return 0 end
+	local config = model:FindFirstChild("Config")
+	local lvlObj = config and config:FindFirstChild("LVL")
+	if lvlObj and lvlObj:IsA("ValueBase") then
+		return tonumber(lvlObj.Value) or 0
+	end
+	return 0
+end
+
+-- Lấy cấp độ tối đa của loại tháp từ ReplicatedStorage.LVLs
+local function getTowerMaxLevel(towerName: string): number
+	if not towerName or towerName == "" then return 0 end
+	local lvls = getLVLs()
+	if lvls and type(lvls) == "table" then
+		local data = lvls[towerName]
+		if not data then
+			local nameLower = towerName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+			for k, v in pairs(lvls) do
+				if type(k) == "string" and k:lower() == nameLower then
+					data = v
+					break
+				end
+			end
+		end
+		if data and type(data) == "table" then
+			return #data
+		end
+	end
+	return 0
+end
+
+-- Tra cứu giá nâng cấp chuẩn xác tuyệt đối từ ReplicatedStorage.LVLs theo cấp độ mục tiêu
+local function getUpgradePriceFromLVLs(towerName: string, targetLevel: number): number?
+	if not towerName or towerName == "" or targetLevel <= 0 then return nil end
+	local lvls = getLVLs()
+	if not lvls or type(lvls) ~= "table" then return nil end
+
+	local data = lvls[towerName]
+	if not data then
+		local nameLower = towerName:lower():gsub("^%s+", ""):gsub("%s+$", "")
+		for k, v in pairs(lvls) do
+			if type(k) == "string" and k:lower() == nameLower then
+				data = v
+				break
+			end
+		end
+	end
+
+	if data and type(data) == "table" then
+		local entry = data[targetLevel]
+		if entry and type(entry) == "table" and type(entry.Price) == "number" and entry.Price > 0 then
+			return entry.Price
+		end
+	end
+	return nil
 end
 
 -- Tham chiếu Modules.TowersConfig để tra cứu giá đặt tháp chuẩn xác
@@ -40324,17 +43160,20 @@ local function getUpgradePriceFromUnitManager(targetLayoutOrder: number?, towerN
 	return nil
 end
 
--- Lấy giá Upgrade từ UnitManager trước khi gọi Remote cho một tower instance
+-- Lấy giá Upgrade từ ReplicatedStorage.LVLs hoặc UnitManager trước khi gọi Remote cho một tower instance
 local function getUpgradePriceForTowerInstance(towerInstance: any): number?
 	if typeof(towerInstance) ~= "Instance" then return nil end
-	local matchedId = instanceToId[towerInstance]
-	local towerName = towerInstance.Name
+	local model: Model? = (towerInstance:IsA("Model") and towerInstance) or towerInstance:FindFirstAncestorOfClass("Model")
+	if not model then return nil end
+
+	local matchedId = instanceToId[model]
+	local towerName = model.Name
 
 	if not matchedId then
 		local targetPos: Vector3? = nil
-		pcall(function() targetPos = towerInstance:GetPivot().Position end)
-		if not targetPos and towerInstance:IsA("Model") and towerInstance.PrimaryPart then
-			targetPos = towerInstance.PrimaryPart.Position
+		pcall(function() targetPos = model:GetPivot().Position end)
+		if not targetPos and model.PrimaryPart then
+			targetPos = model.PrimaryPart.Position
 		end
 		if targetPos then
 			local bestDist = 5.0
@@ -40350,12 +43189,33 @@ local function getUpgradePriceForTowerInstance(towerInstance: any): number?
 		end
 	end
 
+	local curLvl = getTowerLevel(model)
+	local nextLvl = curLvl + 1
+
+	-- 1. Ưu tiên hàng đầu: Tra cứu chính xác từ ReplicatedStorage.LVLs
+	local lvlsPrice = getUpgradePriceFromLVLs(towerName, nextLvl)
+	if lvlsPrice and lvlsPrice > 0 then
+		return lvlsPrice
+	end
+
+	-- 2. Tra cứu từ UnitManager UI theo LayoutOrder hoặc tên tháp
 	local targetLayoutOrder: number? = nil
 	if matchedId then
 		targetLayoutOrder = table.find(activeTowers, matchedId)
 	end
 
-	return getUpgradePriceFromUnitManager(targetLayoutOrder, towerName)
+	local uiPrice = getUpgradePriceFromUnitManager(targetLayoutOrder, towerName)
+	if uiPrice and uiPrice > 0 then
+		return uiPrice
+	end
+
+	-- 3. Tra cứu từ Modules.TowersConfig
+	local cfgPrice = getUpgradePrice(towerName, nextLvl)
+	if cfgPrice and cfgPrice > 0 then
+		return cfgPrice
+	end
+
+	return nil
 end
 
 -- Lấy tốc độ trận đấu hiện tại từ GameGui.SpeedUp.Message (định dạng ": x1", ": x2", ...)
@@ -40410,6 +43270,20 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHoriz
 		local function checkCandidate(child: Instance)
 			if not child:IsA("Model") or child.Parent == nil then return end
 
+			-- Bỏ qua tháp của người chơi khác nếu đã có Owner
+			local cfg = child:FindFirstChild("Config")
+			local owner = cfg and cfg:FindFirstChild("Owner")
+			local isOwnedByMe = false
+			if owner and (owner:IsA("StringValue") or owner:IsA("ValueBase")) then
+				local localPlayer = Players.LocalPlayer
+				local localName = localPlayer and localPlayer.Name
+				if localName and owner.Value ~= "" and owner.Value ~= localName then
+					return
+				elseif localName and owner.Value == localName then
+					isOwnedByMe = true
+				end
+			end
+
 			local pos: Vector3? = nil
 			if child.PrimaryPart then
 				pos = child.PrimaryPart.Position
@@ -40438,6 +43312,11 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHoriz
 					matchScore = (xzDist <= 2.5) and 40 or 10
 				end
 
+				-- Ưu tiên cao hơn nếu tháp đã xác nhận quyền sở hữu của LocalPlayer
+				if isOwnedByMe then
+					matchScore += 25
+				end
+
 				if matchScore > bestMatchScore or (matchScore == bestMatchScore and xzDist < bestDist) then
 					bestMatchScore = matchScore
 					bestDist = xzDist
@@ -40462,7 +43341,7 @@ local function findTowerNearPosition(name: string?, targetPos: Vector3, maxHoriz
 end
 
 -- Thêm 1 bước hành động vào danh sách ghi nhận
-function recorder.AddStep(actionType: ActionType__DARKLUA_TYPE_o, details: { [string]: any })
+function recorder.AddStep(actionType: ActionType__DARKLUA_TYPE_p, details: { [string]: any })
 	if not isRecording then return end
 
 	local wave, _ = gameStats.GetWave()
@@ -40471,12 +43350,12 @@ function recorder.AddStep(actionType: ActionType__DARKLUA_TYPE_o, details: { [st
 
 	local stepIndex = #recordedSteps + 1
 	local currentSpeed = getCurrentGameSpeed()
-	local step: MacroStep__DARKLUA_TYPE_p= {
+	local step: MacroStep__DARKLUA_TYPE_q= {
 		Index = stepIndex,
 		Type = actionType,
 		TowerId = details.TowerId or ("T" .. tostring(stepIndex)),
 		TowerName = details.TowerName or "Unknown",
-		Stage = details.Stage or lastRecordedStage,
+		Level = details.Level,
 		Speed = details.Speed,
 		RecordSpeed = currentSpeed,
 		CFrame = details.CFrame,
@@ -40500,40 +43379,15 @@ function recorder.AddStep(actionType: ActionType__DARKLUA_TYPE_o, details: { [st
 	elseif actionType == "Sell" then
 		notifier.Notify("Macro Record", string.format("Recorded Sell: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 	elseif actionType == "Upgrade" then
-		notifier.Notify("Macro Record", string.format("Recorded Upgrade: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
+		local lvlStr = (step.Level ~= nil) and string.format(" -> LVL %d", step.Level) or ""
+		local costVal = step.Cost or step.TowerCost
+		local costStr = (costVal and costVal > 0) and string.format(" ($%s)", tostring(costVal):reverse():gsub("(%d%d%d)", "%1,"):reverse():gsub("^,", "")) or ""
+		notifier.Notify("Macro Record", string.format("Recorded Upgrade: %s (%s)%s%s [%.2fs]", step.TowerName, step.TowerId, lvlStr, costStr, step.Time), 1.5)
 	elseif actionType == "Target" then
 		notifier.Notify("Macro Record", string.format("Recorded Target: %s (%s) [%.2fs]", step.TowerName, step.TowerId, step.Time), 1.5)
 	elseif actionType == "VoteSkip" then
 		notifier.Notify("Macro Record", string.format("Recorded VoteSkip [%.2fs]", step.Time), 1.5)
-	elseif actionType == "StageTransition" then
-		notifier.Notify("Macro Record", string.format("Recorded Stage Transition: Raid %s [W%d - %.2fs]", tostring(step.Stage or 2), step.Wave, step.Time), 2.5)
 	end
-end
-
--- Ghi nhận chuyển sang giai đoạn Raid mới (Raid Stage) và dọn sạch bộ nhớ tháp cũ
-function recorder.MarkStageTransition(customStage: number?): boolean
-	if not isRecording then return false end
-	local curWave, _ = gameStats.GetWave()
-	local stageNum = customStage or (lastRecordedStage + 1)
-	lastRecordedStage = stageNum
-
-	recorder.AddStep("StageTransition", {
-		Stage = stageNum,
-		Wave = curWave,
-		TowerId = "STAGE",
-		TowerName = string.format("Raid Stage %d", stageNum),
-		Cost = 0,
-	})
-
-	table.clear(activeTowers)
-	table.clear(idToInstance)
-	table.clear(instanceToId)
-	table.clear(idToInfo)
-	towerIndexCounter = 0
-
-	logger.Log(string.format("[Recorder] Ghi nhận chuyển sang Raid Stage %d (Wave %d)!", stageNum, curWave))
-	notifier.Notify("Macro Record", string.format("🌀 Recorded transition to Raid Stage %d (Wave %d)!", stageNum, curWave), 3)
-	return true
 end
 
 -- Xử lý ghi nhận SpawnTower khi Remote được gọi
@@ -40585,14 +43439,27 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 			return
 		end
 
-		-- Tự động đánh dấu chuyển Raid Stage nếu người chơi đặt tháp ở Map mới mà watcher chưa kịp ghi nhận
+		-- Kiểm tra xem Model có thuộc về người chơi khác không nếu model đã xuất hiện
+		if spawnedModel then
+			local cfg = spawnedModel:FindFirstChild("Config")
+			local owner = cfg and cfg:FindFirstChild("Owner")
+			if owner and (owner:IsA("StringValue") or owner:IsA("ValueBase")) then
+				local localPlayer = Players.LocalPlayer
+				local localName = localPlayer and localPlayer.Name
+				if localName and owner.Value ~= "" and owner.Value ~= localName then
+					return
+				end
+			end
+		end
+
+		-- Tự động dừng Record và lưu Macro nếu người chơi đặt tháp ở Map mới mà watcher chưa kịp dừng
 		local curWave, _ = gameStats.GetWave()
-		if curWave >= 76 and lastRecordedStage < 4 then
-			recorder.MarkStageTransition(4)
-		elseif curWave >= 51 and lastRecordedStage < 3 then
-			recorder.MarkStageTransition(3)
-		elseif curWave >= 26 and lastRecordedStage < 2 then
-			recorder.MarkStageTransition(2)
+		if recordingStartedAtWave > 0 and curWave >= (recordingStartedAtWave + 25) then
+			logger.Log(string.format("[Recorder] Map cũ đã hoàn thành (Wave %d) -> Tự động dừng và lưu Macro!", curWave))
+			task.spawn(function()
+				recorder.StopRecording("MapCompleted")
+			end)
+			return
 		end
 
 		towerIndexCounter += 1
@@ -40611,13 +43478,32 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 			idToInstance[towerId] = spawnedModel
 		end
 
+		-- Trích xuất Attribute ID từ Model tháp
+		local towerAttrId: string? = nil
+		if spawnedModel then
+			pcall(function()
+				towerAttrId = spawnedModel:GetAttribute("ID")
+			end)
+		end
+
 		local configPrice = getPlacePrice(towerName)
 		local exactTowerCost = configPrice or (cashDeducted and (initialCash - curCash) or nil)
+
+		-- Tra cứu giá đặt từ Config.Price nếu model đã khởi tạo giá trị
+		if not exactTowerCost and spawnedModel then
+			local cfg = spawnedModel:FindFirstChild("Config")
+			local prc = cfg and cfg:FindFirstChild("Price")
+			if prc and (prc:IsA("IntValue") or prc:IsA("NumberValue")) and prc.Value > 0 then
+				exactTowerCost = prc.Value
+			end
+		end
+
 		local stepIndex = #recordedSteps + 1
 
 		recorder.AddStep("Place", {
 			TowerId = towerId,
 			TowerName = towerName,
+			Level = 0,
 			LayoutOrder = #activeTowers,
 			CFrame = cfComponents,
 			Position = posTable,
@@ -40632,11 +43518,12 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 				Arg3 = args[3],
 				Arg4 = args[4],
 				Arg5 = args[5],
+				AttributeID = towerAttrId,
 			},
 		})
 
-		-- Theo dõi thêm biến động tiền và liên kết Model nếu lúc đặt chưa kịp lấy
-		if pos and (not exactTowerCost or not idToInstance[towerId]) then
+		-- Theo dõi thêm biến động tiền, liên kết Model và AttributeID nếu lúc đặt chưa kịp lấy
+		if pos and (not exactTowerCost or not idToInstance[towerId] or not towerAttrId) then
 			task.spawn(function()
 				for _ = 1, 15 do
 					task.wait(0.2)
@@ -40657,13 +43544,23 @@ local function handleSpawnTower(args: { any }, returnedModel: any)
 
 					if not idToInstance[towerId] then
 						local model = findTowerNearPosition(towerName, pos, 4.0, arg4)
-						if model then
+						if model and isOwnTower(model) then
 							instanceToId[model] = towerId
 							idToInstance[towerId] = model
 						end
 					end
 
-					if recordedSteps[stepIndex] and recordedSteps[stepIndex].TowerCost and idToInstance[towerId] then
+					local curModel = idToInstance[towerId]
+					if curModel and not towerAttrId then
+						pcall(function()
+							towerAttrId = curModel:GetAttribute("ID")
+						end)
+						if towerAttrId and recordedSteps[stepIndex] and recordedSteps[stepIndex].RawData then
+							recordedSteps[stepIndex].RawData.AttributeID = towerAttrId
+						end
+					end
+
+					if recordedSteps[stepIndex] and recordedSteps[stepIndex].TowerCost and idToInstance[towerId] and towerAttrId then
 						break
 					end
 				end
@@ -40679,8 +43576,16 @@ end
 -- Xử lý ghi nhận SellTower khi Remote được gọi
 local function handleSellTower(args: { any }, returnedResult: any)
 	local ok, err = pcall(function()
-		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
+		local rawInst = args[1]
+		if typeof(rawInst) ~= "Instance" then return end
+		local towerInstance: Model? = (rawInst:IsA("Model") and rawInst) or rawInst:FindFirstAncestorOfClass("Model")
 		if not towerInstance then return end
+
+		-- Lọc tháp: Chỉ ghi nhận bán tháp của chính người chơi
+		if not isOwnTower(towerInstance) then
+			logger.Log(string.format("[Recorder] Bỏ qua SellTower cho '%s' vì không phải tháp của người chơi.", towerInstance.Name))
+			return
+		end
 
 		local initialCash = gameStats.GetCash()
 
@@ -40720,7 +43625,7 @@ local function handleSellTower(args: { any }, returnedResult: any)
 			pcall(function()
 				targetPos = towerInstance:GetPivot().Position
 			end)
-			if not targetPos and towerInstance:IsA("Model") and towerInstance.PrimaryPart then
+			if not targetPos and towerInstance.PrimaryPart then
 				targetPos = towerInstance.PrimaryPart.Position
 			end
 
@@ -40755,13 +43660,20 @@ local function handleSellTower(args: { any }, returnedResult: any)
 			currentLayoutOrder = table.find(activeTowers, matchedId)
 		end
 
+		-- Lấy Attribute ID của tháp
+		local towerAttrId: string? = nil
+		pcall(function()
+			towerAttrId = towerInstance:GetAttribute("ID")
+		end)
+
 		recorder.AddStep("Sell", {
 			TowerId = matchedId,
 			TowerName = towerName,
 			LayoutOrder = currentLayoutOrder,
 			Position = posTable,
 			RawData = {
-				InstanceName = towerInstance and towerInstance.Name,
+				InstanceName = towerInstance.Name,
+				AttributeID = towerAttrId,
 			},
 		})
 
@@ -40784,30 +43696,58 @@ local function handleSellTower(args: { any }, returnedResult: any)
 end
 
 -- Xử lý ghi nhận UpgradeTower khi Remote được gọi
-local function handleUpgradeTower(args: { any }, returnedModel: any, preUpgPrice: number?)
+local function handleUpgradeTower(args: { any }, returnedModel: any, preUpgPrice: number?, preRecordedLvl: number?)
 	local ok, err = pcall(function()
-		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
-		local variantName = type(args[2]) == "string" and args[2] or nil
+		local rawInst = args[1]
+		if typeof(rawInst) ~= "Instance" then return end
+		local towerInstance: Model? = (rawInst:IsA("Model") and rawInst) or rawInst:FindFirstAncestorOfClass("Model")
+		if not towerInstance then return end
+
+		-- 1. Lọc tháp: Chỉ ghi nhận tháp của chính người chơi, bỏ qua tháp của đồng đội
+		if not isOwnTower(towerInstance) then
+			logger.Log(string.format("[Recorder] Bỏ qua Upgrade cho '%s' vì không phải tháp của người chơi.", towerInstance.Name))
+			return
+		end
+
+		local towerName = towerInstance.Name
+		local initialLvl = preRecordedLvl or getTowerLevel(towerInstance)
+		local maxLvl = getTowerMaxLevel(towerName)
+		if maxLvl > 0 and initialLvl >= maxLvl then
+			-- Tháp đã đạt Max level, không thể nâng cấp tiếp -> Bỏ qua
+			return
+		end
+
 		local initialCash = gameStats.GetCash()
 
-		-- Xác thực thành công:
-		-- 1. Server trả về Instance Model mới hoặc true
-		-- 2. Hoặc tiền bị trừ trong cửa sổ chờ 0.4s
+		-- 2. Xác thực thành công 100% dựa trên game internals:
+		-- - Server trả về Model Instance hoặc true
+		-- - Hoặc Config.LVL.Value tăng lên (replicate từ server)
+		-- - Hoặc tiền bị trừ trong cửa sổ chờ 0.4s
 		local isSuccess = false
 		local updatedModel: Instance? = nil
 
 		if typeof(returnedModel) == "Instance" then
 			isSuccess = true
-			updatedModel = (returnedModel:IsA("Model") and returnedModel or returnedModel:FindFirstAncestorOfClass("Model")) :: Instance?
+			updatedModel = (returnedModel:IsA("Model") and returnedModel) or returnedModel:FindFirstAncestorOfClass("Model")
 		elseif returnedModel == true then
 			isSuccess = true
 		end
 
+		local currentLvl = getTowerLevel(towerInstance)
+		if currentLvl > initialLvl then
+			isSuccess = true
+		end
+
 		if not isSuccess then
-			-- Thử kiểm tra biến động tiền nếu server trả về nil/replicate trễ
-			for _ = 1, 4 do
-				task.wait(0.1)
+			-- Đợi tối đa 0.4s để kiểm tra Level tăng hoặc Tiền giảm
+			for _ = 1, 8 do
+				task.wait(0.05)
 				if not isRecording then return end
+				currentLvl = getTowerLevel(towerInstance)
+				if currentLvl > initialLvl then
+					isSuccess = true
+					break
+				end
 				if gameStats.GetCash() < initialCash then
 					isSuccess = true
 					break
@@ -40816,37 +43756,37 @@ local function handleUpgradeTower(args: { any }, returnedModel: any, preUpgPrice
 		end
 
 		if not isSuccess then
-			-- Nâng cấp thất bại (không đủ tiền, max level...), bỏ qua không ghi nhận!
+			-- Thao tác nâng cấp không thành công (thiếu tiền, spam click, server từ chối) -> Bỏ qua
 			return
 		end
 
+		-- 3. Xác định Model mới (nếu có) và Level mới
+		currentLvl = getTowerLevel(towerInstance)
+		local newLvl = math.max(currentLvl, initialLvl + 1)
+
+		-- 4. Tìm ID và vị trí của tháp
 		local matchedId: string? = nil
-		local towerName = "Unknown"
 		local targetPos: Vector3? = nil
 
-		if towerInstance then
-			towerName = towerInstance.Name
-			if instanceToId[towerInstance] then
-				matchedId = instanceToId[towerInstance]
-			else
-				-- Thử tìm theo khoảng cách gần nhất với các tháp đã lưu
-				pcall(function()
-					targetPos = towerInstance:GetPivot().Position
-				end)
-				if not targetPos and towerInstance:IsA("Model") and towerInstance.PrimaryPart then
-					targetPos = towerInstance.PrimaryPart.Position
-				end
+		if instanceToId[towerInstance] then
+			matchedId = instanceToId[towerInstance]
+		else
+			pcall(function()
+				targetPos = towerInstance:GetPivot().Position
+			end)
+			if not targetPos and towerInstance.PrimaryPart then
+				targetPos = towerInstance.PrimaryPart.Position
+			end
 
-				if targetPos then
-					local bestDist = 5.0
-					for id, info in pairs(idToInfo) do
-						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
-						local yDist = math.abs(info.Position.Y - targetPos.Y)
-						if xzDist < bestDist and yDist <= 12.0 then
-							bestDist = xzDist
-							matchedId = id
-							towerName = info.TowerName
-						end
+			if targetPos then
+				local bestDist = 5.0
+				for id, info in pairs(idToInfo) do
+					local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+					local yDist = math.abs(info.Position.Y - targetPos.Y)
+					if xzDist < bestDist and yDist <= 12.0 then
+						bestDist = xzDist
+						matchedId = id
+						towerName = info.TowerName
 					end
 				end
 			end
@@ -40856,7 +43796,7 @@ local function handleUpgradeTower(args: { any }, returnedModel: any, preUpgPrice
 			matchedId = "T_Upgraded_" .. tostring(#recordedSteps + 1)
 		end
 
-		-- Nếu server trả về Model mới của tháp sau nâng cấp, cập nhật ngay mapping
+		-- Nếu server trả về Model mới của tháp sau nâng cấp, cập nhật mapping
 		if updatedModel and matchedId then
 			instanceToId[updatedModel] = matchedId
 			idToInstance[matchedId] = updatedModel
@@ -40870,31 +43810,43 @@ local function handleUpgradeTower(args: { any }, returnedModel: any, preUpgPrice
 			posTable = { targetPos.X, targetPos.Y, targetPos.Z }
 		end
 
-		local curCash = gameStats.GetCash()
-		local exactCost = preUpgPrice
-
 		local targetLayoutOrder: number? = nil
 		if matchedId then
 			targetLayoutOrder = table.find(activeTowers, matchedId)
 		end
 
-		-- 1. Nếu chưa có giá từ trước khi bấm remote, tra cứu từ giao diện UnitManager theo LayoutOrder đã mô phỏng
+		-- 5. Lấy Attribute ID của tháp (rất quan trọng cho server remote)
+		local towerAttrId: string? = nil
+		pcall(function()
+			towerAttrId = towerInstance:GetAttribute("ID")
+		end)
+		if not towerAttrId and type(args[2]) == "string" then
+			towerAttrId = args[2]
+		end
+
+		-- 6. Tính toán chi phí chính xác tuyệt đối
+		local exactCost: number? = nil
+
+		-- Ưu tiên 1: Tra cứu trực tiếp từ ReplicatedStorage.LVLs[towerName][newLvl].Price
+		exactCost = getUpgradePriceFromLVLs(towerName, newLvl)
+
+		-- Ưu tiên 2: Giá đã lưu trước khi gọi remote (preUpgPrice)
+		if not exactCost or exactCost <= 0 then
+			exactCost = preUpgPrice
+		end
+
+		-- Ưu tiên 3: Đọc trực tiếp từ UnitManager UI theo thẻ
 		if not exactCost or exactCost <= 0 then
 			exactCost = getUpgradePriceFromUnitManager(targetLayoutOrder, towerName)
 		end
 
-		-- 2. Tra cứu từ TowersConfig nếu chưa có từ UI
+		-- Ưu tiên 4: Tra cứu từ TowersConfig
 		if not exactCost or exactCost <= 0 then
-			local upgIdx = 1
-			for _, st in ipairs(recordedSteps) do
-				if st.Type == "Upgrade" and st.TowerId == matchedId then
-					upgIdx += 1
-				end
-			end
-			exactCost = getUpgradePrice(towerName, upgIdx)
+			exactCost = getUpgradePrice(towerName, newLvl)
 		end
 
-		-- 3. Nếu vẫn chưa có, tính qua biến động ví tiền và làm tròn theo mốc chuẩn (snapToCleanPrice)
+		-- Ưu tiên 5: Chênh lệch ví tiền với snapToCleanPrice
+		local curCash = gameStats.GetCash()
 		if not exactCost or exactCost <= 0 then
 			if curCash < initialCash then
 				local diff = initialCash - curCash
@@ -40907,18 +43859,22 @@ local function handleUpgradeTower(args: { any }, returnedModel: any, preUpgPrice
 		recorder.AddStep("Upgrade", {
 			TowerId = matchedId,
 			TowerName = towerName,
+			Level = newLvl,
 			LayoutOrder = targetLayoutOrder,
-			Arg4 = variantName,
+			Arg4 = towerAttrId or (type(args[2]) == "string" and args[2] or nil),
 			Position = posTable,
 			Cost = exactCost,
 			TowerCost = exactCost,
 			RawData = {
-				InstanceName = towerInstance and towerInstance.Name,
-				Variant = variantName,
+				InstanceName = towerInstance.Name,
+				AttributeID = towerAttrId,
+				TargetLevel = newLvl,
+				InitialLevel = initialLvl,
+				Arg2 = args[2],
 			},
 		})
 
-		-- Theo dõi thêm để ghi nhận chính xác chi phí nâng cấp nếu chưa có
+		-- Dự phòng: Nếu lúc này vẫn chưa chốt được giá, tiếp tục quan sát ví tiền thêm 1.5s
 		if not exactCost then
 			task.spawn(function()
 				for _ = 1, 10 do
@@ -40967,34 +43923,40 @@ end
 local function handleChangeTowerMode(args: { any }, returnedResult: any)
 	local ok, err = pcall(function()
 		if returnedResult == false then return end
-		local towerInstance = typeof(args[1]) == "Instance" and args[1] or nil
+		local rawInst = args[1]
+		if typeof(rawInst) ~= "Instance" then return end
+		local towerInstance: Model? = (rawInst:IsA("Model") and rawInst) or rawInst:FindFirstAncestorOfClass("Model")
+		if not towerInstance then return end
+
+		-- Lọc tháp: Chỉ ghi nhận đổi chế độ tháp của chính người chơi
+		if not isOwnTower(towerInstance) then
+			return
+		end
+
 		local matchedId: string? = nil
-		local towerName = "Unknown"
+		local towerName = towerInstance.Name
 		local targetPos: Vector3? = nil
 
-		if towerInstance then
-			towerName = towerInstance.Name
-			if instanceToId[towerInstance] then
-				matchedId = instanceToId[towerInstance]
-			else
-				-- Thử tìm theo khoảng cách gần nhất với các tháp đã lưu
-				pcall(function()
-					targetPos = towerInstance:GetPivot().Position
-				end)
-				if not targetPos and towerInstance:IsA("Model") and towerInstance.PrimaryPart then
-					targetPos = towerInstance.PrimaryPart.Position
-				end
+		if instanceToId[towerInstance] then
+			matchedId = instanceToId[towerInstance]
+		else
+			-- Thử tìm theo khoảng cách gần nhất với các tháp đã lưu
+			pcall(function()
+				targetPos = towerInstance:GetPivot().Position
+			end)
+			if not targetPos and towerInstance.PrimaryPart then
+				targetPos = towerInstance.PrimaryPart.Position
+			end
 
-				if targetPos then
-					local bestDist = 5.0
-					for id, info in pairs(idToInfo) do
-						local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
-						local yDist = math.abs(info.Position.Y - targetPos.Y)
-						if xzDist < bestDist and yDist <= 12.0 then
-							bestDist = xzDist
-							matchedId = id
-							towerName = info.TowerName
-						end
+			if targetPos then
+				local bestDist = 5.0
+				for id, info in pairs(idToInfo) do
+					local xzDist = math.sqrt((info.Position.X - targetPos.X)^2 + (info.Position.Z - targetPos.Z)^2)
+					local yDist = math.abs(info.Position.Y - targetPos.Y)
+					if xzDist < bestDist and yDist <= 12.0 then
+						bestDist = xzDist
+						matchedId = id
+						towerName = info.TowerName
 					end
 				end
 			end
@@ -41014,13 +43976,16 @@ local function handleChangeTowerMode(args: { any }, returnedResult: any)
 
 		-- Thử đọc thuộc tính TargetMode nếu có
 		local targetModeStr: string? = nil
-		if towerInstance then
-			pcall(function()
-				targetModeStr = towerInstance:GetAttribute("TargetMode")
-					or towerInstance:GetAttribute("Target")
-					or towerInstance:GetAttribute("Mode")
-			end)
-		end
+		pcall(function()
+			targetModeStr = towerInstance:GetAttribute("TargetMode")
+				or towerInstance:GetAttribute("Target")
+				or towerInstance:GetAttribute("Mode")
+		end)
+
+		local towerAttrId: string? = nil
+		pcall(function()
+			towerAttrId = towerInstance:GetAttribute("ID")
+		end)
 
 		local targetLayoutOrder: number? = nil
 		if matchedId then
@@ -41034,7 +43999,8 @@ local function handleChangeTowerMode(args: { any }, returnedResult: any)
 			TargetMode = targetModeStr,
 			Position = posTable,
 			RawData = {
-				InstanceName = towerInstance and towerInstance.Name,
+				InstanceName = towerInstance.Name,
+				AttributeID = towerAttrId,
 				TargetMode = targetModeStr,
 			},
 		})
@@ -41116,10 +44082,12 @@ local function setupRemoteHook()
 				elseif remoteName == "UpgradeTower" or (upgradeRemote and self == upgradeRemote) then
 					if not upgradeRemote then upgradeRemote = self end
 					local args = { ... }
-					local preUpgPrice = getUpgradePriceForTowerInstance(args[1])
+					local towerInst = args[1]
+					local initialLvl = getTowerLevel(towerInst)
+					local preUpgPrice = getUpgradePriceForTowerInstance(towerInst)
 					if setnc and method then setnc(method) end
 					local res = table.pack(oldNamecall(self, ...))
-					task.spawn(handleUpgradeTower, args, res[1], preUpgPrice)
+					task.spawn(handleUpgradeTower, args, res[1], preUpgPrice, initialLvl)
 					return table.unpack(res, 1, res.n)
 				elseif remoteName == "ChangeTowerMode" or (changeModeRemote and self == changeModeRemote) then
 					if not changeModeRemote then changeModeRemote = self end
@@ -41172,9 +44140,11 @@ local function setupRemoteHook()
 			oldUpgradeInvoke = hookfunction(upgradeRemote.InvokeServer, wrapC(function(self, ...)
 				if isRecording then
 					local args = { ... }
-					local preUpgPrice = getUpgradePriceForTowerInstance(args[1])
+					local towerInst = args[1]
+					local initialLvl = getTowerLevel(towerInst)
+					local preUpgPrice = getUpgradePriceForTowerInstance(towerInst)
 					local res = table.pack(oldUpgradeInvoke(self, ...))
-					task.spawn(handleUpgradeTower, args, res[1], preUpgPrice)
+					task.spawn(handleUpgradeTower, args, res[1], preUpgPrice, initialLvl)
 					return table.unpack(res, 1, res.n)
 				end
 				return oldUpgradeInvoke(self, ...)
@@ -41231,7 +44201,7 @@ function recorder.SetActiveMacro(name: string)
 	activeMacroName = name
 end
 
-function recorder.GetSteps(): { MacroStep__DARKLUA_TYPE_p}
+function recorder.GetSteps(): { MacroStep__DARKLUA_TYPE_q}
 	return recordedSteps
 end
 
@@ -41242,14 +44212,13 @@ function recorder.ClearSteps()
 	table.clear(idToInstance)
 	table.clear(idToInfo)
 	towerIndexCounter = 0
-	lastRecordedStage = 1
 end
 
 local stateListeners: { (boolean) -> () } = {}
 
 local function notifyState(recording: boolean)
 	for _, cb in ipairs(stateListeners) do
-		pcall(cb, recording)
+		task.spawn(pcall, cb, recording)
 	end
 end
 
@@ -41268,6 +44237,8 @@ end
 local activeWatcherThread: thread? = nil
 local activeEndScreenConn: RBXScriptConnection? = nil
 local activeNotifConn: RBXScriptConnection? = nil
+local unsubRaidIntermission: (() -> ())? = nil
+local unsubRaidMap: (() -> ())? = nil
 
 local function getEndScreen(): GuiObject?
 	local player = Players.LocalPlayer
@@ -41300,6 +44271,14 @@ local function cleanupEndScreenWatcher()
 		end)
 		activeNotifConn = nil
 	end
+	if unsubRaidIntermission then
+		pcall(unsubRaidIntermission)
+		unsubRaidIntermission = nil
+	end
+	if unsubRaidMap then
+		pcall(unsubRaidMap)
+		unsubRaidMap = nil
+	end
 	if activeWatcherThread then
 		pcall(task.cancel, activeWatcherThread)
 		activeWatcherThread = nil
@@ -41322,7 +44301,47 @@ local function startEndScreenWatcher()
 		end)
 	end
 
-	-- 2. Lắng nghe trực tiếp Landmark 'New raid map!' trong Notifications UI (Real-time 0ms delay)
+	-- 2. Lắng nghe trạng thái Intermission từ RaidManager (PlayerGui.RaidReady)
+	-- Khi kết thúc map (hết 25 wave), game vào Intermission -> Tự động dừng và lưu Macro cho map đó (Cách 1)
+	unsubRaidIntermission = raidManager.OnIntermissionChanged(function(isActive, curMap)
+		if not isRecording then return end
+		if not isActive then
+			-- Khi Intermission kết thúc (bắt đầu vào đợt sóng), đánh dấu đã qua giai đoạn chuẩn bị ban đầu
+			recordingStartedDuringIntermission = false
+			return
+		end
+
+		-- Khi isActive == true: Intermission bắt đầu!
+		-- Nếu người chơi vừa mới bấm Record ngay trong Intermission hiện tại thì chưa dừng vội
+		if recordingStartedDuringIntermission then
+			return
+		end
+
+		local curWave, _ = gameStats.GetWave()
+		local stepCount = #recordedSteps
+		if stepCount > 0 or curWave >= 25 then
+			logger.Log(string.format("[Recorder] 🏁 Raid Intermission xuất hiện (Wave %d, Map: %s) -> Map hoàn thành! Tự động dừng và lưu Macro '%s'!",
+				curWave, tostring(curMap or "Unknown"), tostring(activeMacroName or "Unknown")))
+			task.spawn(function()
+				recorder.StopRecording("MapCompleted")
+			end)
+		end
+	end)
+
+	-- 3. Lắng nghe trực tiếp khi workspace.Map đổi map mới
+	unsubRaidMap = raidManager.OnMapChanged(function(newMap, oldMap)
+		if not isRecording then return end
+		if newMap and oldMap and newMap ~= oldMap then
+			local curWave, _ = gameStats.GetWave()
+			logger.Log(string.format("[Recorder] 🗺️ Phát hiện đổi Map từ '%s' sang '%s' (Wave %d) -> Tự động dừng và lưu Macro cho map cũ '%s'!",
+				tostring(oldMap), tostring(newMap), curWave, tostring(activeMacroName or "Unknown")))
+			task.spawn(function()
+				recorder.StopRecording("MapChanged")
+			end)
+		end
+	end)
+
+	-- 4. Lắng nghe Landmark 'New raid map!' hoặc 'towers refunded' trong Notifications UI (Real-time 0ms delay)
 	local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
 	local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
 	local notifs = gameGui and gameGui:FindFirstChild("Notifications", true)
@@ -41333,17 +44352,20 @@ local function startEndScreenWatcher()
 				local cText = desc.Text:lower():gsub("%s+", "")
 				if cText:find("newraidmap") or cText:find("towersrefunded") then
 					local curWave, _ = gameStats.GetWave()
-					local targetStage = (curWave >= 75 and 4) or (curWave >= 50 and 3) or (curWave >= 25 and 2) or (lastRecordedStage + 1)
-					if targetStage > lastRecordedStage then
-						logger.Log(string.format("[Recorder] 🔔 Phát hiện landmark 'New raid map!' qua Signal -> Kích hoạt Stage %d!", targetStage))
-						recorder.MarkStageTransition(targetStage)
+					local stepCount = #recordedSteps
+					if stepCount > 0 or curWave >= 20 then
+						logger.Log(string.format("[Recorder] 🔔 Phát hiện landmark '%s' -> Map hoàn thành! Tự động dừng và lưu Macro '%s'!",
+							desc.Text, tostring(activeMacroName or "Unknown")))
+						task.spawn(function()
+							recorder.StopRecording("MapCompleted")
+						end)
 					end
 				end
 			end
 		end)
 	end
 
-	-- 2. Vòng lặp định kỳ: quét EndScreen, kiểm tra trạng thái trong trận, và tự động bắt chuyển Raid Stage
+	-- 5. Vòng lặp định kỳ: quét EndScreen, kiểm tra trạng thái trong trận, và fallback tự động dừng khi kết thúc map
 	activeWatcherThread = task.spawn(function()
 		while isRecording and lifecycle.IsActive() do
 			task.wait(0.35)
@@ -41362,68 +44384,37 @@ local function startEndScreenWatcher()
 					return
 				end
 
-				-- Tự động nhận diện chuyển đổi Raid Stage (Map 1 -> Map 2 -> Map 3 -> Map 4)
+				-- Kiểm tra thông báo chuyển map trong GameGui.Info.Message
 				local curWave, _ = gameStats.GetWave()
 				local stats = gameStats.GetSnapshot()
 				local msgLower = stats.Message and stats.Message:lower() or ""
 
-				-- Kiểm tra trực tiếp GameGui.Info.Message (từ log scanner người dùng xác nhận)
-				local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
-				local gameGui = playerGui and playerGui:FindFirstChild("GameGui")
-				local directInfo = gameGui and gameGui:FindFirstChild("Info")
+				local pGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
+				local gGui = pGui and pGui:FindFirstChild("GameGui")
+				local directInfo = gGui and gGui:FindFirstChild("Info")
 				local directMsg = directInfo and directInfo:FindFirstChild("Message")
 				local directMsgText = (directMsg and directMsg:IsA("TextLabel") and directMsg.Text:lower()) or ""
 
 				local combinedMsg = (msgLower .. " " .. directMsgText):lower()
 				local compactMsg = combinedMsg:gsub("%s+", "")
 
-				local targetStage: number? = nil
-				local matchMoves = compactMsg:match("movestoraid(%d+)")
-				local matchMoving = compactMsg:match("movingtoraid(%d+)")
-				local matchStarting = compactMsg:match("raid(%d+)starting")
-				if matchMoves then
-					targetStage = tonumber(matchMoves)
-				elseif matchMoving then
-					targetStage = tonumber(matchMoving)
-				elseif matchStarting then
-					targetStage = tonumber(matchStarting)
+				local isRaidTransition = compactMsg:find("movestoraid")
+					or compactMsg:find("movingtoraid")
+					or compactMsg:find("raid%d+starting")
+					or compactMsg:find("newraidmap")
+					or compactMsg:find("towersrefunded")
+
+				if isRaidTransition and (#recordedSteps > 0 or curWave >= 20) then
+					logger.Log(string.format("[Recorder] Phát hiện thông báo chuyển map ('%s') -> Tự động dừng và lưu Macro!", directMsgText ~= "" and directMsgText or msgLower))
+					recorder.StopRecording("MapCompleted")
+					return
 				end
 
-				-- Fallback 1: Kiểm tra thông báo 'New raid map!' trong Notifications UI
-				if not targetStage and gameGui then
-					local notifs = gameGui:FindFirstChild("Notifications", true)
-					if notifs then
-						for _, desc in ipairs(notifs:GetDescendants()) do
-							if desc:IsA("TextLabel") and desc.Visible then
-								local cText = desc.Text:lower():gsub("%s+", "")
-								if cText:find("newraidmap") or cText:find("towersrefunded") then
-									if curWave >= 25 and lastRecordedStage < 2 then
-										targetStage = 2
-									elseif curWave >= 50 and lastRecordedStage < 3 then
-										targetStage = 3
-									elseif curWave >= 75 and lastRecordedStage < 4 then
-										targetStage = 4
-									end
-									break
-								end
-							end
-						end
-					end
-				end
-
-				-- Fallback 2: Kiểm tra theo mốc Wave
-				if not targetStage then
-					if curWave >= 76 and lastRecordedStage < 4 then
-						targetStage = 4
-					elseif curWave >= 51 and lastRecordedStage < 3 then
-						targetStage = 3
-					elseif curWave >= 26 and lastRecordedStage < 2 then
-						targetStage = 2
-					end
-				end
-
-				if targetStage and targetStage > lastRecordedStage then
-					recorder.MarkStageTransition(targetStage)
+				-- Fallback theo wave: nếu đã hoàn thành đủ 25 wave kể từ lúc bắt đầu record
+				if recordingStartedAtWave > 0 and curWave >= (recordingStartedAtWave + 25) then
+					logger.Log(string.format("[Recorder] Đã hoàn thành 25 wave (Start: %d, Hiện tại: %d) -> Tự động dừng và lưu Macro!", recordingStartedAtWave, curWave))
+					recorder.StopRecording("MapCompleted")
+					return
 				end
 			end)
 		end
@@ -41434,14 +44425,21 @@ end
 function recorder.StartRecording(macroName: string?): boolean
 	local targetName = macroName or activeMacroName
 	if not targetName or targetName == "" or targetName == "None" then
-		notifier.Notify("Macro", "Please select or create a Macro first!", 2)
-		return false
+		local currentMap = raidManager.GetCurrentMap()
+		if currentMap and currentMap ~= "" and currentMap ~= "None" then
+			targetName = currentMap
+			activeMacroName = currentMap
+		else
+			notifier.Notify("Macro", "Please select or create a Macro first!", 2)
+			return false
+		end
 	end
 
 	activeMacroName = targetName
 	recorder.ClearSteps()
 	recorder.InitialSpeed = getCurrentGameSpeed()
-	lastRecordedStage = 1
+	recordingStartedAtWave = gameStats.GetWave()
+	recordingStartedDuringIntermission = raidManager.IsIntermissionActive()
 	isRecording = true
 	setupRemoteHook()
 	startEndScreenWatcher()
@@ -41461,14 +44459,23 @@ function recorder.StopRecording(reason: string?): number
 	local count = #recordedSteps
 	if activeMacroName and count > 0 then
 		local existing = storage.GetMacro(activeMacroName) or storage.CreateMacro(activeMacroName)
-		existing.Steps = recordedSteps
+		existing.Steps = table.clone(recordedSteps)
 		existing.Metadata.TotalSteps = count
 		existing.Metadata.TotalDuration = gameStats.GetElapsedTime()
 		existing.Metadata.InitialSpeed = recorder.InitialSpeed or 1
+		local currentMap = raidManager.GetCurrentMap()
+		if currentMap and currentMap ~= "" and currentMap ~= "None" then
+			existing.Metadata.Map = currentMap
+		end
 		storage.SaveMacro(activeMacroName, existing)
 
 		if reason == "EndScreen" then
 			notifier.Notify("Macro", string.format("🏁 Match ended! Saved %d steps to '%s' (Speed x%d)!", count, activeMacroName, existing.Metadata.InitialSpeed or 1), 3)
+		elseif reason == "MapCompleted" then
+			local mapInfo = (currentMap and currentMap ~= "") and string.format(" (Map: %s)", currentMap) or ""
+			notifier.Notify("Macro", string.format("🏁 Map completed%s! Saved %d steps to '%s'!", mapInfo, count, activeMacroName), 3.5)
+		elseif reason == "MapChanged" then
+			notifier.Notify("Macro", string.format("🔄 Map changed! Saved %d steps to '%s'!", count, activeMacroName), 3.5)
 		elseif reason == "LeftGame" then
 			notifier.Notify("Macro", string.format("Left match! Saved %d steps to '%s'", count, activeMacroName), 2.5)
 		else
@@ -41490,13 +44497,15 @@ lifecycle.Register(function()
 end)
 
 return recorder
-end function __DIST.aU()-- Tab Macro: Live Game Stats, Macro Recorder & Macro Player (Playback)
+end function __DIST.aZ()-- Tab Macro: Live Game Stats, Macro Recorder & Macro Player (Playback)
 
 local gameStats = __DIST.load('aG')
 local zoneGuard = __DIST.load('aF')
-local storage = __DIST.load('aI')
-local recorder = __DIST.load('aT')
-local player = __DIST.load('aM')
+local raidManager = __DIST.load('aH')
+local storage = __DIST.load('aJ')
+local recorder = __DIST.load('aY')
+local player = __DIST.load('aO')
+local mapMacroManager = __DIST.load('aK')
 local autoSave = __DIST.load('aA')
 local notifier = __DIST.load('az')
 local lifecycle = __DIST.load('ay')
@@ -41522,6 +44531,14 @@ return function(window, tab)
 
 	local waveLabel = statsSection:Label({
 		Text = "🌊 <b>Wave:</b> <font color='rgb(100,200,255)'>0/0</font>",
+	})
+
+	local raidMapLabel = statsSection:Label({
+		Text = "🗺️ <b>Map:</b> <font color='rgb(150,150,150)'>--</font>",
+	})
+
+	local intermissionLabel = statsSection:Label({
+		Text = "⏳ <b>Intermission:</b> <font color='rgb(150,150,150)'>None</font>",
 	})
 
 	local messageLabel = statsSection:Label({
@@ -41556,6 +44573,26 @@ return function(window, tab)
 	local unsubscribeMatch = gameStats.Subscribe(updateMatchUi)
 	lifecycle.Register(unsubscribeMatch)
 
+	local function updateRaidUi(data: RaidSnapshot__DARKLUA_TYPE_o)
+		if not zoneGuard.IsInGame() or not data.IsRaid then
+			raidMapLabel:UpdateName("🗺️ <b>Map:</b> <font color='rgb(150,150,150)'>Standard</font>")
+			intermissionLabel:UpdateName("⏳ <b>Intermission:</b> <font color='rgb(150,150,150)'>None</font>")
+			return
+		end
+
+		local mapColor = data.CurrentMap and "rgb(255,180,80)" or "rgb(150,150,150)"
+		raidMapLabel:UpdateName(string.format("🗺️ <b>Map:</b> <font color='%s'>%s</font>", mapColor, tostring(data.CurrentMap or "Detecting...")))
+
+		if data.IsIntermission then
+			intermissionLabel:UpdateName(string.format("⏳ <b>Intermission:</b> <font color='rgb(85,255,120)'>%ds (%d/%d Ready)</font>", data.RemainingSeconds, data.ReadyCount, data.TotalPlayers))
+		else
+			intermissionLabel:UpdateName("⏳ <b>Intermission:</b> <font color='rgb(150,220,255)'>Wave Active</font>")
+		end
+	end
+
+	local unsubRaid = raidManager.Subscribe(updateRaidUi)
+	lifecycle.Register(unsubRaid)
+
 	--// ====================================================================
 	--// CỘT TRÁI: Section 2 - Macro Recorder (1 Input, 1 Button, 1 Dropdown, 1 Toggle)
 	--// ====================================================================
@@ -41565,6 +44602,8 @@ return function(window, tab)
 	local currentInputText = ""
 	local macroDropdown
 	local recordToggle
+	local isUpdatingDropdownInternally = false
+	local lastSyncedMacroName: string? = nil
 
 	-- 1. Input: Nhập tên Macro mới
 	local nameInput = recorderSection:Input({
@@ -41600,16 +44639,50 @@ return function(window, tab)
 
 			-- Cập nhật danh sách vào Dropdown
 			if macroDropdown then
+				isUpdatingDropdownInternally = true
 				pcall(function()
 					local currentOptions = macroDropdown:GetOptions() or {}
 					if not table.find(currentOptions, trimmed) then
 						macroDropdown:InsertOptions({ trimmed })
 					end
+					lastSyncedMacroName = trimmed
 					macroDropdown:UpdateSelection(trimmed)
 				end)
+				isUpdatingDropdownInternally = false
 			end
 
 			notifier.Notify("Macro", "Created Macro: " .. trimmed, 2)
+		end,
+	})
+
+	-- Button: Tạo / Chọn Macro theo tên Map đang chơi
+	recorderSection:Button({
+		Name = "Use Current Map Name",
+		Callback = function()
+			local curMap = raidManager.GetCurrentMap()
+			if not curMap or curMap == "" or curMap == "None" then
+				notifier.Notify("Macro", "No active map detected!", 2)
+				return
+			end
+
+			storage.CreateMacro(curMap)
+			recorder.SetActiveMacro(curMap)
+			player.SetActiveMacro(curMap)
+
+			if macroDropdown then
+				isUpdatingDropdownInternally = true
+				pcall(function()
+					local currentOptions = macroDropdown:GetOptions() or {}
+					if not table.find(currentOptions, curMap) then
+						macroDropdown:InsertOptions({ curMap })
+					end
+					lastSyncedMacroName = curMap
+					macroDropdown:UpdateSelection(curMap)
+				end)
+				isUpdatingDropdownInternally = false
+			end
+
+			notifier.Notify("Macro", string.format("Selected Map Macro: '%s'", curMap), 2)
 		end,
 	})
 
@@ -41620,6 +44693,7 @@ return function(window, tab)
 	end
 
 	local defaultSelected = initialMacros[1] or "None"
+	lastSyncedMacroName = defaultSelected
 	if defaultSelected ~= "None" then
 		recorder.SetActiveMacro(defaultSelected)
 		player.SetActiveMacro(defaultSelected)
@@ -41632,11 +44706,60 @@ return function(window, tab)
 		Default = defaultSelected,
 		Required = true,
 		Callback = autoSave.Wrap(function(selected)
+			if isUpdatingDropdownInternally then return end
 			if not selected or selected == "" or selected == "None" then return end
+			lastSyncedMacroName = selected
 			recorder.SetActiveMacro(selected)
 			player.SetActiveMacro(selected)
 		end),
 	}, "Dropdown_SelectMacro")
+
+	-- Button: Xóa Macro đang chọn
+	recorderSection:Button({
+		Name = "Delete Macro",
+		Callback = function()
+			if player.IsEnabled() then
+				notifier.Notify("Macro", "Please disable Play Macro before deleting!", 2)
+				return
+			end
+			if recorder.IsRecording() then
+				notifier.Notify("Macro", "Please stop Record Macro before deleting!", 2)
+				return
+			end
+
+			local targetName = player.GetActiveMacro() or recorder.GetActiveMacro()
+			if not targetName or targetName == "" or targetName == "None" then
+				notifier.Notify("Macro", "Please select a Macro to delete!", 2)
+				return
+			end
+
+			-- Thực hiện xóa file và bộ nhớ đệm
+			storage.DeleteMacro(targetName)
+
+			-- Cập nhật danh sách mới
+			local updatedMacros = storage.ListMacros()
+			if #updatedMacros == 0 then
+				updatedMacros = { "None" }
+			end
+
+			local newSelected = updatedMacros[1] or "None"
+			lastSyncedMacroName = newSelected
+			recorder.SetActiveMacro(newSelected)
+			player.SetActiveMacro(newSelected)
+
+			if macroDropdown then
+				isUpdatingDropdownInternally = true
+				pcall(function()
+					macroDropdown:ClearOptions()
+					macroDropdown:InsertOptions(updatedMacros)
+					macroDropdown:UpdateSelection(newSelected)
+				end)
+				isUpdatingDropdownInternally = false
+			end
+
+			notifier.Notify("Macro", string.format("Deleted Macro '%s'!", targetName), 2.5)
+		end,
+	})
 
 	-- 4. Toggle: Bật / Tắt ghi lại Macro (Record)
 	local isTogglingInternally = false
@@ -41659,13 +44782,34 @@ return function(window, tab)
 
 				local activeName = recorder.GetActiveMacro()
 				if not activeName or activeName == "" or activeName == "None" then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-					notifier.Notify("Macro", "Please select or create a Macro before recording!", 2)
-					return
+					local curMap = raidManager.GetCurrentMap()
+					if curMap and curMap ~= "" and curMap ~= "None" then
+						activeName = curMap
+						storage.CreateMacro(curMap)
+						recorder.SetActiveMacro(curMap)
+						player.SetActiveMacro(curMap)
+						if macroDropdown then
+							isUpdatingDropdownInternally = true
+							pcall(function()
+								local currentOptions = macroDropdown:GetOptions() or {}
+								if not table.find(currentOptions, curMap) then
+									macroDropdown:InsertOptions({ curMap })
+								end
+								lastSyncedMacroName = curMap
+								macroDropdown:UpdateSelection(curMap)
+							end)
+							isUpdatingDropdownInternally = false
+						end
+						notifier.Notify("Macro", string.format("Auto selected Map Macro: '%s'", curMap), 2)
+					else
+						isTogglingInternally = true
+						pcall(function()
+							recordToggle:UpdateState(false, true)
+						end)
+						isTogglingInternally = false
+						notifier.Notify("Macro", "Please select or create a Macro before recording!", 2)
+						return
+					end
 				end
 
 				local started = recorder.StartRecording(activeName)
@@ -41687,15 +44831,15 @@ return function(window, tab)
 		end,
 	})
 
-	-- 5. Button: Đánh dấu thủ công chuyển Stage trong Raid (phòng khi muốn chủ động tách Map)
+	-- 5. Button: Dừng và lưu ngay Macro cho Map hiện tại (Cách 1)
 	recorderSection:Button({
-		Name = "Mark Raid Transition (Next Stage)",
+		Name = "Finish & Save Map",
 		Callback = function()
 			if not recorder.IsRecording() then
-				notifier.Notify("Macro", "Please enable Record Macro before marking a stage!", 2)
+				notifier.Notify("Macro", "Recorder is not running!", 2)
 				return
 			end
-			recorder.MarkStageTransition()
+			recorder.StopRecording("MapCompleted")
 		end,
 	})
 
@@ -41713,6 +44857,20 @@ return function(window, tab)
 			local activeName = recorder.GetActiveMacro()
 			if activeName then
 				player.SetActiveMacro(activeName)
+			end
+			if macroDropdown then
+				isUpdatingDropdownInternally = true
+				pcall(function()
+					local updated = storage.ListMacros()
+					if #updated == 0 then updated = { "None" } end
+					macroDropdown:ClearOptions()
+					macroDropdown:InsertOptions(updated)
+					if activeName then
+						lastSyncedMacroName = activeName
+						macroDropdown:UpdateSelection(activeName)
+					end
+				end)
+				isUpdatingDropdownInternally = false
 			end
 		end
 	end)
@@ -41758,29 +44916,29 @@ return function(window, tab)
 					return
 				end
 
-				local targetName = player.GetActiveMacro() or recorder.GetActiveMacro()
-				if not targetName or targetName == "" or targetName == "None" then
+				local curMap = raidManager.GetCurrentMap()
+				local mappedMacro = mapMacroManager.GetMapMacro(curMap)
+				local targetName = (mappedMacro and mappedMacro ~= "None" and storage.HasMacro(mappedMacro)) and mappedMacro or (player.GetActiveMacro() or recorder.GetActiveMacro())
+
+				local hasAnyMappings = next(mapMacroManager.GetAllMappings()) ~= nil
+
+				if (not targetName or targetName == "" or targetName == "None") and not hasAnyMappings and not player.IsAutoMapSwitchEnabled() then
 					isPlayTogglingInternally = true
 					pcall(function()
 						playToggle:UpdateState(false, true)
 					end)
 					isPlayTogglingInternally = false
-					notifier.Notify("Macro", "Please select or create a Macro before playing!", 2)
+					notifier.Notify("Macro", "Please select a Macro or configure Map Macro before playing!", 2)
 					return
 				end
 
-				local data = storage.GetMacro(targetName)
-				if not data or not data.Steps or #data.Steps == 0 then
-					isPlayTogglingInternally = true
-					pcall(function()
-						playToggle:UpdateState(false, true)
-					end)
-					isPlayTogglingInternally = false
-					notifier.Notify("Macro", string.format("Macro '%s' has no steps to play!", targetName), 2.5)
-					return
+				if targetName and targetName ~= "" and targetName ~= "None" then
+					local data = storage.GetMacro(targetName)
+					if data and data.Steps and #data.Steps > 0 then
+						player.SetActiveMacro(targetName)
+					end
 				end
 
-				player.SetActiveMacro(targetName)
 				player.SetEnabled(true)
 			else
 				player.SetEnabled(false)
@@ -41803,6 +44961,14 @@ return function(window, tab)
 			player.SetVoteSkipEnabled(state)
 		end),
 	}, "Toggle_ApplyMacroSkipWave")
+
+	playerSection:Toggle({
+		Name = "Auto Catch-up Upgrades",
+		Default = player.IsAutoCatchUp(),
+		Callback = autoSave.Wrap(function(state)
+			player.SetAutoCatchUp(state)
+		end),
+	}, "Toggle_MacroAutoCatchUp")
 
 	playerSection:Dropdown({
 		Name = "Timing Mode",
@@ -41840,7 +45006,7 @@ return function(window, tab)
 	})
 
 	-- Hàm cập nhật UI Player thời gian thực
-	local function updatePlayerUi(data: PlaybackSnapshot__DARKLUA_TYPE_u)
+	local function updatePlayerUi(data: PlaybackSnapshot__DARKLUA_TYPE_x)
 		local macroName = data.MacroName or "None"
 		local totalStepsCount = data.TotalSteps
 		if totalStepsCount == 0 and macroName ~= "None" then
@@ -41851,6 +45017,20 @@ return function(window, tab)
 		end
 
 		playerMacroLabel:UpdateName(string.format("📁 <b>Macro:</b> <font color='rgb(100,200,255)'>%s</font> <font color='rgb(150,150,150)'>(%d steps)</font>", macroName, totalStepsCount))
+
+		if macroDropdown and macroName ~= "None" and macroName ~= lastSyncedMacroName then
+			lastSyncedMacroName = macroName
+			recorder.SetActiveMacro(macroName)
+			isUpdatingDropdownInternally = true
+			pcall(function()
+				local currentOpts = macroDropdown:GetOptions() or {}
+				if not table.find(currentOpts, macroName) then
+					macroDropdown:InsertOptions({ macroName })
+				end
+				macroDropdown:UpdateSelection(macroName)
+			end)
+			isUpdatingDropdownInternally = false
+		end
 
 		local statusColor = data.IsPlaying and "rgb(85,255,120)" or (data.IsEnabled and "rgb(255,220,100)" or "rgb(180,180,180)")
 		playerStatusLabel:UpdateName(string.format("▶️ <b>Status:</b> <font color='%s'>%s</font>", statusColor, data.StatusText))
@@ -41863,12 +45043,153 @@ return function(window, tab)
 	local unsubscribePlayer = player.Subscribe(updatePlayerUi)
 	lifecycle.Register(unsubscribePlayer)
 end
-end function __DIST.aV()-- Tab Config: Quản lý cấu hình (Create, Save, Load, Overwrite, Autoload) qua Maclib built-in.
+end function __DIST.a_()-- Tab Map Macro: Cấu hình gán Macro cụ thể cho từng Universe và từng Map.
+-- Mỗi Universe được chia thành một Section riêng biệt, trực quan và dễ quản lý.
+
+
+local storage = __DIST.load('aJ')
+local mapMacroManager = __DIST.load('aK')
+local autoSave = __DIST.load('aA')
+local notifier = __DIST.load('az')
+local lifecycle = __DIST.load('ay')
+
+return function(window, tab)
+	local isUpdatingInternally = false
+	local dropdownMap: { [string]: any } = {}
+
+	-- Helper: Tạo danh sách Options bao gồm "None" và toàn bộ Macro đã lưu
+	local function getDropdownOptions(): { string }
+		local opts = { "None" }
+		local ok, macros = pcall(storage.ListMacros)
+		if ok and type(macros) == "table" then
+			for _, name in ipairs(macros) do
+				if type(name) == "string" and name ~= "None" then
+					table.insert(opts, name)
+				end
+			end
+		end
+		return opts
+	end
+
+	-- Helper: Làm mới danh sách Options trên toàn bộ các Dropdown
+	local function refreshAllDropdowns()
+		if isUpdatingInternally then return end
+		isUpdatingInternally = true
+
+		local latestOptions = getDropdownOptions()
+		for mapName, dd in pairs(dropdownMap) do
+			pcall(function()
+				local currentAssigned = mapMacroManager.GetMapMacro(mapName) or "None"
+				if not table.find(latestOptions, currentAssigned) then
+					currentAssigned = "None"
+					mapMacroManager.SetMapMacro(mapName, nil)
+				end
+
+				dd:ClearOptions()
+				dd:InsertOptions(latestOptions)
+				dd:UpdateSelection(currentAssigned)
+			end)
+		end
+
+		isUpdatingInternally = false
+	end
+
+	--// ====================================================================
+	--// CỘT TRÁI - SECTION 1: Quick Actions
+	--// ====================================================================
+	local actionSection = tab:Section({ Side = "Left" })
+	actionSection:Header({ Name = "Quick Actions" })
+
+	actionSection:Button({
+		Name = "Reload Macro List",
+		Callback = function()
+			refreshAllDropdowns()
+			notifier.Notify("Map Macro", "Refreshed macro list for all maps!", 1.5)
+		end,
+	})
+
+	actionSection:Button({
+		Name = "Reset All Mappings to None",
+		Callback = function()
+			isUpdatingInternally = true
+			mapMacroManager.ClearAll()
+			for _, dd in pairs(dropdownMap) do
+				pcall(function()
+					dd:UpdateSelection("None")
+				end)
+			end
+			isUpdatingInternally = false
+			notifier.Notify("Map Macro", "Reset all map macro mappings to 'None'!", 2)
+		end,
+	})
+
+	--// ====================================================================
+	--// CỘT PHẢI - SECTION 1: Priority Rule
+	--// ====================================================================
+	local ruleSection = tab:Section({ Side = "Right" })
+	ruleSection:Header({ Name = "Priority Rule" })
+
+	ruleSection:Label({
+		Text = "💡 <b>Setup Rule:</b> Assign a macro to any map below. When entering that map with <b>Play Macro</b> enabled, the bot will automatically run that assigned macro instead of the default selected one.",
+	})
+
+	--// ====================================================================
+	--// TẠO SECTION RIÊNG BIỆT CHO TỪNG UNIVERSE
+	--// ====================================================================
+	local initialOptions = getDropdownOptions()
+
+	for _, uni in ipairs(mapMacroManager.Universes) do
+		-- Tạo Section riêng biệt cho từng Universe (Left hoặc Right)
+		local uniSection = tab:Section({ Side = uni.Side })
+		uniSection:Header({ Name = uni.Name })
+
+		-- Hiển thị mô tả đặc thù nếu có (ví dụ cho chế độ Raid Stages)
+		if uni.Description then
+			uniSection:Label({
+				Text = uni.Description,
+			})
+		end
+
+		for _, mapItem in ipairs(uni.Maps) do
+			local mapKey = if type(mapItem) == "table" then mapItem.Key else mapItem
+			local displayName = if type(mapItem) == "table" then mapItem.DisplayName else mapItem
+
+			local cleanKey = mapKey:gsub("%s+", ""):gsub("[^%w]", "")
+			local flagName = "Dropdown_MapMacro_" .. cleanKey
+			local currentSelected = mapMacroManager.GetMapMacro(mapKey) or "None"
+
+			if not table.find(initialOptions, currentSelected) then
+				currentSelected = "None"
+			end
+
+			local dd = uniSection:Dropdown({
+				Name = displayName,
+				Options = initialOptions,
+				Default = currentSelected,
+				Required = true,
+				Callback = autoSave.Wrap(function(selected)
+					if isUpdatingInternally then return end
+					local val = (selected and selected ~= "" and selected ~= "None") and selected or nil
+					mapMacroManager.SetMapMacro(mapKey, val)
+				end),
+			}, flagName)
+
+			dropdownMap[mapKey] = dd
+		end
+	end
+
+	-- Lắng nghe sự kiện thêm/xóa macro từ hệ thống để tự động cập nhật
+	local unsubList = mapMacroManager.OnMacroListChanged(function()
+		refreshAllDropdowns()
+	end)
+	lifecycle.Register(unsubList)
+end
+end function __DIST.a0()-- Tab Config: Quản lý cấu hình (Create, Save, Load, Overwrite, Autoload) qua Maclib built-in.
 -- Cột phải: Section 1 - Utility (Auto Hide, Auto Anti Macro), Section 2 - Discord Webhook.
 
 
 local utility = __DIST.load('aD')
-local webhook = __DIST.load('aL')
+local webhook = __DIST.load('aN')
 local autoSave = __DIST.load('aA')
 local notifier = __DIST.load('az')
 
@@ -41971,7 +45292,7 @@ return function(window, tab)
 		end,
 	})
 end
-end function __DIST.aW()-- SlopTowerDefense: Khởi tạo giao diện Maclib và nạp 4 tabs: Main, Game, Macro, Config.
+end function __DIST.a1()-- SlopTowerDefense: Khởi tạo giao diện Maclib và nạp 4 tabs: Main, Game, Macro, Config.
 
 
 return function(self)
@@ -42002,6 +45323,7 @@ return function(self)
 	local notifier = __DIST.load('az')
 	local utility = __DIST.load('aD')
 
+	lifecycle.Init()
 	autoSave.Suspend()
 
 	-- Khởi tạo Maclib Window
@@ -42032,25 +45354,34 @@ return function(self)
 	-- Folder config
 	macLib:SetFolder("EsclipseHub/SlopTowerDefense")
 
-	-- 4 Tabs theo thứ tự: Main, Game, Macro, Config
+	-- 5 Tabs theo thứ tự tuần tự: Main, Game, Macro, Map Macro, Config
 	local tabGroup = window:TabGroup()
-	local tabs = {
-		Main = tabGroup:Tab({ Name = "Main", Image = "rbxassetid://10734886202" }),
-		Game = tabGroup:Tab({ Name = "Game", Image = "rbxassetid://10734975692" }),
-		Macro = tabGroup:Tab({ Name = "Macro", Image = "rbxassetid://10734950309" }),
-		Config = tabGroup:Tab({ Name = "Config", Image = "rbxassetid://10709769841" }),
-	}
+	local tabs = {}
+	tabs.Main = tabGroup:Tab({ Name = "Main", Image = "rbxassetid://10723407389" })
+	tabs.Game = tabGroup:Tab({ Name = "Game", Image = "rbxassetid://10734975692" })
+	tabs.Macro = tabGroup:Tab({ Name = "Macro", Image = "rbxassetid://10734950309" })
+	tabs.MapMacro = tabGroup:Tab({ Name = "Map Macro", Image = "rbxassetid://10734886004" })
+	tabs.Config = tabGroup:Tab({ Name = "Config", Image = "rbxassetid://10709769841" })
 
 	-- Load UI Modules
-	local mainTab = __DIST.load('aP')
-	local gameTab = __DIST.load('aS')
-	local macroTab = __DIST.load('aU')
-	local configTab = __DIST.load('aV')
+	local mainTab = __DIST.load('aU')
+	local gameTab = __DIST.load('aX')
+	local macroTab = __DIST.load('aZ')
+	local mapMacroTab = __DIST.load('a_')
+	local configTab = __DIST.load('a0')
 
-	mainTab(window, tabs.Main)
-	gameTab(window, tabs.Game)
-	macroTab(window, tabs.Macro)
-	configTab(window, tabs.Config)
+	local function safeLoad(tabName: string, loader: (any, any) -> (), tabInstance: any)
+		local ok, err = pcall(loader, window, tabInstance)
+		if not ok then
+			warn(string.format("[SlopTowerDefense] Failed to load tab '%s': %s", tabName, tostring(err)))
+		end
+	end
+
+	safeLoad("Main", mainTab, tabs.Main)
+	safeLoad("Game", gameTab, tabs.Game)
+	safeLoad("Macro", macroTab, tabs.Macro)
+	safeLoad("MapMacro", mapMacroTab, tabs.MapMacro)
+	safeLoad("Config", configTab, tabs.Config)
 
 	-- Tự động mở tab Main khi khởi chạy
 	tabs.Main:Select()
@@ -42092,7 +45423,7 @@ return function(self)
 
 	print("[SlopTowerDefense] Initialized successfully.")
 end
-end function __DIST.aX()
+end function __DIST.a2()
 local flags = {}
 
 function flags:Export()
@@ -42135,7 +45466,7 @@ function flags:Reset()
 	end
 end
 
-return flags end function __DIST.aY()
+return flags end function __DIST.a3()
 --// Imports
 
 
@@ -42146,7 +45477,7 @@ local binder = __DIST.load('ae')
 local interface = {}
 
 --// Initialize
-function interface:Window(properties: Window__DARKLUA_TYPE_w): Window__DARKLUA_TYPE_w
+function interface:Window(properties: Window__DARKLUA_TYPE_G): Window__DARKLUA_TYPE_G
 	properties = properties or {}
 	print("Made a window")
 
@@ -42160,7 +45491,7 @@ function interface:Window(properties: Window__DARKLUA_TYPE_w): Window__DARKLUA_T
 end
 
 return interface
-end function __DIST.aZ()--// Imports
+end function __DIST.a4()--// Imports
 
 local binder = __DIST.load('ae')
 
@@ -42173,11 +45504,11 @@ return binder.Wrap(esp, {
 		print(`{value and "Enabled" or "Disabled"} ESP.`)
 	end,
 }) :: { Enabled: boolean }
-end function __DIST.a_()--// Imports
+end function __DIST.a5()--// Imports
 
-local flags = __DIST.load('aX')
-local interface = __DIST.load('aY')
-local esp = __DIST.load('aZ')
+local flags = __DIST.load('a2')
+local interface = __DIST.load('a3')
+local esp = __DIST.load('a4')
 
 --// Initialize
 local window = interface:Window({
@@ -42216,7 +45547,7 @@ return {
 		end,
 	},
 }
-end function __DIST.a0()--// Variables
+end function __DIST.a6()--// Variables
 
 local utility = {}
 
@@ -42248,7 +45579,7 @@ function utility.GetHumanoid(player: Player?): Humanoid?
 end
 
 return utility
-end function __DIST.a1()--// Functions
+end function __DIST.a7()--// Functions
 
 local function cast(service: string): any
 	return game:GetService(service)
@@ -42258,14 +45589,14 @@ end
 return {
 	Players = cast("Players") :: Players,
 }
-end function __DIST.a2()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
+end function __DIST.a8()-- You can go even further by seperating tabs into different files, eg, Game 1/tabs/exploits.luau
 
 
 return function(self)
 	--// Imports
-	local base = __DIST.load('a_')
-	local utility = __DIST.load('a0')
-	local services = __DIST.load('a1')
+	local base = __DIST.load('a5')
+	local utility = __DIST.load('a6')
+	local services = __DIST.load('a7')
 
 	--// References
 	local flags = base.Flags
@@ -42331,8 +45662,8 @@ local keySystem = __DIST.load('a')
 local KEY_SYSTEM_CONFIG = {
 	Title = "ESCLIPSE SCRIPT HUB",
 	Subtitle = "Key Authentication System",
-	ApiUrl = "https://your-worker.your-subdomain.workers.dev", -- Thay thế bằng URL Cloudflare Worker của bạn
-	GetKeyUrl = "https://your-worker.your-subdomain.workers.dev/getkey", -- Link lấy key (LootLabs / Linkvertise / Checkpoint)
+	ApiUrl = "https://esclipse-keysystem.bhieu4225.workers.dev",
+	GetKeyUrl = "https://esclipse-keysystem.bhieu4225.workers.dev/getkey",
 	DiscordUrl = "https://discord.gg/your-invite", -- Link Discord của bạn
 	SaveFolder = "EsclipseHub",
 	SaveFileName = "key.json", -- Lưu tại: EsclipseHub/key.json
@@ -42354,7 +45685,7 @@ local routes = {
 
 	{
 		Name = "SlopTowerDefense",
-		Load = __DIST.load('aW'),
+		Load = __DIST.load('a1'),
 		UniverseId = 10529769390,
 		Places = {
 			134459712190924, -- Lobby
@@ -42365,7 +45696,7 @@ local routes = {
 
 	{
 		Name = "Game 2",
-		Load = __DIST.load('a2'),
+		Load = __DIST.load('a8'),
 		Places = {
 			123456789,
 			987654321,

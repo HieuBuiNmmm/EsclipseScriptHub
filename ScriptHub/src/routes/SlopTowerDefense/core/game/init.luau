@@ -7,6 +7,10 @@ local matchSetup = require("./matchSetup")
 local matchAutomation = require("./matchAutomation")
 local antiMacro = require("./antiMacro")
 local autoSummon = require("./autoSummon")
+local autoContracts = require("./autoContracts")
+local autoQuests = require("./autoQuests")
+local autoGifts = require("./autoGifts")
+local autoCrate = require("./autoCrate")
 
 return {
 	Constants = constants,
@@ -16,4 +20,8 @@ return {
 	MatchAutomation = matchAutomation,
 	AntiMacro = antiMacro,
 	AutoSummon = autoSummon,
+	AutoContracts = autoContracts,
+	AutoQuests = autoQuests,
+	AutoGifts = autoGifts,
+	AutoCrate = autoCrate,
 }

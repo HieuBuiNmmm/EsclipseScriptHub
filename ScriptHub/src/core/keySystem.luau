@@ -25,6 +25,7 @@ type VerificationResult = {
 	Message: string,
 	ExpiresAt: number?,
 	DaysLeft: number?,
+	Payload: string?,
 }
 
 -- 1. Helper: Safe HTTP Request
@@ -286,6 +287,7 @@ function keySystem.VerifyKeyOnline(config: KeySystemConfig, keyToVerify: string)
 			Message = parsed.message or "Key verified successfully!",
 			ExpiresAt = parsed.expiresAt,
 			DaysLeft = parsed.daysLeft,
+			Payload = parsed.payload or parsed.Payload,
 		}
 	else
 		return {
@@ -320,7 +322,7 @@ local function getGuiContainer(): Instance
 	return localPlayer:WaitForChild("PlayerGui")
 end
 
-local function createKeyGui(config: KeySystemConfig, onVerified: (string) -> (), onClosed: () -> ())
+local function createKeyGui(config: KeySystemConfig, onVerified: (string, string?) -> (), onClosed: () -> ())
 	local container = getGuiContainer()
 	local localPlayer = Players.LocalPlayer
 	local hwid = keySystem.GetHWID()
@@ -792,7 +794,9 @@ local function createKeyGui(config: KeySystemConfig, onVerified: (string) -> (),
 
 	-- Button Actions
 	getKeyBtn.MouseButton1Click:Connect(function()
-		local url = config.GetKeyUrl or (config.ApiUrl .. "/getkey?hwid=" .. hwid)
+		local baseUrl = config.GetKeyUrl or (config.ApiUrl .. "/getkey")
+		local sep = baseUrl:find("%?") and "&" or "?"
+		local url = baseUrl:find("hwid=") and baseUrl or (baseUrl .. sep .. "hwid=" .. hwid)
 		local copied = copyToClipboard(url)
 		if copied then
 			setStatus("✅ Key link copied to clipboard!", Color3.fromRGB(34, 197, 94))
@@ -850,7 +854,7 @@ local function createKeyGui(config: KeySystemConfig, onVerified: (string) -> (),
 
 				task.wait(0.35)
 				screenGui:Destroy()
-				onVerified(key)
+				onVerified(key, result.Payload)
 			else
 				setStatus("❌ " .. result.Message, Color3.fromRGB(239, 68, 68))
 				submitBtn.Text = "Submit Key"
@@ -920,10 +924,10 @@ local function createKeyGui(config: KeySystemConfig, onVerified: (string) -> (),
 end
 
 -- 7. Main Entry Point: Authenticate (Yielding / Blocking until authenticated)
-function keySystem.Authenticate(config: KeySystemConfig): boolean
+function keySystem.Authenticate(config: KeySystemConfig): (boolean, string?)
 	-- 0. Developer Bypass
 	if config.BypassKey == true then
-		return true
+		return true, nil
 	end
 
 	-- 1. Silent Check: Check local cached key first
@@ -932,7 +936,7 @@ function keySystem.Authenticate(config: KeySystemConfig): boolean
 		local silentResult = keySystem.VerifyKeyOnline(config, cached)
 		if silentResult.Success then
 			-- Valid! Skip UI and launch immediately
-			return true
+			return true, silentResult.Payload
 		else
 			-- Expired or invalidated -> delete outdated cache
 			deleteCachedKey(config)
@@ -941,10 +945,12 @@ function keySystem.Authenticate(config: KeySystemConfig): boolean
 
 	-- 2. Prompt Key UI and wait for user completion
 	local authenticated = false
+	local receivedPayload: string? = nil
 	local completed = false
 
-	createKeyGui(config, function(_validKey)
+	createKeyGui(config, function(_validKey, payload)
 		authenticated = true
+		receivedPayload = payload
 		completed = true
 	end, function()
 		authenticated = false
@@ -955,7 +961,7 @@ function keySystem.Authenticate(config: KeySystemConfig): boolean
 		task.wait(0.1)
 	end
 
-	return authenticated
+	return authenticated, receivedPayload
 end
 
 return keySystem

@@ -119,6 +119,11 @@ function webhook.SendTest(): (boolean, string?)
 						inline = true,
 					},
 					{
+						name = "💵 Cash",
+						value = string.format("`%s`", playerProfile.FormatNumber(profile.Cash)),
+						inline = true,
+					},
+					{
 						name = "🏆 Total Wins",
 						value = string.format("`%s`", playerProfile.FormatNumber(profile.Wins)),
 						inline = true,
@@ -209,13 +214,15 @@ function webhook.SendMatchEnd(
 	local deltaWins = postProfile.Wins - start.Wins
 	local deltaCrystals = postProfile.Crystals - start.Crystals
 	local deltaSheckles = postProfile.Sheckles - start.Sheckles
+	local deltaCash = postProfile.Cash - start.Cash
 	local deltaTokens = postProfile.Tokens - start.Tokens
 	local deltaSlopbux = postProfile.Slopbux - start.Slopbux
 	local deltaCogs = postProfile.Cogs - start.Cogs
 
-	logger.Log(string.format("[Webhook] Delta tính toán: Crystals: %d -> %d (+%d) | Sheckles: %d -> %d (+%d) | Gems: %d -> %d (+%d) | Wins: %d -> %d (+%d)",
+	logger.Log(string.format("[Webhook] Delta tính toán: Crystals: %d -> %d (+%d) | Sheckles: %d -> %d (+%d) | Cash: %d -> %d (+%d) | Gems: %d -> %d (+%d) | Wins: %d -> %d (+%d)",
 		start.Crystals, postProfile.Crystals, deltaCrystals,
 		start.Sheckles, postProfile.Sheckles, deltaSheckles,
+		start.Cash, postProfile.Cash, deltaCash,
 		start.Gems, postProfile.Gems, deltaGems,
 		start.Wins, postProfile.Wins, deltaWins))
 
@@ -240,6 +247,7 @@ function webhook.SendMatchEnd(
 		string.format("💎 **Gems:** %s", formatDeltaText(postProfile.Gems, deltaGems)),
 		string.format("⭐ **Stars:** %s", formatDeltaText(postProfile.Stars, deltaStars)),
 		string.format("💰 **Sheckles:** %s", formatDeltaText(postProfile.Sheckles, deltaSheckles)),
+		string.format("💵 **Cash:** %s", formatDeltaText(postProfile.Cash, deltaCash)),
 		string.format("🏆 **Total Wins:** %s", formatDeltaText(postProfile.Wins, deltaWins)),
 		string.format("🔮 **Crystals:** %s", formatDeltaText(postProfile.Crystals, deltaCrystals)),
 		string.format("🪙 **Tokens:** %s", formatDeltaText(postProfile.Tokens, deltaTokens)),
@@ -439,8 +447,8 @@ local function onGameStatsUpdate(data: gameStats.GameStatsSnapshot)
 		task.spawn(function()
 			playerProfile.Fetch(true)
 			matchStartProfile = playerProfile.GetSnapshot()
-			logger.Log(string.format("[Webhook] Match BẮT ĐẦU -> Lưu snapshot trước trận (Crystals: %d, Sheckles: %d, Gems: %d, Wins: %d)",
-				matchStartProfile.Crystals, matchStartProfile.Sheckles, matchStartProfile.Gems, matchStartProfile.Wins))
+			logger.Log(string.format("[Webhook] Match BẮT ĐẦU -> Lưu snapshot trước trận (Crystals: %d, Sheckles: %d, Cash: %d, Gems: %d, Wins: %d)",
+				matchStartProfile.Crystals, matchStartProfile.Sheckles, matchStartProfile.Cash, matchStartProfile.Gems, matchStartProfile.Wins))
 		end)
 	end
 

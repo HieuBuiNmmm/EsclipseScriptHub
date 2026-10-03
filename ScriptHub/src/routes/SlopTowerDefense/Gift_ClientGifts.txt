@@ -1,0 +1,214 @@
+-- Script path: Players.acz0025n.PlayerGui.Main.ClientGifts
+-- Decompile time: 5.40 ms
+
+local LocalPlayer = game:GetService("Players").LocalPlayer
+repeat
+    task.wait()
+until LocalPlayer:FindFirstChild("LoadedGifts")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GiftFolder = ReplicatedStorage:WaitForChild("GiftFolder")
+local SharedGiftData = require(GiftFolder:WaitForChild("SharedGiftData"))
+local List = (script.Parent:WaitForChild("Gifts")):WaitForChild("List")
+local u45 = GiftFolder:WaitForChild("GetData"):InvokeServer() or 0
+local u46 = {}
+local u51 = Color3.fromRGB(47, 255, 61)
+local u56 = Color3.fromRGB(158, 158, 158)
+local u61 = Color3.fromRGB(255, 255, 255)
+local u62 = false
+local TweenService = game:GetService("TweenService")
+
+local function FormatNumber(a1) -- Line: 19
+    return string.format("%02i", a1)
+end
+
+function ConvertSeconds(a1) -- Line: 22
+    local v1 = (a1 - a1 % 60) / 60
+    local v2 = a1 - v1 * 60
+    local v3 = (v1 - v1 % 60) / 60
+    v1 = v1 - v3 * 60
+    local v4 = string.format("%02i", v2)
+    v4 = (string.format("%02i", v1)) .. ":" .. v4
+    if v3 > 0 then
+        v4 = (string.format("%02i", v3)) .. ":" .. v4
+    end
+    return v4
+end
+
+local function SetClaimed(a1) -- Line: 35 -- upvalues: u56 (val)
+    a1.TextLabel.Text = "Claimed"
+    a1.TextLabel.TextColor3 = u56
+    a1.Button.ImageColor3 = Color3.fromRGB(150, 150, 150)
+end
+
+local function SetReady(a1, a2) -- Line: 41
+    -- upvalues: u51 (val), TweenService (val), u62 (ref), GiftFolder (val), ReplicatedStorage (val), u56 (val)
+    a1.TextLabel.Text = "Claim"
+    a1.TextLabel.TextColor3 = u51
+    a1.Button.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    local u24 = TweenService:Create(
+        a1.TextLabel,
+        TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+        {TextTransparency = 0.35}
+    )
+    u24:Play()
+    local u28 = nil
+    local v1 = a1.Button.Activated:Connect(function() -- Line: 49
+        -- upvalues: u62 (upval), a1 (val), GiftFolder (upval), a2 (val), u28 (ref), u24 (val)
+        -- upvalues: ReplicatedStorage (upval), u56 (upval)
+        if u62 == true then
+            return
+        end
+        u62 = true
+        a1.TextLabel.Text = "..."
+        local success, result = pcall(function() -- Line: 53 -- upvalues: GiftFolder (upval), a2 (upval)
+            local v1 = a2
+            return GiftFolder.ClaimGift:InvokeServer(v1)
+        end)
+        if not success or result ~= true then
+            a1.TextLabel.Text = if result ~= "Loading" then "Claim" else "Loading..."
+            task.delay(1.5, function() -- Line: 65 -- upvalues: a1 (upval)
+                if a1.Parent and a1.TextLabel.Text == "Loading..." then
+                    a1.TextLabel.Text = "Claim"
+                end
+            end)
+        else
+            u28:Disconnect()
+            u24:Cancel()
+            a1.TextLabel.TextTransparency = 0
+            if ReplicatedStorage:FindFirstChild("SFX") and ReplicatedStorage.SFX:FindFirstChild("Reward") then
+                ReplicatedStorage.SFX.Reward:Play()
+            end
+            local v1 = a1
+            v1.TextLabel.Text = "Claimed"
+            v1.TextLabel.TextColor3 = u56
+            v1.Button.ImageColor3 = Color3.fromRGB(150, 150, 150)
+        end
+        task.wait(0.3)
+        u62 = false
+    end)
+end
+
+local function CreateTemplates() -- Line: 72
+    -- upvalues: List (val), u46 (ref), SharedGiftData (val), u45 (ref), LocalPlayer (val), u56 (val), SetReady (val)
+    -- upvalues: u61 (val), TweenService (val)
+    local GiftNumber, Time, v1
+
+    local function ReturnCreatedObj() -- Line: 73
+        return (script.Template:Clone())
+    end
+
+    for i, v in ipairs(List:GetChildren()) do
+        if v:IsA("Frame") then
+            v:Destroy()
+        end
+    end
+    u46 = {}
+    for k, i2 in pairs(SharedGiftData) do
+        GiftNumber = i2.GiftNumber
+        Time = i2.Time
+        local u35 = script.Template:Clone()
+        u35.Name = tostring(GiftNumber)
+        u35.LayoutOrder = GiftNumber
+        u35.Button.Image = i2.Reward.GiftImage
+        u35.Amount.Text = "x" .. i2.Reward.Amount
+        v1 = Time - u45
+        if not (v1 <= 0) then
+            u35.TextLabel.Text = ConvertSeconds(v1)
+            u35.TextLabel.TextColor3 = u61
+            table.insert(u46, {u35, Time, GiftNumber})
+        elseif not LocalPlayer.ClaimedGifts:FindFirstChild((tostring(GiftNumber))) then
+            SetReady(u35, GiftNumber)
+        else
+            u35.TextLabel.Text = "Claimed"
+            u35.TextLabel.TextColor3 = u56
+            u35.Button.ImageColor3 = Color3.fromRGB(150, 150, 150)
+        end
+        u35.Button.MouseEnter:Connect(function() -- Line: 102 -- upvalues: TweenService (upval), u35 (val)
+            TweenService:Create(
+                u35.Button,
+                TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut),
+                {Size = UDim2.new(0.874, 0, 0.9, 0)}
+            ):Play()
+        end)
+        u35.Button.MouseLeave:Connect(function() -- Line: 106 -- upvalues: TweenService (upval), u35 (val)
+            TweenService:Create(
+                u35.Button,
+                TweenInfo.new(0.2, Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut),
+                {Size = UDim2.new(0.824, 0, 0.85, 0)}
+            ):Play()
+        end)
+        u35.Parent = List
+    end
+end
+
+CreateTemplates()
+local CurrentSession = LocalPlayer:WaitForChild("CurrentSession")
+local Gifts = script.Parent:WaitForChild("NewButtons"):WaitForChild("Gifts")
+
+local function Refresh() -- Line: 118
+    -- upvalues: u45 (ref), CurrentSession (val), u46 (ref), LocalPlayer (val), u56 (val), SetReady (val), List (val)
+    -- upvalues: SharedGiftData (val), Gifts (val)
+    local v1, v2, v3
+    local v4 = u45 + CurrentSession.Value
+    local v5 = nil
+    local v6 = false
+    for i = #u46, 1, -1 do
+        v1 = u46[i]
+        v2 = v1[1]
+        v3 = v1[2] - v4
+        if not (v3 <= 0) then
+            if v5 == nil or v3 < v5 then
+                v5 = v3
+            end
+            v2.TextLabel.Text = ConvertSeconds(v3)
+        else
+            table.remove(u46, i)
+            if not LocalPlayer.ClaimedGifts:FindFirstChild((tostring(v1[3]))) then
+                SetReady(v2, v1[3])
+            else
+                v2.TextLabel.Text = "Claimed"
+                v2.TextLabel.TextColor3 = u56
+                v2.Button.ImageColor3 = Color3.fromRGB(150, 150, 150)
+            end
+        end
+    end
+    for i2, v in ipairs(List:GetChildren()) do
+        if v:IsA("Frame") and LocalPlayer.ClaimedGifts:FindFirstChild(v.Name) and v.TextLabel.Text ~= "Claimed" then
+            v.TextLabel.Text = "Claimed"
+            v.TextLabel.TextColor3 = u56
+            v.Button.ImageColor3 = Color3.fromRGB(150, 150, 150)
+        end
+    end
+    for k, j in pairs(SharedGiftData) do
+        if j.Time - v4 <= 0 and not LocalPlayer.ClaimedGifts:FindFirstChild((tostring(j.GiftNumber))) then
+            v6 = true
+            break
+        end
+    end
+    if v6 then
+        Gifts.Ready.Visible = true
+        Gifts.Lowest.Visible = false
+        Gifts.Lowest.TextColor3 = Color3.fromRGB(69, 255, 48)
+        return
+    end
+    Gifts.Lowest.TextColor3 = Color3.fromRGB(255, 255, 255)
+    if typeof(v5) == "nil" then
+        Gifts.Lowest.Text = ""
+        return
+    end
+    Gifts.Lowest.Text = ConvertSeconds(v5)
+    Gifts.Ready.Visible = false
+    Gifts.Lowest.Visible = true
+end
+
+;(CurrentSession:GetPropertyChangedSignal("Value")):Connect(Refresh)
+LocalPlayer.ClaimedGifts.ChildAdded:Connect(Refresh)
+Refresh()
+local GiftsReset = GiftFolder:FindFirstChild("GiftsReset")
+if GiftsReset then
+    GiftsReset.OnClientEvent:Connect(function() -- Line: 171 -- upvalues: u45 (ref), GiftFolder (val), CreateTemplates (val), Refresh (val)
+        u45 = GiftFolder.GetData:InvokeServer() or 0
+        CreateTemplates()
+        Refresh()
+    end)
+end

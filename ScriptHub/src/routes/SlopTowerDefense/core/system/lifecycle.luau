@@ -5,6 +5,11 @@ local lifecycle = {
 	callbacks = {},
 }
 
+function lifecycle.Init(): ()
+	lifecycle.cleaned = false
+	table.clear(lifecycle.callbacks)
+end
+
 function lifecycle.Register(callback: () -> ()): () -> ()
 	if type(callback) ~= "function" then
 		return function() end

@@ -1,9 +1,11 @@
 -- Tab Macro: Live Game Stats, Macro Recorder & Macro Player (Playback)
 local gameStats = require("@routes/SlopTowerDefense/core/game/gameStats")
 local zoneGuard = require("@routes/SlopTowerDefense/core/game/zoneGuard")
+local raidManager = require("@routes/SlopTowerDefense/core/game/raidManager")
 local storage = require("@routes/SlopTowerDefense/core/macro/storage")
 local recorder = require("@routes/SlopTowerDefense/core/macro/recorder")
 local player = require("@routes/SlopTowerDefense/core/macro/player")
+local mapMacroManager = require("@routes/SlopTowerDefense/core/macro/mapMacroManager")
 local autoSave = require("@routes/SlopTowerDefense/core/system/autoSave")
 local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
 local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
@@ -29,6 +31,14 @@ return function(window, tab)
 
 	local waveLabel = statsSection:Label({
 		Text = "🌊 <b>Wave:</b> <font color='rgb(100,200,255)'>0/0</font>",
+	})
+
+	local raidMapLabel = statsSection:Label({
+		Text = "🗺️ <b>Map:</b> <font color='rgb(150,150,150)'>--</font>",
+	})
+
+	local intermissionLabel = statsSection:Label({
+		Text = "⏳ <b>Intermission:</b> <font color='rgb(150,150,150)'>None</font>",
 	})
 
 	local messageLabel = statsSection:Label({
@@ -63,6 +73,26 @@ return function(window, tab)
 	local unsubscribeMatch = gameStats.Subscribe(updateMatchUi)
 	lifecycle.Register(unsubscribeMatch)
 
+	local function updateRaidUi(data: raidManager.RaidSnapshot)
+		if not zoneGuard.IsInGame() or not data.IsRaid then
+			raidMapLabel:UpdateName("🗺️ <b>Map:</b> <font color='rgb(150,150,150)'>Standard</font>")
+			intermissionLabel:UpdateName("⏳ <b>Intermission:</b> <font color='rgb(150,150,150)'>None</font>")
+			return
+		end
+
+		local mapColor = data.CurrentMap and "rgb(255,180,80)" or "rgb(150,150,150)"
+		raidMapLabel:UpdateName(string.format("🗺️ <b>Map:</b> <font color='%s'>%s</font>", mapColor, tostring(data.CurrentMap or "Detecting...")))
+
+		if data.IsIntermission then
+			intermissionLabel:UpdateName(string.format("⏳ <b>Intermission:</b> <font color='rgb(85,255,120)'>%ds (%d/%d Ready)</font>", data.RemainingSeconds, data.ReadyCount, data.TotalPlayers))
+		else
+			intermissionLabel:UpdateName("⏳ <b>Intermission:</b> <font color='rgb(150,220,255)'>Wave Active</font>")
+		end
+	end
+
+	local unsubRaid = raidManager.Subscribe(updateRaidUi)
+	lifecycle.Register(unsubRaid)
+
 	--// ====================================================================
 	--// CỘT TRÁI: Section 2 - Macro Recorder (1 Input, 1 Button, 1 Dropdown, 1 Toggle)
 	--// ====================================================================
@@ -72,6 +102,8 @@ return function(window, tab)
 	local currentInputText = ""
 	local macroDropdown
 	local recordToggle
+	local isUpdatingDropdownInternally = false
+	local lastSyncedMacroName: string? = nil
 
 	-- 1. Input: Nhập tên Macro mới
 	local nameInput = recorderSection:Input({
@@ -107,16 +139,50 @@ return function(window, tab)
 
 			-- Cập nhật danh sách vào Dropdown
 			if macroDropdown then
+				isUpdatingDropdownInternally = true
 				pcall(function()
 					local currentOptions = macroDropdown:GetOptions() or {}
 					if not table.find(currentOptions, trimmed) then
 						macroDropdown:InsertOptions({ trimmed })
 					end
+					lastSyncedMacroName = trimmed
 					macroDropdown:UpdateSelection(trimmed)
 				end)
+				isUpdatingDropdownInternally = false
 			end
 
 			notifier.Notify("Macro", "Created Macro: " .. trimmed, 2)
+		end,
+	})
+
+	-- Button: Tạo / Chọn Macro theo tên Map đang chơi
+	recorderSection:Button({
+		Name = "Use Current Map Name",
+		Callback = function()
+			local curMap = raidManager.GetCurrentMap()
+			if not curMap or curMap == "" or curMap == "None" then
+				notifier.Notify("Macro", "No active map detected!", 2)
+				return
+			end
+
+			storage.CreateMacro(curMap)
+			recorder.SetActiveMacro(curMap)
+			player.SetActiveMacro(curMap)
+
+			if macroDropdown then
+				isUpdatingDropdownInternally = true
+				pcall(function()
+					local currentOptions = macroDropdown:GetOptions() or {}
+					if not table.find(currentOptions, curMap) then
+						macroDropdown:InsertOptions({ curMap })
+					end
+					lastSyncedMacroName = curMap
+					macroDropdown:UpdateSelection(curMap)
+				end)
+				isUpdatingDropdownInternally = false
+			end
+
+			notifier.Notify("Macro", string.format("Selected Map Macro: '%s'", curMap), 2)
 		end,
 	})
 
@@ -127,6 +193,7 @@ return function(window, tab)
 	end
 
 	local defaultSelected = initialMacros[1] or "None"
+	lastSyncedMacroName = defaultSelected
 	if defaultSelected ~= "None" then
 		recorder.SetActiveMacro(defaultSelected)
 		player.SetActiveMacro(defaultSelected)
@@ -139,11 +206,60 @@ return function(window, tab)
 		Default = defaultSelected,
 		Required = true,
 		Callback = autoSave.Wrap(function(selected)
+			if isUpdatingDropdownInternally then return end
 			if not selected or selected == "" or selected == "None" then return end
+			lastSyncedMacroName = selected
 			recorder.SetActiveMacro(selected)
 			player.SetActiveMacro(selected)
 		end),
 	}, "Dropdown_SelectMacro")
+
+	-- Button: Xóa Macro đang chọn
+	recorderSection:Button({
+		Name = "Delete Macro",
+		Callback = function()
+			if player.IsEnabled() then
+				notifier.Notify("Macro", "Please disable Play Macro before deleting!", 2)
+				return
+			end
+			if recorder.IsRecording() then
+				notifier.Notify("Macro", "Please stop Record Macro before deleting!", 2)
+				return
+			end
+
+			local targetName = player.GetActiveMacro() or recorder.GetActiveMacro()
+			if not targetName or targetName == "" or targetName == "None" then
+				notifier.Notify("Macro", "Please select a Macro to delete!", 2)
+				return
+			end
+
+			-- Thực hiện xóa file và bộ nhớ đệm
+			storage.DeleteMacro(targetName)
+
+			-- Cập nhật danh sách mới
+			local updatedMacros = storage.ListMacros()
+			if #updatedMacros == 0 then
+				updatedMacros = { "None" }
+			end
+
+			local newSelected = updatedMacros[1] or "None"
+			lastSyncedMacroName = newSelected
+			recorder.SetActiveMacro(newSelected)
+			player.SetActiveMacro(newSelected)
+
+			if macroDropdown then
+				isUpdatingDropdownInternally = true
+				pcall(function()
+					macroDropdown:ClearOptions()
+					macroDropdown:InsertOptions(updatedMacros)
+					macroDropdown:UpdateSelection(newSelected)
+				end)
+				isUpdatingDropdownInternally = false
+			end
+
+			notifier.Notify("Macro", string.format("Deleted Macro '%s'!", targetName), 2.5)
+		end,
+	})
 
 	-- 4. Toggle: Bật / Tắt ghi lại Macro (Record)
 	local isTogglingInternally = false
@@ -166,13 +282,34 @@ return function(window, tab)
 
 				local activeName = recorder.GetActiveMacro()
 				if not activeName or activeName == "" or activeName == "None" then
-					isTogglingInternally = true
-					pcall(function()
-						recordToggle:UpdateState(false, true)
-					end)
-					isTogglingInternally = false
-					notifier.Notify("Macro", "Please select or create a Macro before recording!", 2)
-					return
+					local curMap = raidManager.GetCurrentMap()
+					if curMap and curMap ~= "" and curMap ~= "None" then
+						activeName = curMap
+						storage.CreateMacro(curMap)
+						recorder.SetActiveMacro(curMap)
+						player.SetActiveMacro(curMap)
+						if macroDropdown then
+							isUpdatingDropdownInternally = true
+							pcall(function()
+								local currentOptions = macroDropdown:GetOptions() or {}
+								if not table.find(currentOptions, curMap) then
+									macroDropdown:InsertOptions({ curMap })
+								end
+								lastSyncedMacroName = curMap
+								macroDropdown:UpdateSelection(curMap)
+							end)
+							isUpdatingDropdownInternally = false
+						end
+						notifier.Notify("Macro", string.format("Auto selected Map Macro: '%s'", curMap), 2)
+					else
+						isTogglingInternally = true
+						pcall(function()
+							recordToggle:UpdateState(false, true)
+						end)
+						isTogglingInternally = false
+						notifier.Notify("Macro", "Please select or create a Macro before recording!", 2)
+						return
+					end
 				end
 
 				local started = recorder.StartRecording(activeName)
@@ -194,15 +331,15 @@ return function(window, tab)
 		end,
 	})
 
-	-- 5. Button: Đánh dấu thủ công chuyển Stage trong Raid (phòng khi muốn chủ động tách Map)
+	-- 5. Button: Dừng và lưu ngay Macro cho Map hiện tại (Cách 1)
 	recorderSection:Button({
-		Name = "Mark Raid Transition (Next Stage)",
+		Name = "Finish & Save Map",
 		Callback = function()
 			if not recorder.IsRecording() then
-				notifier.Notify("Macro", "Please enable Record Macro before marking a stage!", 2)
+				notifier.Notify("Macro", "Recorder is not running!", 2)
 				return
 			end
-			recorder.MarkStageTransition()
+			recorder.StopRecording("MapCompleted")
 		end,
 	})
 
@@ -220,6 +357,20 @@ return function(window, tab)
 			local activeName = recorder.GetActiveMacro()
 			if activeName then
 				player.SetActiveMacro(activeName)
+			end
+			if macroDropdown then
+				isUpdatingDropdownInternally = true
+				pcall(function()
+					local updated = storage.ListMacros()
+					if #updated == 0 then updated = { "None" } end
+					macroDropdown:ClearOptions()
+					macroDropdown:InsertOptions(updated)
+					if activeName then
+						lastSyncedMacroName = activeName
+						macroDropdown:UpdateSelection(activeName)
+					end
+				end)
+				isUpdatingDropdownInternally = false
 			end
 		end
 	end)
@@ -265,29 +416,29 @@ return function(window, tab)
 					return
 				end
 
-				local targetName = player.GetActiveMacro() or recorder.GetActiveMacro()
-				if not targetName or targetName == "" or targetName == "None" then
+				local curMap = raidManager.GetCurrentMap()
+				local mappedMacro = mapMacroManager.GetMapMacro(curMap)
+				local targetName = (mappedMacro and mappedMacro ~= "None" and storage.HasMacro(mappedMacro)) and mappedMacro or (player.GetActiveMacro() or recorder.GetActiveMacro())
+
+				local hasAnyMappings = next(mapMacroManager.GetAllMappings()) ~= nil
+
+				if (not targetName or targetName == "" or targetName == "None") and not hasAnyMappings and not player.IsAutoMapSwitchEnabled() then
 					isPlayTogglingInternally = true
 					pcall(function()
 						playToggle:UpdateState(false, true)
 					end)
 					isPlayTogglingInternally = false
-					notifier.Notify("Macro", "Please select or create a Macro before playing!", 2)
+					notifier.Notify("Macro", "Please select a Macro or configure Map Macro before playing!", 2)
 					return
 				end
 
-				local data = storage.GetMacro(targetName)
-				if not data or not data.Steps or #data.Steps == 0 then
-					isPlayTogglingInternally = true
-					pcall(function()
-						playToggle:UpdateState(false, true)
-					end)
-					isPlayTogglingInternally = false
-					notifier.Notify("Macro", string.format("Macro '%s' has no steps to play!", targetName), 2.5)
-					return
+				if targetName and targetName ~= "" and targetName ~= "None" then
+					local data = storage.GetMacro(targetName)
+					if data and data.Steps and #data.Steps > 0 then
+						player.SetActiveMacro(targetName)
+					end
 				end
 
-				player.SetActiveMacro(targetName)
 				player.SetEnabled(true)
 			else
 				player.SetEnabled(false)
@@ -310,6 +461,14 @@ return function(window, tab)
 			player.SetVoteSkipEnabled(state)
 		end),
 	}, "Toggle_ApplyMacroSkipWave")
+
+	playerSection:Toggle({
+		Name = "Auto Catch-up Upgrades",
+		Default = player.IsAutoCatchUp(),
+		Callback = autoSave.Wrap(function(state)
+			player.SetAutoCatchUp(state)
+		end),
+	}, "Toggle_MacroAutoCatchUp")
 
 	playerSection:Dropdown({
 		Name = "Timing Mode",
@@ -358,6 +517,20 @@ return function(window, tab)
 		end
 
 		playerMacroLabel:UpdateName(string.format("📁 <b>Macro:</b> <font color='rgb(100,200,255)'>%s</font> <font color='rgb(150,150,150)'>(%d steps)</font>", macroName, totalStepsCount))
+
+		if macroDropdown and macroName ~= "None" and macroName ~= lastSyncedMacroName then
+			lastSyncedMacroName = macroName
+			recorder.SetActiveMacro(macroName)
+			isUpdatingDropdownInternally = true
+			pcall(function()
+				local currentOpts = macroDropdown:GetOptions() or {}
+				if not table.find(currentOpts, macroName) then
+					macroDropdown:InsertOptions({ macroName })
+				end
+				macroDropdown:UpdateSelection(macroName)
+			end)
+			isUpdatingDropdownInternally = false
+		end
 
 		local statusColor = data.IsPlaying and "rgb(85,255,120)" or (data.IsEnabled and "rgb(255,220,100)" or "rgb(180,180,180)")
 		playerStatusLabel:UpdateName(string.format("▶️ <b>Status:</b> <font color='%s'>%s</font>", statusColor, data.StatusText))

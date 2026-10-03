@@ -69,6 +69,12 @@ local function normalizeMacroData(data: any): types.MacroData?
 				step.TowerId = step.TowerId or "STAGE"
 				step.TowerName = step.TowerName or string.format("Raid Stage %d", step.Stage or 2)
 			end
+			-- Đồng bộ trường Cost và TowerCost (gộp 2 trường)
+			if step.Cost == nil and step.TowerCost ~= nil then
+				step.Cost = step.TowerCost
+			elseif step.TowerCost == nil and step.Cost ~= nil then
+				step.TowerCost = step.Cost
+			end
 			return step
 		end
 
@@ -164,6 +170,9 @@ local function serializeMacro(data: types.MacroData): string
 			if step.TowerName and step.TowerName ~= "VoteSkip" and step.TowerName ~= "GameSpeed" and step.TowerName ~= "Unknown" and not step.TowerName:find("^Raid Stage") then
 				table.insert(fields, string.format('      "TowerName": %s', HttpService:JSONEncode(step.TowerName)))
 			end
+			if step.Level ~= nil then
+				table.insert(fields, string.format('      "Level": %d', step.Level))
+			end
 			if step.LayoutOrder ~= nil then
 				table.insert(fields, string.format('      "LayoutOrder": %d', step.LayoutOrder))
 			end
@@ -179,12 +188,10 @@ local function serializeMacro(data: types.MacroData): string
 				table.insert(fields, string.format('      "RecordSpeed": %d', step.RecordSpeed))
 			end
 
-			-- Nhóm 3: Chi phí
-			if step.TowerCost ~= nil then
-				table.insert(fields, string.format('      "TowerCost": %s', tostring(step.TowerCost)))
-			end
-			if step.Cost ~= nil then
-				table.insert(fields, string.format('      "Cost": %s', tostring(step.Cost)))
+			-- Nhóm 3: Chi phí (gộp TowerCost và Cost thành trường Cost duy nhất)
+			local costVal = step.Cost or step.TowerCost
+			if costVal ~= nil then
+				table.insert(fields, string.format('      "Cost": %s', tostring(costVal)))
 			end
 
 			-- Nhóm 4: Tọa độ & CFrame (Giữ nguyên số thực gốc 100%, format gọn gàng 1 dòng)
@@ -204,9 +211,6 @@ local function serializeMacro(data: types.MacroData): string
 			end
 
 			-- Nhóm 5: Thuộc tính riêng từng loại hành động
-			if step.Stage ~= nil then
-				table.insert(fields, string.format('      "Stage": %d', step.Stage))
-			end
 			if step.TargetMode then
 				table.insert(fields, string.format('      "TargetMode": %s', HttpService:JSONEncode(step.TargetMode)))
 			end
@@ -288,6 +292,54 @@ function storage.HasMacro(name: string): boolean
 	return memoryCache[name] ~= nil
 end
 
+-- Tìm kiếm tên Macro phù hợp nhất với tên Map hiện tại (hỗ trợ "Raid", "Raid 1", "Raid_1", "Raid1", v.v.)
+function storage.FindMacroForMap(mapName: string?): string?
+	if not mapName or mapName == "" then return nil end
+	initialize()
+
+	-- 1. Ưu tiên 1: Khớp chính xác tuyệt đối tên (kể cả không phân biệt hoa thường)
+	if memoryCache[mapName] then
+		return mapName
+	end
+	for name in pairs(memoryCache) do
+		if name:lower() == mapName:lower() then
+			return name
+		end
+	end
+
+	-- Chuẩn hóa tên map (chữ thường, loại bỏ khoảng trắng, gạch dưới, gạch ngang, từ khóa 'stage')
+	local cleanMap = mapName:lower():gsub("[%s_%-]+", ""):gsub("stage", "")
+	local mapNum = cleanMap:match("%d+$") -- Số hiệu của map nếu có (vd: "2" cho "Raid2" hoặc "Stage 2")
+
+	-- 2. Ưu tiên 2: Khớp sau khi chuẩn hóa đầy đủ (ví dụ "Raid Stage 2" hoặc "Raid_2" khớp với "Raid2")
+	for name in pairs(memoryCache) do
+		local cleanName = name:lower():gsub("[%s_%-]+", ""):gsub("stage", "")
+		if cleanName == cleanMap then
+			return name
+		end
+	end
+
+	-- 3. Ưu tiên 3: Khớp tiền tố/hậu tố nhưng đảm bảo ràng buộc số hiệu map
+	for name in pairs(memoryCache) do
+		local cleanName = name:lower():gsub("[%s_%-]+", ""):gsub("stage", "")
+		local nameNum = cleanName:match("%d+$")
+
+		-- Nếu map không có số (ví dụ: map "Raid"): tuyệt đối không khớp với macro có số ("Raid 2", "Raid 3")
+		if not mapNum then
+			if not nameNum and (cleanName:find(cleanMap, 1, true) or cleanMap:find(cleanName, 1, true)) then
+				return name
+			end
+		else
+			-- Nếu map có số (ví dụ: map "Raid2"): bắt buộc macro cũng phải có cùng số hiệu (nameNum == mapNum)
+			if nameNum == mapNum and (cleanName:find(cleanMap, 1, true) or cleanMap:find(cleanName, 1, true)) then
+				return name
+			end
+		end
+	end
+
+	return nil
+end
+
 -- Lấy dữ liệu của 1 macro
 function storage.GetMacro(name: string): types.MacroData?
 	initialize()
@@ -340,8 +392,13 @@ function storage.SaveMacro(name: string, data: types.MacroData): boolean
 			local writeOk = pcall(function()
 				writefile(path, encoded)
 			end)
+			if writeOk then
+				storage.NotifyListChanged()
+			end
 			return writeOk
 		end
+	else
+		storage.NotifyListChanged()
 	end
 
 	return true
@@ -353,16 +410,36 @@ function storage.DeleteMacro(name: string): boolean
 
 	memoryCache[name] = nil
 
-	if hasFileSystem and delfile then
-		local path = getFilePath(name)
-		if isfile(path) then
-			pcall(function()
-				delfile(path)
-			end)
+	if hasFileSystem then
+		local delFn = delfile or (syn and syn.delfile)
+		if delFn then
+			local path = getFilePath(name)
+			if isfile(path) then
+				pcall(function()
+					delFn(path)
+				end)
+			end
 		end
 	end
 
+	storage.NotifyListChanged()
 	return true
+end
+
+local listListeners: { () -> () } = {}
+
+function storage.OnMacroListChanged(callback: () -> ()): () -> ()
+	table.insert(listListeners, callback)
+	return function()
+		local idx = table.find(listListeners, callback)
+		if idx then table.remove(listListeners, idx) end
+	end
+end
+
+function storage.NotifyListChanged()
+	for _, cb in ipairs(listListeners) do
+		task.spawn(pcall, cb)
+	end
 end
 
 return storage

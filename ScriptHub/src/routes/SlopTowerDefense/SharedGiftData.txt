@@ -1,0 +1,69 @@
+-- Script Path: game:GetService("ReplicatedStorage").GiftFolder.SharedGiftData
+-- Took 0s to decompile.
+-- Executor: Real (2.7.4)
+
+-- Script path: ReplicatedStorage.GiftFolder.SharedGiftData
+-- Decompile time: 0.54 ms
+
+return {
+    {
+        GiftNumber = 1,
+        Time = 300,
+        Reward = {Currency = "Cash", Amount = 300, GiftImage = "rbxassetid://18885492705"},
+    },
+    {
+        GiftNumber = 2,
+        Time = 600,
+        Reward = {Currency = "Slopbux", Amount = 3, GiftImage = "rbxassetid://115788757393781"},
+    },
+    {
+        GiftNumber = 3,
+        Time = 900,
+        Reward = {
+            Currency = "Crate",
+            Type = "Steampunk Crate",
+            Amount = 1,
+            GiftImage = "rbxassetid://99494484027423",
+        },
+    },
+    {
+        GiftNumber = 4,
+        Time = 1500,
+        Reward = {Currency = "Cash", Amount = 900, GiftImage = "rbxassetid://18885492705"},
+    },
+    {
+        GiftNumber = 5,
+        Time = 2100,
+        Reward = {Currency = "Slopbux", Amount = 5, GiftImage = "rbxassetid://115788757393781"},
+    },
+    {
+        GiftNumber = 6,
+        Time = 2700,
+        Reward = {
+            Currency = "Crate",
+            Type = "Steampunk Crate",
+            Amount = 3,
+            GiftImage = "rbxassetid://99494484027423",
+        },
+    },
+    {
+        GiftNumber = 7,
+        Time = 3600,
+        Reward = {Currency = "Cash", Amount = 3000, GiftImage = "rbxassetid://18885492705"},
+    },
+    {
+        GiftNumber = 8,
+        Time = 7200,
+        Reward = {Currency = "Slopbux", Amount = 10, GiftImage = "rbxassetid://115788757393781"},
+    },
+    {
+        GiftNumber = 9,
+        Time = 10800,
+        Reward = {
+            Currency = "Crate",
+            Type = "Steampunk Crate",
+            Amount = 10,
+            GiftImage = "rbxassetid://99494484027423",
+        },
+    },
+}

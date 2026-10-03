@@ -28,6 +28,7 @@ return function(self)
 	local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
 	local utility = require("@routes/SlopTowerDefense/core/system/utility")
 
+	lifecycle.Init()
 	autoSave.Suspend()
 
 	-- Khởi tạo Maclib Window
@@ -58,25 +59,34 @@ return function(self)
 	-- Folder config
 	macLib:SetFolder("EsclipseHub/SlopTowerDefense")
 
-	-- 4 Tabs theo thứ tự: Main, Game, Macro, Config
+	-- 5 Tabs theo thứ tự tuần tự: Main, Game, Macro, Map Macro, Config
 	local tabGroup = window:TabGroup()
-	local tabs = {
-		Main = tabGroup:Tab({ Name = "Main", Image = "rbxassetid://10734886202" }),
-		Game = tabGroup:Tab({ Name = "Game", Image = "rbxassetid://10734975692" }),
-		Macro = tabGroup:Tab({ Name = "Macro", Image = "rbxassetid://10734950309" }),
-		Config = tabGroup:Tab({ Name = "Config", Image = "rbxassetid://10709769841" }),
-	}
+	local tabs = {}
+	tabs.Main = tabGroup:Tab({ Name = "Main", Image = "rbxassetid://10723407389" })
+	tabs.Game = tabGroup:Tab({ Name = "Game", Image = "rbxassetid://10734975692" })
+	tabs.Macro = tabGroup:Tab({ Name = "Macro", Image = "rbxassetid://10734950309" })
+	tabs.MapMacro = tabGroup:Tab({ Name = "Map Macro", Image = "rbxassetid://10734886004" })
+	tabs.Config = tabGroup:Tab({ Name = "Config", Image = "rbxassetid://10709769841" })
 
 	-- Load UI Modules
 	local mainTab = require("@routes/SlopTowerDefense/tabs/Main/main")
 	local gameTab = require("@routes/SlopTowerDefense/tabs/Game/main")
 	local macroTab = require("@routes/SlopTowerDefense/tabs/Macro/main")
+	local mapMacroTab = require("@routes/SlopTowerDefense/tabs/MapMacro/main")
 	local configTab = require("@routes/SlopTowerDefense/tabs/Config/main")
 
-	mainTab(window, tabs.Main)
-	gameTab(window, tabs.Game)
-	macroTab(window, tabs.Macro)
-	configTab(window, tabs.Config)
+	local function safeLoad(tabName: string, loader: (any, any) -> (), tabInstance: any)
+		local ok, err = pcall(loader, window, tabInstance)
+		if not ok then
+			warn(string.format("[SlopTowerDefense] Failed to load tab '%s': %s", tabName, tostring(err)))
+		end
+	end
+
+	safeLoad("Main", mainTab, tabs.Main)
+	safeLoad("Game", gameTab, tabs.Game)
+	safeLoad("Macro", macroTab, tabs.Macro)
+	safeLoad("MapMacro", mapMacroTab, tabs.MapMacro)
+	safeLoad("Config", configTab, tabs.Config)
 
 	-- Tự động mở tab Main khi khởi chạy
 	tabs.Main:Select()

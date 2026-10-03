@@ -6,6 +6,7 @@ local GuiService = game:GetService("GuiService")
 
 local zoneGuard = require("./zoneGuard")
 local gameStats = require("./gameStats")
+local raidManager = require("./raidManager")
 local notifier = require("@routes/SlopTowerDefense/core/system/notifier")
 local lifecycle = require("@routes/SlopTowerDefense/core/system/lifecycle")
 local logger = require("@routes/SlopTowerDefense/core/system/logger")
@@ -15,6 +16,8 @@ local matchAutomation = {}
 matchAutomation.AutoReplayEnabled = false
 matchAutomation.AutoSpeedEnabled = false
 matchAutomation.AutoSkipEnabled = false
+matchAutomation.AutoReadyEnabled = false
+matchAutomation.AutoReadyDelay = 2
 matchAutomation.SelectedSpeed = "x2"
 matchAutomation.Speeds = { "x1", "x2", "x3", "x4", "x5" }
 
@@ -22,8 +25,10 @@ local isRunning = true
 local lastReplayTriggerTime = 0
 local lastSpeedCheckTime = 0
 local lastSkipTriggerTime = 0
+local lastReadyTriggerTime = 0
 local endScreenConn: RBXScriptConnection? = nil
 local waveSkipConn: RBXScriptConnection? = nil
+local unsubRaidIntermission: (() -> ())? = nil
 
 -- Hàm click button an toàn, kết hợp đa phương thức (getconnections, firesignal, VirtualInputManager, GuiService)
 local function clickButton(button: GuiButton): boolean
@@ -241,6 +246,34 @@ local function hookWaveSkipListener()
 	end
 end
 
+-- Kích hoạt Auto Ready trong Raid (Bấm PlayerGui.RaidReady.Frame.TextButton)
+local function checkAndTriggerAutoReady(): boolean
+	if not matchAutomation.AutoReadyEnabled then return false end
+	if not zoneGuard.IsInGame() then return false end
+	if not raidManager.IsIntermissionActive() then return false end
+
+	local now = os.clock()
+	if now - lastReadyTriggerTime < 2.5 then return false end -- Debounce 2.5s
+	lastReadyTriggerTime = now
+
+	local delaySec = math.max(0, matchAutomation.AutoReadyDelay or 0)
+	logger.Log(string.format("[Auto Ready] Phát hiện Intermission trong Raid -> Sẽ bấm READY sau %.1fs", delaySec))
+
+	task.spawn(function()
+		if delaySec > 0 then
+			task.wait(delaySec)
+		end
+		if matchAutomation.AutoReadyEnabled and zoneGuard.IsInGame() and raidManager.IsIntermissionActive() then
+			local ok = raidManager.ClickReady()
+			if ok then
+				logger.Log("[Auto Ready] ✅ Đã tự động bấm READY thành công!")
+			end
+		end
+	end)
+
+	return true
+end
+
 -- Gửi Remote ChangeSpeed đến server
 -- Remote: game:GetService("ReplicatedStorage").Functions.ChangeSpeed:InvokeServer(speedNumber)
 local function sendChangeSpeed(speedNum: number?): boolean
@@ -364,6 +397,13 @@ end
 local unsubGameStats = gameStats.Subscribe(onGameStatsUpdate)
 
 -- Vòng lặp giám sát Match Automation
+-- Lắng nghe sự kiện Intermission của Raid để kích hoạt Auto Ready tức thì
+unsubRaidIntermission = raidManager.OnIntermissionChanged(function(isActive, mapName)
+	if isActive and matchAutomation.AutoReadyEnabled then
+		checkAndTriggerAutoReady()
+	end
+end)
+
 task.spawn(function()
 	while isRunning and lifecycle.IsActive() do
 		-- Hook listener khi EndScreen xuất hiện
@@ -380,6 +420,11 @@ task.spawn(function()
 		-- Xử lý Auto Replay (kiểm tra liên tục qua EndScreen.Replay)
 		if matchAutomation.AutoReplayEnabled then
 			checkAndTriggerReplay()
+		end
+
+		-- Xử lý Auto Ready nếu đang trong Intermission của Raid
+		if matchAutomation.AutoReadyEnabled and raidManager.IsIntermissionActive() then
+			checkAndTriggerAutoReady()
 		end
 
 		-- Xử lý Auto Speed dự phòng nếu sự kiện snapshot bị bỏ lỡ
@@ -425,6 +470,25 @@ function matchAutomation.IsAutoSkipEnabled(): boolean
 	return matchAutomation.AutoSkipEnabled
 end
 
+function matchAutomation.SetAutoReady(enabled: boolean)
+	matchAutomation.AutoReadyEnabled = (enabled == true)
+	if matchAutomation.AutoReadyEnabled and raidManager.IsIntermissionActive() then
+		checkAndTriggerAutoReady()
+	end
+end
+
+function matchAutomation.IsAutoReadyEnabled(): boolean
+	return matchAutomation.AutoReadyEnabled
+end
+
+function matchAutomation.SetAutoReadyDelay(delay: number)
+	matchAutomation.AutoReadyDelay = math.clamp(delay or 2, 0, 10)
+end
+
+function matchAutomation.GetAutoReadyDelay(): number
+	return matchAutomation.AutoReadyDelay
+end
+
 function matchAutomation.SetSpeed(speed: string)
 	if table.find(matchAutomation.Speeds, speed) then
 		matchAutomation.SelectedSpeed = speed
@@ -448,6 +512,10 @@ lifecycle.Register(function()
 	end
 	if unsubGameStats then
 		unsubGameStats()
+	end
+	if unsubRaidIntermission then
+		unsubRaidIntermission()
+		unsubRaidIntermission = nil
 	end
 end)
 

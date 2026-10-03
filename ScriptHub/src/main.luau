@@ -18,8 +18,8 @@ local keySystem = require("@core/keySystem")
 local KEY_SYSTEM_CONFIG = {
 	Title = "ESCLIPSE SCRIPT HUB",
 	Subtitle = "Key Authentication System",
-	ApiUrl = "https://your-worker.your-subdomain.workers.dev", -- Thay thế bằng URL Cloudflare Worker của bạn
-	GetKeyUrl = "https://your-worker.your-subdomain.workers.dev/getkey", -- Link lấy key (LootLabs / Linkvertise / Checkpoint)
+	ApiUrl = "https://esclipse-keysystem.bhieu4225.workers.dev",
+	GetKeyUrl = "https://esclipse-keysystem.bhieu4225.workers.dev/getkey",
 	DiscordUrl = "https://discord.gg/your-invite", -- Link Discord của bạn
 	SaveFolder = "EsclipseHub",
 	SaveFileName = "key.json", -- Lưu tại: EsclipseHub/key.json
@@ -66,10 +66,12 @@ for _ = 1, 300 do
 	task.wait(0.1)
 end
 
---// 1. Xác thực bản quyền qua Key System trước khi nạp Route
-local authSuccess = keySystem.Authenticate(KEY_SYSTEM_CONFIG)
-if not authSuccess then
-	return
+--// 1. Xác thực bản quyền qua Key System trước khi nạp Route (bỏ qua nếu đã xác thực qua Loader)
+if not _G.Esclipse_Authenticated then
+	local authSuccess = keySystem.Authenticate(KEY_SYSTEM_CONFIG)
+	if not authSuccess then
+		return
+	end
 end
 
 --// 2. Khởi tạo Route tương ứng với Place/Universe hiện tại

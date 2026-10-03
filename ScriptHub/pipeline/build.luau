@@ -92,11 +92,42 @@ if config.openComposedOutput and process.os == "windows" then
 end
 
 --// Deploy
-if configOptions.promptDeploy and config.deployment.enabled then
-	local ghCfg = config.deployment.github
+if configOptions.promptDeploy and config.deployment and config.deployment.enabled then
+	-- 1. Deploy to Cloudflare Worker
+	local cfCfg = config.deployment.cloudflare
+	if cfCfg and cfCfg.enabled == true and fs.isFile(configOptions.output) then
+		if io.prompt("confirm", "Upload this build to Cloudflare Worker?") then
+			print("Uploading payload to Cloudflare KV...")
+			local scriptContent = fs.readFile(configOptions.output)
+			local cfResponse = net.request({
+				url = cfCfg.apiUrl,
+				method = "POST",
+				headers = {
+					["X-Admin-Secret"] = cfCfg.adminSecret,
+					["Content-Type"] = "text/plain; charset=utf-8",
+				},
+				body = scriptContent,
+			})
 
-	if io.prompt("confirm", "Do you want to distribute this build publicly?") then
-		if ghCfg and ghCfg.enabled == true then
+			if cfResponse.ok then
+				print("✅ Cloudflare Worker upload successful: " .. cfResponse.statusMessage)
+				local decodeOk, resData = pcall(function()
+					return serde.decode("json", cfResponse.body)
+				end)
+				if decodeOk and resData and resData.meta then
+					print(string.format("📊 Size: %s | Updated: %s", tostring(resData.meta.sizeFormatted), tostring(resData.meta.updatedAtIso)))
+				end
+			else
+				print("❌ Cloudflare Worker upload failed: " .. tostring(cfResponse.statusMessage))
+				print(cfResponse.body)
+			end
+		end
+	end
+
+	-- 2. Deploy to GitHub Releases
+	local ghCfg = config.deployment.github
+	if ghCfg and ghCfg.enabled == true then
+		if io.prompt("confirm", "Do you want to distribute this build publicly on GitHub?") then
 			fs.writeFile(RELEASE_BODY, `# {ghCfg.repo} {buildVers}`)
 
 			if process.os == "windows" then
